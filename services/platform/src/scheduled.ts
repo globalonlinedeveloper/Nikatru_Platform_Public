@@ -93,6 +93,7 @@ export const RENEWALS_JOB = 'renewals';
 export const ANALYTICS_LIVENESS_WINDOW_HOURS = 24;
 
 import { APP_TARGETS } from './generated/app-targets';
+import { EXT_LINK_IDLE_DAYS, EXT_LINK_MAX_AGE_DAYS } from './lib/ext-links';
 /** Apps the scheduler fans out to: GENERATED from the register (tooling/scripts/render-platform-app-block.mjs, 2026-09-26).
  *  A binding the module names and `env` lacks comes back `db: undefined`: the fan-out records it as a failed row, never a skip.
  *  `env` is read by the binding's NAME, so it is indexed as a record. */
@@ -1550,11 +1551,14 @@ export const CONTENT_REPORTS_RETENTION_DAYS = 400;
 // @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
 export const EXT_CODES_RETENTION_DAYS = 1;
 
-// 🔒 DECLARED — 30 DAYS AFTER REVOCATION, AND ONLY FOR A REVOKED DEVICE.
+// 🔒 DECLARED — 30 DAYS AFTER REVOCATION, OR 30 DAYS AFTER THE LINK'S LIFETIME
+// ENDED (⏱ 2026-09-30, EXA-11 re-review finding 5 — the paragraph below this one
+// describes the first rule; the second is at the DELETE in `deleteOlderThan`).
 // O-EXTENSION-ACCOUNT-CHECK-UNBUILT, parent decision 2026-09-25 (storage
 // limitation). Register row: retention.d1.platform_db.ext_devices. A linked
-// device that was never revoked is a LIVE credential and is never swept: the
-// cutoff is on `revoked_at`, and `NULL < ?` is never true.
+// device that was never revoked is a LIVE credential INSIDE ITS LIFETIME and is
+// not swept then: the revoked limb's cutoff is on `revoked_at`, and `NULL < ?`
+// is never true; the expired limb needs the lifetime to have ended 30 days ago.
 //
 // WHY 30 AND NOT "CREDENTIAL LIFETIME + 7". The rule was: if the longest-lived
 // credential the code accepts outlives 23 days, keep a revoked row for that
@@ -1846,6 +1850,19 @@ export async function eventsRollup(env: Env, nowMs: number = Date.now()): Promis
  * plain SQL, and both tables are ROWID tables — 0002 and 0004 declare no PRIMARY
  * KEY and no WITHOUT ROWID, deliberately (0002's header records why).
  */
+/**
+ * ⏱ 2026-09-30 · EXA-11. For the ext_devices sweep: the retention cutoff moved
+ * back by the link's maximum age and by its idle limit, so "expired more than
+ * the retention period ago" is two plain comparisons. [maxAgeCutoff, idleCutoff].
+ */
+export function extDevicesExpiredCutoffs(cutoff: string): [string, string] {
+  const t = Date.parse(cutoff);
+  return [
+    new Date(t - EXT_LINK_MAX_AGE_DAYS * MS_PER_DAY).toISOString(),
+    new Date(t - EXT_LINK_IDLE_DAYS * MS_PER_DAY).toISOString(),
+  ];
+}
+
 async function deleteOlderThan(env: Env, store: RetentionStore, cutoff: string): Promise<number> {
   const stmt =
     store === 'events'
@@ -1880,7 +1897,19 @@ async function deleteOlderThan(env: Env, store: RetentionStore, cutoff: string):
             // against any ISO cutoff whatever instant it meant. The pattern
             // admits only an ISO-8601 date-time; anything else is kept, because
             // the sweep deletes only what it can date.
-            "DELETE FROM ext_devices WHERE rowid IN (SELECT rowid FROM ext_devices WHERE revoked_at < ? AND revoked_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*' ORDER BY revoked_at LIMIT ?)",
+            //
+            // ⏱ 2026-09-30 · EXA-11 (re-review finding 5) — AND A LINK THAT
+            // EXPIRED AND WAS NEVER PRESENTED AGAIN. A never-revoked row is a
+            // live credential only inside its lifetime (lib/ext-links.ts: 180
+            // days at most, 30 days idle); an uninstalled browser never comes
+            // back to have it stamped revoked. So a never-revoked row is deleted
+            // the same 30 days after its lifetime ended: `created_at` older
+            // than 180 + 30 days, or its last use older than 30 + 30 days. The
+            // two extra cutoffs are the retention cutoff shifted back by each
+            // lifetime (`extDevicesExpiredCutoffs`), so the statement needs no
+            // date function. `created_at` must be an ISO date-time too, for the
+            // reason the revoked_at GLOB gives.
+            "DELETE FROM ext_devices WHERE rowid IN (SELECT rowid FROM ext_devices WHERE (revoked_at < ? AND revoked_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*') OR (revoked_at IS NULL AND created_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*' AND (created_at < ? OR COALESCE(last_seen_at, created_at) < ?)) ORDER BY created_at LIMIT ?)",
           )
       : store === 'events_daily'
         ? env.PLATFORM_DB.prepare(
@@ -1925,7 +1954,10 @@ async function deleteOlderThan(env: Env, store: RetentionStore, cutoff: string):
           // the first real subject of this rule already exists and is refused.
           'DELETE FROM provider_notifications WHERE rowid IN (SELECT rowid FROM provider_notifications WHERE received_at < ? AND derived_at IS NOT NULL AND derive_error IS NULL ORDER BY received_at LIMIT ?)',
         );
-  const res = await stmt.bind(cutoff, MAX_ROWS_PER_SWEEP).run();
+  const res =
+    store === 'ext_devices'
+      ? await stmt.bind(cutoff, ...extDevicesExpiredCutoffs(cutoff), MAX_ROWS_PER_SWEEP).run()
+      : await stmt.bind(cutoff, MAX_ROWS_PER_SWEEP).run();
   return Number(res.meta?.changes ?? 0);
 }
 

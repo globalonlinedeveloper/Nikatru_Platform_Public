@@ -4,26 +4,31 @@
 //
 // ⏱ 2026-09-30 · EXA-11 (round-2 review, O-EXTENSION-ACCOUNT-CHECK-UNBUILT). The
 // device credential (`nkx1_…`, routes/ext.ts) was minted with NO lifetime and
-// ended only when the browser revoked itself or the account was erased. So a
-// browser linked by somebody who had the password kept reading the account's
-// FullShot entitlement after the owner reset that password or signed out
-// everywhere. Three doors now end a link from the ACCOUNT side, and all three
-// use `revokeUserLinks` below:
+// ended only when the browser revoked itself or the account was erased.
 //
-//   · POST /v1/sessions/revoke-all — "sign out everywhere" ends every link too.
-//   · a recovery sign-in — platformAuth (middleware/auth.ts) passes the instant
-//     GoTrue recorded a `recovery` authentication, and every link made BEFORE
-//     it is revoked. GoTrue runs the password reset itself and tells this
-//     Worker nothing, so the recovery session reaching the Worker is the reset
-//     as the Worker can see it; the lifetime below bounds the case where it
-//     never does.
-//   · DELETE /v1/ext/devices/:link_id — the account revokes ONE browser and
-//     leaves the others working (routes/ext.ts).
+// ⏱ 2026-09-30 (re-review finding 1, lead ruling) — A STANDING FLOOR, NOT A
+// ONE-TIME UPDATE. The first cut revoked the links CREATED before a reset,
+// once. A session that signed in before the reset still holds a valid access
+// token for up to an hour, and with it could mint a link AFTER the reset. So:
+//
+//   · every code and link carries `auth_at` — when the minting session last
+//     AUTHENTICATED (middleware/auth.ts `signedInAt`: the newest `amr`
+//     timestamp, which a refresh does not move; `iat` only without `amr`);
+//   · every account may carry a floor, `ext_link_floor.not_before`
+//     (0021_ext_link_floor.sql), raised to the server's now by
+//       - POST /v1/sessions/revoke-all ("sign out everywhere"), and
+//       - a recovery session reaching the Worker (middleware/auth.ts), ONCE per
+//         GoTrue session;
+//   · a link, a code at exchange, or a mint whose `auth_at` is before the floor
+//     is refused (`predatesFloor`), whenever it was minted. The owner's own
+//     re-link after the reset comes from a fresh sign-in and passes.
+//
+// DELETE /v1/ext/devices/:link_id ends ONE browser and leaves the others.
 //
 // And the credential expires on its own (`extLinkExpired`): unused for
-// EXT_LINK_IDLE_DAYS, or older than EXT_LINK_MAX_AGE_DAYS however used. An
-// expired link answers 401, the answer the extension reads as "delete this
-// credential", and it is re-linked on https://nikatru.com/ext/connect.
+// EXT_LINK_IDLE_DAYS, or older than EXT_LINK_MAX_AGE_DAYS however used. Every
+// refusal is the same 401 the extension reads as "delete this credential", and
+// the browser is re-linked on https://nikatru.com/ext/connect.
 //
 // Every instant here is ISO-8601 TEXT, as 0017_ext_devices.sql requires.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,26 +73,56 @@ export function extLinkExpired(row: { created_at: string; last_seen_at: string |
 }
 
 /**
- * Revokes every live link of `userId`; with `createdBefore`, only the links
- * made before that instant — so a browser the owner links AFTER a reset is not
- * ended by the recovery session that preceded it. Answers the number of links
- * revoked. Throws on a D1 failure; each caller decides what that means.
+ * True when a link (or a code) minted by a session that authenticated at
+ * `authAt` is below the account's floor `notBefore`. No floor → false. With a
+ * floor, fail-closed: a NULL or unparseable `authAt` (a link minted before
+ * 0021) is older than any floor, and an unparseable floor refuses everything.
  */
-export async function revokeUserLinks(
+export function predatesFloor(authAt: string | null | undefined, notBefore: string | null | undefined): boolean {
+  if (notBefore === null || notBefore === undefined) return false;
+  const floor = Date.parse(notBefore);
+  if (!Number.isFinite(floor)) return true;
+  if (authAt === null || authAt === undefined) return true;
+  const at = Date.parse(authAt);
+  return !Number.isFinite(at) || at < floor;
+}
+
+/**
+ * Raises the account's floor to `nowIso` (never lowers it). With
+ * `recoverySession`, the write happens only if that GoTrue session has not
+ * raised it already — the recovery door writes once per session, however many
+ * requests the session makes and however many isolates serve them. Answers
+ * whether a row changed. Throws on a D1 failure; each caller decides what that
+ * means.
+ */
+export async function raiseLinkFloor(
   db: D1Database,
   userId: string,
   nowIso: string,
-  createdBefore?: string,
-): Promise<number> {
+  recoverySession?: string,
+): Promise<boolean> {
   const res =
-    createdBefore === undefined
+    recoverySession === undefined
       ? await db
-          .prepare('UPDATE ext_devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL')
-          .bind(nowIso, userId)
+          .prepare(
+            'INSERT INTO ext_link_floor (user_id, not_before, recovery_session, updated_at) VALUES (?, ?, NULL, ?) ON CONFLICT(user_id) DO UPDATE SET not_before = MAX(ext_link_floor.not_before, excluded.not_before), updated_at = excluded.updated_at',
+          )
+          .bind(userId, nowIso, nowIso)
           .run()
       : await db
-          .prepare('UPDATE ext_devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND created_at < ?')
-          .bind(nowIso, userId, createdBefore)
+          .prepare(
+            'INSERT INTO ext_link_floor (user_id, not_before, recovery_session, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET not_before = MAX(ext_link_floor.not_before, excluded.not_before), recovery_session = excluded.recovery_session, updated_at = excluded.updated_at WHERE ext_link_floor.recovery_session IS NOT excluded.recovery_session',
+          )
+          .bind(userId, nowIso, recoverySession, nowIso)
           .run();
-  return Number(res.meta?.changes ?? 0);
+  return Number(res.meta?.changes ?? 0) > 0;
+}
+
+/** The account's floor, or null. Throws on a D1 failure. */
+export async function linkFloorOf(db: D1Database, userId: string): Promise<string | null> {
+  const row = await db
+    .prepare('SELECT not_before FROM ext_link_floor WHERE user_id = ?')
+    .bind(userId)
+    .first<{ not_before: string }>();
+  return row?.not_before ?? null;
 }

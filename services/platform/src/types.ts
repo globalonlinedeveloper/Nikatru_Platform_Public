@@ -515,6 +515,12 @@ export interface Variables {
    */
   sessionId?: string;
   /**
+   * ⏱ 2026-09-30 · EXA-11. When the verified token's session last
+   * AUTHENTICATED, ISO (`signedInAtOf` in middleware/auth.ts). routes/ext.ts
+   * stamps it on each code as `auth_at`, for the extension-link floor.
+   */
+  signedInAt?: string;
+  /**
    * [pipeline B-16] WHICH APP THIS REQUEST IS FOR, set by each route the moment
    * it has resolved and VALIDATED one, and read by `app.onError`.
    *

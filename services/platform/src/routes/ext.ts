@@ -52,14 +52,14 @@
 // test/ext-auth.test.ts captures every console call across a full mint,
 // exchange, read, revoke and re-read and fails if one appears.
 // ─────────────────────────────────────────────────────────────────────────────
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { AppEnv } from '../types';
 import { platformAuth } from '../middleware/auth';
 import { EXT_TOKEN_PREFIX, deviceBearer, extDeviceAuth, sha256Hex } from '../middleware/ext-device-auth';
-import { withinEdgeCeiling } from '../lib/edge-ceiling';
+import { withinEdgeCeiling, withinRateLimit } from '../lib/edge-ceiling';
 import { readBoundedBody } from '../lib/body';
 import { extensionRedirectUri, isExtChannel } from '../lib/ext-redirects';
-import { extLinkExpired } from '../lib/ext-links';
+import { extLinkExpired, linkFloorOf, predatesFloor } from '../lib/ext-links';
 
 const ext = new Hono<AppEnv>();
 
@@ -81,6 +81,24 @@ export const EXT_CODE_TTL_MS = 120000;
  * @ceiling workers.maxRequestBodySize lte
  */
 export const MAX_EXT_BODY_BYTES = 4096;
+
+/**
+ * The most links GET /v1/ext/devices answers. An account with more live links
+ * than this is not a person with browsers.
+ *
+ * @ceiling none — a response bound we chose (re-review nit 10), not a platform resource.
+ */
+export const MAX_LISTED_LINKS = 100;
+
+/**
+ * ⏱ 2026-09-30 (re-review nit 10). The account-side ext routes — mint, list,
+ * revoke one — share SESSIONS_LIMITER, keyed `ext:<verified subject>` so they
+ * never spend the /v1/sessions budget of the same key. Fails open, as every
+ * `withinRateLimit` does.
+ */
+async function extLimited(c: Context<AppEnv>): Promise<boolean> {
+  return !(await withinRateLimit(c.env.SESSIONS_LIMITER, `ext:${c.get('userId')}`, 'SESSIONS_LIMITER'));
+}
 
 /** The one body every failed exchange gets — no oracle. */
 const INVALID_GRANT = { error: 'invalid_grant' } as const;
@@ -125,6 +143,7 @@ async function objectBody(req: Request): Promise<Record<string, unknown> | null>
 // ─────────────────────────────────────────────────────────────────────────────
 ext.post('/ext/codes', platformAuth, async (c) => {
   c.header('Cache-Control', 'no-store');
+  if (await extLimited(c)) return c.json({ error: 'rate_limited' }, 429);
   const b = await objectBody(c.req.raw);
   if (b === null) return c.json({ error: 'invalid_body' }, 400);
 
@@ -147,6 +166,20 @@ ext.post('/ext/codes', platformAuth, async (c) => {
     return c.json({ error: 'invalid_code_challenge' }, 400);
   }
 
+  // ⏱ 2026-09-30 · EXA-11 — A SESSION OLDER THAN THE ACCOUNT'S LINK FLOOR MINTS
+  // NOTHING. A reset or "sign out everywhere" raised the floor; a token that
+  // authenticated before it is still inside its hour, and must not be able to
+  // link a browser (lib/ext-links.ts). Same plain 401 as any refused session.
+  const authAt = c.get('signedInAt') ?? null;
+  let floor: string | null;
+  try {
+    floor = await linkFloorOf(c.env.PLATFORM_DB, c.get('userId'));
+  } catch {
+    console.warn(`[ext] rid=${c.get('requestId') ?? '-'} floor read failed — 503`);
+    return c.json({ error: 'service_unavailable' }, 503);
+  }
+  if (predatesFloor(authAt, floor)) return c.json({ error: 'unauthorized' }, 401);
+
   const code = randomToken(16);
   // ONE clock read for both instants, both ISO-8601 TEXT.
   const createdMs = Date.now();
@@ -154,9 +187,9 @@ ext.post('/ext/codes', platformAuth, async (c) => {
   const expiresAt = new Date(createdMs + EXT_CODE_TTL_MS).toISOString();
   try {
     await c.env.PLATFORM_DB.prepare(
-      'INSERT INTO ext_codes (code_hash, user_id, product, channel, redirect_uri, code_challenge, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO ext_codes (code_hash, user_id, product, channel, redirect_uri, code_challenge, created_at, expires_at, auth_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     )
-      .bind(await sha256Hex(code), c.get('userId'), b.product, b.channel, registered, b.code_challenge, createdAt, expiresAt)
+      .bind(await sha256Hex(code), c.get('userId'), b.product, b.channel, registered, b.code_challenge, createdAt, expiresAt, authAt)
       .run();
   } catch {
     console.warn(`[ext] rid=${c.get('requestId') ?? '-'} code mint failed — 503`);
@@ -203,11 +236,22 @@ ext.post('/ext/token', async (c) => {
     if (Number(claimed.meta?.changes ?? 0) !== 1) return c.json(INVALID_GRANT, 400);
 
     const row = await c.env.PLATFORM_DB.prepare(
-      'SELECT user_id, product, channel, redirect_uri, code_challenge FROM ext_codes WHERE code_hash = ?',
+      'SELECT k.user_id, k.product, k.channel, k.redirect_uri, k.code_challenge, k.auth_at, f.not_before FROM ext_codes k LEFT JOIN ext_link_floor f ON f.user_id = k.user_id WHERE k.code_hash = ?',
     )
       .bind(codeHash)
-      .first<{ user_id: string; product: string; channel: string; redirect_uri: string; code_challenge: string }>();
+      .first<{
+        user_id: string;
+        product: string;
+        channel: string;
+        redirect_uri: string;
+        code_challenge: string;
+        auth_at: string | null;
+        not_before: string | null;
+      }>();
     if (row === null) return c.json(INVALID_GRANT, 400);
+    // ⏱ 2026-09-30 · EXA-11 — a code minted before the floor was raised (a
+    // reset between mint and exchange) is dead: same body as every refusal.
+    if (predatesFloor(row.auth_at, row.not_before)) return c.json(INVALID_GRANT, 400);
     // Byte-for-byte, and the S256 transform of the verifier against the stored
     // challenge. Same body as every other failure.
     if (b.redirect_uri !== row.redirect_uri) return c.json(INVALID_GRANT, 400);
@@ -216,9 +260,9 @@ ext.post('/ext/token', async (c) => {
     const token = EXT_TOKEN_PREFIX + randomToken(32);
     const linkId = crypto.randomUUID();
     await c.env.PLATFORM_DB.prepare(
-      'INSERT INTO ext_devices (link_id, user_id, product, channel, token_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO ext_devices (link_id, user_id, product, channel, token_hash, created_at, auth_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
     )
-      .bind(linkId, row.user_id, row.product, row.channel, await sha256Hex(token), now)
+      .bind(linkId, row.user_id, row.product, row.channel, await sha256Hex(token), now, row.auth_at)
       .run();
     return c.json({ token, link_id: linkId });
   } catch {
@@ -251,18 +295,33 @@ ext.post('/ext/revoke', extDeviceAuth, async (c) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /v1/ext/devices — the account's linked browsers, from the account side.
-// ⏱ 2026-09-30 · EXA-11. A link past its lifetime is dead already and is not
-// listed; a revoked one is not listed. Never the token hash, never user_id.
+// ⏱ 2026-09-30 · EXA-11. A link past its lifetime or below the account's floor
+// is dead already and is not listed; a revoked one is not listed. Never the
+// token hash, never user_id. At most MAX_LISTED_LINKS.
 // ─────────────────────────────────────────────────────────────────────────────
+type LinkRow = {
+  link_id: string;
+  product: string;
+  channel: string;
+  created_at: string;
+  last_seen_at: string | null;
+  auth_at: string | null;
+  not_before: string | null;
+};
+
+/** A link the account may still see and act on: alive by age and by floor. */
+const liveLink = (r: LinkRow, now: number) => !extLinkExpired(r, now) && !predatesFloor(r.auth_at, r.not_before);
+
 ext.get('/ext/devices', platformAuth, async (c) => {
   c.header('Cache-Control', 'no-store');
-  let rows: { link_id: string; product: string; channel: string; created_at: string; last_seen_at: string | null }[];
+  if (await extLimited(c)) return c.json({ error: 'rate_limited' }, 429);
+  let rows: LinkRow[];
   try {
     const got = await c.env.PLATFORM_DB.prepare(
-      'SELECT link_id, product, channel, created_at, last_seen_at FROM ext_devices WHERE user_id = ? AND revoked_at IS NULL ORDER BY created_at',
+      'SELECT d.link_id, d.product, d.channel, d.created_at, d.last_seen_at, d.auth_at, f.not_before FROM ext_devices d LEFT JOIN ext_link_floor f ON f.user_id = d.user_id WHERE d.user_id = ? AND d.revoked_at IS NULL ORDER BY d.created_at LIMIT ?',
     )
-      .bind(c.get('userId'))
-      .all<{ link_id: string; product: string; channel: string; created_at: string; last_seen_at: string | null }>();
+      .bind(c.get('userId'), MAX_LISTED_LINKS)
+      .all<LinkRow>();
     rows = got.results ?? [];
   } catch {
     console.warn(`[ext] rid=${c.get('requestId') ?? '-'} device list failed — 503`);
@@ -270,7 +329,7 @@ ext.get('/ext/devices', platformAuth, async (c) => {
   }
   const now = Date.now();
   const devices = rows
-    .filter((r) => !extLinkExpired(r, now))
+    .filter((r) => liveLink(r, now))
     .map((r) => ({ link_id: r.link_id, product: r.product, channel: r.channel, created_at: r.created_at, last_seen_at: r.last_seen_at }));
   return c.json({ devices });
 });
@@ -280,19 +339,28 @@ const LINK_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /v1/ext/devices/:link_id — the account revokes ONE linked browser.
-// ⏱ 2026-09-30 · EXA-11. Scoped by user_id in the statement itself, so another
-// account's link id is indistinguishable from one that never existed (404).
+// ⏱ 2026-09-30 · EXA-11. Scoped by user_id in both statements, so another
+// account's link id is indistinguishable from one that never existed (404). A
+// link already dead by age or floor is the same 404, so DELETE agrees with GET.
 // ─────────────────────────────────────────────────────────────────────────────
 ext.delete('/ext/devices/:link_id', platformAuth, async (c) => {
   c.header('Cache-Control', 'no-store');
+  if (await extLimited(c)) return c.json({ error: 'rate_limited' }, 429);
   const linkId = c.req.param('link_id');
   if (!LINK_ID_RE.test(linkId)) return c.json({ error: 'not_found' }, 404);
+  const userId = c.get('userId');
   let changes: number;
   try {
+    const row = await c.env.PLATFORM_DB.prepare(
+      'SELECT d.link_id, d.product, d.channel, d.created_at, d.last_seen_at, d.auth_at, f.not_before FROM ext_devices d LEFT JOIN ext_link_floor f ON f.user_id = d.user_id WHERE d.link_id = ? AND d.user_id = ? AND d.revoked_at IS NULL',
+    )
+      .bind(linkId.toLowerCase(), userId)
+      .first<LinkRow>();
+    if (row === null || !liveLink(row, Date.now())) return c.json({ error: 'not_found' }, 404);
     const res = await c.env.PLATFORM_DB.prepare(
       'UPDATE ext_devices SET revoked_at = ? WHERE link_id = ? AND user_id = ? AND revoked_at IS NULL',
     )
-      .bind(new Date().toISOString(), linkId.toLowerCase(), c.get('userId'))
+      .bind(new Date().toISOString(), linkId.toLowerCase(), userId)
       .run();
     changes = Number(res.meta?.changes ?? 0);
   } catch {

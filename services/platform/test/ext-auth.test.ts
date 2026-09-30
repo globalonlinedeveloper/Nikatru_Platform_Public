@@ -30,7 +30,9 @@ import { platformAuth } from '../src/middleware/auth';
 import { entitlementsAuth, extDeviceAuth, sha256Hex } from '../src/middleware/ext-device-auth';
 import { EXT_CODE_TTL_MS } from '../src/routes/ext';
 import { EXT_CHANNELS } from '../src/lib/ext-redirects';
-import { EXT_LINK_IDLE_DAYS, EXT_LINK_MAX_AGE_DAYS } from '../src/lib/ext-links';
+import { EXT_LINK_IDLE_DAYS, EXT_LINK_MAX_AGE_DAYS, predatesFloor } from '../src/lib/ext-links';
+import { LINK_FLOOR_ATTEMPTS } from '../src/routes/sessions';
+import { MAX_LISTED_LINKS } from '../src/routes/ext';
 import { erasePlatformRows } from '../src/lib/platform-erasure';
 import type { AppEnv } from '../src/types';
 import { mountedEndpoints, probePath } from '../../_shared/test/preflight';
@@ -82,6 +84,24 @@ afterEach(() => {
 
 const KV = { get: async () => null, put: async () => undefined } as unknown as KVNamespace;
 
+/** A recording SESSION_REVOKED: what revoke-all wrote, readable by platformAuth. */
+function recordingKv({ failPuts = false } = {}) {
+  const store = new Map<string, string>();
+  const puts: Array<{ key: string }> = [];
+  const kv = {
+    get: async (key: string, type?: string) => {
+      const v = store.get(key);
+      return v === undefined ? null : type === 'json' ? JSON.parse(v) : v;
+    },
+    put: async (key: string, value: string) => {
+      if (failPuts) throw new Error('KV put failed (simulated)');
+      puts.push({ key });
+      store.set(key, value);
+    },
+  } as unknown as KVNamespace;
+  return { kv, puts };
+}
+
 async function jwt(sub: string, claims: Record<string, unknown> = {}) {
   return new SignJWT({ sub, email: `${sub}@example.com`, ...claims })
     .setProtectedHeader({ alg: 'ES256', kid: 'test-key-1' })
@@ -106,7 +126,18 @@ async function pkce() {
 }
 
 /** The REAL app, over a real engine, with the env the shipped Worker has. */
-function harness({ db = realPlatformDb() as RealDb | D1Database, limiter }: { db?: RealDb | D1Database; limiter?: AppEnv['Bindings']['EXT_TOKEN_CEILING_LIMITER'] } = {}) {
+function harness({
+  db = realPlatformDb() as RealDb | D1Database,
+  limiter,
+  kvFailPuts = false,
+  accountLimiter = { limit: async () => ({ success: true }) },
+}: {
+  db?: RealDb | D1Database;
+  limiter?: AppEnv['Bindings']['EXT_TOKEN_CEILING_LIMITER'];
+  kvFailPuts?: boolean;
+  accountLimiter?: { limit: (o: { key: string }) => Promise<{ success: boolean }> };
+} = {}) {
+  const kv = recordingKv({ failPuts: kvFailPuts });
   const env = {
     PLATFORM_DB: db,
     JWKS_CACHE: KV,
@@ -116,10 +147,10 @@ function harness({ db = realPlatformDb() as RealDb | D1Database, limiter }: { db
     MONEY_ENVIRONMENT: 'live',
     ALLOWED_ORIGINS: 'https://nikatru.com',
     EXT_TOKEN_CEILING_LIMITER: limiter,
-    // POST /v1/sessions/revoke-all (EXA-11) writes the KV record too; the
-    // no-op store answers every read with null, so no token is refused by it.
-    SESSION_REVOKED: KV,
-    SESSIONS_LIMITER: { limit: async () => ({ success: true }) },
+    // POST /v1/sessions/revoke-all writes the KV record FIRST (EXA-11); the
+    // recording store lets a case see that it did, and platformAuth reads it.
+    SESSION_REVOKED: kv.kv,
+    SESSIONS_LIMITER: accountLimiter,
   } as unknown as AppEnv['Bindings'];
   const send = (method: string, path: string, init: { authz?: string; body?: unknown; origin?: string } = {}) =>
     app.request(
@@ -137,10 +168,14 @@ function harness({ db = realPlatformDb() as RealDb | D1Database, limiter }: { db
     );
   return {
     db: db as RealDb,
+    kv,
     send,
-    mint: async (sub: string, o: { channel?: string; redirect_uri?: string; challenge: string; method?: string; product?: string }) =>
+    mint: async (
+      sub: string,
+      o: { channel?: string; redirect_uri?: string; challenge: string; method?: string; product?: string; claims?: Record<string, unknown> },
+    ) =>
       send('POST', '/v1/ext/codes', {
-        authz: `Bearer ${await jwt(sub)}`,
+        authz: `Bearer ${await jwt(sub, o.claims)}`,
         body: {
           product: o.product ?? 'fullshot',
           channel: o.channel ?? 'chrome-webstore',
@@ -163,10 +198,10 @@ function harness({ db = realPlatformDb() as RealDb | D1Database, limiter }: { db
 type H = ReturnType<typeof harness>;
 
 /** Sign in, mint, exchange: a live device credential for `sub` on `channel`. */
-async function connect(h: H, sub: string, channel = 'chrome-webstore') {
+async function connect(h: H, sub: string, channel = 'chrome-webstore', claims?: Record<string, unknown>) {
   const redirect = FIXTURE[channel] as string;
   const { verifier, challenge } = await pkce();
-  const minted = await h.mint(sub, { challenge, channel, redirect_uri: redirect });
+  const minted = await h.mint(sub, { challenge, channel, redirect_uri: redirect, claims });
   expect(minted.status).toBe(200);
   const { code } = (await minted.json()) as { code: string };
   const res = await h.exchange(code, verifier, redirect);
@@ -511,7 +546,7 @@ describe('the device credential — read, revoke, and the status codes the exten
     const real = h.db;
     const broken = {
       prepare(sql: string) {
-        if (sql.includes('FROM ext_devices WHERE token_hash')) throw new Error('D1_ERROR: simulated outage');
+        if (sql.includes('WHERE d.token_hash = ?')) throw new Error('D1_ERROR: simulated outage');
         return real.prepare(sql);
       },
       batch: (s: never) => real.batch(s),
@@ -627,79 +662,264 @@ describe('EXA-04 — the channel is bound at mint: a redirect_uri of another cha
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ⏱ 2026-09-30 · EXA-11 — A LINK ENDS FROM THE ACCOUNT SIDE, AND ON ITS OWN.
-// Red on the base: no route listed or revoked a link, revoke-all and a
-// recovery session never touched ext_devices, and nothing read a link's age.
+// ⏱ 2026-09-30 · EXA-11 (re-review findings 1, 2, 4, 6; lead ruling) — THE LINK
+// FLOOR. A reset or "sign out everywhere" raises the account's floor; every link,
+// every code at exchange and every mint whose session AUTHENTICATED before it is
+// refused, whenever it was minted. Red on the first cut: it compared `created_at`
+// once, so a pre-reset session could re-link after the reset.
 const T0 = Date.parse('2026-09-30T12:00:00.000Z');
 const DAY = 86400000;
+const secs = (ms: number) => Math.floor(ms / 1000);
 
-describe('EXA-11 — a password reset ends every browser linked before it', () => {
-  it('🔴 a recovery session reaching the Worker revokes the earlier links; a link made after it survives', async () => {
+/**
+ * A token with GoTrue's own claim set, read at source (supabase/auth,
+ * 2026-09-30): internal/tokens/service.go `AccessTokenClaims` — iss, sub, aud,
+ * exp, iat, email, phone, app_metadata, user_metadata, role, aal, amr,
+ * session_id, is_anonymous; internal/models/sessions.go `AMREntry` —
+ * {method, timestamp} with timestamp = UpdatedAt.Unix(), newest first;
+ * internal/models/factor.go — the Recovery method's string is "recovery".
+ */
+async function gotrueJwt(sub: string, o: { method: string; at: number; session: string }) {
+  return new SignJWT({
+    sub,
+    email: `${sub}@example.com`,
+    phone: '',
+    app_metadata: { provider: 'email', providers: ['email'] },
+    user_metadata: {},
+    role: 'authenticated',
+    aal: 'aal1',
+    amr: [{ method: o.method, timestamp: secs(o.at) }],
+    session_id: o.session,
+    is_anonymous: false,
+  })
+    .setProtectedHeader({ alg: 'ES256', kid: 'test-key-1', typ: 'JWT' })
+    .setIssuedAt()
+    .setExpirationTime('1h')
+    .setAudience('authenticated')
+    .setIssuer(ISSUER)
+    .sign(signingKey);
+}
+
+/** A session that signed in with a password at `at`, as GoTrue would mint it. */
+const passwordSession = (sub: string, at: number, session: string) => ({ amr: [{ method: 'password', timestamp: secs(at) }], session_id: session });
+/** The session a reset link opens, at `at`. */
+const recoverySession = (sub: string, at: number, session: string) => ({ amr: [{ method: 'recovery', timestamp: secs(at) }], session_id: session });
+
+describe('EXA-11 — the recovery door, with a token shaped exactly like GoTrue’s', () => {
+  it('🔴 a GoTrue recovery token reaching the Worker raises the floor: the earlier link reads 401', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(T0);
     const h = harness();
-    const before = await connect(h, 'user-reset');
-    expect((await h.read(before.token)).status).toBe(200);
-    // The owner follows the reset link a minute later: GoTrue's token for that
-    // session carries amr [{method: 'recovery', timestamp}].
+    const link = await connect(h, 'user-gt', 'chrome-webstore', passwordSession('user-gt', T0 - DAY, 's-gt-attacker'));
+    expect((await h.read(link.token)).status).toBe(200);
     vi.setSystemTime(T0 + 60_000);
-    const recoveryAmr = { amr: [{ method: 'recovery', timestamp: Math.floor((T0 + 60_000) / 1000) }] };
-    expect((await h.devices('user-reset', recoveryAmr)).status).toBe(200);
-    expect((await h.read(before.token)).status).toBe(401);
-    // The owner re-links with the new password; the same recovery session's
-    // later requests leave the new link alone.
-    vi.setSystemTime(T0 + 120_000);
-    const after = await connect(h, 'user-reset');
-    expect((await h.devices('user-reset', recoveryAmr)).status).toBe(200);
-    expect((await h.read(after.token)).status).toBe(200);
+    const token = await gotrueJwt('user-gt', { method: 'recovery', at: T0 + 60_000, session: 's-gt-recovery' });
+    expect((await h.send('GET', '/v1/ext/devices', { authz: `Bearer ${token}` })).status).toBe(200);
+    const dead = await h.read(link.token);
+    expect(dead.status).toBe(401);
+    expect(await dead.json()).toEqual({ error: 'invalid_link' });
+    expect(h.db.rows("SELECT recovery_session FROM ext_link_floor WHERE user_id = 'user-gt'")).toEqual([{ recovery_session: 's-gt-recovery' }]);
   });
 
-  it('a password sign-in (amr password) revokes nothing', async () => {
+  it('a GoTrue password token raises nothing', async () => {
     const h = harness();
-    const link = await connect(h, 'user-pw');
-    const amr = { amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) + 60 }] };
-    expect((await h.devices('user-pw', amr)).status).toBe(200);
+    const link = await connect(h, 'user-gt-pw');
+    const token = await gotrueJwt('user-gt-pw', { method: 'password', at: Date.now(), session: 's-gt-pw' });
+    expect((await h.send('GET', '/v1/ext/devices', { authz: `Bearer ${token}` })).status).toBe(200);
+    expect(h.db.count('ext_link_floor')).toBe(0);
     expect((await h.read(link.token)).status).toBe(200);
+  });
+});
+
+describe('EXA-11 — a password reset ends every link minted by a session older than it', () => {
+  it('🔴 RE-LINK: a pre-reset session, still inside its access-token hour, cannot mint after the reset', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    const h = harness();
+    const attacker = passwordSession('user-rl', T0 - DAY, 's-rl-attacker');
+    const l1 = await connect(h, 'user-rl', 'chrome-webstore', attacker);
+    vi.setSystemTime(T0 + 60_000);
+    expect((await h.devices('user-rl', recoverySession('user-rl', T0 + 60_000, 's-rl-reset'))).status).toBe(200);
+    expect((await h.read(l1.token)).status).toBe(401);
+    // The attacker's pre-reset token is still valid at the JWT layer (GoTrue
+    // never revokes an issued access token) — and the mint refuses it.
+    vi.setSystemTime(T0 + 120_000);
+    const { challenge } = await pkce();
+    const minted = await h.mint('user-rl', { challenge, claims: attacker });
+    expect(minted.status).toBe(401);
+    expect(h.db.count('ext_codes', "user_id = 'user-rl'")).toBe(1); // only L1's, from before
+  });
+
+  it('🔴 a code minted BEFORE the reset and exchanged AFTER it is refused', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    const h = harness();
+    const attacker = passwordSession('user-cx', T0 - DAY, 's-cx-attacker');
+    const { verifier, challenge } = await pkce();
+    const { code } = (await (await h.mint('user-cx', { challenge, claims: attacker })).json()) as { code: string };
+    vi.setSystemTime(T0 + 30_000);
+    expect((await h.devices('user-cx', recoverySession('user-cx', T0 + 30_000, 's-cx-reset'))).status).toBe(200);
+    vi.setSystemTime(T0 + 60_000);
+    const res = await h.exchange(code, verifier);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'invalid_grant' });
+    expect(h.db.count('ext_devices')).toBe(0);
+  });
+
+  it('a sign-in AFTER the reset links fine, and the recovery session’s later requests leave it alone', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    const h = harness();
+    const reset = recoverySession('user-ok', T0, 's-ok-reset');
+    expect((await h.devices('user-ok', reset)).status).toBe(200);
+    vi.setSystemTime(T0 + 120_000);
+    const fresh = await connect(h, 'user-ok', 'chrome-webstore', passwordSession('user-ok', T0 + 120_000, 's-ok-new'));
+    expect((await h.devices('user-ok', reset)).status).toBe(200);
+    expect((await h.read(fresh.token)).status).toBe(200);
+  });
+
+  it('a link from before migration 0021 (auth_at NULL) lives until a floor exists, then dies', async () => {
+    const h = harness();
+    const old = await connect(h, 'user-null');
+    h.db.db.exec("UPDATE ext_devices SET auth_at = NULL WHERE user_id = 'user-null'");
+    expect((await h.read(old.token)).status).toBe(200);
+    expect((await h.send('POST', '/v1/sessions/revoke-all', { authz: `Bearer ${await jwt('user-null')}` })).status).toBe(204);
+    expect((await h.read(old.token)).status).toBe(401);
+  });
+
+  it('🔴 the recovery door writes ONCE per GoTrue session, not once per request', async () => {
+    const h = harness();
+    const reset = recoverySession('user-once', Date.now(), 's-once');
+    for (let i = 0; i < 3; i++) expect((await h.devices('user-once', reset)).status).toBe(200);
+    const writes = h.db.sql.filter((q) => q.startsWith('INSERT INTO ext_link_floor')).length;
+    expect(writes).toBe(1);
+    // A second recovery session is a new reset, and writes again.
+    expect((await h.devices('user-once', recoverySession('user-once', Date.now(), 's-once-2'))).status).toBe(200);
+    expect(h.db.sql.filter((q) => q.startsWith('INSERT INTO ext_link_floor')).length).toBe(2);
+  });
+
+  it('🔴 D1 fails on the recovery write: the request is ADMITTED, one line logged with no id or email, and the next request retries', async () => {
+    const lines: string[] = [];
+    vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => void lines.push(args.map(String).join(' ')));
+    const h = harness();
+    const real = h.db;
+    const broken = {
+      prepare(sql: string) {
+        if (sql.startsWith('INSERT INTO ext_link_floor')) throw new Error('D1_ERROR: simulated outage');
+        return real.prepare(sql);
+      },
+      batch: (st: never) => real.batch(st),
+    } as unknown as D1Database;
+    const reset = recoverySession('user-d1fail', Date.now(), 's-d1fail');
+    const res = await harness({ db: broken }).devices('user-d1fail', reset);
+    expect(res.status).toBe(200);
+    const hits = lines.filter((l) => l.includes('ext_link_floor_recovery_write_failed'));
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).not.toContain('user-d1fail');
+    expect(hits[0]).not.toContain('@example.com');
+    expect(hits[0]).not.toContain('s-d1fail');
+    // Not remembered as written: the same session's next request writes.
+    expect((await h.devices('user-d1fail', reset)).status).toBe(200);
+    expect(h.db.count('ext_link_floor', "user_id = 'user-d1fail'")).toBe(1);
   });
 
   it("another account's recovery session leaves this account's links alone", async () => {
     const h = harness();
     const link = await connect(h, 'user-bystander');
-    const amr = { amr: [{ method: 'recovery', timestamp: Math.floor(Date.now() / 1000) + 60 }] };
-    expect((await h.devices('user-resetter', amr)).status).toBe(200);
+    expect((await h.devices('user-resetter', recoverySession('user-resetter', Date.now(), 's-other'))).status).toBe(200);
     expect((await h.read(link.token)).status).toBe(200);
   });
 });
 
-describe('EXA-11 — sign out everywhere (POST /v1/sessions/revoke-all) ends every link', () => {
-  it("🔴 every link of the account reads 401 after it; another account's link reads 200", async () => {
+describe('EXA-11 — sign out everywhere (POST /v1/sessions/revoke-all): KV first, then the floor', () => {
+  it('🔴 every link of the account reads 401 after it, the KV record is written, another account is untouched', async () => {
     const h = harness();
     const a = await connect(h, 'user-all');
     const b = await connect(h, 'user-all', 'amo');
     const other = await connect(h, 'user-not-all');
     const res = await h.send('POST', '/v1/sessions/revoke-all', { authz: `Bearer ${await jwt('user-all')}` });
     expect(res.status).toBe(204);
+    expect(h.kv.puts.map((p) => p.key)).toEqual(['rev:user-all']);
     expect((await h.read(a.token)).status).toBe(401);
     expect((await h.read(b.token)).status).toBe(401);
     expect((await h.read(other.token)).status).toBe(200);
   });
 
-  it('D1 fails ⇒ 503 revocation_unavailable, never a 204 while a link survives', async () => {
+  it('🔴 D1 fails (every attempt): 200 {d1Pending: true} — the KV sign-out is NOT blocked, and the partial state is logged without ids', async () => {
+    const lines: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => void lines.push(args.map(String).join(' ')));
     const h = harness();
-    const a = await connect(h, 'user-all-503');
+    const a = await connect(h, 'user-all-d1');
     const real = h.db;
+    let attempts = 0;
     const broken = {
       prepare(sql: string) {
-        if (sql.startsWith('UPDATE ext_devices SET revoked_at')) throw new Error('D1_ERROR: simulated outage');
+        if (sql.startsWith('INSERT INTO ext_link_floor')) {
+          attempts++;
+          throw new Error('D1_ERROR: simulated outage');
+        }
         return real.prepare(sql);
       },
       batch: (st: never) => real.batch(st),
     } as unknown as D1Database;
-    const res = await harness({ db: broken }).send('POST', '/v1/sessions/revoke-all', {
-      authz: `Bearer ${await jwt('user-all-503')}`,
-    });
+    const hb = harness({ db: broken });
+    const res = await hb.send('POST', '/v1/sessions/revoke-all', { authz: `Bearer ${await jwt('user-all-d1')}` });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ d1Pending: true });
+    expect(attempts).toBe(LINK_FLOOR_ATTEMPTS);
+    expect(hb.kv.puts.map((p) => p.key)).toEqual(['rev:user-all-d1']);
+    const pending = lines.filter((l) => l.includes('ext_link_floor_pending'));
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).not.toContain('user-all-d1');
+    // The link is not yet ended — which is exactly what d1Pending says.
+    expect((await h.read(a.token)).status).toBe(200);
+  });
+
+  it('D1 fails once, then succeeds: the bounded retry finishes the job (204)', async () => {
+    const h = harness();
+    const a = await connect(h, 'user-all-retry');
+    const real = h.db;
+    let failed = false;
+    const flaky = {
+      prepare(sql: string) {
+        if (sql.startsWith('INSERT INTO ext_link_floor') && !failed) {
+          failed = true;
+          throw new Error('D1_ERROR: transient');
+        }
+        return real.prepare(sql);
+      },
+      batch: (st: never) => real.batch(st),
+    } as unknown as D1Database;
+    const res = await harness({ db: flaky }).send('POST', '/v1/sessions/revoke-all', { authz: `Bearer ${await jwt('user-all-retry')}` });
+    expect(res.status).toBe(204);
+    expect((await h.read(a.token)).status).toBe(401);
+  });
+
+  it('🔴 KV fails: 503 revocation_unavailable (unchanged) — and the floor is STILL raised, so the links end anyway', async () => {
+    const h = harness({ kvFailPuts: true });
+    const a = await connect(h, 'user-all-kv');
+    const res = await h.send('POST', '/v1/sessions/revoke-all', { authz: `Bearer ${await jwt('user-all-kv')}` });
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: 'revocation_unavailable' });
-    expect((await h.read(a.token)).status).toBe(200);
+    expect((await h.read(a.token)).status).toBe(401);
+  });
+});
+
+describe('EXA-11 — predatesFloor, the one comparison every door uses', () => {
+  const at = '2026-09-30T12:00:00.000Z';
+  it('no floor: nothing predates it', () => {
+    expect(predatesFloor(null, null)).toBe(false);
+    expect(predatesFloor(at, undefined)).toBe(false);
+  });
+  it('an auth instant before the floor predates it; at or after does not', () => {
+    expect(predatesFloor('2026-09-30T11:59:59.999Z', at)).toBe(true);
+    expect(predatesFloor(at, at)).toBe(false);
+    expect(predatesFloor('2026-09-30T12:00:00.001Z', at)).toBe(false);
+  });
+  it('fail-closed: a NULL or unparseable auth instant, or an unparseable floor, predates', () => {
+    expect(predatesFloor(null, at)).toBe(true);
+    expect(predatesFloor('soon', at)).toBe(true);
+    expect(predatesFloor(at, 'garbage')).toBe(true);
   });
 });
 
@@ -740,6 +960,38 @@ describe('EXA-11 — the account lists its links and revokes ONE (GET / DELETE /
     expect((await h.unlink('user-404', a.link_id)).status).toBe(404);
   });
 
+  it('DELETE answers 404 for a link that expired but was never stamped — it agrees with GET', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    const h = harness();
+    const a = await connect(h, 'user-del-exp');
+    vi.setSystemTime(T0 + EXT_LINK_IDLE_DAYS * DAY);
+    expect((await h.unlink('user-del-exp', a.link_id)).status).toBe(404);
+    expect(h.db.count('ext_devices', 'revoked_at IS NULL')).toBe(1);
+  });
+
+  it(`GET lists at most MAX_LISTED_LINKS (${MAX_LISTED_LINKS})`, async () => {
+    const h = harness();
+    const now = new Date().toISOString();
+    const rows: string[] = [];
+    for (let i = 0; i < MAX_LISTED_LINKS + 5; i++) {
+      rows.push(`('00000000-0000-4000-8000-${String(i).padStart(12, '0')}', 'user-many', 'fullshot', 'amo', 'th-many-${i}', '${now}', NULL, NULL, '${now}')`);
+    }
+    h.db.db.exec(`INSERT INTO ext_devices (link_id, user_id, product, channel, token_hash, created_at, last_seen_at, revoked_at, auth_at) VALUES ${rows.join(',')}`);
+    const { devices } = (await (await h.devices('user-many')).json()) as { devices: unknown[] };
+    expect(devices).toHaveLength(MAX_LISTED_LINKS);
+  });
+
+  it('the account-side routes are rate-limited per verified subject (429), keyed ext:<sub>', async () => {
+    const keys: string[] = [];
+    const h = harness({ accountLimiter: { limit: async ({ key }) => (keys.push(key), { success: false }) } });
+    const { challenge } = await pkce();
+    expect((await h.mint('user-429x', { challenge })).status).toBe(429);
+    expect((await h.devices('user-429x')).status).toBe(429);
+    expect((await h.unlink('user-429x', '00000000-0000-4000-8000-000000000000')).status).toBe(429);
+    expect(keys).toEqual(['ext:user-429x', 'ext:user-429x', 'ext:user-429x']);
+  });
+
   it('both routes refuse a device credential and an anonymous caller (401)', async () => {
     const h = harness();
     const a = await connect(h, 'user-dev');
@@ -761,6 +1013,15 @@ describe('EXA-11 — the credential expires on its own', () => {
     expect(((await (await h.devices('user-idle')).json()) as { devices: unknown[] }).devices).toHaveLength(0);
     expect((await h.read(a.token)).status).toBe(401);
     expect(h.db.count('ext_devices', 'revoked_at IS NOT NULL')).toBe(1);
+  });
+
+  it('🔴 an unparseable created_at is expired (fail-closed): 401', async () => {
+    const h = harness();
+    const a = await connect(h, 'user-garbled');
+    h.db.db.exec("UPDATE ext_devices SET created_at = 'not-a-date' WHERE user_id = 'user-garbled'");
+    const res = await h.read(a.token);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'invalid_link' });
   });
 
   it('a link read within every idle window stays alive — idleness counts from last_seen_at', async () => {
@@ -810,6 +1071,15 @@ describe('log masking — no credential, code or verifier ever reaches a console
     expect((await h.read(token)).status).toBe(401);
     // A failed exchange and a failed lookup print too — include both paths.
     expect((await h.exchange(code, verifier)).status).toBe(400);
+    // ⏱ 2026-09-30 · the account-side doors (EXA-11 re-review finding 6).
+    const second = await connect(h, 'user-log');
+    expect((await h.devices('user-log')).status).toBe(200);
+    expect((await h.unlink('user-log', second.link_id)).status).toBe(204);
+    expect((await h.devices('user-log', recoverySession('user-log', Date.now(), 's-log-reset'))).status).toBe(200);
+    expect((await h.send('POST', '/v1/sessions/revoke-all', { authz: `Bearer ${await jwt('user-log')}` })).status).toBe(204);
+    const third = await h.read(second.token);
+    expect(third.status).toBe(401);
+    expect(lines.join('\n')).not.toContain(second.token);
     const everything = lines.join('\n');
     expect(everything).not.toContain('nkx1_');
     expect(everything).not.toContain(token);
