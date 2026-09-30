@@ -1669,17 +1669,21 @@ describe('A-5: a recorded failing case is code, and the exemption lists have cei
   const ANCHOR = 'const NOT_A_SCANNER = new Map([';
   const LONG = 'is a fixture entry whose reason is long enough to pass the reason floor, so that the ONLY thing this mutation changes is the size of the map against its ceiling.';
 
-  test('RED: a 40th NOT_A_SCANNER entry beyond the ratchet reds, naming the size and the ceiling', () => {
+  // ⏱ 2026-09-30: the ceiling is READ from the guard, so raising it (in its own
+  // commit, as the rule asks) moves this case with it instead of breaking it.
+  test('RED: one NOT_A_SCANNER entry beyond the ratchet reds, naming the size and the ceiling', () => {
+    const ceiling = Number(/const NOT_A_SCANNER_CEILING = (\d+);/.exec(readFileSync(GUARD, 'utf8'))?.[1]);
+    assert.ok(ceiling > 0, 'NOT_A_SCANNER_CEILING moved — this case no longer reads it');
     const r = runReal(
       seeded({
         mutateGuard: (s) => {
           assert.ok(s.includes(ANCHOR), 'the map moved — this mutation no longer reaches it');
-          return s.replace(ANCHOR, `${ANCHOR}\n  ['zz-fortieth.mjs', '${LONG}'],`);
+          return s.replace(ANCHOR, `${ANCHOR}\n  ['zz-one-past-the-ceiling.mjs', '${LONG}'],`);
         },
       }),
     );
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /NOT_A_SCANNER holds 40 entries and its ceiling is 39/);
+    assert.match(r.stderr, new RegExp(`NOT_A_SCANNER holds ${ceiling + 1} entries and its ceiling is ${ceiling}`));
   });
 
   test('RED: an exemption whose reason is a label, not a paragraph, is refused', () => {
