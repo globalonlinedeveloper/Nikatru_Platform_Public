@@ -1669,7 +1669,12 @@ const DOMAIN_RE = /^final\s+[\w<>,?\s.()]*?\b(\w+Provider)\s*=/gm;
 // 64 -> 66 on 2026-09-28 (ST-T6a): `fileExporterProvider` (ST-X1, an ADMITTED gap in
 // UNASSERTED) and `bundledContentPackSourceProvider` (ST-X5, COVERED_BY
 // content-pack-consumed) joined the domain, in the same PR as the providers.
-const MIN_DOMAIN = 66;
+// 66 -> 70 on 2026-09-30 (audit D28; ruling on #1075): `offlineStoreProvider`,
+// `readThroughCacheProvider`, `staleReadProvider` and `outboxProvider` joined the
+// domain, all four ADMITTED gaps in UNASSERTED with their reason (the stamped
+// test/offline_cache_test.dart drives them; no chassis property does), in the
+// same PR as the providers.
+const MIN_DOMAIN = 70;
 
 // Each key names the property that actually exercises it — the property test
 // must drive this provider, not merely construct it.
