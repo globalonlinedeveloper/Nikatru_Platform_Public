@@ -71,11 +71,18 @@ OutboxFailure classifyForOutbox(Object error) {
   final int s = error.statusCode;
   if (s == 0) return OutboxFailure.offline;
   if (s == 401) return OutboxFailure.unauthorized;
-  if (s == 408 || s == 409 || s == 429 || s >= 500) {
+  // The server is still processing this very key: wait, never count it
+  // (review #1075 round 3, minor d).
+  if (s == 409) return OutboxFailure.busy;
+  if (s == 408 || s == 429 || s >= 500) {
     return OutboxFailure.transient;
   }
   return OutboxFailure.refused;
 }
+
+/// The server's `Retry-After` on a failed send, for the outbox's wait.
+Duration? retryAfterFor(Object error) =>
+    error is ApiException ? error.retryAfter : null;
 
 /// The device's copy of what the server last answered, served only when the
 /// server cannot be asked — and marked when it is.
@@ -175,14 +182,24 @@ class ReadThroughCache {
   Future<void> mirror<T>(String key, T value, CacheCodec<T> codec) =>
       _mirrorScoped(_scoped(key), value, codec);
 
+  /// Write [value] as the copy under [scoped] — for the epoch it began under
+  /// ([epoch], or now). 🔴 RE-CHECKED AFTER THE WRITE (review #1075 round 3,
+  /// minor c): a sign-out that lands between the index update and the write
+  /// would otherwise leave this copy on the device under a key no index lists.
+  /// If the epoch moved, the write is taken back.
   Future<void> _mirrorScoped<T>(
     String scoped,
     T value,
-    CacheCodec<T> codec,
-  ) async {
+    CacheCodec<T> codec, {
+    int? epoch,
+  }) async {
+    final int started = epoch ?? _epoch;
+    if (_epoch != started) return;
     try {
       await _remember(scoped);
+      if (_epoch != started) return;
       await _store.write(scoped, value, codec);
+      if (_epoch != started) await _store.remove(<String>[scoped]);
     } on StoreWriteFailure catch (e) {
       _writeFailures += 1;
       _lastWriteError = e;
@@ -225,9 +242,12 @@ class ReadThroughCache {
     _staleKeys.clear();
     if (wasStale) _onStaleChanged(false);
     _knownOffline = false;
-    final List<String> keys =
+    // The union of the stored index and the keys this instance wrote: a lost
+    // or cleared index never leaves a copy behind (review #1075 round 3).
+    final Set<String> known = <String>{...?_keys};
+    final List<String> stored =
         await _store.read(kCacheIndexKey, _indexCodec) ?? <String>[];
-    await _store.remove(<String>[...keys, kCacheIndexKey]);
+    await _store.remove(<String>{...stored, ...known, kCacheIndexKey});
     _keys = <String>{};
   }
 
@@ -276,7 +296,7 @@ class ReadThroughCache {
       if (s.error != null) Error.throwWithStackTrace(s.error!, s.stack!);
       if (current()) {
         _setStale(scoped, false);
-        await _mirrorScoped(scoped, s.value as T, codec);
+        await _mirrorScoped(scoped, s.value as T, codec, epoch: epoch);
       }
       return s.value as T;
     }
@@ -292,7 +312,7 @@ class ReadThroughCache {
             if (!current()) return; // signed out, or another account, since
             _observe(s.error);
             if (s.error != null) return;
-            await _mirrorScoped(scoped, s.value as T, codec);
+            await _mirrorScoped(scoped, s.value as T, codec, epoch: epoch);
             if (!current()) return;
             _freshUntil[scoped] = _now().add(minRevalidateInterval);
             _setStale(scoped, false);
@@ -306,7 +326,7 @@ class ReadThroughCache {
     if (first.error == null) {
       if (current()) {
         _setStale(scoped, false);
-        await _mirrorScoped(scoped, first.value as T, codec);
+        await _mirrorScoped(scoped, first.value as T, codec, epoch: epoch);
       }
       return first.value as T;
     }

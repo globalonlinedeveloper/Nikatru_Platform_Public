@@ -45,6 +45,7 @@ import '../../core/app_config.dart';
 import '../../data/api/api_client.dart' show ApiClient;
 import '../../data/api/cached_api_client.dart' show CachedApiClient;
 import '../../data/auth/auth_repository.dart';
+import '../../data/local/subscription_store.dart' show LocalSubscriptionStore;
 import '../analytics_providers.dart';
 import 'notifications.dart';
 import 'persistence.dart';
@@ -586,32 +587,51 @@ List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
   ref.read(entitlementCacheProvider).clear,
   ref.read(notificationServiceProvider).cancelAll,
   ref.read(renewalRemindersProvider).cancelAll,
-  // 🔴 THE CACHED SUBSCRIPTION LIST IS ACCOUNT STATE. In the configured
-  // posture `CachedApiClient` mirrors the server's last answer for THIS
-  // account into the device store, and serves it offline. Left behind, the
-  // next person to sign in on this device offline would be shown it. In the
-  // unconfigured posture the same store IS the user's data and there is no
-  // account to sign out of, so it is never dropped there.
-  if (AppConfig.isApiConfigured) ref.read(localSubscriptionStoreProvider).clear,
-  // 🔴 AND THIS USER'S QUEUED WRITES (lead ruling on #1075, finding 1): an
-  // explicit sign-out DISCARDS them; a forced 401 (`signOutOnlyIfSessionIsGone`)
-  // runs no drops and KEEPS them for this same user's return; an account switch
-  // never sends them, because the outbox replays only its signed-in owner's
-  // entries. Resolved here, before any await, like every other drop.
-  if (AppConfig.isApiConfigured) discardQueuedWritesOf(ref),
+  // 🔴 THE OFFLINE COPY AND THE QUEUED WRITES ARE ACCOUNT STATE — dropped in
+  // the one order [offlineStateDrops] owns. Resolved here, before any await,
+  // like every other drop.
+  ...offlineStateDrops(
+    api: ref.read(apiClientProvider),
+    store: ref.read(localSubscriptionStoreProvider),
+    owner: ref.read(authRepositoryProvider).currentUser?.id,
+    discardQueue: true,
+  ),
 ];
 
-/// The drop for the signed-in user's queued writes, resolved NOW (the user id
-/// and the client) so it still names the right user after the sign-out lands.
-UserStateDrop discardQueuedWritesOf(WidgetRef ref) {
-  final String? owner = ref.read(authRepositoryProvider).currentUser?.id;
-  final ApiClient api = ref.read(apiClientProvider);
-  return () async {
-    if (api is! CachedApiClient) return;
-    // The copy first: it is the part the next user could be shown.
-    await api.forgetCache();
-    if (owner != null) await api.discardPendingOf(owner);
-  };
+/// 🔴 THE ONE ORDER IN WHICH THIS DEVICE FORGETS A USER'S OFFLINE STATE —
+/// called by EVERY sign-out path: the explicit drops ([userStateDrops]: Log
+/// out, Delete account, a declined re-acceptance, verify-email's Sign out) and
+/// the forced 401 ([signOutOnlyIfSessionIsGone]'s `onSignedOut`).
+///
+/// ⏱ 2026-09-30 · review #1075 round 3, major 1. The order was spread over two
+/// drops and got inverted: the store's `clear()` removed the cache's key INDEX
+/// first, so `forgetCache()` found nothing to remove, and a signed-out (or
+/// deleted) user's list and budget stayed on the device under their
+/// owner-scoped keys. Now:
+///   1. the cached copy (`forgetCache()`), while the index that lists it
+///      exists — and the cache owns that index; the store never touches it;
+///   2. the user's queued writes, as a drop of its OWN, so a failure of step 1
+///      still leaves step 2 attempted and the failure reported
+///      ([forgetSignedInUser] attempts every drop, then rethrows the first).
+///      An explicit sign-out discards them; a forced 401 keeps them
+///      ([discardQueue] false) for this same user's return, and no other
+///      user's replay ever sends them;
+///   3. the store's legacy unscoped keys.
+///
+/// In the unconfigured posture the store IS the user's data, with no account
+/// to sign out of: [api] is not a [CachedApiClient] there, and nothing drops.
+List<UserStateDrop> offlineStateDrops({
+  required ApiClient api,
+  required LocalSubscriptionStore store,
+  required String? owner,
+  required bool discardQueue,
+}) {
+  if (api is! CachedApiClient) return const <UserStateDrop>[];
+  return <UserStateDrop>[
+    api.forgetCache,
+    if (discardQueue && owner != null) () => api.discardPendingOf(owner),
+    store.clear,
+  ];
 }
 
 /// Run the resolved drops — the half that is allowed to take as long as it likes.
@@ -661,12 +681,15 @@ Future<void> forgetSignedInUser(List<UserStateDrop> drops) async {
 /// a fifth control cannot be added without either routing through here or
 /// turning the build red.
 ///
-/// ⚠️ ONE PATH DELIBERATELY DOES NOT, and it is not a control:
+/// ⚠️ ONE PATH RUNS ONLY PART OF IT, and it is not a control:
 /// [signOutOnlyIfSessionIsGone], the 401 handler on [restClientProvider]. It
 /// takes a repository rather than a `WidgetRef` because it runs from inside a
 /// provider with no widget anywhere near it, so it cannot resolve the drops the
-/// way the four above do. Out of scope on purpose rather than by omission — see
-/// the note at its declaration.
+/// way the four above do. ⏱ 2026-09-30 (review #1075 round 3): it DOES drop
+/// this device's offline copy of the user — its `onSignedOut` runs
+/// [offlineStateDrops], the same helper the four use — and keeps their queued
+/// writes for their own return. The entitlement cache and the reminders are
+/// still left, as the note at its declaration says.
 ///
 /// A NAMED function for the same reason [signOutOnlyIfSessionIsGone] is: a test
 /// has to be able to drive it without a widget.

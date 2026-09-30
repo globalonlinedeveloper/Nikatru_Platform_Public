@@ -121,11 +121,52 @@ void main() {
     final String providers = File(
       'lib/state/providers/subscriptions.dart',
     ).readAsStringSync();
-    expect(providers, contains('onSignedOut: () async {'));
-    expect(providers, contains('await client.forgetCache()'));
+    expect(providers, contains('onSignedOut: () => forgetSignedInUser('));
+    expect(providers, contains('offlineStateDrops('));
     final String auth = File(
       'lib/state/providers/auth.dart',
     ).readAsStringSync();
-    expect(auth, contains('await api.forgetCache();'));
+    expect(auth, contains('...offlineStateDrops('));
   });
+
+  // 🔴 REVIEW #1075 ROUND 3, MINOR b — a queue the device cannot read is
+  // surfaced (crash sink + a visible state), never only debugPrint, and the
+  // list still shows.
+  test(
+    'an unreadable queue reaches the crash sink and the sync surface',
+    () async {
+      final _UnreadableOutbox store = _UnreadableOutbox();
+      final List<Object> sink = <Object>[];
+      final List<String> changed = <String>[];
+      final CachedApiClient c = CachedApiClient(
+        _Network(<Subscription>[_row('a', "A's gym")]),
+        LocalSubscriptionStore(Future<core.KeyValueStore>.value(store)),
+        currentUser: () => user,
+        onCacheWriteFailed: sink.add,
+        onOutboxChanged: () => changed.add('changed'),
+      );
+      final List<Subscription> rows = await c.getSubscriptions();
+      expect(rows.single.name, "A's gym", reason: 'the list still shows');
+      expect(sink.whereType<core.OutboxStoreFailure>(), isNotEmpty);
+      expect(
+        changed,
+        isNotEmpty,
+        reason: 'the sync surface is told to re-read',
+      );
+      await expectLater(
+        c.syncProblems(),
+        throwsA(isA<core.OutboxStoreFailure>()),
+        reason: 'which then shows the unreadable state',
+      );
+    },
+  );
+}
+
+/// A device store whose OUTBOX document cannot be read.
+class _UnreadableOutbox extends core.InMemoryKeyValueStore {
+  @override
+  Future<String?> read(String key) async {
+    if (key == kLocalOutboxKey) throw StateError('storage unavailable');
+    return super.read(key);
+  }
 }

@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:nikatru_api_client/nikatru_api_client.dart'
-    show CacheCodec, KeyValueJsonStore, StoreWriteFailure, kCacheIndexKey;
+    show CacheCodec, KeyValueJsonStore, StoreWriteFailure;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../models/budget_info.dart';
@@ -279,7 +279,9 @@ class LocalSubscriptionStore {
     // NOT kLocalOutboxKey: the outbox is per user. An explicit sign-out drops
     // THAT user's entries (`discardPendingOf`); a forced 401 keeps them for
     // the same user's return; nobody else's replay ever sends them.
-    kCacheIndexKey, // the shared cache's list of what it wrote: key names only
+    // NOT kCacheIndexKey: the read cache owns its index, and `forget()`
+    // reads it to find the owner-scoped copies. Removing it here first left
+    // those copies behind (review #1075 round 3, major 1).
   ]);
 
   // The still-using answers (ST-D3 D3-4) read and write through the shared
