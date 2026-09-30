@@ -10,7 +10,13 @@
     "source": "#417 body and its userContentEdits (26 revisions, 2026-09-03T05:42:42Z to 2026-09-22T06:01:55Z)",
     "waiting": 21,
     "oldestDays": 19.0,
-    "arrivalPerWeek": 4.4
+    "arrivalPerWeek": 4.4,
+    "majors": {
+      "asOf": "2026-09-27",
+      "source": "renovate.json packageRules: the approval rule's description (\"the ten majors on #417\", the drain triage of 2026-09-26) and the java-majors rule's (chore/renovate-java-25.x, \"24.1 days waited on 2026-09-27\")",
+      "waiting": 10,
+      "oldestDays": 24.1
+    }
   },
   "maxWaiting": {
     "value": 15,
@@ -19,5 +25,13 @@
   "maxOldestDays": {
     "value": 14,
     "basis": "An update found just after a Monday window waits up to 7 days for the next one; 14 is one whole missed Monday. 0.7 x the 19.0 days the oldest entry had waited on 2026-09-22 = 13.3, so 14 is above that bound and still red on the measured state."
+  },
+  "maxWaitingMajors": {
+    "value": 7,
+    "basis": "0.7 x the 10 majors waiting for approval on #417 on 2026-09-27 = 7.0. Every major waits for a person (renovate.json dependencyDashboardApproval on majors), so no Monday window drains one, and ten majors beside three patches is 13 <= maxWaiting 15 and green. It must stay below maxWaiting, or the queue's ceiling would always fire first and this one never (readFloor refuses that)."
+  },
+  "maxOldestMajorDays": {
+    "value": 14,
+    "basis": "The age ceiling a major is held to IN PLACE of maxOldestDays, and held EQUAL to it: before the split every major was aged against 14, and splitting majors out must not loosen that (readFloor refuses a value above maxOldestDays). It is below 0.7 x the 24.1 days chore/renovate-java-25.x had waited on 2026-09-27 (16.9) for that reason alone, and red on that state. An approved major opens in the next Monday window, so 14 is still one whole missed Monday after the approval."
   }
 }

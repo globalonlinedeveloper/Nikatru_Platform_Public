@@ -35,7 +35,7 @@ runs:
         v="$(node -p "require(process.env.GITHUB_WORKSPACE + '/tooling/versions.json').flutter")"
         test -n "$v"
         echo "flutter=$v" >> "$GITHUB_OUTPUT"
-    - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+    - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
       with:
         channel: stable
         flutter-version: ${{ steps.pin.outputs.flutter }}

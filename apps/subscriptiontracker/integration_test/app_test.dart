@@ -48,6 +48,7 @@ import 'package:subscriptiontracker/state/analytics_providers.dart'
 
 import 'consent.dart';
 import 'magic_link_sign_in.dart';
+import 'offline_read_steps.dart';
 
 void main() {
   final IntegrationTestWidgetsFlutterBinding binding =
@@ -1446,6 +1447,12 @@ void main() {
       reason: 'Second subscription did not round-trip to Home',
     );
     await shot('14-second-sub');
+
+    // ── 14b The list survives with the network off (AB-O1-05) ────────────────
+    // The row above went to the live Worker and was mirrored into this
+    // browser's localStorage by the app's own cache client; a second client
+    // over a dead transport must still read it (offline_read_steps.dart).
+    await tester.runAsync(() => expectListSurvivesOffline(subNameB));
 
     // ── 15 Settings: switch currency (client-state propagation) ──────────────
     await tester.tap(find.text('More'));

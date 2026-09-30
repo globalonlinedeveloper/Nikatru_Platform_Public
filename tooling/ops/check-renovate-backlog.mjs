@@ -44,9 +44,21 @@
 // when the dashboard never named it. A PR list that did not come back, or came
 // back truncated, is COULD NOT LOOK: zero open PRs would be a false clean.
 //
+// -- A MAJOR HAS CEILINGS OF ITS OWN (2026-09-29, finding B-7 of the round-2 review) --
+// renovate.json holds EVERY major behind dashboard approval, so a major drains
+// only when a person ticks its box or a lane lands it by hand: the automatic
+// Monday window never reaches one. The queue's two ceilings still COUNT every
+// major, and a pile of majors under them used to be invisible: ten majors beside
+// three patches is 13 <= 15 and green. So majors carry two more ceilings, both in
+// renovate-backlog-floor.json: maxWaitingMajors (the majors alone) and
+// maxOldestMajorDays (the age ceiling a major is held to, in place of
+// maxOldestDays - held equal to it, so the split loosens nothing). A major is
+// an entry under an `approve-branch` marker, or an open Renovate PR whose branch
+// ANY revision read listed under one (approval is how its PR came to open).
+//
 // -- FAIL-CLOSED, AND WHAT EACH EXIT MEANS ---------------------------------------
-//   0 - the dashboard was read; the waiting count and the oldest age are both at
-//       or under their ceilings. Both numbers are printed.
+//   0 - the dashboard was read; the waiting count, the majors' count and every
+//       age are at or under their ceilings. The numbers are printed.
 //   1 - a ceiling is passed. Names the count or the oldest entries and their age.
 //   2 - COULD NOT LOOK: no token, the API refused, the issue is not an open
 //       Dependency Dashboard, the grammar changed, the floor file is unreadable,
@@ -90,6 +102,10 @@ export const BRANCH_PREFIX = 'chore/renovate-';
 /** Open pull requests read per run. The repository carries a handful at a time;
  *  a list longer than this is COULD NOT LOOK, never a partial count. */
 export const PRS_READ = 100;
+/** The marker Renovate writes on an update held for dashboard approval. Every
+ *  major is held (renovate.json `dependencyDashboardApproval` on majors), so this
+ *  marker is what a major is on #417. */
+export const MAJOR_KIND = 'approve-branch';
 
 const ENTRY = /^\s*-\s+\[[ xX]\]\s+<!--\s*([a-z-]+)=(\S+?)\s*-->(.*)$/;
 const HEADING = /^##\s+(.+?)\s*$/;
@@ -132,6 +148,11 @@ export function namedBranches(body) {
   return out;
 }
 
+/** PURE. Every branch the body lists under the approval marker - a major. */
+export function approvalBranches(body) {
+  return new Set(waitingEntries(body).filter((e) => e.kind === MAJOR_KIND).map((e) => e.branch));
+}
+
 /** PURE. When each waiting branch joined the queue, from revisions newest first.
  *  `names` says which branches a revision lists (default: its waiting markers).
  *  Returns Map branch -> { since: ISO, lowerBound: boolean }. */
@@ -163,18 +184,31 @@ export function readFloor(raw) {
   } catch (e) {
     return { error: `renovate-backlog-floor.json is not JSON (${e.message})` };
   }
-  for (const key of ['maxWaiting', 'maxOldestDays']) {
+  for (const key of ['maxWaiting', 'maxOldestDays', 'maxWaitingMajors', 'maxOldestMajorDays']) {
     const v = f?.[key];
     if (!Number.isFinite(v?.value) || v.value <= 0) return { error: `renovate-backlog-floor.json ${key}.value is not a positive number` };
     if (typeof v?.basis !== 'string' || v.basis.length < 40) return { error: `renovate-backlog-floor.json ${key}.basis is missing or shorter than 40 characters: a ceiling without its measurement is a guess` };
   }
   if (!Number.isInteger(f?.issue) || f.issue <= 0) return { error: 'renovate-backlog-floor.json issue is not the dashboard issue number' };
-  return { issue: f.issue, maxWaiting: f.maxWaiting.value, maxOldestDays: f.maxOldestDays.value };
+  // A majors ceiling looser than the queue's is not a ceiling of their own: the
+  // queue's would always fire first, and the majors limb could never fail.
+  if (f.maxWaitingMajors.value >= f.maxWaiting.value) return { error: 'renovate-backlog-floor.json maxWaitingMajors.value is not below maxWaiting.value, so it could never be the ceiling that fires' };
+  if (f.maxOldestMajorDays.value > f.maxOldestDays.value) return { error: 'renovate-backlog-floor.json maxOldestMajorDays.value is above maxOldestDays.value: splitting majors out must not loosen the age they were held to' };
+  return {
+    issue: f.issue,
+    maxWaiting: f.maxWaiting.value,
+    maxOldestDays: f.maxOldestDays.value,
+    maxWaitingMajors: f.maxWaitingMajors.value,
+    maxOldestMajorDays: f.maxOldestMajorDays.value,
+  };
 }
 
 /** PURE. The verdict, so every branch is reachable from a test with no network. */
 export function judge({ issue, floor, now }) {
   const title = String(issue?.title ?? '');
+  for (const key of ['maxWaiting', 'maxOldestDays', 'maxWaitingMajors', 'maxOldestMajorDays']) {
+    if (!Number.isFinite(floor?.[key])) return { code: 2, lines: [`x COULD NOT LOOK - the floor carries no ${key}, so that ceiling cannot be judged.`] };
+  }
   if (!/Dependency Dashboard/.test(title)) {
     return { code: 2, lines: [`x COULD NOT LOOK - the issue read is titled "${title}", not a Renovate Dependency Dashboard.`] };
   }
@@ -233,8 +267,16 @@ export function judge({ issue, floor, now }) {
     const since = s?.since && Date.parse(s.since) < Date.parse(p.createdAt) ? s.since : p.createdAt;
     aged.push({ kind: 'open-pr', branch: p.headRefName, title: String(p.title ?? ''), heading: null, pr: p.number, since, lowerBound: s?.lowerBound === true, days: (now - Date.parse(since)) / DAY_MS });
   }
+  // A major: under the approval marker now, or an open PR any revision listed there.
+  const approvedOnce = new Set();
+  for (const r of revisions ?? []) for (const b of approvalBranches(r.diff)) approvedOnce.add(b);
+  for (const a of aged) {
+    a.major = a.kind === MAJOR_KIND || (a.kind === 'open-pr' && approvedOnce.has(a.branch));
+    a.ceiling = a.major ? floor.maxOldestMajorDays : floor.maxOldestDays;
+  }
   aged.sort((a, b) => b.days - a.days);
   const oldest = aged[0];
+  const majors = aged.filter((a) => a.major);
   const headings = [...new Set(entries.map((e) => e.heading ?? '(none)'))];
   const queue = entries.length + opened.length;
   const measured = {
@@ -242,7 +284,9 @@ export function judge({ issue, floor, now }) {
     waiting: entries.length,
     open: opened.length,
     queue,
+    majors: majors.length,
     oldestDays: oldest ? Number(oldest.days.toFixed(1)) : 0,
+    oldestMajorDays: majors[0] ? Number(majors[0].days.toFixed(1)) : 0,
     oldestBranch: oldest?.branch ?? null,
     headings,
   };
@@ -253,10 +297,20 @@ export function judge({ issue, floor, now }) {
         `${entries.length} waiting on the dashboard + ${opened.length} open Renovate PR(s).`,
     );
   }
-  const tooOld = aged.filter((a) => a.days > floor.maxOldestDays);
-  if (tooOld.length > 0) {
-    findings.push(`x ${tooOld.length} UPDATE(S) HAVE WAITED LONGER THAN ${floor.maxOldestDays} DAYS (renovate-backlog-floor.json):`);
-    for (const a of tooOld.slice(0, 10)) findings.push(`    ${a.days.toFixed(1)}d${a.lowerBound ? '+' : ''}  ${a.branch}  since ${a.since}${a.pr ? `  (open PR #${a.pr})` : ''}`);
+  if (majors.length > floor.maxWaitingMajors) {
+    findings.push(
+      `x ${majors.length} MAJORS WAIT FOR A PERSON, past their own ceiling of ${floor.maxWaitingMajors} (renovate-backlog-floor.json maxWaitingMajors): ` +
+        'no Monday window drains a major; each needs its approve box ticked or a lane that lands it by hand.',
+    );
+  }
+  const tooOld = aged.filter((a) => a.days > a.ceiling);
+  for (const [group, head] of [
+    [tooOld.filter((a) => !a.major), `UPDATE(S) HAVE WAITED LONGER THAN ${floor.maxOldestDays} DAYS (renovate-backlog-floor.json)`],
+    [tooOld.filter((a) => a.major), `MAJOR(S) HAVE WAITED LONGER THAN ${floor.maxOldestMajorDays} DAYS (renovate-backlog-floor.json maxOldestMajorDays)`],
+  ]) {
+    if (group.length === 0) continue;
+    findings.push(`x ${group.length} ${head}:`);
+    for (const a of group.slice(0, 10)) findings.push(`    ${a.days.toFixed(1)}d${a.lowerBound ? '+' : ''}  ${a.branch}  since ${a.since}${a.pr ? `  (open PR #${a.pr})` : ''}`);
   }
   if (findings.length > 0) {
     return {
@@ -272,7 +326,7 @@ export function judge({ issue, floor, now }) {
       ],
     };
   }
-  const unproven = aged.filter((a) => a.lowerBound && a.days <= floor.maxOldestDays);
+  const unproven = aged.filter((a) => a.lowerBound && a.days <= a.ceiling);
   if (unproven.length > 0) {
     return {
       code: 2,
@@ -289,6 +343,7 @@ export function judge({ issue, floor, now }) {
     lines: [
       `ok  renovate queue ${queue} <= ${floor.maxWaiting}, oldest ${measured.oldestDays}d <= ${floor.maxOldestDays}d` +
         ` (${entries.length} waiting + ${opened.length} open Renovate PR(s))` +
+        `; majors ${majors.length} <= ${floor.maxWaitingMajors}, oldest major ${measured.oldestMajorDays}d <= ${floor.maxOldestMajorDays}d` +
         ` - #417 at ${updatedAt}, ${revisions ? revisions.length : 0} revision(s) read, heading(s): ${headings.join(' / ') || '(none waiting)'}`,
     ],
   };

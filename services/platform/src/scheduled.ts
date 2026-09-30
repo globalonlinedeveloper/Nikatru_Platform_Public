@@ -114,15 +114,28 @@ export function appTargets(env: Env): AppTarget[] {
  *
  * Deduped and trailing-slash-normalised: `…co` and `…co/` would otherwise be two
  * targets, doubling requests for no benefit.
+ *
+ * ⚠️ The slashes are stripped by a LOOP, not `.replace(/\/+$/, '')`. That regex
+ * is CodeQL js/polynomial-redos (P-9, the one high alert in a served Worker): a
+ * long run of `/` followed by any other character makes it quadratic. The input
+ * is operator-set, so this is hygiene, not an exploit — but an open high alert
+ * is an alert, and the loop is linear with the same output.
  */
 export function keepAliveTargets(env: Env): string[] {
   const configured = (env.SUPABASE_KEEPALIVE_URLS ?? '').trim();
   const raw =
     configured.length > 0 ? configured.split(',') : [env.SUPABASE_URL ?? ''];
   const cleaned = raw
-    .map((s) => s.trim().replace(/\/+$/, ''))
+    .map((s) => stripTrailingSlashes(s.trim()))
     .filter((s) => s.length > 0);
   return [...new Set(cleaned)];
+}
+
+/** Linear: `end` walks back over trailing `/`, and one slice cuts them. */
+function stripTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 47 /* '/' */) end -= 1;
+  return s.slice(0, end);
 }
 
 /** One heartbeat row per target per run. Best-effort: never breaks the cron. */

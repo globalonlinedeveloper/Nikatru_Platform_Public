@@ -9,6 +9,9 @@
 //     check-catalog, tag-owner --check, gen-issue-forms --check and
 //     publish-arming --plan (SKIPPED: not a release run, add-on id derived) are
 //     green — the same commands the extensions-ci templates job runs;
+//   - EXL-17: in that root, store-publish's ref check (read out of extensions.yml
+//     and run as the job runs it) allows probetool's tags, and discover
+//     --assert-generic is green over the two tool ids;
 //   - RC-F7: the same stamp with `--skip tag-owner` (NIKATRU_PROBE_RC=1) exits
 //     1 naming tag-owner --check, and tag-owner --check in that root exits 1;
 //   - `--skip` without NIKATRU_PROBE_RC=1 exits 2 and writes nothing;
@@ -85,6 +88,33 @@ describe('the probe', () => {
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /SKIPPED: not a release run/);
     assert.match(r.out, /"probetool@nikatru\.com" — derived/);
+  });
+  // EXL-17, the red control: RED ON THE BASE, where store-publish's ref check spelled
+  // `--allow 'tag:fullshot-…'` and refused probetool's tag by name. The step is read
+  // out of the probe root's extensions.yml and run as the job runs it (cwd = the
+  // root), so an allow list that stops following the trigger fails here.
+  test("store-publish's ref check allows the second tool's tag, with no edit to the step", () => {
+    const wf = readFileSync(join(root, '.github', 'workflows', 'extensions.yml'), 'utf8');
+    const job = wf.slice(wf.search(/^ {2}store-publish:\s*$/m));
+    assert.ok(job.length < wf.length, 'extensions.yml has no store-publish job');
+    const m = job.match(/^\s+run: node (tooling\/ci\/assert-deploy-ref\.mjs) (.+)$/m);
+    assert.ok(m, 'store-publish runs no assert-deploy-ref.mjs step');
+    const argv = [...m[2].matchAll(/'([^']*)'|(\S+)/g)].map((x) => x[1] ?? x[2]);
+    const env = { ...process.env, GITHUB_EVENT_NAME: 'push' };
+    const ref = (tag) => spawnSync(process.execPath, [join(root, m[1]), ...argv], {
+      encoding: 'utf8', cwd: root, timeout: 60000, env: { ...env, GITHUB_REF: 'refs/tags/' + tag },
+    });
+    for (const tag of ['probetool-v1.0.0', 'probetool-v1.0.0.1', 'fullshot-v1.10.1']) {
+      const r = ref(tag);
+      assert.equal(r.status, 0, tag + ': ' + r.stdout + r.stderr);
+    }
+    const stranger = ref('no-such-tool-v1.0.0');
+    assert.equal(stranger.status, 1, stranger.stdout + stranger.stderr);
+  });
+  test('discover --assert-generic is green in the probe root, over two tool ids', () => {
+    const r = node(root, 'extensions/scripts/discover.mjs', ['--assert-generic'], {});
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /scanned for the 2 tool id\(s\) on disk \(fullshot, probetool\)/);
   });
   test('the stamped tool.json carries the tagline as its summary', () => {
     const t = JSON.parse(readFileSync(join(root, 'extensions', 'Extension', 'Probe_Tool', 'tool.json'), 'utf8'));
