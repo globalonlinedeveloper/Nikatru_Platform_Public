@@ -33,7 +33,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { evaluateUsage, billingPeriod, CouldNotLook } from '../assert-runner-budget.mjs';
+import { evaluateUsage, billingPeriod, skuOs, CouldNotLook } from '../assert-runner-budget.mjs';
 
 const GUARD = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'assert-runner-budget.mjs');
 
@@ -174,6 +174,103 @@ describe('assert-runner-budget — over the declared ceiling', () => {
     assert.match(out, /did the repository go private\?/);
     assert.match(out, /larger runner class/);
     assert.match(out, /exhaust the shared allowance/);
+  });
+});
+
+// ── P-11: minutes by runner SKU, and a ceiling on macOS minutes ──────────────
+// At a 100% discount a macOS minute nets $0 like a Linux one, so the USD ceiling
+// cannot see ten-times-the-cost lanes. Every fixture below is FULLY DISCOUNTED on
+// purpose: if one of them fails, only the macOS limb can have failed it.
+const macRow = (qty, repo) => row('2026-08-01T00:00:00Z', 'Actions macOS 3-core', 'Minutes', qty, qty * 0.062, qty * 0.062, 0, repo);
+const linuxRow = (qty, repo) => row('2026-08-01T00:00:00Z', 'Actions Linux', 'Minutes', qty, qty * 0.006, qty * 0.006, 0, repo);
+
+describe('assert-runner-budget — minutes by runner SKU, macOS ceiling', () => {
+  test('FAILS a $0-net period whose macOS minutes are over the ceiling, naming the SKU rows', () => {
+    const { code, out } = run([
+      '--usage-file',
+      fixture({ usageItems: [linuxRow(5000, 'Nikatru_Platform_Public'), macRow(150, 'Nikatru_Platform_Public'), macRow(80, 'ratel')] }),
+      '--now',
+      AUG,
+    ]);
+    assert.equal(code, EXIT_OVER_CEILING, out);
+    assert.match(out, /sku Actions macOS 3-core \[macos\]: 230 minute\(s\), gross \$14\.26, net \$0\.00/);
+    assert.match(out, /sku Actions Linux \[linux\]: 5,000 minute\(s\)/);
+    assert.match(out, /spent 230 macOS minute\(s\), over the declared ceiling of 200 \(Actions macOS 3-core 230 min\)/);
+    // The USD limb stayed green: this red is the macOS limb's alone.
+    assert.doesNotMatch(out, /is NET \$[\d.]+ of Actions usage, over the declared ceiling/);
+  });
+
+  test('PASSES a Linux-only period and still PRINTS minutes per SKU', () => {
+    const { code, out } = run(['--usage-file', fixture({ usageItems: [linuxRow(9999, 'Nikatru_Platform_Public')] }), '--now', AUG]);
+    assert.equal(code, EXIT_OK, out);
+    assert.match(out, /by runner SKU, 2026-08 \(macOS 0 of 200 minute\(s\) allowed\)/);
+    assert.match(out, /sku Actions Linux \[linux\]: 9,999 minute\(s\), gross \$59\.99, net \$0\.00/);
+  });
+
+  // The boundary is "exceeds", so exactly the ceiling passes.
+  test('PASSES macOS minutes at the ceiling', () => {
+    const { code, out } = run(['--usage-file', fixture({ usageItems: [macRow(200, 'Nikatru_Platform_Public')] }), '--now', AUG]);
+    assert.equal(code, EXIT_OK, out);
+    assert.match(out, /sku Actions macOS 3-core \[macos\]: 200 minute\(s\)/);
+    assert.match(out, /macOS 200 minute\(s\) within 200/);
+  });
+
+  // A dated exception (MACOS_CEILING_EXCEPTIONS) applies to ITS period only and
+  // says so; the same minutes one month later are graded at 200 again.
+  const macRowAt = (date, qty, repo) => row(date, 'Actions macOS 3-core', 'Minutes', qty, qty * 0.062, qty * 0.062, 0, repo);
+
+  test('a DATED exception lifts the ceiling for its own period (2026-09) and prints why', () => {
+    const { code, out } = run([
+      '--usage-file',
+      fixture({ usageItems: [macRowAt('2026-09-01T00:00:00Z', 873, 'Nikatru_Platform_Public')] }),
+      '--now',
+      '2026-09-30T03:00:00Z',
+    ]);
+    assert.equal(code, EXIT_OK, out);
+    assert.match(out, /by runner SKU, 2026-09 \(macOS 873 of 1,000 minute\(s\) allowed\)/);
+    assert.match(out, /dated exception for 2026-09 \(expires with the period\): 873 measured/);
+  });
+
+  test('the exception EXPIRES with its period: the same minutes in 2026-10 fail at 200', () => {
+    const { code, out } = run([
+      '--usage-file',
+      fixture({ usageItems: [macRowAt('2026-10-01T00:00:00Z', 873, 'Nikatru_Platform_Public')] }),
+      '--now',
+      '2026-10-02T03:00:00Z',
+    ]);
+    assert.equal(code, EXIT_OVER_CEILING, out);
+    assert.match(out, /spent 873 macOS minute\(s\), over the declared ceiling of 200/);
+    assert.doesNotMatch(out, /dated exception/);
+  });
+
+  // A row the limb cannot attribute must stop the count, never be skipped.
+  test('exit 2 on a Minutes row with no sku', () => {
+    const bad = macRow(500, 'Nikatru_Platform_Public');
+    delete bad.sku;
+    const { code, out } = run(['--usage-file', fixture({ usageItems: [bad] }), '--now', AUG]);
+    assert.equal(code, EXIT_COULD_NOT_LOOK, out);
+    assert.match(out, /carries no `sku`/);
+  });
+
+  test('exit 2 on a Minutes SKU that names no known runner OS', () => {
+    const bad = { ...macRow(500, 'Nikatru_Platform_Public'), sku: 'Actions Mac 3-core' };
+    const { code, out } = run(['--usage-file', fixture({ usageItems: [bad] }), '--now', AUG]);
+    assert.equal(code, EXIT_COULD_NOT_LOOK, out);
+    assert.match(out, /sku "Actions Mac 3-core", which names no runner OS/);
+  });
+
+  test('skuOs maps the SKU spellings the ledger uses, and storage is not a runner', () => {
+    assert.equal(skuOs('Actions macOS 3-core'), 'macos');
+    assert.equal(skuOs('actions_macos'), 'macos');
+    assert.equal(skuOs('Actions Windows'), 'windows');
+    assert.equal(skuOs('Actions Linux'), 'linux');
+    assert.equal(skuOs('Actions storage'), null);
+  });
+
+  test('raising the macOS ceiling changes the verdict, so the constant is load-bearing', () => {
+    const body = { usageItems: [macRow(230, 'Nikatru_Platform_Public')] };
+    assert.equal(evaluateUsage(body, Date.parse(AUG)).macosOver, true);
+    assert.equal(evaluateUsage(body, Date.parse(AUG), 0, 300).macosOver, false);
   });
 });
 

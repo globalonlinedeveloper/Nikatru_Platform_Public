@@ -20,6 +20,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show ChassisLocalizations;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
@@ -128,6 +130,7 @@ Future<void> _pump(
   Locale locale, {
   PurchaseRail? rail,
   bool selling = true,
+  bool trialCopy = false,
 }) async {
   await tester.binding.setSurfaceSize(const Size(800, 1600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -136,6 +139,11 @@ Future<void> _pump(
       ...defaultWidthOverrides(),
       secureStoreProvider.overrideWithValue(_MemSecureStore()),
       sellingEnabledProvider.overrideWithValue(selling),
+      paywallPitchProvider.overrideWithValue((
+        pro: const <String>[],
+        free: const <String>[],
+        trialCopy: trialCopy,
+      )),
       purchaseRailProvider.overrideWithValue(rail ?? _InrRail()),
     ],
   );
@@ -147,6 +155,8 @@ Future<void> _pump(
         locale: locale,
         localizationsDelegates: const <LocalizationsDelegate<Object>>[
           AppLocalizations.delegate,
+          // ⏱ ST-D9: the paywall BODY is the chassis view, as in app.dart.
+          ChassisLocalizations.delegate,
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
@@ -186,7 +196,9 @@ void main() {
     (WidgetTester tester) async {
       final _StoreRail rail = _StoreRail();
       addTearDown(rail.dispose);
-      await _pump(tester, const Locale('en'), rail: rail);
+      // ⏱ ST-D9 (D-25): trial copy is config-gated; this case is about the
+      // store's UNIT, so it serves the flag on. The case below holds it off.
+      await _pump(tester, const Locale('en'), rail: rail, trialCopy: true);
       expect(rail.asked, greaterThan(0));
       expect(find.textContaining('7.19'), findsNothing);
 
@@ -197,6 +209,23 @@ void main() {
       expect(find.textContaining('-day free trial'), findsNothing);
     },
   );
+
+  // 🔴 D-25 (train ST-D9): NO TRIAL COPY UNTIL A STORE TRIAL IS CONFIGURED.
+  // The same store answer, with `paywall.trial_copy` not served: the store's
+  // price and term are drawn, and not one word about a trial. MUTATION PROOF:
+  // pass `pitch.trialCopy` as `true` in the adapter and this goes red.
+  testWidgets('D-25: without the served flag, the store trial is not worded', (
+    WidgetTester tester,
+  ) async {
+    final _StoreRail rail = _StoreRail();
+    addTearDown(rail.dispose);
+    await _pump(tester, const Locale('en'), rail: rail);
+    rail.storeAnswers();
+    await tester.pump();
+    expect(find.textContaining('7.19'), findsOneWidget);
+    expect(find.textContaining('free trial'), findsNothing);
+    expect(find.text('Billed per month'), findsOneWidget);
+  });
 
   // 🔴 ST-U2 (audit C34, C35) — MONEY SAFETY. With `paywall.enabled` false the
   // paywall still listed a selling rail's plans: a user could pay for a Pro

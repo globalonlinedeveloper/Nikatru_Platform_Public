@@ -91,20 +91,25 @@ describe('subscriptions are writable only by their owner', () => {
   it('user B cannot DELETE user A’s subscription', async () => {
     const id = await create(A, 'Netflix');
     // DELETE answers ok:true either way (it is idempotent by design); what must
-    // hold is that the ROW survives.
+    // hold is that the ROW survives — and, since DELETE became a soft delete
+    // (ST-E3), that it survives UNSTAMPED: "the row still exists" alone would
+    // hold even if B's DELETE had hidden A's row.
     await subs(B, `/v1/subscriptions/${id}`, { method: 'DELETE' });
     expect(
-      db.rows('SELECT id FROM subscriptions WHERE id = ?', id),
-      'A’s row must still exist',
-    ).toHaveLength(1);
+      db.rows('SELECT id, deleted_at FROM subscriptions WHERE id = ?', id),
+      'A’s row must still exist, not soft-deleted',
+    ).toEqual([{ id, deleted_at: null }]);
   });
 
   it('the owner CAN patch and delete their own row', async () => {
     const id = await create(A, 'Netflix');
     expect((await subs(A, `/v1/subscriptions/${id}`, { method: 'PATCH', body: { name: 'N2' } })).status).toBe(200);
     expect(db.rows('SELECT name FROM subscriptions WHERE id = ?', id)[0].name).toBe('N2');
+    // DELETE is a soft delete since ST-E3 (lifecycle.test.ts): the owner's
+    // DELETE stamps the row and the owner's list stops showing it.
     await subs(A, `/v1/subscriptions/${id}`, { method: 'DELETE' });
-    expect(db.rows('SELECT id FROM subscriptions WHERE id = ?', id)).toHaveLength(0);
+    expect(db.rows('SELECT deleted_at FROM subscriptions WHERE id = ?', id)[0].deleted_at).not.toBeNull();
+    expect(await (await subs(A, '/v1/subscriptions')).json()).toEqual([]);
   });
 });
 

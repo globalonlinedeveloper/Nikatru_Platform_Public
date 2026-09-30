@@ -215,7 +215,7 @@ describe('the guard says YES on the tree as it is', () => {
     // staying at reachable == measured is the property, and "17 reachable, 12
     // measured" would print as a cheerful report-mode line if it ever slipped.
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
-    assert.match(out, /packages\/chassis_screens: 25 surface\(s\) reachable, 25 measured — the two sets are EQUAL/);
+    assert.match(out, /packages\/chassis_screens: 26 surface\(s\) reachable, 26 measured — the two sets are EQUAL/);
 
     assert.match(out, /apps\/subscriptiontracker: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
     assert.match(
@@ -230,11 +230,12 @@ describe('the guard says YES on the tree as it is', () => {
     // ⏱ 2026-09-28 · train ST-D0: 12 of 20 → 17 of 25 — the foundation
     // components arrived measured; 8 PRINTED is unchanged. Read off the
     // guard's own per-root line.
+    // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: 27 of 35 → 30 of 38 (MonthGrid, DateBadge, PermissionPrimingView, measured).
     // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 17 of 25 → 23 of 31 — the form
     // sheet and Home components arrived measured; 8 PRINTED is unchanged.
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 31 → 27 of 35.
-    // ⏱ 2026-09-29 · train ST-D10: 27 of 35 → 33 of 40 — the auth frame's five parts and AuthField, pumped at 375 / 768 / 1280 / 1440 by auth_frame_test.dart.
-    assert.match(out, /packages\/design_system: 33 of 40 surface\(s\) measured — 7 PRINTED and not failed/);
+    // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 30 of 38 → 36 of 43 — the auth frame's five parts and AuthField, pumped at 375 / 768 / 1280 / 1440 by auth_frame_test.dart.
+    assert.match(out, /packages\/design_system: 36 of 43 surface\(s\) measured — 7 PRINTED and not failed/);
   });
 
   test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
@@ -261,7 +262,7 @@ describe('the guard says YES on the tree as it is', () => {
     assert.match(out, /PARTIAL TREE: the declared-root-must-exist clause is SKIPPED/);
     assert.match(out, /apps\/subscriptiontracker: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
-    assert.match(out, /packages\/chassis_screens: 25 surface\(s\) reachable, 25 measured — the two sets are EQUAL/);
+    assert.match(out, /packages\/chassis_screens: 26 surface\(s\) reachable, 26 measured — the two sets are EQUAL/);
     // ⏱ 2026-09-22 · 36 → 37 TEST FILES, SURFACES UNCHANGED. The app gained
     // `width_shell_fab_test.dart`, which pumps the five shell branches at all
     // three widths to prove the FAB clears each list's last row. It measures
@@ -276,7 +277,9 @@ describe('the guard says YES on the tree as it is', () => {
       // ⏱ 2026-09-24 · 39 → 41 TEST FILES, SURFACES UNCHANGED: the auth error
       // mapper's suite and `support/raw_vendor_error.dart` joined the chassis
       // corpus. Both per-root equalities above are untouched.
-      /43 reachable surface\(s\), 43 measured by 44 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet), measured in an existing width file */ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
+      // ⏱ 2026-09-29 · train ST-D9 on DW2: +1 chassis width file (plan_golden_test.dart), surfaces unchanged.
+    // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: +1 chassis surface (SettingsSection), +1 width file (settings_design_test.dart).
+      /44 reachable surface\(s\), 44 measured by 46 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet), measured in an existing width file */ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
     );
     assert.equal(fails(out).length, 0, out);
   });
@@ -405,7 +408,12 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     for (const f of readdirSync(join(root, ROUTER_DIR))) {
       if (f.endsWith('.dart')) writeIn(root, `${ROUTER_DIR}/${f}`, 'const int routerStub = 0;\n');
     }
-    for (const sheet of ['add/add_subscription_sheet.dart', 'cancel/cancel_sheet.dart']) {
+    // ⏱ 2026-09-29 (ST-D3 D3-2): the budget editor is the third sheet.
+    for (const sheet of [
+      'add/add_subscription_sheet.dart',
+      'cancel/cancel_sheet.dart',
+      'insights/budget_editor.dart',
+    ]) {
       writeIn(root, `${FEATURES}/${sheet}`, 'const int stub = 0;\n');
     }
     const { code, out } = run(root);
@@ -536,10 +544,11 @@ describe('a report-mode root can get better, never quietly worse', () => {
     assert.match(
       out,
       // ⏱ 2026-09-28 · train ST-D0: 10 of 12 → 15 of 17 (floor re-based to 17).
+    // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: 25 of 27 → 28 of 30.
       // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 15 of 17 → 21 of 23 (floor re-based to 23).
       // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 21 of 23 → 25 of 27 (floor re-based to 27).
-      // ⏱ 2026-09-29 · train ST-D10: the measured floor rose 27 → 33, so the same deletion reads 31 against 33.
-      /COVERAGE LOST — `packages\/design_system` has 31 measured surface\(s\) and its measured floor is 33/s,
+      // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): the measured floor rose 30 → 36, so the same deletion reads 34 against 36.
+      /COVERAGE LOST — `packages\/design_system` has 34 measured surface\(s\) and its measured floor is 36/s,
     );
   });
 
@@ -567,10 +576,11 @@ describe('a report-mode root can get better, never quietly worse', () => {
     const { code, out } = run(root);
     assert.equal(code, 2, out);
     // ⏱ 2026-09-28 · train ST-D0: 18 of 20 → 23 of 25 (floor re-based to 25).
+    // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: 33 of 35 → 36 of 38.
     // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 23 of 25 → 29 of 31 (floor re-based to 31).
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 29 of 31 → 33 of 35 (floor re-based to 35).
-    // ⏱ 2026-09-29 · train ST-D10: 33 of 35 → 38 of 40 — the auth frame raised the surfaces floor.
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 38 responsive surface\(s\).*floor is 40/s);
+    // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 36 of 38 → 41 of 43 — the auth frame raised the surfaces floor.
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 41 responsive surface\(s\).*floor is 43/s);
   });
 
   test("R11c · a NEW unmeasured surface in EACH new root reaches that root's printed list", () => {
@@ -599,10 +609,11 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // left; HomeScreen and ExploreScreen now count through delegation.
     assert.match(out, /\{\{app_id\}\}: 3 of 13 surface\(s\) measured — 1 PRINTED/);
     // ⏱ 2026-09-28 · train ST-D0: 12 of 21 → 17 of 26 (measured arrivals).
+    // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: 27 of 36 → 30 of 39.
     // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 17 of 26 → 23 of 32 (measured arrivals).
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 32 → 27 of 36 (measured arrivals).
-    // ⏱ 2026-09-29 · train ST-D10: 27 of 36 → 33 of 41 — six more measured; the probe is the one new unmeasured surface.
-    assert.match(out, /packages\/design_system: 33 of 41 surface\(s\) measured — 8 PRINTED/);
+    // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 30 of 39 → 36 of 44 — six more measured; the probe is the one new unmeasured surface.
+    assert.match(out, /packages\/design_system: 36 of 44 surface\(s\) measured — 8 PRINTED/);
   });
 });
 
@@ -778,7 +789,7 @@ describe('the chassis_screens floors are floors, not report lines', () => {
   test('R14-control · GREEN CONTROL — the same fixture, unmutated, is 21/21 and passes', () => {
     const { code, out } = run(treeWithNewRoots());
     assert.equal(code, 0, out);
-    assert.match(out, /packages\/chassis_screens: 25 surface\(s\) reachable, 25 measured/); // ⏱ 2026-09-23: 18 → 20 (chassis home)
+    assert.match(out, /packages\/chassis_screens: 26 surface\(s\) reachable, 26 measured/); // ⏱ 2026-09-23: 18 → 20 (chassis home)
   });
 
   // ── R14a · A SURFACE LEAVES ────────────────────────────────────────────────
@@ -807,13 +818,13 @@ describe('the chassis_screens floors are floors, not report lines', () => {
     // and its measurement left together and the two sets stayed equal.
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` has only 24 responsive surface\(s\).*floor is 25/s, // ⏱ 2026-09-23: 18 → 20
+      /COVERAGE LOST — `packages\/chassis_screens` has only 25 responsive surface\(s\).*floor is 26/s, // ⏱ 2026-09-23: 18 → 20; 2026-09-29 ST-D4: → 26 (SettingsSection)
     );
     // AND the ratchet on what was measured, which fires in the same run. Both
     // numbers moved 7 → 17 in the landing and both are load-bearing.
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` has 24 measured surface\(s\) and its measured floor is 25/s, // ⏱ 2026-09-23: 18 → 20
+      /COVERAGE LOST — `packages\/chassis_screens` has 25 measured surface\(s\) and its measured floor is 26/s, // ⏱ 2026-09-23: 18 → 20; 2026-09-29 ST-D4: → 26 (SettingsSection)
     );
   });
 
@@ -854,7 +865,13 @@ describe('the chassis_screens floors are floors, not report lines', () => {
       // ⏱ 25/26 ON 2026-09-28 (ST-T8a): web_semantics_test.dart moved into the
       // chassis corpus with enableWebSemantics; the floor was raised to the
       // measured 26; the assertion was NOT loosened.
-      /COVERAGE LOST — `packages\/chassis_screens` yielded only 25 width test file\(s\).*checked-in floor is 26/s,
+      // ⏱ 26/27 ON 2026-09-29 (ST-D4): settings_design_test.dart joined the
+      // chassis corpus; the floor was raised to the measured 27; the assertion
+      // was NOT loosened.
+      // ⏱ 27/28 ON 2026-09-29 (train ST-D9): `plan_golden_test.dart` joined
+      // the corpus and THIS case caught the floor left at 27. The floor was
+      // raised to the measured 28; the assertion was NOT loosened.
+      /COVERAGE LOST — `packages\/chassis_screens` yielded only 27 width test file\(s\).*checked-in floor is 28/s,
     );
     // This root ENFORCES, so the surface the deleted file measured is a FAIL and
     // not a print — the half R12 pins for apps/subscriptiontracker, here for the new root.

@@ -987,14 +987,18 @@ const DART_DECLARING_FILE = DART_OUT;
  *  `scan/scan_screen.dart` came out (1 → 0 each) — both screens now take every
  *  face from the theme's type ramp. */
 const BRAND_FONT_DEBT = {
-  'apps/subscriptiontracker/lib/features/calendar/calendar_screen.dart': 1,
+  // ⏱ 2026-09-28 · train ST-D2: calendar_screen.dart 1 → 0, entry removed —
+  // the screen reads every face from the theme's type ramp now.
   // ⏱ 2026-09-28 · train ST-D1: home_screen.dart 4 → 0 and OUT — Home is
   // built from the design system's components, which read the ramp.
   // ⏱ 2026-09-28 · train ST-D5: `features/detail/subscription_detail_screen.dart`
   // (6) came OUT — rebuilt on the design foundation, it names no family; the
   // ramp's roles carry the faces.
-  'apps/subscriptiontracker/lib/features/insights/insights_screen.dart': 1,
-  'apps/subscriptiontracker/lib/features/onboarding/onboarding_screen.dart': 4,
+  // ⏱ 2026-09-30 · train ST-D3: `features/insights/insights_screen.dart` 1 → 0
+  // and OUT — D3-4 deleted the savings card's `fontFamily: 'Manrope'`; Insights
+  // reads every face from the theme's type ramp now.
+  // onboarding_screen.dart: 4 → OUT, 2026-09-28 (train ST-D8) — the screen
+  // adopted the chassis OnboardingView; its one remaining face reads BrandTokens.
   'apps/subscriptiontracker/lib/features/settings/settings_screen.dart': 1,
   'apps/subscriptiontracker/lib/features/shared/widgets.dart': 4,
   'apps/subscriptiontracker/lib/features/shell/app_shell.dart': 1,

@@ -492,6 +492,12 @@ const REQUIRED_COVERAGE = [
     // (ST-T3b ST-E1), ONE entry point for add and edit, so ST-D6's separate
     // `showEditSubscriptionSheet` surface is gone — merged, not lost. The edit
     // form's own sweep case stays, and opens the same sheet with a row.
+    // ⏱ RAISED 18 → 19 (and coveredSurfaces with it) on 2026-09-29 by ST-D3
+    // D3-2: the budget editor sheet is a new surface, measured at every window
+    // class by `width_budget_editor_test.dart`.
+    // ⏱ LOWERED 19 → 18 the same day by ST-D3 D3-3, deliberately: `BudgetScreen`
+    // is RETIRED (ADR 077 §A) and `width_budget_test.dart` went with it; the
+    // file count stays above its floor (17 files, floor 16).
     surfaces: 18,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
@@ -650,9 +656,18 @@ const REQUIRED_COVERAGE = [
     // `enableWebSemantics`, and this corpus is every .dart under the package's
     // test/ — so R14b would have cleared a floor left at 25. Read off the
     // per-root line, `— 26 file(s)`.
-    surfaces: 25,
-    widthTestFiles: 26,
-    coveredSurfaces: 25,
+    // ⏱ RAISED 2026-09-29 · ST-D4: surfaces 25 → 26, coveredSurfaces 25 → 26
+    // and `widthTestFiles` 26 → 27, IN THE CHANGE THAT EARNED THEM: the
+    // chassis `SettingsSection` arrived with test/settings_design_test.dart,
+    // which pumps it at kPhone/kTablet/kDesktop. Read off the per-root lines,
+    // `26 surface(s) reachable, 26 measured` and `— 27 file(s)`.
+    // ⏱ RAISED `widthTestFiles` 27 → 28 ON 2026-09-29 (train ST-D9, merged
+    // onto ST-D4), surfaces unchanged: `test/plan_golden_test.dart` (the
+    // paywall and manage-plan goldens) joined the corpus, and R14b caught the
+    // slack. Read off the per-root line, `— 28 file(s)`.
+    surfaces: 26,
+    widthTestFiles: 28,
+    coveredSurfaces: 26,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',
@@ -715,18 +730,26 @@ const REQUIRED_COVERAGE = [
     //   surfaces        31 → 35
     //   coveredSurfaces 23 → 27
     //
-    // ⏱ RE-MEASURED 2026-09-29 · train ST-D10 — the shared auth frame
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D DW2 (ST-D2 + ST-D8), on top of
+    // DW1 — MonthGrid and DateBadge (month_grid_test.dart) and
+    // `PermissionPrimingView` (permission_priming_test.dart), each pumped at
+    // kPhone/kTablet/kDesktop. Read off the run's own line: "30 of 38
+    // surface(s) measured — 8 PRINTED".
+    //   surfaces        35 → 38
+    //   coveredSurfaces 27 → 30
+    //
+    // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9) — the shared auth frame
     // (AuthFrame, AuthBrandPanel, AuthMessage, AuthOrDivider,
-    // AuthPasswordChecklist: five new surfaces) and AuthField, which was
-    // printed as unmeasured until now, each pumped at 375 / 768 / 1280 / 1440
-    // by auth_frame_test.dart. Read off the run's own line: "33 of 40
-    // surface(s) measured — 7 PRINTED".
-    //   surfaces        35 → 40
-    //   coveredSurfaces 27 → 33
+    // AuthPasswordChecklist: five new surfaces) and AuthField, printed as
+    // unmeasured until now, each pumped at 375 / 768 / 1280 / 1440 by
+    // auth_frame_test.dart. Read off the run's own line: "36 of 43 surface(s)
+    // measured — 7 PRINTED".
+    //   surfaces        38 → 43
+    //   coveredSurfaces 30 → 36
     enforce: false,
-    surfaces: 40,
+    surfaces: 43,
     widthTestFiles: 19,
-    coveredSurfaces: 33,
+    coveredSurfaces: 36,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, content_pane, two_pane and fifteen ' +
       'more, whose width decisions every stamped app inherits',
@@ -783,12 +806,18 @@ const WIDTH_EXEMPT = new Map([
   [
     'apps/subscriptiontracker/lib/features/monetization/paywall_screen.dart#PaywallScreen',
     new Map([
+      // ⏱ 2026-09-29 · train ST-D9: RE-ARGUED, NOT DROPPED. With a served pitch
+      // the paywall is two columns from 840 up, capped at `wideMaxWidth` (984),
+      // so "480 at every width" stopped being the whole claim. The omission
+      // still holds, for the same reason one level up: 840 sits between kTablet
+      // and kDesktop, and the file measures both layouts at 1920 as well as the
+      // one column at 768.
       [
         'kDesktop',
-        'is capped at `AppBreakpoints.pane` (480), not at `kMaxBodyWidth` — so the cap has ALREADY engaged ' +
-          'at 768 and the file asserts the flat 480 there and again at 1920. 1280 is not a boundary for a ' +
-          '480 cap the way it is for a 1280 one; a case there would assert the same constant, bound the ' +
-          'same way, between two surfaces that already bracket it.',
+        'has two caps and both have ALREADY engaged below 1280: `AppBreakpoints.pane` (480) with no pitch ' +
+          'served, and `PaywallView.wideMaxWidth` (984) from 840 up with one. The file asserts the flat 480 at ' +
+          '768 and at 1920, and the two-column 984 at 1920; a case at 1280 would assert the same constants, ' +
+          'bound the same way, between two surfaces that already bracket them.',
       ],
     ]),
   ],

@@ -687,9 +687,25 @@ const REQUIRED_COVERAGE = [
     // (ST-T3b ST-E1), ONE entry point for add and edit, so ST-D6's separate
     // `showEditSubscriptionSheet` surface is gone — merged, not lost. The edit
     // form's own sweep case stays, and opens the same sheet with a row.
+    // ⏱ RAISED 18 → 19 and cases 110 → 112 on 2026-09-29 by ST-D3 D3-2: the budget
+    // editor (`showBudgetEditorSheet`) is a new modal surface and arrives swept
+    // by two cases. Measured by this guard's own run: 19 reachable, 19 swept.
+    //
+    // ⏱ LOWERED 19 → 18 the same day by ST-D3 D3-3, deliberately: the Budget tab
+    // and `BudgetScreen` are RETIRED (ADR 077 §A — the budget is a card on
+    // Insights) and `/budget` is a redirect with no builder. Its five cases now
+    // sweep the budget card and the budget editor, so `cases` does not move.
+    // Measured by this guard's own run: 18 reachable, 18 swept.
+    //
+    // ⏱ MERGED 2026-09-30 (ST-D3 onto main after ST-D DW1/DW2): both histories
+    // hold — DW1's merged edit sheet and D3's budget editor / retired
+    // BudgetScreen — so surfaces stay 18 and cases are main's 111 plus D3's 2.
+    // Measured by this guard's own run on the merge: "18 of 18 reachable
+    // surface(s) carry an a11y sweep, from 1 a11y test file(s) across 113
+    // case(s)".
     surfaces: 18,
     a11yFiles: 1,
-    cases: 111,
+    cases: 113,
     label: 'the app P5 wrote this guard for — 18 surfaces, all eighteen swept',
   },
   {
@@ -794,9 +810,12 @@ const REQUIRED_COVERAGE = [
     // ⏱ 2026-09-28 · ST-T2 (U5/U7): 21 → 25 surfaces, 59 → 61 cases, RAISED IN
     // THE CHANGE THAT EARNED THEM — the four honest states moved into the
     // chassis arrived swept (a11y_firstrun_money_settings_test.dart).
-    surfaces: 25,
+    // ⏱ 2026-09-29 · ST-D4: 25 -> 26 surfaces, 61 -> 62 cases — the chassis
+    // SettingsSection arrived swept (`a11y: settings-section`, light + dark
+    // kPhone). Read off the per-root line: `26 of 26 … across 62 case(s)`.
+    surfaces: 26,
     a11yFiles: 4,
-    cases: 61,
+    cases: 62,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -869,14 +888,28 @@ const REQUIRED_COVERAGE = [
     //   surfaces  31 → 35
     //   a11yFiles 10 → 11
     //   cases     19 → 23
-    // ⏱ 2026-09-29 · ST-D10: 35 → 40 surfaces, 11 → 12 files, 23 → 24 cases,
-    // RAISED IN THE CHANGE THAT EARNED THEM — the five auth-frame parts arrived
-    // swept with AuthField (a11y_auth_frame_test.dart, one case body looped over
-    // two widths and two schemes). Read off the per-root line: `23 of 40 …
-    // from 12 a11y test file(s) across 24 case(s)`.
-    surfaces: 40,
-    a11yFiles: 12,
-    cases: 24,
+    //
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D DW2 (ST-D2 + ST-D8), on top of
+    // DW1: MonthGrid and DateBadge arrived swept by a11y_month_grid_test.dart
+    // (one case), and `PermissionPrimingView` by
+    // a11y_permission_priming_test.dart (three cases). Read off this guard's
+    // own output on the branch: "20 of 38 reachable surface(s) carry an a11y
+    // sweep, from 13 a11y test file(s) across 27 case(s)".
+    //   surfaces  35 → 38
+    //   a11yFiles 11 → 13
+    //   cases     23 → 27
+    //
+    // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): the five auth-frame parts arrived swept
+    // with AuthField, by a11y_auth_frame_test.dart (one case body looped over
+    // two widths and two schemes). Read off the per-root line: "26 of 43
+    // reachable surface(s) carry an a11y sweep, from 14 a11y test file(s)
+    // across 28 case(s)".
+    //   surfaces  38 → 43
+    //   a11yFiles 13 → 14
+    //   cases     27 → 28
+    surfaces: 43,
+    a11yFiles: 14,
+    cases: 28,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
@@ -977,7 +1010,6 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
     new Set(
       [
         'features/insights/insights_screen.dart#InsightsScreen',
-        'features/budget/budget_screen.dart#BudgetScreen',
         'features/scan/scan_screen.dart#ScanScreen',
         'features/calendar/calendar_screen.dart#CalendarScreen',
         'features/detail/subscription_detail_screen.dart#SubscriptionDetailScreen',
@@ -994,6 +1026,9 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'features/onboarding/onboarding_screen.dart#OnboardingScreen',
         'features/add/add_subscription_sheet.dart#showAddSubscriptionSheet',
         'features/cancel/cancel_sheet.dart#showCancelSheet',
+        // 2026-09-29 (ST-D3 D3-2): the budget editor, the first surface that
+        // can WRITE a budget, swept in a11y_semantics_test.dart.
+        'features/insights/budget_editor.dart#showBudgetEditorSheet',
       ].map((k) => `apps/subscriptiontracker/lib/${k}`),
     ),
   ],
@@ -1043,6 +1078,8 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'monetization/paywall_screen.dart#PaywallView',
         'settings/report_content_dialog.dart#ReportContentDialog',
         'settings/settings_screen.dart#EditProfileDialog',
+        // 2026-09-29 (ST-D4): the settings group, in the same change as its sweep.
+        'settings/settings_screen.dart#SettingsSection',
         'settings/settings_screen.dart#SettingsView',
         'shell/app_shell.dart#AppLifecycleFlush',
         'shell/app_shell.dart#ConsentPromptCard',
@@ -1099,6 +1136,13 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
       'packages/design_system/lib/src/widgets/app_figure_tile.dart#AppFigureTile',
       'packages/design_system/lib/src/widgets/app_icon_action.dart#AppIconAction',
       'packages/design_system/lib/src/widgets/app_monogram.dart#AppMonogram',
+      // ⏱ 2026-09-28 · train ST-D2: in the same change as their sweep
+      // (a11y_month_grid_test.dart).
+      'packages/design_system/lib/src/widgets/month_grid.dart#MonthGrid',
+      'packages/design_system/lib/src/widgets/month_grid.dart#DateBadge',
+      // ⏱ 2026-09-28 · train ST-D8, in the same change as its sweep
+      // (a11y_permission_priming_test.dart).
+      'packages/design_system/lib/src/widgets/permission_priming.dart#PermissionPrimingView',
       // ⏱ 2026-09-29 · ST-D10: the shared auth frame and the field it hosts,
       // swept together in a11y_auth_frame_test.dart (375 and 1440, both schemes).
       'packages/design_system/lib/src/widgets/auth_field.dart#AuthField',

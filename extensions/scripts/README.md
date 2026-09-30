@@ -74,14 +74,14 @@ work only one person can do teaches everyone that red is negotiable.
 | `discover.mjs` | globs `Category/Tool/tool.json` → the CI matrix, diff-aware | emits **ids**. Every ambiguity widens to ALL tools |
 | `lint.mjs` | `node --check` on every shipped `.js`/`.mjs` | also accepts `core` and `scripts`. Fails when it checks **zero shipped files** |
 | `policy-check.mjs` | the eight gates of the architecture's §4.3 | strips comments and strings before scanning; see below |
-| `check-version.mjs` | manifest == CHANGELOG top == tag | delegates to the tool's own `publish/bump-version.mjs --check` when it has one |
+| `check-version.mjs` | manifest == CHANGELOG top == tag, and no shipped-file commit after the stamp without an `[Unreleased]` section | delegates to the tool's own `publish/bump-version.mjs --check` when it has one; a shallow checkout is exit 2 |
 | `sync-core.mjs` | `core/<channel>` → `<tool>/vendor/core` + hashes | refuses to write over strays; refuses an unsatisfiable pin |
 | `check-core-sync.mjs` | fails if a tool's `vendor/core` drifted | compares file ↔ core ↔ recorded hash; names CRLF-only drift as such |
 | `gen-catalog.mjs` | rewrites the README table from `tool.json` files | writes only between `<!-- CATALOG:START -->` / `<!-- CATALOG:END -->` |
 | `new-tool.mjs` | stamps `templates/tool` (or `_skeleton`) → `Category/Tool_Name` | never writes into an existing directory |
 | `publish-catalog.mjs` | derives `catalog/extensions.json` from the `tool.json` files | `--check` compares **bytes**; a UTF-8 BOM is refused on the raw buffer |
-| `check-catalog.mjs` | grades that catalogue as a contract | an unlisted tool is an `OWNER` line, not a failure |
-| `check-store-metadata.mjs` | one directory per **store**; limits measured on the resolved translation | an unsourced limit is refused, never invented |
+| `check-catalog.mjs` | grades that catalogue as a contract, and each tool's `parity` feature × target table | an unlisted tool is an `OWNER` line, not a failure; a `works` cell needs a wired proof suite |
+| `check-store-metadata.mjs` | one directory per **store**; limits measured on the resolved translation | an unsourced limit is refused, never invented; a listing URL on a code host is refused; every store locale needs a rendered long description or `listing.json` `language.englishOnly` |
 | `check-store-packages.mjs` | grades the **built** store package, not the source it came from | reads one entry through `lib/zip.mjs` |
 | `pack.mjs` | `<id> --target <chromium\|firefox> --out <dir> [--release]` → `<dir>/<id>-<target>.zip` **and** `<dir>/unpacked-firefox/` | deterministic: sorted entries, fixed DOS timestamp, fixed deflate level. Refuses an `--out` inside the source tree |
 | `verify-refs.mjs` | `--zip <path> [--strict] [--leaks]` — reference integrity **on the zip**, case-exact | the two flags name two families and neither implies the other |

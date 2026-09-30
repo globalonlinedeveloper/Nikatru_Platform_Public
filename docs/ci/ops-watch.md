@@ -536,6 +536,40 @@ counts); no secret is named.
 NEVER tick "create all" on #417 to clear a red: every pull request at once runs
 full CI and exhausts the GitHub API.
 
+## job `tech-currency`
+
+### above `tech-currency:`
+
+── C-PIPELINE-ADAPTS-AND-STAYS-CURRENT · findings B-9 and B-11 (2026-09-29) ──
+
+🔴 WHY THIS JOB EXISTS. The owner locked "the pipeline adapts and stays current"
+with no reader and no row. Renovate proposes NEW versions; nothing read what a
+vendor RETIRES, and nothing re-read the pages our store deadlines were copied
+from — the target-sdk row of `tooling/legal/duty-matrix.json` had been read on
+2026-08-04 while its vendor page was dated 2026-09-16.
+`tooling/ops/check-tech-currency.mjs` reads the GitHub changelog (Actions label)
+against every remote action's `runs.using` at its pinned ref and the toolchain
+pins of `tooling/versions.json`, every Node major the tree runs on against the
+Node.js release schedule, and every primary-source duty row's page against its
+`fetched` date and its `enforced` dates. Its row is
+`duty.freshness.tech-currency`.
+
+PAGE-ONLY, the class `duty.freshness.renovate-backlog` opened: a retirement is
+answered by merging a pin move, and a verdict that froze `ci-gate` would freeze
+exactly that merge. It pages here and PRINTS in `ci.yml`'s push run.
+
+ONE SLOT A WEEK, the Monday 07:45 UTC slot, for the unit-scan reason the
+renovate-backlog job above gives. A DISPATCH RUNS IT ONLY WHEN IT ASKS
+(`inputs.tech_currency`), because it is red for as long as a proposal stands.
+
+### before step **Read the vendors' retirements against the tree**
+
+The same three-valued exit: 1 is a proposal (each printed with its evidence and
+its users), 2 is COVERAGE LOST and never current. No token: every source is
+public. A proposal is answered by moving the pin, or by re-reading the vendor
+page and setting the duty row's `source.fetched` (and `enforced`, if it moved);
+never by editing the reader.
+
 ## job `alert`
 
 ### above `alert:`
@@ -583,7 +617,8 @@ Leaving it out would have made B-17's monitor the one reader in this file
 whose red nobody is told about — a check that runs, fails, and is read by
 no one is the same as no check, which is B-17's own subject.
 
-`renovate-backlog` joins them (2026-09-27), and from that day the list is
+`renovate-backlog` joins them (2026-09-27), and `code-scanning-age` and
+`tech-currency` after it (2026-09-29), and from the first of those days the list is
 HELD rather than remembered: `tooling/ci/assert-ops-register.mjs` fails when
 a job of this file other than `alert` and `digest` is missing from `needs`,
 naming the job and the register row that grades it, and when `needs` names

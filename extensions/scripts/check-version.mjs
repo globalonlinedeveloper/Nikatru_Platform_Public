@@ -33,8 +33,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { Report, parseArgs } from './lib/report.mjs';
-import { repoRoot, resolveTool, readText, readJson, versionProblem, changelogTop } from './lib/toolinfo.mjs';
+import { Report, parseArgs, die } from './lib/report.mjs';
+import { repoRoot, resolveTool, readText, readJson, versionProblem, changelogTop, packagedFiles } from './lib/toolinfo.mjs';
 import { mergePatch } from './lib/merge-patch.mjs';
 
 const isPlainObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -232,6 +232,86 @@ if (fs.existsSync(bump)) {
   }
 } else {
   r.note('no ' + tool.rel + '/publish/bump-version.mjs — only the sites this script knows about were checked');
+}
+
+/* ---------------- 6. the version is not behind its tree ---------------- */
+/* ⏱ 2026-09-29 (EXL-15; no platform-state row opened yet). Every limb above
+   compares the manifest with the CHANGELOG, so both could stand still while
+   the shipped files moved: FullShot's CSP, the LICENSE in its package and
+   redaction fixes all landed after 1.10.2 was stamped, and this script passed
+   because nothing it read had changed. Two builds of different bytes under one
+   version is the thing section 2 calls unrecoverable in public.
+   So: the commit that last touched the CHANGELOG's top version heading (git
+   blame, which follows the extensions/ subtree import where a pickaxe search
+   does not) is the bump, and any later commit that touches a file the package
+   ships (packagedFiles(), the packer's own selection) needs either a new
+   version or an `## [Unreleased]` section above the top heading saying what
+   changed. A heading not yet committed is a bump in progress and passes; a
+   tree outside git (the self-test's fixtures) says so and is not graded; a
+   SHALLOW history cannot name the bump and is COVERAGE LOST (exit 2), because
+   a pass there would be a pass over history nobody read — CI checks out with
+   fetch-depth: 0 for this. */
+if (clText !== null && version && !vp) {
+  const git = (argv) => spawnSync('git', argv, { cwd: tool.dirAbs, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const top = git(['rev-parse', '--show-toplevel']);
+  if (top.status !== 0) {
+    r.note('NOT GRADED: ' + tool.rel + ' is not inside a git work tree, so which commits touched the shipped files after v' +
+      version + ' cannot be read.');
+  } else if (git(['rev-parse', '--is-shallow-repository']).stdout.trim() === 'true') {
+    die('the checkout is shallow, so the commit that stamped v' + version + ' — and every shipped-file commit after it —\n' +
+      'is outside the history this run can read. Check out with fetch-depth: 0.');
+  } else {
+    /* Both sides through realpath: git prints the top in its long form, while a
+       tool path can arrive as a Windows 8.3 short name (C:\Users\LONGNA~1\…).
+       path.relative across the two climbs out of the repo, ls-files then finds
+       nothing, and the limb passed as "not committed yet" over a committed file. */
+    const topDir = fs.realpathSync.native(top.stdout.trim());
+    const toolReal = fs.realpathSync.native(tool.dirAbs);
+    const gitTop = (argv) => git(['-C', topDir, ...argv]);   // pathspecs below are relative to the top
+    const clRel = path.relative(topDir, path.join(toolReal, 'CHANGELOG.md')).split(path.sep).join('/');
+    if (clRel.startsWith('../') || path.isAbsolute(clRel)) {
+      die('the CHANGELOG resolves outside the git work tree that holds it (' + clRel + '),\n' +
+        'so which commits touched it cannot be read.');
+    }
+    const lines = clText.split('\n');
+    const headIdx = lines.findIndex((l) => /^##\s*\[/.test(l) && !/^##\s*\[\s*unreleased\s*\]/i.test(l));
+    const unreleased = lines.slice(0, Math.max(headIdx, 0)).some((l) => /^##\s*\[\s*unreleased\s*\]/i.test(l));
+    const tracked = gitTop(['ls-files', '--error-unmatch', '--', clRel]).status === 0;
+    const blame = tracked ? gitTop(['blame', '--root', '--porcelain', '-L', (headIdx + 1) + ',' + (headIdx + 1), '--', clRel]) : null;
+    const sha = blame && blame.status === 0 ? (blame.stdout.split('\n')[0] || '').split(' ')[0] : '';
+    if (!tracked) {
+      r.pass('v' + version + ' is not behind its tree', clRel + ' is not committed yet — a first version in progress');
+    } else if (headIdx < 0 || blame.status !== 0 || !/^[0-9a-f]{40}$/.test(sha)) {
+      die('could not name the commit that last touched the top version heading of ' + clRel + ':\n' +
+        (blame.stderr || '').trim());
+    } else if (/^0+$/.test(sha)) {
+      r.pass('v' + version + ' is not behind its tree', 'the top CHANGELOG heading is not committed yet — a bump in progress');
+    } else if (/^boundary$/m.test(blame.stdout)) {   // --root: only a history cut short is a boundary
+      die('git blame attributes the top version heading of ' + clRel + ' to a boundary commit, so the history\n' +
+        'before it is not in this checkout. Check out with fetch-depth: 0.');
+    } else {
+      const { files } = packagedFiles(root, tool);
+      const shipped = files.map((f) => path.relative(topDir, path.join(toolReal, f)).split(path.sep).join('/'));
+      const log = gitTop(['log', '--format=%h %s', sha + '..HEAD', '--', ...shipped]);
+      if (log.status !== 0) die('git log over the shipped files failed: ' + (log.stderr || '').trim());
+      const after = log.stdout.split('\n').filter(Boolean);
+      if (!after.length) {
+        r.pass('v' + version + ' is not behind its tree', 'no commit has touched the ' + shipped.length +
+          ' shipped file(s) since ' + sha.slice(0, 8) + ' stamped it');
+      } else if (unreleased) {
+        r.pass('v' + version + ' is not behind its tree', after.length + ' shipped-file commit(s) since ' + sha.slice(0, 8) +
+          ', recorded under ## [Unreleased]');
+      } else {
+        r.fail('v' + version + ' is not behind its tree',
+          after.length + ' commit(s) touched files the package ships after ' + sha.slice(0, 8) + ' last touched the\n' +
+          'CHANGELOG\'s [' + version + '] heading:\n' + after.slice(0, 10).map((l) => '  ' + l).join('\n') +
+          (after.length > 10 ? '\n  … and ' + (after.length - 10) + ' more' : '') + '\n' +
+          'A build of these bytes would ship as v' + version + ', which is a different package from the one that\n' +
+          'number was stamped on. Bump the manifest and add the [x.y.z] section, or open an ## [Unreleased]\n' +
+          'section above [' + version + '] that says what changed.');
+      }
+    }
+  }
 }
 
 process.exit(r.finish());

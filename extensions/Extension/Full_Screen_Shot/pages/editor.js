@@ -11,6 +11,17 @@
   const segIndex = Number(params.get('seg') || 0);
 
   const COLORS = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899', '#111111', '#ffffff'];
+  /* The swatches' NAMES. Each swatch was named by its hex code, so a screen
+     reader said "number e f 4 4 4 4, radio button" — found by
+     test/e2e/a11y-walk.mjs (EXB-05), the first run that read the names from the
+     browser's own accessibility tree. Keyed by the same literals as COLORS; a
+     colour with no entry here keeps its code rather than a blank name. */
+  const COLOR_NAMES = {
+    '#ef4444': ['editorColorRed', 'Red'], '#f59e0b': ['editorColorAmber', 'Amber'],
+    '#22c55e': ['editorColorGreen', 'Green'], '#3b82f6': ['editorColorBlue', 'Blue'],
+    '#8b5cf6': ['editorColorViolet', 'Violet'], '#ec4899': ['editorColorPink', 'Pink'],
+    '#111111': ['editorColorBlack', 'Black'], '#ffffff': ['editorColorWhite', 'White']
+  };
   const EMOJIS = ['😀', '😂', '😍', '🤔', '😎', '😱', '🥳', '😭', '👍', '👎', '👏', '🙏',
                   '💪', '👀', '🔥', '⭐', '❤️', '✅', '❌', '⚠️', '❗', '❓', '💡', '🎯'];
 
@@ -193,11 +204,12 @@
       const b = document.createElement('button');
       b.className = 'swatch' + (c === color ? ' active' : '');
       b.style.background = c;
-      b.title = c;
+      const named = COLOR_NAMES[c] ? msg(COLOR_NAMES[c][0], null, COLOR_NAMES[c][1]) : c;
+      b.title = named;
       b.dataset.color = c;
       b.setAttribute('role', 'radio');
       b.setAttribute('aria-checked', c === color ? 'true' : 'false');
-      b.setAttribute('aria-label', c);
+      b.setAttribute('aria-label', named);
       b.tabIndex = c === color ? 0 : -1;
       b.addEventListener('click', () => pick(b, false));
       swatches.push(b);
@@ -479,6 +491,24 @@
     r: 'rect', o: 'ellipse', t: 'text', b: 'blur', n: 'num', e: 'emoji'
   };
 
+  /* WCAG 2.1.4 CHARACTER KEY SHORTCUTS (Level A). The twelve tool letters and
+     + = - ? are shortcuts made of a single printable character, and they fire
+     on the document, so a speech-input user who says a word while focus is on
+     the toolbar switches tools with every letter of it. The SC is met by ANY
+     ONE of: a way to turn them off, a way to remap them, or keys that are live
+     only while the component they serve has focus. This offers the first and,
+     once they are off, keeps the third: with `singleKeyShortcuts` false in
+     Options the character keys still answer while the DRAWING SURFACE holds
+     focus (the component they serve), and nowhere else. The default stays on,
+     so nobody who relies on them loses them; the setting is what makes the
+     page conform. Read once at boot, like every other setting this page uses.
+     Delete, Escape, the arrows and the Ctrl chords are not character keys and
+     are not governed by it. (test/editor-sim.node.js grades both halves.) */
+  function characterKeysLive() {
+    if (!settings || settings.singleKeyShortcuts !== false) return true;
+    return kbFocus;
+  }
+
   function isTypingTarget(t) {
     const tag = String((t && t.tagName) || '').toLowerCase();
     return tag === 'input' || tag === 'select' || tag === 'textarea';
@@ -590,7 +620,7 @@
         if (had) announce(msg('editorA11ySelectionCleared', null, 'Selection cleared'));
         return;
       }
-      if (!e.ctrlKey && !e.metaKey && !e.altKey && !isTypingTarget(e.target)) {
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && !isTypingTarget(e.target) && characterKeysLive()) {
         if (k === '+' || k === '=') { zoomStep(1); return; }
         if (k === '-') { zoomStep(-1); return; }
         if (k === '?') { openShortcuts(); return; }
@@ -607,6 +637,12 @@
     const s = currentScale();
     canvas.style.width = Math.round(crop.w * s) + 'px';
     $('zoomBtn').textContent = Math.round(s * 100) + '%';
+    /* The visible text is a bare number, which is all a screen reader had to
+       say for this button (a11y-walk.mjs, EXB-05). The name keeps that number,
+       as shown, so it still matches what a speech-input user reads off the
+       screen (WCAG 2.5.3), and adds the word that says what it is. */
+    $('zoomBtn').setAttribute('aria-label',
+      msg('editorZoomLevelName', [Math.round(s * 100) + '%'], '$PERCENT$ zoom'));
     $('zoomBtn').title = zoom === 'fit'
       ? msg('editorZoomTipToHundred', null, 'Fit to window — click for 100%')
       : msg('editorZoomTipToFit', null, 'Click to fit window');

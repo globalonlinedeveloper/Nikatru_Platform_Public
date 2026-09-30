@@ -92,6 +92,10 @@
       "reads": "whether a workflow runs the IndexNow ping"
     },
     {
+      "path": "tooling/ci/assert-e2e-legs.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-e2e-proof-fresh.mjs",
       "property": "refuses-blind",
       "evidence": "This guard is watching a workflow that is gone",
@@ -319,6 +323,12 @@
       "reads": "each release lane's workflow file and, for a lane that is only a `workflow_call` callee, its one caller (laneRunHost), to name the workflow whose run_number a build stamp carries"
     },
     {
+      "path": "tooling/ops/check-tech-currency.mjs",
+      "property": "refuses-blind",
+      "evidence": "pins a remote action; the tree walk read nothing.",
+      "reads": "every `uses:` of each workflow and local composite action, to find the remote actions whose `runs.using` a vendor retirement would reach"
+    },
+    {
       "path": "tooling/ops/redeploy-stranded.mjs",
       "property": "workflow-scan",
       "reads": "each deploy lane (push on main + workflow_dispatch + a named assert-gate-passed.mjs step), ci.yml's ci-gate job name, and redeploy-stranded.yml's workflow_run list, to derive which lanes a ci-gate cascade can strand"
@@ -343,6 +353,11 @@
       "path": "tooling/release/submit-snap.mjs",
       "property": "workflow-scan",
       "reads": "the submission workflow the channel register names (default submit-snap.yml), through parseWorkflow"
+    },
+    {
+      "path": "tooling/scripts/affected-guards.mjs",
+      "property": "workflow-scan",
+      "reads": "every `node <script>` and `node --test <glob>` call, with its working directory, in ci.yml and each workflow ci.yml calls; none at all is COVERAGE LOST"
     },
     {
       "path": "tooling/scripts/gen-start-here.mjs",

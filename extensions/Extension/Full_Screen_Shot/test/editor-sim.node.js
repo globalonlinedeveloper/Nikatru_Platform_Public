@@ -496,10 +496,10 @@ async function boot(opts) {
       frameKey: (c, i) => c + ':' + i
     },
     createImageBitmap: async blob => ({ width: blob.__w, height: blob.__h, data: blob.__data, close() {} }),
-    fsGetSettings: async () => ({
+    fsGetSettings: async () => Object.assign({
       imageFormat: 'png', jpegQuality: 0.92, clipboardFit: true, theme: 'light',
       filenameTemplate: '{domain}-{date}'
-    }),
+    }, o.settings || {}),
     fsToggleTheme() { env.calls.push('toggleTheme'); },
     fsToast(m) { env.toasts.push(m); },
     fsMime: f => f === 'jpeg' ? 'image/jpeg' : f === 'webp' ? 'image/webp' : 'image/png',
@@ -1736,6 +1736,63 @@ await T('a11y: a letter typed into a form control is not a tool switch', async (
     pressedTools(ed).join(',') === before, before + ' -> ' + pressedTools(ed).join(','));
 });
 
+/* WCAG 2.1.4 CHARACTER KEY SHORTCUTS (Level A), EXB-03. The tool letters and
+   + = - ? fire on the document, so the page conforms only if they can be turned
+   off (or remapped, or are live only while their component has focus). This
+   grades the mechanism the editor offers: `singleKeyShortcuts` false in the
+   settings silences every character key while focus is anywhere but the
+   drawing surface, and the surface itself keeps them. The first check is the
+   CONTROL: with the setting absent the same keys must still work, or a green
+   below would only mean the keys were broken. Red on a tree with no setting:
+   the letters switch the tool whatever the settings say. */
+await T('a11y: WCAG 2.1.4 - single-key shortcuts can be turned off', async () => {
+  const on = await boot();
+  await on.key('r');
+  check('control: with the default settings a bare R outside the canvas selects the rectangle',
+    pressedTools(on).join(',') === 'rect', pressedTools(on).join(','));
+
+  const off = await boot({ settings: { singleKeyShortcuts: false } });
+  const before = pressedTools(off).join(',');
+  const moved = [];
+  for (const [k] of TOOL_LETTERS) {
+    await off.key(k);
+    if (pressedTools(off).join(',') !== before) moved.push(k + '->' + pressedTools(off).join(','));
+  }
+  check('singleKeyShortcuts=false: no tool letter pressed outside the canvas changes the tool',
+    moved.length === 0, moved.join(' ') || before + ' held through all twelve letters');
+  const zoomWas = off.el('zoomBtn').textContent;
+  await off.key('+'); await off.key('=');
+  await off.key('-');
+  check('singleKeyShortcuts=false: + = and - outside the canvas do not zoom',
+    off.el('zoomBtn').textContent === zoomWas, zoomWas + ' -> ' + off.el('zoomBtn').textContent);
+  await off.key('?');
+  check('singleKeyShortcuts=false: ? outside the canvas does not open the shortcuts sheet',
+    !off.el('shortcutsPop').classList.contains('show'), '');
+  await off.key('z', { ctrlKey: true });
+  await off.key('Escape');
+  check('singleKeyShortcuts=false leaves chords and Escape alone (they are not character keys)',
+    pressedTools(off).join(',') === before, pressedTools(off).join(','));
+
+  off.focus('canvas');
+  await off.key('r');
+  check('singleKeyShortcuts=false: while the canvas holds focus a bare R still selects the rectangle',
+    pressedTools(off).join(',') === 'rect', pressedTools(off).join(','));
+
+  /* The switch has to exist where a user can reach it, and a reset has to be
+     able to put it back: the Options control, the Options field table, and
+     BOTH declared default tables (pages/common.js FS_DEFAULTS, background.js
+     DEFAULTS), each with the default ON so nobody loses the keys by upgrading. */
+  const optHtml = fs.readFileSync(path.join(ROOT, 'pages', 'options.html'), 'utf8');
+  const optJs = fs.readFileSync(path.join(ROOT, 'pages', 'options.js'), 'utf8');
+  const commonJs = fs.readFileSync(path.join(ROOT, 'pages', 'common.js'), 'utf8');
+  const bgJs = fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8');
+  check('Options offers a labelled singleKeyShortcuts switch',
+    /<input type="checkbox" id="singleKeyShortcuts"/.test(optHtml) && /<label for="singleKeyShortcuts"/.test(optHtml), '');
+  check('Options saves it as a checkbox', /singleKeyShortcuts:\s*'checked'/.test(optJs), '');
+  check('both default tables declare singleKeyShortcuts: true',
+    /\n\s*singleKeyShortcuts:\s*true,/.test(commonJs) && /\n\s*singleKeyShortcuts:\s*true,/.test(bgJs), '');
+});
+
 console.log('\n=== a11y: place, nudge and delete with no pointer ===');
 
 await T('a11y: Enter places the current tool at the keyboard cursor', async () => {
@@ -2105,8 +2162,14 @@ await T('a11y: the swatch radiogroup', async () => {
     sw.map(b => ed.attr(b, 'aria-checked')).join(','));
   check('exactly one is in the tab order', sw.filter(b => b.tabIndex === 0).length === 1,
     sw.map(b => b.tabIndex).join(','));
-  check('each has a name a screen reader can read',
-    sw.every(b => /^#[0-9a-f]{6}$/i.test(ed.attr(b, 'aria-label') || '')), ed.attr(sw[0], 'aria-label'));
+  /* This check used to REQUIRE a hex code (/^#[0-9a-f]{6}$/) and called that a
+     name a screen reader can read; the first run that read the name back from
+     a real accessibility tree (test/e2e/a11y-walk.mjs, EXB-05) heard
+     "number e f 4 4 4 4". A name is a colour word, and no two are the same. */
+  const swNames = sw.map(b => ed.attr(b, 'aria-label') || '');
+  check('each has a name a screen reader can read: a colour word, never a hex code, no two alike',
+    swNames.every(n => /\p{L}{2}/u.test(n) && !/^#?[0-9a-f]{3,8}$/i.test(n)) && new Set(swNames).size === swNames.length,
+    swNames.join(','));
   ed.focus(sw[0]);
   await ed.keyOn(sw[0], 'ArrowRight');
   check('Right moves the choice along the list',

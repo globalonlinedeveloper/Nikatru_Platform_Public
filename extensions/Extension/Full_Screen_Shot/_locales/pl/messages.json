@@ -437,6 +437,12 @@
   "optionsAutoOpenEditorDesc": {
     "message": "Przechodzi prosto do opisywania (tylko zrzuty jednoczęściowe)."
   },
+  "optionsSingleKeyShortcuts": {
+    "message": "Single-key shortcuts in the editor"
+  },
+  "optionsSingleKeyShortcutsDesc": {
+    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+  },
   "optionsTheme": {
     "message": "Motyw"
   },
@@ -459,13 +465,16 @@
     "message": "Cała strona: $KEYFULL$ · Widoczny obszar: $KEYVISIBLE$. Zmień na $URL$",
     "placeholders": {
       "keyfull": {
-        "content": "Alt+Shift+P"
+        "content": "$1",
+        "example": "Alt+Shift+P"
       },
       "keyvisible": {
-        "content": "Alt+Shift+V"
+        "content": "$2",
+        "example": "Alt+Shift+V"
       },
       "url": {
-        "content": "chrome://extensions/shortcuts"
+        "content": "$3",
+        "example": "chrome://extensions/shortcuts"
       }
     }
   },
@@ -1287,6 +1296,39 @@
   },
   "editorZoomFit": {
     "message": "Dopas."
+  },
+  "editorZoomLevelName": {
+    "message": "$PERCENT$ zoom",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "100%"
+      }
+    }
+  },
+  "editorColorRed": {
+    "message": "Red"
+  },
+  "editorColorAmber": {
+    "message": "Amber"
+  },
+  "editorColorGreen": {
+    "message": "Green"
+  },
+  "editorColorBlue": {
+    "message": "Blue"
+  },
+  "editorColorViolet": {
+    "message": "Violet"
+  },
+  "editorColorPink": {
+    "message": "Pink"
+  },
+  "editorColorBlack": {
+    "message": "Black"
+  },
+  "editorColorWhite": {
+    "message": "White"
   },
   "editorZoomTipToHundred": {
     "message": "Dopasowano do okna — kliknij, aby uzyskać 100%"
@@ -2190,6 +2232,14 @@
       }
     }
   },
+  "regionHintEnter": {
+    "message": "$ENTER$ captures the whole visible area",
+    "placeholders": {
+      "enter": {
+        "content": "Enter"
+      }
+    }
+  },
   "errRestrictedBrowserPage": {
     "message": "Strony przeglądarki, takie jak Ustawienia, Rozszerzenia czy Nowa karta, są niedostępne dla każdego rozszerzenia. Wypróbuj FullShot na zwykłej stronie internetowej."
   },
@@ -2204,6 +2254,12 @@
   },
   "errRestrictedWebstore": {
     "message": "Chrome Web Store nie pozwala rozszerzeniom czytać swoich stron, więc tej nie da się przechwycić."
+  },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
   },
   "errRestrictedGeneric": {
     "message": "Ta strona jest chroniona przez przeglądarkę i nie można jej przechwycić."

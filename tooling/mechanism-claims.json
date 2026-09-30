@@ -89,6 +89,14 @@
       "proves": "The sentence is the comment inside the case that grades it."
     },
     {
+      "file": "tooling/ci/assert-deploy-ref.mjs",
+      "anchor": "included, with no second list to keep by hand",
+      "status": "proven",
+      "test": "tooling/ci/test/new-tool-chain.test.mjs",
+      "case": "store-publish's ref check allows the second tool's tag, with no edit to the step",
+      "proves": "EXL-17. new-tool stamps a second extension in a copy of HEAD, and the case runs store-publish's ref check exactly as extensions.yml spells it against that tool's tag. A second, hand-kept `tag:` allow in the step would refuse the new tag by name and fail the case."
+    },
+    {
       "file": "tooling/ci/assert-d1-sql-inventory.mjs",
       "anchor": "all derived from the file; there is no exemption list.",
       "status": "proven",
@@ -936,14 +944,6 @@
       "reason": "assert-purchase-path.mjs §E walks the BRICK lib (BRICK_LIB) and the chassis files it delegates to; it never reads apps/subscriptiontracker/lib, so this app's router does not feed either count. The sentence is proven for packages/chassis_screens (see that entry), not for this copy. judged 2026-09-18."
     },
     {
-      "file": "apps/subscriptiontracker/lib/l10n/app_en.arb",
-      "anchor": "so the sentence cannot drift from the chart.",
-      "status": "proven",
-      "test": "apps/subscriptiontracker/test/a11y_semantics_test.dart",
-      "case": "[en] the chart announces the total AND every category",
-      "proves": "The expected label (expectedDonutLabel) is built from SubMath.categoryTotals over the same seeded providers, one a11yCategoryShare per category, joined. If the screen composed {breakdown} from anything but the painter's category list (a category dropped, reordered or restated), the announced sentence no longer contains the expected one and this case goes red."
-    },
-    {
       "file": "apps/subscriptiontracker/lib/state/providers/auth.dart",
       "anchor": "ONE READ for the two states that mean it, so the gate cannot drift from the",
       "status": "proven",
@@ -1164,6 +1164,18 @@
       "anchor": "- name: Run every suite in test/e2e (derived, not listed)",
       "status": "demoted",
       "reason": "A step NAME, shown on the checks list. The derivation is the inline bash below it, which no test executes. Judged 2026-09-19."
+    },
+    {
+      "file": ".github/workflows/extensions.yml",
+      "anchor": "- name: Run every suite that opts into the branded leg (derived, not listed)",
+      "status": "demoted",
+      "reason": "A step NAME, shown on the checks list. The derivation (every test/e2e/*.mjs carrying an e2e-branded: line) is the inline node block below it, which no test executes; the block itself exits 1 when no suite opts in. Judged 2026-09-30."
+    },
+    {
+      "file": ".github/workflows/extensions.yml",
+      "anchor": "this leg (run.mjs narrows itself to one capture). Derived, not listed: no tool or",
+      "status": "demoted",
+      "reason": "The e2e-branded job's why-comment restating the step it heads; the derivation is that step's inline node block, which no test executes. Judged 2026-09-30."
     },
     {
       "file": "README.md",
@@ -1397,14 +1409,6 @@
       "test": "tooling/ci/test/modal-detection.test.mjs",
       "case": "a package whose suites use flutter_test but whose pubspec stopped saying so is caught by the oracle",
       "proves": "The expected root count is derived from the copied tree by a second reading (workspace members whose suites import package:flutter_test/), not written down. The case plants a package the guard does not derive (no flutter_test: in its pubspec) while its suite imports flutter_test, and asserts the root-count check THROWS. Measured 2026-09-19: with the equality neutered (`if (false) assert.equal`) the case goes red, exit 1; restored byte-exact, green. The sibling case \"a NEW package root is counted, not refused\" plants a declared package and stays green, which the old literal /in 9 root(s)/ could not."
-    },
-    {
-      "file": "apps/subscriptiontracker/lib/features/insights/insights_screen.dart",
-      "anchor": "a figure derived from `cats` cannot",
-      "status": "proven",
-      "test": "apps/subscriptiontracker/test/rounded_breakdown_surfaces_test.dart",
-      "case": "INSIGHTS — the legend adds up to the number in the ring",
-      "proves": "The sentence claims the donut centre and its legend cannot disagree because both are derived from the same `cats`. The case pumps the screen over six categories whose naive per-row rounding sums to 94 against a whole of 97, reads the rendered centre and the six rendered legend Texts back out of the tree, and asserts the column sums to the centre. Mutation 2026-09-20: putting the legend back on its own `money.formatBagRounded(cats[i].value)` — a second rounding decision — turns it red at 94 != 97. judged 2026-09-20."
     },
     {
       "file": "apps/subscriptiontracker/test/width_shell_fab_test.dart",

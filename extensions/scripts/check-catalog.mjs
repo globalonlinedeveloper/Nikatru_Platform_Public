@@ -50,6 +50,10 @@
                    until 2026-09-25 a tool stamped from the template carried
                    REPLACE-WITH-YOUR-DOMAIN and this was an owner action, not a
                    failure
+     7  PARITY     a tool with build targets declares tool.json parity.features,
+                   one cell per target in every row; a `works` cell cites a
+                   proof suite the tool.json wires (`tests` or `gates[].run`);
+                   `fallback` and `unproven` cells carry a note (EXB-13)
 
    ── WHY THE STORE VOCABULARY IS DERIVED AND THE HOSTS ARE NOT ────────────────
 
@@ -434,6 +438,78 @@ for (const t of extensions) {
 r.check('no tool\'s publish/identity.json carries a placeholder in a listed field', identityProblems.length === 0,
   identitiesRead + ' identity file(s) read · fields: ' + LISTED_IDENTITY_FIELDS.join(', '),
   identityProblems.join('\n'));
+
+/* ── LIMB 7: THE FEATURE x TARGET TABLE ───────────────────────────────────── */
+/* ⏱ 2026-09-29 (EXB-13; no platform-state row opened yet). Per-browser behaviour —
+   the WebM-to-GIF fallback, the importScripts guard, the file:// fall-through,
+   the synchronous permissions.request — lived in code comments, so "the same
+   features in every browser" was a claim nothing could grade. A tool that
+   declares build targets now declares tool.json `parity`: one row per feature,
+   one cell per target, each cell `works` (proof: a suite THIS tool.json wires,
+   in `tests` or `gates[].run`), `fallback` or `unproven` (each with a `note`).
+   render-listing.mjs renders every `fallback` cell into the listing of the
+   store that receives that target, so what differs is said where users read. */
+const PARITY_STATES = ['works', 'fallback', 'unproven'];
+const parityProblems = [];
+let parityCells = 0;
+const parityByState = { works: 0, fallback: 0, unproven: 0 };
+for (const t of extensions) {
+  const targets = t.targets && typeof t.targets === 'object' && !Array.isArray(t.targets) ? Object.keys(t.targets) : [];
+  if (!targets.length) continue;
+  const parity = t.raw?.parity;
+  const features = parity && typeof parity === 'object' ? parity.features : null;
+  if (!features || typeof features !== 'object' || Array.isArray(features) || !Object.keys(features).length) {
+    parityProblems.push(t.rel + '/tool.json declares targets [' + targets.join(', ') + '] and no parity.features table. ' +
+      'Which features work on which build is then written nowhere a gate can read — add one row per feature, one cell per target.');
+    continue;
+  }
+  const tests = new Set(Array.isArray(t.tests) ? t.tests : []);
+  const gateRuns = new Set((Array.isArray(t.raw?.gates) ? t.raw.gates : [])
+    .map((g) => (g && typeof g.run === 'string' ? g.run.trim().split(/\s+/)[0] : null)).filter(Boolean));
+  const wired = (proof) => tests.has(proof) || gateRuns.has(t.rel + '/' + proof);
+  for (const [fid, row] of Object.entries(features)) {
+    const at = t.rel + '/tool.json parity.features["' + fid + '"]';
+    if (!row || typeof row !== 'object' || Array.isArray(row)) { parityProblems.push(at + ' is not an object.'); continue; }
+    if (!str(row.label)) parityProblems.push(at + ' has no `label` — the listing names the feature by it.');
+    for (const k of Object.keys(row)) {
+      if (k !== 'label' && !targets.includes(k)) {
+        parityProblems.push(at + ' has a "' + k + '" cell, which is not a key of targets [' + targets.join(', ') + '].');
+      }
+    }
+    for (const target of targets) {
+      const cell = row[target];
+      if (!cell || typeof cell !== 'object' || Array.isArray(cell)) {
+        parityProblems.push(at + ' has no "' + target + '" column. A declared target with no cell is a build nobody said ' +
+          'the feature works on.');
+        continue;
+      }
+      parityCells++;
+      if (!PARITY_STATES.includes(cell.state)) {
+        parityProblems.push(at + '.' + target + ' has state ' + JSON.stringify(cell.state) + '; the vocabulary is ' + PARITY_STATES.join(', ') + '.');
+        continue;
+      }
+      parityByState[cell.state]++;
+      if (cell.state === 'works' && !str(cell.proof)) {
+        parityProblems.push(at + '.' + target + ' says works and names no `proof` suite. A works cell nothing grades is ' +
+          'the claim this table exists to stop; say `unproven` with a note instead.');
+      }
+      if (str(cell.proof)) {
+        if (!wired(cell.proof)) {
+          parityProblems.push(at + '.' + target + ' cites proof "' + cell.proof + '", which is not wired: it is neither in ' +
+            'tool.json `tests` nor run by a `gates` entry, so no CI job runs it.');
+        } else if (!fs.existsSync(path.join(t.dirAbs, cell.proof))) {
+          parityProblems.push(at + '.' + target + ' cites proof "' + cell.proof + '", which does not exist.');
+        }
+      }
+      if (cell.state !== 'works' && !str(cell.note)) {
+        parityProblems.push(at + '.' + target + ' is `' + cell.state + '` with no `note` saying what happens instead.');
+      }
+    }
+  }
+}
+r.check('every build target has a parity column, and every works cell a wired proof', parityProblems.length === 0,
+  parityCells + ' cell(s): ' + PARITY_STATES.map((s) => parityByState[s] + ' ' + s).join(' · '),
+  parityProblems.join('\n'));
 
 /* ── THE GAP ONLY THE OWNER CAN CLOSE ─────────────────────────────────────── */
 /* Counted from the parsed rows, not from the tool.json set, because the message

@@ -26,6 +26,8 @@ const RENDERED = 'services/platform/src/routes/rail-price-ids.ts';
 const CHECKOUT = 'services/platform/src/routes/checkout.ts';
 const APP = 'subscriptiontracker';
 const APP_YAML = `apps/${APP}/app.yaml`;
+const FEES = 'tooling/catalog/fee-register.json';
+const CHANNELS = 'tooling/channel-register.json';
 
 let TMP;
 let seq = 0;
@@ -39,7 +41,7 @@ after(() => {
 /** A copy of exactly the files the renderer reads, from the real tree. */
 function fixture() {
   const root = join(TMP, `f${++seq}`);
-  for (const rel of [REGISTER, RENDERED, CHECKOUT, BUNDLES_REGISTER, APP_YAML]) {
+  for (const rel of [REGISTER, RENDERED, CHECKOUT, BUNDLES_REGISTER, APP_YAML, FEES, CHANNELS]) {
     mkdirSync(dirname(join(root, rel)), { recursive: true });
     copyFileSync(join(REPO, rel), join(root, rel));
   }
@@ -163,7 +165,7 @@ describe('limb D — the store column, [ADR 093] §2', () => {
   test('a store read-back ABOVE the store price is accepted (the next valid point up)', () => {
     const root = fixture();
     mutate(root, (d) => {
-      monthly(d).store.readBack.google = { USD: monthly(d).store.USD + 20 };
+      monthly(d).store.readBack.google = { USD: monthly(d).store.USD + 20, INR: monthly(d).store.INR, readAt: '2026-09-24' };
     });
     const r = run(root);
     assert.equal(r.code, 0, r.all);
@@ -360,5 +362,178 @@ describe('--store-sheet', () => {
     const r = run(root, '--store-sheet', APP);
     assert.equal(r.code, 1, r.all);
     assert.match(r.err, /storeProducts plan "bundle-yearly" has no store price/);
+  });
+});
+
+/** Rewrite the fixture's fee register through `fn(cells)`. */
+function mutateFees(root, fn) {
+  const p = join(root, FEES);
+  const doc = JSON.parse(readFileSync(p, 'utf8'));
+  fn(doc.cells);
+  writeFileSync(p, `${JSON.stringify(doc, null, 2)}\n`);
+}
+
+/** The net sheet line for one channel inside one plan's block. */
+function netLine(out, planLabel, channel) {
+  const block = out.split(/\n(?= {2}\S)/).find((b) => b.trimStart().startsWith(planLabel));
+  assert.ok(block, `no net-sheet block for ${planLabel}:\n${out}`);
+  const line = block.split('\n').find((l) => l.trimStart().startsWith(`${channel} `));
+  assert.ok(line, `no ${channel} line under ${planLabel}:\n${block}`);
+  return line;
+}
+
+describe('limb G — net per channel from the fee register (AB-M5-01, AB-M5-03, AB-M5-04)', () => {
+  test('the real tree: --net-sheet --check exits 0 and reproduces the ADR 093 §3 nets from the fee register', () => {
+    const r = run(null, '--net-sheet', '--check');
+    assert.equal(r.code, 0, r.all);
+    // Web: 5% + 50 minor on each price (the sub-$10 cell carries the published rate until a quote exists).
+    assert.match(netLine(r.out, `${APP} pro_monthly`, 'web'), /USD +5\.99 → net +5\.19 +\(paddle-under-10:/);
+    assert.match(netLine(r.out, `${APP} pro_yearly`, 'web'), /USD +34\.99 → net +32\.74 +\(paddle-checkout:/);
+    // Play at 15%, Apple at the standard 30% until the Small Business Program enrolment (A-18).
+    assert.match(netLine(r.out, `${APP} pro_monthly`, 'android-play'), /USD +7\.19 → net +6\.11/);
+    assert.match(netLine(r.out, `${APP} pro_monthly`, 'ios-appstore'), /USD +7\.19 → net +5\.03 .*⬜ below web 5\.19 until A-18/);
+    assert.match(netLine(r.out, `${APP} pro_yearly`, 'macos-appstore'), /USD +41\.99 → net +29\.39 .*⬜ below web 32\.74 until A-18/);
+    // The India web book: GST out of the price, 2% + 0.5% on the whole of it.
+    assert.match(netLine(r.out, `${APP} pro_yearly`, 'web·IN'), /INR +999\.00 → net +821\.64/);
+    assert.match(r.out, /⬜ \d+ Apple row\(s\) net below web at the standard rate until .*apple-small-business-enrolment/);
+    assert.match(r.out, /apps-gov-in +none +sells nothing/);
+  });
+
+  test('RED CONTROL: a fixture channel that nets below its web row is exit 1, naming both nets', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['play-billing-subscription'].value.percentBps = 3000;
+    });
+    const r = run(root, '--net-sheet', '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /pro_monthly nets 5\.03 on android-play \(play-billing, USD 7\.19 after .*play-billing-subscription\) and 5\.19 on web/);
+  });
+
+  test('the same finding fails a plain --check, so CI grades it with no extra step', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['play-billing-subscription'].value.percentBps = 3000;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /nets 5\.03 on android-play/);
+  });
+
+  test('with the enrolment recorded, Apple nets at the Small Business rate and nothing is gated', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['apple-small-business-enrolment'].value = '2026-10-01';
+    });
+    const r = run(root, '--net-sheet', '--check');
+    assert.equal(r.code, 0, r.all);
+    assert.match(netLine(r.out, `${APP} pro_monthly`, 'ios-appstore'), /net +6\.11 +\(apple-iap-small-business: 15%\)$/);
+    assert.doesNotMatch(r.out, /⬜ \d+ Apple row/);
+  });
+
+  test('with the enrolment recorded, an Apple row below web is a FINDING, not gated', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['apple-small-business-enrolment'].value = '2026-10-01';
+      c['apple-iap-small-business'].value.percentBps = 3000;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /pro_monthly nets 5\.03 on ios-appstore/);
+  });
+
+  test('RED CONTROL (AB-M5-03): a null Paddle sub-$10 cell is exit 1', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['paddle-under-10'].value = null;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /cells\.paddle-under-10 has a null value, so every sale it prices has a net nobody measured/);
+  });
+
+  test('a fee cell with no verify is exit 1', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      delete c['paddle-checkout'].verify;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /cells\.paddle-checkout has no `verify`/);
+  });
+
+  test('a fee cell with no asOf is exit 1', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['razorpay-platform'].asOf = 'recently';
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /cells\.razorpay-platform has asOf "recently"/);
+  });
+
+  test('AB-M5-04: the Razorpay add-on at its 0.9% list rate moves the India yearly net to 817.64', () => {
+    const root = fixture();
+    mutateFees(root, (c) => {
+      c['razorpay-subscription-add-on'].value.percentBps = 90;
+    });
+    const r = run(root, '--net-sheet');
+    assert.equal(r.code, 0, r.all);
+    assert.match(netLine(r.out, `${APP} pro_yearly`, 'web·IN'), /INR +999\.00 → net +817\.64/);
+  });
+
+  test('a fee register that is absent is COVERAGE LOST (exit 2), never a clean sheet', () => {
+    const root = fixture();
+    rmSync(join(root, FEES));
+    const r = run(root, '--check');
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.err, /COVERAGE LOST — tooling\/catalog\/fee-register\.json does not exist/);
+  });
+
+  test('a channel register with no web row is COVERAGE LOST (exit 2)', () => {
+    const root = fixture();
+    const p = join(root, CHANNELS);
+    const reg = JSON.parse(readFileSync(p, 'utf8'));
+    reg.channels = reg.channels.filter((c) => c.id !== 'web');
+    writeFileSync(p, JSON.stringify(reg));
+    const r = run(root, '--check');
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.err, /COVERAGE LOST — .*has no `web` app row/);
+  });
+});
+
+describe('limb H — a store read-back is recorded (AB-M5-05)', () => {
+  test('RED CONTROL: a null read-back for a plan the app declares live on a store is exit 1', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      monthly(d).store.readBack.apple = null;
+      d.prices.apps[APP].pro_yearly.store.readBack.google = null;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /pro_monthly\.store\.readBack\.apple is null while apps\/subscriptiontracker\/app\.yaml declares pro_monthly live on the App Store/);
+    assert.match(r.err, /pro_yearly\.store\.readBack\.google is null while .* declares pro_yearly live on the Play console/);
+  });
+
+  test('a read-back with no readAt is exit 1', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      delete monthly(d).store.readBack.google.readAt;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /pro_monthly\.store\.readBack\.google\.readAt is undefined/);
+  });
+
+  test('an app whose mobile IAP is not live owes no read-back', () => {
+    const root = fixture();
+    const p = join(root, APP_YAML);
+    const yaml = readFileSync(p, 'utf8');
+    assert.match(yaml, /\n {4}state: live\n/);
+    writeFileSync(p, yaml.replace(/\n {4}state: live\n/, '\n    state: pending\n'));
+    mutate(root, (d) => {
+      monthly(d).store.readBack = { apple: null, google: null };
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 0, r.all);
   });
 });

@@ -1,0 +1,63 @@
+name: Mutation proofs
+
+run-name: "Mutation proofs, executed (${{ github.event_name }})"
+
+# The measurement and the argument behind this file are the header of
+# tooling/ci/assert-mutation-proofs.mjs. Only `# why:` lines live here, and
+# docs/ci/README.md carries the rules every workflow has to obey.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # why: WEEKLY. The EXECUTED half applies each recorded mutation and requires
+    # its named test to go red, green control first; a full sweep was measured at
+    # 90-140 minutes, so it can never ride a push job (guard-meta's cap is 25).
+    # Sunday, so it lands before the Monday ops-watch digest reads the register.
+    - cron: '20 4 * * 0' # 04:20 UTC Sundays
+
+# why: empty at file level; the one job grants only what it needs.
+permissions: {}
+
+concurrency:
+  # why: cancel-in-progress FALSE. A run mid-mutant restores the tree in its own
+  # `finally`; a newer run killing it would only waste the sweep it started.
+  group: mutation-proofs
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    name: Every proven mutation still turns its test red, green control first
+    runs-on: ubuntu-24.04
+    # why: the cap for a job that blocks no merge. Two of twenty rows carry a
+    # re-runnable edit today (tooling/dod-register.json unprovenFloor 18), about
+    # four flutter-test invocations; the sweep outgrows this as rows are
+    # re-earned, and it is sharded by `--only` then, never by raising the cap.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node
+
+      - uses: ./.github/actions/setup-flutter
+
+      # why: at the workspace ROOT and against the lock (TRAPS git-09): a `flutter`
+      # command in a subdirectory re-resolves the workspace and rewrites the lock.
+      - name: flutter pub get
+        run: flutter pub get --enforce-lockfile
+
+      - name: Execute every proven mutation, green control first
+        run: |
+          set +e
+          node tooling/ci/assert-mutation-proofs.mjs . --execute
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=Mutation proofs are UNKNOWN - nothing was concluded::A green control was red, the named test did not load, or the output carried a loader/analyzer failure, so no mutant's red can be read. The step log names the row."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=A recorded mutation no longer turns its test red::The named test passed against the mutated tree, or went red without the recorded message. The row's proof is stale: re-earn it with --execute --only and record the new hash. The step log names the row."
+          fi
+          exit "$code"

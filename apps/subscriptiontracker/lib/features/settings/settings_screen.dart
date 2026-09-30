@@ -51,7 +51,6 @@ import '../../core/app_config.dart';
 // live integration suite and `test/delete_account_test.dart` both resolve
 // against. The VALUES are unchanged from the literals that were here.
 import '../../core/e2e_keys.dart';
-import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 // `auth_repository.dart` is the F0-4 re-export shim: `AuthRepository`,
 // `AuthUser`, `AuthSession` and `AuthFailure` all come from `packages/core`
@@ -624,21 +623,41 @@ class SettingsScreen extends ConsumerWidget {
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
-              child: _prefRow(
-                context,
-                l10n.usageStatistics,
-                ref.watch(analyticsConsentProvider) ==
-                        core.ConsentStatus.granted
-                    ? l10n.usageStatisticsOn
-                    : l10n.usageStatisticsOff,
-                ref.watch(analyticsConsentProvider) ==
-                    core.ConsentStatus.granted,
-                () => recordAnalyticsConsent(
-                  ref,
-                  granted:
-                      ref.read(analyticsConsentProvider) !=
-                      core.ConsentStatus.granted,
-                ),
+              child: Column(
+                children: <Widget>[
+                  // ⏱ 2026-09-28 · train ST-D4: SUBLY'S OWN PRIVACY NOTICE,
+                  // directly above the switch it informs — the chassis
+                  // `SettingsView.privacyNoticeTile` row, in this card's
+                  // shape. The switch asks for a decision; the notice is
+                  // what the decision is about (what is collected, why, for
+                  // how long). Filed under the legal card beside the
+                  // portfolio policy it would be a choice asked for one card
+                  // away from its facts.
+                  _LinkRow(
+                    key: E2EKeys.settingsPrivacyNotice,
+                    icon: '§',
+                    label: l10n.privacyNotice,
+                    subtitle: l10n.privacyNoticeSubtitle,
+                    last: false,
+                    onTap: () => openExternalUrl(AppConfig.privacyNoticeUrl),
+                  ),
+                  _prefRow(
+                    context,
+                    l10n.usageStatistics,
+                    ref.watch(analyticsConsentProvider) ==
+                            core.ConsentStatus.granted
+                        ? l10n.usageStatisticsOn
+                        : l10n.usageStatisticsOff,
+                    ref.watch(analyticsConsentProvider) ==
+                        core.ConsentStatus.granted,
+                    () => recordAnalyticsConsent(
+                      ref,
+                      granted:
+                          ref.read(analyticsConsentProvider) !=
+                          core.ConsentStatus.granted,
+                    ),
+                  ),
+                ],
               ),
             ),
 
@@ -1159,8 +1178,9 @@ class SettingsScreen extends ConsumerWidget {
     );
     showDialog<void>(
       context: context,
-      builder: (BuildContext dialogContext) => _EditProfileDialog(
-        l10n: l10n,
+      // ST-D4: the chassis dialog (ADR 067 moved it there); this fork's copy
+      // is gone. The controller is caller-owned, as in the brick adapter.
+      builder: (BuildContext dialogContext) => EditProfileDialog(
         name: name,
         onSave: () => _saveProfile(dialogContext, ref, l10n, name.text),
       ),
@@ -1458,86 +1478,6 @@ String deleteAccountFailureMessage(
     case core.AccountDeletionOutcome.couldNotReach:
     case core.AccountDeletionOutcome.unknown:
       return l10n.deleteAccountUnknown;
-  }
-}
-
-/// [pipeline C-13] The display-name editor. No confirmation step and no reauth,
-/// deliberately: renaming yourself is reversible in one tap, and guarding a
-/// harmless action trains people to click through the guards on the dangerous
-/// one two tiles below.
-class _EditProfileDialog extends StatefulWidget {
-  const _EditProfileDialog({
-    required this.l10n,
-    required this.name,
-    required this.onSave,
-  });
-
-  final AppLocalizations l10n;
-  final TextEditingController name;
-  final VoidCallback onSave;
-
-  @override
-  State<_EditProfileDialog> createState() => _EditProfileDialogState();
-}
-
-class _EditProfileDialogState extends State<_EditProfileDialog> {
-  // Stateful only to own the disposal. The stamped version leaks the controller
-  // on every open; a screen a user visits repeatedly is the wrong place to do
-  // that.
-  @override
-  void dispose() {
-    widget.name.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return AlertDialog(
-      // 🔴 THE SAME PIN AND THE SAME LEAK AS THE DELETE DIALOG — see
-      // [_DeleteAccountDialogState._ground] for the full measurement; this
-      // dialog is the second of the two it names, and it was still
-      // unconditional. It sets NO `titleTextStyle` and there is no
-      // `dialogTheme` in `build_app_theme.dart`, so under `ThemeMode.dark` M3
-      // resolved `headlineSmall` — `displayColor: ink = scheme.onSurface`
-      // #E5E1E9 — onto a pinned #FFFFFF card: **1.29:1**, an invisible heading.
-      // The `TextField` below rode `bodyLarge`, same ink, same **1.29:1**, so
-      // the name being edited could not be read while it was typed; its
-      // `labelText` rode `onSurfaceVariant` #C8C5D0 at **1.70:1** and both
-      // buttons `colorScheme.primary` #C4C0FF at **1.70:1**.
-      //
-      // Handing the dialog the scheme's own ground in dark fixes all four at
-      // once: on `surfaceContainerHigh` #2A292F the title measures **11.18:1**,
-      // the label **8.48:1** and the buttons **8.47:1**.
-      //
-      // ✅ LIGHT REPAINTS BY ZERO PIXELS — the pin stays exactly where it was
-      // for `Brightness.light`, because the light `surfaceContainerHigh` is
-      // #EBE7EF and dropping the pin outright would visibly tint the dialog in
-      // the build the owner eyeballs.
-      backgroundColor: theme.brightness == Brightness.light
-          ? AppColors.surface
-          : null,
-      title: Text(widget.l10n.editProfile),
-      content: TextField(
-        key: const Key('editProfileName'),
-        controller: widget.name,
-        autofocus: true,
-        textCapitalization: TextCapitalization.words,
-        decoration: InputDecoration(labelText: widget.l10n.displayName),
-        onSubmitted: (_) => widget.onSave(),
-      ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(widget.l10n.cancel),
-        ),
-        FilledButton(
-          key: const Key('editProfileSave'),
-          onPressed: widget.onSave,
-          child: Text(widget.l10n.save),
-        ),
-      ],
-    );
   }
 }
 
@@ -1887,6 +1827,7 @@ class _Toggle extends StatelessWidget {
 /// as well. `onTap == null` renders an inert row ("Connected accounts").
 class _LinkRow extends StatelessWidget {
   const _LinkRow({
+    super.key,
     required this.icon,
     required this.label,
     required this.last,

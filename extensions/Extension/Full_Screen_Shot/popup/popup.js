@@ -163,6 +163,52 @@ async function showLastError() {
 }
 showLastError();
 
+/* ---- the shortcuts, as assigned -----------------------------------------
+   ⏱ 2026-09-29 (EXB-08). popup.html carries the manifest's suggested chords as
+   its markup, and until this block they were the only answer: a user who
+   remapped a shortcut (or cleared it) was shown, and announced through
+   aria-keyshortcuts, one that no longer fires. commands.getAll() is the
+   browser's own answer, in Chrome, Edge and Firefox alike. A COPY of
+   commandShortcuts() in pages/options.js, for the reason the strings block
+   above gives: the popup does not load common.js. A mode whose command the
+   browser does not report keeps its markup. */
+const MODE_COMMAND = {
+  full: 'capture-full-page', visible: 'capture-visible',
+  region: 'capture-region', element: 'capture-element'
+};
+async function commandShortcuts() {
+  const out = {};
+  try {
+    if (chrome.commands && chrome.commands.getAll) {
+      for (const c of (await chrome.commands.getAll()) || []) if (c && c.name) out[c.name] = c.shortcut || '';
+    }
+  } catch (_) {}
+  return out;
+}
+/* aria-keyshortcuts wants "Alt+Shift+P"; Chrome on macOS reports "⌥⇧P". */
+function ariaChord(s) {
+  const SYM = { '⌘': 'Meta', '⌥': 'Alt', '⇧': 'Shift', '⌃': 'Control' };
+  const NAME = { Ctrl: 'Control', MacCtrl: 'Control', Command: 'Meta' };
+  let rest = String(s).trim();
+  const mods = [];
+  while (rest && SYM[rest[0]]) { mods.push(SYM[rest[0]]); rest = rest.slice(1); }
+  const parts = mods.length ? mods.concat(rest) : rest.split('+');
+  return parts.map(p => NAME[p.trim()] || p.trim()).filter(Boolean).join('+');
+}
+async function showShortcuts() {
+  const keys = await commandShortcuts();
+  document.querySelectorAll('.mode').forEach(btn => {
+    const name = MODE_COMMAND[btn.dataset.mode];
+    if (!name || !(name in keys)) return;
+    const s = keys[name];
+    const kbd = typeof btn.querySelector === 'function' ? btn.querySelector('kbd') : null;
+    if (kbd) { kbd.textContent = s; kbd.hidden = !s; }
+    if (s) btn.setAttribute('aria-keyshortcuts', ariaChord(s));
+    else btn.removeAttribute('aria-keyshortcuts');
+  });
+}
+showShortcuts();
+
 document.getElementById('errDismiss').addEventListener('click', async () => {
   err.hidden = true;
   try { await chrome.storage.session.remove(LAST_ERROR_KEY); } catch (_) {}

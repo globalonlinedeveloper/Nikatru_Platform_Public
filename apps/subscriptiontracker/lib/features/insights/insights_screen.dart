@@ -16,136 +16,33 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
 
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
-import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/settings_controller.dart';
 import '../add/add_subscription_sheet.dart';
-import '../cancel/cancel_sheet.dart';
 import '../shared/async_gate.dart';
-import '../shared/neutrals.dart';
-import '../shared/painters.dart';
-import '../shared/widgets.dart';
 import '../shell/app_shell.dart';
+import 'budget_card.dart';
+import 'category_card.dart';
+import 'forecast_card.dart';
+import 'signals.dart';
+import 'summary_tiles.dart';
 
-/// 📌 THE PRIVATE `_neutrals(BuildContext)` THAT STOOD HERE IS HOISTED
-/// (2026-08-25) into `features/shared/neutrals.dart` as `neutrals(context)`,
-/// together with the whole doc that recorded why light is the literal token and
-/// why dark derives from the seed. The triplication was deliberate for exactly
-/// one increment and its own doc said so; this is the closing cleanup it named,
-/// landed with the deletion of `DueInfo.of`. Read the argument there.
-
-/// The on-LIGHT TEXT tone for the unused-plan usage note. **#9C6406, not
-/// [AppColors.warn] #F59E0B.**
-///
-/// 🔴 THE DEFECT THIS FIXES, MEASURED 2026-08-21 OFF THE REAL PUMPED TREE.
-/// `_savingsCard` paints each unused plan's `usageNote` ("Not opened in 47
-/// days.") at 11px w700 in [AppColors.warn], on the card fill under it — and
-/// that fill is opaque #FFFFFF in light (`cardDecoration`,
-/// `features/shared/widgets.dart:54-69`, light arm `:56-61`; the row's own
-/// `Container` carries a BORDER only, no colour, so it changes no pixel behind
-/// the text). #F59E0B on
-/// #FFFFFF is **2.15:1** against WCAG 2.1 SC 1.4.3 AA's 4.5:1 for normal-size
-/// text. 11px w700 is NOT large text — the framework's bar is >18px, or >14px
-/// when bold (`accessibility.dart`'s `targetContrastRatio`) — so 4.5 governs,
-/// not 3.
-///
-/// 📌 IT IS THE SAME DEFECT `due.dart` FIXED, BY A DIFFERENT ROUTE, AND THAT
-/// IS WHY THIS FILE NEEDED ITS OWN FIX: a FILL token used as TEXT on a light
-/// ground. But these strings never pass through `DueInfo` — they are this
-/// file's own literal — so forking `DueInfo._urgentText` moved nothing here.
-/// `a11y_semantics_test.dart` kept the two exemptions named separately for
-/// exactly that reason, and the split paid off: the due entries expired when
-/// home/calendar/detail migrated while insights' correctly SURVIVED that day —
-/// a shared reason would have been deleted with them and this defect would have
-/// gone quiet. Insights' entry then expired on its own, against this fix, and
-/// is deleted too; NEITHER exemption exists any more.
-///
-/// ⚠️ [AppColors.warn] ITSELF DOES NOT MOVE, and must not: it is correct as a
-/// fill (the savings pill beside it, badges, meters), `AppThemeX.fromScheme`
-/// deliberately refuses to re-hue the status trio, and the same literal is
-/// CORRECT as text on this screen's DARK card — 5.74:1 on
-/// `scheme.surfaceContainerHighest` #35343A, which is what `cardDecoration`
-/// paints in dark. What is wrong is the LIGHT ground, so the fork is by
-/// brightness and not a new value for the token.
-///
-/// 🔴 AND NO SINGLE COLOUR COULD SERVE BOTH — arithmetic, not taste. Text has
-/// to clear 4.5:1 on #FFFFFF (luminance 1.0) AND on #35343A (0.0352):
-///   · white   ⇒ luminance ≤ 1.05/4.5 − 0.05 = **0.1833**
-///   · #35343A ⇒ luminance ≥ 4.5·(0.0352+0.05) − 0.05 = **0.3333**
-/// 0.1833 < 0.3333, so the satisfying set is EMPTY at any hue or saturation.
-/// The same proof `due.dart:60-70` and
-/// `packages/design_system/lib/src/tokens/app_colors.dart:97-109` record.
-///
-/// 📌 THE VALUE IS REUSED, NOT REINVENTED. #9C6406 is the warn step
-/// `packages/design_system/lib/src/tokens/app_colors.dart:106-109` already
-/// named as the on-light tone owed to the status trio, and it is the literal
-/// `due.dart:56` picked for the IDENTICAL
-/// pair of grounds — this screen's cards are the same #FFFFFF and the same
-/// `surfaceContainerHighest` a `RowCard` is, because both come from
-/// `cardDecoration`. A second amber here would be a second thing to keep in
-/// step for no measured gain. Hue and saturation are untouched from
-/// [AppColors.warn] (HSL 38°/100%), so this is a legibility step, not a
-/// re-tint — the note still reads as the same amber warning.
-///
-/// ✅ MEASURED FOR THIS VALUE ON THE GROUNDS INSIGHTS ACTUALLY PAINTS, IN BOTH
-/// BRIGHTNESSES, BY AN ASSERTION RATHER THAN A CALCULATOR — so these numbers
-/// rot loudly instead of quietly. `a11y_semantics_test.dart`'s "every string
-/// on insights meets WCAG AA contrast" and its `— DARK` twin walk the real
-/// pumped tree and score every `Text` against the opaque ground the tree
-/// resolved for it:
-///   · light — this const on the #FFFFFF card fill ([AppColors.surface]) —
-///     **4.95:1**
-///   · dark  — [AppColors.warn] #F59E0B, UNMOVED, on
-///     `scheme.surfaceContainerHighest` #35343A — **5.74:1**
-/// Both clear the 4.5 bar `MinimumTextContrastGuideline.targetContrastRatio`
-/// sets for 11px w700, and the dark figure agrees with the independent one
-/// `…/app_colors.dart:104` recorded for warn on a dark card. Both were read
-/// off the run that EXPIRED the old `except:` entries on 2026-08-21: the
-/// exemptions went red — "THE EXEMPTION HAS EXPIRED … now measures 4.95:1" /
-/// "… 5.74:1" — and were deleted, which is what asserting that an exemption
-/// is still needed buys.
-///
-/// 📌 IT IS A LOCAL CONST FOR THE SAME TWO REASONS `due.dart`'s is. The right
-/// long-term home is a `warnText` slot on `AppThemeX` resolved by brightness,
-/// and `packages/design_system` is a separate increment with a separate owner;
-/// and `due.dart`'s copy is PRIVATE to its class, so there is nothing here to
-/// import even if the hoist had landed. Both copies die in the same cleanup.
-const Color _warnOnLight = Color(0xFF9C6406);
-
-/// [AppColors.warn] as TEXT, resolved for the ambient brightness — see
-/// [_warnOnLight].
-///
-/// Takes the [BuildContext] rather than a [Brightness] because every call site
-/// is inside this file's own build methods and already holds one, the same way
-/// `neutrals(context)` in `features/shared/neutrals.dart` does; `due.dart`'s
-/// twin takes a [Brightness] instead only because it is a context-free factory
-/// three other files call.
-///
-/// (CORRECTION 2026-08-25: that reference read `[_neutrals] above` until the
-/// helper was hoisted out of this file. The comparison itself is unchanged —
-/// the hoisted helper still takes a [BuildContext] and still resolves off
-/// `Theme.of`.)
-Color _warnAsText(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.light
-    ? _warnOnLight
-    : AppColors.warn;
-
-/// The gap this page has always spent between its two cards.
-///
-/// Named rather than left as a bare `14` because the two-column layout below
-/// spends it on the HORIZONTAL axis too: one number, so the grid has one
-/// rhythm, and no new number enters the file to do it.
-const double _cardGap = 14;
+/// The gap between cards, on both axes of the large grid — the canvas's 16,
+/// which is the ST-D0 token rather than the old literal 14 (D3-7).
+const double _cardGap = AppSpacing.lg;
 
 /// Whether a stack of [cardCount] cards should be laid out two-up in [width].
 ///
 /// 🔴 THE SECOND CONDITION IS NOT DEFENSIVE PADDING. Width alone is not enough:
-/// one card in a two-column grid is a card beside a hole. On THIS screen that
-/// is the ordinary case rather than an edge one — the savings card is gated on
-/// `unused.isNotEmpty`, and nothing in this app ever sets `unused`, so every
-/// real user has exactly one card here and stays in one column at any width.
+/// one card in a two-column grid is a card beside a hole.
+///
+/// ⏱ ST-D3 D3-7 (canvas `DesktopInsights`): the page now always holds FOUR
+/// cards — budget, worth-a-look, by-category, the Pro forecast — so from 1200
+/// of body the grid is budget + category on the left and the signals + the
+/// forecast on the right, which is exactly the alternating deal below. (The
+/// savings card that used to decide the column count is gone — D3-4.)
 ///
 /// ⚠️ 1200 IS A BODY WIDTH, NOT A WINDOW WIDTH, AND THE TWO ARE 361px APART.
 /// `AppScaffold` hands the body `min(W - 361, 1280)` — the 360px drawer and its
@@ -181,16 +78,8 @@ bool _twoUp(double width, int cardCount) =>
 /// wherever their own content does — they are not forced to equal heights,
 /// which would stretch whichever column has less in it.
 ///
-/// ⚠️ Duplicated verbatim in `budget_screen.dart`, for the reason the hoisted
-/// `neutrals` helper recorded when it stood above this one: each P4 file-group
-/// increment has to stay independently compilable, and the hoist into
-/// `features/shared/` belongs to the campaign's closing cleanup.
-///
-/// (CORRECTION 2026-08-25: `_neutrals` took that hoist —
-/// `features/shared/neutrals.dart`. THIS helper did NOT, and is still
-/// duplicated. It is a layout function with no theme input, and it was outside
-/// the file set of the due/neutrals cleanup. The duplication is unresolved,
-/// not resolved.)
+/// (⏱ ST-D3 D3-3: its duplicate in `budget_screen.dart` left with that
+/// screen, so this is the one copy.)
 Widget _twoColumnCards(List<Widget> cards, double gap) {
   final List<Widget> left = <Widget>[];
   final List<Widget> right = <Widget>[];
@@ -229,13 +118,45 @@ Widget _twoColumnCards(List<Widget> cards, double gap) {
   );
 }
 
-class InsightsScreen extends ConsumerWidget {
+/// Which unit the category breakdown reads in — the canvas's Month / Year
+/// switch (D3-1). The summary tiles print both, so the switch moves only the
+/// breakdown; the budget is a monthly figure and never moves with it.
+enum InsightsPeriod { month, year }
+
+class InsightsScreen extends ConsumerStatefulWidget {
   const InsightsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<InsightsScreen> createState() => _InsightsScreenState();
+}
+
+class _InsightsScreenState extends ConsumerState<InsightsScreen> {
+  InsightsPeriod _period = InsightsPeriod.month;
+
+  /// The breakdown for [period], ranked by the MONTHLY ranking in both units so
+  /// flipping the switch never reorders the rows under the reader's eye.
+  static List<CategoryTotal> _categoryTotals(
+    List<Subscription> subs,
+    InsightsPeriod period,
+  ) {
+    final List<CategoryTotal> monthly = SubMath.categoryTotals(subs);
+    if (period == InsightsPeriod.month) return monthly;
+    return <CategoryTotal>[
+      for (final CategoryTotal c in monthly)
+        CategoryTotal(
+          c.name,
+          MoneyBag.sum(<Money>[
+            for (final Subscription s in subs)
+              if (s.category == c.name) s.yearlyCharge,
+          ]),
+        ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final WidgetRef ref = this.ref;
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
     // The currency the DONUT is drawn in — see [SubMath.chartWeight] — and the
     // one an empty total reads as. Every figure printed beside the donut still
     // carries every subtotal.
@@ -245,17 +166,11 @@ class InsightsScreen extends ConsumerWidget {
       emptyCurrencyCode: currencyCode,
     );
     // 🔴 `valueOrNull ?? const []` STOOD HERE (insights:234) AND IT MADE THE
-    // DONUT LIE. Every figure on this screen is DERIVED from the list —
-    // `totalMonthly`, `categoryTotals`, `unused`, `savings` — so an absent
-    // list did not blank the page, it produced a fully composed, confident
-    // report whose every number was 0.00. A spinner is obviously incomplete;
-    // a finished chart reading zero is not, and a user whose network had
-    // dropped was shown a spending breakdown of nothing and no reason to
-    // doubt it.
-    //
-    // The gate wraps the WHOLE body here, which is safe for the same reason
-    // it is safe on budget and not on notifications: this is a shell TAB, so
-    // `AppScaffold` owns the navigation and every state below keeps it.
+    // DONUT LIE. Every figure on this screen is DERIVED from the list, so an
+    // absent list did not blank the page, it produced a fully composed,
+    // confident report whose every number was 0.00. The gate wraps the WHOLE
+    // body, which is safe because this is a shell TAB: `AppScaffold` owns the
+    // navigation and every state below keeps it.
     return subscriptionsGate(
       ref,
       l10n: l10n,
@@ -265,99 +180,56 @@ class InsightsScreen extends ConsumerWidget {
       emptyActionLabel: l10n.addSubscriptionTitle,
       onEmptyAction: () => showAddSubscriptionSheet(context),
       builder: (List<Subscription> subs) {
-        // 🔴 NO SECOND FOLD. `SubMath.totalMonthly(subs)` stood here and was
-        // handed to `_categoryCard` beside `cats`, so the card rendered a
-        // centre and a legend from two independent numbers. They agreed in
-        // minor units and disagreed on screen — see `_categoryCard`. The card
-        // now derives its own total from the very categories it paints.
-        final List<CategoryTotal> cats = SubMath.categoryTotals(subs);
-        final List<Subscription> unused = SubMath.unused(subs);
-        final MoneyBag savings = SubMath.savings(subs);
+        final List<CategoryTotal> cats = _categoryTotals(subs, _period);
 
-        // The page's card STACK, in reading order — built ONCE, then laid out in
-        // one column or two. Building it once is the whole trick: the commonest way
-        // a responsive branch rots is that one arm gains a card and the other does
-        // not, and nothing goes red because both arms still render something.
+        // The page's card STACK, in reading order — built ONCE, then laid out
+        // in one column or two, so no arm can gain a card the other lacks.
+        // Every card is keyed `insights.card.<n>` so a test can find the
+        // LOWEST card whatever it is (the FAB and fold cases in
+        // `width_shell_fab_test.dart`).
         final List<Widget> cards = <Widget>[
-          _categoryCard(context, l10n, money, currencyCode, cats),
-          // 🔴 THE SAVINGS CARD IS GATED ON THERE BEING SOMETHING TO SAVE.
-          // `SubMath.savings` sums rows carrying `unused == true`, and NOTHING in
-          // this app ever sets `unused` — the add sheet constructs every draft
-          // without it and the API never writes it back. So for every real user the
-          // figure is exactly 0.00, and the card rendered a green "money you could
-          // keep" Pill saying `0.00/mo` immediately above the line that says nothing
-          // is flagged. Two opposite claims, one screen.
-          //
-          // Gated rather than deleted: the arithmetic is correct and the surface
-          // becomes true the moment anything writes `unused`. Inventing a usage
-          // signal to populate it would be the other, worse repair.
-          //
-          // ⚠️ IT IS ALSO WHAT DECIDES THE COLUMN COUNT. With the gate closed there
-          // is ONE card, and `_twoUp` refuses a second column for one card — so the
-          // shape every real user sees is unchanged by the two-column work below.
-          if (unused.isNotEmpty)
-            _savingsCard(context, l10n, money, unused, savings),
+          BudgetCard(subs: subs, currencyCode: currencyCode),
+          // D3-4: what the rows can prove, and one question — never the
+          // `unused` / `usedPct` fields nothing writes.
+          SignalsSection(subs: subs, money: money),
+          CategoryCard(
+            categories: cats,
+            money: money,
+            currencyCode: currencyCode,
+            perYear: _period == InsightsPeriod.year,
+          ),
+          // D3-6: the Pro card, gated on its own (PaywallGate.card).
+          ForecastCard(subs: subs, money: money, currencyCode: currencyCode),
         ];
 
-        // 🔴 THE `LayoutBuilder` SITS OUTSIDE THE PANE, AND THAT IS NOT STYLE.
-        // `app_spacing.dart`'s `pagePadding` tombstone records this exact trap: a
-        // `LayoutBuilder` INSIDE a `ContentPane` measures the PANE, so on a 1920
-        // window it reads 720 and every branch taken on it is confidently wrong
-        // with nothing to show for it. Out here it reads the body width the chassis
-        // handed down, which is the width there actually is to divide.
+        final List<Widget> keyed = <Widget>[
+          for (int i = 0; i < cards.length; i++)
+            KeyedSubtree(key: Key('insights.card.$i'), child: cards[i]),
+        ];
+
+        // 🔴 THE `LayoutBuilder` SITS OUTSIDE THE PANE: inside a `ContentPane`
+        // it would measure the PANE, not the body the chassis handed down.
         return LayoutBuilder(
           builder: (BuildContext _, BoxConstraints constraints) {
-            // TWO COLUMNS FROM `AppBreakpoints.large` (1200) UP — see `_twoUp` for
-            // why the card count is half the condition and why 1200 of BODY is
-            // 1561 of WINDOW.
             final bool twoUp = _twoUp(constraints.maxWidth, cards.length);
-
             return _pane(
               twoUp: twoUp,
               child: ListView(
-                // P3 PORT — PADDING RE-BASED FOR THE CHASSIS SHELL (home's
-                // precedent). Live was `fromLTRB(18, 58, 18, 108)`. Both odd
-                // numbers paid for the old shell: 58 cleared a status bar under a
-                // `Scaffold` with no app bar, 108 cleared `AppShell`'s floating
-                // pill bar plus its FAB. The chassis wraps the body in a `SafeArea`
-                // and puts navigation in `bottomNavigationBar`, so both insets
-                // would now be paid twice. 18 is `AppSpacing.gutterCompact`, the
-                // chassis's own page gutter.
-                //
-                // ⚠️ HALF OF THAT WAS WRONG AND IS CORRECTED HERE RATHER THAN
-                // DELETED. The pill is `bottomNavigationBar` and WAS
-                // double-paid; the FAB is `floatingActionButton`, which
-                // reserves nothing and floats over this list, so its 72 px was
-                // dropped instead. [AppShell.pageInsetOf] carries the
-                // arithmetic for all five branches — and this surface matters
-                // twice over, because [ADR 077] §A moves the budget card here.
                 padding: AppShell.pageInsetOf(context),
                 children: <Widget>[
-                  // The heading stays FULL WIDTH in both layouts. It is the page's
-                  // one label, not a card, and splitting a title across a column
-                  // boundary would make the grid look like two pages.
-                  Text(
-                    l10n.insightsTitle,
-                    style: AppText.title.copyWith(
-                      fontSize: 26,
-                      color: neutral.ink,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    l10n.insightsSubtitle,
-                    style: AppText.muted.copyWith(
-                      fontSize: 12,
-                      color: neutral.muted,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+                  // The heading and the summary stay FULL WIDTH in both
+                  // layouts: they are the page's label and its headline
+                  // figures, not cards of the grid.
+                  _header(context, l10n),
+                  const SizedBox(height: AppSpacing.lg),
+                  SummaryTiles(subs: subs, money: money, now: DateTime.now()),
+                  const SizedBox(height: AppSpacing.lg),
                   if (twoUp)
-                    _twoColumnCards(cards, _cardGap)
+                    _twoColumnCards(keyed, _cardGap)
                   else
-                    for (int i = 0; i < cards.length; i++) ...<Widget>[
+                    for (int i = 0; i < keyed.length; i++) ...<Widget>[
                       if (i > 0) const SizedBox(height: _cardGap),
-                      cards[i],
+                      keyed[i],
                     ],
                 ],
               ),
@@ -365,6 +237,49 @@ class InsightsScreen extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+
+  /// The title and the Month / Year switch on one line; the switch drops under
+  /// the title when the two do not fit (a phone at 200 % text).
+  Widget _header(BuildContext context, AppLocalizations l10n) {
+    final ThemeData theme = Theme.of(context);
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: AppSpacing.md,
+      runSpacing: AppSpacing.sm,
+      children: <Widget>[
+        Semantics(
+          header: true,
+          child: Text(
+            l10n.insightsTitle,
+            style: theme.textTheme.headlineMedium?.copyWith(
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+        ),
+        Semantics(
+          label: l10n.insightsPeriodLabel,
+          container: true,
+          child: SegmentedButton<InsightsPeriod>(
+            key: const Key('insights.period'),
+            segments: <ButtonSegment<InsightsPeriod>>[
+              ButtonSegment<InsightsPeriod>(
+                value: InsightsPeriod.month,
+                label: Text(l10n.insightsPeriodMonth),
+              ),
+              ButtonSegment<InsightsPeriod>(
+                value: InsightsPeriod.year,
+                label: Text(l10n.insightsPeriodYear),
+              ),
+            ],
+            selected: <InsightsPeriod>{_period},
+            onSelectionChanged: (Set<InsightsPeriod> next) =>
+                setState(() => _period = next.single),
+          ),
+        ),
+      ],
     );
   }
 
@@ -408,7 +323,7 @@ class InsightsScreen extends ConsumerWidget {
   // 🔴 TWO COLUMNS → the default `kMaxBodyWidth` (1280), AND THAT IS NOT A
   // REVERSAL OF THE LINE ABOVE. `reading` bounds a COLUMN of cards, and in the
   // two-up layout there are two of them: 1280 less the 18/18 page gutters less
-  // the 14px column gap leaves 615 per column — comfortably inside `reading`,
+  // the 16px column gap (AppSpacing.lg, D3-7) leaves 614 per column — inside `reading`,
   // so the number that justifies 720 is still being honoured, once per column.
   // Capping the two-up layout at 720 instead would give 353px columns, which is
   // narrower than the 375px phone this page is designed for.
@@ -428,322 +343,4 @@ class InsightsScreen extends ConsumerWidget {
   //
   // Everything left on this screen is computed from the subscriptions actually
   // held. When real history exists, a trend can come back and be true.
-
-  Widget _categoryCard(
-    BuildContext context,
-    AppLocalizations l10n,
-    MoneyFormatter money,
-    String currencyCode,
-    List<CategoryTotal> cats,
-  ) {
-    final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
-    // 🔴 ONE ROUNDING DECISION FOR THE WHOLE CARD, AND THAT IS THE FIX.
-    // The centre used to be `formatBagRounded(total)` and each legend row
-    // `formatBagRounded(c.value)`, computed independently — so the centre
-    // showed ROUNDED-SUM and the column showed SUM-OF-ROUNDED, which differ
-    // whenever the discarded fractions add past a unit. The Play listing
-    // captured on 2026-09-20 read $93 in the ring with a legend summing to $94,
-    // on the same six subscriptions: no arithmetic was wrong and the product
-    // still contradicted itself in front of a store reviewer.
-    //
-    // `formatBreakdownRounded` folds the total from these very categories and
-    // apportions the rows against it (largest remainder, per currency), so the
-    // column adds up to the centre by construction. It is the same argument
-    // `segments` below already rests on: a figure derived from `cats` cannot
-    // drift from the `cats` beside it, and a second source could.
-    final ({List<String> parts, String total}) figures = money
-        .formatBreakdownRounded(<MoneyBag>[
-          for (final CategoryTotal c in cats) c.value,
-        ]);
-    final List<MapEntry<double, Color>> segments = <MapEntry<double, Color>>[
-      for (int i = 0; i < cats.length; i++)
-        MapEntry<double, Color>(
-          SubMath.chartWeight(cats[i].value, currencyCode),
-          AppColors.ramp[i % AppColors.ramp.length],
-        ),
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: cardDecoration(context),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          // `byCategory` is SHARED with `budget_screen.dart` — the same heading
-          // over the same breakdown, so one key rather than two that drift.
-          Text(
-            l10n.byCategory,
-            style: AppText.title.copyWith(fontSize: 16, color: neutral.ink),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: <Widget>[
-              SizedBox(
-                width: 126,
-                height: 126,
-                // 🔴 A `CustomPaint` IS PIXELS. It contributes NOTHING to the
-                // semantics tree — no label, no value, no role — so the chart
-                // that is the whole point of this screen was, to a screen
-                // reader, a 126×126 hole with a bare currency figure floating in
-                // the middle of it. The `Center` child below is real text, so
-                // "₹2,340" and "/mo" were audible, but nothing said what they
-                // were the total OF, and the SHAPE — which categories, in what
-                // proportion — existed only as arcs.
-                //
-                // 🔴 THE LABEL IS BUILT FROM `cats` AND `total`, WHICH IS THE
-                // SAME DATA `DonutPainter` IS HANDED. `segments` is derived from
-                // `cats` two statements up, so the sentence and the arcs cannot
-                // disagree: a category that stops being painted stops being
-                // announced in the same edit. Reading the figures back out of
-                // the widget tree, or restating them from a second query, is how
-                // a chart description drifts from its chart.
-                //
-                // ⚠️ `excludeSemantics: true` IS DELIBERATE AND IT IS NOT A LOSS.
-                // The centre's two `Text`s say `{total}` and "/mo", and
-                // `a11yCategoryDonut` already opens with `{total} a month in
-                // total` — keeping both would announce the same figure twice,
-                // once as a fragment. The legend to the RIGHT of the donut is
-                // outside this subtree and is untouched, so a reader who wants
-                // the per-category rows one at a time still has them.
-                //
-                // ⚠️ The join is `', '` and NOT an arb key, matching the rule
-                // this file group already records for `' / '` in
-                // `budget_screen.dart`: it separates two formatted values, both
-                // of which are themselves localized (`a11yCategoryShare` carries
-                // the name/figure order, `Currency` carries the figure). A key
-                // for a comma asks a translator for punctuation, not language.
-                //
-                // 🔴 `container: true` IS LOAD-BEARING AND WAS MEASURED, not
-                // assumed. Without it this annotation has no conflicting
-                // sibling, so Flutter's fragment compiler ABSORBS it upward:
-                // the whole card became ONE node reading "By category ·
-                // <this sentence> · Fitness · $255 · Creative · $60 · …" — the
-                // description and the legend it summarises glued into a single
-                // stop, the chart no longer a thing you can land on, and the
-                // figures said twice. `container: true` makes the chart its own
-                // element, which is what it is.
-                child: Semantics(
-                  container: true,
-                  label: l10n.a11yCategoryDonut(
-                    figures.total,
-                    <String>[
-                      for (int i = 0; i < cats.length; i++)
-                        l10n.a11yCategoryShare(cats[i].name, figures.parts[i]),
-                    ].join(', '),
-                  ),
-                  excludeSemantics: true,
-                  child: CustomPaint(
-                    painter: DonutPainter(segments: segments),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          Text(
-                            // Keyed, with the legend figures below, so a test
-                            // can read the two STRINGS back and add the column
-                            // up. That is the only way this property is
-                            // falsifiable: the minor units behind them always
-                            // summed exactly, so an assertion on `Money` values
-                            // passes against the very defect it is for.
-                            key: const Key('insights.donut.total'),
-                            figures.total,
-                            style: AppText.fig.copyWith(
-                              fontSize: 18,
-                              color: neutral.ink,
-                            ),
-                          ),
-                          Text(
-                            l10n.perMonthShort,
-                            style: AppText.muted.copyWith(
-                              fontSize: 9,
-                              color: neutral.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 18),
-              Expanded(
-                child: Column(
-                  children: <Widget>[
-                    for (int i = 0; i < cats.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 9),
-                        child: Row(
-                          children: <Widget>[
-                            Container(
-                              width: 10,
-                              height: 10,
-                              decoration: BoxDecoration(
-                                color:
-                                    AppColors.ramp[i % AppColors.ramp.length],
-                                borderRadius: BorderRadius.circular(3),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                cats[i].name,
-                                style: AppText.body.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12,
-                                  color: neutral.ink,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              key: Key('insights.legend.figure.$i'),
-                              figures.parts[i],
-                              style: AppText.fig.copyWith(
-                                fontSize: 12,
-                                color: neutral.muted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _savingsCard(
-    BuildContext context,
-    AppLocalizations l10n,
-    MoneyFormatter money,
-    List<Subscription> unused,
-    MoneyBag savings,
-  ) {
-    final ({Color ink, Color muted, Color line}) neutral = neutrals(context);
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: cardDecoration(context),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              // Expanded + ellipsis (P2.6b route-walk finding): an intrinsic
-              // title beside an intrinsic pill overflows narrow cards.
-              Expanded(
-                child: Text(
-                  l10n.savingsOpportunities,
-                  style: AppText.title.copyWith(
-                    fontSize: 16,
-                    color: neutral.ink,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Pill(
-                // A KEY, not an interpolation: `/mo` is an abbreviation of a
-                // word, and where it sits relative to the amount is the
-                // translator's call.
-                l10n.perMonthAmount(money.formatBag(savings)),
-                // The savings pill is a STATUS surface — green means "money you
-                // could keep" in either brightness — so both halves stay the
-                // literal tokens, the same call `AppThemeX.fromScheme` makes
-                // when it refuses to re-hue positive/warn/danger.
-                bg: const Color.fromRGBO(16, 185, 129, 0.12),
-                fg: AppColors.positive,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          for (final Subscription s in unused)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              child: Container(
-                padding: const EdgeInsets.all(11),
-                decoration: BoxDecoration(
-                  // The row outline is a neutral, so it has to move with the
-                  // surface: `AppColors.line` (#ECECF2) is a near-white
-                  // hairline that GLARES on a dark card instead of receding.
-                  border: Border.all(color: neutral.line),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    GlyphTile(glyph: s.glyph, size: 40, fontSize: 11),
-                    const SizedBox(width: 11),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            s.name,
-                            style: AppText.body.copyWith(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              color: neutral.ink,
-                            ),
-                          ),
-                          Text(
-                            // [DATA], not a key — `usageNote` is a field on the
-                            // subscription, so localizing it is the demo-data
-                            // decision the workorder records as out of scope.
-                            s.usageNote,
-                            style: TextStyle(
-                              fontFamily: 'Manrope',
-                              fontWeight: FontWeight.w700,
-                              fontSize: 11,
-                              // 🔴 FORKED BY BRIGHTNESS, NOT A CONSTANT — the
-                              // literal here was [AppColors.warn], 2.15:1 as
-                              // 11px w700 on the light card; measured 4.95:1
-                              // light / 5.74:1 dark after the fork. See
-                              // [_warnOnLight] for both measurements and for
-                              // why the token itself does not move.
-                              color: _warnAsText(context),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // 🔴 48, NOT 36 — MEASURED 73.5x36.0 AGAINST
-                    // androidTapTargetGuideline. This is the control that opens
-                    // the cancel sheet, i.e. the one destructive path on this
-                    // screen, and it shipped as the smallest button in the app.
-                    // No WCAG 2.5.8 exception reaches it: there is one per row
-                    // and no equivalent control anywhere on insights, it is not
-                    // inline in text, and nothing about a savings card makes 36
-                    // essential. Both numbers move together — `GradientButton`
-                    // sizes its own `SizedBox`, so leaving the outer one at 36
-                    // would clip the button rather than shrink it.
-                    SizedBox(
-                      height: 48,
-                      child: GradientButton(
-                        // REUSES the shared `cancel` key. The label is painted
-                        // white on `AppColors.brandGradient` inside
-                        // `GradientButton`, which is correct in both
-                        // brightnesses — an on-gradient colour must not follow
-                        // the scheme, because the surface under it does not.
-                        label: l10n.cancel,
-                        height: 48,
-                        fontSize: 12,
-                        onPressed: () => showCancelSheet(context, s),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          if (unused.isEmpty)
-            Text(
-              l10n.insightsNothingFlagged,
-              style: AppText.muted.copyWith(color: neutral.muted),
-            ),
-        ],
-      ),
-    );
-  }
 }

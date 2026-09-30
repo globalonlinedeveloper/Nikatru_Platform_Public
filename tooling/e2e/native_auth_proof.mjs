@@ -20,6 +20,17 @@
 //   3. reads the run's output back: every NK_PROOF step, and on a callback
 //      target the line `nk_auth_callback flow=reset outcome=failed`. A missing
 //      line fails the run even when `flutter test` exited 0.
+//   4. ⏱ 2026-09-29 (AB-O1-05): when the app's proof suite declares the
+//      offline read (it prints OFFLINE_READ_LINE), requires that line too — the
+//      list read back with the network off from this target's own store. An app
+//      whose suite has no such step is not asked for it; one whose suite has it
+//      and whose run did not print it is a finding.
+//
+// ⏱ 2026-09-29 (AB-E2E-02): also the SCHEDULED native legs' drive —
+// e2e.yml's `native` job runs this per target every week, and
+// tooling/e2e-leg-register.json `nativeTargets` names it as what proves the
+// anonymous and sign-in legs off web. native-auth-proof.yml stays the
+// per-auth-change dispatch; both run this file and nothing else.
 //
 // Windows runs WITHOUT --callback: protocol activation needs the MSIX
 // installed, and a runner build is not one, so windows-store keeps
@@ -45,6 +56,19 @@ export const PROOF_TEST = 'integration_test/native_auth_proof_test.dart';
 export const AWAIT_MARKER = 'NK_PROOF_AWAIT_CALLBACK';
 export const FAILED_CALLBACK_LINE = 'nk_auth_callback flow=reset outcome=failed';
 export const TRACE_URL = 'https://platform.nikatru.com/cdn-cgi/trace';
+export const OFFLINE_READ_LINE = 'NK_PROOF step=offline-read outcome=ok';
+
+/** Does [app]'s proof suite declare the offline read? Read comment-stripped:
+ *  a sentence about the step is not the step. */
+export function offlineReadDeclared(root, app) {
+  const p = join(root, 'apps', app, PROOF_TEST);
+  if (!existsSync(p)) return false;
+  const code = readFileSync(p, 'utf8')
+    .split('\n')
+    .map((l) => l.replace(/^\s*\/\/.*$/, ''))
+    .join('\n');
+  return /\bkOfflineReadOkLine\b/.test(code);
+}
 
 /** The unusable reset callback the OS opens: a real marker, a code no flow minted. */
 export const callbackUrl = (app) => `com.nikatru.${app}://auth-callback?nk_auth=reset&code=st-n1-invalid`;
@@ -107,7 +131,7 @@ export function openCommands(target, url, { app, root, device, home = homedir() 
 }
 
 /** What the run's output proves, and what it does not. */
-export function readProof(out, { callback }) {
+export function readProof(out, { callback, offlineRead = false }) {
   const text = String(out ?? '');
   const problems = [];
   const need = (line, why) => {
@@ -119,6 +143,7 @@ export function readProof(out, { callback }) {
     if (!m) problems.push(`missing "NK_PROOF step=${step}" — GoTrue's answer was not recorded`);
     else if (m[1] === 'captcha_failed') problems.push(`${step} answered captcha_failed — the call did not go through the native route`);
   }
+  if (offlineRead) need(OFFLINE_READ_LINE, 'the list was not read back with the network off from this target\'s store');
   need('NK_PROOF step=sign-out outcome=ok', 'sign-out did not return to the sign-in form');
   if (callback) {
     need(FAILED_CALLBACK_LINE, 'the OS-delivered callback was not reported as a failed exchange');
@@ -179,6 +204,8 @@ async function main() {
     console.error(`${NAME}: missing env ${missing.join(', ')} — the build would run in demo posture or without the user`);
     process.exit(2);
   }
+  const offlineRead = offlineReadDeclared(root, o.app);
+  console.log(`${NAME}: ${o.app}'s proof suite ${offlineRead ? 'declares' : 'does not declare'} the offline read`);
   await printEgressIp();
 
   const flutterArgs = [
@@ -208,14 +235,14 @@ async function main() {
   child.stderr.on('data', onData(process.stderr));
   const code = await new Promise((r) => child.on('close', r));
 
-  const problems = readProof(out, { callback: o.callback });
+  const problems = readProof(out, { callback: o.callback, offlineRead });
   if (code !== 0) problems.unshift(`flutter test exited ${code}`);
   if (problems.length) {
     for (const p of problems) console.error(`FAIL ${p}`);
     console.error(`${NAME}: ${o.app}/${o.target} FAILED`);
     process.exit(1);
   }
-  console.log(`${NAME}: ${o.app}/${o.target} OK — the form signed in, the gated calls answered without a captcha, sign-out returned${o.callback ? ', and the OS-delivered callback failed cleanly' : ''}`);
+  console.log(`${NAME}: ${o.app}/${o.target} OK — the form signed in, the gated calls answered without a captcha, sign-out returned${offlineRead ? ', the list read back offline' : ''}${o.callback ? ', and the OS-delivered callback failed cleanly' : ''}`);
 }
 
 const norm = (p) => (process.platform === 'win32' ? resolve(p).toLowerCase() : resolve(p));

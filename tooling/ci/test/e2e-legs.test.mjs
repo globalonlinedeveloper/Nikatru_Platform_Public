@@ -36,6 +36,8 @@ const WORKFLOW = '.github/workflows/e2e.yml';
  *  tooling/ci/assert-erasure-reach.mjs, with its own mutation tests. */
 const E2E_HARNESS = 'tooling/e2e';
 const WORKSPACE = 'pubspec.yaml';
+const CHANNELS = 'tooling/channel-register.json';
+const NATIVE_SUITE = 'apps/subscriptiontracker/integration_test/native_auth_proof_test.dart';
 
 /** A real-tree copy carrying exactly what the guard reads. */
 function realTree() {
@@ -51,6 +53,9 @@ function realTree() {
   // 10b: the guard requires every app of the workspace set to carry its suite,
   // and reads the set from the root pubspec (tooling/ci/app-set.mjs).
   cpSync(join(REPO, WORKSPACE), join(root, WORKSPACE));
+  // limb NATIVE (AB-E2E-02): the target catalog and the native suite.
+  cpSync(join(REPO, CHANNELS), join(root, CHANNELS));
+  cpSync(join(REPO, NATIVE_SUITE), join(root, NATIVE_SUITE));
   return root;
 }
 
@@ -630,5 +635,112 @@ describe('coverage self-checks', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+// ⏱ 2026-09-29 · AB-E2E-02 — limb NATIVE. Every case mutates the REAL tree copy.
+describe('limb NATIVE — every native catalog target has a leg or a declared equivalent', () => {
+  const edit = (root, f) => { const reg = readReg(root); f(reg); writeReg(root, reg); };
+  const wf = (root, f) => { const p = join(root, WORKFLOW); writeFileSync(p, f(readFileSync(p, 'utf8'))); };
+
+  test('the real tree grades five native targets and prints them', () => {
+    withTree(() => {}, (r) => {
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /native targets \(android, ios, linux, macos, windows\): 5 run/);
+    });
+  });
+
+  // 🔴 THE RED CONTROL THE FINDING NAMES — on the base register (no
+  // nativeTargets) this is the state the guard used to pass with exit 0.
+  test('🔴 no nativeTargets at all: COVERAGE LOST, exit 2', () => {
+    withTree((root) => edit(root, (reg) => { delete reg.nativeTargets; }), (r) => {
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(r.stderr, /neither a leg nor a declared equivalent/);
+    });
+  });
+
+  test('🔴 one target missing one leg (ios sign-in): exit 2, naming it', () => {
+    withTree((root) => edit(root, (reg) => { delete reg.nativeTargets.targets.ios['sign-in']; }), (r) => {
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(r.stderr, /ios: sign-in/);
+    });
+  });
+
+  test('🔴 a target the catalog gains is ungraded until declared: exit 2', () => {
+    withTree((root) => {
+      const p = join(root, CHANNELS);
+      const c = JSON.parse(readFileSync(p, 'utf8'));
+      c.channels.push({ id: 'fuchsia-store', surface: 'app', platforms: ['fuchsia'] });
+      writeFileSync(p, JSON.stringify(c));
+    }, (r) => {
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(r.stderr, /fuchsia: anonymous, sign-in, account-delete-purges/);
+    });
+  });
+
+  test('🔴 a declared leg whose job can only start on an undeclared cron is never run: exit 1', () => {
+    withTree((root) => wf(root, (y) => y.replace("- cron: '43 4 * * 0'", "- cron: '44 4 * * 0'")), (r) => {
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /never run/);
+    });
+  });
+
+  test('🔴 the native job gone from the workflow: exit 1', () => {
+    withTree((root) => edit(root, (reg) => { reg.nativeTargets.job = 'native-gone'; }), (r) => {
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /has no job `native-gone`/);
+    });
+  });
+
+  test('🔴 a target dropped from the job matrix: exit 1', () => {
+    withTree((root) => wf(root, (y) => y.replace(/\n {10}- windows\n/, '\n')), (r) => {
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /does not list windows in its matrix/);
+    });
+  });
+
+  test('🔴 the job no longer runs the native-auth-proof drive: exit 1', () => {
+    withTree((root) => wf(root, (y) => y.replaceAll('node tooling/e2e/native_auth_proof.mjs', 'node tooling/e2e/other.mjs')), (r) => {
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /does not run `node tooling\/e2e\/native_auth_proof\.mjs`/);
+    });
+  });
+
+  test('🔴 an equivalent to a web leg that is not asserted: exit 1', () => {
+    withTree((root) => edit(root, (reg) => { reg.nativeTargets.equivalents['account-delete-purges'].provenBy = 'hope'; }), (r) => {
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /provenBy: "web"/);
+    });
+  });
+
+  test('🔴 a native anchor that stopped resolving (the sign-in step deleted): exit 1', () => {
+    withTree((root) => {
+      const p = join(root, NATIVE_SUITE);
+      writeFileSync(p, readFileSync(p, 'utf8').replace("debugPrint('NK_PROOF step=sign-in outcome=ok');", ''));
+    }, (r) => {
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /native leg "sign-in"/);
+    });
+  });
+
+  // AB-O1-05 — the offline read, anchored in both suites.
+  test('🔴 the offline read removed from the native suite: exit 1', () => {
+    withTree((root) => {
+      const p = join(root, NATIVE_SUITE);
+      writeFileSync(p, readFileSync(p, 'utf8').replace('await expectListSurvivesOffline(seeded);', ''));
+    }, (r) => {
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /offlineRead/);
+    });
+  });
+
+  test('🔴 the offline read removed from the web suite: exit 1', () => {
+    withTree((root) => {
+      const p = join(root, SUITE);
+      writeFileSync(p, readFileSync(p, 'utf8').replace('expectListSurvivesOffline(subNameB)', 'Future<void>.value()'));
+    }, (r) => {
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /offlineRead/);
+    });
   });
 });
