@@ -3,7 +3,7 @@
 //
 // ⏱ 2026-09-30 · O-REMINDER-DAYS-JSON-READ-AS-NUMBER (rv2-services-001).
 // subscriptiontracker-api WRITES the column as JSON text — `'[7,1]'`, `'[]'` or
-// NULL (its 0003 migration, line 91) — and the platform Worker READ it as a
+// NULL (its 0003 migration, lines 91-92) — and the platform Worker READ it as a
 // number. A TEXT column always arrives as a string, so the platform dropped every
 // value: the e-mail digest and the live calendar-feed alarms used the account
 // lead for every subscription, and an explicit `[]` ("no reminder for this one")
