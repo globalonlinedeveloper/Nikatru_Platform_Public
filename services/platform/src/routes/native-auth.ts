@@ -197,11 +197,18 @@ function refusedBy(verdict: StrictVerdict): Response | null {
 
 /**
  * THE ATTESTATION GATE (⏱ 2026-09-29, ADR no.NNN), for an op or a key
- * registration: the headers, the op table (KIND_OPS — structural, before any
- * config is read), the kind this deploy accepts, the kind's own config, the
- * kind's per-network ceiling, the body, the single-use challenge, and the proof
- * — in that order, so the cheap refusals cost no D1 read and no crypto, and a
- * challenge is burned by any request that reaches it, pass or fail.
+ * registration, IN THIS ORDER — the order is the security property:
+ *   1. the headers;
+ *   2. the op table (KIND_OPS — structural, before any config is read);
+ *   3. the kind this deploy accepts, then the kind's own config;
+ *   4. PURE checks, no limiter and no D1: a Play proof's shape (malformed = 400),
+ *      then the challenge's MAC, app and expiry (challengeIsOurs);
+ *   5. the kind's per-network ceiling;
+ *   6. the body, then the D1 redemption (single use — burned pass or fail);
+ *   7. the proof (verifyOp: shape, per-network daily share, global ceiling,
+ *      and only then Google; or the key's signature, then its daily budget).
+ * So a malformed proof or a forged challenge costs no limiter, no D1 and no
+ * crypto beyond one HMAC.
  *
  * Answers the kind, the exact body and the clientData, or the refusal.
  */

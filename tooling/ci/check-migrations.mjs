@@ -50,6 +50,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync } from 'node:fs';
 import { boundedGlob } from './tree-walk.mjs';
+import { duplicateMigrationNumbers } from './migration-numbers.mjs';
 
 /** Migration sets under guard. The brick's is included: it is the schema every
  *  future stamped app starts from, so a violation there scales to 50 apps.
@@ -343,6 +344,18 @@ console.log(
   `check-migrations: ${declaring.length} wrangler config(s) declare a migrations_dir, all named by REQUIRED_COVERAGE ` +
     `(${declaring.join(', ')}).`,
 );
+
+// ⏱ 2026-09-30 · ONE NUMBER PER MIGRATIONS DIRECTORY (ADR no.NNN, third review
+// of #1070). Wrangler applies by FILE NAME, so two `0021_*` files in one
+// directory both apply, silently. tooling/ci/migration-numbers.mjs says why.
+for (const dup of duplicateMigrationNumbers(files)) {
+  console.error(
+    `${dup.dir}: migration number ${dup.number} is claimed by ${dup.files.length} files (${dup.files.join(', ')}). ` +
+      'Wrangler would apply both, in name order, and every citation of the number is ambiguous. ' +
+      'The later change renumbers to the next free number.',
+  );
+  violations++;
+}
 
 const approved = [];
 for (const file of files) {
