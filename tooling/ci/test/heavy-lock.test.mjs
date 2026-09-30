@@ -102,6 +102,12 @@ const HANG_AT_EXIT = (() => {
  *  before it (heavy-work-done.mjs's) still runs, and this is the one that blocks.
  *  The marker is `<pid> <process.exitCode>`. Passed to the COMMAND heavy.mjs runs,
  *  never to heavy.mjs itself. */
+// The marker's WORDS, or '' while it has none. The hang fixtures write it with
+// writeFileSync, which creates the file EMPTY and then writes: waiting on
+// existsSync alone raced that gap and read '' (CI run 36746064800, H0:
+// `'' !== '45340 5'`). Every wait below waits for the words.
+const markerText = (marker) => (existsSync(marker) ? readFileSync(marker, 'utf8') : '');
+
 const HANG_IN_EXIT = (() => {
   const file = join(TMP, 'hang-in-exit.mjs');
   writeFileSync(file, [
@@ -123,9 +129,9 @@ const hungRun = async (args, env, { cwd, lock }) => {
   c.stdout.on('data', (d) => { out += d; });
   c.stderr.on('data', (d) => { out += d; });
   const closed = new Promise((settle) => c.on('close', settle));
-  const hung = await waitFor(() => existsSync(marker) || c.exitCode !== null, 30_000);
+  const hung = await waitFor(() => markerText(marker) !== '' || c.exitCode !== null, 30_000);
   const state = {
-    marker: existsSync(marker) ? readFileSync(marker, 'utf8') : null,
+    marker: markerText(marker) || null,
     alive: c.exitCode === null && c.signalCode === null,
     lockHeld: existsSync(lock),
   };
@@ -146,8 +152,8 @@ const heavyHung = async (heavyArgs, env, { lock, cwd, ceilingMs = 20_000, killHu
   c.stdout.on('data', (d) => { out += d; });
   c.stderr.on('data', (d) => { out += d; });
   const closed = new Promise((settle) => c.on('close', (status) => settle(status)));
-  await waitFor(() => existsSync(marker) || c.exitCode !== null, 30_000);
-  const [hungPid, hungCode] = existsSync(marker) ? readFileSync(marker, 'utf8').split(' ').map(Number) : [null, null];
+  await waitFor(() => markerText(marker) !== '' || c.exitCode !== null, 30_000);
+  const [hungPid, hungCode] = markerText(marker) ? markerText(marker).split(' ').map(Number) : [null, null];
   const freed = hungPid !== null && (await waitFor(() => !existsSync(lock), 5_000));
   const lockFreeWhileHung = freed && pidAlive(hungPid);
   const kill = (pid) => { try { process.kill(pid, 'SIGKILL'); } catch {} };
@@ -205,8 +211,8 @@ describe('a node child HUNG after its work frees the lock: the work-done channel
     const marker = join(dirname(lock), 'h0.marker');
     const c = spawn(process.execPath, ['--import', HANG_IN_EXIT, '-e', 'process.exitCode = 5'], { env: { ...childEnv(lock), HANG_MARKER: marker } });
     const closed = new Promise((settle) => c.on('close', settle));
-    const reached = await waitFor(() => existsSync(marker) || c.exitCode !== null);
-    const text = existsSync(marker) ? readFileSync(marker, 'utf8') : null;
+    const reached = await waitFor(() => markerText(marker) !== '' || c.exitCode !== null);
+    const text = markerText(marker) || null;
     await new Promise((r) => setTimeout(r, 1000));
     const alive = c.exitCode === null && c.signalCode === null;
     c.kill('SIGKILL');
