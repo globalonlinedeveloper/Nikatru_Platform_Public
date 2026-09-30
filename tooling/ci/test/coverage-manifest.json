@@ -113,7 +113,7 @@
   "ensure-monitors.test.mjs": 24,
   "entitlement-contract.test.mjs": 104,
   "erasure-reach.test.mjs": 53,
-  "ext-connect.test.mjs": 13,
+  "ext-connect.test.mjs": 15,
   "extension-publish.test.mjs": 57,
   "extension-submission.test.mjs": 64,
   "extension-tool-identity.test.mjs": 79,
