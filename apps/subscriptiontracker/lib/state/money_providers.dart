@@ -43,9 +43,55 @@ final Provider<RailConfig> railConfigProvider = Provider<RailConfig>((ref) {
 /// ST-U2 (audit C35): whether this build SELLS. `paywall.enabled` false used
 /// to hide the lock and nothing else — the Upgrade row, the promo card and the
 /// paywall still offered a store offering, so a user could pay for nothing.
+///
+/// ⏱ ST-D9 (D9-3): AND NOT ON A CHANNEL WHOSE RAIL IS `none`. `apps-gov-in`
+/// forbids every real rail, so its build could never sell — but a served
+/// `paywall.enabled: true` still drew the Upgrade row, the promo card and a
+/// paywall that could only say "not available here". Every surface that reads
+/// this now hides there, while a Pro user keeps Manage (ROSCA reads `isPro`).
 final Provider<bool> sellingEnabledProvider = Provider<bool>(
-  (ref) => ref.watch(appConfigProvider).value?.paywall.enabled ?? false,
+  (ref) =>
+      (ref.watch(appConfigProvider).value?.paywall.enabled ?? false) &&
+      channelMaySell(AppConfig.releaseChannel),
 );
+
+/// Whether [releaseChannel] may show a Pro surface at all: false only for a
+/// DECLARED channel whose rail is `none` (today `apps-gov-in`). An undeclared
+/// channel — the `'dev'` default — answers true, so a dev build and every test
+/// keep drawing what the config says; its rail already sells nothing.
+bool channelMaySell(String releaseChannel) {
+  final PurchaseChannel? channel = ChassisBilling.channelNamed(releaseChannel);
+  return channel == null ||
+      PurchaseRailKind.forChannel(channel) != PurchaseRailKind.none;
+}
+
+/// ST-D9 · what the paywall pitches, READ FROM CONFIG — never typed here.
+///
+/// The served `paywall` block carries three keys beside the offerings:
+/// `pro_features` and `free_features`, lists of feature CODES the paywall
+/// resolves through this app's catalogue (the D-11 ruling: sync is free, Pro is
+/// plan and save), and `trial_copy`, the D-25 switch — no trial is worded
+/// until a store trial is configured and this is served true. Absent keys are
+/// empty lists and false, so a config that says nothing pitches nothing.
+typedef PaywallPitch = ({List<String> pro, List<String> free, bool trialCopy});
+
+final Provider<PaywallPitch> paywallPitchProvider = Provider<PaywallPitch>((
+  ref,
+) {
+  final Map<String, Object?> extra =
+      ref.watch(appConfigProvider).value?.paywall.extra ??
+      const <String, Object?>{};
+  List<String> codes(Object? v) => <String>[
+    if (v is List)
+      for (final Object? e in v)
+        if (e is String) e,
+  ];
+  return (
+    pro: codes(extra['pro_features']),
+    free: codes(extra['free_features']),
+    trialCopy: extra['trial_copy'] == true,
+  );
+});
 
 /// The authenticated entitlement read against the SHARED platform host.
 ///

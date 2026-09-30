@@ -62,6 +62,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show ChassisLocalizations;
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
@@ -147,6 +149,8 @@ Future<void> _pumpOn(
       child: MaterialApp(
         localizationsDelegates: const <LocalizationsDelegate<Object>>[
           AppLocalizations.delegate,
+          // ⏱ ST-D9: the paywall BODY is the chassis view, as in app.dart.
+          ChassisLocalizations.delegate,
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,

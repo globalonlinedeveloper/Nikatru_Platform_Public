@@ -2761,6 +2761,13 @@ void main() {
           ProviderScope(
             overrides: <Override>[
               sellingEnabledProvider.overrideWithValue(true),
+              // ⏱ ST-D9 (D-25): trial copy is served, not assumed. This sweep
+              // exists to HEAR the longest sentence, so it serves the flag on.
+              paywallPitchProvider.overrideWithValue((
+                pro: const <String>[],
+                free: const <String>[],
+                trialCopy: true,
+              )),
               purchaseRailProvider.overrideWithValue(
                 HostedCheckoutRail(
                   config: const RailConfig(

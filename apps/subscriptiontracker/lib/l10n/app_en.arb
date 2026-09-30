@@ -503,17 +503,45 @@
   "@planInactive": {
     "description": "See subscriptionActive."
   },
-  "planChecking": "Checking your plan…",
-  "@planChecking": {
-    "description": "Consumed by manage_plan_screen.dart. ST-U7 (C42): the plan row while the entitlement is loading. It used to say 'You do not have an active subscription' here."
+  "planActiveDetail": "Planning and savings tools are on.",
+  "@planActiveDetail": {
+    "description": "Second line on the manage-subscription status card while the SERVER reports an active plan (train ST-D9). Names what the plan gives (ruling D-11: Pro is plan and save), never a price."
   },
-  "planCheckFailed": "Could not check your plan.",
-  "@planCheckFailed": {
-    "description": "Consumed by manage_plan_screen.dart. ST-U7 (C42): the plan row when the entitlement could not be fetched, beside a Retry. Never 'you do not have a plan' — that was never checked."
+  "planInactiveDetail": "Tracking, reminders and sync stay free.",
+  "@planInactiveDetail": {
+    "description": "Second line on the manage-subscription status card with no active plan (train ST-D9). Ruling D-11: sync is free, so it is named as free here."
   },
-  "paywallLoadingPlans": "Loading plans…",
-  "@paywallLoadingPlans": {
-    "description": "Consumed by paywall_screen.dart. ST-U7 (C38): the spinner's label while a store rail is still being asked for its plans. It used to read 'Purchases are not available here.'"
+  "seeProPlans": "See plans",
+  "@seeProPlans": {
+    "description": "Manage-subscription row that opens the paywall, shown only to a user without a plan and only while this build sells. Names no price and no place to buy."
+  },
+  "paywallFeaturePlan": "Plan ahead",
+  "@paywallFeaturePlan": {
+    "description": "Paywall feature, config code `plan` (ruling D-11: Pro is plan and save). Which codes are shown is served config, never this file."
+  },
+  "paywallFeaturePlanBody": "Set budgets and see every charge before it lands.",
+  "@paywallFeaturePlanBody": {
+    "description": "One sentence under paywallFeaturePlan."
+  },
+  "paywallFeatureSave": "Find savings",
+  "@paywallFeatureSave": {
+    "description": "Paywall feature, config code `save` (ruling D-11)."
+  },
+  "paywallFeatureSaveBody": "See what you do not use and what you could cut.",
+  "@paywallFeatureSaveBody": {
+    "description": "One sentence under paywallFeatureSave."
+  },
+  "paywallFeatureTrack": "Track every subscription",
+  "@paywallFeatureTrack": {
+    "description": "Paywall free feature, config code `track`, listed under Always free."
+  },
+  "paywallFeatureRemind": "Renewal reminders",
+  "@paywallFeatureRemind": {
+    "description": "Paywall free feature, config code `remind`, listed under Always free."
+  },
+  "paywallFeatureSync": "Sync across your devices",
+  "@paywallFeatureSync": {
+    "description": "Paywall free feature, config code `sync`. Ruling D-11: sync is FREE, because sign-in is mandatory."
   },
   "restorePurchases": "Restore purchases",
   "@restorePurchases": {

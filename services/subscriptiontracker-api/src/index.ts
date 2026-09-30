@@ -32,7 +32,7 @@ import {
   JWKS_READING_TTL_MS,
   READING_TTL_MS,
 } from './lib/health';
-import { reportWorkerError } from './lib/error-sink';
+import { reportWorkerError, requestSinkContext } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
 import { supabaseAuth, erasureAuth } from './middleware/auth';
 import account from './routes/account';
@@ -202,18 +202,7 @@ app.notFound((c) => c.json({ error: 'not_found' }, 404));
 // not held open behind GlitchTip, and it never rejects.
 app.onError((err, c) => {
   console.error(`[unhandled] rid=${c.get('requestId') ?? '-'}`, err);
-  const url = new URL(c.req.url);
-  const report = reportWorkerError(
-    err,
-    {
-      service: 'subscriptiontracker-api',
-      release: c.env.RELEASE,
-      requestId: c.get('requestId'),
-      method: c.req.method,
-      path: url.pathname, // pathname only — never the query string
-    },
-    c.env,
-  );
+  const report = reportWorkerError(err, requestSinkContext('subscriptiontracker-api', c), c.env);
   try {
     c.executionCtx.waitUntil(report);
   } catch {
