@@ -1174,6 +1174,18 @@
       "reason": "A step NAME, shown on the checks list. The derivation is the inline bash below it, which no test executes. Judged 2026-09-19."
     },
     {
+      "file": ".github/workflows/extensions.yml",
+      "anchor": "- name: Run every suite that opts into the branded leg (derived, not listed)",
+      "status": "demoted",
+      "reason": "A step NAME, shown on the checks list. The derivation (every test/e2e/*.mjs carrying an e2e-branded: line) is the inline node block below it, which no test executes; the block itself exits 1 when no suite opts in. Judged 2026-09-30."
+    },
+    {
+      "file": ".github/workflows/extensions.yml",
+      "anchor": "this leg (run.mjs narrows itself to one capture). Derived, not listed: no tool or",
+      "status": "demoted",
+      "reason": "The e2e-branded job's why-comment restating the step it heads; the derivation is that step's inline node block, which no test executes. Judged 2026-09-30."
+    },
+    {
       "file": "README.md",
       "anchor": "so they cannot drift. It asserts **completeness, not greenness**",
       "status": "proven",
