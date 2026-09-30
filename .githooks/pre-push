@@ -1,6 +1,7 @@
 #!/bin/sh
 # ─────────────────────────────────────────────────────────────────────────────
-# pre-push — the FULL spec guards (~1 s), then a lock-free smoke of the ci-gate
+# pre-push — the FULL spec guards (~1 s), then the checks that cover what the push
+# changed (affected-guards.mjs, 2026-09-30 block below), then a lock-free smoke of the ci-gate
 # guards on each pushed commit (budget 60 s; see the 2026-09-24 block below).
 #
 # Why a separate full tier exists at all: it is where a guard too slow for every
@@ -125,6 +126,40 @@ if [ -z "$SHAS" ]; then
   echo "pre-push: no commit to smoke (the push only deletes, or git named no ref on stdin), so no ci-gate smoke."
   exit 0
 fi
+
+# ── the checks that cover what the push changed (2026-09-30) ────────────────
+# Lanes stopped running the whole-branch preflight on 2026-09-25 and were to check
+# their TOUCHED files; nothing enforced it, and 23 of the first failing jobs of
+# 125 PR runs (2026-09-29..30) were the lane's own change. affected-guards.mjs
+# selects every guard, guard test, Dart package gate and Worker suite whose subject
+# covers a path the pushed commit changed, runs them in parallel under a budget
+# (NIKATRU_AFFECTED_BUDGET_S, default 240 s), and prints each with its exit code and
+# the wall time. It judges THIS working tree, so the pushed commit must be HEAD here.
+# Exit 1 (a finding) and exit 2 (COVERAGE LOST: an unmapped path, a check that could
+# not run) both refuse the push.
+# The ONE escape, for a push whose only purpose is to reach CI for a Linux-only
+# check: NIKATRU_SKIP_FOR_CI=<check id>[,<id>] NIKATRU_SKIP_FOR_CI_REASON="<why>".
+# It skips only the checks it names, each must be one this run selected, and every
+# use is printed and appended to <git common dir>/affected-guards-skips.log.
+AFFECTED="$(dirname "$RUNNER")/affected-guards.mjs"
+if [ ! -f "$AFFECTED" ]; then
+  echo "pre-push: affected-guards.mjs not found beside $RUNNER, so the affected checks did not run. Refusing." >&2
+  exit 1
+fi
+TOP=$(git rev-parse --show-toplevel)
+for sha in $SHAS; do
+  echo "pre-push: running the checks that cover what $sha changed (budget ${NIKATRU_AFFECTED_BUDGET_S:-240} s)…"
+  node "$AFFECTED" --root "$TOP" --sha "$sha"
+  code=$?
+  if [ "$code" -ne 0 ]; then
+    echo "" >&2
+    echo "pre-push: the affected checks of $sha are not clean (exit $code). Push refused." >&2
+    echo "  Read the first FINDING, UNMAPPED or COVERAGE LOST line above, fix what it names, commit the fix and push again." >&2
+    echo "  Only a Linux-only check may be sent to CI instead, by name: NIKATRU_SKIP_FOR_CI=<id> NIKATRU_SKIP_FOR_CI_REASON=\"<why>\"." >&2
+    echo "  A red hook is fixed, never skipped: never push with --no-verify." >&2
+    exit "$code"
+  fi
+done
 
 for sha in $SHAS; do
   echo "pre-push: smoking the ci-gate guards on $sha (no machine lock; budget ${NIKATRU_SMOKE_BUDGET_S:-60} s)…"
