@@ -235,10 +235,16 @@ class OfflineNotice extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  message,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onErrorContainer,
+                // 🔴 A LIVE REGION (AB-O1-03). Reachable in traversal was not
+                // enough: the notice APPEARS mid-session, and a screen reader
+                // user who is not on it was never told the app went offline.
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    message,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
                   ),
                 ),
               ),
