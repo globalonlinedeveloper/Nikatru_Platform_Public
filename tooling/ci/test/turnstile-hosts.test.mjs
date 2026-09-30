@@ -63,7 +63,9 @@ describe('judge — every host we SERVE must be allowed', () => {
     assert.equal(v.ok, false);
     assert.deepEqual(v.missing, ['nikatru.com']);
     assert.match(v.line, /does not allow 1 host\(s\)/);
-    assert.match(v.line, /nikatru\.com/);
+    // The MISSING host, in the clause that names it — `subly.nikatru.com` in the
+    // "It allows" clause must not satisfy this (CodeQL js/regex/missing-regexp-anchor).
+    assert.match(v.line, /we serve: nikatru\.com\. It allows /);
     // the message has to say what the user SEES, or the next reader cannot connect
     // a red check to a form that merely looks broken
     assert.match(v.line, /Domain not allowed/);

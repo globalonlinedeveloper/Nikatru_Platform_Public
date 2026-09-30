@@ -1127,6 +1127,18 @@ function listDirs(abs) {
   return readdirSync(abs, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
 }
 
+/** The file's text, or null when there is no file. Read-and-catch rather than
+ *  exists-then-read: the answer is the read itself, not a check a later write
+ *  could race (CodeQL js/file-system-race). */
+function readIfPresent(abs) {
+  try {
+    return readFileSync(abs, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw e;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Main                                                               */
 
@@ -1138,7 +1150,7 @@ export function render(root, { check = false } = {}) {
   const wrote = [];
   for (const [rel, contents] of files) {
     const abs = join(root, rel);
-    const current = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+    const current = readIfPresent(abs);
     if (current === contents) continue;
     stale.push(rel);
     if (!check) {

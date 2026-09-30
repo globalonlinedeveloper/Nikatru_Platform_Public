@@ -157,10 +157,13 @@ const MONEY_WORKER = 'platform';
  * no second rail is being pursued today. WHICH successor is a queued owner
  * decision. The SHAPE of this list is unchanged; only its justification is.
  */
+// ⏱ 2026-09-30 · A case-insensitive SUBSTRING, not a RegExp: the same match an
+// unanchored `/…/i` made (a detector must find the host anywhere in a value), with
+// no hostname regexp for CodeQL to read as a missing anchor (#55, #56).
 const SANDBOX_SHAPES = [
-  { re: /pdl_sdbx_/i, what: 'a Paddle SANDBOX API key prefix (`pdl_sdbx_apikey_`)' },
-  { re: /sandbox-api\.paddle\.com/i, what: 'the Paddle SANDBOX API base URL' },
-  { re: /sandbox-vendors\.paddle\.com/i, what: 'the Paddle SANDBOX dashboard host' },
+  { needle: 'pdl_sdbx_', what: 'a Paddle SANDBOX API key prefix (`pdl_sdbx_apikey_`)' },
+  { needle: 'sandbox-api.paddle.com', what: 'the Paddle SANDBOX API base URL' },
+  { needle: 'sandbox-vendors.paddle.com', what: 'the Paddle SANDBOX dashboard host' },
 ];
 
 /** Comment-stripped JSONC → object. Comments are STRIPPED, never scanned: this
@@ -568,8 +571,9 @@ for (const c of configs) {
   // on the real value. It is string-aware, so `"https://…supabase.co"` — a `//`
   // inside a quoted value — survives in both readings.
   const code = stripSourceComments(c.raw, '.jsonc');
+  const lowered = code.toLowerCase();
   for (const s of SANDBOX_SHAPES) {
-    if (s.re.test(code)) {
+    if (lowered.includes(s.needle)) {
       fail(
         `${c.rel} contains ${s.what}. A deployed config naming a sandbox credential or host is the constructible ` +
           'form of "sandbox money grants a production unlock" — and unlike the original criterion, somebody can ' +

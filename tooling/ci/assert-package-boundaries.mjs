@@ -379,7 +379,7 @@ for (const key of Object.keys(KNOWN_BYPASSES)) {
 const live = Object.keys(KNOWN_BYPASSES).filter((k) => seen.has(k));
 if (live.length) {
   notes.push(`⬜ ${live.length} grandfathered adapter bypass(es) — real debt, not exemptions:`);
-  for (const k of live) notes.push(`   · ${k.replace('|', ' → package:')} — ${KNOWN_BYPASSES[k]}`);
+  for (const k of live) notes.push(`   · ${k.replaceAll('|', ' → package:')} — ${KNOWN_BYPASSES[k]}`);
   notes.push('   (printed, not failed: fixing these is an app refactor. Anything NEW fails the build.)');
 }
 

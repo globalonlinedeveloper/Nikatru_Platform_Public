@@ -250,7 +250,7 @@ for (const [label, url] of PROBES) {
   // reading of "is this transient?" this change exists to delete.
   if (err) {
     unreachable.push(
-      `${label} — could not be reached after ${attempts} attempt(s) (${err ? err.message : `HTTP ${res.status}`}); ` +
+      `${label} — could not be reached after ${attempts} attempt(s) (${err.message}); ` +
         'this check cannot conclude.',
     );
     continue;

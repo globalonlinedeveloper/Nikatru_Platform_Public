@@ -148,12 +148,11 @@
 // `assert-play-device-coverage.mjs` makes from `storeMetadataDir`, so the
 // directory this writes and the directory that guard grades cannot diverge.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from 'node:fs';
 import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
 import { pngHeader, flattenToOpaque, RasterUnavailable } from './chrome-raster.mjs';
 import { decodeRgba, PngUnreadable } from './png-codec.mjs';
 import { foldsOf, foldFor, foldLineProblems, selfTestFoldLineDetector, FOLD_ROWS, FOLD_TOLERANCE } from './capture-row-edge.mjs';
@@ -362,8 +361,11 @@ const fail = (lines) => {
 // children. The proof refusal is on the whole subtree rather than on one
 // directory: a demo frame is no less a demo frame for landing in the tablet set.
 const listingBase = join(ROOT, 'apps', app, 'store', CHANNEL);
-const proofDir = join(tmpdir(), `nk-shot-proof-${randomBytes(4).toString('hex')}`);
-const baseDir = resolve(arg('--out', PROOF ? proofDir : listingBase));
+// A --proof run with no --out writes into a directory mkdtempSync creates —
+// private and unguessable — never a random name joined onto tmpdir, which
+// another local user could plant first (CodeQL js/insecure-temporary-file).
+// Created only when it is the destination.
+const baseDir = resolve(arg('--out', null) ?? (PROOF ? mkdtempSync(join(tmpdir(), 'nk-shot-proof-')) : listingBase));
 
 if (PROOF && (baseDir === listingBase || baseDir.startsWith(listingBase + sep))) {
   fail([
@@ -839,9 +841,9 @@ for (const cap of CAPTURES) {
 // which is the same class of mistake as the stale-PNG one the clean above
 // exists for, in a file the clean cannot see because it is not a `.png`).
 // The file NAME inside it is `boardFileFor` in capture-board-parity.mjs, which
-// the parity suite proves is distinct per viewport.
-const boardDir = join(tmpdir(), `nk-shot-board-${randomBytes(4).toString('hex')}`);
-mkdirSync(boardDir, { recursive: true });
+// the parity suite proves is distinct per viewport. mkdtempSync, for the same
+// reason as the proof directory above.
+const boardDir = mkdtempSync(join(tmpdir(), 'nk-shot-board-'));
 
 const cd = NATIVE ? null : spawn(driver, ['--port=4444', '--silent'], { stdio: 'pipe' });
 let cdErr = '';

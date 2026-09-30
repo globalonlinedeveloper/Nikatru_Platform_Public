@@ -351,8 +351,11 @@ describe('judgeProject — a build IN FLIGHT is graded by its age, not called re
     assert.equal(IN_FLIGHT_CEILING_MS, 30 * 60 * 1000);
     assert.ok(DEPLOYMENTS_PER_PAGE > 1, 'with per_page=1 there is no completed row behind an in-flight one to grade');
     const src = readFileSync(join(REPO, READER_REL), 'utf8');
+    // The reader's SOURCE TEXT, `${…}` and all — deliberately not interpolated:
+    // it proves the query is built from the constant rather than a typed number.
+    const interpolation = '$' + '{DEPLOYMENTS_PER_PAGE}';
     assert.ok(
-      src.includes('per_page=${DEPLOYMENTS_PER_PAGE}'),
+      src.includes(`per_page=${interpolation}`),
       'readDeployments must ask for DEPLOYMENTS_PER_PAGE rows, not a literal that drifts from the constant',
     );
   });

@@ -22,7 +22,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, unlinkSync, statSync, appendFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, unlinkSync, appendFileSync, openSync, fstatSync, closeSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -589,10 +589,22 @@ describe('assert-guard-coverage', () => {
       const root = repo(compliant());
       const p = join(root, MANIFEST_REL);
       assert.equal(run(root).status, 0);
-      const before = { body: readFileSync(p, 'utf8'), at: statSync(p).mtimeMs };
+      // Body and mtime through ONE descriptor, so both describe the same file
+      // rather than a stat and a read by name (CodeQL js/file-system-race).
+      const snapshot = () => {
+        const fd = openSync(p, 'r');
+        try {
+          const body = readFileSync(fd, 'utf8');
+          return { body, at: fstatSync(fd).mtimeMs };
+        } finally {
+          closeSync(fd);
+        }
+      };
+      const before = snapshot();
       assert.equal(run(root).status, 0);
-      assert.equal(readFileSync(p, 'utf8'), before.body);
-      assert.equal(statSync(p).mtimeMs, before.at, 'a clean run must not touch the manifest at all');
+      const after = snapshot();
+      assert.equal(after.body, before.body);
+      assert.equal(after.at, before.at, 'a clean run must not touch the manifest at all');
     });
 
     test('an unparseable manifest is COVERAGE LOST, not an empty ratchet', () => {

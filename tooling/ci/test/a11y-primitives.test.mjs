@@ -29,8 +29,6 @@ const GUARD = join(REPO, 'tooling', 'ci', 'assert-a11y-primitives.mjs');
 
 const APP = 'apps/subscriptiontracker/lib';
 const BRICK_LIB = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib';
-const ADD_SHEET = `${APP}/features/add/add_subscription_sheet.dart`;
-const NOTIFICATIONS = `${APP}/features/notifications/notifications_screen.dart`;
 const DIALOG = 'packages/design_system/lib/src/widgets/destructive_confirm_dialog.dart';
 const FOCUSABLE_TAP = 'packages/design_system/lib/src/widgets/focusable_tap.dart';
 const BOOTSTRAP = 'packages/chassis_screens/lib/shell/bootstrap.dart';

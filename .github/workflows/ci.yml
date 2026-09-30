@@ -164,9 +164,12 @@ jobs:
     name: Guards — platform, data and ops
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # why: security-events: read is for assert-alert-disposition.mjs limb C, which reads
+    # the open and dismissed code-scanning alerts (GET .../code-scanning/alerts).
     permissions:
       contents: read
       issues: read
+      security-events: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -297,11 +300,17 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 2
         run: node --single-threaded tooling/ops/check-heartbeats.mjs --declared-vs-main
+      # Limb C (2026-09-30) makes CodeQL a declared source: every open code-scanning
+      # alert is fixed in code or has an entry in tooling/ci/codeql-dispositions.json.
+      # It spawns git synchronously (a fixed-in-tree claim is read at the analysed
+      # commit) and then exits, the shape that hung, so --single-threaded and a bound
+      # of its own: 3 reads on the shared bounded plan, well under 3 minutes.
       - name: Every alerting firing has a recorded disposition
         if: ${{ !cancelled() }}
+        timeout-minutes: 3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node tooling/ci/assert-alert-disposition.mjs
+        run: node --single-threaded tooling/ci/assert-alert-disposition.mjs
       - name: No workflow or register names a repository that no longer exists
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-dead-repo-names.mjs
@@ -870,9 +879,12 @@ jobs:
     # accounts (09-selfhost-build-release.md §4.2).
     name: Security — secret and workflow scanners
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25 # why: the scanners (~1 min) plus the CodeQL PR rule's 12-minute step bound, with headroom
+    # why: security-events: read is for assert-codeql-pr-no-new-high.mjs, which reads this
+    # PR's CodeQL analysis and its alerts (GET .../code-scanning/analyses and /alerts).
     permissions:
       contents: read
+      security-events: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1009,6 +1021,17 @@ jobs:
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/trivy" fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
+      # The named, reviewed rule codeql.yml's header asks for: CodeQL stays an alert
+      # sink, and THIS step fails the gate when the PR's own analysis adds a high or
+      # critical alert. LAST, so the scanners above have run while CodeQL (136-212 s
+      # over 8 PR runs, 2026-09-30) finishes; it polls for up to 10 minutes, and an
+      # analysis that never appears is COVERAGE LOST (exit 2), never a pass.
+      - name: This pull request adds no high or critical CodeQL alert
+        if: ${{ !cancelled() }}
+        timeout-minutes: 12
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ci/assert-codeql-pr-no-new-high.mjs
 
   ff-security-scan:
     # why: FF-2 — starts only once `security-scan` has concluded red, so it keeps its failure. docs/ci/README.md §2.1

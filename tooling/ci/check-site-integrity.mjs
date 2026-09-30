@@ -333,7 +333,9 @@ for (const root of siteRoots) {
       );
     }
     const h1 = stripInert(raw).match(/<h1\b[^>]*>([\s\S]*?)<\/h1\s*>/i);
-    if (!h1 || !h1[1].replace(/<[^>]*>/g, '').trim()) {
+    // The heading's text through the ONE visible-text reduction, not a local
+    // tag-delete of its own (CodeQL js/incomplete-multi-character-sanitization).
+    if (!h1 || !visibleText(h1[1])) {
       problems.push(`${rel} has no rendered <h1> — it is not a readable policy page`);
     }
   }

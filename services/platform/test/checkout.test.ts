@@ -111,6 +111,9 @@ function okCreate(
   });
 }
 
+/** Paddle's two API bases (src/lib/mor/paddle-cancel.ts): live and sandbox. */
+const PADDLE_API_HOSTS = new Set(['api.paddle.com', 'sandbox-api.paddle.com']);
+
 beforeAll(async () => {
   const pair = await generateKeyPair('ES256', { extractable: true });
   signingKey = pair.privateKey;
@@ -124,7 +127,9 @@ beforeAll(async () => {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    if (url.includes('paddle.com')) {
+    // The host, parsed and compared exactly — a substring `paddle.com` also
+    // matches `paddle.com.evil` (CodeQL js/incomplete-url-substring-sanitization).
+    if (PADDLE_API_HOSTS.has(new URL(url).hostname)) {
       const headers: Record<string, string> = {};
       for (const [k, v] of Object.entries((init?.headers ?? {}) as Record<string, string>)) {
         headers[k.toLowerCase()] = v;
