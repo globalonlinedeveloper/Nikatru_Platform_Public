@@ -152,6 +152,29 @@ describe('check-migrations', () => {
       ...extra,
     });
 
+  // ⏱ 2026-09-30 · review #1080 finding 8 — one number, one migration.
+  test('FAILS when two migrations in one directory share a number', () => {
+    const { code, out } = run('check-migrations.mjs', {
+      cwd: build('mig-dup', ADDITIVE, ADDITIVE, {
+        'services/subscriptiontracker-api/migrations/0002_a.sql': ADDITIVE,
+        'services/subscriptiontracker-api/migrations/0002_b.sql': ADDITIVE,
+      }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /share one number/);
+    assert.match(out, /0002_a\.sql/);
+  });
+
+  test('the same number in two DIFFERENT directories is not a clash (green control)', () => {
+    const { code, out } = run('check-migrations.mjs', {
+      cwd: build('mig-dup-ok', ADDITIVE, ADDITIVE, {
+        'services/subscriptiontracker-api/migrations/0002_a.sql': ADDITIVE,
+        'services/platform/migrations/0002_b.sql': ADDITIVE,
+      }),
+    });
+    assert.equal(code, 0, out);
+  });
+
   test('PASSES on additive-only migrations', () => {
     const { code } = run('check-migrations.mjs', { cwd: build('mig-ok', ADDITIVE) });
     assert.equal(code, 0);

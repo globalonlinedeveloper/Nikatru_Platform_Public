@@ -138,7 +138,7 @@
   "guard-sweep-invocations.test.mjs": 12,
   "guard-yield.test.mjs": 56,
   "guards-refuse-empty.test.mjs": 18,
-  "guards.test.mjs": 487,
+  "guards.test.mjs": 489,
   "heartbeats.test.mjs": 87,
   "heavy-lock.test.mjs": 46,
   "hook-messages.test.mjs": 5,
