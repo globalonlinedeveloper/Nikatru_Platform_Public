@@ -243,7 +243,10 @@ export function policyText(html) {
   let prev;
   do {
     prev = body;
-    body = body.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/<!--[\s\S]*?-->/g, '');
+    // An UNTERMINATED opener runs to the end of the input: a fixed point over
+    // closed pairs alone still leaves `<script…` or `<!--` with no closer behind
+    // (CodeQL #536, the PR analysis of the first version of this loop).
+    body = body.replace(/<(script|style)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, '').replace(/<!--[\s\S]*?(?:-->|$)/g, '');
   } while (body !== prev);
   let text = body
     .replace(/<li[^>]*>/gi, '\n• ')
