@@ -7,6 +7,7 @@ import '../../core/e2e_keys.dart';
 import '../../l10n/app_localizations.dart';
 import '../add/add_subscription_sheet.dart';
 import '../shared/widgets.dart';
+import 'sync_problems_strip.dart';
 
 /// Tabbed shell: hosts the branch content inside the chassis's adaptive
 /// [AppScaffold], supplying Subly's floating pill bar through the
@@ -177,10 +178,14 @@ class AppShell extends StatelessWidget {
     // and it is this widget's only child, so these are the same constraints.
     // Not `MediaQuery`: a window is not always the size of the screen, and
     // the width harness pins layout without moving `MediaQuery` at all.
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) => _build(
-        context,
-        compact: windowClassFor(constraints.maxWidth) == WindowClass.compact,
+    // The offline outbox's dead letters sit under the shell (review #1075
+    // finding 9); the bare shell while there are none.
+    return SyncProblemsStrip(
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) => _build(
+          context,
+          compact: windowClassFor(constraints.maxWidth) == WindowClass.compact,
+        ),
       ),
     );
   }
