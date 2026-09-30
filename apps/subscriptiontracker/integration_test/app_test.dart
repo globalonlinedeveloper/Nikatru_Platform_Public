@@ -1315,7 +1315,21 @@ void main() {
 
     // ── 07 Budget — the editor on Insights (ST-D3: no Budget tab) ────────────
     // The budget loads over the network first, then its card offers Edit.
-    await pumpFor(tester, const Duration(seconds: 2));
+    // Wait for the button itself, never a fixed pump: BudgetCard renders no
+    // Edit until the budget request HAS A VALUE (a load or an error both hide
+    // it), and on live production the Insights request outlasted a fixed 2 s
+    // (schedule run 36698011430 on 500e0d56: `Bad state: No element`).
+    expect(
+      await waitFor(
+        tester,
+        find.byKey(BudgetCard.editButton),
+        timeout: const Duration(seconds: 30),
+      ),
+      isTrue,
+      reason:
+          'the Insights budget card never offered Edit within 30 s: '
+          'the budget request is still loading or FAILED (see 06-insights)',
+    );
     await tester.ensureVisible(find.byKey(BudgetCard.editButton));
     await tester.tap(find.byKey(BudgetCard.editButton));
     await pumpFor(tester, const Duration(seconds: 2));
