@@ -269,10 +269,6 @@
           "resolver": "exempt",
           "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `user_id`, `name` and `cap`, and 0002_schema_debt.sql adds the surrogate `id` (a client-generated UUIDv7, or a random backfill). Rows are written by PUT /v1/budget (services/subscriptiontracker-api/src/routes/budget.ts) from the authenticated session; `name` is the user's own category text, and none of the four names a build, an app, a money world or a closed set a resolver could check. So it is exempt; a marker column added later re-opens this rule. ⏱ 2026-09-29 · 0005_lifecycle_history_categories.sql (ST-X8) adds `category_id`, the id of the `categories` row the cap belongs to, written by PUT /v1/budget. It names the user's category, not a build, app or money world. The exemption stands."
         },
-        "idempotency_keys": {
-          "resolver": "exempt",
-          "reason": "⏱ 2026-09-30 · carried on the #1080 stack for #1075's 0006_idempotency_keys.sql (its own lane owns the table). NO app_version COLUMN AND NO OTHER MARKER: `user_id`, `key`, `body_hash`, `row_id`, `state` and `created_at` — one claim per Idempotency-Key a keyed create made, written by services/subscriptiontracker-api/src/lib/idempotency.ts from the authenticated session. None names a build, an app, a money world or a closed set a resolver could check. Exempt on the same ground as `budgets`; a marker column added later re-opens this rule."
-        },
         "preferences": {
           "resolver": "exempt",
           "reason": "⏱ 2026-09-30 · ST-N6 (D11). NO app_version COLUMN AND NO OTHER MARKER: 0007_preferences.sql gives this table `user_id`, `key`, `value`, `version` and `updated_at` — one row per preference key, written by PATCH /v1/preferences (services/subscriptiontracker-api/src/routes/preferences.ts) from the authenticated session. `value` is the user's own setting (currency, theme, language, a reminder choice), `version` is the server's per-key counter, and none of the five names a build, an app, a money world or a closed set a resolver could check. Exempt on the same ground as `budgets`; a marker column added later re-opens this rule."
@@ -284,6 +280,10 @@
         "price_change": {
           "resolver": "exempt",
           "reason": "⏱ 2026-09-29 · 0005_lifecycle_history_categories.sql (ST-I4). NO app_version COLUMN AND NO OTHER MARKER: the table has `id`, `subscription_id`, `user_id`, `old_price`, `new_price`, `old_price_minor`, `new_price_minor`, `old_currency`, `new_currency` and `changed_at`. Rows are written only by PATCH /v1/subscriptions/:id (services/subscriptiontracker-api/src/routes/subscriptions.ts) from the authenticated session, when an edit moves the price or currency. Every column is the user's own amount, currency or a timestamp; none names a build, an app, a money world or a closed set a resolver could check. So it is exempt; a marker column added later re-opens this rule."
+        },
+        "idempotency_keys": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-09-30 · 0006_idempotency_keys.sql (AB-O2-02). NO app_version COLUMN AND NO OTHER MARKER: the table has `user_id`, `key`, `body_hash`, `row_id`, `state` and `created_at`. Rows are written only by the Idempotency-Key middleware in front of POST /v1/subscriptions (services/subscriptiontracker-api/src/lib/idempotency.ts) from the authenticated session. `state` is a closed set ('pending' | 'done') that says whether the claiming request finished, not which build, app or money world wrote the row. So it is exempt; a marker column added later re-opens this rule."
         },
         "categories": {
           "resolver": "exempt",

@@ -4933,28 +4933,6 @@
       "source": "verified"
     },
     {
-      "id": "retention.d1.subscriptiontracker_db.idempotency_keys",
-      "kind": "retention",
-      "store": "d1:subscriptiontracker_db:idempotency_keys",
-      "what": "⏱ 2026-09-30 · carried on the #1080 stack for #1075. One claim per Idempotency-Key a keyed create made — the tombstone that answers a late offline replay instead of re-creating a subscription the user deleted.",
-      "rule": "keep",
-      "keepWhy": "The decision tooling/legal/data-inventory.json already records for table:subscriptiontracker_db.idempotency_keys: kept with the account, because the row IS the tombstone; a claim whose create failed is deleted at once. The account erasure deletes it (derived by its user_id column).",
-      "detector": "tooling/ci/assert-retention-coverage.mjs.",
-      "response": "n/a",
-      "cadence": "365d",
-      "mechanism": {
-        "substrate": "cloudflare-d1",
-        "anchor": "services/subscriptiontracker-api/migrations/0006_idempotency_keys.sql",
-        "record": "the table itself",
-        "failingValue": "not applicable to a reasoned keep",
-        "readBy": "tooling/ci/assert-retention-coverage.mjs"
-      },
-      "accessProviders": [
-        "cloudflare"
-      ],
-      "source": "verified"
-    },
-    {
       "id": "retention.d1.subscriptiontracker_db.payment_history",
       "kind": "retention",
       "store": "d1:subscriptiontracker_db:payment_history",
@@ -4989,6 +4967,28 @@
       "mechanism": {
         "substrate": "cloudflare-d1",
         "anchor": "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.subscriptiontracker_db.idempotency_keys",
+      "kind": "retention",
+      "store": "d1:subscriptiontracker_db:idempotency_keys",
+      "what": "The Idempotency-Key ledger of POST /v1/subscriptions (AB-O2-02): one row per key a create claimed — user id, key, a SHA-256 of the request body, the row it made and whether it finished. No subscription content.",
+      "rule": "keep",
+      "keepWhy": "Kept with the account: a row is the tombstone that stops a late offline replay from re-creating a subscription the user deleted (services/subscriptiontracker-api/src/lib/idempotency.ts). A claim whose create failed is deleted at once; the rest go with the account on erasure (the table has user_id).",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/subscriptiontracker-api/migrations/0006_idempotency_keys.sql",
         "record": "the table itself",
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"

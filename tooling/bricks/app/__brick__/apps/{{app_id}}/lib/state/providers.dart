@@ -303,33 +303,13 @@ final FutureProvider<core.KeyValueStore> keyValueStoreProvider =
     );
 
 // ═════════════════════════════════════════════════════════════════════════════
-// ⏱ 2026-09-30 · THE OFFLINE COPY, STAMPED (audit D28, ST-N5).
-//
-// The read-through cache and the write outbox lived only in
-// apps/subscriptiontracker, so every app this brick stamped showed NOTHING
-// offline. They are packages/api_client's now, and this is the adapter: a
-// stamped app reads its rows as
-//
-//   ref.read(readThroughCacheProvider).read('<key>', codec, () => rest.get(…))
-//
-// and gets the last answer back when the server cannot be asked (status 0 or
-// 5xx — never a 401), MARKED through [staleReadProvider], without waiting on
-// the 15 s connect timeout. A write it cannot send goes to [outboxProvider] —
-// packages/core's `DurableOutbox`, the same one the subscription app and the
-// preferences sync use: user-scoped, persisted, serialised, bounded (dead
-// letters), ordered and coalesced per record.
-//
-// ⚠️ THE BRICK STAMPS THE QUEUE, NOT A REPLAY DRIVER, because the brick has no
-// rows of its own to send. The app that adds a queued write adds its sender:
-//
-//   ref.read(outboxProvider).replay(
-//     owner: uid, currentOwner: () => auth.currentUser?.id,
-//     send: (e) => rest.post('/<rows>', body: e.body, idempotencyKey: e.id),
-//     classify: classifyForOutbox)
-//
-// Both the copy and the queue are ACCOUNT state: [userStateDrops] forgets the
-// copy and the signed-out user's queued writes.
-// test/offline_cache_test.dart is the stamped proof.
+// ⏱ 2026-09-30 · THE OFFLINE COPY, STAMPED (audit D28, ST-N5; ruling on #1075).
+// [readThroughCacheProvider] (packages/api_client) answers a read from the last
+// server answer on status 0 or 5xx, marked in [staleReadProvider], without the
+// 15 s connect wait. [outboxProvider] is packages/core's DurableOutbox; the
+// brick stamps the QUEUE, and an app that queues a write adds its sender
+// (`replay(owner:, currentOwner:, send:, classify: classifyForOutbox)`). Both are
+// account state, dropped by [userStateDrops]. Proof: test/offline_cache_test.dart.
 // ═════════════════════════════════════════════════════════════════════════════
 
 /// The device store the offline copy and the outbox share.
@@ -382,10 +362,8 @@ final Provider<core.DurableOutbox> outboxProvider =
       (ref) => core.DurableOutbox(ref.watch(keyValueStoreProvider.future)),
     );
 
-/// The sign-out drop for the signed-in user's queued writes, resolved NOW so
-/// it still names that user after the sign-out lands. A forced 401 runs no
-/// drops and keeps them for the same user's return; no other user's replay
-/// ever sends them.
+/// The sign-out drop for the signed-in user's queued writes, resolved NOW. A
+/// forced 401 runs no drops and keeps them; no other user's replay sends them.
 UserStateDrop discardQueuedWritesOf(WidgetRef ref) {
   final String? owner = ref.read(authRepositoryProvider).currentUser?.id;
   final core.DurableOutbox outbox = ref.read(outboxProvider);
