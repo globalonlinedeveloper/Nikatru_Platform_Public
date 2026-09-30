@@ -218,12 +218,21 @@
           "path": "/v1/subscriptions/:id",
           "auth": "required",
           "owningFile": "services/subscriptiontracker-api/src/routes/subscriptions.ts",
-          "purpose": "Delete one subscription the user owns. Ownership is in the SQL, so a foreign id deletes nothing and says so.",
+          "purpose": "Remove one subscription the user owns — a SOFT delete since 2026-09-29 (ST-E3): it sets `deleted_at`, the row leaves every list and reminder, `PATCH {deleted_at: null}` restores it, and GET /v1/subscriptions purges it with its payment_history and price_change rows 30 days later. Ownership is in the SQL, so a foreign id touches nothing and says so.",
           "client": {
             "file": "apps/subscriptiontracker/lib/data/api/dio_api_client.dart",
             "expression": "_rest.delete('/subscriptions/$id')",
             "note": "The real call inside `deleteSubscription()`."
           }
+        },
+        {
+          "id": "subscriptiontracker-subscription-payment-create",
+          "method": "POST",
+          "path": "/v1/subscriptions/:id/payments",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/subscriptions.ts",
+          "purpose": "The user records a payment by hand (ST-R5, round-2 X06: mark as paid). Writes one payment_history row with `source` = manual against a subscription the user owns and has not removed; ownership is in the SQL, so a foreign or removed id is a 404.",
+          "unconsumedReason": "⏱ 2026-09-29: SERVED AHEAD OF ITS BUTTON. The API half of ST-R5 landed first on purpose (fix-rv2-st-api-lifecycle); the \"Mark as paid\" control is drawn by the design train dw1 (D5-3), which adds the client call. Until then nothing in the app issues this request."
         },
         {
           "id": "subscriptiontracker-renewals",
@@ -259,6 +268,42 @@
             "expression": "_rest.put('/budget', body: budget.toJson())",
             "note": "The real call inside `updateBudget()`. ⚠️ MEASURED 2026-08-25 AND WORTH SAYING PLAINLY: the URL is built here, which is what limb 2 checks and it is genuinely the code that would issue this request — but the method that builds it has no live caller. `SubscriptionRepository.saveBudget` (subscription_repository.dart:19) wraps it and has no caller; `budget_screen.dart:20` reads the budget and nothing writes one back yet. The route is complete, tested and unreached."
           }
+        },
+        {
+          "id": "subscriptiontracker-categories-list",
+          "method": "GET",
+          "path": "/v1/categories",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/categories.ts",
+          "purpose": "Categories by ID (ST-X8, round-2 F16/B29/C11): the ten built-ins (`user_id` NULL, stable slug ids a client translates by) and the user's own.",
+          "unconsumedReason": "⏱ 2026-09-29: SERVED AHEAD OF ITS SCREENS. The API half of ST-X8 landed first on purpose (fix-rv2-st-api-lifecycle, \"the API half has no design dependency and can go first\"); the add sheet, budget and settings screens that read it belong to dw2 D4-1, dw1 D6-4 and ST-D3, which add the client call."
+        },
+        {
+          "id": "subscriptiontracker-categories-create",
+          "method": "POST",
+          "path": "/v1/categories",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/categories.ts",
+          "purpose": "Create a category of the user's own. A name the user already sees (their own or a built-in) is a 409.",
+          "unconsumedReason": "⏱ 2026-09-29: served ahead of its screen — same reason as subscriptiontracker-categories-list."
+        },
+        {
+          "id": "subscriptiontracker-categories-rename",
+          "method": "PATCH",
+          "path": "/v1/categories/:id",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/categories.ts",
+          "purpose": "Rename one of the user's own categories. Its id stays, and the rename rewrites `subscriptions.category` and `budget_categories.name` in the same batch, so every cap and subscription keyed to it follows. A built-in is a 403.",
+          "unconsumedReason": "⏱ 2026-09-29: served ahead of its screen — same reason as subscriptiontracker-categories-list."
+        },
+        {
+          "id": "subscriptiontracker-categories-delete",
+          "method": "DELETE",
+          "path": "/v1/categories/:id",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/categories.ts",
+          "purpose": "Delete one of the user's own categories: its subscriptions become uncategorised and its cap is removed, in one batch. A built-in is a 403.",
+          "unconsumedReason": "⏱ 2026-09-29: served ahead of its screen — same reason as subscriptiontracker-categories-list."
         },
         {
           "id": "subscriptiontracker-entitlements",

@@ -605,6 +605,17 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'is tooling/ci/test/apple-signing-expiry.test.mjs. Classified 2026-09-24, the round the workflow landed.',
   ],
   [
+    'update-goldens.yml',
+    're-renders golden PNGs on the Linux runner for a dispatched branch and test list, dispatch-only and ' +
+      'never on main, and pushes only the changed golden PNGs to that branch. It builds no app, produces no ' +
+      'release artifact and names no app id: the packages are derived from the dispatched test paths, so R-1 ' +
+      'would carry it in the denominator as a permanent empty-set pass, the reason already written out for ' +
+      'apple-expiry-write.yml. The owning stage is stage 14 ops, through the duty row ' +
+      '`duty.workflow.update-goldens.yml` in tooling/ops/register.json. What holds its output correct is ' +
+      'ci.yml workspace-gate, which renders the same goldens on the pull request. Classified 2026-09-30, the ' +
+      'round the workflow landed.',
+  ],
+  [
     'rollback.yml',
     'an attended, dispatch-only RE-PROMOTION: it puts back a Pages deployment or Worker version a ledger ' +
       'Deployment already recorded. It builds no app, produces no release artifact and names no app id: the ' +
