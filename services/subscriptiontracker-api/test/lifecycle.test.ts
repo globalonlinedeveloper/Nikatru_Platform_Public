@@ -8,7 +8,7 @@
 // deleted_at PATCHes return 400, and DELETE leaves no row to restore.
 // ─────────────────────────────────────────────────────────────────────────────
 import renewalsSrc from '../src/routes/renewals.ts?raw';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { recomputeRenewals } from '../../platform/src/renewals';
 import renewals from '../src/routes/renewals';
 import subscriptions, {
@@ -259,5 +259,168 @@ describe('B33 — DELETE is soft, keeps the history, and the purge removes both 
     const res = await subs(U, '/v1/subscriptions');
     expect(res.status).toBe(200);
     expect(((await res.json()) as Row[]).map((r) => r.id)).toEqual([id]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Independent review of #1063 — minors 1, 2 and 3. Each block names the red
+// control it was proved against: the one-line mutation of the route that turns
+// it red.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('minor 1 — a PATCH on a removed row is a 404 and writes nothing', () => {
+  // Red control: drop the `existing.deleted_at !== null && !restoring` refusal
+  // and the `deleted_at IS NULL` in the write's WHERE — the PATCH answers 200,
+  // renames the hidden row and logs a price step for it.
+  it('answers exactly what GET /:id answers, and neither the row nor the price history moves', async () => {
+    const id = await create();
+    await subs(U, `/v1/subscriptions/${id}`, { method: 'DELETE' });
+    const before = db.rows('SELECT * FROM subscriptions WHERE id = ?', id);
+
+    const res = await patch(id, { name: 'Renamed', price: 999 });
+    const got = await subs(U, `/v1/subscriptions/${id}`);
+    expect(res.status, 'a removed row took an edit').toBe(404);
+    expect(await res.json()).toEqual(await got.json());
+    expect(got.status).toBe(404);
+    expect(db.rows('SELECT * FROM subscriptions WHERE id = ?', id), 'the removed row was edited').toEqual(before);
+    expect(db.rows('SELECT id FROM price_change'), 'a price step was logged for a removed row').toHaveLength(0);
+  });
+
+  // Red control for the up-front refusal ALONE (the write's WHERE still holds):
+  // without it the body is judged against a row nobody can see, and a bad
+  // category answers 400 — telling the caller the row is there.
+  it('is refused BEFORE the body is judged against it: a bad category_id is still a 404', async () => {
+    const id = await create();
+    await subs(U, `/v1/subscriptions/${id}`, { method: 'DELETE' });
+    const res = await patch(id, { category_id: 'nope' });
+    expect(res.status, 'a removed row answered as if it were there').toBe(404);
+    expect(await res.json()).toEqual({ error: 'not_found' });
+  });
+
+  it('a status change is refused the same way', async () => {
+    const id = await create();
+    await patch(id, { deleted_at: new Date().toISOString() });
+    expect((await patch(id, { status: 'paused' })).status).toBe(404);
+    expect(db.rows('SELECT status FROM subscriptions WHERE id = ?', id)).toEqual([{ status: 'active' }]);
+  });
+
+  it('the Undo is the one PATCH a removed row takes', async () => {
+    const id = await create();
+    await subs(U, `/v1/subscriptions/${id}`, { method: 'DELETE' });
+    const res = await patch(id, { deleted_at: null });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as Row).deleted_at).toBeNull();
+    expect((await patch(id, { price: 999 })).status, 'a restored row is editable again').toBe(200);
+  });
+
+  it('a DELETE landing between the ownership read and the write is not edited through', async () => {
+    const id = await create();
+    // The race, made deterministic: the row is removed the moment the route
+    // has read it as live, so only the write's own WHERE can refuse the edit.
+    const racing = new Proxy(db, {
+      get(target, prop, receiver) {
+        if (prop !== 'prepare') return Reflect.get(target, prop, receiver);
+        return (sql: string) => {
+          const stmt = target.prepare(sql);
+          if (!/^SELECT id, deleted_at FROM subscriptions/.test(sql)) return stmt;
+          return {
+            bind: (...args: unknown[]) => ({
+              first: async () => {
+                const seen = await stmt.bind(...args).first();
+                target.db.exec(`UPDATE subscriptions SET deleted_at = '${new Date().toISOString()}' WHERE id = '${id}'`);
+                return seen;
+              },
+            }),
+          };
+        };
+      },
+    });
+    const loser = asUser(subscriptions, '/v1/subscriptions', { APP_DB: racing as never });
+    const res = await loser(U, `/v1/subscriptions/${id}`, { method: 'PATCH', body: { name: 'Late', price: 999 } });
+    expect(res.status).toBe(404);
+    expect(db.rows('SELECT name, price FROM subscriptions WHERE id = ?', id)).toEqual([{ name: 'Netflix', price: 649 }]);
+    expect(db.rows('SELECT id FROM price_change')).toHaveLength(0);
+  });
+});
+
+describe('minor 2 — the cancel date is set on the TRANSITION into cancelled, and kept after', () => {
+  // Red control: date a dateless cancel as today whatever the row holds (the
+  // old `validate` rule) — every "keeps" assertion below reads today instead.
+  it('re-sending status: cancelled keeps the original date', async () => {
+    const id = await create();
+    await patch(id, { status: 'cancelled', cancelled_on: '2026-09-01' });
+    const again = (await (await patch(id, { status: 'cancelled' })).json()) as Row;
+    expect(again.cancelled_on, 'the re-sent cancel re-dated the row to today').toBe('2026-09-01');
+  });
+
+  it('…and so does re-sending it with an explicit null date', async () => {
+    const id = await create();
+    await patch(id, { status: 'cancelled', cancelled_on: '2026-09-01' });
+    const again = (await (await patch(id, { status: 'cancelled', cancelled_on: null })).json()) as Row;
+    expect(again.cancelled_on).toBe('2026-09-01');
+  });
+
+  it('a row cancelled by a dateless PATCH on an earlier day keeps that day', async () => {
+    const id = await create();
+    await patch(id, { status: 'cancelled' });
+    db.db.exec(`UPDATE subscriptions SET cancelled_on = '2026-08-15' WHERE id = '${id}'`);
+    await patch(id, { status: 'cancelled', name: 'Netflix Premium' });
+    expect(db.rows('SELECT cancelled_on FROM subscriptions WHERE id = ?', id)).toEqual([{ cancelled_on: '2026-08-15' }]);
+  });
+
+  it('an explicit date on a cancelled row is the user correcting it, and is written', async () => {
+    const id = await create();
+    await patch(id, { status: 'cancelled', cancelled_on: '2026-09-01' });
+    const fixed = (await (await patch(id, { status: 'cancelled', cancelled_on: '2026-08-30' })).json()) as Row;
+    expect(fixed.cancelled_on).toBe('2026-08-30');
+  });
+
+  it('paused → cancelled is a transition, and is dated today', async () => {
+    const id = await create();
+    await patch(id, { status: 'paused' });
+    const out = (await (await patch(id, { status: 'cancelled' })).json()) as Row;
+    expect(out.cancelled_on).toBe(todayYmd());
+  });
+
+  it('a row CREATED cancelled with no date is dated today', async () => {
+    const res = await subs(U, '/v1/subscriptions', { method: 'POST', body: { name: 'Old gym', status: 'cancelled' } });
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as Row).cancelled_on).toBe(todayYmd());
+  });
+});
+
+describe('minor 3 — a failed purge reaches the error sink, not only the log', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // Red control: delete the `reportWorkerError` call from GET /'s catch (the
+  // `console.error` alone, as #1063 shipped it) — nothing is sent.
+  it('the list still loads, and ONE envelope naming this Worker and the route goes to GlitchTip', async () => {
+    const sent: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      sent.push({ url: String(url), body: String(init.body) });
+      return new Response('', { status: 200 });
+    });
+    const reporting = asUser(subscriptions, '/v1/subscriptions', {
+      APP_DB: db as never,
+      GLITCHTIP_DSN: 'https://abc123@glitchtip.example.test/7',
+      RELEASE: 'sha-purge',
+    });
+    const id = await create();
+    db.batch = async () => {
+      throw new Error('D1_ERROR: simulated purge failure');
+    };
+
+    const res = await reporting(U, '/v1/subscriptions?email=a@b.test');
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as Row[]).map((r) => r.id)).toEqual([id]);
+    expect(sent, 'the purge failure reached console.error and nothing else').toHaveLength(1);
+    expect(sent[0]?.url).toBe('https://glitchtip.example.test/api/7/envelope/');
+    expect(sent[0]?.body).toContain('"server_name":"subscriptiontracker-api"');
+    expect(sent[0]?.body).toContain('"release":"sha-purge"');
+    expect(sent[0]?.body).toContain('"transaction":"GET /v1/subscriptions"');
+    expect(sent[0]?.body).toContain('simulated purge failure');
+    expect(sent[0]?.body, 'the query string reached the sink').not.toContain('email=');
   });
 });

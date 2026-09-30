@@ -7,6 +7,7 @@
 import { Hono } from 'hono';
 import type { AppEnv, Payment, PriceChange, Subscription } from '../types';
 import { allRows, firstRow, nowIso, run, todayYmd, uuid } from '../lib/d1';
+import { reportWorkerError } from '../lib/error-sink';
 import {
   isBoundedString,
   isCalendarDate,
@@ -187,6 +188,20 @@ const STATUSES = ['active', 'trialing', 'paused', 'cancelled'] as const;
  * and hides only a deleted one.
  */
 export const CHARGING_STATUSES = ['active', 'trialing'] as const;
+
+/**
+ * The cancel date a PATCH writes when it sets `status: 'cancelled'` and names no
+ * date (absent, or an explicit null beside the cancel). Bound to today.
+ *
+ * 🔴 TODAY ONLY ON THE TRANSITION INTO `cancelled` (review of #1063, minor 2). A
+ * row that is ALREADY cancelled with a date keeps it: re-sending the status — a
+ * full-body edit, an outbox replay, a second tap — used to stamp today over the
+ * day the user actually cancelled. Decided in the UPDATE against the stored row
+ * (SQLite's SET reads the row as it was before the statement), so no read ahead
+ * of the write can go stale, and it needs no statement of its own.
+ */
+const CANCEL_DATED_ON_TRANSITION =
+  "cancelled_on = CASE WHEN status = 'cancelled' AND cancelled_on IS NOT NULL THEN cancelled_on ELSE ? END";
 
 /**
  * How long a soft-deleted row stays restorable before `purgeExpired` removes it
@@ -508,12 +523,11 @@ function validate(body: unknown): ValidatedSubscription {
     }
   }
 
-  // A cancel with no date is a cancel TODAY: the detail screen says "Cancelled
-  // on …", and a cancelled row with no date would have nothing to say.
-  // An explicit `cancelled_on: null` beside a cancel is the same missing date.
-  if (fields.status === 'cancelled' && fields.cancelled_on == null) {
-    fields.cancelled_on = todayYmd();
-  }
+  // A cancel with no date (absent, or an explicit null beside the cancel) is
+  // dated by the ROUTE, not here: POST dates it today, and PATCH dates it today
+  // only on the TRANSITION into `cancelled` — see CANCEL_DATED_ON_TRANSITION.
+  // Dating it here stamped today over the real cancel date every time a client
+  // re-sent `status: 'cancelled'` (review of #1063, minor 2).
 
   // ── 0004: the notice period (ST-R8) ────────────────────────────────────────
   const notice = body.notice_days;
@@ -754,12 +768,35 @@ async function purgeExpired(db: D1Database, userId: string): Promise<void> {
 app.get('/', async (c) => {
   const userId = c.get('userId');
   // BEST-EFFORT: housekeeping must never take the user's list down. A purge
-  // that fails is logged and retried on the next list; the rows it would have
-  // removed stay soft-deleted, which is the safe side of the failure.
+  // that fails is retried on the next list; the rows it would have removed stay
+  // soft-deleted, which is the safe side of the failure.
+  //
+  // 🔴 …AND IT IS REPORTED, NOT ONLY LOGGED (review of #1063, minor 3). The
+  // catch answers around the failure, so `app.onError` never sees it, and a
+  // `console.error` alone is a `wrangler tail` nobody watches: a purge failing
+  // on every list for a month looked exactly like one that worked. It goes to
+  // the Worker's one error sink with the context `app.onError` sends
+  // (src/index.ts), under `waitUntil` so the list is not held open behind it.
   try {
     await purgeExpired(c.env.APP_DB, userId);
   } catch (err) {
     console.error(`[purgeExpired] rid=${c.get('requestId') ?? '-'}`, err);
+    const report = reportWorkerError(
+      err,
+      {
+        service: 'subscriptiontracker-api',
+        release: c.env.RELEASE,
+        requestId: c.get('requestId'),
+        method: c.req.method,
+        path: new URL(c.req.url).pathname, // pathname only — never the query string
+      },
+      c.env,
+    );
+    try {
+      c.executionCtx.waitUntil(report);
+    } catch {
+      void report;
+    }
   }
   const rows = await allRows<Subscription>(
     c.env.APP_DB.prepare(
@@ -790,6 +827,9 @@ app.post('/', async (c) => {
   }
   const category = await resolveCategory(c.env.APP_DB, userId, f);
   if (category) return c.json({ error: 'invalid_body', detail: category.detail }, 400);
+  // A row created cancelled with no date was cancelled today: the detail screen
+  // says "Cancelled on …", and a cancelled row with no date has nothing to say.
+  if (f.status === 'cancelled' && f.cancelled_on == null) f.cancelled_on = todayYmd();
 
   const id = uuid();
   const ts = nowIso();
@@ -1013,15 +1053,26 @@ app.patch('/:id', async (c) => {
     return c.json({ error: 'invalid_body', detail: checked.detail }, 400);
   }
 
-  // Ownership check up front. It also reads the amount, so a price edit can be
-  // logged against what it replaced (price_change, below).
-  const existing = await firstRow<Pick<Subscription, 'id' | 'price' | 'price_minor' | 'currency'>>(
-    c.env.APP_DB.prepare(
-      'SELECT id, price, price_minor, currency FROM subscriptions WHERE id = ? AND user_id = ?',
-    ).bind(id, userId),
+  // ── OWNERSHIP, AND A REMOVED ROW IS NOT THERE (review of #1063, minor 1) ───
+  // A soft-deleted row answers a PATCH exactly as GET /:id and POST /:id/payments
+  // answer it — 404, the same body — and nothing is written: no edit, and no
+  // price_change row for a row nobody can see. The ONE PATCH a removed row takes
+  // is the Undo, `{deleted_at: null}`, which brings it back (with whatever else
+  // that body carries). The same condition is repeated in the write's WHERE
+  // (`target`, below), so a DELETE landing between this read and the write
+  // cannot be edited through either.
+  const f = checked.fields;
+  const restoring = f.deleted_at === null;
+  const existing = await firstRow<Pick<Subscription, 'id' | 'deleted_at'>>(
+    c.env.APP_DB.prepare('SELECT id, deleted_at FROM subscriptions WHERE id = ? AND user_id = ?').bind(
+      id,
+      userId,
+    ),
   );
-  if (!existing) return c.json({ error: 'not_found' }, 404);
-  const category = await resolveCategory(c.env.APP_DB, userId, checked.fields);
+  if (!existing || (existing.deleted_at !== null && !restoring)) {
+    return c.json({ error: 'not_found' }, 404);
+  }
+  const category = await resolveCategory(c.env.APP_DB, userId, f);
   if (category) return c.json({ error: 'invalid_body', detail: category.detail }, 400);
 
   const sets: string[] = [];
@@ -1033,9 +1084,14 @@ app.patch('/:id', async (c) => {
 
   const ts = nowIso();
 
+  // A cancel that names no date is dated by the stored row, not the body: see
+  // CANCEL_DATED_ON_TRANSITION. An explicit date is the user's and is written.
+  const datedByRow = f.status === 'cancelled' && f.cancelled_on == null;
+  if (datedByRow) delete f.cancelled_on;
+
   // Only the columns the body actually carried — `validate` drops the rest, so
   // this cannot widen to a column the validator has not checked.
-  for (const [col, val] of Object.entries(checked.fields)) {
+  for (const [col, val] of Object.entries(f)) {
     if (col === 'deleted_at' && val !== null) {
       // Server time, and the FIRST delete's time — see `validate`.
       sets.push('deleted_at = COALESCE(deleted_at, ?)');
@@ -1044,13 +1100,19 @@ app.patch('/:id', async (c) => {
       put(col, val);
     }
   }
+  if (datedByRow) {
+    sets.push(CANCEL_DATED_ON_TRANSITION);
+    values.push(todayYmd());
+  }
 
   put('updated_at', ts);
 
-  values.push(id, userId);
-  const update = c.env.APP_DB.prepare(
-    `UPDATE subscriptions SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`,
-  ).bind(...values);
+  const target = restoring ? 'id = ? AND user_id = ?' : 'id = ? AND user_id = ? AND deleted_at IS NULL';
+  const update = c.env.APP_DB.prepare(`UPDATE subscriptions SET ${sets.join(', ')} WHERE ${target}`).bind(
+    ...values,
+    id,
+    userId,
+  );
 
   // ── THE PRICE HISTORY ([ADR 077] §5.2, ST-I4, round-2 F14) ─────────────────
   // One price_change row per edit that MOVED the amount, in the SAME batch as
@@ -1059,39 +1121,54 @@ app.patch('/:id', async (c) => {
   // `currency` where the row already had one. A legacy row (currency NULL)
   // being stamped with its currency by the client is not a price change, and
   // `price_minor` alone is only the exact form of an unchanged `price`.
-  const f = checked.fields;
-  const next = {
-    price: f.price !== undefined ? f.price : existing.price,
-    price_minor: f.price_minor !== undefined ? f.price_minor : existing.price_minor,
-    currency: f.currency !== undefined ? f.currency : existing.currency,
-  };
-  const moved =
-    next.price !== existing.price ||
-    (existing.currency !== null && next.currency !== existing.currency);
-  if (moved) {
-    await c.env.APP_DB.batch([
-      update,
-      c.env.APP_DB.prepare(
-        `INSERT INTO price_change
-           (id, subscription_id, user_id, old_price, new_price, old_price_minor,
-            new_price_minor, old_currency, new_currency, changed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(
-        uuid(),
-        id,
-        userId,
-        existing.price,
-        next.price,
-        existing.price_minor,
-        next.price_minor,
-        existing.currency,
-        next.currency,
-        ts,
-      ),
-    ]);
+  //
+  // 🔴 THE OLD AMOUNT IS READ INSIDE THE BATCH, NOT BEFORE IT (review of #1063,
+  // minor 4). It was read by the ownership SELECT above and bound into the
+  // INSERT, so two edits racing from one amount both logged it as their `old`:
+  // 649 → 899 and 649 → 999, where the row went 649 → 899 → 999. Now the log is
+  // an INSERT … SELECT FROM the row, placed BEFORE the UPDATE in one batch (one
+  // transaction): it reads the amount the update is about to replace, and the
+  // "did it move" test is its WHERE, so the second of two racing edits logs
+  // 899 → 999. SQLite's RETURNING yields only the NEW values, so the read has to
+  // be a statement of its own, ahead of the write.
+  //
+  // A body that names neither `price` nor `currency` cannot move the amount, so
+  // it sends the UPDATE alone.
+  let changes: number;
+  if (f.price !== undefined || f.currency !== undefined) {
+    // The value the row will hold: the body's where it sent one, else the column.
+    const after = (col: 'price' | 'price_minor' | 'currency') =>
+      f[col] === undefined ? { sql: col, binds: [] as unknown[] } : { sql: '?', binds: [f[col]] };
+    const price = after('price');
+    const minor = after('price_minor');
+    const currency = after('currency');
+    const log = c.env.APP_DB.prepare(
+      `INSERT INTO price_change
+         (id, subscription_id, user_id, old_price, new_price, old_price_minor,
+          new_price_minor, old_currency, new_currency, changed_at)
+       SELECT ?, id, user_id, price, ${price.sql}, price_minor, ${minor.sql}, currency, ${currency.sql}, ?
+         FROM subscriptions
+        WHERE ${target}
+          AND (${price.sql} IS NOT price OR (currency IS NOT NULL AND ${currency.sql} IS NOT currency))`,
+    ).bind(
+      uuid(),
+      ...price.binds,
+      ...minor.binds,
+      ...currency.binds,
+      ts,
+      id,
+      userId,
+      ...price.binds,
+      ...currency.binds,
+    );
+    const [, updated] = await c.env.APP_DB.batch([log, update]);
+    changes = updated?.meta.changes ?? 0;
   } else {
-    await run(update);
+    changes = (await run(update)).meta.changes;
   }
+  // Removed (or erased) between the ownership read and the write: the write
+  // matched nothing, and the answer is the one a removed row gets.
+  if (changes === 0) return c.json({ error: 'not_found' }, 404);
 
   const row = await firstRow<Subscription>(
     c.env.APP_DB.prepare('SELECT * FROM subscriptions WHERE id = ?').bind(id),
