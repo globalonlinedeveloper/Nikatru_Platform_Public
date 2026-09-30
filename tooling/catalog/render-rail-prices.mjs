@@ -212,6 +212,9 @@
 //         node tooling/catalog/render-rail-prices.mjs [root] --check         compare, write nothing
 //         node tooling/catalog/render-rail-prices.mjs [root] --store-sheet <app>
 //         node tooling/catalog/render-rail-prices.mjs [root] --net-sheet [--check]   print net per channel
+//         [--now=<ISO instant ending Z>]   the clock limb G grades fee-cell ages and the enrolment date
+//                                          against; default the real one. Tests pass it so no case
+//                                          depends on the day it runs (#1088 review, minor 2).
 // Exit:   0 ok · 1 a finding (nothing written) · 2 COVERAGE LOST
 // Tests:  tooling/ci/test/rail-prices.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
@@ -998,7 +1001,7 @@ function readRendered(abs) {
 }
 
 /** One run. Returns the exit code and the lines to print; writes only in render mode with no finding. */
-export function run(root, { check = false, sheet = null, net = false } = {}) {
+export function run(root, { check = false, sheet = null, net = false, now = Date.now() } = {}) {
   const out = [];
   const err = [];
   const reg = readRegister(root);
@@ -1012,7 +1015,7 @@ export function run(root, { check = false, sheet = null, net = false } = {}) {
     return { code: 2, out, err };
   }
   // G · the net of every plan on every channel, graded on every run.
-  const n = netSheet(root, reg.data, p.book);
+  const n = netSheet(root, reg.data, p.book, now);
   if (n.lost.length) {
     for (const l of n.lost) err.push(`FAIL COVERAGE LOST — ${l}`);
     return { code: 2, out, err };
@@ -1073,6 +1076,12 @@ if (invokedDirectly) {
   const net = args.includes('--net-sheet');
   const si = args.indexOf('--store-sheet');
   const sheet = si >= 0 ? args[si + 1] ?? '' : null;
+  const nowArg = args.find((a) => a === '--now' || a.startsWith('--now='));
+  const now = nowArg === undefined ? Date.now() : Date.parse(nowArg.slice('--now='.length));
+  if (nowArg !== undefined && (!ISO_INSTANT.test(nowArg.slice('--now='.length)) || !Number.isFinite(now))) {
+    console.error(`FAIL COVERAGE LOST — --now needs an ISO instant ending Z, got ${JSON.stringify(nowArg)}`);
+    process.exit(2);
+  }
   const positional = args.filter((a, i) => !a.startsWith('--') && !(si >= 0 && i === si + 1));
   const root = resolve(positional[0] ?? join(HERE, '..', '..'));
   if (sheet === '' || (sheet !== null && !/^[a-z][a-z0-9-]*$/.test(sheet))) {
@@ -1083,7 +1092,7 @@ if (invokedDirectly) {
     console.error('FAIL COVERAGE LOST — --net-sheet and --store-sheet are two reports; ask for one.');
     process.exit(2);
   }
-  const r = run(root, { check, sheet, net });
+  const r = run(root, { check, sheet, net, now });
   for (const l of r.out) console.log(l);
   for (const l of r.err) console.error(l);
   process.exit(r.code);

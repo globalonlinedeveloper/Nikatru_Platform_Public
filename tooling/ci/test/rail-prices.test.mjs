@@ -39,13 +39,31 @@ after(() => {
   rmSync(TMP, { recursive: true, force: true });
 });
 
-/** A copy of exactly the files the renderer reads, from the real tree. */
+// ── THE CLOCK IS PINNED (#1088 review, minor 2) ──────────────────────────────
+// Limb G grades a fee cell's age against a clock. On the real clock, with the real
+// fee register's dates, every case that expects exit 0 went red on the day the
+// LIMITED-TIME Razorpay cell turned 31 days old. So every fixture's fee cells are
+// read at FIXTURE_READ_AT, every run is graded at FIXTURE_NOW (`--now`), and only the
+// age cases, which set their own asOf, depend on age at all.
+const FIXTURE_NOW = '2026-10-01T00:00:00Z';
+const FIXTURE_READ_AT = '2026-09-29T00:00:00Z';
+/** The real tree is graded as of its own newest fee read: its age is the production check's job, not this file's. */
+const REAL_NOW = new Date(
+  Math.max(...Object.values(JSON.parse(readFileSync(join(REPO, FEES), 'utf8')).cells).map((c) => Date.parse(c.asOf))),
+)
+  .toISOString()
+  .replace(/\.\d+Z$/, 'Z');
+
+/** A copy of exactly the files the renderer reads, from the real tree, with every fee cell read at FIXTURE_READ_AT. */
 function fixture() {
   const root = join(TMP, `f${++seq}`);
   for (const rel of [REGISTER, RENDERED, CHECKOUT, BUNDLES_REGISTER, APP_YAML, FEES, CHANNELS]) {
     mkdirSync(dirname(join(root, rel)), { recursive: true });
     copyFileSync(join(REPO, rel), join(root, rel));
   }
+  mutateFees(root, (cells) => {
+    for (const c of Object.values(cells)) c.asOf = FIXTURE_READ_AT;
+  });
   return root;
 }
 
@@ -58,8 +76,10 @@ function mutate(root, fn) {
   return data;
 }
 
+/** Every run names its clock: FIXTURE_NOW for a fixture, REAL_NOW for the real tree. */
 function run(root, ...args) {
-  const r = spawnSync(process.execPath, [SCRIPT, ...(root ? [root] : []), ...args], { encoding: 'utf8' });
+  const clock = args.some((a) => a.startsWith('--now')) ? [] : [`--now=${root ? FIXTURE_NOW : REAL_NOW}`];
+  const r = spawnSync(process.execPath, [SCRIPT, ...(root ? [root] : []), ...args, ...clock], { encoding: 'utf8' });
   return { code: r.status, out: r.stdout, err: r.stderr, all: `${r.stdout}\n${r.stderr}` };
 }
 
@@ -505,7 +525,7 @@ describe('limb G — net per channel from the fee register (AB-M5-01, AB-M5-03, 
   });
 
   // ── #1072 review: a fee cell's read has an age limit ──
-  const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().replace(/\.\d+Z$/, 'Z');
+  const daysAgo = (n) => new Date(Date.parse(FIXTURE_NOW) - n * 86400000).toISOString().replace(/\.\d+Z$/, 'Z');
 
   test('RED CONTROL: a fee cell read 91 days ago is exit 1, naming its age and the 90-day limit', () => {
     const root = fixture();
@@ -544,6 +564,19 @@ describe('limb G — net per channel from the fee register (AB-M5-01, AB-M5-03, 
     });
     const r = run(root, '--check');
     assert.equal(r.code, 0, r.all);
+  });
+
+  test('--now is the clock: the same fixture graded at 2026-11-15 is exit 1 on the LIMITED-TIME cell alone', () => {
+    const r = run(fixture(), '--check', '--now=2026-11-15T00:00:00Z');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /cells\.razorpay-subscription-add-on was read 2026-09-29T00:00:00Z, 47 days ago; a LIMITED-TIME offer cell/);
+    assert.doesNotMatch(r.err, /cells\.paddle-checkout was read/);
+  });
+
+  test('a --now that is not an ISO instant is COVERAGE LOST (exit 2), never the real clock', () => {
+    const r = run(fixture(), '--check', '--now=yesterday');
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.err, /--now needs an ISO instant ending Z/);
   });
 
   test('a fee cell read in the future is exit 1', () => {
