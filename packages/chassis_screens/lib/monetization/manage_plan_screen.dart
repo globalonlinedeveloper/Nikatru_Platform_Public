@@ -28,6 +28,21 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 /// catalogue, so a package that read them would be reading a file no package can
 /// see. [outcomeMessage] arrives already resolved for the same reason: two of
 /// its four sentences are app-owned.
+///
+/// ## ⏱ 2026-09-29 · train ST-D9: drawn on the ST-D0 foundation
+///  * **The plan is a status card** ([AppCard]): a glyph, [planStatusLabel]
+///    and an optional [planDetail] line — the server's answer, in words.
+///  * **The controls are [AppListRow]s in one card**, in ROSCA order: the way
+///    to a plan (free users only, and only when the adapter passes
+///    [onUpgrade]), Restore, and Cancel (an active plan only). Still one tap
+///    each; [restoreHint] sits under the card rather than in a one-line row,
+///    because a hint cut at an ellipsis explains nothing.
+///  * **The outcome is a [DecisionStrip]** in [outcomeKind]'s tone, so "your
+///    cancellation is recorded, not yet executed" never reads as good news.
+///  * **Loading, load failed and offline are states, not blanks** — a
+///    skeleton where the plan goes, a retryable failure, a warning strip —
+///    and in none of them does Restore go away: a user who cannot see their
+///    plan is exactly the user who needs it.
 class ManagePlanView extends StatelessWidget {
   const ManagePlanView({
     required this.title,
@@ -40,14 +55,34 @@ class ManagePlanView extends StatelessWidget {
     required this.onRestore,
     required this.onCancel,
     this.outcomeMessage,
+    this.outcomeKind,
+    this.planDetail,
+    this.upgradeLabel,
+    this.onUpgrade,
+    this.loading = false,
+    this.onReload,
+    this.offline = false,
+    this.onReconnect,
     super.key,
-  });
+  }) : assert(
+         (upgradeLabel == null) == (onUpgrade == null),
+         'the way to a plan needs both its words and its action',
+       );
 
   /// The [pipeline 5]M-10 control. Named so a width case can find it.
   static const Key restoreTile = Key('managePlanRestore');
 
   /// The ROSCA cancel entry — one tap from here, one confirm after it.
   static const Key cancelTile = Key('managePlanCancel');
+
+  /// The way to the plans, for a user without one.
+  static const Key upgradeTile = Key('managePlanUpgrade');
+
+  /// The plan's status card — the golden and e2e anchor.
+  static const Key statusCard = Key('managePlanStatus');
+
+  /// The outcome strip.
+  static const Key outcomeStrip = Key('managePlanOutcome');
 
   final String title;
 
@@ -57,8 +92,16 @@ class ManagePlanView extends StatelessWidget {
   /// The sentence for [isPro] — resolved by the adapter from the app's `.arb`.
   final String planStatusLabel;
 
+  /// A second line under [planStatusLabel], or null.
+  final String? planDetail;
+
   final String restoreHint;
   final String cancelLabel;
+
+  /// The way to the plans for a user without one. Both or neither; the
+  /// adapter passes neither where this build sells nothing.
+  final String? upgradeLabel;
+  final VoidCallback? onUpgrade;
 
   /// A request is in flight: every control is disabled and a bar is shown, so a
   /// second tap cannot start a second cancellation.
@@ -95,12 +138,33 @@ class ManagePlanView extends StatelessWidget {
   /// single most expensive sentence this screen could say.
   final String? outcomeMessage;
 
+  /// The tone of [outcomeMessage]. Null is a warning: a sentence nobody
+  /// graded is never drawn as good news.
+  final StatusKind? outcomeKind;
+
+  /// The plan has not been read yet: a placeholder where the status card goes.
+  final bool loading;
+
+  /// Non-null when the plan could NOT be read: the status card becomes a
+  /// failure with this as its retry.
+  final VoidCallback? onReload;
+
+  /// The last request could not reach the network.
+  final bool offline;
+
+  /// The offline warning's Retry, or null for none.
+  final VoidCallback? onReconnect;
+
   @override
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
+    final ThemeData theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(leading: BackButton(onPressed: onBack), title: Text(title)),
+      appBar: AppBar(
+        leading: BackButton(onPressed: onBack),
+        title: Text(title),
+      ),
       // Bare `Scaffold` + `ListView` before this, the same shape as settings —
       // and this is the WORSE of the two to leave unconstrained. The screen
       // whose only job is "cancel must be no harder than subscribe" was, on a
@@ -108,17 +172,48 @@ class ManagePlanView extends StatelessWidget {
       // that identifies it. ROSCA is a rule about the difficulty of finding the
       // control, and layout is part of how hard something is to find.
       //
-      // Same default cap as settings, for the same reason: a page of controls,
-      // agreeing with the ceiling `AppScaffold` already applies.
-      body: ContentPane(
+      // ⏱ ST-D9: `reading` (720), the cap the shipping app already chose for
+      // this screen — a page of controls, and a narrower one is easier to scan.
+      body: ContentPane.reading(
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           children: <Widget>[
-            ListTile(
-              leading: Icon(isPro ? Icons.verified_outlined : Icons.lock_outline),
-              title: Text(planStatusLabel),
-            ),
-            const Divider(),
+            if (offline) ...<Widget>[
+              DecisionStrip(
+                kind: StatusKind.warn,
+                message: l10n.offlineMessage,
+                actions: <DecisionAction>[
+                  if (onReconnect != null)
+                    DecisionAction(label: l10n.retry, onPressed: onReconnect!),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+            // ST-U7 (C42)'s anchors, kept: "still asking" and "could not ask"
+            // are found by the keys [PlanStatusTile] gives the same two states.
+            if (loading)
+              SkeletonList(
+                key: PlanStatusTile.checkingKey,
+                label: l10n.managePlanLoading,
+                rows: 1,
+              )
+            else if (onReload != null)
+              KeyedSubtree(
+                key: PlanStatusTile.failedKey,
+                child: DataStateView.failed(
+                  title: l10n.managePlanLoadFailed,
+                  retryLabel: l10n.retry,
+                  onRetry: onReload!,
+                ),
+              )
+            else
+              _StatusCard(
+                key: statusCard,
+                isPro: isPro,
+                label: planStatusLabel,
+                detail: planDetail,
+              ),
+            const SizedBox(height: AppSpacing.lg),
             // [pipeline 5]M-10. `onRestore` is the adapter's `_restore`: it asks
             // the rail first (the store, on a store build — Apple guideline 3.1.1
             // makes this control mandatory there), then re-reads the server,
@@ -126,28 +221,62 @@ class ManagePlanView extends StatelessWidget {
             // On a rail with no store the server re-read is the whole restore.
             // This view holds no rail call: package-boundaries limb C keeps
             // `nikatru_purchases` out of it.
-            ListTile(
-              key: restoreTile,
-              leading: const Icon(Icons.refresh),
-              title: Text(l10n.restorePurchases),
-              subtitle: Text(restoreHint),
-              enabled: !busy,
-              onTap: busy ? null : onRestore,
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  if (!isPro && onUpgrade != null) ...<Widget>[
+                    AppListRow(
+                      key: upgradeTile,
+                      title: upgradeLabel!,
+                      leading: const Icon(Icons.workspace_premium_outlined),
+                      onTap: busy ? null : onUpgrade,
+                    ),
+                    const Divider(height: 1),
+                  ],
+                  AppListRow(
+                    key: restoreTile,
+                    title: l10n.restorePurchases,
+                    leading: const Icon(Icons.refresh),
+                    showChevron: false,
+                    onTap: busy ? null : onRestore,
+                  ),
+                  if (isPro) ...<Widget>[
+                    const Divider(height: 1),
+                    AppListRow(
+                      key: cancelTile,
+                      title: cancelLabel,
+                      leading: const Icon(Icons.cancel_outlined),
+                      showChevron: false,
+                      onTap: busy ? null : onCancel,
+                    ),
+                  ],
+                ],
+              ),
             ),
-            if (isPro)
-              ListTile(
-                key: cancelTile,
-                leading: const Icon(Icons.cancel_outlined),
-                title: Text(cancelLabel),
-                enabled: !busy,
-                onTap: busy ? null : onCancel,
+            const SizedBox(height: AppSpacing.sm),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              child: Text(
+                restoreHint,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
-            if (busy) const LinearProgressIndicator(),
-            if (outcomeMessage != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Text(outcomeMessage!),
+            ),
+            if (busy) ...<Widget>[
+              const SizedBox(height: AppSpacing.lg),
+              const LinearProgressIndicator(),
+            ],
+            if (outcomeMessage != null) ...<Widget>[
+              const SizedBox(height: AppSpacing.lg),
+              DecisionStrip(
+                key: outcomeStrip,
+                kind: outcomeKind ?? StatusKind.warn,
+                message: outcomeMessage!,
               ),
+            ],
           ],
         ),
       ),
@@ -242,4 +371,79 @@ class PlanStatusTile extends StatelessWidget {
       ),
     ),
   };
+}
+
+/// The plan, as the server last reported it: a glyph tile, the status sentence
+/// and an optional detail line.
+///
+/// 🔴 EACH LINE IS ITS OWN SEMANTICS NODE, ON PURPOSE. Merged, the node's label
+/// is both lines joined, `find.text` matches no single `Text`, and flutter_test's
+/// text-contrast guideline silently stops measuring the status sentence — the
+/// app's manage-plan contrast sweep went red on exactly that. Two stops for a
+/// screen reader is the price of a sentence whose contrast is still checked.
+class _StatusCard extends StatelessWidget {
+  const _StatusCard({
+    required this.isPro,
+    required this.label,
+    required this.detail,
+    super.key,
+  });
+
+  final bool isPro;
+  final String label;
+  final String? detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final StatusTones tones = StatusTones.of(context);
+    return AppCard(
+      child: Row(
+        children: <Widget>[
+          ExcludeSemantics(
+            child: Container(
+              width: AppListRow.leadingSize,
+              height: AppListRow.leadingSize,
+              decoration: BoxDecoration(
+                color: isPro
+                    ? tones.positiveTint
+                    : scheme.surfaceContainerHighest,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isPro ? Icons.verified_outlined : Icons.lock_outline,
+                color: isPro ? tones.positive : scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Semantics(
+                  container: true,
+                  child: Text(label, style: theme.textTheme.titleMedium),
+                ),
+                if (detail != null) ...<Widget>[
+                  const SizedBox(height: AppSpacing.xs),
+                  Semantics(
+                    container: true,
+                    child: Text(
+                      detail!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

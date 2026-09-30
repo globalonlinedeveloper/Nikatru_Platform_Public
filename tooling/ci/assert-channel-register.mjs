@@ -667,6 +667,36 @@ function extensionToolDirs() {
 }
 const EXT_TOOLS = extensionToolDirs();
 
+/**
+ * ⏱ 2026-09-30 · EXA-02, THE AGENT HALF. Firefox's `identity.getRedirectURL()`
+ * is `https://<sha1-hex(add-on id)>.extensions.allizom.org/` (the source read
+ * recorded at the `extensionRedirectUri` limb below), and every tool FIXES its
+ * add-on id in publish/manifest.firefox.json. So the AMO value is DERIVABLE now,
+ * with no store upload — unlike Chrome's and Edge's, which exist only after the
+ * owner's first manual upload assigns the id. This answers the set of values a
+ * Firefox row may carry: one per tool that declares a gecko id. The row stays
+ * `null` (the dark launch) until the measured `getRedirectURL()` value is
+ * written, and then it must be one of these — a value that parses to the right
+ * SHAPE but belongs to no add-on of ours is refused.
+ */
+function derivedGeckoRedirects() {
+  const out = new Map(); // redirect → tool dir
+  for (const d of EXT_TOOLS ?? []) {
+    const p = abs(`${EXT_TOOL_ROOT}/${d}/publish/manifest.firefox.json`);
+    if (!existsSync(p)) continue;
+    let id;
+    try {
+      id = JSON.parse(readFileSync(p, 'utf8'))?.browser_specific_settings?.gecko?.id;
+    } catch {
+      continue;
+    }
+    if (typeof id !== 'string' || id === '') continue;
+    out.set(`https://${createHash('sha1').update(id, 'utf8').digest('hex')}.extensions.allizom.org/`, d);
+  }
+  return out;
+}
+const GECKO_REDIRECTS = derivedGeckoRedirects();
+
 /** What a print names as a store row's owner item: its live `ownerQueue`, else
  *  the item that opened its account (`accountStatus.openedBy`), else `none`. */
 const ownerQueueRef = (c, none = '(none)') =>
@@ -782,6 +812,13 @@ function checkExtensionStoreRow(c, where, req) {
       typeof redirect === 'string' && shapes.length > 0 && shapes.every((re) => re.test(redirect)),
       `declares extensionRedirectUri ${JSON.stringify(redirect)}, which is not the shape identity.getRedirectURL() returns on [${(c.platforms ?? []).join(', ')}] — Chromium: https://<32 a-p>.chromiumapp.org/ ; Firefox: https://<40 hex>.extensions.allizom.org/. The Worker delivers a one-time code to this URL, so a value no browser produces is either a typo or a redirect to somebody else.`,
     );
+    // EXA-02: a Firefox value must be the one OUR add-on id derives to.
+    if (Array.isArray(c.platforms) && c.platforms.includes('firefox')) {
+      req(
+        GECKO_REDIRECTS.has(redirect),
+        `declares extensionRedirectUri ${JSON.stringify(redirect)}, which no extension of ours derives to. Firefox's getRedirectURL() is https://<sha1-hex(add-on id)>.extensions.allizom.org/, and the add-on ids in ${EXT_TOOL_ROOT}/*/publish/manifest.firefox.json derive to: ${[...GECKO_REDIRECTS].map(([u, d]) => `${u} (${d})`).join(', ') || '(none — no tool declares a gecko id)'}. The Worker would deliver a one-time code to somebody else's add-on.`,
+      );
+    }
   }
 
   checkPublisherAccount(c, req);

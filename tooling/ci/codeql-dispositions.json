@@ -1271,6 +1271,14 @@
       "reason": "Fixed in code 2026-09-30: the tag:goodtool-v line is one string literal."
     },
     {
+      "alert": 530,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/land-gate.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "Reads the workflow_run event payload Actions writes (GITHUB_EVENT_PATH) and posts a commit status for that run's head SHA to the constant API origin https://api.github.com (land-gate.mjs `const API`), with the job's own GITHUB_TOKEN; GITHUB_REPOSITORY is shape-checked (REPO_SHAPE) before it reaches the path."
+    },
+    {
       "alert": 532,
       "rule": "js/file-access-to-http",
       "path": "tooling/e2e/magic_link.mjs",
@@ -1313,6 +1321,13 @@
       "disposition": "by-design",
       "host": "api.github.com",
       "reason": "Reads the pull_request event payload Actions writes (GITHUB_EVENT_PATH) for the PR number and head SHA, and asks the GitHub API — the constant GITHUB_API origin, https://api.github.com — for that PR's CodeQL analysis and alerts with the job's own token. The number and SHA are shape-checked (integer, 40 hex) before they reach a URL path."
+    },
+    {
+      "alert": 539,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/test/channel-register.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the Firefox-redirect PASS case destructures only `out`, the one value it asserts on."
     }
   ]
 }

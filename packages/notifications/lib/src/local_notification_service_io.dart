@@ -23,6 +23,23 @@ NotificationService createPlatformNotificationService({
 }) =>
     LocalNotificationService(localTimezone: localTimezone, windows: windows);
 
+/// iOS/macOS init settings that ask the OS for NOTHING.
+///
+/// 🔴 THE PLUGIN'S DEFAULTS ASK. `DarwinInitializationSettings()` defaults
+/// alert, sound and badge to true, and `initialize` then calls
+/// `requestAuthorizationWithOptions` and completes only when the user answers
+/// the dialog — so `init()`, which `main()` awaits before `runApp`, blocked on
+/// a launch-time permission prompt. On a runner nobody answers it: native auth
+/// proof run 36525783687's iOS and macOS jobs built, launched and then printed
+/// nothing until cancelled at 60 and 45 min. Permission is asked only by
+/// [LocalNotificationService.requestPermission], from a user gesture.
+const DarwinInitializationSettings kDarwinInitNoAsk =
+    DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestSoundPermission: false,
+      requestBadgePermission: false,
+    );
+
 /// Returns a [tz.TZDateTime] a fixed clock — injected in tests for determinism.
 typedef TZDateTimeNow = tz.TZDateTime Function();
 
@@ -394,8 +411,8 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
     final WindowsNotificationIdentity? w = _windows;
     final InitializationSettings settings = InitializationSettings(
       android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
-      iOS: const DarwinInitializationSettings(),
-      macOS: const DarwinInitializationSettings(),
+      iOS: kDarwinInitNoAsk,
+      macOS: kDarwinInitNoAsk,
       linux: const LinuxInitializationSettings(defaultActionName: 'Open'),
       // The app's own identity (app.yaml -> windows_notification_identity.g
       // .dart). Without it the Windows plugin cannot start, which is why

@@ -276,8 +276,9 @@ describe('the guard says YES on the tree as it is', () => {
       // ⏱ 2026-09-24 · 39 → 41 TEST FILES, SURFACES UNCHANGED: the auth error
       // mapper's suite and `support/raw_vendor_error.dart` joined the chassis
       // corpus. Both per-root equalities above are untouched.
+      // ⏱ 2026-09-29 · train ST-D9 on DW2: +1 chassis width file (plan_golden_test.dart), surfaces unchanged.
     // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: +1 chassis surface (SettingsSection), +1 width file (settings_design_test.dart).
-      /44 reachable surface\(s\), 44 measured by 45 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet), measured in an existing width file */ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
+      /44 reachable surface\(s\), 44 measured by 46 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet), measured in an existing width file */ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
     );
     assert.equal(fails(out).length, 0, out);
   });
@@ -863,7 +864,10 @@ describe('the chassis_screens floors are floors, not report lines', () => {
       // ⏱ 26/27 ON 2026-09-29 (ST-D4): settings_design_test.dart joined the
       // chassis corpus; the floor was raised to the measured 27; the assertion
       // was NOT loosened.
-      /COVERAGE LOST — `packages\/chassis_screens` yielded only 26 width test file\(s\).*checked-in floor is 27/s,
+      // ⏱ 27/28 ON 2026-09-29 (train ST-D9): `plan_golden_test.dart` joined
+      // the corpus and THIS case caught the floor left at 27. The floor was
+      // raised to the measured 28; the assertion was NOT loosened.
+      /COVERAGE LOST — `packages\/chassis_screens` yielded only 27 width test file\(s\).*checked-in floor is 28/s,
     );
     // This root ENFORCES, so the surface the deleted file measured is a FAIL and
     // not a print — the half R12 pins for apps/subscriptiontracker, here for the new root.

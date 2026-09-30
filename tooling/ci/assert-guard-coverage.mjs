@@ -161,6 +161,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, codeMask, NON_CODE } from './text-reductions.mjs';
+import { serialiseManifest } from './coverage-manifest-format.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CI = join(ROOT, 'tooling', 'ci');
@@ -630,6 +631,10 @@ const NOT_A_SCANNER = new Map([
     'is not a guard: it is the ONE zip central-directory walk and the ONE binary-AXML manifest decoder the Android guards share — `zipEntries`, `readEntry` and `decodeAxml`. Pure functions: bytes in, entries or an element tree out; no filesystem, no tree, no exit. It moved out of assert-android-vapt-manifest.mjs on 2026-09-25, unchanged in behaviour, when tooling/ci/dump-aab-permissions.mjs needed the same reading of the Play .apk to cross-check the .aab\'s protobuf manifest (O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN); two AXML decoders would disagree in the one way that reads clean, WHICH ELEMENTS THEY CAN SEE. Every refusal goes through the caller\'s `refuse`, and throws if that returns, so an unreadable archive is never an empty entry list; "did my scan still reach the artefact" belongs to its two importers, each of which carries its own COVERAGE LOST. Its failing cases are in test/dump-aab-permissions.test.mjs (called directly, with a green control) and test/android-vapt-manifest.test.mjs (through the VAPT guard, whose 49 cases ran green before and after the move). It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
   ],
   [
+    'coverage-manifest-format.mjs',
+    'is not a guard: it is the ONE serialisation of tooling/ci/test/coverage-manifest.json — `serialiseManifest`, keys sorted, each entry its key line then its count line, a blank line between entries, so two PRs that raise NEIGHBOURING test files, or add one beside a raised one, never write touching lines and merge cleanly (rv2-pipe-a P-2, 2026-09-29: #1050 conflicted on exactly that). A pure function: counts in, text out; no filesystem, no tree, no exit. This guard writes the manifest through it and ci.yml diffs the result byte for byte. Its failing cases are in test/generated-merge.test.mjs, which merges two real git branches over it, with the old format as the red control. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+  ],
+  [
     'run-page-anchor.mjs',
     'is not a guard: it is the ONE answer to "is this page of GitHub Actions run history CURRENT, or a stale replica\'s page?" — the self-run floor (GITHUB_RUN_ID of the running workflow on the running ref), the branch-head anchor (main HEAD from the commits endpoint, for a workflow `pushTriggersBranch` reads as run on every push), the cross-read by creation date, and `judgeRunPage`, which returns `stale page — …` when one is violated. Pure functions: pages, env and a commit body in, a verdict out; no network, no filesystem, no exit. Extracted 2026-09-18 (coverage unit stale-run-page) when GitHub served the SAME stale page to both widths of reconcileRunReads three times in one day — ops-watch run 35369631763, PR #806\'s CI and the platform Worker watchdog — so four node readers share it rather than each growing a copy: assert-ops-register.mjs (every shared branch page, through anchoredBranchPage) and, since 2026-09-24 (trap ci-48), the three freshness readers through anchored-run-read.mjs — assert-platform-proof-fresh.mjs, assert-e2e-proof-fresh.mjs and extensions/scripts/assert-e2e-proof-fresh.mjs. Each turns the refusal into its OWN unreadable / COVERAGE LOST, so "did my read reach a current history" belongs to them. Its failing cases are in test/run-page-anchor.test.mjs: the four measured pages, each beside a GREEN CONTROL, reached THROUGH their callers, plus a wiring case per caller that reds when a reader stops calling it (mutation-proved 2026-09-18 and 2026-09-24). It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
   ],
@@ -651,8 +656,13 @@ const NOT_A_SCANNER = new Map([
  *  only in its own commit that names the entry and why no importer can carry its
  *  coverage question; it moves DOWN whenever an entry leaves. Each reason must
  *  also be a paragraph, not a label: REASON_MIN characters, measured against the
- *  shortest reason on the day this landed (record-deployment.mjs, 139). */
-const NOT_A_SCANNER_CEILING = 39;
+ *  shortest reason on the day this landed (record-deployment.mjs, 139).
+ *  ⏱ 2026-09-30 · 39 → 40 for coverage-manifest-format.mjs (rv2-pipe-a P-2): the
+ *  ONE serialisation of the coverage manifest. Its only question is the byte
+ *  shape of a file, which ci.yml's byte-for-byte diff and
+ *  test/generated-merge.test.mjs hold; there is no tree it could fail to reach,
+ *  so no importer has a coverage question to carry for it. */
+const NOT_A_SCANNER_CEILING = 40;
 const REASON_MIN = 120;
 
 /** [pipeline S-12r] (absent from origins.lock.json by construction — S-12r is a residual of S-12, raised by Private/pre-minimal-2026-09-08:plans/03-stamper-plan.md after the pipeline harvest was frozen) EXECUTABLES OUTSIDE tooling/ci THAT A WORKFLOW RUNS, and
@@ -1499,7 +1509,9 @@ for (const f of testFiles) {
   else if (now > was) ratcheted.push(`↑ ${f} ${was} → ${now}`);
   next[f] = now;
 }
-const serialised = `${JSON.stringify(Object.fromEntries(Object.keys(next).sort().map((k) => [k, next[k]])), null, 2)}\n`;
+// ⏱ 2026-09-29 (rv2-pipe-a P-2): key and count on two lines, a blank between entries, so two PRs that
+// raise NEIGHBOURING files merge cleanly (coverage-manifest-format.mjs).
+const serialised = serialiseManifest(next);
 if (manifestText !== serialised) {
   try {
     writeFileSync(MANIFEST, serialised);

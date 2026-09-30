@@ -22,6 +22,8 @@
 //   PUBLIC  POST   /v1/ext/token  — the extension exchanges that code (PKCE S256)
 //                                  for its per-device credential. Edge-ceilinged.
 //   DEVICE  POST   /v1/ext/revoke — a device credential revokes itself.
+//   AUTHED  GET    /v1/ext/devices — the account lists its live browser links.
+//   AUTHED  DELETE /v1/ext/devices/:link_id — the account ends ONE link (EXA-11).
 //   DEVICE  GET    /v1/entitlements — the ONE read route that also accepts the
 //                                  device credential (ADR 059 D10); JWT otherwise.
 //   NATIVE  POST   /v1/auth/native/:app/{token,signup,recover,resend} — a native

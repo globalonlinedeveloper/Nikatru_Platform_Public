@@ -491,6 +491,9 @@ function tree({
   // writes no schema file at all.
   extensionSchemaBrowsers = ['chrome', 'edge', 'firefox'],
   extensionToolDirs = ['Full_Screen_Shot'],
+  // ⏱ 2026-09-30 · EXA-02 — the add-on id each fixture tool's
+  // publish/manifest.firefox.json declares; null writes no such file.
+  geckoId = null,
   omitExtensionStoreDir = false,
   toolJsonStores = null,       // null = derive from the row's extensionStoreKey
   // tool.json declares which stores a pack target reaches TWICE — forward as
@@ -704,6 +707,12 @@ function tree({
         JSON.stringify({ id: tool.toLowerCase(), surface: 'extension', targets, storeMetadata: { stores } }, null, 2),
       );
       if (!omitExtensionStoreDir) write(`extensions/Extension/${tool}/store/${key}/README.md`, 'listing');
+      if (geckoId !== null) {
+        write(
+          `extensions/Extension/${tool}/publish/manifest.firefox.json`,
+          JSON.stringify({ browser_specific_settings: { gecko: { id: geckoId } } }, null, 2),
+        );
+      }
     }
     // The source `surfaces.extension.platforms` is held to (O-EXT-SURFACE-AXIS).
     // Written to agree with the fixture register unless a case overrides it.
@@ -3902,17 +3911,50 @@ describe('assert-channel-register — the extension surface carries the store ob
     assert.equal(code, 0, out);
   });
 
-  test('PASSES with a Firefox redirect of the real shape on a firefox row: https://<40 hex>.extensions.allizom.org/', () => {
+  // ⏱ 2026-09-30 · EXA-02 — a Firefox value must be the one OUR add-on id
+  // derives to: https://<sha1-hex(gecko id)>.extensions.allizom.org/.
+  // sha1-hex('fullshot@nikatru.com') = c6f440b64036afafaf5a5fb4bd18316f71c11f70.
+  const OUR_GECKO_REDIRECT = 'https://c6f440b64036afafaf5a5fb4bd18316f71c11f70.extensions.allizom.org/';
+  test('PASSES with the Firefox redirect our add-on id derives to, on a firefox row', () => {
     const { out } = run(tree({
       withExtension: true,
+      geckoId: 'fullshot@nikatru.com',
+      mutate: (r) => {
+        const row = r.channels.at(-1);
+        row.platforms = ['firefox'];
+        row.extensionRedirectUri = OUR_GECKO_REDIRECT;
+      },
+    }));
+    // The fixture's other limbs are chrome-shaped; only this limb's verdict is graded.
+    assert.doesNotMatch(out, /extensionRedirectUri/, out);
+  });
+
+  test('🔴 EXA-02 — FAILS on a Firefox redirect of the right SHAPE that no add-on of ours derives to', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      geckoId: 'fullshot@nikatru.com',
       mutate: (r) => {
         const row = r.channels.at(-1);
         row.platforms = ['firefox'];
         row.extensionRedirectUri = 'https://35b64b676900f491c00e7f618d43f7040e88422e.extensions.allizom.org/';
       },
     }));
-    // The fixture's other limbs are chrome-shaped; only this limb's verdict is graded.
-    assert.doesNotMatch(out, /extensionRedirectUri/, out);
+    assert.equal(code, 1, out);
+    assert.match(out, /which no extension of ours derives to/);
+    assert.match(out, /c6f440b64036afafaf5a5fb4bd18316f71c11f70/);
+  });
+
+  test('EXA-02 — FAILS on any Firefox redirect when no tool declares a gecko id', () => {
+    const { code, out } = run(tree({
+      withExtension: true,
+      mutate: (r) => {
+        const row = r.channels.at(-1);
+        row.platforms = ['firefox'];
+        row.extensionRedirectUri = OUR_GECKO_REDIRECT;
+      },
+    }));
+    assert.equal(code, 1, out);
+    assert.match(out, /no tool declares a gecko id/);
   });
 
   test('FAILS when a Firefox-shaped redirect sits on a Chromium row — the shape follows the platform', () => {

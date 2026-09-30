@@ -39,10 +39,11 @@
 // is a recorded failing input in test/auth.test.ts rather than a claim.
 //
 // 📌 AND SINCE [ADR 067] THAT IS A PROPERTY OF THIS FILE'S IMPORTS, NOT ONLY OF
-// ITS BODY. `services/_shared/src/auth.ts` names no secret, and it is the only
-// non-library module this file imports, so "nothing reachable from here can read
-// SUPABASE_JWT_SECRET" is checkable by reading four import lines.
-// `tooling/ci/assert-erasure-reach.mjs` limb 3 walks exactly that.
+// ITS BODY. `services/_shared/src/auth.ts` names no secret, and neither does
+// `../lib/ext-links` (⏱ 2026-09-30, EXA-11 — D1 statements only, no env read), so
+// "nothing reachable from here can read SUPABASE_JWT_SECRET" is checkable by
+// reading five import lines. `tooling/ci/assert-erasure-reach.mjs` limb 3 walks
+// exactly that.
 //
 // ── THE CACHE, AND THE ROTATION IT MUST SURVIVE ──────────────────────────────
 // ⚠️ The project has exactly ONE ES256 key today, which means a stale JWKS cache
@@ -73,6 +74,7 @@ import {
   revocationRefusal,
 } from '../../../_shared/src/auth';
 import type { AppEnv, Env } from '../types';
+import { raiseLinkFloor } from '../lib/ext-links';
 
 /** The remote JWKS *getter*, cached per SUPABASE_URL for the isolate's life.
  *  `createRemoteJWKSet` keeps its own in-memory cache with request coalescing
@@ -217,6 +219,134 @@ export function linkedProvidersOf(payload: Record<string, unknown>): string[] {
 }
 
 /**
+ * ⏱ 2026-09-30 · EXA-11. The instant (ms) GoTrue recorded a `recovery`
+ * authentication on this token's session — the session a password-reset link
+ * opens — or null. `amr[]` is GoTrue's own claim, signed with the token; the
+ * newest recovery entry wins, and a non-numeric timestamp is no entry.
+ */
+export function recoveryAuthenticatedAt(payload: Record<string, unknown>): number | null {
+  if (!Array.isArray(payload.amr)) return null;
+  let at: number | null = null;
+  for (const entry of payload.amr) {
+    if (!entry || typeof entry !== 'object') continue;
+    const { method, timestamp } = entry as { method?: unknown; timestamp?: unknown };
+    if (method === 'recovery' && typeof timestamp === 'number' && Number.isFinite(timestamp)) {
+      at = at === null ? timestamp * 1000 : Math.max(at, timestamp * 1000);
+    }
+  }
+  return at;
+}
+
+/**
+ * ⏱ 2026-09-30 · EXA-11 (re-review findings 1, 2, 4) — A RECOVERY SESSION RAISES
+ * THE ACCOUNT'S EXTENSION-LINK FLOOR, ONCE.
+ *
+ * GoTrue performs the reset and revokes its own refresh tokens; it tells this
+ * Worker nothing, and a linked extension's credential is not a GoTrue session.
+ * What the Worker CAN see is the reset's session: a verified token whose `amr`
+ * carries a `recovery` entry. The shape is GoTrue's own, read at source
+ * (supabase/auth, 2026-09-30): internal/models/factor.go maps the `Recovery`
+ * authentication method to the string "recovery"; internal/models/sessions.go
+ * `AMREntry` is `{method, timestamp, provider?}` with `timestamp =
+ * claim.UpdatedAt.Unix()` (seconds), newest first; internal/tokens/service.go
+ * puts it in the access token as `amr`. test/ext-auth.test.ts drives a token of
+ * exactly that claim set. ⚠️ PROVEN BY THAT UNIT TEST ONLY: no live recovery
+ * flow has yet been measured reaching this Worker (E2E follow-up).
+ *
+ * The floor (lib/ext-links.ts) is raised to the server's now, so every link —
+ * and every code — minted by a session that authenticated before it is dead,
+ * whenever it was minted. The owner's re-link after the reset comes from a
+ * fresh sign-in and passes.
+ *
+ * 🔴 ONCE PER RECOVERY SESSION, NOT ONCE PER REQUEST. GoTrue keeps a session's
+ * `amr` for its whole life, so every request of that session arrives here. The
+ * write is keyed by the GoTrue `session_id` in D1 (`recovery_session`: a
+ * second isolate's write changes nothing), and this isolate remembers the
+ * sessions it has already written, so a repeat costs no D1 round trip at all.
+ *
+ * 🔴 BEST-EFFORT, BOUNDED, NEVER A REFUSAL. A D1 failure or a write slower than
+ * RECOVERY_FLOOR_TIMEOUT_MS logs ONE line — the event and the error's name,
+ * never an id or an email — and the request proceeds: this middleware guards
+ * every JWT route, and an extension link is not what they authorise. A failed
+ * write is not remembered, so the session's next request tries again.
+ */
+/**
+ * How long the recovery door waits for its one D1 write before admitting the
+ * request anyway.
+ *
+ * @ceiling none — a CLIENT-SIDE PATIENCE BUDGET on a best-effort write, not a platform resource, the same kind as sessions.ts `SESSIONS_RPC_TIMEOUT_MS`.
+ */
+export const RECOVERY_FLOOR_TIMEOUT_MS = 2_000;
+
+/**
+ * How many recovery sessions one isolate remembers having written.
+ *
+ * @ceiling none — an in-memory bound on a per-isolate cache, not a platform resource.
+ */
+const RECOVERY_MEMO_MAX = 1_000;
+const recoveryWritten = new Set<string>();
+
+async function raiseFloorOnRecovery(
+  c: Parameters<MiddlewareHandler<AppEnv>>[0],
+  sub: string,
+  payload: Record<string, unknown>,
+  logPrefix: string,
+) {
+  const at = recoveryAuthenticatedAt(payload);
+  if (at === null || !c.env.PLATFORM_DB) return;
+  const session = typeof payload.session_id === 'string' && payload.session_id !== '' ? payload.session_id : `amr:${at}`;
+  const key = `${sub}|${session}`;
+  if (recoveryWritten.has(key)) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      raiseLinkFloor(c.env.PLATFORM_DB, sub, new Date().toISOString(), session),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('RecoveryFloorTimeout')), RECOVERY_FLOOR_TIMEOUT_MS);
+      }),
+    ]);
+    if (recoveryWritten.size >= RECOVERY_MEMO_MAX) recoveryWritten.clear();
+    recoveryWritten.add(key);
+  } catch (err) {
+    console.warn(`${logPrefix} ext_link_floor_recovery_write_failed: ${err instanceof Error ? err.message === 'RecoveryFloorTimeout' ? 'timeout' : err.name : typeof err}; admitted`);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+/**
+ * ⏱ 2026-09-30 · EXA-11 (review 2, finding 1). When the verified token's
+ * SESSION STARTED, ISO: the OLDEST `amr` timestamp. routes/ext.ts stamps it on
+ * every code it mints as `auth_at`, and the link floor is compared against it.
+ *
+ * 🔴 THE OLDEST, NEVER THE NEWEST. GoTrue appends an `amr` entry to an EXISTING
+ * session whenever it steps up (a `totp` entry after an MFA verify), so the
+ * newest timestamp moves past a reset's floor without anybody signing in again —
+ * a session stolen before the reset could enrol TOTP and then link a browser.
+ * The oldest entry is the session's start, which no step-up moves. (The
+ * deletion-recency check keeps the NEWEST, `authRecencyOf`, on purpose: there
+ * the question is "authenticated lately", here it is "began before the reset".)
+ *
+ * 🔴 NO `amr`, NO START — AND NO `iat` FALLBACK. Every silent refresh rewrites
+ * `iat`, so it says nothing about when the session began. A token without a
+ * numeric `amr` timestamp answers null, and a null `auth_at` is older than ANY
+ * floor (lib/ext-links.ts `predatesFloor`): fail closed. GoTrue always sets
+ * `amr` (internal/tokens/service.go), so this refuses only a token GoTrue did
+ * not shape.
+ */
+export function sessionStartedAtOf(payload: Record<string, unknown>): string | null {
+  if (!Array.isArray(payload.amr)) return null;
+  let oldest: number | null = null;
+  for (const entry of payload.amr) {
+    const ts = entry && typeof entry === 'object' ? (entry as { timestamp?: unknown }).timestamp : undefined;
+    if (typeof ts === 'number' && Number.isFinite(ts)) oldest = oldest === null ? ts : Math.min(oldest, ts);
+  }
+  if (oldest === null) return null;
+  const d = new Date(oldest * 1000);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+}
+
+/**
  * Hono middleware. On success sets `userId` (+ `userEmail` when the token
  * carries one, + `sessionId`) and calls next(). On ANY failure it answers 401 with
  * `{ error: 'unauthorized' }` and nothing else — the reason a token was refused
@@ -257,6 +387,7 @@ export const platformAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
     if (await sessionRevoked(c.env.SESSION_REVOKED, payload.sub, payload as Record<string, unknown>, logPrefix)) {
       return c.json({ error: 'unauthorized' }, 401);
     }
+    await raiseFloorOnRecovery(c, payload.sub, payload as Record<string, unknown>, logPrefix);
     c.set('userId', payload.sub);
     // The session this token belongs to — GoTrue's `session_id` claim, absent on
     // a token that carries none. /v1/sessions uses it to mark "this device" and to
@@ -265,6 +396,7 @@ export const platformAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
     const email = (payload as { email?: unknown }).email;
     if (typeof email === 'string') c.set('userEmail', email);
     c.set('authRecency', authRecencyOf(payload as Record<string, unknown>));
+    c.set('sessionStartedAt', sessionStartedAtOf(payload as Record<string, unknown>) ?? undefined);
     c.set('linkedProviders', linkedProvidersOf(payload as Record<string, unknown>));
     await next();
     return;
