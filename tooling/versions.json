@@ -511,7 +511,7 @@
     "from a third-party registry on every run, outside F-2's single declaration and outside",
     "[pipeline 14]O-9's update coverage. That was the state the first version of this lane shipped in,",
     "and it was the exact defect the four keys above were moved out of ci.yml to fix, reintroduced one",
-    "workflow over by the same commit. The workflow now reads this key with `node -p` and passes it as",
+    "workflow over by the same commit. Until 2026-09-30 the workflow read this key with `node -p` and passed it as",
     "`version:`.",
     "",
     "⚠️ THE TAG CARRIES NO LEADING `v` AND THE GIT TAG DOES. Measured against the registry on",
@@ -520,19 +520,19 @@
     "extractVersionTemplate, exactly as the gitleaks and glitchtip_cli managers do, and the value",
     "written here is what goes after the colon.",
     "",
-    "⚠️ NO `trufflehog_sha256`, AND THAT IS DELIBERATE RATHER THAN AN OVERSIGHT. The other four",
-    "scanners are downloaded as release assets and `sha256sum -c`'d, so a digest beside the version is",
-    "a check something actually runs. Here the only two inputs the action exposes are `image` and",
-    "`version`, joined with a colon — `image@sha256:...` cannot be expressed through them, so a digest",
-    "written here would be a pin NOTHING VERIFIES, which this repository treats as worse than no pin.",
-    "What is recorded instead is the measurement: on 2026-09-06 the tag `3.97.4` and the tag `latest`",
-    "resolved to the SAME manifest, sha256:562bc231afa9de3d04de44cfe624252b08207de1fc3cebc5e7ed92bed7f279e4,",
-    "so pinning the version changes nothing today and freezes it from tomorrow. ⬜ The residual is",
-    "stated and not dressed as coverage: a registry tag is mutable, and nothing in this repository",
-    "would see it move. Closing that needs the action to accept a digest, or this lane to stop using",
-    "the wrapper and run the container itself."
+    "⏱ REPLACED 2026-09-30 [rv2-security-017]: the paragraph that stood here said `NO trufflehog_sha256`",
+    "because the wrapper action accepts only `image` and `version`, so a digest would be a pin nothing",
+    "verifies, and it named the close: stop using the wrapper. That is done. trufflehog.yml now installs the",
+    "RELEASE TARBALL `trufflehog_<ver>_linux_amd64.tar.gz` through tooling/ci/install-pinned-tool.mjs, which",
+    "refuses bytes whose sha256 is not `trufflehog_sha256` and a binary whose `--version` is not",
+    "`trufflehog <ver>`, and runs it directly (no docker, no registry tag, no third-party wrapper step).",
+    "The digest was read three ways on 2026-09-30 and they agree: the GitHub release API asset digest,",
+    "the release's own trufflehog_3.97.9_checksums.txt, and sha256sum of the downloaded asset. A Renovate",
+    "bump of `trufflehog` therefore lands RED at the install step until a human writes the new digest,",
+    "the mechanism the four scanners above already use."
   ],
   "trufflehog": "3.97.9",
+  "trufflehog_sha256": "40377e6572495412fb9ba0bc21c9401f73b72f1d2afd11b9931bc4a5ed622866",
 
   "$store_publishing_comment": [
     "THE TWO STORE-SUBMISSION TOOLCHAINS, ADDED 2026-09-07 ([ADR 067] decision 8, phase 3 unit store-lanes).",
@@ -635,6 +635,10 @@
     {
       "key": "trivy_sha256",
       "why": "A DIGEST, NOT A VERSION — see `gitleaks_sha256`; no Renovate datasource resolves a checksum. It advances with `trivy` and only with it, and a bump arrives RED at ci.yml's `sha256sum -c` until the new digest is written here. Declared 2026-09-06."
+    },
+    {
+      "key": "trufflehog_sha256",
+      "why": "A DIGEST, NOT A VERSION — the sha256 of the linux release tarball `trufflehog` names, and exempt for the reason `gitleaks_sha256` states: no datasource on https://docs.renovatebot.com/modules/datasource/ resolves a file checksum, because a checksum is computed from a download rather than published as a version series. It advances with `trufflehog` and only with it: a Renovate bump of that key lands RED at the install step of .github/workflows/trufflehog.yml (tooling/ci/install-pinned-tool.mjs) until a human downloads the new asset and writes its digest here. ⛔ That red is the mechanism; do not remove the digest to clear it. Declared 2026-09-30 [rv2-security-017], replacing a mutable registry tag."
     },
     {
       "key": "xcode",
