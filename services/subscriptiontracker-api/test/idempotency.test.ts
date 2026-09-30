@@ -65,7 +65,7 @@ describe('POST /v1/subscriptions — Idempotency-Key', () => {
         if (prop !== 'prepare') return Reflect.get(target, prop, receiver);
         return (sql: string) => {
           const stmt = target.prepare(sql);
-          if (missed || !sql.startsWith('SELECT body_hash, row_id, state FROM idempotency_keys')) return stmt;
+          if (missed || !sql.startsWith('SELECT body_hash, row_id, state, created_at FROM idempotency_keys')) return stmt;
           missed = true;
           return { bind: () => ({ first: async () => null }) };
         };
@@ -96,14 +96,54 @@ describe('POST /v1/subscriptions — Idempotency-Key', () => {
     expect(await count('user-a')).toBe(1);
   });
 
-  it('a replay after the row was deleted is 410 and never re-creates it (the tombstone)', async () => {
+  // Review #1075 round 2, minor b: DELETE is a SOFT delete in production, and
+  // the replay after it must already be 410 — not 200 with the deleted row.
+  it('a replay after the row was deleted (the API DELETE, a soft delete) is 410', async () => {
     const made = (await (await post('user-a', CLIENT_ID)).json()) as { id: string };
     expect((await subs('user-a', `/v1/subscriptions/${made.id}`, { method: 'DELETE' })).status).toBe(200);
-    // Hard-remove it too, as an erasure or a purge would: the key still answers.
-    db.prepare('DELETE FROM subscriptions WHERE id = ?').bind(made.id).run();
     const res = await post('user-a', CLIENT_ID);
     expect(res.status).toBe(410);
     expect(await count('user-a')).toBe(0);
+  });
+
+  it('after a purge the key still answers 410 and never re-creates the row (the tombstone)', async () => {
+    const made = (await (await post('user-a', CLIENT_ID)).json()) as { id: string };
+    await subs('user-a', `/v1/subscriptions/${made.id}`, { method: 'DELETE' });
+    db.prepare('DELETE FROM subscriptions WHERE id = ?').bind(made.id).run();
+    expect((await post('user-a', CLIENT_ID)).status).toBe(410);
+    expect(await count('user-a')).toBe(0);
+  });
+
+  // Review #1075 round 2, minor c: a claim whose request died answered 409
+  // forever. The clock is moved by ageing the claim's created_at.
+  const ageClaim = (minutes: number) =>
+    db
+      .prepare("UPDATE idempotency_keys SET state = 'pending', created_at = ? WHERE key = ?")
+      .bind(new Date(Date.now() - minutes * 60_000).toISOString(), CLIENT_ID)
+      .run();
+
+  it('a pending claim younger than 10 minutes is still 409', async () => {
+    expect((await post('user-a', CLIENT_ID)).status).toBe(201);
+    await ageClaim(9);
+    expect((await post('user-a', CLIENT_ID)).status).toBe(409);
+  });
+
+  it('an abandoned pending claim whose row exists is marked done and answered 200', async () => {
+    expect((await post('user-a', CLIENT_ID)).status).toBe(201);
+    await ageClaim(11);
+    expect((await post('user-a', CLIENT_ID)).status).toBe(200);
+    const claim = db.rows("SELECT state FROM idempotency_keys WHERE key = 'offline-add-0001'")[0] as { state: string };
+    expect(claim.state).toBe('done');
+    expect(await count('user-a')).toBe(1);
+  });
+
+  it('an abandoned pending claim with no row is taken over and the create runs', async () => {
+    expect((await post('user-a', CLIENT_ID)).status).toBe(201);
+    // The request died after claiming and before inserting: no row.
+    db.prepare("DELETE FROM subscriptions WHERE user_id = 'user-a'").run();
+    await ageClaim(11);
+    expect((await post('user-a', CLIENT_ID)).status).toBe(201);
+    expect(await count('user-a')).toBe(1);
   });
 
   it('a key still being processed is a 409, not a second insert', async () => {

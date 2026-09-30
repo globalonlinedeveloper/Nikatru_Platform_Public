@@ -824,7 +824,12 @@ app.post(
         c.get('userId'),
       ),
     );
-    return row ? c.json(serializeSubscription(row), 200) : null;
+    if (!row) return null;
+    // A soft-deleted row is GONE to a replay (review #1075 round 2, minor b):
+    // 410, so a late replay never answers a row the user removed. Undo clears
+    // `deleted_at`, and a restored row answers 200 again.
+    if (row.deleted_at != null) return c.json({ error: 'idempotent_create_gone' }, 410);
+    return c.json(serializeSubscription(row), 200);
   }),
 );
 
