@@ -202,3 +202,59 @@ function fromDriveLog(path, name, notes) {
   notes.push(`${name}: ${path} carries no \`${ANON_ID_TOKEN}=\` token`);
   return null;
 }
+
+/** The line tooling/e2e/native_auth_proof.mjs appends to its log once
+ *  `flutter test` has exited and every byte it wrote is in the file. */
+export const PROOF_LOG_END = 'NK_PROOF_LOG_END';
+
+/** The consent row a NATIVE AUTH PROOF may have written, read from the log
+ *  tooling/e2e/native_auth_proof.mjs tees (added 2026-09-29, after proof run
+ *  36525783687's four purges each failed with "no consent anon_id resolved").
+ *
+ *  The proof answers the prompt in ONE place — `answerConsentPrompt` in
+ *  integration_test/native_auth_proof_steps.dart — and prints the install id
+ *  BEFORE its tap. So, unlike a web drive, a FINISHED proof log separates the
+ *  two null-id states purge.mjs's hard failure cannot:
+ *    · a token → the id to delete by (the last one, as `fromDriveLog`);
+ *    · no log, and the proof step never ran (`proofRan` false) → no app ran;
+ *    · no log, but the proof step RAN → UNRESOLVED: the driver writes the log
+ *      as its first act, so a missing one is a failure this reader cannot see
+ *      into, and "no row" would be a guess;
+ *    · no token and the {@link PROOF_LOG_END} line → the app never reached the
+ *      tap, so this run wrote no row;
+ *    · no token and no end line → the log was cut off mid-run: UNRESOLVED;
+ *    · an unreadable log → UNRESOLVED, never a throw: purge.mjs resolves this
+ *      before its user delete, and a throw would skip that delete.
+ *
+ *  Returns `{ id, noRow, notes }`. `noRow` is true only for the two proven
+ *  no-row states; a malformed token is unresolved, never deleted by. */
+export function resolveProofLogConsent(logPath, { proofRan = true } = {}) {
+  const notes = [];
+  if (!logPath || !existsSync(logPath)) {
+    if (!proofRan) {
+      notes.push(`proof log: none at ${logPath ?? '(no path)'}, and the proof step never ran, so no app answered the prompt`);
+      return { id: null, noRow: true, notes };
+    }
+    notes.push(
+      `proof log: none at ${logPath ?? '(no path)'}, yet the proof step ran — the driver writes it first, ` +
+        'so whether the prompt was answered is unknown',
+    );
+    return { id: null, noRow: false, notes };
+  }
+  const id = fromDriveLog(logPath, 'proof log', notes);
+  if (id) return { id, noRow: false, notes };
+  let text;
+  try {
+    text = readFileSync(logPath, 'utf8');
+  } catch (e) {
+    notes.push(`proof log: ${logPath} could not be read (${e.code ?? e.message}), so whether the prompt was answered is unknown`);
+    return { id: null, noRow: false, notes };
+  }
+  if (new RegExp(`${ANON_ID_TOKEN}=`).test(text)) return { id: null, noRow: false, notes };
+  if (text.includes(PROOF_LOG_END)) {
+    notes.push('proof log: finished, and the prompt was never answered (no install id was printed before a tap), so this run wrote no consent row');
+    return { id: null, noRow: true, notes };
+  }
+  notes.push(`proof log: no \`${PROOF_LOG_END}\` line — it was cut off mid-run, so whether the prompt was answered is unknown`);
+  return { id: null, noRow: false, notes };
+}

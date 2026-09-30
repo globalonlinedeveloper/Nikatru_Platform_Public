@@ -91,6 +91,8 @@ describe('the delete set is derived from the real platform schema', () => {
       // and a deleted device row answers 401 — the credential dies with it.
       'ext_codes',
       'ext_devices',
+      // ⏱ 2026-09-30 · EXA-11 (0021): the per-account link floor leaves with the account.
+      'ext_link_floor',
       'identity',
       'provider_accounts',
       'provider_notifications',

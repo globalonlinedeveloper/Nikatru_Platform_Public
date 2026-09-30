@@ -317,7 +317,7 @@
       "kind": "d1-table",
       "name": "ext_codes",
       "personalData": true,
-      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per one-time code minted when a signed-in user connects the browser extension on https://nikatru.com/ext/connect: SHA-256 of the code (the code itself is never stored), WHO minted it (the Supabase `sub`, from the verified JWT), the product (`fullshot`), the store channel, the exact redirect_uri the code may be delivered to, the PKCE S256 challenge, and `created_at` / `expires_at` / `used_at`. A code lives 120 seconds and is single-use. It holds no name and no email address.",
+      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per one-time code minted when a signed-in user connects the browser extension on https://nikatru.com/ext/connect: SHA-256 of the code (the code itself is never stored), WHO minted it (the Supabase `sub`, from the verified JWT), the product (`fullshot`), the store channel, the exact redirect_uri the code may be delivered to, the PKCE S256 challenge, and `created_at` / `expires_at` / `used_at`. A code lives 120 seconds and is single-use. It holds no name and no email address. ⏱ 2026-09-30 · EXA-11: plus `auth_at` (0021_ext_link_floor.sql), the minting session's last authentication, copied to the link at exchange.",
       "retention": {
         "kind": "swept",
         "periodDays": 1,
@@ -331,7 +331,8 @@
       },
       "writtenBy": [
         "services/platform/migrations/0017_ext_devices.sql",
-        "services/platform/src/routes/ext.ts"
+        "services/platform/src/routes/ext.ts",
+        "services/platform/migrations/0021_ext_link_floor.sql"
       ],
       "disclosure": {
         "page": "privacy.html",
@@ -343,12 +344,12 @@
       "kind": "d1-table",
       "name": "ext_devices",
       "personalData": true,
-      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the extension to an account: a random link id (`link_id`), the Supabase `sub`, the product (`fullshot`), the store channel, SHA-256 of the device credential (the credential is returned once to the extension and never stored), `created_at`, `last_seen_at` (at most once per UTC day) and `revoked_at`. The credential can read that one product's entitlement and revoke itself, nothing else. It holds no name and no email address.",
+      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the extension to an account: a random link id (`link_id`), the Supabase `sub`, the product (`fullshot`), the store channel, SHA-256 of the device credential (the credential is returned once to the extension and never stored), `created_at`, `last_seen_at` (at most once per UTC day) and `revoked_at`. The credential can read that one product's entitlement and revoke itself, nothing else. It holds no name and no email address. ⏱ 2026-09-30 · EXA-11: plus `auth_at` (0021_ext_link_floor.sql) — when the Supabase session that minted the link last authenticated, compared against the account's link floor.",
       "retention": {
         "kind": "swept",
         "periodDays": 30,
         "sweptBy": "services/platform/src/scheduled.ts",
-        "reason": "⏱ 2026-09-25. Thirty days after `revoked_at`, enforced by the platform Worker's nightly `retentionSweep` (EXT_DEVICES_RETENTION_DAYS). A device that was never revoked is a LIVE CREDENTIAL and is never swept, however old: an age sweep would sign a paying user out of a product they still use. It ends when the user revokes the device (`revoked_at`, POST /v1/ext/revoke) and 30 days pass, or when the account is erased. The credential itself has no expiry, so no longer window is needed: a revoked row answers 401 from the moment it is revoked, and a deleted row answers the same 401. `swept`, not `ttl`: D1 has no expiry."
+        "reason": "⏱ 2026-09-25, amended 2026-09-30 (EXA-11). Thirty days after `revoked_at`, OR thirty days after the link's lifetime ended, enforced by the platform Worker's nightly `retentionSweep` (EXT_DEVICES_RETENTION_DAYS). Since 2026-09-30 the credential HAS a lifetime (services/platform/src/lib/ext-links.ts: 30 days unused, 180 days at most), so a never-revoked row is swept 30 days after it expired — a browser that was uninstalled never comes back to have it stamped revoked. Inside its lifetime a never-revoked row is a live credential and is not swept. It also ends when the account is erased. A revoked, expired or floored row answers 401 from that moment, and a deleted row answers the same 401. `swept`, not `ttl`: D1 has no expiry."
       },
       "erasure": {
         "kind": "purge",
@@ -358,7 +359,34 @@
       "writtenBy": [
         "services/platform/migrations/0017_ext_devices.sql",
         "services/platform/src/routes/ext.ts",
-        "services/platform/src/middleware/ext-device-auth.ts"
+        "services/platform/src/middleware/ext-device-auth.ts",
+        "services/platform/migrations/0021_ext_link_floor.sql"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "when you contact support, send feedback, or (in apps that offer accounts) create an account"
+      }
+    },
+    {
+      "id": "table:platform_db.ext_link_floor",
+      "kind": "d1-table",
+      "name": "ext_link_floor",
+      "personalData": true,
+      "holds": "⏱ 2026-09-30 · EXA-11. At most one row per account: the Supabase `sub`, `not_before` (the instant before which no browser-extension link of that account is honoured), `recovery_session` (the GoTrue session id whose recovery last raised it, so the recovery door writes once per session) and `updated_at`. Raised by POST /v1/sessions/revoke-all (\"sign out everywhere\") and by a password-recovery session reaching the platform Worker. No name, no email address, no credential.",
+      "retention": {
+        "kind": "keep",
+        "reason": "Kept WHILE THE ACCOUNT EXISTS: it is a standing security rule about the account, at most one row per account (PRIMARY KEY user_id), and deleting it by age would bring back to life every link a reset or a sign-out-everywhere ended. It leaves with the account."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "A floor is a record of the account. The column is spelled `user_id` ON PURPOSE (0021_ext_link_floor.sql): the shared erasure walk DELETES the row with the account."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0021_ext_link_floor.sql",
+        "services/platform/src/lib/ext-links.ts",
+        "services/platform/src/routes/sessions.ts",
+        "services/platform/src/middleware/auth.ts"
       ],
       "disclosure": {
         "page": "privacy.html",

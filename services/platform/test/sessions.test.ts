@@ -24,6 +24,7 @@ import { platformAuth } from '../src/middleware/auth';
 import sessions, { SESSIONS_RPC_TIMEOUT_MS, deviceLabel, isoUtc } from '../src/routes/sessions';
 import { REVOCATION_TTL_SECONDS } from '../../_shared/src/auth';
 import type { AppEnv } from '../src/types';
+import { realPlatformDb } from './harness';
 
 const SUPABASE_URL = 'https://sessions-test.supabase.co';
 const ISSUER = `${SUPABASE_URL}/auth/v1`;
@@ -168,6 +169,8 @@ function harness({
   app.use('/v1/sessions/*', platformAuth);
   app.route('/v1', sessions);
   const env = {
+    // POST /v1/sessions/revoke-all also ends the account's extension links (EXA-11).
+    PLATFORM_DB: realPlatformDb(),
     SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: serviceKey ?? undefined,
     SESSION_REVOKED: revokedBound ? revoked.kv : undefined,
