@@ -15,6 +15,7 @@ import 'l10n/app_localizations.dart';
 import 'state/analytics_funnel.dart';
 import 'state/notification_tap_observer.dart';
 import 'state/providers.dart';
+import 'state/refresh_on_return.dart';
 
 /// Root widget for Subly — Subscription Tracker.
 class SublyApp extends ConsumerWidget {
@@ -128,17 +129,11 @@ class SublyApp extends ConsumerWidget {
       // migrate onto `scheme.primary` — a brand change to a published, live app,
       // not a refactor. Nothing in this file may decide it.
       //
-      // 📌 `./theme-fork.md` DOES NOT EXIST AND NEVER DID. The warning pointed at
-      // it for "the exact three-line replacement". It is absent from the working
-      // tree and from the whole of git history (`git rev-list --all --objects |
-      // grep -c theme-fork` → 0, measured 2026-08-21). Do not go looking for it:
-      // everything it was deferred to is reconstructed above, except the owner
-      // question, which no document in this repo could have answered.
+      // 📌 `./theme-fork.md`, which the warning cited, NEVER EXISTED (0 hits in
+      // all of git history, 2026-08-21); everything it deferred is above.
       //
-      // GUARDS, ANCHORED BY NAME RATHER THAN BY LINE. The old citations (:582 /
-      // :597 / :598) had drifted onto unrelated lines — the `ci.yml:NNNN` failure
-      // mode CLAUDE.md warns about, where a stale pointer still lands on a real
-      // line and so is accepted silently. In
+      // GUARDS, ANCHORED BY NAME RATHER THAN BY LINE (the old :582 / :597 / :598
+      // had drifted onto unrelated lines and were accepted silently). In
       // `tooling/ci/assert-stamp-properties.mjs`: the `REQUIRED_COVERAGE` entries
       // keyed `theme-triplet-supplied` and `brand-seed-drives-paint` anchor on
       // `lib/app.dart` and are enforced against the BRICK, which is not exempt —
@@ -254,7 +249,11 @@ class _OfflineBanner extends ConsumerWidget {
     return OfflineBannerHost(
       unreachable: ref.watch(networkUnreachableProvider),
       onRetry: () => ref.invalidate(appConfigProvider),
-      child: child,
+      child: RefreshOnResume(
+        onRefresh: () => refreshOnReturn(ref),
+        clock: ref.read(nowProvider), // so a test can step past the floor
+        child: child,
+      ),
     );
   }
 }
