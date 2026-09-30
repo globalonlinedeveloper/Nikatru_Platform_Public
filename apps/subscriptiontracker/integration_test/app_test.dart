@@ -1315,7 +1315,21 @@ void main() {
 
     // ── 07 Budget — the editor on Insights (ST-D3: no Budget tab) ────────────
     // The budget loads over the network first, then its card offers Edit.
-    // Wait for the button itself, never a fixed pump: BudgetCard renders no
+    // 🔬 FIRST SCROLL TO THE CARD: Insights is a LAZY ListView, and at the
+    // E2E viewport (430x932) the header and summary tiles push the budget
+    // card below the fold, so it is not BUILT and no finder can see it. The
+    // diagnostic re-run 36699356737 failed on the same line, which a slow
+    // load alone would not do every time. `insights.budget` keys the card in
+    // both its loading and its loaded state.
+    await scrollUntilFound(
+      tester,
+      target: find.byKey(const Key('insights.budget')),
+      scrollable: scrollableWithin(find.byType(InsightsScreen)),
+      what: 'the Insights budget card',
+      maxScrolls: 20,
+      delta: 200,
+    );
+    // Then wait for the button itself, never a fixed pump: BudgetCard renders no
     // Edit until the budget request HAS A VALUE (a load or an error both hide
     // it), and on live production the Insights request outlasted a fixed 2 s
     // (schedule run 36698011430 on 500e0d56: `Bad state: No element`).
