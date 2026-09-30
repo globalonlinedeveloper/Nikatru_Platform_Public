@@ -153,73 +153,58 @@ class _SignUpViewState extends State<SignUpView> {
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
 
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.signUpTitle)),
+    return AuthFrame(
       // Same shape and same reasoning as the sign-in screen: the error line
       // lands under the fields, so vertical centring makes the form move at
       // exactly the wrong moment. Width comes from the chassis.
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ContentPane.form(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              TextField(
-                key: SignUpView.emailField,
-                controller: _email,
-                keyboardType: TextInputType.emailAddress,
-                autofillHints: const <String>[AutofillHints.email],
-                decoration: InputDecoration(labelText: l10n.email),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                key: SignUpView.passwordField,
-                controller: _password,
-                obscureText: true,
-                autofillHints: const <String>[AutofillHints.newPassword],
-                decoration: InputDecoration(labelText: l10n.password),
-                onSubmitted: (_) => _signUp(l10n),
-              ),
-              if (_error != null) ...<Widget>[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ],
-              const SizedBox(height: 20),
-              widget.consentFields(
-                termsAccepted: _acceptedTerms,
-                marketingAccepted: _marketingEmail,
-                enabled: !_busy,
-                onTermsChanged: (bool v) => setState(() => _acceptedTerms = v),
-                onMarketingChanged: (bool v) =>
-                    setState(() => _marketingEmail = v),
-              ),
-              const SizedBox(height: 20),
-              // 🔴 DISABLED UNTIL THE TERMS BOX IS TICKED — and NOT until the
-              // marketing box is. An optional consent that gates the service is
-              // GDPR Art 7(4) conditionality, which research/43 declined as
-              // legally unavailable rather than as a preference.
-              ?widget.captcha,
-              FilledButton(
-                key: SignUpView.submitButton,
-                onPressed: (_busy || !_acceptedTerms)
-                    ? null
-                    : () => _signUp(l10n),
-                child: Text(l10n.signUp),
-              ),
-              const SizedBox(height: 16),
-              TextButton(
-                key: SignUpView.haveAccountButton,
-                onPressed: _busy ? null : widget.onHaveAccount,
-                child: Text(l10n.haveAccount),
-              ),
-            ],
-          ),
+      title: l10n.signUpTitle,
+      children: <Widget>[
+        TextField(
+          key: SignUpView.emailField,
+          controller: _email,
+          keyboardType: TextInputType.emailAddress,
+          autofillHints: const <String>[AutofillHints.email],
+          decoration: InputDecoration(labelText: l10n.email),
         ),
-      ),
+        const SizedBox(height: 12),
+        TextField(
+          key: SignUpView.passwordField,
+          controller: _password,
+          obscureText: true,
+          autofillHints: const <String>[AutofillHints.newPassword],
+          decoration: InputDecoration(labelText: l10n.password),
+          onSubmitted: (_) => _signUp(l10n),
+        ),
+        if (_error != null) ...<Widget>[
+          const SizedBox(height: 12),
+          AuthMessage(message: _error!, kind: StatusKind.danger),
+        ],
+        const SizedBox(height: 20),
+        widget.consentFields(
+          termsAccepted: _acceptedTerms,
+          marketingAccepted: _marketingEmail,
+          enabled: !_busy,
+          onTermsChanged: (bool v) => setState(() => _acceptedTerms = v),
+          onMarketingChanged: (bool v) => setState(() => _marketingEmail = v),
+        ),
+        const SizedBox(height: 20),
+        // 🔴 DISABLED UNTIL THE TERMS BOX IS TICKED — and NOT until the
+        // marketing box is. An optional consent that gates the service is
+        // GDPR Art 7(4) conditionality, which research/43 declined as
+        // legally unavailable rather than as a preference.
+        ?widget.captcha,
+        FilledButton(
+          key: SignUpView.submitButton,
+          onPressed: (_busy || !_acceptedTerms) ? null : () => _signUp(l10n),
+          child: Text(l10n.signUp),
+        ),
+        const SizedBox(height: 16),
+        TextButton(
+          key: SignUpView.haveAccountButton,
+          onPressed: _busy ? null : widget.onHaveAccount,
+          child: Text(l10n.haveAccount),
+        ),
+      ],
     );
   }
 }
