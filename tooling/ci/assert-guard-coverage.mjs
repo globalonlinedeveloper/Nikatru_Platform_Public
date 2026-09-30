@@ -656,8 +656,13 @@ const NOT_A_SCANNER = new Map([
  *  only in its own commit that names the entry and why no importer can carry its
  *  coverage question; it moves DOWN whenever an entry leaves. Each reason must
  *  also be a paragraph, not a label: REASON_MIN characters, measured against the
- *  shortest reason on the day this landed (record-deployment.mjs, 139). */
-const NOT_A_SCANNER_CEILING = 39;
+ *  shortest reason on the day this landed (record-deployment.mjs, 139).
+ *  ⏱ 2026-09-30 · 39 → 40 for coverage-manifest-format.mjs (rv2-pipe-a P-2): the
+ *  ONE serialisation of the coverage manifest. Its only question is the byte
+ *  shape of a file, which ci.yml's byte-for-byte diff and
+ *  test/generated-merge.test.mjs hold; there is no tree it could fail to reach,
+ *  so no importer has a coverage question to carry for it. */
+const NOT_A_SCANNER_CEILING = 40;
 const REASON_MIN = 120;
 
 /** [pipeline S-12r] (absent from origins.lock.json by construction — S-12r is a residual of S-12, raised by Private/pre-minimal-2026-09-08:plans/03-stamper-plan.md after the pipeline harvest was frozen) EXECUTABLES OUTSIDE tooling/ci THAT A WORKFLOW RUNS, and
