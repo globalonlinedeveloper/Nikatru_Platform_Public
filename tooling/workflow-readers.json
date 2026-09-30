@@ -355,6 +355,11 @@
       "reads": "the submission workflow the channel register names (default submit-snap.yml), through parseWorkflow"
     },
     {
+      "path": "tooling/scripts/affected-guards.mjs",
+      "property": "workflow-scan",
+      "reads": "every `node <script>` and `node --test <glob>` call, with its working directory, in ci.yml and each workflow ci.yml calls; none at all is COVERAGE LOST"
+    },
+    {
       "path": "tooling/scripts/gen-start-here.mjs",
       "property": "workflow-scan",
       "reads": "ci.yml's ci-gate needs list"

@@ -271,7 +271,7 @@
         },
         "preferences": {
           "resolver": "exempt",
-          "reason": "⏱ 2026-09-30 · ST-N6 (D11). NO app_version COLUMN AND NO OTHER MARKER: 0006_preferences.sql gives this table `user_id`, `key`, `value`, `version` and `updated_at` — one row per preference key, written by PATCH /v1/preferences (services/subscriptiontracker-api/src/routes/preferences.ts) from the authenticated session. `value` is the user's own setting (currency, theme, language, a reminder choice), `version` is the server's per-key counter, and none of the five names a build, an app, a money world or a closed set a resolver could check. Exempt on the same ground as `budgets`; a marker column added later re-opens this rule."
+          "reason": "⏱ 2026-09-30 · ST-N6 (D11). NO app_version COLUMN AND NO OTHER MARKER: 0007_preferences.sql gives this table `user_id`, `key`, `value`, `version` and `updated_at` — one row per preference key, written by PATCH /v1/preferences (services/subscriptiontracker-api/src/routes/preferences.ts) from the authenticated session. `value` is the user's own setting (currency, theme, language, a reminder choice), `version` is the server's per-key counter, and none of the five names a build, an app, a money world or a closed set a resolver could check. Exempt on the same ground as `budgets`; a marker column added later re-opens this rule."
         },
         "payment_history": {
           "resolver": "exempt",

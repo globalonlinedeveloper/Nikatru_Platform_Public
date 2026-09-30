@@ -818,7 +818,7 @@
         "reason": "Same mechanism as table:subscriptiontracker_db.budgets: the column is spelled `user_id`, so the erasure route derives this table into its sweep without naming it (services/subscriptiontracker-api/test/erasure-derivation.test.ts pins the five-table set). tooling/ci/assert-erasure-reach.mjs is what refuses to let it drop back out."
       },
       "writtenBy": [
-        "services/subscriptiontracker-api/migrations/0006_preferences.sql",
+        "services/subscriptiontracker-api/migrations/0007_preferences.sql",
         "services/subscriptiontracker-api/src/routes/preferences.ts"
       ],
       "disclosure": {
@@ -894,6 +894,30 @@
       "writtenBy": [
         "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
         "services/subscriptiontracker-api/src/routes/subscriptions.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "in apps that offer accounts) create an account"
+      }
+    },
+    {
+      "id": "table:subscriptiontracker_db.idempotency_keys",
+      "kind": "d1-table",
+      "name": "idempotency_keys",
+      "personalData": true,
+      "holds": "One row per Idempotency-Key a keyed create claimed (0006_idempotency_keys.sql, AB-O2-02): the client-minted key, a SHA-256 of the request body, the id of the subscription it made and whether it finished, keyed on the user id. No subscription content: the body is kept only as its hash.",
+      "retention": {
+        "kind": "keep",
+        "reason": "Kept with the account: the row is the tombstone that stops a late offline replay from re-creating a subscription the user already deleted (services/subscriptiontracker-api/src/lib/idempotency.ts). A claim whose create failed is deleted at once."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/subscriptiontracker-api/src/routes/account.ts",
+        "reason": "Same as table:subscriptiontracker_db.subscriptions, and by the same mechanism rather than by a second decision: the column is spelled `user_id`, and the erasure route derives its table set from the schema, so `idempotency_keys` is in the sweep without being named anywhere in the code. tooling/ci/assert-erasure-reach.mjs is what refuses to let it drop back out."
+      },
+      "writtenBy": [
+        "services/subscriptiontracker-api/migrations/0006_idempotency_keys.sql",
+        "services/subscriptiontracker-api/src/lib/idempotency.ts"
       ],
       "disclosure": {
         "page": "privacy.html",

@@ -54,18 +54,18 @@ describe('POST /v1/subscriptions — Idempotency-Key', () => {
     expect(await count('user-a')).toBe(1);
   });
 
-  it('an attempt that loses the insert race is answered with the winning row, not a 500', async () => {
+  it('an attempt that loses the CLAIM race is answered with the winning row, never through the error path', async () => {
     expect((await post('user-a', CLIENT_ID)).status).toBe(201);
-    // The race, made deterministic: the second attempt's LOOKUP misses (the
-    // winner had not committed when it looked), so it goes on to INSERT the
-    // same derived id and hits the primary key.
+    // The race, made deterministic: the second attempt's claim LOOKUP misses
+    // (the winner had not committed when it looked), so it goes on to claim
+    // the key and loses the INSERT … ON CONFLICT DO NOTHING.
     let missed = false;
     const racing = new Proxy(db, {
       get(target, prop, receiver) {
         if (prop !== 'prepare') return Reflect.get(target, prop, receiver);
         return (sql: string) => {
           const stmt = target.prepare(sql);
-          if (missed || !sql.startsWith('SELECT * FROM subscriptions WHERE id = ? AND user_id = ?')) return stmt;
+          if (missed || !sql.startsWith('SELECT body_hash, row_id, state FROM idempotency_keys')) return stmt;
           missed = true;
           return { bind: () => ({ first: async () => null }) };
         };
@@ -78,8 +78,47 @@ describe('POST /v1/subscriptions — Idempotency-Key', () => {
       headers: { 'Idempotency-Key': CLIENT_ID },
     });
     expect(missed).toBe(true);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(200); // the harness's onError would answer 500
     expect(await count('user-a')).toBe(1);
+  });
+
+  it('a replay answers the row the create made, field for field', async () => {
+    const first = await post('user-a', CLIENT_ID);
+    const again = await post('user-a', CLIENT_ID);
+    expect(await again.json()).toEqual(await first.json());
+  });
+
+  it('the same key with a DIFFERENT body is a 422, and nothing is written', async () => {
+    expect((await post('user-a', CLIENT_ID)).status).toBe(201);
+    const res = await post('user-a', CLIENT_ID, { ...BODY, price: 99 });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { error: string }).error).toBe('idempotency_key_reused');
+    expect(await count('user-a')).toBe(1);
+  });
+
+  it('a replay after the row was deleted is 410 and never re-creates it (the tombstone)', async () => {
+    const made = (await (await post('user-a', CLIENT_ID)).json()) as { id: string };
+    expect((await subs('user-a', `/v1/subscriptions/${made.id}`, { method: 'DELETE' })).status).toBe(200);
+    // Hard-remove it too, as an erasure or a purge would: the key still answers.
+    db.prepare('DELETE FROM subscriptions WHERE id = ?').bind(made.id).run();
+    const res = await post('user-a', CLIENT_ID);
+    expect(res.status).toBe(410);
+    expect(await count('user-a')).toBe(0);
+  });
+
+  it('a key still being processed is a 409, not a second insert', async () => {
+    expect((await post('user-a', CLIENT_ID)).status).toBe(201);
+    // Rewind the claim to the moment the first attempt was still running.
+    await db.prepare("UPDATE idempotency_keys SET state = 'pending' WHERE key = ?").bind(CLIENT_ID).run();
+    const res = await post('user-a', CLIENT_ID);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe('idempotency_in_progress');
+    expect(await count('user-a')).toBe(1);
+  });
+
+  it('a refused create releases its claim, so the corrected retry can create', async () => {
+    expect((await post('user-a', CLIENT_ID, { name: {} })).status).toBe(400);
+    expect((await post('user-a', CLIENT_ID)).status).toBe(201);
   });
 
   it('the key is private to its account: another user with the same key gets their own row', async () => {

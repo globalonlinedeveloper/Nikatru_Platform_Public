@@ -70,22 +70,38 @@ void main() {
     expect(offline.read(staleReadProvider), isTrue);
   });
 
-  test('a write made offline waits in the outbox across a restart', () async {
+  test('a write made offline waits in the outbox across a restart, for its '
+      'owner only', () async {
     final core.InMemoryKeyValueStore kv = core.InMemoryKeyValueStore();
     await _container(kv)
         .read(outboxProvider)
         .enqueue(
-          PendingWrite(
-            id: Outbox.newClientId(),
-            kind: 'row.create',
-            body: <String, dynamic>{'name': 'x'},
-            queuedAt: DateTime.utc(2026, 9, 30),
-          ),
+          owner: 'user-a',
+          recordId: 'r1',
+          op: core.OutboxOp.create,
+          kind: 'row',
+          body: <String, dynamic>{'name': 'x'},
         );
-    final Outbox restarted = _container(kv).read(outboxProvider);
+    final core.DurableOutbox restarted = _container(kv).read(outboxProvider);
     final List<String> sent = <String>[];
-    await restarted.replay((PendingWrite w) async => sent.add(w.id));
-    expect(sent, hasLength(1));
+    Future<String?> send(core.OutboxEntry e) async {
+      sent.add(e.owner);
+      return null;
+    }
+
+    await restarted.replay(
+      owner: 'user-b',
+      currentOwner: () => 'user-b',
+      send: send,
+    );
+    expect(sent, isEmpty, reason: 'never under another account');
+    await restarted.replay(
+      owner: 'user-a',
+      currentOwner: () => 'user-a',
+      send: send,
+      classify: classifyForOutbox,
+    );
+    expect(sent, <String>['user-a']);
     expect(await restarted.pending(), isEmpty);
   });
 

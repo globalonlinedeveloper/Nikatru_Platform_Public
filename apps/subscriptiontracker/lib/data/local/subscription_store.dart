@@ -22,8 +22,8 @@ import '../models/subscription.dart';
 // ⚠️ SO THIS IS NOT A CACHE. There is no server behind the unconfigured branch
 // to be a cache OF; this store is the system of record for that posture. The
 // configured branch keeps its server as the record; its offline write queue is
-// the shared `Outbox` (packages/api_client, audit D22), which only stores its
-// entries under [kLocalOutboxKey] here so one sign-out drop forgets both.
+// packages/core's `DurableOutbox` (audit D22), stored under [kLocalOutboxKey]
+// and scoped per user, so a sign-out drops only the signed-out user's entries.
 //
 // ⏱ 2026-09-30 · the read/write/remove mechanics moved to the shared
 // `KeyValueJsonStore` (audit D28). This file keeps the ROW TYPE: the keys, the
@@ -66,9 +66,8 @@ const String kLocalSubscriptionsKey = 'nikatru.subscriptions';
 /// The user's budget (monthly cap + per-category caps), as one JSON object.
 const String kLocalBudgetKey = 'nikatru.budget';
 
-/// Adds made offline, waiting for the server (the shared `Outbox`, audit D22).
-/// Owned by this store so [LocalSubscriptionStore.clear] — the sign-out drop —
-/// forgets them with the list they were made against.
+/// Writes made offline, waiting for the server — packages/core's
+/// `DurableOutbox` (audit D22), one document of user-scoped entries.
 const String kLocalOutboxKey = 'nikatru.subscriptions.outbox';
 
 /// The subscriptions the user has ANSWERED "yes, still using" for on Insights
@@ -195,11 +194,16 @@ typedef LocalStoreWriteFailure = StoreWriteFailure;
 class LocalSubscriptionStore {
   /// Persist through [store] once it resolves.
   LocalSubscriptionStore(Future<core.KeyValueStore> store)
-    : json = KeyValueJsonStore(store);
+    : kv = store,
+      json = KeyValueJsonStore(store);
 
   /// A store that never persists anything — the honest no-op for a posture that
   /// has no backing store.
-  LocalSubscriptionStore.inMemory() : json = KeyValueJsonStore.inMemory();
+  LocalSubscriptionStore.inMemory()
+    : this(Future<core.KeyValueStore>.value(core.InMemoryKeyValueStore()));
+
+  /// The raw store, for the shared `DurableOutbox` (packages/core).
+  final Future<core.KeyValueStore> kv;
 
   /// The shared store underneath — what the read-through cache and the outbox
   /// are built on, so all three share one backing store and one namespace.
@@ -239,7 +243,7 @@ class LocalSubscriptionStore {
   /// the stored text is unreadable — a lost answer is asked again, never
   /// invented.
   Future<Set<String>> readStillUsing() async {
-    final String? raw = await json.readRaw(kLocalStillUsingKey);
+    final String? raw = await _read(kLocalStillUsingKey);
     if (raw == null) return <String>{};
     try {
       final Object? decoded = jsonDecode(raw);
@@ -258,7 +262,7 @@ class LocalSubscriptionStore {
   ///
   /// Throws [LocalStoreWriteFailure] when the store refuses — never silently.
   Future<void> writeStillUsing(Set<String> ids) =>
-      json.writeRaw(kLocalStillUsingKey, jsonEncode(ids.toList()..sort()));
+      _write(kLocalStillUsingKey, jsonEncode(ids.toList()..sort()));
 
   /// Forget everything this store owns.
   ///
@@ -271,8 +275,16 @@ class LocalSubscriptionStore {
   Future<void> clear() => json.remove(<String>[
     kLocalSubscriptionsKey,
     kLocalBudgetKey,
-    kLocalOutboxKey,
     kLocalStillUsingKey,
+    // NOT kLocalOutboxKey: the outbox is per user. An explicit sign-out drops
+    // THAT user's entries (`discardPendingOf`); a forced 401 keeps them for
+    // the same user's return; nobody else's replay ever sends them.
     kCacheIndexKey, // the shared cache's list of what it wrote: key names only
   ]);
+
+  // The still-using answers (ST-D3 D3-4) read and write through the shared
+  // store, with its read-degrades / write-throws contract.
+  Future<String?> _read(String key) => json.readRaw(key);
+
+  Future<void> _write(String key, String value) => json.writeRaw(key, value);
 }

@@ -1,0 +1,73 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nikatru_core/nikatru_core.dart' show OutboxEntry;
+import 'package:nikatru_design_system/nikatru_design_system.dart';
+
+import '../../data/api/api_client.dart' show ApiClient;
+import '../../data/api/cached_api_client.dart' show CachedApiClient;
+import '../../l10n/app_localizations.dart';
+import '../../state/providers.dart';
+import '../../state/subscriptions_controller.dart'
+    show subscriptionsControllerProvider;
+
+/// Changes made offline that the server refused, or that failed too often —
+/// the outbox's dead letters (review #1075 finding 9; the lead's ruling:
+/// "couldn't sync this change — retry or discard"). Nothing is dropped
+/// silently: the user is told, under the shell, and chooses. The tree is the
+/// bare [child] while there are none.
+///
+/// App-side WIRING only: the queue is packages/core's `DurableOutbox`, the
+/// strip is design_system's `DecisionStrip`. Mounted by the router's shell
+/// (`core/router/shell.dart`) rather than `app.dart`, whose fork ceiling holds.
+class SyncProblemsStrip extends ConsumerWidget {
+  const SyncProblemsStrip({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final List<OutboxEntry> problems =
+        ref.watch(syncProblemsProvider).value ?? const <OutboxEntry>[];
+    if (problems.isEmpty) return child;
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final ApiClient api = ref.read(apiClientProvider);
+
+    Future<void> each(
+      Future<void> Function(CachedApiClient c, String id) act,
+    ) async {
+      if (api is! CachedApiClient) return;
+      for (final OutboxEntry e in problems) {
+        await act(api, e.id);
+      }
+      ref
+        ..invalidate(syncProblemsProvider)
+        ..invalidate(subscriptionsControllerProvider);
+    }
+
+    return Column(
+      children: <Widget>[
+        Expanded(child: child),
+        SafeArea(
+          top: false,
+          child: DecisionStrip(
+            kind: StatusKind.danger,
+            message: l10n.syncProblemMessage(problems.length),
+            actions: <DecisionAction>[
+              DecisionAction(
+                label: l10n.retry,
+                primary: true,
+                onPressed: () =>
+                    each((CachedApiClient c, String id) => c.retrySync(id)),
+              ),
+              DecisionAction(
+                label: l10n.syncDiscard,
+                onPressed: () =>
+                    each((CachedApiClient c, String id) => c.discardSync(id)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}

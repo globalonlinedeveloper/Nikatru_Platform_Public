@@ -15,7 +15,6 @@ export 'src/dio_content_pack_source.dart';
 export 'src/dio_event_transport.dart';
 export 'src/dio_reminder_channels_transport.dart';
 export 'src/offline/json_store.dart';
-export 'src/offline/outbox.dart';
 export 'src/offline/read_through_cache.dart';
 export 'src/rest_account_preferences_transport.dart';
 export 'src/rest_client.dart';

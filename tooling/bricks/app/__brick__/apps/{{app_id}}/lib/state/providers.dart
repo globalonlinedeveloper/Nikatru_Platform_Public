@@ -314,9 +314,21 @@ final FutureProvider<core.KeyValueStore> keyValueStoreProvider =
 //
 // and gets the last answer back when the server cannot be asked (status 0 or
 // 5xx — never a 401), MARKED through [staleReadProvider], without waiting on
-// the 15 s connect timeout. A write it cannot send goes to [outboxProvider]
-// with a client id and is replayed with that id as its `Idempotency-Key`.
-// Both are ACCOUNT state and are dropped by [userStateDrops].
+// the 15 s connect timeout. A write it cannot send goes to [outboxProvider] —
+// packages/core's `DurableOutbox`, the same one the subscription app and the
+// preferences sync use: user-scoped, persisted, serialised, bounded (dead
+// letters), ordered and coalesced per record.
+//
+// ⚠️ THE BRICK STAMPS THE QUEUE, NOT A REPLAY DRIVER, because the brick has no
+// rows of its own to send. The app that adds a queued write adds its sender:
+//
+//   ref.read(outboxProvider).replay(
+//     owner: uid, currentOwner: () => auth.currentUser?.id,
+//     send: (e) => rest.post('/<rows>', body: e.body, idempotencyKey: e.id),
+//     classify: classifyForOutbox)
+//
+// Both the copy and the queue are ACCOUNT state: [userStateDrops] forgets the
+// copy and the signed-out user's queued writes.
 // test/offline_cache_test.dart is the stamped proof.
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -365,9 +377,22 @@ final Provider<ReadThroughCache> readThroughCacheProvider =
     );
 
 /// Writes made offline, waiting for the server. See the block above.
-final Provider<Outbox> outboxProvider = Provider<Outbox>(
-  (ref) => Outbox(ref.watch(offlineStoreProvider)),
-);
+final Provider<core.DurableOutbox> outboxProvider =
+    Provider<core.DurableOutbox>(
+      (ref) => core.DurableOutbox(ref.watch(keyValueStoreProvider.future)),
+    );
+
+/// The sign-out drop for the signed-in user's queued writes, resolved NOW so
+/// it still names that user after the sign-out lands. A forced 401 runs no
+/// drops and keeps them for the same user's return; no other user's replay
+/// ever sends them.
+UserStateDrop discardQueuedWritesOf(WidgetRef ref) {
+  final String? owner = ref.read(authRepositoryProvider).currentUser?.id;
+  final core.DurableOutbox outbox = ref.read(outboxProvider);
+  return () async {
+    if (owner != null) await outbox.discardOwner(owner);
+  };
+}
 
 /// Secure store (auth tokens, the entitlement cache).
 ///
@@ -1550,7 +1575,7 @@ List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
   // next person to sign in offline is shown the last one's rows, and a queued
   // write replays under their session.
   ref.read(readThroughCacheProvider).forget,
-  ref.read(outboxProvider).clear,
+  discardQueuedWritesOf(ref),
 ];
 
 /// Run the resolved drops — the half that is allowed to take as long as it likes.

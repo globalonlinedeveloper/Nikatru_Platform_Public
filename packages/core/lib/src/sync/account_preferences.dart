@@ -189,6 +189,9 @@ class AccountPreferencesSync {
         currentOwner: _currentUser,
         send: (OutboxEntry e) => _send(owner, e),
         classify: classifyPreferencesFailure,
+        // Its own queue document already; this only makes a stray kind wait
+        // for its own sender instead of being sent by this one.
+        accepts: (OutboxEntry e) => e.kind == kPreferenceOutboxKind,
       );
       // A refusal is final: drop that change (the key is no longer dirty, so
       // the next read gives it the account's value), say so once, move on.

@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 // FutureProviderFamily moved to misc.dart in Riverpod 3.0.
 import 'package:flutter_riverpod/misc.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_core/nikatru_core.dart' show OutboxEntry;
 
 import '../../core/app_config.dart';
 import '../../data/api/api_client.dart';
@@ -119,8 +120,24 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
     // request carried on; when it lands, the list reads again. `read` and
     // `invalidate` inside closures, never `watch`: no edge back to this client.
     onRevalidated: () => ref.invalidate(subscriptionsControllerProvider),
+    // Review #1075 finding 1: every queued write belongs to the user signed in
+    // when it was made, and only that user's session ever sends it. Read at
+    // call time (inside the closure), so an account switch is seen at once.
+    currentUser: () => ref.read(authRepositoryProvider).currentUser?.id,
+    onOutboxChanged: () => ref.invalidate(syncProblemsProvider),
   );
 });
+
+/// The signed-in user's writes that could not sync — refused by the server,
+/// or failed too often (review #1075 finding 9; the ruling's dead-letter
+/// state). The shell shows them with Retry and Discard.
+final FutureProvider<List<OutboxEntry>> syncProblemsProvider =
+    FutureProvider<List<OutboxEntry>>((ref) async {
+      final ApiClient api = ref.watch(apiClientProvider);
+      return api is CachedApiClient
+          ? await api.syncProblems()
+          : const <OutboxEntry>[];
+    });
 
 /// Whether the list on screen is the device's copy rather than the server's
 /// answer — true only after a read was served from the cache (audit D19).
@@ -189,12 +206,16 @@ ApiClient cachedApiClientOver(
   void Function(bool stale)? onStaleChanged,
   void Function()? onRevalidated,
   void Function(Object error) onCacheWriteFailed = reportCacheWriteFailure,
+  String? Function()? currentUser,
+  void Function()? onOutboxChanged,
 }) => CachedApiClient(
   network,
   store,
   onCacheWriteFailed: onCacheWriteFailed,
   onStaleChanged: onStaleChanged,
   onRevalidated: onRevalidated,
+  currentUser: currentUser,
+  onOutboxChanged: onOutboxChanged,
 );
 
 final Provider<SubscriptionRepository> subscriptionRepositoryProvider =

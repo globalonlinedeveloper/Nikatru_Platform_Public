@@ -15,6 +15,7 @@ import '../../features/home/home_screen.dart';
 import '../../features/insights/insights_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/shell/app_shell.dart';
+import '../../features/shell/sync_problems_strip.dart';
 
 /// ── THE LIVE SHELL — four branches (ST-D3 D3-3, ADR 077 §A) ──────────────
 ///
@@ -23,7 +24,8 @@ import '../../features/shell/app_shell.dart';
 /// `routes.dart` so every link already written against it still lands.
 RouteBase appShellRoute() => StatefulShellRoute.indexedStack(
   builder: (_, __, StatefulNavigationShell navShell) =>
-      AppShell(navigationShell: navShell),
+      // The dead letters of the offline outbox (review #1075 finding 9).
+      SyncProblemsStrip(child: AppShell(navigationShell: navShell)),
   branches: <StatefulShellBranch>[
     StatefulShellBranch(
       routes: <RouteBase>[

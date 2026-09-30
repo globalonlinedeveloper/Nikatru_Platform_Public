@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0006_preferences.sql — the account's preferences, ONE ROW PER KEY (audit D11,
+-- 0007_preferences.sql — the account's preferences, ONE ROW PER KEY (audit D11,
 -- label ST-N6: "preferences follow the account", the API half).
 -- Applies to APP_DB (subscriptiontracker_db):
 --   wrangler d1 migrations apply APP_DB --local   (or --remote)
@@ -15,8 +15,10 @@
 -- was based on, and a newer server version is a conflict the server wins
 -- (src/routes/preferences.ts). `updated_at` is server time, never the client's.
 --
--- Numbered 0006 because #1063's 0005_lifecycle_history_categories.sql lands
--- first. STRICTLY ADDITIVE: one new table (tooling/ci/check-migrations.mjs).
+-- Numbered 0007: #1063's 0005_lifecycle_history_categories.sql and #1075's
+-- 0006_idempotency_keys.sql land first (check-migrations now refuses a shared
+-- number in one directory).
+-- STRICTLY ADDITIVE: one new table (tooling/ci/check-migrations.mjs).
 -- `user_id` makes every row user-owned BY DEFINITION, so src/routes/account.ts's
 -- derived erasure deletes them with the account.
 --
