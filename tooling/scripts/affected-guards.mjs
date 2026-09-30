@@ -53,9 +53,10 @@
 // its exit code and wall time; the total wall time last.
 // ORDER AND BUDGET. Each selected check carries the TIER of its tightest tie to the
 // change: 0 its own file changed, 1 a file its entry names (for a test, also the
-// guard it runs), 2 a file a module it imports names, 3 a directory or glob. The run
-// starts the tightest first (the cheap guards before the slow tests within a tier)
-// and starts nothing after --budget-s (default DEFAULT_BUDGET_S, env
+// guard it runs; a package gate's own package), 2 a file a module it imports names,
+// 3 a directory or glob. One lane runs the tight slow checks (Dart gates, Worker
+// suites, a changed guard's tests), the others every guard, tightest first (see
+// twoQueues), and the run starts nothing after --budget-s (default DEFAULT_BUDGET_S, env
 // NIKATRU_AFFECTED_BUDGET_S, floor BUDGET_FLOOR_S); a check still running GRACE_MS
 // later is stopped. The cut is printed by name as NOT RUN (budget) — CI runs them —
 // and is not a pass of those checks: it is the same bargain as preflight --smoke's.
@@ -112,7 +113,7 @@ export const BUDGET_FLOOR_S = 60;
  *  slowest ceiling (a 262 s test started at 239 s took the first dogfood run to 448 s). */
 const GRACE_MS = 60_000;
 /** The ceiling on re-running the reds at the merge-base, checkout included in spirit. */
-const BASE_MS = 180_000;
+const BASE_MS = 300_000;
 
 // ── the tracked tree ─────────────────────────────────────────────────────────
 
@@ -556,6 +557,8 @@ export function blocker(call, root) {
 }
 
 const PUBLISHING = /^(deploy-|submit-|build-platforms|release)/;
+/** Checks whose subject directory is their own code: its tier comes from the subject. */
+const OWN_DIR_KINDS = new Set(['dart-analyze', 'dart-test', 'worker']);
 
 /** The lane-map lane a workflow file runs: the lane whose `callee` it is, or the lane
  *  its name starts with (`extensions-ci.yml` → extensions). ci.yml is no lane's. */
@@ -644,7 +647,7 @@ export function buildChecks(root, tree, { parsed, readSource = (rel) => readFile
   const members = pubspec ?? workspaceMembers(root);
   for (const m of members) {
     const name = pubspecName(root, m) ?? m.split('/').pop();
-    const subjects = [{ kind: 'dir', path: m }];
+    const subjects = [{ kind: 'dir', path: m, tier: 0 }]; // its own package: the tightest tie
     checks.push({ kind: 'dart-analyze', id: `dart-analyze:${name}`, pkg: name, dir: m, label: `dart analyze (${m})`,
       subjects: [...subjects, { kind: 'file', path: 'pubspec.yaml' }, { kind: 'file', path: 'pubspec.lock' }, { kind: 'file', path: 'analysis_options.yaml' }],
       ceilingMs: 600_000, baseComparable: false });
@@ -660,9 +663,9 @@ export function buildChecks(root, tree, { parsed, readSource = (rel) => readFile
     const m = f.match(/^services\/([^/]+)\/package\.json$/);
     if (!m) continue;
     const dir = `services/${m[1]}`;
-    const subjects = [{ kind: 'dir', path: dir }];
+    const subjects = [{ kind: 'dir', path: dir, tier: 0 }]; // its own Worker: the tightest tie
     for (const g of workersLane?.globs ?? []) if (!g.glob.startsWith('services/')) subjects.push({ kind: 'lane', path: g.glob, re: g.re });
-    subjects.push({ kind: 'dir', path: 'services/_shared' });
+    subjects.push({ kind: 'dir', path: 'services/_shared', tier: 1 });
     checks.push({ kind: 'worker', id: `worker:${m[1]}`, dir, label: `tsc --noEmit + npm test (${dir})`, subjects,
       ceilingMs: 600_000, baseComparable: false });
   }
@@ -706,8 +709,9 @@ export function select(checks, changed, laneMap) {
       for (const s of c.subjects) {
         if (covers(s, p) !== 'specific') continue;
         hit = 'specific';
-        // a directory, glob or lane glob is a looser tie than any named file: tier 3
-        tier = Math.min(tier, s.kind === 'file' ? (s.tier ?? 1) : 3);
+        // a directory, glob or lane glob is a looser tie than any named file (tier 3), except
+        // a package gate's or Worker suite's OWN directory, which is its code (tier 0)
+        tier = Math.min(tier, s.kind === 'file' ? (s.tier ?? 1) : OWN_DIR_KINDS.has(c.kind) ? (s.tier ?? 3) : 3);
       }
       // A broad subject (one whole top-level directory) neither selects nor maps: it
       // names no place specific enough to tie the check to this change.
@@ -810,6 +814,24 @@ async function pool(items, width, fn) {
   return results;
 }
 
+/** Run two queues on `width` lanes: lane 0 drains `slow` first, the others drain
+ *  `fast` first; a lane whose queue is empty takes from the other. Returns id → result. */
+async function twoQueues(slow, fast, width, fn) {
+  const out = new Map();
+  const queues = [slow.slice(), fast.slice()];
+  const lanes = Array.from({ length: Math.max(1, width) }, async (_, k) => {
+    const order = k === 0 && slow.length ? [0, 1] : [1, 0];
+    for (;;) {
+      const q = order.map((i) => queues[i]).find((x) => x.length);
+      if (!q) return;
+      const check = q.shift();
+      out.set(check.id, await fn(check));
+    }
+  });
+  await Promise.all(lanes);
+  return out;
+}
+
 /** Tool environment for the Dart checks: the melos shim directory on PATH, and the
  *  Flutter SDK named by NIKATRU_FLUTTER_ROOT ahead of whatever PATH holds. */
 function dartEnv() {
@@ -827,16 +849,29 @@ function dartEnv() {
 const MELOS = process.platform === 'win32' ? 'melos.bat' : 'melos';
 
 /** The pinned Flutter version, and the one this environment would run. */
+/** The first file named \`bin\` (with a PATHEXT extension on Windows) on env's PATH. */
+function which(bin, env) {
+  const key = Object.keys(env).find((k) => k.toLowerCase() === 'path') ?? 'PATH';
+  const exts = process.platform === 'win32' ? (env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';').concat('') : [''];
+  for (const dir of String(env[key] ?? '').split(process.platform === 'win32' ? ';' : ':').filter(Boolean)) {
+    for (const ext of exts) if (existsSync(join(dir, bin + ext))) return join(dir, bin + ext);
+  }
+  return null;
+}
+
+/** The Dart checks' preconditions, read from FILES: the SDK's own version record and
+ *  the melos shim. Measured 2026-09-30 under load, `melos --version` took 91 s: a
+ *  probe slower than some of the checks it guards. */
 function flutterPrecondition(root, env) {
   let pinned = null;
   try { pinned = JSON.parse(readFileSync(join(root, 'tooling', 'versions.json'), 'utf8')).flutter ?? null; } catch {}
-  const r = spawnSync('flutter', ['--version'], { cwd: root, env, encoding: 'utf8', shell: process.platform === 'win32', windowsHide: true, timeout: 120_000 });
-  const m = `${r.stdout ?? ''}`.match(/Flutter\s+(\d+\.\d+\.\d+)/);
-  const have = m ? m[1] : null;
-  if (!have) return `no \`flutter\` answered --version on PATH (set NIKATRU_FLUTTER_ROOT to the SDK tooling/versions.json pins, ${pinned})`;
-  if (pinned && have !== pinned) return `PATH's flutter is ${have} and tooling/versions.json pins ${pinned}: set NIKATRU_FLUTTER_ROOT to a ${pinned} SDK`;
-  const m2 = spawnSync(MELOS, ['--version'], { cwd: root, env, encoding: 'utf8', shell: process.platform === 'win32', windowsHide: true, timeout: 60_000 });
-  if (m2.status !== 0) return `\`${MELOS}\` did not answer --version (activate it: dart pub global activate melos)`;
+  const flutter = which('flutter', env);
+  if (!flutter) return `no \`flutter\` on PATH (set NIKATRU_FLUTTER_ROOT to the SDK tooling/versions.json pins, ${pinned})`;
+  let have = null;
+  try { have = JSON.parse(readFileSync(join(dirname(flutter), 'cache', 'flutter.version.json'), 'utf8')).frameworkVersion ?? null; } catch {}
+  if (!have) return `${flutter} has no readable bin/cache/flutter.version.json, so its version is unknown (run it once to bootstrap it)`;
+  if (pinned && have !== pinned) return `the flutter on PATH is ${have} and tooling/versions.json pins ${pinned}: set NIKATRU_FLUTTER_ROOT to a ${pinned} SDK`;
+  if (!which(MELOS.replace(/\.bat$/, ''), env)) return `no ${MELOS} on PATH or in the pub cache bin (activate it: dart pub global activate melos)`;
   return null;
 }
 
@@ -871,13 +906,16 @@ async function runCheck(check, root, envs, deadline = null) {
   let status = 0;
   let timedOut = false;
   let budgetCut = false;
+  // Whichever limit comes first names the stop: the deadline is a budget cut (no
+  // verdict, named), the check's own ceiling a timeout (COVERAGE LOST).
+  const byDeadline = deadline !== null && deadline <= started + check.ceilingMs;
   for (const c of commandsFor(check, root)) {
     const own = check.ceilingMs - (Date.now() - started);
     const left = deadline === null ? own : Math.min(own, deadline - Date.now());
-    if (left <= 0) { if (own > 0) budgetCut = true; else timedOut = true; status = null; break; }
+    if (left <= 0) { if (byDeadline) budgetCut = true; else timedOut = true; status = null; break; }
     const r = await runOne(c.cmd, c.args, { cwd: c.cwd, shell: c.shell, env: c.env === 'dart' ? envs.dart : process.env, timeoutMs: left });
     out += `$ ${c.cmd} ${c.args.join(' ')}\n${r.out}\n`;
-    if (r.timedOut) { if (deadline !== null && Date.now() >= deadline - 50 && check.ceilingMs - (Date.now() - started) > 0) budgetCut = true; else timedOut = true; status = null; break; }
+    if (r.timedOut) { if (byDeadline) budgetCut = true; else timedOut = true; status = null; break; }
     if (r.status !== 0) { status = r.status; break; }
   }
   return budgetCut ? { status: 0, out, ms: Date.now() - started, timedOut: false, budgetCut: true, stopped: true }
@@ -904,9 +942,22 @@ async function rerunOnBase(reds, root, baseRef, width) {
   const mb = spawnSync('git', ['merge-base', 'HEAD', baseRef], { cwd: root, encoding: 'utf8' });
   const sha = mb.status === 0 ? mb.stdout.trim() : '';
   if (!/^[0-9a-f]{40}$/.test(sha)) return { error: `\`git merge-base HEAD ${baseRef}\` gave no commit`, results: new Map() };
+  // A base verdict is a fact about (merge-base commit, check): a lane pushing twice on
+  // one base re-runs nothing the first push already asked. The cache lives in the git
+  // common dir, beside the skip log, and holds exit codes only.
+  const cachePath = gitCommonFile(root, 'affected-guards-base-cache.json');
+  let cache = {};
+  try { cache = JSON.parse(readFileSync(cachePath, 'utf8')); } catch {}
+  const results = new Map();
+  const misses = reds.filter((c) => {
+    const hit = cache[`${sha}:${c.id}`];
+    if (hit && Number.isInteger(hit.status)) results.set(c.id, { evaluable: true, status: hit.status, out: hit.head ?? '', cached: true });
+    return !results.has(c.id);
+  });
+  if (misses.length === 0) return { sha, error: null, results, cached: reds.length };
   const co = detachedCheckout({ root, sha, tag: 'agb' });
   if (co.error) return { error: co.error, results: new Map() };
-  const results = new Map();
+  reds = misses;
   // The base phase is bounded too: a red the base cannot answer in BASE_MS is COVERAGE
   // LOST, never a pass.
   const deadline = Date.now() + BASE_MS;
@@ -919,20 +970,27 @@ async function rerunOnBase(reds, root, baseRef, width) {
       const r = await runCheck(check, co.dir, {}, deadline);
       if (r.budgetCut) results.set(check.id, { evaluable: false, reason: `the base re-run was stopped at its ${BASE_MS / 1000} s limit` });
       else if (r.timedOut) results.set(check.id, { evaluable: false, reason: `it timed out at the base (${check.ceilingMs / 1000}s)` });
-      else results.set(check.id, { evaluable: true, status: r.status, out: r.out });
+      else {
+        results.set(check.id, { evaluable: true, status: r.status, out: r.out });
+        cache[`${sha}:${check.id}`] = { status: r.status, head: firstLine(r.out.replace(/^\$ .*\n/, '')) };
+      }
     });
   } finally {
     const why = removeCheckout({ root, dir: co.dir });
     if (why) results.cleanup = why;
+    try { writeFileSync(cachePath, JSON.stringify(cache, null, 1)); } catch {}
   }
-  return { sha, error: null, results };
+  return { sha, error: null, results, cached: results.size - reds.length };
 }
 
-function skipLogPath(root) {
+/** A file in the git common dir (shared by every worktree of the repository). */
+function gitCommonFile(root, name) {
   const r = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: root, encoding: 'utf8' });
   const dir = r.status === 0 ? r.stdout.trim().split(/\r?\n/)[0] : null;
-  return dir ? join(dir, 'affected-guards-skips.log') : null;
+  return dir ? join(dir, name) : null;
 }
+
+const skipLogPath = (root) => gitCommonFile(root, 'affected-guards-skips.log');
 
 const firstLine = (s) => (String(s ?? '').split(/\r?\n/).find((l) => l.trim()) ?? '').trim();
 const lastLines = (s, k = 8) => String(s ?? '').split(/\r?\n/).filter((l) => l.trim()).slice(-k);
@@ -1031,13 +1089,18 @@ export async function main(argv = process.argv.slice(2), { root = ROOT, log = co
       `selected: ${[...selectedIds].sort().join(', ')}`);
     return 2;
   }
-  // Tightest tie first, so a budget cuts the loosest; within a tier the CHEAP kinds
-  // first. Measured on this branch's own diff under load (2026-09-30): with slow tests
-  // first, six 130–260 s tests ate the budget and 19 guards of 1–5 s each — the meta
-  // guards CI fails on most — were cut.
+  // TWO QUEUES, because one order starved one side either way (measured under load,
+  // 2026-09-30): slow tests first cut 19 guards of 1–5 s, the meta guards CI fails on
+  // most; tier-0 Dart first put three ~210 s analyzes on three of four lanes and cut 83
+  // guards. So the SLOW queue — every non-guard check tied at tier 0 or 1 (the changed
+  // package's gates, its Worker suite, the tests of a changed guard) — gets one lane,
+  // and the FAST queue — every guard, tightest first, then the looser slow checks —
+  // gets the rest. A lane whose queue is empty takes from the other.
   const KIND_ORDER = { guard: 0, worker: 1, 'dart-analyze': 2, test: 3, 'dart-test': 4 };
   const toRun = sel.selected.filter((c) => !skipIds.includes(c.id))
     .sort((a, b) => (sel.tiers.get(a.id) - sel.tiers.get(b.id)) || (KIND_ORDER[a.kind] - KIND_ORDER[b.kind]) || a.id.localeCompare(b.id));
+  const slowQueue = toRun.filter((c) => c.kind !== 'guard' && sel.tiers.get(c.id) <= 1);
+  const fastQueue = [...toRun.filter((c) => c.kind === 'guard'), ...toRun.filter((c) => c.kind !== 'guard' && sel.tiers.get(c.id) > 1)];
 
   if (listOnly) {
     for (const c of toRun) log(`   tier ${sel.tiers.get(c.id)}  ${c.id.padEnd(48)} ← ${sel.why.get(c.id)}`);
@@ -1066,7 +1129,14 @@ export async function main(argv = process.argv.slice(2), { root = ROOT, log = co
       log('affected-guards: the workspace is not resolved here — `flutter pub get --enforce-lockfile` at the root first…');
       const before = treeState(root);
       const r = await runOne('flutter', ['pub', 'get', '--enforce-lockfile'], { cwd: root, env: envs.dart, shell: process.platform === 'win32', timeoutMs: 600_000 });
-      if (r.status !== 0) dartBlocked = `\`flutter pub get --enforce-lockfile\` exited ${r.status}: ${firstLine(r.out)}`;
+      // On Windows without Developer Mode pub get resolves, writes package_config.json and
+      // then exits 1 on the plugin-symlink step (measured 2026-09-30). The resolution is
+      // what analyze and test need, so the file decides; the exit code is printed.
+      if (!existsSync(join(root, '.dart_tool', 'package_config.json'))) {
+        dartBlocked = `\`flutter pub get --enforce-lockfile\` exited ${r.status} and resolved nothing: ${firstLine(r.out)}`;
+      } else if (r.status !== 0) {
+        log(`⚠️  flutter pub get exited ${r.status} after resolving the workspace (${lastLines(r.out, 1)[0] ?? ''}); continuing on the resolution`);
+      }
       // pub get rewrites each member's analysis_options.yaml; put back only files that were clean before.
       const after = treeState(root);
       const rewritten = [...after.keys()].filter((p) => !before.has(p) && /(^|\/)analysis_options\.yaml$/.test(p));
@@ -1078,7 +1148,7 @@ export async function main(argv = process.argv.slice(2), { root = ROOT, log = co
   const before = treeState(root);
   const tRun = Date.now();
   log(`affected-guards: running ${toRun.length} check(s), ${width} at a time${budgetMs === null ? ', no budget' : `, none started after ${budgetMs / 1000} s`}…`);
-  const results = await pool(toRun, width, async (check) => {
+  const byId = await twoQueues(slowQueue, fastQueue, width, async (check) => {
     if (budgetMs !== null && Date.now() - tRun > budgetMs) return { status: 0, out: '', ms: 0, timedOut: false, budgetCut: true };
     if (check.kind.startsWith('dart-') && dartBlocked) return { status: null, out: dartBlocked, ms: 0, timedOut: false, blocked: true };
     const r = await runCheck(check, root, envs, budgetMs === null ? null : tRun + budgetMs + GRACE_MS);
@@ -1087,6 +1157,7 @@ export async function main(argv = process.argv.slice(2), { root = ROOT, log = co
     log(`${mark} ${String(r.status === null ? (r.timedOut ? 'TIMEOUT' : 'null') : r.status).padStart(7)}  ${secs(r.ms).padStart(7)}  ${check.id}`);
     return r;
   });
+  const results = toRun.map((c) => byId.get(c.id));
   const runMs = Date.now() - tRun;
   for (const [k, r] of results.entries()) if (r.blocked) log(`🔴 ${'BLOCKED'.padStart(7)}  ${'-'.padStart(7)}  ${toRun[k].id} — ${r.out}`);
 
@@ -1096,7 +1167,9 @@ export async function main(argv = process.argv.slice(2), { root = ROOT, log = co
   let base = { results: new Map(), error: null };
   if (comparable.length) {
     log(`affected-guards: ${comparable.length} red script check(s) — re-running them at the merge-base…`);
+    const tBase = Date.now();
     base = await rerunOnBase(comparable.map(({ c }) => c), root, baseRef, width);
+    log(`affected-guards: the base answered in ${secs(Date.now() - tBase)}${base.cached ? ` (${base.cached} verdict(s) from the per-merge-base cache)` : ''}`);
   }
   const verdicts = [];
   for (const { c, r } of reds) {
