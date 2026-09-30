@@ -88,7 +88,15 @@
     "the floor for `web` alone is one key, `\"web\": \"<version>\"`, and it walls no store build. Keys are refused",
     "by assert-stamp-properties.mjs unless they are `default` or a channel id, and every merged map must carry",
     "`default`. The release record's minSupported is the highest floor served to the channels that release",
-    "stages (release-manifest.mjs `releaseFloor`)."
+    "stages (release-manifest.mjs `releaseFloor`).",
+    "",
+    "⏱ 2026-09-29 · train ST-D9: `paywall.pro_features`, `paywall.free_features` and `paywall.trial_copy` are what",
+    "the in-app paywall PITCHES, served so a pitch change is a config edit and not a release. The two lists are",
+    "feature CODES, never copy: the app resolves each through its own catalogue and draws nothing for a code it has",
+    "no words for (apps/subscriptiontracker/lib/state/money_providers.dart `paywallPitchProvider`). The lead's",
+    "ruling D-11 sets them: sync is FREE (sign-in is mandatory), Pro is plan and save. `trial_copy` is ruling D-25:",
+    "no trial is worded in the app until a store trial is configured, so it is served false while `trial_days`",
+    "above still describes the web offering. None of the three is a price, and none may become one."
   ],
 
   "sharedApiBaseUrl": "https://platform.nikatru.com/v1",
@@ -109,6 +117,9 @@
       "features": { "renewals": true, "budgets": true, "exports": true },
       "paywall": {
         "enabled": false,
+        "pro_features": ["plan", "save"],
+        "free_features": ["track", "remind", "sync"],
+        "trial_copy": false,
         "offerings": [
           {
             "product_id": "pro_monthly",

@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeEach } from 'vitest';
 import subscriptions from '../src/routes/subscriptions';
+import { todayYmd } from '../src/lib/d1';
 import { realAppDb, asUser, SqliteD1 } from './harness';
 
 const U = 'user-a';
@@ -84,6 +85,41 @@ describe('X06 — POST /v1/subscriptions/:id/payments records a manual payment',
   });
 });
 
+describe('review of #1089, finding 3 — paid_on is a date that has happened (one day of skew)', () => {
+  const inDays = (days: number) =>
+    new Date(Date.parse(`${todayYmd()}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
+  // Red control: drop the `isCalendarDateBetween` check — every refused date
+  // below is stored, and '2099-01-01' tops the history as spent.
+  for (const [label, paidOn] of [
+    ['the day after tomorrow', inDays(2)],
+    ['a year typed far ahead', '2099-01-01'],
+    ['the day before the floor', '1999-12-31'],
+    ['a zeroed year', '0026-09-20'],
+  ] as const) {
+    it(`400s on ${label} (${paidOn}), storing nothing`, async () => {
+      const id = await create();
+      const res = await pay(id, { amount: 649, paid_on: paidOn });
+      expect(res.status, `${paidOn} was stored as a payment`).toBe(400);
+      expect(((await res.json()) as Row).detail).toMatch(/\bpaid_on\b/);
+      expect(db.rows('SELECT id FROM payment_history')).toHaveLength(0);
+    });
+  }
+
+  // Red control: a ceiling of today (no skew) — a user east of UTC paying on
+  // their local today is refused.
+  for (const [label, paidOn] of [
+    ['today', inDays(0)],
+    ['tomorrow (a user east of UTC, on their today)', inDays(1)],
+    ['the floor itself', '2000-01-01'],
+  ] as const) {
+    it(`201s on ${label} (${paidOn})`, async () => {
+      const id = await create();
+      expect((await pay(id, { amount: 649, paid_on: paidOn })).status).toBe(201);
+    });
+  }
+});
+
 describe('F14 — every price edit writes one price_change row', () => {
   it('a PATCH that changes the price writes one row, old and new, served as price_history', async () => {
     const id = await create();
@@ -129,5 +165,61 @@ describe('F14 — every price edit writes one price_change row', () => {
     const id = await create();
     expect((await patch(id, { price: -5 })).status).toBe(400);
     expect(db.rows('SELECT id FROM price_change')).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Independent review of #1063 — minor 4.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('minor 4 — two racing price edits record two correct steps', () => {
+  // Red control: read the old amount in the ownership SELECT and bind it into
+  // the log (as #1063 shipped it) — both steps read 649 → …, and the chain
+  // below breaks.
+  it('each step starts where the one before it ended, and the last ends at the stored price', async () => {
+    const id = await create();
+    // The race, made deterministic: the first edit to reach its write is held
+    // until the second has reached its own, so BOTH have done every read the
+    // route makes before either writes — the window two real devices share.
+    const real = db.batch.bind(db);
+    let release: (() => void) | null = null;
+    db.batch = async (statements) => {
+      if (release === null) {
+        await new Promise<void>((r) => {
+          release = r;
+        });
+      } else {
+        release();
+      }
+      return real(statements);
+    };
+
+    const [a, b] = await Promise.all([
+      patch(id, { price: 899, price_minor: 89900, currency: 'INR' }),
+      patch(id, { price: 999, price_minor: 99900, currency: 'INR' }),
+    ]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+
+    const final = db.rows('SELECT price FROM subscriptions WHERE id = ?', id)[0]?.price;
+    const steps = db.rows('SELECT old_price, new_price, old_price_minor, new_price_minor FROM price_change');
+    expect(steps, 'two edits, two steps').toHaveLength(2);
+    const first = steps.find((s) => s.old_price === 649);
+    const second = steps.find((s) => s !== first);
+    expect(first, 'no step starts at the original 649').toBeDefined();
+    expect(second?.old_price, 'both steps started at 649: the second edit logged a price the row no longer had').toBe(
+      first?.new_price,
+    );
+    expect(second?.old_price_minor).toBe(first?.new_price_minor);
+    expect(second?.new_price).toBe(final);
+  });
+
+  it('a currency-only edit is logged from the currency the row held at the write', async () => {
+    const id = await create();
+    await patch(id, { currency: 'USD' });
+    await patch(id, { currency: 'EUR' });
+    expect(db.rows('SELECT old_currency, new_currency, old_price, new_price FROM price_change ORDER BY rowid')).toEqual([
+      { old_currency: 'INR', new_currency: 'USD', old_price: 649, new_price: 649 },
+      { old_currency: 'USD', new_currency: 'EUR', old_price: 649, new_price: 649 },
+    ]);
   });
 });

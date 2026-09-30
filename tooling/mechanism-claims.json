@@ -299,14 +299,6 @@
       "proves": "Plants a new pin block on windows-store that carries only a sentinel; it acquires the checks by declaring it and must fail. Its sibling 'ignores a signing block that declares no sentinel' covers the other side."
     },
     {
-      "file": "tooling/ci/assert-chassis-ledger.mjs",
-      "anchor": "THE DECLARED TOTALS ARE RECOMPUTED from the rows, so the summary cannot",
-      "status": "proven",
-      "test": "tooling/ci/test/chassis-ledger.test.mjs",
-      "case": "totals.lines drifting from the rows FAILS",
-      "proves": "Adds 100 to totals.lines alone and requires exit 1 naming it; siblings do the same for totals.files and totals.unclassified. Mutation-verified 2026-09-18: deleting the totals.lines comparison turns it red."
-    },
-    {
       "file": "tooling/ci/assert-clone-contract.mjs",
       "anchor": "THE COVERAGE FLOOR IS DERIVED, NOT TYPED.",
       "status": "proven",

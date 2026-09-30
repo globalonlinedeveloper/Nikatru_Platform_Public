@@ -98,6 +98,28 @@ class PaywallOffer {
   final ({int count, String unit})? trial;
 }
 
+/// One line of what a plan includes, as the PAINTER needs it (train ST-D9).
+///
+/// 🔴 ALREADY LOCALISED, AND CHOSEN BY THE ADAPTER FROM CONFIG. Which features
+/// Pro adds is a product decision that moves without a release (the D-11
+/// ruling: sync is free, Pro is plan and save), so the adapter reads the codes
+/// from the served `paywall` block and resolves each through the app's own
+/// catalogue. A feature list typed into this package would be one app's
+/// pitch shipped to every stamp.
+@immutable
+class PaywallFeature {
+  const PaywallFeature({required this.icon, required this.title, this.body});
+
+  /// A decorative glyph; excluded from semantics, the words carry it.
+  final IconData icon;
+
+  /// The feature, in a few words.
+  final String title;
+
+  /// One sentence saying what it does for the user, or null.
+  final String? body;
+}
+
 /// The paywall — [pipeline 5]M-6, and the consumer `PaywallGate` never had.
 ///
 /// 🏗️ THE BODY OF `PaywallScreen`, MOVED HERE BY [ADR 067] decision 2. The
@@ -108,6 +130,24 @@ class PaywallOffer {
 /// The screen never grants access on its own, and it never spins: the poller is
 /// bounded by the adapter and lands in a stated terminal state, which arrives
 /// here as a [PaywallPhase].
+///
+/// ## ⏱ 2026-09-29 · train ST-D9: drawn on the ST-D0 foundation
+///  * **What Pro adds, then the plans, then the terms** — [proFeatures] and
+///    [freeFeatures] are the adapter's, from config; an empty list draws no
+///    section, so the brick (which passes neither) keeps a plans-only paywall.
+///  * **A plan is an [AppCard]**: the rail's price as the figure (tabular), the
+///    billing term under it and its own Upgrade control — one tap from the
+///    plan to its checkout, as before.
+///  * **The in-flight and terminal phases are [DecisionStrip]s** on an opaque
+///    status tint: pending is a warning, never a failure; unlocked is good
+///    news; a refusal is a warning with Try again as its one answer.
+///  * **From [AppBreakpoints.expanded] up, two columns** — the features beside
+///    the plans, capped at [wideMaxWidth] — when there are features to show.
+///    Below that, one column at [AppBreakpoints.pane], as before.
+///  * **No trial copy unless [showTrial]** (the D-25 ruling): a configured
+///    trial on an offering is not a promise until the store sells it, so the
+///    trial wording of a plan's term and of the terms line stays behind the
+///    adapter's config flag.
 ///
 /// ⚠️ [pipeline C-13] THE WORDING of the pending state is a `human` decision. A
 /// green lane here proves the mechanism, not the copy.
@@ -123,6 +163,12 @@ class PaywallView extends StatelessWidget {
     required this.onGoHome,
     required this.onRetry,
     this.onBack,
+    this.proFeatures = const <PaywallFeature>[],
+    this.freeFeatures = const <PaywallFeature>[],
+    this.showTrial = false,
+    this.loadingOffers = false,
+    this.offline = false,
+    this.onReconnect,
     super.key,
   });
 
@@ -139,10 +185,22 @@ class PaywallView extends StatelessWidget {
   /// "Try again" — the control every refusal the buyer is shown offers.
   static const Key tryAgainButton = Key('paywallTryAgain');
 
+  /// A plan's card, by the rail's product id — the width and golden anchor.
+  static Key offerCard(String id) => ValueKey<String>('paywallOffer.$id');
+
+  /// The "What Pro adds" card.
+  static const Key featuresCard = Key('paywallFeatures');
+
+  /// The terms line under the plans.
+  static const Key termsLine = Key('paywallTerms');
+
+  /// The widest the two-column layout grows: two panes and the gap between.
+  static const double wideMaxWidth = AppBreakpoints.pane * 2 + AppSpacing.xl;
+
   final PaywallPhase phase;
 
   /// The plans, already formatted. Empty is a real state and is rendered as
-  /// "unavailable" rather than as an empty list.
+  /// "unavailable" rather than as an empty list — unless [loadingOffers].
   final List<PaywallOffer> offers;
 
   /// Whether the rail can open a checkout on THIS platform at all.
@@ -168,10 +226,41 @@ class PaywallView extends StatelessWidget {
   /// a user whose rail sells nothing was trapped. Null draws none.
   final VoidCallback? onBack;
 
+  /// What a plan adds, already localised and chosen from config by the
+  /// adapter. Empty draws no features card.
+  final List<PaywallFeature> proFeatures;
+
+  /// What stays free without a plan. Drawn under [proFeatures], so a buyer
+  /// sees what they are NOT being asked to pay for.
+  final List<PaywallFeature> freeFeatures;
+
+  /// Whether a trial may be worded at all (D-25). False draws every plan as
+  /// its plain term and the plain terms line, whatever [PaywallOffer.trial]
+  /// says.
+  final bool showTrial;
+
+  /// The rail has not answered yet (a store rail before the store has been
+  /// asked). Draws placeholders where the plans go, not "unavailable".
+  final bool loadingOffers;
+
+  /// The last request could not reach the network. Draws a warning above the
+  /// plans; the plans stay usable, because the signal is a past failure and
+  /// the checkout is the rail's to refuse.
+  final bool offline;
+
+  /// The offline warning's Retry, or null for none.
+  final VoidCallback? onReconnect;
+
+  /// The only phase in which there is anything to pitch: plans on screen.
+  bool get _choosingWithPlans =>
+      phase == PaywallPhase.choosing && canStartCheckout && offers.isNotEmpty;
+
   @override
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
     final ThemeData theme = Theme.of(context);
+    final List<Widget> plans = _body(context, l10n, theme);
+    final Widget? features = _choosingWithPlans ? _features(l10n, theme) : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -186,71 +275,152 @@ class PaywallView extends StatelessWidget {
       // looking at slides, for a reason the user did not cause. Pinned to the
       // top it stays where it was and only the new rows appear. `.pane` is the
       // 480 the brick file used to hold privately.
-      body: ContentPane.pane(
-        child: ListView(
-          padding: const EdgeInsets.all(24),
-          shrinkWrap: true,
-          children: <Widget>[
-            Icon(
-              Icons.workspace_premium_outlined,
-              size: 56,
-              color: theme.colorScheme.primary,
+      //
+      // ⏱ ST-D9: the two-column decision reads the width the BODY was given,
+      // not the window — the body is what the columns must fit, and beside a
+      // navigation rail it is narrower than the window by the rail. It is read
+      // OUTSIDE the `ContentPane`, whose cap would otherwise answer for it.
+      body: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints body) {
+          final bool wide =
+              features != null && body.maxWidth >= AppBreakpoints.expanded;
+          return ContentPane(
+            maxWidth: wide ? wideMaxWidth : AppBreakpoints.pane,
+            child: ListView(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              shrinkWrap: true,
+              children: <Widget>[
+                const _Emblem(icon: Icons.workspace_premium_outlined),
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  l10n.paywallHeadline,
+                  style: theme.textTheme.headlineSmall,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                if (wide)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(child: features),
+                      const SizedBox(width: AppSpacing.xl),
+                      Expanded(child: _column(plans)),
+                    ],
+                  )
+                else ...<Widget>[
+                  if (features != null) ...<Widget>[
+                    features,
+                    const SizedBox(height: AppSpacing.xl),
+                  ],
+                  ...plans,
+                ],
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              l10n.paywallHeadline,
-              style: theme.textTheme.headlineSmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ..._body(l10n, theme),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
-  List<Widget> _body(ChassisLocalizations l10n, ThemeData theme) {
+  static Widget _column(List<Widget> children) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    mainAxisSize: MainAxisSize.min,
+    children: children,
+  );
+
+  Widget? _features(ChassisLocalizations l10n, ThemeData theme) {
+    if (proFeatures.isEmpty && freeFeatures.isEmpty) return null;
+    final ColorScheme scheme = theme.colorScheme;
+    return AppCard(
+      key: featuresCard,
+      child: _column(<Widget>[
+        if (proFeatures.isNotEmpty) ...<Widget>[
+          Semantics(
+            container: true,
+            header: true,
+            child: Text(l10n.paywallProAdds, style: theme.textTheme.titleSmall),
+          ),
+          for (final PaywallFeature f in proFeatures) ...<Widget>[
+            const SizedBox(height: AppSpacing.md),
+            _FeatureLine(feature: f, tone: scheme.primary, emphasis: true),
+          ],
+        ],
+        if (proFeatures.isNotEmpty && freeFeatures.isNotEmpty) ...<Widget>[
+          const SizedBox(height: AppSpacing.lg),
+          const Divider(height: 1),
+          const SizedBox(height: AppSpacing.lg),
+        ],
+        if (freeFeatures.isNotEmpty) ...<Widget>[
+          Semantics(
+            container: true,
+            header: true,
+            child: Text(
+              l10n.paywallAlwaysFree,
+              style: theme.textTheme.titleSmall,
+            ),
+          ),
+          for (final PaywallFeature f in freeFeatures) ...<Widget>[
+            const SizedBox(height: AppSpacing.sm),
+            _FeatureLine(
+              feature: f,
+              tone: StatusTones.forBrightness(theme.brightness).positive,
+              emphasis: false,
+            ),
+          ],
+        ],
+      ]),
+    );
+  }
+
+  List<Widget> _body(
+    BuildContext context,
+    ChassisLocalizations l10n,
+    ThemeData theme,
+  ) {
     switch (phase) {
       case PaywallPhase.opening:
         return <Widget>[
           const Center(child: CircularProgressIndicator()),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
           Text(
             switch (checkoutStyle) {
               PaywallCheckoutStyle.hosted => l10n.paywallOpeningHosted,
               PaywallCheckoutStyle.store => l10n.paywallOpeningStore,
             },
+            style: theme.textTheme.bodyMedium,
             textAlign: TextAlign.center,
           ),
         ];
       case PaywallPhase.pending:
         return <Widget>[
-          const Center(child: Icon(Icons.hourglass_top_outlined, size: 40)),
-          const SizedBox(height: 16),
-          // 🔴 NEVER THE WORD "FAILED". The user may well have paid.
-          Text(l10n.paywallPending, textAlign: TextAlign.center),
-          const SizedBox(height: 16),
-          FilledButton(
-            key: checkAgainButton,
-            onPressed: onCheckAgain,
-            child: Text(l10n.paywallCheckAgain),
+          // 🔴 NEVER THE WORD "FAILED", AND NEVER THE DANGER TONE. The user
+          // may well have paid.
+          DecisionStrip(
+            kind: StatusKind.warn,
+            message: l10n.paywallPending,
+            actions: <DecisionAction>[
+              DecisionAction(
+                key: checkAgainButton,
+                label: l10n.paywallCheckAgain,
+                onPressed: onCheckAgain,
+                primary: true,
+              ),
+            ],
           ),
         ];
       case PaywallPhase.unlocked:
         return <Widget>[
-          Icon(
-            Icons.check_circle_outline,
-            size: 40,
-            color: theme.colorScheme.primary,
-          ),
-          const SizedBox(height: 16),
-          Text(l10n.paywallUnlocked, textAlign: TextAlign.center),
-          const SizedBox(height: 16),
-          FilledButton(
-            key: goHomeButton,
-            onPressed: onGoHome,
-            child: Text(l10n.goHome),
+          DecisionStrip(
+            kind: StatusKind.positive,
+            message: l10n.paywallUnlocked,
+            actions: <DecisionAction>[
+              DecisionAction(
+                key: goHomeButton,
+                label: l10n.goHome,
+                onPressed: onGoHome,
+                primary: true,
+              ),
+            ],
           ),
         ];
       case PaywallPhase.refused:
@@ -259,51 +429,233 @@ class PaywallView extends StatelessWidget {
         // painted: it is English on a Tamil screen, and on a store build it
         // could name the web.
         return <Widget>[
-          Text(
-            switch (refusalView) {
+          DecisionStrip(
+            kind: StatusKind.warn,
+            message: switch (refusalView) {
               PaywallRefusalView.retryable => l10n.paywallRetryMessage,
               PaywallRefusalView.unavailable => l10n.paywallUnavailable,
             },
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            key: tryAgainButton,
-            onPressed: onRetry,
-            child: Text(l10n.paywallTryAgain),
+            actions: <DecisionAction>[
+              DecisionAction(
+                key: tryAgainButton,
+                label: l10n.paywallTryAgain,
+                onPressed: onRetry,
+                primary: true,
+              ),
+            ],
           ),
         ];
       case PaywallPhase.choosing:
-        if (!canStartCheckout || offers.isEmpty) {
+        // NOT gated on [canStartCheckout]: a store rail answers false until
+        // its plans arrive, which is exactly the window this state is for.
+        if (loadingOffers && offers.isEmpty) {
+          // ST-U7 (C38)'s anchor, kept: the "still being asked" state is found
+          // by the same key the spinner it replaced carried.
           return <Widget>[
-            Text(l10n.paywallUnavailable, textAlign: TextAlign.center),
+            SkeletonList(
+              key: PlansLoading.loadingKey,
+              label: l10n.paywallLoadingPlans,
+              rows: 2,
+            ),
           ];
         }
-        return <Widget>[
-          for (final PaywallOffer o in offers)
-            Card(
-              child: ListTile(
-                // 🔒 [pipeline 5]M-11. FORMATTED FROM THE RAIL'S OWN AMOUNT AND
-                // CURRENCY. There is no price literal anywhere in this file, and
-                // `tooling/ci/assert-no-price-literals.mjs` fails the build if
-                // one appears — in the adapter or here.
-                title: Text(o.formattedPrice),
-                subtitle: Text(
-                  switch (o.trial) {
-                    final ({int count, String unit}) t =>
-                      l10n.paywallTermWithTrial(o.term, t.count, t.unit),
-                    null => l10n.paywallTerm(o.term),
-                  },
-                ),
-                trailing: FilledButton(
-                  key: upgradeButton,
-                  onPressed: () => onBuy(o),
-                  child: Text(l10n.paywallUpgrade),
-                ),
-              ),
+        if (!canStartCheckout || offers.isEmpty) {
+          return <Widget>[
+            Text(
+              l10n.paywallUnavailable,
+              style: theme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
             ),
+          ];
+        }
+        final bool anyTrial =
+            showTrial && offers.any((PaywallOffer o) => o.trial != null);
+        return <Widget>[
+          if (offline) ...<Widget>[
+            DecisionStrip(
+              kind: StatusKind.warn,
+              message: l10n.offlineMessage,
+              actions: <DecisionAction>[
+                if (onReconnect != null)
+                  DecisionAction(label: l10n.retry, onPressed: onReconnect!),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+          for (final PaywallOffer o in offers) ...<Widget>[
+            _PlanCard(
+              key: offerCard(o.id),
+              offer: o,
+              showTrial: showTrial,
+              onBuy: () => onBuy(o),
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            anyTrial ? l10n.paywallTermsTrial : l10n.paywallTerms,
+            key: termsLine,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            textAlign: TextAlign.center,
+          ),
         ];
     }
+  }
+}
+
+/// The round badge above the headline: the scheme's primary container, so it
+/// follows the app's seed in both schemes.
+class _Emblem extends StatelessWidget {
+  const _Emblem({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return ExcludeSemantics(
+      child: Center(
+        child: Container(
+          width: AppSpacing.xxxl + AppSpacing.lg,
+          height: AppSpacing.xxxl + AppSpacing.lg,
+          decoration: BoxDecoration(
+            color: scheme.primaryContainer,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            icon,
+            size: AppSpacing.xxl,
+            color: scheme.onPrimaryContainer,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One feature: a glyph in [tone], the title, and an optional sentence. The
+/// text WRAPS — a feature cut off at an ellipsis is a promise half-made.
+///
+/// Each line is its own semantics node, not a merged pair: a merged label is
+/// both lines joined, which no single `Text` matches, so the text-contrast
+/// guideline would stop measuring either (see the manage-plan status card).
+class _FeatureLine extends StatelessWidget {
+  const _FeatureLine({
+    required this.feature,
+    required this.tone,
+    required this.emphasis,
+  });
+
+  final PaywallFeature feature;
+  final Color tone;
+
+  /// Title weight: a Pro feature is the pitch, a free one is reassurance.
+  final bool emphasis;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        ExcludeSemantics(
+          child: Icon(feature.icon, color: tone, size: AppSpacing.xl),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Semantics(
+                container: true,
+                child: Text(
+                  feature.title,
+                  style: emphasis
+                      ? theme.textTheme.titleMedium
+                      : theme.textTheme.bodyMedium,
+                ),
+              ),
+              if (feature.body != null)
+                Semantics(
+                  container: true,
+                  child: Text(
+                    feature.body!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One plan: the rail's price as the figure, the billing term under it, and
+/// the control that opens THIS plan's checkout.
+class _PlanCard extends StatelessWidget {
+  const _PlanCard({
+    required this.offer,
+    required this.showTrial,
+    required this.onBuy,
+    super.key,
+  });
+
+  final PaywallOffer offer;
+  final bool showTrial;
+  final VoidCallback onBuy;
+
+  @override
+  Widget build(BuildContext context) {
+    final ChassisLocalizations l10n = context.chassisL10n;
+    final ThemeData theme = Theme.of(context);
+    const List<FontFeature> tabular = <FontFeature>[
+      FontFeature.tabularFigures(),
+    ];
+    final ({int count, String unit})? trial = showTrial ? offer.trial : null;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          // 🔒 [pipeline 5]M-11. FORMATTED FROM THE RAIL'S OWN AMOUNT AND
+          // CURRENCY. There is no price literal anywhere in this file, and
+          // `tooling/ci/assert-no-price-literals.mjs` fails the build if
+          // one appears — in the adapter or here.
+          Text(
+            offer.formattedPrice,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontFeatures: tabular,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            switch (trial) {
+              final ({int count, String unit}) t => l10n.paywallTermWithTrial(
+                offer.term,
+                t.count,
+                t.unit,
+              ),
+              null => l10n.paywallTerm(offer.term),
+            },
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          FilledButton(
+            key: PaywallView.upgradeButton,
+            onPressed: onBuy,
+            child: Text(l10n.paywallUpgrade),
+          ),
+        ],
+      ),
+    );
   }
 }
 

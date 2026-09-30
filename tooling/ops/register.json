@@ -1947,6 +1947,28 @@
       "unverifiedWhy": "A workflow_dispatch workflow can be dispatched only once it is on the default branch, so its first real run is the lead's dispatch after this row reaches main."
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-09-29 for rv2-pipe-a P-1 (the landing machine outside every repository). The laptop lander judged main's health by reading GitHub's run listings, and a filtered listing served a page 9 days stale on 2026-09-28; this workflow publishes the verdict from the finished run itself, as a commit status, so no lander reads a listing for it. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together.",
+      "id": "duty.workflow.main-healthy.yml",
+      "kind": "duty",
+      "what": "Posts the `main-healthy` commit status on the commit a push-to-main CI run ran on, from that completed run (tooling/ops/land-gate.mjs publish-main-health over land-rules.mjs `statusForRun`): success or failure; nothing for a cancelled run, a pull-request run, a fork's `main` or another workflow. Readers (`land-gate.mjs main`, rule b) take the status of the NEWEST run on main's newest sha, by the run id in its target_url, and read no status as PENDING.",
+      "detector": "The run's own exit: land-gate.mjs exits 1 when the status could not be posted and 2 when the workflow_run event could not be read. A status that never arrives is read as PENDING by every lander, never as green.",
+      "response": "Read the run: it names the CI run and the sha. A failed post leaves main PENDING for the landers, which then wait; re-run this workflow's run once the cause is read.",
+      "cadence": "trigger",
+      "trigger": "completion of CI on main",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/main-healthy.yml",
+        "record": "the `main-healthy` commit status on each main commit, plus GitHub Actions run history for main-healthy.yml",
+        "failingValue": "conclusion = failure — the status was not posted; or a `main-healthy` status of failure on main's newest sha",
+        "readBy": "tooling/ops/land-gate.mjs main (rule b), which every lander asks before it merges; and tooling/ci/test/land-rules.test.mjs, which holds the decision and the trigger on every CI run"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has not run yet. Its first run is the first CI completion on main after this row reaches main."
+    },
+    {
       "_whyThisRowExists": "APPENDED 2026-09-23 for O-CI-GATE-CASCADE-STRANDS-THE-DEPLOY-LANES. On 2026-09-22 a red ci-gate on 2c4540fa failed `Deploy web` #426 and `Deploy workers` #168 on their gate step; the repair commit 35147514 turned CI green but matched neither lane's push paths, so nothing re-entered them and production served the previous build until a scheduled Ops watch noticed. This workflow is the re-entry. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together. WIDENED 2026-09-23 for O-REDEPLOY-STRANDED-MISSES-THE-BUILD-LANE: Build apps #102 (run 35800063831, the Worker's 00:00Z dispatch) failed its gate step and was not re-entered, because the derivation took push-on-main lanes only and the run's always() aggregate `all-platforms` failed beside the gate.",
       "id": "duty.workflow.redeploy-stranded.yml",
       "kind": "duty",

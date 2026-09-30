@@ -249,6 +249,9 @@ export function asUser(
   route: Hono<AppEnv>,
   mountAt: string,
   bindings: Partial<AppEnv['Bindings']>,
+  /** Without one, `c.executionCtx` THROWS, so a route's `waitUntil` hand-off
+   *  is never reached — pass a double to put that branch under test. */
+  executionCtx?: ExecutionContext,
 ) {
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => {
@@ -283,5 +286,6 @@ export function asUser(
               : JSON.stringify(init.body),
       },
       env,
+      executionCtx,
     );
 }

@@ -85,11 +85,6 @@ function fixture(mutate = () => {}) {
   const floor = (max) => ({ max, adr: 'ADR 096', asOf: '2026-09-25', verify: 'node tooling/ci/assert-chassis-ledger.mjs' });
   const ledger = {
     roots: [BRICK, WORKER],
-    totals: {
-      files: allRows.length,
-      lines: allRows.reduce((n, r) => n + r.lines, 0),
-      unclassified: 0,
-    },
     floors: { lib: floor(linesUnder('lib/')), state: floor(linesUnder('lib/state/')) },
     files: allRows,
   };
@@ -144,7 +139,6 @@ describe('assert-chassis-ledger · bijection, both directions', () => {
   test('a ledger row naming no tracked file FAILS', () => {
     withFixture((b) => {
       b.ledger.files.push({ path: 'lib/ghost.dart', lines: 4, verdict: 'STAYS', why: 'x' });
-      b.ledger.totals.files += 1;
     }, (r) => {
       assert.equal(r.code, 1, r.out);
       assert.match(r.out, /ghost\.dart[\s\S]*not tracked/);
@@ -152,7 +146,7 @@ describe('assert-chassis-ledger · bijection, both directions', () => {
   });
 
   test('the same path declared twice FAILS', () => {
-    withFixture((b) => { b.ledger.files.push({ ...b.ledger.files[0] }); b.ledger.totals.files += 1; },
+    withFixture((b) => { b.ledger.files.push({ ...b.ledger.files[0] }); },
       (r) => {
         assert.equal(r.code, 1, r.out);
         assert.match(r.out, /twice/);
@@ -162,26 +156,40 @@ describe('assert-chassis-ledger · bijection, both directions', () => {
 
 describe('assert-chassis-ledger · the counts are recomputed, never trusted', () => {
   test('a recorded line count that disagrees with the tree FAILS', () => {
-    withFixture((b) => { b.ledger.files[0].lines += 7; b.ledger.totals.lines += 7; },
+    withFixture((b) => { b.ledger.files[0].lines += 7; },
       (r) => {
         assert.equal(r.code, 1, r.out);
         assert.match(r.out, /the ledger records[\s\S]*the tree has/);
       });
   });
 
-  test('totals.lines drifting from the rows FAILS', () => {
-    withFixture((b) => { b.ledger.totals.lines += 100; },
-      (r) => { assert.equal(r.code, 1, r.out); assert.match(r.out, /totals\.lines/); });
+  // ⏱ 2026-09-29 (rv2-pipe-a P-2): the totals are derived and printed, never
+  // committed — a committed `totals` was the one line every brick PR rewrote.
+  test('the totals are printed from the tree on every run, with no `totals` in the ledger', () => {
+    withFixture((b) => assert.equal(b.ledger.totals, undefined), (r) => {
+      assert.equal(r.code, 0, r.out);
+      assert.match(r.out, /chassis ledger — 5 tracked file\(s\) across 2 root\(s\), \d+ line\(s\)/);
+    });
   });
 
-  test('totals.files drifting from the tree FAILS', () => {
-    withFixture((b) => { b.ledger.totals.files = 99; },
-      (r) => { assert.equal(r.code, 1, r.out); assert.match(r.out, /totals\.files/); });
+  test('a committed `totals` block FAILS even when every number in it is right', () => {
+    withFixture((b) => {
+      b.ledger.totals = { files: b.ledger.files.length, lines: b.ledger.files.reduce((n, f) => n + f.lines, 0), unclassified: 0 };
+    }, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /carries a `totals` block[\s\S]*Delete the block/);
+    });
   });
 
-  test('totals.unclassified drifting from the rows FAILS', () => {
-    withFixture((b) => { b.ledger.totals.unclassified = 5; },
-      (r) => { assert.equal(r.code, 1, r.out); assert.match(r.out, /totals\.unclassified/); });
+  test('the printed totals move with the rows: one more tracked file with its row is one more file printed', () => {
+    withFixture((b) => {
+      write(b.root, `${BRICK}/lib/extra.dart`, 'x\ny\n');
+      b.ledger.files.push({ path: 'lib/extra.dart', lines: 2, verdict: 'STAYS', why: 'x' });
+      b.ledger.floors.lib.max += 2;
+    }, (r) => {
+      assert.equal(r.code, 0, r.out);
+      assert.match(r.out, /chassis ledger — 6 tracked file\(s\)/);
+    });
   });
 });
 
@@ -331,7 +339,6 @@ describe('assert-chassis-ledger · two roots, and nothing between them', () => {
   test("a second-root row whose line count drifts FAILS — the recount reads that root's tree", () => {
     withFixture((b) => {
       b.ledger.files.find((f) => f.root === WORKER).lines = 99;
-      b.ledger.totals.lines += 98;
     }, (r) => {
       assert.equal(r.code, 1, r.out);
       assert.match(r.out, /records 99 line\(s\); the tree has 1/);
@@ -344,8 +351,6 @@ describe('assert-chassis-ledger · two roots, and nothing between them', () => {
         root: 'tooling/bricks/app/__brick__/somewhere-else',
         path: 'x.ts', lines: 1, verdict: 'STAYS', why: 'x',
       });
-      b.ledger.totals.files += 1;
-      b.ledger.totals.lines += 1;
     }, (r) => {
       assert.equal(r.code, 1, r.out);
       assert.match(r.out, /which this guard does not scan/);
@@ -370,8 +375,6 @@ describe('assert-chassis-ledger · two roots, and nothing between them', () => {
     withFixture((b) => {
       write(b.root, `${WORKER}/pubspec.yaml`, 'name: worker\n');
       b.ledger.files.push({ root: WORKER, path: 'pubspec.yaml', lines: 1, verdict: 'STAYS', why: 'x' });
-      b.ledger.totals.files += 1;
-      b.ledger.totals.lines += 1;
     }, (r) => {
       assert.equal(r.code, 0, r.out);
       assert.doesNotMatch(r.out, /twice/);
@@ -449,8 +452,6 @@ describe('assert-chassis-ledger · the brick lib/ total is printed and held unde
     withFixture((b) => {
       rmSync(join(b.root, `${BRICK}/lib/state/providers.dart`));
       b.ledger.files = b.ledger.files.filter((f) => f.path !== 'lib/state/providers.dart');
-      b.ledger.totals.files -= 1;
-      b.ledger.totals.lines -= 2;
     }, (r) => {
       assert.equal(r.code, 2, r.out);
       assert.match(r.out, /COVERAGE LOST[\s\S]*lib\/state\/, so lib\/state totals 0/);
