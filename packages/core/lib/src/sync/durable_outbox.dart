@@ -9,7 +9,7 @@ import '../storage/key_value_store.dart';
 //
 // ⏱ 2026-09-30 · lead ruling on #1075 (review fix-rv2-offline-core): ONE shared
 // primitive, here in core, used by the subscription outbox (#1075) and the
-// preferences sync (#1080). Five properties, each a finding it closes:
+// preferences sync (#1080). Its properties, each a finding it closes:
 //
 // 🔴 USER-SCOPED. Every entry carries the user id it was queued under, and
 //   [DurableOutbox.replay] sends ONLY the replaying user's entries — it takes
@@ -20,23 +20,34 @@ import '../storage/key_value_store.dart';
 // 🔴 PERSISTED. The queue is one JSON document in the key-value store, read on
 //   every operation, so it survives a restart and is shared by every instance
 //   over the same store.
+// 🔴 A FAILED READ NEVER WIPES THE QUEUE (review 2, minor e). A read is retried;
+//   if the store still will not answer, [OutboxStoreFailure] is thrown — a
+//   mutation aborts and writes nothing, so what is stored stays stored.
 // 🔴 SERIALISED. Every read-modify-write runs under one async lock per store
-//   (and per key), across instances. A replay never writes back a snapshot: it
-//   removes the entry it sent BY ID from a fresh read, so an entry queued while
-//   it ran survives (finding 2). A [DurableOutbox.clear]/[discardOwner] bumps a
-//   generation that aborts a replay mid-run and forbids its write-back.
-// 🔴 BOUNDED. A transient failure (5xx, a timeout the classifier says is not
-//   "offline") costs an attempt and an exponential backoff; at
-//   [DurableOutbox.maxAttempts] the entry becomes a DEAD LETTER the UI can show
-//   ("couldn't sync this change — retry or discard"). A refusal is a dead letter
-//   at once. "Offline" costs nothing: a week on a plane is not five failures.
-//   One stuck entry never blocks the others — only later ops on the SAME record.
-// 🔴 ORDERED AND COALESCED PER RECORD. Operations on one record replay in the
-//   order they were made. Before anything is sent they collapse: create+update
-//   is one create, update+update one update, update+delete one delete, and a
-//   delete of a record whose create never reached the server cancels both — it
-//   sends nothing (finding 4). A create that WAS attempted may have committed
-//   with its response lost, so a delete then queues behind it instead.
+//   (and per key), across instances in one isolate (two browser tabs over one
+//   localStorage are two isolates: the server's Idempotency-Key ledger keeps a
+//   duplicate send harmless, but a tab's write-back can overwrite the other's
+//   enqueue). A replay never writes back a snapshot: it reconciles the entry it
+//   sent BY ID AND REVISION from a fresh read (review 2, minor a): an entry
+//   that changed while its request was out is kept and sent again. A
+//   [DurableOutbox.clear]/[discardOwner] bumps a generation that aborts a replay
+//   mid-run and forbids its write-back.
+// 🔴 BOUNDED. A transient failure costs an attempt and an exponential backoff;
+//   at [DurableOutbox.maxAttempts] the entry becomes a DEAD LETTER the UI can
+//   show ("couldn't sync this change — retry or discard"). A refusal (the
+//   classifier's word, and an undecodable answer is one) is a dead letter at
+//   once. "Offline" costs nothing: a week on a plane is not five failures. One
+//   stuck entry never blocks the others — only later ops on the SAME record.
+// 🔴 ORDERED AND COALESCED PER RECORD, ON WHAT THE SERVER MAY HAVE SEEN (review
+//   2, major 1). [OutboxEntry.mayHaveReached] is set BEFORE every dispatch — a
+//   request whose response was lost looks exactly like one that never left, so
+//   only an entry that has never been dispatched is known unseen. Operations on
+//   one record replay in order and, before anything is sent, collapse:
+//   update+update is one update and update+delete one delete; an edit merges
+//   into a create ONLY while that create has never left the device, and a
+//   delete cancels a create (sending nothing) ONLY then. Otherwise the edit or
+//   the delete queues BEHIND the create and is sent to the server id the
+//   create's replay returns.
 // ═════════════════════════════════════════════════════════════════════════════
 
 /// The store key an outbox lives under unless the caller names another.
@@ -54,11 +65,21 @@ enum OutboxFailure {
   /// keeps the entry for its owner.
   unauthorized,
 
-  /// Worth retrying later (5xx, 408, 429, a malformed answer). Costs an attempt.
+  /// Worth retrying later (5xx, 408, 409, 429). Costs an attempt.
   transient,
 
-  /// The server said no to this request. A dead letter at once.
+  /// The server said no to this request, or answered what cannot be read. A
+  /// dead letter at once.
   refused,
+}
+
+/// The store could not be read, so nothing was changed. See the header.
+class OutboxStoreFailure implements Exception {
+  const OutboxStoreFailure(this.cause);
+  final Object cause;
+  @override
+  String toString() =>
+      'OutboxStoreFailure: the outbox could not be read — $cause';
 }
 
 /// One write waiting for the server.
@@ -75,6 +96,8 @@ class OutboxEntry {
     this.nextAttemptAt,
     this.lastError,
     this.dead = false,
+    this.mayHaveReached = false,
+    this.rev = 0,
   });
 
   /// The client-minted id — the `Idempotency-Key` every attempt sends.
@@ -110,6 +133,14 @@ class OutboxEntry {
   /// A dead letter: not sent again until [DurableOutbox.retry].
   final bool dead;
 
+  /// Whether a request for this entry has EVER been dispatched — set before
+  /// the dispatch, so a lost response still counts. See the header.
+  final bool mayHaveReached;
+
+  /// Bumped by every merge into this entry; the write-back after a send
+  /// removes the entry only when the revision it sent is still current.
+  final int rev;
+
   OutboxEntry copyWith({
     String? recordId,
     Map<String, dynamic>? body,
@@ -118,6 +149,8 @@ class OutboxEntry {
     bool clearNextAttempt = false,
     String? lastError,
     bool? dead,
+    bool? mayHaveReached,
+    int? rev,
   }) => OutboxEntry(
     id: id,
     owner: owner,
@@ -132,6 +165,8 @@ class OutboxEntry {
         : (nextAttemptAt ?? this.nextAttemptAt),
     lastError: lastError ?? this.lastError,
     dead: dead ?? this.dead,
+    mayHaveReached: mayHaveReached ?? this.mayHaveReached,
+    rev: rev ?? this.rev,
   );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -147,6 +182,8 @@ class OutboxEntry {
       'next_at': nextAttemptAt!.toUtc().toIso8601String(),
     if (lastError != null) 'error': lastError,
     if (dead) 'dead': true,
+    if (mayHaveReached) 'sent': true,
+    'rev': rev,
   };
 
   /// Rebuild a stored entry; null when [json] is not one.
@@ -181,6 +218,10 @@ class OutboxEntry {
       nextAttemptAt: at(json['next_at']),
       lastError: json['error'] is String ? json['error'] as String : null,
       dead: json['dead'] == true,
+      // A stored entry that predates the flag is treated as possibly seen:
+      // the safe direction (it is sent, never silently cancelled).
+      mayHaveReached: json['sent'] == true || json['attempts'] != 0,
+      rev: json['rev'] is int ? json['rev'] as int : 0,
     );
   }
 }
@@ -193,8 +234,8 @@ class OutboxEnqueueResult {
   /// into); null when the write cancelled out.
   final OutboxEntry? entry;
 
-  /// True when a delete cancelled a create the server never saw: nothing will
-  /// be sent for the record, and the caller drops it locally.
+  /// True when a delete cancelled a create that was never dispatched: nothing
+  /// will be sent for the record, and the caller drops it locally.
   final bool cancelled;
 }
 
@@ -205,6 +246,7 @@ class OutboxReplayResult {
     this.deadLettered = 0,
     this.aborted = false,
     this.stoppedOffline = false,
+    this.storeError,
   });
 
   final int sent;
@@ -215,10 +257,13 @@ class OutboxReplayResult {
 
   /// The run met an unreachable server and stopped.
   final bool stoppedOffline;
+
+  /// The store could not be read or written; nothing was lost, the run ended.
+  final Object? storeError;
 }
 
 /// The lock, the generation and the single replay, per store and key — shared
-/// by every [DurableOutbox] over the same store.
+/// by every [DurableOutbox] over the same store in this isolate.
 class _Shared {
   Future<void> tail = Future<void>.value();
   int generation = 0;
@@ -237,6 +282,7 @@ class DurableOutbox {
     this.maxAttempts = 5,
     this.baseBackoff = const Duration(seconds: 2),
     this.maxBackoff = const Duration(minutes: 5),
+    this.readAttempts = 3,
     DateTime Function()? now,
     void Function()? onChanged,
   }) : _now = now ?? DateTime.now,
@@ -253,6 +299,9 @@ class DurableOutbox {
   final int maxAttempts;
   final Duration baseBackoff;
   final Duration maxBackoff;
+
+  /// How many times a store read is tried before [OutboxStoreFailure].
+  final int readAttempts;
 
   _Shared _sharedFor(KeyValueStore kv) =>
       (_sharedByStore[kv] ??= <String, _Shared>{})[key] ??= _Shared();
@@ -273,14 +322,18 @@ class DurableOutbox {
     }
   }
 
+  /// The stored document. Retried; throws [OutboxStoreFailure] rather than
+  /// answer "empty" for a store that did not answer — see the header.
   Future<_Doc> _read(KeyValueStore kv) async {
-    final String? raw;
-    try {
-      raw = await kv.read(key);
-    } catch (_) {
-      return _Doc(<OutboxEntry>[], <String, String>{});
+    Object? last;
+    for (int i = 0; i < readAttempts; i++) {
+      try {
+        return _Doc.decode(await kv.read(key));
+      } catch (e) {
+        last = e;
+      }
     }
-    return _Doc.decode(raw);
+    throw OutboxStoreFailure(last!);
   }
 
   Future<void> _write(KeyValueStore kv, _Doc doc) async {
@@ -289,6 +342,7 @@ class DurableOutbox {
   }
 
   /// Every entry (dead letters included) — of [owner] only, when given.
+  /// Throws [OutboxStoreFailure] when the store cannot be read.
   Future<List<OutboxEntry>> entries({String? owner}) =>
       _locked((KeyValueStore kv, _) async {
         final _Doc doc = await _read(kv);
@@ -313,8 +367,10 @@ class DurableOutbox {
       });
 
   /// Queue a write, coalescing it with what is already waiting for the same
-  /// record (see the header). Throws whatever the store throws on write: the
-  /// caller must then tell the user the write was NOT kept.
+  /// record (see the header). [mayHaveReached] is true when the caller already
+  /// dispatched this write once itself (a first attempt whose outcome is
+  /// unknown). Throws whatever the store throws: the caller must then tell the
+  /// user the write was NOT kept.
   Future<OutboxEnqueueResult> enqueue({
     required String owner,
     required String recordId,
@@ -322,6 +378,7 @@ class DurableOutbox {
     required String kind,
     Map<String, dynamic> body = const <String, dynamic>{},
     String? id,
+    bool mayHaveReached = false,
   }) => _locked((KeyValueStore kv, _Shared shared) async {
     final _Doc doc = await _read(kv);
     final String record = doc.aliases[recordId] ?? recordId;
@@ -333,25 +390,14 @@ class DurableOutbox {
       kind: kind,
       body: body,
       queuedAt: _now(),
+      mayHaveReached: mayHaveReached,
     );
-    // The entries for this record that may still change: not the one in flight.
-    final List<OutboxEntry> same = doc.entries
-        .where(
-          (OutboxEntry e) =>
-              e.owner == owner &&
-              e.recordId == record &&
-              e.id != shared.sending,
-        )
-        .toList();
+    bool mine(OutboxEntry e) => e.owner == owner && e.recordId == record;
+    final List<OutboxEntry> same = doc.entries.where(mine).toList();
     final OutboxEntry? last = same.isEmpty ? null : same.last;
-    final bool lastIsLatest =
-        last != null &&
-        !doc.entries.any(
-          (OutboxEntry e) =>
-              e.owner == owner &&
-              e.recordId == record &&
-              doc.entries.indexOf(e) > doc.entries.indexOf(last),
-        );
+    // The last entry for the record may absorb this one only while it is not
+    // the request in flight and not a dead letter.
+    final bool open = last != null && last.id != shared.sending && !last.dead;
 
     OutboxEnqueueResult result;
     switch (op) {
@@ -359,14 +405,13 @@ class DurableOutbox {
         doc.entries.add(fresh);
         result = OutboxEnqueueResult._(fresh, cancelled: false);
       case OutboxOp.update:
-        if (lastIsLatest && last.op != OutboxOp.delete) {
-          // Merge into the create/update still waiting; an edit re-queues a
-          // dead letter (the user just changed what was refused).
+        final bool intoCreate =
+            open && last.op == OutboxOp.create && !last.mayHaveReached;
+        final bool intoUpdate = open && last.op == OutboxOp.update;
+        if (intoCreate || intoUpdate) {
           final OutboxEntry merged = last.copyWith(
             body: <String, dynamic>{...last.body, ...body},
-            dead: false,
-            attempts: last.dead ? 0 : last.attempts,
-            clearNextAttempt: last.dead,
+            rev: last.rev + 1,
           );
           doc.entries[doc.entries.indexOf(last)] = merged;
           result = OutboxEnqueueResult._(merged, cancelled: false);
@@ -378,23 +423,18 @@ class DurableOutbox {
         final OutboxEntry? create = same
             .where((OutboxEntry e) => e.op == OutboxOp.create)
             .firstOrNull;
-        // Never attempted, or refused: the server has no such row.
-        final bool neverReached =
-            create != null && (create.attempts == 0 || create.dead);
-        final bool inFlight = doc.entries.any(
-          (OutboxEntry e) =>
-              e.owner == owner &&
-              e.recordId == record &&
-              e.id == shared.sending,
-        );
+        final bool unseen =
+            create != null &&
+            !create.mayHaveReached &&
+            create.id != shared.sending;
+        // Updates not in flight are moot once the record is deleted.
         doc.entries.removeWhere(
           (OutboxEntry e) =>
-              e.owner == owner &&
-              e.recordId == record &&
+              mine(e) &&
               e.id != shared.sending &&
-              (e.op == OutboxOp.update || (neverReached && e == create)),
+              (e.op == OutboxOp.update || (unseen && e.id == create.id)),
         );
-        if (neverReached && !inFlight) {
+        if (unseen) {
           result = const OutboxEnqueueResult._(null, cancelled: true);
         } else {
           doc.entries.add(fresh);
@@ -412,8 +452,8 @@ class DurableOutbox {
   /// (a create), which later entries for the record are rewritten to.
   /// [classify] maps a thrown error to an [OutboxFailure]; unclassified errors
   /// are [OutboxFailure.transient]. An entry [accepts] refuses (a kind this
-  /// sender does not know) is held, not sent. Concurrent callers share one run. Never
-  /// throws: a store that refuses a write-back ends the run.
+  /// sender does not know) is held, not sent. Concurrent callers share one run.
+  /// Never throws: a store that fails ends the run with [storeError] set.
   Future<OutboxReplayResult> replay({
     required String owner,
     required String? Function() currentOwner,
@@ -455,31 +495,13 @@ class DurableOutbox {
             aborted: true,
           );
         }
-        final OutboxEntry? next = await _locked((KeyValueStore kv, _) async {
-          final _Doc doc = await _read(kv);
-          final DateTime now = _now();
-          final Set<String> blocked = <String>{};
-          for (final OutboxEntry e in doc.entries) {
-            if (e.owner != owner) continue;
-            if (blocked.contains(e.recordId)) continue;
-            // Whatever happens to e, later ops on its record wait for it.
-            blocked.add(e.recordId);
-            // A kind this sender does not know is HELD, never sent or failed.
-            if (e.dead || attempted.contains(e.id) || !accepts(e)) continue;
-            if (e.nextAttemptAt != null && e.nextAttemptAt!.isAfter(now)) {
-              continue;
-            }
-            shared.sending = e.id;
-            return e;
-          }
-          return null;
-        });
+        final OutboxEntry? next = await _pick(owner, attempted, accepts);
         if (next == null) {
           return OutboxReplayResult(sent: sent, deadLettered: dead);
         }
         attempted.add(next.id);
         if (stale()) {
-          shared.sending = null;
+          await _release();
           return OutboxReplayResult(
             sent: sent,
             deadLettered: dead,
@@ -493,16 +515,28 @@ class DurableOutbox {
         } catch (e) {
           error = e;
         }
-        shared.sending = null;
         if (shared.generation != generation) {
           // Cleared or discarded while the request was out: write NOTHING back.
+          await _release();
           return OutboxReplayResult(
             sent: sent,
             deadLettered: dead,
             aborted: true,
           );
         }
+        // A method with plain arguments, not a closure over this loop's locals:
+        // dart2js boxed the captured locals across iterations, so on web a
+        // success once wrote back through the PREVIOUS failure's branch.
         final OutboxFailure? failure = error == null ? null : classify(error);
+        final _Settled settled = await _writeBack(
+          owner,
+          next,
+          serverId,
+          failure,
+          error == null ? null : _describe(error),
+        );
+        sent += settled.sent;
+        dead += settled.dead;
         if (failure == OutboxFailure.offline) {
           return OutboxReplayResult(
             sent: sent,
@@ -513,42 +547,75 @@ class DurableOutbox {
         if (failure == OutboxFailure.unauthorized) {
           return OutboxReplayResult(sent: sent, deadLettered: dead);
         }
-        // A method with plain arguments, not a closure over this loop's locals:
-        // dart2js boxed the captured `error`/`failure` across iterations, so
-        // on web a success wrote back through the PREVIOUS failure's branch.
-        final _Settled settled = await _writeBack(
-          owner,
-          next,
-          serverId,
-          failure,
-          error == null ? null : _describe(error),
-        );
-        sent += settled.sent;
-        dead += settled.dead;
       }
-    } catch (_) {
-      // The store refused a write-back: the entry stays as it was, and the
-      // next run tries again. Never thrown to the reader that triggered it.
-      shared.sending = null;
-      return OutboxReplayResult(sent: sent, deadLettered: dead);
+    } catch (e) {
+      // The store failed a read or a write-back: what is stored stays stored,
+      // and the next run tries again. Never thrown to the reader that
+      // triggered it.
+      await _release().catchError((Object _) {});
+      return OutboxReplayResult(sent: sent, deadLettered: dead, storeError: e);
     }
   }
 
-  /// Record what happened to [entry]'s send, from a fresh read under the lock.
+  /// The next entry to send, marked dispatched (persisted) BEFORE it is sent.
+  Future<OutboxEntry?> _pick(
+    String owner,
+    Set<String> attempted,
+    bool Function(OutboxEntry entry) accepts,
+  ) => _locked((KeyValueStore kv, _Shared shared) async {
+    final _Doc doc = await _read(kv);
+    final DateTime now = _now();
+    final Set<String> blocked = <String>{};
+    for (int i = 0; i < doc.entries.length; i++) {
+      final OutboxEntry e = doc.entries[i];
+      if (e.owner != owner) continue;
+      if (blocked.contains(e.recordId)) continue;
+      // Whatever happens to e, later ops on its record wait for it.
+      blocked.add(e.recordId);
+      // A kind this sender does not know is HELD, never sent or failed.
+      if (e.dead || attempted.contains(e.id) || !accepts(e)) continue;
+      if (e.nextAttemptAt != null && e.nextAttemptAt!.isAfter(now)) continue;
+      final OutboxEntry marked = e.copyWith(mayHaveReached: true);
+      if (!e.mayHaveReached) {
+        doc.entries[i] = marked;
+        await _write(kv, doc);
+      }
+      shared.sending = e.id;
+      return marked;
+    }
+    return null;
+  });
+
+  Future<void> _release() => _locked((KeyValueStore kv, _Shared shared) async {
+    shared.sending = null;
+  });
+
+  /// Reconcile what happened to [entry]'s send with a fresh read, under the
+  /// lock — by id AND revision: an entry that changed while its request was
+  /// out is kept (and sent again), never removed with the change in it.
   Future<_Settled> _writeBack(
     String owner,
     OutboxEntry entry,
     String? serverId,
     OutboxFailure? failure,
     String? errorText,
-  ) => _locked((KeyValueStore kv, _) async {
+  ) => _locked((KeyValueStore kv, _Shared shared) async {
+    shared.sending = null;
+    if (failure == OutboxFailure.offline ||
+        failure == OutboxFailure.unauthorized) {
+      return const _Settled(0, 0);
+    }
     final _Doc doc = await _read(kv);
     final int i = doc.entries.indexWhere((OutboxEntry e) => e.id == entry.id);
-    if (i < 0) return const _Settled(0, 0); // discarded while it was out
     int sent = 0;
     int dead = 0;
     if (failure == null) {
-      doc.entries.removeAt(i);
+      if (i >= 0) {
+        if (doc.entries[i].rev == entry.rev) {
+          doc.entries.removeAt(i);
+        }
+        // else: merged into while out — keep it; the next run sends it again.
+      }
       if (serverId != null && serverId != entry.recordId) {
         doc.aliases[entry.recordId] = serverId;
         for (int j = 0; j < doc.entries.length; j++) {
@@ -559,7 +626,7 @@ class DurableOutbox {
         }
       }
       sent = 1;
-    } else {
+    } else if (i >= 0) {
       final int attempts = doc.entries[i].attempts + 1;
       final bool isDead =
           failure == OutboxFailure.refused || attempts >= maxAttempts;
@@ -646,6 +713,8 @@ class _Settled {
 class _Doc {
   _Doc(this.entries, this.aliases);
 
+  /// A missing document is an empty queue; an unreadable one is too (its
+  /// bytes cannot be sent). A store that does not ANSWER is not this.
   factory _Doc.decode(String? raw) {
     if (raw == null) return _Doc(<OutboxEntry>[], <String, String>{});
     Object? d;

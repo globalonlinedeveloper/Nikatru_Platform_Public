@@ -391,4 +391,164 @@ void main() {
       ),
     );
   });
+  // ── REVIEW 2 (2026-09-30) ─────────────────────────────────────────────────
+  group('what the server may have seen (review 2, major 1)', () {
+    // A lost response is an "offline" failure: it costs no attempt, so
+    // attempts == 0 said "never reached" of a create the server HAD committed.
+    Future<void> loseResponse(DurableOutbox b) => b.replay(
+      owner: 'u',
+      currentOwner: () => 'u',
+      send: (_) async => throw _Fail(OutboxFailure.offline),
+      classify: _classify,
+    );
+
+    test('a lost add response, then a delete: the delete is SENT, behind the '
+        'create, to the server id', () async {
+      final DurableOutbox b = box();
+      await add(b, 'u', 'k', body: <String, dynamic>{'name': 'Gym'});
+      await loseResponse(b);
+      expect((await b.entries()).single.attempts, 0);
+      expect((await b.entries()).single.mayHaveReached, isTrue);
+
+      final OutboxEnqueueResult r = await add(b, 'u', 'k', op: OutboxOp.delete);
+      expect(r.cancelled, isFalse, reason: 'never cancelled on the device');
+      final List<String> sent = <String>[];
+      await b.replay(
+        owner: 'u',
+        currentOwner: () => 'u',
+        send: (OutboxEntry e) async {
+          sent.add('${e.op.name} ${e.recordId}');
+          return e.op == OutboxOp.create ? 'srv-1' : null;
+        },
+      );
+      expect(sent, <String>['create k', 'delete srv-1']);
+    });
+
+    test('a lost add response, then an edit: the create keeps its body and '
+        'the edit follows it as an update', () async {
+      final DurableOutbox b = box();
+      await add(b, 'u', 'k', body: <String, dynamic>{'name': 'Gym'});
+      await loseResponse(b);
+      await add(
+        b,
+        'u',
+        'k',
+        op: OutboxOp.update,
+        body: <String, dynamic>{'name': 'Gym (annual)'},
+      );
+      final List<OutboxEntry> es = await b.entries();
+      expect(es.map((OutboxEntry e) => e.op), <OutboxOp>[
+        OutboxOp.create,
+        OutboxOp.update,
+      ]);
+      expect(es.first.body, <String, dynamic>{
+        'name': 'Gym',
+      }, reason: 'the key is replayed with the body it was first sent with');
+    });
+
+    test('a first attempt made by the caller counts as dispatched', () async {
+      final DurableOutbox b = box();
+      await b.enqueue(
+        owner: 'u',
+        recordId: 'k',
+        op: OutboxOp.create,
+        kind: 'thing',
+        mayHaveReached: true,
+      );
+      expect((await add(b, 'u', 'k', op: OutboxOp.delete)).cancelled, isFalse);
+    });
+  });
+
+  group('reconciled by id and revision (review 2, minor a)', () {
+    test('a change queued while its entry is being sent survives', () async {
+      final DurableOutbox b = box();
+      await add(
+        b,
+        'u',
+        'r',
+        op: OutboxOp.update,
+        body: <String, dynamic>{'a': 1},
+      );
+      final List<Map<String, dynamic>> bodies = <Map<String, dynamic>>[];
+      await b.replay(
+        owner: 'u',
+        currentOwner: () => 'u',
+        send: (OutboxEntry e) async {
+          bodies.add(e.body);
+          if (bodies.length == 1) {
+            // The user edits again between "sent" and "recorded".
+            unawaited(
+              add(
+                b,
+                'u',
+                'r',
+                op: OutboxOp.update,
+                body: <String, dynamic>{'a': 2},
+              ),
+            );
+            await Future<void>.delayed(Duration.zero);
+          }
+          return null;
+        },
+      );
+      final List<OutboxEntry> left = await b.pending();
+      if (left.isNotEmpty) {
+        expect(left.single.body['a'], 2, reason: 'the second edit is kept');
+      } else {
+        expect(bodies.last['a'], 2, reason: 'or already sent in the same run');
+      }
+    });
+  });
+
+  group('a failed read never wipes the queue (review 2, minor e)', () {
+    test(
+      'an unreadable store aborts the mutation and keeps what is stored',
+      () async {
+        final _FlakyStore flaky = _FlakyStore();
+        final DurableOutbox b = DurableOutbox(
+          Future<KeyValueStore>.value(flaky),
+        );
+        await add(b, 'u', 'x');
+        flaky.failReads = 99;
+        await expectLater(add(b, 'u', 'y'), throwsA(isA<OutboxStoreFailure>()));
+        await expectLater(
+          b.discardOwner('u'),
+          throwsA(isA<OutboxStoreFailure>()),
+        );
+        final OutboxReplayResult r = await b.replay(
+          owner: 'u',
+          currentOwner: () => 'u',
+          send: (_) async => null,
+        );
+        expect(r.storeError, isA<OutboxStoreFailure>());
+        flaky.failReads = 0;
+        expect(
+          (await b.entries()).single.recordId,
+          'x',
+          reason: 'nothing wiped',
+        );
+      },
+    );
+
+    test('a read that fails once is retried', () async {
+      final _FlakyStore flaky = _FlakyStore();
+      final DurableOutbox b = DurableOutbox(Future<KeyValueStore>.value(flaky));
+      await add(b, 'u', 'x');
+      flaky.failReads = 1;
+      await add(b, 'u', 'y');
+      expect(await b.entries(), hasLength(2));
+    });
+  });
+}
+
+class _FlakyStore extends InMemoryKeyValueStore {
+  int failReads = 0;
+  @override
+  Future<String?> read(String key) async {
+    if (failReads > 0) {
+      failReads -= 1;
+      throw StateError('storage unavailable');
+    }
+    return super.read(key);
+  }
 }
