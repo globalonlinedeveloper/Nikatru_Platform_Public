@@ -428,9 +428,9 @@ async function pendingFor(env: Env, target: AppTarget, db: D1Database, today: st
   const subs = await readLiveSubscriptions(db, prefs.map((p) => p.user_id));
   // What this app has already mailed for a renewal still ahead — the digest is
   // built without them, and the claim below is the backstop if this read is stale.
-  const sent = await allRows<{ user_id: string; subscription_id: string; due_on: string; sent_at: string }>(
+  const sent = await allRows<{ user_id: string; subscription_id: string; due_on: string; kind: string; sent_at: string }>(
     env.PLATFORM_DB.prepare(
-      'SELECT user_id, subscription_id, due_on, sent_at FROM reminder_sent WHERE app_id = ? AND due_on >= ?',
+      'SELECT user_id, subscription_id, due_on, kind, sent_at FROM reminder_sent WHERE app_id = ? AND due_on >= ?',
     ).bind(target.appId, today),
   );
   // ⏱ 2026-09-30 · review of #1090, minor 1. A WINDOW IS COVERED BY ANY MAIL SENT
@@ -442,9 +442,17 @@ async function pendingFor(env: Env, target: AppTarget, db: D1Database, today: st
   // day each renewal was mailed is kept, and a reminder at lead L is skipped when
   // that day is on or after `due − L`. The per-kind UNIQUE claim stays the
   // backstop against two runs racing.
+  //
+  // ⏱ delta review of #1090, nit — AND THE EXACT KIND STILL COVERS ITSELF. A lead
+  // LOWERED after its mail (7 → 3) leaves a `renewal` claim dated outside the new
+  // window, which the window rule alone calls uncovered: the item would then spend
+  // one of MAX_ADDRESS_READS_PER_RUN every night on a send the UNIQUE claim
+  // refuses. So a reminder is skipped when EITHER holds.
   const lastMailed = new Map<string, string>();
+  const claimedKinds = new Set<string>();
   for (const s of sent) {
     const key = `${s.user_id}\u0000${s.subscription_id}\u0000${s.due_on}`;
+    claimedKinds.add(`${key}\u0000${s.kind}`);
     const day = String(s.sent_at).slice(0, 10);
     const prev = lastMailed.get(key);
     if (prev === undefined || day > prev) lastMailed.set(key, day);
@@ -456,7 +464,9 @@ async function pendingFor(env: Env, target: AppTarget, db: D1Database, today: st
     const reminder = dueReminder(sub, due, today, personLead.get(sub.user_id) ?? DEFAULT_LEAD_DAYS);
     if (reminder === null) continue;
     const { lead, kind } = reminder;
-    const mailedOn = lastMailed.get(`${sub.user_id}\u0000${sub.id}\u0000${due}`);
+    const key = `${sub.user_id}\u0000${sub.id}\u0000${due}`;
+    if (claimedKinds.has(`${key}\u0000${kind}`)) continue;
+    const mailedOn = lastMailed.get(key);
     if (mailedOn !== undefined && mailedOn >= addDays(due, -lead)) continue;
     const item: DueItem = {
       subscriptionId: sub.id,

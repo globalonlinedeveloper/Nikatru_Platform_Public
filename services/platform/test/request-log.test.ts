@@ -71,13 +71,13 @@ describe('one structured line per request', () => {
     expect(lines[0]).not.toMatch(TOKEN_SHAPED);
   });
 
-  it('with no route matched, a token-shaped segment of the concrete path is scrubbed', async () => {
+  it('with no route matched, a token-shaped segment makes the request SILENT — scrubbed is not enough, the event metadata has the URL', async () => {
     const token = mintToken();
-    const { log } = await captured(() => app.fetch(new Request(`https://platform.example.test/v1/nothing-here/${token}`), {} as never, ctx));
-    const lines = reqLines(log);
-    expect(lines).toHaveLength(1);
-    expect(JSON.parse(lines[0]).route).toBe('/v1/nothing-here/:redacted');
-    expect(lines[0]).not.toContain(token);
+    const { log, all } = await captured(() =>
+      app.fetch(new Request(`https://platform.example.test/v1/nothing-here/${token}`), {} as never, ctx),
+    );
+    expect(reqLines(log)).toEqual([]);
+    for (const l of all) expect(l).not.toContain(token);
   });
 });
 
@@ -123,5 +123,80 @@ describe('🔴 the capability routes write NO console line at all', () => {
     const mounted = new Set(app.routes.filter((r) => r.method !== 'ALL').map((r) => r.path));
     for (const route of CAPABILITY_ROUTES) expect(mounted.has(route), route).toBe(true);
     expect(CAPABILITY_ROUTES.size).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-30 · delta review of #1090, finding 1 — THE SKIP KEYS ON THE PATH, NOT
+// ONLY ON THE MATCHED HANDLER. Only GET is mounted on `/v1/calendar/:file`, so
+// OPTIONS, PROPFIND or POST on a token URL matched no handler, fell back to the
+// scrubbed path `/v1/calendar/:redacted`, and wrote a `[req]` line — whose Workers
+// Logs event carries the full URL as metadata. Same for the unsubscribe URL with
+// a trailing slash. RED on 27a71f36, GREEN after.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('🔴 no console line for a capability URL, whatever the method or the trailing slash', () => {
+  it('OPTIONS, PROPFIND and POST on /v1/calendar/<token>.ics write no [req] line and nothing carrying the token', async () => {
+    const token = mintToken();
+    const { log, all } = await captured(async () => {
+      for (const method of ['OPTIONS', 'PROPFIND', 'POST']) {
+        const res = await app.fetch(
+          new Request(`https://platform.example.test/v1/calendar/${token}.ics`, { method, headers: { Origin: 'https://caldav.example' } }),
+          { PLATFORM_DB: realPlatformDb() } as never,
+          ctx,
+        );
+        expect(res.status, method).toBeLessThan(500);
+      }
+    });
+    expect(reqLines(log)).toEqual([]);
+    for (const l of all) expect(l).not.toContain(token);
+  });
+
+  it('the unsubscribe URL with a trailing slash (or a doubled one) writes nothing carrying the token', async () => {
+    const token = mintToken();
+    const { log, all } = await captured(async () => {
+      for (const path of ['/v1/reminders/unsubscribe/', '/v1//reminders/unsubscribe/', '/v1/Reminders/Unsubscribe']) {
+        await app.fetch(new Request(`https://platform.example.test${path}?t=${token}`), { PLATFORM_DB: realPlatformDb() } as never, ctx);
+      }
+    });
+    expect(reqLines(log)).toEqual([]);
+    for (const l of all) expect(l).not.toContain(token);
+  });
+
+  it('onError on such a path writes no [unhandled] line and nothing carrying the token — the report still goes to the sink', async () => {
+    const token = mintToken();
+    const sinkPosts: string[] = [];
+    // Every env read but the sink's throws, so the first middleware that reads
+    // the environment throws and the REAL onError runs.
+    const env = new Proxy({ GLITCHTIP_DSN: 'https://k@glitchtip.example.test/1', RELEASE: 'sha' } as Record<string, unknown>, {
+      get(t, k) {
+        if (k === 'GLITCHTIP_DSN' || k === 'RELEASE') return t[k as string];
+        if (typeof k === 'string' && /^[A-Z_]+$/.test(k)) throw new Error(`env ${k} unreadable`);
+        return undefined;
+      },
+    });
+    const { log, all } = await captured(async () => {
+      vi.stubGlobal('fetch', async (_u: string, init: RequestInit) => {
+        sinkPosts.push(String(init.body));
+        return new Response('', { status: 200 });
+      });
+      const res = await app.fetch(
+        new Request(`https://platform.example.test/v1/calendar/${token}.ics`, { method: 'OPTIONS', headers: { Origin: 'https://caldav.example' } }),
+        env as never,
+        ctx,
+      );
+      expect(res.status).toBe(500);
+    });
+    expect(sinkPosts).toHaveLength(1); // onError really ran, and reported
+    expect(sinkPosts[0]).not.toContain(token);
+    expect(all.filter((l) => l.startsWith('[unhandled]'))).toEqual([]);
+    expect(reqLines(log)).toEqual([]);
+    for (const l of all) expect(l).not.toContain(token);
+  });
+
+  it('negative control: an ordinary route still writes its ONE [req] line', async () => {
+    const { log } = await captured(() => app.fetch(new Request('https://platform.example.test/v1/health'), {} as never, ctx));
+    const lines = reqLines(log);
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toMatchObject({ route: '/v1/health', method: 'GET' });
   });
 });

@@ -40,9 +40,58 @@ export function routeOf(c: Context<AppEnv>): string {
   return reportablePath(new URL(c.req.url).pathname, matchedRoutes(c));
 }
 
+/** Each capability pattern as a matcher over a normalised path: a `:param` is
+ *  one segment, and anything BELOW the pattern (a trailing slash, a sub-path)
+ *  matches too. Case-insensitive, so a case-mangled URL is not a way out. A
+ *  static segment must be plain `[a-z0-9-]`, so nothing here needs escaping. */
+const CAPABILITY_PATHS: readonly RegExp[] = [...CAPABILITY_ROUTES].map((pattern) => {
+  const body = pattern
+    .split('/')
+    .map((seg) => {
+      if (seg.startsWith(':')) return '[^/]+';
+      if (!/^[a-z0-9-]*$/.test(seg)) throw new Error(`request-log: capability pattern segment needs escaping: ${seg}`);
+      return seg;
+    })
+    .join('/');
+  return new RegExp(`^${body}(?:/.*)?$`, 'i');
+});
+
+/** The request's path as a matcher should see it: percent-escapes decoded and
+ *  repeated slashes collapsed. A malformed escape is matched as sent. */
+function normalisedPath(url: string): string {
+  let path = new URL(url).pathname;
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // matched as sent
+  }
+  return path.replace(/\/{2,}/g, '/');
+}
+
+/**
+ * ⏱ 2026-09-30 · delta review of #1090, finding 1. THE ONE DECISION the request
+ * line and onError's `[unhandled]` line both take: may a console line be written
+ * for this request? No, when ANY of these holds:
+ *   · the matched route is a capability route;
+ *   · the route contains `:redacted` — no handler matched and a token-shaped
+ *     segment was scrubbed, itself the mark of a capability URL;
+ *   · the RAW path falls under a capability pattern, WHETHER OR NOT a handler
+ *     matched. Keyed on the matched handler alone, OPTIONS, PROPFIND or POST on
+ *     `/v1/calendar/<token>.ics` (only GET is mounted) and the unsubscribe URL
+ *     with a trailing slash fell back to the scrubbed path and wrote a line whose
+ *     event metadata carries the full URL.
+ * It errs toward silence: `/v1/calendar/feed` (mint, rotate, revoke) falls under
+ * `/v1/calendar/:file` and writes no request line either.
+ */
+export function isCapabilityRoute(route: string, url: string): boolean {
+  if (CAPABILITY_ROUTES.has(route) || route.includes(':redacted')) return true;
+  const path = normalisedPath(url);
+  return CAPABILITY_PATHS.some((re) => re.test(path));
+}
+
 /** True when a console line written for this request must not be written. */
 export function isCapabilityRequest(c: Context<AppEnv>): boolean {
-  return CAPABILITY_ROUTES.has(routeOf(c));
+  return isCapabilityRoute(routeOf(c), c.req.url);
 }
 
 export interface RequestLine {
@@ -70,7 +119,7 @@ export async function requestLog(c: Context<AppEnv>, next: Next): Promise<void> 
     throw err;
   } finally {
     const route = routeOf(c);
-    if (!CAPABILITY_ROUTES.has(route)) {
+    if (!isCapabilityRoute(route, c.req.url)) {
       const colo = (c.req.raw as { cf?: { colo?: unknown } }).cf?.colo;
       console.log(
         requestLine(route, c.req.method, threw ? 500 : c.res.status, Date.now() - start, typeof colo === 'string' ? colo : null),

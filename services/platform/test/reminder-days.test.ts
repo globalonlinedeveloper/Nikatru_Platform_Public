@@ -72,6 +72,7 @@ function seedSub(app: RealDb, userId: string, id: string, name: string, nextRene
 /** The network: every account is confirmed; Resend accepts. Sends are recorded. */
 function network() {
   const sends: Array<{ to: string; text: string }> = [];
+  const reads: string[] = [];
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === RESEND_EMAILS_URL) {
@@ -82,13 +83,14 @@ function network() {
     const m = /\/auth\/v1\/admin\/users\/([^/?]+)$/.exec(url);
     if (m) {
       const id = decodeURIComponent(m[1]);
+      reads.push(id);
       return new Response(JSON.stringify({ email: `${id}@example.com`, email_confirmed_at: '2026-01-01T00:00:00Z' }), {
         status: 200,
       });
     }
     throw new Error(`unexpected fetch ${url}`);
   }) as typeof fetch;
-  return { fetchImpl, sends };
+  return { fetchImpl, sends, reads };
 }
 
 function envOf(platform: RealDb, app: RealDb): Env {
@@ -226,6 +228,32 @@ describe('a reminder window already mailed is not mailed again', () => {
       later += net.sends.length;
     }
     expect(later).toBe(0);
+  });
+
+  it('🔴 a lead LOWERED after its mail (account 7 → 3) spends no address read on the send the claim would refuse', async () => {
+    // Delta review of #1090, nit: the window rule alone calls the new 3-day window
+    // uncovered (the `renewal` mail was 7 days out), so the item stayed pending and
+    // each night read the person's address for a send the UNIQUE claim refuses.
+    const platform = realPlatformDb();
+    const app = appDb();
+    seedPerson(platform, 'u-lower', 7);
+    const due = addDays(TODAY, 7);
+    seedSub(app, 'u-lower', 's-lower', 'Lower', due, null);
+    const first = network();
+    await runReminderMail(envOf(platform, app), target(app), NOW, first.fetchImpl);
+    expect(first.sends).toHaveLength(1);
+
+    platform.db.prepare('UPDATE reminder_prefs SET lead_days = 3 WHERE user_id = ?').run('u-lower');
+    const reads: string[] = [];
+    let sends = 0;
+    for (let n = 4; n <= 7; n++) {
+      const net = network();
+      await runReminderMail(envOf(platform, app), target(app), NOW + n * DAY, net.fetchImpl);
+      reads.push(...net.reads);
+      sends += net.sends.length;
+    }
+    expect(sends).toBe(0);
+    expect(reads).toEqual([]);
   });
 
   it('a NEARER lead in the list is still its own window: [7] mailed at 7 days out does not cover [7,1]’s 1-day reminder', async () => {
