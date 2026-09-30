@@ -1290,6 +1290,20 @@
       "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
+      "alert": 534,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/scripts/affected-guards.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: laneOf iterates the lane Map by value; the unused name binding is gone."
+    },
+    {
+      "alert": 535,
+      "rule": "js/superfluous-trailing-arguments",
+      "path": "tooling/scripts/affected-guards.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: pool() calls its worker with the item only, which is all its one caller takes."
+    },
+    {
       "alert": 538,
       "rule": "js/file-access-to-http",
       "path": "tooling/ci/assert-codeql-pr-no-new-high.mjs",

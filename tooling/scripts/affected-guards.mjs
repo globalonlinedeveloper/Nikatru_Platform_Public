@@ -572,7 +572,7 @@ const OWN_DIR_KINDS = new Set(['dart-analyze', 'dart-test', 'worker']);
  *  its name starts with (`extensions-ci.yml` → extensions). ci.yml is no lane's. */
 function laneOf(laneMap, wfName) {
   if (!laneMap?.lanes || wfName === CI_WORKFLOW) return null;
-  for (const [name, lane] of laneMap.lanes) {
+  for (const lane of laneMap.lanes.values()) {
     if (lane.callee && lane.callee.split('/').pop() === wfName) return lane;
   }
   for (const [name, lane] of laneMap.lanes) if (wfName.startsWith(`${name}-`)) return lane;
@@ -815,7 +815,7 @@ async function pool(items, width, fn) {
   const lanes = Array.from({ length: Math.max(1, Math.min(width, items.length)) }, async () => {
     while (next < items.length) {
       const k = next++;
-      results[k] = await fn(items[k], k);
+      results[k] = await fn(items[k]);
     }
   });
   await Promise.all(lanes);
