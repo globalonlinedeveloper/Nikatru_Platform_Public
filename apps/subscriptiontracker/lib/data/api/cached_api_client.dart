@@ -59,6 +59,7 @@ class CachedApiClient implements ApiClient {
     LocalSubscriptionStore store, {
     void Function(Object error)? onCacheWriteFailed,
     void Function(bool stale)? onStaleChanged,
+
     /// A LIST read answered from the copy has since been refreshed in the
     /// background: the surface showing it should read again.
     void Function()? onRevalidated,

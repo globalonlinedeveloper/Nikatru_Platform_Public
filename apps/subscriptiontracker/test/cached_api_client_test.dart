@@ -148,8 +148,8 @@ class _IdempotentNetwork extends _FakeNetwork implements IdempotentCreates {
     required String idempotencyKey,
   }) async {
     keys.add(idempotencyKey);
-    final Subscription row =
-        _byKey[idempotencyKey] ??= await super.createSubscription(draft);
+    final Subscription row = _byKey[idempotencyKey] ??= await super
+        .createSubscription(draft);
     if (loseNextResponse) {
       loseNextResponse = false;
       throw ApiException(0, 'receive timeout');
