@@ -87,13 +87,32 @@ class _MemStore implements KeyValueStore {
 
 /// One device: its own store (so its outbox and versions persist across
 /// [restart]), the values it shows, and the signed-in user.
+/// [_MemStore] whose next read of the preferences QUEUE document can be held
+/// — the one I/O ordering a real platform store can produce and a microtask
+/// store never does (review 3 of #1080, finding 3).
+class _GatedStore extends _MemStore {
+  Completer<void>? holdNextOutboxRead;
+
+  @override
+  Future<String?> read(String key) async {
+    final Completer<void>? hold = key == kPreferencesOutboxKey
+        ? holdNextOutboxRead
+        : null;
+    if (hold != null) {
+      holdNextOutboxRead = null;
+      await hold.future;
+    }
+    return data[key]; // what is stored WHEN it resumes
+  }
+}
+
 class _Device {
   _Device(this.server, {this.user = 'me'}) {
     restart();
   }
 
   final _Server server;
-  final _MemStore store = _MemStore();
+  final _GatedStore store = _GatedStore();
   final Map<String, Object?> shown = <String, Object?>{};
   final List<String> refused = <String>[];
   final List<String> conflicts = <String>[];
@@ -514,35 +533,38 @@ void main() {
   );
 
   test(
-    '🔴 review finding 4 (#1075 outbox): a change made while its key PATCH answer is written back is not lost',
+    '🔴 a change whose enqueue reads the queue while the answer is written back is not lost',
     () async {
-      // The window is a few microtasks wide (the in-flight mark clears before
-      // the write-back takes the lock), so the second change is swept across
-      // it: 0..60 microtasks after the answer, a fresh device each time.
-      final List<int> lost = <int>[];
-      for (int k = 0; k <= 60; k++) {
-        final _Server server = _Server();
-        final _Device a = _Device(server);
-        final Completer<void> gate = Completer<void>();
-        server.holdPatch = gate;
-        a.shown['themeMode'] = 'dark';
-        await a.sync.changed('themeMode', 'dark');
-        await a.settle(); // the PATCH for 'dark' is out
-        gate.complete();
-        for (int m = 0; m < k; m++) {
-          await Future<void>.value();
-        }
-        a.shown['themeMode'] = 'light';
-        await a.sync.changed('themeMode', 'light');
-        await a.settle();
-        await a.sync.sync();
-        if (server.values['themeMode'] != 'light') lost.add(k);
-      }
-      expect(
-        lost,
-        isEmpty,
-        reason: 'the second change was lost at these offsets',
-      );
+      // Review 3 of #1080, finding 3 — the lost-change window, deterministic.
+      // The enqueue of the second change is made to read the queue AFTER the
+      // first send's answer arrived and BEFORE its write-back ran. On the old
+      // queue the in-flight mark was already cleared there, so 'light' merged
+      // INTO the sent entry and the write-back removed it: lost.
+      final _Server server = _Server();
+      final _Device a = _Device(server);
+      final Completer<void> patch = Completer<void>();
+      server.holdPatch = patch;
+      a.shown['themeMode'] = 'dark';
+      await a.sync.changed('themeMode', 'dark');
+      await a.settle(); // the PATCH for 'dark' is out
+      final Completer<void> g2 = Completer<void>();
+      a.store.holdNextOutboxRead = g2;
+      patch
+          .complete(); // the answer lands; the sender's queue read blocks on g2
+      await a.settle();
+      a.shown['themeMode'] = 'light';
+      final Future<void> second = a.sync.changed('themeMode', 'light');
+      await a.settle();
+      final Completer<void> g3 = Completer<void>();
+      a.store.holdNextOutboxRead = g3;
+      g2.complete(); // the enqueue's queue read now blocks on g3
+      await a.settle(); // the send finishes; its write-back queues behind it
+      g3.complete();
+      await second;
+      await a.settle();
+      await a.sync.sync();
+      expect(server.values['themeMode'], 'light');
+      expect(a.shown['themeMode'], 'light');
     },
   );
 }
