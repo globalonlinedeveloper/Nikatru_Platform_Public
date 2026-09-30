@@ -91,57 +91,34 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # 🔴 THE ACTION SHA AND THE SCANNER VERSION ARE TWO DIFFERENT PINS, AND
-      # PINNING ONE READS EXACTLY LIKE PINNING BOTH. `trufflesecurity/trufflehog`
-      # is a COMPOSITE action: the SHA below pins the wrapper, whose only real
-      # step is `docker run --rm -v .:/tmp -w /tmp "${IMAGE}:${VERSION}" …`, and
-      # whose `version` input DEFAULTS TO "latest" (read from action.yml at the
-      # pinned commit on 2026-09-06). The first version of this lane passed only
-      # `path` and `extra_args`, so the executable doing the scanning was
-      # ghcr.io/trufflesecurity/trufflehog:latest — resolved fresh from a
-      # third-party registry every run, with no version anywhere in this repo.
-      # It was the repository's ONLY floating image tag, introduced in a security
-      # lane by the same commit whose entire thesis is that unmanaged scanner
-      # versions are the defect: `grep -rn ':latest' .github/workflows/` returned
-      # nothing else. The version is now read from tooling/versions.json, where
-      # assert-update-coverage.mjs can see it and a Renovate customManager
-      # advances it — the same two mechanisms the four scanners in ci.yml use.
-      - name: Read the TruffleHog CLI pin from tooling/versions.json
-        id: pin
-        run: |
-          set -euo pipefail
-          ver="$(node -p "require('./tooling/versions.json').trufflehog")"
-          # why: an empty or missing key would otherwise pass `version:` an empty
-          # string, and the action would splice `IMAGE:` with nothing after the
-          # colon — which docker resolves as `latest`. The exact state this step
-          # exists to end would come back silently through a typo in the key.
-          case "$ver" in
-            ''|undefined|null) echo "::error::tooling/versions.json has no usable \`trufflehog\` pin"; exit 1 ;;
-          esac
-          echo "version=$ver" >> "$GITHUB_OUTPUT"
-          echo "TruffleHog CLI pinned to $ver"
+      # 🔴 THE SCANNER IS PINNED BY ITS BYTES, NOT BY A REGISTRY TAG [rv2-security-017].
+      # Until 2026-09-30 this step was `uses: trufflesecurity/trufflehog@<sha>`: a SHA-pinned
+      # composite wrapper whose only real step is `docker run "${IMAGE}:${VERSION}"`, so the
+      # executable was ghcr.io/trufflesecurity/trufflehog:<version> — a MUTABLE tag nothing
+      # here verified, and the only scanner in the tree not held by a sha256 (its `version`
+      # input once defaulted to `latest`, which is how the lane first shipped). The release
+      # tarball is now installed like the four scanners in ci.yml: version AND sha256 from
+      # tooling/versions.json, a bounded retry, and the binary's own `--version` checked, so
+      # a Renovate bump of `trufflehog` lands red here until its digest is written.
+      - name: Install TruffleHog (version and digest from tooling/versions.json)
+        run: node tooling/ci/install-pinned-tool.mjs trufflehog --out "${RUNNER_TEMP}"
 
-      - name: TruffleHog (verified findings only)
-        uses: trufflesecurity/trufflehog@4dd8831c5f12599465d4d45c3c447b4018a34c85 # v3.97.9
-        with:
-          path: ./
-          # The registry tag carries NO leading `v` — ghcr.io publishes `3.97.4`
-          # and 404s on `v3.97.4` — so the bare value from versions.json is what
-          # goes after the colon. Measured against the registry 2026-09-06.
-          version: ${{ steps.pin.outputs.version }}
-          # 🔴 `--json` IS DELIBERATELY ABSENT AND MUST NOT COME BACK. The action
-          # already passes `--github-actions`, which selects a printer that emits
-          # `::warning file=…,line=…::Found <verified> <DetectorType> result` and
-          # NO raw value. trufflehog's main.go evaluates the `--json` case BEFORE
-          # the github-actions case, so that one flag REPLACES that printer with
-          # JSONPrinter, whose record declares `Raw` ("the raw secret data") and
-          # `RawV2` and emits them unconditionally; there is no `--redact` flag to
-          # put back. This repository is PUBLIC (C-REPO-STAYS-PUBLIC), so a
-          # verified finding printed that way republishes a live credential in
-          # cleartext into a world-readable Actions log — a second public copy,
-          # created by the lane whose job is to find the first. TRAPS ci-09:
-          # never run a command whose output can contain a secret and rely on
-          # redacting it. It is also this repository's own written rule for its
-          # other secret scanner: tooling/ci/scan-secrets.mjs runs gitleaks with
-          # `--redact` and states it in words — "Report WHERE, never WHAT."
-          extra_args: --results=verified
+      # why: the invocation the wrapper ran on schedule and dispatch, minus docker: the whole
+      # history of the clone above (no --since-commit, no --branch), --fail exits 183 on a
+      # finding, --no-update keeps the pinned binary from replacing itself.
+      # why: NO CANARY, BY DESIGN. --results=verified reports only a credential the issuing
+      # provider accepts live, and planting a live credential in a public repository to prove
+      # detection is the incident this lane exists to find. A green run proves it RAN; the
+      # pinned bytes and the checked version are what this lane can prove about the scanner.
+      # 🔴 `--json` IS DELIBERATELY ABSENT AND MUST NOT COME BACK. `--github-actions` selects a
+      # printer that emits `::warning file=…,line=…::Found <verified> <DetectorType> result`
+      # and NO raw value. trufflehog's main.go evaluates the `--json` case BEFORE the
+      # github-actions case, so that one flag REPLACES that printer with JSONPrinter, whose
+      # record emits `Raw` and `RawV2` unconditionally; there is no `--redact` flag to put
+      # back. This repository is PUBLIC (C-REPO-STAYS-PUBLIC), so a verified finding printed
+      # that way republishes a live credential into a world-readable Actions log. TRAPS
+      # ci-09; scan-secrets.mjs states the same rule in four words — "Report WHERE, never WHAT."
+      - name: TruffleHog (verified findings only, the whole history)
+        run: >-
+          "${RUNNER_TEMP}/trufflehog" git "file://${GITHUB_WORKSPACE}"
+          --fail --no-update --github-actions --results=verified

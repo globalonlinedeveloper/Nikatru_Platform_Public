@@ -239,6 +239,66 @@ describe('scan-dependencies — the REAL tree', () => {
     assert.deepEqual(lockfilesFrom('a/package-lock.json\0b/package-lock.json.fixture\0pubspec.lock\0x/not-pubspec.lock\0'), ['a/package-lock.json', 'pubspec.lock']);
   });
 
+  // .github/dependabot.yml declares the npm and pub directories [rv2-security-004]. Parsed in
+  // its one authored shape: `- package-ecosystem: <eco>` blocks, each with a `directories:` list.
+  const dependabotDirs = (text) => {
+    const out = new Map();
+    let eco = null;
+    let inDirs = false;
+    for (const raw of String(text).split(/\r?\n/)) {
+      const line = raw.replace(/\s+#.*$/, '');
+      const e = line.match(/^ {2}- package-ecosystem:\s*"?([\w-]+)"?\s*$/);
+      if (e) { eco = e[1]; inDirs = false; if (!out.has(eco)) out.set(eco, new Set()); continue; }
+      if (/^ {4}directories:\s*$/.test(line)) { inDirs = true; continue; }
+      const d = line.match(/^ {6}- "([^"]+)"\s*$/);
+      if (inDirs && d && eco) { out.get(eco).add(d[1]); continue; }
+      if (/^ {4}\S/.test(line)) inDirs = false;
+    }
+    return out;
+  };
+  const TEMPLATE = /^tooling\/bricks\/app\/__brick__\//;
+  const expectedDirs = (lockfiles) => {
+    const want = new Map([['npm', new Set()], ['pub', new Set()]]);
+    for (const p of lockfiles) {
+      if (TEMPLATE.test(p)) continue;
+      const f = p.split('/').pop();
+      const dir = `/${p.split('/').slice(0, -1).join('/')}`;
+      if (f === 'pubspec.lock') want.get('pub').add(dir);
+      else if (f === 'package-lock.json' || f === 'pnpm-lock.yaml') want.get('npm').add(dir);
+    }
+    return want;
+  };
+  const dependabotProblems = (text, lockfiles) => {
+    const have = dependabotDirs(text);
+    const want = expectedDirs(lockfiles);
+    const problems = [];
+    for (const [eco, dirs] of want) {
+      for (const d of dirs) if (!have.get(eco)?.has(d)) problems.push(`${eco} ${d} holds a tracked lockfile and is not declared`);
+      for (const d of have.get(eco) ?? []) if (!dirs.has(d)) problems.push(`${eco} ${d} is declared and holds no tracked lockfile`);
+    }
+    const blocks = String(text).split(/\n(?= {2}- package-ecosystem:)/).slice(1);
+    for (const b of blocks) if (!/\n {4}open-pull-requests-limit: 0\s*(\n|$)/.test(b)) problems.push(`an entry opens version-update PRs (no open-pull-requests-limit: 0): ${b.split('\n')[0].trim()}`);
+    if (blocks.length === 0) problems.push('no update entries parsed');
+    return problems;
+  };
+
+  test('GREEN — .github/dependabot.yml declares exactly the tracked npm and pub lockfile directories, each with no version-update PRs', () => {
+    const text = readFileSync(join(REPO, '.github', 'dependabot.yml'), 'utf8');
+    const real = trackedLockfiles(REPO);
+    assert.ok(dependabotDirs(text).get('npm')?.size > 0 && dependabotDirs(text).get('pub')?.size > 0, 'the parser read no directories — this case would pass on nothing');
+    assert.deepEqual(dependabotProblems(text, real), []);
+  });
+
+  test('RED — a new lockfile directory, a stale entry and a limit that is not 0 are each refused', () => {
+    const text = readFileSync(join(REPO, '.github', 'dependabot.yml'), 'utf8');
+    const real = trackedLockfiles(REPO);
+    assert.deepEqual(dependabotProblems(text, [...real, 'services/new-api/package-lock.json']), ['npm /services/new-api holds a tracked lockfile and is not declared']);
+    assert.deepEqual(dependabotProblems(text, real.filter((p) => p !== 'tooling/wrangler/package-lock.json')), ['npm /tooling/wrangler is declared and holds no tracked lockfile']);
+    const opened = text.replace(/(package-ecosystem: pub[\s\S]*?open-pull-requests-limit: )0/, '$15');
+    assert.notEqual(opened, text, 'the mutation did not apply');
+    assert.deepEqual(dependabotProblems(opened, real), ['an entry opens version-update PRs (no open-pull-requests-limit: 0): - package-ecosystem: pub']);
+  });
+
   test('the CLI refuses without --osv (exit 2), and an OSV that does not exist is COVERAGE LOST (exit 2)', () => {
     const noArg = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' });
     assert.equal(noArg.status, 2, noArg.stderr);
