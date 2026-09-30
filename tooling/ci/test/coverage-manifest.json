@@ -75,7 +75,7 @@
   "ci-map.test.mjs": 10,
   "clone-contract.test.mjs": 46,
   "code-scanning-age.test.mjs": 15,
-  "codeql-pr-no-new-high.test.mjs": 15,
+  "codeql-pr-no-new-high.test.mjs": 16,
   "config-registry.test.mjs": 61,
   "connect-origins.test.mjs": 38,
   "consent-anon-id.test.mjs": 26,

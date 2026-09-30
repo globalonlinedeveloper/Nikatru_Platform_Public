@@ -149,8 +149,13 @@ async function main(argv) {
       return couldNotLook(`the event payload ${process.env.GITHUB_EVENT_PATH} could not be read (${e.message}).`);
     }
   }
+  if (!eventName) {
+    // No event at all is not "not a pull request": it is a run outside Actions (or
+    // an Actions run whose environment was scrubbed), and nothing was graded.
+    return couldNotLook('GITHUB_EVENT_NAME is not set, so there is no event, and no pull request, to grade.');
+  }
   if (eventName !== 'pull_request') {
-    console.log(`ok  event is ${JSON.stringify(eventName ?? null)}, not a pull request — there is no PR analysis to read. The default branch is graded by assert-alert-disposition.mjs limb C.`);
+    console.log(`ok  NOT APPLICABLE — event is ${JSON.stringify(eventName ?? null)}, not a pull request — there is no PR analysis to read. The default branch is graded by assert-alert-disposition.mjs limb C.`);
     return;
   }
   const pr = event?.pull_request;

@@ -141,6 +141,12 @@ describe('it never passes on an analysis it could not read (exit 2)', () => {
     assert.match(r.stderr, /neither GH_TOKEN nor GITHUB_TOKEN/);
   });
 
+  test('no event at all (a run outside Actions) → COVERAGE LOST, never a pass', () => {
+    const r = run(probe({ eventName: undefined }));
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /GITHUB_EVENT_NAME is not set/);
+  });
+
   test('a PR event with no head SHA → COVERAGE LOST', () => {
     const r = run(probe({ event: { number: 1071, pull_request: { number: 1071, base: { ref: 'main' } } } }));
     assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);

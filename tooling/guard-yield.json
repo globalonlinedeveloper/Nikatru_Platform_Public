@@ -722,6 +722,11 @@
         }
       ]
     },
+    "tooling/ci/assert-codeql-pr-no-new-high.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-30",
+      "evidence": []
+    },
     "tooling/ci/assert-config-registry.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-07",
