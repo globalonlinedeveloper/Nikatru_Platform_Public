@@ -221,6 +221,50 @@ describe('worker-set.mjs --for-deploy — the register, the committed lockfile a
     assert.match(a.out, /--app-workers narrows what --for-deploy --json prints, and --json was not given/);
   });
 
+  // ⏱ 2026-09-29 — B-12 (O-SERVICE-KIT-UNBUILT): deploy-sandbox.yml's matrix is
+  // `--json --app-workers --env sandbox`, so a Worker with no sandbox block is no leg.
+  const withEnv = (r, dir, name) => {
+    const p = join(r, SERVICES_DIR, dir, WORKER_CONFIG);
+    writeFileSync(p, readFileSync(p, 'utf8').replace(/\}\n$/, `  "env": { "${name}": { "name": "w-${name}" } },\n}\n`));
+  };
+  test('--env <name> keeps the entries whose config declares env.<name>, the rest dropped', () => {
+    const r = deployTree({ workers: { platform: { migrated: ['PLATFORM_DB'] }, 'yyy-api': { migrated: ['APP_DB'] }, 'zzz-api': { migrated: ['APP_DB'] } },
+      reg: register((g) => ({ ...g, appWorkers: [row('yyy-api'), row('zzz-api')] })) });
+    withEnv(r, 'zzz-api', 'sandbox');
+    withEnv(r, 'platform', 'sandbox');
+    const j = cli('--for-deploy', '--json', '--app-workers', '--env', 'sandbox', r);
+    assert.equal(j.code, 0, j.out);
+    assert.deepEqual(JSON.parse(j.stdout).map((x) => x.worker), ['zzz-api']);
+    const all = cli('--for-deploy', '--json', '--env', 'sandbox', r);
+    assert.equal(all.code, 0, all.out);
+    assert.deepEqual(JSON.parse(all.stdout).map((x) => x.worker), ['platform', 'zzz-api']);
+    const none = cli('--for-deploy', '--json', '--app-workers', '--env', 'staging', r);
+    assert.equal(none.code, 0, none.out);
+    assert.deepEqual(JSON.parse(none.stdout), []);
+  });
+
+  test('the real tree: every app Worker the sandbox matrix gets declares env.sandbox, and there is at least one', () => {
+    const j = cli('--for-deploy', '--json', '--app-workers', '--env', 'sandbox', REPO);
+    assert.equal(j.code, 0, j.out);
+    const entries = JSON.parse(j.stdout);
+    assert.ok(entries.length >= 1, 'the sandbox matrix is empty on the real tree');
+    const app = JSON.parse(cli('--for-deploy', '--json', '--app-workers', REPO).stdout).map((x) => x.worker);
+    for (const x of entries) assert.ok(app.includes(x.worker), `${x.worker} is in the sandbox matrix and not an app Worker`);
+  });
+
+  test('--env is refused without --json, without a name, or with a name off the shape; its value is never the root', () => {
+    const a = cli('--for-deploy', '--env', 'sandbox', REPO);
+    assert.equal(a.code, 1, a.out);
+    assert.match(a.out, /--env narrows what --for-deploy --json prints, and --json was not given/);
+    const b = cli('--for-deploy', '--json', '--env');
+    assert.equal(b.code, 1, b.out);
+    assert.match(b.out, /--env needs an environment name/);
+    const c = cli('--for-deploy', '--json', '--env', '../x', REPO);
+    assert.equal(c.code, 1, c.out);
+    const d = cli('--for-deploy', '--json', '--app-workers', '--env', 'sandbox', REPO);
+    assert.equal(d.code, 0, `the value after --env was read as the repository root: ${d.out}`);
+  });
+
   test('a Worker whose config migrates nothing deploys with `migrations: null`, never a guessed binding', () => {
     const r = deployTree({ workers: { platform: { migrated: ['PLATFORM_DB'] }, 'zzz-api': { migrated: [] } } });
     const j = cli('--for-deploy', '--json', r);

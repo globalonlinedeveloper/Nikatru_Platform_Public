@@ -2205,6 +2205,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome Web Store neleidžia plėtiniams skaityti savo puslapių, todėl šio puslapio nufotografuoti negalima."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Šį puslapį saugo naršyklė, todėl jo nufotografuoti negalima."
   },

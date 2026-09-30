@@ -1890,6 +1890,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome ウェブストアは拡張機能によるページの読み取りを禁止しているため、このページはキャプチャできません。"
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "このページはブラウザに保護されており、キャプチャできません。"
   },

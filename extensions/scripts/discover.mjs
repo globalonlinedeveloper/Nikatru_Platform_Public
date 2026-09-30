@@ -246,10 +246,26 @@ function runGates() {
    a gate at that no workflow step runs `--run-gates` for (the gate would never
    run), and a `when.os` that no workflow names (a leg that does not exist).
 
+   ⏱ 2026-09-29 (EXL-17): AND A `run:` LINE THAT SPELLS A TOOL ID. The
+   store-publish job's ref check read `--allow 'tag:fullshot-v…'` for as long
+   as fullshot was the only tool: a second tool's tag, which new-tool puts on
+   the trigger through tag-owner --write, was refused there by name, and the
+   `==` scan above could not see it because nothing was compared. A one-line
+   `run:` value that names any tool on disk (a whole word, so a directory name
+   is not one) is a finding; the ref check reads the generated trigger list
+   instead (`assert-deploy-ref.mjs --allow trigger:<workflow>`).
+
    Exit 2, COVERAGE LOST, when either workflow is absent or empty, or when no
    tool declares a gate at all: a clean answer over no subject is not a pass. */
 const LITERAL = /\b(?:matrix\.tool|steps\.tag\.outputs\.id)\s*[!=]=|[!=]=\s*(?:matrix\.tool|steps\.tag\.outputs\.id)\b/;
 const RUNNER_CALL = /\bdiscover\.mjs\s+--run-gates\b.*?--stage\s+([A-Za-z0-9_-]+)/;
+/* A one-line `run:` value: the key, then anything but a block-scalar marker. */
+const RUN_LINE = /^\s*(?:-\s+)?run:\s*(?![|>][-+0-9]*\s*(?:#.*)?$)(\S.*)$/;
+const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/* The tool ids a run: value names, as whole words (`-` and `_` join a word). */
+function toolIdsIn(value, ids) {
+  return ids.filter(id => new RegExp('(?<![A-Za-z0-9_-])' + escapeRe(id) + '(?![A-Za-z0-9_])').test(value));
+}
 const GENERIC_WORKFLOWS = ['extensions-ci.yml', 'extensions.yml'];
 
 /* The directory GitHub reads this tree's workflows from: its own .github/ when
@@ -279,11 +295,22 @@ function assertGeneric() {
 
   const findings = [];
   const stagesCalled = new Set();
+  const ids = tools.map(t => t.id).sort();
   let lines = 0;
+  let runLines = 0;
   for (const [f, text] of texts) {
     text.split(/\r?\n/).forEach((line, i) => {
       lines++;
       if (LITERAL.test(line)) findings.push('.github/workflows/' + f + ':' + (i + 1) + '  names a tool: ' + line.trim());
+      const run = line.match(RUN_LINE);
+      if (run) {
+        runLines++;
+        const named = toolIdsIn(run[1], ids);
+        if (named.length) {
+          findings.push('.github/workflows/' + f + ':' + (i + 1) + '  a run: line names tool ' + named.join(', ') +
+            ', so every other tool takes a different path through it: ' + line.trim());
+        }
+      }
       const m = line.match(RUNNER_CALL);
       if (m) stagesCalled.add(m[1]);
     });
@@ -306,7 +333,12 @@ function assertGeneric() {
     console.log('DECLARED  ' + d.tool + ' · ' + d.stage + ' · ' + d.id + '  →  ' + d.run +
       (d.when ? '  (' + Object.entries(d.when).map(([k, v]) => k + '=' + v).join(' ') + ')' : ''));
   }
-  console.log('read ' + lines + ' line(s) of ' + GENERIC_WORKFLOWS.join(' and ') + ' in ' + dir);
+  console.log('read ' + lines + ' line(s) of ' + GENERIC_WORKFLOWS.join(' and ') + ' in ' + dir +
+    ', ' + runLines + ' one-line run: value(s) scanned for the ' + ids.length + ' tool id(s) on disk (' + ids.join(', ') + ')');
+  if (runLines === 0) {
+    die('COVERAGE LOST — ' + GENERIC_WORKFLOWS.join(' and ') + ' hold no one-line `run:` value this scan recognises, so the ' +
+      'tool-id-in-a-run:-line limb examined nothing. Either the workflows lost every step or RUN_LINE no longer matches them.');
+  }
   if (findings.length) {
     console.log('\n' + findings.length + ' finding(s):');
     for (const x of findings) console.log('  FAIL  ' + x);

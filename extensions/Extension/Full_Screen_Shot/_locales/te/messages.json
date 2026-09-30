@@ -1995,6 +1995,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome Web Store తన పేజీలను పొడిగింపులు చదవకుండా అడ్డుకుంటుంది, కాబట్టి దీన్ని క్యాప్చర్ చేయలేము."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "ఈ పేజీని బ్రౌజర్ కాపాడుతోంది, కాబట్టి దీన్ని క్యాప్చర్ చేయలేము."
   },

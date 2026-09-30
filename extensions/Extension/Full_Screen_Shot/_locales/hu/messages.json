@@ -1995,6 +1995,12 @@
   "errRestrictedWebstore": {
     "message": "A Chrome Webáruház nem engedi, hogy bővítmények olvassák az oldalait, ezért ez nem rögzíthető."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Ezt az oldalt a böngésző védi, ezért nem rögzíthető."
   },

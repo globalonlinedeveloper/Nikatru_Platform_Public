@@ -1995,6 +1995,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome Web Store ቅጥያዎች ገጾቹን እንዲያነቡ አይፈቅድም፣ ስለዚህ ይህ ገጽ ሊቀረጽ አይችልም።"
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "ይህ ገጽ በአሳሹ የተጠበቀ ስለሆነ ሊቀረጽ አይችልም።"
   },

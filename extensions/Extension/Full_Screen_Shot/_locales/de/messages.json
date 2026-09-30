@@ -1995,6 +1995,12 @@
   "errRestrictedWebstore": {
     "message": "Der Chrome Web Store verbietet Erweiterungen das Lesen seiner Seiten, daher kann diese nicht aufgenommen werden."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Diese Seite ist vom Browser geschützt und kann nicht aufgenommen werden."
   },

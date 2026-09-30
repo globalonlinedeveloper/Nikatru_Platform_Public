@@ -92,6 +92,10 @@
       "reads": "whether a workflow runs the IndexNow ping"
     },
     {
+      "path": "tooling/ci/assert-e2e-legs.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-e2e-proof-fresh.mjs",
       "property": "refuses-blind",
       "evidence": "This guard is watching a workflow that is gone",
@@ -317,6 +321,12 @@
       "property": "workflow-scan",
       "resolves": "local-uses",
       "reads": "each release lane's workflow file and, for a lane that is only a `workflow_call` callee, its one caller (laneRunHost), to name the workflow whose run_number a build stamp carries"
+    },
+    {
+      "path": "tooling/ops/check-tech-currency.mjs",
+      "property": "refuses-blind",
+      "evidence": "pins a remote action; the tree walk read nothing.",
+      "reads": "every `uses:` of each workflow and local composite action, to find the remote actions whose `runs.using` a vendor retirement would reach"
     },
     {
       "path": "tooling/ops/redeploy-stranded.mjs",
