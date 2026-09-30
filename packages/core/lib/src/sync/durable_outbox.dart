@@ -513,39 +513,18 @@ class DurableOutbox {
         if (failure == OutboxFailure.unauthorized) {
           return OutboxReplayResult(sent: sent, deadLettered: dead);
         }
-        await _locked((KeyValueStore kv, _) async {
-          final _Doc doc = await _read(kv);
-          final int i = doc.entries.indexWhere(
-            (OutboxEntry e) => e.id == next.id,
-          );
-          if (i < 0) return; // discarded while it was out
-          if (failure == null) {
-            doc.entries.removeAt(i);
-            if (serverId != null && serverId != next.recordId) {
-              doc.aliases[next.recordId] = serverId;
-              for (int j = 0; j < doc.entries.length; j++) {
-                final OutboxEntry e = doc.entries[j];
-                if (e.owner == owner && e.recordId == next.recordId) {
-                  doc.entries[j] = e.copyWith(recordId: serverId);
-                }
-              }
-            }
-            sent += 1;
-          } else {
-            final int attempts = doc.entries[i].attempts + 1;
-            final bool isDead =
-                failure == OutboxFailure.refused || attempts >= maxAttempts;
-            if (isDead) dead += 1;
-            doc.entries[i] = doc.entries[i].copyWith(
-              attempts: attempts,
-              dead: isDead,
-              lastError: _describe(error!),
-              nextAttemptAt: isDead ? null : _now().add(_backoff(attempts)),
-              clearNextAttempt: isDead,
-            );
-          }
-          await _write(kv, doc);
-        });
+        // A method with plain arguments, not a closure over this loop's locals:
+        // dart2js boxed the captured `error`/`failure` across iterations, so
+        // on web a success wrote back through the PREVIOUS failure's branch.
+        final _Settled settled = await _writeBack(
+          owner,
+          next,
+          serverId,
+          failure,
+          error == null ? null : _describe(error),
+        );
+        sent += settled.sent;
+        dead += settled.dead;
       }
     } catch (_) {
       // The store refused a write-back: the entry stays as it was, and the
@@ -554,6 +533,48 @@ class DurableOutbox {
       return OutboxReplayResult(sent: sent, deadLettered: dead);
     }
   }
+
+  /// Record what happened to [entry]'s send, from a fresh read under the lock.
+  Future<_Settled> _writeBack(
+    String owner,
+    OutboxEntry entry,
+    String? serverId,
+    OutboxFailure? failure,
+    String? errorText,
+  ) => _locked((KeyValueStore kv, _) async {
+    final _Doc doc = await _read(kv);
+    final int i = doc.entries.indexWhere((OutboxEntry e) => e.id == entry.id);
+    if (i < 0) return const _Settled(0, 0); // discarded while it was out
+    int sent = 0;
+    int dead = 0;
+    if (failure == null) {
+      doc.entries.removeAt(i);
+      if (serverId != null && serverId != entry.recordId) {
+        doc.aliases[entry.recordId] = serverId;
+        for (int j = 0; j < doc.entries.length; j++) {
+          final OutboxEntry e = doc.entries[j];
+          if (e.owner == owner && e.recordId == entry.recordId) {
+            doc.entries[j] = e.copyWith(recordId: serverId);
+          }
+        }
+      }
+      sent = 1;
+    } else {
+      final int attempts = doc.entries[i].attempts + 1;
+      final bool isDead =
+          failure == OutboxFailure.refused || attempts >= maxAttempts;
+      if (isDead) dead = 1;
+      doc.entries[i] = doc.entries[i].copyWith(
+        attempts: attempts,
+        dead: isDead,
+        lastError: errorText,
+        nextAttemptAt: isDead ? null : _now().add(_backoff(attempts)),
+        clearNextAttempt: isDead,
+      );
+    }
+    await _write(kv, doc);
+    return _Settled(sent, dead);
+  });
 
   Duration _backoff(int attempts) {
     final int factor = 1 << (attempts - 1).clamp(0, 20);
@@ -615,6 +636,12 @@ String newOutboxId() {
 }
 
 final Random _random = Random.secure();
+
+class _Settled {
+  const _Settled(this.sent, this.dead);
+  final int sent;
+  final int dead;
+}
 
 class _Doc {
   _Doc(this.entries, this.aliases);
