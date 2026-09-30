@@ -186,3 +186,49 @@ describe('C11 — renaming a category keeps its cap (caps keyed by category id)'
     expect(db.rows('SELECT id FROM categories WHERE user_id IS NOT NULL')).toHaveLength(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Independent review of #1063 — minor 6: the two cross-user READS of a
+// category that had no test. The writes (rename, delete, a subscription saved
+// under another user's id) are covered above.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('minor 6 — user B can neither see nor use user A’s categories', () => {
+  // Red control: drop `OR user_id = ?` in favour of any user in GET /'s WHERE
+  // (e.g. `user_id IS NULL OR user_id IS NOT NULL`) — B's list carries A's "Gym".
+  it('B’s GET /v1/categories lists the built-ins and B’s own, never A’s', async () => {
+    const mine = await newCategory('Gym');
+    const theirs = await newCategory('Chess club', 'user-b');
+    const listed = (await (await cats('user-b', '/v1/categories')).json()) as Row[];
+    const ids = listed.map((c) => c.id);
+    expect(ids, 'B was served A’s category').not.toContain(mine.id);
+    expect(listed.map((c) => c.name)).not.toContain('Gym');
+    expect(ids).toContain(theirs.id);
+    expect(listed.filter((c) => c.builtin !== true).map((c) => c.id)).toEqual([theirs.id]);
+    expect(listed.filter((c) => c.builtin === true)).toHaveLength(10);
+  });
+
+  // Red control: widen PUT /v1/budget's category read to every user's rows
+  // (drop `OR user_id = ?`'s user filter) — B's cap is stored under A's id.
+  it('B cannot key a budget cap by A’s category id: a 400 that stores nothing, and A’s cap is untouched', async () => {
+    const mine = await newCategory('Gym');
+    await bud(U, '/v1/budget', {
+      method: 'PUT',
+      body: { monthly_budget: 5000, categories: [{ name: 'Gym', cap: 1500, category_id: mine.id }] },
+    });
+    await bud('user-b', '/v1/budget', { method: 'PUT', body: { monthly_budget: 10, categories: [{ name: 'Music', cap: 5 }] } });
+
+    const res = await bud('user-b', '/v1/budget', {
+      method: 'PUT',
+      body: { monthly_budget: 99, categories: [{ name: 'Anything', cap: 1, category_id: mine.id }] },
+    });
+    expect(res.status, 'B keyed a cap by A’s category').toBe(400);
+    expect(((await res.json()) as Row).detail).toContain(String(mine.id));
+    expect(db.rows("SELECT name, cap, category_id FROM budget_categories WHERE user_id = 'user-b'")).toEqual([
+      { name: 'Music', cap: 5, category_id: 'music' },
+    ]);
+    expect(db.rows("SELECT monthly_budget FROM budgets WHERE user_id = 'user-b'")).toEqual([{ monthly_budget: 10 }]);
+    expect(db.rows("SELECT name, cap, category_id FROM budget_categories WHERE user_id = 'user-a'")).toEqual([
+      { name: 'Gym', cap: 1500, category_id: mine.id },
+    ]);
+  });
+});
