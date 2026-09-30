@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:nikatru_api_client/nikatru_api_client.dart'
-    show CacheCodec, KeyValueJsonStore, StoreWriteFailure;
+    show CacheCodec, KeyValueJsonStore, StoreWriteFailure, kCacheIndexKey;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../models/budget_info.dart';
@@ -242,5 +242,6 @@ class LocalSubscriptionStore {
     kLocalSubscriptionsKey,
     kLocalBudgetKey,
     kLocalOutboxKey,
+    kCacheIndexKey, // the shared cache's list of what it wrote: key names only
   ]);
 }

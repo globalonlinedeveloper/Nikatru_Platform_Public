@@ -302,6 +302,73 @@ final FutureProvider<core.KeyValueStore> keyValueStoreProvider =
       (ref) => PrefsKeyValueStore.create(appId: AppConfig.appId),
     );
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ⏱ 2026-09-30 · THE OFFLINE COPY, STAMPED (audit D28, ST-N5).
+//
+// The read-through cache and the write outbox lived only in
+// apps/subscriptiontracker, so every app this brick stamped showed NOTHING
+// offline. They are packages/api_client's now, and this is the adapter: a
+// stamped app reads its rows as
+//
+//   ref.read(readThroughCacheProvider).read('<key>', codec, () => rest.get(…))
+//
+// and gets the last answer back when the server cannot be asked (status 0 or
+// 5xx — never a 401), MARKED through [staleReadProvider], without waiting on
+// the 15 s connect timeout. A write it cannot send goes to [outboxProvider]
+// with a client id and is replayed with that id as its `Idempotency-Key`.
+// Both are ACCOUNT state and are dropped by [userStateDrops].
+// test/offline_cache_test.dart is the stamped proof.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// The device store the offline copy and the outbox share.
+final Provider<KeyValueJsonStore> offlineStoreProvider =
+    Provider<KeyValueJsonStore>(
+      (ref) => KeyValueJsonStore(ref.watch(keyValueStoreProvider.future)),
+    );
+
+/// Whether the rows on screen are the device's copy rather than the server's
+/// answer — true only after a read was served from the cache.
+class StaleReadController extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  /// Reported by the cache on every change, in both directions.
+  void report({required bool stale}) {
+    if (state != stale) state = stale;
+  }
+}
+
+/// See [StaleReadController]; the stale banner draws from this.
+final NotifierProvider<StaleReadController, bool> staleReadProvider =
+    NotifierProvider<StaleReadController, bool>(StaleReadController.new);
+
+/// A failed cache write reaches the crash sink, never only `debugPrint`
+/// (AB-O2-03). The store key and the store's own error, never row content.
+void reportCacheWriteFailure(Object error) {
+  FlutterError.reportError(
+    FlutterErrorDetails(
+      exception: StateError('offline cache write failed: $error'),
+      library: 'offline_cache',
+    ),
+  );
+}
+
+/// The read-through cache of what the server last said. See the block above.
+final Provider<ReadThroughCache> readThroughCacheProvider =
+    Provider<ReadThroughCache>(
+      (ref) => ReadThroughCache(
+        ref.watch(offlineStoreProvider),
+        onWriteFailed: reportCacheWriteFailure,
+        onStaleChanged: (bool stale) =>
+            ref.read(staleReadProvider.notifier).report(stale: stale),
+      ),
+    );
+
+/// Writes made offline, waiting for the server. See the block above.
+final Provider<Outbox> outboxProvider = Provider<Outbox>(
+  (ref) => Outbox(ref.watch(offlineStoreProvider)),
+);
+
 /// Secure store (auth tokens, the entitlement cache).
 ///
 /// ⚠️ DELIBERATELY *NOT* NAMESPACED, unlike the key-value store above. The
@@ -1479,6 +1546,11 @@ typedef UserStateDrop = Future<void> Function();
 List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
   ref.read(entitlementCacheProvider).clear,
   ref.read(notificationServiceProvider).cancelAll,
+  // The offline copy and the queued writes are ACCOUNT state: left behind, the
+  // next person to sign in offline is shown the last one's rows, and a queued
+  // write replays under their session.
+  ref.read(readThroughCacheProvider).forget,
+  ref.read(outboxProvider).clear,
 ];
 
 /// Run the resolved drops — the half that is allowed to take as long as it likes.

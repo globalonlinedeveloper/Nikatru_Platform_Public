@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import '../rest_client.dart' show ApiException;
 import 'json_store.dart';
@@ -36,6 +37,9 @@ import 'json_store.dart';
 // truth — BUT IT IS NEVER SILENT EITHER: it is counted, kept, and reported
 // through `onWriteFailed`, which production wires to the crash sink (AB-O2-03).
 // ═════════════════════════════════════════════════════════════════════════════
+
+/// Where a cache records the keys it has written, for [ReadThroughCache.forget].
+const String kCacheIndexKey = 'nikatru.cache.keys';
 
 /// How long a read that HAS a cached answer waits for the network before it
 /// answers from the cache. Well inside `RestClient`'s 15 s connect timeout, and
@@ -103,12 +107,49 @@ class ReadThroughCache {
   /// never thrown: the server already holds the truth.
   Future<void> mirror<T>(String key, T value, CacheCodec<T> codec) async {
     try {
+      await _remember(key);
       await _store.write(key, value, codec);
     } on StoreWriteFailure catch (e) {
       _writeFailures += 1;
       _lastWriteError = e;
       _onWriteFailed(e);
     }
+  }
+
+  /// The keys this cache has ever written, so [forget] needs no list from the
+  /// caller: a stamped app that adds a cached read cannot forget to drop it.
+  Set<String>? _keys;
+
+  Future<void> _remember(String key) async {
+    final Set<String> keys = _keys ??=
+        (await _store.read(kCacheIndexKey, _indexCodec))?.toSet() ?? <String>{};
+    if (!keys.add(key)) return;
+    await _store.write(kCacheIndexKey, keys.toList()..sort(), _indexCodec);
+  }
+
+  static final CacheCodec<List<String>> _indexCodec = CacheCodec<List<String>>(
+    encode: (List<String> keys) => jsonEncode(keys),
+    decode: (String raw) {
+      try {
+        final Object? d = jsonDecode(raw);
+        return d is List<Object?> ? d.whereType<String>().toList() : null;
+      } on FormatException {
+        return null;
+      }
+    },
+  );
+
+  /// Forget every copy this cache wrote — the sign-out drop. A cached answer
+  /// is ACCOUNT state: left behind, the next person to sign in on this device
+  /// offline would be shown it. Throws [StoreWriteFailure] when the store is
+  /// there and refuses, because "forgotten" is a promise told to the user.
+  Future<void> forget() async {
+    final List<String> keys =
+        await _store.read(kCacheIndexKey, _indexCodec) ?? <String>[];
+    await _store.remove(<String>[...keys, kCacheIndexKey]);
+    _keys = <String>{};
+    _setStale(false);
+    _knownOffline = false;
   }
 
   /// Apply [change] to the copy under [key], if there is one. A device that has

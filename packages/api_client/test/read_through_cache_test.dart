@@ -164,4 +164,16 @@ void main() {
     await c.amend('k', _codec, (List<String> v) => <String>[...v, 'x']);
     expect(await c.peek('k', _codec), <String>['a', 'x']);
   });
+
+  test('forget drops every copy it wrote, and nothing else', () async {
+    await kv.write('unrelated', 'kept');
+    final ReadThroughCache c = cache();
+    await c.read('a', _codec, () async => <String>['1']);
+    await c.read('b', _codec, () async => <String>['2']);
+    await cache().forget();
+    expect(await c.peek('a', _codec), isNull);
+    expect(await c.peek('b', _codec), isNull);
+    expect(await kv.read(kCacheIndexKey), isNull);
+    expect(await kv.read('unrelated'), 'kept');
+  });
 }
