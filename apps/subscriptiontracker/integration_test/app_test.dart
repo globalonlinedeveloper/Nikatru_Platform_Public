@@ -1313,45 +1313,12 @@ void main() {
     expect(find.byType(InsightsScreen), findsWidgets);
     await shot('06-insights');
 
-    // ── 07 Budget — the editor on Insights (ST-D3: no Budget tab) ────────────
-    // The budget loads over the network first, then its card offers Edit.
-    // 🔬 FIRST SCROLL TO THE CARD: Insights is a LAZY ListView, and at the
-    // E2E viewport (430x932) the header and summary tiles push the budget
-    // card below the fold, so it is not BUILT and no finder can see it. The
-    // diagnostic re-run 36699356737 failed on the same line, which a slow
-    // load alone would not do every time. `insights.budget` keys the card in
-    // both its loading and its loaded state.
-    await scrollUntilFound(
-      tester,
-      target: find.byKey(const Key('insights.budget')),
-      scrollable: scrollableWithin(find.byType(InsightsScreen)),
-      what: 'the Insights budget card',
-      maxScrolls: 20,
-      delta: 200,
-    );
-    // Then wait for the button itself, never a fixed pump: BudgetCard renders no
-    // Edit until the budget request HAS A VALUE (a load or an error both hide
-    // it), and on live production the Insights request outlasted a fixed 2 s
-    // (schedule run 36698011430 on 500e0d56: `Bad state: No element`).
-    expect(
-      await waitFor(
-        tester,
-        find.byKey(BudgetCard.editButton),
-        timeout: const Duration(seconds: 30),
-      ),
-      isTrue,
-      reason:
-          'the Insights budget card never offered Edit within 30 s: '
-          'the budget request is still loading or FAILED (see 06-insights)',
-    );
-    await tester.ensureVisible(find.byKey(BudgetCard.editButton));
-    await tester.tap(find.byKey(BudgetCard.editButton));
-    await pumpFor(tester, const Duration(seconds: 2));
-    expect(find.byType(BudgetEditor), findsWidgets);
-    await shot('07-budget');
-    await tester.tap(find.byTooltip('Close'));
-    await pumpFor(tester, const Duration(seconds: 2));
-    expect(find.byType(BudgetEditor), findsNothing);
+    // ── 07 Budget: MOVED to 11b, after the first subscription exists ────────
+    // 🔬 ST-D3 put the budget card INSIDE Insights' subscription builder, so a
+    // fresh account (no subscriptions yet, as here) gets Insights' EMPTY state
+    // and no budget card at all. Runs 36698011430, 36699356737 and 36700658677
+    // all failed here for that reason ("Nothing to scroll ... On screen: No
+    // subscriptions"). The budget is exercised at 11b, once one row exists.
 
     // ── 08 Settings (the 4th tab, named) ─────────────────────────────────────
     await tester.tap(find.text('Settings'));
@@ -1410,6 +1377,56 @@ void main() {
           'read-back failed',
     );
     await shot('11-home-after-create');
+
+    // ── 11b Budget: the editor on Insights (ST-D3: no Budget tab) ────────────
+    // Only now does Insights render its card stack (one subscription exists).
+    await tester.tap(find.text('Insights'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(shellIndex(), 2);
+    // Insights is a LAZY ListView: at the E2E viewport (430x932) the header and
+    // summary tiles can push the budget card below the fold, unbuilt. Scroll to
+    // `insights.budget`, which keys the card while loading and when loaded.
+    await scrollUntilFound(
+      tester,
+      target: find.byKey(const Key('insights.budget')),
+      scrollable: scrollableWithin(find.byType(InsightsScreen)),
+      what: 'the Insights budget card',
+      maxScrolls: 20,
+      delta: 200,
+    );
+    // Then wait for the button itself, never a fixed pump: BudgetCard renders no
+    // Edit until the budget request HAS A VALUE (a load or an error both hide it).
+    expect(
+      await waitFor(
+        tester,
+        find.byKey(BudgetCard.editButton),
+        timeout: const Duration(seconds: 30),
+      ),
+      isTrue,
+      reason:
+          'the Insights budget card never offered Edit within 30 s: '
+          'the budget request is still loading or FAILED',
+    );
+    await tester.ensureVisible(find.byKey(BudgetCard.editButton));
+    await tester.tap(find.byKey(BudgetCard.editButton));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(find.byType(BudgetEditor), findsWidgets);
+    await shot('07-budget');
+    await tester.tap(find.byTooltip('Close'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(find.byType(BudgetEditor), findsNothing);
+
+    // Back to Home, and the row back into view, for the detail step.
+    await tester.tap(find.text('Home'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(shellIndex(), 0);
+    await scrollUntilFound(
+      tester,
+      target: subFinder.first,
+      scrollable: find.byType(Scrollable),
+      what: 'the subscription just created, back on Home',
+      maxScrolls: 40,
+    );
 
     // ── 12 Detail (subscription A) ───────────────────────────────────────────
     await tester.tap(subFinder.first);
