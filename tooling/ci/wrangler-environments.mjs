@@ -43,15 +43,30 @@ export const d1Of = (block) => (Array.isArray(block?.d1_databases) ? block.d1_da
 /** Secrets no sandbox environment may hold (see the header). */
 export const SANDBOX_FORBIDDEN_SECRETS = Object.freeze(['SUPABASE_SERVICE_ROLE_KEY']);
 
-/** Every forbidden secret a sandbox deploy workflow's TEXT names — comments
- *  included on purpose: a workflow line commented out today is one uncomment
- *  from putting the secret. `where` prefixes each message. */
+/** Every workflow STEP that puts a forbidden secret into a sandbox Worker: a
+ *  step that names the sandbox environment (`--env sandbox`, `--env=sandbox`,
+ *  `environment: sandbox`), puts a Worker secret (`secret put`, `secret bulk`,
+ *  or a wrangler-action `secrets:` input) and names the secret. A job that only
+ *  READS the key into its own env (a capture seeding a test account) puts
+ *  nothing into the Worker and is not a finding. Comments are read on purpose: a
+ *  step commented out today is one uncomment from putting the secret. `where`
+ *  prefixes each message. */
 export function sandboxWorkflowSecretFindings(where, text) {
-  return SANDBOX_FORBIDDEN_SECRETS.filter((name) => String(text).includes(name)).map(
-    (name) =>
-      `${where} names ${name}. A sandbox deploy must never put the service-role key: the sandbox shares production's ` +
-      'identity project, and that bearer is what makes GoTrue skip its captcha (ADR no.NNN).',
-  );
+  const steps = String(text).split(/\n(?=\s*- (?:name|uses|run|id):)/);
+  const out = [];
+  for (const step of steps) {
+    if (!/--env[ =]sandbox\b|environment:\s*['"]?sandbox\b/.test(step)) continue;
+    if (!/secret\s+(?:put|bulk)\b|^\s*secrets:/m.test(step)) continue;
+    for (const name of SANDBOX_FORBIDDEN_SECRETS) {
+      if (step.includes(name)) {
+        out.push(
+          `${where} has a step that puts ${name} into a SANDBOX Worker. A sandbox never holds the service-role key: it ` +
+            "shares production's identity project, and that bearer is what makes GoTrue skip its captcha (ADR no.NNN).",
+        );
+      }
+    }
+  }
+  return out;
 }
 
 /** Every reason `e` (the block at `env.<name>` of the parsed top-level

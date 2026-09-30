@@ -776,7 +776,10 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
   // ⏱ 2026-09-29 · ADR no.NNN — the attestation endpoints' pins go red the same two ways.
   test('FAILS when no test drives an attestation endpoint, or core stops naming its path (sdk pin)', () => {
     const TEST = 'packages/auth_supabase/test/native_attestation_client_test.dart';
-    const undriven = run(makeRepo((f) => mutate(f, TEST, "'/v1/auth/native/$_app/attest/install'", "'/v1/auth/native/$_app/attest/elsewhere'")));
+    // The test names the install path twice (the fake server's route and the
+    // expected call order), so BOTH are moved — one left behind still drives it.
+    const once = (f) => mutate(f, TEST, "'/v1/auth/native/$_app/attest/install'", "'/v1/auth/native/$_app/attest/elsewhere'");
+    const undriven = run(makeRepo((f) => once(once(f))));
     assert.equal(undriven.code, 1, undriven.out);
     assert.match(undriven.out, /native-auth-attest-install: .*never drives/);
     const CORE = 'packages/core/lib/src/auth/native_attest.dart';

@@ -113,6 +113,7 @@ describe('capture-backend: the sandbox is computed from the wrangler configs', (
       'ratelimit:NATIVE_AUTH_EDGE_LIMITER': '1020',
       'ratelimit:NATIVE_AUTH_UNATTESTED_LIMITER': '1023', // ⏱ 2026-09-29 · ADR no.NNN, the unattested channel's ceiling.
       'ratelimit:NATIVE_AUTH_INSTALL_LIMITER': '1024', // ⏱ 2026-09-29 · ADR no.NNN, key registration's ceiling.
+      'ratelimit:NATIVE_AUTH_PLAY_VERIFY_LIMITER': '1026', // ⏱ 2026-09-30 · ADR no.NNN, Play Integrity verifications' ceiling.
     });
     assert.deepEqual(b['subscriptiontracker-api'].sandboxIds, {
       'd1:APP_DB': '4e7c7730-3dc7-4004-9895-403b17702b91',
