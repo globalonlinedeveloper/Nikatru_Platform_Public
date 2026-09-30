@@ -665,8 +665,12 @@ const REQUIRED_COVERAGE = [
     // onto ST-D4), surfaces unchanged: `test/plan_golden_test.dart` (the
     // paywall and manage-plan goldens) joined the corpus, and R14b caught the
     // slack. Read off the per-root line, `— 28 file(s)`.
+    // ⏱ RAISED `widthTestFiles` 28 → 29 ON 2026-09-29 (train ST-D10),
+    // surfaces unchanged: `test/auth_frame_adoption_test.dart` (every chassis
+    // auth view on the shared AuthFrame, pumped at kPhone and 1440) joined the
+    // corpus. Read off the per-root line, `— 29 file(s)`.
     surfaces: 26,
-    widthTestFiles: 28,
+    widthTestFiles: 29,
     coveredSurfaces: 26,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
