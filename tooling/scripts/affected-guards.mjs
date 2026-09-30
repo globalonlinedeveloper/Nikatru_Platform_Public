@@ -92,8 +92,9 @@
 // Tests:  tooling/ci/test/affected-guards.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawn, spawnSync } from 'node:child_process';
-import { appendFileSync, closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { availableParallelism, tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
 import { dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseAllWorkflows, shellSegments, workflowSteps } from '../ci/workflow-scan.mjs';
@@ -110,6 +111,8 @@ export const BUDGET_FLOOR_S = 60;
  *  reported by name, so the added wall time is bounded by budget + grace, not by the
  *  slowest ceiling (a 262 s test started at 239 s took the first dogfood run to 448 s). */
 const GRACE_MS = 60_000;
+/** The ceiling on re-running the reds at the merge-base, checkout included in spirit. */
+const BASE_MS = 180_000;
 
 // ── the tracked tree ─────────────────────────────────────────────────────────
 
@@ -889,7 +892,8 @@ function treeState(root) {
     const p = e.slice(3);
     if (/^\.worktrees(\/|$)/.test(p)) continue;
     let stamp = e.slice(0, 2);
-    try { const s = statSync(join(root, p)); stamp += `:${s.size}:${s.mtimeMs}`; } catch { stamp += ':gone'; }
+    // the CONTENT, not the mtime: a check that rewrites a file byte for byte wrote nothing
+    try { stamp += `:${createHash('sha1').update(readFileSync(join(root, p))).digest('hex')}`; } catch { stamp += ':gone'; }
     state.set(p, stamp);
   }
   return state;
@@ -903,14 +907,18 @@ async function rerunOnBase(reds, root, baseRef, width) {
   const co = detachedCheckout({ root, sha, tag: 'agb' });
   if (co.error) return { error: co.error, results: new Map() };
   const results = new Map();
+  // The base phase is bounded too: a red the base cannot answer in BASE_MS is COVERAGE
+  // LOST, never a pass.
+  const deadline = Date.now() + BASE_MS;
   try {
     await pool(reds, width, async (check) => {
       if (!existsSync(join(co.dir, check.rel))) {
         results.set(check.id, { evaluable: false, reason: 'the script does not exist at the base — it is new on this branch, so main cannot vouch for its red' });
         return;
       }
-      const r = await runCheck(check, co.dir, {});
-      if (r.timedOut) results.set(check.id, { evaluable: false, reason: `it timed out at the base (${check.ceilingMs / 1000}s)` });
+      const r = await runCheck(check, co.dir, {}, deadline);
+      if (r.budgetCut) results.set(check.id, { evaluable: false, reason: `the base re-run was stopped at its ${BASE_MS / 1000} s limit` });
+      else if (r.timedOut) results.set(check.id, { evaluable: false, reason: `it timed out at the base (${check.ceilingMs / 1000}s)` });
       else results.set(check.id, { evaluable: true, status: r.status, out: r.out });
     });
   } finally {
@@ -943,8 +951,8 @@ export async function main(argv = process.argv.slice(2), { root = ROOT, log = co
   for (const f of ['--base', '--jobs', '--json', '--skip-for-ci', '--reason', '--root', '--sha', '--budget-s']) {
     if (argValue(argv, f) === null) { err(`✗ ${f} needs a value after it.`); return 2; }
   }
-  // The budget: no check STARTS after it (one already running finishes, under its own
-  // ceiling). Default DEFAULT_BUDGET_S; --no-budget runs every selected check.
+  // The budget: no check STARTS after it, and one still running GRACE_MS later is
+  // stopped. Default DEFAULT_BUDGET_S; --no-budget runs every selected check.
   const budgetRaw = argValue(argv, '--budget-s') ?? process.env.NIKATRU_AFFECTED_BUDGET_S ?? String(DEFAULT_BUDGET_S);
   const budgetS = Number(budgetRaw);
   if (!Number.isFinite(budgetS) || budgetS < BUDGET_FLOOR_S) {
