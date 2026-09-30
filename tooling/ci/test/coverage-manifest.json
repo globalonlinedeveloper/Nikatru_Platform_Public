@@ -93,7 +93,7 @@
     25,
 
   "appstore-submission.test.mjs":
-    49,
+    52,
 
   "artifact-shape.test.mjs":
     32,
@@ -738,7 +738,7 @@
     133,
 
   "rail-prices.test.mjs":
-    42,
+    54,
 
   "redeploy-stranded.test.mjs":
     50,
@@ -861,7 +861,7 @@
     109,
 
   "small-business-program.test.mjs":
-    14,
+    17,
 
   "smoke-site-deploy.test.mjs":
     14,
