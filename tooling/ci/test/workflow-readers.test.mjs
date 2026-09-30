@@ -207,3 +207,43 @@ describe('assert-workflow-readers — R5, a row that declares it resolves local 
     assert.match(out, /R5 tooling\/scripts\/gen\.mjs — resolves "everything" is not one of local-uses/);
   });
 });
+
+// ── R6 · ⏱ 2026-09-30 · a `path-compare` row opens no file at all (PR #1076) ──
+describe('assert-workflow-readers — R6, a row that only compares a workflow path', () => {
+  const COMPARER =
+    "export const MAIN_WORKFLOW_PATH = '.github/workflows/ci.yml';\n" +
+    "export const isMain = (run) => String(run?.path ?? '').split('@')[0] === MAIN_WORKFLOW_PATH;\n";
+  const withComparer = () => {
+    const reg = baseRegister();
+    reg.readers.push({ path: 'tooling/ops/compare.mjs', property: 'path-compare', reads: 'nothing: a run path compare' });
+    return reg;
+  };
+
+  test('passes: a path-compare row whose file names the workflow only to compare it, with no evidence needed', () => {
+    const { code, out } = run(fixture({ files: { 'tooling/ops/compare.mjs': COMPARER }, register: withComparer() }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 path-compare/);
+    assert.match(out, /R6 — 1 `path-compare` row\(s\)/);
+  });
+
+  test('R6: a path-compare row whose file READS the workflow fails (the red control)', () => {
+    const reader = "import { readFileSync } from 'node:fs';\n" + COMPARER + "const text = readFileSync(MAIN_WORKFLOW_PATH, 'utf8');\n";
+    const { code, out } = run(fixture({ files: { 'tooling/ops/compare.mjs': reader }, register: withComparer() }));
+    assert.equal(code, 1, out);
+    assert.match(out, /R6 tooling\/ops\/compare\.mjs is declared `path-compare` and its code touches the filesystem/);
+  });
+
+  test('R6: a dynamic fs import or a workflow-scan import is a read too', () => {
+    for (const body of [COMPARER + "const fs = await import('node:fs');\n", "import { parseWorkflow } from '../ci/workflow-scan.mjs';\n" + COMPARER]) {
+      const { code, out } = run(fixture({ files: { 'tooling/ops/compare.mjs': body }, register: withComparer() }));
+      assert.equal(code, 1, out);
+      assert.match(out, /R6 tooling\/ops\/compare\.mjs/);
+    }
+  });
+
+  test('R6: an fs read that survives only inside a comment does not count', () => {
+    const body = "// readFileSync(MAIN_WORKFLOW_PATH) was the old way\n" + COMPARER;
+    const { code, out } = run(fixture({ files: { 'tooling/ops/compare.mjs': body }, register: withComparer() }));
+    assert.equal(code, 0, out);
+  });
+});

@@ -575,6 +575,26 @@
       "noLimiterReason": "NOT APPLICABLE — `auth: required` (the device credential), so limb 4 does not range over it. One guarded UPDATE by an authenticated device."
     },
     {
+      "id": "ext-devices-list",
+      "method": "GET",
+      "path": "/v1/ext/devices",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/ext.ts",
+      "purpose": "⏱ 2026-09-30 · EXA-11 (round-2 review; O-EXTENSION-ACCOUNT-CHECK-UNBUILT). The ACCOUNT's live browser-extension links, from the account side, behind `platformAuth` carried AT THE HANDLER: {devices: [{link_id, product, channel, created_at, last_seen_at}]}. Never the token hash and never user_id. A revoked link and a link past its lifetime (services/platform/src/lib/ext-links.ts: 30 days idle, 180 days at most) are not listed. A device credential is refused: only the account lists its links.",
+      "unconsumedReason": "NO CLIENT YET, AND IT IS A STATE RATHER THAN A CONSTRUCTION: the account page that lists linked browsers is unbuilt (sites/nikatru has no account page; its design belongs to the design lane). The route exists so a link can be ended from the account side at all — the round-2 finding was that nothing but the browser itself or erasure could end one.",
+      "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. One indexed SELECT by user_id."
+    },
+    {
+      "id": "ext-devices-revoke",
+      "method": "DELETE",
+      "path": "/v1/ext/devices/:link_id",
+      "auth": "required",
+      "owningFile": "services/platform/src/routes/ext.ts",
+      "purpose": "⏱ 2026-09-30 · EXA-11. The account revokes ONE linked browser; every other link keeps working. `platformAuth` AT THE HANDLER. The UPDATE is scoped by user_id in the statement, so another account's link id is a 404 indistinguishable from one that never existed; a malformed id or an already-revoked link is the same 404. 204 on success, after which that browser's credential answers 401 — the extension's signal to delete it.",
+      "unconsumedReason": "NO CLIENT YET — the same unbuilt account page as ext-devices-list.",
+      "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. One guarded UPDATE by an authenticated account."
+    },
+    {
       "id": "plan-cancel",
       "method": "POST",
       "path": "/v1/plan/cancel",
@@ -653,7 +673,7 @@
       "path": "/v1/sessions/revoke-all",
       "auth": "required",
       "owningFile": "services/platform/src/routes/sessions.ts",
-      "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. Moves the caller's `before` watermark to now, so every Worker refuses every token issued to this account up to now, the caller's own included. Deletes no auth.sessions row: the client's GoTrue signOut({scope:'global'}) does that. 503 when the list cannot be written, because a 204 would claim a sign-out that did not happen.",
+      "purpose": "⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. Moves the caller's `before` watermark to now, so every Worker refuses every token issued to this account up to now, the caller's own included. Deletes no auth.sessions row: the client's GoTrue signOut({scope:'global'}) does that. 503 when the list cannot be written, because a 204 would claim a sign-out that did not happen. ⏱ 2026-09-30 · EXA-11: it also raises the browser-extension link floor (services/platform/src/lib/ext-links.ts), KV FIRST and D1 second; when only D1 fails it answers 200 {d1Pending: true}. CLIENT CONTRACT: `d1Pending: true` means RETRY — a client that reads any 2xx as done leaves the extension links alive until the next revoke-all.",
       "unconsumedReason": "client half (requestSessionRevocation + the sessions list) ships in the web PR after this Worker deploys; the server must be live first"
     },
     {

@@ -13,6 +13,17 @@ breaking change becomes `core/v2/` beside it rather than a new number here.
 
 ## [Unreleased]
 
+### Added — `v1/entitlement-client.js`, the account-checked Pro entitlement (0.3.0)
+
+- **`core/v1/entitlement-client.js`** (`SKENT`) — written here, not promoted: the Pro decision every
+  extension will hold (decisions/ext/013, design §3.3). `isPro` is fail-closed (7-day offline ceiling,
+  paid-through, an unparseable end is not lifetime); `applyAnswer` drops Pro on the same tick for
+  `is_pro:false`, deletes the credential and cache only on a 401/403 carrying our API JSON code (`invalid_link`, `wrong_product`), holds a foreign 401/403 as `retry` (re-review finding 7), and holds on anything else; `needsCheck` is
+  daily and on demand; `buildRequest` admits three paths and four keys. It names no network API — the one
+  call is the adopting tool's, handed in as a transport (CORE-POLICY §1.3). Sim:
+  `core/test/entitlement-client.node.js`, with five recorded failing cases. Round-2 findings EXA-01, EXM-03.
+  No tool adopts it yet.
+
 ### Changed — `dev/fakedom.js` re-promoted
 
 - FullShot's `test/pixel-sim/fakedom.js` gained `document.fonts` (a `FontsFake` whose `ready` a
