@@ -107,83 +107,71 @@ class _VerifyEmailViewState extends State<VerifyEmailView> {
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
 
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.verifyEmailTitle)),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ContentPane.form(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Text(
-                l10n.verifyEmailBody(widget.email),
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                l10n.verifyEmailSpamHint,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              if (_notice != null) ...<Widget>[
-                const SizedBox(height: 12),
-                Text(
-                  _notice!,
-                  key: VerifyEmailView.statusLine,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-              const SizedBox(height: 20),
-              // 🔴 "I'VE CONFIRMED" EXISTS BECAUSE NOTHING PUSHES THE ANSWER AT
-              // A RUNNING APP. The link is opened in a MAIL CLIENT, often on
-              // another device, so the session in memory says unverified until
-              // something asks the server again. Without this control the only
-              // way out is to kill the app and relaunch it, which reads as the
-              // app being broken.
-              FilledButton(
-                key: VerifyEmailView.continueButton,
-                onPressed: _busy
-                    ? null
-                    : () => _run(() async {
-                        final bool stillUnverified = await widget
-                            .onCheckConfirmed();
-                        return stillUnverified
-                            ? l10n.verifyEmailStillUnverified
-                            : null;
-                      }),
-                child: Text(l10n.verifyEmailContinue),
-              ),
-              const SizedBox(height: 12),
-              ?widget.captcha,
-              OutlinedButton(
-                key: VerifyEmailView.resendButton,
-                onPressed: _busy
-                    ? null
-                    : () => _run(() async {
-                        await widget.captchaController?.untilReady();
-                        await widget.onResend();
-                        return l10n.verifyEmailResent;
-                      }),
-                child: Text(l10n.verifyEmailResend),
-              ),
-              const SizedBox(height: 12),
-              // The only way OUT of the gate. A user who mistyped their address
-              // has no other move — the account exists, they cannot reach the
-              // app, and without this the app is a locked door with no handle.
-              TextButton(
-                key: VerifyEmailView.signOutButton,
-                onPressed: _busy
-                    ? null
-                    : () => _run(() async {
-                        await widget.onSignOut();
-                        return null;
-                      }),
-                child: Text(l10n.signOut),
-              ),
-            ],
-          ),
+    return AuthFrame(
+      title: l10n.verifyEmailTitle,
+      // A gate: the router re-asserts it, so a back arrow would lead nowhere.
+      showBack: false,
+      children: <Widget>[
+        Text(
+          l10n.verifyEmailBody(widget.email),
+          style: Theme.of(context).textTheme.bodyLarge,
         ),
-      ),
+        const SizedBox(height: 8),
+        Text(
+          l10n.verifyEmailSpamHint,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        if (_notice != null) ...<Widget>[
+          const SizedBox(height: 12),
+          AuthMessage(message: _notice!, textKey: VerifyEmailView.statusLine),
+        ],
+        const SizedBox(height: 20),
+        // 🔴 "I'VE CONFIRMED" EXISTS BECAUSE NOTHING PUSHES THE ANSWER AT
+        // A RUNNING APP. The link is opened in a MAIL CLIENT, often on
+        // another device, so the session in memory says unverified until
+        // something asks the server again. Without this control the only
+        // way out is to kill the app and relaunch it, which reads as the
+        // app being broken.
+        FilledButton(
+          key: VerifyEmailView.continueButton,
+          onPressed: _busy
+              ? null
+              : () => _run(() async {
+                  final bool stillUnverified = await widget.onCheckConfirmed();
+                  return stillUnverified
+                      ? l10n.verifyEmailStillUnverified
+                      : null;
+                }),
+          child: Text(l10n.verifyEmailContinue),
+        ),
+        const SizedBox(height: 12),
+        ?widget.captcha,
+        OutlinedButton(
+          key: VerifyEmailView.resendButton,
+          onPressed: _busy
+              ? null
+              : () => _run(() async {
+                  await widget.captchaController?.untilReady();
+                  await widget.onResend();
+                  return l10n.verifyEmailResent;
+                }),
+          child: Text(l10n.verifyEmailResend),
+        ),
+        const SizedBox(height: 12),
+        // The only way OUT of the gate. A user who mistyped their address
+        // has no other move — the account exists, they cannot reach the
+        // app, and without this the app is a locked door with no handle.
+        TextButton(
+          key: VerifyEmailView.signOutButton,
+          onPressed: _busy
+              ? null
+              : () => _run(() async {
+                  await widget.onSignOut();
+                  return null;
+                }),
+          child: Text(l10n.signOut),
+        ),
+      ],
     );
   }
 }
