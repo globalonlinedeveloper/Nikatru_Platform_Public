@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
+import 'app_palette.dart';
 // The two font families below are BRAND facts, and they are declared once in
 // contracts/tokens/dtcg/font.json. Until 2026-09-05 they were typed into six
 // const TextStyles here as string literals and packages/tokens could not reach
@@ -82,14 +83,14 @@ class AppText {
     fontWeight: FontWeight.w700,
     letterSpacing: -1.0,
     height: 1.03,
-    color: AppColors.ink,
+    color: AppPalette.lightInk,
   );
 
   static const TextStyle title = TextStyle(
     fontFamily: BrandTokens.fontDisplay,
     fontWeight: FontWeight.w700,
     letterSpacing: -0.4,
-    color: AppColors.ink,
+    color: AppPalette.lightInk,
   );
 
   /// Tabular figures for money / dates.
@@ -97,20 +98,20 @@ class AppText {
     fontFamily: BrandTokens.fontDisplay,
     fontWeight: FontWeight.w600,
     letterSpacing: -0.3,
-    color: AppColors.ink,
+    color: AppPalette.lightInk,
     fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
   );
 
   static const TextStyle body = TextStyle(
     fontFamily: BrandTokens.fontBody,
     fontWeight: FontWeight.w500,
-    color: AppColors.ink,
+    color: AppPalette.lightInk,
   );
 
   static const TextStyle muted = TextStyle(
     fontFamily: BrandTokens.fontBody,
     fontWeight: FontWeight.w500,
-    color: AppColors.muted,
+    color: AppPalette.lightMuted,
   );
 
   static const TextStyle label = TextStyle(
@@ -118,7 +119,7 @@ class AppText {
     fontWeight: FontWeight.w700,
     fontSize: 11,
     letterSpacing: 0.8,
-    color: AppColors.muted,
+    color: AppPalette.lightMuted,
   );
 
   /// The LIGHT set — the const styles themselves, deliberately not copies.

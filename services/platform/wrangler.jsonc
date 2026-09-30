@@ -48,6 +48,18 @@
     // at the foot of this file (MONEY_ENVIRONMENT "sandbox", its own database,
     // namespaces and limiters), deployed only by deploy-sandbox.yml.
     "MONEY_ENVIRONMENT": "live",
+    // ⏱ 2026-09-29 · ADR no.NNN — THE NATIVE SIGN-IN ATTESTATION FLAG: the kinds
+    // POST /v1/auth/native/<app>/<op> accepts (src/lib/native-attest/index.ts).
+    // ABSENT OR EMPTY ACCEPTS NONE — the route then refuses every op, never
+    // opens. ⏱ 2026-09-30 (LEAD RULING db0cc7, review of #1070): ONLY the kinds
+    // whose proof this server verifies. `install-key` is NOT listed and must
+    // not be — a script can mint and register a key exactly as a desktop build
+    // does — and KIND_OPS would confine it to the password grant even here.
+    // Each listed kind FAILS CLOSED (503) until its config exists:
+    // `play-integrity` until the owner's service-account key and Play
+    // app-signing digest are put, `app-attest` until APP_ATTEST_TEAM_ID is, and
+    // both until NATIVE_ATTEST_CHALLENGE_KEY is (the PR lists each step).
+    "NATIVE_AUTH_ATTEST_KINDS": "app-attest,play-integrity",
     // ⚠️ EXACT allowlist — no pattern matching, and an EMPTY value now DENIES
     // every browser origin rather than falling back to '*'. This Worker is no
     // longer config-read-only: it serves /v1/events and /v1/consent, and will
@@ -404,6 +416,42 @@
       "name": "NATIVE_AUTH_EDGE_LIMITER",
       "namespace_id": "1018",
       "simple": { "limit": 60, "period": 60 }
+    },
+    {
+      // ⏱ 2026-09-29 · ADR no.NNN. The UNATTESTED channel's per-NETWORK ceiling
+      // on the four native ops (kind `install-key`: Windows, Linux, macOS
+      // outside the Mac App Store), keyed `edge:<colo>:<asn>` like the one
+      // above, and checked IN ADDITION to it. That channel proves nothing about
+      // the binary, so this budget is the bound on a script that picks it.
+      // FAILS CLOSED (src/lib/edge-ceiling.ts strictRateLimit).
+      //
+      // 10/min per (colo, asn), a sixth of the attested channels' 60: sized for
+      // today's desktop audience. The honest cost is that one busy network
+      // shares it; the ADR's residual-risk row is where it gets revisited.
+      "name": "NATIVE_AUTH_UNATTESTED_LIMITER",
+      "namespace_id": "1021",
+      "simple": { "limit": 10, "period": 60 }
+    },
+    {
+      // ⏱ 2026-09-29 · ADR no.NNN. The per-NETWORK ceiling on key registration
+      // (POST /v1/auth/native/<app>/attest/install), every kind — an install
+      // registers once, so a burst of registrations is a script minting keys.
+      // FAILS CLOSED.
+      "name": "NATIVE_AUTH_INSTALL_LIMITER",
+      "namespace_id": "1022",
+      "simple": { "limit": 5, "period": 60 }
+    },
+    {
+      // ⏱ 2026-09-30 · ADR no.NNN (review of #1070). The per-NETWORK ceiling on
+      // Play Integrity verifications, spent BEFORE a decode is asked of Google,
+      // keyed `edge:<colo>:<asn>`. It bounds one network's BURST only — 10/min
+      // is 14,400 a day, more than the daily ceiling. The DAY is bounded by two D1
+      // counters (src/lib/native-attest/index.ts): PLAY_INTEGRITY_DAILY_PER_NETWORK
+      // (400, 5% of the ceiling, per network) and PLAY_INTEGRITY_DAILY_CEILING
+      // (8,000, all networks, below Google's 10,000). FAILS CLOSED.
+      "name": "NATIVE_AUTH_PLAY_VERIFY_LIMITER",
+      "namespace_id": "1025",
+      "simple": { "limit": 10, "period": 60 }
     }
   ],
   "triggers": {
@@ -525,7 +573,17 @@
         // why: src/routes/money.ts:97 — THIS is the sandbox money world. The
         // top level's value stays "live" (limb 1), and this one must be
         // exactly "sandbox" (limb 1b).
-        "MONEY_ENVIRONMENT": "sandbox"
+        "MONEY_ENVIRONMENT": "sandbox",
+        // why: src/lib/native-attest/index.ts. ⏱ 2026-09-30 (review of #1070):
+        // EMPTY — the sandbox accepts no attestation kind, so its native route
+        // refuses every op. The sandbox shares production's identity project,
+        // and it carries no service-role key (tooling/ci/wrangler-environments.mjs
+        // refuses one in any sandbox environment).
+        "NATIVE_AUTH_ATTEST_KINDS": "",
+        // why: src/lib/native-attest/index.ts — a development-signed build's
+        // App Attest key carries the `appattestdevelop` AAGUID; only the
+        // sandbox accepts it. The top level never sets this.
+        "APP_ATTEST_ALLOW_DEVELOPMENT": "true"
       },
       "d1_databases": [
         {
@@ -617,6 +675,27 @@
           "name": "NATIVE_AUTH_EDGE_LIMITER",
           "namespace_id": "1020",
           "simple": { "limit": 60, "period": 60 }
+        },
+        {
+          // why: src/routes/native-auth.ts (the unattested channel). The top
+          // level's NATIVE_AUTH_UNATTESTED_LIMITER (1021), same limit; fails closed.
+          "name": "NATIVE_AUTH_UNATTESTED_LIMITER",
+          "namespace_id": "1023",
+          "simple": { "limit": 10, "period": 60 }
+        },
+        {
+          // why: src/routes/native-auth.ts (key registration). The top level's
+          // NATIVE_AUTH_INSTALL_LIMITER (1022), same limit; fails closed.
+          "name": "NATIVE_AUTH_INSTALL_LIMITER",
+          "namespace_id": "1024",
+          "simple": { "limit": 5, "period": 60 }
+        },
+        {
+          // why: src/routes/native-auth.ts (Play Integrity verifications). The
+          // top level's NATIVE_AUTH_PLAY_VERIFY_LIMITER (1025), same limit.
+          "name": "NATIVE_AUTH_PLAY_VERIFY_LIMITER",
+          "namespace_id": "1026",
+          "simple": { "limit": 10, "period": 60 }
         }
       ]
     }

@@ -651,7 +651,11 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
     for (const f of PAGE_CSS) scan(f, read(f), 'page stylesheet');
     for (const f of SHIPPED_HTML) {
       const html = read(f);
-      for (const b of html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) || []) scan(f, b.replace(/<\/?style[^>]*>/gi, ''), '<style>');
+      /* The body as a capture group, never by stripping the tags back off the
+         match (CodeQL js/incomplete-multi-character-sanitization). Anything odd
+         inside a block stays in the scanned text: extra characters can only add
+         a declaration to grade, never hide one. */
+      for (const b of html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)) scan(f, b[1], '<style>');
       for (const a of html.match(/\sstyle="[^"]*"/g) || []) scan(f, '{' + a.slice(8, -1) + '}', 'inline style=');
     }
     return out;

@@ -47,4 +47,10 @@ dependencies {
     // [ADR 082] §5 — Google Play Age Signals (beta). Terms accepted by the owner
     // 2026-09-15 for the sign-up age gate ONLY: never analytics, ads or profiling.
     implementation 'com.google.android.play:age-signals:0.0.4'
+    // ⏱ 2026-09-29 · native sign-in attestation — Play Integrity, CLASSIC
+    // requests (NativeAttestHandler.kt). The platform Worker refuses every native
+    // sign-in, sign-up, reset and resend that carries no attestation; on android
+    // the proof is an integrity token whose nonce binds it to one op's exact
+    // body and one single-use server challenge. Decoded server-side only.
+    implementation 'com.google.android.play:integrity:1.4.0'
 }

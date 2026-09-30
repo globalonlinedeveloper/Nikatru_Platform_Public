@@ -1,12 +1,37 @@
 import 'package:flutter/material.dart';
 
+import 'app_palette.dart';
+
 /// Palette lifted straight from the Subly design tokens.
+///
+/// ⏱ 2026-09-29 · ST-D0 D0-2 (the D0 residue): the five NEUTRALS — [bg],
+/// [surface], [ink], [muted], [line] — are DEPRECATED ALIASES of the light
+/// half of [AppPalette], kept for one release so the brick and every stamped
+/// app migrate without breakage. Each is one literal in both schemes, which is
+/// right in light and wrong on a dark card; `AppPalette.of(context)` resolves
+/// the ambient brightness instead. The brand, status, hero and ramp names are
+/// not neutrals and are not deprecated here.
 class AppColors {
   AppColors._();
 
-  static const Color bg = Color(0xFFF4F4F8);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color ink = Color(0xFF141420);
+  @Deprecated(
+    'Brightness-blind: one value in both schemes. Read '
+    'AppPalette.of(context).bg, which resolves the ambient brightness. '
+    'An alias for one release (ST-D0 D0-2).',
+  )
+  static const Color bg = AppPalette.lightBg;
+  @Deprecated(
+    'Brightness-blind: one value in both schemes. Read '
+    'AppPalette.of(context).surface, which resolves the ambient brightness. '
+    'An alias for one release (ST-D0 D0-2).',
+  )
+  static const Color surface = AppPalette.lightSurface;
+  @Deprecated(
+    'Brightness-blind: one value in both schemes. Read '
+    'AppPalette.of(context).ink, which resolves the ambient brightness. '
+    'An alias for one release (ST-D0 D0-2).',
+  )
+  static const Color ink = AppPalette.lightInk;
 
   /// Secondary prose. **#6F6F7B, not #73737F — a 1.5% HSL-lightness step taken
   /// for WCAG 2.1 SC 1.4.3 (AA, 4.5:1 for normal text), 2026-08-13.**
@@ -36,9 +61,19 @@ class AppColors {
   /// after; the fix for them is the per-site `isLight ? … : scheme.onSurfaceVariant`
   /// branch the rest of the tree already carries, NOT a compromise value here —
   /// no single literal can clear 4.5:1 on #FCF8FF and on #131318 at once.
-  static const Color muted = Color(0xFF6F6F7B);
+  @Deprecated(
+    'Brightness-blind: one value in both schemes. Read '
+    'AppPalette.of(context).muted, which resolves the ambient brightness. '
+    'An alias for one release (ST-D0 D0-2).',
+  )
+  static const Color muted = AppPalette.lightMuted;
 
-  static const Color line = Color(0xFFECECF2);
+  @Deprecated(
+    'Brightness-blind: one value in both schemes. Read '
+    'AppPalette.of(context).line, which resolves the ambient brightness. '
+    'An alias for one release (ST-D0 D0-2).',
+  )
+  static const Color line = AppPalette.lightLine;
 
   static const Color accent = Color(0xFF6459F5);
 

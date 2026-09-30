@@ -38,6 +38,8 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_platform_storage/age_signals.dart'
     show currentStoreAgeSignalSource;
+import 'package:nikatru_platform_storage/nikatru_platform_storage.dart'
+    show platformNativeAttestor;
 
 import '../../core/app_config.dart';
 import '../../data/api/api_client.dart' show ApiClient;
@@ -138,9 +140,15 @@ final Provider<AuthRepository> authRepositoryProvider =
               // ⏱ 2026-09-28 · ST-N1 — off web, sign-in, sign-up, reset and
               // resend go through the platform Worker's native route, which
               // GoTrue does not captcha; null on web, which keeps Turnstile.
+              // ⏱ 2026-09-29 — and each op carries this build's attestation
+              // (Play Integrity / App Attest / a per-install key kept in the
+              // app's secure store): the route refuses an unattested op.
               nativeCredentials: nativeCredentialClient(
                 platformBaseUrl: AppConfig.platformBaseUrl,
                 appId: AppConfig.appId,
+                attestor: platformNativeAttestor(
+                  secureStore: ref.watch(secureStoreProvider),
+                ),
               ),
             )
           : InMemoryAuthRepository(),

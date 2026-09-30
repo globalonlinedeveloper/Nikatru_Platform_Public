@@ -60,6 +60,11 @@ jobs:
     # why: the gate's checked output, never inputs.app.
     env:
       APP: ${{ needs.gate.outputs.app }}
+      # why: --expect-refusal probes the native route over HTTP and never opens
+      # the app (ADR no.NNN), so the toolchain, the build and the device are dead
+      # weight: their steps run only when this is 'true'. It goes back to 'true'
+      # with the proof's --expect-refusal flags, when attested CI builds exist.
+      PROOF_NEEDS_DEVICE: 'false'
       # why: ONE path per job — the proof step writes it, the purge step reads
       # it (the consent row's install id, or proof that none was written).
       # Relative to the checkout, where both steps run: `runner` is not
@@ -71,7 +76,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
       - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
       - name: Resolve this app's databases from its Worker's wrangler file
@@ -86,6 +93,7 @@ jobs:
       # pinned for both tools (run 35451496350). The emulator outlives this
       # step; the proof step below drives it.
       - name: Boot an emulator
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         env:
           API_LEVEL: '34'
         run: |
@@ -155,7 +163,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target android --device emulator-5554 --log "$E2E_PROOF_LOG" --callback
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target android --device emulator-5554 --log "$E2E_PROOF_LOG" --callback --expect-refusal
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -182,6 +190,11 @@ jobs:
       contents: read
     env:
       APP: ${{ needs.gate.outputs.app }}
+      # why: --expect-refusal probes the native route over HTTP and never opens
+      # the app (ADR no.NNN), so the toolchain, the build and the device are dead
+      # weight: their steps run only when this is 'true'. It goes back to 'true'
+      # with the proof's --expect-refusal flags, when attested CI builds exist.
+      PROOF_NEEDS_DEVICE: 'false'
       # why: ONE path per job — the proof step writes it, the purge step reads
       # it (the consent row's install id, or proof that none was written).
       # Relative to the checkout, where both steps run: `runner` is not
@@ -193,7 +206,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
       - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
       - name: Resolve this app's databases from its Worker's wrangler file
@@ -204,6 +219,7 @@ jobs:
       # why: the first available iPhone of the image's iOS runtime; the proof
       # needs a phone, not a particular size class.
       - name: Boot an iPhone simulator
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         id: sim
         run: |
           set -euo pipefail
@@ -225,7 +241,7 @@ jobs:
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
           SIM: ${{ steps.sim.outputs.udid }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target ios --device "$SIM" --log "$E2E_PROOF_LOG" --callback
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target ios --device "$SIM" --log "$E2E_PROOF_LOG" --callback --expect-refusal
       # why: what the simulator showed 25 s after simctl openurl (the driver's
       # afterOpenDiagnostics). Run 36546306851's callback never reached the app
       # and the job log could not say whether iOS held it behind a prompt.
@@ -262,6 +278,11 @@ jobs:
       contents: read
     env:
       APP: ${{ needs.gate.outputs.app }}
+      # why: --expect-refusal probes the native route over HTTP and never opens
+      # the app (ADR no.NNN), so the toolchain, the build and the device are dead
+      # weight: their steps run only when this is 'true'. It goes back to 'true'
+      # with the proof's --expect-refusal flags, when attested CI builds exist.
+      PROOF_NEEDS_DEVICE: 'false'
       # why: ONE path per job — the proof step writes it, the purge step reads
       # it (the consent row's install id, or proof that none was written).
       # Relative to the checkout, where both steps run: `runner` is not
@@ -273,9 +294,12 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
       - name: Enable the macOS desktop target
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         run: flutter config --enable-macos-desktop
       - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
       - name: Resolve this app's databases from its Worker's wrangler file
@@ -296,7 +320,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target macos --device macos --log "$E2E_PROOF_LOG" --callback
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target macos --device macos --log "$E2E_PROOF_LOG" --callback --expect-refusal
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -329,6 +353,11 @@ jobs:
         shell: bash
     env:
       APP: ${{ needs.gate.outputs.app }}
+      # why: --expect-refusal probes the native route over HTTP and never opens
+      # the app (ADR no.NNN), so the toolchain, the build and the device are dead
+      # weight: their steps run only when this is 'true'. It goes back to 'true'
+      # with the proof's --expect-refusal flags, when attested CI builds exist.
+      PROOF_NEEDS_DEVICE: 'false'
       # why: ONE path per job — the proof step writes it, the purge step reads
       # it (the consent row's install id, or proof that none was written).
       # Relative to the checkout, where both steps run: `runner` is not
@@ -340,6 +369,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
       # why: sentry_flutter's CMake clones sentry-native with its submodules, and
       # crashpad's mini_chromium pack path is 262 characters under this repo's
       # checkout — git refuses it ("Filename too long") unless core.longpaths is
@@ -348,12 +378,15 @@ jobs:
       # --global, because CMake's clone is a new repository. Read back so a
       # config that wrote nothing cannot pass.
       - name: Git may write paths past MAX_PATH
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         run: |
           git config --global core.longpaths true
           git config --global --get core.longpaths
       - name: Enable the Windows desktop target
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         run: flutter config --enable-windows-desktop
       - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
       - name: Resolve this app's databases from its Worker's wrangler file
@@ -374,7 +407,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target windows --device windows --log "$E2E_PROOF_LOG"
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target windows --device windows --log "$E2E_PROOF_LOG" --expect-refusal
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -400,6 +433,11 @@ jobs:
       contents: read
     env:
       APP: ${{ needs.gate.outputs.app }}
+      # why: --expect-refusal probes the native route over HTTP and never opens
+      # the app (ADR no.NNN), so the toolchain, the build and the device are dead
+      # weight: their steps run only when this is 'true'. It goes back to 'true'
+      # with the proof's --expect-refusal flags, when attested CI builds exist.
+      PROOF_NEEDS_DEVICE: 'false'
       # why: ONE path per job — the proof step writes it, the purge step reads
       # it (the consent row's install id, or proof that none was written).
       # Relative to the checkout, where both steps run: `runner` is not
@@ -411,11 +449,13 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
       # why: build-platforms.yml's Linux list, plus xvfb (a display), and the
       # three a signed-in desktop session needs: gnome-keyring (the Secret
       # Service libsecret stores the session in), desktop-file-utils and
       # xdg-utils (the scheme handler and the open).
       - name: Linux build and session deps
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -423,8 +463,10 @@ jobs:
             libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev \
             xvfb gnome-keyring dbus-x11 desktop-file-utils xdg-utils
       - name: Enable the Linux desktop target
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         run: flutter config --enable-linux-desktop
       - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
       - name: Resolve this app's databases from its Worker's wrangler file
@@ -449,12 +491,17 @@ jobs:
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
         run: |
+          # why: no display and no keyring in refusal mode — the probe never opens the bundle.
+          if [ "$PROOF_NEEDS_DEVICE" != true ]; then
+            node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal
+            exit
+          fi
           dbus-run-session -- bash -c '
             set -euo pipefail
             eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
             xvfb-run -a -s "-screen 0 1920x1200x24" \
-              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal
           '
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'

@@ -1195,9 +1195,15 @@ authRepositoryProvider = Provider<core.AuthRepository>((ref) {
     redirects: AuthRedirects.current(appId: AppConfig.appId),
     // ⏱ 2026-09-28 · ST-N1 — off web the captcha-gated calls go through the
     // platform Worker's native route (any app with a native target); null on web.
+    // ⏱ 2026-09-29 — and each op carries this build's attestation (Play
+    // Integrity / App Attest / a per-install key kept in the app's secure
+    // store): the route refuses an unattested op.
     nativeCredentials: nativeCredentialClient(
       platformBaseUrl: kPlatformBaseUrl,
       appId: AppConfig.appId,
+      attestor: platformNativeAttestor(
+        secureStore: ref.watch(secureStoreProvider),
+      ),
     ),
   );
 });

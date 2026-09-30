@@ -22,6 +22,9 @@ public final class AgeSignalsPlugin: NSObject, FlutterPlugin {
       binaryMessenger: registrar.messenger()
     )
     registrar.addMethodCallDelegate(AgeSignalsPlugin(), channel: channel)
+    // ⏱ 2026-09-29 · native sign-in attestation rides the package's one iOS
+    // pluginClass (NativeAttestPlugin.swift, channel `nikatru/native_attest`).
+    NativeAttestPlugin.register(with: registrar)
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

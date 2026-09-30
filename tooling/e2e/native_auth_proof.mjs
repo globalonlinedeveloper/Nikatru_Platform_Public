@@ -45,8 +45,18 @@
 // installed, and a runner build is not one, so windows-store keeps
 // nativeAuth false until the callback is proven on a device that has it.
 //
+// ⏱ 2026-09-30 (ADR no.NNN, lead ruling on the second review of #1070):
+// --expect-refusal. Production's native route now serves only requests whose
+// attestation the platform Worker VERIFIES (Play Integrity, App Attest), and a
+// CI emulator, simulator or desktop runner cannot attest. So the scheduled legs
+// run this mode: from the target's own runner, it sends production the calls a
+// build that cannot attest sends, and PASSES ONLY WHEN EACH IS REFUSED with an
+// attestation code and no session comes back (gradeRefusal). A 2xx, or any
+// token in an answer, is the gate open and fails the leg. No device build runs:
+// what is proved is the gate, and a flaky emulator boot must not redden it.
+//
 //   node tooling/e2e/native_auth_proof.mjs --app <id> --target <t>
-//        [--device <id>] [--callback] [--log <path>]
+//        [--device <id>] [--callback] [--log <path>] [--expect-refusal]
 //
 // Env: E2E_EMAIL, E2E_PASSWORD, SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL.
 // Exit 0 = every step read back · 1 = a step failed or is missing · 2 = the
@@ -72,6 +82,133 @@ export const TRACE_URL = 'https://platform.nikatru.com/cdn-cgi/trace';
 export const SILENCE_LIMIT_MS = 20 * 60_000;
 
 export const OFFLINE_READ_LINE = 'NK_PROOF step=offline-read outcome=ok';
+/** The platform Worker's origin — the host TRACE_URL reads, and the native route's. */
+export const PLATFORM_ORIGIN = new URL(TRACE_URL).origin;
+
+/**
+ * The refusal codes that PROVE the gate: every one says "no verified
+ * attestation, so no sign-in" (services/platform/src/routes/native-auth.ts).
+ * `native_auth_unavailable` is a refusal too — a listed kind whose server config
+ * is not yet provisioned answers 503 rather than admitting.
+ */
+export const REFUSAL_CODES = Object.freeze([
+  'attestation_required',
+  'attestation_kind_refused',
+  'attestation_challenge_invalid',
+  'attestation_invalid',
+  'attestation_key_unknown',
+  'native_auth_unavailable',
+]);
+
+/**
+ * The calls a build that CANNOT attest sends, per step: no attestation at all;
+ * the desktop / simulator fallback kind (`install-key`) with a fresh challenge;
+ * and an emulator's Play Integrity proof that is not a verifiable token.
+ */
+export const REFUSAL_STEPS = Object.freeze([
+  { step: 'token-unattested', op: 'token', kind: null },
+  { step: 'signup-unattested', op: 'signup', kind: null },
+  { step: 'token-install-key', op: 'token', kind: 'install-key' },
+  { step: 'signup-install-key', op: 'signup', kind: 'install-key' },
+  { step: 'token-play-unverifiable', op: 'token', kind: 'play-integrity' },
+]);
+
+/**
+ * PURE. Grades the answers the refusal steps got: `[{ step, status, body }]`.
+ * Every step must answer 4xx/5xx with a REFUSAL_CODES `error_code`, and no
+ * answer may carry a token. Returns the problems (empty = the gate held).
+ */
+export function gradeRefusal(answers) {
+  const problems = [];
+  const seen = new Set((answers ?? []).map((a) => a.step));
+  for (const { step } of REFUSAL_STEPS) if (!seen.has(step)) problems.push(`${step}: no answer was recorded`);
+  for (const a of answers ?? []) {
+    const text = JSON.stringify(a.body ?? null);
+    if (/"(access_token|refresh_token)"/.test(text)) {
+      problems.push(`${a.step}: the answer CARRIES A SESSION — the gate is open`);
+      continue;
+    }
+    if (!(a.status >= 400)) {
+      problems.push(`${a.step}: answered HTTP ${a.status} — a call that cannot attest was ADMITTED`);
+      continue;
+    }
+    const code = a.body && typeof a.body === 'object' ? a.body.error_code : undefined;
+    if (!REFUSAL_CODES.includes(code)) {
+      problems.push(`${a.step}: answered HTTP ${a.status} with error_code ${JSON.stringify(code ?? null)}, not an attestation refusal`);
+    }
+  }
+  return problems;
+}
+
+/** IMPURE. Sends each REFUSAL_STEPS call to production's native route for [app]. */
+export async function probeRefusals(app, { email, password, doFetch = fetch, origin = PLATFORM_ORIGIN } = {}) {
+  const base = `${origin}/v1/auth/native/${app}`;
+  const answers = [];
+  const read = async (res) => {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  };
+  for (const { step, op, kind } of REFUSAL_STEPS) {
+    const headers = { 'Content-Type': 'application/json', 'User-Agent': `nikatru-e2e-refusal/${app}` };
+    if (kind) {
+      const ch = await doFetch(`${base}/attest/challenge`, { method: 'POST', headers, body: '{}', signal: AbortSignal.timeout(15_000) });
+      const chBody = await read(ch);
+      if (!ch.ok) {
+        // No challenge at all is the gate refusing earlier (no kind listed, or no challenge key): graded as is.
+        answers.push({ step, status: ch.status, body: chBody });
+        continue;
+      }
+      headers['X-NK-Attest-Kind'] = kind;
+      headers['X-NK-Attest-Challenge'] = String(chBody?.challenge ?? '');
+      if (kind === 'install-key') headers['X-NK-Attest-Key'] = 'e2e-refusal-probe';
+      headers['X-NK-Attest-Proof'] = kind === 'play-integrity' ? 'not.a.verifiable.integrity.token' : 'AAAA';
+    }
+    const path = op === 'token' ? `${base}/token?grant_type=password` : `${base}/${op}`;
+    const res = await doFetch(path, { method: 'POST', headers, body: JSON.stringify({ email, password }), signal: AbortSignal.timeout(15_000) });
+    answers.push({ step, status: res.status, body: await read(res) });
+  }
+  return answers;
+}
+
+/**
+ * IMPURE. The whole --expect-refusal leg: probe, grade, print. Returns the exit
+ * code — 0 the gate held, 1 it did not, 2 the leg could not run. With [log] it
+ * FINISHES the proof log with PROOF_LOG_END on every one of those exits: the leg
+ * starts no app, so no consent prompt was answered, and the purge after it must
+ * read a finished log as "no row" rather than a cut-off one as unresolved.
+ */
+export async function runRefusalLeg(o, { log = null, env = process.env, probe = probeRefusals, egress = printEgressIp, out = console } = {}) {
+  const finish = (code, refused) => {
+    if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=none mode=expect-refusal exit=${code}${refused ? ` refused=${refused}` : ''}\n`);
+    return code;
+  };
+  for (const k of ['E2E_EMAIL', 'E2E_PASSWORD']) {
+    if (!env[k]) {
+      out.error(`${NAME}: missing env ${k} — the refusal probe sends the provisioned user's credentials`);
+      return finish(2, 'env');
+    }
+  }
+  await egress();
+  let answers;
+  try {
+    answers = await probe(o.app, { email: env.E2E_EMAIL, password: env.E2E_PASSWORD });
+  } catch (e) {
+    out.error(`${NAME}: the native route could not be reached (${e?.message ?? e})`);
+    return finish(2, 'unreachable');
+  }
+  for (const a of answers) out.log(`NK_PROOF step=${a.step} answer=${a.status}/${a.body?.error_code ?? '-'}`);
+  const problems = gradeRefusal(answers);
+  if (problems.length) {
+    for (const p of problems) out.error(`FAIL ${p}`);
+    out.error(`${NAME}: ${o.app}/${o.target} FAILED — the native route did not refuse a build that cannot attest`);
+    return finish(1);
+  }
+  out.log(`${NAME}: ${o.app}/${o.target} OK — every call a build that cannot attest sends was refused, and no session came back (ADR no.NNN)`);
+  return finish(0);
+}
 
 /** Does [app]'s proof suite declare the offline read? Read comment-stripped:
  *  a sentence about the step is not the step. */
@@ -177,10 +314,11 @@ export function readProof(out, { callback, offlineRead = false }) {
 }
 
 function args(argv) {
-  const o = { callback: false };
+  const o = { callback: false, expectRefusal: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--callback') o.callback = true;
+    else if (a === '--expect-refusal') o.expectRefusal = true;
     else if (a === '--app' || a === '--target' || a === '--device' || a === '--log') o[a.slice(2)] = argv[++i];
     else throw new Error(`unknown argument ${a}`);
   }
@@ -258,6 +396,14 @@ async function main() {
   if (log) {
     mkdirSync(resolve(log, '..'), { recursive: true });
     writeFileSync(log, `${NAME}: ${o.app}/${o.target} — flutter test output follows\n`);
+  }
+  // ⏱ 2026-09-30 (third review of #1070): the refusal leg starts no app, and it
+  // runs HERE — after the log exists, before the flutter defines are asked for —
+  // so it finishes the log on every exit and the purge reads "no row".
+  if (o.expectRefusal) {
+    const code = await runRefusalLeg(o, { log });
+    if (code !== 0) process.exit(code);
+    return;
   }
   const missing = defines.filter((k) => !process.env[k]);
   if (missing.length) {
