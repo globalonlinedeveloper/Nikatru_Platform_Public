@@ -717,6 +717,12 @@ jobs:
       - name: Every derived listing set was derived from the files in this tree
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-derived-sets.mjs
+      # why: rv2-security-003. A job holding a signing secret (tooling/channel-register.json) downloads nothing
+      # it has not checked against a pinned sha256: the Flutter archive, every curl/wget, the Gradle distribution.
+      # Appended at the END of this job, like the steps above, to shift the fewest ci.yml citations.
+      - name: Every build input a signing job downloads is checked against a pinned sha256 first
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-signing-inputs-pinned.mjs
 
   ff-guards-store:
     # why: FF-2 — starts only once `guards-store` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
