@@ -813,7 +813,11 @@ const REQUIRED_COVERAGE = [
     // ⏱ 2026-09-29 · ST-D4: 25 -> 26 surfaces, 61 -> 62 cases — the chassis
     // SettingsSection arrived swept (`a11y: settings-section`, light + dark
     // kPhone). Read off the per-root line: `26 of 26 … across 62 case(s)`.
-    surfaces: 26,
+    // ⏱ 2026-09-30 · ST-N6 (#1080): 26 -> 27 surfaces — the chassis
+    // RefreshOnResume arrived swept in the consent-scrim chain of
+    // a11y_shell_test.dart (cases unchanged). Read off the per-root line:
+    // `27 of 27 … across 62 case(s)`.
+    surfaces: 27,
     a11yFiles: 4,
     cases: 62,
     label:
@@ -1073,6 +1077,8 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'settings/settings_screen.dart#SettingsSection',
         'settings/settings_screen.dart#SettingsView',
         'shell/app_shell.dart#AppLifecycleFlush',
+        // 2026-09-30 (ST-N6, #1080): the return-to-the-front re-read, in the chain.
+        'shell/app_shell.dart#RefreshOnResume',
         'shell/app_shell.dart#ConsentPromptCard',
         'shell/app_shell.dart#ConsentScrim',
         'shell/app_shell.dart#NikatruApp',
