@@ -20,6 +20,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import {
   CANARIES,
+  CoverageLost,
   LOCKFILE_NAMES,
   lockfilesFrom,
   parseFindings,
@@ -96,7 +97,16 @@ function fakeOsv({ canary = {}, tree = {} } = {}) {
   return { run, calls };
 }
 
-const scan = (fake, extra = {}) => scanDependencies({ root: ROOT, osv: 'osv-fake', lockfiles: TRACKED, run: fake.run, tmp: TMP, ...extra });
+/** Exit 2 is a THROWN CoverageLost carrying the lines printed before it; folded back to
+ *  `{ code: 2, lines }` here so every case reads one shape. */
+const scan = (fake, extra = {}) => {
+  try {
+    return scanDependencies({ root: ROOT, osv: 'osv-fake', lockfiles: TRACKED, run: fake.run, tmp: TMP, ...extra });
+  } catch (e) {
+    if (e instanceof CoverageLost) return { code: 2, lines: e.lines };
+    throw e;
+  }
+};
 
 describe('scan-dependencies — green control first', () => {
   test('GREEN CONTROL — canary flagged, every lockfile read, no advisory: exit 0', () => {

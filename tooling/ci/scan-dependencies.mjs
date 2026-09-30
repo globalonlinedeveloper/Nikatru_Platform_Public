@@ -216,26 +216,38 @@ export function runOsv(osv, args, cwd) {
   return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '', error: r.error ? String(r.error.code ?? r.error.message) : null };
 }
 
-/** The whole scan. Returns `{ code, lines }`; `run` is injectable for tests. */
+/** A stop that graded nothing. Carries every line printed before it, so the caller
+ *  prints the canary and floor lines that DID pass above the one that refused. */
+export class CoverageLost extends Error {
+  constructor(lines) {
+    super(lines.at(-1));
+    this.lines = lines;
+  }
+}
+
+/** The whole scan. Returns `{ code: 0 | 1, lines }` and THROWS CoverageLost for
+ *  exit 2; `run` is injectable for tests. */
 export function scanDependencies({ root, osv, config, run = runOsv, lockfiles = null, tmp = tmpdir() }) {
   const lines = [];
-  const lost = (why) => ({ code: 2, lines: [...lines, `✗ COVERAGE LOST — ${why}`] });
+  const lost = (why) => {
+    throw new CoverageLost([...lines, `✗ COVERAGE LOST — ${why}`]);
+  };
   const rootAbs = resolve(root);
   const cfg = resolve(rootAbs, config ?? 'osv-scanner.toml');
-  if (!existsSync(cfg)) return lost(`${cfg} does not exist. The scan passes --config explicitly (without it v2 resolves a config per lockfile DIRECTORY and ignores nothing for packages/tokens — run 33960900452), so a missing file is not a default.`);
+  if (!existsSync(cfg)) lost(`${cfg} does not exist. The scan passes --config explicitly (without it v2 resolves a config per lockfile DIRECTORY and ignores nothing for packages/tokens — run 33960900452), so a missing file is not a default.`);
 
   // 1 · the lockfile set
   let tracked;
   try {
     tracked = lockfiles ?? trackedLockfiles(rootAbs);
   } catch (e) {
-    return lost(e.message);
+    lost(e.message);
   }
-  if (tracked.length === 0) return lost(`git ls-files at ${rootAbs} names no lockfile, so a scan would read nothing and print "No issues found".`);
+  if (tracked.length === 0) lost(`git ls-files at ${rootAbs} names no lockfile, so a scan would read nothing and print "No issues found".`);
   const formats = [...new Set(tracked.map(basename))].sort();
   lines.push(`· ${tracked.length} tracked lockfile(s) in ${formats.length} format(s): ${formats.join(', ')}`);
   const uncovered = formats.filter((f) => !CANARIES.has(f));
-  if (uncovered.length) return lost(`the tree tracks ${uncovered.join(', ')} and CANARIES has no canary for it — a format OSV has never been shown to flag here. Add one to tooling/ci/scan-dependencies.mjs.`);
+  if (uncovered.length) lost(`the tree tracks ${uncovered.join(', ')} and CANARIES has no canary for it — a format OSV has never been shown to flag here. Add one to tooling/ci/scan-dependencies.mjs.`);
 
   // 2 · the canary
   const dir = mkdtempSync(join(tmp, 'nikatru-osv-canary-'));
@@ -246,18 +258,18 @@ export function scanDependencies({ root, osv, config, run = runOsv, lockfiles = 
     }
     const canaryRoot = realpathSync(dir);
     const c = run(osv, ['scan', 'source', '-r', '--config', cfg, '--format', 'json', '.'], canaryRoot);
-    if (c.error) return lost(`the canary run could not start OSV (${c.error}) — ${osv}`);
-    if (c.status !== 1) return lost(`the canary run exited ${c.status}, not 1. OSV was handed ${formats.length} lockfile(s) pinning versions with published advisories and did not report a finding. stderr: ${c.stderr.trim().split('\n').slice(-3).join(' | ') || '<none>'}`);
+    if (c.error) lost(`the canary run could not start OSV (${c.error}) — ${osv}`);
+    if (c.status !== 1) lost(`the canary run exited ${c.status}, not 1. OSV was handed ${formats.length} lockfile(s) pinning versions with published advisories and did not report a finding. stderr: ${c.stderr.trim().split('\n').slice(-3).join(' | ') || '<none>'}`);
     let found;
     try {
       found = parseFindings(c.stdout);
     } catch (e) {
-      return lost(`canary: ${e.message}`);
+      lost(`canary: ${e.message}`);
     }
     for (const f of formats) {
       const { pkg } = CANARIES.get(f);
       const hit = found.find((x) => basename(String(x.path).replace(/\\/g, '/')) === f && x.name === pkg.name && x.version === pkg.version);
-      if (!hit) return lost(`the ${f} canary (${pkg.name}@${pkg.version}) was NOT flagged. OSV stopped reading that format, stopped reaching its database, or osv-scanner.toml ignores that advisory or ecosystem — any of which blinds the tree scan the same way.`);
+      if (!hit) lost(`the ${f} canary (${pkg.name}@${pkg.version}) was NOT flagged. OSV stopped reading that format, stopped reaching its database, or osv-scanner.toml ignores that advisory or ecosystem — any of which blinds the tree scan the same way.`);
       lines.push(`✓ canary ${f}: ${pkg.name}@${pkg.version} flagged (${hit.ids.length} advisory id(s), e.g. ${hit.ids[0]})`);
     }
   } finally {
@@ -266,8 +278,8 @@ export function scanDependencies({ root, osv, config, run = runOsv, lockfiles = 
 
   // 3 · the tree, with the floor
   const t = run(osv, ['scan', 'source', '-r', '--config', cfg, '--format', 'json', '.'], rootAbs);
-  if (t.error) return lost(`the tree run could not start OSV (${t.error})`);
-  if (t.status !== 0 && t.status !== 1) return lost(`the tree run exited ${t.status} (0 = clean, 1 = findings; anything else is OSV failing). stderr: ${t.stderr.trim().split('\n').slice(-3).join(' | ') || '<none>'}`);
+  if (t.error) lost(`the tree run could not start OSV (${t.error})`);
+  if (t.status !== 0 && t.status !== 1) lost(`the tree run exited ${t.status} (0 = clean, 1 = findings; anything else is OSV failing). stderr: ${t.stderr.trim().split('\n').slice(-3).join(' | ') || '<none>'}`);
   const scanned = new Map();
   const outside = [];
   for (const s of parseScanned(t.stderr)) {
@@ -278,7 +290,7 @@ export function scanDependencies({ root, osv, config, run = runOsv, lockfiles = 
   const missing = tracked.filter((p) => !scanned.has(p));
   const empty = tracked.filter((p) => scanned.get(p) === 0);
   if (missing.length || empty.length) {
-    return lost(
+    lost(
       `the FLOOR is ${tracked.length} (git ls-files) and OSV read ${tracked.length - missing.length - empty.length} with packages. ` +
         [missing.length ? `Not read: ${missing.join(', ')}.` : '', empty.length ? `Read with 0 packages: ${empty.join(', ')}.` : ''].filter(Boolean).join(' '),
     );
@@ -291,10 +303,10 @@ export function scanDependencies({ root, osv, config, run = runOsv, lockfiles = 
   try {
     findings = parseFindings(t.stdout);
   } catch (e) {
-    return lost(`tree: ${e.message}`);
+    lost(`tree: ${e.message}`);
   }
-  if (t.status === 1 && findings.length === 0) return lost('OSV exited 1 (findings) and its JSON names no vulnerable package, so the two answers disagree.');
-  if (t.status === 0 && findings.length > 0) return lost(`OSV exited 0 (clean) and its JSON names ${findings.length} vulnerable package(s), so the two answers disagree.`);
+  if (t.status === 1 && findings.length === 0) lost('OSV exited 1 (findings) and its JSON names no vulnerable package, so the two answers disagree.');
+  if (t.status === 0 && findings.length > 0) lost(`OSV exited 0 (clean) and its JSON names ${findings.length} vulnerable package(s), so the two answers disagree.`);
   if (findings.length === 0) {
     lines.push('✓ no advisory against any tracked lockfile');
     return { code: 0, lines };
@@ -310,7 +322,8 @@ export function scanDependencies({ root, osv, config, run = runOsv, lockfiles = 
   return { code: 1, lines };
 }
 
-function main(argv) {
+/** The CLI's arguments: `{ osv, config, root }`, or null when they do not parse. */
+export function parseArgs(argv) {
   const at = (flag) => {
     const i = argv.indexOf(flag);
     return i >= 0 ? argv[i + 1] : undefined;
@@ -323,17 +336,29 @@ function main(argv) {
     if (i >= 0) skip.add(i).add(i + 1);
   }
   const positional = argv.filter((_, i) => !skip.has(i));
-  if (!osv || positional.length > 1 || positional.some((p) => p.startsWith('--'))) {
-    console.error('usage: node tooling/ci/scan-dependencies.mjs --osv <path> [--config <file>] [repoRoot]');
-    return 2;
-  }
-  const root = positional[0] ?? resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-  const { code, lines } = scanDependencies({ root, osv, config });
-  for (const l of lines) (code === 0 ? console.log : console.error)(l);
-  console.log(code === 0 ? 'ok dependency scan — canary fired, floor held, clean' : code === 1 ? 'FAIL 🔴 dependency advisories stand (exit 1)' : 'FAIL 🔴 COVERAGE LOST (exit 2) — nothing above is a clean result');
-  return code;
+  if (!osv || positional.length > 1 || positional.some((p) => p.startsWith('--'))) return null;
+  return { osv, config, root: positional[0] ?? resolve(dirname(fileURLToPath(import.meta.url)), '..', '..') };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
-  process.exit(main(process.argv.slice(2)));
+  const args = parseArgs(process.argv.slice(2));
+  if (!args) {
+    console.error('usage: node tooling/ci/scan-dependencies.mjs --osv <path> [--config <file>] [repoRoot]');
+    process.exitCode = 2;
+  } else {
+    try {
+      const { code, lines } = scanDependencies(args);
+      for (const l of lines) (code === 0 ? console.log : console.error)(l);
+      console.log(code === 0 ? 'ok dependency scan — canary fired, floor held, clean' : 'FAIL 🔴 dependency advisories stand (exit 1)');
+      process.exitCode = code === 0 ? 0 : 1;
+    } catch (e) {
+      if (e instanceof CoverageLost) {
+        for (const l of e.lines) console.error(l);
+        console.log('FAIL 🔴 COVERAGE LOST (exit 2) — nothing above is a clean result');
+        process.exitCode = 2;
+      } else {
+        throw e;
+      }
+    }
+  }
 }
