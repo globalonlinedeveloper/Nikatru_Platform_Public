@@ -2322,5 +2322,61 @@
         "type": "String"
       }
     }
+  },
+  "authBrandMark": "S",
+  "@authBrandMark": {
+    "description": "ST-D10 (canvas v2) · The letter on the brand tile above the sign-in form (SignIn artboard). Decorative: excluded from semantics, the product name beside it is read instead."
+  },
+  "authPanelHeadline": "Never be charged by surprise.",
+  "@authPanelHeadline": {
+    "description": "ST-D10 (canvas v2) · Headline of the wide sign-in panel (DesktopSignIn), shown at 1200 dp and wider."
+  },
+  "authPanelBody": "Every renewal, trial and price rise, on your phone, your computer and the web, as one account.",
+  "@authPanelBody": {
+    "description": "ST-D10 (canvas v2) · Body of the wide sign-in panel (DesktopSignIn)."
+  },
+  "authPanelFootnote": "No bank login · No SMS reading · Android, iPhone, Mac, Windows, Linux and web",
+  "@authPanelFootnote": {
+    "description": "ST-D10 (canvas v2) · Foot line of the wide sign-in panel (DesktopSignIn)."
+  },
+  "authShow": "Show",
+  "@authShow": {
+    "description": "ST-D10 (canvas v2) · The painted word on a password field's reveal control (AuthField). Its accessible name is authShowPassword. Byte-identical to the chassis key of the same name."
+  },
+  "authHide": "Hide",
+  "@authHide": {
+    "description": "ST-D10 (canvas v2) · The painted word on the reveal control once the password is shown. Byte-identical to the chassis key of the same name."
+  },
+  "authShowPassword": "Show password",
+  "@authShowPassword": {
+    "description": "ST-D10 (canvas v2) · Accessible name of the reveal control while the password is hidden. Byte-identical to the chassis key of the same name."
+  },
+  "authHidePassword": "Hide password",
+  "@authHidePassword": {
+    "description": "ST-D10 (canvas v2) · Accessible name of the reveal control while the password is shown. Byte-identical to the chassis key of the same name."
+  },
+  "authPasswordRuleLength": "At least {count} characters",
+  "@authPasswordRuleLength": {
+    "description": "ST-D10 (canvas v2) · A rule in the sign-up password checklist. Shows the rule; the refusal sentence is passwordTooShort. Byte-identical to the chassis key of the same name.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "8"
+      }
+    }
+  },
+  "authPasswordRuleBreach": "Not found in known data breaches",
+  "@authPasswordRuleBreach": {
+    "description": "ST-D10 (canvas v2) · A rule in the sign-up password checklist. The server checks it at sign-up; it reads as failed once the server has refused the password as breached. Byte-identical to the chassis key of the same name."
+  },
+  "checkInboxResendIn": "Resend link in {time}",
+  "@checkInboxResendIn": {
+    "description": "ST-D10 (canvas v2 CheckInbox) · The resend control while it rests after a mail was sent. {time} is minutes:seconds left, e.g. 0:24.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "0:24"
+      }
+    }
   }
 }

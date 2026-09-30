@@ -41,6 +41,7 @@ class ReacceptTermsView extends StatefulWidget {
     required this.onAccept,
     required this.onSignOut,
     required this.consentFields,
+    this.panel,
     super.key,
   });
 
@@ -59,6 +60,10 @@ class ReacceptTermsView extends StatefulWidget {
   /// `LegalConsentFields` — which owns the published URLs and the platform call
   /// that opens them — stays mounted. See [ConsentFieldsBuilder].
   final ConsentFieldsBuilder consentFields;
+
+  /// ST-D10: the leading half of the wide split (`AuthFrame.panel`), in the
+  /// adapter's own words. Null keeps the form alone at every width.
+  final Widget? panel;
 
   @override
   State<ReacceptTermsView> createState() => _ReacceptTermsViewState();
@@ -104,9 +109,21 @@ class _ReacceptTermsViewState extends State<ReacceptTermsView> {
 
   Future<void> _accept() async {
     if (_busy || !_accepted) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _notice = null;
+    });
     try {
       await widget.onAccept();
+    } catch (e) {
+      // ⏱ 2026-09-29 · ST-D10 (M1 §2.31, gap 17, `ReacceptTerms`): an accept
+      // that FAILED said nothing — this was try/finally with no catch, so the
+      // button re-enabled and the user could not tell a refusal from a slow
+      // save (offline included). The same mapper and the same line the
+      // sign-out failure already used.
+      if (mounted) {
+        setState(() => _notice = authErrorText(context.chassisL10n, e));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -120,63 +137,53 @@ class _ReacceptTermsViewState extends State<ReacceptTermsView> {
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.reacceptTermsTitle),
-        // No back button: there is nowhere behind this. The router put the user
-        // here from wherever they were, and popping would return to a route the
-        // gate immediately redirects out of.
-        automaticallyImplyLeading: false,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ContentPane.form(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Text(
-                l10n.reacceptTermsBody,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 20),
-              widget.consentFields(
-                termsAccepted: _accepted,
-                marketingAccepted: false,
-                enabled: !_busy,
-                onTermsChanged: (bool v) => setState(() => _accepted = v),
-                onMarketingChanged: (_) {},
-              ),
-              if (_notice != null) ...<Widget>[
-                const SizedBox(height: 12),
-                Text(
-                  _notice!,
-                  key: ReacceptTermsView.statusLine,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-              const SizedBox(height: 20),
-              // 🔴 DISABLED UNTIL TICKED. The tick is the affirmative act; a
-              // button that works without it makes the box decorative, which is
-              // the difference between a clickwrap and a notice.
-              FilledButton(
-                key: ReacceptTermsView.acceptButton,
-                onPressed: (_busy || !_accepted) ? null : _accept,
-                child: Text(l10n.reacceptTermsAccept),
-              ),
-              const SizedBox(height: 12),
-              // Declining has to be possible, and it is signing out — not a
-              // silent dismissal that leaves them using the product under terms
-              // they refused.
-              TextButton(
-                key: ReacceptTermsView.signOutButton,
-                onPressed: _busy ? null : _signOut,
-                child: Text(l10n.signOut),
-              ),
-            ],
-          ),
+    return AuthFrame(
+      panel: widget.panel,
+      title: l10n.reacceptTermsTitle,
+      // No back button: there is nowhere behind this. The router put the user
+      // here from wherever they were, and popping would return to a route the
+      // gate immediately redirects out of.
+      showBack: false,
+      children: <Widget>[
+        Text(
+          l10n.reacceptTermsBody,
+          style: Theme.of(context).textTheme.bodyLarge,
         ),
-      ),
+        const SizedBox(height: 20),
+        widget.consentFields(
+          termsAccepted: _accepted,
+          marketingAccepted: false,
+          enabled: !_busy,
+          onTermsChanged: (bool v) => setState(() => _accepted = v),
+          onMarketingChanged: (_) {},
+        ),
+        if (_notice != null) ...<Widget>[
+          const SizedBox(height: 12),
+          AuthMessage(
+            message: _notice!,
+            textKey: ReacceptTermsView.statusLine,
+            kind: StatusKind.danger,
+          ),
+        ],
+        const SizedBox(height: 20),
+        // 🔴 DISABLED UNTIL TICKED. The tick is the affirmative act; a
+        // button that works without it makes the box decorative, which is
+        // the difference between a clickwrap and a notice.
+        FilledButton(
+          key: ReacceptTermsView.acceptButton,
+          onPressed: (_busy || !_accepted) ? null : _accept,
+          child: Text(l10n.reacceptTermsAccept),
+        ),
+        const SizedBox(height: 12),
+        // Declining has to be possible, and it is signing out — not a
+        // silent dismissal that leaves them using the product under terms
+        // they refused.
+        TextButton(
+          key: ReacceptTermsView.signOutButton,
+          onPressed: _busy ? null : _signOut,
+          child: Text(l10n.signOut),
+        ),
+      ],
     );
   }
 }

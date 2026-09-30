@@ -3,11 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ContentPane;
+    show AuthFrame, AuthMessage, StatusKind;
 
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import 'auth_error_sentence.dart';
+import 'auth_panel.dart';
 
 /// Where a password-reset link lands — the half of the feature that did not
 /// exist.
@@ -176,24 +177,16 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       passwordResetArrivalProvider,
     );
 
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.resetPasswordTitle)),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ContentPane.form(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: _body(
-              context,
-              l10n,
-              auth,
-              recovering: recovering,
-              arrival: arrival.arrival,
-              problem: arrival.problem,
-            ),
-          ),
-        ),
+    return AuthFrame(
+      panel: const AuthPanel(),
+      title: l10n.resetPasswordTitle,
+      children: _body(
+        context,
+        l10n,
+        auth,
+        recovering: recovering,
+        arrival: arrival.arrival,
+        problem: arrival.problem,
       ),
     );
   }
@@ -289,10 +282,10 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       ),
       if (_error != null) ...<Widget>[
         const SizedBox(height: 12),
-        Text(
-          _error!,
-          key: ResetPasswordScreen.statusLine,
-          style: TextStyle(color: Theme.of(context).colorScheme.error),
+        AuthMessage(
+          message: _error!,
+          textKey: ResetPasswordScreen.statusLine,
+          kind: StatusKind.danger,
         ),
       ],
       const SizedBox(height: 20),

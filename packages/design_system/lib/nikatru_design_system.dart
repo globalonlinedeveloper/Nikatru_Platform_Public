@@ -36,6 +36,7 @@ export 'src/widgets/app_section_header.dart';
 export 'src/widgets/app_summary_card.dart';
 export 'src/widgets/brand_lockup.dart';
 export 'src/widgets/auth_field.dart';
+export 'src/widgets/auth_frame.dart';
 export 'src/widgets/content_pane.dart';
 export 'src/widgets/data_state.dart';
 export 'src/widgets/decision_strip.dart';

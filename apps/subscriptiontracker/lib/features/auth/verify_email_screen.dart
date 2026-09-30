@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ContentPane;
+    show AuthFrame, AuthMessage;
 
 import '../../l10n/app_localizations.dart';
+import 'auth_panel.dart';
 import '../../state/providers.dart';
 import 'turnstile_gate.dart';
 import 'auth_error_sentence.dart';
@@ -78,95 +79,84 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen>
     final core.AuthRepository auth = ref.watch(authRepositoryProvider);
     final String email = auth.currentUser?.email ?? '';
 
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.verifyEmailTitle)),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ContentPane.form(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Text(
-                l10n.verifyEmailBody(email),
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                l10n.verifyEmailSpamHint,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              if (_notice != null) ...<Widget>[
-                const SizedBox(height: 12),
-                Text(
-                  _notice!,
-                  key: VerifyEmailScreen.statusLine,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-              const SizedBox(height: 20),
-              // 🔴 "I'VE CONFIRMED" EXISTS BECAUSE NOTHING PUSHES THE ANSWER AT
-              // A RUNNING APP. The link is opened in a MAIL CLIENT — often on
-              // another device — so the session in memory goes on saying
-              // unverified until something asks the server again. Without this
-              // control the only way out is to kill the app and relaunch it,
-              // which reads as the app being broken.
-              FilledButton(
-                key: VerifyEmailScreen.continueButton,
-                onPressed: _busy
-                    ? null
-                    : () => _run(() async {
-                        final core.AuthUser? fresh = await auth.reloadUser();
-                        // Still unverified is a real answer, not an error: the
-                        // router leaves them here and this says why.
-                        return core.sessionIsUnverified(fresh)
-                            ? l10n.verifyEmailStillUnverified
-                            : null;
-                      }),
-                child: Text(l10n.verifyEmailContinue),
-              ),
-              const SizedBox(height: 12),
-              // The resend endpoint is captcha-gated too, so the button needs
-              // a token like every other door. Renders nothing without a key.
-              TurnstileGate(controller: captcha, render: renderTurnstile),
-              OutlinedButton(
-                key: VerifyEmailScreen.resendButton,
-                onPressed: _busy
-                    ? null
-                    : () => _run(() async {
-                        await auth.resendVerificationEmail(
-                          captchaToken: await captcha.consumeWhenReady(),
-                        );
-                        return l10n.verifyEmailResent;
-                      }),
-                child: Text(l10n.verifyEmailResend),
-              ),
-              const SizedBox(height: 12),
-              // The only way OUT of the gate. A user who mistyped their address
-              // has no other move — the account exists, they cannot reach the
-              // app, and without this the app is a locked door with no handle.
-              //
-              // 🔴 THROUGH [signOutAndForgetUser], not `auth.signOut()`. It is a
-              // session-ending control like the one in settings, so it owes the
-              // device the same forget; it was left on the bare call and the
-              // previous user's cached Pro survived it. `_run` invokes this
-              // closure with nothing awaited before it, so the provider reads
-              // inside still happen while this element is mounted — the deadline
-              // [userStateDrops] exists for.
-              TextButton(
-                key: VerifyEmailScreen.signOutButton,
-                onPressed: _busy
-                    ? null
-                    : () => _run(() async {
-                        await signOutAndForgetUser(ref);
-                        return null;
-                      }),
-                child: Text(l10n.signOut),
-              ),
-            ],
-          ),
+    return AuthFrame(
+      showBack: false,
+      panel: const AuthPanel(),
+      title: l10n.verifyEmailTitle,
+      children: <Widget>[
+        Text(
+          l10n.verifyEmailBody(email),
+          style: Theme.of(context).textTheme.bodyLarge,
         ),
-      ),
+        const SizedBox(height: 8),
+        Text(
+          l10n.verifyEmailSpamHint,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        if (_notice != null) ...<Widget>[
+          const SizedBox(height: 12),
+          AuthMessage(message: _notice!, textKey: VerifyEmailScreen.statusLine),
+        ],
+        const SizedBox(height: 20),
+        // 🔴 "I'VE CONFIRMED" EXISTS BECAUSE NOTHING PUSHES THE ANSWER AT
+        // A RUNNING APP. The link is opened in a MAIL CLIENT — often on
+        // another device — so the session in memory goes on saying
+        // unverified until something asks the server again. Without this
+        // control the only way out is to kill the app and relaunch it,
+        // which reads as the app being broken.
+        FilledButton(
+          key: VerifyEmailScreen.continueButton,
+          onPressed: _busy
+              ? null
+              : () => _run(() async {
+                  final core.AuthUser? fresh = await auth.reloadUser();
+                  // Still unverified is a real answer, not an error: the
+                  // router leaves them here and this says why.
+                  return core.sessionIsUnverified(fresh)
+                      ? l10n.verifyEmailStillUnverified
+                      : null;
+                }),
+          child: Text(l10n.verifyEmailContinue),
+        ),
+        const SizedBox(height: 12),
+        // The resend endpoint is captcha-gated too, so the button needs
+        // a token like every other door. Renders nothing without a key.
+        TurnstileGate(controller: captcha, render: renderTurnstile),
+        OutlinedButton(
+          key: VerifyEmailScreen.resendButton,
+          onPressed: _busy
+              ? null
+              : () => _run(() async {
+                  await auth.resendVerificationEmail(
+                    captchaToken: await captcha.consumeWhenReady(),
+                  );
+                  return l10n.verifyEmailResent;
+                }),
+          child: Text(l10n.verifyEmailResend),
+        ),
+        const SizedBox(height: 12),
+        // The only way OUT of the gate. A user who mistyped their address
+        // has no other move — the account exists, they cannot reach the
+        // app, and without this the app is a locked door with no handle.
+        //
+        // 🔴 THROUGH [signOutAndForgetUser], not `auth.signOut()`. It is a
+        // session-ending control like the one in settings, so it owes the
+        // device the same forget; it was left on the bare call and the
+        // previous user's cached Pro survived it. `_run` invokes this
+        // closure with nothing awaited before it, so the provider reads
+        // inside still happen while this element is mounted — the deadline
+        // [userStateDrops] exists for.
+        TextButton(
+          key: VerifyEmailScreen.signOutButton,
+          onPressed: _busy
+              ? null
+              : () => _run(() async {
+                  await signOutAndForgetUser(ref);
+                  return null;
+                }),
+          child: Text(l10n.signOut),
+        ),
+      ],
     );
   }
 }
