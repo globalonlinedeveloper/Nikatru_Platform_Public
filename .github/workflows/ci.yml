@@ -967,33 +967,35 @@ jobs:
           set -euo pipefail
           node tooling/ci/install-pinned-tool.mjs osv-scanner --out "${RUNNER_TEMP}"
           "${RUNNER_TEMP}/osv-scanner" --version
-      - name: Known-vulnerable dependencies, INCLUDING the Dart ones
+      - name: Known-vulnerable dependencies, INCLUDING the Dart ones (canary, floor, then the tree)
         # why: the only scanner in this stack that reads pubspec.lock. Play
         # Console flags vulnerable SDK versions and can block updates, so this is
         # one of the two scanners here with a store consequence. Findings that
         # are acknowledged rather than fixed are DATED in osv-scanner.toml at the
-        # repo root, which this reads by its own default name.
-        run: |
-          set -euo pipefail
-          # why: --config is EXPLICIT. Without it v2 resolves a config per
-          # lockfile DIRECTORY, so a root file loads, prints "unused ignores"
-          # and ignores nothing for packages/tokens/package-lock.json.
-          # Measured: run 33960900452.
-          "${RUNNER_TEMP}/osv-scanner" scan source -r --config osv-scanner.toml .
+        # repo root, which the script passes with an explicit --config.
+        # why: [rv2-security-018] the script proves OSV still flags a canary
+        # lockfile per tracked format and reads every `git ls-files` lockfile
+        # (exit 2 otherwise) before a clean result is believed; ops-watch.yml's
+        # dependency-advisories job runs the same script over main daily.
+        run: node tooling/ci/scan-dependencies.mjs --osv "${RUNNER_TEMP}/osv-scanner"
       - name: Install Trivy (version and digest from tooling/versions.json)
         run: |
           set -euo pipefail
           node tooling/ci/install-pinned-tool.mjs trivy --out "${RUNNER_TEMP}"
           "${RUNNER_TEMP}/trivy" --version
-      - name: Vulnerabilities and misconfigurations in the filesystem
+      - name: Vulnerabilities in the filesystem (a second opinion on production dependencies)
         # why: HIGH and CRITICAL only, and only what has a fix. A gate that goes
         # red on something nobody can act on gets switched off, and a switched-off
         # gate is worse than no gate at all.
+        # why: vuln only — the misconfig scanner logged `Detected config files
+        # num=0` (run 36553219885), a limb with no subject [rv2-security-018].
+        # Trivy suppresses dev dependencies (4 of 12 lockfiles reported), so the
+        # canary and the lockfile floor live on OSV in the step above.
         env:
           TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
         run: |
           set -euo pipefail
-          "${RUNNER_TEMP}/trivy" fs --scanners vuln,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
+          "${RUNNER_TEMP}/trivy" fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
 
   ff-security-scan:
     # why: FF-2 — starts only once `security-scan` has concluded red, so it keeps its failure. docs/ci/README.md §2.1

@@ -32,6 +32,11 @@ on:
         description: 'Also read what the pipeline runs on against what its vendors retire (red while a proposal stands; off for post-merge dispatches)'
         type: boolean
         default: false
+      # why: the same rule for the daily OSV scan of main, which is red for as long as an advisory stands.
+      dependency_advisories:
+        description: 'Also scan every tracked lockfile on main with OSV-Scanner (red while an advisory stands; off for post-merge dispatches)'
+        type: boolean
+        default: false
   # why: TWELVE slots, and every gap was COMPUTED including the wrap past midnight --
   # a sorted list shows every gap except the circular one. GitHub delivers this
   # repository's scheduled runs 10.1% on time, so density is what buys the alarm
@@ -64,7 +69,8 @@ jobs:
   heartbeats:
     name: Every declared duty is fresh — the heartbeat rail AND the register
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # why: 15, not 10 — the daily OSV steps below carry their own 3 + 5 minute bounds on top of the readers.
+    timeout-minutes: 15
     permissions:
       contents: read
       actions: read
@@ -167,6 +173,33 @@ jobs:
             echo "::error title=Name clearance is UNKNOWN - nothing was graded::The register, the catalogue, the schema or a record could not be read, so NO record was judged. That is never a pass: an unread record could be any age."
           elif [ "$code" -eq 1 ]; then
             echo "::error title=A name-clearance record is past its ceiling, or another finding stands::The step log names the record and the finding. Past 30 days, name-clearance.yml has not landed a refresh: read its newest scheduled run, which is red or absent, and what it says to do."
+          fi
+          exit "$code"
+
+      # why: [rv2-security-004] an advisory against an UNCHANGED main was seen only when the next unrelated pull
+      # request's security-scan met it (js-yaml #557, 2026-09-08; markdown-it PR #1063, 2026-09-30). These two
+      # steps run ci.yml's own pinned OSV-Scanner and script over main, and a red one pages through `alert`.
+      # why: STEPS in this job, not a job of their own, for the name-clearance step's reason above; a new job
+      # was measured costing assert-ops-register's replay 45 GitHub requests against its ceiling of 30.
+      # why: the 07:30 UTC slot only, or a dispatch that asks for it by name (trap ci-55). docs/ci/ops-watch.md.
+      - name: Install OSV-Scanner (version and digest from tooling/versions.json)
+        id: osv
+        if: ${{ !cancelled() && (github.event.schedule == '30 7 * * *' || inputs.dependency_advisories) }}
+        timeout-minutes: 3
+        run: node tooling/ci/install-pinned-tool.mjs osv-scanner --out "${RUNNER_TEMP}"
+
+      - name: Known-vulnerable dependencies on main (canary, floor, then the tree)
+        if: ${{ !cancelled() && steps.osv.outcome == 'success' }}
+        timeout-minutes: 5
+        run: |
+          set +e
+          node tooling/ci/scan-dependencies.mjs --osv "${RUNNER_TEMP}/osv-scanner"
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=The dependency scan is UNKNOWN - nothing was graded::OSV did not flag its canary lockfile, did not read every tracked lockfile, could not reach its database, or answered in a shape the script cannot read. NOTHING about main's dependencies is known from this run, and that is never a pass. The step log names which."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=A known advisory stands against a lockfile on main::The step log names each vulnerable package, its lockfile and its advisory ids. Move it to a fixed version in a pull request; one that cannot be fixed yet is acknowledged in osv-scanner.toml with a dated ignoreUntil. The next pull request's security-scan is red on it too until then."
           fi
           exit "$code"
 
