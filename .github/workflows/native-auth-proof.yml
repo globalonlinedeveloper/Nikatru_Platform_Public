@@ -60,13 +60,20 @@ jobs:
     # why: the gate's checked output, never inputs.app.
     env:
       APP: ${{ needs.gate.outputs.app }}
+      # why: --expect-refusal probes the native route over HTTP and never opens
+      # the app (ADR no.NNN), so the toolchain, the build and the device are dead
+      # weight: their steps run only when this is 'true'. It goes back to 'true'
+      # with the proof's --expect-refusal flags, when attested CI builds exist.
+      PROOF_NEEDS_DEVICE: 'false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
       - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
       - name: Resolve this app's databases from its Worker's wrangler file
@@ -81,6 +88,7 @@ jobs:
       # pinned for both tools (run 35451496350). The emulator outlives this
       # step; the proof step below drives it.
       - name: Boot an emulator
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         env:
           API_LEVEL: '34'
         run: |
@@ -164,13 +172,20 @@ jobs:
       contents: read
     env:
       APP: ${{ needs.gate.outputs.app }}
+      # why: --expect-refusal probes the native route over HTTP and never opens
+      # the app (ADR no.NNN), so the toolchain, the build and the device are dead
+      # weight: their steps run only when this is 'true'. It goes back to 'true'
+      # with the proof's --expect-refusal flags, when attested CI builds exist.
+      PROOF_NEEDS_DEVICE: 'false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
       - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
       - name: Resolve this app's databases from its Worker's wrangler file
@@ -181,6 +196,7 @@ jobs:
       # why: the first available iPhone of the image's iOS runtime; the proof
       # needs a phone, not a particular size class.
       - name: Boot an iPhone simulator
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         id: sim
         run: |
           set -euo pipefail
@@ -224,15 +240,23 @@ jobs:
       contents: read
     env:
       APP: ${{ needs.gate.outputs.app }}
+      # why: --expect-refusal probes the native route over HTTP and never opens
+      # the app (ADR no.NNN), so the toolchain, the build and the device are dead
+      # weight: their steps run only when this is 'true'. It goes back to 'true'
+      # with the proof's --expect-refusal flags, when attested CI builds exist.
+      PROOF_NEEDS_DEVICE: 'false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
       - name: Enable the macOS desktop target
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         run: flutter config --enable-macos-desktop
       - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
       - name: Resolve this app's databases from its Worker's wrangler file
@@ -282,15 +306,23 @@ jobs:
         shell: bash
     env:
       APP: ${{ needs.gate.outputs.app }}
+      # why: --expect-refusal probes the native route over HTTP and never opens
+      # the app (ADR no.NNN), so the toolchain, the build and the device are dead
+      # weight: their steps run only when this is 'true'. It goes back to 'true'
+      # with the proof's --expect-refusal flags, when attested CI builds exist.
+      PROOF_NEEDS_DEVICE: 'false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
       - name: Enable the Windows desktop target
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         run: flutter config --enable-windows-desktop
       - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
       - name: Resolve this app's databases from its Worker's wrangler file
@@ -333,17 +365,24 @@ jobs:
       contents: read
     env:
       APP: ${{ needs.gate.outputs.app }}
+      # why: --expect-refusal probes the native route over HTTP and never opens
+      # the app (ADR no.NNN), so the toolchain, the build and the device are dead
+      # weight: their steps run only when this is 'true'. It goes back to 'true'
+      # with the proof's --expect-refusal flags, when attested CI builds exist.
+      PROOF_NEEDS_DEVICE: 'false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
       # why: build-platforms.yml's Linux list, plus xvfb (a display), and the
       # three a signed-in desktop session needs: gnome-keyring (the Secret
       # Service libsecret stores the session in), desktop-file-utils and
       # xdg-utils (the scheme handler and the open).
       - name: Linux build and session deps
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -351,8 +390,10 @@ jobs:
             libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev \
             xvfb gnome-keyring dbus-x11 desktop-file-utils xdg-utils
       - name: Enable the Linux desktop target
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         run: flutter config --enable-linux-desktop
       - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         working-directory: apps/${{ needs.gate.outputs.app }}
         run: flutter pub get --enforce-lockfile
       - name: Resolve this app's databases from its Worker's wrangler file
@@ -376,6 +417,11 @@ jobs:
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
         run: |
+          # why: no display and no keyring in refusal mode — the probe never opens the bundle.
+          if [ "$PROOF_NEEDS_DEVICE" != true ]; then
+            node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --callback --expect-refusal
+            exit
+          fi
           dbus-run-session -- bash -c '
             set -euo pipefail
             eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"

@@ -3,7 +3,7 @@
 // reading that cannot fail would flip a row on no evidence.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -19,7 +19,7 @@ import {
   REFUSAL_STEPS,
   gradeRefusal,
 } from '../../e2e/native_auth_proof.mjs';
-import { parseWorkflow } from '../workflow-scan.mjs';
+import { jobEnv, parseWorkflow, workflowSteps } from '../workflow-scan.mjs';
 
 const REPO = join(import.meta.dirname, '..', '..', '..');
 
@@ -196,5 +196,42 @@ describe('native_auth_proof --expect-refusal — the leg proves the gate', () =>
       }
     }
     assert.ok(runs >= 7, `the scan found ${runs} driver invocation(s) — fewer than the seven legs means it stopped reaching them`);
+  });
+
+  // Third review of #1070: a refusal leg probes over HTTP, so a leg that still
+  // installs Flutter and boots a device spends its ceiling on nothing.
+  const DEVICE_STEP = /setup-flutter|^flutter pub get$|build and session deps|desktop target|^Boot an /;
+  const GATED = /env\.PROOF_NEEDS_DEVICE == 'true'/;
+  function ungatedDeviceSteps(root) {
+    const found = [];
+    let jobs = 0;
+    for (const rel of ['.github/workflows/e2e.yml', '.github/workflows/native-auth-proof.yml']) {
+      for (const job of parseWorkflow(root, rel).jobs.values()) {
+        if (!job.logical.some((l) => /native_auth_proof\.mjs[^\n]*--expect-refusal/.test(typeof l === 'string' ? l : l.text))) continue;
+        jobs++;
+        if (jobEnv(job).get('PROOF_NEEDS_DEVICE')?.value !== 'false') found.push(`${rel} ${job.name}: PROOF_NEEDS_DEVICE is not 'false'`);
+        for (const s of workflowSteps(job)) {
+          if (DEVICE_STEP.test(s.uses ?? s.name ?? '') && !GATED.test(s.cond ?? '')) found.push(`${rel} ${job.name}: "${s.uses ?? s.name}" runs in refusal mode`);
+        }
+      }
+    }
+    return { jobs, found };
+  }
+
+  test('WORKFLOW-SCAN: a refusal leg installs no Flutter and boots no device', () => {
+    const { jobs, found } = ungatedDeviceSteps(REPO);
+    assert.ok(jobs >= 6, `the scan found ${jobs} refusal job(s) — fewer than six means it stopped reaching them`);
+    assert.deepEqual(found, []);
+  });
+
+  test('🔴 RED CONTROL: the real workflow with one device step un-gated is a finding', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nk-refusal-wf-'));
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    for (const rel of ['.github/workflows/e2e.yml', '.github/workflows/native-auth-proof.yml']) {
+      let text = readFileSync(join(REPO, rel), 'utf8');
+      if (rel.endsWith('native-auth-proof.yml')) text = text.replace(/\n {8}if: env\.PROOF_NEEDS_DEVICE == 'true'\n(\s+env:\n\s+API_LEVEL)/, '\n$1');
+      writeFileSync(join(root, rel), text);
+    }
+    assert.deepEqual(ungatedDeviceSteps(root).found, ['.github/workflows/native-auth-proof.yml android: "Boot an emulator" runs in refusal mode']);
   });
 });
