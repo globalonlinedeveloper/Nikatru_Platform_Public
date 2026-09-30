@@ -81,7 +81,7 @@ import 'package:subscriptiontracker/state/subscriptions_controller.dart';
 
 import 'support/width_harness.dart';
 
-/// The five branches, by the path `shell.dart` declares each one at.
+/// The four branches (ST-D3 D3-3: the Budget branch is retired), by the path `shell.dart` declares each one at.
 ///
 /// Opened through the router and not by tapping the pill: the pill exists
 /// only in the bottom-nav layout, and the rail layouts are half of this sweep.
@@ -89,7 +89,6 @@ const List<(String, String)> _branches = <(String, String)>[
   ('/home', 'home'),
   ('/calendar', 'calendar'),
   ('/insights', 'insights'),
-  ('/budget', 'budget'),
   ('/settings', 'settings'),
 ];
 
@@ -107,7 +106,7 @@ const List<(Size, String)> _layouts = <(Size, String)>[
 ///
 /// MEASURED 2026-09-22, not assumed. The four absent pairs are absent because
 /// nothing is under the button there, not because nobody looked:
-///   · desktop/insights, desktop/budget, desktop/settings — the page is one
+///   · desktop/insights, desktop/settings — the page is one
 ///     column capped at 720 and centred in the 1163 px body, so the list ends
 ///     at x = 1058.5 and the FAB's column starts at 1208.
 ///   · desktop/home — home splits in two; the list pane ends at x = 559 and
@@ -117,12 +116,10 @@ const Set<String> _mustReachTheBand = <String>{
   'phone/home',
   'phone/calendar',
   'phone/insights',
-  'phone/budget',
   'phone/settings',
   'tablet/home',
   'tablet/calendar',
   'tablet/insights',
-  'tablet/budget',
   'tablet/settings',
   'desktop/calendar',
 };
@@ -135,10 +132,8 @@ const Set<String> _mustReachTheBand = <String>{
 const Set<String> _mustScroll = <String>{
   'phone/home',
   'phone/insights',
-  'phone/budget',
   'phone/settings',
   'tablet/home',
-  'tablet/budget',
   'tablet/settings',
 };
 
@@ -409,7 +404,7 @@ Finder _pageCards(String path) {
     // ⏱ 2026-09-28 · train ST-D1: Home's rows are `AppListRow`s.
     return find.descendant(of: list, matching: find.byType(AppListRow));
   }
-  final RegExp barKey = RegExp(r'^budget\.bar\.\d+$');
+  final RegExp barKey = RegExp(r'^insights\.card\.\d+$');
   return find.descendant(
     of: list,
     matching: find.byWidgetPredicate(
@@ -447,15 +442,30 @@ Future<Rect?> _straddle(WidgetTester tester, Finder cards, double foldY) async {
   }
   // Elements, not indexes: a jump rebuilds the list and would re-point
   // `cards.at(i)`.
-  for (final Element e in cards.evaluate().toList()) {
-    final Rect r = tester.getRect(_exactly(e));
-    if (r.height <= AppShell.foldFade + _straddleLead) continue;
-    final double target = s.position.pixels + r.top - top;
-    if (target < 0 || target > s.position.maxScrollExtent) continue;
-    s.position.jumpTo(target);
+  //
+  // ⏱ 2026-09-29 · ST-D3: Insights' first card (the budget) sits ABOVE the
+  // fade at offset 0, so it cannot be scrolled up to it (target < 0), and at
+  // phone 360 the next card was not yet built. Step on and try again rather
+  // than giving up after the cards the first frame happened to build.
+  for (int attempt = 0; attempt < 8; attempt++) {
+    for (final Element e in cards.evaluate().toList()) {
+      final Rect r = tester.getRect(_exactly(e));
+      if (r.height <= AppShell.foldFade + _straddleLead) continue;
+      final double target = s.position.pixels + r.top - top;
+      if (target < 0 || target > s.position.maxScrollExtent) continue;
+      s.position.jumpTo(target);
+      await tester.pumpAndSettle();
+      final Rect after = tester.getRect(_exactly(e));
+      return after.top <= top + 0.5 && after.bottom > foldY ? after : null;
+    }
+    if (s.position.pixels >= s.position.maxScrollExtent) break;
+    s.position.jumpTo(
+      (s.position.pixels + s.position.viewportDimension / 2).clamp(
+        0.0,
+        s.position.maxScrollExtent,
+      ),
+    );
     await tester.pumpAndSettle();
-    final Rect after = tester.getRect(_exactly(e));
-    return after.top <= top + 0.5 && after.bottom > foldY ? after : null;
   }
   return null;
 }
@@ -715,20 +725,20 @@ void main() {
       );
     });
 
-    testWidgets('phone/budget: the last category card does not intersect '
+    testWidgets('phone/insights: the last card does not intersect '
         'the FAB', (WidgetTester tester) async {
       final ProviderContainer c = await _pumpShell(tester, kPhone);
-      await _open(tester, c, '/budget');
+      await _open(tester, c, '/insights');
       final Finder list = find.byType(ListView).first;
       final ScrollableState s = _scrollerOf(tester, list);
       expect(
         s.position.maxScrollExtent,
         greaterThan(0),
-        reason: 'budget does not scroll against the seed data at phone size',
+        reason: 'insights does not scroll against the seed data at phone size',
       );
       await _scrollToEnd(tester, s);
 
-      final RegExp barKey = RegExp(r'^budget\.bar\.\d+$');
+      final RegExp barKey = RegExp(r'^insights\.card\.\d+$');
       final Finder bars = find.byWidgetPredicate(
         (Widget w) =>
             w.key is ValueKey<String> &&
@@ -738,8 +748,8 @@ void main() {
         bars,
         findsWidgets,
         reason:
-            'budget rendered no category card, so this case is measuring '
-            'nothing — the seed caps or the list changed',
+            'insights rendered no card, so this case is measuring '
+            'nothing — the seed or the card keys changed',
       );
       final Rect lowest = _lowest(tester, bars);
       final Rect fab = _fab(tester);
@@ -781,7 +791,7 @@ void main() {
       (Size(1280, 800), 'desktop 1280'),
     ];
     for (final (Size size, String label) in sizes) {
-      for (final String path in <String>['/home', '/budget']) {
+      for (final String path in <String>['/home', '/insights']) {
         testWidgets('$label $path: the device rows just above the fold are '
             'the page ground', (WidgetTester tester) async {
           final ProviderContainer c = await _pumpShell(

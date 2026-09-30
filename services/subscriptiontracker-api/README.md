@@ -27,16 +27,29 @@ all six Flutter targets. Auth is **Supabase** — the Worker verifies Supabase J
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/v1/health` | none | Liveness / deploy verification |
-| GET | `/v1/subscriptions` | Supabase JWT | List subscriptions (price desc) |
+| GET | `/v1/subscriptions` | Supabase JWT | List subscriptions (price desc); hides soft-deleted rows and purges those past 30 days |
 | POST | `/v1/subscriptions` | Supabase JWT | Create subscription |
-| GET | `/v1/subscriptions/:id` | Supabase JWT | One subscription + payment_history |
-| PATCH | `/v1/subscriptions/:id` | Supabase JWT | Update fields |
-| DELETE | `/v1/subscriptions/:id` | Supabase JWT | Cancel/delete |
+| GET | `/v1/subscriptions/:id` | Supabase JWT | One subscription + payment_history + price_history |
+| PATCH | `/v1/subscriptions/:id` | Supabase JWT | Update fields — incl. `status` paused/cancelled and `deleted_at` (soft delete; `null` restores); a price edit logs a `price_change` row |
+| DELETE | `/v1/subscriptions/:id` | Supabase JWT | Soft delete (sets `deleted_at`; restorable for 30 days, then purged with its history) |
+| POST | `/v1/subscriptions/:id/payments` | Supabase JWT | Record a manual payment (`source: manual`) |
 | GET | `/v1/renewals?withinDays=7` | Supabase JWT | Upcoming renewals + `days_left` |
 | GET | `/v1/budget` | Supabase JWT | Monthly budget + category caps |
-| PUT | `/v1/budget` | Supabase JWT | Upsert budget + caps |
+| PUT | `/v1/budget` | Supabase JWT | Upsert budget + caps (a cap may name its `category_id`) |
+| GET | `/v1/categories` | Supabase JWT | Built-in categories (stable ids) + the user's own |
+| POST | `/v1/categories` | Supabase JWT | Create a category of the user's own |
+| PATCH | `/v1/categories/:id` | Supabase JWT | Rename one; its caps and subscriptions follow |
+| DELETE | `/v1/categories/:id` | Supabase JWT | Delete one; its subscriptions become uncategorised, its cap goes |
 | GET | `/v1/entitlements` | Supabase JWT | `is_pro` + `granted_via` + entitlements (+ `bundle` when a live grant exists) for this app — THE ONE reader, `services/_shared/src/entitlement-read.ts`, byte-identical to the shared host's answer |
 | DELETE | `/v1/account` | **ES256/JWKS only** | Erase this user from every user-owned table in `subscriptiontracker_db` |
+
+### ⚠️ Served ahead of their screens (2026-09-29)
+
+`POST /v1/subscriptions/:id/payments`, `price_history` and `/v1/categories` are the API
+halves of ST-R5, ST-I4 and ST-X8. No app code calls them yet: the buttons and lists ride the
+design trains (dw1 D5-3, ST-D3 D3-4, dw2 D4-1). The lifecycle half (Pause, Mark cancelled,
+soft delete) IS consumed — `apps/subscriptiontracker/lib/state/subscriptions_controller.dart`
+has sent those writes since #1045.
 
 ### ⚠️ `GET /v1/renewals` and `GET /v1/entitlements` are SERVED AND UNCONSUMED
 

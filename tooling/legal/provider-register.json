@@ -137,7 +137,17 @@
       "recover",
       "attest",
       "challenge",
-      "install"
+      "install",
+      "payments"
+    ],
+    "_payments": [
+      "🟢 `payments` ADDED 2026-09-29 (ST-R5, round-2 X06), AND THIS LIMB CAUGHT IT. POST",
+      "/v1/subscriptions/:id/payments on services/subscriptiontracker-api is the user marking one of",
+      "THEIR OWN tracked subscriptions as paid: a payment_history row with `source` = manual, a record",
+      "OF a payment the user made elsewhere. It is a RESOURCE OF OURS and not a provider tell: no",
+      "provider posts to it, it moves no money, it is behind supabaseAuth, and the body is an amount and",
+      "a date the user typed. The name is the one this limb exists to question, which is why it is",
+      "written down here rather than inferred."
     ],
     "_subject": [
       "🟢 `subject` ADDED 2026-09-09, AND THIS LIMB CAUGHT IT AGAIN. GET /v1/entitlements/subject is the",

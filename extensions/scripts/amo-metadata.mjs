@@ -40,6 +40,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { requiredNotice } from './lib/licence.mjs';
+import { codeHostOf } from './lib/listing-url.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 /** The extensions root: toolinfo's `repoRoot` default, and what tool dirs are relative to. */
@@ -183,6 +184,13 @@ export function buildAmoMetadata({ toolId, root = EXTENSIONS_ROOT }) {
   }
   const sharedDir = tool?.storeMetadata?.sharedDir;
   const supportUrl = typeof sharedDir === 'string' ? valueLines(readIf(path.join(dir, sharedDir, 'support-url.txt')) ?? '')[0] ?? null : null;
+  /* ⏱ 2026-09-29 (EXL-13): a support or homepage URL on a code host is a
+     user-facing link into the repository that 404s once it goes private, and
+     the first submit fixes it into the public listing. Refused, never dropped. */
+  for (const [field, url] of [['support_url', supportUrl], ['homepage', identity?.homepageUrl]]) {
+    const host = typeof url === 'string' ? codeHostOf(url) : null;
+    if (host) why.push(`${field} would be "${url}", on ${host} — a listing URL into the code repository. Point it at a nikatru.com page.`);
+  }
 
   if (why.length) return { ok: false, why };
 

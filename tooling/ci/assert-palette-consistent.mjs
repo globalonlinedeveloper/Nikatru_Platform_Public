@@ -994,7 +994,9 @@ const BRAND_FONT_DEBT = {
   // ⏱ 2026-09-28 · train ST-D5: `features/detail/subscription_detail_screen.dart`
   // (6) came OUT — rebuilt on the design foundation, it names no family; the
   // ramp's roles carry the faces.
-  'apps/subscriptiontracker/lib/features/insights/insights_screen.dart': 1,
+  // ⏱ 2026-09-30 · train ST-D3: `features/insights/insights_screen.dart` 1 → 0
+  // and OUT — D3-4 deleted the savings card's `fontFamily: 'Manrope'`; Insights
+  // reads every face from the theme's type ramp now.
   // onboarding_screen.dart: 4 → OUT, 2026-09-28 (train ST-D8) — the screen
   // adopted the chassis OnboardingView; its one remaining face reads BrandTokens.
   'apps/subscriptiontracker/lib/features/settings/settings_screen.dart': 1,

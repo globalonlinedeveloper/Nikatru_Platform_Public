@@ -1925,6 +1925,28 @@
       "unverifiedWhy": "The workflow has not run yet. Its first dispatch, after this row reaches main, is the first read of App Store Connect with the repository's key, and whether that key may read v1/certificates and v1/profiles is unmeasured until then."
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-09-30 for lane fix-ci-update-goldens. assert-ops-register.mjs holds every workflow file to a duty row anchored at it, so .github/workflows/update-goldens.yml and this row land together.",
+      "id": "duty.workflow.update-goldens.yml",
+      "kind": "duty",
+      "what": "Re-renders golden PNGs on GitHub's Linux runner for a dispatched branch and test list: the same setup-flutter action (so the same tooling/versions.json Flutter pin) and the same ubuntu-24.04 image as ci.yml workspace-gate, `flutter test --update-goldens <tests>` from each package root, then the same tests again WITHOUT --update-goldens. mode=commit pushes one `test(goldens): regenerate on linux (<run url>)` commit of the changed PNGs to the branch; mode=artifact uploads them.",
+      "detector": "Attended: whoever dispatched it reads the run. It fails, and commits nothing, when ref is main or not a branch at the checked-out commit, when a test path is not apps/<id>/test/..._test.dart or packages/<name>/test/..._test.dart, when the re-render changed anything other than a golden PNG of a tested package, or when the tests do not pass without --update-goldens. The commit job re-checks every staged path and PNG signature against the dispatch inputs before it adds anything.",
+      "response": "Read the run. A refusal names the ref, the path or the changed file. A red second pass means the goldens are not the only thing wrong: fix the test on the branch. After a green commit-mode run, re-trigger CI on the pull request (edit its body, or push any commit): a push by GITHUB_TOKEN starts no workflow.",
+      "cadence": "on-demand",
+      "why": "Goldens change when a screen changes, on a branch, never on a clock. The laptops here have no Linux Flutter, and CI renders goldens on Linux, so this dispatch is how any lane re-renders them. Dispatch-only, and never on main.",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/update-goldens.yml",
+        "record": "GitHub Actions run history for update-goldens.yml, plus the goldens-<run id> artifact and, in commit mode, the one commit it pushes to the dispatched branch",
+        "failingValue": "conclusion = failure: a refused input, a non-PNG or out-of-package change, or a red second pass, with nothing committed",
+        "readBy": "the dispatching agent or human, plus ci.yml workspace-gate on the pull request that carries the commit"
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "A workflow_dispatch workflow can be dispatched only once it is on the default branch, so its first real run is the lead's dispatch after this row reaches main."
+    },
+    {
       "_whyThisRowExists": "APPENDED 2026-09-23 for O-CI-GATE-CASCADE-STRANDS-THE-DEPLOY-LANES. On 2026-09-22 a red ci-gate on 2c4540fa failed `Deploy web` #426 and `Deploy workers` #168 on their gate step; the repair commit 35147514 turned CI green but matched neither lane's push paths, so nothing re-entered them and production served the previous build until a scheduled Ops watch noticed. This workflow is the re-entry. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together. WIDENED 2026-09-23 for O-REDEPLOY-STRANDED-MISSES-THE-BUILD-LANE: Build apps #102 (run 35800063831, the Worker's 00:00Z dispatch) failed its gate step and was not re-entered, because the derivation took push-on-main lanes only and the run's always() aggregate `all-platforms` failed beside the gate.",
       "id": "duty.workflow.redeploy-stranded.yml",
       "kind": "duty",
@@ -4973,6 +4995,50 @@
       "mechanism": {
         "substrate": "cloudflare-d1",
         "anchor": "services/subscriptiontracker-api/migrations/0001_init.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.subscriptiontracker_db.price_change",
+      "kind": "retention",
+      "store": "d1:subscriptiontracker_db:price_change",
+      "what": "The user's own price history: one row per edit that moved a tracked subscription's price or currency (ST-I4).",
+      "rule": "keep",
+      "keepWhy": "User content, kept with its subscription: purged with it 30 days after a soft delete, and with the account on erasure. Same reasoning as retention.d1.subscriptiontracker_db.payment_history.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.subscriptiontracker_db.categories",
+      "kind": "retention",
+      "store": "d1:subscriptiontracker_db:categories",
+      "what": "The user's own category names, beside ten shared built-in rows that hold nothing about anyone (ST-X8).",
+      "rule": "keep",
+      "keepWhy": "User content, kept until the user deletes the category or the account. Same reasoning as retention.d1.subscriptiontracker_db.budget_categories.",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
         "record": "the table itself",
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"
