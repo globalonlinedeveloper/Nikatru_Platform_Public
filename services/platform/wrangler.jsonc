@@ -21,7 +21,16 @@
   "name": "platform",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-01",
-  "observability": { "enabled": true },
+  // ⏱ 2026-09-30 · O-CALENDAR-TOKEN-SHIPPED-TO-ERROR-SINK — NO INVOCATION LOGS.
+  // Workers Logs' per-request invocation log records the FULL request URL, and
+  // two of this Worker's URLs are capabilities: `/v1/calendar/<token>.ics` (the
+  // token is the path) and `/v1/reminders/unsubscribe?t=<token>`. Nothing can
+  // redact a field of that log, so it is switched off; the Worker's own
+  // console lines (onError's `[unhandled] rid= app= release=`, the cron lines)
+  // are still kept, and none of them prints a URL. Request counts, errors and
+  // durations stay on the Worker's metrics, which carry no URL.
+  // test/wrangler-breaker.test.ts holds this.
+  "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } },
   "vars": {
     "APP_ID": "platform",
     "SUPABASE_URL": "https://auth-api.nikatru.com",

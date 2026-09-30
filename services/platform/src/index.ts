@@ -38,6 +38,7 @@
 //                                  and the ECB rate table (src/fx.ts).
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
+import { matchedRoutes } from 'hono/route';
 import type { AppEnv } from './types';
 import { nowIso } from './lib/d1';
 import {
@@ -48,7 +49,7 @@ import {
   JWKS_READING_TTL_MS,
   READING_TTL_MS,
 } from './lib/health';
-import { reportWorkerError } from './lib/error-sink';
+import { reportWorkerError, reportablePath } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
 import { platformAuth } from './middleware/auth';
 import { entitlementsAuth } from './middleware/ext-device-auth';
@@ -376,7 +377,9 @@ app.onError((err, c) => {
       appId: c.get('appId'),
       requestId: c.get('requestId'),
       method: c.req.method,
-      path: url.pathname, // pathname only — never the query string
+      // The route PATTERN, never the query string and never a path value: the
+      // calendar feed's token IS a path segment (O-CALENDAR-TOKEN-SHIPPED-TO-ERROR-SINK).
+      path: reportablePath(url.pathname, matchedRoutes(c)),
     },
     c.env,
   );

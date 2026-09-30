@@ -179,3 +179,21 @@ describe('wrangler.jsonc declares BOTH halves of the cost circuit breaker', () =
     for (const id of ids) expect(id, 'namespace_id must be a non-empty string').toMatch(/^\d+$/);
   });
 });
+
+// ⏱ 2026-09-30 · O-CALENDAR-TOKEN-SHIPPED-TO-ERROR-SINK. Workers Logs' invocation
+// log records the full request URL, and two of this Worker's URLs carry a
+// capability token (the calendar feed's path, the unsubscribe link's `?t=`).
+// Nothing redacts a field of that log, so it must stay off.
+describe('Workers Logs keep no request URL', () => {
+  const obs = (parseJsonc(raw) as { observability?: { enabled?: unknown; logs?: { invocation_logs?: unknown } } })
+    .observability;
+  it('invocation logs are OFF, while observability itself stays on', () => {
+    expect(obs?.enabled).toBe(true);
+    expect(obs?.logs?.invocation_logs).toBe(false);
+  });
+  it('env.sandbox does not switch them back on', () => {
+    const sandbox = (parseJsonc(raw) as { env?: { sandbox?: { observability?: { logs?: { invocation_logs?: unknown } } } } })
+      .env?.sandbox?.observability;
+    expect(sandbox?.logs?.invocation_logs ?? false).toBe(false);
+  });
+});
