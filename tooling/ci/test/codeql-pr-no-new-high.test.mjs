@@ -22,7 +22,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { pickAnalysis, newHighs, CATEGORY } from '../assert-codeql-pr-no-new-high.mjs';
+import { pickAnalysis, newHighs, gradeNew, CATEGORY } from '../assert-codeql-pr-no-new-high.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-codeql-pr-no-new-high.mjs');
@@ -49,7 +49,14 @@ const alert = (number, sev, extra = {}) => ({
   ...extra,
 });
 const event = (base = 'main') => ({ number: 1071, pull_request: { number: 1071, head: { sha: HEAD }, base: { ref: base } } });
-const PR1071 = [alert(523, 'high'), alert(522, 'high'), alert(528, 'medium'), alert(529, null)];
+/** #528 as it really is: a medium flow alert. #529: a warning-level quality note. */
+const FLOW_PATH = 'tooling/ops/verify-password-reset-revokes.mjs';
+const flow = (n) => alert(n, 'medium', { rule: { id: 'js/file-access-to-http', security_severity_level: 'medium' }, most_recent_instance: { location: { path: FLOW_PATH, start_line: 189 } } });
+const note = (n) => alert(n, null, { rule: { id: 'js/missing-space-in-concatenation', severity: 'warning' }, most_recent_instance: { location: { path: 'extensions/scripts/test/selftest.node.js', start_line: 412 } } });
+const PR1071 = [alert(523, 'high'), alert(522, 'high'), flow(528), note(529)];
+/** A dispositions file, as the PR's own tree would hold it. */
+const dispositions = (...entries) => JSON.stringify({ dispositions: entries });
+const byDesign = (n, extra = {}) => ({ alert: n, rule: 'js/file-access-to-http', path: FLOW_PATH, disposition: 'by-design', host: 'auth-api.nikatru.com', reason: 'sends the key to its own issuer', ...extra });
 
 let seq = 0;
 function run(probe, env = {}) {
@@ -69,6 +76,7 @@ const probe = (extra = {}) => ({
   prAlerts: PR1071,
   mainOpen: [alert(14, 'high')],
   mainDismissed: [],
+  dispositionsText: dispositions(),
   ...extra,
 });
 
@@ -79,7 +87,11 @@ describe('the rule fails a PR that adds a high alert', () => {
     assert.match(r.stderr, /PR #1071 ADDS 2 CRITICAL\/HIGH CODEQL ALERT\(S\)/);
     assert.match(r.stderr, /#523 {2}js\/incomplete-sanitization {2}high {2}tooling\/ops\/check-tech-currency\.mjs:224/);
     assert.match(r.stderr, /#522 /);
-    assert.doesNotMatch(r.stderr, /#528 |#529 /, 'a medium and a note never fail this rule');
+    // ⏱ 2026-09-30: and its medium and its note — both new, neither dispositioned
+    // in its own file — fail it too, instead of reddening every PR after the merge.
+    assert.match(r.stderr, /ADDS 2 CODEQL ALERT\(S\) ITS OWN tooling\/ci\/codeql-dispositions\.json DOES NOT DISPOSITION/);
+    assert.match(r.stderr, /#528 {2}js\/file-access-to-http {2}medium/);
+    assert.match(r.stderr, /#529 {2}js\/missing-space-in-concatenation {2}warning/);
   });
 
   test('RED: a critical counts as well as a high', () => {
@@ -88,15 +100,57 @@ describe('the rule fails a PR that adds a high alert', () => {
     assert.match(r.stderr, /#600 .*critical/);
   });
 
-  test('GREEN control: the same highs already open on main are not NEW → exit 0', () => {
-    const r = run(probe({ mainOpen: [alert(522, 'high'), alert(523, 'high')] }));
+  test('GREEN control: the same alerts already open on main are not NEW → exit 0', () => {
+    const r = run(probe({ mainOpen: PR1071 }));
     assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
-    assert.match(r.stdout, /PR #1071 adds no critical\/high CodeQL alert/);
+    assert.match(r.stdout, /PR #1071 adds 0 new CodeQL alert\(s\)/);
   });
 
-  test('a high already DISMISSED on main is not new either', () => {
-    const r = run(probe({ mainDismissed: [alert(522, 'high', { state: 'dismissed' }), alert(523, 'high', { state: 'dismissed' })] }));
+  test('an alert already DISMISSED on main is not new either', () => {
+    const r = run(probe({ mainDismissed: PR1071.map((a) => ({ ...a, state: 'dismissed' })) }));
     assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+  });
+});
+
+describe('every new alert is graded against the PR\'s OWN dispositions file (review of #1087, finding 2)', () => {
+  test('RED: a new MEDIUM flow alert with no disposition fails its own PR', () => {
+    const r = run(probe({ prAlerts: [flow(528)] }));
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /ADDS 1 CODEQL ALERT\(S\) ITS OWN tooling\/ci\/codeql-dispositions\.json DOES NOT DISPOSITION/);
+    assert.match(r.stderr, /#528 {2}js\/file-access-to-http {2}medium/);
+  });
+
+  test('GREEN: the same alert with a by-design entry in the same PR passes', () => {
+    const r = run(probe({ prAlerts: [flow(528)], dispositionsText: dispositions(byDesign(528)) }));
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /new #528 js\/file-access-to-http .* by-design in this PR's/);
+    assert.match(r.stdout, /adds 1 new CodeQL alert\(s\), every one dispositioned in its own file/);
+  });
+
+  test('RED: an entry naming the right number at a DIFFERENT path does not answer it', () => {
+    const r = run(probe({ prAlerts: [flow(528)], dispositionsText: dispositions(byDesign(528, { path: 'tooling/ops/elsewhere.mjs' })) }));
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /#528 /);
+  });
+
+  test('RED: a new NOTE cannot be kept by design — the PR\'s file is refused', () => {
+    const r = run(probe({ prAlerts: [note(529)], dispositionsText: dispositions({ alert: 529, rule: 'js/missing-space-in-concatenation', path: 'extensions/scripts/test/selftest.node.js', disposition: 'by-design', reason: 'r' }) }));
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /is a by-design js\/missing-space-in-concatenation\. Only js\/file-access-to-http and js\/http-to-file-access may be kept by design/);
+  });
+
+  test('RED: a new HIGH fails even with a by-design entry in the PR\'s file', () => {
+    const high = alert(700, 'high', { rule: { id: 'js/file-access-to-http', security_severity_level: 'high' }, most_recent_instance: { location: { path: FLOW_PATH, start_line: 1 } } });
+    const r = run(probe({ prAlerts: [high], dispositionsText: dispositions(byDesign(700)) }));
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /ADDS 1 CRITICAL\/HIGH CODEQL ALERT\(S\) — never dispositionable here/);
+  });
+
+  test('gradeNew: highs, answered and unanswered are three disjoint piles', () => {
+    const v = gradeNew([alert(1, 'high'), flow(2), flow(3), note(4), alert(5, 'high')], [alert(5, 'high')], [byDesign(2)]);
+    assert.deepEqual(v.highs.map((a) => a.number), [1]);
+    assert.deepEqual(v.dispositioned.map((a) => a.number), [2]);
+    assert.deepEqual(v.undispositioned.map((a) => a.number), [3, 4]);
   });
 
   test('the recomputed merge ref: found by the merge commit\'s second parent', () => {

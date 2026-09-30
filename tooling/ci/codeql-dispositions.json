@@ -114,7 +114,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "The GoTrue admin response is written to the runner-provided $GITHUB_OUTPUT (the response cannot choose the path); user_id must be a UUID before it is written, and the origin it came from is pinned by tooling/ops/credential-origin.mjs to the self-hosted GoTrue or a hosted Supabase project (fixed 2026-09-30)."
+      "reason": "The GoTrue admin response is written to the runner-provided $GITHUB_OUTPUT (the response cannot choose the path); user_id must be a UUID before it is written, and the origin it came from is pinned by tooling/ops/credential-origin.mjs to the self-hosted GoTrue or OUR hosted Supabase project (sha256-pinned hostname) (fixed 2026-09-30)."
     },
     {
       "alert": 70,
@@ -157,8 +157,11 @@
       "rule": "js/file-access-to-http",
       "path": "tooling/ci/assert-catalog-reachable.mjs",
       "disposition": "by-design",
-      "host": "nikatru.com",
-      "reason": "An unauthenticated GET of every live app's public URL from the reviewed catalogue is the reachability guard's purpose; no credential or private data is sent."
+      "host": [
+        "nikatru.com",
+        "pages.dev"
+      ],
+      "reason": "Requests each live catalogue url (no credential, no private data). The destination is register data, so assert-catalog-reachable.mjs pins it in code (isProbeableUrl, 2026-09-30): https on nikatru.com, its subdomains or *.pages.dev only, or loopback for the tests; any other catalogue url is a finding and is never requested."
     },
     {
       "alert": 100,
@@ -466,14 +469,14 @@
       "rule": "js/useless-expression",
       "path": "apps/subscriptiontracker/web/flutter_bootstrap.js",
       "disposition": "fixed-in-tree",
-      "reason": "Fixed in code 2026-09-30: the stamped bootstrap opens with its generated-from-the-brick banner, so CodeQL treats the two Flutter build tokens as generated code."
+      "reason": "Fixed 2026-09-30 by exclusion: apps/*/web/flutter_bootstrap.js is generated (mason stamps it byte-for-byte from the brick) and is a Flutter build template whose two token lines cannot change; .github/codeql/codeql-config.yml excludes it by path, with that reason. A generated-file banner did not close these (full analysis of fix/codeql-alerts)."
     },
     {
       "alert": 323,
       "rule": "js/useless-expression",
       "path": "apps/subscriptiontracker/web/flutter_bootstrap.js",
       "disposition": "fixed-in-tree",
-      "reason": "Fixed in code 2026-09-30: the stamped bootstrap opens with its generated-from-the-brick banner, so CodeQL treats the two Flutter build tokens as generated code."
+      "reason": "Fixed 2026-09-30 by exclusion: apps/*/web/flutter_bootstrap.js is generated (mason stamps it byte-for-byte from the brick) and is a Flutter build template whose two token lines cannot change; .github/codeql/codeql-config.yml excludes it by path, with that reason. A generated-file banner did not close these (full analysis of fix/codeql-alerts)."
     },
     {
       "alert": 328,
@@ -498,7 +501,7 @@
       "rule": "js/syntax-error",
       "path": "tooling/bricks/app/__brick__/apps/{{app_id}}/web/flutter_bootstrap.js",
       "disposition": "fixed-in-tree",
-      "reason": "Fixed in code 2026-09-30: mason templates (tooling/bricks/**/__brick__/**) are excluded by .github/codeql/codeql-config.yml paths-ignore; the stamped app copy is still scanned."
+      "reason": "Fixed 2026-09-30 by exclusion: mason templates (tooling/bricks/**/__brick__/**) are excluded by .github/codeql/codeql-config.yml paths-ignore, with the reason; the stamped output is graded by its own tests."
     },
     {
       "alert": 331,
@@ -566,7 +569,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 346,
@@ -577,7 +580,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 349,
@@ -588,7 +591,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 350,
@@ -599,7 +602,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 351,
@@ -610,7 +613,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 352,
@@ -621,7 +624,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 353,
@@ -632,7 +635,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 354,
@@ -643,7 +646,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 355,
@@ -654,7 +657,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 356,
@@ -665,7 +668,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 357,
@@ -676,7 +679,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 361,
@@ -788,7 +791,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 401,
@@ -889,7 +892,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 420,
@@ -1214,7 +1217,7 @@
         "learn.microsoft.com",
         "support.google.com"
       ],
-      "reason": "Unauthenticated GETs of public vendor pages named by reviewed, committed registers; no credential or private data is sent, and re-reading those pages is the script's purpose."
+      "reason": "Reads public vendor pages (no credential sent). The constant sources are CHANGELOG_FEED/NODE_SCHEDULE/RAW in the file; the duty-matrix sources are register data, so check-tech-currency.mjs pins their hosts in code (dutySourceHosts, 2026-09-30) — any other host is not requested and reads as COVERAGE LOST."
     },
     {
       "alert": 525,
@@ -1225,7 +1228,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 526,
@@ -1236,7 +1239,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 527,
@@ -1247,7 +1250,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 528,
@@ -1258,7 +1261,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 529,
@@ -1276,7 +1279,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 533,
@@ -1287,7 +1290,7 @@
         "auth-api.nikatru.com",
         "*.supabase.co"
       ],
-      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or OUR hosted project only (<ref>.supabase.co, pinned by the sha256 of its hostname so no other tenant qualifies; the ref is deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
     },
     {
       "alert": 534,

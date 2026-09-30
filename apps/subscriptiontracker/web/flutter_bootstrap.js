@@ -1,5 +1,3 @@
-// Generated from the app brick (tooling/bricks/app) by `mason make`. Do not edit
-// this copy; edit the brick. The two lines below are Flutter build tokens.
 {{flutter_js}}
 {{flutter_build_config}}
 

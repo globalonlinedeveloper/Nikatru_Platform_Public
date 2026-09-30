@@ -532,6 +532,7 @@ export async function readAll({ root, now, doFetch = fetch, sleep, note }) {
     Promise.all(
       duties.map(async (duty) => {
         const page = await guard(`duty ${duty.id}'s source`, async () => {
+          if (!isDutySourceHost(duty.source.url)) throw new CouldNotLook(`${duty.source.url}: not on a vendor host this reader pins (${dutySourceHosts().join(', ')}) — it was not requested; add the host in code, reviewed`);
           const r = await readText(duty.source.url, opts);
           if (!r.ok && r.status !== 404 && r.status !== 410) throw new CouldNotLook(`${duty.source.url}: answered HTTP ${r.status}`);
           return r.ok ? { status: r.status, html: r.text } : { status: r.status };
@@ -574,4 +575,28 @@ async function main(argv) {
 
 if (process.argv[1] && process.argv[1].endsWith('check-tech-currency.mjs')) {
   await main(process.argv.slice(2));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-30 · THE DUTY SOURCES' HOSTS ARE PINNED IN CODE (review of #1087,
+// finding 5; CodeQL #524). tooling/legal/duty-matrix.json is register data, so an
+// edit to it changed where this reader sends a request and nothing noticed. The
+// request carries no credential, but a disposition needs a VERIFIED host: a duty
+// source on any other host is not requested and reads as COVERAGE LOST, naming the
+// fix (add the host here, where a review sees it). Functions, so they hoist above
+// the top-level await. Measured 2026-09-30: the 7 sourced duties use these 4.
+// ─────────────────────────────────────────────────────────────────────────────
+export function dutySourceHosts() {
+  return ['developer.android.com', 'developer.apple.com', 'learn.microsoft.com', 'support.google.com'];
+}
+
+/** PURE. May this duty source url be requested? https, no userinfo, a pinned host. */
+export function isDutySourceHost(url) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  return u.protocol === 'https:' && !u.username && !u.password && dutySourceHosts().includes(u.hostname);
 }

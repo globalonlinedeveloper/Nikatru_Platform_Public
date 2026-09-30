@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ─────────────────────────────────────────────────────────────────────────────
 // assert-codeql-pr-no-new-high.mjs — a pull request may not ADD a high or
-// critical CodeQL alert.
+// critical CodeQL alert, nor ANY alert its own dispositions file does not answer.
 //
 // codeql.yml's header: "this is an alert sink, not a merge gate … If a finding
 // ever needs to block, the way to do it is a named, reviewed rule — not turning
@@ -26,15 +26,30 @@
 //      here (8 PR runs measured 2026-09-30: 136–212 s).
 //   2. Read the OPEN alerts on refs/pull/<N>/merge. The PR analysis is
 //      diff-informed, so this is the alerts in the PR's diff.
-//   3. NEW = high or critical, and its number is neither open nor dismissed on
-//      the default branch (an alert the PR merely touches keeps main's number).
-//   A new high FAILS (exit 1). The ways out are the reviewed ones: fix it, or a
-//   human dismisses it on GitHub with a reason (it then leaves state=open).
+//   3. NEW = its number is neither open nor dismissed on the default branch (an
+//      alert the PR merely touches keeps main's number). EVERY severity.
+//   4. Each new alert is graded against the PR's OWN tooling/ci/codeql-
+//      dispositions.json — the file in this checkout, not main's:
+//        · high or critical        → FAILS, whatever the file says. Fix it, or a
+//                                    human dismisses it on GitHub with a reason.
+//        · a flow rule (js/file-access-to-http, js/http-to-file-access) with a
+//          `by-design` entry for its number, rule and path in this PR → passes;
+//        · anything else           → FAILS: fix it in this PR.
+//
+// ⏱ 2026-09-30 · WHY EVERY SEVERITY (review of #1087, finding 2). Until today
+// this graded highs only, while limb C of assert-alert-disposition.mjs reads
+// MAIN's alerts. So a new medium or note passed its own PR — the rule ignored it,
+// and limb C could not see it yet — merged, and three minutes later main's
+// analysis opened it and limb C reddened every other PR and main until somebody
+// else dispositioned it. Grading the PR's new alerts against the PR's own file
+// closes that: an alert reaches main only with its disposition beside it, and
+// limb C can then go red only on a disproved claim or a CodeQL upgrade.
 //
 // ── EXIT CODES (C-COVERAGE-LOST-IS-NOT-PASS) ────────────────────────────────
-//   0  the PR's analysis was read and adds no high/critical alert; OR the event
-//      is not a pull request (printed, with why).
-//   1  the PR adds at least one high/critical alert.
+//   0  the PR's analysis was read, and every new alert it adds is dispositioned
+//      in the PR's own file; OR the event is not a pull request (printed).
+//   1  the PR adds a high/critical alert, or any alert its own file does not
+//      disposition, or its dispositions file is malformed.
 //   2  COVERAGE LOST — no token, the API refused (the job needs
 //      `security-events: read`), the analysis never appeared inside WAIT_MS,
 //      the analysis reported an error, a truncated page walk. Never a pass.
@@ -57,6 +72,9 @@ import { fileURLToPath } from 'node:url';
 
 import { readAlerts, CouldNotLook, GITHUB_API, DEFAULT_REPOSITORY, PAGED_SEVERITIES } from '../ops/check-code-scanning-age.mjs';
 import { fetchWithBoundedRetry } from '../ops/bounded-retry.mjs';
+import { parseDispositions, CODEQL_DISPOSITIONS_REL, HOST_RULES } from './assert-alert-disposition.mjs';
+
+const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
 export const CATEGORY = '/language:javascript-typescript';
 export const POLL_MS = 20_000;
@@ -81,8 +99,31 @@ export async function pickAnalysis(analyses, { mergeSha, headSha, parentsOf }) {
 
 /** PURE. The high/critical alerts the PR adds. */
 export function newHighs(prOpen, mainKnown) {
+  return newAlerts(prOpen, mainKnown).filter((a) => PAGED_SEVERITIES.includes(a.rule?.security_severity_level));
+}
+
+/** PURE. Every alert the PR adds, of any severity: open on the PR, unknown to main. */
+export function newAlerts(prOpen, mainKnown) {
   const known = new Set(mainKnown.map((a) => a.number));
-  return prOpen.filter((a) => a.state === 'open' && PAGED_SEVERITIES.includes(a.rule?.security_severity_level) && !known.has(a.number));
+  return prOpen.filter((a) => a.state === 'open' && !known.has(a.number));
+}
+
+/** PURE. The verdict on the PR's new alerts against the PR's OWN disposition
+ *  entries. Returns { added, highs, undispositioned, dispositioned }. */
+export function gradeNew(prOpen, mainKnown, entries) {
+  const byNumber = new Map(entries.map((e) => [e.alert, e]));
+  const added = newAlerts(prOpen, mainKnown);
+  const out = { added, highs: [], undispositioned: [], dispositioned: [] };
+  for (const a of added) {
+    if (PAGED_SEVERITIES.includes(a.rule?.security_severity_level)) {
+      out.highs.push(a);
+      continue;
+    }
+    const e = byNumber.get(a.number);
+    const ok = e && e.disposition === 'by-design' && HOST_RULES.includes(a.rule?.id) && e.rule === a.rule.id && e.path === a.most_recent_instance?.location?.path;
+    (ok ? out.dispositioned : out.undispositioned).push(a);
+  }
+  return out;
 }
 
 const where = (a) => {
@@ -133,7 +174,7 @@ function probeSource(probe) {
 
 async function main(argv) {
   const repository = process.env.GITHUB_REPOSITORY || DEFAULT_REPOSITORY;
-  console.log(`assert-codeql-pr-no-new-high — a pull request may not add a high or critical CodeQL alert   (${repository})`);
+  console.log(`assert-codeql-pr-no-new-high — a pull request adds no high/critical CodeQL alert, and no alert its own dispositions do not answer   (${repository})`);
   const probeFile = flagOf(argv, '--probe-file');
   let probe = null;
   if (probeFile) {
@@ -200,14 +241,45 @@ async function main(argv) {
     if (!Array.isArray(prOpen) || !prOpen.every((a) => Number.isInteger(a?.number) && a?.rule)) {
       return couldNotLook(`the alert list of ${ref} is not a list of alerts.`);
     }
-    const added = newHighs(prOpen, mainKnown);
-    if (added.length === 0) {
-      console.log(`ok  PR #${number} adds no ${PAGED_SEVERITIES.join('/')} CodeQL alert (${prOpen.length} open on ${ref}; ${mainKnown.length} open or dismissed on ${DEFAULT_BRANCH}).`);
+    // The PR's OWN dispositions file — the one in this checkout, which is what merges.
+    let text;
+    try {
+      text = probe?.dispositionsText ?? readFileSync(resolve(ROOT, CODEQL_DISPOSITIONS_REL), 'utf8');
+    } catch (e) {
+      console.error(`✗ ${CODEQL_DISPOSITIONS_REL} could not be read in this PR's tree (${e.message}).`);
+      process.exitCode = 1;
       return;
     }
-    console.error(`✗ PR #${number} ADDS ${added.length} ${PAGED_SEVERITIES.join('/').toUpperCase()} CODEQL ALERT(S):`);
-    for (const a of added) console.error(`    #${a.number}  ${a.rule.id}  ${a.rule.security_severity_level}  ${where(a)}${a.html_url ? `  ${a.html_url}` : ''}`);
-    console.error('    Fix it in this PR. If it is a false positive, a human dismisses it on GitHub WITH a reason, and this job is re-run.');
+    const { entries, problems } = parseDispositions(text);
+    if (problems.length) {
+      console.error(`✗ ${CODEQL_DISPOSITIONS_REL} in this PR has ${problems.length} problem(s):`);
+      for (const p of problems) console.error(`    ${p}`);
+      process.exitCode = 1;
+      return;
+    }
+    const v = gradeNew(prOpen, mainKnown, entries);
+    const line = (a) => `    #${a.number}  ${a.rule.id}  ${a.rule.security_severity_level ?? a.rule.severity ?? ''}  ${where(a)}${a.html_url ? `  ${a.html_url}` : ''}`;
+    for (const a of v.dispositioned) console.log(`    ·  new #${a.number} ${a.rule.id} ${where(a)} — by-design in this PR's ${CODEQL_DISPOSITIONS_REL}`);
+    if (v.highs.length === 0 && v.undispositioned.length === 0) {
+      console.log(
+        `ok  PR #${number} adds ${v.added.length} new CodeQL alert(s), every one dispositioned in its own file ` +
+          `(${prOpen.length} open on ${ref}; ${mainKnown.length} open or dismissed on ${DEFAULT_BRANCH}).`,
+      );
+      return;
+    }
+    if (v.highs.length) {
+      console.error(`✗ PR #${number} ADDS ${v.highs.length} ${PAGED_SEVERITIES.join('/').toUpperCase()} CODEQL ALERT(S) — never dispositionable here:`);
+      for (const a of v.highs) console.error(line(a));
+      console.error('    Fix it in this PR. If it is a false positive, a human dismisses it on GitHub WITH a reason, and this job is re-run.');
+    }
+    if (v.undispositioned.length) {
+      console.error(`✗ PR #${number} ADDS ${v.undispositioned.length} CODEQL ALERT(S) ITS OWN ${CODEQL_DISPOSITIONS_REL} DOES NOT DISPOSITION:`);
+      for (const a of v.undispositioned) console.error(line(a));
+      console.error(
+        `    Fix it in this PR — or, for a ${HOST_RULES.join(' / ')} whose host you verified, add a \`by-design\` entry with\n` +
+          '    that number, rule, path, reason and host to the file in THIS PR. Merged without one, it reddens every other PR.',
+      );
+    }
     process.exitCode = 1;
   } catch (e) {
     return couldNotLook(e instanceof CouldNotLook ? e.message : `${e.name}: ${e.message}`);

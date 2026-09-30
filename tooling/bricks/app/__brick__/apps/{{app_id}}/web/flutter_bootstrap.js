@@ -23,9 +23,7 @@
   and resolves against each app's own base href). And nothing in THIS comment
   may contain the closing tag sequence, which would end the comment early and
   stamp the rest of it into every app.
-%>// Generated from the app brick (tooling/bricks/app) by `mason make`. Do not edit
-// this copy; edit the brick. The two lines below are Flutter build tokens.
-{{flutter_js}}
+%>{{flutter_js}}
 {{flutter_build_config}}
 
 // The engine's text fallback fonts (Roboto, and the Noto set it loads on demand

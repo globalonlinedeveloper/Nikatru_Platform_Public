@@ -866,7 +866,7 @@ jobs:
     # accounts (09-selfhost-build-release.md §4.2).
     name: Security — secret and workflow scanners
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25 # why: the scanners (~1 min) plus the CodeQL PR rule's 12-minute step bound, with headroom
     # why: security-events: read is for assert-codeql-pr-no-new-high.mjs, which reads this
     # PR's CodeQL analysis and its alerts (GET .../code-scanning/analyses and /alerts).
     permissions:
