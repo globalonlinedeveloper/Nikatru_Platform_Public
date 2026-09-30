@@ -26,6 +26,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSyn
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { serialiseManifest } from '../coverage-manifest-format.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-guard-coverage.mjs');
@@ -207,7 +208,7 @@ function repo(
   // coverage-self-check limb stopped grepping raw prose and started asking
   // `stripSourceComments` what is actually CODE. Both are pure modules with no
   // imports of their own, so copying the two files is the whole dependency.
-  const deps = real ? ['tree-walk.mjs', 'text-reductions.mjs'] : [];
+  const deps = real ? ['tree-walk.mjs', 'text-reductions.mjs', 'coverage-manifest-format.mjs'] : [];
   for (const dep of deps) writeFileSync(join(ci, dep), readFileSync(join(CI_DIR, dep), 'utf8'));
 
   for (const [name, src] of Object.entries(all)) writeFileSync(join(ci, name), src);
@@ -282,7 +283,7 @@ function repo(
     );
   }
 
-  if (manifest !== undefined) writeFileSync(join(root, MANIFEST_REL), `${JSON.stringify(manifest, null, 2)}\n`);
+  if (manifest !== undefined) writeFileSync(join(root, MANIFEST_REL), serialiseManifest(manifest));
   return root;
 }
 
@@ -1668,17 +1669,21 @@ describe('A-5: a recorded failing case is code, and the exemption lists have cei
   const ANCHOR = 'const NOT_A_SCANNER = new Map([';
   const LONG = 'is a fixture entry whose reason is long enough to pass the reason floor, so that the ONLY thing this mutation changes is the size of the map against its ceiling.';
 
-  test('RED: a 40th NOT_A_SCANNER entry beyond the ratchet reds, naming the size and the ceiling', () => {
+  // ⏱ 2026-09-30: the ceiling is READ from the guard, so raising it (in its own
+  // commit, as the rule asks) moves this case with it instead of breaking it.
+  test('RED: one NOT_A_SCANNER entry beyond the ratchet reds, naming the size and the ceiling', () => {
+    const ceiling = Number(/const NOT_A_SCANNER_CEILING = (\d+);/.exec(readFileSync(GUARD, 'utf8'))?.[1]);
+    assert.ok(ceiling > 0, 'NOT_A_SCANNER_CEILING moved — this case no longer reads it');
     const r = runReal(
       seeded({
         mutateGuard: (s) => {
           assert.ok(s.includes(ANCHOR), 'the map moved — this mutation no longer reaches it');
-          return s.replace(ANCHOR, `${ANCHOR}\n  ['zz-fortieth.mjs', '${LONG}'],`);
+          return s.replace(ANCHOR, `${ANCHOR}\n  ['zz-one-past-the-ceiling.mjs', '${LONG}'],`);
         },
       }),
     );
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /NOT_A_SCANNER holds 40 entries and its ceiling is 39/);
+    assert.match(r.stderr, new RegExp(`NOT_A_SCANNER holds ${ceiling + 1} entries and its ceiling is ${ceiling}`));
   });
 
   test('RED: an exemption whose reason is a label, not a paragraph, is refused', () => {

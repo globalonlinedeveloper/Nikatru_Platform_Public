@@ -71,7 +71,7 @@ const EXCLUDED_FILES = new Set(['tooling/ci/workflow-scan.mjs', 'tooling/ci/asse
 const CI_PREFIX = 'tooling/ci/';
 const SKIP_DIRS = new Set(['node_modules', 'build', 'dist', '.dart_tool', '.wrangler', 'test', 'tests', 'fixtures', '__brick__']);
 const CODE = /\.(mjs|cjs|js|ts)$/;
-const PROPERTIES = new Set(['workflow-scan', 'refuses-blind']);
+const PROPERTIES = new Set(['workflow-scan', 'refuses-blind', 'path-compare']);
 
 const READS = [
   /['"`]\.github['"`]\s*,\s*['"`]workflows['"`]/,
@@ -155,9 +155,9 @@ for (const [rel, { raw, code }] of [...found.entries()].sort()) {
     if (!/import\s[^;]*['"`][^'"`]*workflow-scan\.mjs['"`]/.test(code)) {
       problems.push(`R2 ${rel} is declared \`workflow-scan\` and does not import tooling/ci/workflow-scan.mjs.`);
     }
-  } else if (typeof row.evidence !== 'string' || row.evidence.trim().length < 20) {
+  } else if (row.property !== 'path-compare' && (typeof row.evidence !== 'string' || row.evidence.trim().length < 20)) {
     problems.push(`R3 ${rel} is declared \`refuses-blind\` with no \`evidence\` of at least 20 characters — the text it prints when it cannot see.`);
-  } else if (!raw.includes(row.evidence)) {
+  } else if (row.property !== 'path-compare' && !raw.includes(row.evidence)) {
     problems.push(`R3 ${rel} is declared \`refuses-blind\` and its evidence text is not in the file: ${JSON.stringify(row.evidence)}. The refusal was removed or reworded.`);
   }
 }
@@ -199,6 +199,34 @@ for (const row of rows.values()) {
   }
 }
 
+// ── R6 · ⏱ 2026-09-30 · A `path-compare` ROW OPENS NO FILE AT ALL ────────────────
+// rv2-pipe-a P-1 (PR #1076): tooling/ops/land-rules.mjs names '.github/workflows/ci.yml'
+// only to compare it with a workflow RUN's `path` field (a run's `name` is ci.yml's
+// run-name, never "CI"). It reads no workflow, so neither `workflow-scan` nor
+// `refuses-blind` is true of it. A `path-compare` row says so, and R6 holds the claim
+// mechanically: the file's code, comments blanked, touches no filesystem (no fs
+// import, static or dynamic, and no read call) and does not import workflow-scan.mjs
+// (a file that does is a `workflow-scan` reader and must say that instead). A file
+// that starts reading the workflow therefore stops passing as a mere comparison.
+const FS_TOUCH = [
+  /from\s*['"`](?:node:)?fs(?:\/promises)?['"`]/,
+  /\b(?:import|require)\s*\(\s*['"`](?:node:)?fs(?:\/promises)?['"`]/,
+  /\b(?:readFileSync|readFile|createReadStream|openSync|readdirSync)\s*\(/,
+];
+let comparing = 0;
+for (const row of rows.values()) {
+  if (row.property !== 'path-compare') continue;
+  const hit = found.get(row.path);
+  if (!hit) continue; // R4 has already named a row whose file is gone or names no workflow.
+  comparing++;
+  if (FS_TOUCH.some((re) => re.test(hit.code)) || /workflow-scan\.mjs['"`]/.test(hit.code)) {
+    problems.push(
+      `R6 ${row.path} is declared \`path-compare\` and its code touches the filesystem or imports workflow-scan.mjs — ` +
+        'it can read a workflow, so declare it `workflow-scan` or `refuses-blind` instead.',
+    );
+  }
+}
+
 if (problems.length) {
   console.error(`✗ workflow readers — ${problems.length} problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
@@ -213,3 +241,4 @@ console.log(
     Object.entries(byProp).map(([k, v]) => `${v} ${k}`).join(' · '),
 );
 console.log(`    R5 — ${resolving} row(s) declare \`resolves: "local-uses"\`, each calling parseResolvedWorkflows( or listing .github/actions`);
+console.log(`    R6 — ${comparing} \`path-compare\` row(s), each touching no filesystem and importing no workflow-scan.mjs`);
