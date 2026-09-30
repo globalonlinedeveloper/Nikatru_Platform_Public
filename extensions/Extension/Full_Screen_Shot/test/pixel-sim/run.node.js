@@ -3447,7 +3447,9 @@ async function runHistoryActs() {
   let hcss = fs.readFileSync(path.join(ROOT, 'pages', 'history.html'), 'utf8');
   for (let prev = null; hcss !== prev;) {
     prev = hcss;
-    hcss = hcss.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    // An unterminated opener runs to the end (CodeQL #537): a fixed point over
+    // closed pairs alone still leaves a lone `<!--` behind.
+    hcss = hcss.replace(/<!--[\s\S]*?(?:-->|$)/g, '').replace(/\/\*[\s\S]*?(?:\*\/|$)/g, '');
   }
   const painted = (hcss.match(/\.redactline[^{}]*\{[^}]*\}/g) || [])
     .filter(r => /color|font-weight|border|background|outline/.test(r));
