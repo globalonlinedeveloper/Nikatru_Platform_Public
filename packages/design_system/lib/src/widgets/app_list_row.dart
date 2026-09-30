@@ -103,6 +103,20 @@ class AppListRow extends StatelessWidget {
   /// [titleMaxLines].
   final int subtitleMaxLines;
 
+  /// The text scale above which a one-line title gets a SECOND line.
+  static const double largeTextScale = 1.3;
+
+  /// The lines a title may take at [scaler] when the caller asked for
+  /// [requested] — B51 (round-2 review, ST-Y4; ST-D0 D0-4's "2-line at >1.3×
+  /// text"). Above [largeTextScale] a name that fitted at 100 % no longer
+  /// does, and one line ellipsised it to its first word or two: at 200 % a
+  /// 360 px row showed "Amazon Prime V…" for every Amazon plan alike. Two lines
+  /// keep the name readable and the rows distinguishable; at or below the
+  /// threshold nothing moves. Public and pure so the app's own rows adopt the
+  /// same rule rather than a second threshold.
+  static int titleLinesFor(TextScaler scaler, int requested) =>
+      scaler.scale(1) > largeTextScale && requested < 2 ? 2 : requested;
+
   /// The row's minimum height for [density]: 64 at standard density, 56 at
   /// compact. Public and pure so the rule is testable without a platform
   /// override.
@@ -150,7 +164,10 @@ class AppListRow extends StatelessWidget {
                   children: <Widget>[
                     Text(
                       title,
-                      maxLines: titleMaxLines,
+                      maxLines: titleLinesFor(
+                        MediaQuery.textScalerOf(context),
+                        titleMaxLines,
+                      ),
                       overflow: TextOverflow.ellipsis,
                       style: text.titleMedium?.copyWith(
                         color: scheme.onSurface,
