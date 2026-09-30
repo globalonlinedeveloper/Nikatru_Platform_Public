@@ -75,13 +75,14 @@
 //   node tooling/release/submit-play.mjs --dry-run --allow-missing-artifact
 //   node tooling/release/submit-play.mjs --submit --app <id> --confirm SUBMIT-TO-PLAY
 //                                        [--track <id>] [--status draft|completed]
+//   node tooling/release/submit-play.mjs --sync-listing --app <id> [--plan]
 //   [--repo-root <path>]   point every path below at a different tree (tests)
 //
 // Exit 0 = the submission path is walkable (or the submission committed).
 //       1 = it is not, or a gate refused, or the API did.
 //       2 = COVERAGE LOST: an input it must read is absent or unreadable (submit-common.mjs).
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -119,6 +120,13 @@ const PRIMARY_SOURCES = Object.freeze({
   editsValidate: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits/validate',
   editsCommit: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits/commit',
   editsDelete: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits/delete',
+  // ⏱ 2026-10-01 — the --sync-listing mode's endpoints, and the release-notes limit.
+  listingsUpdate: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits.listings/update',
+  detailsPatch: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits.details/patch',
+  imagesList: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits.images/list',
+  imagesDeleteall: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits.images/deleteall',
+  imagesUpload: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits.images/upload',
+  releaseNotesLimit: 'https://support.google.com/googleplay/android-developer/answer/9859348',
   serviceAccountGrant: 'https://developers.google.com/identity/protocols/oauth2/service-account',
   githubEnvironments:
     'https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments',
@@ -182,6 +190,8 @@ const CHANGES_IN_REVIEW_BEHAVIOR = 'ERROR_IF_IN_REVIEW';
 const ALLOWED_RELEASE_STATUS = Object.freeze(['draft', 'completed']);
 
 const CONFIRM_TOKEN = 'SUBMIT-TO-PLAY';
+/** The language the listing tree is written in: the release notes and --sync-listing send it. */
+const LISTING_LANGUAGE = 'en-US';
 const POSTURE_ENV = 'ANDROID_SIGNING_POSTURE';
 const RELEASE_SIGNED = 'release-signed';
 const SIGNATURE_GUARD = 'assert-artifact-signed.mjs';
@@ -191,14 +201,22 @@ const { flag, opt, root: ROOT, ok, step, abs, read, coverageLost, die, appOf } =
 
 const DRY_RUN = flag('dry-run');
 const SUBMIT = flag('submit');
+/** ⏱ 2026-10-01 (lane prep-play-first-release). The third mode: push the repo's listing tree to
+ *  Play — text, contact details, graphics and screenshots — in an edit of its own. Measured that
+ *  day: the Play record held the title and NOTHING else (no short or full description, no icon,
+ *  no feature graphic, no screenshot, no contact email), while this tree has carried all of it
+ *  since 2026-08-11; the runbook's "type it into the console" was the only path, and nobody had.
+ *  See the SYNC-LISTING block below for what it refuses. `--plan` reads and prints, commits nothing. */
+const SYNC_LISTING = flag('sync-listing');
+const PLAN_ONLY = flag('plan');
 const ALLOW_MISSING_ARTIFACT = flag('allow-missing-artifact');
 
 const problems = [];
 const prints = [];
 
-if (DRY_RUN === SUBMIT) {
+if ([DRY_RUN, SUBMIT, SYNC_LISTING].filter(Boolean).length !== 1) {
   die([
-    'FAIL exactly one of --dry-run and --submit is required.',
+    'FAIL exactly one of --dry-run, --submit and --sync-listing is required.',
     '     Defaulting either way is how a dry run becomes a submission (or a submission',
     '     silently becomes a no-op). The mode has to be said out loud.',
   ]);
@@ -252,6 +270,13 @@ function loopbackOr(envName, canonical) {
 
 let PLAY_BASE = PLAY_API_ORIGIN;
 let TOKEN_URL = GOOGLE_TOKEN_URL;
+
+if (SYNC_LISTING) {
+  // The same loopback-only test seam as --submit. PG-1…PG-6 do not apply: this mode uploads no
+  // bundle and refuses, at run time, any app where what it writes could reach a user.
+  PLAY_BASE = loopbackOr('PLAY_API_BASE_URL', PLAY_API_ORIGIN);
+  TOKEN_URL = loopbackOr('PLAY_OAUTH_TOKEN_URL', GOOGLE_TOKEN_URL);
+}
 
 if (SUBMIT) {
   PLAY_BASE = loopbackOr('PLAY_API_BASE_URL', PLAY_API_ORIGIN);
@@ -556,7 +581,7 @@ if (!Array.isArray(apps) || apps.length === 0) coverageLost([`${APPS} carries no
 const app = appOf(apps, APPS);
 
 console.log(`── Google Play submission path · app "${app.slug}" · channel "${CHANNEL_ID}" ──`);
-console.log(`   mode: ${DRY_RUN ? 'DRY RUN (nothing leaves this machine)' : 'SUBMIT (the real Play Developer API edit lifecycle)'}`);
+console.log(`   mode: ${DRY_RUN ? 'DRY RUN (nothing leaves this machine)' : SYNC_LISTING ? `SYNC LISTING${PLAN_ONLY ? ' · PLAN (reads Play, commits nothing)' : ''} (the listing tree, pushed through a Play edit)` : 'SUBMIT (the real Play Developer API edit lifecycle)'}`);
 console.log('');
 
 // ── 1. the metadata tree ─────────────────────────────────────────────────────
@@ -642,6 +667,30 @@ if (declaredLimits > 0 && limitsChecked === 0) {
 }
 if (!problems.length) {
   ok(`metadata tree ${metaDir} — ${filesChecked} field(s) present and non-empty, ${limitsChecked} within a SOURCED Play limit`);
+}
+
+// ── 1b. the release notes ("What's new") — OPTIONAL, and the one changelog source ──
+// ⏱ 2026-10-01 (lane prep-play-first-release). Until then no release carried notes: the track
+// update sent none and nothing in the tree held any. `release-notes.txt` in the listing tree is
+// now that source, sent with the release as its default-language notes. Optional because Play
+// does not require notes; bounded because Play does, and the bound is sourced:
+// ${PRIMARY_SOURCES.releaseNotesLimit}, verbatim (fetched 2026-10-01): "You can enter release
+// notes using up to 500 Unicode characters per language." Counted in code points, as above.
+const RELEASE_NOTES_FILE = 'release-notes.txt';
+const RELEASE_NOTES_MAX = 500;
+let releaseNotes = null;
+{
+  const text = read(`${metaDir}/${RELEASE_NOTES_FILE}`);
+  if (text === null) {
+    prints.push(`NO RELEASE NOTES — ${metaDir}/${RELEASE_NOTES_FILE} is absent, so the release goes up with none. Play does not require them.`);
+  } else if (text.trim() === '') {
+    problems.push(`${metaDir}/${RELEASE_NOTES_FILE} is EMPTY. Delete it to send no notes; an empty file is a release note nobody wrote.`);
+  } else if (charCount(text) > RELEASE_NOTES_MAX) {
+    problems.push(`${metaDir}/${RELEASE_NOTES_FILE} is ${charCount(text)} characters; Play caps release notes at ${RELEASE_NOTES_MAX} per language. Source: ${PRIMARY_SOURCES.releaseNotesLimit}`);
+  } else {
+    releaseNotes = text.trim();
+    ok(`release notes ${metaDir}/${RELEASE_NOTES_FILE} — ${charCount(text)} of ${RELEASE_NOTES_MAX} characters`);
+  }
 }
 
 // ── [10]D-6 PREFLIGHT — the portfolio-safety gate, run by the RELEASE PATH ────
@@ -744,7 +793,7 @@ if (hasKeyProperties) {
   // is an upload Play refuses, after the version code is spent.
   const line = `SIGNING POSTURE: DEBUG FALLBACK — none of ${envPairs.map(([, e]) => e).join(', ')} is set and there is no ${keyPropertiesRel}, so the release build is debug-signed and produces a build PROOF. 🔴 A debug-signed .aab CANNOT be uploaded to Play. ⚠️ THIS LINE IS A CLAIM ABOUT THE ENVIRONMENT, NOT ABOUT THE ARTIFACT, and until 2026-08-04 that distinction was the whole defect: an upload key existed, no workflow supplied it, and this printed the fallback as the recorded posture on every CI run. tooling/ci/android-signing.mjs now supplies the four variables in the release lanes and tooling/ci/assert-artifact-signed.mjs reads the real signer out of the bundle. Seeing this line inside a CI job means that step did not run.`;
   if (SUBMIT) problems.push(line);
-  else prints.push(line);
+  else if (DRY_RUN) prints.push(line);
 } else if (suppliedEnv.length < envPairs.length) {
   problems.push(
     `signing is HALF configured — ${suppliedEnv.length} of ${envPairs.length} keystore variable(s) set (${suppliedEnv.map(([, e]) => e).join(', ')}). Gradle refuses this state on purpose and so does this script: falling back to debug with three of four values present produces a debug-signed artifact from a run that looked like a signing run, and Play accepts a given upload key exactly once.`,
@@ -790,6 +839,8 @@ if (existsSync(abs(aabRel))) {
   } else {
     ok(`artifact ${aabRel} — ${(aabBytes / 1024 / 1024).toFixed(1)} MiB`);
   }
+} else if (SYNC_LISTING) {
+  prints.push(`NO BUILT ARTIFACT — --sync-listing pushes the listing only, and uploads no bundle.`);
 } else if (ALLOW_MISSING_ARTIFACT) {
   prints.push(
     `NO BUILT ARTIFACT — ${aabRel} is not on disk and --allow-missing-artifact was passed, so the listing, package name and signing posture were validated and the bundle was NOT. Build it with:  flutter build appbundle --release`,
@@ -819,7 +870,7 @@ if (saRaw === '') {
   // Owner-gated gap in a dry run; a hard stop in a submission, which cannot
   // authenticate without it.
   const line = `SERVICE ACCOUNT NOT CONFIGURED — ${SA_ENV} is absent. The Play Developer account is verified (register accountStatus, 2026-08-04) and a Google Cloud service account was granted Admin on it (ADR 031), so this is now a WIRING gap rather than an account one: the key exists and the repository secret is what carries it into a job.`;
-  if (SUBMIT) problems.push(`${line} --submit cannot mint an access token without it.`);
+  if (SUBMIT || SYNC_LISTING) problems.push(`${line} ${SUBMIT ? '--submit' : '--sync-listing'} cannot mint an access token without it.`);
   else prints.push(line);
 } else {
   let sa = null;
@@ -864,13 +915,22 @@ const isProductionTrack = (t) => t === 'production' || t.endsWith(':production')
 
 if (SUBMIT) {
   // ── PG-6 · ADR 031 class A ─────────────────────────────────────────────────
-  if (isProductionTrack(requestedTrack)) {
+  // ⏱ 2026-10-01 (lane prep-play-first-release): NARROWED to what class A names, and no further.
+  // Class A is "promoting any release to the production track" — putting it in front of users.
+  // A release with status `draft` is, per `tracksResource`, one whose "APKs are not being served
+  // to users": staging it is not promoting it, and the promotion (the rollout) stays a Play
+  // Console act by the owner. So production is refused for every status BUT draft. Measured the
+  // same day against the live account: this app is a Play DRAFT APP, and Play itself answers
+  // "Only releases with status draft may be created on draft app." for any other status on any
+  // non-internal track — so the first public release can only ever be staged this way.
+  if (isProductionTrack(requestedTrack) && releaseStatus !== 'draft') {
     die([
-      `FAIL --submit refuses the production track (${JSON.stringify(requestedTrack)}).`,
+      `FAIL --submit refuses the production track (${JSON.stringify(requestedTrack)}) with status ${JSON.stringify(releaseStatus)}.`,
       '     [ADR 031] class A — "promoting any release to the production track" is EXPLICITLY owner-only,',
       '     per instance, and never inferred from the agent holding the capability. The same ADR just as',
       '     explicitly does NOT gate testing-track uploads, which is what this path is for.',
-      '     A production release is a Play Console act by a human. Record it as a row in nikatru/owner-queue.json;',
+      '     A production release may be STAGED here with --status draft (not served to users); rolling it',
+      '     out is a Play Console act by a human. Record it as a row in nikatru/owner-queue.json;',
       '     nikatru/OWNER_QUEUE.md is generated from that file and refuses a hand edit.',
     ]);
   }
@@ -883,7 +943,7 @@ if (SUBMIT) {
       '     a value it cannot set by accident.',
     ]);
   }
-} else {
+} else if (DRY_RUN) {
   prints.push(
     `TRACK: ${requestedTrack === '' ? 'unset — --submit would DISCOVER the least-public track the API offers (edits.tracks.list)' : JSON.stringify(requestedTrack)}. Not validated against a vocabulary — Play allows custom closed-test track names, so an allowlist would reject correct input. The production track is refused by POLICY (ADR 031 class A), which is a different check.`,
   );
@@ -995,6 +1055,193 @@ async function mintAccessToken(sa) {
 const editsBase = `${PLAY_BASE}/androidpublisher/v3/applications/${encodeURIComponent(packageName)}/edits`;
 const uploadBase = `${PLAY_BASE}/upload/androidpublisher/v3/applications/${encodeURIComponent(packageName)}/edits`;
 
+// ═════════════════════════════════════════════════════════════════════════════
+// --sync-listing · THE REPO'S LISTING TREE, PUSHED TO PLAY IN AN EDIT OF ITS OWN
+//
+// ⏱ 2026-10-01 (lane prep-play-first-release). The listing tree's README says "the Play Console
+// is a copy of it", and until this block nothing made the copy. Measured that day through the
+// API: the live record held the title and nothing else. This pushes, from the tree and the app's
+// own config, exactly what the API can carry:
+//   · listing text   — title / short / full description    (PRIMARY_SOURCES.listingsUpdate)
+//   · contact detail — contactEmail = AppConfig.supportEmail, contactWebsite = AppConfig.companyUrl
+//                                                            (PRIMARY_SOURCES.detailsPatch)
+//   · graphics       — icon, featureGraphic, the phone screenshots, and the tablet set into BOTH
+//                      tablet slots ("tablets (7-inch and 10-inch)", the register's tablet source)
+//                      (PRIMARY_SOURCES.imagesList · imagesDeleteall · imagesUpload)
+// A slot is replaced only when the sha256 sequence Play holds differs from the tree's, so a
+// second run with nothing changed writes nothing and commits nothing.
+//
+// 🔴 WHAT IT REFUSES: an app with ANY release beyond internal testing that is not a draft. On
+// such an app a listing change goes to review and then to users, which is publishing ([ADR 031]
+// class A) and the owner's act — so this mode, which runs without the store-publish environment,
+// is confined to the state where nothing it writes can reach a user. It also refuses a default
+// language other than the one this tree is written in. The declarations (Data safety, content
+// rating, target audience, ads, app access) have no endpoint here; they stay console acts.
+// ═════════════════════════════════════════════════════════════════════════════
+/** Play image type for each file the register's graphicAssets declares. */
+const PLAY_IMAGE_TYPE_OF_ASSET = Object.freeze({ 'store-icon-512.png': 'icon', 'feature-graphic.png': 'featureGraphic' });
+/** Play screenshot slots for each deviceTypeCoverage set. */
+const PLAY_IMAGE_TYPES_OF_SET = Object.freeze({ phone: ['phoneScreenshots'], tablet: ['sevenInchScreenshots', 'tenInchScreenshots'] });
+const TESTING_ONLY_TRACKS = new Set(['internal', 'qa']);
+
+/** Everything the tree says the listing is — read BEFORE any request, so a bad tree costs no edit. */
+function desiredListing() {
+  const text = (rel) => (read(`${metaDir}/${rel}`) ?? '').trim();
+  const configRel = (contract.appConfigPaths ?? []).map((p) => p.replace('{app}', app.slug)).find((p) => read(p) !== null);
+  if (!configRel) {
+    coverageLost([
+      `none of storeMetadataContract.appConfigPaths exists for app "${app.slug}".`,
+      "The contact email and website are read from the app's own config; with none there is no contact detail to push.",
+    ]);
+  }
+  const dartConst = (name) => {
+    const m = read(configRel).match(new RegExp(`static const String ${name} = '([^']+)';`));
+    if (!m) coverageLost([`${configRel} declares no \`static const String ${name}\`.`, 'The Play contact detail is that constant, so with it unreadable nothing honest can be sent.']);
+    return m[1];
+  };
+  const graphic = contract?.perChannel?.[CHANNEL_ID]?.graphicAssets ?? {};
+  const images = [];
+  for (const [file, type] of Object.entries(PLAY_IMAGE_TYPE_OF_ASSET)) {
+    if (!graphic.assets?.[file]) coverageLost([`graphicAssets.assets declares no ${file} for "${CHANNEL_ID}", and --sync-listing maps it to Play's ${type}.`]);
+    images.push({ type, files: [`${metaDir}/${file}`] });
+  }
+  const sets = graphic.screenshots?.deviceTypeCoverage?.sets ?? {};
+  for (const [set, types] of Object.entries(PLAY_IMAGE_TYPES_OF_SET)) {
+    const dir = sets[set]?.dir;
+    if (typeof dir !== 'string') coverageLost([`graphicAssets.screenshots.deviceTypeCoverage.sets.${set}.dir is not declared for "${CHANNEL_ID}".`]);
+    let names = [];
+    try {
+      names = readdirSync(abs(`${metaDir}/${dir}`)).filter((n) => n.endsWith('.png')).sort();
+    } catch {
+      names = [];
+    }
+    if (names.length === 0) coverageLost([`${metaDir}/${dir} holds no .png — the ${set} screenshot set would be pushed EMPTY.`]);
+    for (const type of types) images.push({ type, files: names.map((n) => `${metaDir}/${dir}/${n}`) });
+  }
+  return {
+    listing: { language: LISTING_LANGUAGE, title: text('title.txt'), shortDescription: text('short-description.txt'), fullDescription: text('long-description.txt') },
+    details: { contactEmail: dartConst('supportEmail'), contactWebsite: dartConst('companyUrl') },
+    images,
+  };
+}
+
+async function syncListing() {
+  const want = desiredListing();
+  const sha = (rel) => createHash('sha256').update(readFileSync(abs(rel))).digest('hex');
+  const changes = [];
+  let edit = null;
+  let tok = null;
+  let done = false;
+  try {
+    step('minting an access token (JWT-bearer, RS256) — the assertion and the token are never printed');
+    tok = await mintAccessToken(serviceAccount);
+    edit = (await asJson(await request('edits.insert', 'POST', editsBase, { token: tok, headers: { 'content-type': 'application/json' }, body: '{}' }))).id;
+    if (typeof edit !== 'string' || edit === '') throw new Error('edits.insert returned no edit id.');
+    ok(`edit ${edit} opened`);
+    const at = `${editsBase}/${edit}`;
+
+    const tracks = (await asJson(await request('edits.tracks.list', 'GET', `${at}/tracks`, { token: tok }))).tracks ?? [];
+    const served = tracks.flatMap((t) =>
+      TESTING_ONLY_TRACKS.has(t?.track) ? [] : (t?.releases ?? []).filter((r) => r?.status !== 'draft').map((r) => `${t.track}:${r.status}`),
+    );
+    if (served.length > 0) {
+      throw new Error(
+        `this app has release(s) beyond internal testing that are not drafts (${served.join(', ')}). A listing change on it goes to review and then to users — publishing, [ADR 031] class A, the owner's act. --sync-listing runs only while nothing it writes can reach a user.`,
+      );
+    }
+    ok(`no release beyond internal testing is served (tracks: ${tracks.map((t) => t?.track).join(', ')}) — nothing written here can reach a user`);
+
+    const details = await asJson(await request('edits.details.get', 'GET', `${at}/details`, { token: tok }));
+    if (details.defaultLanguage !== LISTING_LANGUAGE) {
+      throw new Error(
+        `the app's default language is ${JSON.stringify(details.defaultLanguage)} and ${metaDir} is the ${LISTING_LANGUAGE} listing. Pushing it would put ${LISTING_LANGUAGE} copy under another language's name.`,
+      );
+    }
+    const detailDiff = Object.entries(want.details).filter(([k, v]) => details[k] !== v);
+    if (detailDiff.length) {
+      changes.push(`details: ${detailDiff.map(([k, v]) => `${k} ${JSON.stringify(details[k] ?? null)} → ${JSON.stringify(v)}`).join(', ')}`);
+      if (!PLAN_ONLY) {
+        await request('edits.details.patch', 'PATCH', `${at}/details`, { token: tok, headers: { 'content-type': 'application/json' }, body: JSON.stringify(want.details) });
+      }
+    }
+
+    const liveRes = await request('edits.listings.get', 'GET', `${at}/listings/${LISTING_LANGUAGE}`, { token: tok, expect: [200, 404] });
+    const live = liveRes.status === 404 ? {} : await asJson(liveRes);
+    const textDiff = ['title', 'shortDescription', 'fullDescription'].filter((k) => (live[k] ?? '') !== want.listing[k]);
+    if (textDiff.length) {
+      changes.push(`listing ${LISTING_LANGUAGE}: ${textDiff.map((k) => `${k} (${[...(live[k] ?? '')].length} → ${[...want.listing[k]].length} chars)`).join(', ')}`);
+      if (!PLAN_ONLY) {
+        await request('edits.listings.update', 'PUT', `${at}/listings/${LISTING_LANGUAGE}`, { token: tok, headers: { 'content-type': 'application/json' }, body: JSON.stringify(want.listing) });
+      }
+    }
+
+    const imgBase = `${uploadBase}/${edit}/listings/${LISTING_LANGUAGE}`;
+    for (const { type, files } of want.images) {
+      const liveImgs = (await asJson(await request('edits.images.list', 'GET', `${at}/listings/${LISTING_LANGUAGE}/${type}`, { token: tok }))).images ?? [];
+      const liveSums = liveImgs.map((i) => String(i?.sha256 ?? '').toLowerCase());
+      const wantSums = files.map(sha);
+      if (liveSums.join() === wantSums.join()) continue;
+      changes.push(`${type}: ${liveSums.length} image(s) on Play → ${files.length} from the tree`);
+      if (PLAN_ONLY) continue;
+      if (liveImgs.length) await request('edits.images.deleteall', 'DELETE', `${at}/listings/${LISTING_LANGUAGE}/${type}`, { token: tok });
+      for (const [i, rel] of files.entries()) {
+        const bytes = readFileSync(abs(rel));
+        const up = await asJson(
+          await request('edits.images.upload', 'POST', `${imgBase}/${type}?uploadType=media`, {
+            token: tok,
+            headers: { 'content-type': 'image/png', 'content-length': String(bytes.length) },
+            body: bytes,
+          }),
+        );
+        const got = String(up?.image?.sha256 ?? '').toLowerCase();
+        if (got !== '' && got !== wantSums[i]) {
+          throw new Error(`${type} ${rel}: Play holds sha256 ${got} and the file hashes to ${wantSums[i]}. The upload was corrupted in transit.`);
+        }
+      }
+    }
+
+    for (const c of changes) console.log(`→    ${PLAN_ONLY ? 'would change' : 'changed'} ${c}`);
+    if (changes.length === 0) ok('Play already holds exactly what the tree says — nothing to write');
+    if (PLAN_ONLY || changes.length === 0) return { changes, committed: false };
+
+    await request('edits.validate', 'POST', `${at}:validate`, { token: tok, headers: { 'content-type': 'application/json' }, body: '' });
+    ok('edit validated — Play reports no errors in it');
+    await request('edits.commit', 'POST', `${at}:commit?changesInReviewBehavior=${CHANGES_IN_REVIEW_BEHAVIOR}`, {
+      token: tok,
+      headers: { 'content-type': 'application/json' },
+      body: '',
+    });
+    done = true;
+    ok(`edit ${edit} COMMITTED — ${changes.length} listing change(s) are on the Play record`);
+    return { changes, committed: true };
+  } finally {
+    // An uncommitted edit (a plan, a no-op, or a failure) is discarded, never left open.
+    if (edit !== null && !done) {
+      try {
+        await request('edits.delete', 'DELETE', `${editsBase}/${edit}`, { token: tok, expect: [200, 204] });
+        ok(`edit ${edit} discarded — nothing uncommitted is left open`);
+      } catch (e) {
+        console.error(`!!   edit ${edit} could NOT be discarded (${REDACT(e.message)}); discard it in the Play Console before the next run.`);
+      }
+    }
+  }
+}
+
+if (SYNC_LISTING) {
+  try {
+    const r = await syncListing();
+    console.log('');
+    console.log(`submit-play: LISTING ${PLAN_ONLY ? 'PLAN — nothing was committed' : r.committed ? 'SYNCED' : 'ALREADY IN SYNC'} (${r.changes.length} change(s)).`);
+    console.log('   ⬜ Still console-only: Data safety, content rating, target audience, ads, app access, category, countries.');
+    process.exitCode = 0;
+  } catch (err) {
+    console.error('');
+    console.error(`FAIL the listing sync failed: ${REDACT(err.message)}`);
+    console.error('\nsubmit-play: FAILED');
+    process.exitCode = 1;
+  }
+}
+
 let editId = null;
 let token = null;
 let committed = false;
@@ -1009,7 +1256,8 @@ let committed = false;
  *  event loop is allowed to drain the pool on its own. */
 let failure = null;
 
-try {
+// Only --submit walks the release lifecycle below; --sync-listing finished above.
+if (SUBMIT) try {
   step('minting an access token (JWT-bearer, RS256) — the assertion and the token are never printed');
   token = await mintAccessToken(serviceAccount);
   ok('access token — the service-account assertion was accepted');
@@ -1064,8 +1312,8 @@ try {
     track = candidate;
     ok(`track ${JSON.stringify(track)} — the least-public track the API offers (no --track given)`);
   }
-  if (isProductionTrack(track)) {
-    // Belt and braces: PG-6 already refused an explicit production track, and
+  if (isProductionTrack(track) && releaseStatus !== 'draft') {
+    // Belt and braces: PG-6 already refused an explicit non-draft production track, and
     // discovery skips it. A third check costs nothing and the thing it guards
     // is a one-way door.
     throw new Error(`resolved track ${JSON.stringify(track)} is a production track. [ADR 031] class A — owner-only, per instance.`);
@@ -1136,9 +1384,20 @@ try {
   await request('edits.tracks.update', 'PUT', `${editsBase}/${editId}/tracks/${encodeURIComponent(track)}`, {
     token,
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ track, releases: [{ name: releaseName, versionCodes: [String(versionCode)], status: releaseStatus }] }),
+    body: JSON.stringify({
+      track,
+      releases: [
+        {
+          name: releaseName,
+          versionCodes: [String(versionCode)],
+          status: releaseStatus,
+          // ${PRIMARY_SOURCES.tracksResource}: Release.releaseNotes is LocalizedText[] {language, text}.
+          ...(releaseNotes === null ? {} : { releaseNotes: [{ language: LISTING_LANGUAGE, text: releaseNotes }] }),
+        },
+      ],
+    }),
   });
-  ok(`track ${track} — release ${JSON.stringify(releaseName)} with versionCode ${versionCode}, status ${releaseStatus}`);
+  ok(`track ${track} — release ${JSON.stringify(releaseName)} with versionCode ${versionCode}, status ${releaseStatus}, ${releaseNotes === null ? 'no release notes' : `release notes ${charCount(releaseNotes)} chars`}`);
 
   // ── L5 · edits.validate, BEFORE commit ─────────────────────────────────────
   // Source: ${PRIMARY_SOURCES.editsValidate} — "Validates an app edit.",
@@ -1183,7 +1442,9 @@ try {
   failure = lines;
 }
 
-if (failure) {
+if (!SUBMIT) {
+  // --sync-listing reported and set its own exit code above.
+} else if (failure) {
   console.error('');
   for (const l of failure) console.error(l);
   console.error('\nsubmit-play: FAILED');

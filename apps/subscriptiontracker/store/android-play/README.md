@@ -45,6 +45,7 @@ run, so drift is a build failure rather than a discovery at submission time.
 | `data-safety.json` | **Data safety form** | derived from the code — see below | ✅ `assert-play-declarations.mjs` |
 | `content-rating.json` | **Content rating questionnaire** | the app's own content — see below | ✅ `assert-play-declarations.mjs` |
 | `ads-declaration.json` | **App content → Ads** | derived from the shipped **format** — the widget tree and the served config, not the pubspec | ✅ `assert-ads-declarations.mjs` |
+| `release-notes.txt` | Release notes ("What's new"), default language | **written by hand** per release — optional; `tooling/release/submit-play.mjs` sends it with the release | ≤ 500 chars (`submit-play.mjs`, sourced) |
 
 **The brick vars are the generation mechanism, the app is the instance.** The
 `app_brick` (`tooling/bricks/app/brick.yaml`) already declares `category` and

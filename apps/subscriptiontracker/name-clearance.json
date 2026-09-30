@@ -3,9 +3,9 @@
     "GENERATED — whyLines() in tooling/store/name-clearance-why.mjs computes these lines from this record's own fields, and limb 11 of tooling/ci/assert-name-clearance.mjs refuses any other text. Change a field, then regenerate offline: node tooling/store/name-clearance.mjs --why --app subscriptiontracker",
     "\"Nikatru Subscription Tracker\", probed 2026-09-28; overall UNDETERMINED. Re-probe (networked, ~20 external calls): node tooling/store/name-clearance.mjs 'Nikatru Subscription Tracker' --app subscriptiontracker --execute",
     "Clear (PROVEN-FREE) — an authority answered \"no such name\" with its red control green: web, amo.",
-    "Held (HELD) — the owner reserved the name in that store's console and recorded its id: none.",
+    "Held (HELD) — the owner reserved the name in that store's console and recorded its id: android-play (store record com.nikatru.subscriptiontracker, 2026-10-01).",
     "Blocked for a submission (PROVEN-TAKEN) — a live record holds the name: none.",
-    "Blocked for a submission (UNDETERMINED) — could not check, which is never a pass: android-play, ios-appstore (global), macos-appstore (global), windows-store, linux-snap (global), chrome-webstore, edge-addons.",
+    "Blocked for a submission (UNDETERMINED) — could not check, which is never a pass: ios-appstore (global), macos-appstore (global), windows-store, linux-snap (global), chrome-webstore, edge-addons.",
     "Not applicable (NOT-APPLICABLE) — no third party holds a name there, and no submission passes on it: windows-direct, linux-appimage, apps-gov-in.",
     "Trademark: PROCEED, ruled by owner on 2026-09-09, basis ADR 074 (owner, 2026-09-09: store name chosen; section 6 defers the NIKATRU mark), read and applied by the parent on 2026-09-24 under the owner's 2026-09-23 delegation. No software can clear a trademark; the ruling is the owner's.",
     "A submit lane runs node tooling/ci/assert-name-clearance.mjs --for-submission=<channel>, which passes only PROVEN-FREE, or HELD with its store record id, on that channel. The owner records a hold with: node tooling/store/name-clearance.mjs --hold <channel> --record <store record id> --app subscriptiontracker",
@@ -31,9 +31,9 @@
       "control": null
     },
     "android-play": {
-      "verdict": "UNDETERMINED",
+      "verdict": "HELD",
       "uniqueness": "tolerated",
-      "why": "Play TOLERATES duplicate titles, so a title hit would be advisory rather than blocking — but the store search surface is JS-rendered with no unauthenticated API, so NO TITLE VERDICT can be proven here. The permanent applicationId is free of any PUBLISHED listing (control green, HTTP 404); a draft in somebody's console would not show. MANUAL/AUTHENTICATED STEP: a logged-in Play Console title check.",
+      "why": "HELD by the owner, recorded 2026-10-01: the name is reserved in this store's own console under record com.nikatru.subscriptiontracker. No unauthenticated probe can see a console reservation, so --execute carries this verdict forward rather than re-probing over it. Before the hold the probe read UNDETERMINED: Play TOLERATES duplicate titles, so a title hit would be advisory rather than blocking — but the store search surface is JS-rendered with no unauthenticated API, so NO TITLE VERDICT can be proven here. The permanent applicationId is free of any PUBLISHED listing (control green, HTTP 404); a draft in somebody's console would not show. MANUAL/AUTHENTICATED STEP: a logged-in Play Console title check.",
       "evidence": [
         "apps/subscriptiontracker/android/app/build.gradle.kts declares com.nikatru.subscriptiontracker",
         "applicationId com.nikatru.subscriptiontracker — HTTP 404, no published listing holds it (control green)."
@@ -42,7 +42,10 @@
         "what": "play.google.com details?id=com.spotify.music (known present)",
         "green": true,
         "detail": "HTTP 200"
-      }
+      },
+      "storeRecordId": "com.nikatru.subscriptiontracker",
+      "heldBy": "owner",
+      "heldOn": "2026-10-01"
     },
     "ios-appstore": {
       "verdict": "UNDETERMINED",

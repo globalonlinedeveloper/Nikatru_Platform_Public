@@ -94,6 +94,17 @@ const SECRET = 'THIS-IS-A-PRIVATE-KEY-DO-NOT-PRINT';
 const CONFIRM = 'SUBMIT-TO-PLAY';
 const PACKAGE = 'com.nikatru.subscriptiontracker';
 
+/** Distinct bytes per listing image, so a slot's sha256 sequence says which files it holds. */
+const LISTING_PNGS = {
+  'store-icon-512.png': 'icon-bytes',
+  'feature-graphic.png': 'feature-bytes',
+  'screenshots/01-home.png': 'phone-1',
+  'screenshots/02-calendar.png': 'phone-2',
+  'screenshots-tablet/01-home.png': 'tablet-1',
+  'screenshots-tablet/02-calendar.png': 'tablet-2',
+};
+const sha256 = (v) => createHash('sha256').update(v).digest('hex');
+
 const FILES = {
   'README.md': 'derivation map\n',
   'title.txt': 'Subly\n',
@@ -171,6 +182,9 @@ function tree({
   withKeyProperties = false,
   workflow = {},
   omitWorkflow = false,
+  // --sync-listing: the register's graphicAssets + appConfigPaths, the app config and the PNGs.
+  withListingAssets = false,
+  releaseNotes = null,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const write = (rel, body) => {
@@ -212,6 +226,13 @@ function tree({
       },
     ],
   };
+  if (withListingAssets) {
+    register.storeMetadataContract.appConfigPaths = ['apps/{app}/lib/core/config/app_config.dart', 'apps/{app}/lib/core/app_config.dart'];
+    register.storeMetadataContract.perChannel['android-play'].graphicAssets = {
+      assets: { 'feature-graphic.png': { width: 1024, height: 500 }, 'store-icon-512.png': { width: 512, height: 512 } },
+      screenshots: { deviceTypeCoverage: { sets: { phone: { dir: 'screenshots' }, tablet: { dir: 'screenshots-tablet' } } } },
+    };
+  }
   if (mutateRegister) mutateRegister(register);
 
   write('catalog/apps.json', JSON.stringify([{ slug: 'subscriptiontracker', name: 'Subly', tagline: 'Track every subscription in one place', platforms: ['web'], status: 'live' }], null, 2));
@@ -226,6 +247,12 @@ function tree({
     }
   }
   if (withArtifact) write('apps/subscriptiontracker/build/app/outputs/bundle/release/app-release.aab', 'x'.repeat(artifactBytes));
+  if (releaseNotes !== null) write('apps/subscriptiontracker/store/android-play/release-notes.txt', releaseNotes);
+  if (withListingAssets) {
+    const dir = 'apps/subscriptiontracker/store/android-play';
+    for (const [rel, bytes] of Object.entries(LISTING_PNGS)) write(`${dir}/${rel}`, bytes);
+    write('apps/subscriptiontracker/lib/core/app_config.dart', "class AppConfig {\n  static const String companyUrl = 'https://nikatru.com';\n  static const String supportEmail = 'support@nikatru.com';\n}\n");
+  }
   return root;
 }
 
@@ -312,8 +339,14 @@ async function api({
   omitSha256 = false,
   failDelete = false,
   offOriginSession = false,
+  trackReleases = {},     // track -> releases[] as edits.tracks.list returns them
+  details = { defaultLanguage: 'en-US' },
+  listing = null,         // the live en-US listing; null answers 404
+  images = {},            // imageType -> [{ sha256 }]
 } = {}) {
   const calls = [];
+  const bodies = [];
+  const state = { details: { ...details }, listing, images: { ...images } };
   const body = (req) =>
     new Promise((res) => {
       const chunks = [];
@@ -384,7 +417,41 @@ async function api({
       return send(200, { id: EDIT_ID, expiryTimeSeconds: String(Math.floor(Date.now() / 1000) + 3600) });
     }
     if (req.method === 'GET' && path === `${editsRoot}/${EDIT_ID}/tracks`) {
-      return send(200, { kind: 'androidpublisher#tracksListResponse', tracks: tracks.map((t) => ({ track: t, releases: [] })) });
+      return send(200, { kind: 'androidpublisher#tracksListResponse', tracks: tracks.map((t) => ({ track: t, releases: trackReleases[t] ?? [] })) });
+    }
+    const listingAt = `${editsRoot}/${EDIT_ID}/listings/en-US`;
+    if (path === `${editsRoot}/${EDIT_ID}/details`) {
+      if (req.method === 'GET') return send(200, state.details);
+      if (req.method === 'PATCH') {
+        const sent = JSON.parse((await body(req)).toString());
+        bodies.push({ what: 'details', body: sent });
+        state.details = { ...state.details, ...sent };
+        return send(200, state.details);
+      }
+    }
+    if (path === listingAt) {
+      if (req.method === 'GET') return state.listing === null ? send(404, { error: { message: 'not found' } }) : send(200, state.listing);
+      if (req.method === 'PUT') {
+        const sent = JSON.parse((await body(req)).toString());
+        bodies.push({ what: 'listing', body: sent });
+        state.listing = sent;
+        return send(200, sent);
+      }
+    }
+    if (path.startsWith(`${listingAt}/`)) {
+      const type = path.slice(listingAt.length + 1);
+      if (req.method === 'GET') return send(200, { images: state.images[type] ?? [] });
+      if (req.method === 'DELETE') {
+        state.images[type] = [];
+        return send(200, { deleted: [] });
+      }
+    }
+    if (req.method === 'POST' && path.startsWith(`${uploadRoot}/${EDIT_ID}/listings/en-US/`)) {
+      if (url.searchParams.get('uploadType') !== 'media') return send(400, { error: 'expected uploadType=media' });
+      const type = path.slice(`${uploadRoot}/${EDIT_ID}/listings/en-US/`.length);
+      const img = { id: String(Math.random()), sha256: sha256(await body(req)) };
+      (state.images[type] ??= []).push(img);
+      return send(200, { image: img });
     }
     if (req.method === 'POST' && path === `${uploadRoot}/${EDIT_ID}/bundles`) {
       if (url.searchParams.get('uploadType') !== 'resumable') return send(400, { error: 'expected uploadType=resumable' });
@@ -403,6 +470,7 @@ async function api({
     if (req.method === 'PUT' && path.startsWith(`${editsRoot}/${EDIT_ID}/tracks/`)) {
       if (failAt === 'tracks.update') return send(400, { error: { message: 'track refused' } });
       const sent = JSON.parse((await body(req)).toString());
+      bodies.push({ what: 'track', body: sent });
       return send(200, sent);
     }
     if (req.method === 'POST' && path === `${editsRoot}/${EDIT_ID}:validate`) {
@@ -422,7 +490,7 @@ async function api({
 
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  return { origin, calls, close: () => new Promise((r) => server.close(r)) };
+  return { origin, calls, bodies, state, close: () => new Promise((r) => server.close(r)) };
 }
 
 /** Everything a passing `--submit` needs, minus whatever a case overrides. */
@@ -452,7 +520,7 @@ const SUBMIT_ARGS = ['--submit', '--app', 'subscriptiontracker', '--confirm', CO
 async function submit(treeOpts = { withArtifact: true }, { apiOpts = {}, args = SUBMIT_ARGS, env = {} } = {}) {
   const srv = await api(apiOpts);
   try {
-    return { ...(await runAsync(tree(treeOpts), { args, env: submitEnv(srv.origin, env) })), calls: srv.calls };
+    return { ...(await runAsync(tree(treeOpts), { args, env: submitEnv(srv.origin, env) })), calls: srv.calls, bodies: srv.bodies, state: srv.state };
   } finally {
     await srv.close();
   }
@@ -501,13 +569,25 @@ describe('submit-play — the submission path is walkable', () => {
   test('refuses when neither --dry-run nor --submit is given', () => {
     const { code, out } = run(tree(), { args: ['--app', 'subscriptiontracker'] });
     assert.equal(code, 1, out);
-    assert.match(out, /exactly one of --dry-run and --submit is required/);
+    assert.match(out, /exactly one of --dry-run, --submit and --sync-listing is required/);
+  });
+
+  test('release notes over Play\'s 500-character limit FAIL the dry run', () => {
+    const { code, out } = run(tree({ releaseNotes: 'x'.repeat(501) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /release-notes\.txt is 501 characters; Play caps release notes at 500/);
+  });
+
+  test('an EMPTY release-notes.txt FAILS rather than sending a blank', () => {
+    const { code, out } = run(tree({ releaseNotes: '  \n' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /release-notes\.txt is EMPTY/);
   });
 
   test('refuses when BOTH modes are given', () => {
     const { code, out } = run(tree(), { args: ['--dry-run', '--submit', '--app', 'subscriptiontracker'] });
     assert.equal(code, 1, out);
-    assert.match(out, /exactly one of --dry-run and --submit is required/);
+    assert.match(out, /exactly one of --dry-run, --submit and --sync-listing is required/);
   });
 
   // ── the listing ───────────────────────────────────────────────────────────
@@ -993,6 +1073,12 @@ describe('submit-play — the publish gate refuses', () => {
     assert.match(out, /refuses the production track/);
   });
 
+  test('PG-6 · refuses the production track with status completed, said explicitly', async () => {
+    const { code, out } = await submit(gated, { args: [...SUBMIT_ARGS, '--track', 'production', '--status', 'completed'] });
+    assert.equal(code, 1, out);
+    assert.match(out, /refuses the production track \("production"\) with status "completed"/);
+  });
+
   test('PG-6 · refuses a staged-rollout status — there is no userFraction flag at all', async () => {
     const { code, out } = await submit(gated, { args: [...SUBMIT_ARGS, '--status', 'inProgress'] });
     assert.equal(code, 1, out);
@@ -1242,6 +1328,158 @@ describe('submit-play --submit — the Google Play Developer API edit lifecycle'
     const { code, out } = await submit(gated, { args: [...SUBMIT_ARGS, '--status', 'draft'] });
     assert.equal(code, 0, out);
     assert.match(out, /status draft/);
+  });
+
+  // ⏱ 2026-10-01: staging is not promoting. A DRAFT on production is not served to users, and
+  // Play refuses any other status on a draft app — so this is the one way a first release is staged.
+  test('PG-6 · STAGES a production release when --status is draft, and sends it as a draft', async () => {
+    const { code, out, bodies } = await submit(gated, { args: [...SUBMIT_ARGS, '--track', 'production', '--status', 'draft'] });
+    assert.equal(code, 0, out);
+    const put = bodies.find((b) => b.what === 'track');
+    assert.equal(put.body.track, 'production', out);
+    assert.deepEqual(put.body.releases.map((r) => r.status), ['draft']);
+  });
+
+  test('release notes: release-notes.txt rides on the release as its en-US notes', async () => {
+    const { code, out, bodies } = await submit({ ...gated, releaseNotes: 'First release.\n' });
+    assert.equal(code, 0, out);
+    assert.deepEqual(bodies.find((b) => b.what === 'track').body.releases[0].releaseNotes, [{ language: 'en-US', text: 'First release.' }]);
+  });
+
+  test('release notes: none are sent when the file is absent', async () => {
+    const { code, out, bodies } = await submit(gated);
+    assert.equal(code, 0, out);
+    assert.equal(bodies.find((b) => b.what === 'track').body.releases[0].releaseNotes, undefined);
+    assert.match(out, /NO RELEASE NOTES/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// --sync-listing — the listing tree, pushed through an edit of its own (2026-10-01)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('submit-play --sync-listing — the repo listing tree becomes the Play record', () => {
+  const listed = { withListingAssets: true };
+  const SYNC = ['--sync-listing', '--app', 'subscriptiontracker'];
+  // Only what the mode needs: a service account and the loopback seam. No GitHub, no keystore.
+  const syncEnv = (over = {}) => ({ GITHUB_ACTIONS: '', GITHUB_REPOSITORY: '', ANDROID_SIGNING_POSTURE: '', ...over });
+  const WRITES = /^(PATCH|PUT|POST) .*(details|listings|:commit)/;
+
+  test('--plan names every difference, writes nothing and discards its edit', async () => {
+    const { code, out, calls } = await submit(listed, { args: [...SYNC, '--plan'], env: syncEnv() });
+    assert.equal(code, 0, out);
+    assert.match(out, /would change details: contactEmail null → "support@nikatru\.com", contactWebsite null → "https:\/\/nikatru\.com"/);
+    assert.match(out, /would change listing en-US: title .*shortDescription .*fullDescription/);
+    for (const t of ['icon', 'featureGraphic', 'phoneScreenshots', 'sevenInchScreenshots', 'tenInchScreenshots']) assert.match(out, new RegExp(`would change ${t}:`));
+    assert.deepEqual(calls.filter((c) => WRITES.test(c) && !c.endsWith('/edits')), [], out);
+    assert.ok(calls.some((c) => c.startsWith('DELETE ') && c.endsWith(`/edits/${EDIT_ID}`)), calls.join('\n'));
+    assert.match(out, /LISTING PLAN — nothing was committed \(7 change\(s\)\)/);
+  });
+
+  test('pushes text, contact details and every image slot from the tree, then commits', async () => {
+    const { code, out, bodies, state, calls } = await submit(listed, { args: SYNC, env: syncEnv() });
+    assert.equal(code, 0, out);
+    assert.deepEqual(bodies.find((b) => b.what === 'listing').body, {
+      language: 'en-US',
+      title: 'Subly',
+      shortDescription: 'Track every subscription in one place',
+      fullDescription: 'A longer description.',
+    });
+    assert.deepEqual(bodies.find((b) => b.what === 'details').body, { contactEmail: 'support@nikatru.com', contactWebsite: 'https://nikatru.com' });
+    const sums = (type) => state.images[type].map((i) => i.sha256);
+    assert.deepEqual(sums('icon'), [sha256('icon-bytes')]);
+    assert.deepEqual(sums('featureGraphic'), [sha256('feature-bytes')]);
+    assert.deepEqual(sums('phoneScreenshots'), [sha256('phone-1'), sha256('phone-2')]);
+    assert.deepEqual(sums('sevenInchScreenshots'), [sha256('tablet-1'), sha256('tablet-2')]);
+    assert.deepEqual(sums('tenInchScreenshots'), [sha256('tablet-1'), sha256('tablet-2')]);
+    assert.ok(calls.some((c) => c.endsWith(':commit')), calls.join('\n'));
+    assert.match(out, /LISTING SYNCED \(7 change\(s\)\)/);
+  });
+
+  test('a record already in sync writes nothing and commits nothing', async () => {
+    const images = {
+      icon: [{ sha256: sha256('icon-bytes') }],
+      featureGraphic: [{ sha256: sha256('feature-bytes') }],
+      phoneScreenshots: [{ sha256: sha256('phone-1') }, { sha256: sha256('phone-2') }],
+      sevenInchScreenshots: [{ sha256: sha256('tablet-1') }, { sha256: sha256('tablet-2') }],
+      tenInchScreenshots: [{ sha256: sha256('tablet-1') }, { sha256: sha256('tablet-2') }],
+    };
+    const { code, out, calls } = await submit(listed, {
+      args: SYNC,
+      env: syncEnv(),
+      apiOpts: {
+        details: { defaultLanguage: 'en-US', contactEmail: 'support@nikatru.com', contactWebsite: 'https://nikatru.com' },
+        listing: { language: 'en-US', title: 'Subly', shortDescription: 'Track every subscription in one place', fullDescription: 'A longer description.' },
+        images,
+      },
+    });
+    assert.equal(code, 0, out);
+    assert.deepEqual(calls.filter((c) => WRITES.test(c) && !c.endsWith('/edits')), [], out);
+    assert.match(out, /ALREADY IN SYNC \(0 change\(s\)\)/);
+  });
+
+  test('only the changed slot is replaced — one moved screenshot re-sends the phone set alone', async () => {
+    const { code, out, calls } = await submit(listed, {
+      args: SYNC,
+      env: syncEnv(),
+      apiOpts: {
+        details: { defaultLanguage: 'en-US', contactEmail: 'support@nikatru.com', contactWebsite: 'https://nikatru.com' },
+        listing: { language: 'en-US', title: 'Subly', shortDescription: 'Track every subscription in one place', fullDescription: 'A longer description.' },
+        images: {
+          icon: [{ sha256: sha256('icon-bytes') }],
+          featureGraphic: [{ sha256: sha256('feature-bytes') }],
+          phoneScreenshots: [{ sha256: sha256('phone-2') }, { sha256: sha256('phone-1') }],
+          sevenInchScreenshots: [{ sha256: sha256('tablet-1') }, { sha256: sha256('tablet-2') }],
+          tenInchScreenshots: [{ sha256: sha256('tablet-1') }, { sha256: sha256('tablet-2') }],
+        },
+      },
+    });
+    assert.equal(code, 0, out);
+    const uploads = calls.filter((c) => c.startsWith('POST /upload/') && c.includes('/listings/'));
+    assert.equal(uploads.length, 2, uploads.join('\n'));
+    assert.ok(uploads.every((c) => c.endsWith('/phoneScreenshots')), uploads.join('\n'));
+  });
+
+  test('REFUSES an app with a non-draft release beyond internal testing — that listing reaches users', async () => {
+    const { code, out, calls } = await submit(listed, {
+      args: SYNC,
+      env: syncEnv(),
+      apiOpts: { trackReleases: { beta: [{ status: 'completed', versionCodes: ['3'] }] } },
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /beta:completed/);
+    assert.match(out, /class A/);
+    assert.deepEqual(calls.filter((c) => WRITES.test(c) && !c.endsWith('/edits')), [], out);
+  });
+
+  test('a completed INTERNAL release and a production DRAFT do not block it — neither reaches a user', async () => {
+    const { code, out } = await submit(listed, {
+      args: [...SYNC, '--plan'],
+      env: syncEnv(),
+      apiOpts: { trackReleases: { internal: [{ status: 'completed', versionCodes: ['1'] }], production: [{ status: 'draft', versionCodes: ['7'] }] } },
+    });
+    assert.equal(code, 0, out);
+  });
+
+  test('REFUSES a default language the tree is not written in', async () => {
+    const { code, out } = await submit(listed, { args: SYNC, env: syncEnv(), apiOpts: { details: { defaultLanguage: 'de-DE' } } });
+    assert.equal(code, 1, out);
+    assert.match(out, /default language is "de-DE"/);
+  });
+
+  test('without a service account it stops before any request', async () => {
+    const { code, out, calls } = await submit(listed, { args: SYNC, env: syncEnv({ PLAY_SERVICE_ACCOUNT_JSON: '' }) });
+    assert.equal(code, 1, out);
+    assert.match(out, /--sync-listing cannot mint an access token/);
+    assert.deepEqual(calls, []);
+  });
+
+  test('a tablet set with no PNG is COVERAGE LOST (exit 2), never an empty slot pushed', async () => {
+    const { code, out } = await submit(
+      { ...listed, mutateRegister: (r) => { r.storeMetadataContract.perChannel['android-play'].graphicAssets.screenshots.deviceTypeCoverage.sets.tablet.dir = 'nowhere'; } },
+      { args: [...SYNC, '--plan'], env: syncEnv() },
+    );
+    assert.equal(code, 2, out);
+    assert.match(out, /nowhere holds no \.png/);
   });
 });
 

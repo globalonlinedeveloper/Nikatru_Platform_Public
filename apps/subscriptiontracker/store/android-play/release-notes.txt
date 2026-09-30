@@ -1,0 +1,1 @@
+First release. Keep every subscription you pay for in one list: price, currency and billing cycle, with monthly and yearly totals, next-renewal dates sorted nearest first, and a reminder before each one renews. No bank login and no ads. Works offline.

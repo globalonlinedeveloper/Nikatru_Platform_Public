@@ -22,7 +22,7 @@ on:
         default: 'dry-run-only'
         type: string
       track:
-        description: 'Play track. Leave empty to use the least-public track the API reports for the app. `production` is REFUSED (ADR 031 class A).'
+        description: 'Play track. Leave empty to use the least-public track the API reports for the app. `production` is REFUSED unless release_status is draft (ADR 031 class A: staging is not promoting).'
         required: false
         default: ''
         type: string
