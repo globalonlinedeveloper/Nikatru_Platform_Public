@@ -30,9 +30,13 @@
 // is not the issuer.
 //   · supabase  — https://auth-api.nikatru.com (the self-hosted GoTrue,
 //                 BOXC_DEFAULT_TARGET in tooling/ops/selfhosted-auth.mjs), or a
-//                 hosted project https://<ref>.supabase.co (HOSTED_ORIGIN in
-//                 tooling/e2e/auth_target_expectation.mjs; the ref is deliberately
-//                 not in the public tree, so the shape is pinned, not the value);
+//                 hosted project https://<ref>.supabase.co whose HOSTNAME hashes
+//                 to SUPABASE_HOSTED_HOST_SHA256 — OUR project, exactly. The ref is
+//                 deliberately not in the public tree, so its sha256 is (⏱
+//                 2026-09-30, review finding 4: the shape alone admitted every
+//                 tenant of supabase.co, and the service-role key must never reach
+//                 another project). The shape is still HOSTED_ORIGIN in
+//                 tooling/e2e/auth_target_expectation.mjs; the hash narrows it to one;
 //   · glitchtip — https://glitchtip.nikatru.com;
 //   · both      — http on 127.0.0.1 / localhost / [::1], the loopback test seam
 //                 of loopbackBase (extensions/scripts/store-poll.mjs) and
@@ -43,10 +47,23 @@
 //                 FILE passes `{ loopback: false }`: a file edit is never a test seam.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { createHash } from 'node:crypto';
+
 /** The self-hosted GoTrue — the same literal as BOXC_DEFAULT_TARGET (asserted equal in the test). */
 export const GOTRUE_SELFHOSTED_ORIGIN = 'https://auth-api.nikatru.com';
 /** A hosted Supabase project's origin — the same shape as HOSTED_ORIGIN (asserted equal in the test). */
 export const SUPABASE_HOSTED_ORIGIN = /^https:\/\/[a-z0-9]+\.supabase\.co$/;
+/** sha256 of OUR hosted project's hostname (`<ref>.supabase.co`). Measured 2026-09-30
+ *  on the machine holding the vault: sha256 of new URL(SUPABASE_URL).hostname, which
+ *  equals SUPABASE_PROJECT_REF + '.supabase.co'. Re-measure it the same way if the
+ *  hosted project is ever replaced; drop it when the hosted stack is retired. */
+export const SUPABASE_HOSTED_HOST_SHA256 = '4d544c2d8e55934aab155541e14e74be2d4fd60cee9d653a241b23218b288edb';
+
+/** PURE. Is this origin OUR hosted project — the shape, and the pinned hostname hash? */
+export function isOurHostedProject(origin, pinned = SUPABASE_HOSTED_HOST_SHA256) {
+  if (!SUPABASE_HOSTED_ORIGIN.test(origin)) return false;
+  return createHash('sha256').update(new URL(origin).hostname).digest('hex') === pinned;
+}
 /** The one GlitchTip instance. */
 export const GLITCHTIP_ORIGIN = 'https://glitchtip.nikatru.com';
 
@@ -56,8 +73,8 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 const ISSUERS = Object.freeze({
   supabase: {
     label: 'Supabase auth',
-    accepts: (origin) => origin === GOTRUE_SELFHOSTED_ORIGIN || SUPABASE_HOSTED_ORIGIN.test(origin),
-    names: `${GOTRUE_SELFHOSTED_ORIGIN} or https://<ref>.supabase.co`,
+    accepts: (origin) => origin === GOTRUE_SELFHOSTED_ORIGIN || isOurHostedProject(origin),
+    names: `${GOTRUE_SELFHOSTED_ORIGIN} or our hosted project https://<ref>.supabase.co (sha256-pinned)`,
   },
   glitchtip: {
     label: 'GlitchTip',

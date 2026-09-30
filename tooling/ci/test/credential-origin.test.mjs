@@ -19,6 +19,7 @@
 // Run:  node --test tooling/ci/test/credential-origin.test.mjs
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -33,6 +34,8 @@ import {
   GLITCHTIP_ORIGIN,
   GOTRUE_SELFHOSTED_ORIGIN,
   SUPABASE_HOSTED_ORIGIN,
+  SUPABASE_HOSTED_HOST_SHA256,
+  isOurHostedProject,
 } from '../../ops/credential-origin.mjs';
 import { BOXC_DEFAULT_TARGET } from '../../ops/selfhosted-auth.mjs';
 import { mintMagicLinkTokenHash, MagicLinkRefused } from '../../e2e/magic_link.mjs';
@@ -58,6 +61,7 @@ const HOSTILE = {
     'https://evilsupabase.co',
     'https://abc.supabase.co.evil.com',
     'https://abc.def.supabase.co', // hosted refs are one label
+    'https://abcdefghijklmnop.supabase.co', // ANOTHER tenant: the right shape, the wrong project (review finding 4)
     'https://ABC-1.supabase.co', // `-` is not in a ref
     'http://abc.supabase.co',
     'https://glitchtip.nikatru.com', // another credential's issuer
@@ -90,7 +94,6 @@ const ACCEPTED = {
     ['https://auth-api.nikatru.com', 'https://auth-api.nikatru.com'],
     ['https://auth-api.nikatru.com/', 'https://auth-api.nikatru.com'],
     ['  https://AUTH-API.nikatru.com:443/ ', 'https://auth-api.nikatru.com'],
-    ['https://abcdefghijklmnop.supabase.co', 'https://abcdefghijklmnop.supabase.co'],
     ['http://127.0.0.1:54321', 'http://127.0.0.1:54321'],
     ['http://localhost:9999/', 'http://localhost:9999'],
     ['http://[::1]:8000', 'http://[::1]:8000'],
@@ -133,6 +136,15 @@ describe('credentialOrigin — the issuer, or this machine, nothing else', () =>
     assert.equal(credentialOrigin('https://glitchtip.nikatru.com', 'glitchtip', { loopback: false }), GLITCHTIP_ORIGIN);
     assert.throws(() => credentialOrigin('http://127.0.0.1:1', 'glitchtip', { loopback: false }), CredentialOriginRefused);
     assert.throws(() => credentialOrigin('http://localhost:8000', 'supabase', { loopback: false }), CredentialOriginRefused);
+  });
+
+  test('our hosted project is the ONE supabase.co host accepted: the shape AND the pinned hostname hash', () => {
+    assert.match(SUPABASE_HOSTED_HOST_SHA256, /^[0-9a-f]{64}$/);
+    const theirs = 'https://abcdefghijklmnop.supabase.co';
+    const pinTheirs = createHash('sha256').update('abcdefghijklmnop.supabase.co').digest('hex');
+    assert.equal(isOurHostedProject(theirs, pinTheirs), true, 'GREEN control: the hash of a host pins exactly that host');
+    assert.equal(isOurHostedProject(theirs), false, 'another project must not match OUR pin');
+    assert.equal(isOurHostedProject('https://abcdefghijklmnop.supabase.co.evil.com', pinTheirs), false, 'the shape still gates first');
   });
 
   test('an unknown kind is a programming error, not a refusal to swallow', () => {
