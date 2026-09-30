@@ -159,6 +159,23 @@ export const isKind = (k: string): k is AttestKind => (ATTEST_KINDS as readonly 
 
 const iso = (ms: number) => new Date(ms).toISOString();
 
+/**
+ * Statements in every D1 batch this module sends: one prune, then one write.
+ *
+ * @ceiling none — a FIXED shape, not a data-sized count: a request sends at
+ * most three such batches (redeem, daily counter, key write) and two single
+ * reads, far under d1.queriesPerInvocation (tooling/ceilings.json batchCallSites
+ * names this constant as the bound).
+ */
+export const NATIVE_ATTEST_BATCH_STATEMENTS = 2;
+
+/** The one batch shape: prune what has expired, then write — atomically. Answers the write's result. */
+async function pruneThenWrite<T = unknown>(db: D1Database, prune: D1PreparedStatement, write: D1PreparedStatement): Promise<D1Result<T> | undefined> {
+  const statements: [D1PreparedStatement, D1PreparedStatement] = [prune, write];
+  const results = (await db.batch(statements)) as D1Result<T>[];
+  return results[NATIVE_ATTEST_BATCH_STATEMENTS - 1];
+}
+
 let hmacKey: { secret: string; key: Promise<CryptoKey> } | null = null;
 function macKey(secret: string): Promise<CryptoKey> {
   if (hmacKey?.secret !== secret) {
@@ -198,12 +215,13 @@ export async function redeemChallenge(env: Env, app: string, challenge: string, 
   if (!mac) return false;
   const body = challenge.slice(0, challenge.length - macRaw!.length - 1);
   if (!(await crypto.subtle.verify('HMAC', await macKey(secret), mac, new TextEncoder().encode(body)))) return false;
-  const [, inserted] = await env.PLATFORM_DB.batch([
+  const inserted = await pruneThenWrite(
+    env.PLATFORM_DB,
     env.PLATFORM_DB.prepare('DELETE FROM native_attest_redeemed WHERE expires_at < ?').bind(iso(now)),
     env.PLATFORM_DB.prepare(
       'INSERT INTO native_attest_redeemed (nonce, app_id, expires_at) VALUES (?, ?, ?) ON CONFLICT(nonce) DO NOTHING',
     ).bind(nonce!, app, iso(exp)),
-  ]);
+  );
   return inserted?.meta.changes === 1;
 }
 
@@ -213,14 +231,15 @@ export async function redeemChallenge(env: Env, app: string, challenge: string, 
  */
 export async function bumpDailyCounter(db: D1Database, scope: string, now: number): Promise<number> {
   const day = iso(now).slice(0, 10);
-  const [, bumped] = await db.batch<{ calls: number }>([
+  const bumped = await pruneThenWrite<{ calls: number }>(
+    db,
     db.prepare('DELETE FROM native_attest_counters WHERE day < ?').bind(day),
     db
       .prepare(
         'INSERT INTO native_attest_counters (day, scope, calls) VALUES (?, ?, 1) ON CONFLICT(day, scope) DO UPDATE SET calls = calls + 1 RETURNING calls',
       )
       .bind(day, scope),
-  ]);
+  );
   const calls = bumped?.results?.[0]?.calls;
   return typeof calls === 'number' ? calls : Number.POSITIVE_INFINITY;
 }
@@ -294,7 +313,12 @@ async function ed25519Verify(publicKey: Uint8Array, signature: Uint8Array, messa
   }
 }
 
-/** Days a registered key may go unused before a registration write prunes it (the nightly sweep's period too). */
+/**
+ * Days a registered key may go unused before a registration write prunes it.
+ *
+ * @ceiling none — a RETENTION PERIOD, the same number as scheduled.ts
+ * NATIVE_ATTEST_KEYS_RETENTION_DAYS (test/native-auth.test.ts holds them equal).
+ */
 export const NATIVE_ATTEST_KEY_IDLE_DAYS = 90;
 
 export type InstallOutcome =
@@ -349,13 +373,14 @@ export async function registerKey(
   if ((await bumpDailyCounter(env.PLATFORM_DB, `install:${network}`, now)) > NATIVE_ATTEST_INSTALLS_PER_NETWORK_PER_DAY) {
     return { ok: false, status: 429, code: 'over_request_rate_limit', why: 'daily registrations for this network' };
   }
-  const [, ins] = await env.PLATFORM_DB.batch([
+  const ins = await pruneThenWrite(
+    env.PLATFORM_DB,
     env.PLATFORM_DB.prepare(
       'DELETE FROM native_attest_keys WHERE rowid IN (SELECT rowid FROM native_attest_keys WHERE last_used_at < ? ORDER BY last_used_at LIMIT 100)',
     ).bind(iso(now - NATIVE_ATTEST_KEY_IDLE_DAYS * 86_400_000)),
     env.PLATFORM_DB.prepare(
       'INSERT INTO native_attest_keys (app_id, key_id, kind, public_key, sign_count, created_at, last_used_at) VALUES (?, ?, ?, ?, 0, ?, ?) ON CONFLICT(app_id, key_id) DO NOTHING',
     ).bind(app, keyId, kind, b64url(publicKey), iso(now), iso(now)),
-  ]);
+  );
   return { ok: true, keyId, created: ins?.meta.changes === 1 };
 }
