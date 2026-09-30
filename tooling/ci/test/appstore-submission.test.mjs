@@ -254,7 +254,8 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
 
   // 🔴 the refusal, and it must be BEFORE any validation
   test('--submit REFUSES with UNVERIFIED, before running a single check', () => {
-    const { code, out } = run(tree({ withArtifact: true }), ['--submit', '--channel', 'ios-appstore', '--app', 'subscriptiontracker']);
+    // The approval date is recorded, so the Small Business Program gate passes and the refusal is what stops it.
+    const { code, out } = run(tree({ withArtifact: true, enrolment: '2026-09-28' }), ['--submit', '--channel', 'ios-appstore', '--app', 'subscriptiontracker']);
     assert.equal(code, 1, out);
     assert.match(out, /--submit is NOT IMPLEMENTED, and refusing is the implementation/);
     assert.match(out, /UNVERIFIED: the App Store Connect API base URL/);
@@ -263,12 +264,14 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
   });
 
   // #1072 review: the Small Business Program gate guarded only a CI publish job. --submit runs it first.
-  test('RED CONTROL: --submit runs the Small Business Program gate first, and it refuses while the enrolment is null', () => {
+  test('RED CONTROL: a refusing Small Business Program gate EXITS --submit before anything after it runs', () => {
     const { code, out } = run(tree(), ['--submit', '--channel', 'ios-appstore', '--app', 'subscriptiontracker']);
     assert.equal(code, 1, out);
     assert.match(out, /FAIL the Small Business Program gate REFUSED this submission \(node tooling\/ci\/assert-small-business-program\.mjs --for-submission=ios-appstore --real-submission exited 1\)/);
     assert.match(out, /REFUSED {2}a real ios-appstore submission: .*owner step A-18/);
-    assert.ok(out.indexOf('Small Business Program gate') < out.indexOf('--submit is NOT IMPLEMENTED'), out);
+    // #1088 review: the gate stops the run itself; it does not lean on the refusal below it.
+    assert.match(out, /submit-appstore: FAILED — nothing was submitted\./);
+    assert.doesNotMatch(out, /NOT IMPLEMENTED|UNVERIFIED:/);
   });
 
   test('GREEN CONTROL: with an approval date recorded the gate passes, and --submit still refuses', () => {
@@ -286,7 +289,7 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
   });
 
   test('the refusal names the JWT claim set as UNVERIFIED, not just the endpoints', () => {
-    const { out } = run(tree(), ['--submit', '--channel', 'macos-appstore']);
+    const { out } = run(tree({ enrolment: '2026-09-28' }), ['--submit', '--channel', 'macos-appstore']);
     assert.match(out, /UNVERIFIED: the exact JWT claim set, algorithm and expiry the API accepts for a \.p8 key/);
   });
 
