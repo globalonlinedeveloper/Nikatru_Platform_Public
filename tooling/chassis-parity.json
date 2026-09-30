@@ -50,7 +50,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/auth/check_inbox_screen.dart",
           "linesAtSince": 88,
-          "ceiling": 88,
+          "ceiling": 82,
           "template": 23
         },
         {
