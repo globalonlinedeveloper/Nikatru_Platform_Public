@@ -7,7 +7,8 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * ⏱ 2026-09-29 · native sign-in attestation (wire protocol v1) — the android
+ * ⏱ 2026-09-29 · native sign-in attestation (⏱ 2026-09-30 · wire protocol v2;
+ * this side is unchanged by it: it sees only the hash) — the android
  * proof: a Play Integrity CLASSIC token whose nonce is the request hash the Dart
  * side computed over the op's clientData. Registered on `nikatru/native_attest`
  * by [AgeSignalsPlugin], the package's one pluginClass.

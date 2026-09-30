@@ -1,5 +1,6 @@
-/// ⏱ 2026-09-29 · NATIVE SIGN-IN ATTESTATION, WIRE PROTOCOL v1 — the CLIENT's
-/// half of the binding every native sign-in, sign-up, reset and resend carries.
+/// ⏱ 2026-09-29 · NATIVE SIGN-IN ATTESTATION — the CLIENT's half of the binding
+/// every native sign-in, sign-up, reset and resend carries. ⏱ 2026-09-30 · now
+/// WIRE PROTOCOL v2: the proof also covers the request's path and query.
 ///
 /// 🔴 WHY IT EXISTS. The platform Worker's captcha-free native route
 /// (`POST /v1/auth/native/<app>/{token,signup,recover,resend}`) was reachable by
@@ -10,11 +11,19 @@
 ///
 /// THE BINDING. A proof is over `clientData`, never over the body alone:
 ///
-///     clientData = "nk-native-auth/v1\n<app>\n<op>\n<challenge>\n<bodyHash>"
+///     clientData = "nk-native-auth/v2\n<app>\n<op>\n<challenge>\n<target>\n<bodyHash>"
 ///
-/// so a proof minted for one app, one op, one single-use server challenge and one
-/// exact body is worth nothing for any other. `bodyHash` is over the EXACT bytes
-/// sent — the caller hashes what goes on the wire, not a re-encoding of it.
+/// so a proof minted for one app, one op, one single-use server challenge, one
+/// request target and one exact body is worth nothing for any other.
+/// `bodyHash` is over the EXACT bytes sent — the caller hashes what goes on the
+/// wire, not a re-encoding of it.
+///
+/// ⏱ 2026-09-30 · v2, from a security review: v1 bound app, op, challenge and
+/// body but NOT the query, so a proof captured for `/signup?redirect_to=A` also
+/// stood for `/signup?redirect_to=B`. `target` ([nativeAttestTarget]) is the
+/// URL's path plus its canonical query, which the server recomputes from the
+/// URL it received. The challenge is an OPAQUE server token: the client only
+/// requires it to be non-empty and one line, and never parses it.
 ///
 /// THREE KINDS, one seam ([NativeAttestor]):
 ///   · `play-integrity` (android) — a Play Integrity classic token whose nonce is
@@ -40,7 +49,7 @@ import 'package:cryptography/cryptography.dart';
 import '../storage/secure_store.dart';
 
 /// The protocol prefix — the first line of every `clientData`.
-const String kNativeAttestProtocol = 'nk-native-auth/v1';
+const String kNativeAttestProtocol = 'nk-native-auth/v2';
 
 /// Header: which kind of proof this request carries.
 const String kNativeAttestKindHeader = 'X-NK-Attest-Kind';
@@ -95,7 +104,42 @@ String nativeAttestBase64Url(List<int> bytes) =>
 String nativeAttestBodyHash(List<int> body) =>
     nativeAttestBase64Url(sha256.convert(body).bytes);
 
-/// The string every proof is over. [body] is the exact bytes sent.
+/// The canonical request target of [url] — the `target` line of clientData.
+///
+/// The URL's path exactly as sent (`Uri.path`, still percent-encoded), then,
+/// only when the query holds at least one parameter, `?` and the canonical
+/// query: every DECODED parameter (duplicates kept; `+` decodes to a space, as
+/// the server's `URLSearchParams` does), sorted by key and then by value in
+/// UTF-16 code-unit order, each re-encoded as
+/// `encodeComponent(key)=encodeComponent(value)` and joined with `&`.
+/// `Uri.encodeComponent` leaves `A-Za-z0-9-_.!~*'()` unescaped, the same set as
+/// JS `encodeURIComponent`, so the intent is that both runtimes render one
+/// query the same way however the sender spelled or ordered it.
+///
+/// ⏱ 2026-09-30 · wire protocol v2. A relative [url] (path and query only, as
+/// a server's `HttpRequest.uri` is) gives the same target as the absolute one.
+String nativeAttestTarget(Uri url) {
+  final List<(String, String)> params = <(String, String)>[
+    for (final MapEntry<String, List<String>> entry
+        in url.queryParametersAll.entries)
+      for (final String value in entry.value) (entry.key, value),
+  ];
+  if (params.isEmpty) return url.path;
+  params.sort(((String, String) a, (String, String) b) {
+    final int byKey = a.$1.compareTo(b.$1);
+    return byKey != 0 ? byKey : a.$2.compareTo(b.$2);
+  });
+  final String query = params
+      .map(
+        ((String, String) p) =>
+            '${Uri.encodeComponent(p.$1)}=${Uri.encodeComponent(p.$2)}',
+      )
+      .join('&');
+  return '${url.path}?$query';
+}
+
+/// The string every proof is over. [target] is [nativeAttestTarget] of the
+/// URL the request is sent to; [body] is the exact bytes sent.
 ///
 /// Refuses a field containing a newline: the lines are the framing, and a field
 /// that could carry one could make two different requests frame the same.
@@ -103,9 +147,10 @@ String nativeAttestClientData({
   required String app,
   required String op,
   required String challenge,
+  required String target,
   required List<int> body,
 }) {
-  for (final String field in <String>[app, op, challenge]) {
+  for (final String field in <String>[app, op, challenge, target]) {
     if (field.isEmpty || field.contains('\n')) {
       throw ArgumentError.value(
         field,
@@ -114,7 +159,7 @@ String nativeAttestClientData({
       );
     }
   }
-  return '$kNativeAttestProtocol\n$app\n$op\n$challenge\n'
+  return '$kNativeAttestProtocol\n$app\n$op\n$challenge\n$target\n'
       '${nativeAttestBodyHash(body)}';
 }
 
@@ -155,7 +200,8 @@ final class NativeAttestProof {
 }
 
 /// What [NativeAttestor.register] hands the HTTP client: the install request's
-/// exact [body] and the [proof] over its clientData (op `install`).
+/// exact [body] and the [proof] over its clientData (op `install`, and the
+/// install URL's target).
 final class NativeAttestInstall {
   const NativeAttestInstall({
     required this.kind,
@@ -211,10 +257,13 @@ abstract interface class NativeAttestor {
   Future<bool> isRegistered({required String app});
 
   /// The install request for [challenge]: the body naming the key, and the
-  /// proof over its clientData (op `install`).
+  /// proof over its clientData (op `install`). [target] is
+  /// [nativeAttestTarget] of the URL the install is POSTed to
+  /// (`<base>/attest/install`) — ⏱ 2026-09-30, wire protocol v2.
   Future<NativeAttestInstall> register({
     required String app,
     required String challenge,
+    required String target,
   });
 
   /// The server accepted [register]'s request (200/201): remember it.
@@ -333,6 +382,7 @@ final class InstallKeyAttestor implements NativeAttestor {
   Future<NativeAttestInstall> register({
     required String app,
     required String challenge,
+    required String target,
   }) async {
     final List<int> body = utf8.encode(
       jsonEncode(<String, String>{
@@ -344,6 +394,7 @@ final class InstallKeyAttestor implements NativeAttestor {
       app: app,
       op: kNativeAttestInstallOp,
       challenge: challenge,
+      target: target,
       body: body,
     );
     return NativeAttestInstall(

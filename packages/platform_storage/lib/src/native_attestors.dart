@@ -2,7 +2,7 @@
 /// [core.NativeAttestor] seam, and the one function that picks this build's.
 ///
 /// 🔴 WHY. The platform Worker refuses every native sign-in, sign-up, reset and
-/// resend that carries no attestation (wire protocol v1, `core`'s
+/// resend that carries no attestation (wire protocol v2, `core`'s
 /// `native_attest.dart`). What proves "a real install of a real app" differs by
 /// platform, so the proof is platform code — and platform capabilities land in
 /// THIS package (39-CHASSIS §2, `packageEarnReasons`), never in a new one:
@@ -17,6 +17,12 @@
 ///
 /// Every platform failure is a [core.NativeAttestationException]: the sign-in
 /// call fails, and the op is never sent without a proof.
+///
+/// ⏱ 2026-09-30 · wire protocol v2: clientData also carries the request's
+/// target (path and canonical query). The native sides are unchanged — they
+/// still receive only the request hash / clientData hash computed in Dart —
+/// and [AppAttestAttestor.register] binds its attestation to the install
+/// URL's target it is handed.
 library;
 
 import 'dart:convert';
@@ -92,6 +98,7 @@ final class PlayIntegrityAttestor implements core.NativeAttestor {
   Future<core.NativeAttestInstall> register({
     required String app,
     required String challenge,
+    required String target,
   }) => throw StateError('play-integrity has no install step');
 
   @override
@@ -247,6 +254,7 @@ final class AppAttestAttestor implements core.NativeAttestor {
   Future<core.NativeAttestInstall> register({
     required String app,
     required String challenge,
+    required String target,
   }) async {
     final String keyId = await _currentKeyId();
     final List<int> body = utf8.encode(
@@ -259,6 +267,7 @@ final class AppAttestAttestor implements core.NativeAttestor {
       app: app,
       op: core.kNativeAttestInstallOp,
       challenge: challenge,
+      target: target,
       body: body,
     );
     final Uint8List attestation;
@@ -354,7 +363,9 @@ final class AppAttestOrInstallKeyAttestor implements core.NativeAttestor {
   Future<core.NativeAttestInstall> register({
     required String app,
     required String challenge,
-  }) async => (await _pick).register(app: app, challenge: challenge);
+    required String target,
+  }) async =>
+      (await _pick).register(app: app, challenge: challenge, target: target);
 
   @override
   Future<void> markRegistered({required String app}) async =>
