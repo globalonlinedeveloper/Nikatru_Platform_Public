@@ -60,12 +60,13 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
+      # why: NO CLOUDFLARE TOKEN HERE (rv2-security-001). This step runs every test file the PR
+      # carries, so it is PR-controlled code; the suites read Cloudflare only through fixtures.
+      # assert-channel-register limb 8d refuses a deploy or publish secret in any job a PR can run.
       - name: The guards must be able to fail
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test --test-reporter=spec  --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="${{ runner.temp }}/guard-tests.junit.xml" "tooling/ci/test/*.test.mjs"
       # The per-suite EXECUTED counts are the only Linux measurement of what ran.
       # tooling/scripts/refresh-executed-floor.mjs reads this artifact from a green
@@ -275,13 +276,16 @@ jobs:
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-glitchtip-no-ip.mjs
       # Slowest green 49 s (median 37), so 3 minutes.
+      # why: CLOUDFLARE_READ_TOKEN, never the deploy token (rv2-security-001, limb 8d): a PR runs
+      # this job. Until the owner mints it the Cloudflare rows read `unreadable`, inside the
+      # register's declared `_maxUnreadable` ceiling.
       - name: Every failure has a detector, a response and a cadence
         if: ${{ !cancelled() }}
         timeout-minutes: 3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --single-threaded tooling/ci/assert-ops-register.mjs
       # ⏱ 2026-09-28 · ops watch 36416498456: `reminder_mail` was declared at a
@@ -346,13 +350,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node --single-threaded tooling/ci/assert-platform-proof-fresh.mjs
+      # why: CLOUDFLARE_READ_TOKEN, never the deploy token (rv2-security-001, limb 8d). The dated
+      # flag defers ONLY the D1 timer limb while that token does not exist yet, loudly; on
+      # 2026-10-21 an absent token is COVERAGE LOST again. Delete the flag once the token is minted.
       - name: The nightly golden-path proof is fresh
         if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node tooling/ci/assert-e2e-proof-fresh.mjs
+        run: node tooling/ci/assert-e2e-proof-fresh.mjs --cloudflare-read-pending-until 2026-10-21
       - name: The nightly exercised the legs it claims
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-e2e-legs.mjs

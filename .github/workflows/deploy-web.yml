@@ -24,8 +24,12 @@ on:
         required: true
       GLITCHTIP_TOKEN:
         required: true
+      # why: NOT required (rv2-security-001). Every job here that reads it is bound to
+      # `production`, and GitHub resolves a production ENVIRONMENT secret of this name ahead of
+      # the value passed in. Once the owner moves the token out of repository scope the caller
+      # passes an empty string, and the environment copy is what deploys.
       CLOUDFLARE_API_TOKEN:
-        required: true
+        required: false
       CLOUDFLARE_ACCOUNT_ID:
         required: true
       # why: the `site` job puts it on the nikatru-apex Pages project through stdin; the
