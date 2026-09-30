@@ -4789,7 +4789,7 @@
       "cadence": "365d",
       "mechanism": {
         "substrate": "cloudflare-d1",
-        "anchor": "services/platform/migrations/0021_native_attest.sql",
+        "anchor": "services/platform/migrations/0022_native_attest.sql",
         "record": "the table itself",
         "failingValue": "a row whose `expires_at` is more than 1 day in the past",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
@@ -4813,7 +4813,7 @@
       "cadence": "365d",
       "mechanism": {
         "substrate": "cloudflare-d1",
-        "anchor": "services/platform/migrations/0021_native_attest.sql",
+        "anchor": "services/platform/migrations/0022_native_attest.sql",
         "record": "the table itself",
         "failingValue": "a row whose `last_used_at` is more than 90 days in the past",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
@@ -4837,7 +4837,7 @@
       "cadence": "365d",
       "mechanism": {
         "substrate": "cloudflare-d1",
-        "anchor": "services/platform/migrations/0021_native_attest.sql",
+        "anchor": "services/platform/migrations/0022_native_attest.sql",
         "record": "the table itself",
         "failingValue": "a row whose `day` is more than 1 day in the past",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"

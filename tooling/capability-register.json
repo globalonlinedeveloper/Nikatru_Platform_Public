@@ -336,9 +336,9 @@
         "kind": "runtime-secret",
         "reason": "The Team ID is put with `wrangler secret put APP_ATTEST_TEAM_ID` (an identifier the build secrets also keep out of the public tree). Absent, the `app-attest` kind answers 503 — a refusal, never a pass."
       },
-      "ownTheRecord": "Yes — the registered public key and its counter live in platform_db.native_attest_keys (0021_native_attest.sql); Apple holds no record of ours through this surface.",
+      "ownTheRecord": "Yes — the registered public key and its counter live in platform_db.native_attest_keys (0022_native_attest.sql); Apple holds no record of ours through this surface.",
       "exportPath": {
-        "path": "services/platform/migrations/0021_native_attest.sql",
+        "path": "services/platform/migrations/0022_native_attest.sql",
         "detail": "The only state is ours: the public keys and counters in native_attest_keys."
       },
       "exitPlan": {

@@ -54,7 +54,7 @@ import extDevices0017 from '../migrations/0017_ext_devices.sql?raw';
 import bundleSourceTerm0018 from '../migrations/0018_bundle_source_term.sql?raw';
 import oneTimeSource0019 from '../migrations/0019_one_time_source.sql?raw';
 import reminders0020 from '../migrations/0020_reminders.sql?raw';
-import nativeAttest0021 from '../migrations/0021_native_attest.sql?raw';
+import nativeAttest0022 from '../migrations/0022_native_attest.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -113,7 +113,7 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   reminders0020,
   // ⏱ 2026-09-29 · ADR no.NNN — the native sign-in attestation state: single-use
   // challenges and registered install keys.
-  nativeAttest0021,
+  nativeAttest0022,
 ];
 
 /**
@@ -163,8 +163,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   extDevices0017,
   // 0020 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
   reminders0020,
-  // 0021 is CREATE TABLE / CREATE INDEX IF NOT EXISTS only — it replays.
-  nativeAttest0021,
+  // 0022 is CREATE TABLE / CREATE INDEX IF NOT EXISTS only — it replays.
+  nativeAttest0022,
 ];
 
 // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a

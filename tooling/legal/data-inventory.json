@@ -382,7 +382,7 @@
         "reason": "A random nonce, an app id and a timestamp, tied to nobody. The Worker reads no client address (ADR 011 / ADR 020), and no attestation table has an account, email, device-identifier or address column."
       },
       "writtenBy": [
-        "services/platform/migrations/0021_native_attest.sql",
+        "services/platform/migrations/0022_native_attest.sql",
         "services/platform/src/lib/native-attest/index.ts"
       ]
     },
@@ -403,7 +403,7 @@
         "reason": "A public key and a counter that say \"some install of this app holds this key\", tied to no account. The Worker reads no client address (ADR 011 / ADR 020), and neither table has an account, email, device-identifier or address column."
       },
       "writtenBy": [
-        "services/platform/migrations/0021_native_attest.sql",
+        "services/platform/migrations/0022_native_attest.sql",
         "services/platform/src/lib/native-attest/index.ts"
       ]
     },
@@ -424,7 +424,7 @@
         "reason": "A count per day per scope; the network scope is a PoP and an AS number shared by everyone on that network. The Worker reads no client address (ADR 011 / ADR 020), and no attestation table has an account, email, device-identifier or address column."
       },
       "writtenBy": [
-        "services/platform/migrations/0021_native_attest.sql",
+        "services/platform/migrations/0022_native_attest.sql",
         "services/platform/src/lib/native-attest/index.ts"
       ]
     },

@@ -217,7 +217,7 @@ describe('platform_db migrations re-apply cleanly', () => {
       'ext_devices',
       'feature_set_members',
       'feature_sets',
-      // ⏱ 2026-09-29 · migration 0021 — native sign-in attestation (ADR no.NNN);
+      // ⏱ 2026-09-29 · migration 0022 — native sign-in attestation (ADR no.NNN);
       // ⏱ 2026-09-30 stateless challenges: redeemed nonces, keys, daily counters.
       'native_attest_counters',
       'native_attest_keys',

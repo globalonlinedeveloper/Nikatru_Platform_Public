@@ -1594,7 +1594,7 @@ export const NATIVE_ATTEST_COUNTERS_RETENTION_DAYS = 1;
 
 // 🔒 DECLARED — 90 DAYS SINCE LAST USE. ⏱ 2026-09-29 · ADR no.NNN. Register row:
 // retention.d1.platform_db.native_attest_keys. A row is an install's PUBLIC key
-// and a counter, tied to no account (0021_native_attest.sql), so this is an
+// and a counter, tied to no account (0022_native_attest.sql), so this is an
 // operational bound, not a personal-data one: a key unused for 90 days is swept,
 // and the install's next sign-in answers `attestation_key_unknown` once and
 // registers a fresh key — one extra round trip. It also bounds what a script

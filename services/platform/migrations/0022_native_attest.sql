@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0021_native_attest.sql — THE NATIVE SIGN-IN ATTESTATION STATE: redeemed
+-- 0022_native_attest.sql — THE NATIVE SIGN-IN ATTESTATION STATE: redeemed
 -- challenge nonces, the key each app install registered, and two daily counters
 -- (⏱ 2026-09-29, ADR no.NNN "native sign-in serves only attested app installs";
 -- ⏱ 2026-09-30 reshaped before its first apply, on the independent review of

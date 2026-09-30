@@ -263,7 +263,7 @@
         },
         "native_attest_counters": {
           "resolver": "exempt",
-          "reason": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs). NO app_version COLUMN AND NO OTHER MARKER: 0021_native_attest.sql gives this table `day`, `scope` and `calls` — a count per UTC day per scope (Play Integrity decodes across every app, or key registrations per network), written by the Worker's own ceiling code, never by a client, naming no app and no build."
+          "reason": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs). NO app_version COLUMN AND NO OTHER MARKER: 0022_native_attest.sql gives this table `day`, `scope` and `calls` — a count per UTC day per scope (Play Integrity decodes across every app, or key registrations per network), written by the Worker's own ceiling code, never by a client, naming no app and no build."
         }
       }
     },
