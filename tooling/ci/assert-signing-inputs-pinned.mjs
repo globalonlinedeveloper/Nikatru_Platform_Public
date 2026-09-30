@@ -187,7 +187,8 @@ export function verifiedSetupFindings(steps, i, where, rawLines) {
   const checks = indicesOf(CHECK, text);
   const downloads = indicesOf(DOWNLOAD, text);
   const extracts = indicesOf(EXTRACT, text);
-  const writes = text.search(new RegExp(`\\b${key.replace(/[-]/g, '\\-')}=`));
+  // Every regex metacharacter escaped, not only `-` (CodeQL js/incomplete-sanitization, #540).
+  const writes = text.search(new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')}=`));
   if (checks.length === 0) {
     out.push(`${at} runs no sha256 check (\`sha256sum --check\` / \`shasum -a 256 --check\`), so the archive it extracts is unverified.`);
     return out;

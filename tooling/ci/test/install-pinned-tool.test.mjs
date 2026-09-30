@@ -499,6 +499,7 @@ describe('install-pinned-tool — trufflehog, pinned by digest AND by the versio
     assert.ok(wf.includes('install-pinned-tool.mjs trufflehog --out'), 'trufflehog.yml does not install trufflehog through the installer');
     const code = wf.split('\n').filter((l) => !l.trimStart().startsWith('#')).join('\n');
     assert.doesNotMatch(code, /uses:\s*trufflesecurity\/trufflehog@/, 'the vendor wrapper (docker run IMAGE:TAG) is back');
-    assert.doesNotMatch(code, /ghcr\.io\/trufflesecurity\/trufflehog/, 'a registry tag is back');
+    // A substring test, not an unanchored host regex (CodeQL js/regex/missing-regexp-anchor, #541).
+    assert.ok(!code.includes('ghcr.io/trufflesecurity/trufflehog'), 'a registry tag is back');
   });
 });
