@@ -27,10 +27,31 @@ class SyncProblemsStrip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final List<OutboxEntry> problems =
-        ref.watch(syncProblemsProvider).value ?? const <OutboxEntry>[];
-    if (problems.isEmpty) return child;
+    final AsyncValue<List<OutboxEntry>> state = ref.watch(syncProblemsProvider);
     final AppLocalizations l10n = AppLocalizations.of(context);
+    if (state.hasError) {
+      // The queue itself could not be read (review #1075 round 3, minor b): the
+      // user's queued changes are kept, but the list cannot show them — say
+      // so, never a silently incomplete list.
+      return _withStrip(
+        child,
+        DecisionStrip(
+          kind: StatusKind.danger,
+          message: l10n.syncQueueUnreadable,
+          actions: <DecisionAction>[
+            DecisionAction(
+              label: l10n.retry,
+              primary: true,
+              onPressed: () => ref
+                ..invalidate(syncProblemsProvider)
+                ..invalidate(subscriptionsControllerProvider),
+            ),
+          ],
+        ),
+      );
+    }
+    final List<OutboxEntry> problems = state.value ?? const <OutboxEntry>[];
+    if (problems.isEmpty) return child;
     final ApiClient api = ref.read(apiClientProvider);
 
     Future<void> each(
@@ -45,30 +66,32 @@ class SyncProblemsStrip extends ConsumerWidget {
         ..invalidate(subscriptionsControllerProvider);
     }
 
-    return Column(
-      children: <Widget>[
-        Expanded(child: child),
-        SafeArea(
-          top: false,
-          child: DecisionStrip(
-            kind: StatusKind.danger,
-            message: l10n.syncProblemMessage(problems.length),
-            actions: <DecisionAction>[
-              DecisionAction(
-                label: l10n.retry,
-                primary: true,
-                onPressed: () =>
-                    each((CachedApiClient c, String id) => c.retrySync(id)),
-              ),
-              DecisionAction(
-                label: l10n.syncDiscard,
-                onPressed: () =>
-                    each((CachedApiClient c, String id) => c.discardSync(id)),
-              ),
-            ],
+    return _withStrip(
+      child,
+      DecisionStrip(
+        kind: StatusKind.danger,
+        message: l10n.syncProblemMessage(problems.length),
+        actions: <DecisionAction>[
+          DecisionAction(
+            label: l10n.retry,
+            primary: true,
+            onPressed: () =>
+                each((CachedApiClient c, String id) => c.retrySync(id)),
           ),
-        ),
-      ],
+          DecisionAction(
+            label: l10n.syncDiscard,
+            onPressed: () =>
+                each((CachedApiClient c, String id) => c.discardSync(id)),
+          ),
+        ],
+      ),
     );
   }
+
+  static Widget _withStrip(Widget child, Widget strip) => Column(
+    children: <Widget>[
+      Expanded(child: child),
+      SafeArea(top: false, child: strip),
+    ],
+  );
 }
