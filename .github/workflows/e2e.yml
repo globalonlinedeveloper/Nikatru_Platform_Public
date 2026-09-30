@@ -805,7 +805,11 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" $CALLBACK
+        # why: --expect-refusal (ADR no.NNN, lead ruling 2026-09-30): production
+        # serves native sign-in only to a VERIFIED attestation, and a CI device
+        # cannot attest, so this leg now proves the gate: every call such a build
+        # sends is refused and no session comes back. A 2xx is the leg's red.
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" $CALLBACK --expect-refusal
       - name: The native leg — the bundle under xvfb, one D-Bus session
         if: matrix.target == 'linux'
         env:
@@ -819,7 +823,7 @@ jobs:
             eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
             xvfb-run -a -s "-screen 0 1920x1200x24" \
-              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --callback
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --callback --expect-refusal
           '
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'

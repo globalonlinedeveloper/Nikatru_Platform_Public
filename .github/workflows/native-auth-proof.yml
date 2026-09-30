@@ -141,7 +141,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target android --device emulator-5554 --callback
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target android --device emulator-5554 --callback --expect-refusal
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -201,7 +201,7 @@ jobs:
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
           SIM: ${{ steps.sim.outputs.udid }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target ios --device "$SIM" --callback
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target ios --device "$SIM" --callback --expect-refusal
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -252,7 +252,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target macos --device macos --callback
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target macos --device macos --callback --expect-refusal
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -310,7 +310,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target windows --device windows
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target windows --device windows --expect-refusal
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -381,7 +381,7 @@ jobs:
             eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
             xvfb-run -a -s "-screen 0 1920x1200x24" \
-              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --callback
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --callback --expect-refusal
           '
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'

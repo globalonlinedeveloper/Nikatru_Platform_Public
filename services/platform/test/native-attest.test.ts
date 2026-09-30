@@ -423,7 +423,7 @@ describe('the route — Play Integrity', () => {
 
   it('🔴 SECOND REVIEW 1a · a proof not shaped like an integrity token is 400, and moves NO counter, limiter or Google call', async () => {
     const good = await signedFor('token');
-    for (const junk of ['x', 'tok.abc', 'a.b.c.d.e', `${JWE_HEADER}.k..ct.tag`,`${b64url(new TextEncoder().encode('{}'))}.k.iv.ct.tag`, 'A'.repeat(16_000)]) {
+    for (const junk of ['x', 'tok.abc', 'a.b.c.d.e', `${JWE_HEADER}.k..ct.tag`, `${b64url(new TextEncoder().encode('{"typ":"JWT"}'))}.enckey.iv-iv-iv.ciphertext.tagtagtag`, 'A'.repeat(16_000)]) {
       const res = await post(`${BASE}/token?grant_type=password`, text, { ...good, 'X-NK-Attest-Proof': junk });
       expect(res.status, junk.slice(0, 20)).toBe(400);
       expect(((await res.json()) as { error_code: string }).error_code).toBe('attestation_invalid');

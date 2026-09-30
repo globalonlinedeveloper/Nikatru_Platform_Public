@@ -14,8 +14,12 @@ import {
   offlineReadDeclared,
   openCommands,
   PROOF_TEST,
+  probeRefusals,
   readProof,
+  REFUSAL_STEPS,
+  gradeRefusal,
 } from '../../e2e/native_auth_proof.mjs';
+import { parseWorkflow } from '../workflow-scan.mjs';
 
 const REPO = join(import.meta.dirname, '..', '..', '..');
 
@@ -127,5 +131,70 @@ describe('native_auth_proof — how each OS is handed the callback', () => {
 
   test('an unknown target is refused', () => {
     assert.throws(() => openCommands('fuchsia', url, { app: 'demoapp', root: '.' }), /unknown target/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-30 · ADR no.NNN (lead ruling on the second review of #1070): the
+// native legs EXPECT THE REFUSAL. Production serves native sign-in only to a
+// verified attestation and a CI device cannot attest, so the legs pass exactly
+// when every call such a build sends is refused and no session comes back.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('native_auth_proof --expect-refusal — the leg proves the gate', () => {
+  const refused = (status, code) => REFUSAL_STEPS.map(({ step }) => ({ step, status, body: { code: status, error_code: code, msg: 'x' } }));
+
+  test('GREEN: every step refused with an attestation code', () => {
+    assert.deepEqual(gradeRefusal(refused(401, 'attestation_required')), []);
+    assert.deepEqual(gradeRefusal(refused(503, 'native_auth_unavailable')), []);
+    assert.deepEqual(gradeRefusal(refused(403, 'attestation_kind_refused')), []);
+  });
+
+  test('🔴 RED: an admitted call (2xx) is the gate open', () => {
+    const answers = refused(401, 'attestation_required');
+    answers[0] = { step: answers[0].step, status: 200, body: { user: { id: 'u' } } };
+    assert.match(gradeRefusal(answers)[0], /answered HTTP 200 — a call that cannot attest was ADMITTED/);
+  });
+
+  test('🔴 RED: a session in ANY answer fails, whatever the status', () => {
+    const answers = refused(401, 'attestation_required');
+    answers[2] = { step: answers[2].step, status: 400, body: { access_token: 'x', error_code: 'attestation_invalid' } };
+    assert.match(gradeRefusal(answers)[0], /CARRIES A SESSION — the gate is open/);
+  });
+
+  test('🔴 RED: a refusal that is not an attestation refusal (a captcha, a missing route) fails, and so does a missing step', () => {
+    assert.match(gradeRefusal(refused(400, 'captcha_failed'))[0], /not an attestation refusal/);
+    assert.match(gradeRefusal(refused(404, 'unknown_app'))[0], /not an attestation refusal/);
+    assert.match(gradeRefusal(refused(401, 'attestation_required').slice(1)).join('\n'), /no answer was recorded/);
+  });
+
+  test('the probe sends every step to the native route, with a fresh challenge for each attested kind', async () => {
+    const seen = [];
+    const doFetch = async (url, init) => {
+      seen.push({ url, kind: init.headers['X-NK-Attest-Kind'] ?? null });
+      if (url.endsWith('/attest/challenge')) return new Response(JSON.stringify({ challenge: 'c1.demoapp.1.x.y', expires_in: 120 }), { status: 200 });
+      return new Response(JSON.stringify({ code: 401, error_code: 'attestation_required', msg: 'x' }), { status: 401 });
+    };
+    const answers = await probeRefusals('demoapp', { email: 'e', password: 'p', doFetch, origin: 'https://platform.test' });
+    assert.deepEqual(gradeRefusal(answers), []);
+    assert.equal(seen.filter((s) => s.url.endsWith('/attest/challenge')).length, REFUSAL_STEPS.filter((x) => x.kind).length);
+    assert.ok(seen.some((s) => s.url === 'https://platform.test/v1/auth/native/demoapp/token?grant_type=password' && s.kind === 'install-key'));
+    assert.ok(seen.some((s) => s.url === 'https://platform.test/v1/auth/native/demoapp/signup' && s.kind === null));
+  });
+
+  test('WORKFLOW-SCAN: every native leg in e2e.yml and native-auth-proof.yml runs the driver with --expect-refusal', () => {
+    let runs = 0;
+    for (const rel of ['.github/workflows/e2e.yml', '.github/workflows/native-auth-proof.yml']) {
+      const wf = parseWorkflow(REPO, rel);
+      assert.ok(wf, `${rel} parses`);
+      for (const job of wf.jobs.values()) {
+        for (const line of job.logical) {
+          const text = typeof line === 'string' ? line : line.text;
+          if (!/tooling\/e2e\/native_auth_proof\.mjs/.test(text)) continue;
+          runs++;
+          assert.match(text, /--expect-refusal\b/, `${rel} job ${job.name} runs the proof without --expect-refusal: ${text.trim()}`);
+        }
+      }
+    }
+    assert.ok(runs >= 7, `the scan found ${runs} driver invocation(s) — fewer than the seven legs means it stopped reaching them`);
   });
 });
