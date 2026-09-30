@@ -275,24 +275,24 @@
           "path": "/v1/preferences",
           "auth": "required",
           "owningFile": "services/subscriptiontracker-api/src/routes/preferences.ts",
-          "purpose": "⏱ 2026-09-30 · ST-N6 (D11). The caller's preferences document (currency, theme, language, reminder switches, lead and time), or `{preferences: null}` when the account has none yet — the account's copy that follows the user to every device; the device store stays the cache.",
+          "purpose": "⏱ 2026-09-30 · ST-N6 (D11), per key (lead ruling on #1080). Every preference the caller's account holds, one entry per key with the server's `version` and `updated_at`: `{preferences: {<key>: {value, version, updated_at}}}`. The account's copy that follows the user to every device; each device's store stays the cache.",
           "client": {
             "file": "packages/api_client/lib/src/rest_account_preferences_transport.dart",
             "expression": "_rest.get('/preferences')",
-            "note": "The real call inside `RestAccountPreferencesTransport.read()`, driven by packages/core AccountPreferencesSync from apps/subscriptiontracker/lib/state/providers/account_preferences.dart at every settled sign-in and every return to the app."
+            "note": "The real call inside `RestAccountPreferencesTransport.read()`, driven by packages/core AccountPreferencesSync.sync() from apps/subscriptiontracker/lib/state/providers/account_preferences.dart at every settled sign-in and every return to the app. A key still waiting to be sent is never overwritten by it."
           }
         },
         {
-          "id": "subscriptiontracker-preferences-put",
-          "method": "PUT",
+          "id": "subscriptiontracker-preferences-patch",
+          "method": "PATCH",
           "path": "/v1/preferences",
           "auth": "required",
           "owningFile": "services/subscriptiontracker-api/src/routes/preferences.ts",
-          "purpose": "⏱ 2026-09-30 · ST-N6 (D11). REPLACE the preferences document whole. Every key is validated before the write and an unknown key is a 400, because the document is applied without a prompt on every device the user signs in on.",
+          "purpose": "⏱ 2026-09-30 · ST-N6 (D11), per key (lead ruling on #1080). Only the keys the user changed, each with the `base_version` it was based on. The server bumps a key's version; a row NEWER than the base is a conflict the server wins, answered with the current value for the client to apply. Unknown keys and bad values are a 400 that writes nothing; a body over 16 KiB is a 413 `preferences_too_large`. There is no whole-document write.",
           "client": {
             "file": "packages/api_client/lib/src/rest_account_preferences_transport.dart",
-            "expression": "_rest.put('/preferences', body: body)",
-            "note": "The real call inside `RestAccountPreferencesTransport.write()`: the account is seeded from the first device, then written on every local change once the account copy is known."
+            "expression": "_rest.patch('/preferences', body: body)",
+            "note": "The real call inside `RestAccountPreferencesTransport.patch()`, sent by the DurableOutbox replay one key at a time (one PATCH in flight). Only a key the user set on this device is ever sent; defaults never are."
           }
         },
         {

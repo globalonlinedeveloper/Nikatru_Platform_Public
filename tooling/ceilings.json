@@ -536,6 +536,11 @@
         "note": "One INSERT per well-formed event. This is the call site the 100 → 50 correction was about."
       },
       {
+        "file": "services/subscriptiontracker-api/src/routes/preferences.ts",
+        "boundedBy": "MAX_PATCH_KEYS",
+        "note": "⏱ 2026-09-30 · ST-N6 (D11). One conditional upsert per key of one PATCH, in ONE batch; with the switch-count read and the answer read the invocation is MAX_PATCH_KEYS + 2 = 22 statements, under the Free 50 per invocation on either reading. A real PATCH carries one or two keys: the client sends only what the user changed. test/preferences.test.ts refuses MAX_PATCH_KEYS + 1."
+      },
+      {
         "file": "services/subscriptiontracker-api/src/routes/budget.ts",
         "boundedBy": "MAX_CATEGORIES",
         "note": "One DELETE plus one INSERT per category, deliberately in ONE batch so the replace is atomic. The bound is MAX_CATEGORIES + 1, and it currently exceeds the ceiling — see the `@ceiling-exceeds` declaration at the constant."

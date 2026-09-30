@@ -1,0 +1,22 @@
+{
+  "_what": "⏱ 2026-09-30 · review #1080 finding 6. THE CONTRACT between the app's preference keys and this Worker's validator. apps/subscriptiontracker/test/preferences_contract_test.dart asserts the app emits EXACTLY these keys and values for the state it names; services/subscriptiontracker-api/test/preferences.test.ts asserts PATCH accepts them. A key added on one side and not the other reddens one of the two.",
+  "state": {
+    "currencyCode": "EUR",
+    "switches": { "alerts": true, "priceHike": false, "unused": true, "weekly": true },
+    "reminderLeadDays": 7,
+    "reminderMinuteOfDay": 420,
+    "themeMode": "dark",
+    "locale": "ta"
+  },
+  "changes": {
+    "currencyCode": { "value": "EUR", "base_version": 0 },
+    "themeMode": { "value": "dark", "base_version": 0 },
+    "locale": { "value": "ta", "base_version": 0 },
+    "reminderLeadDays": { "value": 7, "base_version": 0 },
+    "reminderMinuteOfDay": { "value": 420, "base_version": 0 },
+    "switch.alerts": { "value": true, "base_version": 0 },
+    "switch.priceHike": { "value": false, "base_version": 0 },
+    "switch.unused": { "value": true, "base_version": 0 },
+    "switch.weekly": { "value": true, "base_version": 0 }
+  }
+}

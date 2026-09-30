@@ -807,7 +807,7 @@
       "kind": "d1-table",
       "name": "preferences",
       "personalData": true,
-      "holds": "⏱ 2026-09-30 · ST-N6 (D11). A user's app preferences — currency, light/dark theme, language, and the reminder switches, lead and time of day — as one JSON document keyed on their user id, so they follow the account to every device the user signs in on.",
+      "holds": "⏱ 2026-09-30 · ST-N6 (D11). A user's app preferences — currency, light/dark theme, language, and the reminder switches, lead and time of day — as one row per preference keyed on their user id, each with a server-bumped version, so they follow the account to every device the user signs in on.",
       "retention": {
         "kind": "keep",
         "reason": "The user's own settings, kept until they change them or delete the account. Same erasure position as budgets."
