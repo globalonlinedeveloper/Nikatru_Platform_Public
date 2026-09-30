@@ -145,6 +145,25 @@
     "pub get is ever added to the `platform` job, that job goes red and this paragraph is why."
   ],
   "flutter": "3.47.5",
+  "$flutter_archive_digests_comment": [
+    "⏱ ADDED 2026-09-30 (finding rv2-security-003). THE SHA256 OF EACH FLUTTER SDK ARCHIVE a runner of this",
+    "tree installs, copied from Google's release manifests — the `sha256` field of the stable `3.47.5`",
+    "entry in https://storage.googleapis.com/flutter_infra_release/releases/releases_<os>.json:",
+    "  linux x64    stable/linux/flutter_linux_3.47.5-stable.tar.xz       (releases_linux.json)",
+    "  macOS arm64  stable/macos/flutter_macos_arm64_3.47.5-stable.zip    (releases_macos.json, dart_sdk_arch arm64)",
+    "  Windows x64  stable/windows/flutter_windows_3.47.5-stable.zip      (releases_windows.json)",
+    ".github/actions/setup-flutter downloads the archive for its runner, checks it against the value here with",
+    "`sha256sum --check`, and only then extracts it where subosito/flutter-action looks — so the SDK that",
+    "compiles every signed artifact is no longer an unchecked download. macOS x64 is NOT pinned: no job runs",
+    "on an Intel Mac, and the composite refuses a runner that has no digest here rather than installing one.",
+    "`flutter_sha256_version` names the release these digests belong to. A Renovate bump of `flutter` moves",
+    "only `flutter`, and tooling/ci/assert-signing-inputs-pinned.mjs is then RED at the pull request until",
+    "a human copies the three new digests and moves `flutter_sha256_version`. That red is the mechanism."
+  ],
+  "flutter_sha256_version": "3.47.5",
+  "flutter_linux_x64_sha256": "2132e990f236f8d22e7c6314b29a191a95b10d7cbcfec9b4e2e303d996652cbb",
+  "flutter_macos_arm64_sha256": "d4dd908b5f8f65515831b6d68ae33307a813f2b68947dded7a1994ee5ea7cead",
+  "flutter_windows_x64_sha256": "0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8",
   "node": "24",
   "$java_comment": [
     "THE JDK THAT RUNS GRADLE AND CI, AND THE ANDROID BYTECODE TARGET — ONE KEY DRIVES BOTH, and that is why it is 17.",
@@ -619,6 +638,22 @@
     {
       "key": "glitchtip_cli_macos_arm64_sha256",
       "why": "A DIGEST, NOT A VERSION — the sha256 of the macOS (aarch64-apple-darwin) artifact of the release `glitchtip_cli` names, and exempt for the same already-verified reason as `glitchtip_cli_sha256` above: no datasource on https://docs.renovatebot.com/modules/datasource/ resolves a file checksum, because a checksum is computed from a download rather than published as a version series. Restated in full rather than pointing at its neighbour, because assert-update-coverage.mjs reads each `why` on its own. ⚠️ ONE THING IS SHARPER HERE: this asset's filename carries no version and no extension (`glitchtip-cli-macos-arm64`), so the URL differs between releases only in its `/v<ver>/` path segment and the bytes are the only thing that distinguishes them — the digest is doing more work on this lane than on the linux one. It advances with `glitchtip_cli` and only with it, and a bump lands RED at the apple lane's `shasum -a 256 --check` until a human writes the new digest here. ⛔ That red is the mechanism; do not delete the checksum step. Declared 2026-09-07. ⏱ 2026-09-25 (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): that check is now tooling/ci/install-pinned-tool.mjs, one code path on every lane, so the bump lands red there; the ⛔ stands."
+    },
+    {
+      "key": "flutter_sha256_version",
+      "why": "NOT A VERSION PIN OF ITS OWN — it names the Flutter release the three `flutter_*_sha256` digests were copied for, so a bump of `flutter` that did not also move the digests is caught as a mismatch at the pull request (tooling/ci/assert-signing-inputs-pinned.mjs limb P) instead of at the next signing dispatch. Renovate must NOT move it: moving it without the digests would turn that refusal off. It advances by hand, with the digests, and only then. Declared 2026-09-30 (rv2-security-003)."
+    },
+    {
+      "key": "flutter_linux_x64_sha256",
+      "why": "A DIGEST, NOT A VERSION — the sha256 of the linux x64 (.tar.xz) Flutter SDK archive of the release `flutter` names, copied from Google's releases_<os>.json (see $flutter_archive_digests_comment). Exempt because no datasource on https://docs.renovatebot.com/modules/datasource/ resolves a file checksum: a checksum is computed from a download, not published as a version series. It advances with `flutter` and only with it: a Renovate bump of `flutter` is RED at tooling/ci/assert-signing-inputs-pinned.mjs (flutter_sha256_version no longer equals flutter) and at .github/actions/setup-flutter's `sha256sum --check` until a human writes the new digest here. ⛔ That red is the mechanism; do not delete the check. Declared 2026-09-30 (rv2-security-003)."
+    },
+    {
+      "key": "flutter_macos_arm64_sha256",
+      "why": "A DIGEST, NOT A VERSION — the sha256 of the macOS arm64 (.zip) Flutter SDK archive of the release `flutter` names, copied from Google's releases_<os>.json (see $flutter_archive_digests_comment). Exempt because no datasource on https://docs.renovatebot.com/modules/datasource/ resolves a file checksum: a checksum is computed from a download, not published as a version series. It advances with `flutter` and only with it: a Renovate bump of `flutter` is RED at tooling/ci/assert-signing-inputs-pinned.mjs (flutter_sha256_version no longer equals flutter) and at .github/actions/setup-flutter's `sha256sum --check` until a human writes the new digest here. ⛔ That red is the mechanism; do not delete the check. Declared 2026-09-30 (rv2-security-003)."
+    },
+    {
+      "key": "flutter_windows_x64_sha256",
+      "why": "A DIGEST, NOT A VERSION — the sha256 of the Windows x64 (.zip) Flutter SDK archive of the release `flutter` names, copied from Google's releases_<os>.json (see $flutter_archive_digests_comment). Exempt because no datasource on https://docs.renovatebot.com/modules/datasource/ resolves a file checksum: a checksum is computed from a download, not published as a version series. It advances with `flutter` and only with it: a Renovate bump of `flutter` is RED at tooling/ci/assert-signing-inputs-pinned.mjs (flutter_sha256_version no longer equals flutter) and at .github/actions/setup-flutter's `sha256sum --check` until a human writes the new digest here. ⛔ That red is the mechanism; do not delete the check. Declared 2026-09-30 (rv2-security-003)."
     },
     {
       "key": "gitleaks_sha256",
