@@ -211,7 +211,16 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     return s.hasValue && !s.hasError ? s.requireValue : null;
   }
 
-  Future<void> addSubscription(Subscription draft) async {
+  /// [primeReminders] is the PRIMING step (train ST-D8): the add sheet shows
+  /// the design system's `showPermissionPriming` and answers whether the user
+  /// chose to proceed. It is asked ONLY on the empty→first transition below,
+  /// and the OS prompt is spent only on a yes. With no primer — a caller with
+  /// no screen to explain from — the OS is never asked at all: an un-primed ask
+  /// is the defect, and a missed ask costs one more chance at the next gesture.
+  Future<void> addSubscription(
+    Subscription draft, {
+    Future<bool> Function()? primeReminders,
+  }) async {
     // 🔴 ABSENT IS NOT EMPTY. This was `state.value ?? const []`, which
     // reads a still-loading first fetch and a failed one as "the user has no
     // subscriptions" — so an add during either state looked like an empty→first
@@ -257,9 +266,15 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
       // first transition so it happens once per install, not once per add, and
       // reachable only from the add sheet's submit button — never from `build()`
       // or the settings listener, both of which run at first frame.
+      //
+      // ⏱ 2026-09-28 · train ST-D8: AND IT IS PRIMED FIRST. This used to spend
+      // the one OS prompt straight off the Save tap, with nothing on screen
+      // saying why. `primeReminders` explains first; "Not now" spends nothing.
       if (ReminderPlan.from(
-        ref.read(settingsControllerProvider).prefs,
-      ).syncRenewals) {
+            ref.read(settingsControllerProvider).prefs,
+          ).syncRenewals &&
+          primeReminders != null &&
+          await primeReminders()) {
         await ref.read(renewalRemindersProvider).requestPermissions();
       }
     }

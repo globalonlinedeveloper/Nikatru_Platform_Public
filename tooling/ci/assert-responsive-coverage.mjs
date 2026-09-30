@@ -650,9 +650,14 @@ const REQUIRED_COVERAGE = [
     // `enableWebSemantics`, and this corpus is every .dart under the package's
     // test/ — so R14b would have cleared a floor left at 25. Read off the
     // per-root line, `— 26 file(s)`.
-    surfaces: 25,
-    widthTestFiles: 26,
-    coveredSurfaces: 25,
+    // ⏱ RAISED 2026-09-29 · ST-D4: surfaces 25 → 26, coveredSurfaces 25 → 26
+    // and `widthTestFiles` 26 → 27, IN THE CHANGE THAT EARNED THEM: the
+    // chassis `SettingsSection` arrived with test/settings_design_test.dart,
+    // which pumps it at kPhone/kTablet/kDesktop. Read off the per-root lines,
+    // `26 surface(s) reachable, 26 measured` and `— 27 file(s)`.
+    surfaces: 26,
+    widthTestFiles: 27,
+    coveredSurfaces: 26,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',
@@ -714,10 +719,18 @@ const REQUIRED_COVERAGE = [
     // surface(s) measured — 8 PRINTED" (the same eight as before).
     //   surfaces        31 → 35
     //   coveredSurfaces 23 → 27
+    //
+    // ⏱ RE-MEASURED 2026-09-29 · train ST-D DW2 (ST-D2 + ST-D8), on top of
+    // DW1 — MonthGrid and DateBadge (month_grid_test.dart) and
+    // `PermissionPrimingView` (permission_priming_test.dart), each pumped at
+    // kPhone/kTablet/kDesktop. Read off the run's own line: "30 of 38
+    // surface(s) measured — 8 PRINTED".
+    //   surfaces        35 → 38
+    //   coveredSurfaces 27 → 30
     enforce: false,
-    surfaces: 35,
+    surfaces: 38,
     widthTestFiles: 19,
-    coveredSurfaces: 27,
+    coveredSurfaces: 30,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, content_pane, two_pane and fifteen ' +
       'more, whose width decisions every stamped app inherits',

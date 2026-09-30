@@ -86,8 +86,10 @@ export const VALUE_DEFINES = ['SUPABASE_ANON_KEY', 'APP_VERSION', 'TURNSTILE_SIT
 export const CONNECT_KEYS = ['platformBaseUrl', 'configBaseUrl'];
 
 /** app_config.dart constants that name an https origin and are only ever
- *  NAVIGATED to (openExternalUrl, the force-update button), never fetched. */
-export const LINK_KEYS = ['companyUrl', 'updateUrl', 'privacyUrl', 'termsUrl', 'refundUrl', 'contactUrl'];
+ *  NAVIGATED to (openExternalUrl, the force-update button), never fetched.
+ *  ⏱ 2026-09-29 · ST-D4: privacyNoticeUrl — the Settings privacy-notice row,
+ *  opened with openExternalUrl like privacyUrl beside it. */
+export const LINK_KEYS = ['companyUrl', 'updateUrl', 'privacyUrl', 'privacyNoticeUrl', 'termsUrl', 'refundUrl', 'contactUrl'];
 
 /**
  * X — origins connect-src carries that neither D nor K names today.
