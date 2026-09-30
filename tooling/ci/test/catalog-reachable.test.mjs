@@ -63,6 +63,7 @@ import {
   hubVerdict,
   nonceUrl,
   surfaceIsOurs,
+  isProbeableUrl,
   wildcardVerdict,
 } from '../assert-catalog-reachable.mjs';
 import { CANONICAL_HUB_URL, ORIGIN } from '../../sites/generate-discovery.mjs';
@@ -400,5 +401,20 @@ describe('assert-catalog-reachable — the D-11 limbs are gated on our own tree'
   test('TRUE for the repository root CI scans, FALSE for a fixture root', () => {
     assert.equal(surfaceIsOurs(resolve(CI_DIR, '..', '..')), true, 'CI passes no root, so this is the CI case');
     assert.equal(surfaceIsOurs(TMP), false, 'a temp fixture tree is not the tree the hub URL describes');
+  });
+});
+
+// ⏱ 2026-09-30 · CodeQL #99 / review of #1087 finding 5: a catalogue url is
+// register data, so only our zones are ever requested.
+describe('isProbeableUrl — only our zones are requested', () => {
+  test('RED: a foreign, look-alike, userinfo or plain-http url is refused', () => {
+    for (const url of ['https://evil.example/', `https://${WILDCARD_APEX}.evil.example/`, `https://evil.example/${WILDCARD_APEX}`, `https://u:p@${WILDCARD_APEX}/`, `http://${WILDCARD_APEX}/`, 'https://pages.dev.evil.example/', 'not a url']) {
+      assert.equal(isProbeableUrl(url), false, url);
+    }
+  });
+  test('GREEN: the apex, its subdomains, *.pages.dev and loopback http are allowed', () => {
+    for (const url of [`https://${WILDCARD_APEX}/subscriptiontracker/`, `https://api.${WILDCARD_APEX}/v1/health`, 'https://subscriptiontracker-7qg.pages.dev/', 'http://127.0.0.1:9/']) {
+      assert.equal(isProbeableUrl(url), true, url);
+    }
   });
 });

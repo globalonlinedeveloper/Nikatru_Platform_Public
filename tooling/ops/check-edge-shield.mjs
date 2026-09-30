@@ -80,8 +80,23 @@ export function zoneRoutesOf(text) {
 export function routeMatches(pattern, url) {
   const u = new URL(url);
   const subject = `${u.host}${u.pathname}`;
-  const re = new RegExp(`^${pattern.split('*').map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`);
-  return re.test(subject);
+  // ⏱ 2026-09-30 · A literal glob walk, not a RegExp built from the pattern: the
+  // escaped RegExp was correct, but CodeQL read every host a test fed it as an
+  // unescaped hostname regexp (js/incomplete-hostname-regexp #503–#508). The
+  // first piece anchors the start, the last the end, and each `*` spans any run.
+  const pieces = pattern.split('*');
+  if (pieces.length === 1) return subject === pattern;
+  const first = pieces[0];
+  const last = pieces[pieces.length - 1];
+  if (!subject.startsWith(first) || subject.length < first.length + last.length || !subject.endsWith(last)) return false;
+  let at = first.length;
+  const end = subject.length - last.length;
+  for (const piece of pieces.slice(1, -1)) {
+    const i = subject.indexOf(piece, at);
+    if (i === -1 || i + piece.length > end) return false;
+    at = i + piece.length;
+  }
+  return true;
 }
 
 /** PURE. `{ unprobed, stray }`: routes with no probe inside, probes inside no route. */

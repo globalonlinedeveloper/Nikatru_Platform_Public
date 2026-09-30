@@ -62,7 +62,9 @@
 // Exit 2 = no token supplied, or the API could not be reached, authorised or read
 //          (those were exit 1 until 2026-09-11) — a DIFFERENT exit code from "broken" on purpose,
 //          so "I could not look" can never be read as "I looked and it was fine".
-//          --self-test also exits 2 if it fails to RESTORE what it broke.
+//          --self-test also exits 2 if it fails to RESTORE what it broke. A
+//          GLITCHTIP_URL that is neither the instance nor loopback is exit 2 too,
+//          before any request (⏱ 2026-09-30, tooling/ops/credential-origin.mjs).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // --self-test MUTATES THE LIVE INSTANCE AND THE REAL LEDGER, then restores both.
@@ -78,6 +80,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifyThrown, transientLook, isTransientStatus, isSafeMethod, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
 import { REGISTER_REL, expectedMonitors } from './monitor-register.mjs';
+import { CredentialOriginRefused, credentialOrigin, GLITCHTIP_ORIGIN } from './credential-origin.mjs';
 
 // 🔴 `process.exit()` IS BANNED IN THIS FILE, AND IT IS A BUG FIX. Calling it
 // while an undici (fetch) keep-alive handle is still open CRASHES libuv on
@@ -97,7 +100,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const LEDGER = join(HERE, 'alarm-chains.json');
 const MONITOR_REGISTER = join(HERE, '..', '..', REGISTER_REL);
 
-const BASE = (process.env.GLITCHTIP_URL ?? 'https://glitchtip.nikatru.com').replace(/\/+$/, '');
 const TOKEN = process.env.GLITCHTIP_TOKEN;
 const MODE = process.argv[2] ?? '';
 
@@ -105,6 +107,19 @@ if (!TOKEN) {
   console.error('⬜ GLITCHTIP_TOKEN is not set, so the live instance was NOT contacted.');
   console.error('   Exit code 2, deliberately distinct from 1: "I could not look" must never be readable');
   console.error('   as "I looked and it was fine". Source the token from the local vault and re-run.');
+  process.exit(2); // safe: this runs BEFORE any fetch, so no undici handle is open
+}
+
+// ⏱ 2026-09-30 — 🔴 THE TOKEN GOES TO GLITCHTIP OR TO THIS MACHINE (CodeQL
+// js/file-access-to-http #416). GLITCHTIP_URL is pinned by
+// tooling/ops/credential-origin.mjs; any other origin is exit 2, the code for a
+// missing token, because nothing was contacted.
+let BASE;
+try {
+  BASE = credentialOrigin(process.env.GLITCHTIP_URL || GLITCHTIP_ORIGIN, 'glitchtip');
+} catch (e) {
+  if (!(e instanceof CredentialOriginRefused)) throw e;
+  console.error(`⬜ GLITCHTIP_URL: ${e.message}. The live instance was NOT contacted — exit 2.`);
   process.exit(2); // safe: this runs BEFORE any fetch, so no undici handle is open
 }
 

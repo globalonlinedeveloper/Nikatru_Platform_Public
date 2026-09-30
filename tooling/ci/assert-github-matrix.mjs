@@ -50,7 +50,6 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
 /* 🔴 2026-09-07 — THE TWO `git` READS BELOW ARE POINTED AT OTHER REPOSITORIES: the
    checkouts under the products root, one per `platform` entry. `-C` does not select
    a repository when the caller environment carries `GIT_DIR`, `GIT_INDEX_FILE` or any

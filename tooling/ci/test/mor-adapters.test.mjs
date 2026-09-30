@@ -237,32 +237,6 @@ app.post('/revenuecat', async (c) => {
 });
 `;
 
-/** The pre-2026-08-25 shape: the world is derived and then dropped on the floor,
- *  so the row this writes cannot be decided live-from-sandbox by the shared read. */
-const LEGACY_WEBHOOK_NO_WORLD_TS = `
-app.post('/revenuecat', async (c) => {
-  const configured = c.env.REVENUECAT_WEBHOOK_SECRET;
-  if (!configured) return c.json({ error: 'webhook_not_configured' }, 503);
-  const environment = body.event.environment === 'PRODUCTION' ? 'live' : 'sandbox';
-  if (environment !== c.env.MONEY_ENVIRONMENT) return c.json({ error: 'cross_world_event' }, 202);
-  await c.env.PLATFORM_DB.prepare('INSERT INTO entitlements (user_id, provider, last_event_id) VALUES (?, ?, ?)').bind(userId, 'revenuecat', eventId).run();
-  return c.json({ ok: true });
-});
-`;
-
-/** The near miss: the route READS the column and still does not WRITE it. */
-const LEGACY_WEBHOOK_WORLD_ELSEWHERE_TS = `
-app.post('/revenuecat', async (c) => {
-  const configured = c.env.REVENUECAT_WEBHOOK_SECRET;
-  if (!configured) return c.json({ error: 'webhook_not_configured' }, 503);
-  const environment = body.event.environment === 'PRODUCTION' ? 'live' : 'sandbox';
-  if (environment !== c.env.MONEY_ENVIRONMENT) return c.json({ error: 'cross_world_event' }, 202);
-  const prior = await c.env.PLATFORM_DB.prepare('SELECT provider_environment FROM entitlements WHERE user_id = ?').bind(userId).all();
-  await c.env.PLATFORM_DB.prepare('INSERT INTO entitlements (user_id, provider, last_event_id) VALUES (?, ?, ?)').bind(userId, 'revenuecat', eventId).run();
-  return c.json({ ok: true, prior });
-});
-`;
-
 // ⏱ 2026-09-24 · O-BRICK-ERASURE-DESTROYS-THE-IDENTITY: the stamped route is the
 // flagship shape — it erases its own APP_DB and never writes the shared table. It
 // is still WRITTEN into every fixture, because REQUIRED_COVERAGE demands the brick

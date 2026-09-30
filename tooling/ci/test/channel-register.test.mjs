@@ -3916,7 +3916,7 @@ describe('assert-channel-register — the extension surface carries the store ob
   // sha1-hex('fullshot@nikatru.com') = c6f440b64036afafaf5a5fb4bd18316f71c11f70.
   const OUR_GECKO_REDIRECT = 'https://c6f440b64036afafaf5a5fb4bd18316f71c11f70.extensions.allizom.org/';
   test('PASSES with the Firefox redirect our add-on id derives to, on a firefox row', () => {
-    const { code, out } = run(tree({
+    const { out } = run(tree({
       withExtension: true,
       geckoId: 'fullshot@nikatru.com',
       mutate: (r) => {

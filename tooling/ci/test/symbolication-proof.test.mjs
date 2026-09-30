@@ -21,11 +21,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   THROW_SITE_MARKER,
@@ -653,6 +653,63 @@ describe('the CLI refuses rather than passes', () => {
     } finally {
       rmSync(d, { recursive: true, force: true });
     }
+  });
+
+  // ⏱ 2026-09-30 — 🔴 THE TOKEN GOES TO THE PINNED INSTANCE, NEVER TO THE
+  // REGISTER'S (CodeQL #407–#409; tooling/ops/credential-origin.mjs). The script
+  // reads glitchtip-project.json beside ITSELF, so each case runs a copy of the
+  // three files it needs in a temp tooling/ops with its own register, and `fetch`
+  // is a recorder (NODE_OPTIONS --import, so the script is still argv[1]).
+  describe('the register cannot choose where the token goes', () => {
+    const verdictWith = (instance) => {
+      const d = mkdtempSync(join(tmpdir(), 'symprobe-pin-'));
+      try {
+        const ops = join(d, 'tooling', 'ops');
+        mkdirSync(ops, { recursive: true });
+        for (const f of ['symbolication-proof.mjs', 'bounded-retry.mjs', 'credential-origin.mjs', EXPECTATION_FILE]) {
+          cpSync(join(ROOT, 'tooling', 'ops', f), join(ops, f));
+        }
+        const decl = JSON.parse(readFileSync(join(ROOT, 'tooling', 'ops', 'glitchtip-project.json'), 'utf8'));
+        writeFileSync(join(ops, 'glitchtip-project.json'), JSON.stringify({ ...decl, instance }));
+        const log = join(d, 'asked.log');
+        writeFileSync(
+          join(d, 'recorder.mjs'),
+          `import { appendFileSync } from 'node:fs';\nglobalThis.fetch = async (url) => { appendFileSync(${JSON.stringify(log)}, String(url) + '\\n'); return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } }); };\n`,
+        );
+        const exp = expectedSite(readFileSync(join(ROOT, PROBE), 'utf8'), PROBE);
+        writeFileSync(join(d, 'trace.txt'), RAW_TRACE.join('\n'));
+        writeFileSync(join(d, 'sym.txt'), `#0      probeThrowSite (file:///x/symbolication_crash_probe.dart:${exp.line}:3)\n`);
+        const r = spawnSync(process.execPath, [
+          join(ops, 'symbolication-proof.mjs'), 'verdict', '--source', join(ROOT, PROBE), '--trace', join(d, 'trace.txt'),
+          '--symbolized', join(d, 'sym.txt'), '--marker', 'm', '--report', join(d, 'r.json'), '--wait-seconds', '0',
+        ], {
+          encoding: 'utf8',
+          env: { ...process.env, GLITCHTIP_TOKEN: 'never-sent', NODE_OPTIONS: `--import=${pathToFileURL(join(d, 'recorder.mjs')).href}` },
+        });
+        const asked = existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : [];
+        return { code: r.status, out: `${r.stdout}${r.stderr}`, asked };
+      } finally {
+        rmSync(d, { recursive: true, force: true });
+      }
+    };
+
+    test('GREEN CONTROL — the real instance: the events read goes to https://glitchtip.nikatru.com, and only there', () => {
+      const r = verdictWith('https://glitchtip.nikatru.com');
+      // No event carries marker `m`, and --wait-seconds 0 gives up at once: COVERAGE LOST, after one read.
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /no GlitchTip event carries m/);
+      assert.ok(r.asked.length >= 1, r.out);
+      assert.deepEqual([...new Set(r.asked.map((u) => new URL(u).origin))], ['https://glitchtip.nikatru.com']);
+    });
+
+    test('RED — a wrong instance in the file (look-alike, path-smuggled, loopback, userinfo): COVERAGE LOST (2) and NOT ONE request', () => {
+      for (const instance of ['https://glitchtip.nikatru.com.evil.invalid', 'https://evil.invalid/glitchtip.nikatru.com', 'http://127.0.0.1:1', 'https://t:x@glitchtip.nikatru.com']) {
+        const r = verdictWith(instance);
+        assert.equal(r.code, 2, `${instance}\n${r.out}`);
+        assert.match(r.out, /glitchtip-project\.json names its instance wrongly: refusing to send the GlitchTip credential/, instance);
+        assert.deepEqual(r.asked, [], instance);
+      }
+    });
   });
 });
 
