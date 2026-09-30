@@ -238,7 +238,9 @@ void main() {
           'to translate',
       'emailHint':
           'an example address, whose shape is the same in any language',
-      'a11yCategoryShare': 'two placeholders and a space: no word to translate',
+      // ⏱ ST-D3 D3-5: a11yCategoryShare left with the donut; its successor.
+      'a11yCategoryRowNoShare':
+          'two placeholders and a colon: no word to translate',
     };
     const List<String> unrecoverable = <String>[
       'updateRequiredTitle',

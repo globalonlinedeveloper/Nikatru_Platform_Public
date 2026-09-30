@@ -35,9 +35,10 @@ import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
-import 'package:subscriptiontracker/features/budget/budget_screen.dart';
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
+import 'package:subscriptiontracker/features/insights/budget_card.dart';
+import 'package:subscriptiontracker/features/insights/budget_editor.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
 import 'package:subscriptiontracker/features/shell/app_shell.dart';
@@ -1296,8 +1297,8 @@ void main() {
     //
     // `Icons.calendar_month_rounded` is used in exactly one place in the app
     // (`app_shell.dart`'s tab spec), so it is the unambiguous handle. The other
-    // four labels are untouched: no screen renders "Home", "Insights", "Budget"
-    // or "More" alongside its tab. Pinned by
+    // three labels are untouched: no screen renders "Home", "Insights" or
+    // "Settings" alongside its tab. Pinned by
     // `test/l10n_group_home_test.dart` → '"Calendar" is now ambiguous on /home'.
     await tester.tap(find.byIcon(Icons.calendar_month_rounded));
     await pumpFor(tester, const Duration(seconds: 2));
@@ -1312,17 +1313,22 @@ void main() {
     expect(find.byType(InsightsScreen), findsWidgets);
     await shot('06-insights');
 
-    // ── 07 Budget (loads over the network first) ─────────────────────────────
-    await tester.tap(find.text('Budget'));
-    await pumpFor(tester, const Duration(seconds: 4));
-    expect(shellIndex(), 3);
-    expect(find.byType(BudgetScreen), findsWidgets);
-    await shot('07-budget');
-
-    // ── 08 Settings (the 5th tab is labelled "More") ─────────────────────────
-    await tester.tap(find.text('More'));
+    // ── 07 Budget — the editor on Insights (ST-D3: no Budget tab) ────────────
+    // The budget loads over the network first, then its card offers Edit.
     await pumpFor(tester, const Duration(seconds: 2));
-    expect(shellIndex(), 4);
+    await tester.ensureVisible(find.byKey(BudgetCard.editButton));
+    await tester.tap(find.byKey(BudgetCard.editButton));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(find.byType(BudgetEditor), findsWidgets);
+    await shot('07-budget');
+    await tester.tap(find.byTooltip('Close'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(find.byType(BudgetEditor), findsNothing);
+
+    // ── 08 Settings (the 4th tab, named) ─────────────────────────────────────
+    await tester.tap(find.text('Settings'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(shellIndex(), 3);
     expect(find.byType(SettingsScreen), findsWidgets);
     expect(find.text('CURRENCY'), findsWidgets);
     await shot('08-settings');
