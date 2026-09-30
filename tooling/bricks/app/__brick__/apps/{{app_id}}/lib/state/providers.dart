@@ -351,6 +351,7 @@ final Provider<ReadThroughCache> readThroughCacheProvider =
       (ref) => ReadThroughCache(
         ref.watch(offlineStoreProvider),
         onWriteFailed: reportCacheWriteFailure,
+        owner: () => ref.read(authRepositoryProvider).currentUser?.id,
         onStaleChanged: (bool stale) =>
             ref.read(staleReadProvider.notifier).report(stale: stale),
       ),
@@ -1483,8 +1484,10 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
   (ref) => RestClient(
     baseUrl: AppConfig.apiBaseUrl,
     tokenProvider: ref.watch(authTokenProvider),
-    onUnauthorized: () =>
-        signOutOnlyIfSessionIsGone(ref.read(authRepositoryProvider)),
+    onUnauthorized: () => signOutOnlyIfSessionIsGone(
+      ref.read(authRepositoryProvider),
+      onSignedOut: ref.read(readThroughCacheProvider).forget,
+    ),
   ),
 );
 
@@ -1507,9 +1510,13 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
 /// It is the narrowest of the leaks — nobody hands the device over on a 401 —
 /// and it is the only one left. Named here, and in [signOutAndForgetUser]'s doc,
 /// so the count in that doc stays honest.
-Future<void> signOutOnlyIfSessionIsGone(core.AuthRepository auth) async {
+Future<void> signOutOnlyIfSessionIsGone(
+  core.AuthRepository auth, {
+  UserStateDrop? onSignedOut,
+}) async {
   if (await auth.sessionIsGone()) {
     await auth.signOut();
+    await onSignedOut?.call(); // e.g. the offline copy: every sign-out drops it
   }
 }
 

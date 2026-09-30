@@ -17,12 +17,18 @@ import 'json_store.dart';
 // network, DNS, timeout) or a SERVER failure (5xx). A 401 is not "offline" —
 // it is "this session is not accepted" — and serving a cached list there would
 // show one account's rows to whoever signs in next on the same device. Every
-// other 4xx is a real answer about the request and travels unchanged. The same
-// account boundary is why every app drops this cache on sign-out.
+// other 4xx is a real answer about the request and travels unchanged.
 //
-// 🔴 A CACHED ANSWER IS MARKED, PER KEY (audit D19; review #1075 finding 12).
-// A read served from the copy marks ITS key stale; a live read of another key
-// never clears it. `onStaleChanged` reports whether ANY key is stale.
+// 🔴 THE COPY BELONGS TO ONE ACCOUNT (review #1075 round 2, major 2). With an
+// `owner`, every copy is stored under a key of that user's own, the request in
+// flight and the fresh window are that user's, and a result lands only if the
+// user and the EPOCH it started under are still current. [forget] — which every
+// sign-out path runs, a forced 401 included — bumps the epoch, drops every copy
+// this cache wrote and every request in flight: a list read still out when the
+// user signs out writes NOTHING, and the next user is never shown the previous
+// user's rows, from the copy, from a joined request or from the fresh window.
+//
+// 🔴 A CACHED ANSWER IS MARKED, PER KEY (audit D19; review finding 12).
 //
 // 🔴 A READ THAT HOLDS A CACHED ANSWER NEVER WAITS ON THE CONNECT TIMEOUT
 // (audit D24). It waits at most [ReadThroughCache.revalidateAfter] and then
@@ -30,14 +36,11 @@ import 'json_store.dart';
 // (stale-while-revalidate); once the device is proven offline it answers at
 // once.
 //
-// 🔴 AND A REVALIDATION NEVER STARTS ANOTHER (review #1075 finding 3). The
-// request that carried on is the ONLY one in flight for its key — a second read
-// joins it — and when it lands it is mirrored, it CLEARS the stale mark, and
+// 🔴 AND A REVALIDATION NEVER STARTS ANOTHER (review finding 3). The request
+// that carried on is the ONLY one in flight for its key — a second read joins
+// it — and when it lands it is mirrored, it CLEARS the stale mark, and
 // `onRevalidated` fires. The read that notification prompts is answered from
-// the fresh mirror without a request for [ReadThroughCache.minRevalidateInterval]
-// (30 s). Before this, a network slower than the 2 s probe re-read, timed out,
-// revalidated and re-read again: a GET every 2.5 s for as long as the list was
-// open, and the list marked stale the whole time.
+// the fresh mirror for [ReadThroughCache.minRevalidateInterval] (30 s).
 //
 // ⚠️ A CACHE WRITE FAILURE NEVER FAILS THE OPERATION — the server has the
 // truth — BUT IT IS NEVER SILENT EITHER: it is counted, kept, and reported
@@ -58,8 +61,13 @@ const Duration kMinRevalidateInterval = Duration(seconds: 30);
 
 /// How the shared outbox should treat a failed send over [RestClient]: the one
 /// mapping from this client's failures to `OutboxFailure`.
+///
+/// An answer that could not be decoded is a REFUSAL of that entry — a visible
+/// dead letter — never "offline": the request arrived, and counting it as
+/// offline stopped every replay behind it forever (review round 2, minor d).
 OutboxFailure classifyForOutbox(Object error) {
   if (error is! ApiException) return OutboxFailure.transient;
+  if (error.malformed) return OutboxFailure.refused;
   final int s = error.statusCode;
   if (s == 0) return OutboxFailure.offline;
   if (s == 401) return OutboxFailure.unauthorized;
@@ -76,16 +84,19 @@ class ReadThroughCache {
     this._store, {
     void Function(Object error)? onWriteFailed,
     void Function(bool stale)? onStaleChanged,
+    String? Function()? owner,
     this.revalidateAfter = kRevalidateAfter,
     this.minRevalidateInterval = kMinRevalidateInterval,
     DateTime Function()? now,
   }) : _onWriteFailed = onWriteFailed ?? _ignore,
        _onStaleChanged = onStaleChanged ?? _ignoreStale,
+       _owner = owner,
        _now = now ?? DateTime.now;
 
   final KeyValueJsonStore _store;
   final void Function(Object error) _onWriteFailed;
   final void Function(bool stale) _onStaleChanged;
+  final String? Function()? _owner;
   final DateTime Function() _now;
 
   /// See [kRevalidateAfter].
@@ -101,13 +112,24 @@ class ReadThroughCache {
   static bool servesFromCacheFor(Object? e) =>
       e is ApiException && (e.statusCode == 0 || e.statusCode >= 500);
 
+  /// Bumped by [forget]: a request started under an older epoch lands nowhere.
+  int get epoch => _epoch;
+  int _epoch = 0;
+
+  /// [key] as stored for the current owner — the copy is per account.
+  String _scoped(String key) {
+    final String? Function()? owner = _owner;
+    if (owner == null) return key;
+    return '$key.u.${owner() ?? '-'}';
+  }
+
   final Set<String> _staleKeys = <String>{};
 
   /// Whether any key's most recent read was answered by the copy.
   bool get lastReadWasFromCache => _staleKeys.isNotEmpty;
 
   /// Whether [key]'s most recent read was answered by the copy.
-  bool isStale(String key) => _staleKeys.contains(key);
+  bool isStale(String key) => _staleKeys.contains(_scoped(key));
 
   /// Whether the last request this cache saw proved the device offline — the
   /// probe that lets the next read skip the wait entirely.
@@ -122,20 +144,20 @@ class ReadThroughCache {
   Object? get lastWriteError => _lastWriteError;
   Object? _lastWriteError;
 
-  /// The request in flight per key — one at a time (finding 3).
+  /// The request in flight per scoped key — one at a time (finding 3).
   final Map<String, Future<_Settled<Object?>>> _inFlight =
       <String, Future<_Settled<Object?>>>{};
 
-  /// Until when a key's background-revalidated mirror answers without a
+  /// Until when a scoped key's background-revalidated mirror answers without a
   /// request.
   final Map<String, DateTime> _freshUntil = <String, DateTime>{};
 
-  void _setStale(String key, bool stale) {
+  void _setStale(String scoped, bool stale) {
     final bool before = _staleKeys.isNotEmpty;
     if (stale) {
-      _staleKeys.add(key);
+      _staleKeys.add(scoped);
     } else {
-      _staleKeys.remove(key);
+      _staleKeys.remove(scoped);
     }
     if (_staleKeys.isNotEmpty != before) _onStaleChanged(_staleKeys.isNotEmpty);
   }
@@ -144,16 +166,23 @@ class ReadThroughCache {
     _knownOffline = ApiException.isOfflineError(error);
   }
 
-  /// The cached value under [key], without asking the network.
+  /// The current owner's cached value under [key], without asking the network.
   Future<T?> peek<T>(String key, CacheCodec<T> codec) =>
-      _store.read(key, codec);
+      _store.read(_scoped(key), codec);
 
-  /// Keep [value] as the copy under [key]. A failure is counted and reported,
-  /// never thrown: the server already holds the truth.
-  Future<void> mirror<T>(String key, T value, CacheCodec<T> codec) async {
+  /// Keep [value] as the current owner's copy under [key]. A failure is
+  /// counted and reported, never thrown: the server already holds the truth.
+  Future<void> mirror<T>(String key, T value, CacheCodec<T> codec) =>
+      _mirrorScoped(_scoped(key), value, codec);
+
+  Future<void> _mirrorScoped<T>(
+    String scoped,
+    T value,
+    CacheCodec<T> codec,
+  ) async {
     try {
-      await _remember(key);
-      await _store.write(key, value, codec);
+      await _remember(scoped);
+      await _store.write(scoped, value, codec);
     } on StoreWriteFailure catch (e) {
       _writeFailures += 1;
       _lastWriteError = e;
@@ -165,10 +194,10 @@ class ReadThroughCache {
   /// caller: a stamped app that adds a cached read cannot forget to drop it.
   Set<String>? _keys;
 
-  Future<void> _remember(String key) async {
+  Future<void> _remember(String scoped) async {
     final Set<String> keys = _keys ??=
         (await _store.read(kCacheIndexKey, _indexCodec))?.toSet() ?? <String>{};
-    if (!keys.add(key)) return;
+    if (!keys.add(scoped)) return;
     await _store.write(kCacheIndexKey, keys.toList()..sort(), _indexCodec);
   }
 
@@ -184,65 +213,71 @@ class ReadThroughCache {
     },
   );
 
-  /// Forget every copy this cache wrote — the sign-out drop. A cached answer
-  /// is ACCOUNT state: left behind, the next person to sign in on this device
-  /// offline would be shown it. Throws [StoreWriteFailure] when the store is
-  /// there and refuses, because "forgotten" is a promise told to the user.
+  /// Forget every copy this cache wrote and every request in flight, and bump
+  /// the epoch — the sign-out drop, on EVERY sign-out path. See the header.
+  /// Throws [StoreWriteFailure] when the store is there and refuses, because
+  /// "forgotten" is a promise told to the user.
   Future<void> forget() async {
-    final List<String> keys =
-        await _store.read(kCacheIndexKey, _indexCodec) ?? <String>[];
-    await _store.remove(<String>[...keys, kCacheIndexKey]);
-    _keys = <String>{};
+    _epoch += 1;
+    _inFlight.clear();
     _freshUntil.clear();
     final bool wasStale = _staleKeys.isNotEmpty;
     _staleKeys.clear();
     if (wasStale) _onStaleChanged(false);
     _knownOffline = false;
+    final List<String> keys =
+        await _store.read(kCacheIndexKey, _indexCodec) ?? <String>[];
+    await _store.remove(<String>[...keys, kCacheIndexKey]);
+    _keys = <String>{};
   }
 
-  /// Apply [change] to the copy under [key], if there is one. A device that has
-  /// never cached the value has nothing to keep in step.
+  /// Apply [change] to the current owner's copy under [key], if there is one.
   Future<void> amend<T>(
     String key,
     CacheCodec<T> codec,
     T Function(T cached) change,
   ) async {
-    final T? cached = await _store.read(key, codec);
+    final String scoped = _scoped(key);
+    final T? cached = await _store.read(scoped, codec);
     if (cached == null) return;
-    await mirror(key, change(cached), codec);
+    await _mirrorScoped(scoped, change(cached), codec);
   }
 
   /// The server's answer from [fetch], mirrored under [key]; or, when the
   /// server cannot answer, the copy — marked stale. See the header.
-  ///
-  /// Nothing cached is nothing to show: then the read waits for [fetch] and
-  /// its failure travels, so a screen renders its failed state with a retry.
   Future<T> read<T>(
     String key,
     CacheCodec<T> codec,
     Future<T> Function() fetch, {
     void Function(T fresh)? onRevalidated,
   }) async {
-    final DateTime? freshUntil = _freshUntil[key];
+    final String scoped = _scoped(key);
+    final int epoch = _epoch;
+    // Lands only for the account and the epoch the read began under.
+    bool current() => _epoch == epoch && _scoped(key) == scoped;
+
+    final DateTime? freshUntil = _freshUntil[scoped];
     if (freshUntil != null && _now().isBefore(freshUntil)) {
-      final T? fresh = await _store.read(key, codec);
+      final T? fresh = await _store.read(scoped, codec);
       if (fresh != null) {
-        _setStale(key, false);
+        _setStale(scoped, false);
         return fresh;
       }
     }
-    _freshUntil.remove(key);
+    _freshUntil.remove(scoped);
 
-    final bool joined = _inFlight.containsKey(key);
-    final Future<_Settled<T>> settled = _start(key, fetch);
-    final T? cached = await _store.read(key, codec);
+    final bool joined = _inFlight.containsKey(scoped);
+    final Future<_Settled<T>> settled = _start(scoped, fetch);
+    final T? cached = await _store.read(scoped, codec);
 
     if (cached == null) {
       final _Settled<T> s = await settled;
-      _observe(s.error);
+      if (current()) _observe(s.error);
       if (s.error != null) Error.throwWithStackTrace(s.error!, s.stack!);
-      _setStale(key, false);
-      await mirror(key, s.value as T, codec);
+      if (current()) {
+        _setStale(scoped, false);
+        await _mirrorScoped(scoped, s.value as T, codec);
+      }
       return s.value as T;
     }
 
@@ -250,37 +285,42 @@ class ReadThroughCache {
     if (first == null) {
       // The network is late (or known to be gone): answer now, keep asking —
       // unless another read already is.
-      _setStale(key, true);
+      _setStale(scoped, true);
       if (!joined) {
         unawaited(
           settled.then((_Settled<T> s) async {
+            if (!current()) return; // signed out, or another account, since
             _observe(s.error);
             if (s.error != null) return;
-            await mirror(key, s.value as T, codec);
-            _freshUntil[key] = _now().add(minRevalidateInterval);
-            _setStale(key, false);
+            await _mirrorScoped(scoped, s.value as T, codec);
+            if (!current()) return;
+            _freshUntil[scoped] = _now().add(minRevalidateInterval);
+            _setStale(scoped, false);
             onRevalidated?.call(s.value as T);
           }),
         );
       }
       return cached;
     }
-    _observe(first.error);
+    if (current()) _observe(first.error);
     if (first.error == null) {
-      _setStale(key, false);
-      await mirror(key, first.value as T, codec);
+      if (current()) {
+        _setStale(scoped, false);
+        await _mirrorScoped(scoped, first.value as T, codec);
+      }
       return first.value as T;
     }
     if (!servesFromCacheFor(first.error)) {
       Error.throwWithStackTrace(first.error!, first.stack!);
     }
-    _setStale(key, true);
+    _setStale(scoped, true);
     return cached;
   }
 
-  /// The request in flight for [key], started with [fetch] when there is none.
-  Future<_Settled<T>> _start<T>(String key, Future<T> Function() fetch) {
-    final Future<_Settled<Object?>>? running = _inFlight[key];
+  /// The request in flight for [scoped], started with [fetch] when there is
+  /// none. [forget] empties the map, so a read never joins an older epoch's.
+  Future<_Settled<T>> _start<T>(String scoped, Future<T> Function() fetch) {
+    final Future<_Settled<Object?>>? running = _inFlight[scoped];
     if (running != null) {
       return running.then(
         (_Settled<Object?> s) => s.error != null
@@ -289,9 +329,9 @@ class ReadThroughCache {
       );
     }
     final Future<_Settled<T>> started = _settle(fetch());
-    _inFlight[key] = started;
+    _inFlight[scoped] = started;
     started.whenComplete(() {
-      if (identical(_inFlight[key], started)) _inFlight.remove(key);
+      if (identical(_inFlight[scoped], started)) _inFlight.remove(scoped);
     });
     return started;
   }

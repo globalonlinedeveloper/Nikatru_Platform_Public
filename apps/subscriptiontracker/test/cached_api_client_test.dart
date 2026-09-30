@@ -9,6 +9,7 @@
 // sees the network, the second is built fresh (a restart) with the network
 // dead. That is the only thing a unit test can do that a relaunch also does.
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -141,6 +142,7 @@ class _IdempotentNetwork extends _FakeNetwork implements IdempotentCreates {
 
   final List<String> keys = <String>[];
   final Map<String, Subscription> _byKey = <String, Subscription>{};
+  final Map<String, String> _bodyByKey = <String, String>{};
 
   /// Commit the next create, then fail as if the response was lost.
   bool loseNextResponse = false;
@@ -156,6 +158,12 @@ class _IdempotentNetwork extends _FakeNetwork implements IdempotentCreates {
     keys.add(idempotencyKey);
     final ApiException? refused = createFailure;
     if (refused != null) throw refused;
+    final String body = jsonEncode(draft.toJson());
+    final String? seen = _bodyByKey[idempotencyKey];
+    if (seen != null && seen != body) {
+      throw ApiException(422, 'idempotency_key_reused');
+    }
+    _bodyByKey[idempotencyKey] = body;
     final Subscription row = _byKey[idempotencyKey] ??= await super
         .createSubscription(draft);
     if (loseNextResponse) {
@@ -498,40 +506,58 @@ void main() {
     });
 
     // Finding 4: a row that exists only on the device.
-    test('deleting a never-synced row never reaches the server', () async {
-      final _IdempotentNetwork net = _IdempotentNetwork(
-        <Subscription>[],
-        _budget,
-      );
-      net.failure = _offline;
-      final CachedApiClient c = client(net);
-      final Subscription row = await c.createSubscription(_sub('', 'Gym'));
-      final int callsBefore = net.calls;
-      await c.deleteSubscription(row.id);
-      net.failure = null;
-      final List<Subscription> live = await client(net).getSubscriptions();
-      expect(live, isEmpty);
-      expect(net.calls - callsBefore, 1, reason: 'one GET; no POST, no DELETE');
-      expect(await c.pendingWrites(), isEmpty);
-    });
+    test(
+      'deleting a row that never left the device never reaches the server',
+      () async {
+        final _IdempotentNetwork net = _IdempotentNetwork(
+          <Subscription>[],
+          _budget,
+        );
+        net.failure = _offline;
+        final CachedApiClient c = client(net);
+        // A failed read proves the device offline: the add is then queued
+        // without a request, so it is known never to have left.
+        await expectLater(c.getSubscriptions(), throwsA(isA<ApiException>()));
+        final Subscription row = await c.createSubscription(_sub('', 'Gym'));
+        final int callsBefore = net.calls;
+        await c.deleteSubscription(row.id);
+        net.failure = null;
+        final List<Subscription> live = await client(net).getSubscriptions();
+        expect(live, isEmpty);
+        expect(
+          net.calls - callsBefore,
+          1,
+          reason: 'one GET; no POST, no DELETE',
+        );
+        expect(await c.pendingWrites(), isEmpty);
+      },
+    );
 
-    test('editing a never-synced row edits the queued create', () async {
-      final _IdempotentNetwork net = _IdempotentNetwork(
-        <Subscription>[],
-        _budget,
-      );
-      net.failure = _offline;
-      final CachedApiClient c = client(net);
-      final Subscription row = await c.createSubscription(_sub('', 'Gym'));
-      final Subscription edited = await c.updateSubscription(
-        row.id,
-        <String, dynamic>{'name': 'Gym (annual)'},
-      );
-      expect(edited.name, 'Gym (annual)');
-      net.failure = null;
-      await client(net).getSubscriptions();
-      expect(net.subs.single.name, 'Gym (annual)', reason: 'one POST, edited');
-    });
+    test(
+      'editing a row that never left the device edits the queued create',
+      () async {
+        final _IdempotentNetwork net = _IdempotentNetwork(
+          <Subscription>[],
+          _budget,
+        );
+        net.failure = _offline;
+        final CachedApiClient c = client(net);
+        await expectLater(c.getSubscriptions(), throwsA(isA<ApiException>()));
+        final Subscription row = await c.createSubscription(_sub('', 'Gym'));
+        final Subscription edited = await c.updateSubscription(
+          row.id,
+          <String, dynamic>{'name': 'Gym (annual)'},
+        );
+        expect(edited.name, 'Gym (annual)');
+        net.failure = null;
+        await client(net).getSubscriptions();
+        expect(
+          net.subs.single.name,
+          'Gym (annual)',
+          reason: 'one POST, edited',
+        );
+      },
+    );
 
     test('once synced, the client id reaches the server row', () async {
       final _IdempotentNetwork net = _IdempotentNetwork(
@@ -546,6 +572,43 @@ void main() {
         row.id,
       ); // the screen still holds the client id
       expect(net.subs, isEmpty, reason: 'the DELETE went to the server row');
+    });
+
+    // 🔴 REVIEW ROUND 2, MAJOR 1 — a lost response costs no attempt, so
+    // "attempts == 0" said "never reached" of a row the server HAD.
+    test(
+      'a lost add response, then a delete: the server row is gone',
+      () async {
+        final _IdempotentNetwork net = _IdempotentNetwork(
+          <Subscription>[],
+          _budget,
+        );
+        final CachedApiClient c = client(net);
+        net.loseNextResponse = true; // committed; the reply never lands
+        final Subscription row = await c.createSubscription(_sub('', 'Gym'));
+        expect(net.subs, hasLength(1));
+        await c.deleteSubscription(row.id);
+        await client(net).getSubscriptions(); // reconnect
+        expect(net.subs, isEmpty, reason: 'the delete reached the server row');
+        expect(await c.syncProblems(), isEmpty);
+      },
+    );
+
+    test('a lost add response, then an edit: no 422, and the server holds the '
+        'edit', () async {
+      final _IdempotentNetwork net = _IdempotentNetwork(
+        <Subscription>[],
+        _budget,
+      );
+      final CachedApiClient c = client(net);
+      net.loseNextResponse = true;
+      final Subscription row = await c.createSubscription(_sub('', 'Gym'));
+      await c.updateSubscription(row.id, <String, dynamic>{
+        'name': 'Gym (annual)',
+      });
+      await client(net).getSubscriptions(); // reconnect
+      expect(await c.syncProblems(), isEmpty, reason: 'no 422 dead letter');
+      expect(net.subs.single.name, 'Gym (annual)');
     });
 
     // Finding 8: a live read while the queue is still waiting.

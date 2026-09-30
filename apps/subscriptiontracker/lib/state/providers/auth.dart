@@ -517,13 +517,21 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
 /// It is the narrowest of the leaks — nobody hands the device over on a 401 —
 /// and it is the only one left. Named here, and in [signOutAndForgetUser]'s doc,
 /// so the count in that doc stays honest.
-Future<void> signOutOnlyIfSessionIsGone(core.AuthRepository auth) async {
+///
+/// ⏱ 2026-09-30 · [onSignedOut] runs after THIS sign-out too (review #1075
+/// round 2, major 2): the forced 401 is a sign-out path, and the offline copy
+/// of the list is dropped on every one of them.
+Future<void> signOutOnlyIfSessionIsGone(
+  core.AuthRepository auth, {
+  UserStateDrop? onSignedOut,
+}) async {
   // 🔴 `sessionIsGone()`, NOT `currentAccessToken() == null`. The token is
   // null both when the provider REFUSED a refresh and when it could not be
   // REACHED — and the second is every token that expires while the device is
   // offline. Signing out on it logged people out for being on a plane.
   if (await auth.sessionIsGone()) {
     await auth.signOut();
+    await onSignedOut?.call();
   }
 }
 
@@ -591,9 +599,10 @@ UserStateDrop discardQueuedWritesOf(WidgetRef ref) {
   final String? owner = ref.read(authRepositoryProvider).currentUser?.id;
   final ApiClient api = ref.read(apiClientProvider);
   return () async {
-    if (owner != null && api is CachedApiClient) {
-      await api.discardPendingOf(owner);
-    }
+    if (api is! CachedApiClient) return;
+    // The copy first: it is the part the next user could be shown.
+    await api.forgetCache();
+    if (owner != null) await api.discardPendingOf(owner);
   };
 }
 
