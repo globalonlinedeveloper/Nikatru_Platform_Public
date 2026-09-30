@@ -297,11 +297,11 @@ function classifyUncached(cand, tree) {
     if (!prefix.includes('/') && !suffixFile) return null;
     let re;
     try { re = globToRegExp(g); } catch { return null; }
-    const hit = tree.list.some((f) => re.test(f));
-    return hit ? { kind: 'glob', path: g, re } : null;
+    const size = tree.list.filter((f) => re.test(f)).length;
+    return size ? { kind: 'glob', path: g, re, size } : null;
   }
   if (tree.files.has(cand)) return { kind: 'file', path: cand };
-  if (tree.dirs.has(cand)) return { kind: 'dir', path: cand };
+  if (tree.dirs.has(cand)) return { kind: 'dir', path: cand, size: tree.list.filter((f) => f.startsWith(`${cand}/`)).length };
   return null;
 }
 
@@ -371,7 +371,7 @@ export function closureSubjects(entry, tree, readSource, { follow = false, codeO
       tree.scanned.set(rel, src === null ? null : subjectsOf(src, rel, tree));
     }
     if (!tree.scanned.get(rel)) continue;
-    const { subjects: s, deps, lists } = tree.scanned.get(rel);
+    const { subjects: s, deps } = tree.scanned.get(rel);
     // tier: how tightly a change to this subject implicates the check. 0 the check's own
     // file · 1 what the entry (or the script a test runs) names · 2 a module it imports.
     const put = (x, tier) => { const k = `${x.kind}:${x.path}`; if (!subjects.has(k) || subjects.get(k).tier > tier) subjects.set(k, { ...x, tier }); };
@@ -381,10 +381,10 @@ export function closureSubjects(entry, tree, readSource, { follow = false, codeO
       // codeOnly (a test): what a module it runs READS is that module's subject, not the test's.
       if (codeOnly && rel !== entry) continue;
       // …and in the test itself, a bare file name is usually a fixture's, and a directory
-      // is a subject only when the test lists one (a real-tree walk).
-      // A directory above the test is where it stands even when it lists something:
-      // a test lists its temp fixtures, not its siblings.
-      if (codeOnly && (x.bare || (x.kind === 'dir' && (!lists || `${posix.dirname(rel)}/`.startsWith(`${x.path}/`))))) continue;
+      // ABOVE the test (`join(HERE, '..')`) is where it stands, not what it reads. Any
+      // other directory is a subject: hook-runner-pin.test.mjs copies `.githooks/<h>` in
+      // a loop, and requiring a listing call missed it (the 2026-09-30 CI red).
+      if (codeOnly && (x.bare || (x.kind === 'dir' && `${posix.dirname(rel)}/`.startsWith(`${x.path}/`)))) continue;
       put(x, primary ? 1 : 2);
       if (follow && rel === entry && x.kind === 'file' && SCRIPT.test(x.path) && !x.path.includes('/test/') && !seen.has(x.path)) queue.push([x.path, true]);
     }
@@ -393,19 +393,26 @@ export function closureSubjects(entry, tree, readSource, { follow = false, codeO
   return { subjects: [...subjects.values()], closure: [...seen] };
 }
 
+/** Breadth is MEASURED, not assumed from depth: a top-level directory of two files
+ *  (`.githooks`) is as specific as a file, and treating it as broad is how this tool's
+ *  first CI run went red (2026-09-30: hook-runner-pin.test.mjs copies `.githooks/<h>`
+ *  in a loop, so its subject is the directory, and the change to pre-push missed it). */
+const BROAD_FILES = 50;
+const wide = (subject) => (subject.size ?? Infinity) > BROAD_FILES;
+
 /** Does one subject cover one path? And is that cover SPECIFIC (it maps the path)? */
 export function covers(subject, path) {
   if (subject.kind === 'file') return subject.path === path ? 'specific' : null;
   if (subject.kind === 'dir') {
     if (!path.startsWith(`${subject.path}/`)) return null;
-    return TOP_LEVEL_ONLY(subject.path) ? 'broad' : 'specific';
+    return TOP_LEVEL_ONLY(subject.path) && wide(subject) ? 'broad' : 'specific';
   }
   if (subject.kind === 'glob') {
     const re = subject.re ?? globToRegExp(subject.path);
     if (!re.test(path)) return null;
     // broad when its only literal segment is one top-level directory (`apps/**`, `apps/**/**`)
     const literal = subject.path.split('/').filter((x) => !x.includes('*'));
-    return literal.length <= 1 && /\*$/.test(subject.path) ? 'broad' : 'specific';
+    return literal.length <= 1 && /\*$/.test(subject.path) && wide(subject) ? 'broad' : 'specific';
   }
   if (subject.kind === 'lane') return subject.re.test(path) ? 'specific' : null;
   return null;

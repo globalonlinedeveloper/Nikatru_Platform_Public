@@ -11,6 +11,8 @@
 //   AG5  --sha must be the checked-out HEAD
 //   AG6  the REAL .githooks/pre-push refuses the push when the affected run fails
 //   AG7  the workflow read: node flags that take a value, and --test reporters dropped
+//   AG8  a small top-level directory a test reads in a loop selects that test (the first
+//        CI run of this tool missed hook-runner-pin.test.mjs exactly so)
 //
 // Run:  node --test "tooling/ci/test/affected-guards.test.mjs"
 import { test } from 'node:test';
@@ -77,8 +79,17 @@ function fixture() {
     "test('x', () => {});",
     '',
   ].join('\n'));
+  // a test that reads a small top-level directory in a loop, as hook-runner-pin reads .githooks
+  put(root, 'tooling/ci/test/hooks.test.mjs', [
+    "import { test } from 'node:test';",
+    "import { join } from 'node:path';",
+    "const REPO = process.cwd();",
+    "test('hooks', () => { for (const h of ['pre-push']) join(REPO, 'hooks', h); });",
+    '',
+  ].join('\n'));
+  put(root, 'hooks/pre-push', '#!/bin/sh\nexit 0\n');
   put(root, 'tooling/ci/lane-map.json', JSON.stringify({
-    lanes: { guards: { globs: ['tooling/**', '.github/**', 'data/**', 'other/**', 'misc/**'] } },
+    lanes: { guards: { globs: ['tooling/**', '.github/**', 'data/**', 'other/**', 'misc/**', 'hooks/**'] } },
     unclaimed: ['docs/**'],
   }, null, 2));
   put(root, 'data/x.json', '{"x": "good"}\n');
@@ -250,4 +261,20 @@ test('AG7 the workflow read: value-taking node flags, the script, and a --test c
   // join chains: the base argument drops, a later non-literal is "any path"
   const { chains } = scanSource("const a = join(ROOT, 'apps', app, 'pubspec.yaml'); const b = join(HERE, '..', 'x.json');");
   assert.deepEqual(chains.map((c) => c.parts), [['apps', '\u0000', 'pubspec.yaml'], ['..', 'x.json']]);
+});
+
+test('AG8 a two-file top-level directory a test reads in a loop selects the test; a wide one would not', async () => {
+  const root = fixture();
+  try {
+    const r = await run(root, ['--list', '--paths', 'hooks/pre-push']);
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(selectedIds(r.out), ['test:hooks'], `hooks/ holds one file, so naming it is specific: ${r.out}`);
+    // RED control: the same directory grown past the breadth line is broad — it selects
+    // nothing and maps nothing, so the path is UNMAPPED
+    for (let i = 0; i < 60; i++) put(root, `hooks/extra-${i}.sh`, '#!/bin/sh\n');
+    git(root, 'add', '-A');
+    const wide = await run(root, ['--list', '--paths', 'hooks/pre-push']);
+    assert.equal(wide.code, 2, wide.out);
+    assert.deepEqual(selectedIds(wide.out), [], wide.out);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
