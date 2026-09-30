@@ -1,0 +1,13 @@
+# CodeQL configuration, read by .github/workflows/codeql.yml (`config-file:`).
+#
+# ONE exclusion, and why (2026-09-30, lead ruling for lane fix-codeql-alerts):
+# tooling/bricks/**/__brick__/** holds mason TEMPLATES, not JavaScript. Their
+# paths carry `{{app_id}}` and their bodies carry mustache (the app brick's
+# web/flutter_bootstrap.js opens with a `{{=<% %>=}}` delimiter change), so the
+# extractor reports a syntax error on source that is never run as written
+# (alert #330). What a brick STAMPS is still scanned: the stamped app copy,
+# apps/subscriptiontracker/web/flutter_bootstrap.js, is byte-identical to the
+# template's output (tooling/ci/test/self-host-fallback-fonts.test.mjs), and it
+# is not excluded. Add nothing here without the same kind of reason.
+paths-ignore:
+  - tooling/bricks/**/__brick__/**

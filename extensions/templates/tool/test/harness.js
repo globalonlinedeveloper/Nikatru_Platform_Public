@@ -904,7 +904,15 @@ function parseElements(html) {
     let text = '';
     if (!VOID_TAGS.has(tag) && m[3] !== '/') {
       const close = html.indexOf('</' + tag, re.lastIndex);
-      if (close >= 0) text = html.slice(re.lastIndex, close).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+      if (close >= 0) {
+        /* Tags stripped to a fixed point (CodeQL js/incomplete-multi-character-
+           sanitization). For this one pattern the second pass finds nothing — a
+           match runs from the first `<` to the next `>`, so no closed tag survives
+           one pass — and the loop is what makes that visible to the query. */
+        let inner = html.slice(re.lastIndex, close);
+        for (let prev = null; inner !== prev;) { prev = inner; inner = inner.replace(/<[^>]*>/g, ''); }
+        text = inner.replace(/\s+/g, ' ').trim();
+      }
     }
     out.push({ tag, attrs, text, index: m.index });
   }

@@ -287,7 +287,8 @@ expect('a version in tool.json is fatal (the manifest is the only source)', {
 });
 expect('unparseable tool.json names the line and column', {
   script: 'discover.mjs', argv: [], code: 1, contains: 'does not parse as JSON',
-  root: fixture(root => { edit(root, TOOL + '/tool.json', s => s.replace('{', '{ oops')); })
+  /* The OPENING brace only, on purpose: one stray token is the whole mutation. */
+  root: fixture(root => { edit(root, TOOL + '/tool.json', s => { const i = s.indexOf('{'); return s.slice(0, i + 1) + ' oops' + s.slice(i + 1); }); })
 });
 
 /* ---- declared store gates: `--run-gates` and `--assert-generic` ----
@@ -412,7 +413,7 @@ expect('--assert-generic reds on a `when.os` no workflow names', {
 /* ⏱ 2026-09-29 (EXL-17): the store-publish ref check spelled `tag:fullshot-v…` in
    its run: line, so a second tool's tag was refused by name. RED ON THE BASE: the
    scan above only knew `==` / `!=`, and this line compares nothing. */
-const RUN_NAMES_TOOL = "      - run: node tooling/ci/assert-deploy-ref.mjs --allow 'tag:" + 'goodtool' + "-v[0-9]+.[0-9]+.[0-9]+'\n";
+const RUN_NAMES_TOOL = "      - run: node tooling/ci/assert-deploy-ref.mjs --allow 'tag:goodtool-v[0-9]+.[0-9]+.[0-9]+'\n";
 expect('--assert-generic reds on a one-line run: value that spells a tool id, naming the line', {
   script: 'discover.mjs', argv: ['--assert-generic'], code: 1,
   contains: '.github/workflows/extensions.yml:4  a run: line names tool goodtool',

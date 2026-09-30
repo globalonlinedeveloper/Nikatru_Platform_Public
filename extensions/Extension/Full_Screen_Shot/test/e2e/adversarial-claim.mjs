@@ -49,7 +49,7 @@
 import fs from 'node:fs';
 import { chromium } from 'playwright';
 import { decodePng } from './png.mjs';
-import { EXT_DIR, OUT_DIR, serve, prepareTestExtension, begin, check, open, note, results } from './claim-lib.mjs';
+import { EXT_DIR, OUT_DIR, serve, prepareTestExtension, begin, check, note, results } from './claim-lib.mjs';
 import { launch, capture, readRecord, colourRows, saveFirstSegment, gradeUniversal,
          gradePayload, gradePicture, gradeOverMask, BLOCK } from './acts-lib.mjs';
 

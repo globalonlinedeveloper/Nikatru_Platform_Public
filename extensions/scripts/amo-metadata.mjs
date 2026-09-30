@@ -233,15 +233,28 @@ export function buildAmoMetadata({ toolId, root = EXTENSIONS_ROOT }) {
  *  tags gone, the few entities the page uses decoded. AMO renders this field as
  *  text; markup sent into it is shown as markup. */
 export function policyText(html) {
-  const body = (/<body[^>]*>([\s\S]*?)<\/body>/i.exec(html) || [null, html])[1]
-    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
-    .replace(/<!--[\s\S]*?-->/g, '');
-  const text = body
+  /* Each strip runs to a FIXED POINT (CodeQL js/incomplete-multi-character-
+     sanitization): one pass over `<scr<script>x</script>ipt>…</script>` removes
+     the inner pair and leaves a whole new script element behind, whose body then
+     reads as policy text. The last strip (any tag) is idempotent after one pass,
+     since a match runs from the first `<` to the next `>`; it is looped anyway so
+     the query can see that. */
+  let body = (/<body[^>]*>([\s\S]*?)<\/body>/i.exec(html) || [null, html])[1];
+  let prev;
+  do {
+    prev = body;
+    body = body.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/<!--[\s\S]*?-->/g, '');
+  } while (body !== prev);
+  let text = body
     .replace(/<li[^>]*>/gi, '\n• ')
     .replace(/<\/(h[1-6]|p|li|ul|ol|div|table|tr)>/gi, '\n')
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<h[1-6][^>]*>/gi, '\n\n')
-    .replace(/<[^>]+>/g, '')
+    .replace(/<h[1-6][^>]*>/gi, '\n\n');
+  do {
+    prev = text;
+    text = text.replace(/<[^>]+>/g, '');
+  } while (text !== prev);
+  text = text
     .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
   return text.split('\n').map((l) => l.replace(/[ \t]+/g, ' ').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }

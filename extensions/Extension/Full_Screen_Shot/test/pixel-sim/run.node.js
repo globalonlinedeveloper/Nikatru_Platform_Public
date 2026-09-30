@@ -3442,8 +3442,13 @@ async function runHistoryActs() {
      rule that gave it a colour, a weight or a border would be the deleted badge
      rendered in CSS — shown for exactly the records the old design graded as
      bad. §0.1 forbids that "however it is computed", and a stylesheet computes. */
-  const hcss = fs.readFileSync(path.join(ROOT, 'pages', 'history.html'), 'utf8')
-    .replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  /* To a fixed point: a single pass over `<!<!-- -->-- x -->` leaves a new
+     comment behind (CodeQL js/incomplete-multi-character-sanitization). */
+  let hcss = fs.readFileSync(path.join(ROOT, 'pages', 'history.html'), 'utf8');
+  for (let prev = null; hcss !== prev;) {
+    prev = hcss;
+    hcss = hcss.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  }
   const painted = (hcss.match(/\.redactline[^{}]*\{[^}]*\}/g) || [])
     .filter(r => /color|font-weight|border|background|outline/.test(r));
   check('historyacts: no stylesheet rule paints the acts line differently from any other',
