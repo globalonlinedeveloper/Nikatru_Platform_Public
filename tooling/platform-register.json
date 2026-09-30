@@ -261,6 +261,32 @@
           }
         },
         {
+          "id": "subscriptiontracker-preferences-get",
+          "method": "GET",
+          "path": "/v1/preferences",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/preferences.ts",
+          "purpose": "⏱ 2026-09-30 · ST-N6 (D11). The caller's preferences document (currency, theme, language, reminder switches, lead and time), or `{preferences: null}` when the account has none yet — the account's copy that follows the user to every device; the device store stays the cache.",
+          "client": {
+            "file": "packages/api_client/lib/src/rest_account_preferences_transport.dart",
+            "expression": "_rest.get('/preferences')",
+            "note": "The real call inside `RestAccountPreferencesTransport.read()`, driven by packages/core AccountPreferencesSync from apps/subscriptiontracker/lib/state/providers/account_preferences.dart at every settled sign-in and every return to the app."
+          }
+        },
+        {
+          "id": "subscriptiontracker-preferences-put",
+          "method": "PUT",
+          "path": "/v1/preferences",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/preferences.ts",
+          "purpose": "⏱ 2026-09-30 · ST-N6 (D11). REPLACE the preferences document whole. Every key is validated before the write and an unknown key is a 400, because the document is applied without a prompt on every device the user signs in on.",
+          "client": {
+            "file": "packages/api_client/lib/src/rest_account_preferences_transport.dart",
+            "expression": "_rest.put('/preferences', body: body)",
+            "note": "The real call inside `RestAccountPreferencesTransport.write()`: the account is seeded from the first device, then written on every local change once the account copy is known."
+          }
+        },
+        {
           "id": "subscriptiontracker-entitlements",
           "method": "GET",
           "path": "/v1/entitlements",

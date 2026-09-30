@@ -58,6 +58,7 @@
 // that it produces none. Putting a directive above it keeps the comment
 // attached to the export it explains.
 
+export 'providers/account_preferences.dart';
 export 'providers/analytics_envelope.dart';
 export 'providers/auth.dart';
 export 'providers/config.dart';

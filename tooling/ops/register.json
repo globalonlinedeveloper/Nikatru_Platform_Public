@@ -4889,6 +4889,28 @@
       "source": "verified"
     },
     {
+      "id": "retention.d1.subscriptiontracker_db.preferences",
+      "kind": "retention",
+      "store": "d1:subscriptiontracker_db:preferences",
+      "what": "⏱ 2026-09-30 · ST-N6 (D11). The user's own preferences document (currency, theme, language, reminder choices).",
+      "rule": "keep",
+      "keepWhy": "User content, one row per account, replaced on every change. Same reasoning as retention.d1.subscriptiontracker_db.subscriptions; the account erasure deletes it (derived by its user_id column).",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/subscriptiontracker-api/migrations/0005_preferences.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
       "id": "retention.d1.subscriptiontracker_db.payment_history",
       "kind": "retention",
       "store": "d1:subscriptiontracker_db:payment_history",

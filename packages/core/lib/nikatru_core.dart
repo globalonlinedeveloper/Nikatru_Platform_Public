@@ -64,4 +64,5 @@ export 'src/routing/gate_destination.dart';
 export 'src/storage/file_exporter.dart';
 export 'src/storage/key_value_store.dart';
 export 'src/storage/secure_store.dart';
+export 'src/sync/account_preferences.dart';
 export 'src/sync/resume_refresh.dart';

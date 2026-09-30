@@ -153,7 +153,7 @@ const REPLAY_SAFE_STATEMENTS = ALL_STATEMENTS.filter(({ code }) =>
 
 /** Tables subscriptiontracker_db owns, from services/subscriptiontracker-api/migrations/ — the applier's own
  *  input. Used for the shape/row snapshots and as a coverage assertion. */
-const TABLES = ['budget_categories', 'budgets', 'payment_history', 'subscriptions'];
+const TABLES = ['budget_categories', 'budgets', 'payment_history', 'preferences', 'subscriptions'];
 
 const schemaOf = (db: SqliteD1) =>
   db

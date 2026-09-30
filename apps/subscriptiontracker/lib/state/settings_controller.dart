@@ -1,8 +1,7 @@
 import 'dart:convert';
 import 'dart:ui' show Locale;
 
-import 'package:flutter/foundation.dart'
-    show PlatformDispatcher, visibleForTesting;
+import 'package:flutter/foundation.dart' show PlatformDispatcher;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
@@ -193,9 +192,9 @@ class SettingsController extends Notifier<SettingsState> {
   }
 
   /// Completes when the persisted state (if any) has been applied. Tests await
-  /// this instead of guessing at pump counts; production code never needs it —
-  /// the state simply updates and listeners react.
-  @visibleForTesting
+  /// this instead of guessing at pump counts. ⏱ 2026-09-30 · ST-N6 (D11): and
+  /// the account sync awaits it, because seeding an account from this device
+  /// before the disk read lands would seed it with the compiled-in defaults.
   Future<void> get hydration => _hydration;
 
   Future<void> _hydrate() async {
@@ -238,6 +237,20 @@ class SettingsController extends Notifier<SettingsState> {
     }
     _touched = true;
     state = state.copyWith(currencyCode: code);
+    return _persist();
+  }
+
+  /// ⏱ 2026-09-30 · ST-N6 (D11): the ACCOUNT's copy, applied at sign-in by
+  /// `accountPreferencesSyncProvider` — merged over what this device holds,
+  /// validated by [SettingsState.fromJson] exactly as a disk read is, and
+  /// persisted so the device cache matches. Never a permission prompt: the
+  /// user is not at a switch, and on web the request would be refused anyway.
+  Future<void> applyAccount(Map<String, Object?> account) {
+    _touched = true;
+    state = SettingsState.fromJson(
+      <String, Object?>{...state.toJson(), ...account},
+      fallbackCurrencyCode: _firstRunCurrency,
+    ).copyWith(blocked: state.blocked);
     return _persist();
   }
 

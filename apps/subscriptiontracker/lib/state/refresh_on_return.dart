@@ -9,6 +9,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'money_providers.dart';
+import 'providers.dart';
 import 'subscriptions_controller.dart';
 
 /// Re-read what the server may have changed while the app was away: the
@@ -25,6 +26,11 @@ import 'subscriptions_controller.dart';
 /// waiting for the home screen the user is about to open.
 Future<void> refreshOnReturn(WidgetRef ref) async {
   ref.invalidate(entitlementsProvider);
+  // D11: another device may have changed a preference; the sync writes this
+  // device's unsent change first rather than reading over it.
+  if (ref.read(authUserProvider).value != null) {
+    await ref.read(accountPreferencesSyncProvider)?.onSignedIn();
+  }
   if (ref.exists(subscriptionsControllerProvider)) {
     await ref.read(subscriptionsControllerProvider.notifier).refresh();
   }
