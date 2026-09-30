@@ -198,6 +198,8 @@ import {
   gateJobOf,
   postGateAdmission,
   postGateUnit,
+  checkNamedLanes,
+  NAMED_LANE,
 } from '../assert-ops-register.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -6130,7 +6132,10 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     const f = JSON.parse(readFileSync(FIXTURE, 'utf8'));
     const register = JSON.parse(readFileSync(REPLAY_REGISTER, 'utf8'));
     const { world, derivedRuns } = replayWorld(f, register);
-    assert.deepEqual(derivedRuns, ['name-clearance.yml'], 'only the scheduled workflow added after the freeze is derived');
+    // ⏱ 2026-09-29 (A-2): mutation-proofs.yml is the second scheduled workflow added after the freeze.
+    assert.deepEqual(derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml'], 'only the scheduled workflows added after the freeze are derived');
+    assert.equal(world.runs['mutation-proofs.yml'].length, 1);
+    assert.equal(world.runs['mutation-proofs.yml'][0][1], 'schedule');
     assert.equal(world.runs['name-clearance.yml'].length, 1);
     assert.equal(world.runs['name-clearance.yml'][0][1], 'schedule', 'the run carries the event the row filters on');
     assert.equal(world.runs['name-clearance.yml'][0][2], 'success');
@@ -6141,7 +6146,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     const { 'trufflehog.yml': _dropped, ...rest } = f.runs;
     const pure = replayWorld({ ...f, runs: rest }, register);
     assert.equal(Object.hasOwn(pure.world.runs, 'trufflehog.yml'), false, 'the derivation must never answer a workflow the freeze read');
-    assert.deepEqual(pure.derivedRuns, ['name-clearance.yml']);
+    assert.deepEqual(pure.derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml']);
   });
 
   test('O-NAME-CLEARANCE-SWEEP-RUN-BY-NOTHING · a firstDue is replayed at the distance the REAL clock sees, so one the live guard refuses is still refused', () => {
@@ -6258,7 +6263,8 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
       assert.match(r.out, /✗ COVERAGE LOST — \d+ measurement failure\(s\)/);
       // 9 → 10 on 2026-09-23: duty.workflow.redeploy-stranded.yml is RED-SINCE graded.
       // 10 → 11 on 2026-09-24: so is duty.workflow.name-clearance.yml, a workflow on a clock.
-      assert.match(r.out, /every one of the 11 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
+      // 11 → 12 on 2026-09-29: so is duty.workflow.mutation-proofs.yml (A-2), a workflow on a clock.
+      assert.match(r.out, /every one of the 12 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
     }
   });
 
@@ -6898,5 +6904,53 @@ describe('a weekly job in a twelve-slot workflow — the scan reads no job list 
     assert.equal(runOutsideScheduleDays({ id: 4, event: 'workflow_dispatch', created_at: '2026-09-09T09:12:00Z' }, MON), false);
     assert.equal(runOutsideScheduleDays({ id: 5, event: 'schedule' }, MON), false);
     assert.equal(runOutsideScheduleDays({ id: 6, event: 'schedule', created_at: '2026-09-09T09:12:00Z' }, null), false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A-2 (2026-09-29) — a lane a guard names is a lane a schedule runs
+// ═══════════════════════════════════════════════════════════════════════════
+describe('checkNamedLanes — a guard that names a scheduled lane owes one (A-2)', () => {
+  const wfRoot = (files) => {
+    const root = mkdtempSync(join(TMP, 'lanes-'));
+    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
+    for (const [name, body] of Object.entries(files)) writeFileSync(join(root, '.github', 'workflows', name), body);
+    return parseAllWorkflows(root);
+  };
+  const GUARD = { rel: 'tooling/ci/assert-lane-fixture.mjs', text: '// --execute is for the nightly lane and for a terminal.\n' };
+  const PUSH_RUNS_IT = 'name: CI\non:\n  push:\njobs:\n  g:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: node tooling/ci/assert-lane-fixture.mjs\n';
+  const SCHEDULE_RUNS_IT = 'name: Weekly\non:\n  schedule:\n    - cron: \'0 4 * * 0\'\njobs:\n  x:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: node tooling/ci/assert-lane-fixture.mjs . --execute\n';
+  const SCHEDULE_COMMENT_ONLY = 'name: Weekly\non:\n  schedule:\n    - cron: \'0 4 * * 0\'\njobs:\n  x:\n    runs-on: ubuntu-24.04\n    steps:\n      # node tooling/ci/assert-lane-fixture.mjs --execute\n      - run: echo nothing\n';
+
+  test('RED: a guard naming "the nightly lane" that only a PUSH workflow runs is an error, naming the guard and the phrase', () => {
+    const { errors } = checkNamedLanes([GUARD], wfRoot({ 'ci.yml': PUSH_RUNS_IT }));
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /tooling\/ci\/assert-lane-fixture\.mjs names "the nightly lane", and no workflow with a `schedule:` trigger runs it \(0 scheduled workflow/);
+  });
+
+  test('RED: a scheduled workflow that names the guard only in a COMMENT does not run it', () => {
+    assert.equal(checkNamedLanes([GUARD], wfRoot({ 'weekly.yml': SCHEDULE_COMMENT_ONLY })).errors.length, 1);
+  });
+
+  test('GREEN: a scheduled workflow whose step runs the guard satisfies it, and says which', () => {
+    const { errors, prints } = checkNamedLanes([GUARD], wfRoot({ 'ci.yml': PUSH_RUNS_IT, 'weekly.yml': SCHEDULE_RUNS_IT }));
+    assert.deepEqual(errors, []);
+    assert.match(prints.join('\n'), /names "the nightly lane" — run on a schedule by weekly\.yml/);
+  });
+
+  test('a guard naming no lane owes nothing; the phrase is read in every cadence word', () => {
+    assert.deepEqual(checkNamedLanes([{ rel: 'tooling/ci/x.mjs', text: '// runs on every push' }], []).errors, []);
+    for (const w of ['nightly', 'weekly', 'daily', 'scheduled']) assert.ok(NAMED_LANE.test(`for the ${w} lane`), w);
+  });
+
+  test('the REAL tree: assert-mutation-proofs.mjs names its lane, and mutation-proofs.yml runs it --execute on a schedule', () => {
+    const repo = resolve(CI_DIR, '..', '..');
+    const real = parseAllWorkflows(repo);
+    const src = readFileSync(join(repo, 'tooling', 'ci', 'assert-mutation-proofs.mjs'), 'utf8');
+    const { errors, prints } = checkNamedLanes([{ rel: 'tooling/ci/assert-mutation-proofs.mjs', text: src }], real);
+    assert.deepEqual(errors, []);
+    assert.match(prints.join('\n'), /mutation-proofs\.yml/);
+    const wf = real.find((w) => w.rel.endsWith('/mutation-proofs.yml'));
+    assert.ok(wf.lines.some((l) => /node tooling\/ci\/assert-mutation-proofs\.mjs \. --execute/.test(l.text)), 'the scheduled lane passes --execute');
   });
 });

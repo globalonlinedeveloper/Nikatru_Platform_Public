@@ -1438,7 +1438,8 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-chassis"
+      ".github/workflows/ci.yml#guards-chassis",
+      ".github/workflows/mutation-proofs.yml#execute"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-mutation-proofs.mjs",
@@ -3744,6 +3745,18 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/edge-ratelimit-rule.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 053"
+    ],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#failure-ledger"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/guard-yield.mjs",
     "references": [],
     "state": "WIRED"
   },

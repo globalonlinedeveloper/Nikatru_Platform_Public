@@ -658,7 +658,9 @@ jobs:
           exit "$code"
 
   failure-ledger:
-    name: Failed-run ledger (weekly, print-only)
+    # why (B-5, 2026-09-29): this job REDS and `alert` pages on it, so its name says so. It was "print-only"
+    # while its step ended `exit "$code"`; workflow-scan's printOnlyJobsThatFail refuses that contradiction.
+    name: Failed-run ledger and guard yield (weekly; red pages the ops-watch issue)
     # why: the digest's slot predicate, verbatim. The ledger reads eight days of
     # failed runs, so one run a week is its whole cadence; every other slot skips.
     # why (2026-09-26): a dispatch runs the ledger only when it asks for it (inputs.failure_ledger); the digest
@@ -727,7 +729,24 @@ jobs:
           if [ "$code" -eq 2 ]; then
             echo "::error title=The failed-run ledger is UNKNOWN - nothing was graded::The quota floor refused to start, the request ceiling was reached, a 403, a capped run list, an unreadable log, a malformed causes register, or a clone that cannot answer the merge-base check. The count above, if any, is over a SUBSET. The step log names which."
           elif [ "$code" -eq 1 ]; then
-            echo "::error title=A failed run has no recorded cause, or a recorded fix is not on main::The step log lists each unexplained run with its signature, or each cause whose merge commit is not an ancestor of origin/main. Add the cause to tooling/ops/failed-run-causes.json with its fixedBy, or fix the run."
+            echo "::error title=A failed run has no recorded cause, a recurring cause cannot be ranked, or a recorded fix is not on main::The step log lists each unexplained run with its signature, each cause matched by two or more runs with no firstSeen/lastSeen and no guard/row, or each cause whose merge commit is not an ancestor of origin/main. Add or complete the cause in tooling/ops/failed-run-causes.json, or fix the run."
+          fi
+          exit "$code"
+
+      # why (B-1, B-2, B-3, 2026-09-29): the yield file is re-derived by one deliberate, credentialled fetch
+      # (the job token's hourly quota is under that walk's ceiling), so the SCHEDULE's part is to say when it is
+      # due and when it is not acted on: offline, no request. always(): a red ledger must not hide a stale yield.
+      - name: The guard yield is fresh, attributed, and every zero-catch guard is dispositioned
+        if: always()
+        run: |
+          set +e
+          node tooling/ops/guard-yield.mjs --check
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=The guard yield is UNKNOWN::tooling/guard-yield.json or tooling/enforcement-index.json could not be read, so nothing about guard yield is known from this run. The step log names which."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=The guard yield is stale, blind, or not acted on::asOf is past MAX_AGE_DAYS (re-fetch with triage-failed-runs.mjs --yield), the unattributed share is over its limit (give the signatures a guard, then guard-yield.mjs --reattribute), or a zero-catch guard has no KEEP/MERGE/RETIRE. The step log names each."
           fi
           exit "$code"
 

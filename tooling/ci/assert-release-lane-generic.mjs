@@ -571,6 +571,19 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'Classified 2026-09-24, the round the workflow landed.',
   ],
   [
+    'mutation-proofs.yml',
+    'runs the EXECUTED half of tooling/ci/assert-mutation-proofs.mjs weekly: it applies each recorded ' +
+      'mutation of every tracked dod.json row that carries one to the tree, runs the named test green-control-' +
+      'first and requires it red. It builds no release, produces no artifact and names no app id: the rows it ' +
+      'executes are DERIVED from every tracked dod.json by the guard, wherever it lives, so a new app\'s rows ' +
+      'join by existing. R-1 quantifies over the workspace APP set to prove a lane is generic, so a lane that ' +
+      'ships no app would sit in the denominator as a permanent empty-set pass, the reason already written out ' +
+      'for renovate.yml. The owning stage is stage 14 ops, through the duty row ' +
+      '`duty.workflow.mutation-proofs.yml` in tooling/ops/register.json. What holds its behaviour correct is ' +
+      'tooling/ci/test/mutation-proofs.test.mjs, and assert-ops-register.mjs\'s checkNamedLanes limb holds the ' +
+      'lane to exist. Classified 2026-09-29 (A-2), the round the workflow landed.',
+  ],
+  [
     'redeploy-stranded.yml',
     're-enters a deploy lane whose newest run on main failed only on its ci-gate step, once ci-gate at ' +
       "main's head is green. It builds no app, produces no release artifact and names no app id: the lanes " +

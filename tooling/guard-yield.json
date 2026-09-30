@@ -1,14 +1,15 @@
 {
   "_readme": [
     "GUARD YIELD — per-guard catches over ci.yml pull_request runs, keyed by every ref of tooling/enforcement-index.json. Row O-GUARD-YIELD-UNMEASURED; the question is ADR 053 rule 5.",
-    "WRITTEN by `node tooling/ops/triage-failed-runs.mjs --yield --since <ISO> [--until <ISO>] --cache-dir <dir> [--max-requests N]`: one deliberate, credentialled fetch under the ledger's one request ceiling and quota floor, dated by asOf, never scheduled.",
+    "WRITTEN by `node tooling/ops/triage-failed-runs.mjs --yield --since <ISO> [--until <ISO>] --cache-dir <dir> [--max-requests N]`: one deliberate, credentialled fetch under the ledger's one request ceiling and quota floor, dated by asOf. AGED by the Monday ops-watch slot, which runs `--check`: asOf older than 30 days (MAX_AGE_DAYS) is red there and pages, and the fetch is due. RE-ATTRIBUTED offline by `node tooling/ops/guard-yield.mjs --reattribute` whenever the causes register or a guard test moves.",
     "KEYED by `node tooling/ops/guard-yield.mjs --sync` (offline) in every PR that adds or removes an index ref. CHECKED by `--check` (offline) and by tooling/ci/assert-enforcement-index.mjs, which refuses an index ref this file does not key.",
     "",
     "A CATCH of guard G is a distinct MERGED PR with at least one failed (failure or timed_out) ci.yml pull_request run in the window attributed to G, whose failing step is not classified infrastructure or not-a-defect in tooling/ops/failed-run-causes.json. A merge needs ci-gate green, so G went green on the same branch after the failure.",
-    "ATTRIBUTION, per failing non-gate step, in order: (1) every `<name>: FAILED` line at column 0 of that step's log section, where <name>.mjs is the basename of an index ref; a step naming two guards credits both. (2) Else the step's `##[group]Run` header, when it runs exactly one `node tooling/...mjs` script and that script is an index ref. (3) Else the run is UNATTRIBUTED: counted in `unattributed`, listed in `unattributedRuns`, never dropped.",
+    "ATTRIBUTION, per failing non-gate step, in order: (1) every `<name>: FAILED` line at column 0 of that step's log section, where <name>.mjs is the basename of an index ref; a step naming two guards credits both. (2) Else the step's `##[group]Run` header, when it runs exactly one `node tooling/...mjs` script and that script is an index ref. (3) Else the step's signature: the tooling/ops/failed-run-causes.json row it maps to names its `guard`, or a `guard-test:<title>` names a test whose one file (a key of tooling/ci/test/coverage-manifest.json) exercises exactly one guard ref — a guard's red control failing is that guard's catch. (4) Else the run is UNATTRIBUTED: counted in `unattributed`, listed in `unattributedRuns`, never dropped, and kept under 10% (UNATTRIBUTED_MAX_PCT) of runs.considered by `--check`.",
     "MERGED = the subjects of `git log <merged-ref> --since --until --format=%s` that end in `(#N)`, read without the API. A run's PR is run.pull_requests[0].number, else the one PR whose head branch is the run's and whose open span covers the run.",
     "perRef.<ref>: catches = evidence.length = distinct merged PRs. evidence = {pr, runId, signature}, one per PR, the earliest run; signature is the failed-run ledger id of the failing step. firstSeen = the later of window.since and the day the ref's file was added on the merged ref, or the --sync day for a ref that entered the index after the fetch.",
     "zeroCatch = index rows of kind guard and state WIRED whose catches is 0 and whose firstSeen is not after the day of window.until. A ref `--sync` keyed after the fetch, with firstSeen = the sync day, had no chance to catch anything in the window: it is UNMEASURED, printed so by `--check`, and not counted, so the number does not move on every PR that adds a guard. Removing a zero-catch guard still lowers it. unattributed = failed runs with a live failing step attributed to no ref. runs.excluded = failed runs whose every failing step was excluded (non-defect, cancelled or gate-only). runs.noPr = attributed runs whose PR could not be named.",
+    "DISPOSITION (ADR 053 rule 5): every zero-catch guard/WIRED ref that is measured carries `disposition` {verdict: KEEP | MERGE | RETIRE, basis, reason}. basis \"exposure\" is written by the fetch itself for a ref exposed fewer than 90 days (FULL_EXPOSURE_DAYS) of the window — zero is not yet evidence — and expires when a window exposes it in full. basis \"owner\" is a person's decision with `decided` (YYYY-MM-DD) and survives every fetch; a MERGE names the ref it folds `into`. No other entry carries one.",
     "",
     "LIMITS: a catch by the local pre-commit hook never reaches CI, so it is not counted, and yield is a LOWER BOUND. A PR closed unmerged is not counted. A cancelled run rendered no verdict and is not read. A failure fixed by weakening the guard itself still counts as a catch; the evidence list is there so that a reader can judge. The window is bounded by log retention: attribution reads job logs, and a log past retention cannot be read, so the window covers far fewer PRs than the repository has merged."
   ],
@@ -53,7 +54,12 @@
     "tooling/ci/android-signing.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-04",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 53 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-04); re-judged at the next fetch"
+      }
     },
     "tooling/ci/android-zip.mjs": {
       "catches": 0,
@@ -68,7 +74,12 @@
     "tooling/ci/appimage-signing.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-08",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 49 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-08); re-judged at the next fetch"
+      }
     },
     "tooling/ci/apple-provisioning.mjs": {
       "catches": 0,
@@ -78,12 +89,28 @@
     "tooling/ci/apple-signing.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-08",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 49 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-08); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-a11y-coverage.mjs": {
-      "catches": 0,
+      "catches": 2,
       "firstSeen": "2026-08-12",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 512,
+          "runId": 34049395402,
+          "signature": "guard-test:the REAL repository — 4 derived roots, 57 surfaces, 19 swept, exit 0"
+        },
+        {
+          "pr": 521,
+          "runId": 34071062960,
+          "signature": "guard-test:the REAL repository — 4 derived roots, 62 surfaces, 19 swept, exit 0"
+        }
+      ]
     },
     "tooling/ci/assert-a11y-primitives.mjs": {
       "catches": 0,
@@ -93,7 +120,12 @@
     "tooling/ci/assert-adapter-capabilities.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-29",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 59 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-29); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-ads-declarations.mjs": {
       "catches": 1,
@@ -128,7 +160,7 @@
       ]
     },
     "tooling/ci/assert-analytics-contract.mjs": {
-      "catches": 2,
+      "catches": 4,
       "firstSeen": "2026-08-02",
       "evidence": [
         {
@@ -140,13 +172,28 @@
           "pr": 567,
           "runId": 34331135323,
           "signature": "guard-failed:assert-analytics-contract"
+        },
+        {
+          "pr": 587,
+          "runId": 34369566803,
+          "signature": "guard-test:PASSES on a fixture where schema, route and client agree"
+        },
+        {
+          "pr": 617,
+          "runId": 34443662985,
+          "signature": "guard-test:PASSES on a fixture where schema, route and client agree"
         }
       ]
     },
     "tooling/ci/assert-android-target-sdk.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-04",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 53 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-04); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-android-vapt-manifest.mjs": {
       "catches": 1,
@@ -162,7 +209,12 @@
     "tooling/ci/assert-app-address-shape.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-09",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 17 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-09); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-app-dod.mjs": {
       "catches": 22,
@@ -283,77 +335,159 @@
     "tooling/ci/assert-app-id-contract.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-25",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 1 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-25); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-app-naming.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-09",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 17 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-09); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-app-versioning.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-27",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 61 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-27); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-app-yaml.mjs": {
-      "catches": 0,
+      "catches": 2,
       "firstSeen": "2026-09-06",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 579,
+          "runId": 34345859315,
+          "signature": "guard-test:POSITIVE CONTROL: the real tree is valid and every rendering is fresh"
+        },
+        {
+          "pr": 836,
+          "runId": 35483539888,
+          "signature": "guard-test:MUTATION: editing the tagline without re-rendering fails, and NAMES every stale file"
+        }
+      ]
     },
     "tooling/ci/assert-apple-entitlements.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-16",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 10 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-16); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-apple-privacy-manifest.mjs": {
-      "catches": 0,
+      "catches": 1,
       "firstSeen": "2026-08-31",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 409,
+          "runId": 33421556650,
+          "signature": "guard-test:readAudit REFUSES an audit that is absent, unparseable or vacuous"
+        }
+      ]
     },
     "tooling/ci/assert-apps-gov-in-apk.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-22",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 4 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-22); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-apps-gov-in-media.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-22",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 4 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-22); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-artifact-shape.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-08",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 49 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-08); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-artifact-signed-apple.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-08",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 49 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-08); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-artifact-signed-msix.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-20",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 37 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-20); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-artifact-signed.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-04",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 53 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-04); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-auth-callbacks.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-24",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 2 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-24); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-availability.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-09",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 17 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-09); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-built-info-plist.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 0 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-bundle-availability.mjs": {
       "catches": 1,
@@ -369,17 +503,32 @@
     "tooling/ci/assert-bundle-provenance.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-10",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 16 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-10); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-capability-register.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-28",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 60 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-28); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-captcha-gated-call-sites.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-04",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 22 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-04); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-case-count-honest.mjs": {
       "catches": 5,
@@ -426,7 +575,12 @@
     "tooling/ci/assert-catalog-reachable.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-29",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 59 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-29); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-ceiling-budget.mjs": {
       "catches": 1,
@@ -442,12 +596,22 @@
     "tooling/ci/assert-channel-claims.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-31",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 57 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-31); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-channel-register.mjs": {
-      "catches": 6,
+      "catches": 7,
       "firstSeen": "2026-07-31",
       "evidence": [
+        {
+          "pr": 161,
+          "runId": 30979908678,
+          "signature": "guard-test:PASSES and PRINTS an unserved store row whose account does not exist"
+        },
         {
           "pr": 303,
           "runId": 31530673924,
@@ -481,14 +645,61 @@
       ]
     },
     "tooling/ci/assert-chassis-ledger.mjs": {
-      "catches": 0,
+      "catches": 8,
       "firstSeen": "2026-09-05",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 550,
+          "runId": 34255210639,
+          "signature": "guard-test:the committed ledger accounts for the real template"
+        },
+        {
+          "pr": 639,
+          "runId": 34575816407,
+          "signature": "guard-test:the committed ledger accounts for the real template"
+        },
+        {
+          "pr": 650,
+          "runId": 34602820679,
+          "signature": "guard-test:the committed ledger accounts for the real template"
+        },
+        {
+          "pr": 705,
+          "runId": 34666316879,
+          "signature": "guard-test:the committed ledger accounts for the real template"
+        },
+        {
+          "pr": 777,
+          "runId": 35050411822,
+          "signature": "guard-test:the committed ledger accounts for the real template"
+        },
+        {
+          "pr": 780,
+          "runId": 35065003241,
+          "signature": "guard-test:the committed ledger accounts for the real template"
+        },
+        {
+          "pr": 782,
+          "runId": 35072651020,
+          "signature": "guard-test:the committed ledger accounts for the real template"
+        },
+        {
+          "pr": 888,
+          "runId": 35814818590,
+          "signature": "guard-test:the committed ledger accounts for the real template"
+        }
+      ]
     },
     "tooling/ci/assert-chassis-parity.mjs": {
-      "catches": 0,
+      "catches": 1,
       "firstSeen": "2026-09-12",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 888,
+          "runId": 35807597575,
+          "signature": "guard-refused:chassis parity"
+        }
+      ]
     },
     "tooling/ci/assert-clone-contract.mjs": {
       "catches": 3,
@@ -514,27 +725,59 @@
     "tooling/ci/assert-config-registry.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-07",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 50 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-07); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-consent-withdrawal-surface.mjs": {
-      "catches": 0,
+      "catches": 1,
       "firstSeen": "2026-08-08",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 276,
+          "runId": 31377691940,
+          "signature": "guard-test:👤 the missing policy link PRINTS and does not fail"
+        }
+      ]
     },
     "tooling/ci/assert-content-licences.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-cors-allowlist.mjs": {
-      "catches": 0,
+      "catches": 2,
       "firstSeen": "2026-07-25",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 562,
+          "runId": 34311298051,
+          "signature": "guard-test:PASSES when every required origin is listed for BOTH Workers"
+        },
+        {
+          "pr": 567,
+          "runId": 34344181974,
+          "signature": "guard-test:passes on the live shape: every derived origin present, nothing unjustified"
+        }
+      ]
     },
     "tooling/ci/assert-d1-bindings.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-29",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 59 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-29); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-d1-fanout.mjs": {
       "catches": 0,
@@ -544,12 +787,22 @@
     "tooling/ci/assert-d1-location-hint.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-14",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 12 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-14); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-d1-sql-inventory.mjs": {
-      "catches": 3,
+      "catches": 5,
       "firstSeen": "2026-08-09",
       "evidence": [
+        {
+          "pr": 467,
+          "runId": 33940114768,
+          "signature": "guard-test:the pre-#256 correlated join is red"
+        },
         {
           "pr": 563,
           "runId": 34309799469,
@@ -564,6 +817,11 @@
           "pr": 588,
           "runId": 34376690144,
           "signature": "start-here:drift"
+        },
+        {
+          "pr": 645,
+          "runId": 34599041364,
+          "signature": "guard-test:a service that owns a database and introspects nothing is red"
         }
       ]
     },
@@ -579,30 +837,50 @@
       ]
     },
     "tooling/ci/assert-deletion-control.mjs": {
-      "catches": 1,
+      "catches": 2,
       "firstSeen": "2026-08-03",
       "evidence": [
         {
           "pr": 406,
           "runId": 33361411450,
           "signature": "versions:drift"
+        },
+        {
+          "pr": 931,
+          "runId": 36091097565,
+          "signature": "guard-test:🔴 THE OTHER DIALOGS ON THE SCREEN DO NOT COVER THE DELETION"
         }
       ]
     },
     "tooling/ci/assert-deploy-ref.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 0 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-deploy-triggers-deploy.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-05",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 52 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-05); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-deploy-triggers.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-01",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 56 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-01); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-derived-sets.mjs": {
       "catches": 0,
@@ -621,9 +899,30 @@
       ]
     },
     "tooling/ci/assert-discovery-surface.mjs": {
-      "catches": 0,
+      "catches": 4,
       "firstSeen": "2026-08-03",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 233,
+          "runId": 31273432955,
+          "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so"
+        },
+        {
+          "pr": 364,
+          "runId": 32808501080,
+          "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so"
+        },
+        {
+          "pr": 366,
+          "runId": 32808484551,
+          "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so"
+        },
+        {
+          "pr": 368,
+          "runId": 32808697420,
+          "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so"
+        }
+      ]
     },
     "tooling/ci/assert-e2e-legs.mjs": {
       "catches": 11,
@@ -700,7 +999,12 @@
     "tooling/ci/assert-elf-page-alignment.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-20",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 37 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-20); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-enforcement-index.mjs": {
       "catches": 11,
@@ -802,12 +1106,22 @@
     "tooling/ci/assert-erasure-reach.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-04",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 53 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-04); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-extensions-build-free.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-05",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 21 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-05); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-failfast-coverage.mjs": {
       "catches": 0,
@@ -817,12 +1131,22 @@
     "tooling/ci/assert-flag-exposure.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-gate-passed.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 62 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-github-matrix.mjs": {
       "catches": 0,
@@ -832,17 +1156,32 @@
     "tooling/ci/assert-glitchtip-no-ip.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-16",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 10 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-16); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-glitchtip-project.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-09",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 17 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-09); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-green-means-ran.mjs": {
-      "catches": 1,
+      "catches": 2,
       "firstSeen": "2026-08-01",
       "evidence": [
+        {
+          "pr": 507,
+          "runId": 34032468813,
+          "signature": "guard-test:the committed lane satisfies it, and the count is reported"
+        },
         {
           "pr": 889,
           "runId": 35814243238,
@@ -959,57 +1298,112 @@
     "tooling/ci/assert-guards-refuse-empty.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-17",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 40 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-17); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-hostname-depth.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-11",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 15 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-11); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-house-identity.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-25",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 1 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-25); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-hyperdrive-cap.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-15",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 11 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-15); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-iap-review-screenshots.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-23",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 3 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-23); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-inappwebview-waivers.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-15",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 11 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-15); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-input-contract.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-29",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 59 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-29); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-lane-coverage.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 62 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-launch-smoke.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-03",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 54 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-03); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-launcher-icons.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-04",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 53 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-04); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-legal-text-parity.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-06",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 20 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-06); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-legal-tripwires.mjs": {
       "catches": 3,
@@ -1056,52 +1450,103 @@
     "tooling/ci/assert-lint-inheritance.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-28",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 60 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-28); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-listing-assets.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-04",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 53 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-04); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-live-writer-provenance.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-23",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 3 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-23); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-lockfile-discipline.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 62 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-mail-transport-claims.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-04",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 53 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-04); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-mechanism-claims.mjs": {
-      "catches": 0,
+      "catches": 1,
       "firstSeen": "2026-09-16",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 893,
+          "runId": 35825389633,
+          "signature": "guard-test:the real repository is green"
+        }
+      ]
     },
     "tooling/ci/assert-modal-detection.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 31 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-money-config.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-01",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 56 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-01); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-monitor-coverage.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-mor-adapters.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-01",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 56 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-01); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-mutation-proofs.mjs": {
       "catches": 3,
@@ -1127,12 +1572,22 @@
     "tooling/ci/assert-name-clearance.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-09",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 17 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-09); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-no-clone-tells.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-28",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 60 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-28); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-no-dead-repo-names.mjs": {
       "catches": 4,
@@ -1315,27 +1770,52 @@
     "tooling/ci/assert-no-generated-line-cites.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 0 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-no-hardcoded-strings.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-28",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 60 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-28); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-no-loop-cases.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-15",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 11 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-15); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-no-null-entitlement-key.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-10",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 16 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-10); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-no-origin-authz.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-09",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 17 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-09); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-no-price-literals.mjs": {
       "catches": 1,
@@ -1351,47 +1831,183 @@
     "tooling/ci/assert-no-seam-forks.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-28",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 60 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-28); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-no-secret-defines.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-03",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 54 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-03); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-no-store-bundle-copy.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-10",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 16 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-10); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-no-tls-pinning.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-03",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 54 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-03); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-obfuscation-coupled.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-03",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 54 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-03); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-one-entitlement-reader.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-11",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 15 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-11); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-ops-register.mjs": {
-      "catches": 0,
+      "catches": 19,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 306,
+          "runId": 31578587658,
+          "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
+        },
+        {
+          "pr": 390,
+          "runId": 33022753154,
+          "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
+        },
+        {
+          "pr": 410,
+          "runId": 33640853970,
+          "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
+        },
+        {
+          "pr": 491,
+          "runId": 33968889843,
+          "signature": "guard-test:🔴 THE SCHEMA REFUSES A DATE PARKED IN THE FUTURE — the one way this becomes permanent"
+        },
+        {
+          "pr": 518,
+          "runId": 34068685680,
+          "signature": "ops-register:problem:.github/workflows/submit-windows-store.yml:submit records a deployment for `subly-windows-s"
+        },
+        {
+          "pr": 541,
+          "runId": 34171547555,
+          "signature": "ops-register:red-since:duty.workflow.extensions.yml"
+        },
+        {
+          "pr": 552,
+          "runId": 34269470560,
+          "signature": "guard-test:the committed ceiling equals the derivation"
+        },
+        {
+          "pr": 554,
+          "runId": 34280885648,
+          "signature": "ops-register:duty-stale:duty.laptop.nikatru-ops-check"
+        },
+        {
+          "pr": 556,
+          "runId": 34289339858,
+          "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+        },
+        {
+          "pr": 579,
+          "runId": 34354706747,
+          "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+        },
+        {
+          "pr": 584,
+          "runId": 34355459129,
+          "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+        },
+        {
+          "pr": 589,
+          "runId": 34358950588,
+          "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
+        },
+        {
+          "pr": 597,
+          "runId": 34380012744,
+          "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+        },
+        {
+          "pr": 598,
+          "runId": 34369290535,
+          "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+        },
+        {
+          "pr": 614,
+          "runId": 34441569730,
+          "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+        },
+        {
+          "pr": 615,
+          "runId": 34441747818,
+          "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
+        },
+        {
+          "pr": 616,
+          "runId": 34552627344,
+          "signature": "ops-register:red-since:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 619,
+          "runId": 34552656013,
+          "signature": "ops-register:red-since:duty.workflow.e2e.yml"
+        },
+        {
+          "pr": 697,
+          "runId": 34660163086,
+          "signature": "ops-register:problem:.github/workflows/ops-watch.yml is read by <n> duty rows and job(s) dns are the unit of none"
+        }
+      ]
     },
     "tooling/ci/assert-pack-inert.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-pack-roundtrip.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-package-boundaries.mjs": {
       "catches": 1,
@@ -1416,9 +2032,25 @@
       ]
     },
     "tooling/ci/assert-palette-consistent.mjs": {
-      "catches": 0,
+      "catches": 3,
       "firstSeen": "2026-08-17",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 349,
+          "runId": 32436157781,
+          "signature": "guard-test:losing one page trips the page floor"
+        },
+        {
+          "pr": 492,
+          "runId": 33969493656,
+          "signature": "guard-test:an exclusion that matches too few files is COVERAGE LOST, not a pass"
+        },
+        {
+          "pr": 510,
+          "runId": 34046322279,
+          "signature": "guard-test:losing one page trips the page floor"
+        }
+      ]
     },
     "tooling/ci/assert-paywall-flip-ready.mjs": {
       "catches": 0,
@@ -1428,12 +2060,28 @@
     "tooling/ci/assert-platform-proof-fresh.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-27",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 61 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-27); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-platform-register.mjs": {
-      "catches": 0,
+      "catches": 2,
       "firstSeen": "2026-08-01",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 587,
+          "runId": 34363704955,
+          "signature": "platform-register:unregistered-route:GET /v1/entitlements/subject"
+        },
+        {
+          "pr": 603,
+          "runId": 34382717172,
+          "signature": "platform-register:unregistered-route:POST /v1/receipts/:store"
+        }
+      ]
     },
     "tooling/ci/assert-play-declarations.mjs": {
       "catches": 8,
@@ -1504,7 +2152,7 @@
       ]
     },
     "tooling/ci/assert-policy-claims.mjs": {
-      "catches": 6,
+      "catches": 8,
       "firstSeen": "2026-08-01",
       "evidence": [
         {
@@ -1533,6 +2181,16 @@
           "signature": "ops-register:duty-stale:duty.workflow.e2e.yml"
         },
         {
+          "pr": 564,
+          "runId": 34314720506,
+          "signature": "policy-claims:unrowed-emphasis"
+        },
+        {
+          "pr": 795,
+          "runId": 35296273539,
+          "signature": "policy-claims:unclaimed-route-segment"
+        },
+        {
           "pr": 882,
           "runId": 35800505108,
           "signature": "guard-refused:entitlement contract"
@@ -1542,12 +2200,22 @@
     "tooling/ci/assert-pr-rows.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-25",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 1 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-25); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-preflight-test-coverage.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-23",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 3 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-23); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-privacy-manifest.mjs": {
       "catches": 1,
@@ -1561,9 +2229,14 @@
       ]
     },
     "tooling/ci/assert-prod-provenance.mjs": {
-      "catches": 9,
+      "catches": 11,
       "firstSeen": "2026-08-06",
       "evidence": [
+        {
+          "pr": 205,
+          "runId": 31245168192,
+          "signature": "guard-test:an empty production is green, and announces it is only a monitor"
+        },
         {
           "pr": 554,
           "runId": 34292689288,
@@ -1595,6 +2268,11 @@
           "signature": "start-here:drift"
         },
         {
+          "pr": 762,
+          "runId": 34936587871,
+          "signature": "guard-test:the real tree passes, and says out loud that it has not seen production"
+        },
+        {
           "pr": 824,
           "runId": 35449581752,
           "signature": "start-here:drift"
@@ -1614,52 +2292,102 @@
     "tooling/ci/assert-prompt-provenance.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-provider-graph-acyclic.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-09",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 48 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-09); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-pseudonymity-firewall.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-publish-gate.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-publish-records.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-06",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 51 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-06); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-publish-steps-guarded.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-07",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 19 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-07); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-purchase-path.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-recipe-contract.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-release-durable.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-06",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 51 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-06); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-release-json.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-23",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 3 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-23); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-release-lane-generic.mjs": {
       "catches": 5,
@@ -1706,12 +2434,22 @@
     "tooling/ci/assert-render-payload.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-18",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 39 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-18); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-renovate-reach.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-22",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 4 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-22); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-repo-posture.mjs": {
       "catches": 6,
@@ -1750,55 +2488,105 @@
       ]
     },
     "tooling/ci/assert-responsive-coverage.mjs": {
-      "catches": 1,
+      "catches": 3,
       "firstSeen": "2026-08-09",
       "evidence": [
         {
           "pr": 249,
           "runId": 31282369805,
           "signature": "guard-failed:assert-responsive-coverage"
+        },
+        {
+          "pr": 533,
+          "runId": 34093656708,
+          "signature": "guard-test:R14b · one chassis width test file is deleted — that root's corpus floor fires"
+        },
+        {
+          "pr": 770,
+          "runId": 34965348878,
+          "signature": "guard-test:R14b · one chassis width test file is deleted — that root's corpus floor fires"
         }
       ]
     },
     "tooling/ci/assert-retention-coverage.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-retired-names-visible.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-23",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 3 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-23); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-retired-names.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-11",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 15 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-11); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-review-gate.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-rollup-lossless.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-12",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 45 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-12); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-runner-budget.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-08",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 49 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-08); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-screen-set.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-29",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 59 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-29); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-seams-wired.mjs": {
-      "catches": 2,
+      "catches": 3,
       "firstSeen": "2026-07-26",
       "evidence": [
+        {
+          "pr": 217,
+          "runId": 31256830214,
+          "signature": "guard-test:passes when the seam has a real call site and the policy matches"
+        },
         {
           "pr": 294,
           "runId": 31468378335,
@@ -1814,12 +2602,22 @@
     "tooling/ci/assert-session-revocation.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 0 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-signup-consent-shape.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-10",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 47 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-10); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-sink-disclosure.mjs": {
       "catches": 3,
@@ -1845,31 +2643,71 @@
     "tooling/ci/assert-site-bindings.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 0 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-snapcraft-generable.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-08",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 49 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-08); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-stamp-brand-assets.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-29",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 59 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-29); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-stamp-platforms.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-29",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 59 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-29); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-stamp-properties.mjs": {
-      "catches": 1,
+      "catches": 5,
       "firstSeen": "2026-07-27",
       "evidence": [
+        {
+          "pr": 210,
+          "runId": 31249571852,
+          "signature": "guard-test:passes when both properties are asserted and implemented"
+        },
         {
           "pr": 279,
           "runId": 31406426235,
           "signature": "guard-failed:assert-stamp-properties"
+        },
+        {
+          "pr": 286,
+          "runId": 31436033367,
+          "signature": "guard-test:passes when both properties are asserted and implemented"
+        },
+        {
+          "pr": 455,
+          "runId": 33888001863,
+          "signature": "guard-test:limb (c) PRINTS the dead third link and does not fail the build"
+        },
+        {
+          "pr": 699,
+          "runId": 34660918711,
+          "signature": "guard-test:names the legal set on the happy path"
         }
       ]
     },
@@ -1902,12 +2740,22 @@
     "tooling/ci/assert-stamp-wiring.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-29",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 59 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-29); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-store-bijection.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-07",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 19 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-07); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-store-build-config.mjs": {
       "catches": 1,
@@ -1923,32 +2771,67 @@
     "tooling/ci/assert-store-identity.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-03",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 54 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-03); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-store-metadata.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-01",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 56 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-01); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-store-vocabulary.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-20",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 6 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-20); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-submission-safety.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-03",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 54 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-03); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-supabase-templates.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-04",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 53 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-04); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-sworn-store-files.mjs": {
-      "catches": 3,
+      "catches": 7,
       "firstSeen": "2026-08-08",
       "evidence": [
+        {
+          "pr": 411,
+          "runId": 33656175978,
+          "signature": "guard-test:passes, and says how much it actually read"
+        },
+        {
+          "pr": 480,
+          "runId": 33952012034,
+          "signature": "guard-test:passes, and says how much it actually read"
+        },
         {
           "pr": 591,
           "runId": 34365685289,
@@ -1963,23 +2846,48 @@
           "pr": 618,
           "runId": 34552114939,
           "signature": "guard-failed:assert-sworn-store-files"
+        },
+        {
+          "pr": 680,
+          "runId": 34641192085,
+          "signature": "guard-test:MOVING THE ANCHORED LINE DOWN 20 LINES IS GREEN, AND PRINTED — the anchor text still resolves"
+        },
+        {
+          "pr": 929,
+          "runId": 36088384225,
+          "signature": "guard-test:🔴 A CORRECT CITATION MAY NOT VOUCH FOR A STALE SIBLING IN THE SAME FILE"
         }
       ]
     },
     "tooling/ci/assert-test-clock-mix.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-21",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 5 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-21); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-ungraded-baseline-doc.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-16",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 10 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-16); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-update-coverage.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-vendor-portability.mjs": {
       "catches": 4,
@@ -2008,12 +2916,42 @@
       ]
     },
     "tooling/ci/assert-version-consistency.mjs": {
-      "catches": 1,
+      "catches": 7,
       "firstSeen": "2026-07-26",
       "evidence": [
         {
+          "pr": 528,
+          "runId": 34089091496,
+          "signature": "versions:drift"
+        },
+        {
+          "pr": 535,
+          "runId": 34097020467,
+          "signature": "versions:drift"
+        },
+        {
+          "pr": 729,
+          "runId": 34811749355,
+          "signature": "versions:drift"
+        },
+        {
           "pr": 731,
           "runId": 34822528462,
+          "signature": "versions:drift"
+        },
+        {
+          "pr": 857,
+          "runId": 35566848287,
+          "signature": "versions:drift"
+        },
+        {
+          "pr": 858,
+          "runId": 35566878165,
+          "signature": "versions:drift"
+        },
+        {
+          "pr": 860,
+          "runId": 35577888414,
           "signature": "versions:drift"
         }
       ]
@@ -2045,9 +2983,14 @@
       ]
     },
     "tooling/ci/assert-web-cache-policy.mjs": {
-      "catches": 1,
+      "catches": 2,
       "firstSeen": "2026-08-03",
       "evidence": [
+        {
+          "pr": 564,
+          "runId": 34319534836,
+          "signature": "guard-test:🔴 the REAL repository leaves NO stable name declared immutable"
+        },
         {
           "pr": 870,
           "runId": 35718264734,
@@ -2058,37 +3001,72 @@
     "tooling/ci/assert-well-known-shape.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-09",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 17 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-09); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-worker-error-sink.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-workflow-hardening.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 62 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-workflow-readers.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-15",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 11 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-15); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-workflow-timeouts.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-07",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 19 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-07); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-workspace-coverage.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 62 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/assert-xcode-floor.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-20",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 37 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-20); re-judged at the next fetch"
+      }
     },
     "tooling/ci/bounded-spawn.mjs": {
       "catches": 0,
@@ -2103,7 +3081,12 @@
     "tooling/ci/channel-arming.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-09",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 48 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-09); re-judged at the next fetch"
+      }
     },
     "tooling/ci/channel-surface.mjs": {
       "catches": 0,
@@ -2132,9 +3115,14 @@
       ]
     },
     "tooling/ci/check-site-integrity.mjs": {
-      "catches": 11,
+      "catches": 12,
       "firstSeen": "2026-07-26",
       "evidence": [
+        {
+          "pr": 196,
+          "runId": 31204995508,
+          "signature": "site-integrity"
+        },
         {
           "pr": 230,
           "runId": 31272846125,
@@ -2220,12 +3208,22 @@
     "tooling/ci/dump-aab-permissions.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 0 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/flutter-release-build.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 0 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/flutter-stock-assets.mjs": {
       "catches": 0,
@@ -2240,27 +3238,52 @@
     "tooling/ci/gen-ci-map.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 0 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/gen-issue-forms.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 0 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/install-pinned-tool.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-11",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 15 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-11); re-judged at the next fetch"
+      }
     },
     "tooling/ci/lane-detect.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-25",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 1 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-25); re-judged at the next fetch"
+      }
     },
     "tooling/ci/lane-verdict.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-25",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 1 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-25); re-judged at the next fetch"
+      }
     },
     "tooling/ci/licence-cross-assert.mjs": {
       "catches": 0,
@@ -2285,7 +3308,12 @@
     "tooling/ci/plan-deploy.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-25",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 1 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-25); re-judged at the next fetch"
+      }
     },
     "tooling/ci/price-figure.mjs": {
       "catches": 0,
@@ -2295,22 +3323,42 @@
     "tooling/ci/read-identity.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-03",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 54 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-03); re-judged at the next fetch"
+      }
     },
     "tooling/ci/read-ledger-version-code.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-24",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 2 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-24); re-judged at the next fetch"
+      }
     },
     "tooling/ci/record-deployment.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 62 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/release-manifest.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-06",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 51 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-06); re-judged at the next fetch"
+      }
     },
     "tooling/ci/retired-identity.mjs": {
       "catches": 0,
@@ -2325,7 +3373,12 @@
     "tooling/ci/scan-secrets.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 62 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/scan-workflows.mjs": {
       "catches": 3,
@@ -2366,7 +3419,12 @@
     "tooling/ci/stamp-channel.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-24",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 2 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-24); re-judged at the next fetch"
+      }
     },
     "tooling/ci/store-key-secret.mjs": {
       "catches": 0,
@@ -2381,7 +3439,12 @@
     "tooling/ci/tag-owner.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-23",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 3 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-23); re-judged at the next fetch"
+      }
     },
     "tooling/ci/text-reductions.mjs": {
       "catches": 0,
@@ -2406,7 +3469,12 @@
     "tooling/ci/worker-set.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
-      "evidence": []
+      "evidence": [],
+      "disposition": {
+        "verdict": "KEEP",
+        "basis": "exposure",
+        "reason": "exposed 0 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-26); re-judged at the next fetch"
+      }
     },
     "tooling/ci/worker-shared-modules.mjs": {
       "catches": 0,
@@ -2588,10 +3656,21 @@
       "firstSeen": "2026-09-27",
       "evidence": []
     },
-    "tooling/ops/money-dry-run.mjs": {
+    "tooling/ops/guard-yield.mjs": {
       "catches": 0,
-      "firstSeen": "2026-09-09",
+      "firstSeen": "2026-09-29",
       "evidence": []
+    },
+    "tooling/ops/money-dry-run.mjs": {
+      "catches": 1,
+      "firstSeen": "2026-09-09",
+      "evidence": [
+        {
+          "pr": 715,
+          "runId": 34676309010,
+          "signature": "guard-test:a provider with no registered adapter is COVERAGE LOST, not an ignored row"
+        }
+      ]
     },
     "tooling/ops/name-clearance-sweep.mjs": {
       "catches": 0,
@@ -2614,9 +3693,15 @@
       "evidence": []
     },
     "tooling/ops/status.mjs": {
-      "catches": 0,
+      "catches": 1,
       "firstSeen": "2026-08-03",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 430,
+          "runId": 33743841407,
+          "signature": "guard-test:the real register derives cleanly and yields a NON-EMPTY probed set — the floor every case below stands on"
+        }
+      ]
     },
     "tooling/ops/symbolication-proof.mjs": {
       "catches": 0,
@@ -2712,9 +3797,30 @@
       ]
     },
     "tooling/scripts/assert-no-dead-files.mjs": {
-      "catches": 0,
+      "catches": 4,
       "firstSeen": "2026-08-17",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 393,
+          "runId": 33031416687,
+          "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
+        },
+        {
+          "pr": 568,
+          "runId": 34322039921,
+          "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
+        },
+        {
+          "pr": 723,
+          "runId": 34694479495,
+          "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
+        },
+        {
+          "pr": 921,
+          "runId": 36025008104,
+          "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
+        }
+      ]
     },
     "tooling/scripts/check-agent-docs.mjs": {
       "catches": 0,
@@ -2722,9 +3828,15 @@
       "evidence": []
     },
     "tooling/scripts/check-selection-record.mjs": {
-      "catches": 0,
+      "catches": 1,
       "firstSeen": "2026-08-02",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 326,
+          "runId": 32110432299,
+          "signature": "guard-test:passes, and says so, when nothing is linked yet"
+        }
+      ]
     },
     "tooling/scripts/gen-start-here.mjs": {
       "catches": 0,
@@ -2757,9 +3869,15 @@
       "evidence": []
     },
     "tooling/sites/generate-discovery.mjs": {
-      "catches": 0,
+      "catches": 1,
       "firstSeen": "2026-08-03",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 579,
+          "runId": 34349737710,
+          "signature": "guard-test:🔴 the trial badge RETURNS the moment the paywall is switched on — gated, not deleted"
+        }
+      ]
     },
     "tooling/sites/generate-landing-payload.mjs": {
       "catches": 0,
@@ -2787,9 +3905,15 @@
       "evidence": []
     },
     "tooling/store/capture-backend.mjs": {
-      "catches": 0,
+      "catches": 1,
       "firstSeen": "2026-09-25",
-      "evidence": []
+      "evidence": [
+        {
+          "pr": 966,
+          "runId": 36215017554,
+          "signature": "guard-test:B2: an env carrying API_BASE_URL is refused, whatever it names"
+        }
+      ]
     },
     "tooling/store/capture-fallback-fonts.mjs": {
       "catches": 0,
@@ -2851,10 +3975,10 @@
   "runs": {
     "considered": 422,
     "excluded": 9,
-    "attributed": 260,
+    "attributed": 371,
     "noPr": 0
   },
-  "unattributed": 153,
+  "unattributed": 42,
   "unattributedRuns": [
     {
       "pr": 62,
@@ -2862,29 +3986,9 @@
       "signature": "dart:format"
     },
     {
-      "pr": 69,
-      "runId": 30443396252,
-      "signature": "guard-test:passes when every live entry answers"
-    },
-    {
-      "pr": 72,
-      "runId": 30450576406,
-      "signature": "brand-assets:no-platform-claim"
-    },
-    {
       "pr": 78,
       "runId": 30623816523,
       "signature": "stamped-service:typecheck"
-    },
-    {
-      "pr": 90,
-      "runId": 30677321017,
-      "signature": "guard-test:a fully compliant tree passes"
-    },
-    {
-      "pr": 120,
-      "runId": 30716333131,
-      "signature": "workspace:missing-member"
     },
     {
       "pr": 120,
@@ -2897,49 +4001,9 @@
       "signature": "dart:format"
     },
     {
-      "pr": 138,
-      "runId": 30783401468,
-      "signature": "guard-test:passes when the seam has a real call site and the policy matches"
-    },
-    {
       "pr": 143,
       "runId": 30875802373,
       "signature": "tokens-css:drift"
-    },
-    {
-      "pr": 161,
-      "runId": 30979908678,
-      "signature": "guard-test:PASSES and PRINTS an unserved store row whose account does not exist"
-    },
-    {
-      "pr": 196,
-      "runId": 31204995508,
-      "signature": "site-integrity"
-    },
-    {
-      "pr": 205,
-      "runId": 31245168192,
-      "signature": "guard-test:an empty production is green, and announces it is only a monitor"
-    },
-    {
-      "pr": 210,
-      "runId": 31249571852,
-      "signature": "guard-test:passes when both properties are asserted and implemented"
-    },
-    {
-      "pr": 210,
-      "runId": 31250322371,
-      "signature": "guard-test:audits a stamped app on the workspace list, not only the brick"
-    },
-    {
-      "pr": 217,
-      "runId": 31256830214,
-      "signature": "guard-test:passes when the seam has a real call site and the policy matches"
-    },
-    {
-      "pr": 233,
-      "runId": 31273432955,
-      "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so"
     },
     {
       "pr": 263,
@@ -2952,16 +4016,6 @@
       "signature": "dart:format"
     },
     {
-      "pr": 276,
-      "runId": 31377691940,
-      "signature": "guard-test:👤 the missing policy link PRINTS and does not fail"
-    },
-    {
-      "pr": 286,
-      "runId": 31436033367,
-      "signature": "guard-test:passes when both properties are asserted and implemented"
-    },
-    {
       "pr": 294,
       "runId": 31458317137,
       "signature": "dart:format"
@@ -2972,39 +4026,9 @@
       "signature": "guard-test:PG-4 · --submit refuses outside GitHub Actions, where the reviewer gate lives"
     },
     {
-      "pr": 306,
-      "runId": 31578587658,
-      "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
-    },
-    {
-      "pr": 306,
-      "runId": 31579565526,
-      "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
-    },
-    {
       "pr": 310,
       "runId": 31666634602,
       "signature": "guard-test:the REAL repository — 19 reachable, 5 swept, 14 printed, exit 0"
-    },
-    {
-      "pr": 315,
-      "runId": 31859777178,
-      "signature": "guard-test:with no ledger it PRINTS UNKNOWN, never zero, and labels the rule as ours"
-    },
-    {
-      "pr": 315,
-      "runId": 31886011114,
-      "signature": "guard-test:FAILS when the harness IS checked out and the cited ADR is not on disk"
-    },
-    {
-      "pr": 315,
-      "runId": 31888213980,
-      "signature": "guard-test:FAILS when the harness IS checked out and the cited ADR is not on disk"
-    },
-    {
-      "pr": 315,
-      "runId": 31889323999,
-      "signature": "guard-test:names the runbook the console-only steps live in"
     },
     {
       "pr": 319,
@@ -3012,44 +4036,9 @@
       "signature": "guard-test:verifies against the same base64-raw-32 encoding kContentPackPublicKeys pins"
     },
     {
-      "pr": 326,
-      "runId": 32110432299,
-      "signature": "guard-test:passes, and says so, when nothing is linked yet"
-    },
-    {
       "pr": 329,
       "runId": 32217034640,
       "signature": "guard-test:the real run agrees with what catalog/store-matrix.json actually declares"
-    },
-    {
-      "pr": 349,
-      "runId": 32436157781,
-      "signature": "guard-test:losing one page trips the page floor"
-    },
-    {
-      "pr": 366,
-      "runId": 32808484551,
-      "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so"
-    },
-    {
-      "pr": 364,
-      "runId": 32808501080,
-      "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so"
-    },
-    {
-      "pr": 368,
-      "runId": 32808697420,
-      "signature": "guard-test:the committed surfaces match a fresh generator run, and the guard says so"
-    },
-    {
-      "pr": 390,
-      "runId": 33022753154,
-      "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
-    },
-    {
-      "pr": 393,
-      "runId": 33031416687,
-      "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
     },
     {
       "pr": 364,
@@ -3057,69 +4046,14 @@
       "signature": "dart:format"
     },
     {
-      "pr": 409,
-      "runId": 33421556650,
-      "signature": "guard-test:readAudit REFUSES an audit that is absent, unparseable or vacuous"
-    },
-    {
-      "pr": 409,
-      "runId": 33422554190,
-      "signature": "guard-test:readAudit REFUSES an audit that is absent, unparseable or vacuous"
-    },
-    {
       "pr": 410,
       "runId": 33638560719,
       "signature": "dart:pub-resolve"
     },
     {
-      "pr": 410,
-      "runId": 33640853970,
-      "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
-    },
-    {
-      "pr": 410,
-      "runId": 33641590804,
-      "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
-    },
-    {
-      "pr": 410,
-      "runId": 33645653060,
-      "signature": "guard-test:the committed register is STRUCTURALLY sound — any failure is a duty that is failing, not a malformed register"
-    },
-    {
-      "pr": 411,
-      "runId": 33656175978,
-      "signature": "guard-test:passes, and says how much it actually read"
-    },
-    {
-      "pr": 430,
-      "runId": 33743841407,
-      "signature": "guard-test:the real register derives cleanly and yields a NON-EMPTY probed set — the floor every case below stands on"
-    },
-    {
       "pr": 437,
       "runId": 33789817636,
       "signature": "dart:package-uri-unresolved"
-    },
-    {
-      "pr": 455,
-      "runId": 33888001863,
-      "signature": "guard-test:limb (c) PRINTS the dead third link and does not fail the build"
-    },
-    {
-      "pr": 467,
-      "runId": 33940114768,
-      "signature": "guard-test:the pre-#256 correlated join is red"
-    },
-    {
-      "pr": 480,
-      "runId": 33952012034,
-      "signature": "guard-test:passes, and says how much it actually read"
-    },
-    {
-      "pr": 486,
-      "runId": 33959198110,
-      "signature": "guard-test:the control: the REAL submit-snap.yml passes, and BOTH lanes read `${{ … }}`"
     },
     {
       "pr": 486,
@@ -3130,31 +4064,6 @@
       "pr": 487,
       "runId": 33959744027,
       "signature": "actions-cache:not-allowed"
-    },
-    {
-      "pr": 488,
-      "runId": 33961148007,
-      "signature": "guard-test:every record-deployment.mjs call site in every workflow resolves"
-    },
-    {
-      "pr": 488,
-      "runId": 33962036513,
-      "signature": "guard-test:every record-deployment.mjs call site in every workflow resolves"
-    },
-    {
-      "pr": 491,
-      "runId": 33968889843,
-      "signature": "guard-test:🔴 THE SCHEMA REFUSES A DATE PARKED IN THE FUTURE — the one way this becomes permanent"
-    },
-    {
-      "pr": 492,
-      "runId": 33969493656,
-      "signature": "guard-test:an exclusion that matches too few files is COVERAGE LOST, not a pass"
-    },
-    {
-      "pr": 492,
-      "runId": 33969778673,
-      "signature": "guard-test:an exclusion that matches too few files is COVERAGE LOST, not a pass"
     },
     {
       "pr": 501,
@@ -3172,29 +4081,9 @@
       "signature": "l10n:drift"
     },
     {
-      "pr": 507,
-      "runId": 34032468813,
-      "signature": "guard-test:the committed lane satisfies it, and the count is reported"
-    },
-    {
       "pr": 509,
       "runId": 34040075561,
       "signature": "guard-test:the full checkout passes, reads all eight roots, and prints the per-root split"
-    },
-    {
-      "pr": 510,
-      "runId": 34046322279,
-      "signature": "guard-test:losing one page trips the page floor"
-    },
-    {
-      "pr": 512,
-      "runId": 34049395402,
-      "signature": "guard-test:the REAL repository — 4 derived roots, 57 surfaces, 19 swept, exit 0"
-    },
-    {
-      "pr": 518,
-      "runId": 34068685680,
-      "signature": "ops-register:problem:.github/workflows/submit-windows-store.yml:submit records a deployment for `subly-windows-s"
     },
     {
       "pr": 520,
@@ -3202,69 +4091,14 @@
       "signature": "guard-test:the full checkout passes, reads all nine roots, and prints the per-root split"
     },
     {
-      "pr": 521,
-      "runId": 34071062960,
-      "signature": "guard-test:the REAL repository — 4 derived roots, 62 surfaces, 19 swept, exit 0"
-    },
-    {
-      "pr": 528,
-      "runId": 34089091496,
-      "signature": "versions:drift"
-    },
-    {
-      "pr": 533,
-      "runId": 34093656708,
-      "signature": "guard-test:R14b · one chassis width test file is deleted — that root's corpus floor fires"
-    },
-    {
       "pr": 534,
       "runId": 34096980468,
       "signature": "dart:pub-resolve"
     },
     {
-      "pr": 535,
-      "runId": 34097020467,
-      "signature": "versions:drift"
-    },
-    {
-      "pr": 541,
-      "runId": 34171547555,
-      "signature": "ops-register:red-since:duty.workflow.extensions.yml"
-    },
-    {
-      "pr": 541,
-      "runId": 34173297798,
-      "signature": "ops-register:red-since:duty.workflow.extensions.yml"
-    },
-    {
-      "pr": 541,
-      "runId": 34198621137,
-      "signature": "ops-register:red-since:duty.workflow.extensions.yml"
-    },
-    {
-      "pr": 550,
-      "runId": 34255210639,
-      "signature": "guard-test:the committed ledger accounts for the real template"
-    },
-    {
-      "pr": 552,
-      "runId": 34269470560,
-      "signature": "guard-test:the committed ceiling equals the derivation"
-    },
-    {
       "pr": 554,
       "runId": 34279930346,
       "signature": "osv:known-vulnerable"
-    },
-    {
-      "pr": 554,
-      "runId": 34280885648,
-      "signature": "ops-register:duty-stale:duty.laptop.nikatru-ops-check"
-    },
-    {
-      "pr": 556,
-      "runId": 34289339858,
-      "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
     },
     {
       "pr": 556,
@@ -3277,29 +4111,9 @@
       "signature": "guard-test:🔴 BOTH Apple rows are STILL UNARMED — the day either is not, a tag stops being survivable without the enrolment"
     },
     {
-      "pr": 562,
-      "runId": 34311298051,
-      "signature": "guard-test:PASSES when every required origin is listed for BOTH Workers"
-    },
-    {
-      "pr": 564,
-      "runId": 34314720506,
-      "signature": "policy-claims:unrowed-emphasis"
-    },
-    {
-      "pr": 564,
-      "runId": 34319534836,
-      "signature": "guard-test:🔴 the REAL repository leaves NO stable name declared immutable"
-    },
-    {
       "pr": 569,
       "runId": 34321424554,
       "signature": "npm-test:assertion"
-    },
-    {
-      "pr": 568,
-      "runId": 34322039921,
-      "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
     },
     {
       "pr": 570,
@@ -3312,69 +4126,9 @@
       "signature": "dart:format"
     },
     {
-      "pr": 567,
-      "runId": 34344181974,
-      "signature": "guard-test:passes on the live shape: every derived origin present, nothing unjustified"
-    },
-    {
-      "pr": 579,
-      "runId": 34345859315,
-      "signature": "guard-test:POSITIVE CONTROL: the real tree is valid and every rendering is fresh"
-    },
-    {
-      "pr": 579,
-      "runId": 34349737710,
-      "signature": "guard-test:🔴 the trial badge RETURNS the moment the paywall is switched on — gated, not deleted"
-    },
-    {
-      "pr": 579,
-      "runId": 34354706747,
-      "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
-    },
-    {
-      "pr": 584,
-      "runId": 34355459129,
-      "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
-    },
-    {
-      "pr": 589,
-      "runId": 34358950588,
-      "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
-    },
-    {
-      "pr": 587,
-      "runId": 34363704955,
-      "signature": "platform-register:unregistered-route:GET /v1/entitlements/subject"
-    },
-    {
       "pr": 594,
       "runId": 34367993944,
       "signature": "dart:format"
-    },
-    {
-      "pr": 595,
-      "runId": 34368163020,
-      "signature": "ops-register:red-since:duty.workflow.build-platforms.yml"
-    },
-    {
-      "pr": 598,
-      "runId": 34369290535,
-      "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
-    },
-    {
-      "pr": 587,
-      "runId": 34369566803,
-      "signature": "guard-test:PASSES on a fixture where schema, route and client agree"
-    },
-    {
-      "pr": 597,
-      "runId": 34380012744,
-      "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
-    },
-    {
-      "pr": 603,
-      "runId": 34382717172,
-      "signature": "platform-register:unregistered-route:POST /v1/receipts/:store"
     },
     {
       "pr": 615,
@@ -3382,84 +4136,14 @@
       "signature": "dart:format"
     },
     {
-      "pr": 614,
-      "runId": 34441569730,
-      "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
-    },
-    {
-      "pr": 615,
-      "runId": 34441747818,
-      "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
-    },
-    {
-      "pr": 615,
-      "runId": 34442535175,
-      "signature": "ops-register:red-since:duty.workflow.ops-watch.yml"
-    },
-    {
-      "pr": 617,
-      "runId": 34443662985,
-      "signature": "guard-test:PASSES on a fixture where schema, route and client agree"
-    },
-    {
-      "pr": 616,
-      "runId": 34552627344,
-      "signature": "ops-register:red-since:duty.workflow.e2e.yml"
-    },
-    {
-      "pr": 619,
-      "runId": 34552656013,
-      "signature": "ops-register:red-since:duty.workflow.e2e.yml"
-    },
-    {
-      "pr": 619,
-      "runId": 34556943131,
-      "signature": "ops-register:red-since:duty.workflow.e2e.yml"
-    },
-    {
       "pr": 628,
       "runId": 34566468717,
       "signature": "dart:pub-resolve"
     },
     {
-      "pr": 639,
-      "runId": 34575816407,
-      "signature": "guard-test:the committed ledger accounts for the real template"
-    },
-    {
       "pr": 645,
       "runId": 34598594907,
       "signature": "dart:format"
-    },
-    {
-      "pr": 645,
-      "runId": 34599041364,
-      "signature": "guard-test:a service that owns a database and introspects nothing is red"
-    },
-    {
-      "pr": 650,
-      "runId": 34602820679,
-      "signature": "guard-test:the committed ledger accounts for the real template"
-    },
-    {
-      "pr": 680,
-      "runId": 34641192085,
-      "signature": "guard-test:MOVING THE ANCHORED LINE DOWN 20 LINES IS GREEN, AND PRINTED — the anchor text still resolves"
-    },
-    {
-      "pr": 697,
-      "runId": 34660163086,
-      "signature": "ops-register:problem:.github/workflows/ops-watch.yml is read by <n> duty rows and job(s) dns are the unit of none"
-    },
-    {
-      "pr": 699,
-      "runId": 34660918711,
-      "signature": "guard-test:names the legal set on the happy path"
-    },
-    {
-      "pr": 705,
-      "runId": 34666316879,
-      "signature": "guard-test:the committed ledger accounts for the real template"
     },
     {
       "pr": 706,
@@ -3472,64 +4156,9 @@
       "signature": "dart:format"
     },
     {
-      "pr": 715,
-      "runId": 34676309010,
-      "signature": "guard-test:a provider with no registered adapter is COVERAGE LOST, not an ignored row"
-    },
-    {
-      "pr": 715,
-      "runId": 34676626563,
-      "signature": "guard-test:a provider with no registered adapter is COVERAGE LOST, not an ignored row"
-    },
-    {
-      "pr": 723,
-      "runId": 34694479495,
-      "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
-    },
-    {
-      "pr": 723,
-      "runId": 34694798959,
-      "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
-    },
-    {
-      "pr": 729,
-      "runId": 34811749355,
-      "signature": "versions:drift"
-    },
-    {
       "pr": 759,
       "runId": 34929149096,
       "signature": "dart:format"
-    },
-    {
-      "pr": 762,
-      "runId": 34936587871,
-      "signature": "guard-test:the real tree passes, and says out loud that it has not seen production"
-    },
-    {
-      "pr": 770,
-      "runId": 34965348878,
-      "signature": "guard-test:R14b · one chassis width test file is deleted — that root's corpus floor fires"
-    },
-    {
-      "pr": 777,
-      "runId": 35050411822,
-      "signature": "guard-test:the committed ledger accounts for the real template"
-    },
-    {
-      "pr": 780,
-      "runId": 35065003241,
-      "signature": "guard-test:the committed ledger accounts for the real template"
-    },
-    {
-      "pr": 782,
-      "runId": 35072651020,
-      "signature": "guard-test:the committed ledger accounts for the real template"
-    },
-    {
-      "pr": 795,
-      "runId": 35296273539,
-      "signature": "policy-claims:unclaimed-route-segment"
     },
     {
       "pr": 825,
@@ -3537,29 +4166,9 @@
       "signature": "dart:format"
     },
     {
-      "pr": 836,
-      "runId": 35483539888,
-      "signature": "guard-test:MUTATION: editing the tagline without re-rendering fails, and NAMES every stale file"
-    },
-    {
       "pr": 837,
       "runId": 35483638703,
       "signature": "guard-test:the copied subject tree reproduces the subscriptiontracker reading exactly — and derives ONE root"
-    },
-    {
-      "pr": 857,
-      "runId": 35566848287,
-      "signature": "versions:drift"
-    },
-    {
-      "pr": 858,
-      "runId": 35566878165,
-      "signature": "versions:drift"
-    },
-    {
-      "pr": 860,
-      "runId": 35577888414,
-      "signature": "versions:drift"
     },
     {
       "pr": 882,
@@ -3567,29 +4176,9 @@
       "signature": "guard-test:🔴 EVERY network call under tooling/ops passes the signal, or its file is a LIVE exemption"
     },
     {
-      "pr": 888,
-      "runId": 35807597575,
-      "signature": "guard-refused:chassis parity"
-    },
-    {
       "pr": 889,
       "runId": 35813354605,
       "signature": "dart:format"
-    },
-    {
-      "pr": 888,
-      "runId": 35814818590,
-      "signature": "guard-test:the committed ledger accounts for the real template"
-    },
-    {
-      "pr": 893,
-      "runId": 35825389633,
-      "signature": "guard-test:the real repository is green"
-    },
-    {
-      "pr": 921,
-      "runId": 36025008104,
-      "signature": "guard-test:🔴 the UNMUTATED copy passes, and agrees with the real tree path-for-path"
     },
     {
       "pr": 922,
@@ -3597,30 +4186,10 @@
       "signature": "other:RC<n> planted failure (reverted in the next commit):env:"
     },
     {
-      "pr": 929,
-      "runId": 36088384225,
-      "signature": "guard-test:🔴 A CORRECT CITATION MAY NOT VOUCH FOR A STALE SIBLING IN THE SAME FILE"
-    },
-    {
-      "pr": 931,
-      "runId": 36091097565,
-      "signature": "guard-test:🔴 THE OTHER DIALOGS ON THE SCREEN DO NOT COVER THE DELETION"
-    },
-    {
       "pr": 936,
       "runId": 36100305929,
       "signature": "osv:known-vulnerable"
-    },
-    {
-      "pr": 939,
-      "runId": 36127348703,
-      "signature": "guard-test:the real tree passes: every tracked file is placed and every glob is alive"
-    },
-    {
-      "pr": 966,
-      "runId": 36215017554,
-      "signature": "guard-test:B2: an env carrying API_BASE_URL is refused, whatever it names"
     }
   ],
-  "zeroCatch": 147
+  "zeroCatch": 135
 }
