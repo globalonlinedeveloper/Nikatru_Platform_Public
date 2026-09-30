@@ -4,6 +4,8 @@
 // and `reminder_days` (JSON text) to the list it holds.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// The Idempotency-Key half of POST / (AB-O2-02); see lib/idempotency.ts.
+import { idempotentCreate, reservedCreateId } from '../lib/idempotency';
 import { Hono } from 'hono';
 import type { AppEnv, Payment, Subscription } from '../types';
 import { allRows, firstRow, nowIso, run, uuid } from '../lib/d1';
@@ -646,6 +648,21 @@ app.get('/', async (c) => {
   return c.json(rows.map(serializeSubscription));
 });
 
+// POST / with an Idempotency-Key: a repeat is answered with the row the first
+// attempt made (AB-O2-02). See lib/idempotency.ts.
+app.post(
+  '/',
+  idempotentCreate(async (c, id) => {
+    const row = await firstRow<Subscription>(
+      c.env.APP_DB.prepare('SELECT * FROM subscriptions WHERE id = ? AND user_id = ?').bind(
+        id,
+        c.get('userId'),
+      ),
+    );
+    return row ? c.json(serializeSubscription(row), 200) : null;
+  }),
+);
+
 // POST / — create.
 app.post('/', async (c) => {
   const userId = c.get('userId');
@@ -663,7 +680,7 @@ app.post('/', async (c) => {
   }
   const f = checked.fields;
 
-  const id = uuid();
+  const id = reservedCreateId(c) ?? uuid();
   const ts = nowIso();
 
   // `status` and the share pair are NOT NULL DEFAULT in 0003; they are bound

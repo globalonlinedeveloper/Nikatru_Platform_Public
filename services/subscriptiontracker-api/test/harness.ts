@@ -264,7 +264,7 @@ export function asUser(
   return (
     userId: string,
     path: string,
-    init: { method?: string; body?: unknown } = {},
+    init: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
   ) =>
     app.request(
       path,
@@ -273,6 +273,7 @@ export function asUser(
         headers: {
           'X-Test-User': userId,
           'Content-Type': 'application/json',
+          ...init.headers,
         },
         body:
           init.body === undefined
