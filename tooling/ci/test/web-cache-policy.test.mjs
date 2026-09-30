@@ -1081,25 +1081,34 @@ describe('assert-web-cache-policy · the nikatru.com site CSP and its per-path o
     assert.match(out, /declared CSP override whose block no longer sets a Content-Security-Policy\./);
   });
 
-  for (const [what, from, to, msg] of [
-    ['object-src', "object-src 'none'; ", '', /override\) does not hold object-src 'none'/],
-    ['base-uri', "base-uri 'self'; ", '', /override\) does not hold base-uri/],
-    ['frame-ancestors', "frame-ancestors 'none'; ", 'frame-ancestors *; ', /override\) does not hold frame-ancestors 'none'/],
-    ['default-src', "default-src 'self'", 'default-src *', /override\) does not hold default-src/],
-    ['form-action', "; form-action 'self'", '', /override\) does not hold form-action/],
-    ['script-src unsafe-inline', "script-src 'self'", "script-src 'self' 'unsafe-inline'", /override\) script-src admits 'unsafe-inline'/],
-    ['script-src unsafe-eval', "script-src 'self'", "script-src 'self' 'unsafe-eval'", /override\) script-src admits 'unsafe-eval'/],
-    ['script-src a scheme source', "script-src 'self'", "script-src 'self' https:", /override\) script-src admits https:/],
-    ['script-src a host the global line lacks', "script-src 'self'", "script-src 'self' https://cdn.example", /admits https:\/\/cdn\.example, which the global \/\* policy does not/],
-  ]) {
-    test(`FAILS when the override's policy breaks the floor: ${what}`, () => {
-      const mutated = OVERRIDE_CSP.replace(from, to);
-      assert.notEqual(mutated, OVERRIDE_CSP, 'the mutation did not apply; re-read this case');
-      const { code, out } = site(WITH_OVERRIDE.replace(OVERRIDE_CSP, mutated));
-      assert.equal(code, 1, out);
-      assert.match(out, msg);
-    });
-  }
+  // One explicit test() per floor directive, never a loop: assert-no-loop-cases
+  // counts a looped case as ONE declaration, so a row deleted from a table would
+  // vanish from coverage-manifest.json without a trace.
+  const breaksFloor = (from, to, msg) => () => {
+    const mutated = OVERRIDE_CSP.replace(from, to);
+    assert.notEqual(mutated, OVERRIDE_CSP, 'the mutation did not apply; re-read this case');
+    const { code, out } = site(WITH_OVERRIDE.replace(OVERRIDE_CSP, mutated));
+    assert.equal(code, 1, out);
+    assert.match(out, msg);
+  };
+  test("FAILS when the override's policy breaks the floor: object-src",
+    breaksFloor("object-src 'none'; ", '', /override\) does not hold object-src 'none'/));
+  test("FAILS when the override's policy breaks the floor: base-uri",
+    breaksFloor("base-uri 'self'; ", '', /override\) does not hold base-uri/));
+  test("FAILS when the override's policy breaks the floor: frame-ancestors",
+    breaksFloor("frame-ancestors 'none'; ", 'frame-ancestors *; ', /override\) does not hold frame-ancestors 'none'/));
+  test("FAILS when the override's policy breaks the floor: default-src",
+    breaksFloor("default-src 'self'", 'default-src *', /override\) does not hold default-src/));
+  test("FAILS when the override's policy breaks the floor: form-action",
+    breaksFloor("; form-action 'self'", '', /override\) does not hold form-action/));
+  test("FAILS when the override's policy breaks the floor: script-src unsafe-inline",
+    breaksFloor("script-src 'self'", "script-src 'self' 'unsafe-inline'", /override\) script-src admits 'unsafe-inline'/));
+  test("FAILS when the override's policy breaks the floor: script-src unsafe-eval",
+    breaksFloor("script-src 'self'", "script-src 'self' 'unsafe-eval'", /override\) script-src admits 'unsafe-eval'/));
+  test("FAILS when the override's policy breaks the floor: script-src a scheme source",
+    breaksFloor("script-src 'self'", "script-src 'self' https:", /override\) script-src admits https:/));
+  test("FAILS when the override's policy breaks the floor: script-src a host the global line lacks",
+    breaksFloor("script-src 'self'", "script-src 'self' https://cdn.example", /admits https:\/\/cdn\.example, which the global \/\* policy does not/));
 
   test('🔴 FAILS when two DECLARED overrides detach EACH OTHER — only the resolved view sees it', () => {
     // Each block carries a floored CSP, so the per-block limbs are all green; but a

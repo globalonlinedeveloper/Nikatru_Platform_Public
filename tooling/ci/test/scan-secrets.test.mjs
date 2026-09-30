@@ -356,15 +356,19 @@ describe('scan-secrets — signing-key files and Resend keys (rv2-security-019)'
     assert.match(out, /upload-keystore\.jks:0 {2}rule=nikatru-signing-key-file/);
   });
 
-  for (const name of ['release.keystore', 'cert.p12', 'AuthKey_ABC123.p8', 'App_Store.mobileprovision', 'android/key.properties']) {
-    test(`the path rule names ${name}`, () => {
-      const r = repo(`kf-${name.replace(/[^A-Za-z0-9]/g, '-')}`);
-      r.commit(`signing/${name}`, 'x\n', `add ${name}`);
-      const { code, out } = scan(r);
-      assert.equal(code, 1, out);
-      assert.match(out, /rule=nikatru-signing-key-file/);
-    });
-  }
+  // One explicit test() per file name, never a loop (assert-no-loop-cases).
+  const pathRuleNames = (name) => () => {
+    const r = repo(`kf-${name.replace(/[^A-Za-z0-9]/g, '-')}`);
+    r.commit(`signing/${name}`, 'x\n', `add ${name}`);
+    const { code, out } = scan(r);
+    assert.equal(code, 1, out);
+    assert.match(out, /rule=nikatru-signing-key-file/);
+  };
+  test('the path rule names release.keystore', pathRuleNames('release.keystore'));
+  test('the path rule names cert.p12', pathRuleNames('cert.p12'));
+  test('the path rule names AuthKey_ABC123.p8', pathRuleNames('AuthKey_ABC123.p8'));
+  test('the path rule names App_Store.mobileprovision', pathRuleNames('App_Store.mobileprovision'));
+  test('the path rule names android/key.properties', pathRuleNames('android/key.properties'));
 
   test('key.properties.example and a .properties file of another name stay quiet', () => {
     const r = repo('kf-quiet');

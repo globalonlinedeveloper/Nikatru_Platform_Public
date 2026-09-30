@@ -261,13 +261,16 @@ describe('assert-no-tls-pinning · platform config (network security config, Inf
     assert.equal(code, 0, out);
   });
 
-  for (const key of ['NSPinnedDomains', 'NSPinnedLeafIdentities', 'NSPinnedCAIdentities', 'TSKPinnedDomains']) {
-    test(`🔴 FAILS on ${key} in an Info.plist`, () => {
-      const { code, out } = run(fixture(platform({ [`${APP}/macos/Runner/Info.plist`]: WITH_ATS(PLIST, key) })));
-      assert.equal(code, 1, out);
-      assert.match(out, /macos\/Runner\/Info\.plist:\d+ declares an App Transport Security pinned identity/);
-    });
-  }
+  // One explicit test() per key, never a loop (assert-no-loop-cases).
+  const pinnedPlistFails = (key) => () => {
+    const { code, out } = run(fixture(platform({ [`${APP}/macos/Runner/Info.plist`]: WITH_ATS(PLIST, key) })));
+    assert.equal(code, 1, out);
+    assert.match(out, /macos\/Runner\/Info\.plist:\d+ declares an App Transport Security pinned identity/);
+  };
+  test('🔴 FAILS on NSPinnedDomains in an Info.plist', pinnedPlistFails('NSPinnedDomains'));
+  test('FAILS on NSPinnedLeafIdentities in an Info.plist', pinnedPlistFails('NSPinnedLeafIdentities'));
+  test('FAILS on NSPinnedCAIdentities in an Info.plist', pinnedPlistFails('NSPinnedCAIdentities'));
+  test('FAILS on TSKPinnedDomains (TrustKit) in an Info.plist', pinnedPlistFails('TSKPinnedDomains'));
 
   test('COVERAGE LOST when an app has an android/ directory and no main AndroidManifest.xml', () => {
     const files = platform({ [`${APP}/android/build.gradle.kts`]: '// gradle\n' });
