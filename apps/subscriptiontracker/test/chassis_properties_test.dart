@@ -570,7 +570,11 @@ ProviderContainer _funnelContainer({
 Widget _paywallHost(ProviderContainer c, Key key) => UncontrolledProviderScope(
   container: c,
   child: MaterialApp(
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    // ⏱ ST-D9: the paywall BODY is the chassis view, as in app.dart.
+    localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+      ...AppLocalizations.localizationsDelegates,
+      ChassisLocalizations.delegate,
+    ],
     supportedLocales: AppLocalizations.supportedLocales,
     home: PaywallScreen(key: key),
   ),
