@@ -277,6 +277,10 @@
           "resolver": "exempt",
           "reason": "⏱ 2026-09-29 · 0005_lifecycle_history_categories.sql (ST-I4). NO app_version COLUMN AND NO OTHER MARKER: the table has `id`, `subscription_id`, `user_id`, `old_price`, `new_price`, `old_price_minor`, `new_price_minor`, `old_currency`, `new_currency` and `changed_at`. Rows are written only by PATCH /v1/subscriptions/:id (services/subscriptiontracker-api/src/routes/subscriptions.ts) from the authenticated session, when an edit moves the price or currency. Every column is the user's own amount, currency or a timestamp; none names a build, an app, a money world or a closed set a resolver could check. So it is exempt; a marker column added later re-opens this rule."
         },
+        "idempotency_keys": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-09-30 · 0006_idempotency_keys.sql (AB-O2-02). NO app_version COLUMN AND NO OTHER MARKER: the table has `user_id`, `key`, `body_hash`, `row_id`, `state` and `created_at`. Rows are written only by the Idempotency-Key middleware in front of POST /v1/subscriptions (services/subscriptiontracker-api/src/lib/idempotency.ts) from the authenticated session. `state` is a closed set ('pending' | 'done') that says whether the claiming request finished, not which build, app or money world wrote the row. So it is exempt; a marker column added later re-opens this rule."
+        },
         "categories": {
           "resolver": "exempt",
           "reason": "⏱ 2026-09-29 · 0005_lifecycle_history_categories.sql (ST-X8). NO app_version COLUMN AND NO OTHER MARKER: the table has `id`, `user_id`, `name`, `builtin`, `created_at` and `updated_at`. The ten built-in rows are seeded by the migration itself; every other row is written by /v1/categories (services/subscriptiontracker-api/src/routes/categories.ts) from the authenticated session. `name` is the user's own text and `builtin` says which of the two writers made the row, not which build, app or money world did. So it is exempt; a marker column added later re-opens this rule."
