@@ -16,9 +16,13 @@
    read-back alone. The page's CSP-violation and network recorder rides along.
 
    Exit: 0 green · 1 a finding · 2 coverage lost.
-   Run:  node real-copy.mjs   (FS_E2E_CHROMIUM=<path> to use a local binary)
+   Also runs on the branded leg of extensions.yml (Edge and Chrome, Windows,
+   the real Windows clipboard); the next line is what opts it in:
+   e2e-branded:
+   Run:  node real-copy.mjs   (FS_E2E_CHROMIUM=<path> to use a local binary,
+                               FS_E2E_CHANNEL=msedge|chrome for a branded build)
    ========================================================================== */
-import { chromium } from 'playwright';
+import { launchWithExtension } from './channel-lib.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -38,17 +42,23 @@ if ((ext.packedManifest.permissions || []).includes('clipboardWrite')) {
   console.log('NOTE  the packed manifest declares clipboardWrite; this run measures the copy WITH it.');
 }
 const srv = await serve(FIXTURE_DIR, PORT);
-const ctx = await chromium.launchPersistentContext(fs.mkdtempSync(path.join(os.tmpdir(), 'fullshot-copy-')), {
-  ...(process.env.FS_E2E_CHROMIUM ? { executablePath: process.env.FS_E2E_CHROMIUM } : { channel: 'chromium' }),
-  headless: !process.env.HEADFUL,
-  viewport: { width: 1280, height: 800 },
-  args: ['--disable-extensions-except=' + ext.dir, '--load-extension=' + ext.dir]
-});
+/* The channel (bundled Chromium by default; msedge or chrome on the branded
+   leg, EXB-12) and the way the extension gets in are channel-lib.mjs's. */
+let launched;
+try {
+  launched = await launchWithExtension(ext.dir, {
+    userDataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'fullshot-copy-')),
+    headless: !process.env.HEADFUL,
+    viewport: { width: 1280, height: 800 }
+  });
+} catch (e) {
+  srv.close();
+  coverageLost('the extension never started, so no copy was measured: ' + (e && e.message || e));
+}
+const { ctx, sw } = launched;
 let exitCode = 0;
 try {
   await ctx.addInitScript(PAGE_RECORDER);
-  let [sw] = ctx.serviceWorkers();
-  if (!sw) sw = await ctx.waitForEvent('serviceworker', { timeout: 20000 });
 
   const fixtureUrl = 'http://127.0.0.1:' + PORT + '/control-clean.html';
   const tab = await ctx.newPage();

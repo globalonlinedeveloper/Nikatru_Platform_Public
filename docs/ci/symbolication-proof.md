@@ -123,5 +123,10 @@ and amend [ADR 090] with that run id. The lane is then green with no banner, and
 symbolication works.
 
 ```
-gh workflow run symbolication-proof.yml --ref <branch>
+gh workflow run symbolication-proof.yml --ref <branch> -f app=<app id>
 ```
+
+The app is a dispatch input (B-12): the `gate` job refuses an id off the workspace app set
+(`assert-release-lane-generic.mjs --emit-apps --app`), and the `prove` job reads only its checked
+output, so the lane names no app and is graded as a per-app lane (limb I). The app must carry the
+crash probe at `live_probe/symbolication_crash_probe.dart`.

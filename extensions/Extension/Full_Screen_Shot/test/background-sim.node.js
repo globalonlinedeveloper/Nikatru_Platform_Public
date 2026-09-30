@@ -594,8 +594,13 @@ function makeEnv(opts) {
         const tab = tabs.get(tabId);
         if (!tab) throw new Error('No tab with id: ' + tabId + '.');
         if (tab.blockInject) {
-          throw new Error('Cannot access contents of the page at "' + tab.url +
-            '". Extension manifest must request permission to access this host.');
+          /* Each engine's OWN wording. Gecko's is measured, not guessed:
+             test/e2e/gecko-capture.mjs asked Firefox 156.0.1 to inject into a
+             page its restrictedDomains keeps from extensions (2026-09-29, rv2
+             EXB-16) and it answered exactly this sentence. */
+          throw new Error(ENGINE === 'gecko' ? 'Missing host permission for the tab'
+            : 'Cannot access contents of the page at "' + tab.url +
+              '". Extension manifest must request permission to access this host.');
         }
         files.forEach(f => { if (tab.scripts.indexOf(f) < 0) tab.scripts.push(f); });
         return [{ frameId: 0, result: null }];
@@ -898,7 +903,11 @@ function gestureRequest(env) {
 function makeEl(id, tagName) {
   const el = {
     id: id || '', tagName: tagName || 'DIV', className: '', hidden: false,
-    textContent: '', value: '', checked: false, dataset: {}, listeners: {},
+    textContent: '', value: '', checked: false, dataset: {}, listeners: {}, attrs: {}, kbd: null,
+    getAttribute(n) { return n in el.attrs ? el.attrs[n] : null; },
+    setAttribute(n, v) { el.attrs[n] = String(v); },
+    removeAttribute(n) { delete el.attrs[n]; },
+    querySelector(sel) { return sel === 'kbd' ? el.kbd : null; },
     addEventListener(type, fn) { (el.listeners[type] = el.listeners[type] || []).push(fn); },
     async dispatch(type, ev) {
       const fns = (el.listeners[type] || []).slice();
@@ -914,6 +923,13 @@ function makeDoc() {
   const modes = POPUP_MODES.map(m => {
     const b = makeEl('', 'BUTTON');
     b.className = 'mode'; b.dataset.mode = m;
+    /* The button's shipped aria-keyshortcuts and <kbd>, read from popup.html,
+       so the shortcut limb (EXB-08) grades a change FROM the real markup. */
+    const block = (new RegExp('<button[^>]*data-mode="' + m + '"[^>]*>[\\s\\S]*?</button>').exec(POPUP_HTML) || [''])[0];
+    const aks = /aria-keyshortcuts="([^"]*)"/.exec(block);
+    if (aks) b.attrs['aria-keyshortcuts'] = aks[1];
+    const kbd = /<kbd[^>]*>([^<]*)<\/kbd>/.exec(block);
+    if (kbd) { b.kbd = makeEl('', 'KBD'); b.kbd.textContent = kbd[1]; }
     return b;
   });
   return {
@@ -938,11 +954,18 @@ function makeDoc() {
 
 /* The popup is an extension page: runtime.sendMessage reaches the worker's
    router, and permissions.request is its own to make (the worker's must not). */
+/* commands.getAll as a PAGE sees it: whatever the case set in env.pageCommands
+   (EXB-08), and [] otherwise — the worker's own stub stays as it was. */
+function pageCommands(env) {
+  return { async getAll() { return (env.pageCommands || []).map(c => Object.assign({}, c)); } };
+}
+
 function popupChrome(env) {
   return {
+    commands: pageCommands(env),
     runtime: {
       id: EXT_ID,
-      getURL: p => EXT_URL + p,
+      getURL: p => (env.extUrl || EXT_URL) + p,
       sendMessage: msg => env.send(msg, env.fromPage('popup/popup.html')),
       openOptionsPage: async () => { env.trace.push('popup:options'); }
     },
@@ -1100,9 +1123,10 @@ function makeOptionsDoc() {
 function pageChrome(env) {
   return {
     i18n: env.chrome.i18n,
+    commands: pageCommands(env),
     runtime: {
       id: EXT_ID,
-      getURL: p => EXT_URL + p,
+      getURL: p => (env.extUrl || EXT_URL) + p,
       getManifest: env.chrome.runtime.getManifest,
       sendMessage: msg => env.send(msg, env.fromPage('pages/options.html')),
       openOptionsPage: async () => { env.trace.push('page:options'); }
@@ -2667,6 +2691,31 @@ const quotaError = (message) => {
     check('every refusal is parked for the popup too', parked === FAMILIES.length, parked + '/' + FAMILIES.length);
   }
   {
+    /* rv2 EXB-16 (2026-09-29): the other two stores. Each blocks extensions from
+       its OWN pages in its OWN browser, so each is refused up front with its own
+       sentence there — and captured like any page everywhere else. */
+    const UA = {
+      edge: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.2739.42',
+      firefox: 'Mozilla/5.0 (X11; Linux x86_64; rv:156.0) Gecko/20100101 Firefox/156.0',
+      chrome: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.120 Safari/537.36'
+    };
+    const EDGE_STORE = 'https://microsoftedge.microsoft.com/addons/detail/fullshot/abcdefghijklmnop';
+    const AMO_PAGE = 'https://addons.mozilla.org/en-US/firefox/addon/fullshot/';
+    for (const [url, ua, re] of [[EDGE_STORE, UA.edge, /Edge Add-ons blocks extensions/], [AMO_PAGE, UA.firefox, /Firefox Add-ons \(addons\.mozilla\.org\) blocks extensions/]]) {
+      const env = newEnv({ userAgent: ua });
+      const res = await startCapture(env, env.addTab({ url }).id, 'full');
+      check("a store page in its own browser is refused with that store's own sentence (" + url.split('/')[2] + ')',
+        res && res.ok === false && re.test(String(res.error)) && !env.injects.length, JSON.stringify(res) + ' injects ' + env.injects.length);
+      check('...never "reload the page", which cannot help there', !/Reload the page/.test(String(res && res.error)), String(res && res.error));
+    }
+    for (const [url, ua] of [[EDGE_STORE, UA.chrome], [AMO_PAGE, UA.chrome], [AMO_PAGE, UA.edge], [EDGE_STORE, UA.firefox]]) {
+      const env = newEnv({ userAgent: ua });
+      const res = await startCapture(env, env.addTab({ url }).id, 'full');
+      check('the same store page in ANOTHER browser is an ordinary page (' + url.split('/')[2] + ' under ' + (/Edg\//.test(ua) ? 'Edge' : /Firefox/.test(ua) ? 'Firefox' : 'Chrome') + ')',
+        res && res.ok === true && env.injects.length > 0, JSON.stringify(res));
+    }
+  }
+  {
     const env = newEnv();
     const tab = env.addTab({ url: undefined });
     const res = await startCapture(env, tab.id, 'full');
@@ -3512,6 +3561,10 @@ const quotaError = (message) => {
       ['errRestrictedViewSource', {}, async env => (await startCapture(env, env.addTab({ url: 'view-source:https://example.com/' }).id, 'full')).error],
       ['errRestrictedExtensionPage', {}, async env => (await startCapture(env, env.addTab({ url: 'moz-extension://abc/x.html' }).id, 'full')).error],
       ['errRestrictedWebstore', {}, async env => (await startCapture(env, env.addTab({ url: 'https://chromewebstore.google.com/detail/foo' }).id, 'full')).error],
+      ['errRestrictedEdgeAddons', { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.2739.42' },
+        async env => (await startCapture(env, env.addTab({ url: 'https://microsoftedge.microsoft.com/addons/detail/x/abc' }).id, 'full')).error],
+      ['errRestrictedAmo', { userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:156.0) Gecko/20100101 Firefox/156.0' },
+        async env => (await startCapture(env, env.addTab({ url: 'https://addons.mozilla.org/en-US/firefox/' }).id, 'full')).error],
       ['errRestrictedGeneric', {}, async env => (await startCapture(env, env.addTab({ url: undefined }).id, 'full')).error],
       ['errBlocked', {}, async env => (await startCapture(env, env.addTab({ blockInject: true }).id, 'full')).error],
       ['errNoStart', { hooks: { inject: () => new Error('disk on fire') } }, async env => (await startCapture(env, env.addTab({}).id, 'full')).error],
@@ -4384,6 +4437,68 @@ const quotaError = (message) => {
     !!EN_MESSAGES.errStorageFull && EN_MESSAGES.errStorageFull.message === R_STORAGE_FULL,
     JSON.stringify(EN_MESSAGES.errStorageFull && EN_MESSAGES.errStorageFull.message));
 
+  /* ================= the shortcuts, as assigned (EXB-08) ================= */
+  /* ⏱ 2026-09-29. The popup's <kbd> chords and aria-keyshortcuts, and the
+     Options line, were static markup: a remapped or cleared shortcut was shown
+     and announced as the default, and Firefox users were sent to
+     chrome://extensions/shortcuts. Both pages now read commands.getAll() and
+     name the shortcuts page of the browser they run in. Graded remapped, cleared,
+     on a moz-extension origin and under an Edge user agent. */
+  console.log('\n=== the shortcuts, as assigned ===');
+  const REMAPPED = [
+    { name: 'capture-full-page', shortcut: 'Ctrl+Shift+1' },
+    { name: 'capture-visible', shortcut: '' },
+    { name: 'capture-region', shortcut: '⌥⇧R' },
+    { name: 'capture-element', shortcut: '' }
+  ];
+  {
+    const env = newEnv();
+    const pop = await bootPopup(env);
+    const full = pop.doc._modes.filter(b => b.dataset.mode === 'full')[0];
+    check('with no answer from commands.getAll the popup keeps its shipped chord',
+      full && full.kbd && full.kbd.textContent === 'Alt+Shift+P' && full.attrs['aria-keyshortcuts'] === 'Alt+Shift+P',
+      JSON.stringify(full && [full.kbd && full.kbd.textContent, full.attrs]));
+  }
+  {
+    const env = newEnv();
+    env.pageCommands = REMAPPED;
+    const pop = await bootPopup(env);
+    const btn = m => pop.doc._modes.filter(b => b.dataset.mode === m)[0] || { attrs: {} };
+    const [full, visible, region] = [btn('full'), btn('visible'), btn('region')];
+    check('a remapped shortcut is what the popup shows and announces',
+      full.kbd && full.kbd.textContent === 'Ctrl+Shift+1' && !full.kbd.hidden && full.attrs['aria-keyshortcuts'] === 'Control+Shift+1',
+      JSON.stringify([full.kbd && full.kbd.textContent, full.attrs]));
+    check('a cleared shortcut is neither shown nor announced',
+      visible.kbd && visible.kbd.hidden === true && !('aria-keyshortcuts' in visible.attrs),
+      JSON.stringify([visible.kbd, visible.attrs]));
+    check('a macOS chord is announced in aria-keyshortcuts form',
+      region.attrs['aria-keyshortcuts'] === 'Alt+Shift+R', JSON.stringify(region.attrs));
+  }
+  {
+    const env = await awake(newEnv({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36' }));
+    env.pageCommands = REMAPPED;
+    const page = await bootOptions(env);
+    const line = page.text('shortcutsDesc');
+    check('Options names the remapped shortcut and a cleared one as unset',
+      line === 'Full page: Ctrl+Shift+1 · Visible: —. Customize at chrome://extensions/shortcuts', JSON.stringify(line));
+  }
+  {
+    const env = await awake(newEnv({ userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0' }));
+    env.extUrl = 'moz-extension://0c8e3a5e-5b8b-4d1e-9b52-6a1f3c2d7e90/';
+    const page = await bootOptions(env);
+    const line = page.text('shortcutsDesc');
+    check('on a moz-extension origin Options points at about:addons, never a Chrome page',
+      /Customize at about:addons$/.test(line) && line.indexOf('chrome://') < 0, JSON.stringify(line));
+    check('...and with no answer from commands.getAll it names the manifest\'s suggested keys',
+      line.indexOf('Full page: Alt+Shift+P · Visible: Alt+Shift+V.') === 0, JSON.stringify(line));
+  }
+  {
+    const env = await awake(newEnv({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0' }));
+    const page = await bootOptions(env);
+    check('under Edge, Options points at edge://extensions/shortcuts',
+      /Customize at edge:\/\/extensions\/shortcuts$/.test(page.text('shortcutsDesc')), JSON.stringify(page.text('shortcutsDesc')));
+  }
+
   /* ================= your data, on the options page ================= */
   /* The shipped pages/options.js, running for real over the shipped
      pages/common.js and pages/db.js, against the same worker and the same
@@ -4917,10 +5032,13 @@ const quotaError = (message) => {
     const env = newEnv();
     await fire(env.onInstalled, { reason: 'install' });
     await pump(env);
-    check('a fresh install seeds every default', Object.keys(env.sync).length === 27, Object.keys(env.sync).length + ' keys');
+    /* 28 since 2026-09-29: singleKeyShortcuts (EXB-03, WCAG 2.1.4), seeded ON so
+       an upgrade never takes the editor's letter keys away from anybody. */
+    check('a fresh install seeds every default', Object.keys(env.sync).length === 28, Object.keys(env.sync).length + ' keys');
     check('the seeded defaults are the shipped values',
-      env.sync.expandInner === true && env.sync.captureDelay === 150 && env.sync.theme === 'system',
-      JSON.stringify([env.sync.expandInner, env.sync.captureDelay, env.sync.theme]));
+      env.sync.expandInner === true && env.sync.captureDelay === 150 && env.sync.theme === 'system' &&
+      env.sync.singleKeyShortcuts === true,
+      JSON.stringify([env.sync.expandInner, env.sync.captureDelay, env.sync.theme, env.sync.singleKeyShortcuts]));
   }
   {
     // 1.3.0 flipped expandInner on for old installs — exactly once.

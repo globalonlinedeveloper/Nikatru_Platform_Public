@@ -228,6 +228,10 @@
       <span class="switch"><input type="checkbox" id="autoOpenEditor" aria-describedby="autoOpenEditorDesc"><span class="track"></span></span>
     </div>
     <div class="opt">
+      <div class="text"><label for="singleKeyShortcuts" data-i18n="optionsSingleKeyShortcuts">Single-key shortcuts in the editor</label><small id="singleKeyShortcutsDesc" data-i18n="optionsSingleKeyShortcutsDesc">Letter keys pick a tool, + and - zoom, ? lists the keys. Off: they work only while the image has focus.</small></div>
+      <span class="switch"><input type="checkbox" id="singleKeyShortcuts" aria-describedby="singleKeyShortcutsDesc"><span class="track"></span></span>
+    </div>
+    <div class="opt">
       <div class="text"><label for="theme" data-i18n="optionsTheme">Theme</label><small id="themeDesc" data-i18n="optionsThemeDesc">For the popup and all FullShot pages.</small></div>
       <select id="theme" aria-describedby="themeDesc">
         <option value="system" data-i18n="optionsThemeSystem">System</option>
@@ -236,7 +240,7 @@
       </select>
     </div>
     <div class="opt">
-      <div class="text"><b data-i18n="optionsShortcuts">Keyboard shortcuts</b><small data-i18n="optionsShortcutsDesc">Full page: Alt+Shift+P · Visible: Alt+Shift+V. Customize at chrome://extensions/shortcuts</small></div>
+      <div class="text"><b data-i18n="optionsShortcuts">Keyboard shortcuts</b><small id="shortcutsDesc"></small></div>
     </div>
   </div>
 

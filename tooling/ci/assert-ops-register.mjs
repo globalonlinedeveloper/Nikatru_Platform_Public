@@ -3808,6 +3808,48 @@ export function workflowRunsScript(parsed, scriptRel) {
   return false;
 }
 
+// ── A-2 (2026-09-29) · A LANE A GUARD NAMES IS A LANE A SCHEDULE RUNS ───────
+// assert-mutation-proofs.mjs said its `--execute` half was "for the nightly
+// lane" — and no workflow ran it on any schedule. The sentence was the whole
+// of the mechanism for three weeks while the unproven floor sat at 18 of 20.
+// A guard's own text is where a reader learns what runs it, so a guard that
+// names a nightly, weekly, daily or scheduled lane owes one: some workflow with
+// a `schedule:` trigger whose steps run it. A claimed lane nothing runs is an
+// error here, exactly as a workflow nothing registers is.
+export const NAMED_LANE = /\bthe (nightly|weekly|daily|scheduled) lane\b/i;
+
+/** PURE. `sources` [{rel, text}] of the flat tooling/ci guards; `workflows` the
+ *  parsed set. A guard naming a lane with no scheduled workflow running it is
+ *  an error; one that has it is printed with the workflow that does. */
+export function checkNamedLanes(sources, workflows) {
+  const errors = [];
+  const prints = [];
+  const scheduled = (workflows ?? []).filter((wf) => workflowEvents(wf).has('schedule'));
+  for (const { rel, text } of sources ?? []) {
+    const m = NAMED_LANE.exec(String(text));
+    if (!m) continue;
+    const runners = scheduled.filter((wf) => workflowRunsScript(wf, rel)).map((wf) => String(wf.rel ?? '').split('/').pop());
+    if (runners.length === 0) {
+      errors.push(
+        `${rel} names "${m[0]}", and no workflow with a \`schedule:\` trigger runs it (${scheduled.length} scheduled workflow(s) read). ` +
+          'A lane that exists only in a guard\'s prose runs nothing: add the scheduled job, or say what really runs it.',
+      );
+    } else prints.push(`${rel} names "${m[0]}" — run on a schedule by ${runners.join(', ')}`);
+  }
+  return { errors, prints };
+}
+
+/** IMPURE. The flat `tooling/ci/*.mjs` guards, as `{rel, text}`; null when
+ *  the root carries no tooling/ci at all (a register fixture). */
+export function readGuardSources(root) {
+  const dir = join(root, 'tooling', 'ci');
+  if (!existsSync(dir)) return null;
+  return listDir(dir)
+    .filter((f) => f.endsWith('.mjs'))
+    .sort()
+    .map((f) => ({ rel: `tooling/ci/${f}`, text: readFileSync(join(dir, f), 'utf8') }));
+}
+
 /** IMPURE. The check-run name `assert-gate-passed.mjs` waits for, read out of
  *  that script's own source so the two cannot drift. `null` when the file is
  *  gone or the constant has moved — and `null` exempts nothing.
@@ -5917,6 +5959,18 @@ async function main() {
   const scopes = checkLiveVerdictScopes(reg, topology);
   errors.push(...scopes.errors);
   prints.push(...scopes.prints);
+  // ⏱ 2026-09-29 (A-2) — a lane a guard names is run by a schedule (see
+  // `checkNamedLanes`). STRUCTURAL. An empty guard set is COVERAGE LOST.
+  // A fixture ROOT with no tooling/ci has no guard to hold; THIS checkout
+  // always has one, so there an absent or empty set is COVERAGE LOST.
+  const guardSources = readGuardSources(ROOT);
+  if (resolve(ROOT) === SCRIPT_ROOT && !guardSources?.length) {
+    coverageLost(['tooling/ci holds no .mjs guard in this checkout, so no lane a guard names could be checked.']);
+  }
+  if (guardSources === null) prints.push('named lanes: this root carries no tooling/ci — no guard here names a lane');
+  const lanes = checkNamedLanes(guardSources ?? [], allWorkflows);
+  errors.push(...lanes.errors);
+  prints.push(...lanes.prints);
   // [INV1] [INV2] [INV5] — the host and the event come from the environment
   // GitHub sets, and the event is believed only from a host whose file declares it.
   const policy = hostPolicy(process.env, topology, workflowEventsByFile(allWorkflows));

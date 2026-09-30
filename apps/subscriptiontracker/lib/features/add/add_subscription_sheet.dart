@@ -13,6 +13,7 @@ import '../../data/seed/demo_data.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart' show networkUnreachableProvider;
 import '../../state/subscriptions_controller.dart';
+import '../shared/priming.dart';
 
 // ⏱ 2026-09-29 · trains ST-T3b + ST-D6. TWO THINGS OF RECORD, ONE SHEET.
 //
@@ -344,6 +345,18 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     });
   }
 
+  /// The PRIMING before the first-subscription ask (train ST-D8). The
+  /// controller calls this only on the empty→first transition, while this
+  /// sheet is still up — so the explanation opens over the sheet the user just
+  /// tapped Save on, and the OS prompt follows only a yes.
+  Future<bool> _primeReminders() async {
+    if (!mounted) return false;
+    return primeReminders(
+      context,
+      reason: AppLocalizations.of(context).prefRenewalAlertsDesc,
+    );
+  }
+
   Subscription _draft(Money price, Cadence cadence) {
     final Subscription? was = widget.initial;
     final String name = _name.text.trim();
@@ -404,7 +417,7 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     try {
       final Subscription? was = widget.initial;
       if (was == null) {
-        await ctl.addSubscription(draft);
+        await ctl.addSubscription(draft, primeReminders: _primeReminders);
       } else {
         await ctl.updateSubscription(was.id, draft.changesFrom(was));
       }

@@ -239,6 +239,7 @@ const permissions = {};
 for (const p of (Array.isArray(templateManifest.permissions) ? templateManifest.permissions : [])) permissions[p] = '';
 
 const tests = sourceFiles.filter(f => /^test\/.*\.node\.js$/.test(f) || /^test\/.*\/run\.js$/.test(f)).sort();
+const STAMPED_PARITY_NOTE = 'Stamped by scripts/new-tool.mjs: no feature has been written into this table yet, so nothing here is proven on this build.';
 
 const toolJson = {
   $schema: '../../scripts/schema/tool.schema.json',
@@ -253,6 +254,19 @@ const toolJson = {
   targets: {
     chromium: { stores: ['chrome', 'edge'] },
     ...(has('publish/manifest.firefox.json') ? { firefox: { overlay: 'publish/manifest.firefox.json' } } : {})
+  },
+  /* THE FEATURE x TARGET TABLE (EXB-13, 2026-09-29), stamped with one row per
+     target cell and every cell `unproven`: check-catalog.mjs refuses a tool with
+     targets and no table, and a stamped tool proves nothing yet. Replace the row
+     with the tool's real features, each `works` cell citing a wired suite. */
+  parity: {
+    features: {
+      core: {
+        label: String(name).trim(),
+        chromium: { state: 'unproven', note: STAMPED_PARITY_NOTE },
+        ...(has('publish/manifest.firefox.json') ? { firefox: { state: 'unproven', note: STAMPED_PARITY_NOTE } } : {})
+      }
+    }
   },
   tests,
   policy: {
