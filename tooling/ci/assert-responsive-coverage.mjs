@@ -655,9 +655,14 @@ const REQUIRED_COVERAGE = [
     // chassis `SettingsSection` arrived with test/settings_design_test.dart,
     // which pumps it at kPhone/kTablet/kDesktop. Read off the per-root lines,
     // `26 surface(s) reachable, 26 measured` and `— 27 file(s)`.
-    surfaces: 26,
+    // ⏱ RAISED 2026-09-30 · ST-N6 (D23/F37): surfaces 26 → 27 and
+    // coveredSurfaces 26 → 27 for the chassis `RefreshOnResume`, pumped at all
+    // three classes by test/app_shell_view_test.dart; `widthTestFiles` unchanged
+    // (its cases joined that suite). Read off the per-root line, `27 surface(s)
+    // reachable, 27 measured`.
+    surfaces: 27,
     widthTestFiles: 27,
-    coveredSurfaces: 26,
+    coveredSurfaces: 27,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',
