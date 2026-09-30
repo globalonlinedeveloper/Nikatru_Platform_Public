@@ -31,6 +31,7 @@ export 'src/widgets/app_figure_tile.dart';
 export 'src/widgets/app_icon_action.dart';
 export 'src/widgets/app_list_group.dart';
 export 'src/widgets/app_list_row.dart';
+export 'src/widgets/adaptive_sheet.dart';
 export 'src/widgets/app_monogram.dart';
 export 'src/widgets/app_scaffold.dart';
 export 'src/widgets/app_section_header.dart';

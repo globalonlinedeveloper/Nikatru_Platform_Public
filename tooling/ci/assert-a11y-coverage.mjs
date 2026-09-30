@@ -687,9 +687,25 @@ const REQUIRED_COVERAGE = [
     // (ST-T3b ST-E1), ONE entry point for add and edit, so ST-D6's separate
     // `showEditSubscriptionSheet` surface is gone — merged, not lost. The edit
     // form's own sweep case stays, and opens the same sheet with a row.
+    // ⏱ RAISED 18 → 19 and cases 110 → 112 on 2026-09-29 by ST-D3 D3-2: the budget
+    // editor (`showBudgetEditorSheet`) is a new modal surface and arrives swept
+    // by two cases. Measured by this guard's own run: 19 reachable, 19 swept.
+    //
+    // ⏱ LOWERED 19 → 18 the same day by ST-D3 D3-3, deliberately: the Budget tab
+    // and `BudgetScreen` are RETIRED (ADR 077 §A — the budget is a card on
+    // Insights) and `/budget` is a redirect with no builder. Its five cases now
+    // sweep the budget card and the budget editor, so `cases` does not move.
+    // Measured by this guard's own run: 18 reachable, 18 swept.
+    //
+    // ⏱ MERGED 2026-09-30 (ST-D3 onto main after ST-D DW1/DW2): both histories
+    // hold — DW1's merged edit sheet and D3's budget editor / retired
+    // BudgetScreen — so surfaces stay 18 and cases are main's 111 plus D3's 2.
+    // Measured by this guard's own run on the merge: "18 of 18 reachable
+    // surface(s) carry an a11y sweep, from 1 a11y test file(s) across 113
+    // case(s)".
     surfaces: 18,
     a11yFiles: 1,
-    cases: 111,
+    cases: 113,
     label: 'the app P5 wrote this guard for — 18 surfaces, all eighteen swept',
   },
   {
@@ -985,7 +1001,6 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
     new Set(
       [
         'features/insights/insights_screen.dart#InsightsScreen',
-        'features/budget/budget_screen.dart#BudgetScreen',
         'features/scan/scan_screen.dart#ScanScreen',
         'features/calendar/calendar_screen.dart#CalendarScreen',
         'features/detail/subscription_detail_screen.dart#SubscriptionDetailScreen',
@@ -1002,6 +1017,9 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'features/onboarding/onboarding_screen.dart#OnboardingScreen',
         'features/add/add_subscription_sheet.dart#showAddSubscriptionSheet',
         'features/cancel/cancel_sheet.dart#showCancelSheet',
+        // 2026-09-29 (ST-D3 D3-2): the budget editor, the first surface that
+        // can WRITE a budget, swept in a11y_semantics_test.dart.
+        'features/insights/budget_editor.dart#showBudgetEditorSheet',
       ].map((k) => `apps/subscriptiontracker/lib/${k}`),
     ),
   ],

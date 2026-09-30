@@ -25,6 +25,7 @@ import init0001 from '../migrations/0001_init.sql?raw';
 import init0002 from '../migrations/0002_schema_debt.sql?raw';
 import init0003 from '../migrations/0003_subscription_model.sql?raw';
 import init0004 from '../migrations/0004_notice_days.sql?raw';
+import init0005 from '../migrations/0005_lifecycle_history_categories.sql?raw';
 import type { AppEnv } from '../src/types';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
@@ -145,7 +146,7 @@ export class SqliteD1 {
  * thing to forget to extend when 0003 lands. Same reasoning, and the same shape,
  * as `PLATFORM_MIGRATIONS` in services/platform/test/harness.ts.
  */
-export const SUBLY_MIGRATIONS: readonly string[] = [init0001, init0002, init0003, init0004];
+export const SUBLY_MIGRATIONS: readonly string[] = [init0001, init0002, init0003, init0004, init0005];
 
 /** APP_DB with subscriptiontracker's real migrations applied, in order. `extraSchema` is for
  *  tests that need to force a DB-level failure the route cannot pre-empt (a
@@ -248,6 +249,9 @@ export function asUser(
   route: Hono<AppEnv>,
   mountAt: string,
   bindings: Partial<AppEnv['Bindings']>,
+  /** Without one, `c.executionCtx` THROWS, so a route's `waitUntil` hand-off
+   *  is never reached — pass a double to put that branch under test. */
+  executionCtx?: ExecutionContext,
 ) {
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => {
@@ -282,5 +286,6 @@ export function asUser(
               : JSON.stringify(init.body),
       },
       env,
+      executionCtx,
     );
 }

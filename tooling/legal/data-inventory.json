@@ -317,7 +317,7 @@
       "kind": "d1-table",
       "name": "ext_codes",
       "personalData": true,
-      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per one-time code minted when a signed-in user connects the browser extension on https://nikatru.com/ext/connect: SHA-256 of the code (the code itself is never stored), WHO minted it (the Supabase `sub`, from the verified JWT), the product (`fullshot`), the store channel, the exact redirect_uri the code may be delivered to, the PKCE S256 challenge, and `created_at` / `expires_at` / `used_at`. A code lives 120 seconds and is single-use. It holds no name and no email address.",
+      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per one-time code minted when a signed-in user connects the browser extension on https://nikatru.com/ext/connect: SHA-256 of the code (the code itself is never stored), WHO minted it (the Supabase `sub`, from the verified JWT), the product (`fullshot`), the store channel, the exact redirect_uri the code may be delivered to, the PKCE S256 challenge, and `created_at` / `expires_at` / `used_at`. A code lives 120 seconds and is single-use. It holds no name and no email address. ⏱ 2026-09-30 · EXA-11: plus `auth_at` (0021_ext_link_floor.sql), the minting session's last authentication, copied to the link at exchange.",
       "retention": {
         "kind": "swept",
         "periodDays": 1,
@@ -331,7 +331,8 @@
       },
       "writtenBy": [
         "services/platform/migrations/0017_ext_devices.sql",
-        "services/platform/src/routes/ext.ts"
+        "services/platform/src/routes/ext.ts",
+        "services/platform/migrations/0021_ext_link_floor.sql"
       ],
       "disclosure": {
         "page": "privacy.html",
@@ -343,12 +344,12 @@
       "kind": "d1-table",
       "name": "ext_devices",
       "personalData": true,
-      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the extension to an account: a random link id (`link_id`), the Supabase `sub`, the product (`fullshot`), the store channel, SHA-256 of the device credential (the credential is returned once to the extension and never stored), `created_at`, `last_seen_at` (at most once per UTC day) and `revoked_at`. The credential can read that one product's entitlement and revoke itself, nothing else. It holds no name and no email address.",
+      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the extension to an account: a random link id (`link_id`), the Supabase `sub`, the product (`fullshot`), the store channel, SHA-256 of the device credential (the credential is returned once to the extension and never stored), `created_at`, `last_seen_at` (at most once per UTC day) and `revoked_at`. The credential can read that one product's entitlement and revoke itself, nothing else. It holds no name and no email address. ⏱ 2026-09-30 · EXA-11: plus `auth_at` (0021_ext_link_floor.sql) — when the Supabase session that minted the link last authenticated, compared against the account's link floor.",
       "retention": {
         "kind": "swept",
         "periodDays": 30,
         "sweptBy": "services/platform/src/scheduled.ts",
-        "reason": "⏱ 2026-09-25. Thirty days after `revoked_at`, enforced by the platform Worker's nightly `retentionSweep` (EXT_DEVICES_RETENTION_DAYS). A device that was never revoked is a LIVE CREDENTIAL and is never swept, however old: an age sweep would sign a paying user out of a product they still use. It ends when the user revokes the device (`revoked_at`, POST /v1/ext/revoke) and 30 days pass, or when the account is erased. The credential itself has no expiry, so no longer window is needed: a revoked row answers 401 from the moment it is revoked, and a deleted row answers the same 401. `swept`, not `ttl`: D1 has no expiry."
+        "reason": "⏱ 2026-09-25, amended 2026-09-30 (EXA-11). Thirty days after `revoked_at`, OR thirty days after the link's lifetime ended, enforced by the platform Worker's nightly `retentionSweep` (EXT_DEVICES_RETENTION_DAYS). Since 2026-09-30 the credential HAS a lifetime (services/platform/src/lib/ext-links.ts: 30 days unused, 180 days at most), so a never-revoked row is swept 30 days after it expired — a browser that was uninstalled never comes back to have it stamped revoked. Inside its lifetime a never-revoked row is a live credential and is not swept. It also ends when the account is erased. A revoked, expired or floored row answers 401 from that moment, and a deleted row answers the same 401. `swept`, not `ttl`: D1 has no expiry."
       },
       "erasure": {
         "kind": "purge",
@@ -358,7 +359,34 @@
       "writtenBy": [
         "services/platform/migrations/0017_ext_devices.sql",
         "services/platform/src/routes/ext.ts",
-        "services/platform/src/middleware/ext-device-auth.ts"
+        "services/platform/src/middleware/ext-device-auth.ts",
+        "services/platform/migrations/0021_ext_link_floor.sql"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "when you contact support, send feedback, or (in apps that offer accounts) create an account"
+      }
+    },
+    {
+      "id": "table:platform_db.ext_link_floor",
+      "kind": "d1-table",
+      "name": "ext_link_floor",
+      "personalData": true,
+      "holds": "⏱ 2026-09-30 · EXA-11. At most one row per account: the Supabase `sub`, `not_before` (the instant before which no browser-extension link of that account is honoured), `recovery_session` (the GoTrue session id whose recovery last raised it, so the recovery door writes once per session) and `updated_at`. Raised by POST /v1/sessions/revoke-all (\"sign out everywhere\") and by a password-recovery session reaching the platform Worker. No name, no email address, no credential.",
+      "retention": {
+        "kind": "keep",
+        "reason": "Kept WHILE THE ACCOUNT EXISTS: it is a standing security rule about the account, at most one row per account (PRIMARY KEY user_id), and deleting it by age would bring back to life every link a reset or a sign-out-everywhere ended. It leaves with the account."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "A floor is a record of the account. The column is spelled `user_id` ON PURPOSE (0021_ext_link_floor.sql): the shared erasure walk DELETES the row with the account."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0021_ext_link_floor.sql",
+        "services/platform/src/lib/ext-links.ts",
+        "services/platform/src/routes/sessions.ts",
+        "services/platform/src/middleware/auth.ts"
       ],
       "disclosure": {
         "page": "privacy.html",
@@ -757,10 +785,10 @@
       "kind": "d1-table",
       "name": "subscriptions",
       "personalData": true,
-      "holds": "The subscriptions a Subly user tracks — service name, cost and its currency, cadence, renewal and first-charge dates, lifecycle status with trial-end and cancelled-on dates, a catalogue key, a cancel link, reminder days, and the user's own labels: notes, how the charge reaches them (`rail`, `rail_holder` — user-typed, e.g. \"Google Pay · HDFC ••4471\", never read from a bank and never a full card or account number) and who they share it with (`shared_with`, a label, not an account). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. The columns after `updated_at` are 0003_subscription_model.sql's ([ADR 077] §5).",
+      "holds": "The subscriptions a Subly user tracks — service name, cost and its currency, cadence, renewal and first-charge dates, lifecycle status with trial-end and cancelled-on dates, a catalogue key, a cancel link, reminder days, and the user's own labels: notes, how the charge reaches them (`rail`, `rail_holder` — user-typed, e.g. \"Google Pay · HDFC ••4471\", never read from a bank and never a full card or account number) and who they share it with (`shared_with`, a label, not an account). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. The columns after `updated_at` are 0003_subscription_model.sql's ([ADR 077] §5). `category_id` (0005) names the row's category by id.",
       "retention": {
         "kind": "keep",
-        "reason": "This is the user's own data and the entire point of the app; it exists until they delete it or delete their account. The in-app deletion control exists in BOTH trees and is asserted — the `account-deletion-works` coverage key on the brick, and tooling/ci/assert-deletion-control.mjs over apps/subscriptiontracker with no exemption ([ADR 027]) — and since 2026-08-04 that control REACHES THESE ROWS. See `erasure` below."
+        "reason": "This is the user's own data and the entire point of the app; it exists until they delete it or delete their account. The in-app deletion control exists in BOTH trees and is asserted — the `account-deletion-works` coverage key on the brick, and tooling/ci/assert-deletion-control.mjs over apps/subscriptiontracker with no exemption ([ADR 027]) — and since 2026-08-04 that control REACHES THESE ROWS. See `erasure` below. A REMOVED subscription is SOFT-deleted first (ST-E3, `deleted_at`): hidden from every list and reminder and restorable for 30 days, then purged with its payment_history and price_change rows by services/subscriptiontracker-api/src/routes/subscriptions.ts `purgeExpired`, which runs on that user's next list."
       },
       "erasure": {
         "kind": "purge",
@@ -770,7 +798,8 @@
       "writtenBy": [
         "services/subscriptiontracker-api/migrations/0001_init.sql",
         "services/subscriptiontracker-api/src/routes/subscriptions.ts",
-        "services/subscriptiontracker-api/migrations/0003_subscription_model.sql"
+        "services/subscriptiontracker-api/migrations/0003_subscription_model.sql",
+        "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql"
       ],
       "disclosure": {
         "page": "privacy.html",
@@ -818,7 +847,8 @@
       },
       "writtenBy": [
         "services/subscriptiontracker-api/migrations/0001_init.sql",
-        "services/subscriptiontracker-api/src/routes/budget.ts"
+        "services/subscriptiontracker-api/src/routes/budget.ts",
+        "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql"
       ],
       "disclosure": {
         "page": "privacy.html",
@@ -830,10 +860,10 @@
       "kind": "d1-table",
       "name": "payment_history",
       "personalData": true,
-      "holds": "Dates, amounts and (from 0003_subscription_model.sql) the currency and the recording source of payments recorded against their own subscriptions. ⚠️ A record OF payments, not a payment instrument: no card, bank or account number is stored, which is the claim tooling/legal/policy-claims.json asserts against every migration in the tree.",
+      "holds": "Dates, amounts and (from 0003_subscription_model.sql) the currency and the recording source (`renewal` from the nightly fan-out, `manual` from POST /v1/subscriptions/:id/payments) of payments recorded against their own subscriptions. ⚠️ A record OF payments, not a payment instrument: no card, bank or account number is stored, which is the claim tooling/legal/policy-claims.json asserts against every migration in the tree.",
       "retention": {
         "kind": "keep",
-        "reason": "The user's own history, kept until they delete it."
+        "reason": "The user's own history, kept until they delete it: a soft-deleted subscription keeps its history, and the purge 30 days later removes the two together."
       },
       "erasure": {
         "kind": "purge",
@@ -848,6 +878,54 @@
       "disclosure": {
         "page": "privacy.html",
         "quote": "do not collect"
+      }
+    },
+    {
+      "id": "table:subscriptiontracker_db.price_change",
+      "kind": "d1-table",
+      "name": "price_change",
+      "personalData": true,
+      "holds": "One row per edit that moved a subscription's price, exact amount or currency: the old and new values and when the edit was made (0005_lifecycle_history_categories.sql, [ADR 077] §5.2, ST-I4). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. A record of what the user typed, not of a charge and never a payment instrument.",
+      "retention": {
+        "kind": "keep",
+        "reason": "The user's own history, kept until they delete it: it goes with its subscription when a soft-deleted row is purged (services/subscriptiontracker-api/src/routes/subscriptions.ts `purgeExpired`), and with the account on erasure."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/subscriptiontracker-api/src/routes/account.ts",
+        "reason": "Same as table:subscriptiontracker_db.subscriptions, and by the same mechanism rather than by a second decision: the column is spelled `user_id`, and the erasure route derives its table set from the schema, so `price_change` is in the sweep without being named anywhere in the code. tooling/ci/assert-erasure-reach.mjs is what refuses to let it drop back out."
+      },
+      "writtenBy": [
+        "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
+        "services/subscriptiontracker-api/src/routes/subscriptions.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "in apps that offer accounts) create an account"
+      }
+    },
+    {
+      "id": "table:subscriptiontracker_db.categories",
+      "kind": "d1-table",
+      "name": "categories",
+      "personalData": true,
+      "holds": "Category names with a stable id (0005_lifecycle_history_categories.sql, ST-X8). Two kinds of row: the ten BUILT-INS (`user_id` NULL, `builtin` 1) are shared vocabulary and carry nothing about anyone; a user's OWN categories are names they typed, keyed on their user id.",
+      "retention": {
+        "kind": "keep",
+        "reason": "A user's own categories are kept until they delete them (DELETE /v1/categories/:id) or their account. The built-ins are app data, not personal data, and are never deleted."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/subscriptiontracker-api/src/routes/account.ts",
+        "reason": "Same as table:subscriptiontracker_db.subscriptions, and by the same mechanism rather than by a second decision: the column is spelled `user_id`, and the erasure route derives its table set from the schema, so `categories` is in the sweep without being named anywhere in the code. tooling/ci/assert-erasure-reach.mjs is what refuses to let it drop back out."
+      },
+      "writtenBy": [
+        "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
+        "services/subscriptiontracker-api/src/routes/categories.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "in apps that offer accounts) create an account"
       }
     },
     {

@@ -196,27 +196,29 @@
     },
     {
       "name": "insights",
-      "primaryAction": "insights works out which subscriptions are unused and offers a real Cancel on each of them",
-      "test": "at 375 the cap is a no-op and the donut row still fits",
-      "effect": "lib/features/insights/insights_screen.dart:SubMath.unused",
+      "primaryAction": "insights states the signals the held rows prove and ASKS \"still using?\" — the answer is stored on the device and the question moves on (ST-D3 D3-4: the unused/Cancel card it replaced read fields nothing writes)",
+      "test": "Yes is stored on the device and the question moves on",
+      "effect": "lib/features/insights/signals.dart:signalsFor",
       "mutation": {
-        "symbol": "lib/features/insights/insights_screen.dart:SubMath.unused(subs)",
-        "observedRed": "at 375 the cap is a no-op and the donut row still fits",
-        "date": "2026-08-08"
-      }
+        "symbol": "lib/features/insights/signals.dart:signalsFor → the returned signal list",
+        "observedRed": "Yes is stored on the device and the question moves on",
+        "date": "2026-09-29"
+      },
+      "testFile": "test/insights_signals_test.dart",
+      "note": "⏱ MOVED 2026-09-29 by ST-D3 D3-4/D3-7: the savings card (SubMath.unused + Cancel) is retired and the width case this row named was rewritten. Mutation RE-RUN on this tree, not carried over: signalsFor made to return an empty list; `flutter test test/insights_signals_test.dart --plain-name \"Yes is stored on the device\"` exited 1 with `Found 0 widgets with text \"Still using Plan big?\"`. Restored byte-exact. No `edit`/`codeHash` recorded, so the row stays inside mutationProofs.unprovenFloor."
     },
     {
       "name": "budget",
-      "primaryAction": "the budget screen resolves the budget through the repository and renders the ring plus a bar per category, rather than sitting on its spinner",
-      "test": "at 1920 the body is still capped at exactly kMaxBodyWidth",
-      "effect": "lib/features/budget/budget_screen.dart:budgetProvider",
-      "note": "🔄 RE-RUN 2026-08-10 (UTC). The provider was made to return a future that never completes (`Completer<BudgetInfo>().future`), which is what 'sitting on its spinner' looks like from the widget tree — the repository watch was KEPT so the mutation costs no analyzer finding, and a first attempt that dropped it added a real `unused_import` warning, which would have made the red ambiguous. width_budget_test.dart:81 went red one step before the width assertion: 'Actual: _TypeWidgetFinder:<Found 0 widgets with type \"ContentPane\": []>', reason 'this screen has no ContentPane at all, so there is no width cap to measure'.\n\n🔴 POINTER REPAIRED 2026-09-09, AND THIS ROW IS NOT RE-PROVEN BY THAT REPAIR. The `test` and `observedRed` this row carried named a declaration that does not exist in this tree: the width tests renamed the constant they assert against, and the record was never followed. Nothing said so for one reason — assert-app-dod.mjs holds `apps/subscriptiontracker` EXEMPT by name, so the only guard that resolves a row to a real `testWidgets(` declaration has never looked at these fourteen rows. tooling/ci/assert-mutation-proofs.mjs does not inherit that exemption, and it went red on this row the first time it ran. What changed here is the POINTER ONLY. The mutation was NOT re-run, no `edit` and no `codeHash` were recorded, and the row therefore stays inside `mutationProofs.unprovenFloor` in tooling/dod-register.json until somebody runs `--execute --only` against it and pastes the two exit codes into the commit that lowers the number. Repairing a pointer is not earning a proof, and writing it down as though it were is the exact move this machinery exists to refuse.",
+      "primaryAction": "the Insights budget card (ADR 077 §A: the Budget tab is retired) resolves the budget through the repository and offers the control that sets one, rather than sitting on its skeleton",
+      "test": "saveBudget has a caller: Set a budget → 50 → Save writes it",
+      "effect": "lib/features/insights/budget_editor.dart:budgetProvider",
+      "note": "⏱ MOVED 2026-09-29 by ST-D3 D3-3: the Budget screen and width_budget_test.dart are deleted, so the row follows the budget to its card on Insights. Mutation RE-RUN on this tree, not carried over: budgetProvider made to return `Completer<BudgetInfo>().future` (the repository watch kept, so no analyzer finding changes); `flutter test test/budget_editor_test.dart --plain-name \"saveBudget has a caller\"` exited 1 with `Found 0 widgets with text \"Set a budget\"` — the card sat on its skeleton. Restored byte-exact; the same case exits 0. No `edit`/`codeHash` is recorded, so the row stays inside mutationProofs.unprovenFloor until `--execute --only` is run against it.",
       "mutation": {
-        "symbol": "lib/features/budget/budget_screen.dart:budgetProvider → ref.watch(subscriptionRepositoryProvider).budget()",
-        "observedRed": "at 1920 the body is still capped at exactly kMaxBodyWidth",
-        "date": "2026-08-10"
+        "symbol": "lib/features/insights/budget_editor.dart:budgetProvider → ref.watch(subscriptionRepositoryProvider).budget()",
+        "observedRed": "saveBudget has a caller: Set a budget → 50 → Save writes it",
+        "date": "2026-09-29"
       },
-      "testFile": "test/width_budget_test.dart"
+      "testFile": "test/budget_editor_test.dart"
     },
     {
       "name": "scan",

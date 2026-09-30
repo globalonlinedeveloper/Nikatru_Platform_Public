@@ -12,7 +12,11 @@
 //
 //   GET    /v1/sessions               the account's sessions, the caller's marked
 //   DELETE /v1/sessions/:id           sign ONE other session out
-//   POST   /v1/sessions/revoke-all    refuse every token issued before now
+//   POST   /v1/sessions/revoke-all    refuse every token issued before now, AND
+//                                     raise the extension-link floor, which ends
+//                                     every browser linked by a session older
+//                                     than now (⏱ 2026-09-30 · EXA-11,
+//                                     lib/ext-links.ts)
 //   POST   /v1/sessions/revoke-others list every session but the caller's
 //
 // 🔴 THIS FILE IS THE ONLY WRITER OF SESSION_REVOKED, and every put carries
@@ -35,6 +39,7 @@ import { Hono, type Context } from 'hono';
 import type { AppEnv } from '../types';
 import { REVOCATION_TTL_SECONDS, revocationKey, withRevokedBefore, withRevokedSessions } from '../../../_shared/src/auth';
 import { withinRateLimit } from '../lib/edge-ceiling';
+import { raiseLinkFloor } from '../lib/ext-links';
 
 const sessions = new Hono<AppEnv>();
 
@@ -234,14 +239,56 @@ sessions.delete('/sessions/:id', async (c) => {
   return c.body(null, 204);
 });
 
+/**
+ * How many times revoke-all tries the extension-link floor write before it
+ * answers `d1Pending`.
+ *
+ * @ceiling none — a retry count on one idempotent write, not a platform resource.
+ */
+export const LINK_FLOOR_ATTEMPTS = 2;
+
+// ⏱ 2026-09-30 · EXA-11 (re-review finding 3, lead ruling) — KV FIRST, D1 SECOND.
+// The KV record is the PORTFOLIO-WIDE sign-out: every Worker refuses the
+// account's older tokens by it. It must never wait on, or be skipped by, a D1
+// incident. So:
+//   1. the KV record is written (as before this PR); its failure is the 503 —
+//      but the floor is STILL attempted, so the links end even then;
+//   2. the extension-link floor (lib/ext-links.ts) is raised, tried
+//      LINK_FLOOR_ATTEMPTS times. Both writes are idempotent.
+//   · both done → 204 (unchanged)
+//   · KV failed → 503 revocation_unavailable (unchanged; the client retries)
+//   · KV done, D1 failed → 200 {d1Pending: true}: every token IS refused; the
+//     extension links are not yet ended. 🔴 CLIENT CONTRACT: a client MUST read
+//     `d1Pending: true` as "RETRY", never as done — a generic "any 2xx is done"
+//     client would leave the links alive until the next revoke-all. Recorded in
+//     tooling/platform-register.json (sessions-revoke-all) and the analytics
+//     contract's gap reason, for the first client that calls this route.
+// The partial state is logged with the request id and the error's name only.
 sessions.post('/sessions/revoke-all', async (c) => {
   if (await limited(c)) return c.json({ error: 'rate_limited' }, 429);
+  const userId = c.get('userId');
+  let kvOk = true;
   try {
-    await writeRevocation(c.env.SESSION_REVOKED, c.get('userId'), withRevokedBefore);
+    await writeRevocation(c.env.SESSION_REVOKED, userId, withRevokedBefore);
   } catch (err) {
+    kvOk = false;
     console.error(`${logPrefix(c)} revocation_unavailable: revoke-all could not be written (${errName(err)})`);
-    return c.json({ error: 'revocation_unavailable' }, 503);
   }
+  let floorOk = false;
+  let floorErr: unknown;
+  for (let attempt = 0; attempt < LINK_FLOOR_ATTEMPTS && !floorOk; attempt++) {
+    try {
+      await raiseLinkFloor(c.env.PLATFORM_DB, userId, new Date().toISOString());
+      floorOk = true;
+    } catch (err) {
+      floorErr = err;
+    }
+  }
+  if (!floorOk) {
+    console.error(`${logPrefix(c)} ext_link_floor_pending: revoke-all ${kvOk ? 'refused the tokens' : 'wrote nothing to KV'} and could not raise the extension-link floor after ${LINK_FLOOR_ATTEMPTS} attempt(s) (${errName(floorErr)})`);
+  }
+  if (!kvOk) return c.json({ error: 'revocation_unavailable' }, 503);
+  if (!floorOk) return c.json({ d1Pending: true }, 200);
   return c.body(null, 204);
 });
 

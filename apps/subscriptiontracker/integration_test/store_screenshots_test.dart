@@ -73,9 +73,10 @@ import 'package:subscriptiontracker/data/auth/auth_models.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
-import 'package:subscriptiontracker/features/budget/budget_screen.dart';
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
+import 'package:subscriptiontracker/features/insights/budget_card.dart';
+import 'package:subscriptiontracker/features/insights/budget_editor.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/features/shell/app_shell.dart';
 import 'package:subscriptiontracker/main.dart' as app;
@@ -1535,7 +1536,7 @@ void main() {
 
     // Tapped by ICON, not by label: `navPillKey` exists only in the compact
     // window class and each of these words also names something else on screen
-    // (`calendarLink`, `insightsTitle`, `statBudget`), whereas each tab's icon
+    // (`calendarLink`, `insightsTitle`, `navSettings`), whereas each tab's icon
     // occurs exactly once in the app — so the icon is the one handle that means
     // the nav destination at both capture viewports, pill and rail alike.
     await tester.tap(find.byIcon(Icons.calendar_month_rounded));
@@ -1560,9 +1561,14 @@ void main() {
     markFrame('03-insights');
     recordFold(tester, '03-insights');
 
-    await tester.tap(find.byIcon(Icons.account_balance_wallet_rounded));
-    await pumpFor(tester, const Duration(seconds: 4));
-    expect(find.byType(BudgetScreen), findsWidgets);
+    // ⏱ ST-D3 D3-3: there is no Budget tab. The budget lives on Insights
+    // (ADR 077 §A), so frame 04 is the budget EDITOR opened from the Insights
+    // budget card — the one surface that sets a budget, as the app draws it.
+    // The frame keeps its name: the listing's order and file names do not move.
+    await tester.ensureVisible(find.byKey(BudgetCard.editButton));
+    await tester.tap(find.byKey(BudgetCard.editButton));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(find.byType(BudgetEditor), findsWidgets);
     await captureFrame(take: shutter, frame: '04-budget', forbidden: forbidden);
     markFrame('04-budget');
     recordFold(tester, '04-budget');
