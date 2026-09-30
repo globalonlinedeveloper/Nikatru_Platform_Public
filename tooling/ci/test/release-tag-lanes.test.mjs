@@ -202,6 +202,31 @@ describe('red controls, each on a fixture copy', () => {
     assert.match(r.out, /build-platforms\.yml carries no job gate/);
   });
 
+  // EXL-17: the store-publish ref check spelled `tag:fullshot-…` by hand, so the
+  // next tool's tag reached the trigger and was refused there by name.
+  test("a release lane's ref check with a hand-kept tag: allow is caught, naming the line", () => {
+    const root = fixture([
+      {
+        file: EXT_LANE,
+        from: '--allow trigger:.github/workflows/extensions.yml',
+        to: "--allow 'tag:fullshot-v[0-9]+.[0-9]+.[0-9]+' --allow 'tag:fullshot-v[0-9]+.[0-9]+.[0-9]+.[0-9]+'",
+      },
+    ]);
+    const r = run(['--root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /extensions\.yml:\d+ runs assert-deploy-ref\.mjs with a hand-kept `--allow tag:fullshot-v\[0-9\]\+\.\[0-9\]\+\.\[0-9\]\+`/);
+    assert.match(r.out, /`--allow trigger:\.github\/workflows\/extensions\.yml`/);
+  });
+
+  test("a release lane's ref check reading ANOTHER workflow's list is caught", () => {
+    const root = fixture([
+      { file: EXT_LANE, from: '--allow trigger:.github/workflows/extensions.yml', to: '--allow trigger:.github/workflows/build-platforms.yml' },
+    ]);
+    const r = run(['--root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /`--allow trigger:\.github\/workflows\/build-platforms\.yml`, another workflow's list/);
+  });
+
   test('a tree with no registers is COVERAGE LOST, never green', () => {
     const empty = join(scratch, 'empty');
     mkdirSync(empty, { recursive: true });

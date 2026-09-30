@@ -63,6 +63,19 @@ function msg(key, english) {
    safer and less to maintain than chasing each new one. */
 const RESTRICTED = /^(chrome|edge|brave|about|devtools|view-source|chrome-extension|moz-extension)(-[a-z]+)?:/;
 const WEBSTORE = /^https:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore)/;
+/* The other two stores this add-on is listed on block extensions from their OWN
+   pages, and only in their own browser (rv2 EXB-16, 2026-09-29): Firefox keeps
+   addons.mozilla.org in extensions.webextensions.restrictedDomains, and Edge
+   keeps its add-ons store off limits the way Chrome keeps the Web Store. The
+   same page in another browser is an ordinary page, so each row is asked only
+   of the browser that blocks it (storeBlocks below).
+   A page such a list keeps from Firefox is refused at the INJECTION with
+   "Missing host permission for the tab" (Firefox 156.0.1, measured by
+   test/e2e/gecko-capture.mjs on 2026-09-29), so startCapture's catch reads that
+   wording as the browser restriction it is; before it did, the refusal fell
+   through to "reload the page", which cannot help. */
+const EDGE_ADDONS = /^https:\/\/microsoftedge\.microsoft\.com\/addons(?:[/?#]|$)/;
+const AMO = /^https:\/\/addons\.mozilla\.org(?:[/?#]|$)/;
 
 // A blocked page is not the user's mistake, so say which kind of page it is and
 // what to do instead — "protected" on its own leaves nowhere to go.
@@ -73,7 +86,9 @@ const RESTRICTED_REASONS = [
   [/^(chrome|edge|brave|about)(-[a-z]+)?:/, msg('errRestrictedBrowserPage', 'Browser pages such as Settings, Extensions and the New Tab page are off limits to every extension. Try FullShot on a normal web page.')],
   [/^devtools:/, msg('errRestrictedDevtools', 'DevTools windows cannot be captured by an extension. Use your computer\'s own screenshot tool for those.')],
   [/^view-source:/, msg('errRestrictedViewSource', 'View-source pages cannot be captured. Capture the page itself instead.')],
-  [WEBSTORE, msg('errRestrictedWebstore', 'The Chrome Web Store blocks extensions from reading its pages, so this one cannot be captured.')]
+  [WEBSTORE, msg('errRestrictedWebstore', 'The Chrome Web Store blocks extensions from reading its pages, so this one cannot be captured.')],
+  [EDGE_ADDONS, msg('errRestrictedEdgeAddons', 'Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured.')],
+  [AMO, msg('errRestrictedAmo', 'Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured.')]
 ];
 const GENERIC_RESTRICTED = msg('errRestrictedGeneric', 'This page is protected by the browser and cannot be captured.');
 
@@ -142,6 +157,7 @@ const DEFAULTS = {
   clipboardFit: true,        // downscale clipboard copies past 25MP (Google Docs limit)
   autoDownload: false,
   autoOpenEditor: false,
+  singleKeyShortcuts: true, // editor tool letters and + - ? on the whole page; off = only while the canvas has focus (WCAG 2.1.4)
   theme: 'system'
 };
 
@@ -159,7 +175,18 @@ async function getSettings() {
 }
 
 function isRestricted(url) {
-  return !url || RESTRICTED.test(url) || WEBSTORE.test(url);
+  return !url || RESTRICTED.test(url) || storeBlocks(url);
+}
+
+/* A store page is refused up front only in the browser whose store it is. The
+   Web Store row keeps the reach it always had. The user agent is asked rather
+   than the extension's own URL scheme so one question covers Edge as well:
+   every Edge agent says Edg/, and every Firefox agent says Firefox/. */
+function storeBlocks(url) {
+  if (WEBSTORE.test(url)) return true;
+  const ua = userAgent();
+  return (EDGE_ADDONS.test(url) && ua.indexOf('Edg/') >= 0) ||
+    (AMO.test(url) && ua.indexOf('Firefox/') >= 0);
 }
 
 function restrictedReason(url) {
@@ -793,7 +820,7 @@ async function startCapture(tab, mode, startDelay) {
        and it is the row that seals it that fails. */
     const reason = FSDB.isQuotaError(e) ? R_STORAGE_FULL
       : known ? known.human
-      : /Cannot access|cannot be scripted|showing error page|Extensions manifest/i.test(msg)
+      : /Cannot access|cannot be scripted|showing error page|Extensions manifest|Missing host permission for the tab/i.test(msg)
         ? R_BLOCKED
         : R_NO_START;
     // Marked with the SESSION, not with the tab: `live` above says this capture

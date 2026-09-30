@@ -10,7 +10,7 @@ export 'package:nikatru_chassis_screens/monetization/manage_plan_screen.dart'
 export 'package:nikatru_chassis_screens/monetization/paywall_screen.dart'
     show PlansLoadGate, PlansLoading;
 export 'package:nikatru_chassis_screens/settings/settings_screen.dart'
-    show RowChevron;
+    show EditProfileDialog, RowChevron;
 
 /// ST-U7/U5 adapters: this app's entitlement read and strings, handed to the
 /// chassis states that own the rendering — plan status (C42), plans loading

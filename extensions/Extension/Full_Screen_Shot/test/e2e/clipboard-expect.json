@@ -14,13 +14,54 @@
     "",
     "If a row measures 'refused' without clipboardWrite: the standing ruling is to add clipboardWrite",
     "for that engine only, with a store justification line, unless that raises a new install-time",
-    "warning on an already published listing."
+    "warning on an already published listing.",
+    "",
+    "MEASURED 2026-09-25 (filled 2026-09-29, rv2 EXB-10): Extensions run 36186697794, ubuntu-24.04, /usr/bin/firefox",
+    "Mozilla Firefox 156.0, HEADFUL under xvfb-run, the shipped permissions (no clipboardWrite): all three",
+    "image-only rows came back ok, at the size written — 256x256 15 ms, 1920x1080 46 ms, 1920x10000 402 ms",
+    "click-to-write. The hypothesis held; no row was corrected.",
+    "",
+    "ADDED 2026-09-29 (rv2 EXB-10): the TWO-TYPE row. result.js copies the AI hand-off as ONE ClipboardItem",
+    "holding image/png AND text/plain (fsCopyBlobToClipboard(blob, fit, text)); the image-only rows above never",
+    "graded that write in Firefox. The row carries `text`, and it is ok only when BOTH types read back and the",
+    "text is byte-identical. Its expectation is the HYPOTHESIS until the next e2e-suite run measures it;",
+    "`measured.twoType` stays null until then. Red control: drop the text/plain member in",
+    "fsCopyBlobToClipboard -> the row reads back image/png alone -> unverified -> exit 1."
   ],
   "engine": "gecko",
-  "measured": null,
+  "measured": {
+    "date": "2026-09-25",
+    "run": "36186697794",
+    "firefox": "Mozilla Firefox 156.0",
+    "os": "ubuntu-24.04, xvfb-run, HEADFUL=1",
+    "rows": [
+      {
+        "size": "256x256",
+        "outcome": "ok",
+        "ms": 15
+      },
+      {
+        "size": "1920x1080",
+        "outcome": "ok",
+        "ms": 46
+      },
+      {
+        "size": "1920x10000",
+        "outcome": "ok",
+        "ms": 402
+      }
+    ],
+    "twoType": null
+  },
   "sizes": [
     { "w": 256, "h": 256, "expect": "ok" },
     { "w": 1920, "h": 1080, "expect": "ok" },
-    { "w": 1920, "h": 10000, "expect": "ok" }
+    { "w": 1920, "h": 10000, "expect": "ok" },
+    {
+      "w": 1920,
+      "h": 1080,
+      "text": "# FullShot capture\nsource: https://example.test/page\nmode: full",
+      "expect": "ok"
+    }
   ]
 }

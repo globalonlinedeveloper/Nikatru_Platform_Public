@@ -51,17 +51,34 @@
 // captcha-gated, which tooling/e2e/provision_user.mjs already depends on.)
 //
 // ⚠️ IT CREATES A REAL USER ON THE LIVE PROJECT AND DELETES IT AGAIN, in a
-// `finally`, whatever happens. That is why it is a LAPTOP AND RUNBOOK STEP and
-// is wired into no workflow: a probe that provisions an account is not
-// something to run on a schedule. tooling/e2e/ does the same thing nightly, on
-// purpose, under a workflow that owns the cleanup.
+// `finally`, whatever happens.
+//
+// ⏱ 2026-09-29 (AB-A4-02) — AND IT NOW RUNS ON A SCHEDULE, AGAINST BOX C. This
+// block used to say it was "a LAPTOP AND RUNBOOK STEP … wired into no
+// workflow", and the consequence was measured: its last live run (~2026-09-16)
+// was against the HOSTED project, it was never run against Box C after the
+// cutover, and the ruling's "green in the last 7 days" could not be met by a
+// step nobody schedules. .github/workflows/e2e.yml job `reset-revokes` now runs
+// it weekly with the production secret set — Box C since the switch, and the
+// job refuses to run unless tooling/e2e/derive_expectation.mjs reads the stack
+// as `selfhosted` — under a workflow that already provisions and purges
+// throwaway users every night. The `finally` below is still the cleanup.
+//
+// 🔴 `--sessions verify` IS HOW IT SIGNS IN ON BOX C. Box C's GoTrue captchas
+// `token?grant_type=password` (runbook §4.7), so the two sign-ins below answer
+// `captcha_failed` there and the run is UNKNOWN. With `--sessions verify` each
+// session is minted the way tooling/e2e/provision_user.mjs mints the e2e
+// user's: `admin/generate_link type=magiclink` (tooling/e2e/magic_link.mjs, the
+// one minter) and the ungated `/verify`. One token at a time — GoTrue keeps a
+// single live token per user. The default, `password`, is the laptop run
+// against a stack with no captcha, unchanged.
 //
 // Credentials, from the environment or from .claude/secrets.env when run from
 // the repo root — never printed, ever:
 //   SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, and the service-role key
 //   (SUPABASE_SERVICE_ROLE_KEY, or SUPABASE_Secret_key as the vault spells it).
 //
-// Usage:  node tooling/ops/verify-password-reset-revokes.mjs [repoRoot]
+// Usage:  node tooling/ops/verify-password-reset-revokes.mjs [repoRoot] [--sessions password|verify]
 // Exit 0 = the reset revoked the other session's refresh token.
 //      1 = IT DID NOT — a pre-existing session still refreshes after a reset.
 //      2 = UNKNOWN: no credential, or a leg could not be measured (which
@@ -71,8 +88,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
+import { MagicLinkRefused, mintMagicLinkTokenHash } from '../e2e/magic_link.mjs';
+
 const NAME = 'verify-password-reset-revokes';
-const repoRoot = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) ?? process.cwd());
+const argv = process.argv.slice(2);
+const sessionsAt = argv.indexOf('--sessions');
+const SESSIONS = sessionsAt === -1 ? 'password' : argv[sessionsAt + 1];
+const positional = argv.filter((a, i) => !a.startsWith('--') && !(sessionsAt !== -1 && i === sessionsAt + 1));
+const repoRoot = resolve(positional[0] ?? process.cwd());
 
 /** Exact `^NAME=` line match. NEVER a split on `=`: a free-form paste in the
  *  vault has no `=`, and a splitting reader prints the live value whole. */
@@ -107,6 +130,9 @@ const anon = cred('SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_ANON_KEY');
 const service = cred('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_Secret_key');
 
 const main = async () => {
+  if (SESSIONS !== 'password' && SESSIONS !== 'verify') {
+    unknown(`--sessions ${JSON.stringify(SESSIONS)} is neither \`password\` nor \`verify\`.`);
+  }
   if (!url || !anon || !service) {
     unknown(
       'no credential.',
@@ -146,11 +172,28 @@ const main = async () => {
 
     // ── 2. two sessions, i.e. two independent refresh tokens ────────────────
     const signIn = async (label) => {
-      const r = await json(await fetch(`${url}/auth/v1/token?grant_type=password`, {
-        method: 'POST', headers: anonHeaders, body: JSON.stringify({ email, password }),
-      }));
+      let r;
+      if (SESSIONS === 'verify') {
+        let tokenHash;
+        try {
+          tokenHash = await mintMagicLinkTokenHash({ url, serviceKey: service, email });
+        } catch (e) {
+          if (!(e instanceof MagicLinkRefused)) throw e;
+          unknown(`session ${label}: no magic-link token could be minted.`, e.message.slice(0, 300));
+        }
+        r = await json(await fetch(`${url}/auth/v1/verify`, {
+          method: 'POST', headers: anonHeaders, body: JSON.stringify({ type: 'magiclink', token_hash: tokenHash }),
+        }));
+      } else {
+        r = await json(await fetch(`${url}/auth/v1/token?grant_type=password`, {
+          method: 'POST', headers: anonHeaders, body: JSON.stringify({ email, password }),
+        }));
+      }
       if (r.status !== 200 || !r.body?.refresh_token) {
-        unknown(`session ${label} could not sign in (HTTP ${r.status}).`, JSON.stringify(r.body).slice(0, 300));
+        unknown(
+          `session ${label} could not sign in through ${SESSIONS === 'verify' ? '/verify' : 'the password grant'} (HTTP ${r.status}).`,
+          JSON.stringify(r.body).slice(0, 300),
+        );
       }
       return r.body;
     };
@@ -159,7 +202,7 @@ const main = async () => {
     if (sessionA.refresh_token === sessionB.refresh_token) {
       unknown('both sign-ins returned the SAME refresh token, so there is only one session and "the OTHER session" does not exist in this run.');
     }
-    console.log(`${NAME}: two distinct sessions established`);
+    console.log(`${NAME}: two distinct sessions established (${SESSIONS === 'verify' ? 'magic link through /verify' : 'password grant'})`);
 
     // ── 3. THE CONTROL — session B refreshes fine BEFORE the reset ──────────
     const refresh = async (token) => json(await fetch(`${url}/auth/v1/token?grant_type=refresh_token`, {

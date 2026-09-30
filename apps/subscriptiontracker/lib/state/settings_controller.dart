@@ -246,6 +246,12 @@ class SettingsController extends Notifier<SettingsState> {
   /// not the user asking for notifications and must not spend the prompt.
   static const Set<String> reminderBearing = <String>{'alerts', 'weekly'};
 
+  /// Whether switching [key] ON is the user asking for notifications — the
+  /// question the settings screen asks before it PRIMES (train ST-D8), so the
+  /// screen and this controller cannot disagree about which rows spend the
+  /// prompt.
+  static bool isReminderBearing(String key) => reminderBearing.contains(key);
+
   /// ST-R3: the account default lead, one of [SettingsState.leadChoices].
   Future<void> setReminderLead(int days) {
     if (!SettingsState.leadChoices.contains(days)) {

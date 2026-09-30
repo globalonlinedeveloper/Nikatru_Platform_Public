@@ -1606,9 +1606,9 @@
       "the Apple lane (OWNER_QUEUE A-4 closed 2026-08-31). Naming it as a `rail` value would make an SDK look like a merchant of record."
     ],
     "rails": {
-      "paddle": "Paddle hosted apex checkout, opened in the browser ([ADR 038]). Paddle is MERCHANT OF RECORD and registers and remits the VAT/GST/OIDAR itself — which is what keeps a sole proprietorship out of ~40 tax registrations. Nets $18.49 of the $19.99 annual SKU, i.e. 7.5%.",
+      "paddle": "Paddle hosted apex checkout, opened in the browser ([ADR 038]). Paddle is MERCHANT OF RECORD and registers and remits the VAT/GST/OIDAR itself — which is what keeps a sole proprietorship out of ~40 tax registrations. What it nets on each plan is DERIVED, never written here: `node tooling/catalog/render-rail-prices.mjs --net-sheet` applies tooling/catalog/fee-register.json (Paddle's published per-transaction fee, read and dated) to the price register. ⏱ 2026-09-29 (AB-M5-01): this sentence quoted a retired annual price and a blended percentage until that sheet existed.",
       "play-billing": "Google Play Billing, 15% on the first-$1M/yr tier, integrated through RevenueCat ([ADR 039] D5). Carries an exposure the other rails do not: since 2026-08-03 Play bills the developer $15-25 per chargeback dispute.",
-      "apple-iap": "Apple StoreKit in-app purchase, 15% under the Small Business Program, integrated through RevenueCat ([ADR 039] D5).",
+      "apple-iap": "Apple StoreKit in-app purchase, integrated through RevenueCat ([ADR 039] D5). Its commission is the Small Business Program rate ONLY once the owner has enrolled (owner queue A-18); until then a subscriber's first year pays the standard rate. Both rates and the enrolment date are cells of tooling/catalog/fee-register.json, and tooling/ci/assert-small-business-program.mjs refuses a real App Store submission while the enrolment carries no date (AB-M5-02).",
       "razorpay": "Razorpay, the India payment gateway, added by [ADR 094] (LOCKED 2026-09-22) because Paddle cannot sell the India monthly plan at any price ([ADR 076] §1 and §3: a fixed per-transaction fee takes ~42% of a ₹149 plan, and Paddle sends sellers of sub-$10 products to custom pricing). ⚠️ NIKATRU IS THE SELLER OF RECORD ON THIS RAIL and issues the GST invoice itself ([ADR 076] §10.1) — Razorpay only collects. That is the OPPOSITE of `paddle`, which is merchant of record and absorbs the tax registrations, so a row that takes this rail inherits an obligation the other three rails do not carry. REACHED ONLY THROUGH `regionRails`: no row takes it as its whole-world `rail`, and `apps-gov-in` will not take it until a build actually carries the Razorpay checkout ([ADR 094] §4 item 5).",
       "none": "this channel sells nothing and must open no checkout of any kind. NO ROW CARRIES IT TODAY — it exists so that a channel which must not sell can SAY so, rather than being absent and read as somebody not having got to it. Same reason `keyKinds.none` exists. ⏱ CORRECTED 2026-09-22: `apps-gov-in` carries it today, so the capitalised sentence above is stale. It was true the day it was written and stopped being true when that row landed; it stays, with this correction beside it, because the REASON the value exists is unchanged. The same stale sentence is copied into the `none` doc comment of `packages/purchases/lib/src/purchase_rail_kind.dart`."
     },
@@ -1738,7 +1738,7 @@
         "railSplitsFrom": "android-play",
         "purchaseRail": {
           "rail": "paddle",
-          "why": "Google Play's Payments policy binds apps DISTRIBUTED THROUGH GOOGLE PLAY, not the Android artifact — an install Play did not deliver sits under no store commerce policy, so there is no 15% tier in the path and the hosted apex checkout nets 7.5%.",
+          "why": "Google Play's Payments policy binds apps DISTRIBUTED THROUGH GOOGLE PLAY, not the Android artifact — an install Play did not deliver sits under no store commerce policy, so there is no store commission in the path and the hosted apex checkout nets what the web channel nets (render-rail-prices.mjs --net-sheet).",
           "forbids": [
             "play-billing",
             "apple-iap"
@@ -1779,7 +1779,7 @@
         },
         "notes": [
           "The macOS half of the same split, and the one nobody names: `macos-appstore` is `apple-iap` at",
-          "15%, this is `paddle` at 7.5%, and it is the same product. [ADR 039] D1 lists \"macOS direct",
+          "Apple's commission, this is `paddle` at the web net, and it is the same product. [ADR 039] D1 lists \"macOS direct",
           "download\" explicitly; the register had no row for it.",
           "⬜ NOT SERVED. Both macOS channels are blocked by an unissued Apple distribution certificate and a packaging step nothing runs, NOT by the account (OWNER_QUEUE A-4 closed 2026-08-31, membership verified active 2026-09-08). (no Apple Developer",
           "account), and notarisation needs that account too — the account now EXISTS, so what this channel",
@@ -1953,7 +1953,7 @@
       "submittable": false,
       "purchaseRail": {
         "rail": "paddle",
-        "why": "Our own site. No store sits between us and the buyer, so no platform commerce policy applies at all and the only cut is Paddle's — $18.49 of the $19.99 annual SKU.",
+        "why": "Our own site. No store sits between us and the buyer, so no platform commerce policy applies at all and the only cut is Paddle's. What that leaves on each plan is `render-rail-prices.mjs --net-sheet`, from the fee register; every other channel's net is compared to this row's.",
         "forbids": [
           "play-billing",
           "apple-iap"
@@ -2407,7 +2407,7 @@
       "submittable": true,
       "purchaseRail": {
         "rail": "apple-iap",
-        "why": "App Store Review Guideline 3.1.1 requires in-app purchase for digital content, and launching an external checkout is a documented rejection cause rather than a grey area. Subly is not reader-app eligible, and 3.1.3(b) parity forbids the consumption-only trick Play permits. 15% under the Small Business Program.",
+        "why": "App Store Review Guideline 3.1.1 requires in-app purchase for digital content, and launching an external checkout is a documented rejection cause rather than a grey area. Subly is not reader-app eligible, and 3.1.3(b) parity forbids the consumption-only trick Play permits. The commission is the Small Business Program rate only after the owner enrols (A-18); until then the first year pays the standard rate and this channel nets below web, so tooling/ci/assert-small-business-program.mjs refuses a real submission (AB-M5-02).",
         "forbids": [
           "paddle",
           "play-billing"
@@ -2567,7 +2567,7 @@
       "submittable": true,
       "purchaseRail": {
         "rail": "apple-iap",
-        "why": "The same 3.1.1 family as iOS, against a SEPARATE App Store Connect record — one record per platform, one review outcome, and therefore one rail answer of its own rather than an inherited one. 15% under the Small Business Program. ⏱ CORRECTED 2026-09-22: ONE App Store Connect record covers iOS and macOS (universal purchase, bundle com.nikatru.subscriptiontracker); RevenueCat app805d73cd44 serves both. Each platform version is still reviewed on its own, so this row's own rail answer stands; only 'separate record' was wrong.",
+        "why": "The same 3.1.1 family as iOS, against a SEPARATE App Store Connect record — one record per platform, one review outcome, and therefore one rail answer of its own rather than an inherited one. The Small Business Program rate applies only after the owner enrols (A-18), and the same gate as iOS refuses a real submission until then (AB-M5-02). ⏱ CORRECTED 2026-09-22: ONE App Store Connect record covers iOS and macOS (universal purchase, bundle com.nikatru.subscriptiontracker); RevenueCat app805d73cd44 serves both. Each platform version is still reviewed on its own, so this row's own rail answer stands; only 'separate record' was wrong.",
         "forbids": [
           "paddle",
           "play-billing"
@@ -2694,7 +2694,7 @@
       "submittable": true,
       "purchaseRail": {
         "rail": "paddle",
-        "why": "PERMISSION, read from the primary text: Microsoft Store Policies v7.19 (effective 2025-10-14) §10.8.1 lets a non-game PC app use \"a secure third-party purchase API\" for digital goods and §10.8.6 says the same for subscriptions, and the App Developer Agreement exempts third-party commerce from the Store Fee — 0% store tax, so the only cut is Paddle's 7.5%. This row was UNVERIFIED-therefore-denied until the source was read on 2026-08-09.",
+        "why": "PERMISSION, read from the primary text: Microsoft Store Policies v7.19 (effective 2025-10-14) §10.8.1 lets a non-game PC app use \"a secure third-party purchase API\" for digital goods and §10.8.6 says the same for subscriptions, and the App Developer Agreement exempts third-party commerce from the Store Fee — 0% store tax, so the only cut is Paddle's, and this channel nets what the web channel nets. This row was UNVERIFIED-therefore-denied until the source was read on 2026-08-09.",
         "forbids": [
           "play-billing",
           "apple-iap"
@@ -2895,7 +2895,7 @@
       "submittable": false,
       "purchaseRail": {
         "rail": "paddle",
-        "why": "Direct download from our own domain. No store, no gatekeeper, and therefore no commerce policy to satisfy — the arithmetic is the same 7.5% as the web channel because it is the same hosted checkout.",
+        "why": "Direct download from our own domain. No store, no gatekeeper, and therefore no commerce policy to satisfy — it nets what the web channel nets because it is the same hosted checkout.",
         "forbids": [
           "play-billing",
           "apple-iap"
@@ -3444,7 +3444,7 @@
       ],
       "purchaseRail": {
         "rail": "none",
-        "why": "NOTHING IS SOLD THROUGH THIS CHANNEL AND NO BUILD OF IT MAY OPEN A CHECKOUT, because the commerce terms of the Mobile Seva AppStore have never been read from a primary source. research/revamp-2026-09-05/09-selfhost-build-release.md §1.9 read the developer portal for its SUBMISSION path — a manual web workflow, no publishing API, and a live suspension rule of two months from profile approval — and found no payments clause in either direction. An UNVERIFIED vendor fact must never resolve to \"allowed\": being wrong that way on a government storefront is a takedown, and being wrong the other way is one channel that does not yet sell. `none` is the answer this register can defend today and the field the reading of the terms will re-decide.",
+        "why": "NOTHING IS SOLD THROUGH THIS CHANNEL AND NO BUILD OF IT MAY OPEN A CHECKOUT, because the commerce terms of the Mobile Seva AppStore have never been read from a primary source. research/revamp-2026-09-05/09-selfhost-build-release.md §1.9 read the developer portal for its SUBMISSION path — a manual web workflow, no publishing API, and a live suspension rule of two months from profile approval — and found no payments clause in either direction. An UNVERIFIED vendor fact must never resolve to \"allowed\": being wrong that way on a government storefront is a takedown, and being wrong the other way is one channel that does not yet sell. `none` is the answer this register can defend today and the field the reading of the terms will re-decide. ⏱ 2026-09-29 (AB-M1-01): THE RAIL QUESTION IS TWO QUESTIONS, AND ONLY ONE OF THEM IS THE OWNER'S. Where an Indian buyer pays was ruled by the agent on 2026-09-23 (Q1 of O-RAZORPAY-LANE-OWNER-QUESTIONS): on the India web book, which is the `web` row's `regionRails` IN entry (Razorpay). So an apps.gov.in user's one path to Pro is to buy on that book and sign in (`universalUnlock`), and that path is blocked for as long as this row's `nativeAuth` is false, because a native build's sign-in is refused (O-BOXA-CAPTCHA-REFUSES-NATIVE-SIGN-IN). What stays the owner's is Q6 alone: a build that SELLS through this storefront before NeGD answers owner queue A-17 is legal exposure. Reading the Mobile Seva commerce terms is agent work and is still owed: a read attempted 2026-09-29 from a cloud sandbox got no page (apps.mgov.gov.in refused the connection through the egress proxy), so no term is recorded here, and `none` stands until a dated primary-source read replaces this sentence.",
         "forbids": [
           "paddle",
           "play-billing",

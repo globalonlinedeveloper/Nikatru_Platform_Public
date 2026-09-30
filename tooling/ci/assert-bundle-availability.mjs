@@ -63,6 +63,17 @@
 //       catalog/bundle-membership.lock.json; an entry the base branch carries is
 //       never edited or removed; a new entry names only live members.
 //
+//   I · A LIVE MEMBER CAN READ ITS ENTITLEMENT. ⏱ 2026-09-29, EXM-05. A member
+//       counted live from its catalogue status alone may still be unable to ask
+//       the platform whether its buyer owns the bundle: an extension reaches only
+//       the hosts its tool.json `policy.networkAllowlist` names. Every extension
+//       member is read by memberEntitlementReach() in the derivation; one that is
+//       LIVE and cannot reach the entitlement host makes the bundle NOT
+//       PURCHASABLE and this guard exit 1. One that is not live yet is printed,
+//       so the gap is on screen before the day it would bite. Not a conjunct of
+//       `purchasable` (the Worker twin cannot read a tool.json; see the
+//       derivation): the tree is refused instead, so neither copy meets the state.
+//
 // Limb C prints every conjunct of `purchasable` with its value, so the reason
 // the gate is shut is read off the log rather than inferred.
 //
@@ -105,6 +116,8 @@ const NODE_READER = 'tooling/catalog/read.mjs';
 const WORKER_READER = 'services/platform/src/lib/catalog.ts';
 /** The committed floor limb G counts the direct readers against. */
 const READER_FLOOR = 'tooling/catalog/reader-floor.json';
+/** Limb I's entitlement host lives in its `sharedApiBaseUrl`. */
+const PLATFORM_CONFIG = 'services/platform/src/app-config-data.json';
 
 /**
  * Everything that must exist for a single limb below to be a MEASUREMENT rather
@@ -123,6 +136,7 @@ const REQUIRED_COVERAGE = [
   { file: WORKER_READER, why: 'the Worker catalogue reader — absent, the Worker twin reads the bundle register from nowhere' },
   { file: READER_FLOOR, why: 'the committed reader floor — absent, limb G has nothing to hold the count against' },
   { file: BUNDLE_LOCK, why: 'the minted-membership lock — absent, a member can be added to a minted version with nothing red' },
+  { file: PLATFORM_CONFIG, why: 'the served config — absent, limb I cannot name the host an entitlement is read from' },
 ];
 
 /**
@@ -240,8 +254,9 @@ function stripComments(src) {
 let bundleAvailability = null;
 let readProducts = null;
 let liveSlugs = null;
+let memberEntitlementReach = null;
 try {
-  ({ bundleAvailability, readProducts, liveSlugs } = await import(pathToFileURL(join(ROOT, DERIVATION)).href));
+  ({ bundleAvailability, readProducts, liveSlugs, memberEntitlementReach } = await import(pathToFileURL(join(ROOT, DERIVATION)).href));
 } catch (e) {
   coverageLost(`${DERIVATION} could not be imported (${e.message}), so neither direction of the gate was measured.`);
   done();
@@ -725,6 +740,52 @@ function baseCopy(rel) {
             `entr${Object.keys(lock.entries).length === 1 ? 'y' : 'ies'}, ${fresh.length} new, every new one all-live` +
             (base === null ? ` (no base lock: ${baseRaw.why}; held against itself)` : ` (base: ${baseRaw.from})`),
         );
+      }
+    }
+  }
+}
+
+// ── I · A LIVE MEMBER CAN READ ITS ENTITLEMENT (EXM-05) ─────────────────────
+{
+  if (typeof memberEntitlementReach !== 'function') {
+    coverageLost(`${DERIVATION} exports no \`memberEntitlementReach\`, so no member's entitlement reach was read.`);
+  } else {
+    const before = problems.length;
+    const { products, problems: productProblems } = readProducts(ROOT);
+    let rows = [];
+    try {
+      const parsed = JSON.parse(sources.get(BUNDLES));
+      rows = Array.isArray(parsed) ? parsed.filter((b) => b !== null && typeof b === 'object') : [];
+    } catch (e) {
+      coverageLost(`limb I could not parse ${BUNDLES} (${e.message}).`);
+    }
+    if (productProblems.length > 0) {
+      coverageLost(`limb I could not read the product registers (${productProblems.join(' · ')}), so liveness was not measured.`);
+    } else if (rows.length === 0) {
+      coverageLost(`limb I read ZERO bundle rows from ${BUNDLES}, so no member's reach was graded.`);
+    } else {
+      const live = new Set(liveSlugs(products));
+      let extensionsRead = 0;
+      let host = null;
+      for (const row of rows) {
+        const reach = memberEntitlementReach(ROOT, row.members);
+        host = reach.entitlementHost ?? host;
+        extensionsRead += reach.extensionsRead;
+        for (const p of reach.problems) coverageLost(`limb I [${row.featureSet}]: ${p}`);
+        for (const u of reach.unreadable) {
+          if (live.has(u.slug)) {
+            fail(
+              `[${row.featureSet}] NOT PURCHASABLE: member \`${u.slug}\` is live and cannot read its entitlement. ${u.why} ` +
+                'Selling the bundle would deliver nothing for that member; add the host to its allowlist (and its CSP, which ' +
+                'policy-check.mjs holds to the allowlist) before it goes live.',
+            );
+          } else {
+            ok(`⬜ limb I [${row.featureSet}]: \`${u.slug}\` is not live yet and cannot read its entitlement — ${u.why} This goes red the day it goes live as it stands.`);
+          }
+        }
+      }
+      if (problems.length === before) {
+        ok(`limb I: every live bundle member can read its entitlement from ${host} (${extensionsRead} extension member(s) read)`);
       }
     }
   }
