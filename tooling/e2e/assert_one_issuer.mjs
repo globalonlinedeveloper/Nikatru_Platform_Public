@@ -68,8 +68,22 @@
 //      E2E_STACK (hosted | selfhosted, required; it only names the stack in the log).
 
 import { decideStack, decideTrust } from './auth_target_expectation.mjs';
+import { CredentialOriginRefused, credentialOrigin } from '../ops/credential-origin.mjs';
 
-const url = need('SUPABASE_URL').replace(/\/+$/, '');
+// ⏱ 2026-10-01 — 🔴 THE SERVICE-ROLE KEY GOES TO ITS ISSUER OR NOWHERE (review 2 of the
+// CodeQL stack, finding 1). SUPABASE_URL was used as given while provision_user.mjs
+// and magic_link.mjs in the same job pinned it. Pinned here by tooling/ops/
+// credential-origin.mjs before the first request, and every request is built from
+// the origin it RETURNS; any other value is exit 1, and nothing is sent. Held by
+// tooling/ci/assert-credential-origin.mjs.
+let url;
+try {
+  url = credentialOrigin(need('SUPABASE_URL'), 'supabase');
+} catch (e) {
+  if (!(e instanceof CredentialOriginRefused)) throw e;
+  console.error(`SUPABASE_URL: ${e.message}. Exit 1: nothing was sent.`);
+  process.exit(1); // safe: this runs BEFORE any request
+}
 const anonKey = need('SUPABASE_ANON_KEY');
 const serviceKey = need('SUPABASE_SERVICE_ROLE_KEY');
 const email = need('E2E_EMAIL');

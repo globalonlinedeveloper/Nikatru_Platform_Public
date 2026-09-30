@@ -88,6 +88,7 @@ import { stampDeletable } from './app-version-stamp.mjs';
 import { sandboxBackend, productionD1Ids, CaptureBackendRefused } from '../store/capture-backend.mjs';
 import { e2eTargetOrExit } from './backend.mjs';
 import { purgeClient, purgeUserTables, purgeAuthUser, PLAIN_TABLE } from './purge_requests.mjs';
+import { CredentialOriginRefused, credentialOrigin } from '../ops/credential-origin.mjs';
 
 const userId = process.env.E2E_USER_ID;
 
@@ -202,7 +203,22 @@ const token = need('CLOUDFLARE_API_TOKEN');
 // instead of the code that was asked for. Hoisting the credential checks keeps
 // the only `exit()` calls in this file on the side of the first fetch where they
 // are safe.
-const supaUrl = userId ? need('SUPABASE_URL').replace(/\/+$/, '') : null;
+// ⏱ 2026-10-01 — 🔴 THE SERVICE-ROLE KEY GOES TO ITS ISSUER OR NOWHERE (review 2 of the
+// CodeQL stack, finding 1). SUPABASE_URL was used as given while provision_user.mjs
+// and magic_link.mjs in the same job pinned it. Pinned here by tooling/ops/
+// credential-origin.mjs before the first request, and every request is built from
+// the origin it RETURNS; any other value is exit 1, and nothing is sent. Held by
+// tooling/ci/assert-credential-origin.mjs.
+let supaUrl = null;
+if (userId) {
+  try {
+    supaUrl = credentialOrigin(need('SUPABASE_URL'), 'supabase');
+  } catch (e) {
+    if (!(e instanceof CredentialOriginRefused)) throw e;
+    console.error(`SUPABASE_URL: ${e.message}. Exit 1: nothing was sent.`);
+    process.exit(1); // safe: this runs BEFORE the first request
+  }
+}
 const serviceKey = userId ? need('SUPABASE_SERVICE_ROLE_KEY') : null;
 // A user's rows need it to name their database; a capture needs it even with
 // zero ids, because the stamp delete below binds it too.

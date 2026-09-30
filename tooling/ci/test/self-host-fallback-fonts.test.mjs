@@ -338,6 +338,21 @@ describe('the APP BRICK stamps a bootstrap that satisfies the deploy', () => {
     assert.equal(stamped, readFileSync(APP_BOOT, 'utf8'), 'the brick template and the app it was derived from have drifted apart');
   });
 
+  // ⏱ 2026-10-01 (review 2 of the CodeQL stack, finding 3): CodeQL does not scan an
+  // app bootstrap .github/codeql/codeql-config.yml excludes, so THIS is what catches
+  // a hand edit to one. The list is read from the config, not restated here.
+  test('every app bootstrap CodeQL excludes is named per app and IS the stamp, byte for byte', () => {
+    const config = readFileSync(join(REPO, '.github', 'codeql', 'codeql-config.yml'), 'utf8');
+    const ignored = config.split(/\r?\n/).map((l) => /^\s*-\s*(\S*flutter_bootstrap\.js)\s*$/.exec(l)?.[1]).filter(Boolean);
+    assert.ok(ignored.length >= 1, 'codeql-config.yml excludes no app bootstrap: this test would assert nothing (and #322/#323 would re-open)');
+    const stamped = readFileSync(BRICK_BOOT, 'utf8').replace(BRICK_PREAMBLE, '');
+    for (const path of ignored) {
+      assert.match(path, /^apps\/[a-z0-9_]+\/web\/flutter_bootstrap\.js$/, `${path}: an exclusion names ONE app; a wildcard excludes files nothing proved`);
+      assert.ok(existsSync(join(REPO, path)), `${path} is excluded and does not exist`);
+      assert.equal(readFileSync(join(REPO, path), 'utf8'), stamped, `${path} is excluded from CodeQL and is NOT the brick's stamp: it carries code nothing scans`);
+    }
+  });
+
   test('ci.yml grades the STAMPED probe with the deploy step itself, on a bundle built the deploy way', () => {
     const wf = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
     const lines = wf.split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');

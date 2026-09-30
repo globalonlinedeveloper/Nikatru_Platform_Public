@@ -45,6 +45,30 @@
 // closes that: an alert reaches main only with its disposition beside it, and
 // limb C can then go red only on a disproved claim or a CodeQL upgrade.
 //
+// ⏱ 2026-10-01 · THE SENTENCE ABOVE WAS WRONG, AND THIS IS WHAT IS TRUE (review 2
+// of the CodeQL stack, finding 2). The PR analysis is DIFF-INFORMED: it reports
+// only alerts whose location is on a line the PR changed (#1087's own PR analysis
+// had 1 result against 64 in the full run of the same commit). A new alert whose
+// primary location is an UNCHANGED line never appears on refs/pull/<N>/merge, so
+// this rule passes it: a PR that deletes the last use of a local declared on an
+// untouched line, removes a sanitizer or a credentialOrigin() call between an
+// unchanged read and an unchanged fetch, or drops a paths-ignore entry. So an alert
+// CAN reach main without a disposition, and so can one a CodeQL upgrade opens.
+// That residue is NOT allowed to surface as red on unrelated PRs. Two readers hold
+// it instead:
+//   · MAIN turns red. codeql.yml's `dispositions` job runs limb C of
+//     assert-alert-disposition.mjs after every analysis of main (push, schedule),
+//     so the commit that let the alert in carries the red, within minutes.
+//   · A PULL REQUEST sees it as MAIN DEBT. On a pull_request event limb C fails
+//     only on alerts in paths the PR changes (it can add the disposition in the
+//     same change); every other undispositioned main alert prints, and blocks
+//     nothing. The push to main, and the dispositions job, still fail on it.
+// Why not grade the full alert set of the merge ref instead: the PR analysis
+// would have to stop being diff-informed, and a full analysis per PR still cannot
+// see a CodeQL upgrade or a query change landing on main — a main-side check is
+// needed either way, and with it the PR rule can stay the cheap, exact-on-the-
+// diff check it is.
+//
 // ── EXIT CODES (C-COVERAGE-LOST-IS-NOT-PASS) ────────────────────────────────
 //   0  the PR's analysis was read, and every new alert it adds is dispositioned
 //      in the PR's own file; OR the event is not a pull request (printed).

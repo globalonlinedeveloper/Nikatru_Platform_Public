@@ -86,6 +86,7 @@ import {
   say,
 } from './auth_target_expectation.mjs';
 import { backendOf, BackendRefused, D1_DATABASE_ID } from './backend.mjs';
+import { CredentialOriginRefused, credentialOrigin } from '../ops/credential-origin.mjs';
 
 /** The route whose EFFECT this file audits — the in-app "Delete account" tap
  *  reaches the shared platform Worker's `DELETE /v1/account`, which sweeps
@@ -100,7 +101,20 @@ const ERASURE_ROUTE = '/v1/account';
 const RESERVED = /^(sqlite_|d1_|_cf_)/;
 
 const userId = need('E2E_DELETE_USER_ID');
-const supaUrl = need('SUPABASE_URL').replace(/\/+$/, '');
+// ⏱ 2026-10-01 — 🔴 THE SERVICE-ROLE KEY GOES TO ITS ISSUER OR NOWHERE (review 2 of the
+// CodeQL stack, finding 1). SUPABASE_URL was used as given while provision_user.mjs
+// and magic_link.mjs in the same job pinned it. Pinned here by tooling/ops/
+// credential-origin.mjs before the first request, and every request is built from
+// the origin it RETURNS; any other value is exit 2, and nothing is sent. Held by
+// tooling/ci/assert-credential-origin.mjs.
+let supaUrl;
+try {
+  supaUrl = credentialOrigin(need('SUPABASE_URL'), 'supabase');
+} catch (e) {
+  if (!(e instanceof CredentialOriginRefused)) throw e;
+  console.error(`COULD NOT LOOK: SUPABASE_URL: ${e.message}. Exit 2: nothing was sent.`);
+  process.exit(2); // safe: this runs BEFORE any request
+}
 const serviceKey = need('SUPABASE_SERVICE_ROLE_KEY');
 const acct = need('CLOUDFLARE_ACCOUNT_ID');
 const appId = need('E2E_APP_ID');

@@ -58,7 +58,8 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { reconcile, declaredSources, issueFilingJobs, sourceHealth, classify, parseDispositions, judgeCodeql, CODEQL_DISPOSITIONS_REL } from '../assert-alert-disposition.mjs';
+import { reconcile, declaredSources, issueFilingJobs, sourceHealth, classify, parseDispositions, judgeCodeql, scopeToPr, CODEQL_DISPOSITIONS_REL, PINNED_SUPABASE_HOST } from '../assert-alert-disposition.mjs';
+import { SUPABASE_HOSTED_HOST_SHA256 } from '../../ops/credential-origin.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -293,6 +294,7 @@ describe('[14]O-5 · LIMB A — the firing history must be READABLE (fail-closed
     cpSync(join(CI_DIR, '..', 'ops', 'bounded-retry.mjs'), join(root, 'tooling/ops', 'bounded-retry.mjs'));
     // ⏱ 2026-09-30: limb C reads the alerts through the ops reader.
     cpSync(join(CI_DIR, '..', 'ops', 'check-code-scanning-age.mjs'), join(root, 'tooling/ops', 'check-code-scanning-age.mjs'));
+    cpSync(join(CI_DIR, '..', 'ops', 'credential-origin.mjs'), join(root, 'tooling/ops', 'credential-origin.mjs'));
     rmSync(join(root, '.github/workflows'), { recursive: true });
     const r = spawnSync(process.execPath, [join(root, 'tooling/ci/assert-alert-disposition.mjs')], { cwd: root, encoding: 'utf8' });
     assert.match(r.stderr, /COVERAGE LOST — \.github\/workflows does not exist/);
@@ -473,6 +475,60 @@ describe('LIMB C — every open CodeQL alert is fixed in code or carries a dispo
     assert.equal(stale.length, REAL.entries.length, 'every entry names an alert that is neither open nor dismissed here');
   });
 
+  // ⏱ 2026-10-01 (review 2, finding 4): main's FIXED list decides STALE. An entry
+  // main has never read is a PR's own new alert, and deleting it reddens main.
+  test('NOT ON MAIN YET: an entry whose alert main never read is KEPT, never labelled STALE', () => {
+    const [first, second] = REAL.entries;
+    const r = runGuard({ codeql: { open: [], dismissed: [], fixed: [fromEntry(first, { state: 'fixed' })] } });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, new RegExp(`⬜ STALE — #${first.alert} .* is FIXED on main\\. Delete its entry`));
+    assert.match(r.stdout, new RegExp(`⬜ NOT ON MAIN YET — #${second.alert} .* KEEP the entry`));
+    assert.doesNotMatch(r.stdout, new RegExp(`STALE — #${second.alert} `));
+    assert.equal((r.stdout.match(/⬜ STALE — #\d+/g) ?? []).length, 1);
+  });
+
+  // ⏱ 2026-10-01 (review 2, finding 2): the PR analysis is diff-informed, so an
+  // alert on an unchanged line first opens on MAIN. On a pull request it is main
+  // debt unless the PR changes its path; main's own run still fails on it.
+  test('PULL REQUEST: an undispositioned alert in a path the PR does not change is MAIN DEBT → exit 0', () => {
+    const extra = alert(999995, 'js/unused-local-variable', 'tooling/ci/untouched.mjs');
+    const r = runGuard({ prTouched: ['tooling/ci/other.mjs'], codeql: { open: [...REAL.entries.map((e) => fromEntry(e)), extra], dismissed: [] } });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /⬜ MAIN DEBT — #999995 js\/unused-local-variable tooling\/ci\/untouched\.mjs:1 has NO disposition, in a path this pull request does not change/);
+    assert.match(r.stdout, /✓ limb C — every alert in a path this pull request changes carries a disposition; 1 main-debt alert\(s\)/);
+  });
+
+  test('RED PULL REQUEST: the same alert in a path the PR DOES change fails (exit 1)', () => {
+    const extra = alert(999995, 'js/unused-local-variable', 'tooling/ci/untouched.mjs');
+    const r = runGuard({ prTouched: ['tooling/ci/untouched.mjs'], codeql: { open: [...REAL.entries.map((e) => fromEntry(e)), extra], dismissed: [] } });
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /#999995 {2}js\/unused-local-variable/);
+    assert.doesNotMatch(r.stdout, /MAIN DEBT/);
+  });
+
+  test('scopeToPr: with no pull request (touched null) nothing is moved to debt', () => {
+    const v = judgeCodeql({ open: [alert(5, 'js/x', 'a.mjs')], dismissed: [], entries: [] });
+    const scoped = scopeToPr(v, null);
+    assert.equal(scoped.failed, true);
+    assert.deepEqual(scoped.debt, []);
+    assert.equal(scopeToPr(v, new Set(['b.mjs'])).failed, false);
+  });
+
+  test('--limb C runs limb C alone (codeql.yml dispositions job): red and green, and no other limb is accepted', () => {
+    const file = join(TMP, `probe${seq++}.json`);
+    const spawnC = (codeql, limb = 'C') => {
+      writeFileSync(file, JSON.stringify({ codeql }));
+      return spawnSync(process.execPath, [GUARD, '--limb', limb, '--probe-file', file], { cwd: REPO, encoding: 'utf8' });
+    };
+    const green = spawnC({ open: REAL.entries.map((e) => fromEntry(e)), dismissed: [] });
+    assert.equal(green.status, 0, `${green.stdout}${green.stderr}`);
+    assert.doesNotMatch(green.stdout, /limb A/);
+    const red = spawnC({ open: [alert(999994, 'js/x', 'a.mjs')], dismissed: [] });
+    assert.equal(red.status, 1, `${red.stdout}${red.stderr}`);
+    assert.match(red.stderr, /#999994 {2}js\/x/);
+    assert.equal(spawnC({ open: [], dismissed: [] }, 'A').status, 1);
+  });
+
   test('COVERAGE LOST: the alert read failed → exit 2, never a pass', () => {
     const r = runGuard({ codeqlError: 'GET .../code-scanning/alerts answered HTTP 403 (the token needs security-events: read)' });
     assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
@@ -514,7 +570,7 @@ describe('LIMB C — every open CodeQL alert is fixed in code or carries a dispo
     }
     mkdirSync(join(root, 'tooling/app-yaml'), { recursive: true });
     cpSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), join(root, 'tooling/app-yaml', 'yaml.mjs'));
-    for (const f of ['bounded-retry.mjs', 'check-code-scanning-age.mjs']) cpSync(join(CI_DIR, '..', 'ops', f), join(root, 'tooling/ops', f));
+    for (const f of ['bounded-retry.mjs', 'check-code-scanning-age.mjs', 'credential-origin.mjs']) cpSync(join(CI_DIR, '..', 'ops', f), join(root, 'tooling/ops', f));
     write(root, CODEQL_DISPOSITIONS_REL, JSON.stringify({ dispositions: [{ alert: 7, rule: 'js/x', path: 'a.mjs', disposition: 'fixed-in-tree', reason: 'fixed by this change' }] }));
     const file = join(TMP, `probe${seq++}.json`);
     const spawnIn = (claims) => {
@@ -548,5 +604,16 @@ describe('LIMB C — every open CodeQL alert is fixed in code or carries a dispo
     assert.match(p, /alert #4\) is a by-design js\/x\. Only js\/file-access-to-http and js\/http-to-file-access may be kept by design/);
     assert.deepEqual(parseDispositions(JSON.stringify({ dispositions: [{ alert: 5, rule: 'js/file-access-to-http', path: 'a', disposition: 'by-design', reason: 'r', host: ['api.github.com', 'uploads.github.com'] }] })).problems, []);
     assert.match(parseDispositions('{').problems[0], /is not JSON/);
+  });
+
+  // ⏱ 2026-10-01 (review 2, finding 7): the Supabase entries named the zone.
+  test('a host is the PINNED project or a bare hostname: a zone wildcard, and any other hash, are refused', () => {
+    const one = (host) => parseDispositions(JSON.stringify({ dispositions: [{ alert: 6, rule: 'js/file-access-to-http', path: 'a', disposition: 'by-design', reason: 'r', host }] })).problems;
+    assert.deepEqual(one(['auth-api.nikatru.com', PINNED_SUPABASE_HOST]), []);
+    assert.match(one(['*.supabase.co']).join('\n'), /no bare `host`/);
+    assert.match(one([`sha256:${'0'.repeat(64)}`]).join('\n'), /no bare `host`/);
+    assert.equal(PINNED_SUPABASE_HOST, `sha256:${SUPABASE_HOSTED_HOST_SHA256}`);
+    const wild = REAL.entries.flatMap((e) => [e.host ?? []].flat()).filter((h) => String(h).includes('*'));
+    assert.deepEqual(wild, [], 'the committed file still names a wildcard host');
   });
 });
