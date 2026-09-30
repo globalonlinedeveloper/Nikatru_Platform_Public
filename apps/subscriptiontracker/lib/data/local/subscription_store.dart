@@ -71,6 +71,11 @@ const String kLocalBudgetKey = 'nikatru.budget';
 /// forgets them with the list they were made against.
 const String kLocalOutboxKey = 'nikatru.subscriptions.outbox';
 
+/// The subscriptions the user has ANSWERED "yes, still using" for on Insights
+/// (ST-D3 D3-4). A JSON list of ids. Asked, never inferred: nothing in the app
+/// measures usage, so the only signal is the one the user gives.
+const String kLocalStillUsingKey = 'nikatru.still_using';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 THE SERIALIZATION BOUNDARY, AND IT IS DELIBERATELY THE ONLY ONE.
 //
@@ -230,6 +235,31 @@ class LocalSubscriptionStore {
   Future<void> writeBudget(BudgetInfo budget) =>
       json.write(kLocalBudgetKey, budget, SubscriptionCodec.budget);
 
+  /// The ids answered "still using", or an empty set when none is stored or
+  /// the stored text is unreadable — a lost answer is asked again, never
+  /// invented.
+  Future<Set<String>> readStillUsing() async {
+    final String? raw = await json.readRaw(kLocalStillUsingKey);
+    if (raw == null) return <String>{};
+    try {
+      final Object? decoded = jsonDecode(raw);
+      return decoded is List
+          ? <String>{
+              for (final Object? e in decoded)
+                if (e is String) e,
+            }
+          : <String>{};
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  /// Replace the stored answers with [ids].
+  ///
+  /// Throws [LocalStoreWriteFailure] when the store refuses — never silently.
+  Future<void> writeStillUsing(Set<String> ids) =>
+      json.writeRaw(kLocalStillUsingKey, jsonEncode(ids.toList()..sort()));
+
   /// Forget everything this store owns.
   ///
   /// Exists so account deletion and a consent withdrawal have one call to make
@@ -242,6 +272,7 @@ class LocalSubscriptionStore {
     kLocalSubscriptionsKey,
     kLocalBudgetKey,
     kLocalOutboxKey,
+    kLocalStillUsingKey,
     kCacheIndexKey, // the shared cache's list of what it wrote: key names only
   ]);
 }

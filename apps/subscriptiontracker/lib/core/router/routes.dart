@@ -82,6 +82,17 @@ List<RouteBase> appRoutes() => <RouteBase>[
         state.uri.replace(path: '/sign-in').toString(),
     caseSensitive: false,
   ),
+  // ── THE RETIRED BUDGET TAB, KEPT AS A REDIRECT (ST-D3 D3-3) ─────────────
+  // ADR 077 §A folds the budget into Insights; the tab and its screen are
+  // deleted. The URL is not: a bookmark, a mail or a `?next=/budget` written
+  // before today would otherwise land on NotFoundScreen. Same shape as
+  // `/login` above — only the PATH is rewritten, so a query survives the hop.
+  GoRoute(
+    path: '/budget',
+    redirect: (BuildContext context, GoRouterState state) =>
+        state.uri.replace(path: '/insights').toString(),
+    caseSensitive: false,
+  ),
   GoRoute(
     path: '/scan',
     builder: (_, __) => const ScanScreen(),
