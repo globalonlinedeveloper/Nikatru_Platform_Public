@@ -19,7 +19,9 @@ import { SUBMIT_PRECONDITIONS, REAL_SUBMISSION_FLAG } from '../submit-preconditi
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const GUARD_REL = 'tooling/ci/assert-small-business-program.mjs';
-const GUARD = join(REPO, GUARD_REL);
+// The basename is the LAST literal of the path, so assert-guard-coverage's
+// `exercisedBy` binds GUARD and credits the spawns below as runs, not a mention.
+const GUARD = join(REPO, 'tooling', 'ci', 'assert-small-business-program.mjs');
 const FEES = 'tooling/catalog/fee-register.json';
 const CHANNELS = 'tooling/channel-register.json';
 const CELL = 'apple-small-business-enrolment';
