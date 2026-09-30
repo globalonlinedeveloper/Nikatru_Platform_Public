@@ -130,10 +130,12 @@ String nativeAttestTarget(Uri url) {
     return byKey != 0 ? byKey : a.$2.compareTo(b.$2);
   });
   final String query = params
-      .map(
-        ((String, String) p) =>
-            '${Uri.encodeComponent(p.$1)}=${Uri.encodeComponent(p.$2)}',
-      )
+      .map(((String, String) p) {
+        // Destructured, not read as fields: a `$` right before a digit inside a
+        // string is what tooling/ci/assert-no-price-literals.mjs reads as a price.
+        final (String key, String value) = p;
+        return '${Uri.encodeComponent(key)}=${Uri.encodeComponent(value)}';
+      })
       .join('&');
   return '${url.path}?$query';
 }
