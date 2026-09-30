@@ -104,10 +104,11 @@ jobs:
           fi
           exit "$code"
 
+      # why: CLOUDFLARE_D1_TOKEN, not the read token: this reader executes guarded writes (its header).
       - name: Live D1 still runs every statement the Workers send it
         if: ${{ !cancelled() }}
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set +e
