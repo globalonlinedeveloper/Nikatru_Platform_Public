@@ -22,7 +22,8 @@
 // with no attestation, so the loopback route also serves `/attest/challenge`
 // and `/attest/install`, the native client is built with a REAL
 // `InstallKeyAttestor`, and every op is checked for its headers and for an
-// Ed25519 proof over clientData recomputed from the bytes that ARRIVED.
+// Ed25519 proof over clientData recomputed from the bytes that ARRIVED
+// (⏱ 2026-09-30 · wire protocol v2: and from the path and query that arrived).
 // ─────────────────────────────────────────────────────────────────────────────
 import 'dart:async';
 import 'dart:convert';
@@ -371,11 +372,14 @@ void main() {
               'install-key',
             );
             expect(s.headers.value(core.kNativeAttestKeyHeader), keyId);
+            // ⏱ 2026-09-30 · wire protocol v2: and over the target — the path
+            // and query that ARRIVED, as the server recomputes it.
             final core.NativeAttestProof expected = await attestor.prove(
               clientData: core.nativeAttestClientData(
                 app: _app,
                 op: op,
                 challenge: challenge,
+                target: core.nativeAttestTarget(s.uri),
                 body: s.bytes,
               ),
             );

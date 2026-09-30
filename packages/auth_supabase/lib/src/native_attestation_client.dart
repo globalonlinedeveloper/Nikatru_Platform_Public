@@ -4,18 +4,25 @@
 /// 🔴 WHY. The platform Worker's native route forwards sign-in, sign-up, reset
 /// and resend to GoTrue with no captcha, so it answered any script. The server
 /// now refuses every one of those four ops unless it carries an attestation
-/// bound to a fresh single-use challenge and to the EXACT body sent (wire
-/// protocol v1, `core`'s `native_attest.dart`). gotrue-dart builds and sends the
-/// request itself and has no hook for extra headers per call, so the binding is
-/// done HERE, one layer down, on the bytes gotrue-dart actually hands over.
+/// bound to a fresh single-use challenge, to the request's path and query, and
+/// to the EXACT body sent (wire protocol v2, `core`'s `native_attest.dart`).
+/// gotrue-dart builds and sends the request itself and has no hook for extra
+/// headers per call, so the binding is done HERE, one layer down, on the URL
+/// and the bytes gotrue-dart actually hands over.
+///
+/// ⏱ 2026-09-30 · v2: the op's `target` is [core.nativeAttestTarget] of the
+/// REAL outgoing request URL — the one sent, query included, so a changed
+/// `redirect_to` changes the proof — and the install's is that of the install
+/// URL it posts to.
 ///
 /// For a POST to one of the four ops under the native base, and nothing else:
 ///   1. registers the install first when the kind needs it and it is not
 ///      registered (`<base>/attest/install`, its own challenge);
 ///   2. fetches a fresh challenge (`<base>/attest/challenge`) — one per op,
 ///      never reused;
-///   3. computes clientData over the exact body bytes, asks the attestor for the
-///      proof, and sends the op with the attest headers;
+///   3. computes clientData over the request's target and the exact body
+///      bytes, asks the attestor for the proof, and sends the op, to that same
+///      URL, with the attest headers;
 ///   4. on a 401 whose `error_code` is `attestation_key_unknown`, forgets the
 ///      registration, re-registers ONCE and retries ONCE with a new challenge.
 ///
@@ -93,6 +100,7 @@ final class NativeAttestationClient extends http.BaseClient {
         app: _app,
         op: op,
         challenge: challenge!,
+        target: core.nativeAttestTarget(original.url),
         body: body,
       );
       final core.NativeAttestProof proof = await _attestor.prove(
@@ -139,15 +147,16 @@ final class NativeAttestationClient extends http.BaseClient {
   Future<_Buffered?> _register() async {
     final (String? challenge, _Buffered? refused) = await _challenge();
     if (refused != null) return refused;
+    final Uri url = _at(core.kNativeAttestInstallPath);
     final core.NativeAttestInstall install = await _attestor.register(
       app: _app,
       challenge: challenge!,
+      target: core.nativeAttestTarget(url),
     );
-    final http.Request request =
-        http.Request('POST', _at(core.kNativeAttestInstallPath))
-          ..headers['Content-Type'] = 'application/json'
-          ..headers.addAll(install.headers(challenge))
-          ..bodyBytes = install.body;
+    final http.Request request = http.Request('POST', url)
+      ..headers['Content-Type'] = 'application/json'
+      ..headers.addAll(install.headers(challenge))
+      ..bodyBytes = install.body;
     final _Buffered answer = await _Buffered.read(await _inner.send(request));
     if (answer.status == 200 || answer.status == 201) {
       await _attestor.markRegistered(app: _app);

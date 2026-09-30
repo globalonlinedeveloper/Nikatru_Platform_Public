@@ -2,7 +2,8 @@ import DeviceCheck
 import Flutter
 import Foundation
 
-/// ⏱ 2026-09-29 · native sign-in attestation (wire protocol v1) — the Apple
+/// ⏱ 2026-09-29 · native sign-in attestation (⏱ 2026-09-30 · wire protocol v2;
+/// this side is unchanged by it: it sees only the hash) — the Apple
 /// proof: App Attest (`DCAppAttestService`, iOS 14+). Registered on
 /// `nikatru/native_attest` by `AgeSignalsPlugin.register(with:)`, the package's
 /// one iOS pluginClass.

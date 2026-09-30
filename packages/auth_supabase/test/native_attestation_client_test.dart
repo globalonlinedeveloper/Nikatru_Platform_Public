@@ -13,6 +13,12 @@
 //     twice, and the second refusal reaches the caller with its body intact;
 //   · no attest header on any URL outside the native base;
 //   · an attestor that cannot prove fails the call; the op is never sent.
+//
+// ⏱ 2026-09-30 · wire protocol v2: the proof also covers the request TARGET
+// (path + canonical query). The recomputation below takes the target from the
+// URL that ARRIVED, and the literals pin it — so a client that bound a URL
+// other than the one it sent (a dropped query, the base instead of the op, the
+// install path taken from the op) fails here.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'dart:convert';
 
@@ -46,6 +52,12 @@ class _FakeAttestor implements core.NativeAttestor {
   int registers = 0;
   int forgets = 0;
 
+  /// Every install target [register] was handed, in order.
+  final List<String> installTargets = <String>[];
+
+  /// Every clientData [prove] was asked for, in order.
+  final List<String> proved = <String>[];
+
   @override
   String get kind => kindName;
 
@@ -56,8 +68,10 @@ class _FakeAttestor implements core.NativeAttestor {
   Future<core.NativeAttestInstall> register({
     required String app,
     required String challenge,
+    required String target,
   }) async {
     registers++;
+    installTargets.add(target);
     final List<int> body = utf8.encode(
       '{"kind":"$kindName","public_key":"PK"}',
     );
@@ -65,6 +79,7 @@ class _FakeAttestor implements core.NativeAttestor {
       app: app,
       op: core.kNativeAttestInstallOp,
       challenge: challenge,
+      target: target,
       body: body,
     );
     return core.NativeAttestInstall(
@@ -79,6 +94,7 @@ class _FakeAttestor implements core.NativeAttestor {
 
   @override
   Future<core.NativeAttestProof> prove({required String clientData}) async {
+    proved.add(clientData);
     if (failProve) {
       throw core.NativeAttestationException(kindName, 'channel_failed');
     }
@@ -142,19 +158,41 @@ class _Wire {
       seen.where((http.Request r) => r.url.path.endsWith(suffix));
 }
 
+/// gotrue's PKCE verifier store, in memory — a sign-up writes one before it
+/// sends, and the default store needs a platform plugin.
+class _MemoryPkce extends sb.GotrueAsyncStorage {
+  final Map<String, String> items = <String, String>{};
+  @override
+  Future<String?> getItem({required String key}) async => items[key];
+  @override
+  Future<void> removeItem({required String key}) async => items.remove(key);
+  @override
+  Future<void> setItem({required String key, required String value}) async =>
+      items[key] = value;
+}
+
 bool _hasAttestHeader(http.BaseRequest r) =>
     r.headers.keys.any((String k) => k.toLowerCase().startsWith('x-nk-attest'));
 
-/// The proof the fake attestor would have made for [r] AS RECEIVED.
-String _expectedProof(http.Request r, String op) {
+/// The proof the fake attestor would have made for [r] AS RECEIVED — its URL
+/// (path and query) and its bytes.
+String _expectedProof(http.Request r, String op) =>
+    _proofFor(r, op, core.nativeAttestTarget(r.url));
+
+/// The fake attestor's proof for [r]'s challenge and bytes, bound to [target].
+String _proofFor(http.Request r, String op, String target) {
   final String clientData = core.nativeAttestClientData(
     app: _app,
     op: op,
     challenge: r.headers[core.kNativeAttestChallengeHeader]!,
+    target: target,
     body: r.bodyBytes,
   );
   return 'proof:${core.nativeAttestRequestHash(clientData)}';
 }
+
+/// The target line (the fifth) of a clientData.
+String _targetLine(String clientData) => clientData.split('\n')[4];
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -224,15 +262,27 @@ void main() {
     expect(token.url.queryParameters['grant_type'], 'password');
     expect(token.headers['Content-Type'], startsWith('application/json'));
 
+    // v2: each op's proof was asked for over the target of the URL it was
+    // sent to — the token's query included.
+    expect(attestor.proved.map(_targetLine), <String>[
+      '/v1/auth/native/$_app/token?grant_type=password',
+      '/v1/auth/native/$_app/signup',
+      '/v1/auth/native/$_app/recover',
+      '/v1/auth/native/$_app/resend',
+    ]);
+
     // The install request: kind, challenge, proof — no key header; its proof
-    // is over op=install and its own body.
+    // is over op=install, the install URL's target and its own body.
     final http.Request install = wire.at('/attest/install').single;
+    expect(attestor.installTargets, <String>[
+      '/v1/auth/native/$_app/attest/install',
+    ]);
     expect(install.headers[core.kNativeAttestChallengeHeader], 'ch-1');
     expect(install.headers[core.kNativeAttestKindHeader], 'install-key');
     expect(install.headers.containsKey(core.kNativeAttestKeyHeader), isFalse);
     expect(
       install.headers[core.kNativeAttestProofHeader],
-      'install:${core.nativeAttestRequestHash(core.nativeAttestClientData(app: _app, op: 'install', challenge: 'ch-1', body: install.bodyBytes))}',
+      'install:${core.nativeAttestRequestHash(core.nativeAttestClientData(app: _app, op: 'install', challenge: 'ch-1', target: core.nativeAttestTarget(install.url), body: install.bodyBytes))}',
     );
     expect(install.body, '{"kind":"install-key","public_key":"PK"}');
 
@@ -249,8 +299,57 @@ void main() {
     final http.Request r = wire.at('/token').single;
     final List<int> tampered = List<int>.of(r.bodyBytes)..[1] ^= 0x01;
     final String forTampered =
-        'proof:${core.nativeAttestRequestHash(core.nativeAttestClientData(app: _app, op: 'token', challenge: r.headers[core.kNativeAttestChallengeHeader]!, body: tampered))}';
+        'proof:${core.nativeAttestRequestHash(core.nativeAttestClientData(app: _app, op: 'token', challenge: r.headers[core.kNativeAttestChallengeHeader]!, target: core.nativeAttestTarget(r.url), body: tampered))}';
     expect(r.headers[core.kNativeAttestProofHeader], isNot(forTampered));
+    expect(
+      r.headers[core.kNativeAttestProofHeader],
+      _expectedProof(r, 'token'),
+    );
+  });
+
+  test(
+    '🔴 red control (v2): the proof on the wire is for the query that was '
+    'SENT — the same bytes under another redirect_to are another proof',
+    () async {
+      const String redirect =
+          'com.nikatru.subscriptiontracker://auth-callback?nk_auth=confirm';
+      await post(
+        '/signup?redirect_to=${Uri.encodeComponent(redirect)}',
+        <String, Object?>{'email': 'b@example.test'},
+      );
+      final http.Request r = wire.at('/signup').single;
+      expect(
+        r.headers[core.kNativeAttestProofHeader],
+        _proofFor(
+          r,
+          'signup',
+          '/v1/auth/native/$_app/signup?redirect_to=com.nikatru.subscriptiontracker'
+              '%3A%2F%2Fauth-callback%3Fnk_auth%3Dconfirm',
+        ),
+      );
+      for (final String other in <String>[
+        '/v1/auth/native/$_app/signup?redirect_to=https%3A%2F%2Fevil.test%2Fcb',
+        '/v1/auth/native/$_app/signup',
+        '/v1/auth/native/$_app/token',
+      ]) {
+        expect(
+          r.headers[core.kNativeAttestProofHeader],
+          isNot(_proofFor(r, 'signup', other)),
+          reason: other,
+        );
+      }
+    },
+  );
+
+  test('the target is the CANONICAL query of the URL sent: order and spelling '
+      'on the wire do not change it', () async {
+    await post('/token?b=2&grant_type=password&a=x+y', <String, Object?>{});
+    final http.Request r = wire.at('/token').single;
+    expect(r.url.query, 'b=2&grant_type=password&a=x+y', reason: 'sent as is');
+    expect(
+      _targetLine(attestor.proved.single),
+      '/v1/auth/native/$_app/token?a=x%20y&b=2&grant_type=password',
+    );
     expect(
       r.headers[core.kNativeAttestProofHeader],
       _expectedProof(r, 'token'),
@@ -472,7 +571,55 @@ void main() {
           _expectedProof(token, 'token'),
         );
         expect(jsonDecode(token.body), containsPair('email', 'a@example.test'));
+        expect(
+          _targetLine(attestor.proved.single),
+          '/v1/auth/native/$_app/token?grant_type=password',
+        );
       },
     );
+
+    test('through the REAL gotrue-dart: a sign-up\'s redirect_to, in the '
+        'query gotrue-dart built, is inside the proof', () async {
+      final sb.GoTrueClient native = nativeCredentialClient(
+        platformBaseUrl: _origin,
+        appId: _app,
+        attestor: attestor,
+        isWeb: false,
+        platform: TargetPlatform.android,
+        pkceStorage: _MemoryPkce(),
+        transport: wire.client,
+      )!;
+      wire.op = (_) => (
+        422,
+        <String, Object?>{
+          'code': 422,
+          'error_code': 'weak_password',
+          'msg': 'Password should be longer',
+        },
+      );
+      await expectLater(
+        native.signUp(
+          email: 'a@example.test',
+          password: 'pw',
+          emailRedirectTo:
+              'com.nikatru.subscriptiontracker://auth-callback?nk_auth=confirm',
+        ),
+        throwsA(isA<sb.AuthException>()),
+      );
+      final http.Request signup = wire.at('/signup').single;
+      expect(
+        signup.url.queryParameters['redirect_to'],
+        'com.nikatru.subscriptiontracker://auth-callback?nk_auth=confirm',
+      );
+      expect(
+        _targetLine(attestor.proved.single),
+        '/v1/auth/native/$_app/signup?redirect_to=com.nikatru.subscriptiontracker'
+        '%3A%2F%2Fauth-callback%3Fnk_auth%3Dconfirm',
+      );
+      expect(
+        signup.headers[core.kNativeAttestProofHeader],
+        _expectedProof(signup, 'signup'),
+      );
+    });
   });
 }

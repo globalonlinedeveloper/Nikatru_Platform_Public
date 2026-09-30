@@ -1,11 +1,13 @@
-// ⏱ 2026-09-29 · native sign-in attestation, wire protocol v1 — the client's
-// binding and the per-install Ed25519 key.
+// ⏱ 2026-09-29 · native sign-in attestation — the client's binding and the
+// per-install Ed25519 key. ⏱ 2026-09-30 · wire protocol v2: clientData carries
+// the request TARGET (path + canonical query) between challenge and bodyHash.
 //
 // 🔴 THE LITERALS BELOW ARE THE CROSS-RUNTIME AGREEMENT. The server's tests
-// assert the same vector (same app, op, challenge, body, seed); a client and a
-// server that each pass their own tests but disagree on one byte would refuse
-// every real sign-in. Recomputed independently with node:crypto before being
-// pasted here — never derived from this file's own output.
+// assert the same vector (same app, op, challenge, target, body, seed); a client
+// and a server that each pass their own tests but disagree on one byte would
+// refuse every real sign-in. Recomputed independently with node:crypto (and the
+// canonical queries with node's URLSearchParams + encodeURIComponent) before
+// being pasted here — never derived from this file's own output.
 import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
@@ -16,12 +18,30 @@ const String _app = 'subscriptiontracker';
 const String _challenge = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
 const String _body = '{"email":"a@example.test","password":"pw"}';
 const String _bodyHash = '6iU0klSWpvzudfyl590CwvA54eDW4neVBb9Nc2Uk35U';
-const String _requestHash = 'vhEcb1KdwBN_Qi1H40RTtnWH4fDw60TeZxBYTwvGb8M';
+const String _origin = 'https://platform.nikatru.test';
+const String _tokenPath = '/v1/auth/native/subscriptiontracker/token';
+const String _target =
+    '/v1/auth/native/subscriptiontracker/token'
+    '?grant_type=password';
+const String _requestHash = 'OxAuf5vrL3xArivihIdBI7-GjML5J9Fb8l28ubtBYac';
 const String _publicKey = '6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw';
 const String _keyId = '_oEsEvOrTOasXbaaw1L5BssbEe9D-zPiUu9_9VImOIk';
 const String _signature =
-    'sXemf003ur6yGpxrN1ZBAnOmflYWJdjMcLVGP9dNx7KQO-olH_EwF7FvyROu2eX9iO5CELDK'
-    'f58HkCKRdDMUAQ';
+    'WOSt3gJcbYAB3xE8nnRjK7WYZKBy4xmc6H4WIRce6RzC9b_WyHtdIl5vucGMk0wAnXlM1fqs'
+    'YxAasbFASMR_BA';
+
+/// The install URL's target: a path, no query.
+const String _installTarget =
+    '/v1/auth/native/subscriptiontracker/attest/install';
+
+/// The sign-up vector's redirect, and its canonical target.
+const String _redirect =
+    'com.nikatru.subscriptiontracker://auth-callback?nk_auth=confirm';
+const String _signupTarget =
+    '/v1/auth/native/subscriptiontracker/signup'
+    '?foo=b%20a%2Br'
+    '&redirect_to=com.nikatru.subscriptiontracker%3A%2F%2Fauth-callback'
+    '%3Fnk_auth%3Dconfirm';
 
 /// The contract's seed, 32 × 0x07, as the store keeps it.
 String get _seed => nativeAttestBase64Url(List<int>.filled(32, 7));
@@ -30,11 +50,13 @@ String _clientData({
   String app = _app,
   String op = 'token',
   String challenge = _challenge,
+  String target = _target,
   String body = _body,
 }) => nativeAttestClientData(
   app: app,
   op: op,
   challenge: challenge,
+  target: target,
   body: utf8.encode(body),
 );
 
@@ -64,10 +86,19 @@ void main() {
       expect(nativeAttestBodyHash(utf8.encode(_body)), _bodyHash);
     });
 
-    test('clientData is the five lines, in order', () {
+    test('the token target is the path and its one query parameter', () {
+      expect(
+        nativeAttestTarget(
+          Uri.parse('$_origin$_tokenPath?grant_type=password'),
+        ),
+        _target,
+      );
+    });
+
+    test('clientData is the six lines, in order', () {
       expect(
         _clientData(),
-        'nk-native-auth/v1\n$_app\ntoken\n$_challenge\n$_bodyHash',
+        'nk-native-auth/v2\n$_app\ntoken\n$_challenge\n$_target\n$_bodyHash',
       );
     });
 
@@ -96,7 +127,7 @@ void main() {
       expect(kNativeAttestChallengeHeader, 'X-NK-Attest-Challenge');
       expect(kNativeAttestKeyHeader, 'X-NK-Attest-Key');
       expect(kNativeAttestProofHeader, 'X-NK-Attest-Proof');
-      expect(kNativeAttestProtocol, 'nk-native-auth/v1');
+      expect(kNativeAttestProtocol, 'nk-native-auth/v2');
       expect(
         <String>[
           kNativeAttestKindPlayIntegrity,
@@ -112,6 +143,85 @@ void main() {
         'resend',
       });
     });
+
+    test('the challenge is OPAQUE: a server token of any shape is bound '
+        'verbatim, never parsed', () {
+      const String opaque =
+          'c1.subscriptiontracker.1790000000.AQEBAQEBAQEBAQEBAQEBAQ.'
+          'AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI';
+      expect(
+        _clientData(challenge: opaque),
+        'nk-native-auth/v2\n$_app\ntoken\n$opaque\n$_target\n$_bodyHash',
+      );
+      expect(_clientData(challenge: 'ch-1'), contains('\nch-1\n'));
+    });
+  });
+
+  group('the canonical target (wire protocol v2)', () {
+    test('the sign-up vector: every param decoded (+ is a space), sorted by '
+        'key, re-encoded as encodeURIComponent does', () {
+      final Uri url = Uri.parse(
+        '$_origin/v1/auth/native/$_app/signup'
+        '?redirect_to=${Uri.encodeComponent(_redirect)}&foo=b+a%2Br',
+      );
+      expect(url.queryParametersAll['foo'], <String>['b a+r']);
+      expect(nativeAttestTarget(url), _signupTarget);
+    });
+
+    test('the same parameters, spelled and ordered differently, are one '
+        'target', () {
+      expect(
+        nativeAttestTarget(
+          Uri.https(
+            'platform.nikatru.test',
+            '/v1/auth/native/$_app/signup',
+            <String, String>{'foo': 'b a+r', 'redirect_to': _redirect},
+          ),
+        ),
+        _signupTarget,
+      );
+      expect(
+        nativeAttestTarget(
+          Uri.parse(
+            '$_origin/v1/auth/native/$_app/signup'
+            '?foo=b%20a%2br&redirect_to=${Uri.encodeComponent(_redirect)}',
+          ),
+        ),
+        _signupTarget,
+      );
+    });
+
+    test('the install target is the path alone, with no "?"', () {
+      expect(
+        nativeAttestTarget(Uri.parse('$_origin$_installTarget')),
+        _installTarget,
+      );
+      expect(
+        nativeAttestTarget(Uri.parse('$_origin$_installTarget?')),
+        _installTarget,
+        reason: 'an empty query holds no parameter',
+      );
+    });
+
+    test('a relative URL (a server\'s request uri) is the same target', () {
+      expect(nativeAttestTarget(Uri.parse(_target)), _target);
+    });
+
+    test('duplicates are kept and sorted by value; UTF-16 order puts '
+        'upper case before lower and non-ASCII last', () {
+      expect(
+        nativeAttestTarget(Uri.parse('https://x/p?b=2&a=z&a=y&%C3%A9=1&Z=0')),
+        '/p?Z=0&a=y&a=z&b=2&%C3%A9=1',
+      );
+    });
+
+    test('encodeURIComponent\'s unreserved set stays bare; an empty value '
+        'keeps its "="', () {
+      expect(
+        nativeAttestTarget(Uri.parse('https://x/p?k=%21%27%28%29%2A~-_.&e=')),
+        "/p?e=&k=!'()*~-_.",
+      );
+    });
   });
 
   group('🔴 red controls — the binding moves with what it binds', () {
@@ -124,7 +234,49 @@ void main() {
             app: _app,
             op: 'token',
             challenge: _challenge,
+            target: _target,
             body: changed,
+          ),
+        ),
+        isNot(_requestHash),
+      );
+    });
+
+    test('changing ONLY the query changes the target and requestHash', () {
+      final String other = nativeAttestTarget(
+        Uri.parse(
+          '$_origin/v1/auth/native/$_app/signup'
+          '?redirect_to=${Uri.encodeComponent('https://evil.test/cb')}'
+          '&foo=b+a%2Br',
+        ),
+      );
+      expect(other, isNot(_signupTarget));
+      expect(
+        nativeAttestRequestHash(_clientData(op: 'signup', target: other)),
+        isNot(
+          nativeAttestRequestHash(
+            _clientData(op: 'signup', target: _signupTarget),
+          ),
+        ),
+      );
+      expect(
+        nativeAttestRequestHash(
+          _clientData(target: '$_tokenPath?grant_type=refresh_token'),
+        ),
+        isNot(_requestHash),
+      );
+      expect(
+        nativeAttestRequestHash(_clientData(target: _tokenPath)),
+        isNot(_requestHash),
+        reason: 'dropping the query is a change too',
+      );
+    });
+
+    test('changing ONLY the path changes requestHash', () {
+      expect(
+        nativeAttestRequestHash(
+          _clientData(
+            target: '/v1/auth/native/otherapp/token?grant_type=password',
           ),
         ),
         isNot(_requestHash),
@@ -155,6 +307,11 @@ void main() {
         throwsA(isA<ArgumentError>()),
       );
       expect(() => _clientData(challenge: ''), throwsA(isA<ArgumentError>()));
+      expect(
+        () => _clientData(target: '$_tokenPath\nX'),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(() => _clientData(target: ''), throwsA(isA<ArgumentError>()));
     });
   });
 
@@ -211,24 +368,27 @@ void main() {
     });
 
     test('register: the install body names the public key, and the proof '
-        'verifies over op=install clientData', () async {
+        'verifies over op=install clientData for the install target', () async {
       final NativeAttestInstall install = await attestor.register(
         app: _app,
         challenge: _challenge,
+        target: _installTarget,
       );
       expect(install.kind, 'install-key');
       expect(
         utf8.decode(install.body),
         '{"kind":"install-key","public_key":"$_publicKey"}',
       );
-      final String clientData = nativeAttestClientData(
-        app: _app,
-        op: 'install',
-        challenge: _challenge,
-        body: install.body,
-      );
-      final bool ok = await Ed25519().verify(
-        utf8.encode(clientData),
+      Future<bool> verifiesFor(String target) => Ed25519().verify(
+        utf8.encode(
+          nativeAttestClientData(
+            app: _app,
+            op: 'install',
+            challenge: _challenge,
+            target: target,
+            body: install.body,
+          ),
+        ),
         signature: Signature(
           base64Url.decode(base64Url.normalize(install.proof)),
           publicKey: SimplePublicKey(
@@ -237,7 +397,12 @@ void main() {
           ),
         ),
       );
-      expect(ok, isTrue);
+      expect(await verifiesFor(_installTarget), isTrue);
+      expect(
+        await verifiesFor(_tokenPath),
+        isFalse,
+        reason: 'red control: the install proof is bound to its target',
+      );
       expect(install.headers(_challenge), <String, String>{
         'X-NK-Attest-Kind': 'install-key',
         'X-NK-Attest-Challenge': _challenge,
