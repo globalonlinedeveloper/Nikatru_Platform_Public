@@ -343,7 +343,7 @@
   "worker-shared-modules.test.mjs": 13,
   "workflow-hardening.test.mjs": 11,
   "workflow-readers.test.mjs": 19,
-  "workflow-scan.test.mjs": 89,
+  "workflow-scan.test.mjs": 90,
   "workflow-timeouts.test.mjs": 21,
   "wrangler-environments.test.mjs": 15,
   "xcode-floor.test.mjs": 21
