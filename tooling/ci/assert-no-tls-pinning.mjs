@@ -405,15 +405,6 @@ const platformLost = [];
     }
   }
 }
-if (platformLost.length) {
-  coverageLost([
-    `the platform-config limb did not read the files it exists to read (${platformLost.length}):`,
-    ...platformLost.map((l) => `· ${l}`),
-    '',
-    'A network-security-config <pin-set> or an Info.plist NSPinnedDomains pins TLS with no Dart at all, so a',
-    'walk that stopped reaching those files would print ok about the one place such a pin would be written.',
-  ]);
-}
 
 // ── THE COVERAGE FLOOR, ONE PER DECLARED ROOT ───────────────────────────────
 // Every root reports its own verdict and they are reported TOGETHER, because a
@@ -446,6 +437,17 @@ if (lost.length) {
     'true of every tree including one where the scan is broken. There is no weaker failure than this one.',
     'Each root carries its OWN floor deliberately: a single floor over the three combined was satisfied by',
     'the brick alone, so apps/ and packages/ could both empty while the guard printed ok. Measured, not feared.',
+  ]);
+}
+// The platform floor is reported AFTER the per-root Dart floor: an apps/ that is gone takes its
+// manifests with it, and "apps is not a directory" is the cause the reader must see first.
+if (platformLost.length) {
+  coverageLost([
+    `the platform-config limb did not read the files it exists to read (${platformLost.length}):`,
+    ...platformLost.map((l) => `· ${l}`),
+    '',
+    'A network-security-config <pin-set> or an Info.plist NSPinnedDomains pins TLS with no Dart at all, so a',
+    'walk that stopped reaching those files would print ok about the one place such a pin would be written.',
   ]);
 }
 if (packVerifier.length === 0) {
