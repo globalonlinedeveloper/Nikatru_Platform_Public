@@ -3712,6 +3712,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/main-healthy.yml#publish"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/land-gate.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "script",

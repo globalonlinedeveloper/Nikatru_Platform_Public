@@ -2573,6 +2573,11 @@
       "firstSeen": "2026-09-27",
       "evidence": []
     },
+    "tooling/ops/land-gate.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-30",
+      "evidence": []
+    },
     "tooling/ops/money-dry-run.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-09",
