@@ -207,19 +207,20 @@ describe('verify-password-reset-revokes — SUPABASE_URL is pinned before any re
     assert.deepEqual([...new Set(asked.map((u) => new URL(u).origin))], ['https://auth-api.nikatru.com']);
   });
 
-  for (const hostile of ['https://auth-api.nikatru.com.evil.invalid', 'https://evil.invalid/auth-api.nikatru.com', 'https://user:pw@auth-api.nikatru.com']) {
-    for (const sessions of ['password', 'verify']) {
-      test(`V8 — ${hostile} (--sessions ${sessions}): exit 2, and NOT ONE request is made`, () => {
+  test('V8 — a hostile SUPABASE_URL, under both --sessions modes: exit 2, and NOT ONE request is made', () => {
+    for (const hostile of ['https://auth-api.nikatru.com.evil.invalid', 'https://evil.invalid/auth-api.nikatru.com', 'https://user:pw@auth-api.nikatru.com']) {
+      for (const sessions of ['password', 'verify']) {
         const log = join(TMP, `asked-${seq++}.log`);
         const r = run(makeRoot({ vault: vaultAt(hostile) }), { log }, ['--sessions', sessions]);
-        assert.equal(r.code, 2, r.out);
-        assert.match(r.out, /SUPABASE_URL is not the auth issuer, so no request was made/);
-        assert.match(r.out, /refusing to send the Supabase auth credential/);
-        assert.doesNotMatch(r.out, /user:pw|PASS/);
-        assert.deepEqual(requested(log), []);
-      });
+        const at = `${hostile} (--sessions ${sessions})`;
+        assert.equal(r.code, 2, `${at}\n${r.out}`);
+        assert.match(r.out, /SUPABASE_URL is not the auth issuer, so no request was made/, at);
+        assert.match(r.out, /refusing to send the Supabase auth credential/, at);
+        assert.doesNotMatch(r.out, /user:pw|PASS/, at);
+        assert.deepEqual(requested(log), [], at);
+      }
     }
-  }
+  });
 });
 
 // ⏱ 2026-09-29 · AB-A4-02 — THE SCHEDULED RUN, AGAINST BOX C.
