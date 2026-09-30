@@ -160,6 +160,12 @@ beforeEach(async () => {
 });
 afterEach(() => vi.restoreAllMocks());
 
+// ⏱ 2026-09-30: every call now mints a signed challenge and signs a real App
+// Attest assertion, and the busiest cases make eighteen calls — measured at
+// 3-5 s on a loaded runner against vitest's 5 s default. The budget is per
+// case and generous on purpose; a HANG still fails, a slow runner does not.
+vi.setConfig({ testTimeout: 30_000 });
+
 function env(over: Partial<AppEnv['Bindings']> = {}): AppEnv['Bindings'] {
   return {
     SUPABASE_URL,
@@ -453,15 +459,12 @@ describe('ST-N1a · the route is mounted, per app, from the generated register',
     // read, and a guard over prose would fail on the explanation.
     const code = stripComments(source);
     expect(code.length).toBeGreaterThan(1000);
-    // ⏱ 2026-09-30: the two address claims are NAMED once, in the list of
-    // headers this Worker DELETES before forwarding — and nowhere else.
-    const dropped = code.match(/const DROPPED_REQUEST_HEADERS = \[[^\]]*\];/);
-    expect(dropped, 'DROPPED_REQUEST_HEADERS is one array literal').not.toBeNull();
-    expect(dropped![0]).toContain("'x-forwarded-for'");
-    expect(dropped![0]).toContain("'x-real-ip'");
-    const rest = code.replace(dropped![0], '');
+    // ⏱ 2026-09-30 (review of #1070): the route forwards an ALLOWLIST, so the
+    // caller-writable address claims are dropped without the source naming them —
+    // and Cloudflare's own connecting address passes as a `cf-` header, unnamed too.
+    expect(code).toContain('const GOTRUE_BOUND_HEADERS = new Set([');
     for (const header of ['cf-connecting-ip', 'x-forwarded-for', 'x-real-ip', 'true-client-ip', 'forwarded']) {
-      expect(rest.toLowerCase(), header).not.toContain(header);
+      expect(code.toLowerCase(), header).not.toContain(header);
     }
     expect(code).not.toMatch(/\.cf\b/);
   });

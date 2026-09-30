@@ -51,9 +51,10 @@
 //     a 503, never an admit (`strictRateLimit`, lib/edge-ceiling.ts);
 //   · GoTrue's own per-IP limiter, once Box C keys it on the address Cloudflare
 //     stamps (ADR 059 R4-08). This Worker never reads a client address (ADR 011
-//     / ADR 020, SHIELD-R3): the incoming headers are forwarded as they arrived,
-//     as services/edge-shield does, and the same-zone subrequest carries the
-//     client's address to GoTrue without this file naming it.
+//     / ADR 020, SHIELD-R3): only GOTRUE_BOUND_HEADERS and Cloudflare's own
+//     `cf-` stamps go on, each as it arrived (⏱ 2026-09-30, review of #1070), and
+//     the same-zone subrequest carries the client's address to GoTrue without
+//     this file naming it.
 //
 // Credentials pass THROUGH: nothing here stores an email, a password or a token,
 // and the one log line per call carries the route, the app, the status and the
@@ -69,7 +70,6 @@ import {
   clientDataFor,
   configured,
   enabledKinds,
-  HEADER,
   isKind,
   issueChallenge,
   KIND_OPS,
@@ -129,29 +129,19 @@ const SCHEME_SAFE_APP_ID = /^[a-z][a-z0-9]*$/;
 /** An `nk_auth` marker: lower-case letters and `-` (auth_redirect.dart `AuthFlow`). */
 const MARKER = /^[a-z][a-z-]*$/;
 
-/** The request headers never forwarded: the caller's cookie and GoTrue
- *  credentials; `referer`, GoTrue's fallback redirect source (a pinned
- *  `redirect_to` must not be bypassable through it); `host` and `content-length`,
- *  which describe THIS request, not the one sent upstream; `origin`, which
- *  middleware/cors.ts has already refused; ⏱ 2026-09-30 (review of #1070) the
- *  two caller-writable address claims, so the only address GoTrue sees is the
- *  one Cloudflare stamps on the subrequest (never read here); and the four
- *  attestation headers, which are this Worker's business, not GoTrue's. */
-const DROPPED_REQUEST_HEADERS = [
-  'cookie',
-  'authorization',
-  'apikey',
-  'referer',
-  'host',
-  'content-length',
-  'origin',
-  'x-forwarded-for',
-  'x-real-ip',
-  HEADER.kind,
-  HEADER.challenge,
-  HEADER.key,
-  HEADER.proof,
-];
+/**
+ * ⏱ 2026-09-30 (review of #1070): the request headers FORWARDED to GoTrue — an
+ * ALLOWLIST, where there used to be a list of the ones dropped. What gotrue-dart
+ * sends that GoTrue reads, and nothing else; every header Cloudflare itself
+ * stamps (the `cf-` family, the connecting address among them) passes through
+ * as it arrived and is never read here. So the caller-writable address claims,
+ * the caller's cookie and GoTrue credentials, `referer` (GoTrue's fallback
+ * redirect source), `origin` and the four attestation headers are all dropped
+ * without this file naming any of them — tooling/ci/assert-glitchtip-no-ip.mjs
+ * refuses a Worker that names a client-address header at all, even to delete it.
+ */
+const GOTRUE_BOUND_HEADERS = new Set(['accept', 'accept-language', 'user-agent', 'x-client-info', 'x-request-id', 'x-supabase-api-version']);
+const sentOn = (name: string) => GOTRUE_BOUND_HEADERS.has(name) || name.startsWith('cf-');
 
 /** A refusal in GoTrue's own (pre-2024-01-01) error shape, which gotrue-dart maps by `error_code`. */
 function gotrueError(status: number, errorCode: string, msg: string, extra: Record<string, string> = {}): Response {
@@ -347,12 +337,12 @@ async function relay(c: Context<AppEnv>, op: NativeAuthOp, edge: StrictVerdict):
   if (op === 'token') upstreamUrl.searchParams.set('grant_type', 'password');
   else if (redirects[0] !== undefined) upstreamUrl.searchParams.set('redirect_to', redirects[0]);
 
-  // Forwarded as they arrived, as services/edge-shield forwards them, so the
-  // user agent and the same-zone client address reach GoTrue without this Worker
-  // reading either; then the caller's credentials out and ours in, exactly as
+  // Only the allowlisted headers go on (GOTRUE_BOUND_HEADERS), each as it
+  // arrived, so the user agent and Cloudflare's own stamps reach GoTrue without
+  // this Worker reading any of them; then our credentials in, exactly as
   // sessions.ts builds them.
-  const headers = new Headers(c.req.raw.headers);
-  for (const h of DROPPED_REQUEST_HEADERS) headers.delete(h);
+  const headers = new Headers();
+  for (const [name, value] of c.req.raw.headers) if (sentOn(name)) headers.set(name, value);
   headers.set('Content-Type', 'application/json');
   headers.set('apikey', serviceRoleKey);
   headers.set('Authorization', `Bearer ${serviceRoleKey}`);

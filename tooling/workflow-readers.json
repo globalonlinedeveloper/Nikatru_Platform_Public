@@ -364,6 +364,10 @@
       "property": "refuses-blind",
       "evidence": "the compare models exactly one composed build.",
       "reads": "deploy-web.yml's one tooling/ci/flutter-release-build.mjs web build call, then the --dart-define names and composed values its --print prints (lead ruling W37-R1, 2026-09-26); no call, two, a hand-typed `flutter build web` beside it, a failing --print and a URL define that is gone are COVERAGE LOST too"
+    },
+    {
+      "path": "tooling/ci/assert-money-config.mjs",
+      "property": "workflow-scan"
     }
   ],
   "_resolves": [

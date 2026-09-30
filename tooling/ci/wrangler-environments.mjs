@@ -48,8 +48,8 @@ export const SANDBOX_FORBIDDEN_SECRETS = Object.freeze(['SUPABASE_SERVICE_ROLE_K
  *  `environment: sandbox`), puts a Worker secret (`secret put`, `secret bulk`,
  *  or a wrangler-action `secrets:` input) and names the secret. A job that only
  *  READS the key into its own env (a capture seeding a test account) puts
- *  nothing into the Worker and is not a finding. Comments are read on purpose: a
- *  step commented out today is one uncomment from putting the secret. `where`
+ *  nothing into the Worker and is not a finding. The caller hands in the
+ *  workflow's text as workflow-scan.mjs reads it (comments blanked). `where`
  *  prefixes each message. */
 export function sandboxWorkflowSecretFindings(where, text) {
   const steps = String(text).split(/\n(?=\s*- (?:name|uses|run|id):)/);

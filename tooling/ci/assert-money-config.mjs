@@ -124,12 +124,13 @@
 //
 // Usage:  node tooling/ci/assert-money-config.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
 import { isObject, sandboxEnvironmentFindings, sandboxWorkflowSecretFindings } from './wrangler-environments.mjs';
+import { parseWorkflow, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -533,13 +534,17 @@ for (const c of configs) {
 // sandbox environment's own block; a secret is usually put by a DEPLOY step, so
 // EVERY workflow is read, step by step (sandboxWorkflowSecretFindings says what
 // a putting step is) — by content, not by file name, so a rename cannot walk a
-// step out of scope. A tree with no workflows directory deploys nothing, and has
-// nothing here to grade.
+// step out of scope — through workflow-scan.mjs, the one workflow parse
+// (tooling/workflow-readers.json). A tree with no workflows directory deploys
+// nothing, and has nothing here to grade.
 {
-  const dir = join(ROOT, '.github', 'workflows');
+  const dir = join(ROOT, WORKFLOW_DIR);
   if (existsSync(dir)) {
-    for (const name of readdirSync(dir).filter((n) => /\.ya?ml$/.test(n)).sort()) {
-      for (const m of sandboxWorkflowSecretFindings(`.github/workflows/${name}`, readFileSync(join(dir, name), 'utf8'))) fail(m);
+    for (const name of listDir(dir).filter((n) => /\.ya?ml$/.test(n)).sort()) {
+      const rel = `${WORKFLOW_DIR}/${name}`;
+      const parsed = parseWorkflow(ROOT, rel);
+      if (parsed === null) continue;
+      for (const m of sandboxWorkflowSecretFindings(rel, parsed.lines.map((l) => l.text).join('\n'))) fail(m);
     }
   }
 }
