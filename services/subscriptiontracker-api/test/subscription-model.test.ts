@@ -25,6 +25,8 @@ import { todayYmd } from '../src/lib/d1';
 import init0001 from '../migrations/0001_init.sql?raw';
 import init0002 from '../migrations/0002_schema_debt.sql?raw';
 import init0003 from '../migrations/0003_subscription_model.sql?raw';
+import init0004 from '../migrations/0004_notice_days.sql?raw';
+import init0005 from '../migrations/0005_lifecycle_history_categories.sql?raw';
 import { realAppDb, asUser, SqliteD1 } from './harness';
 
 const U = 'user-a';
@@ -114,8 +116,9 @@ describe('THE CONTRACT — a non-USD, weekly, trialing row round-trips', () => {
     const created = await create(INR_WEEKLY_TRIAL);
     const id = created.id as string;
     const one = await getOne(id);
-    const { payment_history: history, ...oneRow } = one;
+    const { payment_history: history, price_history: prices, ...oneRow } = one;
     expect(history).toEqual([]);
+    expect(prices).toEqual([]);
     expect(oneRow).toEqual(created);
     expect(await getAll()).toEqual([created]);
 
@@ -234,6 +237,8 @@ describe('OLD CLIENTS keep working', () => {
         "VALUES ('old-1', 'user-a', 'Prime', 1499, 'yearly', '2027-03-01', 0, 0)",
     );
     legacy.db.exec(init0003);
+    legacy.db.exec(init0004); // the rest of the set: GET / purges into 0005's price_change
+    legacy.db.exec(init0005);
     const call = asUser(subscriptions, '/v1/subscriptions', { APP_DB: legacy as never });
     const [row] = (await (await call(U, '/v1/subscriptions')).json()) as Row[];
     expect(row).toMatchObject({
@@ -426,9 +431,7 @@ const RED: ReadonlyArray<readonly [string, Row, string]> = [
   // status
   ['status outside the set', { status: 'deleted' }, 'status'],
   ['status null (NOT NULL column)', { status: null }, 'status'],
-  // …and the two the model has but no reader skips yet (ST-E3)
-  ['status paused, before the readers skip it', { status: 'paused' }, 'status'],
-  ['status cancelled, before the readers skip it', { status: 'cancelled', cancelled_on: '2026-09-28' }, 'status'],
+  // `paused` and `cancelled` are ACCEPTED since ST-E3 (lifecycle.test.ts).
   // rail
   ['rail outside the set', { rail: 'visa' }, 'rail'],
   // service_id
@@ -440,9 +443,11 @@ const RED: ReadonlyArray<readonly [string, Row, string]> = [
   ['cancel_url with an ftp: scheme', { cancel_url: 'ftp://example.com/x' }, 'cancel_url'],
   ['cancel_url that is not a URL', { cancel_url: 'hotstar.com/cancel' }, 'cancel_url'],
   ['cancel_url over its width', { cancel_url: `https://example.com/${'a'.repeat(2048)}` }, 'cancel_url'],
-  // deleted_at — served, not writable until ST-E3 teaches the readers
-  ['deleted_at as a real instant', { deleted_at: '2026-09-28T10:00:00Z' }, 'deleted_at'],
+  // deleted_at — writable since ST-E3 (lifecycle.test.ts), but only as an instant
   ['deleted_at as free text', { deleted_at: 'yesterday' }, 'deleted_at'],
+  ['deleted_at as a date with no time', { deleted_at: '2026-09-28' }, 'deleted_at'],
+  ['deleted_at with no zone', { deleted_at: '2026-09-28T10:00:00' }, 'deleted_at'],
+  ['deleted_at as a number', { deleted_at: 1_790_000_000_000 }, 'deleted_at'],
   // reminder_days
   ['reminder_days as a number', { reminder_days: 7 }, 'reminder_days'],
   ['reminder_days with a decimal', { reminder_days: [1.5] }, 'reminder_days'],

@@ -146,6 +146,8 @@ export interface Subscription {
   shared_with: string | null;
   share_numerator: number; // NOT NULL DEFAULT 1
   share_denominator: number; // NOT NULL DEFAULT 1
+  // ── added by 0005_lifecycle_history_categories.sql (ST-X8) ──
+  category_id: string | null; // a `categories` row; `category` keeps its name in step
   // ── added by 0004_notice_days.sql (ST-R8) ──
   notice_days: number | null; // whole days before next_renewal to cancel by; NULL = none
 }
@@ -168,6 +170,32 @@ export interface Payment {
   updated_at: string | null;
   currency: string | null;
   source: string | null;
+}
+
+/** A price_change row (0005_lifecycle_history_categories.sql, [ADR 077] §5.2).
+ *  Written only by PATCH /v1/subscriptions/:id, when an edit moves the price,
+ *  the exact amount or the currency. */
+export interface PriceChange {
+  id: string;
+  subscription_id: string;
+  user_id: string;
+  old_price: number | null;
+  new_price: number | null;
+  old_price_minor: number | null;
+  new_price_minor: number | null;
+  old_currency: string | null;
+  new_currency: string | null;
+  changed_at: string; // ISO-8601 instant
+}
+
+/** A categories row (0005). A built-in has `user_id` NULL and `builtin` 1. */
+export interface Category {
+  id: string;
+  user_id: string | null;
+  name: string;
+  builtin: number; // 0 | 1 in DB
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 // `Entitlement` WAS HERE and was deleted 2026-08-09 with its last reader: both

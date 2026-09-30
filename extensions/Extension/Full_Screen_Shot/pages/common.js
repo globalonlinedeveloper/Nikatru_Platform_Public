@@ -33,6 +33,7 @@ const FS_DEFAULTS = {
   clipboardFit: true,
   autoDownload: false,
   autoOpenEditor: false,
+  singleKeyShortcuts: true,
   theme: 'system'
 };
 

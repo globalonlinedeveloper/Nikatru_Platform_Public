@@ -221,6 +221,9 @@ function buildBase(root) {
       exclude: ['**/*.node.js', '**/test/**', '**/*.md']
     },
     targets: { chromium: { stores: ['chrome', 'edge'] } },
+    /* One feature row, one cell per target, proven by the one wired suite
+       (EXB-13): check-catalog refuses a tool with targets and no table. */
+    parity: { features: { capture: { label: 'Capture', chromium: { state: 'works', proof: 'test/smoke.node.js' } } } },
     tests: ['test/smoke.node.js'],
     policy: {
       permissions: { storage: 'remembers the user\'s settings', activeTab: 'acts on the tab the user invoked it on' },
@@ -506,6 +509,39 @@ expect('--expect disagreeing with the manifest fails', {
 expect('a tag naming another tool fails', {
   script: 'check-version.mjs', argv: ['goodtool', '--tag', 'othertool-v1.0.0'], root: fixture(), code: 1, contains: 'tag names this tool'
 });
+
+/* 🔴 §6 · THE VERSION IS NOT BEHIND ITS TREE (EXL-15, 2026-09-29). The only
+   cases here with a git history: the fixture is committed once (the stamp),
+   then a shipped file is changed in a second commit. Without an [Unreleased]
+   section that is a build of new bytes under the old number. */
+const GIT = ['-c', 'user.name=selftest', '-c', 'user.email=selftest@example.test', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main'];
+function gitFixture(after) {
+  return fixture(root => {
+    const g = (...a) => {
+      const res = spawnSync('git', [...GIT, ...a], { cwd: root, encoding: 'utf8', timeout: CHILD_BOUND_MS });
+      if (res.status !== 0) throw new Error('git ' + a.join(' ') + ' failed in the fixture: ' + res.stderr);
+    };
+    g('init', '-q'); g('add', '-A'); g('commit', '-q', '-m', 'stamp 1.0.0');
+    edit(root, TOOL + '/popup/popup.js', s => s + '// changed after the stamp\n');
+    g('commit', '-q', '-am', 'a shipped file moves');
+    if (after) { after(root); g('commit', '-q', '-am', 'after'); }
+  });
+}
+expect('a shipped-file commit after the version stamp, with no [Unreleased] section, fails', {
+  script: 'check-version.mjs', argv: ['goodtool'], code: 1, contains: 'a shipped file moves',
+  root: gitFixture()
+});
+expect('...and passes once an ## [Unreleased] section above the top heading records it', {
+  script: 'check-version.mjs', argv: ['goodtool'], code: 0, contains: 'recorded under ## [Unreleased]',
+  root: gitFixture(root => edit(root, TOOL + '/CHANGELOG.md', s => s.replace('## [1.0.0]', '## [Unreleased]\n\n- the popup moved\n\n## [1.0.0]')))
+});
+expect('...and passes once the version is bumped after it', {
+  script: 'check-version.mjs', argv: ['goodtool'], code: 0, contains: 'no commit has touched the',
+  root: gitFixture(root => {
+    edit(root, TOOL + '/CHANGELOG.md', s => s.replace('## [1.0.0]', '## [1.0.1] - 2026-09-29\n\n- the popup moved\n\n## [1.0.0]'));
+    edit(root, TOOL + '/manifest.json', s => s.replace('"version": "1.0.0"', '"version": "1.0.1"'));
+  })
+});
 /* F-b, 2026-09-25: §4 the Firefox overlay, and §4b — it holds only what differs
    from manifest.json. Each overlay is written out whole, one case at a time. */
 const ffOverlayFixture = overlay => fixture(root => {
@@ -584,6 +620,12 @@ console.log('\npolicy-check.mjs');
 }
 expect('a clean tool passes every gate', {
   script: 'policy-check.mjs', argv: ['goodtool'], root: fixture(), code: 0
+});
+/* EXL-02 (2026-09-29): a packaged-file count typed into tool.json's package
+   notes goes stale with every gate green; one that disagrees is refused. */
+expect('a package note stating a stale packaged-file count fails', {
+  script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'NOTES["package"]: "selects 99"',
+  root: fixture(root => { const t = readJson(root, TOOL + '/tool.json'); t.NOTES = { package: 'The packer selects 99 files.' }; writeJson(root, TOOL + '/tool.json', t); })
 });
 expect('a real fetch() in a shipped file fails', {
   script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'zero network calls',
@@ -1377,6 +1419,25 @@ expect('and by publish --check, whose content comparison alone would call it up 
   contains: CATALOGUE + ' starts with a UTF-8 byte order mark (EF BB BF)',
   root: catFixture(bomIt)
 });
+/* 🔴 LIMB 7 · THE FEATURE x TARGET TABLE (EXB-13, 2026-09-29). The seed's one
+   row is proven by its one wired suite; each case below breaks exactly one of
+   the two things the limb refuses. */
+const catTool = fn => catFixture(root => { const t = readJson(root, TOOL + '/tool.json'); fn(t, root); writeJson(root, TOOL + '/tool.json', t); });
+expect('a tool with build targets and no parity table is refused', {
+  script: 'check-catalog.mjs', argv: [], code: 1, contains: 'and no parity.features table',
+  root: catTool(t => { delete t.parity; })
+});
+expect('a works cell whose proof suite no CI job runs is refused', {
+  script: 'check-catalog.mjs', argv: [], code: 1, contains: 'which is not wired',
+  root: catTool((t, root) => {
+    w(root, TOOL + '/test/unwired.node.js', "'use strict';\n");
+    t.parity.features.capture.chromium.proof = 'test/unwired.node.js';
+  })
+});
+expect('a declared target with no column in a parity row is refused', {
+  script: 'check-catalog.mjs', argv: [], code: 1, contains: 'has no "firefox" column',
+  root: catTool(t => { t.targets.firefox = { overlay: null }; })
+});
 
 /* =====================================================================
    new-tool
@@ -1981,6 +2042,7 @@ function withStores(mutate = () => {}) {
   return fixture(root => {
     const t = readJson(root, TOOL + '/tool.json');
     t.targets = { chromium: { stores: ['chrome', 'edge'] }, firefox: { overlay: 'publish/manifest.firefox.json' } };
+    t.parity.features.capture.firefox = { state: 'works', proof: 'test/smoke.node.js' };
     writeJson(root, TOOL + '/publish/manifest.firefox.json', {
       browser_specific_settings: { gecko: { id: 'goodtool@example.test', strict_min_version: '128.0' } }
     });
@@ -2079,12 +2141,14 @@ const LISTING_SRC = {
   short: STORE_FILES['short-description.txt'],
   long: [
     STORE_FILES['long-description.txt'],
+    { parity: 'IN {{category}}' },
     { when: 'pro', text: 'Optional Pro: sign in.' },
     { when: 'sells', stores: ['chrome'], text: 'Sold by {{seller}}, not by Google.' },
     { when: 'sells', stores: ['firefox'], text: 'Sold by {{seller}}, not by Mozilla.' },
     { when: 'sells', stores: ['edge'], requires: 'priceRange', text: 'Pro: {{priceRange}}.' },
   ],
   stores: { chrome: { category: 'Productivity' }, edge: { category: 'Productivity' }, firefox: { category: 'Productivity' } },
+  language: { rendered: 'en' },
 };
 const OFFER = (term, amount) => ({ product_id: 'pro_' + term, amount_minor: amount, currency_code: 'USD', term, trial_days: 0 });
 function withListing(offerings, mutate = () => {}) {
@@ -2203,6 +2267,55 @@ const cfg = root => ['--app-config', path.join(root, 'app-config.json')];
   else bad(label, 'exit ' + res.code + '\n--- edge ---\n' + edge.slice(-300) + '\n--- output ---\n' + res.out.slice(-800));
 }
 
+/* 🔴 6b · EVERY STORE LOCALE HAS A LONG DESCRIPTION, OR AN HONEST LINE (EXB-07,
+   2026-09-29). A second catalogue makes the fixture a two-locale listing; the
+   long description is rendered once, so listing.json must say English-only. */
+{
+  const deLocale = (t, root) => w(root, TOOL + '/_locales/de/messages.json', JSON.stringify({ appName: { message: 'Gutes Werkzeug' } }, null, 2) + '\n');
+  const root = withListing(null, deLocale);
+  expect('a store locale with no long description and no englishOnly line is refused', {
+    script: 'check-store-metadata.mjs', argv: ['goodtool', ...cfg(root)], code: 1,
+    contains: 'Render the long description per locale, or declare language.englishOnly', root
+  });
+  const honest = withListing(null, (t, r) => {
+    deLocale(t, r);
+    edit(r, TOOL + '/store/listing.json', x => JSON.stringify({ ...JSON.parse(x), language: { rendered: 'en', englishOnly: 'One reviewed language.' } }, null, 2) + '\n');
+  });
+  expect('...and passes once listing.json declares the other locales English-only', {
+    script: 'check-store-metadata.mjs', argv: ['goodtool', ...cfg(honest)], code: 0,
+    contains: '1 other store locale(s) declared English-only', root: honest
+  });
+}
+
+/* 🔴 THE PARITY TABLE IS RENDERED WHERE USERS READ (EXB-13, 2026-09-29). A
+   `fallback` cell on the firefox target renders into the Firefox listing only;
+   every chromium cell works, so Chrome and Edge render nothing there. */
+{
+  const root = withListing(null, t => {
+    t.parity.features.capture.firefox = { state: 'fallback', note: 'Firefox asks first.' };
+  });
+  const res = run('render-listing.mjs', ['goodtool', ...cfg(root)], root);
+  const read = st => fs.readFileSync(path.join(root, TOOL, 'store/' + st + '/long-description.txt'), 'utf8');
+  const label = 'a fallback parity cell renders into the listing of the store that receives that target, and only there';
+  if (res.code === 0 && read('firefox').includes('\n\nIN Productivity\n• Capture: Firefox asks first.\n') &&
+      !read('chrome').includes('Firefox asks first') && !read('edge').includes('Firefox asks first')) ok(label, 'exit 0 · firefox only');
+  else bad(label, 'exit ' + res.code + '\n--- firefox ---\n' + read('firefox').slice(-200) + '\n--- output ---\n' + res.out.slice(-600));
+  const bare = withListing(null, (t, r) => {
+    edit(r, TOOL + '/store/listing.json', x => { const o = JSON.parse(x); o.long = o.long.filter(l => !(l && l.parity)); return JSON.stringify(o, null, 2) + '\n'; });
+  });
+  expect('a tool with a parity table and no parity line in its listing is refused', {
+    script: 'render-listing.mjs', argv: ['goodtool', '--check', ...cfg(bare)], code: 1,
+    contains: 'it must carry exactly one', root: bare
+  });
+}
+
+/* 🔴 A LISTING URL ON A CODE HOST (EXL-13, 2026-09-29). The support URL was
+   the code repository's GitHub issues page: public, and a 404 once private. */
+expect('a support URL on github.com is refused at any served state', {
+  script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 1, contains: 'support-url.txt is not on a code host',
+  root: withStores((t, root) => { w(root, TOOL + '/store/_shared/support-url.txt', 'https://github.com/example/repo/issues\n'); })
+});
+
 /* 🔴 THE LICENSOR IS NAMED, AND THE NOTICE SHIPS (EXT-3, 2026-09-24). */
 expect('a LICENSE whose Required Notice is still a placeholder is caught', {
   script: 'check-store-metadata.mjs', argv: ['goodtool'], code: 1, contains: 'LICENSE names its licensor',
@@ -2228,6 +2341,13 @@ expect('amo-metadata.mjs builds the listing payload from a complete firefox list
 expect('amo-metadata.mjs REFUSES while the LICENSE Required Notice is a placeholder', {
   script: 'amo-metadata.mjs', argv: ['--tool', 'goodtool', '--print'], code: 1, contains: 'still a placeholder',
   root: withStores(amoReady('Required Notice: Copyright <OWNER LEGAL NAME OR COMPANY> (<OPTIONAL URL>)'))
+});
+expect('amo-metadata.mjs refuses to send a support_url on a code host', {
+  script: 'amo-metadata.mjs', argv: ['--tool', 'goodtool', '--print'], code: 1, contains: 'a listing URL into the code repository',
+  root: withStores((t, root) => {
+    amoReady('Required Notice: Copyright Example Licensor (https://example.test)')(t, root);
+    w(root, TOOL + '/store/_shared/support-url.txt', 'https://github.com/example/repo/issues\n');
+  })
 });
 
 /* 🔴 THE AXIS MUTATIONS — the two that let builds and stores drift apart. */

@@ -36,4 +36,7 @@ Capture the FULL page (not just the visible screen), the VISIBLE area, a REGION 
 • Alt+Shift+V — capture visible area
 (Region and element capture shortcuts can be assigned at about:addons — the gear menu, then Manage Extension Shortcuts.)
 
+── IN FIREFOX ──
+• Capturing a local file (file://) page: Firefox gives an add-on no way to ask whether it may read local files, so FullShot attempts the capture without that check, and where Firefox does not allow it the capture fails.
+
 Free, private, and pixel-perfect.
