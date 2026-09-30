@@ -267,6 +267,7 @@
   "run-page-anchor.test.mjs": 67,
   "runner-budget.test.mjs": 31,
   "safe-rerun.test.mjs": 77,
+  "sandbox-service-role.test.mjs": 5,
   "scan-secrets.test.mjs": 12,
   "scan-workflows.test.mjs": 12,
   "screen-set.test.mjs": 35,
