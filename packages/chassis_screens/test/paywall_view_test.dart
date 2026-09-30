@@ -38,6 +38,12 @@ void main() {
     VoidCallback? onGoHome,
     VoidCallback? onRetry,
     VoidCallback? onBack,
+    List<PaywallFeature> proFeatures = const <PaywallFeature>[],
+    List<PaywallFeature> freeFeatures = const <PaywallFeature>[],
+    bool showTrial = false,
+    bool loadingOffers = false,
+    bool offline = false,
+    VoidCallback? onReconnect,
   }) => PaywallView(
     phase: phase,
     offers: plans,
@@ -49,6 +55,12 @@ void main() {
     onGoHome: onGoHome ?? () {},
     onRetry: onRetry ?? () {},
     onBack: onBack,
+    proFeatures: proFeatures,
+    freeFeatures: freeFeatures,
+    showTrial: showTrial,
+    loadingOffers: loadingOffers,
+    offline: offline,
+    onReconnect: onReconnect,
   );
 
   ChassisLocalizations l10nOf(WidgetTester tester) =>
@@ -103,7 +115,9 @@ void main() {
         view(plans: const <PaywallOffer>[]),
       );
       expect(find.byKey(PaywallView.upgradeButton), findsNothing);
-      expect(find.byType(Card), findsNothing);
+      // ⏱ ST-D9: a plan is an `AppCard` now; a `Card` finder here could no
+      // longer fail.
+      expect(find.byType(AppCard), findsNothing);
     });
 
     testWidgets('a rail that cannot start a checkout offers no buy button', (
@@ -243,26 +257,214 @@ void main() {
   //
   // O-IAP-PAYWALL-SHOWS-WEB-PRICE. A store sells "1 month free", and a month is
   // not a fixed number of days, so the row says a month — never "30-day".
+  const List<PaywallOffer> monthTrial = <PaywallOffer>[
+    PaywallOffer(
+      id: 'pro_monthly',
+      formattedPrice: r'$7.19',
+      term: 'month',
+      trial: (count: 1, unit: 'month'),
+    ),
+  ];
+
   testWidgets("a store's one-month trial reads as a month, not as days", (
     WidgetTester tester,
   ) async {
-    await pumpChassis(
-      tester,
-      kPhone,
-      view(
-        plans: const <PaywallOffer>[
-          PaywallOffer(
-            id: 'pro_monthly',
-            formattedPrice: r'$7.19',
-            term: 'month',
-            trial: (count: 1, unit: 'month'),
-          ),
-        ],
-      ),
-    );
+    await pumpChassis(tester, kPhone, view(plans: monthTrial, showTrial: true));
     expect(find.text(r'$7.19'), findsOneWidget);
     expect(find.textContaining('1-month free trial'), findsOneWidget);
     expect(find.textContaining('-day free trial'), findsNothing);
+    final ChassisLocalizations l10n = l10nOf(tester);
+    expect(find.text(l10n.paywallTermsTrial), findsOneWidget);
+    expect(find.text(l10n.paywallTerms), findsNothing);
+  });
+
+  // 🔴 D-25: NO TRIAL COPY UNTIL THE STORE SELLS ONE. The offering still
+  // carries its trial — config and store both may — and without the flag not
+  // one word of it is drawn, in the plan row or in the terms line. MUTATION
+  // PROOF: make `_PlanCard` read `offer.trial` without consulting `showTrial`
+  // and this goes red.
+  testWidgets('without showTrial, a configured trial is not worded at all', (
+    WidgetTester tester,
+  ) async {
+    await pumpChassis(tester, kPhone, view(plans: monthTrial));
+    final ChassisLocalizations l10n = l10nOf(tester);
+    expect(find.text(r'$7.19'), findsOneWidget);
+    expect(find.textContaining('free trial'), findsNothing);
+    expect(find.text(l10n.paywallTerm('month')), findsOneWidget);
+    expect(find.text(l10n.paywallTerms), findsOneWidget);
+    expect(find.text(l10n.paywallTermsTrial), findsNothing);
+  });
+
+  // ── (5) THE ST-D9 STATES: FEATURES, LOADING, OFFLINE, TWO COLUMNS ─────────
+  const List<PaywallFeature> pro = <PaywallFeature>[
+    PaywallFeature(
+      icon: Icons.savings_outlined,
+      title: 'Plan',
+      body: 'Budgets',
+    ),
+    PaywallFeature(icon: Icons.insights_outlined, title: 'Save'),
+  ];
+  const List<PaywallFeature> free = <PaywallFeature>[
+    PaywallFeature(icon: Icons.sync, title: 'Sync'),
+  ];
+
+  group('ST-D9 states', () {
+    // Text scaling is platform-owned: the user's 200% must reflow, never clip.
+    testWidgets('at 200% text on a phone nothing overflows', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(kPhone);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: ChassisLocalizations.localizationsDelegates,
+          supportedLocales: ChassisLocalizations.supportedLocales,
+          builder: (BuildContext context, Widget? child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: view(proFeatures: pro, freeFeatures: free),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('populated: the features the adapter chose, then the plans', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(proFeatures: pro, freeFeatures: free),
+      );
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.byKey(PaywallView.featuresCard), findsOneWidget);
+      expect(find.text(l10n.paywallProAdds), findsOneWidget);
+      expect(find.text(l10n.paywallAlwaysFree), findsOneWidget);
+      for (final String t in <String>['Plan', 'Budgets', 'Save', 'Sync']) {
+        expect(find.text(t), findsOneWidget, reason: t);
+      }
+      expect(find.byKey(PaywallView.offerCard('pro_monthly')), findsOneWidget);
+      // The features come BEFORE the plans in reading order on a phone.
+      expect(
+        tester.getTopLeft(find.byKey(PaywallView.featuresCard)).dy,
+        lessThan(
+          tester
+              .getTopLeft(find.byKey(PaywallView.offerCard('pro_monthly')))
+              .dy,
+        ),
+      );
+      // The terms line closes the list: below the fold on a phone.
+      await tester.scrollUntilVisible(
+        find.byKey(PaywallView.termsLine),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.byKey(PaywallView.termsLine), findsOneWidget);
+    });
+
+    testWidgets('no features: no card — the brick keeps a plans-only paywall', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(tester, kPhone, view());
+      expect(find.byKey(PaywallView.featuresCard), findsNothing);
+      expect(find.byKey(PaywallView.upgradeButton), findsNWidgets(2));
+    });
+
+    testWidgets('loading: placeholders, never "unavailable"', (
+      WidgetTester tester,
+    ) async {
+      // `canStartCheckout: false` — a store rail says so until its plans
+      // arrive, and that is exactly the window this state is for.
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(
+          plans: const <PaywallOffer>[],
+          canStartCheckout: false,
+          loadingOffers: true,
+        ),
+      );
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.byType(SkeletonList), findsOneWidget);
+      expect(find.text(l10n.paywallUnavailable), findsNothing);
+      expect(find.byKey(PaywallView.upgradeButton), findsNothing);
+    });
+
+    testWidgets('empty: no plans and not loading says unavailable', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(plans: const <PaywallOffer>[], proFeatures: pro),
+      );
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.text(l10n.paywallUnavailable), findsOneWidget);
+      expect(find.byType(SkeletonList), findsNothing);
+      // Nothing to buy, so nothing is pitched.
+      expect(find.byKey(PaywallView.featuresCard), findsNothing);
+      expect(find.byKey(PaywallView.termsLine), findsNothing);
+    });
+
+    testWidgets('offline: a warning strip, and the plans stay usable', (
+      WidgetTester tester,
+    ) async {
+      int reconnected = 0;
+      String? bought;
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(
+          offline: true,
+          onReconnect: () => reconnected++,
+          onBuy: (PaywallOffer o) => bought = o.id,
+        ),
+      );
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.text(l10n.offlineMessage), findsOneWidget);
+      await tester.tap(find.text(l10n.retry));
+      expect(reconnected, 1);
+      await tester.tap(find.byKey(PaywallView.upgradeButton).first);
+      expect(bought, 'pro_monthly');
+    });
+
+    testWidgets('expanded and up: features BESIDE the plans, wider cap', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(
+        tester,
+        kDesktop,
+        view(proFeatures: pro, freeFeatures: free),
+      );
+      final Rect features = tester.getRect(
+        find.byKey(PaywallView.featuresCard),
+      );
+      final Rect plan = tester.getRect(
+        find.byKey(PaywallView.offerCard('pro_monthly')),
+      );
+      expect(features.top, plan.top);
+      expect(features.right, lessThan(plan.left));
+      expect(
+        tester.getSize(find.byType(ListView)).width,
+        PaywallView.wideMaxWidth,
+      );
+    });
+
+    testWidgets('expanded, but in a phase with no plans: back to one pane', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(
+        tester,
+        kDesktop,
+        view(phase: PaywallPhase.pending, proFeatures: pro),
+      );
+      expect(tester.getSize(find.byType(ListView)).width, AppBreakpoints.pane);
+      expect(find.byKey(PaywallView.featuresCard), findsNothing);
+    });
   });
 
   // 🔴 ST-U2 (audit C34): every entry to the paywall is a `go` onto a root

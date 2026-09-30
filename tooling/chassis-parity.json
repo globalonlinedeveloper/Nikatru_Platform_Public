@@ -80,13 +80,13 @@
         {
           "file": "apps/subscriptiontracker/lib/features/monetization/manage_plan_screen.dart",
           "linesAtSince": 238,
-          "ceiling": 322,
+          "ceiling": 269,
           "template": 183
         },
         {
           "file": "apps/subscriptiontracker/lib/features/monetization/paywall_screen.dart",
           "linesAtSince": 302,
-          "ceiling": 373,
+          "ceiling": 294,
           "template": 212
         },
         {
@@ -159,7 +159,21 @@
           "callSiteDelta": -79,
           "measured": "Train ST-D DW2 (ST-D4) after its parity STOP: the Privacy card's new privacy-notice row took apps/subscriptiontracker/lib/features/settings/settings_screen.dart from its ceiling 2009 to 2030. Instead of raising the ceiling, the fork's private `_EditProfileDialog` + `_EditProfileDialogState` (the display-name editor ADR 067 already moved into packages/chassis_screens as `EditProfileDialog`) was deleted and the call site builds the chassis dialog, re-exported through features/shared/chassis_adapters.dart beside RowChevron (same line). 2030 -> 1951 = -79, wc -l after dart format (0 changed), Flutter 3.47.5; net against the base 2009 -> 1951 = -58. The ceiling falls 2009 -> 1951 in the same commit. The controller stays caller-owned, as in the brick adapter."
         },
-        {"file": "features/onboarding/onboarding_screen.dart", "piece": "OnboardingView", "on": "2026-09-28", "callSiteDelta": -285, "measured": "apps/subscriptiontracker/lib/features/onboarding/onboarding_screen.dart 467 -> 182 lines (wc -l, after dart format, Flutter 3.47.5, against `git show <base>:<path>`; re-measured 2026-09-29 on the train ST-D DW2 base, which carries ST-U3's capability-aware slide 2). Train ST-D8: the carousel mechanism — the reading cap on the WHOLE column (the chassis view had it per page, so its controls ran 1232 px wide on a 1280 window; this app's own width_onboarding_test was the property), scale-safe pages, the spoken \"Page 2 of 3\" (chassis key onboardingPageIndicator, en + ta) and Skip beside the primary — now lives in packages/chassis_screens/lib/firstrun/onboarding_screen.dart. The app file keeps its adapter: the subscriptiontrackerOnboarding1..3 copy with the [O3] AppConfig.copy override, the onboardingSeenProvider write and the /sign-in hand-off, and the first page's tile art (theme roles + AppSpacing/AppRadius only). The forced-dark stage (AppColors.onboardBg + white-alpha literals) is gone: the carousel follows the theme."}
+        {"file": "features/onboarding/onboarding_screen.dart", "piece": "OnboardingView", "on": "2026-09-28", "callSiteDelta": -285, "measured": "apps/subscriptiontracker/lib/features/onboarding/onboarding_screen.dart 467 -> 182 lines (wc -l, after dart format, Flutter 3.47.5, against `git show <base>:<path>`; re-measured 2026-09-29 on the train ST-D DW2 base, which carries ST-U3's capability-aware slide 2). Train ST-D8: the carousel mechanism — the reading cap on the WHOLE column (the chassis view had it per page, so its controls ran 1232 px wide on a 1280 window; this app's own width_onboarding_test was the property), scale-safe pages, the spoken \"Page 2 of 3\" (chassis key onboardingPageIndicator, en + ta) and Skip beside the primary — now lives in packages/chassis_screens/lib/firstrun/onboarding_screen.dart. The app file keeps its adapter: the subscriptiontrackerOnboarding1..3 copy with the [O3] AppConfig.copy override, the onboardingSeenProvider write and the /sign-in hand-off, and the first page's tile art (theme roles + AppSpacing/AppRadius only). The forced-dark stage (AppColors.onboardBg + white-alpha literals) is gone: the carousel follows the theme."},
+        {
+          "file": "features/monetization/manage_plan_screen.dart",
+          "piece": "ManagePlanView",
+          "on": "2026-09-29",
+          "callSiteDelta": -53,
+          "measured": "Train ST-D9. apps/subscriptiontracker/lib/features/monetization/manage_plan_screen.dart 322 -> 269 lines, `wc -l` against `git show origin/main:<path>` at 600cc6dc, both after `dart format` (Flutter 3.47.5). The Scaffold, the back control, the ContentPane.reading cap and every row moved into the chassis ManagePlanView, which ST-D9 redrew on the ST-D0 foundation (a status AppCard, AppListRow controls, a DecisionStrip outcome, and loading / failed / offline states). What stayed names a provider or this app's words: `_cancel` with its hoisted ProviderContainer and the `.requestCancellation()` call, `_restore` / `_converge` (restorePurchasesOf first, then the server re-read), the four outcome sentences and the restore sentence, now each with a tone, and the way to the plans (`context.go('/paywall')`) only while `sellingEnabledProvider` and the rail both say this build sells, and ST-T2's `planStatusOf` deciding checking / failed / answered (the chassis draws the first two under PlanStatusTile's keys). `restorePurchases` is byte-identical between the app and chassis arb files in both shipped locales; `managePlanTitle`, `planActive`/`planInactive`, `cancelPlan` and `restorePurchasesHint` stay app strings and cross as parameters."
+        },
+        {
+          "file": "features/monetization/paywall_screen.dart",
+          "piece": "PaywallView",
+          "on": "2026-09-29",
+          "callSiteDelta": -79,
+          "measured": "Train ST-D9. apps/subscriptiontracker/lib/features/monetization/paywall_screen.dart 373 -> 294 lines, `wc -l` against `git show origin/main:<path>` at 600cc6dc, both after `dart format` (Flutter 3.47.5). The whole `_body` phase switch and the layout moved into the chassis PaywallView, which ST-D9 redrew on the ST-D0 foundation (AppCard plans, DecisionStrip pending / unlocked / refused, a config-driven features card, two columns from 840 up). The private `_PaywallPhase` and `_RefusedView` enums became the chassis PaywallPhase (a typedef, as in the brick) and PaywallRefusalView. ST-T2's `PlansLoadGate` still asks the rail once and feeds the view's loading flag (the chassis skeleton carries PlansLoading's key), so `_asking` never landed. What stayed: the phase machine, the four funnel emissions, `startCheckout` + `awaitUnlock`, the price under the reader's locale (`MoneyFormatter(l10n.localeName).format(o.price)`, handed to the view as its formatted price), and the D-11 pitch codes resolved through this app's catalogue. Every paywall string the view draws was already byte-identical between the app and chassis arb files in both shipped locales."
+        }
       ],
       "_adoptedWhy": "⏱ 2026-09-15 · [ADR 086] ONE PIECE AT A TIME: the app now imports the package in the files listed here; tooling/ci/assert-chassis-parity.mjs holds that list equal to the scan and every callSiteDelta negative ([ADR 066]). The row is deleted when the last template file is adopted.",
       "_filesNote": "The TEMPLATE files that import this package, as the guard re-derives them. Two of them have no counterpart in the app at all (features/auth/sign_in_screen.dart, features/firstrun/onboarding_screen.dart) — the app's sign-in and onboarding live under different names — which is why this list is the template's and not the app's."
