@@ -1,0 +1,727 @@
+{
+ "_recorded": "gh pr view 1066 --json number,headRefOid,statusCheckRollup, read 2026-09-30. One CI run on the head, green: the plain case. Only GitHub Actions URLs are kept.",
+ "number": 1066,
+ "headRefOid": "5fff648ced5df30a22c98549393cfcdcce2b1277",
+ "statusCheckRollup": [
+  {
+   "__typename": "CheckRun",
+   "name": "lane-workers / detect (workers)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878221",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:26Z",
+   "completedAt": "2026-09-29T22:31:42Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Analyze JavaScript and TypeScript",
+   "workflowName": "CodeQL",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640034737/job/109649875136",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:09Z",
+   "completedAt": "2026-09-29T22:34:21Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "lane-workers / fail-fast · detect",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650068640",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:42Z",
+   "completedAt": "2026-09-29T22:31:42Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "lane-workers / ${{ matrix.worker }} Worker (typecheck + test + dry-run)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650069093",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:42Z",
+   "completedAt": "2026-09-29T22:31:42Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "lane-workers / fail-fast · worker",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650069030",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:42Z",
+   "completedAt": "2026-09-29T22:31:42Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "lane-workers / lane-verdict",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650067939",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:51Z",
+   "completedAt": "2026-09-29T22:31:59Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Guards — the guards can still fail",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878117",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:10Z",
+   "completedAt": "2026-09-29T22:40:56Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Guards — platform, data and ops",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878096",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:09Z",
+   "completedAt": "2026-09-29T22:32:10Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Guards — privacy, legal and money",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649879050",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:48Z",
+   "completedAt": "2026-09-29T22:32:08Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Guards — store, release and versioning",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649877840",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:09Z",
+   "completedAt": "2026-09-29T22:32:46Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Guards — chassis, app surface and packages",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878152",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:20Z",
+   "completedAt": "2026-09-29T22:31:41Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Security — secret and workflow scanners",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878174",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:09Z",
+   "completedAt": "2026-09-29T22:31:46Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Design tokens (build + drift, all three outputs)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878180",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:10Z",
+   "completedAt": "2026-09-29T22:31:24Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Shared site build",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878141",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:10Z",
+   "completedAt": "2026-09-29T22:31:22Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Content pipeline (recipe -> pack -> sign -> gate)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878133",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:09Z",
+   "completedAt": "2026-09-29T22:31:21Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "App brick (stamp both variants + analyze + validate the clone contract)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878313",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:44Z",
+   "completedAt": "2026-09-29T22:36:30Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Static sites (functions parse + required files)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878206",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:34Z",
+   "completedAt": "2026-09-29T22:31:49Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Workspace gate (melos analyze + test)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878228",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:09Z",
+   "completedAt": "2026-09-29T22:39:12Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Derive the app set from the pub workspace",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878351",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:35Z",
+   "completedAt": "2026-09-29T22:31:43Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / The extensions are still build-free",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878706",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:44Z",
+   "completedAt": "2026-09-29T22:31:58Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / The shared contract has not drifted",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878635",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:25Z",
+   "completedAt": "2026-09-29T22:31:31Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / Gate inventory (which gates exist)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878075",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:09Z",
+   "completedAt": "2026-09-29T22:31:18Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / Discover affected tools",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878140",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:25Z",
+   "completedAt": "2026-09-29T22:31:36Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / secrets-scan",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649879080",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:49Z",
+   "completedAt": "2026-09-29T22:31:57Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / catalogue",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878253",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:09Z",
+   "completedAt": "2026-09-29T22:31:21Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / core sims",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878801",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:49Z",
+   "completedAt": "2026-09-29T22:32:01Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / Gate self-test (do the gates bite?)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878604",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:39Z",
+   "completedAt": "2026-09-29T22:32:26Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / templates parse (the tree every future tool is stamped from)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878143",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:10Z",
+   "completedAt": "2026-09-29T22:31:57Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / Proof freshness (is the weekly cron alive?)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649878179",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:24Z",
+   "completedAt": "2026-09-29T22:31:32Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / fail-fast · build-free",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650155224",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:59Z",
+   "completedAt": "2026-09-29T22:31:58Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / fail-fast · contracts",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650015368",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:32Z",
+   "completedAt": "2026-09-29T22:31:32Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / fail-fast · gate-inventory",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649949559",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:20Z",
+   "completedAt": "2026-09-29T22:31:20Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / fail-fast · discover",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650041744",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:37Z",
+   "completedAt": "2026-09-29T22:31:37Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / gates · ${{ matrix.tool }}",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650041676",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:37Z",
+   "completedAt": "2026-09-29T22:31:37Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / fail-fast · secrets-scan",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650149073",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:57Z",
+   "completedAt": "2026-09-29T22:31:57Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / fail-fast · catalogue",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649956642",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:21Z",
+   "completedAt": "2026-09-29T22:31:21Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / fail-fast · core",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650169239",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:32:01Z",
+   "completedAt": "2026-09-29T22:32:01Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / fail-fast · selftest",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650304741",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:32:27Z",
+   "completedAt": "2026-09-29T22:32:26Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / fail-fast · templates",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650150280",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:58Z",
+   "completedAt": "2026-09-29T22:31:57Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / fail-fast · e2e-proof-fresh",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650020152",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:33Z",
+   "completedAt": "2026-09-29T22:31:33Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / fail-fast · gates",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650042598",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:37Z",
+   "completedAt": "2026-09-29T22:31:37Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / sims · ${{ matrix.tool }} · node ${{ matrix.node }}",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650042802",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:37Z",
+   "completedAt": "2026-09-29T22:31:37Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / fail-fast · sims",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650043245",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:37Z",
+   "completedAt": "2026-09-29T22:31:37Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / package · ${{ matrix.tool }} · ${{ matrix.target }} · ${{ matrix.os }}",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650042867",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:37Z",
+   "completedAt": "2026-09-29T22:31:37Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / fail-fast · package",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650043843",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:37Z",
+   "completedAt": "2026-09-29T22:31:37Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "extensions / ci-required",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650302525",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:32:30Z",
+   "completedAt": "2026-09-29T22:32:38Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · guard-meta",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109652964573",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:40:57Z",
+   "completedAt": "2026-09-29T22:40:56Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · guards-platform",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650215677",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:32:11Z",
+   "completedAt": "2026-09-29T22:32:10Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · guards-legal",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650207236",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:32:09Z",
+   "completedAt": "2026-09-29T22:32:09Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · guards-store",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650414036",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:32:47Z",
+   "completedAt": "2026-09-29T22:32:46Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · guards-chassis",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650064024",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:41Z",
+   "completedAt": "2026-09-29T22:31:41Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · security-scan",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650089889",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:46Z",
+   "completedAt": "2026-09-29T22:31:46Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · site-tokens",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649972620",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:24Z",
+   "completedAt": "2026-09-29T22:31:24Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · site-shared",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649965334",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:23Z",
+   "completedAt": "2026-09-29T22:31:23Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · content-gate",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109649958550",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:22Z",
+   "completedAt": "2026-09-29T22:31:21Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · app-brick",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109651599560",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:36:31Z",
+   "completedAt": "2026-09-29T22:36:31Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · sites",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650110506",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:50Z",
+   "completedAt": "2026-09-29T22:31:50Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · workspace-gate",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109652436847",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:39:13Z",
+   "completedAt": "2026-09-29T22:39:12Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · prepare",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650077635",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:31:44Z",
+   "completedAt": "2026-09-29T22:31:44Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Store submission dry runs (subscriptiontracker)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650076070",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:51Z",
+   "completedAt": "2026-09-29T22:32:03Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Android artifacts (built, inspected, discarded) (subscriptiontracker)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650076101",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:32:00Z",
+   "completedAt": "2026-09-29T22:44:57Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Web artifacts (built, booted, discarded) (subscriptiontracker)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650076118",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:32:01Z",
+   "completedAt": "2026-09-29T22:34:12Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "Linux artifacts (built, inspected, discarded) (subscriptiontracker)",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650076133",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:59Z",
+   "completedAt": "2026-09-29T22:35:17Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · app-dryrun",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650181745",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:32:04Z",
+   "completedAt": "2026-09-29T22:32:04Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · android-artifacts",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109654184857",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:44:57Z",
+   "completedAt": "2026-09-29T22:44:57Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · web-artifacts",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109650864236",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:34:12Z",
+   "completedAt": "2026-09-29T22:34:12Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "fail-fast · linux-artifacts",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109651211000",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:35:18Z",
+   "completedAt": "2026-09-29T22:35:17Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "ci-gate",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109654183304",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:45:00Z",
+   "completedAt": "2026-09-29T22:45:03Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "deploy-web",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109654220410",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:45:04Z",
+   "completedAt": "2026-09-29T22:45:04Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "deploy-workers",
+   "workflowName": "CI",
+   "detailsUrl": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36640035226/job/109654221090",
+   "status": "COMPLETED",
+   "conclusion": "SKIPPED",
+   "startedAt": "2026-09-29T22:45:04Z",
+   "completedAt": "2026-09-29T22:45:04Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "third-party check (fixture)",
+   "workflowName": "",
+   "detailsUrl": "https://example.invalid/third-party-check",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:31:15Z",
+   "completedAt": "2026-09-29T22:31:15Z"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "third-party check (fixture)",
+   "workflowName": "",
+   "detailsUrl": "https://example.invalid/third-party-check",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-09-29T22:34:11Z",
+   "completedAt": "2026-09-29T22:34:13Z"
+  }
+ ]
+}

@@ -45,8 +45,10 @@
 //   2. EVERY LINE COUNT IS RECOMPUTED. The ledger's number is compared against
 //      the tree's, per file. A ledger that records what it wishes were true is
 //      the prose problem again with a .json extension.
-//   3. THE DECLARED TOTALS ARE RECOMPUTED from the rows, so the summary cannot
-//      drift from the detail it summarises.
+//   3. THE TOTALS ARE DERIVED, NEVER COMMITTED. They are computed from the
+//      rows and printed on every run, and a `totals` block in the ledger is
+//      refused: a committed summary was the one line every PR touching the
+//      brick rewrote, so any two of them conflicted (rv2-pipe-a P-2).
 //   4. A `MOVES` ROW MUST CARRY A NEGATIVE `callSiteDelta`. This is [ADR 066]'s
 //      rule made mechanical: a screen moves only when the calling code
 //      measurably SHRINKS. It is not hypothetical - chassis steps 0-3 GREW this
@@ -443,18 +445,21 @@ for (const s of LIB_SUBJECTS) {
   }
 }
 
-// ── 3 · declared totals recomputed from the rows ────────────────────────────
-const t = ledger.totals ?? {};
-const declaredFiles = t.files;
-const declaredLines = t.lines;
-if (declaredFiles !== treeSet.size) {
-  problems.push(`totals.files says ${declaredFiles}; the tree has ${treeSet.size}.`);
-}
-if (declaredLines !== sumLines) {
-  problems.push(`totals.lines says ${declaredLines}; the rows sum to ${sumLines}.`);
-}
-if (t.unclassified !== unclassified) {
-  problems.push(`totals.unclassified says ${t.unclassified}; ${unclassified} row(s) are UNCLASSIFIED.`);
+// ── 3 · the totals are DERIVED here, never committed ────────────────────────
+// ⏱ 2026-09-29 (rv2-pipe-a P-2): the ledger carried `totals` {files, lines,
+// unclassified}, a committed summary of the rows, so ANY two PRs that each
+// touched a brick file both rewrote totals.lines and conflicted with each other,
+// though their rows did not. Measured over the 30 merges to 93402826: 8 of them
+// conflicted on this file against a main 6 merges back, every one on
+// totals.lines. The summary line below prints the totals from the tree; a
+// committed `totals` block is refused, so the shared line cannot come back.
+if (Object.prototype.hasOwnProperty.call(ledger, 'totals')) {
+  problems.push(
+    `${LEDGER_REL} carries a \`totals\` block. The totals are derived from the rows on every run ` +
+      `(${treeSet.size} file(s), ${sumLines} line(s), ${unclassified} UNCLASSIFIED) and printed below; a ` +
+      'committed copy is one shared line every PR touching the brick rewrites, so two such PRs always ' +
+      'conflict. Delete the block.',
+  );
 }
 
 // ── 5 · the ratchet ─────────────────────────────────────────────────────────

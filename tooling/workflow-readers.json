@@ -329,6 +329,11 @@
       "reads": "every `uses:` of each workflow and local composite action, to find the remote actions whose `runs.using` a vendor retirement would reach"
     },
     {
+      "path": "tooling/ops/land-rules.mjs",
+      "property": "path-compare",
+      "reads": "nothing: MAIN_WORKFLOW_PATH (.github/workflows/ci.yml) is compared with a workflow run object path field, because a run name is ci.yml run-name. The module imports nothing from the filesystem (R6)."
+    },
+    {
       "path": "tooling/ops/redeploy-stranded.mjs",
       "property": "workflow-scan",
       "reads": "each deploy lane (push on main + workflow_dispatch + a named assert-gate-passed.mjs step), ci.yml's ci-gate job name, and redeploy-stranded.yml's workflow_run list, to derive which lanes a ci-gate cascade can strand"
