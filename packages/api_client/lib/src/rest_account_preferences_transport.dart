@@ -23,7 +23,7 @@ class RestAccountPreferencesTransport
   Future<Map<String, core.PreferenceValue>> read() async {
     try {
       final Object? body = await _rest.get('/preferences');
-      return _rest.decode(
+      return _rest.decode<Map<String, core.PreferenceValue>>(
         body,
         (Object? b) => _document((b! as Map<String, Object?>)['preferences']),
       );
@@ -47,7 +47,7 @@ class RestAccountPreferencesTransport
     };
     try {
       final Object? answer = await _rest.patch('/preferences', body: body);
-      return _rest.decode(answer, (Object? b) {
+      return _rest.decode<core.PreferencesPatchResult>(answer, (Object? b) {
         final Map<String, Object?> m = b! as Map<String, Object?>;
         final Object? conflicts = m['conflicts'];
         return core.PreferencesPatchResult(
