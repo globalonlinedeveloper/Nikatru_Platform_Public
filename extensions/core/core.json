@@ -1,10 +1,10 @@
 {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "channel": "v1",
   "license": "MPL-2.0",
   "summary": "Shared runtime for the extensions in this repo. Vendored into each tool as vendor/core/ — copied and hash-verified, never linked, and never named _core/ (Chrome refuses to load a package with a root path starting with '_'; _locales is the only exception).",
 
-  "versionNote": "0.2.0, not 1.0.0. The channel is v1 because the directory is the major version; the version number is a claim about how much of that channel exists, and 1 of the 11 specified v1 modules is built. It becomes 1.0.0 when the v1 surface is real, not when the directory is created. BUMPED 2026-09-06, 0.1.0 -> 0.2.0: v1/entitlement-contract.js joined the vendored surface. Additive within the channel (docs/CORE-POLICY.md §2 rule 2) — nothing already on the surface changed, so no adopting tool has to do anything, and the minor is the honest unit for 'the surface grew'. It is NOT a specified module, so the specified counts below are unmoved; a version bump that also moved them would be claiming progress against the architecture that did not happen.",
+  "versionNote": "0.3.0, not 1.0.0. The channel is v1 because the directory is the major version; the version number is a claim about how much of that channel exists, and 1 of the 11 specified v1 modules is built. It becomes 1.0.0 when the v1 surface is real, not when the directory is created. BUMPED 2026-09-06, 0.1.0 -> 0.2.0: v1/entitlement-contract.js joined the vendored surface. Additive within the channel (docs/CORE-POLICY.md §2 rule 2) — nothing already on the surface changed, so no adopting tool has to do anything, and the minor is the honest unit for 'the surface grew'. BUMPED 2026-09-30, 0.2.0 -> 0.3.0: v1/entitlement-client.js joined the vendored surface (round-2 findings EXA-01, EXM-03). Additive again. Neither is a specified module, so the specified counts below are unmoved; a version bump that also moved them would be claiming progress against the architecture that did not happen.",
 
   "modulesKeyNote": "Keys are FILE paths relative to core/, because that is what scripts/sync-core.mjs looks up: for each file it copies it reads modules[channel + '/' + relativePath] and surfaces that entry's caveat. Do not collapse v1/ui/*.* into one entry — three lookups would silently miss. The architecture's module list is coarser than this map; each specified entry carries a \"module\" field naming which of its 11 entries the file belongs to, so the count below is derivable from this data rather than asserted beside it.",
 
@@ -41,6 +41,13 @@
       "owns": "The entitlement vocabulary: the money environments, the revocation-reason set, and the one member that RESTORES access. Predicates only — no storage, no messaging, no network.",
       "syncedFrom": "../contracts/entitlement/contract.js",
       "caveat": "NOT a promotion and NOT authored here. It is a byte-identical mirror of the monorepo's contracts/entitlement/contract.js, written by extensions/scripts/sync-contracts.mjs, and it is the one file on this surface that is an ES MODULE rather than a classic script attaching to a namespace (docs/CORE-POLICY.md §2 rule 4). The deviation is deliberate: the Cloudflare Worker imports those same bytes, and a hand-rewritten classic-script version would be a SECOND copy of the money vocabulary, which is the failure contracts/ exists to prevent. It carries no promotedFrom/sourceSha256 pair on purpose — a hand-kept hash would have to be re-typed on every legitimate contract edit, and two mechanical recomputations already exist: extensions/scripts/check-contracts-sync.mjs (extensions.yml) and tooling/ci/assert-entitlement-contract.mjs limb 4, which compares it against the SQL seed in services/platform/migrations/0004_money_rail.sql rather than against another copy."
+    },
+
+    "v1/entitlement-client.js": {
+      "status": "built",
+      "specified": false,
+      "owns": "The account-checked Pro entitlement every extension holds (decisions/ext/013; design research/session-2026-09-23/extension-account-check §3.2-§3.3): the fail-closed isPro decision (7-day offline ceiling, paid-through, lifetime), what each answer to GET /v1/entitlements does (false drops Pro on the same tick, a 401/403 carrying OUR API JSON code (invalid_link / wrong_product) deletes the credential and cache while any other 401/403 (a WAF page, a captive portal) is held as a retry, anything else holds), the daily on-demand check, the PKCE sign-in URL and returned-code check, and sign-out that deletes locally first. NO NETWORK: the one call is the adopting tool's, handed in as a transport, and requests are built only from three paths and four keys.",
+      "caveat": "WRITTEN HERE, not promoted — no tool had an entitlement client to promote. No tool adopts it yet: FullShot's adoption (its pro/ network file, the manifest CSP and identity permission, and the guards that change with them) is the rest of O-EXTENSION-ACCOUNT-CHECK-UNBUILT."
     },
 
     "v1/ns.js": {
@@ -148,9 +155,9 @@
     "specifiedV1ModuleFiles": 13,
     "specifiedV1ModulesBuilt": 1,
     "specifiedV1ModulesNotBuilt": 10,
-    "unspecifiedV1FilesBuilt": 3,
+    "unspecifiedV1FilesBuilt": 4,
     "devHelpersBuilt": 3,
-    "coreTestSims": 4
+    "coreTestSims": 5
   },
 
   "countsVerifiedBy": "core/test/coverage.node.js. Every number in `counts` above is recomputed from this file's own `modules` map and from the tree on disk, on every CI run, and a mismatch fails the core job. Mind the unit when reading a mismatch: specifiedV1Modules/Built/NotBuilt are in MODULES (11), specifiedV1ModuleFiles is in FILES (13), and counting built/not-built in the wrong unit produces 1/12 instead of 1/10 — which looks like an error in this file and is an error in the counter.",

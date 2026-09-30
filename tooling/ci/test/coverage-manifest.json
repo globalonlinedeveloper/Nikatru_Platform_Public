@@ -198,7 +198,7 @@
     50,
 
   "channel-register.test.mjs":
-    339,
+    341,
 
   "channel-surface.test.mjs":
     7,
@@ -340,6 +340,9 @@
 
   "erasure-reach.test.mjs":
     53,
+
+  "ext-connect.test.mjs":
+    15,
 
   "extension-publish.test.mjs":
     57,
