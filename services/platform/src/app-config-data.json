@@ -177,7 +177,7 @@
             "INR": 17900,
             "readBack": {
               "apple": { "USD": 719, "INR": 17900, "readAt": "2026-09-22T08:43:23Z" },
-              "google": { "USD": 719, "INR": 17900, "readAt": "2026-09-24" }
+              "google": { "USD": 719, "INR": 17900, "readAt": "2026-09-22T20:11:19Z" }
             }
           },
           "rails": {
@@ -193,7 +193,7 @@
             "INR": 119900,
             "readBack": {
               "apple": { "USD": 4199, "INR": 119900, "readAt": "2026-09-22T08:43:23Z" },
-              "google": { "USD": 4199, "INR": 119900, "readAt": "2026-09-24" }
+              "google": { "USD": 4199, "INR": 119900, "readAt": "2026-09-22T20:11:29Z" }
             }
           },
           "rails": {
