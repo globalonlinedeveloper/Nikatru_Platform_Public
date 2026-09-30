@@ -103,21 +103,25 @@ const ACCEPTED = {
 };
 
 describe('credentialOrigin — the issuer, or this machine, nothing else', () => {
-  for (const kind of CREDENTIAL_KINDS) {
-    for (const [given, want] of ACCEPTED[kind]) {
-      test(`GREEN: ${kind} accepts ${JSON.stringify(given)} as ${want}`, () => {
-        assert.equal(credentialOrigin(given, kind), want);
-      });
+  // One case per direction, every row asserted inside it with the row named
+  // (assert-no-loop-cases: a case a loop declares is invisible to the ratchet).
+  test('GREEN: every issuer origin is accepted, normalised to the bare origin', () => {
+    for (const kind of CREDENTIAL_KINDS) {
+      for (const [given, want] of ACCEPTED[kind]) assert.equal(credentialOrigin(given, kind), want, `${kind} ${JSON.stringify(given)}`);
     }
-    for (const bad of HOSTILE[kind]) {
-      test(`RED: ${kind} refuses ${JSON.stringify(bad)}`, () => {
+  });
+
+  test('RED: every hostile shape is refused, with the refusal naming the issuer rule', () => {
+    for (const kind of CREDENTIAL_KINDS) {
+      for (const bad of HOSTILE[kind]) {
         assert.throws(
           () => credentialOrigin(bad, kind),
           (e) => e instanceof CredentialOriginRefused && /^refusing to send the .* credential to .*: not its issuer \(allowed: /.test(e.message),
+          `${kind} ${JSON.stringify(bad)} was accepted`,
         );
-      });
+      }
     }
-  }
+  });
 
   test('a refusal never echoes userinfo, nor a value that is not a URL', () => {
     for (const [bad, secret] of [['https://user:s3cret-pw@auth-api.nikatru.com', 's3cret-pw'], ['not-a-url-but-pasted-key-material', 'pasted-key-material']]) {

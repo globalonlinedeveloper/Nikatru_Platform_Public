@@ -702,14 +702,14 @@ describe('the CLI refuses rather than passes', () => {
       assert.deepEqual([...new Set(r.asked.map((u) => new URL(u).origin))], ['https://glitchtip.nikatru.com']);
     });
 
-    for (const instance of ['https://glitchtip.nikatru.com.evil.invalid', 'https://evil.invalid/glitchtip.nikatru.com', 'http://127.0.0.1:1', 'https://t:x@glitchtip.nikatru.com']) {
-      test(`RED — instance ${instance}: COVERAGE LOST (2) and NOT ONE request`, () => {
+    test('RED — a wrong instance in the file (look-alike, path-smuggled, loopback, userinfo): COVERAGE LOST (2) and NOT ONE request', () => {
+      for (const instance of ['https://glitchtip.nikatru.com.evil.invalid', 'https://evil.invalid/glitchtip.nikatru.com', 'http://127.0.0.1:1', 'https://t:x@glitchtip.nikatru.com']) {
         const r = verdictWith(instance);
-        assert.equal(r.code, 2, r.out);
-        assert.match(r.out, /glitchtip-project\.json names its instance wrongly: refusing to send the GlitchTip credential/);
-        assert.deepEqual(r.asked, []);
-      });
-    }
+        assert.equal(r.code, 2, `${instance}\n${r.out}`);
+        assert.match(r.out, /glitchtip-project\.json names its instance wrongly: refusing to send the GlitchTip credential/, instance);
+        assert.deepEqual(r.asked, [], instance);
+      }
+    });
   });
 });
 
