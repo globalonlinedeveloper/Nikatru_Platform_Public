@@ -33,6 +33,16 @@ on:
   # the live Worker and live D1, so a red night may mean production is broken.
   schedule:
     - cron: '17 3 * * *' # 03:17 UTC nightly
+    # why: THE WEEKLY LEGS (AB-E2E-02, AB-A4-02). The same file's `native` job
+    # (every native target of the channel register) and `reset-revokes` job
+    # (the password-reset revocation check against Box C) run on this timer
+    # only; the web job runs on it too, so a green weekly run is still a green
+    # web proof and duty.workflow.e2e.yml reads it as one. Weekly, not nightly:
+    # five device runners and a throwaway account per week is the cost cut the
+    # leg register records. The job `if:`s name this exact string, and
+    # tooling/ci/assert-e2e-legs.mjs refuses a native leg whose job names a
+    # cron this block does not declare.
+    - cron: '43 4 * * 0' # 04:43 UTC Sundays
 
 permissions:
   contents: read
@@ -644,9 +654,227 @@ jobs:
           E2E_APP_ID: ${{ matrix.app }}
         run: node tooling/e2e/purge.mjs
 
+  # why: THE NATIVE LEGS (AB-E2E-02). Every leg above runs on web only; this
+  # job runs the anonymous and sign-in legs on each native target of
+  # tooling/channel-register.json, on its own device, against PRODUCTION auth
+  # (Box C), by the SAME drive native-auth-proof.yml dispatches:
+  # tooling/e2e/native_auth_proof.mjs over each app's
+  # integration_test/native_auth_proof_test.dart, which walks first-run to the
+  # real sign-in form, signs in to Home, reads the list back with the network
+  # off (AB-O1-05), and signs out. tooling/e2e-leg-register.json
+  # `nativeTargets` names this job per target, and assert-e2e-legs.mjs refuses
+  # a target with neither a job here nor a declared equivalent. The boot steps
+  # are native-auth-proof.yml's; see its `# why:` lines for each.
+  native:
+    name: Native leg — ${{ matrix.target }} (${{ matrix.app }})
+    needs: prepare
+    if: github.event.schedule == '43 4 * * 0'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+        target:
+          - android
+          - ios
+          - macos
+          - windows
+          - linux
+        include:
+          - target: android
+            os: ubuntu-24.04
+            device: emulator-5554
+            callback: --callback
+          - target: ios
+            os: macos-26
+            device: booted
+            callback: --callback
+          - target: macos
+            os: macos-26
+            device: macos
+            callback: --callback
+          - target: windows
+            os: windows-2025
+            device: windows
+            callback: ''
+          - target: linux
+            os: ubuntu-24.04
+            device: linux
+            callback: --callback
+    env:
+      APP: ${{ matrix.app }}
+      TARGET: ${{ matrix.target }}
+      DEVICE: ${{ matrix.device }}
+      CALLBACK: ${{ matrix.callback }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-flutter
+      - name: Linux build and session deps
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev \
+            xvfb gnome-keyring dbus-x11 desktop-file-utils xdg-utils
+      - name: Enable the desktop target
+        if: matrix.target == 'macos' || matrix.target == 'windows' || matrix.target == 'linux'
+        run: flutter config "--enable-${TARGET}-desktop"
+      - name: flutter pub get
+        working-directory: apps/${{ matrix.app }}
+        run: flutter pub get --enforce-lockfile
+      - name: Resolve this app's databases from its Worker's wrangler file
+        id: backend
+        run: node tooling/e2e/backend.mjs --app "$APP" --emit-output
+      - name: The app's API base, from the composer's rule
+        run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL "$APP" >> "$GITHUB_ENV"
+      - name: Boot an emulator
+        if: matrix.target == 'android'
+        env:
+          API_LEVEL: '34'
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            ls -l /dev/kvm || true
+            echo "::error title=Emulator::/dev/kvm is not usable by this user; an x86_64 emulator without KVM does not boot inside the ceiling"
+            exit 1
+          fi
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          export ANDROID_AVD_HOME="${RUNNER_TEMP}/avd"
+          echo "ANDROID_AVD_HOME=${ANDROID_AVD_HOME}" >> "$GITHUB_ENV"
+          mkdir -p "$ANDROID_AVD_HOME"
+          emu_log="${RUNNER_TEMP}/emulator.log"
+          image="system-images;android-${API_LEVEL};google_apis;x86_64"
+          why() {
+            echo "::error title=Emulator::$1"
+            echo "── emulator.log (tail) ──"
+            tail -n 60 "$emu_log" 2>/dev/null || echo "(no emulator.log)"
+            exit 1
+          }
+          yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          timeout 600 "$sdk/cmdline-tools/latest/bin/sdkmanager" --install emulator platform-tools "$image" > /dev/null
+          echo no | "$sdk/cmdline-tools/latest/bin/avdmanager" create avd --force -n proof -k "$image" --device pixel_6
+          "$sdk/emulator/emulator" -list-avds | grep -qx proof || why "avdmanager created no AVD the emulator can see in ANDROID_AVD_HOME=${ANDROID_AVD_HOME}"
+          nohup "$sdk/emulator/emulator" -avd proof -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect -accel on > "$emu_log" 2>&1 &
+          emu_pid=$!
+          echo "$sdk/platform-tools" >> "$GITHUB_PATH"
+          adb="$sdk/platform-tools/adb"
+          "$adb" start-server
+          deadline=$((SECONDS + 420))
+          phase="waiting for the device to appear"
+          while :; do
+            kill -0 "$emu_pid" 2>/dev/null || why "the emulator process exited during: ${phase}"
+            state="$("$adb" get-state 2>/dev/null | tr -d '\r' || true)"
+            if [ "$state" = "device" ]; then
+              phase="waiting for sys.boot_completed"
+              [ "$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)" = "1" ] && break
+            fi
+            [ "$SECONDS" -gt "$deadline" ] && why "not booted within 420 s (last phase: ${phase}; adb state: ${state:-none})"
+            sleep 5
+          done
+          echo "emulator booted at ${SECONDS}s"
+      - name: Boot an iPhone simulator
+        if: matrix.target == 'ios'
+        run: |
+          set -euo pipefail
+          udid="$(xcrun simctl list devices available -j | node -e 'const d = JSON.parse(require("fs").readFileSync(0, "utf8")).devices; for (const [rt, list] of Object.entries(d)) { if (!/iOS/.test(rt)) continue; const p = list.find((x) => /^iPhone/.test(x.name)); if (p) { console.log(p.udid); process.exit(0); } } process.exit(1);')"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          echo "SIM_UDID=${udid}" >> "$GITHUB_ENV"
+      - name: Provision throwaway confirmed user
+        id: user
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/e2e/provision_user.mjs
+      - name: The native leg — first run, sign in, the list offline, sign out
+        if: matrix.target != 'linux'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          E2E_EMAIL: ${{ steps.user.outputs.email }}
+          E2E_PASSWORD: ${{ steps.user.outputs.password }}
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" $CALLBACK
+      - name: The native leg — the bundle under xvfb, one D-Bus session
+        if: matrix.target == 'linux'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          E2E_EMAIL: ${{ steps.user.outputs.email }}
+          E2E_PASSWORD: ${{ steps.user.outputs.password }}
+        run: |
+          dbus-run-session -- bash -c '
+            set -euo pipefail
+            eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
+            export GNOME_KEYRING_CONTROL
+            xvfb-run -a -s "-screen 0 1920x1200x24" \
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --callback
+          '
+      - name: Purge the throwaway user
+        if: always() && steps.user.outcome != 'skipped'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          E2E_USER_ID: ${{ steps.user.outputs.user_id }}
+          E2E_APP_ID: ${{ matrix.app }}
+          PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+        run: node tooling/e2e/purge.mjs
+
+  # why: THE RESET-REVOKES CHECK, ON A SCHEDULE, AGAINST BOX C (AB-A4-02).
+  # tooling/ops/verify-password-reset-revokes.mjs was a laptop step whose last
+  # live run was against the hosted project; the ruling asks for green in the
+  # last 7 days. The production secret set IS Box C since the switch, and the
+  # job refuses to run the probe unless derive_expectation.mjs reads the stack
+  # as `selfhosted`, so a secret rotated back to a hosted project cannot pass as
+  # a Box C proof. `--sessions verify`: Box C captchas the password grant. The
+  # probe's exit 2 (UNKNOWN) and exit 1 (a session survived) both end the job.
+  reset-revokes:
+    name: A password reset revokes the other sessions (Box C)
+    if: github.event.schedule == '43 4 * * 0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - name: Derive what this run expects (stack and Workers trust)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: node tooling/e2e/derive_expectation.mjs
+      - name: The production secret set is Box C
+        run: |
+          set -uo pipefail
+          if [ "${E2E_STACK:-}" != 'selfhosted' ]; then
+            echo "::error title=Reset revokes::SUPABASE_URL resolves to the ${E2E_STACK:-underived} stack, not Box C. This check proves Box C's GoTrue ends the other sessions on a reset; run against any other stack it would prove nothing about the one in production."
+            exit 1
+          fi
+          echo "SUPABASE_URL is the self-hosted stack (Box C)."
+      - name: A password reset revokes the other session's refresh token
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node tooling/ops/verify-password-reset-revokes.mjs --sessions verify
+
   alert:
     name: Open or refresh the nightly-failure issue
-    needs: e2e
+    # why: the weekly legs file against the same durable issue; a skipped job
+    # (every night but the weekly one) is not a failure.
+    needs: [e2e, native, reset-revokes]
     # why: schedule only. A dispatched red is somebody already watching; an unattended
     # red is the one nobody sees. The issue is REUSED and never auto-closed --
     # closing it is the acknowledgement that a human looked.

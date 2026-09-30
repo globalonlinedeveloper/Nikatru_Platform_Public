@@ -1,6 +1,6 @@
 name: Symbolication proof
 
-run-name: "Symbolication proof by @${{ github.actor }}"
+run-name: "Symbolication proof — ${{ inputs.app }} by @${{ github.actor }}"
 
 # The measurements, the source reading and the expected verdict behind this file
 # are in docs/ci/symbolication-proof.md. Only `# why:` lines live here, and
@@ -20,10 +20,20 @@ on:
   # banner saying what is still broken. It does NOT mean GlitchTip symbolicates
   # Flutter Android frames. Exit 1 means a side CHANGED — including the good
   # direction. docs/ci/symbolication-proof.md has the whole table.
+  #
+  # why: THE APP IS AN INPUT (B-12). The lane named one app on nine lines and sat in
+  # assert-release-lane-generic.mjs's classified list, so app #2's crash probe had no
+  # lane. It is a per-app lane now (limb I): the gate job checks the input against the
+  # workspace app set and every other job reads its checked output.
   workflow_dispatch:
+    inputs:
+      app:
+        description: 'The app whose crash probe to prove: one id of the workspace app set (tooling/ci/assert-release-lane-generic.mjs --emit-apps). The gate job refuses any other value.'
+        required: true
+        type: string
 
 concurrency:
-  group: symbolication-proof
+  group: symbolication-proof-${{ inputs.app }}
   cancel-in-progress: false
 
 permissions:
@@ -32,16 +42,26 @@ permissions:
 
 jobs:
   gate:
-    name: Require ci-gate to have passed
+    name: Require ci-gate to have passed, for one app of the workspace
     runs-on: ubuntu-24.04
     # why: 25, not 10. assert-gate-passed.mjs polls for up to its own 1200 s default,
     # so any bound at or under 20 kills it mid-poll and replaces "timed out waiting
     # for ci-gate" with an opaque cancellation. Byte-identical in all five gate jobs.
     timeout-minutes: 25
+    outputs:
+      app: ${{ steps.app.outputs.app }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: The app input names one app of the workspace
+        id: app
+        env:
+          APP_INPUT: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
+          echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
       - name: Require ci-gate to have passed for this commit
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -55,7 +75,9 @@ jobs:
     needs: gate
     permissions:
       contents: read
+    # why: the gate's checked output, never inputs.app.
     env:
+      APP: ${{ needs.gate.outputs.app }}
       PROBE_SOURCE: live_probe/symbolication_crash_probe.dart
       SYMBOLS_DIR: build/symbols/probe-android-x64
     steps:
@@ -86,14 +108,14 @@ jobs:
         run: flutter pub get --enforce-lockfile
 
       - name: The expected crash site, read from the probe source
-        working-directory: apps/subscriptiontracker
+        working-directory: apps/${{ needs.gate.outputs.app }}
         run: node ../../tooling/ops/symbolication-proof.mjs expect --source "$PROBE_SOURCE"
 
       # why: x64 only, because that is what the emulator executes; the flags are
       # the release lanes' flags, so the frame under test is shaped exactly as a
       # shipped build's. No upload key: this APK is debug-signed and ships nowhere.
       - name: Build the crash probe (obfuscated release apk)
-        working-directory: apps/subscriptiontracker
+        working-directory: apps/${{ needs.gate.outputs.app }}
         env:
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
         run: >
@@ -108,7 +130,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: symbols-symbolication-probe-android-x64
-          path: apps/subscriptiontracker/build/symbols/probe-android-x64
+          path: apps/${{ needs.gate.outputs.app }}/build/symbols/probe-android-x64
           retention-days: 30
           if-no-files-found: error
 
@@ -129,7 +151,7 @@ jobs:
           gt_project="$(node -p "require('./tooling/ops/glitchtip-project.json').project")"
           node tooling/ops/upload-native-symbols.mjs \
             --cli "${RUNNER_TEMP}/glitchtip-cli" \
-            --dir "apps/subscriptiontracker/${SYMBOLS_DIR}" \
+            --dir "apps/${APP}/${SYMBOLS_DIR}" \
             --org "$gt_org" --project "$gt_project"
 
       # why: a plain script over the runner's preinstalled Android SDK, not
@@ -209,7 +231,7 @@ jobs:
             sleep 5
           done
           echo "emulator booted at ${SECONDS}s"
-          pkg=com.nikatru.subscriptiontracker
+          pkg="com.nikatru.${APP}"
           # Each sub-phase is ASSERTED, in order, and a failure prints the logcat
           # slice that says why (run 35458257697 reached SENT and nothing before
           # it, and the next step could only say "the probe did not run").
@@ -221,7 +243,7 @@ jobs:
             grep -E " flutter *:|AndroidRuntime|FATAL|SYMPROBE| Sentry|sentry|${pid:-NO_PID} " "${RUNNER_TEMP}/logcat.txt" | tail -n 120 || true
             exit 1
           }
-          timeout 120 "$adb" install -r apps/subscriptiontracker/build/app/outputs/flutter-apk/app-release.apk
+          timeout 120 "$adb" install -r "apps/${APP}/build/app/outputs/flutter-apk/app-release.apk"
           "$adb" shell pm path "$pkg" | grep -q '^package:' || probe_why "INSTALLED: pm has no path for $pkg after install"
           echo "phase ok: installed"
           "$adb" logcat -c
@@ -267,7 +289,7 @@ jobs:
 
       - name: Extract the raw trace and this run's marker from logcat
         id: extract
-        working-directory: apps/subscriptiontracker
+        working-directory: apps/${{ needs.gate.outputs.app }}
         run: >
           node ../../tooling/ops/symbolication-proof.mjs extract-trace
           --logcat "${RUNNER_TEMP}/logcat.txt" --out "${RUNNER_TEMP}/trace.txt"
@@ -282,7 +304,7 @@ jobs:
       # home, tooling/versions.json `native_stack_traces`.
       - name: Ground truth — decode the raw trace offline against the build's own symbols
         id: truth
-        working-directory: apps/subscriptiontracker
+        working-directory: apps/${{ needs.gate.outputs.app }}
         run: |
           set -euo pipefail
           nst="$(node -p "require('../../tooling/versions.json').native_stack_traces")"
@@ -305,7 +327,7 @@ jobs:
       # longer the one the record was measured on.
       - name: Verdict — both readings against the RECORDED state (ADR 090)
         if: ${{ always() && steps.extract.outcome == 'success' }}
-        working-directory: apps/subscriptiontracker
+        working-directory: apps/${{ needs.gate.outputs.app }}
         env:
           GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
         run: >

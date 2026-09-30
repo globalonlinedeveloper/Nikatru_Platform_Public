@@ -16,16 +16,28 @@
 // whose meaning changed between versions — would otherwise report "clean"
 // forever, which is this repo's single most repeated failure mode.
 //
-// Scope, deliberately: scans the WORKING TREE, not full git history (CI checks
-// out shallow, and history scanning is heavier separate work). Nothing private
-// has ever entered this repo's history — verified 2026-07-26.
+// Scope: the WORKING TREE always, and — when CI passes `--range` — every commit
+// in the change being checked: a PR's `base..head`, a push's `before..after`.
+// 🔴 UNTIL 2026-09-29 IT WAS THE TREE ONLY (`--no-git`), so a secret ADDED in one
+// commit of a PR and REMOVED in the next was never scanned by anything that runs
+// on a PR: the tree was clean by the time CI looked, the key was in the pushed
+// history for good, and TruffleHog — the one history reader — runs on a schedule
+// and reports only PROVIDER-VERIFIED findings, which this project's own secret
+// shapes (the rclone crypt password, the `nikatru-*` rules) can never be. [rv2
+// A-1] The range limb is step 6; its own self-test plants a key in commit 1 and
+// removes it in commit 2, and a range that cannot be named (a rewritten
+// `event.before`, an empty event field) is COVERAGE LOST, never a pass. Full
+// history is still out of scope: nothing private has ever entered it — verified
+// 2026-07-26 — and the range is what a PR can add.
 //
 // Pipeline requirement: Private/requirements/ → F-6.
 // (Stage 1's prose, pipeline/01-foundation.md, was folded into that JSON spec
 // 2026-08-15; the id still resolves against an `origin` field there.)
 //
 // Usage:  node tooling/ci/scan-secrets.mjs [repoRoot] [--gitleaks <path>]
-// Exit 0 = clean, 1 = a finding, a broken scanner, or a failed self-test.
+//                [--range <base>..<head> [--range-kind pr|push]]
+// Exit 0 = clean, 1 = a finding, a broken scanner, or a failed self-test,
+//      2 = COVERAGE LOST (the scan did not reach what it claims to cover).
 // ─────────────────────────────────────────────────────────────────────────────
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -46,9 +58,26 @@ const gitleaks = glIdx >= 0 ? args[glIdx + 1] : 'gitleaks';
 // identical to a clean repo — and the argument bug was feeding it the right
 // directory by accident. Corpus triage 2026-08-01 (#28). Negative-tested with a
 // stub scanner: restoring the -1 makes the no-flag form pass over the empty root.
-const flagValueIdx = glIdx >= 0 ? glIdx + 1 : -1;
-const positional = args.filter((a, i) => !a.startsWith('--') && i !== flagValueIdx);
+//
+// Every VALUE flag is listed here, so its value can never be read as the
+// positional repoRoot — `--range <base>..<head>` added a second one on 2026-09-29.
+const VALUE_FLAGS = ['--gitleaks', '--range', '--range-kind'];
+const flagValueIdxs = new Set(
+  VALUE_FLAGS.map((f) => args.indexOf(f)).filter((i) => i >= 0).map((i) => i + 1),
+);
+const positional = args.filter((a, i) => !a.startsWith('--') && !flagValueIdxs.has(i));
 const repoRoot = positional[0] ?? process.cwd();
+/** A value flag's value, or `null` when the flag is absent. A flag that is PRESENT
+ *  with no value is `''`, never `null`: `--range` followed by nothing (an empty
+ *  `${{ }}` expression word-split away) must not read as "no range requested". */
+const flagValue = (f) => {
+  const i = args.indexOf(f);
+  if (i < 0) return null;
+  const v = args[i + 1];
+  return v === undefined || v.startsWith('--') ? '' : v;
+};
+const rangeArg = flagValue('--range');
+const rangeKind = flagValue('--range-kind') ?? 'push';
 
 /** A PEM header trips gitleaks' `private-key` rule. Chosen over a fake cloud key
  *  because provider rules get allowlisted and revised between releases, whereas
@@ -224,6 +253,18 @@ function runGitleaks(sourceDir, extra = []) {
   );
 }
 
+/** Git mode: the same rules over every commit `logOpts` names (gitleaks runs
+ *  `git log -p` with them), instead of over the files on disk. */
+function runGitleaksHistory(sourceDir, logOpts, extra = []) {
+  return spawnSync(
+    exe,
+    [...lead, 'detect', '--redact', '--config', CONFIG, '--source', sourceDir, `--log-opts=${logOpts}`, ...extra],
+    { encoding: 'utf8', cwd: repoRoot },
+  );
+}
+
+const git = (cwd, ...a) => spawnSync('git', ['-C', cwd, ...a], { encoding: 'utf8' });
+
 // ── 0. COVERAGE: the scan must actually reach the repository ─────────────────
 // [pipeline F-10] The self-test below proves the SCANNER still detects. It says
 // nothing about whether the scanner is pointed at anything. gitleaks over an
@@ -252,6 +293,64 @@ if (absent.length) {
   console.error('  The scan is broken, not the tree. gitleaks over the wrong directory');
   console.error('  exits 0 with no findings, which is indistinguishable from a clean repo.');
   coverageLost();
+}
+
+// ── 0b. COVERAGE: the RANGE must be nameable before any scanner runs ─────────
+// Checked here, beside the markers and for the same reason: it needs git, not a
+// scanner, so it is negative-testable where no gitleaks is installed. Every
+// branch below is COVERAGE LOST (2), not a finding (1) and never a pass: a range
+// that cannot be named is a history nobody read.
+const ZERO_SHA = /^0{40}$/;
+const range = rangeArg === null ? null : resolveRange(rangeArg, rangeKind);
+
+function resolveRange(spec, kind) {
+  const lost = (why, ...more) => {
+    console.error(`✗ COVERAGE LOST — --range ${JSON.stringify(spec)} (${kind}): ${why}`);
+    for (const m of more) console.error(`  ${m}`);
+    // coverageLost()'s exit, spelled out: assert-guard-coverage reads a `lost`
+    // helper's own body for its exit and does not follow a call.
+    process.exit(2);
+  };
+  if (!['pr', 'push'].includes(kind)) lost(`--range-kind must be "pr" or "push", got ${JSON.stringify(kind)}.`);
+  // An empty `${{ github.event.before }}` gives `..<head>`, which git would read
+  // as `HEAD..<head>` — an EMPTY range that scans nothing and exits 0.
+  const m = /^([0-9a-f]{40})\.\.([0-9a-f]{40})$/i.exec(spec);
+  if (!m) lost('not <40-hex base>..<40-hex head>. An empty event field lands here, and git would read', 'the remainder as a different, usually empty, range that scans nothing and exits 0.');
+  const [, base, head] = m;
+  if (ZERO_SHA.test(base)) {
+    lost('the base is the all-zero SHA — a push that CREATED the ref has no `before` to bound the', 'range. Pass the default branch\'s merge-base as the base instead.');
+  }
+  const has = (sha) => git(repoRoot, 'cat-file', '-e', `${sha}^{commit}`).status === 0;
+  if (!has(head)) lost(`head ${head} is not in this clone — a shallow checkout? ci.yml's security-scan needs fetch-depth: 0.`);
+  if (!has(base)) {
+    lost(
+      kind === 'push'
+        ? `event.before ${base} is not in this clone. A force-push REWROTE history: the commits it replaced`
+        : `base ${base} is not in this clone — a shallow checkout? ci.yml's security-scan needs fetch-depth: 0.`,
+      ...(kind === 'push' ? ['are exactly the ones a history scan exists for, and no range names them now.'] : []),
+    );
+  }
+  let from = base;
+  if (kind === 'push') {
+    // `before..after` is only the pushed commits when before is an ANCESTOR of
+    // after. Otherwise the push rewrote history, and `before..after` silently
+    // means "after's side of a fork", which is not what was pushed.
+    if (git(repoRoot, 'merge-base', '--is-ancestor', base, head).status !== 0) {
+      lost(`event.before ${base} is not an ancestor of ${head}: the push REWROTE history (a force-push),`, 'so before..after is not the set of commits it added. Scan the rewritten range by hand.');
+    }
+  } else {
+    // A PR's base.sha is the base BRANCH TIP, which moves on after the PR forks
+    // from it — so it need not be an ancestor of head. The PR's own commits are
+    // merge-base..head.
+    const mb = git(repoRoot, 'merge-base', base, head);
+    if (mb.status !== 0 || !/^[0-9a-f]{40}$/i.test(mb.stdout.trim())) lost(`${base} and ${head} share no merge-base.`);
+    from = mb.stdout.trim();
+  }
+  const n = git(repoRoot, 'rev-list', '--count', `${from}..${head}`);
+  const count = Number(n.stdout?.trim());
+  if (n.status !== 0 || !Number.isInteger(count)) lost(`git rev-list --count ${from}..${head} failed: ${n.stderr?.trim()}`);
+  if (count === 0) lost(`${from}..${head} holds 0 commits — a scan of it reads nothing and would exit 0.`);
+  return { from, head, count, logOpts: `${from}..${head}` };
 }
 
 // ── 1. the scanner must exist at all ─────────────────────────────────────────
@@ -527,6 +626,114 @@ console.log(
   `ok  secret scan — no findings in the working tree (${volume} under ${repoRoot}; ` +
     `${CANARIES.length} planted shape(s) detected, ${NEGATIVE_CANARIES.length} real tracked line(s) left quiet)`,
 );
+
+// ── 6. HISTORY: every commit in the change, not only the tree it ends on ─────
+// [rv2 A-1] The tree scan above cannot see a secret that a PR adds in one commit
+// and removes in the next — the tree is clean, the key is in the pushed history.
+if (range === null) {
+  // Said out loud, never implied: a run with no --range read the tree only.
+  // ci.yml's security-scan always passes one, so this is the local form.
+  console.log('⬜ history not scanned — no --range given, so this run read the working tree only.');
+} else {
+  historySelfTest();
+  scanHistory(range);
+}
+
+/** The range limb's OWN red control, run on every CI invocation for the same
+ *  reason step 3 is: a git-mode scan that silently stopped reading history (a
+ *  flag whose meaning changed, `--no-git` creeping back in) reports clean
+ *  forever. Commit 1 plants a nikatru-shaped key, commit 2 removes it. The
+ *  history scan must name the rule; the TREE scan of the same checkout must NOT
+ *  — if it does, the fixture failed to remove the key and proves nothing. */
+function historySelfTest() {
+  const planted = CANARIES.find((c) => c.rule === 'nikatru-cloudflare-api-token');
+  const dir = mkdtempSync(join(tmpdir(), 'nikatru-histcanary-'));
+  const reportDir = mkdtempSync(join(tmpdir(), 'nikatru-histcanary-report-'));
+  const reportPath = join(reportDir, 'findings.json');
+  const g = (...a) => {
+    const r = git(dir, '-c', 'user.name=canary', '-c', 'user.email=canary@invalid', '-c', 'commit.gpgsign=false', ...a);
+    if (r.status !== 0) {
+      console.error(`✗ SELF-TEST FAILED — could not build the history fixture: git ${a[0]}: ${r.stderr?.trim()}`);
+      process.exit(1);
+    }
+    return r.stdout.trim();
+  };
+  try {
+    g('init', '-q');
+    writeFileSync(join(dir, 'README.md'), 'history canary\n');
+    g('add', '-A');
+    g('commit', '-q', '--no-verify', '-m', 'base');
+    const base = g('rev-parse', 'HEAD');
+    writeFileSync(join(dir, planted.file), `${planted.body}\n`);
+    g('add', '-A');
+    g('commit', '-q', '--no-verify', '-m', 'add a key');
+    rmSync(join(dir, planted.file));
+    g('add', '-A');
+    g('commit', '-q', '--no-verify', '-m', 'remove it again');
+    const head = g('rev-parse', 'HEAD');
+
+    const tree = runGitleaks(dir);
+    if (tree.status !== 0) {
+      console.error('✗ SELF-TEST FAILED — the history fixture still holds its key in the working tree, so it');
+      console.error('  cannot show that the range limb sees what the tree scan cannot.');
+      process.exit(1);
+    }
+    const hist = runGitleaksHistory(dir, `${base}..${head}`, ['--report-format', 'json', '--report-path', reportPath]);
+    let fired = [];
+    try {
+      const report = JSON.parse(readFileSync(reportPath, 'utf8') || '[]');
+      fired = (Array.isArray(report) ? report : []).map((f) => f.RuleID);
+    } catch {
+      fired = [];
+    }
+    if (hist.status === 0 || !fired.includes(planted.rule)) {
+      console.error(`✗ SELF-TEST FAILED — a "${planted.rule}" key added in one commit and removed in the next`);
+      console.error('  was not found by the history scan. It would pass a PR that leaked and then deleted a key.');
+      process.exit(1);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(reportDir, { recursive: true, force: true });
+  }
+  console.log('ok  history self-test — a key added then removed inside a range is still detected');
+}
+
+function scanHistory({ from, head, count, logOpts }) {
+  const dir = mkdtempSync(join(tmpdir(), 'nikatru-histscan-'));
+  const path = join(dir, 'findings.json');
+  try {
+    const run = runGitleaksHistory(repoRoot, logOpts, ['--report-format', 'json', '--report-path', path]);
+    if (run.status !== 0) {
+      console.error(`✗ secret scan found something in the history of ${logOpts}:`);
+      try {
+        for (const f of JSON.parse(readFileSync(path, 'utf8'))) {
+          console.error(`    ${`${f.Commit ?? ''}`.slice(0, 12)} ${f.File}:${f.StartLine}  rule=${f.RuleID}  ${f.Description ?? ''}`);
+        }
+      } catch {
+        console.error(run.stdout ?? '');
+        console.error(run.stderr ?? '');
+      }
+      console.error('  Removing it in a later commit does NOT help: the commit that added it is in the pushed');
+      console.error('  history for good. Rotate the credential first, then rewrite the branch before it merges.');
+      process.exit(1);
+    }
+    // gitleaks' git mode logs "N commits scanned." on stderr. ⚠️ UNMEASURED: that
+    // wording is read from gitleaks' source, not captured from a VALIDATED_AGAINST
+    // run (the sandbox this limb was drafted in had no binary), so an unreadable
+    // count is PRINTED, like step 5's, and only a readable ZERO fails.
+    const m = `${run.stderr ?? ''}`.match(/(\d[\d,]*)\s+commits?\s+scanned/i);
+    const scanned = m ? Number(m[1].replace(/,/g, '')) : null;
+    if (scanned === 0) {
+      console.error(`✗ COVERAGE LOST — gitleaks scanned 0 commits of ${logOpts}, which holds ${count}.`);
+      console.error('  This is NOT a clean history; nothing in the range was read.');
+      coverageLost();
+    }
+    const read = scanned === null ? 'commit count unreported' : `${scanned} commit(s) read`;
+    console.log(`ok  history scan — no findings in ${from.slice(0, 12)}..${head.slice(0, 12)} (${count} commit(s) in range, ${read})`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 /** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
  *  here, so the run exits 2 — never 1, which would read as a finding (AGENTS.md exit-code

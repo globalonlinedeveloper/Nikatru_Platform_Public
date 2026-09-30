@@ -570,6 +570,14 @@
   "@privacy": {
     "description": "Section heading above the analytics-consent withdrawal row."
   },
+  "privacyNotice": "Privacy notice",
+  "@privacyNotice": {
+    "description": "Train ST-D4. Opens Subly's OWN privacy notice, nikatru.com/subscriptiontracker/privacy (generated from apps/subscriptiontracker/privacy.yaml: what it collects, why, for how long). Top of the Privacy section, beside the consent control it informs; distinct from the portfolio privacy policy in the legal card. Same words as the chassis key of the same name."
+  },
+  "privacyNoticeSubtitle": "What this app collects, why, and for how long",
+  "@privacyNoticeSubtitle": {
+    "description": "Second line of the privacy-notice row. Describes the page; makes no claim about its contents."
+  },
   "prefRenewalAlerts": "Renewal alerts",
   "@prefRenewalAlerts": {
     "description": "Preference toggle: notify the user before a subscription renews."

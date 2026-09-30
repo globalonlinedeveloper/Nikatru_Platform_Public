@@ -2,41 +2,41 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_chassis_screens/firstrun/onboarding_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
-import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ContentPane;
+import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_notifications/nikatru_notifications.dart'
     show NotificationCapabilities;
 
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/windows_notification_identity.g.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../shared/widgets.dart';
 
-class OnboardingScreen extends ConsumerStatefulWidget {
+/// Subly's first run — an ADAPTER over the chassis [OnboardingView] (train
+/// ST-D8).
+///
+/// 🏗️ PIPELINE-FIRST. This file used to be the whole carousel: ~450 lines, a
+/// forced-dark stage and some forty colour, size and type literals, while the
+/// chassis carried a second carousel that every stamped app renders. The
+/// MECHANISM — the reading cap on the whole column, the scale-safe pages, the
+/// spoken "Page 2 of 3", Skip beside the primary on every page — now lives
+/// once in `package:nikatru_chassis_screens`, and this adapter keeps only what
+/// is Subly's: its WORDS (with the [O3] `AppConfig.copy` override), the
+/// seen-flag and the hand-off to `/sign-in`, and the tile art on the first
+/// page.
+///
+/// ⚠️ THE STAGE FOLLOWS THE THEME NOW. It was painted `AppColors.onboardBg`
+/// with white-alpha literals in BOTH themes; it now takes the scheme the user
+/// chose, like every other screen, and both halves are photographed in
+/// `test/onboarding_golden_test.dart`.
+class OnboardingScreen extends ConsumerWidget {
   const OnboardingScreen({super.key});
 
-  @override
-  ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
-}
-
-class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
-  final PageController _controller = PageController();
-  int _page = 0;
-
-  /// How many slides the carousel has.
-  ///
-  /// A CONSTANT rather than `_slides.length`, because the slides themselves are
-  /// no longer constant: their words come from the arb, which needs a
-  /// [BuildContext]. [_next] and [dispose] run outside `build`, so the count has
-  /// to be knowable without one. Three is a structural fact about this carousel
-  /// (three dots, three pages, `subscriptiontrackerOnboarding1..3`), not a property of the
-  /// copy — the l10n keys are numbered, so adding a fourth is an arb change and
-  /// a code change together, and the parity test in `l10n_parity_test.dart`
-  /// would catch a key added in only one locale.
-  static const int _slideCount = 3;
+  /// How many slides the carousel has — a structural fact about THIS
+  /// carousel (the l10n keys are numbered `subscriptiontrackerOnboarding1..3`),
+  /// not a property of the copy.
+  static const int slideCount = 3;
 
   /// The designed copy, from the arb.
   ///
@@ -60,7 +60,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   /// there, and the app gates every reminder on it). [canSchedule] picks the
   /// sentence, so a first run promises only what that platform can deliver.
   /// Slide 3 no longer promises a "mark unused" control that does not exist.
-  List<List<String>> _slides(
+  static List<List<String>> _slides(
     AppLocalizations l10n, {
     required bool canSchedule,
   }) => <List<String>>[
@@ -80,39 +80,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     ],
   ];
 
-  static const List<String> _tiles = <String>[
-    'NFX',
-    'SPT',
-    'GPT',
-    'DIS',
-    'YTB',
-    'ADB',
-  ];
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _next() {
-    if (_page < _slideCount - 1) {
-      _controller.nextPage(
-        duration: const Duration(milliseconds: 320),
-        curve: Curves.easeOut,
-      );
-    } else {
-      _finish();
-    }
-  }
-
   /// P2.6b: finishing onboarding must RECORD the fact, or the union router's
   /// gate sends the user straight back — the once-ever property the chassis
   /// test asserts. In memory first (the redirect reads it synchronously),
   /// then persisted by the controller.
-  Future<void> _finish() async {
+  static Future<void> _finish(BuildContext context, WidgetRef ref) async {
     await ref.read(onboardingSeenProvider.notifier).set(true);
-    if (!mounted) return;
+    if (!context.mounted) return;
     // The CANONICAL auth path (owner, 2026-08-09). `/login` still resolves —
     // it redirects here — but a first-run hand-off that has to be rewritten by
     // a redirect is a second answer to a settled question living in the app.
@@ -121,13 +95,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   /// [O3] An override REPLACES designed copy; designed copy is the FALLBACK —
   /// never the raw key. Empty/blank overrides fall through too.
-  String _copy(core.AppConfig? cfg, String key, String fallback) {
+  static String _copy(core.AppConfig? cfg, String key, String fallback) {
     final String? override = cfg?.copy[key];
     return (override == null || override.trim().isEmpty) ? fallback : override;
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
     // The same reading of the chassis matrix home's catch-up nudge makes.
@@ -137,332 +111,73 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       windows: kWindowsNotificationIdentity,
     ).canSchedule;
     final List<List<String>> slides = _slides(l10n, canSchedule: canSchedule);
-    return Scaffold(
-      backgroundColor: AppColors.onboardBg,
-      body: Stack(
-        children: <Widget>[
-          const Positioned(
-            top: -30,
-            right: -40,
-            child: _Blob(220, AppColors.accent),
+    return OnboardingView(
+      pages: <OnboardingPage>[
+        for (int i = 0; i < slideCount; i++)
+          OnboardingPage(
+            title: _copy(cfg, 'onboarding.${i + 1}.title', slides[i][0]),
+            body: _copy(cfg, 'onboarding.${i + 1}.body', slides[i][1]),
+            art: i == 0 ? const _ServiceTiles() : null,
           ),
-          const Positioned(
-            bottom: 160,
-            left: -50,
-            child: _Blob(200, AppColors.accent2),
-          ),
-          SafeArea(
-            // 🔴 THE CAP, AND THE `Padding` IT ABSORBED. This was a bare
-            // `Padding(fromLTRB(30, 40, 30, 30))`, so on a 1280 px window the
-            // slide body ran 1220 px lines — about 200 characters against the
-            // 45–75 the eye can track — and the Skip/Next row stretched from
-            // one edge of the display to the other. Same defect and same fix as
-            // the chassis carousel in the brick: `.reading` (720), because this
-            // is continuous PROSE and [AppBreakpoints.reading] is the constant
-            // that says so. Subly's unrouted copy of that twin was deleted
-            // 2026-08-09 — this is the screen the router shows, so this is the
-            // one the cap has to be on.
-            //
-            // ⚠️ THE PADDING MOVED INSIDE THE CAP, which is what `ContentPane`'s
-            // own `padding` is for. That keeps every width below 720 rendering
-            // pixel-identical to before (a `ConstrainedBox` may only tighten
-            // within what it was handed), and above 720 it takes the 30/30
-            // gutters out of the CAP rather than out of the surface — the
-            // arithmetic `test/width_onboarding_test.dart` pins.
-            //
-            // ⚠️ THE WHOLE COLUMN, NOT JUST THE CAROUSEL. The stamped twin caps
-            // per PAGE because its dots and button live outside the PageView's
-            // own padding; here the dots row, the Skip/Next row and the wordmark
-            // share this Padding with the carousel, so capping only the pages
-            // would leave a 720 px slide under a 1280 px button.
-            //
-            // ⚠️ `Align(topCenter)` HANDS THE COLUMN LOOSENED CONSTRAINTS, not
-            // tight ones — and a `Column` with the default `mainAxisSize.max`
-            // takes the full height it is offered, so the `Expanded` below still
-            // has a bounded height to divide and the layout is unchanged
-            // vertically. Only the horizontal half moved.
-            child: ContentPane.reading(
-              padding: const EdgeInsets.fromLTRB(30, 40, 30, 30),
-              child: Column(
-                children: <Widget>[
-                  Expanded(
-                    child: PageView.builder(
-                      controller: _controller,
-                      itemCount: _slideCount,
-                      onPageChanged: (int i) => setState(() => _page = i),
-                      itemBuilder: (BuildContext context, int i) {
-                        // P2.6b: scale-safe per the chassis text-scaling
-                        // invariant (clamped 1.0–2.0 at the app root). At 1.0
-                        // the ConstrainedBox minHeight makes the Column fill
-                        // the page, so the centring renders pixel-identical;
-                        // at 2.0 the content grows past the viewport and
-                        // SCROLLS instead of overflowing (measured: 359px
-                        // over in an 800x600 pump). PageView pans on the
-                        // horizontal axis, this scroll view on the vertical —
-                        // no gesture conflict.
-                        return LayoutBuilder(
-                          builder:
-                              (BuildContext context, BoxConstraints viewport) {
-                                return SingleChildScrollView(
-                                  child: ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                      minWidth: viewport.maxWidth,
-                                      minHeight: viewport.maxHeight,
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: <Widget>[
-                                        Container(
-                                          width: 58,
-                                          height: 58,
-                                          alignment: Alignment.center,
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(
-                                              18,
-                                            ),
-                                            color: const Color.fromRGBO(
-                                              255,
-                                              255,
-                                              255,
-                                              0.1,
-                                            ),
-                                            border: Border.all(
-                                              color: const Color.fromRGBO(
-                                                255,
-                                                255,
-                                                255,
-                                                0.18,
-                                              ),
-                                            ),
-                                          ),
-                                          child: const Text(
-                                            '◈',
-                                            style: TextStyle(
-                                              fontSize: 26,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 30),
-                                        Text(
-                                          _copy(
-                                            cfg,
-                                            'onboarding.${i + 1}.title',
-                                            slides[i][0],
-                                          ),
-                                          style: AppText.display.copyWith(
-                                            fontSize: 40,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 16),
-                                        Text(
-                                          _copy(
-                                            cfg,
-                                            'onboarding.${i + 1}.body',
-                                            slides[i][1],
-                                          ),
-                                          style: const TextStyle(
-                                            fontFamily: 'Manrope',
-                                            fontSize: 16,
-                                            height: 1.6,
-                                            color: Color.fromRGBO(
-                                              255,
-                                              255,
-                                              255,
-                                              0.68,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 30),
-                                        Wrap(
-                                          spacing: 9,
-                                          runSpacing: 9,
-                                          children: _tiles
-                                              .map(
-                                                (String t) => Container(
-                                                  width: 46,
-                                                  height: 46,
-                                                  alignment: Alignment.center,
-                                                  decoration: BoxDecoration(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          13,
-                                                        ),
-                                                    color: const Color.fromRGBO(
-                                                      255,
-                                                      255,
-                                                      255,
-                                                      0.08,
-                                                    ),
-                                                    border: Border.all(
-                                                      color:
-                                                          const Color.fromRGBO(
-                                                            255,
-                                                            255,
-                                                            255,
-                                                            0.14,
-                                                          ),
-                                                    ),
-                                                  ),
-                                                  child: Text(
-                                                    t,
-                                                    style: const TextStyle(
-                                                      fontFamily:
-                                                          'Space Grotesk',
-                                                      fontWeight:
-                                                          FontWeight.w700,
-                                                      fontSize: 12,
-                                                      color: Color.fromRGBO(
-                                                        255,
-                                                        255,
-                                                        255,
-                                                        0.9,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              )
-                                              .toList(),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                        );
-                      },
-                    ),
-                  ),
-                  // 🔴 THE DOTS ENCODE POSITION IN PIXEL WIDTH AND NOTHING ELSE.
-                  // Three `AnimatedContainer`s — 24 px wide when active, 7 when
-                  // not — with no text anywhere: the semantics tree for this row
-                  // is EMPTY, so a reader on a swipeable carousel is given no
-                  // way to know it is on slide 2 of 3, or that there are three.
-                  // The `PageView` above is swipeable but is not announced as
-                  // paged either, so this row is the only place the position can
-                  // come from.
-                  //
-                  // One `Semantics` over the ROW, not one per dot: the fact is
-                  // "2 of 3", which is a property of the group. Three labelled
-                  // dots would be three stops saying almost the same thing.
-                  Semantics(
-                    // `container: true` for the reason the calendar header and
-                    // the insights donut record: a label-only annotation with
-                    // no conflicting sibling is ABSORBED upward, which here
-                    // would glue "Page 2 of 3" onto the slide copy above it
-                    // instead of being a position you can go and check.
-                    container: true,
-                    label: l10n.a11yPageIndicator(_page + 1, _slideCount),
-                    child: Row(
-                      children: List<Widget>.generate(_slideCount, (int i) {
-                        final bool active = i == _page;
-                        return AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          margin: const EdgeInsets.only(right: 6),
-                          width: active ? 24 : 7,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(6),
-                            color: active
-                                ? Colors.white
-                                : const Color.fromRGBO(255, 255, 255, 0.3),
-                          ),
-                        );
-                      }),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: <Widget>[
-                      TextButton(
-                        onPressed: _finish,
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          backgroundColor: const Color.fromRGBO(
-                            255,
-                            255,
-                            255,
-                            0.08,
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 22,
-                            vertical: 16,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: Text(
-                          l10n.onboardingSkip,
-                          style: const TextStyle(
-                            fontFamily: 'Manrope',
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: _next,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppColors.accent,
-                            padding: const EdgeInsets.symmetric(vertical: 17),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                          child: Text(
-                            _page < _slideCount - 1
-                                ? l10n.onboardingNext
-                                : l10n.onboardingStart,
-                            style: const TextStyle(
-                              fontFamily: 'Manrope',
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  const Center(
-                    child: NikatruWordmark(onDark: true, height: 18),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+      ],
+      onFinish: () => _finish(context, ref),
+      footer: NikatruWordmark(
+        onDark: Theme.of(context).brightness == Brightness.dark,
+        height: AppSpacing.lg,
       ),
     );
   }
 }
 
-class _Blob extends StatelessWidget {
-  const _Blob(this.size, this.color);
-  final double size;
-  final Color color;
+/// The first page's picture: the services a board like this holds.
+///
+/// DECORATION, so it is excluded from semantics — "NFX, SPT, GPT" read aloud
+/// is six meaningless syllables before the title that says what the page is.
+/// Painted from theme roles and foundation tokens only.
+class _ServiceTiles extends StatelessWidget {
+  const _ServiceTiles();
+
+  static const List<String> _tiles = <String>[
+    'NFX',
+    'SPT',
+    'GPT',
+    'DIS',
+    'YTB',
+    'ADB',
+  ];
+
+  /// A tile is one [AppSpacing.xxxl] square — the tap-target size, so the grid
+  /// reads as the same family as the controls below it.
+  static const double tile = AppSpacing.xxxl;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color,
-        boxShadow: <BoxShadow>[
-          BoxShadow(color: color, blurRadius: 60, spreadRadius: 10),
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    return ExcludeSemantics(
+      child: Wrap(
+        spacing: AppSpacing.sm,
+        runSpacing: AppSpacing.sm,
+        children: <Widget>[
+          for (final String t in _tiles)
+            Container(
+              width: tile,
+              height: tile,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppRadius.control),
+                color: scheme.surfaceContainerHigh,
+                border: Border.all(color: scheme.outlineVariant),
+              ),
+              child: Text(
+                t,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontFamily: BrandTokens.fontDisplay,
+                  color: scheme.onSurface,
+                ),
+              ),
+            ),
         ],
-      ),
-      foregroundDecoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        color: Color.fromRGBO(18, 17, 28, 0.35),
       ),
     );
   }

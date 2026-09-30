@@ -1995,6 +1995,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome Web Store huzuia viendelezi kusoma kurasa zake, hivyo ukurasa huu hauwezi kunaswa."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Ukurasa huu unalindwa na kivinjari na hauwezi kunaswa."
   },

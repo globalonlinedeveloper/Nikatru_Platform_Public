@@ -73,7 +73,9 @@
 //       declared ceiling. (Or: no credential yet, and the dated tripwire below
 //       has not expired.)
 //   1 · it is OVER. Quota is being consumed in a way that can stop this account's
-//       runs, and the scheduled proofs go with them.
+//       runs, and the scheduled proofs go with them. OR the period's macOS
+//       minutes are over CURRENT_PERIOD_MACOS_MINUTES_CEILING (P-11), which the
+//       $0 net cannot show while the discount holds.
 //   2 · IT COULD NOT LOOK — no credential past the deadline, a non-200, an
 //       unreadable body, a ledger with no Actions rows in it. "I could not tell"
 //       must never read as "it is fine"; that is exactly how every claim this
@@ -129,6 +131,32 @@ const CURRENT_PERIOD_NET_BILLED_CEILING_USD = 0;
 // and gross minus discount will not always land on an exact zero. One cent is
 // below any real charge and above any rounding artefact.
 const CEILING_EPSILON_USD = 0.01;
+
+// ── THE macOS MINUTES CEILING (P-11) ─────────────────────────────────────────
+// Minutes of `Actions macOS*` runner time in the CURRENT billing period,
+// account-wide. The USD ceiling above cannot see these: at a 100% discount a
+// macOS minute nets $0 exactly like a Linux one, so ten times the cost went
+// unprinted and avoidable macOS lanes were invisible until the discount broke.
+//
+// 200, DERIVED rather than chosen: the 2,000-minute monthly free allowance
+// divided by the ×10 macOS multiplier (header). It is the macOS spend that ALONE
+// would exhaust the whole allowance the day the public-repo assumption fails.
+// The live ledger in test/runner-budget.test.mjs sits under it (2026-08: 49) and
+// over it (2026-07: 325; 2026-06: 1,861), so it is a line the real account has
+// already crossed both ways. Raising it is a decision to spend macOS minutes;
+// make it in a diff that says so.
+const CURRENT_PERIOD_MACOS_MINUTES_CEILING = 200;
+
+/** A runner SKU's operating system. `null` is "no OS this guard knows", which the
+ *  caller turns into COVERAGE LOST: a renamed macOS SKU filed as `other` would be
+ *  a macOS total of zero for the wrong reason. */
+export function skuOs(sku) {
+  const s = String(sku).toLowerCase();
+  if (s.includes('macos')) return 'macos';
+  if (s.includes('windows')) return 'windows';
+  if (s.includes('linux')) return 'linux';
+  return null;
+}
 
 // The dated tripwire. ARBITRARY and recorded as arbitrary: one month from the
 // day this guard was written, which is long enough for the owner to create a
@@ -191,7 +219,12 @@ export function billingPeriod(ms) {
  * Throws CouldNotLook for anything unreadable — a ledger that cannot be parsed
  * is not a ledger showing zero.
  */
-export function evaluateUsage(body, nowMs, ceilingUsd = CURRENT_PERIOD_NET_BILLED_CEILING_USD) {
+export function evaluateUsage(
+  body,
+  nowMs,
+  ceilingUsd = CURRENT_PERIOD_NET_BILLED_CEILING_USD,
+  macosCeilingMinutes = CURRENT_PERIOD_MACOS_MINUTES_CEILING,
+) {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
     throw new CouldNotLook('the usage report is not a JSON object');
   }
@@ -231,9 +264,29 @@ export function evaluateUsage(body, nowMs, ceilingUsd = CURRENT_PERIOD_NET_BILLE
         );
       }
     }
+    // A MINUTES row must name a runner OS, or the macOS ceiling below is not
+    // evidence: a row it cannot attribute lowers the macOS total silently, in the
+    // direction that passes — the same rule as the non-numeric amount above.
+    let os = null;
+    if (it.unitType === 'Minutes') {
+      if (typeof it.sku !== 'string' || it.sku === '') {
+        throw new CouldNotLook(
+          `a Minutes row dated ${it.date} carries no \`sku\` (${JSON.stringify(it.sku)}). COVERAGE LOST — ` +
+            'its runner OS is unknowable, so the macOS minutes ceiling could pass on a total it never saw',
+        );
+      }
+      os = skuOs(it.sku);
+      if (os === null) {
+        throw new CouldNotLook(
+          `a Minutes row dated ${it.date} has sku "${it.sku}", which names no runner OS this guard knows ` +
+            '(linux / windows / macos). COVERAGE LOST — a renamed macOS SKU would read as zero macOS minutes; ' +
+            'teach skuOs() the new name rather than letting it fall through',
+        );
+      }
+    }
     const p = it.date.slice(0, 7);
     if (!periods.has(p))
-      periods.set(p, { period: p, net: 0, netMinutes: 0, netStorage: 0, gross: 0, discount: 0, minutes: 0, byRepo: new Map() });
+      periods.set(p, { period: p, net: 0, netMinutes: 0, netStorage: 0, gross: 0, discount: 0, minutes: 0, macosMinutes: 0, byRepo: new Map(), bySku: new Map() });
     const acc = periods.get(p);
     acc.net += it.netAmount;
     // 🔴 SPLIT, because the ceiling below is about MINUTES and this ledger mixes
@@ -253,12 +306,20 @@ export function evaluateUsage(body, nowMs, ceilingUsd = CURRENT_PERIOD_NET_BILLE
     const r = acc.byRepo.get(repo);
     r.net += it.netAmount;
     if (it.unitType === 'Minutes') r.minutes += it.quantity;
+    if (os !== null) {
+      if (!acc.bySku.has(it.sku)) acc.bySku.set(it.sku, { os, minutes: 0, gross: 0, net: 0 });
+      const s = acc.bySku.get(it.sku);
+      s.minutes += it.quantity;
+      s.gross += it.grossAmount;
+      s.net += it.netAmount;
+      if (os === 'macos') acc.macosMinutes += it.quantity;
+    }
   }
 
   const period = billingPeriod(nowMs);
   const current =
     periods.get(period) ??
-    { period, net: 0, netMinutes: 0, netStorage: 0, gross: 0, discount: 0, minutes: 0, byRepo: new Map() };
+    { period, net: 0, netMinutes: 0, netStorage: 0, gross: 0, discount: 0, minutes: 0, macosMinutes: 0, byRepo: new Map(), bySku: new Map() };
   const prior = [...periods.values()].filter((p) => p.period !== period).sort((a, b) => a.period.localeCompare(b.period));
 
   return {
@@ -270,6 +331,8 @@ export function evaluateUsage(body, nowMs, ceilingUsd = CURRENT_PERIOD_NET_BILLE
     // The ceiling applies to MINUTES. Storage is reported (see `netStorage`) but
     // cannot stop a workflow from STARTING, which is the risk this guard names.
     over: current.netMinutes > ceilingUsd + CEILING_EPSILON_USD,
+    macosCeilingMinutes,
+    macosOver: current.macosMinutes > macosCeilingMinutes,
     rowsRead: actions.length,
   };
 }
@@ -441,6 +504,15 @@ async function main() {
   for (const [name, r] of [...c.byRepo.entries()].sort((a, b) => b[1].minutes - a[1].minutes)) {
     say(`      · ${name}: ${r.minutes.toLocaleString('en-US')} minute(s), net ${usd(r.net)}`);
   }
+  // Per SKU, every run: the per-repo lines above cannot show WHICH runner class
+  // the minutes went to, and a macOS minute costs ten Linux ones in gross.
+  say(
+    `⬜  by runner SKU, ${verdict.period} (macOS ${c.macosMinutes.toLocaleString('en-US')} of ` +
+      `${verdict.macosCeilingMinutes.toLocaleString('en-US')} minute(s) allowed):`,
+  );
+  for (const [sku, s] of [...c.bySku.entries()].sort((a, b) => b[1].minutes - a[1].minutes)) {
+    say(`      · sku ${sku} [${s.os}]: ${s.minutes.toLocaleString('en-US')} minute(s), gross ${usd(s.gross)}, net ${usd(s.net)}`);
+  }
 
   // Prior periods that WERE billed. Printed with their figures rather than
   // dropped, because a check that only ever looks at today cannot show that the
@@ -495,8 +567,23 @@ async function main() {
     console.error('        · did another repository on this account exhaust the shared allowance?');
     console.error('      Raising CURRENT_PERIOD_NET_BILLED_CEILING_USD is a decision that this factory now pays');
     console.error('      for CI. Make it in a diff that says so.');
-    return EXIT_OVER_CEILING;
   }
+  if (verdict.macosOver) {
+    const rows = [...c.bySku.entries()]
+      .filter(([, s]) => s.os === 'macos')
+      .map(([sku, s]) => `${sku} ${s.minutes.toLocaleString('en-US')} min`)
+      .join(', ');
+    console.error('');
+    console.error(
+      `FAIL  billing period ${verdict.period} spent ${c.macosMinutes.toLocaleString('en-US')} macOS minute(s), over the ` +
+        `declared ceiling of ${verdict.macosCeilingMinutes.toLocaleString('en-US')} (${rows}).`,
+    );
+    console.error('      Net can still read $0.00 here — the public-repo discount hides it — but each macOS minute');
+    console.error('      is ten of the 2,000 free ones the day that discount stops. Find the lane that spent them');
+    console.error('      (the per-repo lines above) and whether it needed a Mac before raising');
+    console.error('      CURRENT_PERIOD_MACOS_MINUTES_CEILING.');
+  }
+  if (verdict.over || verdict.macosOver) return EXIT_OVER_CEILING;
 
   // Report the number that was actually COMPARED, and name the rest separately.
   // Printing the mixed total beside the ceiling produced the sentence
@@ -504,7 +591,8 @@ async function main() {
   // and trains a reader to stop believing the line.
   say(
     `ok  runner budget — ${verdict.rowsRead} ledger row(s) read; period ${verdict.period} ` +
-      `MINUTES net ${usd(c.netMinutes)} is within the declared ceiling ${usd(verdict.ceilingUsd)}` +
+      `MINUTES net ${usd(c.netMinutes)} is within the declared ceiling ${usd(verdict.ceilingUsd)}; ` +
+      `macOS ${c.macosMinutes.toLocaleString('en-US')} minute(s) within ${verdict.macosCeilingMinutes.toLocaleString('en-US')}` +
       (c.netStorage > CEILING_EPSILON_USD
         ? ` · storage net ${usd(c.netStorage)} is NOT gated: it cannot stop a run from STARTING, ` +
           `and this ledger's netAmount is pre-included-allowance (GitHub's own page read BILLABLE $0 ` +

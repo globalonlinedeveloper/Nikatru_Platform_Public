@@ -41,6 +41,8 @@ export 'src/widgets/decision_strip.dart';
 export 'src/widgets/destructive_confirm_dialog.dart';
 export 'src/widgets/destructive_outcome_notice.dart';
 export 'src/widgets/form_sheet.dart';
+export 'src/widgets/month_grid.dart';
+export 'src/widgets/permission_priming.dart';
 export 'src/widgets/skeleton_list.dart';
 export 'src/widgets/system_screens.dart';
 export 'src/widgets/two_pane.dart';

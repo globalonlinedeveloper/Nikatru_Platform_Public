@@ -76,6 +76,7 @@ globalThis.fetch = async (url, init) => {
   if (u.includes('/admin/users/')) return new Response('', { status: ${plan.deleteStatus ?? 200} });
   if (u.includes('/admin/users')) return J(${plan.createStatus ?? 200}, { id: 'user-1' });
   if (u.includes('grant_type=password')) {
+    ${plan.captchaPassword ? "return J(400, { error_code: 'captcha_failed', msg: 'captcha verification process failed' });" : ''}
     signIns++;
     const t = ${plan.sameToken ? "'same-token'" : "'refresh-' + signIns"};
     return J(200, { access_token: 'at-' + signIns, refresh_token: t });
@@ -89,19 +90,34 @@ globalThis.fetch = async (url, init) => {
     }
     return ${plan.afterRefresh ?? "J(400, { error: 'invalid_grant' })"};
   }
-  if (u.includes('/admin/generate_link')) return J(200, { hashed_token: 'hashed-1' });
-  if (u.includes('/auth/v1/verify')) return J(200, { access_token: 'recovery-at' });
+  if (u.includes('/admin/generate_link')) {
+    // A magic link (the --sessions verify sign-in) carries a hex digest, the
+    // shape tooling/e2e/magic_link.mjs holds it to; the recovery link is as before.
+    if (JSON.parse(init.body).type === 'magiclink') return J(200, { hashed_token: ('ab' + (signIns + 1)).padEnd(56, '0') });
+    return J(200, { hashed_token: 'hashed-1' });
+  }
+  if (u.includes('/auth/v1/verify')) {
+    if (JSON.parse(init.body).type === 'magiclink') {
+      signIns++;
+      const t = ${plan.sameToken ? "'same-token'" : "'refresh-' + signIns"};
+      return J(200, { access_token: 'at-' + signIns, refresh_token: t });
+    }
+    return J(200, { access_token: 'recovery-at' });
+  }
   if (u.includes('/auth/v1/user')) return J(200, { id: 'user-1' });
   return J(404, { error: 'unrouted ' + u });
 };
 `;
 
-const run = (root, plan = {}) => {
+const run = (root, plan = {}, args = []) => {
   const pre = join(TMP, `stub-${seq++}.mjs`);
   writeFileSync(pre, stubSource(plan));
   const env = { ...process.env };
   for (const k of ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_Secret_key']) delete env[k];
-  const r = spawnSync(process.execPath, ['--import', pathToFileURL(pre).href, PROBE, root], { encoding: 'utf8', env });
+  // The stub rides NODE_OPTIONS so the probe is argv[1] — the executable this
+  // spawn runs, which is how assert-guard-coverage credits it as exercised.
+  env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ''} --import=${pathToFileURL(pre).href}`.trim();
+  const r = spawnSync(process.execPath, [PROBE, root, ...args], { encoding: 'utf8', env });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 };
 
@@ -169,5 +185,49 @@ describe('verify-password-reset-revokes — a VOID run is 2, never 0', () => {
     const r = run(makeRoot(), { deleteStatus: 500 });
     assert.notEqual(r.code, 0, r.out);
     assert.match(r.out, /THE PROBE USER WAS NOT DELETED/);
+  });
+});
+
+// ⏱ 2026-09-29 · AB-A4-02 — THE SCHEDULED RUN, AGAINST BOX C.
+// Box C's GoTrue captchas the password grant, so the scheduled leg signs its two
+// sessions in through `/verify` (`--sessions verify`). The stub below plays Box C:
+// every password grant answers captcha_failed.
+describe('verify-password-reset-revokes --sessions verify — the Box C run', () => {
+  const BOX_C = { captchaPassword: true };
+  const VERIFY = ['--sessions', 'verify'];
+
+  test('S1 POSITIVE CONTROL — sessions through /verify, control refreshes, subject rejected: exit 0', () => {
+    const r = run(makeRoot(), BOX_C, VERIFY);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /two distinct sessions established \(magic link through \/verify\)/);
+    assert.match(r.out, /CONTROL ok/);
+    assert.match(r.out, /PASS/);
+  });
+
+  // 🔴 THE RED CONTROL THE FINDING NAMES: the reset revocation disabled, the
+  // subject token ACCEPTED — and the scheduled leg exits 1.
+  test('S2 — revocation disabled on Box C: the subject token is ACCEPTED and the run exits 1', () => {
+    const r = run(makeRoot(), { ...BOX_C, afterRefresh: "J(200, { access_token: 'still-alive', refresh_token: 'r' })" }, VERIFY);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /THE OTHER SESSION SURVIVED THE RESET/);
+    assert.match(r.out, /probe user deleted/);
+  });
+
+  test('S3 — why the flag exists: the password grant on Box C is UNKNOWN (2), never a pass', () => {
+    const r = run(makeRoot(), BOX_C);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /could not sign in through the password grant/);
+  });
+
+  test('S4 — one session twice is still not "the other session" under /verify: exit 2', () => {
+    const r = run(makeRoot(), { ...BOX_C, sameToken: true }, VERIFY);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /SAME refresh token/);
+  });
+
+  test('S5 — an unknown --sessions value is UNKNOWN, not a default', () => {
+    const r = run(makeRoot(), BOX_C, ['--sessions', 'magic']);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /neither `password` nor `verify`/);
   });
 });

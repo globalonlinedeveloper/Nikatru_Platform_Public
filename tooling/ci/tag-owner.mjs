@@ -28,8 +28,12 @@
 //                                workflow triggers on tags, each lane carries the
 //                                job gate, every product's sample tags are owned
 //                                by exactly ONE lane's ACTUAL filter, a slug in no
-//                                register is owned by none, and every channel id
-//                                a lane stamps is a channel of a kind it releases.
+//                                register is owned by none, every channel id
+//                                a lane stamps is a channel of a kind it releases,
+//                                and every assert-deploy-ref.mjs call in a lane
+//                                reads that lane's generated list
+//                                (`--allow trigger:<lane>`), never a hand-kept
+//                                `tag:` allow (EXL-17).
 //   --write [root]               regenerate each lane's `tags:` list in place.
 //   --lane <wf> --tag <t> [--root <root>]
 //                                the JOB GATE. A workflow_dispatch on a tag ref
@@ -254,6 +258,25 @@ export function stampedChannels(wf) {
   return out;
 }
 
+/**
+ * The ref checks in a release lane that do NOT read the lane's own generated
+ * `tags:` list, as `{ n, why }`: every `assert-deploy-ref.mjs` call in a code
+ * line (comments are already blanked by parseWorkflow) that passes a `tag:`
+ * allow, or a `trigger:` allow naming another workflow. `--allow main` is not
+ * a tag list and is left alone.
+ */
+export function handKeptRefAllows(wf, rel) {
+  const out = [];
+  for (const { n, text } of wf.lines) {
+    if (!/assert-deploy-ref\.mjs\b/.test(text)) continue;
+    for (const m of text.matchAll(/--allow(?:=|\s+)(['"]?)(tag:|trigger:)([^'"\s]*)\1/g)) {
+      if (m[2] === 'tag:') out.push({ n, why: `a hand-kept \`--allow tag:${m[3]}\`` });
+      else if (m[3] !== rel) out.push({ n, why: `\`--allow trigger:${m[3]}\`, another workflow's list` });
+    }
+  }
+  return out;
+}
+
 /** Every finding --check makes, over a derivation `d`. */
 export function checkFindings(root, d) {
   const problems = [...d.problems];
@@ -283,6 +306,11 @@ export function checkFindings(root, d) {
     if (!code.includes(`tag-owner.mjs --lane ${rel}`)) {
       problems.push(
         `${rel} carries no job gate (\`node tooling/ci/tag-owner.mjs --lane ${rel} --tag …\`). A workflow_dispatch on a tag ref never passes through the tag filter, so without it this lane releases any tag it is dispatched on.`,
+      );
+    }
+    for (const { n, why } of handKeptRefAllows(wf, rel)) {
+      problems.push(
+        `${rel}:${n} runs assert-deploy-ref.mjs with ${why}. This lane's publishable tags are the \`tags:\` list this file generates, so its ref check reads that list: \`--allow trigger:${rel}\`. A hand-kept allow refuses the next product's tag by name while the trigger fires on it (EXL-17).`,
       );
     }
     for (const { n, id } of stampedChannels(wf)) {

@@ -2100,6 +2100,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome Web Store proširenjima onemogućuje čitanje svojih stranica, pa ovu nije moguće snimiti."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Ovu stranicu preglednik štiti i nije ju moguće snimiti."
   },

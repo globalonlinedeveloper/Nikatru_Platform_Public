@@ -664,7 +664,7 @@ const FS_DIR = join(REPO, 'extensions', 'Extension', 'Full_Screen_Shot');
 function metaRoot(mutate = () => {}) {
   const root = join(TMP, `amometa${seq++}`);
   const tool = join(root, 'Extension', 'Full_Screen_Shot');
-  for (const rel of ['tool.json', 'LICENSE', 'publish/identity.json', 'store/firefox', 'store/_shared/support-url.txt']) {
+  for (const rel of ['tool.json', 'LICENSE', 'publish/identity.json', 'publish/manifest.firefox.json', 'store/firefox', 'store/_shared/support-url.txt']) {
     cpSync(join(FS_DIR, rel), join(tool, rel), { recursive: true });
   }
   mutate(tool);
@@ -693,6 +693,108 @@ describe('EXT-3 — the AMO first submit carries the listing, and the store step
     assert.equal(p.version.custom_license.name['en-US'], 'PolyForm Shield License 1.0.0');
     assert.match(p.version.custom_license.text['en-US'], /^Required Notice: Copyright Rajasekar Selvam, trading as NIKATRU \(https:\/\/nikatru\.com\)$/m);
     assert.ok(p.version.approval_notes.trim().length > 0, 'reviewer notes are the approval_notes');
+  });
+
+  /* rv2 EXL-12 (2026-09-29): the API-created listing carries its screenshots and
+     its privacy policy. A recording fetch stands in for AMO; every call it sees is
+     one publish-amo --submit makes after the sign. */
+  const recordingFetch = (previewsOnListing, failOn = null) => {
+    const calls = [];
+    const fetchImpl = async (url, init = {}) => {
+      calls.push({ url, method: init.method || 'GET', headers: init.headers || {}, body: init.body });
+      const fail = failOn && failOn(url, init.method || 'GET', calls.length);
+      return { ok: !fail, status: fail ? 400 : 200, json: async () => ({ previews: previewsOnListing }) };
+    };
+    return { calls, fetchImpl };
+  };
+  const REAL_SHOTS = readdirSync(join(FS_DIR, 'store', '_shared', 'screenshots')).filter((f) => /\.png$/i.test(f)).sort();
+
+  test('EXL12-1 GREEN CONTROL: the listing assets are the four screenshots and the policy text, closed by its URL', async () => {
+    const { buildAmoListingAssets } = await import(pathToFileURL(AMO_META).href);
+    const a = buildAmoListingAssets({ toolId: 'fullshot' });
+    assert.equal(a.ok, true, JSON.stringify(a.why));
+    assert.deepEqual(a.previews.map((f) => f.split(/[\\/]/).pop()), REAL_SHOTS);
+    assert.ok(REAL_SHOTS.length >= 1, 'the real tree has screenshots to send');
+    const text = a.privacyPolicy['en-US'];
+    assert.match(text, /^FullShot — Privacy Policy$/m);
+    assert.match(text, /This policy is also published at https:\/\/nikatru\.com\/fullshot\/privacy$/);
+    assert.doesNotMatch(text.replace('<all_urls>', ''), /<\/?[a-z][^>]*>/i, 'no markup reaches a text field');
+  });
+
+  test('EXL12-2 publish-amo --submit uploads one preview per screenshot, then PATCHes eula_policy with the policy', async () => {
+    const { completeListing } = await import(pathToFileURL(AMO_SCRIPT).href);
+    const { buildAmoListingAssets } = await import(pathToFileURL(AMO_META).href);
+    const a = buildAmoListingAssets({ toolId: 'fullshot' });
+    const { calls, fetchImpl } = recordingFetch([]);
+    const r = await completeListing({ guid: 'fullshot@nikatru.com', issuer: 'iss', secret: 'sec', previews: a.previews, privacyPolicy: a.privacyPolicy, fetchImpl });
+    assert.equal(r.ok, true, r.why);
+    const base = 'https://addons.mozilla.org/api/v5/addons/addon/fullshot%40nikatru.com/';
+    const posts = calls.filter((c) => c.method === 'POST');
+    assert.deepEqual(posts.map((c) => c.url), REAL_SHOTS.map(() => `${base}previews/`));
+    assert.deepEqual(posts.map((c) => c.body.get('image').name), REAL_SHOTS);
+    assert.deepEqual(posts.map((c) => c.body.get('position')), REAL_SHOTS.map((_, i) => String(i)));
+    const patch = calls.filter((c) => c.method === 'PATCH');
+    assert.equal(patch.length, 1);
+    assert.equal(patch[0].url, `${base}eula_policy/`);
+    assert.deepEqual(JSON.parse(patch[0].body), { privacy_policy: a.privacyPolicy });
+    assert.ok(calls.every((c) => /^JWT [\w-]+\.[\w-]+\.[\w-]+$/.test(c.headers.authorization)), 'every call is signed');
+  });
+
+  test('EXL12-3 a listing that already has previews gets none stacked on it; the policy is still set', async () => {
+    const { completeListing } = await import(pathToFileURL(AMO_SCRIPT).href);
+    const { calls, fetchImpl } = recordingFetch([{ id: 1 }]);
+    const r = await completeListing({ guid: 'g@x.test', issuer: 'i', secret: 's', previews: ['a.png'], privacyPolicy: { 'en-US': 'p' }, fetchImpl, readFile: () => Buffer.from('x') });
+    assert.equal(r.ok, true, r.why);
+    assert.equal(calls.filter((c) => c.method === 'POST').length, 0);
+    assert.equal(calls.filter((c) => c.method === 'PATCH').length, 1);
+  });
+
+  test('EXL12-4 RED: a refused preview upload fails the lane, naming the file, and sets no policy after it', async () => {
+    const { completeListing } = await import(pathToFileURL(AMO_SCRIPT).href);
+    const { calls, fetchImpl } = recordingFetch([], (url, method) => method === 'POST');
+    const r = await completeListing({ guid: 'g@x.test', issuer: 'i', secret: 's', previews: ['/x/01-a.png', '/x/02-b.png'], privacyPolicy: { 'en-US': 'p' }, fetchImpl, readFile: () => Buffer.from('x') });
+    assert.equal(r.ok, false);
+    assert.match(r.why, /^preview 01-a\.png: HTTP 400/);
+    assert.equal(calls.filter((c) => c.method === 'PATCH').length, 0);
+  });
+
+  test('EXL12-5 RED: no screenshot, or no policy source, refuses the assets rather than submitting without them', async () => {
+    const { buildAmoListingAssets } = await import(pathToFileURL(AMO_META).href);
+    const root = metaRoot((tool) => {
+      cpSync(join(FS_DIR, 'store', '_shared'), join(tool, 'store', '_shared'), { recursive: true });
+      for (const f of readdirSync(join(tool, 'store', '_shared', 'screenshots'))) if (/\.png$/i.test(f)) rmSync(join(tool, 'store', '_shared', 'screenshots', f));
+    });
+    const r = buildAmoListingAssets({ toolId: 'fullshot', root });
+    assert.equal(r.ok, false);
+    assert.ok(r.why.some((l) => /screenshots holds no \.png/.test(l)), JSON.stringify(r.why));
+    assert.ok(r.why.some((l) => /PRIVACY-POLICY\.html is absent/.test(l)), JSON.stringify(r.why));
+  });
+
+  test('EXL12-6 every PRIMARY_SOURCES.<key> publish-amo.mjs cites is defined, and is an https URL', async () => {
+    const { PRIMARY_SOURCES } = await import(pathToFileURL(AMO_SCRIPT).href);
+    const cited = [...new Set([...readFileSync(AMO_SCRIPT, 'utf8').matchAll(/PRIMARY_SOURCES\.(\w+)/g)].map((m) => m[1]))];
+    assert.ok(cited.length >= 3, `found ${cited.length} citation(s)`);
+    for (const k of cited) assert.match(String(PRIMARY_SOURCES && PRIMARY_SOURCES[k]), /^https:\/\//, `PRIMARY_SOURCES.${k}`);
+  });
+
+  test('EXB-11 the listing is offered on desktop Firefox only: no Android leg runs this add-on', async () => {
+    const { buildAmoMetadata } = await import(pathToFileURL(AMO_META).href);
+    const r = buildAmoMetadata({ toolId: 'fullshot' });
+    assert.equal(r.ok, true, JSON.stringify(r.why));
+    assert.deepEqual(r.payload.version.compatibility, ['firefox']);
+  });
+
+  test('EXB-11 RED: an overlay that declares gecko_android offers the listing on Android too', async () => {
+    const { buildAmoMetadata } = await import(pathToFileURL(AMO_META).href);
+    const root = metaRoot((tool) => {
+      const p = join(tool, 'publish', 'manifest.firefox.json');
+      const m = JSON.parse(readFileSync(p, 'utf8'));
+      m.browser_specific_settings.gecko_android = { strict_min_version: '142.0' };
+      writeFileSync(p, JSON.stringify(m));
+    });
+    const r = buildAmoMetadata({ toolId: 'fullshot', root });
+    assert.equal(r.ok, true, JSON.stringify(r.why));
+    assert.deepEqual(r.payload.version.compatibility, ['firefox', 'android']);
   });
 
   test('E3-3 RED: a LICENSE whose Required Notice is a placeholder refuses the payload', async () => {

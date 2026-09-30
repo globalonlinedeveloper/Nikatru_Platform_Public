@@ -1995,6 +1995,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome ওয়েব স্টোর এক্সটেনশনকে তার পৃষ্ঠা পড়তে দেয় না, তাই এটি ক্যাপচার করা যাবে না।"
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "এই পৃষ্ঠাটি ব্রাউজার সুরক্ষিত রেখেছে, তাই ক্যাপচার করা যাবে না।"
   },

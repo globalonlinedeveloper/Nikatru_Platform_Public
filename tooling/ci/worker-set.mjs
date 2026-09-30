@@ -79,7 +79,21 @@
 //   --app-workers with --json only: the members that matched an `appWorkers` row, the
 //                 value deploy-workers.yml's `workers` job writes to `workers=`. The
 //                 whole set is still checked first;
+//   --env <name>  with --json only: the entries whose own wrangler.jsonc declares an
+//                 `env.<name>` block, the rest dropped. deploy-sandbox.yml's `workers` job
+//                 reads `--json --app-workers --env sandbox`, so a Worker with no sandbox
+//                 block is never handed to `wrangler deploy --env sandbox` (which would
+//                 otherwise be a question for wrangler, not this reader), and
+//                 assert-release-provenance.mjs limb 2b resolves a sandbox leg's
+//                 `workingDirectory` through envEntries(), the same answer;
 //   with none of these, one directory name per line.
+//
+// ⏱ 2026-09-29 — `--env` (B-12, row O-SERVICE-KIT-UNBUILT). deploy-sandbox.yml was one
+// hand-written job per Worker, with each Worker's name in a dispatch `options:` list,
+// its directory in four `workingDirectory:` fields and its binding in a migration
+// command; symbolication-proof.yml named the app on nine lines. Both were classified
+// out of assert-release-lane-generic.mjs, so app #2 would have had no sandbox and
+// nothing would have said so.
 // Exit 0 = the set is non-empty, every directory under services/ is placed, and
 //          (--for-deploy) every member holds.
 // Exit 1 = a directory under services/ is neither `_shared` nor a Worker, or
@@ -334,6 +348,24 @@ export function appWorkerMatrix(root) {
   return { entries, lost: null };
 }
 
+/**
+ * The entries whose `<dir>/${WORKER_CONFIG}` declares an `env.<name>` block, in their
+ * order: `--json --env <name>`'s narrowing, and the answer assert-release-provenance.mjs
+ * limb 2b expands a matrix leg's `workingDirectory` over. A config that does not parse
+ * is dropped here and is --for-deploy's finding, not this filter's.
+ */
+export function envEntries(root, entries, name) {
+  return entries.filter((e) => {
+    try {
+      const cfg = parseJsonc(readFileSync(join(root, e.dir, WORKER_CONFIG), 'utf8'));
+      const env = cfg?.env?.[name];
+      return env !== null && typeof env === 'object' && !Array.isArray(env);
+    } catch {
+      return false;
+    }
+  });
+}
+
 /** `${{ matrix.<dimension>.<field> }}` naming a field of an appWorkerMatrix() entry —
  *  the one shape a workflow reads a deploy-matrix leg in. Group 1 is the dimension,
  *  group 2 the field. Global: callers use `matchAll` or reset `lastIndex`. */
@@ -362,10 +394,20 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const forDeploy = args.includes('--for-deploy');
   const json = args.includes('--json');
   const appOnly = args.includes('--app-workers');
-  const USAGE = 'Usage: node tooling/ci/worker-set.mjs [--for-deploy] [--emit | --json [--app-workers]] [repoRoot]';
-  const unknown = args.filter((a) => a.startsWith('--') && !['--emit', '--for-deploy', '--json', '--app-workers'].includes(a));
+  const USAGE = 'Usage: node tooling/ci/worker-set.mjs [--for-deploy] [--emit | --json [--app-workers] [--env <name>]] [repoRoot]';
+  const envAt = args.indexOf('--env');
+  const envName = envAt === -1 ? null : (args[envAt + 1] ?? '');
+  const unknown = args.filter((a) => a.startsWith('--') && !['--emit', '--for-deploy', '--json', '--app-workers', '--env'].includes(a));
   if (unknown.length) {
     console.error(`FAIL worker-set: unknown flag ${unknown.join(', ')}. ${USAGE}`);
+    process.exit(1);
+  }
+  if (envName !== null && !/^[a-z][a-z0-9_-]*$/.test(envName)) {
+    console.error(`FAIL worker-set: --env needs an environment name ([a-z][a-z0-9_-]*), and got "${envName}". ${USAGE}`);
+    process.exit(1);
+  }
+  if (envName !== null && !json) {
+    console.error(`FAIL worker-set: --env narrows what --for-deploy --json prints, and --json was not given. ${USAGE}`);
     process.exit(1);
   }
   if (json && !forDeploy) {
@@ -380,7 +422,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.error(`FAIL worker-set: --emit and --json print two different shapes; pass one. ${USAGE}`);
     process.exit(1);
   }
-  const rootArg = args.find((a) => !a.startsWith('--'));
+  const rootArg = args.find((a, i) => !a.startsWith('--') && !(envAt !== -1 && i === envAt + 1));
   const root = resolve(rootArg ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
   const set = workerSet(root);
   if (set === null) {
@@ -421,7 +463,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       console.error('\nworker-set: FAILED');
       process.exit(1);
     }
-    if (json) console.log(JSON.stringify(appOnly ? appWorkerEntries(d) : d.entries));
+    if (json) {
+      const picked = appOnly ? appWorkerEntries(d) : d.entries;
+      console.log(JSON.stringify(envName === null ? picked : envEntries(root, picked, envName)));
+    }
     else if (emit) console.log(JSON.stringify(set.workers));
     else for (const e of d.entries) console.log(`${e.worker}  ${e.dir}  ${e.migrations ?? '-'}  ${e.smokeUrl}  ${e.dsnSecret}`);
     process.exit(0);
