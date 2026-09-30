@@ -683,10 +683,25 @@
   "@exportDataCsv": {
     "description": "Data-export row. data-safety.json declares that export exists; deleting this row makes that declaration false."
   },
-  "preferenceChangedElsewhere": "{setting} was changed on another device.",
-  "@preferenceChangedElsewhere": {
-    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11), review #1080 delta finding 3: shown once when this device’s change lost to a newer value another device saved, and the screen flipped to it. {setting} is the settings section’s own name (Currency, Appearance, Language, Reminders, Notifications).",
-    "placeholders": { "setting": { "type": "String" } }
+  "preferenceCurrencyChangedElsewhere": "Currency was changed on another device.",
+  "@preferenceCurrencyChangedElsewhere": {
+    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11), review #1080 delta finding 3: shown once when this device’s change to the currency lost to a newer value another device saved, and the screen flipped to it. A whole sentence per setting (review 3 nit) so the verb agrees."
+  },
+  "preferenceAppearanceChangedElsewhere": "Appearance was changed on another device.",
+  "@preferenceAppearanceChangedElsewhere": {
+    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11), review #1080 delta finding 3: shown once when this device’s change to the theme (Appearance) lost to a newer value another device saved, and the screen flipped to it. A whole sentence per setting (review 3 nit) so the verb agrees."
+  },
+  "preferenceLanguageChangedElsewhere": "Language was changed on another device.",
+  "@preferenceLanguageChangedElsewhere": {
+    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11), review #1080 delta finding 3: shown once when this device’s change to the app language lost to a newer value another device saved, and the screen flipped to it. A whole sentence per setting (review 3 nit) so the verb agrees."
+  },
+  "preferenceRemindersChangedElsewhere": "Reminder settings were changed on another device.",
+  "@preferenceRemindersChangedElsewhere": {
+    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11), review #1080 delta finding 3: shown once when this device’s change to the reminder lead time or time of day lost to a newer value another device saved, and the screen flipped to it. A whole sentence per setting (review 3 nit) so the verb agrees."
+  },
+  "preferenceNotificationsChangedElsewhere": "Notifications were changed on another device.",
+  "@preferenceNotificationsChangedElsewhere": {
+    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11), review #1080 delta finding 3: shown once when this device’s change to a notification switch lost to a newer value another device saved, and the screen flipped to it. A whole sentence per setting (review 3 nit) so the verb agrees."
   },
   "preferenceNotSaved": "Couldn’t save that setting to your account.",
   "@preferenceNotSaved": {

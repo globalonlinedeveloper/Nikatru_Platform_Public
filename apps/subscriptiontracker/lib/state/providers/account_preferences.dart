@@ -22,8 +22,6 @@
 
 import 'package:flutter/material.dart' show Locale, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-// StateProvider moved to legacy.dart in Riverpod 3.0.
-import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_riverpod/misc.dart' show ProviderListenable;
 import 'package:nikatru_api_client/nikatru_api_client.dart'
     show RestAccountPreferencesTransport, RestClient;
@@ -90,16 +88,53 @@ accountPreferencesTransportProvider =
       );
     });
 
-/// The last preference key the account REFUSED, for the one-line notice.
-final StateProvider<String?> preferenceRefusedProvider = StateProvider<String?>(
-  (_) => null,
-);
+/// Why a preference notice is shown.
+enum PreferenceNoticeKind {
+  /// The account REFUSED the change (review #1080 finding 6): it is dropped
+  /// and the account's value comes back.
+  refused,
 
-/// The last preference key another device had already changed: the account's
-/// value won and was applied here, and the one-line notice says so (review
-/// #1080 delta finding 3 — a flip back is never silent).
-final StateProvider<String?> preferenceConflictProvider =
-    StateProvider<String?>((_) => null);
+  /// Another device had already changed it (delta finding 3): the account's
+  /// value won and was applied here — a flip back is never silent.
+  conflict,
+}
+
+/// One notice for one preference [key]. Each is its own object, so a second
+/// notice for the same key is a second notice, never a repeat of the first.
+class PreferenceNotice {
+  const PreferenceNotice(this.kind, this.key);
+
+  final PreferenceNoticeKind kind;
+  final String key;
+}
+
+/// The notices raised and not yet shown, oldest first (review 3 of #1080).
+///
+/// 🔴 A QUEUE, NOT "THE LAST KEY". The last-key providers it replaces lost a
+/// notice raised while no screen was listening (the send runs at sign-in,
+/// before the shell is mounted) and hid a second notice for the same setting
+/// (setting a provider to the value it holds notifies nobody). A notice waits
+/// here until a screen takes it.
+class PreferenceNotices extends Notifier<List<PreferenceNotice>> {
+  @override
+  List<PreferenceNotice> build() => const <PreferenceNotice>[];
+
+  void raise(PreferenceNoticeKind kind, String key) =>
+      state = <PreferenceNotice>[...state, PreferenceNotice(kind, key)];
+
+  /// Every waiting notice, oldest first; the queue is left empty.
+  List<PreferenceNotice> takeAll() {
+    final List<PreferenceNotice> taken = state;
+    if (taken.isNotEmpty) state = const <PreferenceNotice>[];
+    return taken;
+  }
+}
+
+final NotifierProvider<PreferenceNotices, List<PreferenceNotice>>
+preferenceNoticesProvider =
+    NotifierProvider<PreferenceNotices, List<PreferenceNotice>>(
+      PreferenceNotices.new,
+    );
 
 /// Keeps this device's preferences and the signed-in account's in step.
 ///
@@ -127,12 +162,16 @@ final Provider<core.AccountPreferencesSync?> accountPreferencesSyncProvider =
         },
         onRefused: (String key) {
           if (ref.mounted) {
-            ref.read(preferenceRefusedProvider.notifier).state = key;
+            ref
+                .read(preferenceNoticesProvider.notifier)
+                .raise(PreferenceNoticeKind.refused, key);
           }
         },
         onConflict: (String key) {
           if (ref.mounted) {
-            ref.read(preferenceConflictProvider.notifier).state = key;
+            ref
+                .read(preferenceNoticesProvider.notifier)
+                .raise(PreferenceNoticeKind.conflict, key);
           }
         },
       );

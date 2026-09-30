@@ -271,8 +271,6 @@ void main() {
       final _Server server = _Server()..elsewhere('reminderLeadDays', 3);
       final _Device a = _Device(server);
       await _settle();
-      final List<String?> notices = <String?>[];
-      a.c.listen(preferenceRefusedProvider, (_, String? k) => notices.add(k));
       server.failWith = 400;
       await a.settings.setReminderLead(7);
       await _settle();
@@ -280,7 +278,13 @@ void main() {
       await a.sync.sync();
       await a.sync.sync();
       await _settle();
-      expect(notices.whereType<String>(), <String>['reminderLeadDays']);
+      expect(
+        <String>[
+          for (final PreferenceNotice n in a.c.read(preferenceNoticesProvider))
+            '${n.kind.name}:${n.key}',
+        ],
+        <String>['refused:reminderLeadDays'],
+      );
       expect(a.c.read(settingsControllerProvider).reminderLeadDays, 3);
     },
   );
@@ -391,7 +395,9 @@ void main() {
           ),
         ),
       );
-      c.read(preferenceConflictProvider.notifier).state = 'currencyCode';
+      c
+          .read(preferenceNoticesProvider.notifier)
+          .raise(PreferenceNoticeKind.conflict, 'currencyCode');
       await tester.pump();
       expect(
         find.text('Currency was changed on another device.'),
@@ -405,8 +411,6 @@ void main() {
     () async {
       final _Server server = _Server()..elsewhere('currencyCode', 'INR');
       final _Device a = _Device(server);
-      final List<String?> seen = <String?>[];
-      a.c.listen(preferenceConflictProvider, (_, String? k) => seen.add(k));
       server.failWith = 0;
       await _settle(); // the sign-in read fails: this device never saw INR
       await a.settings.setCurrency('EUR'); // based on nothing
@@ -415,7 +419,13 @@ void main() {
       await a.sync.sync();
       await _settle();
       expect(a.c.read(settingsControllerProvider).currencyCode, 'INR');
-      expect(seen.whereType<String>(), <String>['currencyCode']);
+      expect(
+        <String>[
+          for (final PreferenceNotice n in a.c.read(preferenceNoticesProvider))
+            '${n.kind.name}:${n.key}',
+        ],
+        <String>['conflict:currencyCode'],
+      );
     },
   );
 
@@ -432,13 +442,81 @@ void main() {
         ),
       ),
     );
-    c.read(preferenceRefusedProvider.notifier).state = 'reminderLeadDays';
+    c
+        .read(preferenceNoticesProvider.notifier)
+        .raise(PreferenceNoticeKind.refused, 'reminderLeadDays');
     await tester.pump();
     expect(
       find.text("Couldn’t save that setting to your account."),
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    '🔴 review 3 nit: a notice raised before any screen shows when one attaches, and a second for the same setting is not hidden',
+    (WidgetTester tester) async {
+      final ProviderContainer c = ProviderContainer();
+      addTearDown(c.dispose);
+      // Raised at sign-in, before the shell exists — twice for one setting.
+      c
+          .read(preferenceNoticesProvider.notifier)
+          .raise(PreferenceNoticeKind.conflict, 'currencyCode');
+      c
+          .read(preferenceNoticesProvider.notifier)
+          .raise(PreferenceNoticeKind.conflict, 'currencyCode');
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: PreferenceRefusedNotice(child: Scaffold(body: SizedBox())),
+          ),
+        ),
+      );
+      await tester.pump();
+      const String line = 'Currency was changed on another device.';
+      expect(find.text(line), findsOneWidget, reason: 'the first, buffered');
+      tester
+          .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+          .hideCurrentSnackBar();
+      await tester.pumpAndSettle();
+      expect(find.text(line), findsOneWidget, reason: 'the second, not hidden');
+      tester
+          .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+          .hideCurrentSnackBar();
+      await tester.pumpAndSettle();
+      expect(find.text(line), findsNothing);
+      expect(c.read(preferenceNoticesProvider), isEmpty);
+    },
+  );
+
+  test(
+    'review 3 nit: each setting has its own sentence — "Notifications were changed"',
+    () {
+      final AppLocalizations en = lookupAppLocalizations(const Locale('en'));
+      String line(String key) =>
+          PreferenceRefusedNotice.changedElsewhereOf(en, key);
+      expect(
+        line(kPrefCurrencyCode),
+        'Currency was changed on another device.',
+      );
+      expect(line(kPrefThemeMode), 'Appearance was changed on another device.');
+      expect(line(kPrefLocale), 'Language was changed on another device.');
+      expect(
+        line(kPrefReminderLeadDays),
+        'Reminder settings were changed on another device.',
+      );
+      expect(
+        line(kPrefReminderMinuteOfDay),
+        'Reminder settings were changed on another device.',
+      );
+      expect(
+        line('switch.priceHike'),
+        'Notifications were changed on another device.',
+      );
+    },
+  );
 
   testWidgets(
     '🔴 finding 10a/b: a return to the app reads the account — another device’s change arrives',
