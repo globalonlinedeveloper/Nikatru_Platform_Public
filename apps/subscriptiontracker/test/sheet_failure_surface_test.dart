@@ -58,13 +58,13 @@ class SocketFailure implements Exception {
   String toString() => 'SocketException: Failed host lookup';
 }
 
-class _SilentNotifications extends NotificationService {
+class _SilentNotifications extends RenewalReminders {
   _SilentNotifications() : super.forTesting();
   @override
   Future<void> syncAll(
     List<Subscription> subs, {
     required ReminderCopy copy,
-    int daysBefore = 2,
+    ReminderRules rules = const ReminderRules(),
   }) async {}
   @override
   Future<void> cancelAll() async {}
@@ -83,9 +83,7 @@ Widget _app(void Function(BuildContext) open) {
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(_WriteFailsRepository()),
-      subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-        _SilentNotifications(),
-      ),
+      renewalRemindersProvider.overrideWithValue(_SilentNotifications()),
     ],
     // 🔴 THE DELEGATES ARE NOT DECORATION — WITHOUT THEM THIS HOST THROWS.
     // `l10n.yaml` sets `nullable-getter: false`, so the generated
@@ -129,9 +127,7 @@ Widget _appScaled(void Function(BuildContext) open, double scale) {
     overrides: <Override>[
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(_WriteFailsRepository()),
-      subscriptiontrackerNotificationServiceProvider.overrideWithValue(
-        _SilentNotifications(),
-      ),
+      renewalRemindersProvider.overrideWithValue(_SilentNotifications()),
     ],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,

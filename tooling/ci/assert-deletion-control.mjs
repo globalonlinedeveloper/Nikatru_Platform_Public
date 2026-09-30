@@ -653,11 +653,24 @@ for (const root of roots) {
 
   // 3 — the DELETION's own confirmation, not merely a dialog somewhere on the
   // screen. See the header: the brick's settings tree opens two other dialogs.
+  //
+  // ⏱ 2026-09-28 (ST-T4b) · THE DELETION'S DIALOG IS FOUND BY WHAT IT NAMES, NOT
+  // BY BEING A DIALOG. "No dialog at all" was the one branch still read off the
+  // bare call count, so ANY other `showDialog` under settings — the app's
+  // reminder priming and lead-time choosers — turned "the deletion opens no
+  // dialog" into the vaguer barrier message, and a settings tree whose only
+  // dialogs were reminders read as a deletion with a misconfigured one. A call
+  // counts toward this limb only when its own argument list names the deletion.
   const dialogs = showDialogArgs(settings);
-  if (dialogs.length === 0) {
+  const deletionDialogs = dialogs.filter((a) => /deleteaccount/i.test(a));
+  if (deletionDialogs.length === 0) {
     problems.push(
-      `${root}: the deletion control in ${SETTINGS_DIR}/ opens no dialog. An irreversible action one tap ` +
-        'away is the misfire a confirmation step exists to stop.',
+      `${root}: the deletion control in ${SETTINGS_DIR}/ opens no dialog of its own` +
+        (dialogs.length
+          ? ` — ${dialogs.length} \`showDialog\` call(s) there and NOT ONE of them is the deletion's own ` +
+            'undismissable confirmation; each names something else (a reminder priming, a profile edit)'
+          : '') +
+        '. An irreversible action one tap away is the misfire a confirmation step exists to stop.',
     );
   } else if (
     !dialogs.some((a) => /barrierDismissible:\s*false/.test(a) && /deleteaccount/i.test(a))

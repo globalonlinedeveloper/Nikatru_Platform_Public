@@ -265,7 +265,7 @@ Future<void> _pumpSettings(WidgetTester tester, _FakeAuth auth) async {
         // rendered". See test/support/user_state_fakes.dart.
         secureStoreProvider.overrideWithValue(MemSecureStore()),
         notificationServiceProvider.overrideWithValue(FakeNotifications()),
-        subscriptiontrackerNotificationServiceProvider.overrideWithValue(
+        renewalRemindersProvider.overrideWithValue(
           RecordingSublyNotifications(),
         ),
       ],
@@ -403,7 +403,7 @@ void main() {
           // of them.
           secureStoreProvider.overrideWithValue(MemSecureStore()),
           notificationServiceProvider.overrideWithValue(FakeNotifications()),
-          subscriptiontrackerNotificationServiceProvider.overrideWithValue(
+          renewalRemindersProvider.overrideWithValue(
             RecordingSublyNotifications(),
           ),
         ],
@@ -578,7 +578,7 @@ void main() {
         // dialog stops before it renders its result.
         secureStoreProvider.overrideWithValue(MemSecureStore()),
         notificationServiceProvider.overrideWithValue(FakeNotifications()),
-        subscriptiontrackerNotificationServiceProvider.overrideWithValue(
+        renewalRemindersProvider.overrideWithValue(
           RecordingSublyNotifications(),
         ),
       ],

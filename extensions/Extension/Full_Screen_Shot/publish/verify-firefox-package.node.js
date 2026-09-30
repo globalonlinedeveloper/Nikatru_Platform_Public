@@ -362,6 +362,33 @@ check('gecko.strict_min_version is at least ' + MIN_GECKO_FOR_DATA_CONSENT + '.0
   parseInt(String(gecko.strict_min_version || '0'), 10) >= MIN_GECKO_FOR_DATA_CONSENT, gecko.strict_min_version);
 check('gecko.update_url absent (listed AMO add-ons must not self-host updates)', !('update_url' in gecko));
 
+/* ⏱ 2026-09-29 (rv2 EXB-11): THE PACKAGE CLAIMS ONLY THE PLATFORMS A SUITE RUNS.
+   gecko_android declares Firefox for Android, and AMO offers an add-on that
+   declares it to Android users. It was added 2026-09-24 for the data-consent
+   floor, not as a support decision, and nothing has ever run this add-on on
+   Android. So the key is refused unless extensions/scripts/e2e-suites.json lists
+   this tool under `geckoAndroidLegs` — the day an Android leg exists, naming it
+   there is what lets the key back in.
+   Without the key, addons-linter derives the Android floor from
+   gecko.strict_min_version, and data_collection_permissions needs Android 142:
+   web-ext lint --warnings-as-errors refused the package at 140 with
+   KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION (measured 2026-09-29, web-ext
+   10.6.0). Hence the desktop floor of 142 checked below. */
+const SUITES_JSON = path.join(ROOT, '..', '..', 'scripts', 'e2e-suites.json');
+let androidLegs = null;
+try { androidLegs = JSON.parse(fs.readFileSync(SUITES_JSON, 'utf8')).geckoAndroidLegs; } catch (_) { /* graded below */ }
+check('scripts/e2e-suites.json declares geckoAndroidLegs (an array, possibly empty)', Array.isArray(androidLegs), JSON.stringify(androidLegs));
+const TOOL_DIR = path.relative(path.join(ROOT, '..', '..'), ROOT).split(path.sep).join('/');
+const androidTested = Array.isArray(androidLegs) && androidLegs.includes(TOOL_DIR);
+const bss = ff.browser_specific_settings || {};
+check('gecko_android is declared only when an Android e2e leg runs this tool (' + TOOL_DIR + ')',
+  !('gecko_android' in bss) || androidTested,
+  ('gecko_android' in bss ? 'declared' : 'absent') + '; Android legs ' + JSON.stringify(androidLegs));
+if (!('gecko_android' in bss)) {
+  check('with no gecko_android, gecko.strict_min_version is at least 142.0 (the Android floor addons-linter derives from it)',
+    parseInt(String(gecko.strict_min_version || '0'), 10) >= 142, gecko.strict_min_version);
+}
+
 console.log('\n=== data_collection_permissions (required for new add-ons since 2025-11-03) ===');
 const dcp = gecko.data_collection_permissions;
 const okDcp = gate('data_collection_permissions declared', !!dcp && typeof dcp === 'object' && !Array.isArray(dcp),

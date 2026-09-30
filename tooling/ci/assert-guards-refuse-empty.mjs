@@ -162,8 +162,16 @@ const MIN_EXECUTABLES = { 'tooling/ci': 120, 'tooling/scripts': 8 };
 /** The floor that matters most, because it is the one classification can eat.
  *  Every file moved into LIBRARY/VACUOUS/EXEMPT leaves the probed set, so a
  *  future maintainer could satisfy this guard by explaining every guard away.
- *  Today: 123 probed, of 140 enumerated. */
-const MIN_PROBED = 110;
+ *  Today: 123 probed, of 140 enumerated.
+ *  ⏱ RE-BASED 2026-09-29 (A-5), ALONE: 110 sat 108 under what this guard
+ *  probes, so 108 guards could be explained away into LIBRARY or EXEMPT before
+ *  it noticed. MEASURED with `node tooling/ci/assert-guards-refuse-empty.mjs`:
+ *  "218 of 218 probed executable(s) refused … 265 enumerated across tooling/ci
+ *  + tooling/scripts (265 tracked), 40 derived as libraries …, 6 exempt, 1
+ *  self-excluded". The floor is that 218 less three, the margin for one change
+ *  that legitimately extracts a library from a guard; a larger move re-bases
+ *  it again, alone, with its own measurement. */
+const MIN_PROBED = 215;
 
 /** If any of these is inside the built tree, it is not subject-free and every
  *  refusal below could be a refusal about something else entirely.

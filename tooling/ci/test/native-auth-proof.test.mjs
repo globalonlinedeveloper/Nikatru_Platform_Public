@@ -10,9 +10,14 @@ import {
   callbackUrl,
   egressIpOf,
   FAILED_CALLBACK_LINE,
+  OFFLINE_READ_LINE,
+  offlineReadDeclared,
   openCommands,
+  PROOF_TEST,
   readProof,
 } from '../../e2e/native_auth_proof.mjs';
+
+const REPO = join(import.meta.dirname, '..', '..', '..');
 
 const GREEN = [
   'NK_PROOF egress_ip=203.0.113.9',
@@ -48,6 +53,36 @@ describe('native_auth_proof — reading the run back', () => {
   test('a sign-in-only run (windows) does not need the callback lines', () => {
     const out = GREEN.replace(FAILED_CALLBACK_LINE, '').replace('NK_PROOF step=callback outcome=ok', '');
     assert.deepEqual(readProof(out, { callback: false }), []);
+  });
+
+  // ⏱ 2026-09-29 · AB-O1-05 — the offline read, per target.
+  test('an app that declares the offline read reads clean with its line', () => {
+    assert.deepEqual(readProof(`${GREEN}\n${OFFLINE_READ_LINE}`, { callback: true, offlineRead: true }), []);
+  });
+
+  test('🔴 an app that declares the offline read and whose run did not print it is a finding', () => {
+    assert.match(
+      readProof(GREEN, { callback: true, offlineRead: true }).join('\n'),
+      /step=offline-read outcome=ok/,
+    );
+  });
+
+  test('an app whose suite has no offline read is not asked for it', () => {
+    assert.deepEqual(readProof(GREEN, { callback: true, offlineRead: false }), []);
+  });
+
+  test('offlineReadDeclared reads the REAL tree: subscriptiontracker declares it', () => {
+    assert.equal(offlineReadDeclared(REPO, 'subscriptiontracker'), true);
+  });
+
+  test('🔴 offlineReadDeclared ignores a comment that only names the step', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nk-offline-'));
+    const suite = join(root, 'apps', 'demoapp', PROOF_TEST);
+    mkdirSync(join(suite, '..'), { recursive: true });
+    writeFileSync(suite, '// debugPrint(kOfflineReadOkLine) is what the step would print\nvoid main() {}\n');
+    assert.equal(offlineReadDeclared(root, 'demoapp'), false);
+    writeFileSync(suite, 'void main() {\n  debugPrint(kOfflineReadOkLine);\n}\n');
+    assert.equal(offlineReadDeclared(root, 'demoapp'), true);
   });
 
   test('egressIpOf reads ip= off a /cdn-cgi/trace body', () => {

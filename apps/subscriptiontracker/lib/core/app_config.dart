@@ -307,6 +307,19 @@ class AppConfig {
   /// from the register's `portfolioUrls.supportUrl`.
   static const String contactUrl = 'https://nikatru.com/contact';
 
+  /// ⏱ 2026-09-28 · train ST-D4. THIS APP's own privacy notice — the page
+  /// `tooling/app-yaml/render-privacy.mjs` generates from `privacy.yaml` into
+  /// `sites/nikatru/subscriptiontracker/privacy.html` (`generate-discovery.mjs`'s
+  /// `appNoticeHref`, `/<slug>/privacy`). Distinct from [privacyUrl], the
+  /// portfolio-wide policy: that one says what Nikatru does, this one says
+  /// what Subly collects, why and for how long.
+  ///
+  /// App-local and NOT a `nikatru.com/<page>` legal constant, for
+  /// [contactUrl]'s reason: `assert-stamp-properties.mjs` matches only a
+  /// single path segment, and this path has two by construction.
+  static const String privacyNoticeUrl =
+      'https://nikatru.com/subscriptiontracker/privacy';
+
   static const String _phSupabaseUrl = 'https://YOUR_PROJECT.supabase.co';
 
   /// Whether this build has a real IDENTITY to talk to the backend with.

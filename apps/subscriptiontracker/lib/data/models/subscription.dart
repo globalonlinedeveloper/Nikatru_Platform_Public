@@ -64,6 +64,9 @@ class Subscription {
     this.deletedAt,
     this.notes = '',
     this.cancelUrl,
+    this.reminderDays,
+    this.noticeDays,
+    this.noticeDaysSupported = false,
   });
 
   final String id;
@@ -148,6 +151,29 @@ class Subscription {
     );
   }
 
+  /// Days before the charge to remind, e.g. `[7, 1]` — the API's
+  /// `reminder_days` (0003). NULL = the account default in Settings (ST-R3).
+  final List<int>? reminderDays;
+
+  /// Days of notice the plan needs to be cancelled — the API's `notice_days`
+  /// (0004, ST-R8). NULL = none; a "Cancel by" reminder is armed only for a
+  /// value.
+  final int? noticeDays;
+
+  /// Whether the wire CARRIED `notice_days` at all. The detail screen offers
+  /// the field only then: an API that predates 0004 would drop the value and
+  /// answer with a row that no longer has it. Deploy order is the API first.
+  final bool noticeDaysSupported;
+
+  /// The last day to cancel before the charge on or after [now]
+  /// ([nextCharge]), or null when the plan names no notice period.
+  DateTime? cancelByFor(DateTime now) {
+    final int? notice = noticeDays;
+    if (notice == null) return null;
+    final DateTime next = nextCharge(now);
+    return DateTime(next.year, next.month, next.day - notice);
+  }
+
   /// ISO 4217 for this row, e.g. `USD`. Derived from [price] rather than
   /// stored twice — two fields that can disagree about one fact is how the
   /// displayed price and the charged price came apart in the first place.
@@ -225,7 +251,27 @@ class Subscription {
     deletedAt: _instantOrNull(j['deleted_at']),
     notes: (j['notes'] ?? '') as String,
     cancelUrl: j['cancel_url'] as String?,
+    reminderDays: readReminderDays(j['reminder_days']),
+    noticeDays: readNoticeDays(j['notice_days']),
+    noticeDaysSupported: j.containsKey('notice_days'),
   );
+
+  /// `reminder_days` off the wire: a list of whole days, deduplicated and
+  /// nearest-to-the-charge LAST (the order the reminders fire in), or null
+  /// for "the default". Anything malformed is the default, never a guess.
+  static List<int>? readReminderDays(Object? raw) {
+    if (raw is! List) return null;
+    final Set<int> days = <int>{};
+    for (final Object? d in raw) {
+      if (d is! int || d < 0) return null;
+      days.add(d);
+    }
+    if (days.isEmpty) return null;
+    return List<int>.unmodifiable(days.toList()..sort((int a, int b) => b - a));
+  }
+
+  static int? readNoticeDays(Object? raw) =>
+      raw is int && raw >= 0 ? raw : null;
 
   /// The row's cadence: 0003's (`cycle_every`, `cycle_unit`) pair when it is
   /// there, else the legacy `cycle` — every row a pre-0003 server, or this
@@ -311,6 +357,13 @@ class Subscription {
     'deleted_at': deletedAt?.toUtc().toIso8601String(),
     'notes': notes,
     'cancel_url': cancelUrl,
+    // Sent only when set: a NULL `reminder_days` is the default already, and
+    // an API before 0004 has no `notice_days` to receive.
+    if (reminderDays != null) 'reminder_days': reminderDays,
+    if (noticeDays != null) 'notice_days': noticeDays,
+    // The cache round-trips this row through toJson, so the capability rides
+    // with it: a cached row must not lose the field the API had emitted.
+    if (noticeDaysSupported && noticeDays == null) 'notice_days': null,
   };
 
   /// ⚠️ [price] IS A `num` OF MAJOR UNITS, NOT A [Money], AND THE ODD ONE OUT
@@ -447,6 +500,9 @@ class Subscription {
     deletedAt: deletedAt,
     notes: notes ?? this.notes,
     cancelUrl: cancelUrl,
+    reminderDays: reminderDays,
+    noticeDays: noticeDays,
+    noticeDaysSupported: noticeDaysSupported,
   );
 
   /// The mark a row wears when nobody chose one: the first three letters of

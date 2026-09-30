@@ -1,27 +1,26 @@
 // SECTION G of the spine — notifications: the shared inbound tap seam, the
-// chassis service, Subly's frozen fork, the daily-reminder rail and the
-// catch-up nudge. Re-exported from `../providers.dart`.
+// chassis service, Subly's renewal reminders over it, the daily-reminder rail
+// and the catch-up nudge. Re-exported from `../providers.dart`.
 //
 // [notificationTapSourceProvider] stood at the tail of SECTION F (identity) and
 // is carried here, with the rest of the notification wiring it belongs to.
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show PersistedValue;
+import 'package:nikatru_api_client/nikatru_api_client.dart'
+    show DioReminderChannelsTransport;
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 
 import '../../core/app_config.dart';
+import '../../core/windows_notification_identity.g.dart';
 import '../../services/notifications/notification_service.dart';
 import '../analytics_providers.dart';
+import 'analytics_envelope.dart' show kPlatformBaseUrl;
 
-/// 🔴 [13]T-9 — the shared seam, present here for the INBOUND half only.
-///
-/// Subly's own fork ([subscriptiontrackerNotificationServiceProvider]) still owns every
-/// outbound call Subly makes (renewal reminders, the weekly digest). This is the
-/// tap channel it has never had, and it is the shared `packages/notifications`
-/// adapter rather than a second fork method precisely so there is one
-/// registration in the tree, not two.
+/// 🔴 [13]T-9 — the shared seam's INBOUND half: the taps.
 ///
 /// 🔴 MUST BE OVERRIDDEN IN `main.dart` WITH THE INSTANCE THAT WAS `init()`ED,
 /// and it is NOT the same thing as [notificationServiceProvider] below even
@@ -43,7 +42,7 @@ final Provider<core.NotificationService> notificationTapSourceProvider =
 /// [core.NotificationService] seam, or a no-op where no plugin exists.
 ///
 /// 🔴 THIS NAME NOW MEANS THE CHASSIS SERVICE. Subly's own fork kept its
-/// behaviour and moved to [subscriptiontrackerNotificationServiceProvider] — see note 3 in the
+/// behaviour and moved to [renewalRemindersProvider] — see note 3 in the
 /// file header for the three pieces of evidence that forced the direction.
 ///
 /// [pipeline C-2/C-7] Platform reality is DECLARED, not assumed — see
@@ -54,23 +53,52 @@ final Provider<core.NotificationService> notificationTapSourceProvider =
 /// believes a reminder was set.
 final Provider<core.NotificationService> notificationServiceProvider =
     Provider<core.NotificationService>(
-      (ref) => createLocalNotificationService(),
+      (ref) =>
+          createLocalNotificationService(windows: kWindowsNotificationIdentity),
     );
 
-/// 🪦 SUBLY'S FROZEN NOTIFICATION FORK, renamed from `notificationServiceProvider`.
+/// What THIS build can deliver on THIS platform — the chassis matrix, less
+/// Windows when the app carries no identity. The same inputs the adapter above
+/// was built from, so the settings rows and the scheduler cannot disagree. A
+/// provider so a test can pin a platform.
+final Provider<NotificationCapabilities> notificationCapabilitiesProvider =
+    Provider<NotificationCapabilities>(
+      (ref) => NotificationCapabilities.resolve(
+        defaultTargetPlatform,
+        isWeb: kIsWeb,
+        windows: kWindowsNotificationIdentity,
+      ),
+    );
+
+/// Subly's renewal reminders — the domain half, over the ONE chassis adapter.
 ///
-/// Behaviour unchanged; only the name moved, because the old name is the
-/// chassis's. It stays a separate provider rather than being folded into the
-/// chassis one because the two have DIFFERENT INTERFACES — this one exposes
-/// `requestPermissions()` (plural), `scheduleWeeklyDigest()` and the renewal
-/// scheduling `subscriptions_controller.dart` drives; `core.NotificationService`
-/// exposes `requestPermission()` (singular) and `scheduleDaily`.
-///
-/// Consumers re-pointed with this rename (7 call sites, 5 files) are listed in
-/// MANIFEST.md §4. De-forking is [pipeline 2]C-3's work item, not this merge's.
-final Provider<NotificationService>
-subscriptiontrackerNotificationServiceProvider = Provider<NotificationService>(
-  (ref) => NotificationService.instance,
+/// ⏱ 2026-09-28 (ST-R4): this was `renewalRemindersProvider`,
+/// a 764-line fork of the seam that wrapped the notification plugin a second
+/// time. It now schedules THROUGH [notificationServiceProvider] — the instance
+/// `main.dart` initialised and overrode — so there is one plugin registration
+/// in the process and the reminders it posts are tappable by construction.
+final Provider<RenewalReminders> renewalRemindersProvider =
+    Provider<RenewalReminders>(
+      (ref) => RenewalReminders(
+        service: ref.watch(notificationServiceProvider),
+        capabilities: ref.watch(notificationCapabilitiesProvider),
+      ),
+    );
+
+/// Whether the email and calendar rows exist in this build: they need the
+/// platform Worker, so a live backend. A provider so a widget test can show them.
+final Provider<bool> reminderChannelsAvailableProvider = Provider<bool>(
+  (ref) => AppConfig.isBackendLive,
+);
+
+/// The ST-T4a client — email reminder prefs and the calendar feed, on the
+/// shared platform Worker. Discards to the unavailable transport off a live
+/// backend, so a demo build and every widget test are hermetic.
+final Provider<core.ReminderChannelsTransport>
+reminderChannelsTransportProvider = Provider<core.ReminderChannelsTransport>(
+  (ref) => AppConfig.isBackendLive
+      ? DioReminderChannelsTransport(platformBaseUrl: kPlatformBaseUrl)
+      : const core.UnavailableReminderChannelsTransport(),
 );
 
 const String _remindersKey = 'nikatru.reminders_enabled';
@@ -91,7 +119,7 @@ const int kDailyReminderId = 1;
 /// reads ON while every notification is silently dropped.
 ///
 /// ⚠️ SUBLY HAS ITS OWN REMINDER RAIL (`settings_controller.dart` +
-/// `subscriptions_controller.dart` over the fork). Both rails now exist in this
+/// `subscriptions_controller.dart` over [renewalRemindersProvider]). Both rails now exist in this
 /// tree. That is a REAL product question, not a merge artifact — MANIFEST.md §7
 /// carries it as an open question for P2.6b, where the settings surface merges
 /// and one of the two toggles has to be the one the user sees.
@@ -137,7 +165,7 @@ class RemindersEnabledController extends Notifier<bool> {
   /// 🔴 `cancel(kDailyReminderId)`, NOT `cancelAll()`. This used to say the
   /// opposite — "reminders off is a promise about all of them, including any
   /// an app schedules on top" — and that sentence was the defect: the chassis
-  /// service and the app's own `NotificationService` share ONE
+  /// service and the app's own `RenewalReminders` share ONE
   /// `FlutterLocalNotificationsPlugin` singleton, so this `cancelAll()` took
   /// every renewal reminder with it. And it ran at EVERY launch: the stored
   /// intent defaults to false, so [resyncOnStart] reached here on a fresh

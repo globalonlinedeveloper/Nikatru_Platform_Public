@@ -89,6 +89,14 @@
       "proves": "The sentence is the comment inside the case that grades it."
     },
     {
+      "file": "tooling/ci/assert-deploy-ref.mjs",
+      "anchor": "included, with no second list to keep by hand",
+      "status": "proven",
+      "test": "tooling/ci/test/new-tool-chain.test.mjs",
+      "case": "store-publish's ref check allows the second tool's tag, with no edit to the step",
+      "proves": "EXL-17. new-tool stamps a second extension in a copy of HEAD, and the case runs store-publish's ref check exactly as extensions.yml spells it against that tool's tag. A second, hand-kept `tag:` allow in the step would refuse the new tag by name and fail the case."
+    },
+    {
       "file": "tooling/ci/assert-d1-sql-inventory.mjs",
       "anchor": "all derived from the file; there is no exemption list.",
       "status": "proven",
@@ -1164,6 +1172,18 @@
       "anchor": "- name: Run every suite in test/e2e (derived, not listed)",
       "status": "demoted",
       "reason": "A step NAME, shown on the checks list. The derivation is the inline bash below it, which no test executes. Judged 2026-09-19."
+    },
+    {
+      "file": ".github/workflows/extensions.yml",
+      "anchor": "- name: Run every suite that opts into the branded leg (derived, not listed)",
+      "status": "demoted",
+      "reason": "A step NAME, shown on the checks list. The derivation (every test/e2e/*.mjs carrying an e2e-branded: line) is the inline node block below it, which no test executes; the block itself exits 1 when no suite opts in. Judged 2026-09-30."
+    },
+    {
+      "file": ".github/workflows/extensions.yml",
+      "anchor": "this leg (run.mjs narrows itself to one capture). Derived, not listed: no tool or",
+      "status": "demoted",
+      "reason": "The e2e-branded job's why-comment restating the step it heads; the derivation is that step's inline node block, which no test executes. Judged 2026-09-30."
     },
     {
       "file": "README.md",

@@ -54,3 +54,62 @@ class NotificationTapObserver {
     await s?.cancel();
   }
 }
+
+/// Where a tapped notification's [payload] leads, or null for nowhere.
+///
+/// ST-R5 (audit C27): `sub:{id}` — every renewal, trial and cancel-by
+/// reminder carries it (RenewalReminders.payloadFor) — opens `/sub/{id}`.
+/// The payload comes back through the OS and is UNTRUSTED, so the id must be
+/// a plain token; anything else goes nowhere rather than into a route.
+String? routeForNotificationPayload(String? payload) {
+  if (payload == null || !payload.startsWith('sub:')) return null;
+  final String id = payload.substring(4);
+  if (!RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(id)) return null;
+  return '/sub/$id';
+}
+
+/// ST-R5 (audit C27): the wire between a tap and the screen it names.
+///
+/// A tap was logged and routed nowhere, so a renewal reminder opened the app
+/// wherever it had been. This subscribes to the SAME seam stream the funnel
+/// observer does (broadcast, so both get every tap) and, once at start, to
+/// [core.NotificationService.takeLaunchTap] — a tap that COLD-STARTS the app
+/// arrives there, never on the stream. Independent of analytics consent:
+/// opening what the user tapped is not tracking.
+class NotificationTapRouter {
+  NotificationTapRouter({
+    required core.NotificationService service,
+    required void Function(String route) open,
+  }) : _service = service,
+       _open = open;
+
+  final core.NotificationService _service;
+  final void Function(String route) _open;
+  StreamSubscription<core.NotificationTap>? _sub;
+
+  void _route(core.NotificationTap? tap) {
+    final String? route = routeForNotificationPayload(tap?.payload);
+    if (route != null) _open(route);
+  }
+
+  /// Idempotent, like [NotificationTapObserver.start].
+  Future<void> start() async {
+    if (_sub != null) return;
+    _sub = _service.notificationTaps().listen(
+      _route,
+      onError: (Object _) {},
+      cancelOnError: false,
+    );
+    try {
+      _route(await _service.takeLaunchTap());
+    } on Object {
+      // A launch that cannot be read opens where the app opens anyway.
+    }
+  }
+
+  Future<void> stop() async {
+    final StreamSubscription<core.NotificationTap>? s = _sub;
+    _sub = null;
+    await s?.cancel();
+  }
+}

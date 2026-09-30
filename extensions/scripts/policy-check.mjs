@@ -122,6 +122,40 @@ r.note(files.length + ' packaged file(s): ' +
   files.filter(f => f.startsWith('_locales/')).length + ' locale catalogue(s) + ' +
   files.filter(f => !f.startsWith('_locales/')).length + ' code/assets');
 
+/* ⏱ 2026-09-29 (EXL-02, O-EXTENSION-DOCS-HAND-KEPT-AND-DRIFTED). FullShot's
+   NOTES.package said the package "selects 85 files" and "reads back as 85
+   entries" while the line above printed 93: a count typed into prose is a
+   second copy of the number this script measures, and it went stale with every
+   gate green. The package notes (NOTES.package and NOTES["package.*"]) may
+   state no packaged-file count other than the one measured here — the fix is
+   to delete the number and point at this run, not to re-type it. Scoped to the
+   package notes because other NOTES quote unrelated sizes ("the same 14669"
+   bytes). */
+{
+  const COUNT_CLAIM = /\b(\d+)\s+(?:packaged\s+)?(?:files?|entries)\b|\b(?:selects|reads back as|the same)\s+(\d+)\b/gi;
+  const notes = tool.raw && tool.raw.NOTES && typeof tool.raw.NOTES === 'object' ? tool.raw.NOTES : {};
+  const stale = [];
+  let seen = 0;
+  for (const [k, v] of Object.entries(notes)) {
+    if (k !== 'package' && !k.startsWith('package.')) continue;
+    seen++;
+    for (const m of String(v).matchAll(COUNT_CLAIM)) {
+      const n = Number(m[1] ?? m[2]);
+      if (n !== files.length) stale.push('NOTES["' + k + '"]: "' + m[0] + '"');
+    }
+  }
+  if (stale.length) {
+    r.fail('tool.json package notes state no stale packaged-file count',
+      stale.map(s => '  ' + s).join('\n') + '\n' +
+      'packagedFiles() selects ' + files.length + ' file(s) today. A count typed into NOTES is a second copy of that\n' +
+      'number, and nothing re-types it when the package changes. Delete the number and point at\n' +
+      '`node scripts/policy-check.mjs ' + tool.id + '`, which prints it on every run.');
+  } else {
+    r.pass('tool.json package notes state no stale packaged-file count',
+      seen + ' package note(s) read; measured: ' + files.length + ' file(s)');
+  }
+}
+
 /* The package must at minimum carry its own manifest. Right-clicking a folder
    in Windows Explorer produces a zip the store answers with "Manifest file is
    missing or unreadable" and no further explanation; so does an include list

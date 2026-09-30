@@ -49,6 +49,9 @@
      more distinct lines than a sourced maxItems-> FAIL    (see 3b)
      a URL file that is not an https URL        -> OWNER while unserved, FAIL once served
      a URL file that disagrees with identity.json-> FAIL, at any served state
+     a URL file on a code host (github.com)     -> FAIL, at any served state
+     a store locale with no rendered long
+       description and no englishOnly line      -> FAIL    (see §6b)
      screenshots/ with no images                -> OWNER while unserved, FAIL once served
      zero stores graded                         -> CANNOT RUN, exit 2
 
@@ -76,6 +79,7 @@ import { fileURLToPath } from 'node:url';
 import { Report, parseArgs, die } from './lib/report.mjs';
 import { repoRoot, resolveTool, loadAllTools, readText } from './lib/toolinfo.mjs';
 import { requiredNotice } from './lib/licence.mjs';
+import { codeHostOf } from './lib/listing-url.mjs';
 import { planListing, LISTING_REL } from './render-listing.mjs';
 import {
   LISTING_FIELDS,
@@ -243,6 +247,13 @@ function urlLinesOf(body) {
 }
 const isHttpsUrl = (v) => /^https:\/\/[^\s<>"']+$/.test(v);
 
+/* ⏱ 2026-09-29 (EXL-13). support-url.txt held the code repository's GitHub
+   issues page — a URL that 404s the day the repository goes private, and after
+   a first publish a live listing edit to change. A listing URL is refused on a
+   code host at ANY served state: it is not owner work to fix, it is a wrong
+   value, and the cheapest day to change it is before the first submit. The
+   host set lives in lib/listing-url.mjs, shared with amo-metadata.mjs. */
+
 /* One sourced limit, graded against one listing file. `max` and `min` count
    characters. `maxItems` counts DISTINCT value lines — blank and `#` lines are
    not values, the rule urlLinesOf applies to the URL files, and a repeated line
@@ -343,6 +354,14 @@ function gradeUrlFile(label, body, identityField, identity, anyServed) {
     return r.owner(label + ' is not filled in yet',
       why + '\nNo store is served yet, so this prints rather than blocking the build. Host the policy,\n' +
       'then write the URL here AND in publish/identity.json' + (identityField ? '.' + identityField : '') + '.');
+  }
+
+  const codeHost = codeHostOf(found);
+  if (codeHost) {
+    return r.fail(label + ' is not on a code host',
+      'it holds "' + found + '", on ' + codeHost + '.\n' +
+      'This URL is pasted into a public store listing. A link into the code repository is a user-facing\n' +
+      'GitHub page, and it 404s the day the repository goes private. Point it at a nikatru.com page.');
   }
 
   if (declared && declared !== found) {
@@ -784,6 +803,7 @@ for (const tool of tools) {
         r.pass(tool.rel + ' listing files are what store/listing.json renders',
           fresh + ' file(s); Pro text ' + (plan.pro ? 'renders' : 'does not render — the tool neither transmits nor sells'));
       }
+      gradeListingLanguage(tool, plan.src);
     }
   }
 
@@ -837,6 +857,43 @@ for (const tool of tools) {
   }
 
   gradeClaims(tool, rows);
+}
+
+/* ── 6b. 🔴 EVERY STORE LOCALE GETS A LONG DESCRIPTION, OR AN HONEST LINE ──
+   ⏱ 2026-09-29 (EXB-07). The name and summary reach the stores in every
+   _locales catalogue through the manifest's __MSG_ keys, so each catalogue is a
+   store locale. The long description — the text that carries the privacy and
+   redaction claims — is rendered once, in one language, because render-listing
+   has no locale axis. Nothing said so: every other locale's listing page shows
+   a translated name over English claims, by accident rather than by decision.
+   So store/listing.json `language.rendered` names the one language rendered
+   (it must be the manifest's default_locale, and a catalogue on disk), and any
+   other store locale needs `language.englishOnly`: the reason, in a sentence.
+   A locale with neither is a FAIL. */
+function gradeListingLanguage(tool, src) {
+  const label = tool.rel + ' every store locale has a rendered long description or an English-only declaration';
+  const locAbs = path.join(tool.dirAbs, '_locales');
+  const locales = fs.existsSync(locAbs)
+    ? fs.readdirSync(locAbs).filter((l) => fs.existsSync(path.join(locAbs, l, 'messages.json'))).sort() : [];
+  if (!locales.length) return r.note(tool.rel + ': no _locales catalogue — the long description is the only language the stores receive.');
+  const lang = src && typeof src.language === 'object' && src.language ? src.language : {};
+  const rendered = typeof lang.rendered === 'string' ? lang.rendered : null;
+  const defaultLocale = tool.manifest?.default_locale ?? null;
+  if (!rendered || rendered !== defaultLocale || !locales.includes(rendered)) {
+    return r.fail(label,
+      LISTING_REL + ' language.rendered is ' + JSON.stringify(rendered) + '; the manifest default_locale is ' +
+      JSON.stringify(defaultLocale) + ' and _locales holds ' + locales.length + ' catalogue(s).\n' +
+      'The long description is rendered in exactly one language, and it must be the one the manifest falls back to.');
+  }
+  const others = locales.filter((l) => l !== rendered);
+  if (!others.length) return r.pass(label, 'one store locale, "' + rendered + '", and it is the rendered one');
+  if (typeof lang.englishOnly === 'string' && lang.englishOnly.trim()) {
+    return r.pass(label, '"' + rendered + '" rendered; ' + others.length + ' other store locale(s) declared English-only in ' + LISTING_REL);
+  }
+  return r.fail(label,
+    others.length + ' store locale(s) (' + others.slice(0, 8).join(', ') + (others.length > 8 ? ', …' : '') + ') show a translated name and\n' +
+    'summary over a long description rendered only in "' + rendered + '", and ' + LISTING_REL + ' says nothing about it.\n' +
+    'Render the long description per locale, or declare language.englishOnly — one sentence saying why.');
 }
 
 function claimHits(rel, text) {

@@ -85,8 +85,12 @@ export const DECLARATION_EXEMPT = Object.freeze({
  *               register row), or null when it applies by a row property;
  *   appliesTo   true when a lane submitting `row` owes this gate; its second
  *               argument is the parsed channel register the row came from;
- *   realFlag    (declaration gates only) the flag its step carries in a job that
- *               publishes, and never in one that does not.
+ *   realFlag    the flag its step carries in a job that publishes, and never in
+ *               one that does not (a declaration gate, and the Small Business
+ *               Program gate);
+ *   declaresConsole  true on the gate that answers a store's console declaration:
+ *               limb 3 requires one on every submitting app row not in
+ *               DECLARATION_EXEMPT.
  */
 export const SUBMIT_PRECONDITIONS = [
   {
@@ -120,6 +124,20 @@ export const SUBMIT_PRECONDITIONS = [
     // (DECLARATION_ONLY_CHANNELS: windows-store), where the date alone is graded.
     appliesTo: (row, register) =>
       submits(row) && (swornFilesOf(register, row.id).length > 0 || Object.hasOwn(DECLARATION_ONLY_CHANNELS, row.id)),
+    realFlag: REAL_SUBMISSION_FLAG,
+    declaresConsole: true,
+  },
+  // ⏱ 2026-09-29 (AB-M5-02) — the first App Store sale waits for the Small Business Program
+  // enrolment (owner queue A-18): a real submission on a channel whose purchaseRail is
+  // `apple-iap` is refused while tooling/catalog/fee-register.json carries no enrolment date.
+  // It carries `realFlag` for the same reason the declaration gate does — a dry run never
+  // refuses — but it is not a console declaration, so it neither needs nor satisfies
+  // DECLARATION_EXEMPT (`declaresConsole` is what limb 3's undeclared-channel check reads).
+  {
+    guard: 'tooling/ci/assert-small-business-program.mjs',
+    arg: (row) => `--for-submission=${row.id}`,
+    channels: null,
+    appliesTo: (row) => submits(row) && row?.purchaseRail?.rail === 'apple-iap',
     realFlag: REAL_SUBMISSION_FLAG,
   },
   // ⏱ 12a — a paywall that cannot buy is an incomplete app in review: an app whose

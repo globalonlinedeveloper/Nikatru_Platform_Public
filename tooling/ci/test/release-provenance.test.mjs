@@ -2657,4 +2657,50 @@ describe('assert-release-provenance — limb 2b, the sandbox exemption', () => {
     assert.equal(code, 1, out);
     assert.match(out, /passes `--config`/);
   });
+
+  // ⏱ 2026-09-29 — B-12 (O-SERVICE-KIT-UNBUILT): deploy-sandbox.yml's app Workers deploy
+  // from ONE matrix, `workingDirectory: ${{ matrix.worker.dir }}`. The excuse is read over
+  // every Worker tooling/ci/worker-set.mjs gives the matrix on this tree, and only when a
+  // job of the same workflow feeds it from `--json --app-workers --env sandbox`.
+  const REGISTER = {
+    appWorkers: [{ name: 'w', config: 'services/w/wrangler.jsonc', hosts: ['w.example.test'], dsnSecret: 'GLITCHTIP_DSN', routes: [{ method: 'GET', path: '/v1/health' }] }],
+  };
+  const FEED = '        run: echo "workers=$(node tooling/ci/worker-set.mjs --for-deploy --json --app-workers --env sandbox)" >> "$GITHUB_OUTPUT"\n';
+  function sandboxMatrix({ feed = FEED } = {}) {
+    return (
+      'name: Deploy sandbox\non:\n  workflow_dispatch:\njobs:\n' +
+      '  workers:\n    runs-on: ubuntu-24.04\n    outputs:\n      workers: ${{ steps.set.outputs.workers }}\n    steps:\n      - id: set\n' + feed +
+      '  deploy:\n    needs: workers\n    runs-on: ubuntu-24.04\n    strategy:\n      matrix:\n        worker: ${{ fromJSON(needs.workers.outputs.workers) }}\n    steps:\n' +
+      `${GATE_STEP}\n` +
+      '      - uses: cloudflare/wrangler-action@abc\n        with:\n          apiToken: x\n          workingDirectory: ${{ matrix.worker.dir }}\n' +
+      '          command: deploy --env sandbox --var RELEASE:${{ github.sha }}\n'
+    );
+  }
+  const matrixTree = (opts, cfg = SANDBOX_CFG) => {
+    const root = tree({ deploy: sandboxMatrix(opts), extraScript: cfgFile(cfg) });
+    mkdirSync(join(root, 'tooling'), { recursive: true });
+    writeFileSync(join(root, 'tooling', 'platform-register.json'), JSON.stringify(REGISTER, null, 2));
+    writeFileSync(join(root, 'services', 'w', 'package.json'), JSON.stringify({ name: 'w' }));
+    return root;
+  };
+
+  test('PASSES a sandbox MATRIX leg: its directory is every Worker worker-set.mjs --env sandbox gives', () => {
+    const { code, out } = run(matrixTree());
+    assert.equal(code, 0, out);
+    assert.match(out, /limb 2b: 1 publishing job\(s\) excused .*deploy\.yml#deploy → services\/w\/wrangler\.jsonc env\.sandbox/);
+  });
+
+  test('FAILS the same leg when no job of the workflow reads the matrix from worker-set.mjs --env sandbox', () => {
+    const { code, out } = run(matrixTree({ feed: FEED.replace(' --env sandbox', '') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /from \$\{\{ matrix\.worker\.dir \}\}: a matrix leg, and no step of this workflow reads the matrix from `worker-set\.mjs --for-deploy --json --app-workers --env sandbox`/);
+  });
+
+  test('FAILS the leg when the Worker it resolves to is no proven sandbox (the predicate runs per leg)', () => {
+    const cfg = structuredClone(SANDBOX_CFG);
+    cfg.env.sandbox.vars.MONEY_ENVIRONMENT = 'live';
+    const { code, out } = run(matrixTree({}, cfg));
+    assert.equal(code, 1, out);
+    assert.match(out, /services\/w\/wrangler\.jsonc env\.sandbox .*MONEY_ENVIRONMENT = "live", not "sandbox"/);
+  });
 });

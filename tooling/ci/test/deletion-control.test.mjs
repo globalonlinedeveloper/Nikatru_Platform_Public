@@ -240,6 +240,29 @@ describe('the confirmation must not be one tap away', () => {
     );
   });
 
+  // ⏱ 2026-09-28 (ST-T4b): the app's settings tree gained reminder dialogs
+  // (features/settings/reminder_settings.dart). An UNDISMISSABLE one that names
+  // no deletion must not stand in for the deletion's confirmation either.
+  test('🔴 a reminder dialog alone — even undismissable — does not satisfy the limb', () => {
+    withTree(
+      (root) => {
+        edit(root, SUBLY_SETTINGS, (s) => s.replaceAll('showDialog', 'showNothing'));
+        writeFileSync(
+          join(root, SUBLY, 'lib', 'features', 'settings', 'reminder_priming.dart'),
+          'Future<bool?> prime(dynamic context) => showDialog<bool>(\n' +
+            '  context: context,\n' +
+            '  barrierDismissible: false,\n' +
+            '  builder: (_) => const ReminderPrimingDialog(),\n' +
+            ');\n',
+        );
+      },
+      (r) => {
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /opens no dialog of its own — [1-9]\d* `showDialog` call\(s\) there/);
+      },
+    );
+  });
+
   test('🔴 THE OTHER DIALOGS ON THE SCREEN DO NOT COVER THE DELETION', () => {
     // The brick's settings screen opens a reminder-priming dialog at :434 and
     // an edit-profile dialog at :530. Remove ONLY the deletion's own

@@ -32,6 +32,16 @@
    a finding (the account check is a network call), and a tool that transmits
    or sells with no readable seller cannot render at all (exit 2).
 
+   THE PARITY TABLE RENDERS WHERE THE SOURCE ASKS (EXB-13). A long-description
+   line `{"parity": "<heading>"}` expands, per store, into that store's build
+   target's `fallback` cells from tool.json parity.features. A tool with a
+   parity table must carry exactly one such line; see planListing.
+
+   ONE LANGUAGE, DECLARED (EXB-07). This renderer has no locale axis: every
+   long description is rendered in store/listing.json `language.rendered`, and
+   `language.englishOnly` says why the other store locales get that text.
+   check-store-metadata.mjs §6b holds the declaration to the tool's _locales.
+
    check-store-metadata.mjs imports planListing() and fails a listing file that
    is not what this renders — a hand edit to a .txt is caught there as well as
    by --check here.
@@ -99,8 +109,8 @@ const lines = (v) => (Array.isArray(v) ? v : [v]);
 
 /**
  * Plan every listing file for one tool. Never writes.
- * @returns {{ files: Map<string,string>, problems: string[], lost: string[], pro: boolean, source: boolean }}
- *   `files` maps a tool-relative path to its full content.
+ * @returns {{ files: Map<string,string>, problems: string[], lost: string[], pro: boolean, source: boolean, src?: object }}
+ *   `files` maps a tool-relative path to its full content; `src` is the parsed store/listing.json.
  */
 export function planListing(root, tool, { appConfigPath } = {}) {
   const files = new Map();
@@ -156,10 +166,34 @@ export function planListing(root, tool, { appConfigPath } = {}) {
     }
     return String(v);
   });
+  /* ── the parity table (EXB-13, 2026-09-29) ──
+     A `{"parity": "<heading>"}` line renders, for the store it is rendered
+     for, every tool.json parity cell of that store's TARGET whose state is
+     `fallback`: a blank line, the heading, then "• <label>: <note>" per cell.
+     A store whose target has no fallback renders nothing there — every cell
+     is `works` or `unproven`, and an unproven cell is not a claim to print.
+     check-catalog.mjs grades the table; this only renders it. */
+  const features = raw?.parity?.features && typeof raw.parity.features === 'object' ? raw.parity.features : null;
+  const isParity = (l) => l !== null && typeof l === 'object' && 'parity' in l;
+  const markers = lines(src.long).filter(isParity).length;
+  if (features && markers !== 1) {
+    problems.push(tool.rel + '/' + LISTING_REL + ': tool.json declares a parity table and the long description carries ' +
+      markers + ' {"parity": ...} line(s); it must carry exactly one, so what differs per browser is said in the listing.');
+  }
+  if (!features && markers) {
+    problems.push(tool.rel + '/' + LISTING_REL + ': the long description carries a {"parity": ...} line and tool.json declares no parity table to render.');
+  }
+  const parityLines = (l, store) => {
+    const target = rows[store.id]?.target;
+    const cells = Object.values(features ?? {})
+      .filter((f) => f && f[target]?.state === 'fallback')
+      .map((f) => '• ' + f.label + ': ' + f[target].note);
+    return cells.length ? ['', fill(String(l.parity), store), ...cells] : [];
+  };
   const block = (arr, store) => arr.filter(when)
     .filter((l) => typeof l === 'string' || !l.stores || l.stores.includes(store.id))
     .filter((l) => typeof l === 'string' || !l.requires || (vars[l.requires] !== null && vars[l.requires] !== undefined))
-    .map((l) => fill(text(l), store)).join('\n') + '\n';
+    .flatMap((l) => (isParity(l) ? parityLines(l, store) : [fill(text(l), store)])).join('\n') + '\n';
 
   for (const [id, row] of Object.entries(rows)) {
     if (!row || typeof row.dir !== 'string') continue;
@@ -206,7 +240,7 @@ export function planListing(root, tool, { appConfigPath } = {}) {
       }
     }
   }
-  return { files, problems, lost, pro, sells, source: true, vars };
+  return { files, problems, lost, pro, sells, source: true, vars, src };
 }
 
 const JUSTIFICATIONS_OPEN = '<!-- GENERATED:permission-justifications';
@@ -250,6 +284,9 @@ function main() {
         r.pass(tool.rel + '/' + rel, 'written');
       }
     }
+    const lang = plan.src && plan.src.language;
+    r.note(tool.rel + ': long description rendered in ' + (lang && lang.rendered ? '"' + lang.rendered + '"' : 'an undeclared language') +
+      (lang && typeof lang.englishOnly === 'string' && lang.englishOnly.trim() ? ', declared English-only for every other store locale' : ''));
     r.note(tool.rel + ': Pro text ' + (plan.pro
       ? 'RENDERS (the tool transmits or sells) · sells: ' + (plan.sells ? 'yes' : 'no — the "sells" lines stay dark') +
         ' · seller: ' + plan.vars.seller + ' · price range: ' + (plan.vars.priceRange ?? 'none (no recurring offering)')

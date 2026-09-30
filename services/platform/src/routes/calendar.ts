@@ -87,7 +87,11 @@ calendar.post('/calendar/feed', async (c) => {
   )
     .bind(c.get('userId'), appId, await sha256Hex(token), createdAt)
     .run();
-  return c.json({ app_id: appId, ...feedUrls(new URL(c.req.url).origin, token), created_at: createdAt }, 201);
+  // Named keys, not a spread: assert-analytics-contract pins this literal
+  // against the released Dart client (CalendarFeed.tryParse), and a key it
+  // cannot name is a key it cannot compare.
+  const urls = feedUrls(new URL(c.req.url).origin, token);
+  return c.json({ app_id: appId, https_url: urls.https_url, webcal_url: urls.webcal_url, created_at: createdAt }, 201);
 });
 
 calendar.delete('/calendar/feed', async (c) => {

@@ -293,5 +293,7 @@ describe('subscriptiontracker_db migrations re-apply cleanly', () => {
     expect(cols('subscriptions')).toEqual(
       expect.arrayContaining(['currency', 'price_minor', 'cycle_every', 'cycle_unit', 'status', 'deleted_at']),
     );
+    // 0004_notice_days.sql — its one ADD COLUMN, asserted for the same reason.
+    expect(cols('subscriptions')).toContain('notice_days');
   });
 });

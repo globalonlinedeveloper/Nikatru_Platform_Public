@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -9,8 +10,8 @@ import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
-import '../../state/providers.dart'
-    show nowProvider, subscriptiontrackerNotificationServiceProvider;
+import '../../state/providers.dart' show nowProvider, renewalRemindersProvider;
+import '../../state/subscriptions_controller.dart' show monthDayFormat;
 import '../shared/async_gate.dart';
 
 /// What is coming up, derived from the subscriptions the user holds.
@@ -81,7 +82,11 @@ class NotificationsScreen extends ConsumerWidget {
     // the reader and August 9th to the code. Only a formatter can localise a
     // date. `toString()` (not `toLanguageTag()`) because intl keys its symbol
     // tables with the underscore form.
-    final DateFormat renewalDate = DateFormat.yMd(
+    //
+    // ⏱ ST-R6 (audit C18): and not `yMd` either — "9/29/2026" reads two ways
+    // between US and Indian readers. It is the OS reminder's own month-day
+    // formatter now, so the two surfaces say the same date the same way.
+    final DateFormat renewalDate = monthDayFormat(
       Localizations.localeOf(context).toString(),
     );
 
@@ -89,111 +94,124 @@ class NotificationsScreen extends ConsumerWidget {
       // No `backgroundColor`: the scaffold inherits `scheme.surface` from
       // `buildAppTheme` in both brightnesses. The light-literal override that
       // stood here (`AppColors.bg`) is retired with the rest of the forks.
-      body: SafeArea(
-        // ── THE CONTENT PANE ────────────────────────────────────────────────
-        // `.reading` (720): the card content is PROSE — `notifRenewsInDays`
-        // and `notifCancellingSaves` are whole sentences, and the Tamil arms
-        // are longer — so the design system's reading width, 45–75 characters
-        // before the eye loses the line return. The default `kMaxBodyWidth`
-        // never bound on a real desktop.
-        //
-        // The pane wraps the WHOLE column — header, rule and list together —
-        // because capping only the list would leave the title and the close
-        // button hanging off the edges of a centred list.
-        // `test/width_notifications_test.dart` pins both halves.
-        child: ContentPane.reading(
-          child: Column(
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.gutterCompact,
-                  AppSpacing.sm,
-                  AppSpacing.gutterCompact,
-                  AppSpacing.md,
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Semantics(
-                        header: true,
+      // ST-R6 (audit C17): Esc closes, as the Close button does. Autofocused
+      // so the key reaches it without a first click on web and desktop.
+      body: CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.escape): () =>
+              _close(context),
+        },
+        child: Focus(
+          autofocus: true,
+          // Holds focus for the shortcut without being a Tab stop itself.
+          skipTraversal: true,
+          child: SafeArea(
+            // ── THE CONTENT PANE ────────────────────────────────────────────────
+            // `.reading` (720): the card content is PROSE — `notifRenewsInDays`
+            // and `notifCancellingSaves` are whole sentences, and the Tamil arms
+            // are longer — so the design system's reading width, 45–75 characters
+            // before the eye loses the line return. The default `kMaxBodyWidth`
+            // never bound on a real desktop.
+            //
+            // The pane wraps the WHOLE column — header, rule and list together —
+            // because capping only the list would leave the title and the close
+            // button hanging off the edges of a centred list.
+            // `test/width_notifications_test.dart` pins both halves.
+            child: ContentPane.reading(
+              child: Column(
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.gutterCompact,
+                      AppSpacing.sm,
+                      AppSpacing.gutterCompact,
+                      AppSpacing.md,
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Semantics(
+                            header: true,
+                            child: Text(
+                              l10n.notifications,
+                              style: text.headlineSmall?.copyWith(
+                                color: scheme.onSurface,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        AppIconAction(
+                          key: E2EKeys.notificationsClose,
+                          icon: Icons.close,
+                          label: l10n.close,
+                          onPressed: () => _close(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // ST-U1 (audit C20): this list is DERIVED, not an inbox, and on a
+                  // target that cannot schedule (web — the live one — Windows and
+                  // Linux) it is the only reminder there is. Said once, here.
+                  if (!ref
+                      .watch(renewalRemindersProvider)
+                      .capabilities
+                      .canSchedule)
+                    Padding(
+                      key: const Key('notificationsNoRemindersHere'),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.gutterCompact,
+                        0,
+                        AppSpacing.gutterCompact,
+                        AppSpacing.md,
+                      ),
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
                         child: Text(
-                          l10n.notifications,
-                          style: text.headlineSmall?.copyWith(
-                            color: scheme.onSurface,
-                            fontWeight: FontWeight.w700,
+                          l10n.notificationsNoRemindersHere,
+                          style: text.bodyMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: AppSpacing.md),
-                    AppIconAction(
-                      key: E2EKeys.notificationsClose,
-                      icon: Icons.close,
-                      label: l10n.close,
-                      onPressed: () => _close(context),
-                    ),
-                  ],
-                ),
-              ),
-              // ST-U1 (audit C20): this list is DERIVED, not an inbox, and on a
-              // target that cannot schedule (web — the live one — Windows and
-              // Linux) it is the only reminder there is. Said once, here.
-              if (!ref
-                  .watch(subscriptiontrackerNotificationServiceProvider)
-                  .capabilities
-                  .canSchedule)
-                Padding(
-                  key: const Key('notificationsNoRemindersHere'),
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.gutterCompact,
-                    0,
-                    AppSpacing.gutterCompact,
-                    AppSpacing.md,
-                  ),
-                  child: Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Text(
-                      l10n.notificationsNoRemindersHere,
-                      style: text.bodyMedium?.copyWith(
-                        color: scheme.onSurfaceVariant,
+                  const Divider(height: 1),
+                  Expanded(
+                    // 🔴 THE GATE IS INSIDE THE CHROME, NOT AROUND IT. The title
+                    // row above carries the ONLY close control, and `_close` is the
+                    // only way back to /home from a URL a user can reload directly.
+                    // Wrapping the `Scaffold` instead would take that control away
+                    // for the whole of a failed fetch — a dead end reached
+                    // precisely when the user most needs out.
+                    child: subscriptionsGate(
+                      ref,
+                      l10n: l10n,
+                      emptyTitle: l10n.dataEmptyTitle,
+                      emptyBody: l10n.dataEmptyBody,
+                      // The list's own outline, in the card the rows arrive in.
+                      loading: ListView(
+                        padding: const EdgeInsets.all(AppSpacing.gutterCompact),
+                        children: <Widget>[
+                          AppCard(
+                            padding: EdgeInsets.zero,
+                            child: SkeletonList(label: l10n.dataLoading),
+                          ),
+                        ],
+                      ),
+                      builder: (List<Subscription> subs) => _body(
+                        context,
+                        ref,
+                        subs,
+                        l10n: l10n,
+                        money: money,
+                        renewalDate: renewalDate,
                       ),
                     ),
                   ),
-                ),
-              const Divider(height: 1),
-              Expanded(
-                // 🔴 THE GATE IS INSIDE THE CHROME, NOT AROUND IT. The title
-                // row above carries the ONLY close control, and `_close` is the
-                // only way back to /home from a URL a user can reload directly.
-                // Wrapping the `Scaffold` instead would take that control away
-                // for the whole of a failed fetch — a dead end reached
-                // precisely when the user most needs out.
-                child: subscriptionsGate(
-                  ref,
-                  l10n: l10n,
-                  emptyTitle: l10n.dataEmptyTitle,
-                  emptyBody: l10n.dataEmptyBody,
-                  // The list's own outline, in the card the rows arrive in.
-                  loading: ListView(
-                    padding: const EdgeInsets.all(AppSpacing.gutterCompact),
-                    children: <Widget>[
-                      AppCard(
-                        padding: EdgeInsets.zero,
-                        child: SkeletonList(label: l10n.dataLoading),
-                      ),
-                    ],
-                  ),
-                  builder: (List<Subscription> subs) => _body(
-                    context,
-                    ref,
-                    subs,
-                    l10n: l10n,
-                    money: money,
-                    renewalDate: renewalDate,
-                  ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -228,11 +246,31 @@ class NotificationsScreen extends ConsumerWidget {
               a.daysUntil(now).compareTo(b.daysUntil(now)),
         );
 
+    // ST-R6 (audit C19): a charge that happened in the last week — the stored
+    // date has passed and the row ROLLED to its next charge (ST-T3b) — was
+    // never said. It is, and it asks the question. Older than the week the
+    // list covers is not news.
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    final List<Subscription> renewed =
+        subs.where((Subscription x) {
+          if (x.cycle == null) return false;
+          final DateTime r = DateTime(
+            x.nextRenewal.year,
+            x.nextRenewal.month,
+            x.nextRenewal.day,
+          );
+          final int d = r.difference(today).inDays;
+          return d < 0 && d >= -7;
+        }).toList()..sort(
+          (Subscription a, Subscription b) =>
+              a.nextRenewal.compareTo(b.nextRenewal),
+        );
+
     final List<Subscription> flaggedUnused = subs
         .where((Subscription x) => x.unused)
         .toList();
 
-    if (dueSoon.isEmpty && flaggedUnused.isEmpty) {
+    if (dueSoon.isEmpty && renewed.isEmpty && flaggedUnused.isEmpty) {
       return DataStateView.empty(
         title: l10n.notifNothingDue,
         icon: Icons.notifications_none,
@@ -261,7 +299,8 @@ class NotificationsScreen extends ConsumerWidget {
               money.formatBag(savings),
             ),
           ),
-          if (dueSoon.isNotEmpty) const SizedBox(height: AppSpacing.lg),
+          if (dueSoon.isNotEmpty || renewed.isNotEmpty)
+            const SizedBox(height: AppSpacing.lg),
         ],
         if (dueSoon.isNotEmpty)
           AppCard(
@@ -276,6 +315,22 @@ class NotificationsScreen extends ConsumerWidget {
               ],
             ),
           ),
+        // Past charges in their own card: the due card is what is COMING.
+        if (renewed.isNotEmpty) ...<Widget>[
+          if (dueSoon.isNotEmpty) const SizedBox(height: AppSpacing.lg),
+          AppCard(
+            key: const Key('notifications-renewed-card'),
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: <Widget>[
+                for (int i = 0; i < renewed.length; i++) ...<Widget>[
+                  if (i > 0) const Divider(height: 1),
+                  _renewedRow(context, renewed[i], l10n, renewalDate),
+                ],
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -312,6 +367,22 @@ class NotificationsScreen extends ConsumerWidget {
         money.format(x.price),
         renewalDate.format(x.nextCharge(now)),
       ),
+      subtitleMaxLines: 3,
+      onTap: () => context.push('/sub/${x.id}'),
+    );
+  }
+
+  Widget _renewedRow(
+    BuildContext context,
+    Subscription x,
+    AppLocalizations l10n,
+    DateFormat renewalDate,
+  ) {
+    return AppListRow(
+      leading: AppMonogram.icon(Icons.history),
+      title: x.name,
+      titleMaxLines: 2,
+      subtitle: l10n.notificationsRenewedOn(renewalDate.format(x.nextRenewal)),
       subtitleMaxLines: 3,
       onTap: () => context.push('/sub/${x.id}'),
     );
