@@ -1,0 +1,296 @@
+name: Update goldens
+
+run-name: "Update goldens on ${{ inputs.ref }} (${{ inputs.mode }})"
+
+# The design, the dispatch command and what to do after a push are in
+# docs/ci/update-goldens.md. Only `# why:` lines live here, and docs/ci/README.md
+# carries the rules every workflow has to obey.
+
+on:
+  # why: DISPATCH ONLY. Goldens are rendered on Linux in CI, and no laptop here
+  # has a Linux Flutter any more; this is the pipeline's own way to re-render
+  # them. It is never on a clock and never on a push.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: The branch to regenerate on and push to. Never main.
+        required: true
+        type: string
+      tests:
+        description: Space-separated test files, relative to the repository root (apps/<id>/test/x_test.dart).
+        required: true
+        type: string
+      mode:
+        description: commit pushes the changed PNGs to ref; artifact only uploads them.
+        required: true
+        default: commit
+        type: choice
+        options:
+          - commit
+          - artifact
+
+concurrency:
+  group: update-goldens-${{ inputs.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    name: Re-render the goldens on Linux, then pass without --update-goldens
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # why: read-only. This job runs the branch's own test code, so it never
+    # holds a token that can write; the `commit` job below writes and runs none.
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.plan.outputs.sha }}
+      count: ${{ steps.delta.outputs.count }}
+    steps:
+      - name: Refuse main and a ref that is not a plain branch name
+        timeout-minutes: 1
+        env:
+          REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$REF" = "main" ] || [ "$REF" = "refs/heads/main" ]; then
+            echo "::error title=Refused::ref is main. Goldens land on a branch and reach main through a pull request and ci-gate."
+            exit 1
+          fi
+          if ! printf '%s' "$REF" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]*$' || ! git check-ref-format --branch "$REF" > /dev/null; then
+            echo "::error title=Refused::ref '$REF' is not a plain branch name."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 5
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      # why: every path is checked BEFORE any test runs, and the packages are
+      # derived from the paths, so a test outside apps/ or packages/ never runs.
+      - name: Resolve the test files to their packages
+        id: plan
+        timeout-minutes: 1
+        env:
+          REF: ${{ inputs.ref }}
+          TESTS: ${{ inputs.tests }}
+        run: |
+          set -euo pipefail
+          # The ref must be a BRANCH at exactly what was checked out, or the
+          # commit job would push onto something other than what was tested.
+          remote="$(git ls-remote --heads origin "refs/heads/$REF" | cut -f1)"
+          head="$(git rev-parse HEAD)"
+          if [ -z "$remote" ] || [ "$remote" != "$head" ]; then
+            echo "::error title=Refused::'$REF' is not a branch on origin at the checked-out commit ($head; origin has '${remote:-nothing}')."
+            exit 1
+          fi
+          read -r -a tests <<< "$TESTS"
+          if [ "${#tests[@]}" -eq 0 ]; then
+            echo "::error title=Refused::tests is empty."
+            exit 1
+          fi
+          : > "$RUNNER_TEMP/plan.tsv"
+          for t in "${tests[@]}"; do
+            if ! printf '%s' "$t" | grep -Eq '^(apps|packages)/[a-z][a-z0-9_]*/test/([A-Za-z0-9_]+/)*[A-Za-z0-9_]+_test\.dart$'; then
+              echo "::error title=Refused::'$t' is not apps/<id>/test/..._test.dart or packages/<name>/test/..._test.dart."
+              exit 1
+            fi
+            if [ ! -f "$t" ]; then
+              echo "::error title=Refused::'$t' does not exist on $REF."
+              exit 1
+            fi
+            pkg="$(printf '%s' "$t" | cut -d/ -f1,2)"
+            printf '%s\t%s\n' "$pkg" "${t#"$pkg"/}" >> "$RUNNER_TEMP/plan.tsv"
+          done
+          cut -f1 "$RUNNER_TEMP/plan.tsv" | sort -u > "$RUNNER_TEMP/packages.txt"
+          echo "Packages:"
+          cat "$RUNNER_TEMP/packages.txt"
+          echo "sha=$head" >> "$GITHUB_OUTPUT"
+
+      # why: the SAME composite action, and so the same pinned Flutter
+      # (tooling/versions.json) and the same runner image, as ci.yml
+      # workspace-gate, which is the job that renders the goldens on a PR. The
+      # renderer is identical by construction; there is no second version pin.
+      - uses: ./.github/actions/setup-flutter
+        timeout-minutes: 10
+
+      - name: Resolve the workspace
+        timeout-minutes: 5
+        run: flutter pub get --enforce-lockfile
+
+      - name: Record the tree before the goldens are re-rendered
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          git ls-files -z --modified --others --exclude-standard | sort -zu | while IFS= read -r -d '' f; do
+            if [ -e "$f" ]; then printf '%s %s\n' "$(sha256sum < "$f" | cut -c1-64)" "$f"; else printf 'deleted %s\n' "$f"; fi
+          done > "$RUNNER_TEMP/before.txt"
+
+      - name: flutter test --update-goldens
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          while IFS= read -r pkg; do
+            mapfile -t files < <(awk -F'\t' -v p="$pkg" '$1 == p { print $2 }' "$RUNNER_TEMP/plan.tsv")
+            echo "::group::$pkg: flutter test --update-goldens ${files[*]}"
+            (cd "$pkg" && flutter test --update-goldens "${files[@]}")
+            echo "::endgroup::"
+          done < "$RUNNER_TEMP/packages.txt"
+
+      # why: ONLY golden PNGs of the tested packages may have changed. Anything
+      # else the re-render touched fails the job here and nothing is committed or
+      # uploaded; a change present BEFORE the re-render is not the re-render's.
+      - name: Only golden PNGs of the tested packages changed
+        id: delta
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          git ls-files -z --modified --others --exclude-standard | sort -zu | while IFS= read -r -d '' f; do
+            if [ -e "$f" ]; then printf '%s %s\n' "$(sha256sum < "$f" | cut -c1-64)" "$f"; else printf 'deleted %s\n' "$f"; fi
+          done > "$RUNNER_TEMP/after.txt"
+          comm -13 <(sort "$RUNNER_TEMP/before.txt") <(sort "$RUNNER_TEMP/after.txt") | cut -d' ' -f2- | sort -u > "$RUNNER_TEMP/changed.txt"
+          bad=0
+          while IFS= read -r f; do
+            ok=0
+            if [ -f "$f" ]; then
+              while IFS= read -r pkg; do
+                case "$f" in
+                  "$pkg"/test/*goldens/*.png)
+                    if printf '%s' "${f#"$pkg"/test/}" | grep -Eq '^([A-Za-z0-9_]+/)*goldens/[^/]+\.png$'; then ok=1; fi ;;
+                esac
+              done < "$RUNNER_TEMP/packages.txt"
+            fi
+            if [ "$ok" -eq 0 ]; then
+              echo "::error title=Refused: not a golden PNG of a tested package::$f"
+              bad=1
+            fi
+          done < "$RUNNER_TEMP/changed.txt"
+          if [ "$bad" -ne 0 ]; then
+            exit 1
+          fi
+          count="$(grep -c . "$RUNNER_TEMP/changed.txt" || true)"
+          echo "Changed golden PNGs: $count"
+          cat "$RUNNER_TEMP/changed.txt"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: The same tests pass WITHOUT --update-goldens
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          while IFS= read -r pkg; do
+            mapfile -t files < <(awk -F'\t' -v p="$pkg" '$1 == p { print $2 }' "$RUNNER_TEMP/plan.tsv")
+            echo "::group::$pkg: flutter test ${files[*]}"
+            (cd "$pkg" && flutter test "${files[@]}")
+            echo "::endgroup::"
+          done < "$RUNNER_TEMP/packages.txt"
+
+      - name: Stage the changed PNGs at their repository paths
+        if: steps.delta.outputs.count != '0'
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/goldens"
+          while IFS= read -r f; do
+            mkdir -p "$RUNNER_TEMP/goldens/$(dirname "$f")"
+            cp -- "$f" "$RUNNER_TEMP/goldens/$f"
+          done < "$RUNNER_TEMP/changed.txt"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.delta.outputs.count != '0'
+        timeout-minutes: 5
+        with:
+          name: goldens-${{ github.run_id }}
+          path: ${{ runner.temp }}/goldens
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Nothing changed
+        if: steps.delta.outputs.count == '0'
+        timeout-minutes: 1
+        run: echo "::notice title=No golden changed::The re-render on Linux produced the committed PNGs byte for byte, and the tests pass. Nothing to upload or commit."
+
+  commit:
+    name: Commit the PNGs and push them to the branch
+    needs: regenerate
+    if: inputs.mode == 'commit' && needs.regenerate.outputs.count != '0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # why: `contents: write` pushes the one golden commit to `ref` and nothing
+      # else. It is on this job only, and this job runs no code from the branch:
+      # it checks out, copies PNGs, commits and pushes.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 5
+        with:
+          ref: ${{ needs.regenerate.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        timeout-minutes: 5
+        with:
+          name: goldens-${{ github.run_id }}
+          path: ${{ runner.temp }}/goldens
+
+      # why: the paths are re-checked HERE, against the dispatch inputs, not
+      # taken from the job that ran the branch's code.
+      - name: Commit only golden PNGs and push to the branch
+        timeout-minutes: 3
+        env:
+          REF: ${{ inputs.ref }}
+          TESTS: ${{ inputs.tests }}
+          PUSH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$REF" = "main" ] || [ "$REF" = "refs/heads/main" ]; then
+            echo "::error title=Refused::ref is main."
+            exit 1
+          fi
+          read -r -a tests <<< "$TESTS"
+          printf '%s\n' "${tests[@]}" | cut -d/ -f1,2 | sort -u > "$RUNNER_TEMP/packages.txt"
+          stage="$RUNNER_TEMP/goldens"
+          find "$stage" -type f -printf '%P\n' | sort > "$RUNNER_TEMP/files.txt"
+          if [ ! -s "$RUNNER_TEMP/files.txt" ]; then
+            echo "::error title=Nothing staged::the artifact holds no file."
+            exit 1
+          fi
+          if find "$stage" ! -type f ! -type d | grep -q .; then
+            echo "::error title=Refused::the artifact holds something that is not a regular file."
+            exit 1
+          fi
+          while IFS= read -r f; do
+            ok=0
+            while IFS= read -r pkg; do
+              case "$f" in
+                "$pkg"/test/*goldens/*.png)
+                  if printf '%s' "${f#"$pkg"/test/}" | grep -Eq '^([A-Za-z0-9_]+/)*goldens/[^/]+\.png$'; then ok=1; fi ;;
+              esac
+            done < "$RUNNER_TEMP/packages.txt"
+            if [ "$ok" -eq 0 ] || [ "$(head -c 8 "$stage/$f" | od -An -tx1 | tr -d ' \n')" != "89504e470d0a1a0a" ]; then
+              echo "::error title=Refused: not a golden PNG of a tested package::$f"
+              exit 1
+            fi
+            mkdir -p "$(dirname "$f")"
+            cp -- "$stage/$f" "$f"
+            git add -- "$f"
+          done < "$RUNNER_TEMP/files.txt"
+          if [ -n "$(git status --porcelain --untracked-files=all | grep -v '^M  \|^A  ' || true)" ]; then
+            echo "::error title=Refused::something other than a staged PNG changed."
+            git status --porcelain --untracked-files=all
+            exit 1
+          fi
+          if git diff --cached --quiet; then
+            echo "::notice title=Nothing to commit::the staged PNGs equal the branch's."
+            exit 0
+          fi
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(goldens): regenerate on linux (${run_url})"
+          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${REF}"
+          echo "::notice title=Goldens pushed to ${REF}::A push by GITHUB_TOKEN starts no workflow, so CI does not re-run by itself. Re-trigger it on the pull request: edit its body (ci.yml runs on 'edited') or push any commit."
