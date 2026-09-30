@@ -129,7 +129,8 @@ import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
-import { isObject, sandboxEnvironmentFindings } from './wrangler-environments.mjs';
+import { isObject, sandboxEnvironmentFindings, sandboxWorkflowSecretFindings } from './wrangler-environments.mjs';
+import { parseWorkflow, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
@@ -525,6 +526,26 @@ for (const c of configs) {
     for (const m of sandboxEnvironmentFindings(where, cfg, e)) fail(m);
     // LIMB 1d
     for (const m of limiterParityFindings(where, cfg, e)) fail(m);
+  }
+}
+
+// ── LIMB 1e · no sandbox deploy workflow ever puts the service-role key ─────
+// ⏱ 2026-09-30 · ADR no.NNN (review of #1070). Limb 1c refuses the key in a
+// sandbox environment's own block; a secret is usually put by a DEPLOY step, so
+// EVERY workflow is read, step by step (sandboxWorkflowSecretFindings says what
+// a putting step is) — by content, not by file name, so a rename cannot walk a
+// step out of scope — through workflow-scan.mjs, the one workflow parse
+// (tooling/workflow-readers.json). A tree with no workflows directory deploys
+// nothing, and has nothing here to grade.
+{
+  const dir = join(ROOT, WORKFLOW_DIR);
+  if (existsSync(dir)) {
+    for (const name of listDir(dir).filter((n) => /\.ya?ml$/.test(n)).sort()) {
+      const rel = `${WORKFLOW_DIR}/${name}`;
+      const parsed = parseWorkflow(ROOT, rel);
+      if (parsed === null) continue;
+      for (const m of sandboxWorkflowSecretFindings(rel, parsed.lines.map((l) => l.text).join('\n'))) fail(m);
+    }
   }
 }
 

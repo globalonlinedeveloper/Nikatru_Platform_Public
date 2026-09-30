@@ -1,6 +1,9 @@
 # [ADR 082] §5 — the Apple Declared Age Range adapter. The app builds with Swift
 # Package Manager (ios/nikatru_age_signals/Package.swift); this podspec keeps the
 # plugin buildable for a CocoaPods consumer too.
+# ⏱ 2026-09-29 · also the App Attest adapter for native sign-in attestation
+# (NativeAttestPlugin.swift). DeviceCheck is a system framework, linked by the
+# Swift `import` itself — declared below as well, for a CocoaPods consumer.
 Pod::Spec.new do |s|
   s.name             = 'nikatru_platform_storage'
   s.version          = '0.1.0'
@@ -12,6 +15,7 @@ Pod::Spec.new do |s|
   s.source           = { :path => '.' }
   s.source_files     = 'nikatru_platform_storage/Sources/nikatru_platform_storage/**/*.swift'
   s.dependency 'Flutter'
+  s.frameworks       = 'DeviceCheck'
   s.platform         = :ios, '13.0'
   s.swift_version    = '5.9'
 end

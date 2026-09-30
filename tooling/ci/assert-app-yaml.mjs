@@ -1293,6 +1293,11 @@ const EXEMPT_CIPHER_IMPORTS = [
     pkg: 'cryptography',
     why: 'Ed25519 signature VERIFY of signed content packs: a digital signature, inside the exemption (design apple-plist-keys section 1).',
   },
+  {
+    file: 'packages/core/lib/src/auth/native_attest.dart',
+    pkg: 'cryptography',
+    why: 'AUTHENTICATION: Ed25519 signing of native sign-in calls by a per-install key (InstallKeyAttestor), a digital signature that proves which install sent the call; nothing is encrypted, inside the exemption (ADR no.NNN, native sign-in attestation).',
+  },
 ];
 
 /** Every .dart file under `rel`, comments blanked with their newlines KEPT, so
