@@ -57,6 +57,10 @@
 // `.dart_tool/` are excluded: an unfiltered scan of this tree matches compiled
 // snapshots, which are neither source nor ours.
 //
+// PLATFORM CONFIG TOO, since 2026-09-30 (rv2-security-016): Android network
+// security config (`<pin-set>`, `@raw/` trust anchors) and iOS/macOS Info.plist
+// (`NSPinnedDomains` and kin) pin with no Dart at all — see the limb below.
+//
 // Usage:  node tooling/ci/assert-no-tls-pinning.mjs [repoRoot]
 // Exit 0 = no shipped client overrides TLS trust.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -281,6 +285,136 @@ for (const s of SCOPE) {
   walk(abs);
 }
 
+// ── THE PLATFORM-CONFIG LIMB: A PIN NEEDS NO DART AT ALL ─────────────────────
+// ⏱ 2026-09-30 · rv2-security-016 (O-TLS-PIN-GUARD-READS-DART-ONLY). Everything
+// above reads Dart, and the two platforms that ship most installs can pin with
+// ZERO lines of it:
+//   · Android — `res/xml/<name>.xml` referenced by the manifest's
+//     `android:networkSecurityConfig`, holding a `<pin-set>` (or a `<certificates
+//     src="@raw/…">` private trust anchor, the platform twin of
+//     setTrustedCertificates);
+//   · iOS / macOS — Info.plist `NSAppTransportSecurity › NSPinnedDomains`, with
+//     `NSPinnedLeafIdentities` / `NSPinnedCAIdentities` (and TrustKit's
+//     `TSKPinnedDomains`, the pre-iOS-14 spelling of the same thing).
+// Either bricks every install at Cloudflare's next certificate renewal exactly as a
+// Dart pin does, and both passed this guard until today. None exists at head.
+//
+// SUBJECT: every `.xml` under an `android/` directory and every `.plist` under an
+// `ios/` or `macos/` directory, inside the three declared roots; build output
+// skipped. XML comments are blanked first — a commented-out pin-set is not a pin.
+// FLOORS, because this is again an ABSENCE claim: (a) structural, always — every
+// app root with an android/ directory must deliver its main AndroidManifest.xml,
+// every ios/ or macos/ directory its Runner/Info.plist, and every
+// `@xml/<name>` a manifest names must resolve to a file this limb read; (b) on a
+// full checkout, at least PLATFORM_FLOOR of the files a pin is anchored in — an
+// AndroidManifest.xml (which names the network security config) and a
+// Runner/Info.plist (which holds NSAppTransportSecurity). Counted by NAME, so
+// styles.xml and IDEWorkspaceChecks.plist, which are also read, cannot hold the
+// floor up. Measured 2026-09-30: 5 AndroidManifest.xml (4 app source sets + the
+// platform_storage plugin), 2 Runner/Info.plist (ios, macos); 10 .xml and 7 .plist
+// read in all.
+const PLATFORM_FLOOR = { android: 4, plist: 2 };
+const PLATFORM_ANCHOR = { android: /\/AndroidManifest\.xml$/, plist: /\/Runner\/Info\.plist$/ };
+const PLATFORM_PINS = [
+  {
+    kind: 'android',
+    re: /<\s*pin-set\b/i,
+    what: 'a network-security-config <pin-set>',
+  },
+  {
+    kind: 'android',
+    re: /<\s*certificates\b[^>]*\bsrc\s*=\s*["']@raw\//i,
+    what: 'a network-security-config trust anchor compiled in from @raw/',
+  },
+  {
+    kind: 'plist',
+    re: /<key>\s*(NSPinnedDomains|NSPinnedLeafIdentities|NSPinnedCAIdentities|TSKPinnedDomains)\s*<\/key>/,
+    what: 'an App Transport Security pinned identity (NSPinnedDomains / NSPinned*Identities / TSKPinnedDomains)',
+  },
+];
+const stripXmlComments = (s) => s.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' '));
+const platformRead = { android: [], plist: [] };
+{
+  const walk = (dir, rel, platform) => {
+    for (const e of listDir(dir, { withFileTypes: true })) {
+      if (e.isDirectory()) {
+        if (SKIP_DIRS.has(e.name)) continue;
+        const next = platform ?? (e.name === 'android' ? 'android' : e.name === 'ios' || e.name === 'macos' ? 'plist' : null);
+        walk(join(dir, e.name), `${rel}/${e.name}`, next);
+      } else if ((platform === 'android' && e.name.endsWith('.xml')) || (platform === 'plist' && e.name.endsWith('.plist'))) {
+        platformRead[platform].push(`${rel}/${e.name}`);
+      }
+    }
+  };
+  for (const s of SCOPE) {
+    const abs = join(ROOT, s);
+    if (existsSync(abs) && statSync(abs).isDirectory()) walk(abs, s, null);
+  }
+  for (const [kind, rels] of Object.entries(platformRead)) {
+    for (const rel of rels) {
+      if (isTestFile(rel)) continue;
+      const text = stripXmlComments(readFileSync(join(ROOT, ...rel.split('/')), 'utf8'));
+      for (const pin of PLATFORM_PINS.filter((p) => p.kind === kind)) {
+        const m = pin.re.exec(text);
+        if (!m) continue;
+        const lineNo = text.slice(0, m.index).split('\n').length;
+        problems.push(
+          `${rel}:${lineNo} declares ${pin.what}. A pin in platform config needs no Dart and no dependency, and it ` +
+            'fails the same way: Cloudflare Universal SSL auto-renews the edge certificate in front of every hostname ' +
+            'we serve, and every installed copy loses the backend at once, with nothing to see server side.',
+        );
+      }
+    }
+  }
+}
+const platformLost = [];
+{
+  const readSet = new Set([...platformRead.android, ...platformRead.plist]);
+  for (const s of SCOPE) {
+    const abs = join(ROOT, s);
+    if (!existsSync(abs) || !statSync(abs).isDirectory()) continue;
+    for (const unit of listDir(abs)) {
+      const u = `${s}/${unit}`;
+      const has = (d) => existsSync(join(ROOT, ...u.split('/'), d)) && statSync(join(ROOT, ...u.split('/'), d)).isDirectory();
+      if (s === 'apps' && has('android') && !readSet.has(`${u}/android/app/src/main/AndroidManifest.xml`)) {
+        platformLost.push(`${u}/android exists and ${u}/android/app/src/main/AndroidManifest.xml was not read.`);
+      }
+      for (const p of ['ios', 'macos']) {
+        if (s === 'apps' && has(p) && !readSet.has(`${u}/${p}/Runner/Info.plist`)) {
+          platformLost.push(`${u}/${p} exists and ${u}/${p}/Runner/Info.plist was not read.`);
+        }
+      }
+    }
+  }
+  // A manifest naming a network security config the walk never read is the exact
+  // shape of a pin this limb would miss: the referenced file is where it lives.
+  for (const rel of platformRead.android.filter((r) => r.endsWith('/AndroidManifest.xml'))) {
+    const text = stripXmlComments(readFileSync(join(ROOT, ...rel.split('/')), 'utf8'));
+    const ref = text.match(/android:networkSecurityConfig\s*=\s*["']@xml\/([A-Za-z0-9_]+)["']/);
+    if (!ref) continue;
+    const androidRoot = rel.slice(0, rel.indexOf('/android/') + '/android/'.length);
+    const hit = platformRead.android.some((r) => r.startsWith(androidRoot) && r.endsWith(`/res/xml/${ref[1]}.xml`));
+    if (!hit) platformLost.push(`${rel} names android:networkSecurityConfig="@xml/${ref[1]}" and no res/xml/${ref[1]}.xml under ${androidRoot} was read.`);
+  }
+  if (IS_FULL_CHECKOUT) {
+    for (const [kind, floor] of Object.entries(PLATFORM_FLOOR)) {
+      const anchors = platformRead[kind].filter((r) => PLATFORM_ANCHOR[kind].test(r)).length;
+      if (anchors < floor) {
+        platformLost.push(`the platform-config limb read ${anchors} ${kind === 'android' ? 'AndroidManifest.xml' : 'Runner/Info.plist'} file(s), below its floor of ${floor}.`);
+      }
+    }
+  }
+}
+if (platformLost.length) {
+  coverageLost([
+    `the platform-config limb did not read the files it exists to read (${platformLost.length}):`,
+    ...platformLost.map((l) => `· ${l}`),
+    '',
+    'A network-security-config <pin-set> or an Info.plist NSPinnedDomains pins TLS with no Dart at all, so a',
+    'walk that stopped reaching those files would print ok about the one place such a pin would be written.',
+  ]);
+}
+
 // ── THE COVERAGE FLOOR, ONE PER DECLARED ROOT ───────────────────────────────
 // Every root reports its own verdict and they are reported TOGETHER, because a
 // tree can lose two roots for two different reasons and naming only the first
@@ -350,6 +484,8 @@ const split = REQUIRED_COVERAGE.map((r) => {
 console.log(
   `ok  no TLS pinning — ${shipped} shipped .dart file(s) scanned [${split}] ` +
     `(${testDoubles} test double(s) excluded by path, ${pubspecs} pubspec(s) read); ` +
+    `${platformRead.android.length} android .xml + ${platformRead.plist.length} ios/macos .plist platform-config file(s) read for <pin-set> / NSPinnedDomains` +
+    `${IS_FULL_CHECKOUT ? ` (floors ${PLATFORM_FLOOR.android}/${PLATFORM_FLOOR.plist})` : ''}; ` +
     `${packVerifier.length} pack-verifier file(s) in scope and correctly NOT flagged ([ADR 016] pins a ` +
     'content-pack key, which is not TLS)' +
     (IS_FULL_CHECKOUT

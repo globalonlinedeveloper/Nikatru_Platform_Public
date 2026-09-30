@@ -1437,10 +1437,15 @@ jobs:
       # declared - it installs the stamped Worker and runs the suite it inherits,
       # which is the chassis's own (services/_shared/test/**) plus the wiring test
       # the template owns. A failure here means a fresh stamp is born broken.
+      # `npm ci`, not `npm install` (rv2-security-020): the brick stamps its own
+      # package-lock.json, and `npm install` may re-resolve past it, so this job
+      # tested versions a real stamp's lane (lane-workers.yml, `npm ci`) never
+      # ships. assert-lockfile-discipline.mjs grades this directory against the
+      # brick's lockfile through tooling/ci/stamp-produced-dirs.json.
       - name: A stamped Worker typechecks and passes the suite it inherits
         working-directory: services/probeapi-api
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npx tsc --noEmit
           npm test
       # why: O-BRICK-ERASURE-DESTROYS-THE-IDENTITY. The stamped Worker is a fan-out leaf; limb 6 alone, because the full run fails limb 4 on a stamp not yet in APP_ERASURE_ENDPOINTS.
@@ -1525,7 +1530,7 @@ jobs:
       - name: Typecheck + dry-run the stamped service
         working-directory: services/probeapi-api
         run: |
-          npm install
+          npm ci --no-audit --no-fund
           npx tsc --noEmit
           npx wrangler deploy --dry-run
 
