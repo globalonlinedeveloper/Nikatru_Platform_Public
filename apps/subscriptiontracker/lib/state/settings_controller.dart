@@ -1,14 +1,22 @@
 import 'dart:convert';
 import 'dart:ui' show Locale;
 
-import 'package:flutter/foundation.dart' show PlatformDispatcher;
+import 'package:flutter/foundation.dart'
+    show PlatformDispatcher, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../services/notifications/notification_service.dart'
     show ReminderRules, RenewalReminders;
 import 'analytics_providers.dart';
-import 'providers.dart' show renewalRemindersProvider;
+import 'providers.dart'
+    show
+        kPrefCurrencyCode,
+        kPrefReminderLeadDays,
+        kPrefReminderMinuteOfDay,
+        renewalRemindersProvider,
+        reportPreferenceChange,
+        switchPreferenceKey;
 
 /// Where the settings live on disk — the same [core.KeyValueStore] seam the
 /// consent decision and the install id use ([ADR 005]). Namespaced like
@@ -192,9 +200,9 @@ class SettingsController extends Notifier<SettingsState> {
   }
 
   /// Completes when the persisted state (if any) has been applied. Tests await
-  /// this instead of guessing at pump counts. ⏱ 2026-09-30 · ST-N6 (D11): and
-  /// the account sync awaits it, because seeding an account from this device
-  /// before the disk read lands would seed it with the compiled-in defaults.
+  /// this instead of guessing at pump counts; production code never needs it —
+  /// the state simply updates and listeners react.
+  @visibleForTesting
   Future<void> get hydration => _hydration;
 
   Future<void> _hydrate() async {
@@ -237,20 +245,43 @@ class SettingsController extends Notifier<SettingsState> {
     }
     _touched = true;
     state = state.copyWith(currencyCode: code);
+    reportPreferenceChange(ref, kPrefCurrencyCode, code);
     return _persist();
   }
 
-  /// ⏱ 2026-09-30 · ST-N6 (D11): the ACCOUNT's copy, applied at sign-in by
-  /// `accountPreferencesSyncProvider` — merged over what this device holds,
+  /// ⏱ 2026-09-30 · ST-N6 (D11): the ACCOUNT's values for the keys named in
+  /// [values] (`currencyCode`, the reminder lead and time, `switch.<name>`),
+  /// applied by `accountPreferencesSyncProvider` over what this device holds,
   /// validated by [SettingsState.fromJson] exactly as a disk read is, and
-  /// persisted so the device cache matches. Never a permission prompt: the
-  /// user is not at a switch, and on web the request would be refused anyway.
-  Future<void> applyAccount(Map<String, Object?> account) {
+  /// persisted so the device cache matches. NOT reported back — it is the
+  /// account's value, not a change made here — and never a permission prompt:
+  /// the user is not at a switch.
+  Future<void> applyAccount(Map<String, Object?> values) {
     _touched = true;
+    final Map<String, Object?> json = state.toJson();
+    final Map<String, bool> prefs = Map<String, bool>.of(state.prefs);
+    values.forEach((String key, Object? value) {
+      if (key.startsWith('switch.')) {
+        if (value is bool) prefs[key.substring('switch.'.length)] = value;
+      } else if (key == kPrefCurrencyCode ||
+          key == kPrefReminderLeadDays ||
+          key == kPrefReminderMinuteOfDay) {
+        json[key] = value;
+      }
+    });
     state = SettingsState.fromJson(
-      <String, Object?>{...state.toJson(), ...account},
+      <String, Object?>{...json, 'prefs': prefs},
       fallbackCurrencyCode: _firstRunCurrency,
     ).copyWith(blocked: state.blocked);
+    return _persist();
+  }
+
+  /// ⏱ 2026-09-30 · ST-N6 (D11): the explicit sign-out's reset — this device's
+  /// defaults again, so the next account signed in here is shown nothing of the
+  /// last one's. Not reported: a default is never sent.
+  Future<void> resetToDefaults() {
+    _touched = true;
+    state = SettingsState(currencyCode: _firstRunCurrency);
     return _persist();
   }
 
@@ -272,6 +303,7 @@ class SettingsController extends Notifier<SettingsState> {
     }
     _touched = true;
     state = state.copyWith(reminderLeadDays: days);
+    reportPreferenceChange(ref, kPrefReminderLeadDays, days);
     return _persist();
   }
 
@@ -282,6 +314,7 @@ class SettingsController extends Notifier<SettingsState> {
     }
     _touched = true;
     state = state.copyWith(reminderMinuteOfDay: hour * 60 + minute);
+    reportPreferenceChange(ref, kPrefReminderMinuteOfDay, hour * 60 + minute);
     return _persist();
   }
 
@@ -296,6 +329,8 @@ class SettingsController extends Notifier<SettingsState> {
       prefs: next,
       blocked: <String>{...state.blocked}..remove(key),
     );
+    // D11: reported as it now reads; an OS refusal below reports OFF again.
+    reportPreferenceChange(ref, switchPreferenceKey(key), on);
     await _persist();
     if (!ref.mounted) return on; // Riverpod 3: the provider may be gone.
 
@@ -321,6 +356,8 @@ class SettingsController extends Notifier<SettingsState> {
           blocked: <String>{...state.blocked, key},
         );
         await _persist();
+        if (ref.mounted)
+          reportPreferenceChange(ref, switchPreferenceKey(key), false);
         return false;
       }
     }

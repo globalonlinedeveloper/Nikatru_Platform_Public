@@ -1,21 +1,30 @@
-// ⏱ 2026-09-30 · ST-N6 (D11) — PREFERENCES FOLLOW THE ACCOUNT. Re-exported
-// from `../providers.dart`.
+// ⏱ 2026-09-30 · ST-N6 (D11) — PREFERENCES FOLLOW THE ACCOUNT, PER KEY.
+// Re-exported from `../providers.dart`.
 //
-// Currency, theme, language and the reminder choices lived in this device's
-// key-value store only: a second device met the defaults, and a change on one
-// never reached the other. `core.AccountPreferencesSync` decides when the
-// account's copy (GET/PUT /v1/preferences on this app's Worker) is read and
-// written; this file only names Subly's preferences and applies them. The
-// device store stays the cache first paint reads.
+// `core.AccountPreferencesSync` decides when a change is sent and when the
+// account's values are applied (read its header for the model). This file
+// only NAMES Subly's preferences, reports the user's own changes to it, and
+// applies the account's values to the three stores that hold them:
+// SettingsController (currency and the reminder choices), the theme and the
+// language. The device stores stay the cache first paint reads.
 //
-// ⚠️ WHY THIS IS APP WIRING AND NOT THE BRICK'S (yet): the store is a row in
-// the app's OWN Worker, and a default stamp claims no Worker at all
-// (assert-clone-contract). The decision and the transport are shared
-// (packages/core, packages/api_client); the brick adopts them the day it has a
-// server to hold the row.
+// 🔴 A KEY IS SENT ONLY BECAUSE THE USER SET IT HERE. The report is made at the
+// user's own gestures — the settings mutations and [setThemeModeByUser] /
+// [setLocaleByUser] — never from a state listener, so a disk hydration, a
+// default, or a value the account itself just applied is never sent back.
+//
+// ⚠️ WHY THIS IS APP WIRING AND NOT THE BRICK'S (yet): the rows live in the
+// app's OWN Worker, and a default stamp claims no Worker at all
+// (assert-clone-contract). The decision and the queue are shared
+// (packages/core AccountPreferencesSync over DurableOutbox, packages/api_client
+// RestAccountPreferencesTransport); the brick adopts them the day it has a
+// server to hold the rows.
 
 import 'package:flutter/material.dart' show Locale, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+// StateProvider moved to legacy.dart in Riverpod 3.0.
+import 'package:flutter_riverpod/legacy.dart';
+import 'package:flutter_riverpod/misc.dart' show ProviderListenable;
 import 'package:nikatru_api_client/nikatru_api_client.dart'
     show RestAccountPreferencesTransport, RestClient;
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -24,11 +33,43 @@ import '../../core/app_config.dart';
 import '../settings_controller.dart';
 import 'auth.dart';
 import 'config.dart';
+import '../analytics_providers.dart' show keyValueStoreProvider;
 import 'preferences.dart';
 import 'subscriptions.dart' show apiBaseFor;
 
+/// The preference keys this app sends — the contract
+/// `services/subscriptiontracker-api/test/fixtures/preferences-contract.json`
+/// pins against the Worker's validator.
+const String kPrefCurrencyCode = 'currencyCode';
+const String kPrefThemeMode = 'themeMode';
+const String kPrefLocale = 'locale';
+const String kPrefReminderLeadDays = 'reminderLeadDays';
+const String kPrefReminderMinuteOfDay = 'reminderMinuteOfDay';
+
+/// The key of one on/off switch in [SettingsState.prefs].
+String switchPreferenceKey(String name) => 'switch.$name';
+
+/// Every key and value this device would report for [settings], [theme] and
+/// [locale] — what the contract test compares with the fixture.
+Map<String, Object?> accountPreferenceValuesOf(
+  SettingsState settings,
+  ThemeMode theme,
+  Locale? locale,
+) => <String, Object?>{
+  kPrefCurrencyCode: settings.currencyCode,
+  // The enum's own name, which is also the device store's spelling.
+  kPrefThemeMode: theme.name,
+  // '' is "follow the device" — a choice, and it follows the account too.
+  kPrefLocale: locale?.languageCode ?? '',
+  kPrefReminderLeadDays: settings.reminderLeadDays,
+  kPrefReminderMinuteOfDay: settings.reminderMinuteOfDay,
+  for (final MapEntry<String, bool> e in settings.prefs.entries)
+    switchPreferenceKey(e.key): e.value,
+};
+
 /// The account's preferences on this app's Worker — null in a build with no
-/// API, where there is no account copy to follow.
+/// API, where there is no account copy to follow. Rebuilt when the config
+/// resolves; the sync reads it at CALL time, so a rebuild costs nothing.
 final Provider<core.AccountPreferencesTransport?>
 accountPreferencesTransportProvider =
     Provider<core.AccountPreferencesTransport?>((ref) {
@@ -49,78 +90,136 @@ accountPreferencesTransportProvider =
       );
     });
 
-/// The document this device would write: the settings the store already
-/// keeps, plus the theme and the language.
-Map<String, Object?> accountPreferencesOf(
-  SettingsState settings,
-  ThemeMode theme,
-  Locale? locale,
-) => <String, Object?>{
-  ...settings.toJson(),
-  // The enum's own name, which is also the device store's spelling.
-  'themeMode': theme.name,
-  // '' is "follow the device" — a choice, and it follows the account too.
-  'locale': locale?.languageCode ?? '',
-};
+/// The last preference key the account REFUSED, for the one-line notice.
+final StateProvider<String?> preferenceRefusedProvider = StateProvider<String?>(
+  (_) => null,
+);
 
 /// Keeps this device's preferences and the signed-in account's in step.
 ///
-/// WATCHED FOR ITS EFFECT from `SublyApp` — the listeners below are the
-/// whole of it. Null in a build with no API.
+/// 🔴 IT WATCHES NOTHING (review #1080 finding 2c). It used to watch the
+/// transport, which watches the config, so the offline banner's Retry rebuilt
+/// it and dropped a change made offline. Everything is read at call time, and
+/// the dirty set lives in the device store regardless. WATCHED FOR ITS EFFECT
+/// from `SublyApp`; null in a build with no API.
 final Provider<core.AccountPreferencesSync?> accountPreferencesSyncProvider =
     Provider<core.AccountPreferencesSync?>((ref) {
-      final core.AccountPreferencesTransport? transport = ref.watch(
-        accountPreferencesTransportProvider,
+      if (ref.read(accountPreferencesTransportProvider) == null) return null;
+      final Future<core.KeyValueStore> store = ref.read(
+        keyValueStoreProvider.future,
       );
-      if (transport == null) return null;
+      String? currentUser() =>
+          ref.mounted ? ref.read(authUserProvider).value?.id : null;
       final core.AccountPreferencesSync sync = core.AccountPreferencesSync(
-        transport: transport,
-        snapshot: () => accountPreferencesOf(
-          ref.read(settingsControllerProvider),
-          ref.read(themeModeProvider),
-          ref.read(localeProvider),
-        ),
-        apply: (Map<String, Object?> account) async {
-          await ref
-              .read(settingsControllerProvider.notifier)
-              .applyAccount(account);
-          final Object? theme = account['themeMode'];
-          if (theme is String) {
-            await ref
-                .read(themeModeProvider.notifier)
-                .set(ThemeMode.values.asNameMap()[theme] ?? ThemeMode.system);
-          }
-          final Object? locale = account['locale'];
-          if (locale is String) {
-            await ref
-                .read(localeProvider.notifier)
-                .set(locale.isEmpty ? null : Locale(locale));
-          }
+        transport: () =>
+            ref.mounted ? ref.read(accountPreferencesTransportProvider) : null,
+        outbox: core.DurableOutbox(store, key: core.kPreferencesOutboxKey),
+        store: store,
+        currentUser: currentUser,
+        apply: (Map<String, Object?> values) async {
+          if (ref.mounted) await applyAccountPreferences(ref, values);
         },
-        localReady: () async {
-          await ref.read(settingsControllerProvider.notifier).hydration;
-          await ref.read(themeModeProvider.notifier).hydrated;
-          await ref.read(localeProvider.notifier).hydrated;
+        onRefused: (String key) {
+          if (ref.mounted) {
+            ref.read(preferenceRefusedProvider.notifier).state = key;
+          }
         },
       );
-
-      // Identity: a settled sign-in reads the account's copy; a sign-out or a
-      // switch to another account forgets the last one first.
+      ref.onDispose(sync.dispose);
+      // A settled sign-in — the first one, or a switch to another account —
+      // sends what is waiting and reads the account.
       ref.listen<AsyncValue<core.AuthUser?>>(authUserProvider, (prev, next) {
         if (!next.hasValue) return;
-        final String? was = prev?.value?.id;
         final String? now = next.value?.id;
-        if (was != null && was != now) sync.onSignedOut();
-        if (now == null) {
-          sync.onSignedOut();
-        } else if (was != now || !sync.isSynced) {
-          sync.onSignedIn();
-        }
+        if (now != null && prev?.value?.id != now) sync.sync();
       }, fireImmediately: true);
-
-      // Every local change is offered; the sync writes only a real one.
-      ref.listen(settingsControllerProvider, (_, _) => sync.onLocalChange());
-      ref.listen(themeModeProvider, (_, _) => sync.onLocalChange());
-      ref.listen(localeProvider, (_, _) => sync.onLocalChange());
       return sync;
     });
+
+/// Apply the account's [values] to the stores that hold them. Keys this build
+/// does not know are ignored — they stay on the server, untouched, because
+/// only changed keys are ever sent (review #1080 finding 1C).
+Future<void> applyAccountPreferences(
+  Ref ref,
+  Map<String, Object?> values,
+) async {
+  final Map<String, Object?> settings = <String, Object?>{
+    for (final MapEntry<String, Object?> e in values.entries)
+      if (e.key == kPrefCurrencyCode ||
+          e.key == kPrefReminderLeadDays ||
+          e.key == kPrefReminderMinuteOfDay ||
+          e.key.startsWith('switch.'))
+        e.key: e.value,
+  };
+  if (settings.isNotEmpty) {
+    await ref.read(settingsControllerProvider.notifier).applyAccount(settings);
+  }
+  final Object? theme = values[kPrefThemeMode];
+  if (theme is String && ref.mounted) {
+    await ref
+        .read(themeModeProvider.notifier)
+        .set(ThemeMode.values.asNameMap()[theme] ?? ThemeMode.system);
+  }
+  final Object? locale = values[kPrefLocale];
+  if (locale is String && ref.mounted) {
+    await ref
+        .read(localeProvider.notifier)
+        .set(locale.isEmpty ? null : Locale(locale));
+  }
+}
+
+/// Report that the user set [key] on THIS device. Never throws.
+void reportPreferenceChange(Ref ref, String key, Object? value) {
+  if (!ref.mounted) return;
+  ref.read(accountPreferencesSyncProvider)?.changed(key, value);
+}
+
+/// The theme chooser: the user's own choice, stored and reported.
+Future<void> setThemeModeByUser(WidgetRef ref, ThemeMode mode) =>
+    setThemeModeByUserWith(ref.read, mode);
+
+/// [setThemeModeByUser] over any provider reader.
+Future<void> setThemeModeByUserWith(
+  T Function<T>(ProviderListenable<T> provider) read,
+  ThemeMode mode,
+) async {
+  await read(themeModeProvider.notifier).set(mode);
+  read(accountPreferencesSyncProvider)?.changed(kPrefThemeMode, mode.name);
+}
+
+/// The language chooser: the user's own choice, stored and reported.
+Future<void> setLocaleByUser(WidgetRef ref, Locale? locale) async {
+  await ref.read(localeProvider.notifier).set(locale);
+  ref
+      .read(accountPreferencesSyncProvider)
+      ?.changed(kPrefLocale, locale?.languageCode ?? '');
+}
+
+/// The explicit sign-out's drop (review #1080 findings 4, 7): that user's
+/// dirty set and versions are forgotten, and the three stores go back to the
+/// device's defaults, so nothing of theirs is shown to — or could ever be
+/// reported by — the next person to sign in here. Resolved BEFORE the sign-out
+/// (see `userStateDrops`), so the user id is the one leaving. A forced 401 does
+/// not run it: the same user's unsent changes wait for their return.
+UserStateDrop forgetAccountPreferences(WidgetRef ref) =>
+    forgetAccountPreferencesWith(ref.read);
+
+/// [forgetAccountPreferences] over any provider reader (a container, a ref).
+UserStateDrop forgetAccountPreferencesWith(
+  T Function<T>(ProviderListenable<T> provider) read,
+) {
+  final core.AccountPreferencesSync? sync = read(
+    accountPreferencesSyncProvider,
+  );
+  final String? owner = read(authUserProvider).value?.id;
+  final SettingsController settings = read(settingsControllerProvider.notifier);
+  final ThemeModeController theme = read(themeModeProvider.notifier);
+  final LocaleController locale = read(localeProvider.notifier);
+  return () async {
+    if (sync == null) return; // no account copy: the stores are the device's
+    if (owner != null) await sync.forget(owner);
+    await settings.resetToDefaults();
+    await theme.set(ThemeMode.system);
+    await locale.set(null);
+  };
+}

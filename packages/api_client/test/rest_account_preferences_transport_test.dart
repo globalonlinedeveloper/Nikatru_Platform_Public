@@ -6,11 +6,12 @@ import 'package:nikatru_api_client/nikatru_api_client.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:test/test.dart';
 
-/// ST-N6 (D11) — the wire shape of `/preferences`, against a real socket, and
-/// every failure an Err rather than a throw.
+/// ST-N6 (D11) — the wire shape of `/preferences`, per key and versioned,
+/// against a real socket; and every failure a typed failure CARRYING ITS
+/// STATUS (review #1080 finding 6).
 Future<({String base, List<String> seen})> _server({
   int status = 200,
-  String body = '{"preferences":null}',
+  String body = '{"preferences":{}}',
 }) async {
   final HttpServer server = await HttpServer.bind(
     InternetAddress.loopbackIPv4,
@@ -37,38 +38,85 @@ RestAccountPreferencesTransport _over(String base) =>
     );
 
 void main() {
-  test('read: null is "the account has none"', () async {
-    final s = await _server();
-    final core.Result<Map<String, Object?>?> r = await _over(s.base).read();
-    expect(r.fold((v) => v, (_) => 'err'), isNull);
+  test('read: the per-key document, each key with its version', () async {
+    final s = await _server(
+      body:
+          '{"preferences":{"themeMode":{"value":"dark","version":3,"updated_at":"x"}}}',
+    );
+    final Map<String, core.PreferenceValue> doc = await _over(s.base).read();
+    expect(doc.keys, <String>['themeMode']);
+    expect(doc['themeMode']!.value, 'dark');
+    expect(doc['themeMode']!.version, 3);
     expect(s.seen.single, startsWith('GET /v1/preferences'));
   });
 
-  test('read: the document comes back as a map', () async {
-    final s = await _server(body: '{"preferences":{"themeMode":"dark"}}');
-    final r = await _over(s.base).read();
-    expect(r.fold((v) => v, (_) => null), <String, Object?>{
-      'themeMode': 'dark',
-    });
-  });
+  test(
+    'patch: PATCH {changes: {key: {value, base_version}}}, and the conflicts',
+    () async {
+      final s = await _server(
+        body:
+            '{"preferences":{"currencyCode":{"value":"EUR","version":2,"updated_at":"x"}},'
+            '"conflicts":["currencyCode"]}',
+      );
+      final core.PreferencesPatchResult r = await _over(s.base).patch(
+        <String, core.PreferenceChange>{
+          'currencyCode': const core.PreferenceChange('GBP', 1),
+        },
+      );
+      expect(
+        s.seen.single,
+        'PATCH /v1/preferences '
+        '{"changes":{"currencyCode":{"value":"GBP","base_version":1}}}',
+      );
+      expect(r.conflicts, <String>{'currencyCode'});
+      expect(r.current['currencyCode']!.value, 'EUR');
+      expect(r.current['currencyCode']!.version, 2);
+    },
+  );
 
-  test('write: PUT {preferences: …}', () async {
-    final s = await _server(body: '{"preferences":{"locale":"ta"}}');
-    final r = await _over(s.base).write(<String, Object?>{'locale': 'ta'});
-    expect(r.fold((_) => true, (_) => false), isTrue);
-    expect(
-      s.seen.single,
-      'PUT /v1/preferences {"preferences":{"locale":"ta"}}',
+  for (final int status in <int>[400, 404, 413, 401, 503]) {
+    test(
+      'a $status is a failure carrying $status, not a throw of another kind',
+      () async {
+        final s = await _server(status: status, body: '{"error":"x"}');
+        final RestAccountPreferencesTransport t = _over(s.base);
+        await expectLater(
+          t.read(),
+          throwsA(
+            isA<core.AccountPreferencesFailure>().having(
+              (core.AccountPreferencesFailure f) => f.status,
+              'status',
+              status,
+            ),
+          ),
+        );
+        await expectLater(
+          t.patch(<String, core.PreferenceChange>{
+            'themeMode': const core.PreferenceChange('dark', 0),
+          }),
+          throwsA(
+            isA<core.AccountPreferencesFailure>().having(
+              (core.AccountPreferencesFailure f) => f.status,
+              'status',
+              status,
+            ),
+          ),
+        );
+      },
     );
-  });
+  }
 
-  test('a Worker without the route (404) is an Err, not a throw', () async {
-    final s = await _server(status: 404, body: '{"error":"not_found"}');
-    final t = _over(s.base);
-    expect((await t.read()).fold((_) => 'ok', (_) => 'err'), 'err');
-    expect(
-      (await t.write(<String, Object?>{})).fold((_) => 'ok', (_) => 'err'),
-      'err',
+  test('no answer at all is status 0 — offline', () async {
+    final RestAccountPreferencesTransport t = _over('http://127.0.0.1:1/v1');
+    await expectLater(
+      t.read(),
+      throwsA(
+        isA<core.AccountPreferencesFailure>().having(
+          (core.AccountPreferencesFailure f) => f.status,
+          'status',
+          0,
+        ),
+      ),
     );
   });
 }

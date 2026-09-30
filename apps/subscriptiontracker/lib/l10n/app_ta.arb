@@ -155,6 +155,7 @@
   "promoLabel": "விளம்பரம்",
   "connectedAccounts": "இணைக்கப்பட்ட கணக்குகள்",
   "exportDataCsv": "தரவை ஏற்றுமதி செய் (CSV)",
+  "preferenceNotSaved": "அந்த அமைப்பை உங்கள் கணக்கில் சேமிக்க முடியவில்லை.",
   "settingsNotAvailableYet": "இன்னும் கிடைக்கவில்லை",
   "helpAndSupport": "உதவி மற்றும் ஆதரவு",
   "openSourceLicences": "திறந்த மூல உரிமங்கள்",

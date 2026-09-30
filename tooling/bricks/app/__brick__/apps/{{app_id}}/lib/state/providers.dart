@@ -484,10 +484,6 @@ class ThemeModeController extends Notifier<ThemeMode> {
   /// immediately even if the write is slow or fails.
   Future<void> set(ThemeMode mode) => _stored.set(mode);
 
-  /// Completes once the stored choice (if any) is applied — ST-N6 (D11):
-  /// an account is seeded from this device only after that.
-  Future<void> get hydrated => _stored.ensureHydrated();
-
   static String _encode(ThemeMode m) => switch (m) {
     ThemeMode.light => 'light',
     ThemeMode.dark => 'dark',
@@ -2059,10 +2055,6 @@ class LocaleController extends Notifier<Locale?> {
 
   /// Pass null to go back to following the device.
   Future<void> set(Locale? locale) => _stored.set(locale);
-
-  /// Completes once the stored choice (if any) is applied — ST-N6 (D11):
-  /// an account is seeded from this device only after that.
-  Future<void> get hydrated => _stored.ensureHydrated();
 
   static Locale? _decode(String? raw) =>
       (raw == null || raw.isEmpty) ? null : Locale(raw);

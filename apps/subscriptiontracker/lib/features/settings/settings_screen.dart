@@ -342,7 +342,7 @@ class SettingsScreen extends ConsumerWidget {
               ],
               selected: <ThemeMode>{mode},
               onSelectionChanged: (Set<ThemeMode> s) =>
-                  ref.read(themeModeProvider.notifier).set(s.first),
+                  setThemeModeByUser(ref, s.first),
             ),
 
             // ── LANGUAGE ─────────────────────────────────────────────────────
@@ -356,11 +356,10 @@ class SettingsScreen extends ConsumerWidget {
                 color: Colors.transparent,
                 child: RadioGroup<String>(
                   groupValue: ref.watch(localeProvider)?.languageCode ?? '',
-                  onChanged: (String? code) => ref
-                      .read(localeProvider.notifier)
-                      .set(
-                        (code == null || code.isEmpty) ? null : Locale(code),
-                      ),
+                  onChanged: (String? code) => setLocaleByUser(
+                    ref,
+                    (code == null || code.isEmpty) ? null : Locale(code),
+                  ),
                   child: Column(
                     children: <Widget>[
                       RadioListTile<String>(

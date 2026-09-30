@@ -646,6 +646,10 @@
   "@exportDataCsv": {
     "description": "Data-export row. data-safety.json declares that export exists; deleting this row makes that declaration false."
   },
+  "preferenceNotSaved": "Couldn’t save that setting to your account.",
+  "@preferenceNotSaved": {
+    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11): the one-line notice shown when the account REFUSED a preference change this device sent (a 400 or 413); the change is dropped and the account’s value comes back."
+  },
   "settingsNotAvailableYet": "Not available yet",
   "@settingsNotAvailableYet": {
     "description": "Consumed by settings_screen.dart (_LinkRow). ST-U5 (D2, D6): the subtitle of a settings row that is shown but not yet wired (Connected accounts, Export data). With it the row says what it is; without a tap it draws no chevron."

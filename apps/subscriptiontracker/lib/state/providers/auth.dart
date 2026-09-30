@@ -42,6 +42,7 @@ import 'package:nikatru_platform_storage/age_signals.dart'
 import '../../core/app_config.dart';
 import '../../data/auth/auth_repository.dart';
 import '../analytics_providers.dart';
+import 'account_preferences.dart' show forgetAccountPreferences;
 import 'notifications.dart';
 import 'persistence.dart';
 
@@ -574,6 +575,10 @@ List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
   // unconfigured posture the same store IS the user's data and there is no
   // account to sign out of, so it is never dropped there.
   if (AppConfig.isApiConfigured) ref.read(localSubscriptionStoreProvider).clear,
+  // ⏱ 2026-09-30 · ST-N6 (D11): the preferences are ACCOUNT state too — that
+  // user's unsent changes and versions are forgotten, and the device stores go
+  // back to their defaults (review #1080 findings 4, 7).
+  forgetAccountPreferences(ref),
 ];
 
 /// Run the resolved drops — the half that is allowed to take as long as it likes.

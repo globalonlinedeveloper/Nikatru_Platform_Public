@@ -6,6 +6,7 @@ import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../l10n/app_localizations.dart';
 import '../add/add_subscription_sheet.dart';
+import '../settings/preference_refused_notice.dart';
 import '../shared/widgets.dart';
 
 /// Tabbed shell: hosts the branch content inside the chassis's adaptive
@@ -177,10 +178,13 @@ class AppShell extends StatelessWidget {
     // and it is this widget's only child, so these are the same constraints.
     // Not `MediaQuery`: a window is not always the size of the screen, and
     // the width harness pins layout without moving `MediaQuery` at all.
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) => _build(
-        context,
-        compact: windowClassFor(constraints.maxWidth) == WindowClass.compact,
+    // D11: an account refusal of a preference change is said here, once.
+    return PreferenceRefusedNotice(
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) => _build(
+          context,
+          compact: windowClassFor(constraints.maxWidth) == WindowClass.compact,
+        ),
       ),
     );
   }
