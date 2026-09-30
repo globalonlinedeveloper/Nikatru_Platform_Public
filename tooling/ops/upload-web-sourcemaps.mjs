@@ -86,6 +86,7 @@ import { join, relative, basename, resolve, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { deflateRawSync, gzipSync } from 'node:zlib';
 import { fetchWithBoundedRetry, CouldNotLook } from './bounded-retry.mjs';
+import { credentialOrigin } from './credential-origin.mjs';
 
 const SOURCE_EXT = /\.(?:js|cjs|mjs)$/;
 const MAP_EXT = /\.map$/;
@@ -170,6 +171,14 @@ if (!/^https?:\/\/[^/\s]+$/.test(base)) {
   die(`SENTRY_URL must be a bare server origin, got ${JSON.stringify(base)}`);
 }
 if (!token) die('SENTRY_AUTH_TOKEN is empty, so nothing could be uploaded');
+// ⏱ 2026-09-30 · The token goes to its issuer only (review of #1086, finding 3): a
+// bare origin that is not https://glitchtip.nikatru.com (or a loopback test stub)
+// is refused here, before the first request carries SENTRY_AUTH_TOKEN.
+try {
+  credentialOrigin(base, 'glitchtip');
+} catch (e) {
+  die(e.message);
+}
 
 // ── 1. discover the .js / .js.map pairs ──────────────────────────────────────
 const walk = (d, out = []) => {

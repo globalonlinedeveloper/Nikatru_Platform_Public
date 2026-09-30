@@ -15,10 +15,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isObject, routeHosts, d1Of, sandboxEnvironmentFindings } from '../wrangler-environments.mjs';
+import { isObject, routeHosts, d1Of, sandboxEnvironmentFindings, sandboxWorkflowSecretFindings } from '../wrangler-environments.mjs';
 import { parseJsonc } from '../d1-sql-inventory.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -68,6 +68,36 @@ describe('wrangler-environments — sandboxEnvironmentFindings', () => {
       assert.ok(isObject(cfg.env?.sandbox), `${rel} declares env.sandbox`);
       assert.deepEqual(sandboxEnvironmentFindings(`${rel} env.sandbox`, cfg, cfg.env.sandbox), [], rel);
     }
+  });
+
+  // ⏱ 2026-09-30 · ADR no.NNN (review of #1070): a sandbox never holds the service-role key.
+  test('RED: the service-role key in a sandbox environment\'s vars or secrets', () => {
+    const inVars = sandbox();
+    inVars.vars = { ...(inVars.vars ?? {}), SUPABASE_SERVICE_ROLE_KEY: 'x' };
+    const a = sandboxEnvironmentFindings('w env.sandbox', TOP, inVars);
+    assert.equal(a.length, 1);
+    assert.match(a[0], /carries SUPABASE_SERVICE_ROLE_KEY in its `vars`/);
+    const inSecrets = sandbox();
+    inSecrets.secrets = { required: ['SUPABASE_SERVICE_ROLE_KEY'] };
+    assert.match(sandboxEnvironmentFindings('w env.sandbox', TOP, inSecrets)[0], /in its `secrets`/);
+  });
+
+  test('sandboxWorkflowSecretFindings: RED for a step that PUTS the key into a sandbox Worker, GREEN on every real workflow', () => {
+    const put = '      - name: put\n        run: npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --env sandbox\n';
+    const red = sandboxWorkflowSecretFindings('w.yml', `jobs:\n  a:\n    steps:\n${put}`);
+    assert.equal(red.length, 1);
+    assert.match(red[0], /^w\.yml has a step that puts SUPABASE_SERVICE_ROLE_KEY into a SANDBOX Worker/);
+    const action = '      - uses: cloudflare/wrangler-action@v3\n        with:\n          environment: sandbox\n          secrets: |\n            SUPABASE_SERVICE_ROLE_KEY\n';
+    assert.equal(sandboxWorkflowSecretFindings('w.yml', action).length, 1);
+    // GREEN controls: the same key only READ into a job's env, and a put into production.
+    assert.deepEqual(sandboxWorkflowSecretFindings('w.yml', '      - name: seed\n        env:\n          SUPABASE_SERVICE_ROLE_KEY: x\n        run: node seed.mjs --env sandbox\n'), []);
+    assert.deepEqual(sandboxWorkflowSecretFindings('w.yml', '      - run: npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY\n'), []);
+    let read = 0;
+    for (const name of readdirSync(join(REPO, '.github/workflows')).filter((n) => /\.ya?ml$/.test(n))) {
+      read++;
+      assert.deepEqual(sandboxWorkflowSecretFindings(name, readFileSync(join(REPO, '.github/workflows', name), 'utf8')), [], name);
+    }
+    assert.ok(read > 10, 'the real workflows were read');
   });
 
   test('RED: no `routes` inherits the production host', () => {

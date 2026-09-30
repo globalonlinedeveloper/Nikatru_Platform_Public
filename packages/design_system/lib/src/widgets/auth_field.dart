@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/form_tones.dart';
+import '../tokens/app_spacing.dart';
 import '../tokens/app_text.dart';
 
 /// One labelled field on a hand-painted form — and the label reaches a SCREEN
@@ -62,7 +63,7 @@ import '../tokens/app_text.dart';
 /// string this widget paints is handed in by a caller inside a scanned root, so
 /// the move costs no enforcement at all. [hint] is nullable because a form may
 /// legitimately have none; it is never defaulted to English.
-class AuthField extends StatelessWidget {
+class AuthField extends StatefulWidget {
   const AuthField({
     required this.label,
     required this.controller,
@@ -75,6 +76,7 @@ class AuthField extends StatelessWidget {
     this.autofillHints,
     this.textInputAction,
     this.onSubmitted,
+    this.reveal,
   });
 
   /// The field's name, in SENTENCE case. Painted in capitals and announced as
@@ -109,10 +111,37 @@ class AuthField extends StatelessWidget {
   /// would invite a second, staler source of truth for what the caller reads.
   final VoidCallback? onSubmitted;
 
+  /// ⏱ 2026-09-29 · ST-D10 (`SignIn`, M1 §2.26 "no password reveal"). An
+  /// [obscure] field gains a Show / Hide control at its trailing edge.
+  ///
+  /// ⚠️ THE CONTROL SITS BESIDE THE MERGED FIELD, NOT INSIDE IT. The field is
+  /// one `MergeSemantics` node on purpose (label, role and value together); a
+  /// button inside it would be merged INTO the text field and a screen reader
+  /// could not reach it as a control of its own. So it is stacked over the
+  /// field's trailing edge, a sibling of the merge, with its own name.
+  ///
+  /// Null by default, so every existing call site renders the tree it had.
+  /// The words come from the CALLER, in its own localizations: a field must
+  /// not demand a delegate a screen's tests never composed.
+  final AuthRevealLabels? reveal;
+
+  static const Key revealKey = Key('authFieldReveal');
+
+  @override
+  State<AuthField> createState() => _AuthFieldState();
+}
+
+class _AuthFieldState extends State<AuthField> {
+  bool _shown = false;
+
   @override
   Widget build(BuildContext context) {
+    final AuthField w = widget;
+    final String label = w.label;
+    final AuthRevealLabels? labels = w.obscure ? w.reveal : null;
+    final bool reveal = labels != null;
     final FormTones t = formTones(context);
-    return MergeSemantics(
+    final Widget merged = MergeSemantics(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -136,38 +165,42 @@ class AuthField extends StatelessWidget {
           Semantics(
             label: label,
             child: TextField(
-              key: fieldKey,
-              controller: controller,
-              focusNode: focusNode,
-              obscureText: obscure,
-              keyboardType: keyboardType,
-              autofillHints: autofillHints,
-              textInputAction: textInputAction,
-              onSubmitted: onSubmitted == null
+              key: w.fieldKey,
+              controller: w.controller,
+              focusNode: w.focusNode,
+              obscureText: w.obscure && !_shown,
+              keyboardType: w.keyboardType,
+              autofillHints: w.autofillHints,
+              textInputAction: w.textInputAction,
+              onSubmitted: w.onSubmitted == null
                   ? null
-                  : (String _) => onSubmitted!(),
+                  : (String _) => w.onSubmitted!(),
               style: AppText.body.copyWith(
                 fontWeight: FontWeight.w600,
                 color: t.ink,
               ),
               decoration: InputDecoration(
-                hintText: hint,
+                hintText: w.hint,
                 hintStyle: AppText.muted.copyWith(
                   fontWeight: FontWeight.w500,
                   color: t.muted,
                 ),
                 filled: true,
                 fillColor: t.surface,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 15,
+                // The trailing inset leaves the Show / Hide control its own
+                // room, so a long password never runs under it.
+                contentPadding: EdgeInsetsDirectional.fromSTEB(
+                  16,
+                  15,
+                  reveal ? _revealInset : 16,
+                  15,
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                   borderSide: BorderSide(color: t.line),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                   borderSide: BorderSide(color: t.accent, width: 1.5),
                 ),
               ),
@@ -176,5 +209,50 @@ class AuthField extends StatelessWidget {
         ],
       ),
     );
+    if (labels == null) return merged;
+    return Stack(
+      children: <Widget>[
+        merged,
+        PositionedDirectional(
+          end: AppSpacing.xs,
+          bottom: 0,
+          child: TextButton.icon(
+            key: AuthField.revealKey,
+            onPressed: () => setState(() => _shown = !_shown),
+            icon: Icon(
+              _shown
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+            ),
+            // The painted word is short ("Show"); the NAME says what it shows.
+            label: Semantics(
+              label: _shown ? labels.hideName : labels.showName,
+              excludeSemantics: true,
+              child: Text(_shown ? labels.hide : labels.show),
+            ),
+          ),
+        ),
+      ],
+    );
   }
+
+  /// Room for the Show / Hide control: its icon, its word and its padding.
+  static const double _revealInset = AppSpacing.xxxl * 2;
+}
+
+/// The four words a Show / Hide control needs: what it PAINTS ([show],
+/// [hide]) and what it is CALLED ([showName], [hideName]).
+@immutable
+class AuthRevealLabels {
+  const AuthRevealLabels({
+    required this.show,
+    required this.hide,
+    required this.showName,
+    required this.hideName,
+  });
+
+  final String show;
+  final String hide;
+  final String showName;
+  final String hideName;
 }

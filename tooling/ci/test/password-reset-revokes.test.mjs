@@ -28,7 +28,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -51,7 +51,8 @@ const makeRoot = ({ vault } = {}) => {
     writeFileSync(
       join(root, '.claude', 'secrets.env'),
       vault ?? [
-        'SUPABASE_URL=https://auth.example.invalid',
+        // The issuer: tooling/ops/credential-origin.mjs refuses any other host before a request.
+        'SUPABASE_URL=https://auth-api.nikatru.com',
         'SUPABASE_PUBLISHABLE_KEY=anon-placeholder-for-tests',
         'SUPABASE_Secret_key=service-placeholder-for-tests',
         '',
@@ -64,15 +65,18 @@ const makeRoot = ({ vault } = {}) => {
 /**
  * A stub GoTrue, routed by URL. `plan` overrides any leg:
  *   controlRefresh · afterRefresh · createStatus · deleteStatus · sameToken
+ *   log — a file every requested URL is appended to (the origin pin, V8)
  * Everything not overridden behaves like a healthy server in which the reset
  * DOES revoke — so each case varies exactly one thing.
  */
 const stubSource = (plan = {}) => `
+import { appendFileSync } from 'node:fs';
 let signIns = 0;
 let refreshes = 0;
 const J = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 globalThis.fetch = async (url, init) => {
   const u = String(url);
+  ${plan.log ? `appendFileSync(${JSON.stringify(plan.log)}, u + '\\n');` : ''}
   if (u.includes('/admin/users/')) return new Response('', { status: ${plan.deleteStatus ?? 200} });
   if (u.includes('/admin/users')) return J(${plan.createStatus ?? 200}, { id: 'user-1' });
   if (u.includes('grant_type=password')) {
@@ -185,6 +189,37 @@ describe('verify-password-reset-revokes — a VOID run is 2, never 0', () => {
     const r = run(makeRoot(), { deleteStatus: 500 });
     assert.notEqual(r.code, 0, r.out);
     assert.match(r.out, /THE PROBE USER WAS NOT DELETED/);
+  });
+});
+
+// ⏱ 2026-09-30 — THE SERVICE-ROLE KEY GOES TO ITS ISSUER OR NOWHERE (CodeQL
+// js/file-access-to-http #345–#357, #525–#528; tooling/ops/credential-origin.mjs).
+describe('verify-password-reset-revokes — SUPABASE_URL is pinned before any request', () => {
+  const requested = (log) => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []);
+  const vaultAt = (url) => [`SUPABASE_URL=${url}`, 'SUPABASE_PUBLISHABLE_KEY=anon-placeholder-for-tests', 'SUPABASE_Secret_key=service-placeholder-for-tests', ''].join('\n');
+
+  test('V8 GREEN CONTROL — the issuer: every request goes to https://auth-api.nikatru.com, and the run passes', () => {
+    const log = join(TMP, `asked-${seq++}.log`);
+    const r = run(makeRoot(), { log }, ['--sessions', 'verify']);
+    assert.equal(r.code, 0, r.out);
+    const asked = requested(log);
+    assert.ok(asked.length >= 8, `the recorder saw ${asked.length} request(s):\n${r.out}`);
+    assert.deepEqual([...new Set(asked.map((u) => new URL(u).origin))], ['https://auth-api.nikatru.com']);
+  });
+
+  test('V8 — a hostile SUPABASE_URL, under both --sessions modes: exit 2, and NOT ONE request is made', () => {
+    for (const hostile of ['https://auth-api.nikatru.com.evil.invalid', 'https://evil.invalid/auth-api.nikatru.com', 'https://user:pw@auth-api.nikatru.com']) {
+      for (const sessions of ['password', 'verify']) {
+        const log = join(TMP, `asked-${seq++}.log`);
+        const r = run(makeRoot({ vault: vaultAt(hostile) }), { log }, ['--sessions', sessions]);
+        const at = `${hostile} (--sessions ${sessions})`;
+        assert.equal(r.code, 2, `${at}\n${r.out}`);
+        assert.match(r.out, /SUPABASE_URL is not the auth issuer, so no request was made/, at);
+        assert.match(r.out, /refusing to send the Supabase auth credential/, at);
+        assert.doesNotMatch(r.out, /user:pw|PASS/, at);
+        assert.deepEqual(requested(log), [], at);
+      }
+    }
   });
 });
 

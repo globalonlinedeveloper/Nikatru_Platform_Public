@@ -67,7 +67,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:subscriptiontracker/core/e2e_keys.dart';
+import 'package:subscriptiontracker/features/auth/check_inbox_screen.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
+import 'package:subscriptiontracker/l10n/app_localizations.dart';
 
 import 'support/width_harness.dart';
 
@@ -127,6 +130,56 @@ void main() {
             'them — the reason AppBreakpoints.form is 420 at all',
       );
       expect(AppBreakpoints.form, 420);
+    });
+  });
+
+  // ── ST-D10 · D10-5 · web ≥ 1200: the split sign-in (`DesktopSignIn`) ──────
+  // At the LARGE class the auth frame gives the leading side to the product's
+  // promise and keeps the form at 420 beside it; below it the form stands
+  // alone. Measured on both arms of the one door and on check-inbox, which
+  // takes the same frame and panel.
+  group('D10-5 · the wide split (DesktopSignIn)', () {
+    const Size kLarge = Size(1440, 900);
+    const Size kExpandedEdge = Size(1199, 900);
+
+    for (final bool signUp in <bool>[false, true]) {
+      final String arm = signUp ? 'sign-up' : 'sign-in';
+      testWidgets('$arm at 1440: panel leading, form beside it at 420', (
+        WidgetTester tester,
+      ) async {
+        await pumpAt(tester, kLarge, LoginScreen(startInSignUp: signUp));
+        final AppLocalizations l10n = AppLocalizations.of(
+          tester.element(find.byKey(E2EKeys.loginHeading)),
+        );
+        final Rect panel = tester.getRect(find.byKey(AuthFrame.panelKey));
+        expect(panel.left, 0);
+        expect(panel.width, AuthFrame.panelMaxWidth);
+        expect(find.text(l10n.authPanelHeadline), findsOneWidget);
+        final Rect heading = tester.getRect(find.byKey(E2EKeys.loginHeading));
+        expect(heading.left, greaterThanOrEqualTo(panel.right));
+        expect(heading.width, lessThanOrEqualTo(AppBreakpoints.form));
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('$arm at 1199: no split, the form alone', (
+        WidgetTester tester,
+      ) async {
+        await pumpAt(tester, kExpandedEdge, LoginScreen(startInSignUp: signUp));
+        expect(find.byKey(AuthFrame.panelKey), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('check-inbox takes the same split at 1440', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(
+        tester,
+        kLarge,
+        const CheckInboxScreen(email: 'asha@example.test'),
+      );
+      expect(find.byKey(AuthFrame.panelKey), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }

@@ -303,7 +303,7 @@ export function gradePathMonitorsAgainstTree(rows, expected) {
  * tooling/ci/test/ops-verifiers.test.mjs that spawn this file still spawn it.
  */
 async function main() {
-const BASE = (process.env.GLITCHTIP_URL ?? 'https://glitchtip.nikatru.com').replace(/\/+$/, '');
+const BASE = pinnedGlitchtipBase(); // ⏱ 2026-09-30: the token goes to its issuer only — see the end of this file
 const ORG = process.env.GLITCHTIP_ORG ?? 'nikatru';
 const TOKEN = process.env.GLITCHTIP_TOKEN;
 
@@ -565,4 +565,23 @@ if (problems.length) {
 // read a token and must not exit.
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   await main();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-30 · THE GLITCHTIP TOKEN GOES TO ITS ISSUER ONLY (review of #1086,
+// finding 3). GLITCHTIP_URL was used as sent. It is now pinned by the shared
+// tooling/ops/credential-origin.mjs to https://glitchtip.nikatru.com (or a
+// loopback test stub); any other value is COVERAGE LOST (exit 2) before the first
+// request carries GLITCHTIP_TOKEN. Down here, with its import, so no line above
+// moves: tooling/monitor-register.json cites this file by line.
+// ─────────────────────────────────────────────────────────────────────────────
+import { credentialOrigin, GLITCHTIP_ORIGIN } from './credential-origin.mjs';
+
+function pinnedGlitchtipBase() {
+  try {
+    return credentialOrigin(process.env.GLITCHTIP_URL || GLITCHTIP_ORIGIN, 'glitchtip');
+  } catch (e) {
+    console.error(`✗ COVERAGE LOST — ${e.message}. No monitor was read.`);
+    process.exit(2);
+  }
 }

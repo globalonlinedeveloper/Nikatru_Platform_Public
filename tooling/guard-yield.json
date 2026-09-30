@@ -3651,6 +3651,11 @@
       "firstSeen": "2026-09-12",
       "evidence": []
     },
+    "tooling/ops/check-sandbox-service-role.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-30",
+      "evidence": []
+    },
     "tooling/ops/check-tech-currency.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-29",

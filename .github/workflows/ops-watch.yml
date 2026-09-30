@@ -621,6 +621,29 @@ jobs:
           fi
           exit "$code"
 
+      # why: THE LIVE HALF OF THE SANDBOX SERVICE-ROLE GUARD (ADR no.NNN, second
+      # review of #1070). tooling/ci/wrangler-environments.mjs and
+      # assert-money-config.mjs limb 1e refuse the key in config and in every
+      # workflow step; a hand-run `wrangler secret put --env sandbox` is visible
+      # only here. Reads binding NAMES through the Cloudflare API, never values.
+      # IN THIS JOB for the same reason as the step above: account state no config shows.
+      - name: No sandbox Worker holds the service-role key
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          node tooling/ops/check-sandbox-service-role.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=The sandbox Workers were NOT read::No token, or a read that did not answer. An unread sandbox is not a clean one."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=A sandbox Worker holds SUPABASE_SERVICE_ROLE_KEY - ADR no.NNN::The sandbox shares production's identity project and that bearer makes GoTrue skip its captcha. Run wrangler secret delete SUPABASE_SERVICE_ROLE_KEY --env sandbox in that Worker's directory."
+          fi
+          exit "$code"
+
   edge-shield:
     # ⏱ 2026-09-26 · THE EDGE SHIELD IS STILL IN PATH (LEAD RULING SHIELD-R1 §7,
     # row O-BOXES-UNSHIELDED-FROM-SPIKES). services/edge-shield sits on two zone

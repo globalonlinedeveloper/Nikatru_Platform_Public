@@ -55,6 +55,7 @@ import bundleSourceTerm0018 from '../migrations/0018_bundle_source_term.sql?raw'
 import oneTimeSource0019 from '../migrations/0019_one_time_source.sql?raw';
 import reminders0020 from '../migrations/0020_reminders.sql?raw';
 import extLinkFloor0021 from '../migrations/0021_ext_link_floor.sql?raw';
+import nativeAttest0022 from '../migrations/0022_native_attest.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -114,6 +115,9 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // ⏱ 2026-09-30 · EXA-11 — the extension-link floor and each link's sign-in
   // time. ADD COLUMN, so ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
   extLinkFloor0021,
+  // ⏱ 2026-09-29 · ADR no.NNN — the native sign-in attestation state: redeemed
+  // challenge nonces, registered install keys and the daily counters.
+  nativeAttest0022,
 ];
 
 /**
@@ -163,6 +167,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   extDevices0017,
   // 0020 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
   reminders0020,
+  // 0022 is CREATE TABLE / CREATE INDEX IF NOT EXISTS only — it replays.
+  nativeAttest0022,
 ];
 
 // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a

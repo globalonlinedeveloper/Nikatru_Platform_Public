@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show AppSpacing, AuthMessage;
 
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
@@ -23,6 +27,11 @@ class CheckInboxActions extends ConsumerStatefulWidget {
   static const Key changeEmailButton = Key('checkInboxChangeEmail');
   static const Key noticeLine = Key('checkInboxNotice');
 
+  /// ⏱ 2026-09-29 · ST-D10 (`CheckInbox`: "Resend link in 0:24"). How long the
+  /// resend rests after a mail was SENT. A resend that failed rests not at all
+  /// — the user has nothing in their inbox to wait for.
+  static const Duration cooldown = Duration(seconds: 30);
+
   final String email;
 
   @override
@@ -34,6 +43,26 @@ class _CheckInboxActionsState extends ConsumerState<CheckInboxActions>
   bool _busy = false;
   String? _notice;
 
+  /// Seconds until the resend is offered again; 0 is "now".
+  int _wait = 0;
+  Timer? _tick;
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  void _rest() {
+    _tick?.cancel();
+    setState(() => _wait = CheckInboxActions.cooldown.inSeconds);
+    _tick = Timer.periodic(const Duration(seconds: 1), (Timer t) {
+      if (!mounted) return t.cancel();
+      setState(() => _wait -= 1);
+      if (_wait <= 0) t.cancel();
+    });
+  }
+
   Future<void> _resend() async {
     final AppLocalizations l10n = AppLocalizations.of(context);
     setState(() {
@@ -41,6 +70,7 @@ class _CheckInboxActionsState extends ConsumerState<CheckInboxActions>
       _notice = null;
     });
     String notice;
+    bool sent = false;
     try {
       // Waits for the challenge rather than disabling the button on it
       // (2026-09-28); `CaptchaUnavailable` becomes the retry sentence below.
@@ -52,6 +82,7 @@ class _CheckInboxActionsState extends ConsumerState<CheckInboxActions>
             captchaToken: captcha.consume(),
           );
       notice = l10n.verifyEmailResent;
+      sent = true;
     } catch (e) {
       notice = mounted ? authErrorSentence(context, e) : '';
     }
@@ -60,6 +91,7 @@ class _CheckInboxActionsState extends ConsumerState<CheckInboxActions>
         _busy = false;
         _notice = notice;
       });
+      if (sent) _rest();
     }
   }
 
@@ -73,17 +105,20 @@ class _CheckInboxActionsState extends ConsumerState<CheckInboxActions>
         TurnstileGate(controller: captcha, render: renderTurnstile),
         OutlinedButton(
           key: CheckInboxActions.resendButton,
-          onPressed: _busy ? null : _resend,
-          child: Text(l10n.verifyEmailResend),
+          onPressed: (_busy || _wait > 0) ? null : _resend,
+          child: Text(
+            _wait > 0
+                ? l10n.checkInboxResendIn(
+                    '${_wait ~/ 60}:${(_wait % 60).toString().padLeft(2, '0')}',
+                  )
+                : l10n.verifyEmailResend,
+          ),
         ),
         if (_notice != null) ...<Widget>[
-          const SizedBox(height: 8),
-          Semantics(
-            liveRegion: true,
-            child: Text(_notice!, key: CheckInboxActions.noticeLine),
-          ),
+          const SizedBox(height: AppSpacing.sm),
+          AuthMessage(message: _notice!, textKey: CheckInboxActions.noticeLine),
         ],
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.sm),
         TextButton(
           key: CheckInboxActions.changeEmailButton,
           onPressed: _busy ? null : () => context.go('/sign-in'),

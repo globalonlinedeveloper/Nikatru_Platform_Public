@@ -290,6 +290,13 @@ describe('create-glitchtip-release — the direct run', () => {
     assert.match(r.all, /SENTRY_AUTH_TOKEN is empty/);
   });
 
+  test('RED: a SENTRY_URL that is not the GlitchTip issuer is refused, and the token is not sent or printed', async () => {
+    const r = await run(ARGS, { SENTRY_URL: 'https://glitchtip.nikatru.com.evil.invalid', SENTRY_AUTH_TOKEN: SECRET });
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.all, /refusing to send the GlitchTip credential to https:\/\/glitchtip\.nikatru\.com\.evil\.invalid/);
+    assert.equal(r.all.includes(SECRET), false);
+  });
+
   test('a SENTRY_URL carrying a path is refused, and is not echoed', async () => {
     const r = await run(ARGS, { SENTRY_URL: 'https://glitchtip.invalid/api/0', SENTRY_AUTH_TOKEN: SECRET });
     assert.equal(r.code, 1);

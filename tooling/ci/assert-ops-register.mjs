@@ -370,8 +370,8 @@ const coverageLost = (lines) => {
  *  ⏱ 2026-09-11 — THE TWO ARE NOW ONE. This file's `coverageLost` predated that
  *  convention and exited 1 at every call site; the move was recorded as a finding
  *  (REVIEW-guards-2026-09-10 #9) and is taken here, with INV6, by the unit that
- *  owns this file. The name is kept because other files' prose cites it. */
-const coverageLostHard = coverageLost;
+ *  owns this file. ⏱ 2026-09-30: the `coverageLostHard` alias that kept the old name
+ *  alive was dead code (CodeQL #303) and is gone; its one prose citation moved with it. */
 
 // ── jsonc, because every wrangler config in this repo is heavily commented ────
 // Comments are stripped OUTSIDE string literals only. A naive `//` strip would
@@ -5447,7 +5447,7 @@ async function probeGlitchtipHeartbeat(q) {
   if (!token) {
     return { unreadable: true, why: 'GLITCHTIP_TOKEN is not in the environment, so the monitor\'s check history cannot be read' };
   }
-  const base = (process.env.GLITCHTIP_URL ?? 'https://glitchtip.nikatru.com').replace(/\/+$/, '');
+  const base = pinnedGlitchtipBase(); if (typeof base !== 'string') return base; // ⏱ 2026-09-30 CodeQL #103/#104 — see the end of this file
   // Both are interpolated into a URL path. The register is not a trust boundary
   // anybody audits, so they are REFUSED rather than escaped — the same rule
   // `probeCloudflareHeartbeat` applies to the table identifier it is handed.
@@ -6357,4 +6357,23 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     console.error(`✗ COVERAGE LOST — ${REGISTER_REL}: the guard itself threw, so nothing printed above is a verdict (INV6): ${e?.stack ?? e}`);
     process.exitCode = 2;
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-30 · THE GLITCHTIP TOKEN GOES TO ITS ISSUER ONLY (CodeQL #103/#104).
+// probeGlitchtipHeartbeat sent GLITCHTIP_TOKEN to whatever GLITCHTIP_URL said.
+// The origin is now pinned to https://glitchtip.nikatru.com (or loopback, for a
+// test stub) by the shared tooling/ops/credential-origin.mjs, and any other value
+// is `unreadable` — never a request. Kept down here, with its import, so the fix
+// moves no line number above it: this file is cited by line from other files.
+// ─────────────────────────────────────────────────────────────────────────────
+import { credentialOrigin, GLITCHTIP_ORIGIN } from '../ops/credential-origin.mjs';
+
+/** The pinned GlitchTip origin, or an `unreadable` probe result naming the refusal. */
+function pinnedGlitchtipBase() {
+  try {
+    return credentialOrigin(process.env.GLITCHTIP_URL ?? GLITCHTIP_ORIGIN, 'glitchtip');
+  } catch (e) {
+    return { unreadable: true, why: e.message };
+  }
 }

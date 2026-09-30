@@ -33,7 +33,6 @@ const path = require('path');
 const zlib = require('zlib');
 
 const ROOT = path.join(__dirname, '..');
-const OUT = __dirname;
 
 /* ---------------- the allowlist ---------------- */
 /* Every file the browser loads, and nothing else. Extensions are pinned per

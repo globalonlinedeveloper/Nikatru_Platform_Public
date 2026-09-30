@@ -69,13 +69,13 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifyThrown, transientLook, isTransientStatus, isSafeMethod, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
+import { credentialOrigin, GLITCHTIP_ORIGIN } from './credential-origin.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const VAULT = join(ROOT, '.claude', 'secrets.env');
 
-/** The instance and the organisation, from the environment, with the defaults
- *  set-monitor-thresholds has always used. */
-export const BASE = process.env.GLITCHTIP_URL || 'https://glitchtip.nikatru.com';
+/** The instance and organisation, from the environment (set-monitor-thresholds' defaults); `api()` pins the instance. */
+export const BASE = process.env.GLITCHTIP_URL || GLITCHTIP_ORIGIN;
 export const ORG = process.env.GLITCHTIP_ORG || 'nikatru';
 
 // The vault quotes its values; a reader that keeps the quotes sends
@@ -134,14 +134,21 @@ export const POLICY = { GET: 2 };
  * is returned, so the caller still sees `HTTP 503` and says it could not look. A
  * wire that never answers throws, as a bare `fetch` did. A write is attempted
  * exactly once, for the reason in the header.
+ *
+ * ⏱ 2026-09-30 — 🔴 THE TOKEN GOES TO GLITCHTIP OR TO THIS MACHINE, NOTHING ELSE
+ * (CodeQL js/file-access-to-http #496). `base` — GLITCHTIP_URL, or a caller's —
+ * is pinned by tooling/ops/credential-origin.mjs before any request; any other
+ * origin THROWS CredentialOriginRefused, as a wire that never answers throws, and
+ * nothing is sent.
  */
 export async function api(method, path, body, { token, base = BASE, sleep, note } = {}) {
+  const origin = credentialOrigin(base, 'glitchtip');
   const verb = method.toUpperCase();
   let lastAnswer = null;
   const read = async (_attempt, { signal }) => {
     let res;
     try {
-      res = await fetch(`${base}${path}`, {
+      res = await fetch(`${origin}${path}`, {
         method: verb,
         signal,
         headers: {

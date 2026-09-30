@@ -281,7 +281,7 @@ const withStub = async (opts, body) => {
 };
 
 const TOKEN = { SENTRY_AUTH_TOKEN: 'stub-token' };
-const NOWHERE = 'https://glitchtip.invalid';
+const NOWHERE = 'http://127.0.0.1:9'; // closed loopback port: an origin credential-origin.mjs admits, where nothing answers
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('upload-web-sourcemaps: the arguments and the environment', () => {
@@ -301,6 +301,12 @@ describe('upload-web-sourcemaps: the arguments and the environment', () => {
     const r = await run(ok(buildDir()), { SENTRY_URL: `${NOWHERE}/api/0`, ...TOKEN });
     assert.equal(r.code, 1);
     assert.match(r.all, /must be a bare server origin/);
+  });
+
+  test('RED: a SENTRY_URL that is not the GlitchTip issuer is refused before any upload', async () => {
+    const r = await run(ok(buildDir()), { SENTRY_URL: 'https://glitchtip.nikatru.com.evil.invalid', ...TOKEN });
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.all, /refusing to send the GlitchTip credential to https:\/\/glitchtip\.nikatru\.com\.evil\.invalid/);
   });
 
   test('an empty SENTRY_AUTH_TOKEN fails BEFORE any upload is attempted', async () => {

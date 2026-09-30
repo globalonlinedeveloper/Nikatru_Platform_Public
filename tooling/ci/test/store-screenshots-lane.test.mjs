@@ -1510,10 +1510,10 @@ describe('tooling/e2e/magic_link.mjs — the one minter', () => {
 
   test('posts a magiclink generate_link for the address with the service key, and returns hashed_token', async () => {
     const { f, calls } = fakeFetch(200, { hashed_token: HEX56, action_link: 'x' });
-    const got = await mintMagicLinkTokenHash({ url: 'https://auth.example.invalid/', serviceKey: 'k', email: 'a@b.invalid', fetchImpl: f });
+    const got = await mintMagicLinkTokenHash({ url: 'https://auth-api.nikatru.com/', serviceKey: 'k', email: 'a@b.invalid', fetchImpl: f });
     assert.equal(got, HEX56);
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, 'https://auth.example.invalid/auth/v1/admin/generate_link');
+    assert.equal(calls[0].url, 'https://auth-api.nikatru.com/auth/v1/admin/generate_link');
     assert.equal(calls[0].init.method, 'POST');
     assert.equal(calls[0].init.headers.Authorization, 'Bearer k');
     assert.deepEqual(JSON.parse(calls[0].init.body), { type: 'magiclink', email: 'a@b.invalid' });
@@ -1522,7 +1522,7 @@ describe('tooling/e2e/magic_link.mjs — the one minter', () => {
   test('🔴 a non-2xx answer is refused with its status', async () => {
     const { f } = fakeFetch(403, { msg: 'nope' });
     await assert.rejects(
-      mintMagicLinkTokenHash({ url: 'https://a.invalid', serviceKey: 'k', email: 'e', fetchImpl: f }),
+      mintMagicLinkTokenHash({ url: 'https://auth-api.nikatru.com', serviceKey: 'k', email: 'e', fetchImpl: f }),
       (e) => e instanceof MagicLinkRefused && /generate_link failed: HTTP 403/.test(e.message),
     );
   });
@@ -1530,7 +1530,7 @@ describe('tooling/e2e/magic_link.mjs — the one minter', () => {
   test('🔴 an answer with no hashed_token is refused, naming the keys it had', async () => {
     const { f } = fakeFetch(200, { action_link: 'x', email_otp: '1' });
     await assert.rejects(
-      mintMagicLinkTokenHash({ url: 'https://a.invalid', serviceKey: 'k', email: 'e', fetchImpl: f }),
+      mintMagicLinkTokenHash({ url: 'https://auth-api.nikatru.com', serviceKey: 'k', email: 'e', fetchImpl: f }),
       (e) => e instanceof MagicLinkRefused && /No hashed_token .*keys: action_link, email_otp/.test(e.message),
     );
   });
@@ -1538,9 +1538,23 @@ describe('tooling/e2e/magic_link.mjs — the one minter', () => {
   test('🔴 an empty input is refused before any request is made', async () => {
     const { f, calls } = fakeFetch(200, { hashed_token: HEX56 });
     await assert.rejects(
-      mintMagicLinkTokenHash({ url: 'https://a.invalid', serviceKey: '', email: 'e', fetchImpl: f }),
+      mintMagicLinkTokenHash({ url: 'https://auth-api.nikatru.com', serviceKey: '', email: 'e', fetchImpl: f }),
       (e) => e instanceof MagicLinkRefused && /serviceKey is empty/.test(e.message),
     );
+    assert.equal(calls.length, 0);
+  });
+
+  // ⏱ 2026-09-30 — the service-role key goes to its issuer or nowhere
+  // (tooling/ops/credential-origin.mjs; CodeQL #532/#533).
+  test('🔴 a url that is not the auth issuer is refused before any request is made', async () => {
+    const { f, calls } = fakeFetch(200, { hashed_token: HEX56 });
+    for (const url of ['https://auth.example.invalid', 'https://auth-api.nikatru.com.evil.invalid', 'https://evil.invalid/auth-api.nikatru.com']) {
+      await assert.rejects(
+        mintMagicLinkTokenHash({ url, serviceKey: 'k', email: 'e', fetchImpl: f }),
+        (e) => e instanceof MagicLinkRefused && /refusing to send the Supabase auth credential .*not its issuer/.test(e.message),
+        `minted against ${url}`,
+      );
+    }
     assert.equal(calls.length, 0);
   });
 
@@ -1549,7 +1563,7 @@ describe('tooling/e2e/magic_link.mjs — the one minter', () => {
     for (const bad of [`${HEX56}\nuser_id=00000000-0000-0000-0000-000000000000`, 'short', HEX56.toUpperCase(), `${HEX56}=`]) {
       const { f } = fakeFetch(200, { hashed_token: bad });
       await assert.rejects(
-        mintMagicLinkTokenHash({ url: 'https://a.invalid', serviceKey: 'k', email: 'e', fetchImpl: f }),
+        mintMagicLinkTokenHash({ url: 'https://auth-api.nikatru.com', serviceKey: 'k', email: 'e', fetchImpl: f }),
         // The refusal names the length, never the value: it is a credential.
         (e) => e instanceof MagicLinkRefused && /not a hex digest \(\d+ characters\)/.test(e.message) && !e.message.includes(bad),
         `accepted ${JSON.stringify(bad)}`,

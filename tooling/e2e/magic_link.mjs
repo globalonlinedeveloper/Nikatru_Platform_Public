@@ -19,6 +19,7 @@
 // ⚠️ The service-role key goes in and nothing but the hashed token comes out.
 // The caller masks and redacts the token; this module prints nothing.
 // ─────────────────────────────────────────────────────────────────────────────
+import { CredentialOriginRefused, credentialOrigin } from '../ops/credential-origin.mjs';
 
 /** The shape GoTrue issues a `hashed_token` in: lowercase hex (a SHA-224 digest
  *  today, 56 characters; the range leaves room for another digest). */
@@ -50,7 +51,18 @@ export async function mintMagicLinkTokenHash({ url, serviceKey, email, fetchImpl
   for (const [name, v] of [['url', url], ['serviceKey', serviceKey], ['email', email]]) {
     if (typeof v !== 'string' || v === '') throw new MagicLinkRefused(`cannot mint a magic-link token: ${name} is empty`);
   }
-  const res = await fetchImpl(`${url.replace(/\/+$/, '')}/auth/v1/admin/generate_link`, {
+  // ⏱ 2026-09-30 — 🔴 THE SERVICE-ROLE KEY GOES TO ITS ISSUER OR NOWHERE (CodeQL
+  // js/file-access-to-http #532/#533). Pinned HERE, in the one minter, so every
+  // caller is covered whether or not it pinned its own SUPABASE_URL first:
+  // tooling/ops/credential-origin.mjs, and the refusal is this module's own.
+  let origin;
+  try {
+    origin = credentialOrigin(url, 'supabase');
+  } catch (e) {
+    if (!(e instanceof CredentialOriginRefused)) throw e;
+    throw new MagicLinkRefused(`cannot mint a magic-link token: ${e.message}`);
+  }
+  const res = await fetchImpl(`${origin}/auth/v1/admin/generate_link`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

@@ -122,3 +122,9 @@ function fsLateFixture(kind, apply) {
   setTimeout(function () { if (!F.fired) fire(); }, 20000);
   setTimeout(function () { clearInterval(tick); }, 200000);
 }
+
+/* Loaded as a classic <script src> and called by the inline script in
+ * late-swap.html and late-frame.html. Exported by name because test/e2e is
+ * "type": "module", so static analysis reads this file as a module and the
+ * declaration above as unused (CodeQL js/unused-local-variable). */
+window.fsLateFixture = fsLateFixture;

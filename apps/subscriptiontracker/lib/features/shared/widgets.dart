@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nikatru_core/nikatru_core.dart' show ExternalLinkLauncherUrl;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show BrandFooter, BrandFooterLink, BrandWordmark;
+    show AppListRow, AppPalette, BrandFooter, BrandFooterLink, BrandWordmark;
 
 import '../../core/app_config.dart';
 import '../../core/theme/app_colors.dart';
@@ -115,7 +115,7 @@ class GlyphTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String? label = semanticLabel;
-    final Widget tile = _tile();
+    final Widget tile = _tile(AppPalette.of(context));
     // Both branches drop the glyph itself; they differ only in what replaces
     // it. `excludeSemantics` rather than a sibling `ExcludeSemantics` so the
     // label cannot end up concatenated with the token it exists to replace.
@@ -124,7 +124,15 @@ class GlyphTile extends StatelessWidget {
         : Semantics(label: label, excludeSemantics: true, child: tile);
   }
 
-  Widget _tile() {
+  // 🔴 B50 (round-2 review, ST-Y1): the glyph ink was `AppColors.accent` and
+  // the status dot's ring `AppColors.surface` in BOTH schemes — the same
+  // indigo on a dark card, and a WHITE ring around the dot on it. Both read
+  // the palette now (ST-D0 D0-2): `accentInk` is the brand as a foreground,
+  // contrast-checked against the palette's surface, and the ring is that
+  // surface — the card's own fill, so the ring reads as a cut-out in either
+  // scheme. Light resolves to the same two literals, so the light build is
+  // unchanged.
+  Widget _tile(AppPalette palette) {
     return Stack(
       clipBehavior: Clip.none,
       children: <Widget>[
@@ -149,7 +157,7 @@ class GlyphTile extends StatelessWidget {
               fontFamily: 'Space Grotesk',
               fontWeight: FontWeight.w700,
               fontSize: fontSize,
-              color: AppColors.accent,
+              color: palette.accentInk,
             ),
           ),
         ),
@@ -163,7 +171,7 @@ class GlyphTile extends StatelessWidget {
               decoration: BoxDecoration(
                 color: statusColor,
                 shape: BoxShape.circle,
-                border: Border.all(color: AppColors.surface, width: 2),
+                border: Border.all(color: palette.surface, width: 2),
               ),
             ),
           ),
@@ -293,7 +301,12 @@ class _RowCardState extends State<RowCard> {
                 style: AppText.of(
                   context,
                 ).body.copyWith(fontWeight: FontWeight.w700, fontSize: 15),
-                maxLines: 1,
+                // B51: a second line above 1.3× text — the chassis row's rule,
+                // adopted rather than restated (ST-D0 D0-4).
+                maxLines: AppListRow.titleLinesFor(
+                  MediaQuery.textScalerOf(context),
+                  1,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
               if (widget.subtitle != null) ...<Widget>[

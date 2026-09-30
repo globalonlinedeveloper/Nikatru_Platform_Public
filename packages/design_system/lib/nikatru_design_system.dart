@@ -6,6 +6,8 @@ export 'src/licences/vendored_asset_licences.dart';
 // The plumbing under the chassis's persisted controllers ([ADR 072] D1.4).
 export 'src/persisted_notifier.dart';
 export 'src/tokens/app_colors.dart';
+// The brightness-resolved palette (ST-D0 D0-2); `AppColors`' neutrals alias it.
+export 'src/tokens/app_palette.dart';
 // The GENERATED company brand tokens — the one Dart file emitted from
 // contracts/tokens/dtcg/ ([ADR 067] decision 1). It is on the barrel for the
 // same reason `app_colors.dart` is: measured 2026-09-05, every app reaches this
@@ -36,6 +38,7 @@ export 'src/widgets/app_section_header.dart';
 export 'src/widgets/app_summary_card.dart';
 export 'src/widgets/brand_lockup.dart';
 export 'src/widgets/auth_field.dart';
+export 'src/widgets/auth_frame.dart';
 export 'src/widgets/content_pane.dart';
 export 'src/widgets/data_state.dart';
 export 'src/widgets/decision_strip.dart';

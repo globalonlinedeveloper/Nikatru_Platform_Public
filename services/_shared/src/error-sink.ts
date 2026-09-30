@@ -55,6 +55,9 @@
 //     Worker, which is the whole posture of [ADR 011] / [ADR 020].
 //   • The pathname only, plus the correlation id already in the response
 //     header, so a report can be tied to a log line without tying it to a user.
+//   • And not even the pathname's VALUES: a capability can be a path segment
+//     (the calendar feed's token), so the route PATTERN is reported and any
+//     capability-shaped segment is scrubbed — `reportablePath` below.
 //
 // FAIL-OPEN, ALWAYS. Every failure mode — no DSN, an unparseable DSN, GlitchTip
 // down, a network error — resolves to "no report". Reporting an error must
@@ -112,8 +115,56 @@ export interface SinkContext {
   requestId: string | undefined;
   method: string;
   /** PATHNAME ONLY. Never the full URL — the query string is where the personal
-   *  data hides. */
+   *  data hides. Pass it through `reportablePath`, which replaces every path
+   *  PARAMETER with its route pattern name; `buildEnvelope` scrubs
+   *  capability-shaped segments again whatever the caller passed. */
   path: string;
+}
+
+/** One route the router matched: what hono's `matchedRoutes(c)` returns, typed
+ *  structurally because this home may carry no bare import. */
+export interface MatchedRoute {
+  method: string;
+  path: string;
+}
+
+/**
+ * A path segment shaped like a CAPABILITY: 32 or more base64url/hex characters,
+ * optionally with a file extension. The calendar feed's 256-bit token is 43 of
+ * them (`/v1/calendar/<token>.ics`); a UUID (36, hyphenated) matches too, which
+ * costs nothing — an id in a report groups worse, never better.
+ */
+const SECRET_SEGMENT = /^[A-Za-z0-9_-]{32,}(\.[A-Za-z0-9]+)?$/;
+
+/** Every capability-shaped segment of `path`, replaced by `:redacted`. */
+export function scrubPath(path: string): string {
+  return path
+    .split('/')
+    .map((seg) => (SECRET_SEGMENT.test(seg) ? ':redacted' : seg))
+    .join('/');
+}
+
+/**
+ * ⏱ 2026-09-30 · O-CALENDAR-TOKEN-SHIPPED-TO-ERROR-SINK (rv2-services-002).
+ * THE PATH A REPORT MAY CARRY: the ROUTE PATTERN the request matched
+ * (`/v1/calendar/:file`), not the concrete pathname.
+ *
+ * 🔴 THE DEFECT. The privacy rule above assumed a secret could only live in the
+ * query string, but the calendar feed's capability token is a PATH segment: an
+ * unhandled error on `GET /v1/calendar/<token>.ics` sent the live token to
+ * GlitchTip as the event's transaction, and anyone who could read GlitchTip could
+ * then read that person's subscriptions until the feed was rotated. It also split
+ * every token into its own error group.
+ *
+ * A path parameter is how the router marks a segment as a VALUE rather than a
+ * name, so no parameter value is reported at all — the pattern names each one
+ * instead. The handler route is the last matched route with a concrete method
+ * (`app.use` middleware is `ALL`). When the router matched no handler, the
+ * concrete path is reported with every capability-shaped segment scrubbed.
+ */
+export function reportablePath(pathname: string, matched: readonly MatchedRoute[] = []): string {
+  const handler = [...matched].reverse().find((r) => r.method !== 'ALL' && r.path && !r.path.includes('*'));
+  return scrubPath(handler ? handler.path : pathname);
 }
 
 /** What `requestSinkContext` reads from a request: Hono's `Context`, described
@@ -154,7 +205,9 @@ export function buildEnvelope(err: unknown, ctx: SinkContext, dsn: string, now: 
     logger: 'worker',
     server_name: ctx.service,
     release: ctx.release,
-    transaction: `${ctx.method} ${ctx.path}`,
+    // Scrubbed here as well as by `reportablePath`: a Worker whose onError still
+    // passes the concrete pathname cannot ship a path-segment token either.
+    transaction: `${ctx.method} ${scrubPath(ctx.path)}`,
     tags: {
       service: ctx.service,
       // [pipeline B-16] WHOSE app broke, not merely which Worker. A TAG rather

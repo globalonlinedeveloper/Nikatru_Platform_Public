@@ -402,7 +402,7 @@ describe('verify-alarm-chains.mjs — the canary reads the monitor register', ()
   function opsTree({ register = realRegister(), ledger = realLedger() } = {}) {
     const root = join(TMP, `o${seq++}`);
     mkdirSync(join(root, 'tooling', 'ops'), { recursive: true });
-    for (const f of ['verify-alarm-chains.mjs', 'bounded-retry.mjs', 'monitor-register.mjs']) cpSync(join(OPS, f), join(root, 'tooling', 'ops', f));
+    for (const f of ['verify-alarm-chains.mjs', 'bounded-retry.mjs', 'monitor-register.mjs', 'credential-origin.mjs']) cpSync(join(OPS, f), join(root, 'tooling', 'ops', f));
     writeFileSync(join(root, LEDGER), JSON.stringify(ledger, null, 2));
     writeFileSync(join(root, REGISTER), register);
     return root;
