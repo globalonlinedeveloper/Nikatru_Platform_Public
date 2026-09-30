@@ -2817,6 +2817,14 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/coverage-manifest-format.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
     "claims": [
       "ADR 057",
       "ADR 067"

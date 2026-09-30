@@ -26,6 +26,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSyn
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { serialiseManifest } from '../coverage-manifest-format.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-guard-coverage.mjs');
@@ -207,7 +208,7 @@ function repo(
   // coverage-self-check limb stopped grepping raw prose and started asking
   // `stripSourceComments` what is actually CODE. Both are pure modules with no
   // imports of their own, so copying the two files is the whole dependency.
-  const deps = real ? ['tree-walk.mjs', 'text-reductions.mjs'] : [];
+  const deps = real ? ['tree-walk.mjs', 'text-reductions.mjs', 'coverage-manifest-format.mjs'] : [];
   for (const dep of deps) writeFileSync(join(ci, dep), readFileSync(join(CI_DIR, dep), 'utf8'));
 
   for (const [name, src] of Object.entries(all)) writeFileSync(join(ci, name), src);
@@ -282,7 +283,7 @@ function repo(
     );
   }
 
-  if (manifest !== undefined) writeFileSync(join(root, MANIFEST_REL), `${JSON.stringify(manifest, null, 2)}\n`);
+  if (manifest !== undefined) writeFileSync(join(root, MANIFEST_REL), serialiseManifest(manifest));
   return root;
 }
 

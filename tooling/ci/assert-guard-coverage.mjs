@@ -161,6 +161,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments, codeMask, NON_CODE } from './text-reductions.mjs';
+import { serialiseManifest } from './coverage-manifest-format.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CI = join(ROOT, 'tooling', 'ci');
@@ -628,6 +629,10 @@ const NOT_A_SCANNER = new Map([
   [
     'android-zip.mjs',
     'is not a guard: it is the ONE zip central-directory walk and the ONE binary-AXML manifest decoder the Android guards share — `zipEntries`, `readEntry` and `decodeAxml`. Pure functions: bytes in, entries or an element tree out; no filesystem, no tree, no exit. It moved out of assert-android-vapt-manifest.mjs on 2026-09-25, unchanged in behaviour, when tooling/ci/dump-aab-permissions.mjs needed the same reading of the Play .apk to cross-check the .aab\'s protobuf manifest (O-PLAY-DATA-SAFETY-FROM-A-STALE-RUN); two AXML decoders would disagree in the one way that reads clean, WHICH ELEMENTS THEY CAN SEE. Every refusal goes through the caller\'s `refuse`, and throws if that returns, so an unreadable archive is never an empty entry list; "did my scan still reach the artefact" belongs to its two importers, each of which carries its own COVERAGE LOST. Its failing cases are in test/dump-aab-permissions.test.mjs (called directly, with a green control) and test/android-vapt-manifest.test.mjs (through the VAPT guard, whose 49 cases ran green before and after the move). It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
+  ],
+  [
+    'coverage-manifest-format.mjs',
+    'is not a guard: it is the ONE serialisation of tooling/ci/test/coverage-manifest.json — `serialiseManifest`, keys sorted, each entry its key line then its count line, a blank line between entries, so two PRs that raise NEIGHBOURING test files, or add one beside a raised one, never write touching lines and merge cleanly (rv2-pipe-a P-2, 2026-09-29: #1050 conflicted on exactly that). A pure function: counts in, text out; no filesystem, no tree, no exit. This guard writes the manifest through it and ci.yml diffs the result byte for byte, so the format cannot drift from the writer. Its failing cases are in test/generated-merge.test.mjs, which merges two real git branches over it, with the old format as the red control. It sits flat in tooling/ci because the stray-.mjs check above (correctly) treats a subdirectory as a guard escaping the scan.',
   ],
   [
     'run-page-anchor.mjs',
@@ -1487,7 +1492,9 @@ for (const f of testFiles) {
   else if (now > was) ratcheted.push(`↑ ${f} ${was} → ${now}`);
   next[f] = now;
 }
-const serialised = `${JSON.stringify(Object.fromEntries(Object.keys(next).sort().map((k) => [k, next[k]])), null, 2)}\n`;
+// ⏱ 2026-09-29 (rv2-pipe-a P-2): key and count on two lines, a blank between entries, so two PRs that
+// raise NEIGHBOURING files merge cleanly (coverage-manifest-format.mjs).
+const serialised = serialiseManifest(next);
 if (manifestText !== serialised) {
   try {
     writeFileSync(MANIFEST, serialised);
