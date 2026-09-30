@@ -68,8 +68,14 @@ function fixture(files) {
   return dir;
 }
 
-function run(cwd, args = []) {
-  const r = spawnSync(process.execPath, [GUARD, cwd, ...args], { encoding: 'utf8', cwd });
+/** 🔴 The GITHUB_* event variables are SCRUBBED: on a pull_request CI run this
+ *  suite inherits GITHUB_EVENT_NAME=pull_request, which puts the guard in merge
+ *  mode against a fixture whose HEAD is not GITHUB_SHA — every case would be
+ *  COVERAGE LOST. A case that wants merge mode passes the variables itself. */
+function run(cwd, args = [], env = {}) {
+  const base = { ...process.env };
+  for (const k of ['GITHUB_EVENT_NAME', 'GITHUB_BASE_REF', 'GITHUB_SHA']) delete base[k];
+  const r = spawnSync(process.execPath, [GUARD, cwd, ...args], { encoding: 'utf8', cwd, env: { ...base, ...env } });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
@@ -468,5 +474,98 @@ describe('assert-app-dod', () => {
     const { code, out } = run(build({ brickRecord: JSON.stringify(rec, null, 2) }));
     assert.equal(code, 0, out);
     assert.match(out, /NOT verifiable from the public repo/);
+  });
+});
+
+// ── MERGE MODE (⏱ 2026-09-30) ────────────────────────────────────────────────
+// #1066: PR commits dated 2026-09-29, the record dated 2026-09-29, PR CI green;
+// the squash merge landed 2026-09-30 UTC and main went red. Every date below is
+// PINNED, so no case depends on the clock except the one that says it does.
+const SETTINGS_REL = `${BRICK}/lib/features/settings/settings_screen.dart`;
+const RECORD_DAY = '2026-09-29';
+
+/** A tree shaped like actions/checkout's pull_request checkout: `main` (and
+ *  `origin/main`) at the base commit, HEAD detached at a two-parent merge of a
+ *  PR branch whose one commit applies `edit` to the tree. Every commit is dated
+ *  RECORD_DAY in UTC, like #1066's. */
+function prFixture(edit) {
+  const rec = JSON.parse(record('{{app_id}}'));
+  rec.features[0].mutation.date = RECORD_DAY;
+  const dir = build({ brickRecord: JSON.stringify(rec, null, 2) });
+  const at = (hh) => ({ ...process.env, GIT_COMMITTER_DATE: `${RECORD_DAY}T${hh}:00:00Z`, GIT_AUTHOR_DATE: `${RECORD_DAY}T${hh}:00:00Z` });
+  const git = (env, ...args) => {
+    const r = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8', env });
+    assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+    return r.stdout.trim();
+  };
+  git(at('10'), 'commit', '-q', '--amend', '--no-edit', '--no-gpg-sign', '--reset-author');
+  git(at('10'), 'checkout', '-q', '-B', 'main');
+  git(at('10'), 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  git(at('10'), 'checkout', '-q', '-b', 'pr');
+  edit(dir);
+  git(at('11'), 'add', '-A');
+  git(at('11'), 'commit', '-q', '-m', 'the PR', '--no-gpg-sign');
+  git(at('12'), 'checkout', '-q', '--detach', 'main');
+  git(at('12'), 'merge', '-q', '--no-ff', '--no-gpg-sign', '-m', 'Merge pr into main', 'pr');
+  return { dir, prEnv: { GITHUB_EVENT_NAME: 'pull_request', GITHUB_BASE_REF: 'main', GITHUB_SHA: git(at('12'), 'rev-parse', 'HEAD') } };
+}
+
+const editCode = (dir) => writeFileSync(join(dir, SETTINGS_REL), `${SETTINGS_DART}final int changedByThePr = 1;\n`);
+
+describe('assert-app-dod · a pull request is graded against the date it will MERGE', () => {
+  test('a PR that edits a probed file FAILS in PR mode and PASSES in main mode on the same tree', () => {
+    const { dir, prEnv } = prFixture(editCode);
+
+    // RED CONTROL: main mode reads the commit dates, which equal the record's.
+    const asMain = run(dir);
+    assert.equal(asMain.code, 0, asMain.out);
+
+    // Clock-dependent on purpose, and one-sided: today (UTC) is after RECORD_DAY forever.
+    const asPr = run(dir, [], prEnv);
+    assert.equal(asPr.code, 1, asPr.out);
+    assert.match(asPr.out, /The record now describes code that is no longer there/, 'the message main would give');
+    assert.match(asPr.out, /re-run AS PART OF THIS PR/);
+    assert.match(asPr.out, /merge mode \(pull_request\): the 1 file\(s\)/);
+
+    // The merge day, not the event, decides: merging on the record's own day is in date.
+    const sameDay = run(dir, ['--merge-date', RECORD_DAY], prEnv);
+    assert.equal(sameDay.code, 0, sameDay.out);
+    const nextDay = run(dir, ['--merge-date', '2026-09-30'], prEnv);
+    assert.equal(nextDay.code, 1, nextDay.out);
+    assert.match(nextDay.out, /last changed 2026-09-30/);
+  });
+
+  test('a PR that does not touch the probed file passes in PR mode', () => {
+    const { dir, prEnv } = prFixture((d) => writeFileSync(join(d, 'README.md'), 'unrelated\n'));
+    const r = run(dir, ['--merge-date', '2026-09-30'], prEnv);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /the 1 file\(s\) this change touches/);
+  });
+
+  test('a COMMENT-ONLY edit to a probed file passes in PR mode, as main will grade its squash', () => {
+    const { dir, prEnv } = prFixture((d) => writeFileSync(join(d, SETTINGS_REL), `// reworded prose only\n${SETTINGS_DART}`));
+    const r = run(dir, ['--merge-date', '2026-09-30'], prEnv);
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('--merge-date outside a PR run reads the touched files from merge-base(--base, HEAD)', () => {
+    const { dir } = prFixture(editCode);
+    const r = run(dir, ['--merge-date', '2026-09-30', '--base', 'main']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /merge mode \(--merge-date\)/);
+    assert.match(r.out, /re-run AS PART OF THIS PR/);
+  });
+
+  test('COVERAGE LOST when a pull_request run cannot establish which files it touches', () => {
+    const { dir, prEnv } = prFixture(editCode);
+    const r = run(dir, [], { ...prEnv, GITHUB_SHA: '0'.repeat(40) });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /could not establish which files this change touches/);
+  });
+
+  test('COVERAGE LOST on a --merge-date that is not a calendar day', () => {
+    const r = run(build(), ['--merge-date', '2026-02-30']);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /is not a real YYYY-MM-DD calendar day/);
   });
 });

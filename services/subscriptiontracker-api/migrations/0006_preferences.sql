@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0005_preferences.sql — the account's preferences (audit D11, label ST-N6:
+-- 0006_preferences.sql — the account's preferences (audit D11, label ST-N6:
 -- "preferences follow the account", the API half).
 -- Applies to APP_DB (subscriptiontracker_db):
 --   wrangler d1 migrations apply APP_DB --local   (or --remote)

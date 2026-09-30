@@ -18,6 +18,7 @@ interface CategoryRow {
   name: string;
   cap: number | null;
   id: string | null;
+  category_id: string | null; // 0005 (ST-X8): the `categories` row this cap is for
 }
 // ─────────────────────────────────────────────────────────────────────────────
 // PUT / is a REPLACE, so it deletes before it inserts. Two things that were
@@ -56,7 +57,7 @@ const MAX_NAME_LENGTH = 120;
  *  An input shape, not a platform resource. */
 const MAX_ID_LENGTH = 64;
 
-type ValidatedCategory = { id: string | null; name: string; cap: number };
+type ValidatedCategory = { id: string | null; name: string; cap: number; categoryId: string | null };
 type Validated =
   | { ok: true; monthlyBudget: number; categories: ValidatedCategory[] }
   | { ok: false; detail: string };
@@ -97,6 +98,7 @@ function validate(body: unknown): Validated {
   const categories: ValidatedCategory[] = [];
   const seen = new Set<string>();
   const seenIds = new Set<string>();
+  const seenCats = new Set<string>();
   for (let i = 0; i < list.length; i++) {
     const item = list[i] as unknown;
     if (typeof item !== 'object' || item === null || Array.isArray(item)) {
@@ -149,7 +151,24 @@ function validate(body: unknown): Validated {
       categoryId = id;
     }
 
-    categories.push({ id: categoryId, name, cap });
+    // ── THE CATEGORY THE CAP IS FOR, BY ID (0005, ST-X8) ──────────────────────
+    // Optional, like `id`: the shipped app sends names only, and those resolve
+    // by name in PUT. Its shape is checked here; that it names a category this
+    // user can use needs the read PUT already makes.
+    const catRef = (item as { category_id?: unknown }).category_id;
+    let catId: string | null = null;
+    if (catRef !== undefined && catRef !== null) {
+      if (typeof catRef !== 'string' || catRef === '' || catRef.length > MAX_ID_LENGTH) {
+        return { ok: false, detail: `categories[${i}].category_id must be a category id of at most ${MAX_ID_LENGTH} characters` };
+      }
+      if (seenCats.has(catRef)) {
+        return { ok: false, detail: `categories[${i}].category_id duplicates "${catRef}": one cap per category` };
+      }
+      seenCats.add(catRef);
+      catId = catRef;
+    }
+
+    categories.push({ id: categoryId, name, cap, categoryId: catId });
   }
 
   return { ok: true, monthlyBudget, categories };
@@ -169,15 +188,17 @@ app.get('/', async (c) => {
   // id never left the database: a column paid for by a migration, maintained by
   // an index, written on every save, and read by NOTHING in any language. A
   // caller cannot address a row it has never been told the address of.
+  // `category_id` (0005, ST-X8) is what a client keys a cap by, so a renamed
+  // category keeps its cap and a built-in can be shown in the user's language.
   const categories = await allRows<CategoryRow>(
     c.env.APP_DB.prepare(
-      'SELECT id, name, cap FROM budget_categories WHERE user_id = ? ORDER BY name ASC',
+      'SELECT id, name, cap, category_id FROM budget_categories WHERE user_id = ? ORDER BY name ASC',
     ).bind(userId),
   );
 
   return c.json({
     monthly_budget: budget?.monthly_budget ?? 0,
-    categories: categories.map((r) => ({ id: r.id, name: r.name, cap: r.cap })),
+    categories: categories.map((r) => ({ id: r.id, name: r.name, cap: r.cap, category_id: r.category_id })),
   });
 });
 
@@ -217,17 +238,63 @@ app.put('/', async (c) => {
   //   3. a new uuid, for a category that genuinely did not exist before.
   // (1) is why GET returns `id` at all; without a read there is nothing to
   // round-trip and only (3) can ever apply.
-  const existing = await allRows<CategoryRow>(
+  //
+  // ── …AND THE SAME READ RESOLVES EACH CAP'S CATEGORY (0005, ST-X8) ──────────
+  // One UNION, not a second SELECT: the statement count this route's ceiling
+  // note above measures (202 at a full body) does not move. `kind` says which
+  // table a row came from; `cap` is NULL on a category row.
+  //   · a cap that sends `category_id` must name a built-in or one of this
+  //     user's own (400 otherwise), and is stored under THAT category's name —
+  //     so a cap keyed by id survives a rename that changed the name;
+  //   · a cap that sends only a name — the shipped app — is matched by name,
+  //     a built-in first; a name no category has keeps no id, as before.
+  const existing = await allRows<CategoryRow & { kind: 'cap' | 'category'; builtin: number | null }>(
     c.env.APP_DB.prepare(
-      'SELECT id, name, cap FROM budget_categories WHERE user_id = ?',
-    ).bind(userId),
+      `SELECT 'cap' AS kind, id, name, cap, category_id, NULL AS builtin
+         FROM budget_categories WHERE user_id = ?
+       UNION ALL
+       SELECT 'category' AS kind, id, name, NULL AS cap, NULL AS category_id, builtin
+         FROM categories WHERE user_id IS NULL OR user_id = ?`,
+    ).bind(userId, userId),
   );
   const idByName = new Map<string, string>();
-  for (const row of existing) if (row.id) idByName.set(row.name, row.id);
-  const resolved = categories.map((cat) => ({
-    ...cat,
-    id: cat.id ?? idByName.get(cat.name) ?? uuid(),
-  }));
+  const nameByCategory = new Map<string, string>();
+  const categoryByName = new Map<string, string>();
+  for (const row of existing) {
+    if (row.kind === 'cap') {
+      if (row.id) idByName.set(row.name, row.id);
+    } else {
+      nameByCategory.set(row.id as string, row.name);
+      // A built-in wins a name it shares with nothing else anyway; ordered so.
+      if (row.builtin === 1 || !categoryByName.has(row.name)) categoryByName.set(row.name, row.id as string);
+    }
+  }
+  const resolved: Array<{ id: string; name: string; cap: number; category_id: string | null }> = [];
+  const names = new Set<string>();
+  for (const cat of categories) {
+    let name = cat.name;
+    let categoryId: string | null;
+    if (cat.categoryId !== null) {
+      const known = nameByCategory.get(cat.categoryId);
+      if (known === undefined) {
+        return c.json(
+          { error: 'invalid_body', detail: `category_id "${cat.categoryId}" is not a category you can use` },
+          400,
+        );
+      }
+      name = known;
+      categoryId = cat.categoryId;
+    } else {
+      categoryId = categoryByName.get(name) ?? null;
+    }
+    // Re-checked AFTER resolution: a cap keyed by id takes its category's name,
+    // which may be a name another cap in this body sent by hand.
+    if (names.has(name)) {
+      return c.json({ error: 'invalid_body', detail: `two caps resolve to the category "${name}"` }, 400);
+    }
+    names.add(name);
+    resolved.push({ id: cat.id ?? idByName.get(name) ?? uuid(), name, cap: cat.cap, category_id: categoryId });
+  }
 
   // ── ONE BATCH = ONE IMPLICIT TRANSACTION ───────────────────────────────────
   // The DELETE must not be able to commit without its replacement inserts.
@@ -235,7 +302,7 @@ app.put('/', async (c) => {
     // `id` is the surrogate addressing key added by 0002_schema_debt.sql; that
     // migration's contract is that NEW rows carry a client-generated id, so
     // writing NULL here would re-open the unaddressable-row gap it paid down.
-    'INSERT INTO budget_categories (user_id, name, cap, id) VALUES (?, ?, ?, ?)',
+    'INSERT INTO budget_categories (user_id, name, cap, id, category_id) VALUES (?, ?, ?, ?, ?)',
   );
   await c.env.APP_DB.batch([
     c.env.APP_DB.prepare(
@@ -248,7 +315,7 @@ app.put('/', async (c) => {
     c.env.APP_DB.prepare(
       'DELETE FROM budget_categories WHERE user_id = ?',
     ).bind(userId),
-    ...resolved.map((cat) => insert.bind(userId, cat.name, cat.cap, cat.id)),
+    ...resolved.map((cat) => insert.bind(userId, cat.name, cat.cap, cat.id, cat.category_id)),
   ]);
 
   return c.json({

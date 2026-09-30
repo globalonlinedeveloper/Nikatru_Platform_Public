@@ -25,3 +25,14 @@ abstract class ApiClient {
   Future<BudgetInfo> updateBudget(BudgetInfo budget);
   Future<Entitlements> getEntitlements();
 }
+
+/// A client whose create can be REPEATED safely: every attempt of one add sends
+/// the same [idempotencyKey], and the server answers a repeat with the row the
+/// first attempt made (AB-O2-02). The offline outbox replays through this; a
+/// client without it (the seed, a test fake) is simply sent the draft again.
+abstract interface class IdempotentCreates {
+  Future<Subscription> createSubscriptionOnce(
+    Subscription draft, {
+    required String idempotencyKey,
+  });
+}

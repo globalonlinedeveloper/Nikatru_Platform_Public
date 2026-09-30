@@ -68,6 +68,21 @@ void main() {
     expect(adapter.lastRequest!.data, <String, dynamic>{'name': 'x'});
   });
 
+  // AB-O2-02: a replayed write carries the SAME key on every attempt, and a
+  // write that was not given one carries no header at all.
+  test('a write sends its Idempotency-Key; an unkeyed write sends none',
+      () async {
+    final _FakeAdapter adapter =
+        _FakeAdapter(jsonEncode(<String, dynamic>{'id': '1'}));
+    final RestClient client = _client(adapter);
+    await client.post('/things', body: <String, dynamic>{}, idempotencyKey: 'k-1');
+    expect(adapter.lastRequest!.headers['Idempotency-Key'], 'k-1');
+    await client.patch('/things/1', body: <String, dynamic>{}, idempotencyKey: 'k-2');
+    expect(adapter.lastRequest!.headers['Idempotency-Key'], 'k-2');
+    await client.post('/things', body: <String, dynamic>{});
+    expect(adapter.lastRequest!.headers.containsKey('Idempotency-Key'), isFalse);
+  });
+
   test('maps a non-2xx response to ApiException carrying the error message',
       () {
     final _FakeAdapter adapter = _FakeAdapter(

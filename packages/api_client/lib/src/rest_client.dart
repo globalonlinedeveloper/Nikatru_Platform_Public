@@ -75,17 +75,51 @@ class RestClient {
   /// GET [path] → the decoded JSON body.
   Future<dynamic> get(String path) => _send(() => _dio.get<dynamic>(path));
 
-  /// POST [body] to [path] → the decoded JSON body.
-  Future<dynamic> post(String path, {Object? body}) =>
-      _send(() => _dio.post<dynamic>(path, data: body));
+  /// The header a write carries so a replay of it is answered, not re-applied.
+  ///
+  /// 🔴 A LOST RESPONSE IS NOT A FAILED WRITE (AB-O2-02). A POST that commits
+  /// and then times out looks exactly like one that never arrived, so a retry
+  /// inserted a second row. With a key the server answers a repeat with the
+  /// row the first attempt made. The key is minted by the caller (an outbox
+  /// entry's client id) and must be the SAME on every attempt of one write.
+  static const String idempotencyKeyHeader = 'Idempotency-Key';
+
+  static Options? _keyed(String? idempotencyKey) => idempotencyKey == null
+      ? null
+      : Options(
+          headers: <String, Object>{idempotencyKeyHeader: idempotencyKey},
+        );
+
+  /// POST [body] to [path] → the decoded JSON body. See
+  /// [idempotencyKeyHeader] for [idempotencyKey].
+  Future<dynamic> post(String path, {Object? body, String? idempotencyKey}) =>
+      _send(
+        () => _dio.post<dynamic>(
+          path,
+          data: body,
+          options: _keyed(idempotencyKey),
+        ),
+      );
 
   /// PUT [body] to [path] → the decoded JSON body.
-  Future<dynamic> put(String path, {Object? body}) =>
-      _send(() => _dio.put<dynamic>(path, data: body));
+  Future<dynamic> put(String path, {Object? body, String? idempotencyKey}) =>
+      _send(
+        () => _dio.put<dynamic>(
+          path,
+          data: body,
+          options: _keyed(idempotencyKey),
+        ),
+      );
 
   /// PATCH [body] to [path] → the decoded JSON body.
-  Future<dynamic> patch(String path, {Object? body}) =>
-      _send(() => _dio.patch<dynamic>(path, data: body));
+  Future<dynamic> patch(String path, {Object? body, String? idempotencyKey}) =>
+      _send(
+        () => _dio.patch<dynamic>(
+          path,
+          data: body,
+          options: _keyed(idempotencyKey),
+        ),
+      );
 
   /// DELETE [path].
   /// ⏱ 2026-09-15: returns the decoded body (it was `Future<void>`), because

@@ -129,7 +129,7 @@ describe('the mechanism the lead ruled for all three (rv-c15 §3, 2026-09-26)', 
       for (const method of ['GET', 'OPTIONS']) {
         const { headers } = await answer(policy, method, LISTED);
         expect(headers.get('Access-Control-Allow-Methods')).toBe(policy.methods.join(', '));
-        expect(headers.get('Access-Control-Allow-Headers')).toBe('Authorization, Content-Type, x-request-id');
+        expect(headers.get('Access-Control-Allow-Headers')).toBe('Authorization, Content-Type, x-request-id, Idempotency-Key');
       }
     }
   });
