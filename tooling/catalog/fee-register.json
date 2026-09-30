@@ -1,0 +1,114 @@
+{
+  "_readme": [
+    "THE FEE REGISTER — what each rail and each store takes from a sale, as dated reads of the vendor's own published page.",
+    "",
+    "WHY IT EXISTS. Until 2026-09-29 no tool computed what a sale NETS on a channel. The store column of the price",
+    "register (services/platform/src/app-config-data.json `prices`) is graded by ADR 093 section 2's x1.20 ratio, and the",
+    "nets that ratio exists to protect lived as hand arithmetic in ADR 093 section 3 and as prose in",
+    "tooling/channel-register.json, and both had drifted: the channel register quoted a retired annual price and a",
+    "blended Paddle percentage, and one ADR 093 net could not be reproduced from the published Paddle fee at all.",
+    "",
+    "EVERY CELL IS {value, asOf, verify}, plus `source` (the page read) and `quote` (its words, verbatim). `asOf` is the",
+    "instant the page was read; `verify` is the command that re-reads it, so a cell is re-checked by running a line",
+    "rather than by trusting this file. A cell is edited only after such a read, never to make a net come out right.",
+    "",
+    "READ BY tooling/catalog/render-rail-prices.mjs `--net-sheet`: it applies these cells to the price register and",
+    "prints the net of every plan on every channel of tooling/channel-register.json that sells. `--net-sheet --check`",
+    "exits 1 when a cell it needs has a null value, or when a channel that can sell nets below the web row of the same",
+    "plan. And by tooling/ci/assert-small-business-program.mjs, which refuses a real App Store submission while",
+    "`apple-small-business-enrolment` carries no owner-attested date.",
+    "",
+    "`apple-small-business-enrolment` IS NOT A FEE, AND ITS NULL IS NOT A GAP IN THIS FILE: it is the owner's step",
+    "(owner queue A-18: console-only, Account-Holder-only). It selects which Apple cell the net sheet applies, and it is",
+    "the one cell a human, not a page read, fills: the owner writes the enrolment date the console shows.",
+    "",
+    "NOT MODELLED, AND SAID SO: Paddle's currency-conversion margin (none applies to a USD price charged in USD; an",
+    "INR charge through Paddle is not sold), store tax on a USD storefront price (US prices are tax-exclusive), and the",
+    "store INR columns, whose GST treatment differs per store and has not been read; the net sheet prints INR only for",
+    "the India web book, where Nikatru is the seller of record and ADR 076 section 10.1 fixes the treatment."
+  ],
+  "cells": {
+    "paddle-checkout": {
+      "rail": "paddle",
+      "value": { "percentBps": 500, "fixedMinor": 50, "fixedCurrency": "USD" },
+      "asOf": "2026-09-29T07:42:39Z",
+      "source": "https://www.paddle.com/pricing",
+      "quote": "5% + 50¢ per Checkout transaction",
+      "verify": "curl -sL https://www.paddle.com/pricing | sed 's/<[^>]*>/ /g' | tr -s ' \\n' ' ' | grep -o '5% + 50¢ per Checkout transaction'"
+    },
+    "paddle-under-10": {
+      "rail": "paddle",
+      "thresholdMinor": 1000,
+      "value": {
+        "percentBps": 500,
+        "fixedMinor": 50,
+        "fixedCurrency": "USD",
+        "basis": "pay-as-you-go: this account holds no custom-pricing agreement, so a sale under the threshold is charged the published rate above. No sub-$10 quote has been asked for."
+      },
+      "asOf": "2026-09-29T07:42:39Z",
+      "source": "https://www.paddle.com/pricing",
+      "quote": "If you’re selling products under $10 or require invoicing contact us for custom pricing",
+      "verify": "curl -sL https://www.paddle.com/pricing | sed 's/<[^>]*>/ /g' | tr -s ' \\n' ' ' | grep -o 'selling products under \\$10 or require invoicing contact us for custom pricing'",
+      "ownerStep": "Asking Paddle for custom pricing is a vendor contact the account holder makes (AB-M5-03, ADR 093's sub-$10 reopen trigger). A quote, when one comes, replaces `value` with its own read and date."
+    },
+    "apple-iap-standard": {
+      "rail": "apple-iap",
+      "value": { "percentBps": 3000 },
+      "asOf": "2026-09-29T07:42:43Z",
+      "source": "https://developer.apple.com/app-store/subscriptions/",
+      "quote": "During a subscriber’s first year of service, you receive 70% of the subscription price at each billing cycle, minus applicable taxes.",
+      "verify": "curl -sL https://developer.apple.com/app-store/subscriptions/ | sed 's/<[^>]*>/ /g' | tr -s ' \\n' ' ' | grep -o 'you receive 70% of the subscription price at each billing cycle'"
+    },
+    "apple-iap-small-business": {
+      "rail": "apple-iap",
+      "value": { "percentBps": 1500 },
+      "asOf": "2026-09-29T07:42:43Z",
+      "source": "https://developer.apple.com/app-store/subscriptions/",
+      "quote": "If you’re currently enrolled in the App Store Small Business Program, you receive 85% of the subscription price at each billing cycle (minus applicable taxes), regardless of whether or not the subscription has accumulated one year of paid service.",
+      "verify": "curl -sL https://developer.apple.com/app-store/subscriptions/ | sed 's/<[^>]*>/ /g' | tr -s ' \\n' ' ' | grep -o 'you receive 85% of the subscription price at each billing cycle'"
+    },
+    "apple-small-business-enrolment": {
+      "rail": "apple-iap",
+      "value": null,
+      "asOf": "2026-09-29",
+      "source": "App Store Connect, Account Holder only (owner queue A-18)",
+      "quote": null,
+      "verify": "The owner reads the Small Business Program status in App Store Connect and writes the enrolment date (YYYY-MM-DD) here; node tooling/ci/assert-small-business-program.mjs --for-submission=ios-appstore --real-submission then passes.",
+      "ownerStep": "A-18: enrol in the App Store Small Business Program. Console-only, Account-Holder-only, free. Until it is done a subscriber's first App Store year pays the standard rate, and a real App Store submission is refused."
+    },
+    "play-billing-subscription": {
+      "rail": "play-billing",
+      "value": { "percentBps": 1500 },
+      "asOf": "2026-09-29T07:42:44Z",
+      "source": "https://support.google.com/googleplay/android-developer/answer/112622?hl=en",
+      "quote": "Auto-renewing subscriptions (new & existing installs) ... First $1M (USD) of annual earnings 10% + 5% billing fee (EEA, UK and US from June 30, 2026); 15% for automatically renewing subscription products purchased by subscribers, regardless of revenue earned by the developer each year (all remaining markets)",
+      "verify": "curl -sL 'https://support.google.com/googleplay/android-developer/answer/112622?hl=en' | sed 's/<[^>]*>/ /g' | tr -s ' \\n' ' ' | grep -o '15% for automatically renewing subscription products purchased by subscribers'"
+    },
+    "razorpay-platform": {
+      "rail": "razorpay",
+      "value": { "percentBps": 200 },
+      "asOf": "2026-09-29T07:42:43Z",
+      "source": "https://razorpay.com/pricing/",
+      "quote": "The commercial model is strictly pay-as-you-go, you pay only the 2% transaction fee on successful payments.",
+      "verify": "curl -sL https://razorpay.com/pricing/ | sed 's/<[^>]*>/ /g' | tr -s ' \\n' ' ' | grep -o 'you pay only the 2% transaction fee on successful payments'"
+    },
+    "razorpay-subscription-add-on": {
+      "rail": "razorpay",
+      "value": { "percentBps": 50, "listPercentBps": 90, "offer": "LIMITED TIME OFFER" },
+      "asOf": "2026-09-29T07:42:39Z",
+      "source": "https://razorpay.com/subscriptions/",
+      "quote": "LIMITED TIME OFFER Standard Plan ~~0.9%*~~ 0.5%* Charged as an addon to every payment made towards a Subscription *Standard Platform Fee applies on the underlying payment. GST Applicable",
+      "verify": "curl -sL https://razorpay.com/subscriptions/ | sed 's/<s>/[struck]/g; s/<[^>]*>/ /g' | tr -s ' \\n' ' ' | grep -o 'LIMITED TIME OFFER Standard Plan \\[struck\\]0.9%\\* 0.5%\\*'",
+      "note": "0.9% is the list rate, struck through on the page; 0.5% is the offer. A reading of 0.9% as the rate charged (round-2 triage, AB-M5-04) came from a summarising fetch that dropped the strike-through. When the offer ends, `value.percentBps` becomes 90, and the India yearly net moves with it."
+    },
+    "india-gst": {
+      "rail": "razorpay",
+      "value": { "percentBps": 1800, "feeGst": "input tax credit" },
+      "asOf": "2026-09-29",
+      "source": "[ADR 076] section 10.1, and tooling/legal/provider-register.json `razorpay` notes",
+      "quote": "Razorpay's real cost is 2% platform plus a 0.5% subscriptions add-on, with the 18% GST on the fee returning as input tax credit.",
+      "verify": "grep -o 'with the 18% GST on the fee returning as input tax credit' tooling/legal/provider-register.json",
+      "note": "Nikatru is the seller of record on the India web book, so the INR web price carries 18% GST that Nikatru remits; the GST on Razorpay's fee returns as input tax credit, so the fee is netted at its pre-GST rate. The rate is the decision's, not a fresh read of a tax-rate text."
+    }
+  }
+}

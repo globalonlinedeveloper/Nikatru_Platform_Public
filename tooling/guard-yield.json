@@ -1847,6 +1847,11 @@
       "firstSeen": "2026-09-26",
       "evidence": []
     },
+    "tooling/ci/assert-small-business-program.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-29",
+      "evidence": []
+    },
     "tooling/ci/assert-snapcraft-generable.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-08",

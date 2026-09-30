@@ -148,6 +148,8 @@
       "`apps.<id>.<product_id>`: `plan` (single-monthly | single-yearly | single-lifetime, the same enum as app.yaml",
       "`billing.mobileIap.storeProducts[].plan`), `webInrMinor` (ADR 078's India web price, unchanged by ADR 093), `store`",
       "(ADR 093 section 2's store column: `USD`, `INR` and `readBack`, absent on the lifetime plan, which no store sells) and",
+      "`readBack.<apple|google>` is null until that store's console accepts the price, then `{USD, INR, readAt}` as read there;",
+      "render-rail-prices.mjs limb H refuses a null one for a plan apps/<id>/app.yaml declares live on that store.",
       "`rails` (`paddle`, `razorpay`: each either a READ-BACK `{priceId|planId, amountMinor, readAt}` or `{pending: <reason>}`).",
       "`bundles.<plan>`: the same shape for a bundle plan (ADR 093 prices the bundle per plan), priced by its own web column; its rail handles",
       "stay in catalog/bundles.json `priceIds`, their one home, and are not repeated here.",
@@ -159,14 +161,25 @@
       "",
       "A rail value is a VENDOR READ-BACK, never typed to match a price above: a rail id and its amount move only after a",
       "read of the vendor's own catalogue, and `readAt` says when. Razorpay is `pending` on every plan until Razorpay PR B",
-      "(designed, not briefed) and the owner's plans exist; PR B then reads RAZORPAY_PLAN_IDS from the rendered file."
+      "(designed, not briefed) and the owner's plans exist; PR B then reads RAZORPAY_PLAN_IDS from the rendered file.",
+      "",
+      "WHAT A SALE NETS is not written here or anywhere as prose: `render-rail-prices.mjs --net-sheet` derives it per plan and per",
+      "channel from this section and tooling/catalog/fee-register.json (each vendor's published fee, read and dated), and every",
+      "--check run fails a channel that can sell and nets below the web row of the same plan."
     ],
     "apps": {
       "subscriptiontracker": {
         "pro_monthly": {
           "plan": "single-monthly",
           "webInrMinor": 14900,
-          "store": { "USD": 719, "INR": 17900, "readBack": { "apple": null, "google": null } },
+          "store": {
+            "USD": 719,
+            "INR": 17900,
+            "readBack": {
+              "apple": { "USD": 719, "INR": 17900, "readAt": "2026-09-22T08:43:23Z" },
+              "google": { "USD": 719, "INR": 17900, "readAt": "2026-09-24" }
+            }
+          },
           "rails": {
             "paddle": { "priceId": "pri_01m346p0fjtaffk6waj5x5vz1c", "amountMinor": 599, "readAt": "2026-09-22T09:20:50Z" },
             "razorpay": { "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here" }
@@ -175,7 +188,14 @@
         "pro_yearly": {
           "plan": "single-yearly",
           "webInrMinor": 99900,
-          "store": { "USD": 4199, "INR": 119900, "readBack": { "apple": null, "google": null } },
+          "store": {
+            "USD": 4199,
+            "INR": 119900,
+            "readBack": {
+              "apple": { "USD": 4199, "INR": 119900, "readAt": "2026-09-22T08:43:23Z" },
+              "google": { "USD": 4199, "INR": 119900, "readAt": "2026-09-24" }
+            }
+          },
           "rails": {
             "paddle": { "priceId": "pri_01m346p0v8103kqy1zb8zmmj7y", "amountMinor": 3499, "readAt": "2026-09-22T09:20:50Z" },
             "razorpay": { "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here" }
