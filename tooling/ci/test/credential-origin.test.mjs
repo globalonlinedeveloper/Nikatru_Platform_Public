@@ -6,7 +6,8 @@
 // Three layers, each able to fail on its own:
 //   1. the rule — every hostile shape refused, every issuer accepted;
 //   2. the literals — the pinned origins are the ones the rest of the tree
-//      names (BOXC_DEFAULT_TARGET, HOSTED_ORIGIN), so the two cannot drift;
+//      names (BOXC_DEFAULT_TARGET, HOSTED_ORIGIN) — the two tests below fail
+//      the moment either side moves;
 //   3. the scripts — each one, SPAWNED with `fetch` replaced by a recorder
 //      (`--import` through NODE_OPTIONS, so the script is argv[1]), refuses a
 //      hostile base with its own exit code and makes ZERO requests; and its
