@@ -23,7 +23,10 @@
 //     was validated when the claim was made);
 //   · 'done' and the row is gone   → 410 idempotent_create_gone: the tombstone,
 //     so a late replay never re-creates a deleted row (6b);
-//   · 'pending'                    → 409 idempotency_in_progress, a retry later.
+//   · 'pending'                    → 409 idempotency_in_progress, a retry later —
+//     unless the claim is older than PENDING_CLAIM_TTL_MS: then it was
+//     abandoned, and is marked done (its row exists) or taken over;
+//   · the row soft-deleted         → 410 as well (the route's lookup says so).
 // A claim whose handler did not create the row is released, so a retry can.
 // A lost claim race is logged at INFO, never as an error.
 //
@@ -89,7 +92,17 @@ interface Claim {
   body_hash: string;
   row_id: string;
   state: 'pending' | 'done';
+  created_at: string;
 }
+
+/**
+ * How long a `pending` claim may stand before it is ABANDONED (review #1075
+ * round 2, minor c). A claim is finalised after the handler; an isolate that
+ * dies in between, or a final write that fails, left the key answering 409
+ * forever. Ten minutes is far past any Worker's wall-time limit.
+ */
+// @ceiling none — the age after which an unfinished claim is abandoned, not a platform resource
+export const PENDING_CLAIM_TTL_MS = 10 * 60 * 1000;
 
 /**
  * Middleware in front of a create handler: claims the key, answers a repeat
@@ -138,12 +151,42 @@ export function idempotentCreate(
     const lookup = () =>
       firstRow<Claim>(
         db
-          .prepare('SELECT body_hash, row_id, state FROM idempotency_keys WHERE user_id = ? AND key = ?')
+          .prepare('SELECT body_hash, row_id, state, created_at FROM idempotency_keys WHERE user_id = ? AND key = ?')
           .bind(userId, key),
       );
 
     const prior = await lookup();
-    if (prior) return answer(prior);
+    const abandoned =
+      prior?.state === 'pending' &&
+      prior.body_hash === bodyHash &&
+      Date.parse(prior.created_at) < Date.now() - PENDING_CLAIM_TTL_MS;
+    if (prior && !abandoned) return answer(prior);
+    if (prior && abandoned) {
+      // The claiming request never finished. If its row is there, the claim is
+      // done after all; if not, this attempt takes the claim over — atomically,
+      // so two late retries cannot both do it.
+      const made = await existing(c, prior.row_id);
+      if (made) {
+        await run(
+          db.prepare("UPDATE idempotency_keys SET state = 'done' WHERE user_id = ? AND key = ?").bind(userId, key),
+        );
+        return made;
+      }
+      const taken = await run(
+        db
+          .prepare(
+            `UPDATE idempotency_keys SET created_at = ?
+               WHERE user_id = ? AND key = ? AND state = 'pending' AND created_at = ?`,
+          )
+          .bind(nowIso(), userId, key, prior.created_at),
+      );
+      if ((taken.meta?.changes ?? 0) === 0) {
+        c.header('Retry-After', '2');
+        return c.json({ error: 'idempotency_in_progress' }, 409);
+      }
+      console.info(`[idempotency] took over an abandoned claim rid=${c.get('requestId') ?? '-'}`);
+      return finish(id);
+    }
 
     const claimed = await run(
       db
@@ -161,13 +204,19 @@ export function idempotentCreate(
       return winner ? answer(winner) : c.json({ error: 'idempotency_in_progress' }, 409);
     }
 
-    reserved.set(c.req.raw, id);
-    await next();
-    const created = !c.error && c.res.status >= 200 && c.res.status < 300;
-    await run(
-      created
-        ? db.prepare("UPDATE idempotency_keys SET state = 'done' WHERE user_id = ? AND key = ?").bind(userId, key)
-        : db.prepare('DELETE FROM idempotency_keys WHERE user_id = ? AND key = ?').bind(userId, key),
-    );
+    return finish(id);
+
+    // Run the create under the claim, then settle the claim: done, or released
+    // so a retry can create.
+    async function finish(rowId: string): Promise<void> {
+      reserved.set(c.req.raw, rowId);
+      await next();
+      const created = !c.error && c.res.status >= 200 && c.res.status < 300;
+      await run(
+        created
+          ? db.prepare("UPDATE idempotency_keys SET state = 'done' WHERE user_id = ? AND key = ?").bind(userId, key)
+          : db.prepare('DELETE FROM idempotency_keys WHERE user_id = ? AND key = ?').bind(userId, key),
+      );
+    }
   };
 }

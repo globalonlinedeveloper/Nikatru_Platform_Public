@@ -10,6 +10,8 @@ export 'src/auth/auth_models.dart';
 export 'src/auth/auth_repository.dart';
 export 'src/auth/credentials_preflight.dart';
 export 'src/auth/identity_assurance.dart';
+// ⏱ 2026-09-29 · the native sign-in attestation protocol and its seam.
+export 'src/auth/native_attest.dart';
 export 'src/auth/password_policy.dart';
 // ⏱ 2026-09-24 · was src/auth/apple_token_keeper.dart; the Apple names it
 // exported (keepAppleRefreshToken, AppleTokenNotKept, …) are still exported here.

@@ -298,161 +298,156 @@ class _SignInViewState extends State<SignInView> {
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
 
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.signInTitle)),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ContentPane.form(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              // ⚠️ ABOVE THE FIELDS, NOT BELOW THEM. It is the answer to
-              // something the user did on a different screen, so it has to be
-              // the first thing on this one; under the button it would be read
-              // after they had already started typing a password into an
-              // account that may no longer exist.
-              //
-              // Renders NOTHING when there is nothing to say, which is every
-              // arrival except the one after a deletion.
-              DestructiveOutcomeNotice(
-                report: widget.deletion == null
-                    ? null
-                    : DestructiveActionReport(
-                        message: widget.deletion!.plainMessage,
-                        succeeded: widget.deletion!.accountIsGone,
-                      ),
-                detail: widget.deletionDetail,
-                // ⚠️ THE RIGHT WORD FROM THE WRONG KEY, and it is flagged
-                // rather than hidden: `catchUpDismiss` is "Got it", which is
-                // exactly the label this control wants, but the arb has no
-                // `close` of its own. Adding one is a one-line change in both
-                // locales and this call site is where it lands.
-                dismissLabel: l10n.catchUpDismiss,
-                onDismiss: widget.onDismissDeletionNotice ?? () {},
-              ),
-              // 🔴 `AuthField`, NOT A BARE `TextField`, AND THE DIFFERENCE IS
-              // MEASURED. Until 2026-09-04 ([ADR 065], chassis step 2) these
-              // were two plain boxes with `labelText` and nothing else, so
-              // every stamped app was born without three things this chassis
-              // is supposed to hand it for free:
-              //   · A NAME AFTER THE FIRST KEYSTROKE. `labelText` floats out of
-              //     the way when the field has content and the hint fades —
-              //     semantics and all — so a screen-reader user heard the box
-              //     announced as nothing from the second character onward.
-              //     `AuthField` annotates the name onto the field and merges
-              //     it, so label, role and value are one node at every state.
-              //   · A KEYBOARD. `grep -c "textInputAction"` over the auth
-              //     directory answered 0: Enter in the email box did nothing.
-              //   · THE APP'S OWN SURFACE COLOURS. A bare `TextField` paints
-              //     Material's defaults, which is why a stamped app never
-              //     looked like the design system it ships with.
-              //
-              // ⚠️ THE TWO BOXES ANSWER THE KEYBOARD DIFFERENTLY ON PURPOSE and
-              // `AuthField` defaults NEITHER, so both are stated here. Enter in
-              // the email box ADVANCES: submitting from it would always be the
-              // "enter both" refusal, because the password box is by definition
-              // still empty.
-              AuthField(
-                key: SignInView.emailField,
-                label: l10n.email,
-                controller: _email,
-                keyboardType: TextInputType.emailAddress,
-                hint: null,
-                autofillHints: const <String>[AutofillHints.email],
-                textInputAction: TextInputAction.next,
-                onSubmitted: _passwordFocus.requestFocus,
-              ),
-              const SizedBox(height: 12),
-              AuthField(
-                key: SignInView.passwordField,
-                label: l10n.password,
-                controller: _password,
-                keyboardType: TextInputType.text,
-                obscure: true,
-                focusNode: _passwordFocus,
-                // `password`, NOT `newPassword`: this is the sign-IN box, and
-                // `newPassword` asks the browser to offer a generated secret
-                // and to suppress the stored one. The dedicated sign-up screen
-                // is where that hint belongs.
-                autofillHints: const <String>[AutofillHints.password],
-                textInputAction: TextInputAction.done,
-                // The same door as the button, busy latch included — `_signIn`
-                // routes through `_run`, so a second Enter cannot fire a second
-                // request.
-                onSubmitted: _busy ? null : () => _signIn(l10n),
-              ),
-              if (_error != null) ...<Widget>[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+    return AuthFrame(
+      title: l10n.signInTitle,
+      children: <Widget>[
+        // ⚠️ ABOVE THE FIELDS, NOT BELOW THEM. It is the answer to
+        // something the user did on a different screen, so it has to be
+        // the first thing on this one; under the button it would be read
+        // after they had already started typing a password into an
+        // account that may no longer exist.
+        //
+        // Renders NOTHING when there is nothing to say, which is every
+        // arrival except the one after a deletion.
+        DestructiveOutcomeNotice(
+          report: widget.deletion == null
+              ? null
+              : DestructiveActionReport(
+                  message: widget.deletion!.plainMessage,
+                  succeeded: widget.deletion!.accountIsGone,
                 ),
-              ],
-              const SizedBox(height: 20),
-              ?widget.captcha,
-              FilledButton(
-                key: SignInView.submitButton,
-                onPressed: _busy ? null : () => _signIn(l10n),
-                child: Text(l10n.signIn),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                key: SignInView.forgotButton,
-                onPressed: _busy ? null : () => _forgot(l10n),
-                child: Text(l10n.forgotPassword),
-              ),
-              if (widget.showAppleButton ||
-                  widget.showGoogleButton) ...<Widget>[
-                const SizedBox(height: 8),
-                // The SAME tick boxes and wording as sign-up, directly above the
-                // provider buttons they gate, and only while this device owes
-                // them. Rendered ONCE for both doors: one tick, one acceptance.
-                if (widget.appleTermsOwed) ...<Widget>[
-                  widget.consentFields(
-                    termsAccepted: _acceptedTerms,
-                    marketingAccepted: _marketingEmail,
-                    enabled: !_busy,
-                    onTermsChanged: (bool v) =>
-                        setState(() => _acceptedTerms = v),
-                    onMarketingChanged: (bool v) =>
-                        setState(() => _marketingEmail = v),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                // 🔴 DISABLED UNTIL THE TERMS BOX IS TICKED WHEN IT IS OWED — and
-                // never on the marketing box (GDPR Art 7(4)).
-                if (widget.showAppleButton)
-                  OutlinedButton(
-                    key: SignInView.appleButton,
-                    onPressed:
-                        (_busy || (widget.appleTermsOwed && !_acceptedTerms))
-                        ? null
-                        : () => _run(() => _providerGated(l10n, google: false)),
-                    child: Text(l10n.continueWithApple),
-                  ),
-                if (widget.showAppleButton && widget.showGoogleButton)
-                  const SizedBox(height: 8),
-                if (widget.showGoogleButton)
-                  OutlinedButton(
-                    key: SignInView.googleButton,
-                    onPressed:
-                        (_busy || (widget.appleTermsOwed && !_acceptedTerms))
-                        ? null
-                        : () => _run(() => _providerGated(l10n, google: true)),
-                    child: Text(l10n.continueWithGoogle),
-                  ),
-              ],
-              const SizedBox(height: 16),
-              TextButton(
-                key: SignInView.needAccountButton,
-                onPressed: _busy ? null : widget.onNeedAccount,
-                child: Text(l10n.needAccount),
-              ),
-            ],
-          ),
+          detail: widget.deletionDetail,
+          // ⚠️ THE RIGHT WORD FROM THE WRONG KEY, and it is flagged
+          // rather than hidden: `catchUpDismiss` is "Got it", which is
+          // exactly the label this control wants, but the arb has no
+          // `close` of its own. Adding one is a one-line change in both
+          // locales and this call site is where it lands.
+          dismissLabel: l10n.catchUpDismiss,
+          onDismiss: widget.onDismissDeletionNotice ?? () {},
         ),
-      ),
+        // 🔴 `AuthField`, NOT A BARE `TextField`, AND THE DIFFERENCE IS
+        // MEASURED. Until 2026-09-04 ([ADR 065], chassis step 2) these
+        // were two plain boxes with `labelText` and nothing else, so
+        // every stamped app was born without three things this chassis
+        // is supposed to hand it for free:
+        //   · A NAME AFTER THE FIRST KEYSTROKE. `labelText` floats out of
+        //     the way when the field has content and the hint fades —
+        //     semantics and all — so a screen-reader user heard the box
+        //     announced as nothing from the second character onward.
+        //     `AuthField` annotates the name onto the field and merges
+        //     it, so label, role and value are one node at every state.
+        //   · A KEYBOARD. `grep -c "textInputAction"` over the auth
+        //     directory answered 0: Enter in the email box did nothing.
+        //   · THE APP'S OWN SURFACE COLOURS. A bare `TextField` paints
+        //     Material's defaults, which is why a stamped app never
+        //     looked like the design system it ships with.
+        //
+        // ⚠️ THE TWO BOXES ANSWER THE KEYBOARD DIFFERENTLY ON PURPOSE and
+        // `AuthField` defaults NEITHER, so both are stated here. Enter in
+        // the email box ADVANCES: submitting from it would always be the
+        // "enter both" refusal, because the password box is by definition
+        // still empty.
+        AuthField(
+          key: SignInView.emailField,
+          label: l10n.email,
+          controller: _email,
+          keyboardType: TextInputType.emailAddress,
+          hint: null,
+          autofillHints: const <String>[AutofillHints.email],
+          textInputAction: TextInputAction.next,
+          onSubmitted: _passwordFocus.requestFocus,
+        ),
+        const SizedBox(height: 12),
+        AuthField(
+          key: SignInView.passwordField,
+          label: l10n.password,
+          controller: _password,
+          keyboardType: TextInputType.text,
+          obscure: true,
+          // ST-D10 (`SignIn`): Show / Hide beside the merged field.
+          reveal: AuthRevealLabels(
+            show: l10n.authShow,
+            hide: l10n.authHide,
+            showName: l10n.authShowPassword,
+            hideName: l10n.authHidePassword,
+          ),
+          focusNode: _passwordFocus,
+          // `password`, NOT `newPassword`: this is the sign-IN box, and
+          // `newPassword` asks the browser to offer a generated secret
+          // and to suppress the stored one. The dedicated sign-up screen
+          // is where that hint belongs.
+          autofillHints: const <String>[AutofillHints.password],
+          textInputAction: TextInputAction.done,
+          // The same door as the button, busy latch included — `_signIn`
+          // routes through `_run`, so a second Enter cannot fire a second
+          // request.
+          onSubmitted: _busy ? null : () => _signIn(l10n),
+        ),
+        if (_error != null) ...<Widget>[
+          const SizedBox(height: 12),
+          AuthMessage(message: _error!, kind: StatusKind.danger),
+        ],
+        const SizedBox(height: 20),
+        ?widget.captcha,
+        FilledButton(
+          key: SignInView.submitButton,
+          onPressed: _busy ? null : () => _signIn(l10n),
+          child: Text(l10n.signIn),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          key: SignInView.forgotButton,
+          onPressed: _busy ? null : () => _forgot(l10n),
+          child: Text(l10n.forgotPassword),
+        ),
+        if (widget.showAppleButton || widget.showGoogleButton) ...<Widget>[
+          const SizedBox(height: 8),
+          // ST-D10 (`SignIn`): "or" is the other half of the provider doors'
+          // sentence, so it renders only with them.
+          AuthOrDivider(label: l10n.authOr),
+          const SizedBox(height: 8),
+          // The SAME tick boxes and wording as sign-up, directly above the
+          // provider buttons they gate, and only while this device owes
+          // them. Rendered ONCE for both doors: one tick, one acceptance.
+          if (widget.appleTermsOwed) ...<Widget>[
+            widget.consentFields(
+              termsAccepted: _acceptedTerms,
+              marketingAccepted: _marketingEmail,
+              enabled: !_busy,
+              onTermsChanged: (bool v) => setState(() => _acceptedTerms = v),
+              onMarketingChanged: (bool v) =>
+                  setState(() => _marketingEmail = v),
+            ),
+            const SizedBox(height: 8),
+          ],
+          // 🔴 DISABLED UNTIL THE TERMS BOX IS TICKED WHEN IT IS OWED — and
+          // never on the marketing box (GDPR Art 7(4)).
+          if (widget.showAppleButton)
+            OutlinedButton(
+              key: SignInView.appleButton,
+              onPressed: (_busy || (widget.appleTermsOwed && !_acceptedTerms))
+                  ? null
+                  : () => _run(() => _providerGated(l10n, google: false)),
+              child: Text(l10n.continueWithApple),
+            ),
+          if (widget.showAppleButton && widget.showGoogleButton)
+            const SizedBox(height: 8),
+          if (widget.showGoogleButton)
+            OutlinedButton(
+              key: SignInView.googleButton,
+              onPressed: (_busy || (widget.appleTermsOwed && !_acceptedTerms))
+                  ? null
+                  : () => _run(() => _providerGated(l10n, google: true)),
+              child: Text(l10n.continueWithGoogle),
+            ),
+        ],
+        const SizedBox(height: 16),
+        TextButton(
+          key: SignInView.needAccountButton,
+          onPressed: _busy ? null : widget.onNeedAccount,
+          child: Text(l10n.needAccount),
+        ),
+      ],
     );
   }
 }

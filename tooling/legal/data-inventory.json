@@ -317,7 +317,7 @@
       "kind": "d1-table",
       "name": "ext_codes",
       "personalData": true,
-      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per one-time code minted when a signed-in user connects the browser extension on https://nikatru.com/ext/connect: SHA-256 of the code (the code itself is never stored), WHO minted it (the Supabase `sub`, from the verified JWT), the product (`fullshot`), the store channel, the exact redirect_uri the code may be delivered to, the PKCE S256 challenge, and `created_at` / `expires_at` / `used_at`. A code lives 120 seconds and is single-use. It holds no name and no email address.",
+      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per one-time code minted when a signed-in user connects the browser extension on https://nikatru.com/ext/connect: SHA-256 of the code (the code itself is never stored), WHO minted it (the Supabase `sub`, from the verified JWT), the product (`fullshot`), the store channel, the exact redirect_uri the code may be delivered to, the PKCE S256 challenge, and `created_at` / `expires_at` / `used_at`. A code lives 120 seconds and is single-use. It holds no name and no email address. ⏱ 2026-09-30 · EXA-11: plus `auth_at` (0021_ext_link_floor.sql), the minting session's last authentication, copied to the link at exchange.",
       "retention": {
         "kind": "swept",
         "periodDays": 1,
@@ -331,7 +331,8 @@
       },
       "writtenBy": [
         "services/platform/migrations/0017_ext_devices.sql",
-        "services/platform/src/routes/ext.ts"
+        "services/platform/src/routes/ext.ts",
+        "services/platform/migrations/0021_ext_link_floor.sql"
       ],
       "disclosure": {
         "page": "privacy.html",
@@ -343,12 +344,12 @@
       "kind": "d1-table",
       "name": "ext_devices",
       "personalData": true,
-      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the extension to an account: a random link id (`link_id`), the Supabase `sub`, the product (`fullshot`), the store channel, SHA-256 of the device credential (the credential is returned once to the extension and never stored), `created_at`, `last_seen_at` (at most once per UTC day) and `revoked_at`. The credential can read that one product's entitlement and revoke itself, nothing else. It holds no name and no email address.",
+      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the extension to an account: a random link id (`link_id`), the Supabase `sub`, the product (`fullshot`), the store channel, SHA-256 of the device credential (the credential is returned once to the extension and never stored), `created_at`, `last_seen_at` (at most once per UTC day) and `revoked_at`. The credential can read that one product's entitlement and revoke itself, nothing else. It holds no name and no email address. ⏱ 2026-09-30 · EXA-11: plus `auth_at` (0021_ext_link_floor.sql) — when the Supabase session that minted the link last authenticated, compared against the account's link floor.",
       "retention": {
         "kind": "swept",
         "periodDays": 30,
         "sweptBy": "services/platform/src/scheduled.ts",
-        "reason": "⏱ 2026-09-25. Thirty days after `revoked_at`, enforced by the platform Worker's nightly `retentionSweep` (EXT_DEVICES_RETENTION_DAYS). A device that was never revoked is a LIVE CREDENTIAL and is never swept, however old: an age sweep would sign a paying user out of a product they still use. It ends when the user revokes the device (`revoked_at`, POST /v1/ext/revoke) and 30 days pass, or when the account is erased. The credential itself has no expiry, so no longer window is needed: a revoked row answers 401 from the moment it is revoked, and a deleted row answers the same 401. `swept`, not `ttl`: D1 has no expiry."
+        "reason": "⏱ 2026-09-25, amended 2026-09-30 (EXA-11). Thirty days after `revoked_at`, OR thirty days after the link's lifetime ended, enforced by the platform Worker's nightly `retentionSweep` (EXT_DEVICES_RETENTION_DAYS). Since 2026-09-30 the credential HAS a lifetime (services/platform/src/lib/ext-links.ts: 30 days unused, 180 days at most), so a never-revoked row is swept 30 days after it expired — a browser that was uninstalled never comes back to have it stamped revoked. Inside its lifetime a never-revoked row is a live credential and is not swept. It also ends when the account is erased. A revoked, expired or floored row answers 401 from that moment, and a deleted row answers the same 401. `swept`, not `ttl`: D1 has no expiry."
       },
       "erasure": {
         "kind": "purge",
@@ -358,12 +359,102 @@
       "writtenBy": [
         "services/platform/migrations/0017_ext_devices.sql",
         "services/platform/src/routes/ext.ts",
-        "services/platform/src/middleware/ext-device-auth.ts"
+        "services/platform/src/middleware/ext-device-auth.ts",
+        "services/platform/migrations/0021_ext_link_floor.sql"
       ],
       "disclosure": {
         "page": "privacy.html",
         "quote": "when you contact support, send feedback, or (in apps that offer accounts) create an account"
       }
+    },
+    {
+      "id": "table:platform_db.ext_link_floor",
+      "kind": "d1-table",
+      "name": "ext_link_floor",
+      "personalData": true,
+      "holds": "⏱ 2026-09-30 · EXA-11. At most one row per account: the Supabase `sub`, `not_before` (the instant before which no browser-extension link of that account is honoured), `recovery_session` (the GoTrue session id whose recovery last raised it, so the recovery door writes once per session) and `updated_at`. Raised by POST /v1/sessions/revoke-all (\"sign out everywhere\") and by a password-recovery session reaching the platform Worker. No name, no email address, no credential.",
+      "retention": {
+        "kind": "keep",
+        "reason": "Kept WHILE THE ACCOUNT EXISTS: it is a standing security rule about the account, at most one row per account (PRIMARY KEY user_id), and deleting it by age would bring back to life every link a reset or a sign-out-everywhere ended. It leaves with the account."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "A floor is a record of the account. The column is spelled `user_id` ON PURPOSE (0021_ext_link_floor.sql): the shared erasure walk DELETES the row with the account."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0021_ext_link_floor.sql",
+        "services/platform/src/lib/ext-links.ts",
+        "services/platform/src/routes/sessions.ts",
+        "services/platform/src/middleware/auth.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "when you contact support, send feedback, or (in apps that offer accounts) create an account"
+      }
+    },
+    {
+      "id": "table:platform_db.native_attest_redeemed",
+      "kind": "d1-table",
+      "name": "native_attest_redeemed",
+      "personalData": false,
+      "holds": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs), reshaped on the independent review of #1070. A native sign-in challenge is a STATELESS HMAC-signed token and is never stored; one row here is the random nonce of a challenge a request has presented, the app id, and the challenge's own expiry (issued + 120 s). It is what makes a challenge single-use. Every redemption deletes the expired rows first. No account, no email, no address, no device identifier.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 1,
+        "sweptBy": "services/platform/src/scheduled.ts",
+        "reason": "Pruned INLINE on every redemption (expired rows deleted before the insert), and swept in full by the nightly `retentionSweep` one day past `expires_at` (NATIVE_ATTEST_REDEEMED_RETENTION_DAYS) with no per-run row cap. Once expired, the MAC check refuses the challenge anyway, so the row guards nothing. `swept`, not `ttl`: D1 has no expiry."
+      },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "A random nonce, an app id and a timestamp, tied to nobody. The Worker reads no client address (ADR 011 / ADR 020), and no attestation table has an account, email, device-identifier or address column."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0022_native_attest.sql",
+        "services/platform/src/lib/native-attest/index.ts"
+      ]
+    },
+    {
+      "id": "table:platform_db.native_attest_keys",
+      "kind": "d1-table",
+      "name": "native_attest_keys",
+      "personalData": false,
+      "holds": "⏱ 2026-09-29 · ADR no.NNN. One row per app-install signing key registered for native sign-in: the app id, the key id (a hash of the public key, or Apple's App Attest key identifier), the kind (`app-attest` or `install-key`), the PUBLIC key, the App Attest assertion counter, `created_at` and `last_used_at`. The private key never leaves the device. The row is never linked to the account that later signs in with it.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 90,
+        "sweptBy": "services/platform/src/scheduled.ts",
+        "reason": "90 days after `last_used_at`, enforced by the nightly `retentionSweep` (NATIVE_ATTEST_KEYS_RETENTION_DAYS), and pruned INLINE by every registration write (up to 100 idle keys deleted before the insert). An operational bound, not a personal-data one: a swept install answers `attestation_key_unknown` once and registers a fresh key. Registration writes are also capped per network per UTC day (NATIVE_ATTEST_INSTALLS_PER_NETWORK_PER_DAY)."
+      },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "A public key and a counter that say \"some install of this app holds this key\", tied to no account. The Worker reads no client address (ADR 011 / ADR 020), and neither table has an account, email, device-identifier or address column."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0022_native_attest.sql",
+        "services/platform/src/lib/native-attest/index.ts"
+      ]
+    },
+    {
+      "id": "table:platform_db.native_attest_counters",
+      "kind": "d1-table",
+      "name": "native_attest_counters",
+      "personalData": false,
+      "holds": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs). One row per (UTC day, scope): today's count of Play Integrity decodes (`play-integrity:decode`, the ceiling below Google's quota) and today's key registrations per network (`install:edge:<colo>:<asn>` — a Cloudflare PoP code and an autonomous-system number, the same key the rate limiters use, never an address). A number, a day and a scope.",
+      "retention": {
+        "kind": "swept",
+        "periodDays": 1,
+        "sweptBy": "services/platform/src/scheduled.ts",
+        "reason": "Only today's row is ever read. Every bump deletes the previous days' rows inline, and the nightly `retentionSweep` deletes any row a day old in full (NATIVE_ATTEST_COUNTERS_RETENTION_DAYS), with no per-run row cap."
+      },
+      "erasure": {
+        "kind": "no-personal-data",
+        "reason": "A count per day per scope; the network scope is a PoP and an AS number shared by everyone on that network. The Worker reads no client address (ADR 011 / ADR 020), and no attestation table has an account, email, device-identifier or address column."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0022_native_attest.sql",
+        "services/platform/src/lib/native-attest/index.ts"
+      ]
     },
     {
       "id": "table:platform_db.reminder_prefs",
@@ -394,7 +485,7 @@
       "kind": "d1-table",
       "name": "reminder_sent",
       "personalData": true,
-      "holds": "⏱ 2026-09-28 · ST-R1. One row per renewal a reminder email was sent about: the Supabase `sub`, the app id, the subscription's id in that app's database, the renewal date (`due_on`), the kind (`renewal`), `sent_at`, and SHA-256 of the one-click unsubscribe token that email carried (never the token). UNIQUE on (user_id, app_id, subscription_id, due_on, kind), which is what stops a night mailing twice. It holds no email address, no subscription name and no amount — those are read from the app's own database and the identity provider when the mail is built, and go to Resend in that one message only.",
+      "holds": "⏱ 2026-09-28 · ST-R1. One row per renewal a reminder email was sent about: the Supabase `sub`, the app id, the subscription's id in that app's database, the renewal date (`due_on`), the kind (`renewal` at the account lead, or `renewal:<days>` at a lead the subscription chose itself — ⏱ 2026-09-30, O-REMINDER-DAYS-JSON-READ-AS-NUMBER), `sent_at`, and SHA-256 of the one-click unsubscribe token that email carried (never the token). UNIQUE on (user_id, app_id, subscription_id, due_on, kind), which is what stops a night mailing twice. It holds no email address, no subscription name and no amount — those are read from the app's own database and the identity provider when the mail is built, and go to Resend in that one message only.",
       "retention": {
         "kind": "swept",
         "periodDays": 400,

@@ -436,10 +436,10 @@
       "",
       "⏱ 2026-09-18 — 14 -> 15, in the same change as duty.platform-ops-watchdog-beat, which reads GlitchTip monitor 40 (#802, O-LAPTOP-ROUTINES-DIE-OVERNIGHT):",
       "one more row behind the GlitchTip box, glitchtip rows 13 -> 14. Kind unchanged; arithmetic only.",
-    "",
-    "⏱ 2026-09-20 — 15 -> 16, in the same change as duty.restic-third-copy, which reads GlitchTip monitor 41 (the OCI third backup copy, which shipped the day before with no alarm at all):",
-    "one more row behind the GlitchTip box, glitchtip rows 14 -> 15, so max(rows behind any single NON-GitHub provider) + 1 spare is 16. Kind unchanged; arithmetic only,",
-    "and re-derived in the SAME change as the row that moved it because a constant above its derivation FAILS and therefore cannot go first — the fifth time this number has moved, each one recorded here with its measurement."
+      "",
+      "⏱ 2026-09-20 — 15 -> 16, in the same change as duty.restic-third-copy, which reads GlitchTip monitor 41 (the OCI third backup copy, which shipped the day before with no alarm at all):",
+      "one more row behind the GlitchTip box, glitchtip rows 14 -> 15, so max(rows behind any single NON-GitHub provider) + 1 spare is 16. Kind unchanged; arithmetic only,",
+      "and re-derived in the SAME change as the row that moved it because a constant above its derivation FAILS and therefore cannot go first — the fifth time this number has moved, each one recorded here with its measurement."
     ],
     "_windowMultiplier": 1.5,
     "_windowMultiplierWhy": [
@@ -4781,18 +4781,112 @@
       "what": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the extension to an account: a random link id (`link_id`), the Supabase `sub`, the product, the store channel, SHA-256 of the device credential (never the credential), `created_at`, `last_seen_at` (written at most once per UTC day) and `revoked_at`. Written by POST /v1/ext/token and POST /v1/ext/revoke; read by middleware/ext-device-auth.ts.",
       "rule": "period",
       "periodDays": 30,
-      "declaredBy": "⏱ 2026-09-25 · the parent's decision (storage limitation): a REVOKED row is deleted 30 days after `revoked_at`, or the longest credential lifetime + 7 days if that lifetime exceeds 23 days. The device credential has no lifetime (routes/ext.ts mints it with no expiry; middleware/ext-device-auth.ts refuses only an absent or revoked row), so 30 stands. The value lives in services/platform/src/scheduled.ts `EXT_DEVICES_RETENTION_DAYS`, and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
+      "declaredBy": "⏱ 2026-09-25 · the parent's decision (storage limitation): a REVOKED row is deleted 30 days after `revoked_at`. ⏱ 2026-09-30 · EXA-11: the credential now has a lifetime (services/platform/src/lib/ext-links.ts: 30 days unused, 180 at most), and a never-revoked row is deleted 30 days after that lifetime ended. A revoked, expired or floored row answers 401 at once whatever its age, so 30 stands. The value lives in services/platform/src/scheduled.ts `EXT_DEVICES_RETENTION_DAYS`, and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
       "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
-      "response": "n/a — a row that was never revoked IS a live credential and is never swept: an age sweep would sign a paying user out of a product they still use. The nightly sweep deletes a row 30 days after its `revoked_at`; a revoked row already answers 401, and an absent one answers the same 401, so nothing live is lost. Erasure: DELETE /v1/account empties the table for the account, because the column is spelled `user_id` (tooling/legal/data-inventory.json `table:platform_db.ext_devices`, erasure `purge`).",
+      "response": "n/a — a never-revoked row INSIDE ITS LIFETIME is a live credential and is not swept. The nightly sweep deletes a row 30 days after its `revoked_at`, or 30 days after its lifetime ended (created_at older than 180 + 30 days, or last use older than 30 + 30 days); such a row already answers 401, and an absent one answers the same 401, so nothing live is lost. Erasure: DELETE /v1/account empties the table for the account, because the column is spelled `user_id` (tooling/legal/data-inventory.json `table:platform_db.ext_devices`, erasure `purge`).",
       "cadence": "365d",
       "mechanism": {
         "substrate": "cloudflare-d1",
         "anchor": "services/platform/migrations/0017_ext_devices.sql",
         "record": "the table itself",
-        "failingValue": "a row whose `revoked_at` is more than 30 days in the past",
+        "failingValue": "a row whose `revoked_at` is more than 30 days in the past, or whose lifetime ended more than 30 days ago",
         "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
       },
-      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `ext_devices` limb deletes rows whose `revoked_at` is older than EXT_DEVICES_RETENTION_DAYS and is an ISO-8601 date-time, at most 1000 per run (MAX_ROWS_PER_SWEEP). Held by services/platform/test/retention-sweep.test.ts, which keeps a never-revoked 400-day-old device and a device revoked 29 days ago through the sweep.",
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `ext_devices` limb deletes rows whose `revoked_at` is older than EXT_DEVICES_RETENTION_DAYS and is an ISO-8601 date-time, and never-revoked rows whose lifetime ended more than that long ago (`extDevicesExpiredCutoffs`), at most 1000 per run (MAX_ROWS_PER_SWEEP). Held by services/platform/test/retention-sweep.test.ts, which keeps a never-revoked device used yesterday, a device revoked 29 days ago and one idle 59 days, and deletes one created 211 days ago and one idle 61 days.",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.ext_link_floor",
+      "kind": "retention",
+      "store": "d1:platform_db:ext_link_floor",
+      "what": "⏱ 2026-09-30 · EXA-11. At most one row per account: the Supabase `sub`, `not_before` (no browser-extension link minted by a session that authenticated before it is honoured), `recovery_session` and `updated_at`. Written by POST /v1/sessions/revoke-all and the recovery door in middleware/auth.ts (lib/ext-links.ts `raiseLinkFloor`); read by middleware/ext-device-auth.ts and routes/ext.ts. No email address.",
+      "rule": "keep",
+      "keepWhy": "A STANDING SECURITY RULE, at most one row per account (PRIMARY KEY user_id), so the table cannot outgrow the account count. Deleting it by age would revive every link a reset or a sign-out-everywhere ended. It carries `user_id`, so it leaves with the account through the derived erasure sweep rather than on a timer (tooling/legal/data-inventory.json `table:platform_db.ext_link_floor`, erasure `purge`).",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0021_ext_link_floor.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.native_attest_redeemed",
+      "kind": "retention",
+      "store": "d1:platform_db:native_attest_redeemed",
+      "what": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs), reshaped on the review of #1070. One row per REDEEMED native sign-in challenge nonce: the nonce, the app id, the challenge's expiry. Challenges themselves are stateless HMAC-signed tokens (POST /v1/auth/native/<app>/attest/challenge writes nothing); a row is written only when a request presents one, and every such write first deletes the expired rows (services/platform/src/lib/native-attest/index.ts redeemChallenge).",
+      "rule": "period",
+      "periodDays": 1,
+      "declaredBy": "ADR no.NNN: a redeemed nonce is worthless once its challenge has expired; swept in full a day past `expires_at`. The value lives in services/platform/src/scheduled.ts `NATIVE_ATTEST_REDEEMED_RETENTION_DAYS`, and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a — an expired challenge fails its own MAC-and-expiry check, so a swept nonce cannot be replayed. Erasure: not applicable — no account, email or address column (tooling/legal/data-inventory.json `table:platform_db.native_attest_redeemed`, erasure `no-personal-data`).",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0022_native_attest.sql",
+        "record": "the table itself",
+        "failingValue": "a row whose `expires_at` is more than 1 day in the past",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
+      },
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `native_attest_redeemed` limb deletes rows whose `expires_at` is older than NATIVE_ATTEST_REDEEMED_RETENTION_DAYS, IN FULL — no MAX_ROWS_PER_SWEEP cap. Held by services/platform/test/retention-sweep.test.ts, which keeps an unexpired and a half-day-expired nonce through the sweep, and deletes 1050 expired ones in one run.",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.native_attest_keys",
+      "kind": "retention",
+      "store": "d1:platform_db:native_attest_keys",
+      "what": "⏱ 2026-09-29 · ADR no.NNN. One row per registered app-install signing key: app id, key id, kind (`app-attest` | `install-key`), the PUBLIC key, the App Attest counter, `created_at`, `last_used_at`. Written by POST /v1/auth/native/<app>/attest/install; `last_used_at` (and the counter) refreshed by every verified sign-in call.",
+      "rule": "period",
+      "periodDays": 90,
+      "declaredBy": "ADR no.NNN: an operational bound on a table tied to no account — a key unused for 90 days is swept and the install re-registers transparently. The value lives in services/platform/src/scheduled.ts `NATIVE_ATTEST_KEYS_RETENTION_DAYS`, and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a — a swept install answers `attestation_key_unknown` once and registers a fresh key; a key in use is refreshed on every call and is never swept. Erasure: not applicable — no account column (tooling/legal/data-inventory.json `table:platform_db.native_attest_keys`, erasure `no-personal-data`).",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0022_native_attest.sql",
+        "record": "the table itself",
+        "failingValue": "a row whose `last_used_at` is more than 90 days in the past",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
+      },
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `native_attest_keys` limb deletes rows whose `last_used_at` is older than NATIVE_ATTEST_KEYS_RETENTION_DAYS, at most 1000 per run (MAX_ROWS_PER_SWEEP). Held by services/platform/test/retention-sweep.test.ts, which keeps a key used yesterday through the sweep.",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
+      "id": "retention.d1.platform_db.native_attest_counters",
+      "kind": "retention",
+      "store": "d1:platform_db:native_attest_counters",
+      "what": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs). One row per (UTC day, scope): today's Play Integrity decodes (`play-integrity:decode`) and today's key registrations per network (`install:edge:<colo>:<asn>`). Written by bumpDailyCounter (services/platform/src/lib/native-attest/index.ts), which deletes the previous days' rows first.",
+      "rule": "period",
+      "periodDays": 1,
+      "declaredBy": "ADR no.NNN: only today's row is read; swept in full once a day old. The value lives in services/platform/src/scheduled.ts `NATIVE_ATTEST_COUNTERS_RETENTION_DAYS`, and this row and that constant are cross-checked by services/platform/test/retention-sweep.test.ts",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a — a past day's count is never read again. Erasure: not applicable — a count per day and scope, no account, email or address column (tooling/legal/data-inventory.json `table:platform_db.native_attest_counters`, erasure `no-personal-data`).",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0022_native_attest.sql",
+        "record": "the table itself",
+        "failingValue": "a row whose `day` is more than 1 day in the past",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs (coverage half); the deletion half is `deletingJob`"
+      },
+      "deletingJob": "retention_sweep — the nightly Cloudflare cron limb `retentionSweep` in services/platform/src/scheduled.ts, watched by duty.platform-cron.watchedJobs and read by tooling/ops/check-heartbeats.mjs. The `native_attest_counters` limb deletes rows whose `day` is older than NATIVE_ATTEST_COUNTERS_RETENTION_DAYS, IN FULL — no MAX_ROWS_PER_SWEEP cap. Held by services/platform/test/retention-sweep.test.ts, which keeps today's counter and deletes one three days old.",
       "accessProviders": [
         "cloudflare"
       ],

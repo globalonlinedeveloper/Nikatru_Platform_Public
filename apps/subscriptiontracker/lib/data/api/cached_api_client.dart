@@ -8,6 +8,7 @@ import 'package:nikatru_core/nikatru_core.dart'
         OutboxEnqueueResult,
         OutboxEntry,
         OutboxOp,
+        OutboxStoreFailure,
         newOutboxId;
 
 import '../local/subscription_store.dart';
@@ -83,6 +84,8 @@ class CachedApiClient implements ApiClient {
          store.json,
          onWriteFailed: onCacheWriteFailed ?? _reportCacheWriteFailure,
          onStaleChanged: onStaleChanged,
+         // Review round 2, major 2: the copy is the signed-in user's own.
+         owner: currentUser,
          revalidateAfter: revalidateAfter,
        ),
        _outbox = DurableOutbox(
@@ -141,6 +144,10 @@ class CachedApiClient implements ApiClient {
   /// Forget [owner]'s queued writes — the explicit sign-out.
   Future<void> discardPendingOf(String owner) => _outbox.discardOwner(owner);
 
+  /// Forget every cached copy and every read in flight — run by EVERY
+  /// sign-out path, the forced 401 included (review round 2, major 2).
+  Future<void> forgetCache() => _cache.forget();
+
   Future<Subscription> _create(Subscription draft, String key) {
     final ApiClient net = _network;
     return net is IdempotentCreates
@@ -189,7 +196,13 @@ class CachedApiClient implements ApiClient {
         );
         return null;
       case OutboxOp.delete:
-        await _network.deleteSubscription(e.recordId);
+        try {
+          await _network.deleteSubscription(e.recordId);
+        } on ApiException catch (x) {
+          // Already gone is what a delete wanted (the row a lost add may or
+          // may not have made): done, not failed.
+          if (x.statusCode != 404 && x.statusCode != 410) rethrow;
+        }
         await _removeCached(e.recordId);
         return null;
     }
@@ -213,7 +226,16 @@ class CachedApiClient implements ApiClient {
 
   /// [rows] with the signed-in user's queued writes laid over them.
   Future<List<Subscription>> _overlay(List<Subscription> rows) async {
-    final List<OutboxEntry> queued = await pendingWrites();
+    final List<OutboxEntry> queued;
+    try {
+      queued = await pendingWrites();
+    } on OutboxStoreFailure catch (e) {
+      // The queue could not be READ (review round 2, minor e): it is kept as
+      // stored, the list still shows, and the failure is reported — never
+      // taken for an empty queue.
+      _reportCacheWriteFailure(e);
+      return rows;
+    }
     if (queued.isEmpty) return rows;
     final List<Subscription> out = <Subscription>[...rows];
     for (final OutboxEntry e in queued) {
@@ -233,7 +255,9 @@ class CachedApiClient implements ApiClient {
   static Subscription _placeholder(OutboxEntry e) =>
       Subscription.fromJson(<String, dynamic>{...e.body, 'id': e.recordId});
 
-  /// The queued create of [id], when the server has never had the row.
+  /// The queued create of [id] — a row the server may or may not have. Its
+  /// edits and its delete go through the outbox, which decides (on whether the
+  /// create was ever dispatched) to merge, cancel, or queue behind it.
   Future<OutboxEntry?> _unsyncedCreate(String id) async =>
       (await pendingWrites())
           .where((OutboxEntry e) => e.recordId == id && e.op == OutboxOp.create)
@@ -256,12 +280,29 @@ class CachedApiClient implements ApiClient {
   Future<Subscription> createSubscription(Subscription draft) async {
     await replayPending();
     final String key = newOutboxId();
+    final String? known = _currentUser();
+    if (_cache.knownOffline && known != null) {
+      // Known offline: no doomed request (and no connect wait). Queued as
+      // NEVER dispatched, so the device may still merge an edit into it or
+      // cancel it outright on a delete (review round 2, major 1).
+      final OutboxEnqueueResult queued = await _outbox.enqueue(
+        owner: known,
+        recordId: key,
+        op: OutboxOp.create,
+        kind: kSubscriptionWrite,
+        body: draft.toJson(),
+        id: key,
+      );
+      return _placeholder(queued.entry!);
+    }
     final Subscription created;
     try {
       created = await _create(draft, key);
     } on ApiException catch (e) {
       final String? owner = _currentUser();
-      if (!e.isOffline || owner == null) rethrow;
+      // An unreadable answer is queued too: the request arrived, so the key
+      // is replayed rather than a second row being made by a retyped add.
+      if (!(e.isOffline || e.malformed) || owner == null) rethrow;
       // Kept for replay FIRST: if the device will not keep it either, the
       // failure travels and the sheet keeps the draft, exactly as before.
       final OutboxEnqueueResult queued = await _outbox.enqueue(
@@ -271,6 +312,9 @@ class CachedApiClient implements ApiClient {
         kind: kSubscriptionWrite,
         body: draft.toJson(),
         id: key,
+        // The first attempt WAS dispatched: its response, not the request, is
+        // what went missing (review round 2, major 1).
+        mayHaveReached: true,
       );
       return _placeholder(queued.entry!);
     }

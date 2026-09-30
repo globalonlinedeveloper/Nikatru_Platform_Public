@@ -93,6 +93,7 @@ export const RENEWALS_JOB = 'renewals';
 export const ANALYTICS_LIVENESS_WINDOW_HOURS = 24;
 
 import { APP_TARGETS } from './generated/app-targets';
+import { EXT_LINK_IDLE_DAYS, EXT_LINK_MAX_AGE_DAYS } from './lib/ext-links';
 /** Apps the scheduler fans out to: GENERATED from the register (tooling/scripts/render-platform-app-block.mjs, 2026-09-26).
  *  A binding the module names and `env` lacks comes back `db: undefined`: the fan-out records it as a failed row, never a skip.
  *  `env` is read by the binding's NAME, so it is indexed as a record. */
@@ -1413,7 +1414,10 @@ export type RetentionStore =
   | 'signups'
   | 'content_reports'
   | 'ext_codes'
-  | 'ext_devices';
+  | 'ext_devices'
+  | 'native_attest_redeemed'
+  | 'native_attest_keys'
+  | 'native_attest_counters';
 
 /** Days-to-keep per store. `null` is UNDECLARED, and undeclared is INERT. */
 export type RetentionPeriods = Record<RetentionStore, number | null>;
@@ -1550,25 +1554,58 @@ export const CONTENT_REPORTS_RETENTION_DAYS = 400;
 // @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
 export const EXT_CODES_RETENTION_DAYS = 1;
 
-// 🔒 DECLARED — 30 DAYS AFTER REVOCATION, AND ONLY FOR A REVOKED DEVICE.
+// 🔒 DECLARED — 30 DAYS AFTER REVOCATION, OR 30 DAYS AFTER THE LINK'S LIFETIME
+// ENDED (⏱ 2026-09-30, EXA-11 re-review finding 5 — the paragraph below this one
+// describes the first rule; the second is at the DELETE in `deleteOlderThan`).
 // O-EXTENSION-ACCOUNT-CHECK-UNBUILT, parent decision 2026-09-25 (storage
 // limitation). Register row: retention.d1.platform_db.ext_devices. A linked
-// device that was never revoked is a LIVE credential and is never swept: the
-// cutoff is on `revoked_at`, and `NULL < ?` is never true.
+// device that was never revoked is a LIVE credential INSIDE ITS LIFETIME and is
+// not swept then: the revoked limb's cutoff is on `revoked_at`, and `NULL < ?`
+// is never true; the expired limb needs the lifetime to have ended 30 days ago.
 //
 // WHY 30 AND NOT "CREDENTIAL LIFETIME + 7". The rule was: if the longest-lived
 // credential the code accepts outlives 23 days, keep a revoked row for that
-// lifetime plus 7 days. The device credential has NO lifetime: it is minted with
-// no expiry (routes/ext.ts — the INSERT writes no expiry column, and
-// 0017_ext_devices.sql declares none), and middleware/ext-device-auth.ts refuses
-// it ONLY when the row is absent or `revoked_at` is set — nothing reads
-// `created_at` or `last_seen_at` as an age limit. So no window outlives the
-// revocation: a revoked row refuses by its own `revoked_at` from the instant it
-// is written, and once swept an absent row gives the same 401, which the
-// extension treats as "delete this credential". The 30 days keep the record of
-// the revocation readable for support, not a credential that could still work.
+// lifetime plus 7 days. ⏱ 2026-09-30 · EXA-11: the device credential now HAS a
+// lifetime (lib/ext-links.ts — 30 days idle, 180 days at most), but the rule's
+// premise does not hold for it: middleware/ext-device-auth.ts refuses a revoked
+// row by its own `revoked_at` from the instant it is written, whatever the
+// lifetime left, and once swept an absent row gives the same 401, which the
+// extension treats as "delete this credential". So no window outlives the
+// revocation. An expired link is stamped `revoked_at` when it is next presented,
+// and then follows the same 30 days. The 30 days keep the record of the
+// revocation readable for support, not a credential that could still work.
 // @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
 export const EXT_DEVICES_RETENTION_DAYS = 30;
+
+// 🔒 DECLARED — ONE DAY PAST EXPIRY. ⏱ 2026-09-30 · ADR no.NNN (review of
+// #1070). Register row: retention.d1.platform_db.native_attest_redeemed. A
+// challenge is a signed token that is never stored; a row here is a REDEEMED
+// nonce, kept only so a replay inside the challenge's own 120 seconds finds it.
+// Once `expires_at` has passed the MAC check refuses the token anyway, so the
+// row guards nothing. Every redemption already deletes expired rows inline;
+// this limb deletes whatever is a day past expiry, IN FULL — no
+// MAX_ROWS_PER_SWEEP cap. (A day, not zero: retentionCutoff reads 0 as undeclared.)
+// @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
+export const NATIVE_ATTEST_REDEEMED_RETENTION_DAYS = 1;
+
+// 🔒 DECLARED — ONE DAY. ⏱ 2026-09-30 · ADR no.NNN (review of #1070). Register
+// row: retention.d1.platform_db.native_attest_counters. One row per (UTC day,
+// scope): today's Play Integrity decodes and today's key registrations per
+// network. Only today's row is ever read; every bump deletes the previous days'
+// inline, and this limb deletes any older row IN FULL — no per-run cap.
+// @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
+export const NATIVE_ATTEST_COUNTERS_RETENTION_DAYS = 1;
+
+// 🔒 DECLARED — 90 DAYS SINCE LAST USE. ⏱ 2026-09-29 · ADR no.NNN. Register row:
+// retention.d1.platform_db.native_attest_keys. A row is an install's PUBLIC key
+// and a counter, tied to no account (0022_native_attest.sql), so this is an
+// operational bound, not a personal-data one: a key unused for 90 days is swept,
+// and the install's next sign-in answers `attestation_key_unknown` once and
+// registers a fresh key — one extra round trip. It also bounds what a script
+// registering throwaway desktop keys can leave behind. Cutoff on `last_used_at`,
+// which every verified op refreshes.
+// @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
+export const NATIVE_ATTEST_KEYS_RETENTION_DAYS = 90;
 
 // The per-store, per-run delete bound. A sweep is a CATCH-UP job, not a one
 // shot: hitting the bound leaves the remainder for tomorrow and says `capped=1`
@@ -1846,6 +1883,19 @@ export async function eventsRollup(env: Env, nowMs: number = Date.now()): Promis
  * plain SQL, and both tables are ROWID tables — 0002 and 0004 declare no PRIMARY
  * KEY and no WITHOUT ROWID, deliberately (0002's header records why).
  */
+/**
+ * ⏱ 2026-09-30 · EXA-11. For the ext_devices sweep: the retention cutoff moved
+ * back by the link's maximum age and by its idle limit, so "expired more than
+ * the retention period ago" is two plain comparisons. [maxAgeCutoff, idleCutoff].
+ */
+export function extDevicesExpiredCutoffs(cutoff: string): [string, string] {
+  const t = Date.parse(cutoff);
+  return [
+    new Date(t - EXT_LINK_MAX_AGE_DAYS * MS_PER_DAY).toISOString(),
+    new Date(t - EXT_LINK_IDLE_DAYS * MS_PER_DAY).toISOString(),
+  ];
+}
+
 async function deleteOlderThan(env: Env, store: RetentionStore, cutoff: string): Promise<number> {
   const stmt =
     store === 'events'
@@ -1880,7 +1930,38 @@ async function deleteOlderThan(env: Env, store: RetentionStore, cutoff: string):
             // against any ISO cutoff whatever instant it meant. The pattern
             // admits only an ISO-8601 date-time; anything else is kept, because
             // the sweep deletes only what it can date.
-            "DELETE FROM ext_devices WHERE rowid IN (SELECT rowid FROM ext_devices WHERE revoked_at < ? AND revoked_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*' ORDER BY revoked_at LIMIT ?)",
+            //
+            // ⏱ 2026-09-30 · EXA-11 (re-review finding 5) — AND A LINK THAT
+            // EXPIRED AND WAS NEVER PRESENTED AGAIN. A never-revoked row is a
+            // live credential only inside its lifetime (lib/ext-links.ts: 180
+            // days at most, 30 days idle); an uninstalled browser never comes
+            // back to have it stamped revoked. So a never-revoked row is deleted
+            // the same 30 days after its lifetime ended: `created_at` older
+            // than 180 + 30 days, or its last use older than 30 + 30 days. The
+            // two extra cutoffs are the retention cutoff shifted back by each
+            // lifetime (`extDevicesExpiredCutoffs`), so the statement needs no
+            // date function. `created_at` must be an ISO date-time too, for the
+            // reason the revoked_at GLOB gives.
+            "DELETE FROM ext_devices WHERE rowid IN (SELECT rowid FROM ext_devices WHERE (revoked_at < ? AND revoked_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*') OR (revoked_at IS NULL AND created_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*' AND (created_at < ? OR COALESCE(last_seen_at, created_at) < ?)) ORDER BY created_at LIMIT ?)",
+          )
+      : store === 'native_attest_redeemed'
+        ? env.PLATFORM_DB.prepare(
+            // ADR no.NNN (review of #1070). From `expires_at` (ISO-8601 TEXT),
+            // and IN FULL: the `? IS NOT NULL` takes the per-run bound's slot so
+            // the bind list stays the shared (cutoff, limit) — no row cap here.
+            'DELETE FROM native_attest_redeemed WHERE expires_at < ? AND ? IS NOT NULL',
+          )
+      : store === 'native_attest_counters'
+        ? env.PLATFORM_DB.prepare(
+            // ADR no.NNN (review of #1070). `day` is 'YYYY-MM-DD' against the
+            // full ISO cutoff, which sorts correctly (a day string is a prefix of
+            // its own instants). IN FULL, as above.
+            'DELETE FROM native_attest_counters WHERE day < ? AND ? IS NOT NULL',
+          )
+      : store === 'native_attest_keys'
+        ? env.PLATFORM_DB.prepare(
+            // ADR no.NNN. From `last_used_at` (ISO-8601 TEXT, NOT NULL).
+            'DELETE FROM native_attest_keys WHERE rowid IN (SELECT rowid FROM native_attest_keys WHERE last_used_at < ? ORDER BY last_used_at LIMIT ?)',
           )
       : store === 'events_daily'
         ? env.PLATFORM_DB.prepare(
@@ -1925,7 +2006,10 @@ async function deleteOlderThan(env: Env, store: RetentionStore, cutoff: string):
           // the first real subject of this rule already exists and is refused.
           'DELETE FROM provider_notifications WHERE rowid IN (SELECT rowid FROM provider_notifications WHERE received_at < ? AND derived_at IS NOT NULL AND derive_error IS NULL ORDER BY received_at LIMIT ?)',
         );
-  const res = await stmt.bind(cutoff, MAX_ROWS_PER_SWEEP).run();
+  const res =
+    store === 'ext_devices'
+      ? await stmt.bind(cutoff, ...extDevicesExpiredCutoffs(cutoff), MAX_ROWS_PER_SWEEP).run()
+      : await stmt.bind(cutoff, MAX_ROWS_PER_SWEEP).run();
   return Number(res.meta?.changes ?? 0);
 }
 
@@ -1963,6 +2047,9 @@ export async function retentionSweep(
     content_reports: CONTENT_REPORTS_RETENTION_DAYS,
     ext_codes: EXT_CODES_RETENTION_DAYS,
     ext_devices: EXT_DEVICES_RETENTION_DAYS,
+    native_attest_redeemed: NATIVE_ATTEST_REDEEMED_RETENTION_DAYS,
+    native_attest_keys: NATIVE_ATTEST_KEYS_RETENTION_DAYS,
+    native_attest_counters: NATIVE_ATTEST_COUNTERS_RETENTION_DAYS,
   },
   nowMs: number = Date.now(),
 ): Promise<void> {
@@ -1974,12 +2061,16 @@ export async function retentionSweep(
     'content_reports',
     'ext_codes',
     'ext_devices',
+    'native_attest_redeemed',
+    'native_attest_keys',
+    'native_attest_counters',
   ];
   const n_stores = stores.length;
   let declared = 0;
   let deleted = 0;
   let capped = 0;
   const per: string[] = [];
+  let quiet = 0;
   const inert: string[] = [];
 
   try {
@@ -2011,8 +2102,13 @@ export async function retentionSweep(
       // ISO instant. Narrowing here keeps the DELETE a plain string literal.
       const n = await deleteOlderThan(env, store, store === 'events_daily' ? bounded.slice(0, 10) : bounded);
       deleted += n;
-      if (n >= MAX_ROWS_PER_SWEEP) capped++;
-      per.push(`${store}=${String(periods[store])}d:${n}`);
+      // The two uncapped limbs delete in full, so a large count is not a cap.
+      if (n >= MAX_ROWS_PER_SWEEP && store !== 'native_attest_redeemed' && store !== 'native_attest_counters') capped++;
+      // ⏱ 2026-09-29 · with nine stores the full token list outgrew the
+      // heartbeat's 200-character detail (recordHeartbeat slices there), so a
+      // store that deleted nothing is COUNTED in `quiet=` rather than named.
+      if (n > 0) per.push(`${store}=${String(periods[store])}d:${n}`);
+      else quiet++;
     }
   } catch (err) {
     // ok=0 means THE WORK FAILED. A sweep that could not run is a retention
@@ -2047,7 +2143,7 @@ export async function retentionSweep(
             // One word, because a reader who cannot tell them apart will go
             // looking for a missing number that is not missing.
             ? `stores=${n_stores} declared=0 deleted=0 capped=0 — INERT: ${inert.join(', ')} (a bare store name = no period declared, owner: one value each in services/platform/src/scheduled.ts; \`events(unrolled)\` = the rollup watermark is null, which is the interlock refusing to delete unrolled-up history and needs no action).`
-            : `stores=${n_stores} declared=${declared} deleted=${deleted} capped=${capped} ${per.join(' ')}${inert.length > 0 ? ` inert=${inert.join(',')}` : ''}`,
+            : `stores=${n_stores} declared=${declared} deleted=${deleted} capped=${capped}${per.length > 0 ? ` ${per.join(' ')}` : ''}${quiet > 0 ? ` quiet=${quiet}` : ''}${inert.length > 0 ? ` inert=${inert.join(',')}` : ''}`,
       },
     ],
     RETENTION_SWEEP_JOB,

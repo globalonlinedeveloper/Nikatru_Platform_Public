@@ -491,16 +491,17 @@ describe('R3 — interpolated identifiers are constrained', () => {
 
   // purge.mjs now takes its tables from the leg register, so no statement in the
   // tree binds its identifier from an inline literal array. Putting that shape back
-  // into purge's loop keeps the evidence sentence under test.
+  // into purge's loop (in purge_requests.mjs since the purge-retry change) keeps
+  // the evidence sentence under test.
   test('a loop over an inline literal array names that evidence', () => {
     withTree(
       (root) =>
-        edit(root, 'tooling/e2e/purge.mjs', (s) =>
+        edit(root, 'tooling/e2e/purge_requests.mjs', (s) =>
           s.replace('for (const table of userTables) {', "for (const table of ['alpha_rows', 'beta_rows']) {"),
         ),
       (r) => {
         assert.equal(r.status, 0);
-        assert.match(r.stdout, /\[R3\] tooling\/e2e\/purge\.mjs:\d+ — table:table — [^\n]*`table` is bound from an inline literal array/);
+        assert.match(r.stdout, /\[R3\] tooling\/e2e\/purge_requests\.mjs:\d+ — table:table —[^\n]*`table` is bound from an inline literal array/);
       },
     );
   });

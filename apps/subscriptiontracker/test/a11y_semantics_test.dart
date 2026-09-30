@@ -4023,7 +4023,7 @@ void main() {
       });
     });
 
-    testWidgets('check-inbox hands the tap-target guideline TWO — pinned', (
+    testWidgets('check-inbox hands the tap-target guideline THREE — pinned', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
@@ -4050,9 +4050,15 @@ void main() {
         // `meetsGuideline`: a second family on CheckInboxScreen would void
         // M1/M2/M2b in tooling/ci/test/a11y-coverage.test.mjs, whose subject
         // must stay single-family.
+        // ⏱ 2026-09-29 · ST-D10 — 2 -> 3, AND IT IS THE MISMATCH ABOVE GOING
+        // AWAY, NOT A NEW CONTROL. The screen now stands in the shared
+        // `AuthFrame`, which draws no AppBar (canvas `CheckInbox`), so the
+        // scrollable starts at the top of the root and its local space IS root
+        // space: the primary "Back to sign in" button is inside its bounds and
+        // measured with the other two. Still a COUNT, for the M1/M2/M2b reason.
         expect(
           await tapTargetSubjects(tester),
-          2,
+          3,
           reason:
               'check-inbox now offers the tap-target guideline something to '
               'measure — the framework traversal changed, or the screen no '

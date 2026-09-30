@@ -215,8 +215,15 @@ describe('platform_db migrations re-apply cleanly', () => {
       // ⏱ 2026-09-24 · the extension account check (O-EXTENSION-ACCOUNT-CHECK-UNBUILT).
       'ext_codes',
       'ext_devices',
+      // ⏱ 2026-09-30 · migration 0021 — the extension-link floor (EXA-11).
+      'ext_link_floor',
       'feature_set_members',
       'feature_sets',
+      // ⏱ 2026-09-29 · migration 0022 — native sign-in attestation (ADR no.NNN);
+      // ⏱ 2026-09-30 stateless challenges: redeemed nonces, keys, daily counters.
+      'native_attest_counters',
+      'native_attest_keys',
+      'native_attest_redeemed',
       // ⏱ 2026-09-15 · [ADR 081] migration 0010.
       'pending_erasures',
       'provider_accounts',

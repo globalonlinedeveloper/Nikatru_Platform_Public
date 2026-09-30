@@ -3,7 +3,12 @@ import 'package:dio/dio.dart';
 /// Raised when an API call fails — carries the HTTP [statusCode] (0 for a
 /// transport-level error) and a human-readable [message].
 class ApiException implements Exception {
-  ApiException(this.statusCode, this.message, {this.detail});
+  ApiException(
+    this.statusCode,
+    this.message, {
+    this.detail,
+    this.malformed = false,
+  });
   final int statusCode;
   final String message;
 
@@ -13,7 +18,12 @@ class ApiException implements Exception {
   /// words — "you are offline" and "the server refused" are different states
   /// with different remedies (train ST-D7). Status 0 is this client's own
   /// transport marker, so the rule lives beside it rather than in each app.
-  bool get isOffline => statusCode == 0;
+  bool get isOffline => statusCode == 0 && !malformed;
+
+  /// The server ANSWERED, and the answer could not be read (a 2xx whose body
+  /// did not decode). Not "offline": the request arrived, so an outbox sets
+  /// the entry aside as a visible problem (review #1075, round 2, minor d).
+  final bool malformed;
 
   /// [isOffline] for any thrown [error], false for anything that is not an
   /// [ApiException]: a failure this client did not classify is never assumed
@@ -142,7 +152,7 @@ class RestClient {
     } on ApiException {
       rethrow;
     } catch (e) {
-      throw ApiException(0, 'Malformed response: $e');
+      throw ApiException(0, 'Malformed response: $e', malformed: true);
     }
   }
 

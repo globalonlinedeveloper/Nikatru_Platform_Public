@@ -18,7 +18,7 @@ import { RealDb, realPlatformDb } from './harness';
 import appInit0001 from '../../subscriptiontracker-api/migrations/0001_init.sql?raw';
 import appSchemaDebt0002 from '../../subscriptiontracker-api/migrations/0002_schema_debt.sql?raw';
 import { runBackup, isExpired, backupDate, BACKUP_RETENTION_DAYS, MAX_D1_QUERIES_PER_RUN } from '../src/backup';
-import { dumpD1Database } from '../src/backup/dump';
+import { dumpD1Database, EPHEMERAL_TABLES } from '../src/backup/dump';
 import { scheduled, BACKUP_CRON } from '../src/scheduled';
 import type { BackupEnv } from '../src/backup';
 import type { Env } from '../src/types';
@@ -144,6 +144,29 @@ describe('the nightly export writes something a restore can actually use', () =>
     expect(ddl).toContain('cron_heartbeat');
 
     expect(out.find((o) => o.target === 'd1:platform_db')?.ok).toBe(true);
+  });
+
+  // ⏱ 2026-09-30 · ADR no.NNN — EPHEMERAL_TABLES (src/backup/dump.ts).
+  it('ephemeral tables travel as SCHEMA only: their rows are not dumped and cost no query; every other table\'s rows still are', async () => {
+    const { env, db } = envWith(new FakeBucket());
+    db.db.exec(
+      "INSERT INTO native_attest_redeemed (nonce, app_id, expires_at) VALUES ('n1','subscriptiontracker','2026-09-05T06:02:00Z');" +
+        "INSERT INTO native_attest_counters (day, scope, calls) VALUES ('2026-09-05','play-integrity:decode',3);" +
+        "INSERT INTO native_attest_keys (app_id, key_id, kind, public_key, sign_count, created_at, last_used_at) VALUES ('subscriptiontracker','k','app-attest','pk',0,'2026-09-05T06:00:00Z','2026-09-05T06:00:00Z')",
+    );
+    await runBackup(env, NOW);
+    const bucket = env.BACKUPS_R2 as unknown as FakeBucket;
+    const lines = linesOf(await gunzip(bucket.objects.get(`d1/platform_db/${backupDate(NOW)}.jsonl.gz`)!.body));
+    const schema = lines.filter((l) => l.kind === 'schema').map((l) => l.table);
+    for (const t of EPHEMERAL_TABLES) {
+      expect(schema, t).toContain(t);
+      expect(lines.filter((l) => l.kind === 'row' && l.table === t), t).toHaveLength(0);
+      expect(lines.find((l) => l.kind === 'table-end' && l.table === t)).toMatchObject({ rows: 0, ephemeral: true });
+      expect(db.sql.some((q) => q.includes(`FROM "${t}"`)), `${t} is never paged`).toBe(false);
+    }
+    // Red control: the key table is NOT ephemeral — its row is in the dump.
+    expect(lines.filter((l) => l.kind === 'row' && l.table === 'native_attest_keys')).toHaveLength(1);
+    expect([...EPHEMERAL_TABLES].sort()).toEqual(['native_attest_counters', 'native_attest_redeemed']);
   });
 
   it('the digest recorded in the manifest is the digest of the bytes that landed', async () => {

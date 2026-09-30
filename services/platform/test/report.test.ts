@@ -229,8 +229,117 @@ describe('retention — the rows age out on the declared period', () => {
       content_reports: CONTENT_REPORTS_RETENTION_DAYS,
       ext_codes: null,
       ext_devices: null,
+      native_attest_redeemed: null,
+      native_attest_keys: null,
+      native_attest_counters: null,
     };
     await retentionSweep({ PLATFORM_DB: db } as unknown as AppEnv['Bindings'], periods, NOW);
     expect(db.rows('SELECT id FROM content_reports').map((r) => r.id)).toEqual(['kept']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-30 · O-REPORT-CAPS-ARE-READ-THEN-WRITE (rv2-services-004). A PARALLEL
+// BURST CANNOT OVERSHOOT EITHER CAP.
+//
+// Both caps used to COUNT and then WRITE, so a wave of concurrent requests all
+// read the same count before any sibling's row or stamp landed. The notice cap
+// exists to protect the Resend quota that password resets share, so its overshoot
+// is the one that locks people out.
+//
+// `interleaved` makes the race DETERMINISTIC rather than lucky: every D1 call
+// yields one macrotask before it executes, so with N requests in flight each one
+// reaches its next statement before any runs — the schedule a real burst of
+// isolates produces. D1 still executes one statement at a time, as the real one
+// does. RED ON MAIN, GREEN AFTER: on the tree before this change every report in
+// the wave is stored and every notice is sent.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('a parallel burst never exceeds a cap', () => {
+  /** `db`, with every statement deferred one macrotask before it executes. */
+  function interleaved(db: RealDb): RealDb {
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    const wrap = (stmt: object): object =>
+      new Proxy(stmt, {
+        get(target, prop, receiver) {
+          const v = Reflect.get(target, prop, receiver);
+          if (typeof v !== 'function') return v;
+          if (prop === 'bind') return (...a: unknown[]) => wrap(v.apply(target, a));
+          if (prop === 'first' || prop === 'run' || prop === 'all' || prop === 'raw') {
+            return async (...a: unknown[]) => {
+              await tick();
+              return v.apply(target, a);
+            };
+          }
+          return v.bind(target);
+        },
+      });
+    return new Proxy(db, {
+      get(target, prop, receiver) {
+        if (prop === 'prepare') return (sql: string) => wrap(target.prepare(sql));
+        const v = Reflect.get(target, prop, receiver);
+        return typeof v === 'function' ? v.bind(target) : v;
+      },
+    });
+  }
+
+  it(`🔴 ${2 * MAX_REPORTS_PER_USER_PER_HOUR} reports at once from one account store EXACTLY ${MAX_REPORTS_PER_USER_PER_HOUR}; the rest are 429`, async () => {
+    const db = realPlatformDb();
+    const N = 2 * MAX_REPORTS_PER_USER_PER_HOUR;
+    const results = await Promise.all(Array.from({ length: N }, () => post(interleaved(db), ALICE, GOOD)));
+    const statuses = results.map((r) => r.status);
+    expect(statuses.filter((s) => s === 202)).toHaveLength(MAX_REPORTS_PER_USER_PER_HOUR);
+    expect(statuses.filter((s) => s === 429)).toHaveLength(N - MAX_REPORTS_PER_USER_PER_HOUR);
+    expect(db.count('content_reports', 'user_id = ?', ALICE)).toBe(MAX_REPORTS_PER_USER_PER_HOUR);
+  });
+
+  it('🔴 at the boundary (cap − 1 already stored), a burst of 5 lands ONE more, never more', async () => {
+    const db = realPlatformDb();
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    for (let i = 0; i < MAX_REPORTS_PER_USER_PER_HOUR - 1; i++) {
+      db.db.exec(
+        `INSERT INTO content_reports (id, user_id, app_id, reason, content_ref, created_at) VALUES ('b-${i}', '${ALICE}', '${APP}', 'other', 'r', '${recent}')`,
+      );
+    }
+    const results = await Promise.all(Array.from({ length: 5 }, () => post(interleaved(db), ALICE, GOOD)));
+    expect(results.filter((r) => r.status === 202)).toHaveLength(1);
+    expect(db.count('content_reports', 'user_id = ?', ALICE)).toBe(MAX_REPORTS_PER_USER_PER_HOUR);
+  });
+
+  it(`🔴 with ${MAX_REPORT_NOTICES_PER_DAY - 1} notices already sent today, a burst from 5 accounts sends ONE more — the quota password resets share is not spent`, async () => {
+    const sends: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        sends.push(url);
+        return new Response(JSON.stringify({ id: 'resend-1' }), { status: 200 });
+      }),
+    );
+    const db = realPlatformDb();
+    const today = new Date().toISOString();
+    for (let i = 0; i < MAX_REPORT_NOTICES_PER_DAY - 1; i++) {
+      db.db.exec(
+        `INSERT INTO content_reports (id, user_id, app_id, reason, content_ref, created_at, notified_at) VALUES ('n-${i}', 'u-${i}', '${APP}', 'other', 'r', '${today}', '${today}')`,
+      );
+    }
+    const results = await Promise.all(
+      Array.from({ length: 5 }, (_, i) => post(interleaved(db), `u-burst-${i}`, GOOD, { RESEND_API_KEY: 're_test_key' })),
+    );
+    expect(results.every((r) => r.status === 202)).toBe(true);
+    expect(sends).toHaveLength(1);
+    expect(db.count('content_reports', 'notified_at IS NOT NULL')).toBe(MAX_REPORT_NOTICES_PER_DAY);
+    expect(db.count('content_reports', 'notified_at IS NULL')).toBe(4);
+  });
+
+  it('a send that THREW may have been delivered, so its claim stays; a DEFINITE refusal releases it', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('network connection lost');
+      }),
+    );
+    const db = realPlatformDb();
+    expect((await post(db, ALICE, GOOD, { RESEND_API_KEY: 're_test_key' })).status).toBe(202);
+    expect(db.count('content_reports', 'notified_at IS NOT NULL')).toBe(1);
+    // The refusal half is 'a failed send leaves the report stored and un-noticed' above.
   });
 });

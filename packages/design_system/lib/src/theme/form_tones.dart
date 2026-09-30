@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_colors.dart';
+import '../tokens/app_palette.dart';
 
 /// The six neutral colours a hand-painted form paints with, resolved for the
 /// current brightness.
@@ -51,11 +52,11 @@ FormTones formTones(BuildContext context) {
   final ThemeData theme = Theme.of(context);
   if (theme.brightness == Brightness.light) {
     return (
-      bg: AppColors.bg,
-      surface: AppColors.surface,
-      line: AppColors.line,
-      ink: AppColors.ink,
-      muted: AppColors.muted,
+      bg: AppPalette.lightBg,
+      surface: AppPalette.lightSurface,
+      line: AppPalette.lightLine,
+      ink: AppPalette.lightInk,
+      muted: AppPalette.lightMuted,
       accent: AppColors.accent,
       danger: AppColors.danger,
     );

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../tokens/app_colors.dart';
+import '../tokens/app_palette.dart';
 import '../tokens/app_text.dart';
 import '../tokens/brand_tokens.dart';
 import 'focusable_tap.dart';
@@ -151,7 +151,7 @@ class BrandFooter extends StatelessWidget {
     // in the [BrandWordmark] note.
     final Color faint = onDark
         ? const Color.fromRGBO(255, 255, 255, 0.6)
-        : (AppText.of(context).muted.color ?? AppColors.muted);
+        : (AppText.of(context).muted.color ?? AppPalette.lightMuted);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[

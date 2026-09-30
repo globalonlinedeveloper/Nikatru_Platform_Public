@@ -351,6 +351,7 @@ final Provider<ReadThroughCache> readThroughCacheProvider =
       (ref) => ReadThroughCache(
         ref.watch(offlineStoreProvider),
         onWriteFailed: reportCacheWriteFailure,
+        owner: () => ref.read(authRepositoryProvider).currentUser?.id,
         onStaleChanged: (bool stale) =>
             ref.read(staleReadProvider.notifier).report(stale: stale),
       ),
@@ -1194,9 +1195,15 @@ authRepositoryProvider = Provider<core.AuthRepository>((ref) {
     redirects: AuthRedirects.current(appId: AppConfig.appId),
     // ⏱ 2026-09-28 · ST-N1 — off web the captcha-gated calls go through the
     // platform Worker's native route (any app with a native target); null on web.
+    // ⏱ 2026-09-29 — and each op carries this build's attestation (Play
+    // Integrity / App Attest / a per-install key kept in the app's secure
+    // store): the route refuses an unattested op.
     nativeCredentials: nativeCredentialClient(
       platformBaseUrl: kPlatformBaseUrl,
       appId: AppConfig.appId,
+      attestor: platformNativeAttestor(
+        secureStore: ref.watch(secureStoreProvider),
+      ),
     ),
   );
 });
@@ -1483,8 +1490,10 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
   (ref) => RestClient(
     baseUrl: AppConfig.apiBaseUrl,
     tokenProvider: ref.watch(authTokenProvider),
-    onUnauthorized: () =>
-        signOutOnlyIfSessionIsGone(ref.read(authRepositoryProvider)),
+    onUnauthorized: () => signOutOnlyIfSessionIsGone(
+      ref.read(authRepositoryProvider),
+      onSignedOut: ref.read(readThroughCacheProvider).forget,
+    ),
   ),
 );
 
@@ -1507,9 +1516,13 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
 /// It is the narrowest of the leaks — nobody hands the device over on a 401 —
 /// and it is the only one left. Named here, and in [signOutAndForgetUser]'s doc,
 /// so the count in that doc stays honest.
-Future<void> signOutOnlyIfSessionIsGone(core.AuthRepository auth) async {
+Future<void> signOutOnlyIfSessionIsGone(
+  core.AuthRepository auth, {
+  UserStateDrop? onSignedOut,
+}) async {
   if (await auth.sessionIsGone()) {
     await auth.signOut();
+    await onSignedOut?.call(); // e.g. the offline copy: every sign-out drops it
   }
 }
 

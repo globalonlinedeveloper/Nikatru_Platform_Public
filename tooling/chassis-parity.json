@@ -50,13 +50,13 @@
         {
           "file": "apps/subscriptiontracker/lib/features/auth/check_inbox_screen.dart",
           "linesAtSince": 88,
-          "ceiling": 88,
+          "ceiling": 82,
           "template": 23
         },
         {
           "file": "apps/subscriptiontracker/lib/features/auth/verify_email_screen.dart",
           "linesAtSince": 182,
-          "ceiling": 172,
+          "ceiling": 162,
           "template": 47
         },
         {
@@ -68,7 +68,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/auth/reset_password_screen.dart",
           "linesAtSince": 314,
-          "ceiling": 312,
+          "ceiling": 305,
           "template": 77
         },
         {

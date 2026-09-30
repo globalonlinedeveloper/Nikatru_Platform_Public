@@ -19,24 +19,14 @@ import {
   type Invalid,
 } from '../lib/validate';
 import { visibleCategory } from './categories';
+import {
+  MAX_REMINDERS,
+  MAX_REMINDER_DAY,
+  isReminderDaysList,
+  parseReminderDays,
+} from '../../../_shared/src/reminder-days';
 
 const app = new Hono<AppEnv>();
-
-/**
- * `reminder_days` is stored as the JSON text this route wrote and served as the
- * list itself. Only `validate` below writes the column, so a parse failure
- * means a row edited outside this Worker; it is served as NULL ("use the
- * account default") rather than failing the whole list.
- */
-function reminderDaysOf(raw: string | null): number[] | null {
-  if (raw === null) return null;
-  try {
-    const v: unknown = JSON.parse(raw);
-    return Array.isArray(v) && v.every((d) => Number.isSafeInteger(d)) ? (v as number[]) : null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * DB row -> API JSON (0/1 `unused` becomes a real boolean).
@@ -80,7 +70,11 @@ export function serializeSubscription(row: Subscription) {
     cancel_url: row.cancel_url,
     rail: row.rail,
     rail_holder: row.rail_holder,
-    reminder_days: reminderDaysOf(row.reminder_days),
+    // Stored as the JSON text `validate` wrote, served as the list itself. The
+    // ONE reading of the column, shared with the platform Worker that reminds
+    // from it (services/_shared/src/reminder-days.ts); a value edited outside
+    // this Worker is served as NULL ("use the account default"), never a 500.
+    reminder_days: parseReminderDays(row.reminder_days),
     shared_with: row.shared_with,
     share_numerator: row.share_numerator,
     share_denominator: row.share_denominator,
@@ -173,10 +167,8 @@ const MAX_PRICE_MINOR = MAX_PRICE * 10_000;
  * @ceiling none — a VALUE bound on one numeric column, not a resource bound.
  */
 const MAX_CYCLE_EVERY = 366;
-/** @ceiling none — a list length on one column; the spec's example is [7,1]. */
-const MAX_REMINDERS = 5;
-/** @ceiling none — a VALUE bound: a reminder at most a year before the charge. */
-const MAX_REMINDER_DAY = 365;
+// MAX_REMINDERS and MAX_REMINDER_DAY live with the column's one reading, in
+// services/_shared/src/reminder-days.ts, imported above.
 /** @ceiling none — a VALUE bound: a notice period at most a year before the
  *  charge, the same year MAX_REMINDER_DAY allows a reminder (0004, ST-R8). */
 const MAX_NOTICE_DAYS = 365;
@@ -512,12 +504,7 @@ function validate(body: unknown): ValidatedSubscription {
     if (reminders === null) {
       // NULL = "use the account default"; [] = "no reminder for this one".
       fields.reminder_days = null;
-    } else if (
-      !Array.isArray(reminders) ||
-      reminders.length > MAX_REMINDERS ||
-      !reminders.every((d) => isWholeNumber(d, 0, MAX_REMINDER_DAY)) ||
-      new Set(reminders).size !== reminders.length
-    ) {
+    } else if (!isReminderDaysList(reminders)) {
       return invalid(
         `reminder_days must be a list of at most ${MAX_REMINDERS} different whole numbers of days, 0 to ${MAX_REMINDER_DAY}`,
       );
@@ -824,7 +811,12 @@ app.post(
         c.get('userId'),
       ),
     );
-    return row ? c.json(serializeSubscription(row), 200) : null;
+    if (!row) return null;
+    // A soft-deleted row is GONE to a replay (review #1075 round 2, minor b):
+    // 410, so a late replay never answers a row the user removed. Undo clears
+    // `deleted_at`, and a restored row answers 200 again.
+    if (row.deleted_at != null) return c.json({ error: 'idempotent_create_gone' }, 410);
+    return c.json(serializeSubscription(row), 200);
   }),
 );
 

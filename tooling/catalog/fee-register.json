@@ -20,7 +20,8 @@
     "",
     "`apple-small-business-enrolment` IS NOT A FEE, AND ITS NULL IS NOT A GAP IN THIS FILE: it is the owner's step",
     "(owner queue A-18: console-only, Account-Holder-only). It selects which Apple cell the net sheet applies, and it is",
-    "the one cell a human, not a page read, fills: the owner writes the enrolment date the console shows.",
+    "the one cell a human, not a page read, fills: the owner writes the day Apple APPROVED the enrolment, as the console shows it.",
+    "Not the day it was requested: Apple adjusts proceeds 15 days after the end of the fiscal month of APPROVAL (the cell's `quote`).",
     "",
     "NOT MODELLED, AND SAID SO: Paddle's currency-conversion margin (none applies to a USD price charged in USD; an",
     "INR charge through Paddle is not sold), store tax on a USD storefront price (US prices are tax-exclusive), and the",
@@ -71,10 +72,11 @@
       "rail": "apple-iap",
       "value": null,
       "asOf": "2026-09-29",
-      "source": "App Store Connect, Account Holder only (owner queue A-18)",
-      "quote": null,
-      "verify": "The owner reads the Small Business Program status in App Store Connect and writes the enrolment date (YYYY-MM-DD) here; node tooling/ci/assert-small-business-program.mjs --for-submission=ios-appstore --real-submission then passes.",
-      "ownerStep": "A-18: enrol in the App Store Small Business Program. Console-only, Account-Holder-only, free. Until it is done a subscriber's first App Store year pays the standard rate, and a real App Store submission is refused."
+      "source": "App Store Connect, Account Holder only (owner queue A-18); the timing rule from https://developer.apple.com/app-store/small-business-program/ (read 2026-09-30)",
+      "quote": "Your proceeds will be adjusted fifteen (15) days after the end of the fiscal calendar month in which your enrollment is approved.",
+      "verify": "The owner reads the Small Business Program status in App Store Connect and writes the day Apple APPROVED the enrolment (YYYY-MM-DD, a plain date, not the day it was requested) here; node tooling/ci/assert-small-business-program.mjs --for-submission=ios-appstore --real-submission then passes.",
+      "note": "`value` is the APPROVAL date because Apple times the reduced commission from it: proceeds are adjusted 15 days after the end of the Apple fiscal month in which the enrolment is approved, so sales between approval and that day still pay the standard rate. The net sheet does not model that window.",
+      "ownerStep": "A-18: enrol in the App Store Small Business Program. Console-only, Account-Holder-only, free. Record the day Apple APPROVES it, not the day it is requested. Until it is done a subscriber's first App Store year pays the standard rate, and a real App Store submission is refused."
     },
     "play-billing-subscription": {
       "rail": "play-billing",

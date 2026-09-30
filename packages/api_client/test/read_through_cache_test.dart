@@ -264,4 +264,92 @@ void main() {
     }
     expect(classifyForOutbox(StateError('?')), OutboxFailure.transient);
   });
+  // 🔴 REVIEW #1075 ROUND 2, MAJOR 2 — the copy belongs to one account.
+  group('the copy belongs to one account', () {
+    late String? user;
+    ReadThroughCache scopedCache({Duration after = kRevalidateAfter}) =>
+        ReadThroughCache(
+          KeyValueJsonStore(Future<KeyValueStore>.value(kv)),
+          owner: () => user,
+          revalidateAfter: after,
+        );
+
+    setUp(() => user = 'user-a');
+
+    test('a list read still in flight at sign-out writes nothing', () async {
+      final ReadThroughCache c = scopedCache();
+      final Completer<List<String>> gate = Completer<List<String>>();
+      final Future<List<String>> read = c.read('k', _codec, () => gate.future);
+      await Future<void>.delayed(Duration.zero);
+      await c.forget(); // the sign-out drop
+      gate.complete(<String>["a's row"]);
+      await read;
+      expect(await c.peek('k', _codec), isNull);
+      expect(await kv.read('k.u.user-a'), isNull);
+    });
+
+    test("the next user never sees the previous user's rows — copy, fresh "
+        'window or joined request', () async {
+      final ReadThroughCache c = scopedCache(
+        after: const Duration(milliseconds: 20),
+      );
+      // A's copy, then a slow revalidation that opens A's fresh window.
+      await c.read('k', _codec, () async => <String>["a's row"]);
+      await c.read('k', _codec, () async {
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        return <String>["a's row", "a's second"];
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      user = 'user-b'; // the next account, on the same device
+      await expectLater(
+        c.read('k', _codec, () async => throw ApiException(0, 'offline')),
+        throwsA(isA<ApiException>()),
+        reason: 'B has no copy: the failure travels, A is never served',
+      );
+
+      // A request of A's still out when B reads is never joined.
+      user = 'user-a';
+      final Completer<List<String>> aGate = Completer<List<String>>();
+      final Future<List<String>> aRead = c.read(
+        'k',
+        _codec,
+        () => aGate.future,
+      );
+      await Future<void>.delayed(Duration.zero);
+      user = 'user-b';
+      final List<String> b = await c.read(
+        'k',
+        _codec,
+        () async => <String>["b's row"],
+      );
+      expect(b, <String>["b's row"]);
+      aGate.complete(<String>["a's row"]);
+      await aRead;
+    });
+
+    test('the copies are stored per account', () async {
+      final ReadThroughCache c = scopedCache();
+      await c.read('k', _codec, () async => <String>['a']);
+      user = 'user-b';
+      await c.read('k', _codec, () async => <String>['b']);
+      expect(await kv.read('k.u.user-a'), isNotNull);
+      expect(await kv.read('k.u.user-b'), isNotNull);
+      expect(await kv.read('k'), isNull);
+      await c.forget();
+      expect(await kv.read('k.u.user-a'), isNull);
+      expect(await kv.read('k.u.user-b'), isNull);
+    });
+  });
+
+  // REVIEW ROUND 2, MINOR d: an undecodable answer is a refusal of the entry.
+  test('an undecodable answer is never "offline"', () {
+    final ApiException bad = ApiException(
+      0,
+      'Malformed response',
+      malformed: true,
+    );
+    expect(bad.isOffline, isFalse);
+    expect(classifyForOutbox(bad), OutboxFailure.refused);
+  });
 }

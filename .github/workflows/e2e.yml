@@ -707,17 +707,28 @@ jobs:
             callback: --callback
     env:
       APP: ${{ matrix.app }}
+      # why: --expect-refusal probes the native route over HTTP and never opens
+      # the app (ADR no.NNN), so the toolchain, the build and the device are dead
+      # weight: their steps run only when this is 'true'. It goes back to 'true'
+      # with the proof's --expect-refusal flags, when attested CI builds exist.
+      PROOF_NEEDS_DEVICE: 'false'
       TARGET: ${{ matrix.target }}
       DEVICE: ${{ matrix.device }}
       CALLBACK: ${{ matrix.callback }}
+      # why: the proof's own log, written by the proof step and read by the
+      # purge — the consent row's install id, or proof that none was written
+      # (tooling/e2e/consent_anon_id.mjs, resolveProofLogConsent). Relative to
+      # the checkout: a job-level env cannot read `runner`.
+      E2E_PROOF_LOG: native-auth-proof.log
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-flutter
+        if: env.PROOF_NEEDS_DEVICE == 'true'
       - name: Linux build and session deps
-        if: matrix.target == 'linux'
+        if: env.PROOF_NEEDS_DEVICE == 'true' && (matrix.target == 'linux')
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -725,9 +736,10 @@ jobs:
             libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev \
             xvfb gnome-keyring dbus-x11 desktop-file-utils xdg-utils
       - name: Enable the desktop target
-        if: matrix.target == 'macos' || matrix.target == 'windows' || matrix.target == 'linux'
+        if: env.PROOF_NEEDS_DEVICE == 'true' && (matrix.target == 'macos' || matrix.target == 'windows' || matrix.target == 'linux')
         run: flutter config "--enable-${TARGET}-desktop"
       - name: flutter pub get
+        if: env.PROOF_NEEDS_DEVICE == 'true'
         working-directory: apps/${{ matrix.app }}
         run: flutter pub get --enforce-lockfile
       - name: Resolve this app's databases from its Worker's wrangler file
@@ -736,7 +748,7 @@ jobs:
       - name: The app's API base, from the composer's rule
         run: node tooling/ci/flutter-release-build.mjs --emit-env API_BASE_URL "$APP" >> "$GITHUB_ENV"
       - name: Boot an emulator
-        if: matrix.target == 'android'
+        if: env.PROOF_NEEDS_DEVICE == 'true' && (matrix.target == 'android')
         env:
           API_LEVEL: '34'
         run: |
@@ -785,7 +797,7 @@ jobs:
           done
           echo "emulator booted at ${SECONDS}s"
       - name: Boot an iPhone simulator
-        if: matrix.target == 'ios'
+        if: env.PROOF_NEEDS_DEVICE == 'true' && (matrix.target == 'ios')
         run: |
           set -euo pipefail
           udid="$(xcrun simctl list devices available -j | node -e 'const d = JSON.parse(require("fs").readFileSync(0, "utf8")).devices; for (const [rt, list] of Object.entries(d)) { if (!/iOS/.test(rt)) continue; const p = list.find((x) => /^iPhone/.test(x.name)); if (p) { console.log(p.udid); process.exit(0); } } process.exit(1);')"
@@ -799,14 +811,20 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node tooling/e2e/provision_user.mjs
       - name: The native leg — first run, sign in, the list offline, sign out
+        id: proof
         if: matrix.target != 'linux'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" $CALLBACK
+        # why: --expect-refusal (ADR no.NNN, lead ruling 2026-09-30): production
+        # serves native sign-in only to a VERIFIED attestation, and a CI device
+        # cannot attest, so this leg now proves the gate: every call such a build
+        # sends is refused and no session comes back. A 2xx is the leg's red.
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" --log "$E2E_PROOF_LOG" $CALLBACK --expect-refusal
       - name: The native leg — the bundle under xvfb, one D-Bus session
+        id: proof_linux
         if: matrix.target == 'linux'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -814,12 +832,17 @@ jobs:
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
         run: |
+          # why: no display and no keyring in refusal mode — the probe never opens the bundle.
+          if [ "$PROOF_NEEDS_DEVICE" != true ]; then
+            node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal
+            exit
+          fi
           dbus-run-session -- bash -c '
             set -euo pipefail
             eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
             xvfb-run -a -s "-screen 0 1920x1200x24" \
-              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --callback
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal
           '
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
@@ -831,6 +854,8 @@ jobs:
           E2E_USER_ID: ${{ steps.user.outputs.user_id }}
           E2E_APP_ID: ${{ matrix.app }}
           PLATFORM_D1_DATABASE_ID: ${{ steps.backend.outputs.platform_db }}
+          # why: a missing proof log is "no row" only when neither proof step ran.
+          E2E_PROOF_RAN: ${{ steps.proof.outcome != 'skipped' || steps.proof_linux.outcome != 'skipped' }}
         run: node tooling/e2e/purge.mjs
 
   # why: THE RESET-REVOKES CHECK, ON A SCHEDULE, AGAINST BOX C (AB-A4-02).

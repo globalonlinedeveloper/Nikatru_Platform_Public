@@ -93,7 +93,10 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
     configured: cfg?.apiBaseUrl,
     define: AppConfig.apiBaseUrl,
   );
-  return cachedApiClientOver(
+  // The client itself is needed inside its own 401 handler (to drop its copy
+  // on that sign-out path); `late` because the handler runs only after it exists.
+  late final ApiClient client;
+  return client = cachedApiClientOver(
     DioApiClient(
       baseUrl: baseUrl,
       tokenProvider: ref.watch(authTokenProvider),
@@ -104,8 +107,12 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
       // "Check your connection" forever. The SAME decision the chassis client
       // makes (`restClientProvider`): a token that merely expired while offline
       // is not a signed-out user. `read` inside the closure, never `watch`.
-      onUnauthorized: () =>
-          signOutOnlyIfSessionIsGone(ref.read(authRepositoryProvider)),
+      onUnauthorized: () => signOutOnlyIfSessionIsGone(
+        ref.read(authRepositoryProvider),
+        onSignedOut: () async {
+          if (client is CachedApiClient) await client.forgetCache();
+        },
+      ),
       // ST-C1: a currency-less row is read in the user's currency, asked at
       // decode time. `read` inside the closure, not `watch` here: a currency
       // change must not rebuild the client and drop its cache.

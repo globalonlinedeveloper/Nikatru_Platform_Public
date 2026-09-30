@@ -296,8 +296,12 @@
      Every substitution is an integer this product computed; nothing from the
      captured page reaches this string, and it lands in textContent regardless. */
   function actsLine(r) {
-    const a = (r && r.acts) || {};
-    if (r && r.requested === false) return null;
+    /* One defensive read, not two: the only caller passes redactionOf(s), which
+       never returns a falsy value, so a second `r &&` was always true (CodeQL
+       js/trivial-conditional). Same result for every input, a missing r included. */
+    const rec = r || {};
+    const a = rec.acts || {};
+    if (rec.requested === false) return null;
     if (a.ledger === 'absent') {
       return fsMessage('redactActsNoLedger', null,
         'This record carries no account of a redaction pass on this capture.');

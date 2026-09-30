@@ -118,7 +118,32 @@ describe('the gate (AB-M5-02)', () => {
     });
     const r = run(root, '--for-submission=ios-appstore');
     assert.equal(r.code, 1, r.all);
-    assert.match(r.err, /it is null, or the enrolment date/);
+    assert.match(r.err, /it is null, or the enrolment APPROVAL date/);
+  });
+
+  // #1072 review: the net sheet used to accept these two while this gate refused them.
+  test('an ISO instant is exit 1: the value is a plain date, and render-rail-prices judges it by the same check', () => {
+    const root = fixture((c) => {
+      c.value = '2026-09-28T00:00:00Z';
+    });
+    const r = run(root, '--for-submission=ios-appstore', '--real-submission');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /value is "2026-09-28T00:00:00Z"; it is null, or the enrolment APPROVAL date .*plain calendar date/);
+  });
+
+  test('a date that is not on the calendar is exit 1', () => {
+    const root = fixture((c) => {
+      c.value = '2026-02-30';
+    });
+    const r = run(root, '--for-submission=ios-appstore', '--real-submission');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /value is "2026-02-30"/);
+  });
+
+  test('the fee register cell says the value is the APPROVAL date, and quotes the rule that makes it so', () => {
+    const c = readRealCell();
+    assert.match(c.verify, /the day Apple APPROVED the enrolment/);
+    assert.match(c.quote, /fifteen \(15\) days after the end of the fiscal calendar month in which your enrollment is approved/);
   });
 
   test('a cell with no verify is exit 1', () => {

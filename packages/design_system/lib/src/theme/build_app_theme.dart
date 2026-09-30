@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/app_colors.dart';
+import '../tokens/app_palette.dart';
 import '../tokens/app_type_ramp.dart';
 import 'app_theme_x.dart';
 
@@ -45,6 +46,7 @@ ThemeData buildAppTheme({
     scheme: scheme,
     brightness: brightness,
     tokens: AppThemeX.fromScheme(scheme, brightness: brightness),
+    seed: seed,
     scaffoldBackground: scheme.surface,
     ink: scheme.onSurface,
     divider: scheme.outlineVariant,
@@ -58,6 +60,7 @@ ThemeData _themeFrom({
   required ColorScheme scheme,
   required Brightness brightness,
   required AppThemeX tokens,
+  required Color seed,
   required Color scaffoldBackground,
   required Color ink,
   required Color divider,
@@ -122,7 +125,14 @@ ThemeData _themeFrom({
     ),
     splashFactory: InkRipple.splashFactory,
     dividerColor: divider,
-    extensions: <ThemeExtension<dynamic>>[tokens],
+    // [AppPalette] beside the tokens (ST-D0 D0-2): the brightness-resolved
+    // neutrals, the contrast-aware accent ink and control boundary, and the
+    // DTCG status pairs — so `AppPalette.of` reads what the theme was built
+    // from rather than re-deriving it per widget.
+    extensions: <ThemeExtension<dynamic>>[
+      tokens,
+      AppPalette.fromScheme(scheme, seed: seed),
+    ],
   );
 }
 
@@ -165,12 +175,13 @@ class AppTheme {
           seedColor: AppColors.accent,
           primary: AppColors.accent,
           secondary: AppColors.accent2,
-          surface: AppColors.surface,
+          surface: AppPalette.lightSurface,
         ),
         tokens: AppThemeX.light,
-        scaffoldBackground: AppColors.bg,
-        ink: AppColors.ink,
-        divider: AppColors.line,
+        seed: AppColors.accent,
+        scaffoldBackground: AppPalette.lightBg,
+        ink: AppPalette.lightInk,
+        divider: AppPalette.lightLine,
       );
 
   /// Dark counterpart, from the same pinned tokens.
@@ -183,6 +194,7 @@ class AppTheme {
           secondary: AppColors.accent,
         ),
         tokens: AppThemeX.dark,
+        seed: AppColors.accent,
         scaffoldBackground: AppColors.onboardBg,
         ink: const Color(0xFFF4F4F8),
         divider: const Color(0xFF2A2A38),

@@ -1788,7 +1788,7 @@ class _Toggle extends StatelessWidget {
             width: 46,
             height: 28,
             decoration: BoxDecoration(
-              color: value ? AppColors.accent : const Color(0xFFE2E2EA),
+              color: value ? AppColors.accent : AppPalette.of(context).control,
               borderRadius: BorderRadius.circular(999),
             ),
             child: AnimatedAlign(
