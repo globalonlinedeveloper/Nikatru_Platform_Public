@@ -18,9 +18,11 @@ import {
   readProof,
   REFUSAL_STEPS,
   gradeRefusal,
+  runRefusalLeg,
 } from '../../e2e/native_auth_proof.mjs';
 import { jobEnv, parseWorkflow, workflowSteps } from '../workflow-scan.mjs';
 
+const END = 'NK_PROOF_LOG_END';
 const REPO = join(import.meta.dirname, '..', '..', '..');
 
 const GREEN = [
@@ -179,6 +181,34 @@ describe('native_auth_proof --expect-refusal — the leg proves the gate', () =>
     assert.equal(seen.filter((s) => s.url.endsWith('/attest/challenge')).length, REFUSAL_STEPS.filter((x) => x.kind).length);
     assert.ok(seen.some((s) => s.url === 'https://platform.test/v1/auth/native/demoapp/token?grant_type=password' && s.kind === 'install-key'));
     assert.ok(seen.some((s) => s.url === 'https://platform.test/v1/auth/native/demoapp/signup' && s.kind === null));
+  });
+
+  // Third review of #1070: the purge after a proof step reads its log, and a log
+  // with no end marker is UNRESOLVED — so every exit of the leg must finish it.
+  test('every exit of the refusal leg FINISHES the proof log — 0, 1, and both 2s', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'nk-refusal-log-'));
+    const quiet = { log() {}, error() {} };
+    const leg = async (name, { env = { E2E_EMAIL: 'e', E2E_PASSWORD: 'p' }, probe }) => {
+      const log = join(dir, `${name}.log`);
+      writeFileSync(log, 'native_auth_proof: demoapp/android — flutter test output follows\n');
+      const code = await runRefusalLeg({ app: 'demoapp', target: 'android' }, { log, logEnd: END, env, probe, egress: async () => {}, out: quiet });
+      return { code, text: readFileSync(log, 'utf8') };
+    };
+    const cases = [
+      ['held', 0, { probe: async () => refused(401, 'attestation_required') }],
+      ['open', 1, { probe: async () => refused(200, undefined) }],
+      ['env', 2, { env: {}, probe: async () => assert.fail('probed without credentials') }],
+      ['unreachable', 2, { probe: async () => { throw new Error('ECONNRESET'); } }],
+    ];
+    for (const [name, want, opts] of cases) {
+      const { code, text } = await leg(name, opts);
+      assert.equal(code, want, name);
+      assert.match(text, new RegExp(`\\n${END} flutter_exit=none mode=expect-refusal exit=${want}`), `${name}: the log is not finished`);
+    }
+  });
+
+  test('🔴 RED CONTROL: a log without its end marker is refused up front', async () => {
+    await assert.rejects(runRefusalLeg({ app: 'demoapp', target: 'android' }, { log: join(tmpdir(), 'never.log') }), /needs its end marker/);
   });
 
   test('WORKFLOW-SCAN: every native leg in e2e.yml and native-auth-proof.yml runs the driver with --expect-refusal', () => {

@@ -179,7 +179,7 @@
   "msix-visual-name.test.mjs": 14,
   "mutation-proofs.test.mjs": 32,
   "name-clearance.test.mjs": 39,
-  "native-auth-proof.test.mjs": 25,
+  "native-auth-proof.test.mjs": 27,
   "native-symbol-upload.test.mjs": 25,
   "new-product-plan.test.mjs": 41,
   "new-tool-chain.test.mjs": 12,

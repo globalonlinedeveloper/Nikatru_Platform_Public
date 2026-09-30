@@ -54,7 +54,7 @@
 // run could not start (bad arguments, a missing define).
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -156,6 +156,44 @@ export async function probeRefusals(app, { email, password, doFetch = fetch, ori
     answers.push({ step, status: res.status, body: await read(res) });
   }
   return answers;
+}
+
+/**
+ * IMPURE. The whole --expect-refusal leg: probe, grade, print. Returns the exit
+ * code — 0 the gate held, 1 it did not, 2 the leg could not run. With [log] it
+ * FINISHES the proof log with [logEnd] on every one of those exits: the leg
+ * starts no app, so no consent prompt was answered, and the purge after it must
+ * read a finished log as "no row" rather than a cut-off one as unresolved.
+ */
+export async function runRefusalLeg(o, { log = null, logEnd = null, env = process.env, probe = probeRefusals, egress = printEgressIp, out = console } = {}) {
+  if (log && !logEnd) throw new Error('runRefusalLeg: a log needs its end marker');
+  const finish = (code, refused) => {
+    if (log) appendFileSync(log, `\n${logEnd} flutter_exit=none mode=expect-refusal exit=${code}${refused ? ` refused=${refused}` : ''}\n`);
+    return code;
+  };
+  for (const k of ['E2E_EMAIL', 'E2E_PASSWORD']) {
+    if (!env[k]) {
+      out.error(`${NAME}: missing env ${k} — the refusal probe sends the provisioned user's credentials`);
+      return finish(2, 'env');
+    }
+  }
+  await egress();
+  let answers;
+  try {
+    answers = await probe(o.app, { email: env.E2E_EMAIL, password: env.E2E_PASSWORD });
+  } catch (e) {
+    out.error(`${NAME}: the native route could not be reached (${e?.message ?? e})`);
+    return finish(2, 'unreachable');
+  }
+  for (const a of answers) out.log(`NK_PROOF step=${a.step} answer=${a.status}/${a.body?.error_code ?? '-'}`);
+  const problems = gradeRefusal(answers);
+  if (problems.length) {
+    for (const p of problems) out.error(`FAIL ${p}`);
+    out.error(`${NAME}: ${o.app}/${o.target} FAILED — the native route did not refuse a build that cannot attest`);
+    return finish(1);
+  }
+  out.log(`${NAME}: ${o.app}/${o.target} OK — every call a build that cannot attest sends was refused, and no session came back (ADR no.NNN)`);
+  return finish(0);
 }
 
 /** Does [app]'s proof suite declare the offline read? Read comment-stripped:
@@ -300,28 +338,8 @@ async function main() {
     process.exit(2);
   }
   if (o.expectRefusal) {
-    for (const k of ['E2E_EMAIL', 'E2E_PASSWORD']) {
-      if (!process.env[k]) {
-        console.error(`${NAME}: missing env ${k} — the refusal probe sends the provisioned user's credentials`);
-        process.exit(2);
-      }
-    }
-    await printEgressIp();
-    let answers;
-    try {
-      answers = await probeRefusals(o.app, { email: process.env.E2E_EMAIL, password: process.env.E2E_PASSWORD });
-    } catch (e) {
-      console.error(`${NAME}: the native route could not be reached (${e?.message ?? e})`);
-      process.exit(2);
-    }
-    for (const a of answers) console.log(`NK_PROOF step=${a.step} answer=${a.status}/${a.body?.error_code ?? '-'}`);
-    const problems = gradeRefusal(answers);
-    if (problems.length) {
-      for (const p of problems) console.error(`FAIL ${p}`);
-      console.error(`${NAME}: ${o.app}/${o.target} FAILED — the native route did not refuse a build that cannot attest`);
-      process.exit(1);
-    }
-    console.log(`${NAME}: ${o.app}/${o.target} OK — every call a build that cannot attest sends was refused, and no session came back (ADR no.NNN)`);
+    const code = await runRefusalLeg(o);
+    if (code !== 0) process.exit(code);
     return;
   }
   const defines = ['E2E_EMAIL', 'E2E_PASSWORD', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'API_BASE_URL'];
