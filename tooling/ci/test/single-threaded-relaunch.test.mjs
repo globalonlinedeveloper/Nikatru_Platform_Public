@@ -551,3 +551,40 @@ describe('the extensions gate self-test starts every node child single-threaded 
     assert.deepEqual(bad, [], bad.join('\n'));
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-29 · EXL-03 · THE RENDERER REMOVES THE SECOND PARTY ITSELF.
+// O-EXTENSIONS-CATALOGUE-HUNG-PAST-ITS-CAP was answered twice at a CALLER: E1/E2
+// put the catalogue step on `node --single-threaded`, S1/S2 put the self-test's
+// children on it. scripts/new-tool.mjs is a third caller and runs
+// `render-extension-graphics --check` with a bare process.execPath, so the fix had
+// not reached every way the program is started. The DIAGNOSIS, from a live hung
+// process (node 22.22.2, `--stress-concurrent-allocation`, gdb `thread apply all
+// bt`): the main thread is in process.exit -> Environment::Exit ->
+// NodePlatform::Shutdown -> WorkerThreadsTaskRunner::Shutdown -> pthread_join on a
+// platform worker, and that worker is in a V8 background task parked in
+// CollectionBarrier::AwaitCollectionBackground — waiting for a main-thread GC that
+// an exiting main thread never runs. So the program now relaunches itself with the
+// flag (the shared helper above), and says so in its report.
+//
+//   G1 started the way new-tool.mjs starts it — no flag — it still does its work with
+//      V8 background tasks OFF, and exits 0 on the committed tree.
+//
+// Mutation run 2026-09-29 (prediction written first): the relaunch block removed
+// from render-extension-graphics.mjs → G1 RED (no `V8 background tasks: OFF` line).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the listing-graphics renderer runs single-threaded whoever starts it (EXL-03)', () => {
+  const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+  const RENDER = join(REPO_ROOT, 'extensions', 'scripts', 'render-extension-graphics.mjs');
+
+  test('G1 a bare `node render-extension-graphics.mjs --all --check` works with V8 background tasks OFF', () => {
+    const r = spawnSync(process.execPath, [RENDER, '--all', '--check'], {
+      cwd: join(REPO_ROOT, 'extensions'), encoding: 'utf8', timeout: 120000,
+    });
+    const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+    assert.notEqual(r.status, null, `the renderer did not exit within 120 s (signal ${r.signal}):\n${out}`);
+    assert.equal(r.status, 0, `the renderer exited ${r.status} on the committed tree:\n${out}`);
+    assert.match(out, /V8 background tasks: OFF \(--single-threaded\)/,
+      `started without the flag, the renderer did its work with V8 background tasks ON (nodejs/node#54918):\n${out}`);
+  });
+});

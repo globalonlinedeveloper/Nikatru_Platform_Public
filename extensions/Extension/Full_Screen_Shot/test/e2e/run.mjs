@@ -9,8 +9,14 @@
    Setup (once):   cd test/e2e && npm install && npx playwright install chromium
    Run:            npm test          (headless)
                    HEADFUL=1 npm test  (watch it happen)
+                   FS_E2E_ONLY=appshell npm test   (one block; see BLOCKS)
+                   FS_E2E_CHANNEL=msedge|chrome   (a branded build; channel-lib.mjs)
+
+   The branded leg of extensions.yml runs this suite for ONE capture, with the
+   setting on the next line (the line is what opts it in; see channel-lib.mjs):
+   e2e-branded: FS_E2E_ONLY=appshell
 */
-import { chromium } from 'playwright';
+import { launchWithExtension } from './channel-lib.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -272,28 +278,48 @@ function prepareTestExtension() {
   return tmp;
 }
 
+/* ---------- which blocks run (EXB-12) ----------
+   FS_E2E_ONLY=appshell,torture runs only those blocks; unset runs all of them,
+   exactly as before. The branded leg in extensions.yml runs ONE capture this
+   way, on Edge and on Chrome. A name no block carries is COVERAGE LOST rather
+   than a quiet no-op, and so is a filter that ran nothing: zero blocks green
+   is not a pass. */
+const BLOCKS = ['appshell', 'torture', 'virtualunroll', 'interactive', 'multicarousel', 'lazyimage', 'lazyfooter', 'overlay', 'loadmore', 'infinitescroll', 'skeleton', 'redact'];
+const ONLY = (process.env.FS_E2E_ONLY || '').split(',').map(x => x.trim()).filter(Boolean);
+{
+  const unknown = ONLY.filter(n => !BLOCKS.includes(n));
+  if (unknown.length) {
+    console.log('COVERAGE LOST — FS_E2E_ONLY names ' + unknown.join(', ') + ', which no block in run.mjs carries (' + BLOCKS.join(' ') + ')');
+    process.exit(2);
+  }
+}
+const ran = [];
+const want = name => { const on = !ONLY.length || ONLY.includes(name); if (on) ran.push(name); return on; };
+
 /* ---------- main ---------- */
 (async () => {
   const srv = await serve(EXT_DIR, PORT);
   const TEST_EXT = prepareTestExtension();
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fullshot-e2e-'));
-  const ctx = await chromium.launchPersistentContext(userDataDir, {
-    channel: 'chromium',
-    headless: !process.env.HEADFUL,
-    viewport: { width: 1280, height: 800 },
-    args: [
-      '--disable-extensions-except=' + TEST_EXT,
-      '--load-extension=' + TEST_EXT
-    ]
-  });
+  let launched;
+  try {
+    launched = await launchWithExtension(TEST_EXT, {
+      userDataDir,
+      headless: !process.env.HEADFUL,
+      viewport: { width: 1280, height: 800 }
+    });
+  } catch (e) {
+    console.log('COVERAGE LOST — the extension never started, so no capture was measured: ' + (e && e.message || e));
+    srv.close();
+    process.exit(2);
+  }
+  const { ctx, sw } = launched;
 
   try {
-    let [sw] = ctx.serviceWorkers();
-    if (!sw) sw = await ctx.waitForEvent('serviceworker', { timeout: 20000 });
     check('extension service worker started', !!sw, sw && sw.url());
 
     /* ---- app shell: the internal-scroll case ---- */
-    try {
+    if (want('appshell')) try {
       const { img, boardText } = await capture(ctx, sw, 'appshell',
         'http://localhost:' + PORT + '/test/appshell.html');
       check('appshell scoreboard: ALL PASS', boardText.includes('ALL PASS'),
@@ -314,7 +340,7 @@ function prepareTestExtension() {
     }
 
     /* ---- torture page: shadow rail, iframes, walk budget ---- */
-    try {
+    if (want('torture')) try {
       const { img, boardText } = await capture(ctx, sw, 'torture',
         'http://localhost:' + PORT + '/test/torture.html');
       check('torture scoreboard: ALL PASS', boardText.includes('ALL PASS'),
@@ -334,7 +360,7 @@ function prepareTestExtension() {
     }
 
     /* ---- embedded virtualized list: inline unroll (v1.6.1, opt-in unrollVirtual) ---- */
-    try {
+    if (want('virtualunroll')) try {
       await setSettings(sw, { unrollVirtual: true });
       const { img, boardText } = await capture(ctx, sw, 'virtualunroll',
         'http://localhost:' + PORT + '/test/virtuallist-e2e.html');
@@ -354,7 +380,7 @@ function prepareTestExtension() {
     }
 
     /* ---- interaction-gated content: expand-everything reveal (v1.6.2, opt-in expandInteractive) ---- */
-    try {
+    if (want('interactive')) try {
       await setSettings(sw, { expandInteractive: true });
       const { img, boardText } = await capture(ctx, sw, 'interactive',
         'http://localhost:' + PORT + '/test/interactive-e2e.html');
@@ -376,7 +402,7 @@ function prepareTestExtension() {
     }
 
     /* ---- multi-carousel page: merged-right must NOT misfire (v1.6.3) ---- */
-    try {
+    if (want('multicarousel')) try {
       await setSettings(sw, { unrollVirtual: false, expandInteractive: false });
       const { img, boardText } = await capture(ctx, sw, 'multicarousel',
         'http://localhost:' + PORT + '/test/multicarousel-e2e.html');
@@ -397,7 +423,7 @@ function prepareTestExtension() {
     }
 
     /* ---- late/lazy image must not capture black (v1.6.4 adaptive decode) ---- */
-    try {
+    if (want('lazyimage')) try {
       const { img, boardText } = await capture(ctx, sw, 'lazyimage',
         'http://localhost:' + PORT + '/test/lazyimage-e2e.html');
       check('lazyimage scoreboard: ALL PASS', boardText.includes('ALL PASS'),
@@ -418,7 +444,7 @@ function prepareTestExtension() {
     }
 
     /* ---- lazy footer must not be truncated (v1.6.5 adaptive bottom re-measure) ---- */
-    try {
+    if (want('lazyfooter')) try {
       const { img, boardText } = await capture(ctx, sw, 'lazyfooter',
         'http://localhost:' + PORT + '/test/lazyfooter-e2e.html');
       check('lazyfooter scoreboard: ALL PASS', boardText.includes('ALL PASS'),
@@ -437,7 +463,7 @@ function prepareTestExtension() {
     }
 
     /* ---- scroll-lock + consent/modal overlays (v1.6.6 hide distractions) ---- */
-    try {
+    if (want('overlay')) try {
       await setSettings(sw, { hideOverlays: true });
       const { img, boardText } = await capture(ctx, sw, 'overlay',
         'http://localhost:' + PORT + '/test/overlay-e2e.html');
@@ -459,7 +485,7 @@ function prepareTestExtension() {
     }
 
     /* ---- network "load more" button: click-then-wait-for-append (v1.6.11, opt-in loadMore) ---- */
-    try {
+    if (want('loadmore')) try {
       await setSettings(sw, { loadMore: true });
       const { img, boardText } = await capture(ctx, sw, 'loadmore',
         'http://localhost:' + PORT + '/test/loadmore-e2e.html');
@@ -481,7 +507,7 @@ function prepareTestExtension() {
     }
 
     /* ---- infinite-scroll feed, no button: scroll-until-stable (v1.6.12, opt-in infiniteScroll) ---- */
-    try {
+    if (want('infinitescroll')) try {
       await setSettings(sw, { infiniteScroll: true });
       const { img, boardText } = await capture(ctx, sw, 'infinitescroll',
         'http://localhost:' + PORT + '/test/infinitescroll-e2e.html');
@@ -501,7 +527,7 @@ function prepareTestExtension() {
     }
 
     /* ---- skeleton -> data mid-page swap: wait-for-DOM-stability (v1.6.13, opt-in waitStable) ---- */
-    try {
+    if (want('skeleton')) try {
       await setSettings(sw, { waitStable: true });
       const { img, boardText } = await capture(ctx, sw, 'skeleton',
         'http://localhost:' + PORT + '/test/skeleton-e2e.html');
@@ -524,7 +550,7 @@ function prepareTestExtension() {
 
     /* ---- auto-redact PII (v1.7.0, opt-in redactPII; graded against a
        redactPII-OFF baseline \u2014 see the diff helpers above) ---- */
-    try {
+    if (want('redact')) try {
       /* The baseline is the same page, same viewport, captured with the feature
          off. It is what makes the rest of this block state what redaction DID
          rather than guess at absolute pixel counts. Two independent runs of
@@ -652,6 +678,11 @@ function prepareTestExtension() {
     srv.close();
   }
 
+  if (!ran.length) {
+    console.log('COVERAGE LOST — no capture block ran (FS_E2E_ONLY=' + (process.env.FS_E2E_ONLY || '') + ')');
+    process.exit(2);
+  }
+  console.log('\nblocks run: ' + ran.join(' '));
   console.log('\n' + (FAILS ? 'FAILURES: ' + FAILS : 'ALL PASS'));
   process.exit(FAILS ? 1 : 0);
 })();

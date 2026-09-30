@@ -437,6 +437,12 @@
   "optionsAutoOpenEditorDesc": {
     "message": "곧장 주석 작업으로 넘어갑니다(한 장짜리 캡처만)."
   },
+  "optionsSingleKeyShortcuts": {
+    "message": "Single-key shortcuts in the editor"
+  },
+  "optionsSingleKeyShortcutsDesc": {
+    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+  },
   "optionsTheme": {
     "message": "테마"
   },
@@ -459,13 +465,16 @@
     "message": "전체 페이지: $KEYFULL$ · 보이는 영역: $KEYVISIBLE$. $URL$에서 바꿀 수 있습니다",
     "placeholders": {
       "keyfull": {
-        "content": "Alt+Shift+P"
+        "content": "$1",
+        "example": "Alt+Shift+P"
       },
       "keyvisible": {
-        "content": "Alt+Shift+V"
+        "content": "$2",
+        "example": "Alt+Shift+V"
       },
       "url": {
-        "content": "chrome://extensions/shortcuts"
+        "content": "$3",
+        "example": "chrome://extensions/shortcuts"
       }
     }
   },
@@ -1207,6 +1216,39 @@
   "editorZoomFit": {
     "message": "맞춤"
   },
+  "editorZoomLevelName": {
+    "message": "$PERCENT$ zoom",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "100%"
+      }
+    }
+  },
+  "editorColorRed": {
+    "message": "Red"
+  },
+  "editorColorAmber": {
+    "message": "Amber"
+  },
+  "editorColorGreen": {
+    "message": "Green"
+  },
+  "editorColorBlue": {
+    "message": "Blue"
+  },
+  "editorColorViolet": {
+    "message": "Violet"
+  },
+  "editorColorPink": {
+    "message": "Pink"
+  },
+  "editorColorBlack": {
+    "message": "Black"
+  },
+  "editorColorWhite": {
+    "message": "White"
+  },
   "editorZoomTipToHundred": {
     "message": "창에 맞춤 – 클릭하면 100%"
   },
@@ -1872,6 +1914,14 @@
     "placeholders": {
       "esc": {
         "content": "Esc"
+      }
+    }
+  },
+  "regionHintEnter": {
+    "message": "$ENTER$ captures the whole visible area",
+    "placeholders": {
+      "enter": {
+        "content": "Enter"
       }
     }
   },
