@@ -13,7 +13,7 @@
   "android-target-sdk.test.mjs": 34,
   "android-vapt-manifest.test.mjs": 49,
   "app-address-shape.test.mjs": 32,
-  "app-dod.test.mjs": 32,
+  "app-dod.test.mjs": 38,
   "app-id-contract.test.mjs": 13,
   "app-licence-rows.test.mjs": 19,
   "app-naming.test.mjs": 30,

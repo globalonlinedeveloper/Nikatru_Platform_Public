@@ -108,7 +108,27 @@
 // selection fields) have no real instance in the tree and are exercised by
 // fixture only. The passing line says so out loud, every run.
 //
-// Usage:  node tooling/ci/assert-app-dod.mjs [repoRoot]
+// ⏱ 2026-09-30 — A PULL REQUEST IS GRADED AGAINST THE DATE IT WILL MERGE.
+// #1066's PR CI was green: its commits were dated 2026-09-29, the same day as
+// the brick's `edit profile` mutation record. Its SQUASH merge landed at 02:51Z
+// on 2026-09-30, so on main the probed file "last changed 2026-09-30", after its
+// record — main went red here and every PR went red with it. The expiry clause
+// was right on main; PR CI had graded a date the merge was about to replace.
+// So on a `pull_request` run (GITHUB_EVENT_NAME, the files from the merge commit
+// actions/checkout builds — `proposalChangedFiles`, the reading
+// assert-ops-register.mjs already makes), or with `--merge-date`, every file the
+// PR changes the CODE of "last changed" on the merge day: today in UTC, or the
+// given date. Files it does not touch keep their git date. A PR that edits a
+// probed file therefore fails HERE with the message main would give, plus the
+// instruction to re-run the proof in this PR. Which files a PR touches is
+// COVERAGE LOST when git cannot establish it: grading the commit dates instead
+// is the exact hole this closes.
+//
+// Usage:  node tooling/ci/assert-app-dod.mjs [repoRoot] [--require-stamped]
+//                                            [--merge-date YYYY-MM-DD [--base <ref>]]
+//   --merge-date  grade as if merging on that UTC day. Outside a pull_request
+//                 run the touched files are `merge-base(<base>, HEAD)..HEAD`,
+//                 <base> defaulting to origin/main.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -117,8 +137,17 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { parseWorkflow, workflowEvents } from './workflow-scan.mjs';
 import { stripDartComments, blankDartStrings } from './dart-source.mjs';
+import { proposalChangedFiles } from './assert-ops-register.mjs';
 
-const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+/** Positional root plus flags, so `--merge-date X` is never read as a root. */
+const argv = process.argv.slice(2);
+const VALUED = new Set(['--merge-date', '--base']);
+const flagValue = (name) => {
+  const at = argv.indexOf(name);
+  return at === -1 ? undefined : argv[at + 1];
+};
+const positional = argv.filter((a, i) => !a.startsWith('--') && !VALUED.has(argv[i - 1]));
+const ROOT = resolve(positional[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
 // ── PHASE 5 · MEASURED 2026-08-12 BY READING THE RECORD RATHER THAN RUNNING
 //    THIS GUARD. What is left before the exemption drops. (Tree: main @ 981481c.)
@@ -642,8 +671,8 @@ function lastCommitDay(relPath) {
  *
  * Shallow clones cannot reach this: `isShallow` is COVERAGE LOST below, so the
  * walk is never asked to reason about a truncated history. */
-function lastCodeChangeDay(relPath) {
-  const log = spawnSync('git', ['-C', ROOT, 'log', '--format=%H%x09%cI', '--', relPath], { encoding: 'utf8' });
+function lastCodeChangeDay(relPath, rev = 'HEAD') {
+  const log = spawnSync('git', ['-C', ROOT, 'log', '--format=%H%x09%cI', rev, '--', relPath], { encoding: 'utf8' });
   if (log.status !== 0) return null;
   const versions = log.stdout
     .trim()
@@ -657,36 +686,94 @@ function lastCodeChangeDay(relPath) {
   if (versions.length === 0) return null;
   if (!relPath.endsWith('.dart')) return versions[0].day;
 
-  /** The file's code at one commit, with comment prose gone. `stripDartComments`
-   *  is length-preserving, so a blanked `//` comment becomes trailing spaces and
-   *  a blanked doc-comment line becomes a blank line — hence the rtrim and the
-   *  empty-line drop, and NOTHING else is collapsed. Whitespace inside a string
-   *  literal is untouched, so `'a  b'` -> `'a b'` is still a change. */
-  const codeAt = (sha) => {
-    const blob = spawnSync('git', ['-C', ROOT, 'show', `${sha}:${relPath}`], {
-      encoding: 'utf8',
-      maxBuffer: 1 << 28,
-    });
-    // Added here, renamed into place, or unreadable: all three are a change, and
-    // returning null makes the walk stop rather than step over something unseen.
-    if (blob.status !== 0) return null;
-    return stripDartComments(blob.stdout)
-      .split('\n')
-      .map((l) => l.replace(/\s+$/, ''))
-      .filter((l) => l !== '')
-      .join('\n');
-  };
-
-  let newer = codeAt(versions[0].sha);
+  let newer = dartCodeAt(versions[0].sha, relPath);
   if (newer === null) return versions[0].day;
   for (let k = 1; k < versions.length; k++) {
-    const older = codeAt(versions[k].sha);
+    const older = dartCodeAt(versions[k].sha, relPath);
     if (older === null || older !== newer) return versions[k - 1].day;
     newer = older;
   }
   // Every version this history holds has the same code: the file's own first
   // commit is the last time its code changed.
   return versions[versions.length - 1].day;
+}
+
+/** A .dart file's code at one commit, with comment prose gone. `stripDartComments`
+ *  is length-preserving, so a blanked `//` comment becomes trailing spaces and
+ *  a blanked doc-comment line becomes a blank line — hence the rtrim and the
+ *  empty-line drop, and NOTHING else is collapsed. Whitespace inside a string
+ *  literal is untouched, so `'a  b'` -> `'a b'` is still a change. */
+function dartCodeAt(sha, relPath) {
+  const blob = spawnSync('git', ['-C', ROOT, 'show', `${sha}:${relPath}`], {
+    encoding: 'utf8',
+    maxBuffer: 1 << 28,
+  });
+  // Added here, renamed into place, or unreadable: all three are a change, and
+  // returning null makes the walk stop rather than step over something unseen.
+  if (blob.status !== 0) return null;
+  return stripDartComments(blob.stdout)
+    .split('\n')
+    .map((l) => l.replace(/\s+$/, ''))
+    .filter((l) => l !== '')
+    .join('\n');
+}
+
+// ── MERGE MODE (⏱ 2026-09-30, see the header) ────────────────────────────────
+const git = (args) => spawnSync('git', ['-C', ROOT, ...args], { encoding: 'utf8', timeout: 30_000, maxBuffer: 64 * 1024 * 1024 });
+const isPullRequest = process.env.GITHUB_EVENT_NAME === 'pull_request';
+const mergeDateArg = flagValue('--merge-date');
+if (argv.includes('--merge-date')) {
+  const ok = typeof mergeDateArg === 'string' && DATE_RE.test(mergeDateArg) &&
+    new Date(`${mergeDateArg}T00:00:00Z`).toISOString().slice(0, 10) === mergeDateArg;
+  if (!ok) {
+    coverageLost([
+      `--merge-date ${JSON.stringify(mergeDateArg ?? null)} is not a real YYYY-MM-DD calendar day.`,
+      'The flag names the UTC day a merge will carry; a date this guard cannot read would grade every touched file against nothing.',
+    ]);
+  }
+}
+/** Null outside merge mode. Otherwise the day the merge will carry, the commit
+ *  the PR is based on, the commit it proposes, and the files it changes. */
+let merge = null;
+if (isPullRequest || mergeDateArg !== undefined) {
+  // UTC, never a bare local date: "now" and a git date must be on one calendar.
+  const day = mergeDateArg ?? new Date().toISOString().slice(0, 10);
+  let changed;
+  if (isPullRequest) {
+    changed = proposalChangedFiles(process.env, git);
+  } else {
+    const baseRef = flagValue('--base') ?? 'origin/main';
+    const mb = git(['merge-base', baseRef, 'HEAD']);
+    const first = mb.status === 0 ? mb.stdout.trim() : '';
+    const diff = first ? git(['diff', '--name-only', '--no-renames', '-z', first, 'HEAD']) : null;
+    changed = diff?.status === 0
+      ? { known: true, first, head: 'HEAD', files: diff.stdout.split('\0').filter(Boolean) }
+      : { known: false, why: first ? `\`git diff ${first.slice(0, 8)} HEAD\` failed` : `\`git merge-base ${baseRef} HEAD\` found no common commit` };
+  }
+  if (!changed.known) {
+    coverageLost([
+      `merge mode (${isPullRequest ? 'a pull_request run' : `--merge-date ${day}`}) could not establish which files this change touches: ${changed.why}.`,
+      'Every touched file must be graded as last changed on the merge day. Falling back to the commit dates is',
+      'exactly how #1066 passed PR CI and turned main red once its squash merge re-dated the probed file.',
+    ]);
+  }
+  merge = { day, base: changed.first, head: changed.head, touched: new Set(changed.files) };
+}
+
+/** `lastCodeChangeDay`, as main will read it once this change merges. A file the
+ *  change touches last changed on the merge day — unless it is Dart whose code is
+ *  identical at the base and the head (a comment-only edit, which main skips), in
+ *  which case the BASE's history answers, so the PR's own intermediate commits
+ *  cannot give an answer main never would. */
+function codeChangeDay(relPath) {
+  if (merge === null || !merge.touched.has(relPath)) return { day: lastCodeChangeDay(relPath), byMerge: false };
+  if (relPath.endsWith('.dart')) {
+    const before = dartCodeAt(merge.base, relPath);
+    if (before !== null && before === dartCodeAt(merge.head, relPath)) {
+      return { day: lastCodeChangeDay(relPath, merge.base), byMerge: false };
+    }
+  }
+  return { day: merge.day, byMerge: true };
 }
 
 /** Every Dart file under the app's own test trees — the files its test lane runs. */
@@ -924,11 +1011,14 @@ for (const appDir of domain) {
       // behaviour the mutation proved. See the long note on that function for
       // the measurement that forced it and for why the narrowing forgives
       // nothing a mutation proof could have noticed.
+      //
+      // ⏱ 2026-09-30 — `codeChangeDay`: in merge mode a file this change touches
+      // is dated as main will date it after the merge. See the header.
       let subject = effRel;
-      let day = lastCodeChangeDay(effRel);
+      let { day, byMerge } = codeChangeDay(effRel);
       if (day === null) {
         subject = `${BRICK_APP}/${effFile}`;
-        day = lastCodeChangeDay(subject);
+        ({ day, byMerge } = codeChangeDay(subject));
       }
       if (day === null) {
         unverifiable.push(`${at}: neither ${effRel} nor its brick source has any commit history, so the mutation record's freshness could not be established.`);
@@ -938,7 +1028,12 @@ for (const appDir of domain) {
             '(comment prose is ignored; every other byte counts). ' +
             'The record now describes code that is no longer there — re-run the mutation against what is ' +
             'in the tree today and re-date the row. This is what turns "proven once in a terminal" into a ' +
-            'state rather than an event.',
+            'state rather than an event.' +
+            (byMerge
+              ? ` THIS CHANGE edits that code, and ${day} (UTC) is the date its merge will carry, not the ` +
+                'date of its commits: the proof must be re-run AS PART OF THIS PR, and the row re-dated in it, ' +
+                'or main goes red the moment this merges.'
+              : ''),
         );
       }
     });
@@ -1055,6 +1150,12 @@ if (isShallow) {
   ]);
 }
 
+if (merge !== null) {
+  console.log(
+    `⏱ merge mode (${isPullRequest ? 'pull_request' : '--merge-date'}): the ${merge.touched.size} file(s) this change ` +
+      `touches are graded as last changed ${merge.day} (UTC), the date the merge will carry; every other file keeps its git date.`,
+  );
+}
 if (unverifiable.length) {
   console.log(`⬜ ${unverifiable.length} thing(s) this guard could NOT verify from the public repo, printed rather than implied:`);
   for (const u of unverifiable) console.log(`   · ${u}`);
