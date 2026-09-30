@@ -11,6 +11,9 @@
 //   0. the DPDP consent prompt is declined, its install id printed FIRST so
 //      tooling/e2e/purge.mjs removes the row it writes (run 36525783687);
 //   1. the REAL form signs the user in, and Home shows;
+//   1b. (AB-O1-05) a row written online is read back with the network off,
+//      from this target's own shared_preferences backend
+//      (offline_read_steps.dart), printed as NK_PROOF step=offline-read;
 //   2. sign-up with the (already registered) address and a reset for an
 //      unregistered one both answer WITHOUT `captcha_failed`, and neither sends
 //      mail — what GoTrue answered is printed as measured;
@@ -35,6 +38,8 @@ import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
+import 'package:subscriptiontracker/data/models/subscription.dart';
+import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
 import 'package:subscriptiontracker/features/auth/reset_password_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
@@ -42,6 +47,7 @@ import 'package:subscriptiontracker/main.dart' as app;
 import 'package:subscriptiontracker/state/providers.dart';
 
 import 'native_auth_proof_steps.dart';
+import 'offline_read_steps.dart';
 
 const String _email = String.fromEnvironment('E2E_EMAIL');
 const String _password = String.fromEnvironment('E2E_PASSWORD');
@@ -111,10 +117,37 @@ void main() {
       );
       debugPrint('NK_PROOF step=sign-in outcome=ok');
 
-      // 2 ── the other gated calls, answered without the captcha.
-      final core.AuthRepository auth = ProviderScope.containerOf(
+      final ProviderContainer container = ProviderScope.containerOf(
         tester.element(find.byType(HomeScreen).first),
-      ).read(authRepositoryProvider);
+      );
+
+      // 1b ── the list survives with the network off, on THIS target's store
+      // (AB-O1-05; offline_read_steps.dart). Online first, through the app's
+      // own client: one read so the device holds a list, then a row the live
+      // Worker accepts and the cache mirrors. Before sign-out, which clears it.
+      final String seeded =
+          'Offline proof ${DateTime.now().millisecondsSinceEpoch}';
+      await tester.runAsync(() async {
+        final SubscriptionRepository repo = container.read(
+          subscriptionRepositoryProvider,
+        );
+        await repo.fetchAll();
+        await repo.add(
+          Subscription(
+            id: '',
+            name: seeded,
+            category: 'AI tools',
+            price: const Money(100, 'USD'),
+            cycle: BillingCycle.monthly,
+            nextRenewal: DateTime.now().add(const Duration(days: 30)),
+          ),
+        );
+        await expectListSurvivesOffline(seeded);
+      });
+      debugPrint(kOfflineReadOkLine);
+
+      // 2 ── the other gated calls, answered without the captcha.
+      final core.AuthRepository auth = container.read(authRepositoryProvider);
       final int ts = DateTime.now().millisecondsSinceEpoch;
       final String signUp = await answerOf(
         () =>

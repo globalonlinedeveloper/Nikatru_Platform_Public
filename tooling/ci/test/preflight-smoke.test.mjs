@@ -26,7 +26,10 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSy
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { briefSweepOut, ciGateNeeds, notCiGateLine, smokeBudgetMs } from '../../scripts/preflight.mjs';
+import {
+  briefSweepOut, ciGateNeeds, notCiGateLine, smokeBudgetMs, smokeLeg, onPath,
+  CI_GATE_LEGS, NOT_REPRODUCIBLE, LEG_COMMANDS, SECURITY_SCANNERS, SMOKE_BUDGET_FLOOR_S,
+} from '../../scripts/preflight.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -179,7 +182,7 @@ describe('notCiGateLine — what this run did not cover, generated', () => {
 
   test('a full run names how many other legs it ran besides the guards', () => {
     const line = notCiGateLine({ needs: ['guards'], doc, besides: ['guard suites', 'format drift'] });
-    assert.match(line, /Besides guards this run ran 2 other leg\(s\); every build, upload and runner-only step of those jobs is CI's alone\.$/);
+    assert.match(line, /Besides guards this run ran 2 other leg\(s\); the CI-GATE COVERAGE lines above name the need each reaches, and every step of those jobs that no leg runs is CI's alone\.$/);
   });
 });
 
@@ -189,6 +192,12 @@ describe('notCiGateLine — what this run did not cover, generated', () => {
 // legs, and the verdict outside it threw a ReferenceError after six green legs.
 // So the verdict is exercised here, in a repository where every --fast leg can
 // be green.
+// ⏱ 2026-09-29 — the full run now refuses a ci.yml whose ci-gate needs are not
+// exactly CI_GATE_LEGS + NOT_REPRODUCIBLE (exit 2), and runs the node-only legs
+// in LEG_COMMANDS. So this fixture's ci-gate needs every need the table names,
+// read from the module under test, and every leg subject is a stand-in that
+// exits 0; the guard stand-ins in tooling/ci are invoked by the fixture's jobs,
+// or the sweep would list them UNREACHED.
 describe('the full run closes with the generated line, not "CI should agree."', () => {
   let root;
   const git = (...args) => {
@@ -208,24 +217,34 @@ describe('the full run closes with the generated line, not "CI should agree."', 
     put(root, 'tooling/ci/a-guard.mjs', "console.log('ok a'); process.exit(0);\n");
     put(root, 'tooling/ci/assert-sworn-store-files.mjs', "console.log('ok sworn'); process.exit(0);\n");
     put(root, 'tooling/scripts/backup-headroom.mjs', HEADROOM_STUB);
+    put(root, 'tooling/scripts/spawn-ceiling.mjs', 'export {};\n');
     put(root, 'tooling/ci/test/fixture.test.mjs', "import { test } from 'node:test';\ntest('fixture', () => {});\n");
+    // Every LEG_COMMANDS subject, as a stand-in that exits 0 (a directory gets one
+    // passing test file); prepare's stand-in prints an app list, as the real one does.
+    const ok = "console.log('ok'); process.exit(0);\n";
+    const guardSteps = { 'guard-meta': ['node tooling/ci/a-guard.mjs', 'node tooling/ci/assert-sworn-store-files.mjs'] };
+    for (const cmds of Object.values(LEG_COMMANDS)) {
+      for (const c of cmds) {
+        const rel = c.cwd === '.' ? c.subject : `${c.cwd}/${c.subject}`;
+        if (!/\.(mjs|js)$/.test(rel)) put(root, `${rel}/fixture.test.mjs`, "import { test } from 'node:test';\ntest('fixture', () => {});\n");
+        else put(root, rel, c.emitsApps ? "console.log('[\"fixture\"]'); process.exit(0);\n" : ok);
+        if (c.emitsApps) guardSteps.prepare = [`node ${rel} --emit-apps`];
+      }
+    }
+    for (const sc of SECURITY_SCANNERS) {
+      put(root, sc.script, ok);
+      (guardSteps['security-scan'] ??= []).push(`node ${sc.script} .`);
+    }
     // The format leg refuses a tree with no tracked Dart file at all.
     put(root, 'lib/fixture.dart', 'void main() {}\n');
+    const needs = [...Object.keys(CI_GATE_LEGS), ...Object.keys(NOT_REPRODUCIBLE)];
     put(root, '.github/workflows/ci.yml', [
       'name: ci',
       'on: [push]',
       'jobs:',
-      '  guards:',
-      '    runs-on: ubuntu-24.04',
-      '    steps:',
-      '      - run: node tooling/ci/a-guard.mjs',
-      '      - run: node tooling/ci/assert-sworn-store-files.mjs',
-      '  build:',
-      '    runs-on: ubuntu-24.04',
-      '    steps:',
-      '      - run: echo build',
+      ...needs.flatMap((n) => [`  ${n}:`, '    runs-on: ubuntu-24.04', '    steps:', ...(guardSteps[n] ?? [`echo ${n}`]).map((r) => `      - run: ${r}`)]),
       '  ci-gate:',
-      '    needs: [guards, build]',
+      `    needs: [${needs.join(', ')}]`,
       '    runs-on: ubuntu-24.04',
       '    steps:',
       '      - run: echo gate',
@@ -245,12 +264,24 @@ describe('the full run closes with the generated line, not "CI should agree."', 
     });
     const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
     assert.equal(r.status, 0, out.slice(-3000));
-    assert.match(out, /preflight: ok — 7 leg\(s\) green \(--fast: stamped-app leg skipped\)\.\n/);
+    // 7 legs, the content / extensions / dry-run legs, and the scanners' leg only
+    // when this machine has one of them on PATH.
+    const sec = SECURITY_SCANNERS.some((sc) => onPath(sc.bin)) ? 1 : 0;
+    assert.match(out, new RegExp(`preflight: ok — ${10 + sec} leg\\(s\\) green \\(--fast: stamped-app leg skipped\\)\\.\\n`));
     // The backup-headroom leg (2026-09-26) ran, green, and its ⬜ line printed its output.
     assert.match(out, /ok {3}backup headroom \(the backup's own sets and bounds\)\n {5}backup-headroom: 1 of 2 bounded set\(s\) graded/);
     assert.doesNotMatch(out, /CI should agree/);
-    const last = out.trimEnd().split(/\r?\n/).pop();
-    assert.match(last, /^⬜ NOT CI-GATE — ci-gate needs 2 job\(s\) in \.github\/workflows\/ci\.yml\. This run ran 2 of the 2 tooling\/ci guard\(s\) they invoke \(not run: none\) and reached 1 of the 2\. No guard ran for: build\. Besides guards this run ran 5 other leg\(s\);/);
+    const lines = out.trimEnd().split(/\r?\n/);
+    const last = lines.pop();
+    const n = Object.keys(CI_GATE_LEGS).length + Object.keys(NOT_REPRODUCIBLE).length;
+    assert.match(last, new RegExp(`^⬜ NOT CI-GATE — ci-gate needs ${n} job\\(s\\) in \\.github\\/workflows\\/ci\\.yml\\. .* Besides guards this run ran ${8 + sec} other leg\\(s\\);`));
+    // 🔴 The coverage line is MEASURED: --fast skipped the stamp, so app-brick is
+    // not run this time; security-scan is too unless a scanner is on PATH.
+    const nr = Object.keys(NOT_REPRODUCIBLE).length;
+    const here = Object.keys(CI_GATE_LEGS).length - 2 + sec;
+    assert.match(out, new RegExp(`^⬜ CI-GATE COVERAGE — ci-gate needs ${n} · run here ${here} · not run this time ${2 - sec} · not reproducible ${nr}$`, 'm'));
+    assert.match(out, /^ {3}not run this time: .*app-brick — stamped probe \(mason \+ dart format \+ app DoD\): --fast skips it/m);
+    assert.equal(lines.filter((l) => l.startsWith('   not reproducible: ')).length, nr);
   });
 });
 
@@ -288,7 +319,12 @@ describe('smokeBudgetMs — NIKATRU_SMOKE_BUDGET_S, default 60', () => {
     assert.deepEqual(smokeBudgetMs({ NIKATRU_SMOKE_BUDGET_S: '' }), { ms: 60_000 });
   });
   test('a number of seconds, fractions included', () => {
-    assert.deepEqual(smokeBudgetMs({ NIKATRU_SMOKE_BUDGET_S: '1.5' }), { ms: 1500 });
+    assert.deepEqual(smokeBudgetMs({ NIKATRU_SMOKE_BUDGET_S: '90.5' }), { ms: 90_500 });
+  });
+  test(`🔴 a budget under the ${SMOKE_BUDGET_FLOOR_S} s floor refuses; the floor itself is accepted`, () => {
+    assert.match(smokeBudgetMs({ NIKATRU_SMOKE_BUDGET_S: '5' }).error, /is under the \d+ s floor/);
+    assert.match(smokeBudgetMs({ NIKATRU_SMOKE_BUDGET_S: String(SMOKE_BUDGET_FLOOR_S - 0.5) }).error, /is under the \d+ s floor/);
+    assert.deepEqual(smokeBudgetMs({ NIKATRU_SMOKE_BUDGET_S: String(SMOKE_BUDGET_FLOOR_S) }), { ms: SMOKE_BUDGET_FLOOR_S * 1000 });
   });
   test('a value that is set and unusable refuses, never falls back', () => {
     assert.match(smokeBudgetMs({ NIKATRU_SMOKE_BUDGET_S: 'soon' }).error, /is not a positive number of seconds/);
@@ -428,9 +464,12 @@ describe('preflight --smoke end to end — the pushed commit, no lock, a budget,
     assert.equal(worktrees(), 1, 'a checkout was left registered');
   });
 
+  // ⏱ 2026-09-29 — the CLI refuses a budget under SMOKE_BUDGET_FLOOR_S, so the cut
+  // is exercised through smokeLeg() with a 1 s budget: the sweep, the checkout
+  // and the line are the real ones, only the env parse is not on the path.
   test('🔴 the budget cuts the guards due after it, and the line counts them as not run', () => {
-    const r = smoke([], { NIKATRU_SMOKE_BUDGET_S: '1' });
-    assert.equal(r.status, 0, r.out);
+    const r = smokeLeg({ root, rev: 'HEAD', baseRef: 'main', budgetMs: 1000 });
+    assert.equal(r.code, 0, r.out);
     assert.match(r.out, /2 of 3 runnable guard\(s\) ran in [0-9.]+ s \(budget 1 s, 1 cut\)/);
     assert.match(r.out, /not run: 1 BUDGET · 1 NEEDS-CI\) and reached 1 of the 4\. No guard ran for: late, secret, build\./);
   });
@@ -453,6 +492,14 @@ describe('preflight --smoke end to end — the pushed commit, no lock, a budget,
     const r = smoke(['--sha']);
     assert.equal(r.status, 2, r.out);
     assert.match(r.out, /--sha needs a commit after it/);
+  });
+
+  test('🔴 a NIKATRU_SMOKE_BUDGET_S under the floor refuses (exit 2) before anything runs', () => {
+    const r = smoke([], { NIKATRU_SMOKE_BUDGET_S: '1' });
+    assert.equal(r.status, 2, r.out);
+    assert.match(r.out, /NIKATRU_SMOKE_BUDGET_S=`1` is under the \d+ s floor/);
+    assert.doesNotMatch(r.out, /guard sweep —/);
+    assert.equal(worktrees(), 1);
   });
 
   test('an unusable NIKATRU_SMOKE_BUDGET_S refuses (exit 2) before anything runs', () => {

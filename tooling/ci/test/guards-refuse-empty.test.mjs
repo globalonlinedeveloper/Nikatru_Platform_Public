@@ -371,10 +371,14 @@ describe('real-repo mode', () => {
     rmSync(root, { recursive: true, force: true });
     return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
   };
-  // 120 trivial refusing executables in tooling/ci and 8 in tooling/scripts: over both floors.
+  // Trivial refusing executables in tooling/ci and 8 in tooling/scripts: over every floor.
+  // ⏱ 2026-09-29 (A-5): MIN_PROBED is READ from the guard, not restated — it moved
+  // 110 → 215, over the 120 this used to write, and a hand copy would drift again.
+  const MIN_PROBED_NOW = Number(/^const MIN_PROBED = (\d+);/m.exec(readFileSync(GUARD, 'utf8'))?.[1]);
+  assert.ok(MIN_PROBED_NOW > 0, 'MIN_PROBED could not be read out of the guard');
   const overTheFloors = () => {
     const files = {};
-    for (let i = 0; i < 120; i++) files[`tooling/ci/probe-${String(i).padStart(3, '0')}.mjs`] = REFUSES;
+    for (let i = 0; i < Math.max(120, MIN_PROBED_NOW + 5); i++) files[`tooling/ci/probe-${String(i).padStart(3, '0')}.mjs`] = REFUSES;
     for (let i = 0; i < 8; i++) files[`tooling/scripts/probe-s${i}.mjs`] = REFUSES;
     return files;
   };

@@ -242,7 +242,7 @@ Future<String> answerOf(Future<Object?> Function() call) async {
 /// supabase_flutter), the path an email link takes.
 ///
 /// 🔴 NOT `simctl openurl`. iOS holds a custom-scheme URL opened from outside
-/// the app behind a system "Open in “<app>”?" sheet, and nothing on a runner
+/// the app behind a system `Open in "<app>"?` sheet, and nothing on a runner
 /// taps Open: proof run 36637965865's screenshot, 25 s after the open, showed
 /// the sheet over the sign-in form, and the app never saw the URL. The launch
 /// still resolves the scheme through the OS, so an unregistered one fails

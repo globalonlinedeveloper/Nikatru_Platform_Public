@@ -50,9 +50,10 @@
 //     AGAINST, and that it is still MECHANICALLY RE-RUNNABLE.
 //   · `--execute` — DYNAMIC. Applies each recorded edit to the real tree, runs
 //     the named test, and requires RED with the recorded message in the output,
-//     green control first. It is for the nightly lane and for the terminal of
-//     whoever re-earns a row. It is NOT wired into a per-push job, and the
-//     paragraph above is why.
+//     green control first. It is for the scheduled lane — the weekly
+//     .github/workflows/mutation-proofs.yml, which assert-ops-register.mjs holds
+//     to exist (A-2, 2026-09-29) — and for the terminal of whoever re-earns a
+//     row. It is NOT wired into a per-push job, and the paragraph above is why.
 //
 // ── LIMB 1 · THE HASH IS THE FRESHNESS CHECK, AND IT REPLACES A GIT WALK ─────
 // assert-app-dod.mjs limb 3 dates each row against `lastCodeChangeDay`, which
@@ -738,5 +739,5 @@ console.log(
     `${executable.length} carry a re-runnable edit pinned to a content hash of the CODE they probed ` +
     `(no git history, so a rename cannot blind it and a shallow clone cannot starve it); ` +
     `${unproven.length} UNPROVEN and printed above, ratcheted at ${UNPROVEN_FLOOR} and falling only by a run` +
-    (EXECUTE ? '; the executed limb ran green-control-then-mutant on every proof above' : '; --execute was not asked for, so nothing here was RUN — that limb is the nightly lane, priced in this file\'s header'),
+    (EXECUTE ? '; the executed limb ran green-control-then-mutant on every proof above' : '; --execute was not asked for, so nothing here was RUN — that limb is the scheduled lane, .github/workflows/mutation-proofs.yml (weekly), priced in this file\'s header'),
 );

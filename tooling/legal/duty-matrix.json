@@ -457,7 +457,7 @@
       },
       "source": {
         "url": "https://developer.android.com/google/play/requirements/target-sdk",
-        "fetched": "2026-08-04",
+        "fetched": "2026-09-29",
         "quote": "Starting 31 August 2026, new apps and app updates must target API level 36 (Android 16) or higher; an extension to 1 November 2026 may be requested in Play Console. Wear OS / Automotive require 35, TV / XR require 34."
       }
     },
@@ -476,7 +476,7 @@
       },
       "source": {
         "url": "https://developer.android.com/guide/practices/page-sizes",
-        "fetched": "2026-08-20",
+        "fetched": "2026-09-29",
         "quote": "all apps targeting Android 15 (API level 35) and higher must support 16 KB memory page sizes on 64-bit devices on Google Play. Starting February 1, 2027, if your app updates don't support 16 KB memory page sizes, you won't be able to release these updates. · 16 KB devices require the shared libraries' ELF segments to be aligned properly using 16 KB ELF alignment in order for your app to run. · Check the output lines to ensure that the load segments don't have values less than 2**14."
       }
     },

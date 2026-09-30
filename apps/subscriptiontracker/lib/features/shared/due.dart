@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show BrandTokensDark;
+    show BrandTokensDark, StatusKind;
 
 import '../../core/theme/app_colors.dart';
 import '../../data/models/subscription.dart';
@@ -198,4 +197,16 @@ class DueInfo {
   /// token-level fix for both branches stays ST-D's.
   static Color _quietText(Brightness? brightness) =>
       brightness == Brightness.dark ? BrandTokensDark.muted : AppColors.muted;
+
+  /// The same urgency as a MEANING rather than a colour, for a design-system
+  /// row that resolves its own tone ([StatusKind] → `StatusTones`, forked per
+  /// scheme). ⏱ 2026-09-28 · train ST-D2: the calendar's rows are
+  /// `AppListRow`s now, and they take this instead of [color].
+  ///
+  /// The threshold is [localized]'s urgent branch — due today (or overdue) or
+  /// tomorrow — read from the SAME `daysUntil`, so the word the row prints and
+  /// the tone it prints it in cannot disagree. Every other horizon is a plain
+  /// subtitle: "in 4 days" is information, not a warning.
+  static StatusKind? statusOf(Subscription s, DateTime now) =>
+      s.daysUntil(now) <= 1 ? StatusKind.warn : null;
 }

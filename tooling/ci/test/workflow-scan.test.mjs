@@ -37,6 +37,7 @@ import {
   EMIT_RELEASE_JSON_MODE, emitOutputDir, emitInvocations,
   flutterBuilds, flutterReleaseBuilds, buildMode, RELEASE_MODES,
   bindApp, bindEveryApp, isPerAppLane,
+  printOnlyJobsThatFail,
 } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -1451,5 +1452,51 @@ jobs:
     workspace(root, []);
     // No app to bind, so the walk refuses rather than reading `$APP` as an app or skipping the call.
     assert.throws(() => flutterBuilds(root), /takes its app from its gate job/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// B-5 (2026-09-29) — a job named print-only may not exit non-zero
+// ═══════════════════════════════════════════════════════════════════════════
+describe('printOnlyJobsThatFail (B-5)', () => {
+  const job = (name, run, extra = '') => `name: A
+jobs:
+  ledger:
+    name: ${name}
+    runs-on: ubuntu-24.04
+${extra}    steps:
+      - run: |
+${run.map((l) => `          ${l}`).join('\n')}
+`;
+
+  test('RED: a job NAMED print-only whose step ends `exit "$code"` is refused, naming the line', () => {
+    const root = fixture({ 'a.yml': job('Failed-run ledger (weekly, print-only)', ['set +e', 'node tooling/ops/triage-failed-runs.mjs', 'code=$?', 'exit "$code"']) });
+    const found = printOnlyJobsThatFail(parseWorkflow(root, '.github/workflows/a.yml'));
+    assert.equal(found.length, 1);
+    assert.equal(found[0].job, 'ledger');
+    assert.match(found[0].text, /exit "\$code"/);
+  });
+
+  test('RED: `exit 1` after an `||` is the same contradiction', () => {
+    const root = fixture({ 'a.yml': job('Digest (print only)', ['node x.mjs || exit 1']) });
+    assert.equal(printOnlyJobsThatFail(parseWorkflow(root, '.github/workflows/a.yml')).length, 1);
+  });
+
+  test('GREEN: `exit 0`, a job not called print-only, and a continue-on-error job are all fine', () => {
+    for (const body of [
+      job('Digest (print-only)', ['node x.mjs', 'exit 0']),
+      job('Failed-run ledger (weekly; red pages the ops-watch issue)', ['exit "$code"']),
+      job('Digest (print-only)', ['exit "$code"'], '    continue-on-error: true\n'),
+    ]) {
+      const root = fixture({ 'a.yml': body });
+      assert.deepEqual(printOnlyJobsThatFail(parseWorkflow(root, '.github/workflows/a.yml')), []);
+    }
+  });
+
+  test('the REAL tree: no workflow names a job print-only while a step of it exits non-zero', () => {
+    const real = resolve(CI_DIR, '..', '..');
+    const all = parseAllWorkflows(real);
+    assert.ok(all.length >= 10, `only ${all.length} workflow(s) parsed — the scan is not reaching the tree`);
+    assert.deepEqual(all.flatMap((wf) => printOnlyJobsThatFail(wf).map((f) => `${wf.rel}:${f.n} ${f.job} "${f.name}" — ${f.text}`)), []);
   });
 });
