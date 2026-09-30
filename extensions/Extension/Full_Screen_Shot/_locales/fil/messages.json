@@ -1995,6 +1995,12 @@
   "errRestrictedWebstore": {
     "message": "Hinaharangan ng Chrome Web Store ang mga extension sa pagbasa ng mga page nito, kaya hindi makukunan ang page na ito."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Protektado ng browser ang page na ito at hindi ito makukunan."
   },

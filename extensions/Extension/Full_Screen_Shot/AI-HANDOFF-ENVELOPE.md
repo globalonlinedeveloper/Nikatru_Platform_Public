@@ -593,7 +593,7 @@ THE CLIPBOARD BACK instead of spying on the write.
 | engine | suite | what it measures | measured |
 |---|---|---|---|
 | Chromium | `test/e2e/real-copy.mjs` | the result page's Copy button, clicked, read back as `image/png` | 2026-09-24, Chromium build 1194 headless on Linux (the draft sandbox): exit 0; `image/png` + `text/plain` on the clipboard 318 ms after the click, 974×1180 from a 1242×1505 canvas (the handoff's export fit, same aspect) |
-| Firefox | `test/e2e/gecko-clipboard.mjs` | `fsCopyBlobToClipboard` in a user activation, per size in `test/e2e/clipboard-expect.json`, with click-to-write ms | **UNMEASURED.** Written without a Firefox; the first `e2e-suite` run on the runner's Firefox is the measurement, and its run id, Firefox version and per-size table go on the next line |
+| Firefox | `test/e2e/gecko-clipboard.mjs` | `fsCopyBlobToClipboard` in a user activation, per size in `test/e2e/clipboard-expect.json`, with click-to-write ms | **IMAGE-ONLY: MEASURED** 2026-09-25, Extensions run 36186697794, Mozilla Firefox 156.0 on ubuntu-24.04, headful under xvfb-run (a headless Firefox clipboard holds text only), shipped permissions (no `clipboardWrite`): 256×256 ok 15 ms · 1920×1080 ok 46 ms · 1920×10000 ok 402 ms click-to-write, each read back at the size written. **TWO-TYPE (`image/png` + `text/plain`, the hand-off copy): UNMEASURED** — the row was added 2026-09-29 (rv2 EXB-10) and the next `e2e-suite` run is its measurement; `clipboard-expect.json` `measured.twoType` holds it |
 
 ---
 

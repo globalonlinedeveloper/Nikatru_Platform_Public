@@ -2415,6 +2415,12 @@
   "errRestrictedWebstore": {
     "message": "يمنع متجر Chrome الإلكتروني الإضافات من قراءة صفحاته، لذا لا يمكن التقاط هذه الصفحة."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "هذه الصفحة محمية من المتصفح ولا يمكن التقاطها."
   },

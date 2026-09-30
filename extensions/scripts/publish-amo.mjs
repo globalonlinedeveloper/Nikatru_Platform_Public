@@ -48,13 +48,23 @@
 // not arm this channel and the owner step was printed. 1 = refused or failed.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHmac, randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { laneVerdict, ArmingCoverageLost, REPO_ROOT } from './publish-arming.mjs';
-import { buildAmoMetadata } from './amo-metadata.mjs';
+import { buildAmoMetadata, buildAmoListingAssets, PRIMARY_SOURCES as METADATA_SOURCES } from './amo-metadata.mjs';
 import { requireStorePublishEnvironment } from './lib/store-environment.mjs';
+
+/** The pages this lane's flags and calls were read from. ⏱ 2026-09-29 (rv2
+ *  EXL-12): three of these were cited in main() and defined nowhere, so the first
+ *  real --submit would have thrown a ReferenceError after the environment gate and
+ *  before the sign. Exported so the test holds every citation to a definition. */
+export const PRIMARY_SOURCES = Object.freeze({
+  ...METADATA_SOURCES,
+  webExtSign: 'https://extensionworkshop.com/documentation/develop/web-ext-command-reference/#web-ext-sign',
+  webExtVersion: 'https://www.npmjs.com/package/web-ext',
+});
 
 /** The island that holds the signer, repo-relative. */
 const WEB_EXT_ISLAND = 'tooling/web-ext';
@@ -130,6 +140,55 @@ export async function readListingUrl({ guid, issuer, secret, fetchImpl = fetch }
   return { ok: true, url: body.url };
 }
 
+/**
+ * THE LISTING'S SCREENSHOTS AND PRIVACY POLICY, sent after the sign (rv2 EXL-12).
+ * The add-on create takes neither, so without this the API-created listing goes
+ * public with no screenshots and no policy (Chrome and Edge get theirs from the
+ * human at the manual first publish; AMO has no such human). Previews are uploaded
+ * only while the listing has NONE — a re-run after a partial failure, or a later
+ * version, must not stack duplicates — and the policy PATCH is idempotent.
+ * Exported, with fetch injectable, so the test holds both calls.
+ */
+export async function completeListing({ guid, issuer, secret, previews, privacyPolicy, fetchImpl = fetch, readFile = readFileSync }) {
+  const base = `${AMO_API}/addons/addon/${encodeURIComponent(guid)}/`;
+  const auth = () => ({ authorization: `JWT ${amoJwt(issuer, secret)}` });
+  const lines = [];
+  const call = async (url, init) => {
+    try {
+      const res = await fetchImpl(url, init);
+      return res.ok ? { ok: true, res } : { ok: false, why: `HTTP ${res.status} from ${init.method || 'GET'} ${url}` };
+    } catch (e) {
+      return { ok: false, why: `could not reach ${url} (${e.message})` };
+    }
+  };
+  const detail = await call(base, { headers: { ...auth(), accept: 'application/json' } });
+  if (!detail.ok) return { ok: false, why: detail.why, lines };
+  const have = (await detail.res.json().catch(() => ({}))).previews;
+  let uploaded = 0;
+  if (Array.isArray(have) && have.length > 0) {
+    lines.push(`     previews: the listing already has ${have.length}; none uploaded (never stacked).`);
+  } else {
+    for (let i = 0; i < previews.length; i++) {
+      const file = previews[i];
+      const form = new FormData();
+      form.set('image', new Blob([readFile(file)], { type: 'image/png' }), basename(file));
+      form.set('position', String(i));
+      const r = await call(`${base}previews/`, { method: 'POST', headers: auth(), body: form });
+      if (!r.ok) return { ok: false, why: `preview ${basename(file)}: ${r.why}`, lines, uploaded };
+      uploaded++;
+    }
+    lines.push(`     previews: ${uploaded} uploaded (${previews.map((f) => basename(f)).join(', ')}).`);
+  }
+  const pol = await call(`${base}eula_policy/`, {
+    method: 'PATCH',
+    headers: { ...auth(), 'content-type': 'application/json' },
+    body: JSON.stringify({ privacy_policy: privacyPolicy }),
+  });
+  if (!pol.ok) return { ok: false, why: `privacy policy: ${pol.why}`, lines, uploaded };
+  lines.push(`     privacy policy: set (${Object.values(privacyPolicy)[0].length} characters).`);
+  return { ok: true, lines, uploaded };
+}
+
 async function main(argv) {
   const opt = (name, fallback = null) => {
     const i = argv.indexOf(`--${name}`);
@@ -168,12 +227,21 @@ async function main(argv) {
     if (!meta.ok) die([...meta.why.map((l) => `FAIL ${l}`), '     amo-metadata.mjs refused the listing payload, so nothing may be sent to addons.mozilla.org.']);
     return meta.ok ? meta.payload : null;
   };
+  const assets = () => {
+    const a = buildAmoListingAssets({ toolId: TOOL, root: join(root, 'extensions') });
+    if (!a.ok) die([...a.why.map((l) => `FAIL ${l}`), '     amo-metadata.mjs refused the listing assets, so the listing would go public without them.']);
+    return a.ok ? a : null;
+  };
 
   if (!SUBMIT) {
     const dry = payload();
     if (dry === null) return;
     console.log('publish-amo: the listing payload the first submit would carry (--amo-metadata):');
     console.log(JSON.stringify(dry, null, 2));
+    const dryAssets = assets();
+    if (dryAssets === null) return;
+    console.log(`publish-amo: after the sign, POST ${dryAssets.previews.length} preview(s) while the listing has none: ${dryAssets.previews.map((f) => basename(f)).join(', ')}`);
+    console.log(`publish-amo: after the sign, PATCH eula_policy privacy_policy (${Object.values(dryAssets.privacyPolicy)[0].length} characters, closing with ${dryAssets.policyUrl})`);
     console.log(`→    web-ext ${args.join(' ')}`);
     console.log('publish-amo: DRY RUN — nothing was sent to addons.mozilla.org. Pass --submit to sign and submit.');
     return;
@@ -203,6 +271,8 @@ async function main(argv) {
 
   const listingPayload = payload();
   if (listingPayload === null) return;
+  const listingAssets = assets();
+  if (listingAssets === null) return;
   if (!existsSync(SOURCE_DIR)) {
     die([
       `FAIL --source-dir ${SOURCE_DIR} does not exist.`,
@@ -276,6 +346,17 @@ async function main(argv) {
     return;
   }
   console.log(`LISTING_URL=${listing.url}`);
+  const done = await completeListing({ guid, issuer: process.env.AMO_JWT_ISSUER, secret: process.env.AMO_JWT_SECRET,
+    previews: listingAssets.previews, privacyPolicy: listingAssets.privacyPolicy });
+  for (const l of done.lines) console.log(l);
+  if (!done.ok) {
+    die([
+      `FAIL ${TOOL} was signed and SUBMITTED, and its listing is INCOMPLETE: ${done.why}.`,
+      '     Re-running this lane is safe (previews are uploaded only while the listing has none), or add',
+      `     them in the AMO Developer Hub. The listing must not go public without them (source: ${PRIMARY_SOURCES.addonsApi}).`,
+    ]);
+    return;
+  }
   console.log(`publish-amo: SUBMITTED — ${TOOL} signed and submitted for listing on addons.mozilla.org.`);
 }
 

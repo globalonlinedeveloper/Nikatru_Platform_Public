@@ -2205,6 +2205,12 @@
   "errRestrictedWebstore": {
     "message": "Internetový obchod Chrome brání rozšířením ve čtení svých stránek, takže tuto zachytit nelze."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "Tuto stránku prohlížeč chrání a zachytit ji nelze."
   },

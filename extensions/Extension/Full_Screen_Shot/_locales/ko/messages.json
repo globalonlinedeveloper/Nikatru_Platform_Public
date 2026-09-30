@@ -1890,6 +1890,12 @@
   "errRestrictedWebstore": {
     "message": "Chrome 웹 스토어는 확장 프로그램이 자기 페이지를 읽지 못하게 막고 있어 이 페이지는 캡처할 수 없습니다."
   },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+  },
   "errRestrictedGeneric": {
     "message": "이 페이지는 브라우저가 보호하고 있어 캡처할 수 없습니다."
   },
