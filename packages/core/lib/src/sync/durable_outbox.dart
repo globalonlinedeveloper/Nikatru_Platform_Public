@@ -411,13 +411,15 @@ class DurableOutbox {
   /// returns the server's id for the record when it differs from the client id
   /// (a create), which later entries for the record are rewritten to.
   /// [classify] maps a thrown error to an [OutboxFailure]; unclassified errors
-  /// are [OutboxFailure.transient]. Concurrent callers share one run. Never
+  /// are [OutboxFailure.transient]. An entry [accepts] refuses (a kind this
+  /// sender does not know) is held, not sent. Concurrent callers share one run. Never
   /// throws: a store that refuses a write-back ends the run.
   Future<OutboxReplayResult> replay({
     required String owner,
     required String? Function() currentOwner,
     required Future<String?> Function(OutboxEntry entry) send,
     OutboxFailure Function(Object error)? classify,
+    bool Function(OutboxEntry entry)? accepts,
   }) async {
     final KeyValueStore kv = await _store;
     final _Shared shared = _sharedFor(kv);
@@ -427,6 +429,7 @@ class DurableOutbox {
       currentOwner,
       send,
       classify ?? (Object _) => OutboxFailure.transient,
+      accepts ?? (OutboxEntry _) => true,
     ).whenComplete(() => shared.replaying = null);
   }
 
@@ -436,6 +439,7 @@ class DurableOutbox {
     String? Function() currentOwner,
     Future<String?> Function(OutboxEntry entry) send,
     OutboxFailure Function(Object error) classify,
+    bool Function(OutboxEntry entry) accepts,
   ) async {
     final int generation = shared.generation;
     final Set<String> attempted = <String>{};
@@ -460,7 +464,8 @@ class DurableOutbox {
             if (blocked.contains(e.recordId)) continue;
             // Whatever happens to e, later ops on its record wait for it.
             blocked.add(e.recordId);
-            if (e.dead || attempted.contains(e.id)) continue;
+            // A kind this sender does not know is HELD, never sent or failed.
+            if (e.dead || attempted.contains(e.id) || !accepts(e)) continue;
             if (e.nextAttemptAt != null && e.nextAttemptAt!.isAfter(now)) {
               continue;
             }

@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:nikatru_api_client/nikatru_api_client.dart';
 import 'package:nikatru_core/nikatru_core.dart'
-    show InMemoryKeyValueStore, KeyValueStore;
+    show InMemoryKeyValueStore, KeyValueStore, OutboxFailure;
 import 'package:test/test.dart';
 
 // The generic read-through cache (audit D28/D19/D24). The app's row-level
@@ -175,5 +175,93 @@ void main() {
     expect(await c.peek('b', _codec), isNull);
     expect(await kv.read(kCacheIndexKey), isNull);
     expect(await kv.read('unrelated'), 'kept');
+  });
+
+  // 🔴 REVIEW #1075 FINDING 3 — the red control. A network slower than the
+  // probe, with every revalidation prompting a re-read (as the app's list
+  // provider does), used to loop: a GET every cycle, stale forever.
+  test(
+    'a 3 s read produces exactly one GET, and its landing clears the mark',
+    () async {
+      await cache().read('k', _codec, () async => <String>['a']);
+      DateTime clock = DateTime.utc(2026, 9, 30, 8);
+      int gets = 0;
+      late ReadThroughCache c;
+      Future<List<String>> slow() async {
+        gets += 1;
+        await Future<void>.delayed(const Duration(milliseconds: 150)); // "3 s"
+        return <String>['a', 'b'];
+      }
+
+      final List<List<String>> shown = <List<String>>[];
+      Future<void> readList() async => shown.add(
+        await c.read(
+          'k',
+          _codec,
+          slow,
+          onRevalidated: (_) => unawaited(readList()), // the app re-reads
+        ),
+      );
+      c = ReadThroughCache(
+        KeyValueJsonStore(Future<KeyValueStore>.value(kv)),
+        onStaleChanged: staleReports.add,
+        revalidateAfter: const Duration(milliseconds: 20), // "2 s"
+        now: () => clock,
+      );
+      await readList();
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      expect(gets, 1);
+      expect(shown.last, <String>['a', 'b']);
+      expect(c.lastReadWasFromCache, isFalse);
+      expect(staleReports, <bool>[true, false]);
+
+      // Past the window, a read asks the network again.
+      clock = clock.add(const Duration(seconds: 31));
+      await c.read('k', _codec, slow);
+      expect(gets, 2);
+    },
+  );
+
+  test('two reads of one key share one request', () async {
+    final Completer<List<String>> gate = Completer<List<String>>();
+    int gets = 0;
+    Future<List<String>> fetch() {
+      gets += 1;
+      return gate.future;
+    }
+
+    final ReadThroughCache c = cache();
+    final Future<List<String>> one = c.read('k', _codec, fetch);
+    final Future<List<String>> two = c.read('k', _codec, fetch);
+    gate.complete(<String>['x']);
+    expect(await one, <String>['x']);
+    expect(await two, <String>['x']);
+    expect(gets, 1);
+  });
+
+  // REVIEW #1075 FINDING 12: a live read of one key never clears another's mark.
+  test('stale is per key', () async {
+    await cache().read('list', _codec, () async => <String>['a']);
+    final ReadThroughCache c = cache();
+    await c.read('list', _codec, offline);
+    await c.read('budget', _codec, () async => <String>['live']);
+    expect(c.isStale('list'), isTrue);
+    expect(c.isStale('budget'), isFalse);
+    expect(c.lastReadWasFromCache, isTrue);
+  });
+
+  test('outbox classification: offline, session, retry, refusal', () {
+    expect(classifyForOutbox(ApiException(0, 'x')), OutboxFailure.offline);
+    expect(
+      classifyForOutbox(ApiException(401, 'x')),
+      OutboxFailure.unauthorized,
+    );
+    for (final int c in <int>[408, 409, 429, 500, 503]) {
+      expect(classifyForOutbox(ApiException(c, 'x')), OutboxFailure.transient);
+    }
+    for (final int c in <int>[400, 404, 422]) {
+      expect(classifyForOutbox(ApiException(c, 'x')), OutboxFailure.refused);
+    }
+    expect(classifyForOutbox(StateError('?')), OutboxFailure.transient);
   });
 }
