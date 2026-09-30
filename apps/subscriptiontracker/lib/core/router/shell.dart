@@ -19,13 +19,15 @@ import '../../features/home/home_screen.dart';
 import '../../features/insights/insights_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/shell/app_shell.dart';
+import '../../features/shell/sync_problems_strip.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
 
 /// ── THE LIVE SHELL — five branches, unchanged ─────────────────────────
 RouteBase appShellRoute() => StatefulShellRoute.indexedStack(
   builder: (_, __, StatefulNavigationShell navShell) =>
-      AppShell(navigationShell: navShell),
+      // The dead letters of the offline outbox (review #1075 finding 9).
+      SyncProblemsStrip(child: AppShell(navigationShell: navShell)),
   branches: <StatefulShellBranch>[
     StatefulShellBranch(
       routes: <RouteBase>[

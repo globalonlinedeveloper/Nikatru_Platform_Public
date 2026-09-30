@@ -1,7 +1,14 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:nikatru_api_client/nikatru_api_client.dart'
-    show Outbox, PendingWrite, ReadThroughCache, kRevalidateAfter;
-import 'package:nikatru_core/nikatru_core.dart' show Entitlements;
+    show ReadThroughCache, classifyForOutbox, kRevalidateAfter;
+import 'package:nikatru_core/nikatru_core.dart'
+    show
+        DurableOutbox,
+        Entitlements,
+        OutboxEnqueueResult,
+        OutboxEntry,
+        OutboxOp,
+        newOutboxId;
 
 import '../local/subscription_store.dart';
 import '../models/budget_info.dart';
@@ -16,30 +23,32 @@ import 'api_client.dart';
 // client, and only when `!AppConfig.isApiConfigured`. Every real build carries
 // the API (`catalog/apps.json` sets `api`), so the shipped app used a bare
 // `DioApiClient`: the list was fetched on every launch and nothing was kept.
-// Offline, or with the Worker down, the home screen had NOTHING to show a user
-// who had been looking at their own subscriptions an hour earlier.
 //
-// ⏱ 2026-09-30 · THE MECHANICS ARE SHARED NOW (audit D28, ST-N5). The cache is
-// packages/api_client's `ReadThroughCache` and the write queue its `Outbox`;
-// the brick stamps both. This file is the ADAPTER: which [ApiClient] read goes
-// through which key and codec, and what an offline add means for this app's
-// rows. The rules the shared file states — when the cache may answer (transport
-// or 5xx only, never a 401), a stale answer is marked (D19), a read with a copy
-// never waits on the connect timeout (D24), a mirror failure is reported and
-// never thrown — hold here because they are enforced there.
+// ⏱ 2026-09-30 · THE MECHANICS ARE SHARED (audit D28, ST-N5; lead ruling on
+// #1075). The copy is packages/api_client's `ReadThroughCache`; the write queue
+// is packages/core's `DurableOutbox` — user-scoped, persisted, serialised,
+// bounded, ordered and coalesced per record (its header says how). This file is
+// the ADAPTER: which read goes through which key, and what a queued write means
+// for THIS app's rows.
 //
 // 🔴 AN ADD MADE OFFLINE IS KEPT, NOT LOST (audit D22). A create that fails for
-// TRANSPORT reasons (status 0 — no network, DNS, a timeout that may have lost
-// the response) is queued in the outbox with a client id, shown at once as a
-// row under that id, and replayed with the id as its `Idempotency-Key` before
-// the next list read or write — so a replay of an add that DID commit is
-// answered with the row it made, never a second one. A 4xx or a 5xx still
-// fails honestly: the server answered, and it said no.
+// TRANSPORT reasons (status 0) is queued under the signed-in user with a client
+// id, and replayed with that id as its `Idempotency-Key` — before the next read
+// or write, and never under another account (review finding 1). The server
+// answers a replay of a create that DID commit with the row it made.
 //
-// ⚠️ EDITS AND DELETES ARE NOT QUEUED, on purpose. An edit to a row that exists
-// only in the outbox has no server id to PATCH, and ordering a delete behind a
-// create it races is conflict resolution this train does not claim. Offline,
-// they fail as before ("could not save"), which the sheets already render.
+// 🔴 A ROW THAT EXISTS ONLY ON THE DEVICE IS EDITED AND DELETED ON THE DEVICE
+// (review finding 4). An edit merges into its queued create; a delete cancels
+// the create and nothing goes to the server. Once a create syncs, the client id
+// resolves to the server id for every later call (`DurableOutbox.resolve`).
+//
+// 🔴 QUEUED ROWS STAY VISIBLE (finding 8). Every list this returns — live or
+// from the copy — has the user's queued creates laid over it until they sync,
+// including a dead letter, which [syncProblems] offers to retry or discard
+// (finding 9: a refused add is shown, never silently dropped).
+//
+// ⚠️ EDITS AND DELETES OF A SYNCED ROW ARE NOT QUEUED. Offline, they fail
+// honestly ("could not save"), which the sheets render.
 //
 // ⚠️ ENTITLEMENTS ARE DELIBERATELY NOT CACHED HERE. The durable entitlement
 // path is `EntitlementCache` over the SECURE store with its own staleness
@@ -47,64 +56,90 @@ import 'api_client.dart';
 // text editor could grant themselves.
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// What an outbox entry for an offline add is called.
-const String kCreateSubscriptionWrite = 'subscription.create';
+/// The outbox kind this adapter sends. A kind it does not know is held.
+const String kSubscriptionWrite = 'subscription';
 
 /// [ApiClient] over a network client, with the device's key-value store as a
-/// read-through cache of what the server last said and an outbox of the adds
-/// it has not heard yet.
+/// read-through cache of what the server last said and an outbox of the
+/// writes it has not heard yet.
 class CachedApiClient implements ApiClient {
   CachedApiClient(
     this._network,
     LocalSubscriptionStore store, {
+    String? Function()? currentUser,
     void Function(Object error)? onCacheWriteFailed,
     void Function(bool stale)? onStaleChanged,
+
     /// A LIST read answered from the copy has since been refreshed in the
     /// background: the surface showing it should read again.
     void Function()? onRevalidated,
+
+    /// The outbox changed (an entry queued, synced, died or was discarded).
+    void Function()? onOutboxChanged,
     Duration revalidateAfter = kRevalidateAfter,
-  }) : _onRevalidated = onRevalidated,
+  }) : _currentUser = currentUser ?? _nobody,
+       _onRevalidated = onRevalidated,
        _cache = ReadThroughCache(
          store.json,
          onWriteFailed: onCacheWriteFailed ?? _reportCacheWriteFailure,
          onStaleChanged: onStaleChanged,
          revalidateAfter: revalidateAfter,
        ),
-       _outbox = Outbox(
-         store.json,
+       _outbox = DurableOutbox(
+         store.kv,
          key: kLocalOutboxKey,
-         onRefused: (PendingWrite w, ApiException e) =>
-             (onCacheWriteFailed ?? _reportCacheWriteFailure)(
-               StateError('a queued add was refused on replay: $e'),
-             ),
+         onChanged: onOutboxChanged,
        );
 
   final ApiClient _network;
   final ReadThroughCache _cache;
-  final Outbox _outbox;
+  final DurableOutbox _outbox;
+  final String? Function() _currentUser;
   final void Function()? _onRevalidated;
+
+  static String? _nobody() => null;
 
   static void _reportCacheWriteFailure(Object e) =>
       debugPrint('🔴 [subscriptions] cache write failed: $e');
 
   /// Whether the most recent [getSubscriptions] or [getBudget] was answered by
-  /// the cache because the server could not be reached. Observable so a
-  /// surface can say "showing your last synced copy" rather than nothing.
+  /// the cache because the server could not be reached.
   bool get lastReadWasFromCache => _cache.lastReadWasFromCache;
 
-  /// How many mirror writes have failed on this client. Zero on a healthy
-  /// device; anything else is the cause of "it did not survive restart".
+  /// How many mirror writes have failed on this client.
   int get cacheWriteFailures => _cache.writeFailures;
 
   /// The most recent mirror-write failure, kept for the UI and for tests.
   Object? get lastCacheWriteError => _cache.lastWriteError;
 
-  /// The adds made offline that the server has not acknowledged yet.
-  Future<List<PendingWrite>> pendingWrites() => _outbox.pending();
-
   /// Whether [e] is a failure the cache is allowed to stand in for.
   static bool servesFromCacheFor(ApiException e) =>
       ReadThroughCache.servesFromCacheFor(e);
+
+  /// The signed-in user's writes still waiting (dead letters included).
+  Future<List<OutboxEntry>> pendingWrites() async {
+    final String? owner = _currentUser();
+    return owner == null ? <OutboxEntry>[] : _outbox.entries(owner: owner);
+  }
+
+  /// The signed-in user's writes the server refused or that failed too often:
+  /// "couldn't sync this change — retry or discard".
+  Future<List<OutboxEntry>> syncProblems() async {
+    final String? owner = _currentUser();
+    return owner == null ? <OutboxEntry>[] : _outbox.deadLetters(owner: owner);
+  }
+
+  /// Put a dead letter back in the queue and try at once.
+  Future<void> retrySync(String id) async {
+    await _outbox.retry(id);
+    await replayPending();
+  }
+
+  /// Drop a dead letter; its row leaves the list.
+  Future<void> discardSync(String id) => _outbox.discard(id);
+
+  /// Forget [owner]'s queued writes — the explicit sign-out.
+  Future<void> discardPendingOf(String owner) => _outbox.discardOwner(owner);
 
   Future<Subscription> _create(Subscription draft, String key) {
     final ApiClient net = _network;
@@ -116,77 +151,146 @@ class CachedApiClient implements ApiClient {
         : net.createSubscription(draft);
   }
 
-  /// Send every queued add, oldest first; each acknowledged one replaces its
-  /// placeholder row in the copy. Never throws: an unreachable server leaves
-  /// the queue as it was for the next attempt.
+  /// Send the signed-in user's queued writes. Never throws, and does nothing
+  /// while the device is known to be offline (review finding 10: a write
+  /// used to wait out a doomed replay's connect timeout before its own).
   Future<void> replayPending() async {
-    await _outbox.replay((PendingWrite w) async {
-      final Subscription created = await _create(
-        Subscription.fromJson(w.body),
-        w.id,
+    final String? owner = _currentUser();
+    if (owner == null || _cache.knownOffline) return;
+    try {
+      await _outbox.replay(
+        owner: owner,
+        currentOwner: _currentUser,
+        send: _send,
+        classify: classifyForOutbox,
+        accepts: (OutboxEntry e) => e.kind == kSubscriptionWrite,
       );
-      await _cache.amend(
-        kLocalSubscriptionsKey,
-        SubscriptionCodec.subscriptions,
-        (List<Subscription> cached) =>
-            cached.map((Subscription s) => s.id == w.id ? created : s).toList(),
-      );
-    });
+    } catch (e) {
+      _reportCacheWriteFailure('outbox replay failed: $e');
+    }
   }
 
-  @override
-  Future<List<Subscription>> getSubscriptions() => _cache.read(
+  Future<String?> _send(OutboxEntry e) async {
+    switch (e.op) {
+      case OutboxOp.create:
+        final Subscription created;
+        try {
+          created = await _create(Subscription.fromJson(e.body), e.id);
+        } on ApiException catch (x) {
+          // 410: the key made a row the user has since deleted — done.
+          if (x.statusCode == 410) return null;
+          rethrow;
+        }
+        await _upsertCached(created);
+        return created.id;
+      case OutboxOp.update:
+        await _upsertCached(
+          await _network.updateSubscription(e.recordId, e.body),
+        );
+        return null;
+      case OutboxOp.delete:
+        await _network.deleteSubscription(e.recordId);
+        await _removeCached(e.recordId);
+        return null;
+    }
+  }
+
+  Future<void> _upsertCached(Subscription row) => _cache.amend(
     kLocalSubscriptionsKey,
     SubscriptionCodec.subscriptions,
-    () async {
-      await replayPending();
-      return _network.getSubscriptions();
-    },
-    onRevalidated: (_) => _onRevalidated?.call(),
+    (List<Subscription> cached) => <Subscription>[
+      ...cached.where((Subscription s) => s.id != row.id),
+      row,
+    ],
+  );
+
+  Future<void> _removeCached(String id) => _cache.amend(
+    kLocalSubscriptionsKey,
+    SubscriptionCodec.subscriptions,
+    (List<Subscription> cached) =>
+        cached.where((Subscription s) => s.id != id).toList(),
+  );
+
+  /// [rows] with the signed-in user's queued writes laid over them.
+  Future<List<Subscription>> _overlay(List<Subscription> rows) async {
+    final List<OutboxEntry> queued = await pendingWrites();
+    if (queued.isEmpty) return rows;
+    final List<Subscription> out = <Subscription>[...rows];
+    for (final OutboxEntry e in queued) {
+      final int i = out.indexWhere((Subscription s) => s.id == e.recordId);
+      switch (e.op) {
+        case OutboxOp.create:
+          if (i < 0) out.add(_placeholder(e));
+        case OutboxOp.update:
+          if (i >= 0) out[i] = out[i].patched(e.body);
+        case OutboxOp.delete:
+          if (i >= 0) out.removeAt(i);
+      }
+    }
+    return out;
+  }
+
+  static Subscription _placeholder(OutboxEntry e) =>
+      Subscription.fromJson(<String, dynamic>{...e.body, 'id': e.recordId});
+
+  /// The queued create of [id], when the server has never had the row.
+  Future<OutboxEntry?> _unsyncedCreate(String id) async =>
+      (await pendingWrites())
+          .where((OutboxEntry e) => e.recordId == id && e.op == OutboxOp.create)
+          .firstOrNull;
+
+  @override
+  Future<List<Subscription>> getSubscriptions() async => _overlay(
+    await _cache.read(
+      kLocalSubscriptionsKey,
+      SubscriptionCodec.subscriptions,
+      () async {
+        await replayPending();
+        return _network.getSubscriptions();
+      },
+      onRevalidated: (_) => _onRevalidated?.call(),
+    ),
   );
 
   @override
   Future<Subscription> createSubscription(Subscription draft) async {
     await replayPending();
-    final String key = Outbox.newClientId();
+    final String key = newOutboxId();
     final Subscription created;
     try {
       created = await _create(draft, key);
     } on ApiException catch (e) {
-      if (!e.isOffline) rethrow;
+      final String? owner = _currentUser();
+      if (!e.isOffline || owner == null) rethrow;
       // Kept for replay FIRST: if the device will not keep it either, the
       // failure travels and the sheet keeps the draft, exactly as before.
-      await _outbox.enqueue(
-        PendingWrite(
-          id: key,
-          kind: kCreateSubscriptionWrite,
-          body: draft.toJson(),
-          queuedAt: DateTime.now(),
-        ),
+      final OutboxEnqueueResult queued = await _outbox.enqueue(
+        owner: owner,
+        recordId: key,
+        op: OutboxOp.create,
+        kind: kSubscriptionWrite,
+        body: draft.toJson(),
+        id: key,
       );
-      final Subscription pending = Subscription.fromJson(<String, dynamic>{
-        ...draft.toJson(),
-        'id': key,
-      }, fallbackCurrencyCode: draft.price.currencyCode);
-      await _cache.amend(
-        kLocalSubscriptionsKey,
-        SubscriptionCodec.subscriptions,
-        (List<Subscription> cached) => <Subscription>[...cached, pending],
-      );
-      return pending;
+      return _placeholder(queued.entry!);
     }
-    await _cache.amend(
-      kLocalSubscriptionsKey,
-      SubscriptionCodec.subscriptions,
-      (List<Subscription> cached) => <Subscription>[...cached, created],
-    );
+    await _upsertCached(created);
     return created;
   }
 
   @override
   Future<Subscription> getSubscription(String id) async {
+    final OutboxEntry? queued = await _unsyncedCreate(id);
+    if (queued != null) {
+      // The server has never had this row: the device's queued copy is it.
+      return (await _overlay(<Subscription>[])).firstWhere(
+        (Subscription s) => s.id == id,
+        orElse: () => _placeholder(queued),
+      );
+    }
+    final String serverId = await _outbox.resolve(id);
     try {
-      return await _network.getSubscription(id);
+      return await _network.getSubscription(serverId);
     } on ApiException catch (e) {
       if (!servesFromCacheFor(e)) rethrow;
       final List<Subscription>? cached = await _cache.peek(
@@ -194,7 +298,7 @@ class CachedApiClient implements ApiClient {
         SubscriptionCodec.subscriptions,
       );
       final Subscription? hit = cached
-          ?.where((Subscription s) => s.id == id)
+          ?.where((Subscription s) => s.id == serverId)
           .firstOrNull;
       if (hit == null) rethrow;
       return hit;
@@ -206,34 +310,59 @@ class CachedApiClient implements ApiClient {
     String id,
     Map<String, dynamic> changes,
   ) async {
-    await replayPending();
-    final Subscription updated = await _network.updateSubscription(id, changes);
-    await _cache.amend(
-      kLocalSubscriptionsKey,
-      SubscriptionCodec.subscriptions,
-      (List<Subscription> cached) =>
-          cached.map((Subscription s) => s.id == id ? updated : s).toList(),
+    final String? owner = _currentUser();
+    final OutboxEntry? queued = await _unsyncedCreate(id);
+    if (queued != null && owner != null) {
+      // A soft delete of a row the server never had is a delete.
+      if (changes['deleted_at'] != null) {
+        await deleteSubscription(id);
+        return _placeholder(queued).patched(changes);
+      }
+      final OutboxEnqueueResult r = await _outbox.enqueue(
+        owner: owner,
+        recordId: id,
+        op: OutboxOp.update,
+        kind: kSubscriptionWrite,
+        body: changes,
+      );
+      return r.entry != null && r.entry!.op == OutboxOp.create
+          ? _placeholder(r.entry!)
+          : _placeholder(queued).patched(changes);
+    }
+    if (!_cache.knownOffline) await replayPending();
+    final Subscription updated = await _network.updateSubscription(
+      await _outbox.resolve(id),
+      changes,
     );
+    await _upsertCached(updated);
     return updated;
   }
 
   @override
   Future<void> deleteSubscription(String id) async {
-    await replayPending();
-    await _network.deleteSubscription(id);
-    await _cache.amend(
-      kLocalSubscriptionsKey,
-      SubscriptionCodec.subscriptions,
-      (List<Subscription> cached) =>
-          cached.where((Subscription s) => s.id != id).toList(),
-    );
+    final String? owner = _currentUser();
+    if (owner != null && await _unsyncedCreate(id) != null) {
+      // Cancels a create that never reached the server (nothing is sent), or
+      // queues the delete behind one that may have.
+      await _outbox.enqueue(
+        owner: owner,
+        recordId: id,
+        op: OutboxOp.delete,
+        kind: kSubscriptionWrite,
+      );
+      return;
+    }
+    if (!_cache.knownOffline) await replayPending();
+    final String serverId = await _outbox.resolve(id);
+    await _network.deleteSubscription(serverId);
+    await _removeCached(serverId);
   }
 
   /// Not cached: a payment history is a detail-screen read, and a stale one
   /// is worse than a failed one that offers a retry.
   @override
-  Future<List<PaymentRecord>> getPaymentHistory(String id) =>
-      _network.getPaymentHistory(id);
+  Future<List<PaymentRecord>> getPaymentHistory(String id) async =>
+      _network.getPaymentHistory(await _outbox.resolve(id));
 
   @override
   Future<BudgetInfo> getBudget() => _cache.read(

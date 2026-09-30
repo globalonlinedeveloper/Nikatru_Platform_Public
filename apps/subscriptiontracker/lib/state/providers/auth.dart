@@ -40,10 +40,13 @@ import 'package:nikatru_platform_storage/age_signals.dart'
     show currentStoreAgeSignalSource;
 
 import '../../core/app_config.dart';
+import '../../data/api/api_client.dart' show ApiClient;
+import '../../data/api/cached_api_client.dart' show CachedApiClient;
 import '../../data/auth/auth_repository.dart';
 import '../analytics_providers.dart';
 import 'notifications.dart';
 import 'persistence.dart';
+import 'subscriptions.dart' show apiClientProvider;
 
 /// THE OUTER SWITCH, checked before consent is even considered.
 ///
@@ -574,7 +577,25 @@ List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
   // unconfigured posture the same store IS the user's data and there is no
   // account to sign out of, so it is never dropped there.
   if (AppConfig.isApiConfigured) ref.read(localSubscriptionStoreProvider).clear,
+  // 🔴 AND THIS USER'S QUEUED WRITES (lead ruling on #1075, finding 1): an
+  // explicit sign-out DISCARDS them; a forced 401 (`signOutOnlyIfSessionIsGone`)
+  // runs no drops and KEEPS them for this same user's return; an account switch
+  // never sends them, because the outbox replays only its signed-in owner's
+  // entries. Resolved here, before any await, like every other drop.
+  if (AppConfig.isApiConfigured) discardQueuedWritesOf(ref),
 ];
+
+/// The drop for the signed-in user's queued writes, resolved NOW (the user id
+/// and the client) so it still names the right user after the sign-out lands.
+UserStateDrop discardQueuedWritesOf(WidgetRef ref) {
+  final String? owner = ref.read(authRepositoryProvider).currentUser?.id;
+  final ApiClient api = ref.read(apiClientProvider);
+  return () async {
+    if (owner != null && api is CachedApiClient) {
+      await api.discardPendingOf(owner);
+    }
+  };
+}
 
 /// Run the resolved drops — the half that is allowed to take as long as it likes.
 ///
