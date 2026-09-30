@@ -173,6 +173,7 @@
       "tooling/ci/workflow-scan.mjs",
       "tooling/ci/flutter-release-build.mjs",
       "tooling/ops/bounded-retry.mjs",
+      "tooling/ops/credential-origin.mjs",
       "tooling/ops/glitchtip-project.json",
       "tooling/sites/apex.mjs",
       "tooling/sites/availability.mjs",
