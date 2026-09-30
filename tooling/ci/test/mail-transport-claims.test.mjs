@@ -804,10 +804,25 @@ describe('verify-supabase-templates — every RECORDED auth field is compared', 
     return { ...live, ...overrides };
   };
 
-  const runAgainst = (auth, overrides = {}) => {
-    const body = JSON.stringify(liveFor(auth, overrides));
+  /** A fetch stub answering 200 with `body`. The stub's CODE is a constant and
+   *  the body is DATA in a sibling .json it reads at load — no value is spliced
+   *  into source, where JSON.stringify is not a complete code escape (CodeQL
+   *  js/bad-code-sanitization). Returns the stub's path. */
+  const DERIVED_STUB = [
+    "import { readFileSync } from 'node:fs';",
+    "const body = readFileSync(new URL(import.meta.url.replace(/\\.mjs$/, '.json')), 'utf8');",
+    "globalThis.fetch = async () => new Response(body, { status: 200, headers: { 'content-type': 'application/json' } });",
+    '',
+  ].join('\n');
+  const derivedStub = (body) => {
     const pre = join(TMP, `fetch-stub-derived-${seq++}.mjs`);
-    writeFileSync(pre, `globalThis.fetch = async () => new Response(${JSON.stringify(body)}, { status: 200, headers: { 'content-type': 'application/json' } });\n`);
+    writeFileSync(pre.replace(/\.mjs$/, '.json'), body);
+    writeFileSync(pre, DERIVED_STUB);
+    return pre;
+  };
+
+  const runAgainst = (auth, overrides = {}) => {
+    const pre = derivedStub(JSON.stringify(liveFor(auth, overrides)));
     const env = { ...process.env, SUPABASE_PAT: 'sbp_placeholder_for_tests', SUPABASE_PROJECT_REF: 'placeholderref' };
     return spawnSync(process.execPath, ['--import', pathToFileURL(pre).href, LIVE_CHECKER, rootWithAuth(auth)], { encoding: 'utf8', env });
   };
@@ -850,8 +865,7 @@ describe('verify-supabase-templates — every RECORDED auth field is compared', 
     // The stub's live body is built from `auth`, so drop the key back out of it.
     const live = liveFor(auth);
     delete live.mailer_notifications_typoed_enabled;
-    const pre = join(TMP, `fetch-stub-derived-${seq++}.mjs`);
-    writeFileSync(pre, `globalThis.fetch = async () => new Response(${JSON.stringify(JSON.stringify(live))}, { status: 200, headers: { 'content-type': 'application/json' } });\n`);
+    const pre = derivedStub(JSON.stringify(live));
     const env = { ...process.env, SUPABASE_PAT: 'sbp_placeholder_for_tests', SUPABASE_PROJECT_REF: 'placeholderref' };
     const r = spawnSync(process.execPath, ['--import', pathToFileURL(pre).href, LIVE_CHECKER, rootWithAuth(auth)], { encoding: 'utf8', env });
     assert.equal(r.status, 1, out(r));

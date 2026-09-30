@@ -1575,7 +1575,7 @@ describe('D1 — the quota floor and the hard request ceiling', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 describe('B-4: recurring causes carry firstSeen/lastSeen or a guard/row', () => {
   const bare = { signature: 'recurring-x:*', rootCause: 'A recurring fixture class.', fix: 'superseded: fixed on the branch before merge', fixedBy: { kind: 'superseded', by: 'the branch' } };
-  const group = (cause, count) => ({ signature: `${cause.signature.replace('*', '')}one`, count, cause });
+  const group = (cause, count) => ({ signature: `${cause.signature.replaceAll('*', '')}one`, count, cause });
 
   test('RED: a cause matched by 2 runs with no firstSeen/lastSeen and no guard/row is a finding', () => {
     assert.deepEqual(unrankedRecurring([group(bare, 2)]), [{ signature: 'recurring-x:*', runs: 2 }]);

@@ -108,7 +108,8 @@ beforeAll(async () => {
     // the identity provider is: what is under test in this file is the
     // platform_db half. That the relay HAPPENS, in the right order, and refuses
     // correctly when the app route does, is asserted in test/auth.test.ts.
-    if (url.startsWith(APP_ORIGIN)) return new Response('{"ok":true}', { status: 200 });
+    // Parsed origin, exact — not a prefix (CodeQL js/incomplete-url-substring-sanitization).
+    if (new URL(url).origin === APP_ORIGIN) return new Response('{"ok":true}', { status: 200 });
     throw new Error(`unexpected fetch in test: ${url}`);
   });
 });

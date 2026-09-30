@@ -22,7 +22,7 @@
 // Each rests a different argument. Proving the row exists proves none of them, so
 // each field is its own recorded failing case.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
 import { MANIFEST_KEY_ORDER, canonicalJson, sha256Hex } from './canonical.mjs';
@@ -171,11 +171,16 @@ export function emitPack(recipePath, outDir) {
   const manifestAssets = [];
   for (const rel of declaredAssets) {
     const abs = join(assetsSrc, rel);
-    if (!existsSync(abs) || !statSync(abs).isFile()) {
+    // Read, and let the read say whether it is there: an exists/stat check
+    // followed by a read by the same name is a race (CodeQL js/file-system-race).
+    let bytes;
+    try {
+      bytes = readFileSync(abs);
+    } catch (e) {
+      if (e.code !== 'ENOENT' && e.code !== 'EISDIR' && e.code !== 'ENOTDIR') throw e;
       problems.push(`assets/${rel} is declared by a recipe item and is not on disk`);
       continue;
     }
-    const bytes = readFileSync(abs);
     const verdict = classifyAsset(rel, bytes);
     if (!verdict.ok) problems.push(`assets/${rel}: ${verdict.reason}`);
     else {

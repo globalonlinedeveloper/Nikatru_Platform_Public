@@ -230,8 +230,22 @@ const AD_SHAPED_FORMATS = new Set(['banner', 'interstitial', 'wall', 'adwall', '
  *  question; that a promotional component links to one at all is what makes the
  *  question askable from the tree, and it is the half of the cross-app limb that
  *  can fire while the catalogue still holds ONE app. */
-const LISTING_URL =
-  /(?:play\.google\.com\/store\/apps|apps\.apple\.com|itunes\.apple\.com|apps\.microsoft\.com|microsoft\.com\/[a-z-]*\/?store|snapcraft\.io|flathub\.org)/i;
+const LISTING_URL = { test: isListingUrl };
+// ⏱ 2026-09-30 · Case-insensitive SUBSTRINGS, not a hostname RegExp: the same match
+// the unanchored `/(?:play\.google\.com\/store\/apps|…)/i` made — a detector must
+// find a listing anywhere in a string — with no hostname regexp for CodeQL to read
+// as a missing anchor (#52). Only the path after `microsoft.com/` keeps a pattern.
+const LISTING_NEEDLES = ['play.google.com/store/apps', 'apps.apple.com', 'itunes.apple.com', 'apps.microsoft.com', 'snapcraft.io', 'flathub.org'];
+const MS_STORE_PATH = /^[a-z-]*\/?store/;
+function isListingUrl(s) {
+  const t = String(s).toLowerCase();
+  if (LISTING_NEEDLES.some((n) => t.includes(n))) return true;
+  const ms = 'microsoft.com/';
+  for (let i = t.indexOf(ms); i !== -1; i = t.indexOf(ms, i + 1)) {
+    if (MS_STORE_PATH.test(t.slice(i + ms.length))) return true;
+  }
+  return false;
+}
 
 /** Pairs that mean "a surface pointing at our OTHER apps" without containing an
  *  advertising word. Play's NO carve-out is literally a "More Apps section in

@@ -163,6 +163,10 @@
 //      Non-zero, so nothing is waived; distinct, so a transient outage cannot be
 //      reported as a finding about the alerting. See `unreadable()` below.
 //
+// LIMB C (2026-09-30) makes CodeQL a declared source: every open code-scanning
+// alert is fixed in code or carries an entry in tooling/ci/codeql-dispositions.json,
+// and an undispositioned one FAILS (exit 1). Its rules are at the end of the file.
+//
 // Offline testing: --probe-file <json> --now <iso> injects the API answers so the
 // decision logic runs for real with no network. It prints a loud banner so its
 // presence in a real CI log is unmistakable.
@@ -456,7 +460,7 @@ export function classify(issue, health, nowMs) {
  *  refusals happened. "Never a pass, and never a definite negative either."
  *
  *  ⚠️ THE FILE'S OTHER EXIT-1 CALL SITES ARE LEFT ALONE ON PURPOSE, for the
- *  reason `assert-ops-register.mjs` records beside its own `coverageLostHard`:
+ *  reason `assert-ops-register.mjs` records beside its own `coverageLost`:
  *  `reconcile()`'s structural verdicts are STATEMENTS ABOUT THIS REPOSITORY'S
  *  OWN CONTENT — a register that declares no source, a workflow directory that
  *  is gone — which a query DID answer. Those are negatives, not silences, and
@@ -600,9 +604,14 @@ async function main() {
 
   if (gaps.length === 0) {
     console.log('\n✓ limb B — no issue is open against a source that is reporting healthy. Every firing has been dispositioned.');
-    return;
+  } else {
+    printGaps(gaps);
   }
 
+  await limbC(probeFile);
+}
+
+function printGaps(gaps) {
   console.log(`\n⬜ limb B — ${gaps.length} UNDISPOSITIONED FIRING(S). This PRINTS and does not fail the build; see below.`);
   for (const v of gaps) {
     console.log(
@@ -617,14 +626,6 @@ async function main() {
       '   failing the build would block every merge in the repository on an act only the owner may perform.\n' +
       '   [pipeline C-6]: an owner-gated gap prints on every run. The remedy is to READ the issue and close it, by hand.',
   );
-}
-
-// Only run when executed directly, so the pure halves can be imported by tests.
-if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
-  await main().catch((e) => {
-    console.error(`FAIL  ${e.stack || e.message}`);
-    process.exit(1);
-  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -643,4 +644,274 @@ import { anchoredRunRead, describeRead } from './anchored-run-read.mjs';
 /** PURE. The newest scheduled run of a list, for the read line. */
 function newestScheduled(runs) {
   return (runs ?? []).filter((r) => r && r.event === 'schedule' && r.created_at).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] ?? null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── LIMB C · CODEQL — EVERY OPEN CODE-SCANNING ALERT CARRIES A DISPOSITION ────
+// Added 2026-09-30. Measured that morning: 160 open CodeQL alerts (35 high, 79
+// medium, 8 warning, 38 note), growing about 7 a day, and nothing in the tree
+// graded them — codeql.yml is an alert sink by design, and this guard did not
+// list code scanning as a source. The ops-watch reader
+// (tooling/ops/check-code-scanning-age.mjs) pages only a high alert past a week,
+// once a week, and never fails a merge, so a medium or a note aged forever.
+//
+// THE RULE. Every OPEN alert on the default branch is either FIXED IN CODE, or
+// has one entry in tooling/ci/codeql-dispositions.json that says why it stays:
+//   · `by-design`     — the flagged flow is the script's purpose. For the two
+//                       flow rules (js/file-access-to-http, js/http-to-file-access)
+//                       the entry must name the HOST, because "it sends a
+//                       credential to its own issuer" is only true for one host.
+//   · `fixed-in-tree` — the code is fixed on this branch, and the alert is still
+//                       open only because CodeQL has not yet analysed a default-
+//                       branch commit carrying the fix. Without this kind the PR
+//                       that fixes an alert could never pass: the guard reads
+//                       main's alerts, and main still has it open.
+// A DISMISSED alert is dispositioned by GitHub itself when it carries a reason,
+// and is graded exactly like an open one when it does not (the same rule as
+// check-code-scanning-age.mjs's isTriaged).
+//
+// WHAT FAILS (exit 1):
+//   · an open alert, or a dismissed-with-no-reason alert, with no entry;
+//   · an entry whose rule or path is not the live alert's — it dispositions a
+//     DIFFERENT alert than the one its number now names;
+//   · a `fixed-in-tree` claim that CodeQL already disproved: the commit main's
+//     analysis last saw the alert at CONTAINS the claim (read with `git show`),
+//     and the alert is still open. A claim is falsifiable, or it is not a claim.
+//   · a `by-design` entry for any rule but the two flow rules (lead ruling
+//     2026-09-30: everything else is fixed in code);
+//   · a malformed file (answered negatives about this tree's own content).
+// WHAT PRINTS (exit 0) — a STALE entry, naming an alert that is neither open nor
+//   dismissed (fixed, or gone). It cannot fail: the fixing PR must KEEP its entry
+//   until main's analysis marks the alert fixed, so the entry goes stale only
+//   after the merge — failing on it would redden main over the fix working.
+//   Delete stale entries when they print.
+// COVERAGE LOST (exit 2): no token, the API refused (the job needs
+//   `security-events: read`), a truncated page walk, an alert of the wrong shape.
+//
+// The lead applies GitHub dismissals FROM this file, after review; nothing here
+// writes to the API. `--probe-file` answers limb C through `codeql: { open,
+// dismissed }` (or `codeqlError`), and `codeqlClaims: { "<sha>": [n, ...] }`
+// stands in for `git show`; a probe with no `codeql` key is COVERAGE LOST.
+// ─────────────────────────────────────────────────────────────────────────────
+import { spawnSync } from 'node:child_process';
+import { readAlerts, shapeProblem, isTriaged } from '../ops/check-code-scanning-age.mjs';
+
+export const CODEQL_DISPOSITIONS_REL = 'tooling/ci/codeql-dispositions.json';
+export const DISPOSITION_KINDS = Object.freeze(['by-design', 'fixed-in-tree']);
+/** The flow rules whose by-design reason holds for ONE host only. */
+export const HOST_RULES = Object.freeze(['js/file-access-to-http', 'js/http-to-file-access']);
+/** A bare hostname; a leading `*.` names a provider zone whose exact host is not public (a hosted Supabase project ref). */
+const HOSTNAME = /^(?=.{1,253}$)(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+const nonEmptyText = (v) => typeof v === 'string' && v.trim().length > 0;
+
+/** PURE. The dispositions file, validated. Returns { entries, problems }. */
+export function parseDispositions(text) {
+  let doc;
+  try {
+    doc = JSON.parse(text);
+  } catch (e) {
+    return { entries: [], problems: [`${CODEQL_DISPOSITIONS_REL} is not JSON (${e.message}). An unreadable disposition file is not an empty one.`] };
+  }
+  if (!doc || !Array.isArray(doc.dispositions)) {
+    return { entries: [], problems: [`${CODEQL_DISPOSITIONS_REL} has no \`dispositions\` array.`] };
+  }
+  const problems = [];
+  const seen = new Set();
+  for (const [i, e] of doc.dispositions.entries()) {
+    const at = `${CODEQL_DISPOSITIONS_REL} entry ${i}${Number.isInteger(e?.alert) ? ` (alert #${e.alert})` : ''}`;
+    if (!e || typeof e !== 'object') {
+      problems.push(`${at} is not an object.`);
+      continue;
+    }
+    if (!Number.isInteger(e.alert) || e.alert < 1) problems.push(`${at} has no positive integer \`alert\`.`);
+    else if (seen.has(e.alert)) problems.push(`${at} repeats an alert number — one alert, one disposition.`);
+    else seen.add(e.alert);
+    if (!nonEmptyText(e.rule)) problems.push(`${at} has no \`rule\`.`);
+    if (!nonEmptyText(e.path)) problems.push(`${at} has no \`path\`.`);
+    if (!DISPOSITION_KINDS.includes(e.disposition)) problems.push(`${at} has disposition ${JSON.stringify(e.disposition)}, not one of ${DISPOSITION_KINDS.join(' / ')}.`);
+    if (!nonEmptyText(e.reason)) problems.push(`${at} has no \`reason\` — a disposition with no reason is a click, not a decision.`);
+    // Lead ruling 2026-09-30 (owner: "Security and quality, fix everything"): a
+    // disposition is allowed ONLY for the two flow rules, with a verified host.
+    // Every other rule is fixed in code.
+    if (e.disposition === 'by-design' && nonEmptyText(e.rule) && !HOST_RULES.includes(e.rule)) {
+      problems.push(`${at} is a by-design ${e.rule}. Only ${HOST_RULES.join(' and ')} may be kept by design; fix this one in code.`);
+    }
+    if (e.disposition === 'by-design' && HOST_RULES.includes(e.rule)) {
+      const hosts = Array.isArray(e.host) ? e.host : [e.host];
+      if (hosts.length === 0 || !hosts.every((h) => typeof h === 'string' && HOSTNAME.test(h))) {
+        problems.push(`${at} is a by-design ${e.rule} with no bare \`host\` (got ${JSON.stringify(e.host)}). The reason holds for one provider's host; name it.`);
+      }
+    }
+  }
+  return { entries: doc.dispositions.filter((e) => e && Number.isInteger(e.alert)), problems };
+}
+
+const alertPath = (a) => a?.most_recent_instance?.location?.path ?? null;
+const alertWhere = (a) => {
+  const l = a?.most_recent_instance?.location;
+  return l?.path ? `${l.path}${Number.isInteger(l.start_line) ? `:${l.start_line}` : ''}` : '(no location)';
+};
+
+/** PURE. Why this alert cannot be graded by limb C, or null. */
+export function codeqlShapeProblem(a) {
+  const p = shapeProblem(a);
+  if (p) return p;
+  if (!nonEmptyText(a.rule.id)) return `alert #${a.number} has no rule.id`;
+  if (!nonEmptyText(alertPath(a))) return `alert #${a.number} has no most_recent_instance.location.path`;
+  return null;
+}
+
+/** PURE. The limb C verdict. `claimAt(sha, number)` answers "does the dispositions
+ *  file at commit `sha` carry a fixed-in-tree claim for this alert?" with true,
+ *  false, or null (that commit is not readable here). */
+export function judgeCodeql({ open, dismissed, entries, claimAt = () => null }) {
+  const byNumber = new Map(entries.map((e) => [e.alert, e]));
+  const out = { undispositioned: [], mismatched: [], disproved: [], pending: [], byDesign: [], stale: [] };
+  const matches = (a, e) => {
+    if (e.rule === a.rule.id && e.path === alertPath(a)) return true;
+    out.mismatched.push({ alert: a, entry: e });
+    return false;
+  };
+  for (const a of open) {
+    const e = byNumber.get(a.number);
+    if (!e) {
+      out.undispositioned.push(a);
+      continue;
+    }
+    if (!matches(a, e)) continue;
+    if (e.disposition === 'by-design') {
+      out.byDesign.push(a);
+      continue;
+    }
+    const sha = a.most_recent_instance?.commit_sha ?? null;
+    if (claimAt(sha, a.number) === true) out.disproved.push({ alert: a, entry: e, sha });
+    else out.pending.push({ alert: a, entry: e, sha });
+  }
+  for (const a of dismissed) {
+    const e = byNumber.get(a.number);
+    if (e) matches(a, e);
+    else if (!isTriaged(a)) out.undispositioned.push(a);
+  }
+  const live = new Set([...open, ...dismissed].map((a) => a.number));
+  for (const e of entries) if (!live.has(e.alert)) out.stale.push(e);
+  out.failed = out.undispositioned.length + out.mismatched.length + out.disproved.length > 0;
+  return out;
+}
+
+/** `git show <sha>:<dispositions>` — the fixed-in-tree claims a commit carried.
+ *  null when the commit is not in this clone (a shallow or older checkout), so
+ *  an unreadable commit is "pending", never "disproved". */
+function gitClaimAt(root) {
+  const cache = new Map();
+  return (sha, number) => {
+    if (!/^[0-9a-f]{40}$/.test(sha ?? '')) return null;
+    if (!cache.has(sha)) {
+      let claims = null;
+      const commit = spawnSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd: root, encoding: 'utf8' });
+      if (commit.status === 0) {
+        const r = spawnSync('git', ['show', `${sha}:${CODEQL_DISPOSITIONS_REL}`], { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+        claims = new Set();
+        if (r.status === 0) {
+          try {
+            claims = new Set((JSON.parse(r.stdout).dispositions ?? []).filter((e) => e?.disposition === 'fixed-in-tree').map((e) => e.alert));
+          } catch {
+            claims = null;
+          }
+        }
+      }
+      cache.set(sha, claims);
+    }
+    const claims = cache.get(sha);
+    return claims === null ? null : claims.has(number);
+  };
+}
+
+async function limbC(probeFile) {
+  console.log('\n[limb C] CodeQL — every open code-scanning alert is fixed in code or carries a disposition.');
+  const file = join(ROOT, CODEQL_DISPOSITIONS_REL);
+  if (!existsSync(file)) {
+    console.error(`\n✗ limb C — ${CODEQL_DISPOSITIONS_REL} does not exist, so no alert can be shown to have a disposition.`);
+    process.exitCode = 1;
+    return;
+  }
+  const { entries, problems } = parseDispositions(readFileSync(file, 'utf8'));
+  if (problems.length) {
+    console.error(`\n✗ limb C — ${problems.length} problem(s) in ${CODEQL_DISPOSITIONS_REL}:`);
+    for (const p of problems) console.error(`    ${p}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  let open;
+  let dismissed;
+  let claimAt;
+  if (probeFile) {
+    const probe = JSON.parse(readFileSync(probeFile, 'utf8'));
+    if (probe.codeqlError) unreadable([`limb C — the code-scanning alerts are NOT readable: ${probe.codeqlError}`]);
+    if (!probe.codeql) unreadable(['limb C — the probe carries no `codeql` answer, so no code-scanning alert was read.']);
+    ({ open, dismissed } = probe.codeql);
+    const claims = probe.codeqlClaims ?? {};
+    claimAt = (sha, n) => (sha in claims ? claims[sha].includes(n) : null);
+  } else {
+    const token = ghToken();
+    if (!token) unreadable(['limb C — neither GITHUB_TOKEN nor GH_TOKEN is in the environment, so no code-scanning alert was read.']);
+    const repository = process.env.GITHUB_REPOSITORY || DEFAULT_REPO;
+    const note = (l) => console.error(`    ${l}`);
+    try {
+      open = await readAlerts({ repository, token, state: 'open', note });
+      dismissed = await readAlerts({ repository, token, state: 'dismissed', note });
+    } catch (e) {
+      unreadable([`limb C — the code-scanning alerts could not be read: ${e.message}`]);
+    }
+    claimAt = gitClaimAt(ROOT);
+  }
+  if (!Array.isArray(open) || !Array.isArray(dismissed)) unreadable(['limb C — the alert enumeration did not return two lists.']);
+  for (const a of [...open, ...dismissed]) {
+    const p = codeqlShapeProblem(a);
+    if (p) unreadable([`limb C — ${p}. The response shape changed; grading what parsed would be a partial count.`]);
+  }
+
+  const v = judgeCodeql({ open, dismissed, entries, claimAt });
+  console.log(
+    `   ${open.length} open and ${dismissed.length} dismissed alert(s) read · ${entries.length} disposition(s) · ` +
+      `${v.byDesign.length} by design · ${v.pending.length} fixed in tree, awaiting main's analysis`,
+  );
+  for (const e of v.stale) {
+    console.log(`   ⬜ STALE — #${e.alert} ${e.rule} ${e.path} is neither open nor dismissed any more. Delete its entry (this prints, never fails).`);
+  }
+  if (!v.failed) {
+    console.log('✓ limb C — every open code-scanning alert is fixed in code or carries a disposition.');
+    return;
+  }
+  if (v.undispositioned.length) {
+    console.error(`\n✗ limb C — ${v.undispositioned.length} code-scanning alert(s) with NO disposition:`);
+    for (const a of v.undispositioned) {
+      console.error(`    #${a.number}  ${a.rule.id}  ${a.rule.security_severity_level ?? a.rule.severity ?? ''}  ${alertWhere(a)}${a.state === 'dismissed' ? '  (dismissed WITHOUT a reason)' : ''}`);
+    }
+    console.error(
+      '    Fix it in code (with a `fixed-in-tree` entry until main\'s analysis sees the fix), or add a `by-design`\n' +
+        `    entry to ${CODEQL_DISPOSITIONS_REL} with the reason — and the host, for a flow rule.`,
+    );
+  }
+  for (const { alert: a, entry: e } of v.mismatched) {
+    console.error(`\n✗ limb C — entry #${e.alert} says ${e.rule} at ${e.path}, but alert #${a.number} is ${a.rule.id} at ${alertWhere(a)}. It dispositions a different alert.`);
+  }
+  for (const { alert: a, sha } of v.disproved) {
+    console.error(
+      `\n✗ limb C — #${a.number} ${a.rule.id} ${alertWhere(a)} is claimed \`fixed-in-tree\`, and main's analysis of ${sha.slice(0, 12)} — a ` +
+        'commit that already carries that claim — still finds it. The fix did not fix it.',
+    );
+  }
+  process.exitCode = 1;
+}
+
+// Only run when executed directly, so the pure halves can be imported by tests. LAST in
+// the file: limb C's constants are declared above it, and a top-level await placed
+// before them reads them in their temporal dead zone.
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  await main().catch((e) => {
+    console.error(`FAIL  ${e.stack || e.message}`);
+    process.exit(1);
+  });
 }

@@ -1,0 +1,1293 @@
+{
+  "$comment": [
+    "Read by tooling/ci/assert-alert-disposition.mjs limb C: every OPEN CodeQL alert on the default branch has exactly one entry here, or the guard fails.",
+    "by-design: the flagged flow is the script's purpose; for js/file-access-to-http and js/http-to-file-access, `host` names where it goes (a `*.` prefix = a provider zone whose exact host is not public).",
+    "fixed-in-tree: the code is fixed on this branch and the alert waits for main's next analysis; it goes STALE (printed) once CodeQL marks it fixed — delete it then. A claim main's analysis disproves FAILS.",
+    "The lead applies GitHub dismissals for by-design entries from this file after review; nothing writes to the API from CI."
+  ],
+  "asOf": "2026-09-30",
+  "dispositions": [
+    {
+      "alert": 8,
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "services/platform/test/auth.test.ts",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the test compares the parsed origin/hostname exactly."
+    },
+    {
+      "alert": 9,
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "services/platform/test/checkout.test.ts",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the test compares the parsed origin/hostname exactly."
+    },
+    {
+      "alert": 10,
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "services/platform/test/erasure-reach.test.ts",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the test compares the parsed origin/hostname exactly."
+    },
+    {
+      "alert": 14,
+      "rule": "js/bad-tag-filter",
+      "path": "tooling/ci/scan-workflows.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the zizmor arrow is matched with trimStart().startsWith, not a tag regexp."
+    },
+    {
+      "alert": 18,
+      "rule": "js/incomplete-sanitization",
+      "path": "tooling/ci/assert-package-boundaries.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the replacement is global and escapes every metacharacter."
+    },
+    {
+      "alert": 32,
+      "rule": "js/incomplete-multi-character-sanitization",
+      "path": "extensions/Extension/Full_Screen_Shot/test/i18n-sim.node.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the style body is read as a capture group, not by stripping tags off the match."
+    },
+    {
+      "alert": 34,
+      "rule": "js/incomplete-multi-character-sanitization",
+      "path": "extensions/templates/tool/test/harness.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the tag strip runs in a loop to a fixed point."
+    },
+    {
+      "alert": 35,
+      "rule": "js/incomplete-multi-character-sanitization",
+      "path": "extensions/templates/tool/test/skeleton-sim.node.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: stripRawText removes script/style blocks until a fixed point."
+    },
+    {
+      "alert": 36,
+      "rule": "js/incomplete-multi-character-sanitization",
+      "path": "extensions/templates/tool/test/skeleton-sim.node.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: stripRawText removes script/style blocks until a fixed point."
+    },
+    {
+      "alert": 37,
+      "rule": "js/incomplete-multi-character-sanitization",
+      "path": "tooling/ci/check-site-integrity.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the strip no longer relies on a single-pass replace."
+    },
+    {
+      "alert": 38,
+      "rule": "js/incomplete-multi-character-sanitization",
+      "path": "tooling/ci/test/worker-error-sink.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the strip no longer relies on a single-pass replace."
+    },
+    {
+      "alert": 52,
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tooling/ci/assert-ads-declarations.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the listing detector is a case-insensitive substring check (0 diffs over 200k fuzzed cases), not a hostname RegExp."
+    },
+    {
+      "alert": 55,
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tooling/ci/assert-money-config.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the sandbox detector is a case-insensitive substring check, not a hostname RegExp."
+    },
+    {
+      "alert": 56,
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tooling/ci/assert-money-config.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the sandbox detector is a case-insensitive substring check, not a hostname RegExp."
+    },
+    {
+      "alert": 68,
+      "rule": "js/http-to-file-access",
+      "path": "tooling/e2e/provision_user.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "The GoTrue admin response is written to the runner-provided $GITHUB_OUTPUT (the response cannot choose the path); user_id must be a UUID before it is written, and the origin it came from is pinned by tooling/ops/credential-origin.mjs to the self-hosted GoTrue or a hosted Supabase project (fixed 2026-09-30)."
+    },
+    {
+      "alert": 70,
+      "rule": "js/http-to-file-access",
+      "path": "tooling/ops/safe-rerun.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "The write goes to the test-seam log named by env SAFE_RERUN_FIXTURE_LOG, only in fixture mode where no HTTP request exists; the response cannot choose the path and the line is a fixed 'rerun <id> failedOnly=<bool>' record."
+    },
+    {
+      "alert": 84,
+      "rule": "js/file-system-race",
+      "path": "tooling/ci/test/guard-coverage.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the check-then-use is replaced by one open/read that handles ENOENT."
+    },
+    {
+      "alert": 85,
+      "rule": "js/file-system-race",
+      "path": "tooling/content_pipeline/src/pack.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the check-then-use is replaced by one open/read that handles ENOENT."
+    },
+    {
+      "alert": 95,
+      "rule": "js/insecure-temporary-file",
+      "path": "tooling/ci/flutter-stock-assets.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the temporary directory comes from mkdtempSync."
+    },
+    {
+      "alert": 97,
+      "rule": "js/insecure-temporary-file",
+      "path": "tooling/store/capture-play-screenshots.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the temporary directory comes from mkdtempSync."
+    },
+    {
+      "alert": 99,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ci/assert-catalog-reachable.mjs",
+      "disposition": "by-design",
+      "host": "nikatru.com",
+      "reason": "An unauthenticated GET of every live app's public URL from the reviewed catalogue is the reachability guard's purpose; no credential or private data is sent."
+    },
+    {
+      "alert": 100,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ci/assert-ops-register.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "GitHub token goes only to the pinned GitHub API origin; the register only shapes the path."
+    },
+    {
+      "alert": 101,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ci/assert-ops-register.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "A heartbeat SELECT via the Cloudflare D1 API with the Cloudflare token is intended; the table identifier is regex-refused and job/target are bound params."
+    },
+    {
+      "alert": 102,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ci/assert-ops-register.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "The SQL body goes to the literal Cloudflare D1 endpoint, as designed."
+    },
+    {
+      "alert": 103,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ci/assert-ops-register.mjs",
+      "disposition": "by-design",
+      "host": "glitchtip.nikatru.com",
+      "reason": "Sends the GlitchTip API token to the GlitchTip base URL, whose origin tooling/ops/credential-origin.mjs pins to glitchtip.nikatru.com before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 104,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ci/assert-ops-register.mjs",
+      "disposition": "by-design",
+      "host": "glitchtip.nikatru.com",
+      "reason": "Sends the GlitchTip API token to the GlitchTip base URL, whose origin tooling/ops/credential-origin.mjs pins to glitchtip.nikatru.com before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 105,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/await-pr-checks.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "Reading PR check runs from the GitHub API with a GitHub token to a pinned origin is the script's purpose."
+    },
+    {
+      "alert": 106,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/await-pr-checks.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "Same request as #105; file data only shapes the path on the pinned GitHub origin."
+    },
+    {
+      "alert": 113,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/safe-rerun.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "The GitHub token read from the vault goes only to the GitHub API, its issuer; the origin is a constant."
+    },
+    {
+      "alert": 114,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/safe-rerun.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "Same GET as #113; file data only shapes the path."
+    },
+    {
+      "alert": 115,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/safe-rerun.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "The rerun POST targets the pinned GitHub API origin; re-running the run is the script's purpose."
+    },
+    {
+      "alert": 116,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/safe-rerun.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "The vault GitHub token is sent only to the GitHub API."
+    },
+    {
+      "alert": 123,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/release/submit-play.mjs",
+      "disposition": "by-design",
+      "host": [
+        "androidpublisher.googleapis.com",
+        "oauth2.googleapis.com"
+      ],
+      "reason": "The JWT goes to Google's token endpoint and the bearer + bundle to the Play Developer API, their issuer; every origin is pinned."
+    },
+    {
+      "alert": 124,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/release/submit-play.mjs",
+      "disposition": "by-design",
+      "host": [
+        "androidpublisher.googleapis.com",
+        "oauth2.googleapis.com"
+      ],
+      "reason": "Uploading the signed bundle to Google Play is the script's purpose, to a pinned origin."
+    },
+    {
+      "alert": 133,
+      "rule": "js/trivial-conditional",
+      "path": "extensions/Extension/Full_Screen_Shot/pages/history.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: actsLine reads r || {} once; the always-true test is gone."
+    },
+    {
+      "alert": 139,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/content/capture.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: removed the dead fsPiiKind and the FS_PII/fsHasCard/fsHasPhone only it used."
+    },
+    {
+      "alert": 140,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/pages/common.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the page globals are listed in the module.exports test-export list, which is what CodeQL reads as their use."
+    },
+    {
+      "alert": 141,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/pages/common.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the page globals are listed in the module.exports test-export list, which is what CodeQL reads as their use."
+    },
+    {
+      "alert": 142,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/pages/common.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the page globals are listed in the module.exports test-export list, which is what CodeQL reads as their use."
+    },
+    {
+      "alert": 143,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/pages/common.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the page globals are listed in the module.exports test-export list, which is what CodeQL reads as their use."
+    },
+    {
+      "alert": 144,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/pages/common.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the page globals are listed in the module.exports test-export list, which is what CodeQL reads as their use."
+    },
+    {
+      "alert": 145,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/pages/common.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the page globals are listed in the module.exports test-export list, which is what CodeQL reads as their use."
+    },
+    {
+      "alert": 146,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/pages/common.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the page globals are listed in the module.exports test-export list, which is what CodeQL reads as their use."
+    },
+    {
+      "alert": 147,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/pages/common.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the page globals are listed in the module.exports test-export list, which is what CodeQL reads as their use."
+    },
+    {
+      "alert": 148,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/pages/common.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the page globals are listed in the module.exports test-export list, which is what CodeQL reads as their use."
+    },
+    {
+      "alert": 225,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/release/submit-windows-store.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 243,
+      "rule": "js/file-system-race",
+      "path": "tooling/app-yaml/render.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the check-then-use is replaced by one open/read that handles ENOENT."
+    },
+    {
+      "alert": 256,
+      "rule": "js/file-access-to-http",
+      "path": "extensions/scripts/publish-cws.mjs",
+      "disposition": "by-design",
+      "host": "chromewebstore.googleapis.com",
+      "reason": "Uploading the release package to the Chrome Web Store upload API is the script's purpose, and the destination is a pinned origin whose only override is loopback."
+    },
+    {
+      "alert": 261,
+      "rule": "js/file-access-to-http",
+      "path": "extensions/scripts/publish-edge.mjs",
+      "disposition": "by-design",
+      "host": "api.addons.microsoftedge.microsoft.com",
+      "reason": "Uploading the package to the Edge Add-ons API is the script's purpose, to a pinned origin whose only override is loopback."
+    },
+    {
+      "alert": 264,
+      "rule": "js/file-access-to-http",
+      "path": "extensions/scripts/publish-cws.mjs",
+      "disposition": "by-design",
+      "host": "chromewebstore.googleapis.com",
+      "reason": "The item id and the Google-issued bearer go to Google's own Chrome Web Store API, which is the flow the script exists for."
+    },
+    {
+      "alert": 265,
+      "rule": "js/file-access-to-http",
+      "path": "extensions/scripts/publish-cws.mjs",
+      "disposition": "by-design",
+      "host": "chromewebstore.googleapis.com",
+      "reason": "The :publish call sends the item id and Google-issued bearer to the Chrome Web Store API, its issuer and the script's purpose."
+    },
+    {
+      "alert": 266,
+      "rule": "js/file-access-to-http",
+      "path": "extensions/scripts/publish-edge.mjs",
+      "disposition": "by-design",
+      "host": "api.addons.microsoftedge.microsoft.com",
+      "reason": "The product id addresses the draft package on the Edge Add-ons API, the pinned provider origin."
+    },
+    {
+      "alert": 268,
+      "rule": "js/file-access-to-http",
+      "path": "extensions/scripts/publish-edge.mjs",
+      "disposition": "by-design",
+      "host": "api.addons.microsoftedge.microsoft.com",
+      "reason": "Publishing the draft on the Edge Add-ons API is the script's purpose, to the pinned provider origin."
+    },
+    {
+      "alert": 285,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/smoke/smoke-web-artifact.mjs",
+      "disposition": "by-design",
+      "host": "127.0.0.1",
+      "reason": "The 'request' is a Chrome DevTools Protocol message over a loopback socket to a browser the script launched itself; nothing leaves the machine."
+    },
+    {
+      "alert": 293,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ci/assert-glitchtip-project.mjs",
+      "disposition": "by-design",
+      "host": "glitchtip.nikatru.com",
+      "reason": "Sends the GlitchTip API token to the GlitchTip base URL, whose origin tooling/ops/credential-origin.mjs pins to glitchtip.nikatru.com before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 303,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/assert-ops-register.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 305,
+      "rule": "js/shell-command-injection-from-environment",
+      "path": "tooling/ci/flutter-stock-assets.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the launcher path reaches cmd.exe through an environment variable, never the command string."
+    },
+    {
+      "alert": 306,
+      "rule": "js/indirect-command-line-injection",
+      "path": "tooling/ci/flutter-stock-assets.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the launcher path reaches cmd.exe through an environment variable, never the command string."
+    },
+    {
+      "alert": 307,
+      "rule": "js/file-system-race",
+      "path": "tooling/ci/flutter-stock-assets.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the check-then-use is replaced by one open/read that handles ENOENT."
+    },
+    {
+      "alert": 321,
+      "rule": "js/http-to-file-access",
+      "path": "tooling/web/self-host-fallback-fonts.mjs",
+      "disposition": "by-design",
+      "host": "fonts.gstatic.com",
+      "reason": "The path is FONT_PATH-shaped (regex :61, no traversal) and must be in the committed lock; bytes are written only after size and sha256 match the lock, so the response chooses neither path nor unverified content."
+    },
+    {
+      "alert": 322,
+      "rule": "js/useless-expression",
+      "path": "apps/subscriptiontracker/web/flutter_bootstrap.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the stamped bootstrap opens with its generated-from-the-brick banner, so CodeQL treats the two Flutter build tokens as generated code."
+    },
+    {
+      "alert": 323,
+      "rule": "js/useless-expression",
+      "path": "apps/subscriptiontracker/web/flutter_bootstrap.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the stamped bootstrap opens with its generated-from-the-brick banner, so CodeQL treats the two Flutter build tokens as generated code."
+    },
+    {
+      "alert": 328,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ci/install-pinned-tool.mjs",
+      "disposition": "by-design",
+      "host": [
+        "github.com",
+        "gitlab.com"
+      ],
+      "reason": "Downloading a pinned tool release from its vendor's literal URL, with the version rebuilt from integers and the result sha256-verified, is the installer's purpose; no credential is sent."
+    },
+    {
+      "alert": 329,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/assert-github-matrix.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 330,
+      "rule": "js/syntax-error",
+      "path": "tooling/bricks/app/__brick__/apps/{{app_id}}/web/flutter_bootstrap.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: mason templates (tooling/bricks/**/__brick__/**) are excluded by .github/codeql/codeql-config.yml paths-ignore; the stamped app copy is still scanned."
+    },
+    {
+      "alert": 331,
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tooling/ci/test/stamp-text-fidelity.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the test asserts the host inside its clause, anchored."
+    },
+    {
+      "alert": 336,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/assert-stamp-text-fidelity.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 337,
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tooling/ci/test/turnstile-hosts.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the test asserts the host inside its clause, anchored."
+    },
+    {
+      "alert": 338,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/test/d1-sql-inventory.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 339,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/test/d1-sql-inventory.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 342,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ci/assert-glitchtip-no-ip.mjs",
+      "disposition": "by-design",
+      "host": "glitchtip.nikatru.com",
+      "reason": "Sends the GlitchTip API token to the GlitchTip base URL, whose origin tooling/ops/credential-origin.mjs pins to glitchtip.nikatru.com before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 343,
+      "rule": "js/bad-code-sanitization",
+      "path": "tooling/ci/test/mail-transport-claims.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the stub code is a constant and the body is data in a sibling .json."
+    },
+    {
+      "alert": 344,
+      "rule": "js/bad-code-sanitization",
+      "path": "tooling/ci/test/mail-transport-claims.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the stub code is a constant and the body is data in a sibling .json."
+    },
+    {
+      "alert": 345,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 346,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 349,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 350,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 351,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 352,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 353,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 354,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 355,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 356,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 357,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 361,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/provision-apple.mjs",
+      "disposition": "by-design",
+      "host": "api.appstoreconnect.apple.com",
+      "reason": "The Apple-issued JWT is sent only to Apple's App Store Connect API."
+    },
+    {
+      "alert": 363,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/test/mor-adapters.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 364,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/test/mor-adapters.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 366,
+      "rule": "js/unused-local-variable",
+      "path": "services/platform/test/scheduled-crons.test.ts",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 368,
+      "rule": "js/template-syntax-in-string-literal",
+      "path": "tooling/ci/test/pages-deployments.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the literal ${...} is no longer a template-looking string."
+    },
+    {
+      "alert": 369,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/test/e2e/adversarial-claim.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: removed the unused open import."
+    },
+    {
+      "alert": 370,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/test/e2e/fixtures-adv/_late.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: fsLateFixture is published on window, which the fixture pages call."
+    },
+    {
+      "alert": 380,
+      "rule": "js/http-to-file-access",
+      "path": "tooling/store/capture-fallback-fonts.mjs",
+      "disposition": "by-design",
+      "host": "fonts.gstatic.com",
+      "reason": "The cache file name is the lock's sha256, which fetchPinned (:193) requires the fetched bytes to hash to (so it is necessarily hex); size and hash are checked before any write, so the response chooses neither path nor content."
+    },
+    {
+      "alert": 381,
+      "rule": "js/http-to-file-access",
+      "path": "tooling/store/capture-fallback-fonts.mjs",
+      "disposition": "by-design",
+      "host": "fonts.gstatic.com",
+      "reason": "Lock paths are FONT_PATH-validated before any join (readLock, :159) and bytes are hash-verified, so staging the fonts is intended and traversal-free."
+    },
+    {
+      "alert": 382,
+      "rule": "js/http-to-file-access",
+      "path": "tooling/store/local-chromedriver.mjs",
+      "disposition": "by-design",
+      "host": [
+        "googlechromelabs.github.io",
+        "storage.googleapis.com"
+      ],
+      "reason": "The write path is a freshly created private temp dir plus a constant name (the response cannot choose it), the version that later forms a path is rebuilt from integers, and the bytes must match size+md5 from the GCS object metadata before being written. (Optional hardening: assert new URL(build.url).origin === 'https://storage.googleapis.com'.)"
+    },
+    {
+      "alert": 386,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/check-analytics-liveness.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "A read-only D1 SELECT over the Cloudflare API with the Cloudflare token is the liveness check's purpose; the origin is a literal."
+    },
+    {
+      "alert": 389,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/check-prod-provenance.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "Querying the platform's own D1 database through the Cloudflare API is the provenance check's purpose; the origin is a literal."
+    },
+    {
+      "alert": 390,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/check-prod-provenance.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "The SELECT body goes to the literal Cloudflare D1 endpoint, which is the flow the check exists for."
+    },
+    {
+      "alert": 396,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-auth-providers.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 401,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ops/check-pages-deployments.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 402,
+      "rule": "js/useless-assignment-to-local",
+      "path": "tooling/ci/test/ops-bounded-retry.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the useless assignment is removed."
+    },
+    {
+      "alert": 403,
+      "rule": "js/trivial-conditional",
+      "path": "tooling/ops/verify-free-api-scope.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the constant condition is removed."
+    },
+    {
+      "alert": 405,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/assert-store-build-config.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 407,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/symbolication-proof.mjs",
+      "disposition": "by-design",
+      "host": "glitchtip.nikatru.com",
+      "reason": "Sends the GlitchTip API token to the GlitchTip base URL, whose origin tooling/ops/credential-origin.mjs pins to glitchtip.nikatru.com before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 408,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/symbolication-proof.mjs",
+      "disposition": "by-design",
+      "host": "glitchtip.nikatru.com",
+      "reason": "Sends the GlitchTip API token to the GlitchTip base URL, whose origin tooling/ops/credential-origin.mjs pins to glitchtip.nikatru.com before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 409,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/symbolication-proof.mjs",
+      "disposition": "by-design",
+      "host": "glitchtip.nikatru.com",
+      "reason": "Sends the GlitchTip API token to the GlitchTip base URL, whose origin tooling/ops/credential-origin.mjs pins to glitchtip.nikatru.com before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 410,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-free-api-scope.mjs",
+      "disposition": "by-design",
+      "host": [
+        "oauth2.googleapis.com",
+        "serviceusage.googleapis.com",
+        "cloudresourcemanager.googleapis.com",
+        "cloudbilling.googleapis.com",
+        "iam.googleapis.com"
+      ],
+      "reason": "A JWT signed with the service-account key goes to Google's token endpoint and the resulting bearer to Google APIs, the key's own issuer; proving the key's scope is the script's purpose."
+    },
+    {
+      "alert": 414,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/redeploy-stranded.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "GitHub API reads with the GitHub token to a pinned origin are the script's purpose."
+    },
+    {
+      "alert": 415,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/check-heartbeats.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "A read-only D1 heartbeat SELECT via the Cloudflare API is the check's purpose; origin is a literal."
+    },
+    {
+      "alert": 416,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-alarm-chains.mjs",
+      "disposition": "by-design",
+      "host": "glitchtip.nikatru.com",
+      "reason": "Sends the GlitchTip API token to the GlitchTip base URL, whose origin tooling/ops/credential-origin.mjs pins to glitchtip.nikatru.com before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 417,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-auth-providers.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 420,
+      "rule": "js/useless-assignment-to-local",
+      "path": "tooling/ci/assert-channel-register.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the useless assignment is removed."
+    },
+    {
+      "alert": 421,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/e2e/purge.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "Deleting the run's own consent rows from its D1 database via the Cloudflare API is the purge's purpose; the origin is a literal."
+    },
+    {
+      "alert": 429,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/check-prod-provenance.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "GitHub token goes only to the GitHub API origin (or a loopback test seam); the file data only forms the repo path."
+    },
+    {
+      "alert": 430,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/check-prod-provenance.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "Checking each recorded manual deploy's sha against the GitHub commits API is the purpose; the origin is allow-listed."
+    },
+    {
+      "alert": 431,
+      "rule": "js/incomplete-multi-character-sanitization",
+      "path": "extensions/Extension/Full_Screen_Shot/test/pixel-sim/run.node.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the history.html comment strip repeats until a fixed point."
+    },
+    {
+      "alert": 433,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-supabase-templates.mjs",
+      "disposition": "by-design",
+      "host": "api.supabase.com",
+      "reason": "Reading the project's auth config from the Supabase Management API, the PAT's issuer, is the script's purpose; the origin is a literal."
+    },
+    {
+      "alert": 434,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-supabase-templates.mjs",
+      "disposition": "by-design",
+      "host": "api.supabase.com",
+      "reason": "The Supabase personal access token goes only to Supabase's own Management API."
+    },
+    {
+      "alert": 440,
+      "rule": "js/log-injection",
+      "path": "tooling/smoke/smoke-web-artifact.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: CR/LF are removed from the logged value."
+    },
+    {
+      "alert": 441,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/test/channel-register.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 442,
+      "rule": "js/file-access-to-http",
+      "path": "extensions/scripts/publish-amo.mjs",
+      "disposition": "by-design",
+      "host": "addons.mozilla.org",
+      "reason": "Reading the listing back from the AMO API by the manifest's guid, with an AMO-issued JWT, is the script's purpose and the host is a literal."
+    },
+    {
+      "alert": 444,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/assert-publish-steps-guarded.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 448,
+      "rule": "js/file-access-to-http",
+      "path": "extensions/scripts/store-poll.mjs",
+      "disposition": "by-design",
+      "host": [
+        "chromewebstore.googleapis.com",
+        "api.addons.microsoftedge.microsoft.com"
+      ],
+      "reason": "The status GET polls the same pinned store origin the upload went to, which is the helper's purpose."
+    },
+    {
+      "alert": 461,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/publish/package.node.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: removed the unused OUT constant."
+    },
+    {
+      "alert": 462,
+      "rule": "js/unused-local-variable",
+      "path": "extensions/Extension/Full_Screen_Shot/test/a11y-sim.node.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: removed the unused html variable."
+    },
+    {
+      "alert": 466,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/provision-apple.mjs",
+      "disposition": "by-design",
+      "host": "api.appstoreconnect.apple.com",
+      "reason": "The ASC JWT and provisioning requests go to Apple's API, the key's issuer; the origin is a constant. (Hardening, optional: :173 slices links.next by length without checking it startsWith API + '/'.)"
+    },
+    {
+      "alert": 481,
+      "rule": "js/incomplete-sanitization",
+      "path": "extensions/scripts/test/selftest.node.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the one-brace mutation splices after the first { instead of a first-only .replace."
+    },
+    {
+      "alert": 482,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/release/submit-appstore.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 483,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/release/submit-appstore.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 484,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/release/submit-snap.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 485,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/release/submit-snap.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 486,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/release/submit-play.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 487,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/release/submit-windows-store.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 496,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/glitchtip-monitor-api.mjs",
+      "disposition": "by-design",
+      "host": "glitchtip.nikatru.com",
+      "reason": "Sends the GlitchTip API token to the GlitchTip base URL, whose origin tooling/ops/credential-origin.mjs pins to glitchtip.nikatru.com before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 497,
+      "rule": "js/http-to-file-access",
+      "path": "tooling/ops/ensure-monitors.mjs",
+      "disposition": "by-design",
+      "host": "glitchtip.nikatru.com",
+      "reason": "The GlitchTip monitor response is written into the fixed tooling/monitor-register.json (the response cannot choose the path; fields are type- and read-back-checked); the origin it came from is pinned to glitchtip.nikatru.com by tooling/ops/credential-origin.mjs (fixed 2026-09-30)."
+    },
+    {
+      "alert": 498,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/check-renovate-backlog.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "Reading the Dependency Dashboard issue via GitHub GraphQL with the GitHub token to a pinned origin is the script's purpose."
+    },
+    {
+      "alert": 501,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/test/submit-lanes-record.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 502,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/test/assert-deploy-triggers-deploy.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 503,
+      "rule": "js/incomplete-hostname-regexp",
+      "path": "tooling/ci/test/edge-shield-probe.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: routeMatches is a literal glob walk; no RegExp is built from a route pattern."
+    },
+    {
+      "alert": 504,
+      "rule": "js/incomplete-hostname-regexp",
+      "path": "tooling/ci/test/edge-shield-probe.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: routeMatches is a literal glob walk; no RegExp is built from a route pattern."
+    },
+    {
+      "alert": 505,
+      "rule": "js/incomplete-hostname-regexp",
+      "path": "tooling/ci/test/edge-shield-probe.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: routeMatches is a literal glob walk; no RegExp is built from a route pattern."
+    },
+    {
+      "alert": 506,
+      "rule": "js/incomplete-hostname-regexp",
+      "path": "tooling/ci/test/edge-shield-probe.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: routeMatches is a literal glob walk; no RegExp is built from a route pattern."
+    },
+    {
+      "alert": 507,
+      "rule": "js/incomplete-hostname-regexp",
+      "path": "tooling/ci/test/edge-shield-probe.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: routeMatches is a literal glob walk; no RegExp is built from a route pattern."
+    },
+    {
+      "alert": 508,
+      "rule": "js/incomplete-hostname-regexp",
+      "path": "tooling/ci/test/edge-shield-probe.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: routeMatches is a literal glob walk; no RegExp is built from a route pattern."
+    },
+    {
+      "alert": 509,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/edge-ratelimit-rule.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "Applying/reading the declared rate-limit rule on Cloudflare with the Cloudflare token is the script's purpose, to a pinned origin."
+    },
+    {
+      "alert": 515,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/test/a11y-primitives.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 516,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/test/a11y-primitives.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the unused binding is removed."
+    },
+    {
+      "alert": 517,
+      "rule": "js/incomplete-multi-character-sanitization",
+      "path": "extensions/scripts/amo-metadata.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: policyText strips script/style/comments and tags until a fixed point."
+    },
+    {
+      "alert": 518,
+      "rule": "js/incomplete-multi-character-sanitization",
+      "path": "extensions/scripts/amo-metadata.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: policyText strips until a fixed point."
+    },
+    {
+      "alert": 519,
+      "rule": "js/incomplete-multi-character-sanitization",
+      "path": "extensions/scripts/amo-metadata.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: policyText tag strip repeats until a fixed point."
+    },
+    {
+      "alert": 520,
+      "rule": "js/file-access-to-http",
+      "path": "extensions/scripts/publish-amo.mjs",
+      "disposition": "by-design",
+      "host": "addons.mozilla.org",
+      "reason": "Uploading the listing's screenshots and privacy policy to AMO is the function's purpose, to a literal provider origin."
+    },
+    {
+      "alert": 522,
+      "rule": "js/incomplete-sanitization",
+      "path": "tooling/ci/test/triage-failed-runs.test.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the replacement is global and escapes every metacharacter."
+    },
+    {
+      "alert": 523,
+      "rule": "js/incomplete-sanitization",
+      "path": "tooling/ops/check-tech-currency.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the replacement is global and escapes every metacharacter."
+    },
+    {
+      "alert": 524,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/check-tech-currency.mjs",
+      "disposition": "by-design",
+      "host": [
+        "raw.githubusercontent.com",
+        "github.blog",
+        "developer.android.com",
+        "developer.apple.com",
+        "learn.microsoft.com",
+        "support.google.com"
+      ],
+      "reason": "Unauthenticated GETs of public vendor pages named by reviewed, committed registers; no credential or private data is sent, and re-reading those pages is the script's purpose."
+    },
+    {
+      "alert": 525,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 526,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 527,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 528,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/verify-password-reset-revokes.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 529,
+      "rule": "js/missing-space-in-concatenation",
+      "path": "extensions/scripts/test/selftest.node.js",
+      "disposition": "fixed-in-tree",
+      "reason": "Fixed in code 2026-09-30: the tag:goodtool-v line is one string literal."
+    },
+    {
+      "alert": 532,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/e2e/magic_link.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    },
+    {
+      "alert": 533,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/e2e/magic_link.mjs",
+      "disposition": "by-design",
+      "host": [
+        "auth-api.nikatru.com",
+        "*.supabase.co"
+      ],
+      "reason": "Sends a Supabase key read from the vault/env to SUPABASE_URL, whose origin tooling/ops/credential-origin.mjs pins to the key's issuer — the self-hosted GoTrue (auth-api.nikatru.com) or a hosted project (<ref>.supabase.co, the ref deliberately not public) — before any request (fixed 2026-09-30; loopback allowed for test stubs)."
+    }
+  ]
+}

@@ -29,7 +29,6 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseWorkflow, workflowSteps, shellSegments } from '../workflow-scan.mjs';
-import { RUN_IDENTITY_ENV } from '../record-deployment.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const MONITOR = join(ROOT, 'tooling', 'ops', 'check-prod-provenance.mjs');

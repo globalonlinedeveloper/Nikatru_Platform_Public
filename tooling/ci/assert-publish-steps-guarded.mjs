@@ -101,13 +101,10 @@ import { fileURLToPath } from 'node:url';
 // graded where it lives, and labelled with that file's line.
 import {
   parseWorkflow,
-  parseAllWorkflows,
   parseResolvedWorkflows,
   placeOf,
   refusalText,
   workflowEvents,
-  joinBlockScalars,
-  shellSegments,
   WORKFLOW_DIR,
   STORE_HOST_PARTS,
   basenameSource,

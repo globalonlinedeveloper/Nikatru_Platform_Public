@@ -3903,7 +3903,7 @@ describe('assert-channel-register — the extension surface carries the store ob
   });
 
   test('PASSES with a Firefox redirect of the real shape on a firefox row: https://<40 hex>.extensions.allizom.org/', () => {
-    const { code, out } = run(tree({
+    const { out } = run(tree({
       withExtension: true,
       mutate: (r) => {
         const row = r.channels.at(-1);

@@ -258,11 +258,6 @@ import { decide, gitAt, PlanRefusal } from '../ci/plan-deploy.mjs';
 import {
   CouldNotLook,
   transientLook,
-  isTransientLook,
-  READ_ATTEMPTS,
-  RETRY_BASE_MS,
-  backoffPlan,
-  RETRY_CEILING_MS,
   readWithBoundedRetry,
 } from './bounded-retry.mjs';
 

@@ -221,7 +221,9 @@ export function subjectsOf({ versions, actions, runtimes }) {
   for (const key of Object.keys(v).filter((k) => /^runner_/.test(k))) {
     const m = /^([a-z]+)-(.+)$/.exec(String(v[key]));
     if (!m) continue;
-    const ver = m[2].replace(/\./g, '\\.');
+    // Every regex metacharacter, the backslash included — not only the dot
+    // (CodeQL js/incomplete-sanitization): the value is a label read from a file.
+    const ver = m[2].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const fam = m[1] === 'windows' ? 'windows(?:[\\s-]server)?' : m[1];
     add(`runner:${v[key]}`, `the ${v[key]} runner image`, new RegExp(`\\b${fam}[\\s-]${ver}\\b`, 'i'), `tooling/versions.json ${key} = ${v[key]}`);
   }

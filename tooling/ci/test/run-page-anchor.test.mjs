@@ -526,7 +526,7 @@ describe('the anchor is WIRED into every reader, not merely available to them', 
 // E5 — THE CLASS CANNOT GROW A FOURTH UNANCHORED READER.
 // Measured at 403d7716, `actions/workflows/…/runs` URLs are built in FIVE files
 // under tooling/ci and extensions/scripts: the three freshness readers above,
-// assert-alert-disposition.mjs:508 and assert-ops-register.mjs (:2617, :2664,
+// assert-alert-disposition.mjs:512 and assert-ops-register.mjs (:2617, :2664,
 // :3114). tooling/ops readers (triage-failed-runs, check-prod-provenance,
 // redeploy-stranded) are OUTSIDE this case: they are ops-watch and operator
 // tools, not the CI guards this class is about. The set below is DERIVED from

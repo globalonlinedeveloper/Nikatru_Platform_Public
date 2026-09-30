@@ -49,11 +49,6 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const STATIC_GUARD = join(REPO, 'tooling', 'ci', 'assert-d1-sql-inventory.mjs');
 const LIVE_GUARD = join(REPO, 'tooling', 'ops', 'check-d1-accepts-live-sql.mjs');
 
-// ⏱ 2026-09-15 · [ADR 081]: the DELETE and UPDATE left the two route files for one
-// function per Worker (the Service Binding retry runs the same deletion code), so
-// these two names now point at those homes. The constants keep their old names.
-const PLATFORM_ROUTE = 'services/platform/src/lib/platform-erasure.ts';
-const SUBLY_ROUTE = 'services/subscriptiontracker-api/src/lib/erase-subject.ts';
 // ⏱ 2026-09-12: the introspective half of both routes moved to ONE home the
 // carriers re-export, so a mutation about the sqlite_master read or the pragma walk
 // belongs here. The routes keep their DELETE and UPDATE, and their mutations still
