@@ -97,6 +97,30 @@ const String kPreferenceOutboxKind = 'preference';
 /// hands a subscription write to this sender (or the reverse).
 const String kPreferencesOutboxKey = 'nikatru.outbox.preferences.v1';
 
+/// The preferences queue — the one [DurableOutbox] implementation over its own
+/// document, with NO attempt cap (review #1080 delta finding 2): a transient
+/// failure (no answer, 5xx, 408/429, the 404 of a Worker older than the route)
+/// keeps the change pending with capped backoff however long it lasts, so the
+/// only dead letter is a REFUSAL (400/413/422), which is final. The queue holds
+/// at most one entry per key, so an uncapped retry cannot grow it.
+DurableOutbox preferencesOutbox(
+  Future<KeyValueStore> store, {
+  Duration baseBackoff = const Duration(seconds: 2),
+  Duration maxBackoff = const Duration(minutes: 5),
+  DateTime Function()? now,
+}) => DurableOutbox(
+  store,
+  key: kPreferencesOutboxKey,
+  maxAttempts: kPreferencesNoAttemptCap,
+  baseBackoff: baseBackoff,
+  maxBackoff: maxBackoff,
+  now: now,
+);
+
+/// Large enough that no transient run of failures reaches it (at one attempt
+/// per backoff capped at five minutes, about 20 000 years).
+const int kPreferencesNoAttemptCap = 1 << 31;
+
 /// How a failed preferences request is treated by the outbox.
 ///
 /// 404 is TRANSIENT, not a refusal: it is what a Worker deployed before this
@@ -120,12 +144,14 @@ class AccountPreferencesSync {
     required String? Function() currentUser,
     required Future<void> Function(Map<String, Object?> values) apply,
     void Function(String key)? onRefused,
+    void Function(String key)? onConflict,
   }) : _transport = transport,
        _outbox = outbox,
        _store = store,
        _currentUser = currentUser,
        _apply = apply,
-       _onRefused = onRefused;
+       _onRefused = onRefused,
+       _onConflict = onConflict;
 
   final AccountPreferencesTransport? Function() _transport;
   final DurableOutbox _outbox;
@@ -133,6 +159,10 @@ class AccountPreferencesSync {
   final String? Function() _currentUser;
   final Future<void> Function(Map<String, Object?>) _apply;
   final void Function(String key)? _onRefused;
+
+  /// The server kept another device's value for [key] and it was applied here
+  /// (review #1080 delta finding 3): the flip is announced, never silent.
+  final void Function(String key)? _onConflict;
 
   /// A counter of local changes, and the value it had when each key last
   /// changed — the fence a read is checked against.
@@ -247,6 +277,7 @@ class AccountPreferencesSync {
     // already changed the key again here, which is sent next.
     if (conflict && !queuedBehind && _currentUser() == owner && !_disposed) {
       await _apply(<String, Object?>{key: now.value});
+      if (_currentUser() == owner && !_disposed) _onConflict?.call(key);
     }
     return null;
   }
@@ -275,6 +306,8 @@ class AccountPreferencesSync {
       };
       final Map<String, Object?> take = <String, Object?>{};
       await _locked(() async {
+        if (_stale(owner))
+          return; // a sign-out landed: never re-create its versions
         final _Versions doc = await _load(owner);
         server.forEach((String key, PreferenceValue v) {
           if (dirty.contains(key)) return;
@@ -297,6 +330,22 @@ class AccountPreferencesSync {
   }
 
   bool _stale(String owner) => _disposed || _currentUser() != owner;
+
+  /// The keys [owner]'s ACCOUNT holds — a version above 0 on this device's
+  /// record. Read BEFORE [forget]: a sign-out resets only these (they come back
+  /// at the next sign-in); every other key is a device choice the account never
+  /// held, and is left alone (review #1080 delta finding 1). Never throws.
+  Future<Set<String>> heldKeys(String owner) async {
+    try {
+      final _Versions doc = await _locked(() => _load(owner));
+      return <String>{
+        for (final MapEntry<String, int> e in doc.versions.entries)
+          if (e.value > 0) e.key,
+      };
+    } catch (_) {
+      return <String>{};
+    }
+  }
 
   /// [owner] signed out: forget their dirty set and versions. Never throws.
   Future<void> forget(String owner) async {

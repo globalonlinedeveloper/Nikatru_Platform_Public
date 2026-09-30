@@ -276,12 +276,35 @@ class SettingsController extends Notifier<SettingsState> {
     return _persist();
   }
 
-  /// ⏱ 2026-09-30 · ST-N6 (D11): the explicit sign-out's reset — this device's
-  /// defaults again, so the next account signed in here is shown nothing of the
-  /// last one's. Not reported: a default is never sent.
-  Future<void> resetToDefaults() {
+  /// ⏱ 2026-09-30 · ST-N6 (D11): the explicit sign-out's reset of the keys in
+  /// [keys] ONLY — the ones the leaving account holds, which its next sign-in
+  /// restores (review #1080 delta finding 1). Any other value is a choice made
+  /// on this device and stays. Not reported: a default is never sent.
+  Future<void> resetKeys(Set<String> keys) {
+    if (keys.isEmpty) return Future<void>.value();
     _touched = true;
-    state = SettingsState(currencyCode: _firstRunCurrency);
+    const SettingsState defaults = SettingsState();
+    final Map<String, bool> prefs = Map<String, bool>.of(state.prefs);
+    for (final String key in keys) {
+      if (!key.startsWith('switch.')) continue;
+      final String name = key.substring('switch.'.length);
+      final bool? byDefault = defaults.prefs[name];
+      if (byDefault == null) {
+        prefs.remove(name);
+      } else {
+        prefs[name] = byDefault;
+      }
+    }
+    state = state.copyWith(
+      currencyCode: keys.contains(kPrefCurrencyCode) ? _firstRunCurrency : null,
+      reminderLeadDays: keys.contains(kPrefReminderLeadDays)
+          ? SettingsState.defaultLeadDays
+          : null,
+      reminderMinuteOfDay: keys.contains(kPrefReminderMinuteOfDay)
+          ? SettingsState.defaultMinuteOfDay
+          : null,
+      prefs: prefs,
+    );
     return _persist();
   }
 

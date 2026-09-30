@@ -204,25 +204,24 @@ void main() {
   );
 
   test(
-    '🔴 findings 4/7: an explicit sign-out forgets the dirty set and resets the stores',
+    '🔴 delta finding 1: sign-out resets ONLY what the account holds, and signing in restores it',
     () async {
       final _Server server = _Server();
       final _Device a = _Device(server);
       await _settle();
-      server.failWith = 0;
-      await a.settings.setCurrency('EUR');
-      await setThemeModeByUserWith(a.c.read, ThemeMode.dark);
+      await a.settings.setCurrency('EUR'); // sent: the account holds it
+      await setThemeModeByUserWith(a.c.read, ThemeMode.dark); // held too
       await _settle();
-      final core.DurableOutbox outbox = core.DurableOutbox(
-        Future<core.KeyValueStore>.value(a.store),
-        key: core.kPreferencesOutboxKey,
-      );
-      expect(await outbox.pending(owner: 'me'), hasLength(2));
+      expect(server.values['currencyCode'], 'EUR');
 
       // Resolved before the sign-out, run after it — as userStateDrops lists it.
       final UserStateDrop drop = forgetAccountPreferencesWith(a.c.read);
+      a.users.add(null);
       await drop();
       await _settle();
+      final core.DurableOutbox outbox = core.preferencesOutbox(
+        Future<core.KeyValueStore>.value(a.store),
+      );
       expect(await outbox.entries(owner: 'me'), isEmpty);
       expect(
         a.store.data.keys.where(
@@ -232,6 +231,37 @@ void main() {
       );
       expect(a.c.read(settingsControllerProvider).currencyCode, 'USD');
       expect(a.c.read(themeModeProvider), ThemeMode.system);
+
+      a.users.add(_me); // the same account signs back in
+      await _settle();
+      expect(a.c.read(settingsControllerProvider).currencyCode, 'EUR');
+      expect(a.c.read(themeModeProvider), ThemeMode.dark);
+    },
+  );
+
+  test(
+    '🔴 delta finding 1: currency and reminders chosen while signed out survive a sign-in and a sign-out',
+    () async {
+      final _Server server = _Server();
+      final _Device a = _Device(server, user: null);
+      await _settle();
+      await a.settings.setCurrency('EUR');
+      await a.settings.setReminderLead(7);
+      await a.settings.setReminderTime(7, 0);
+      await _settle();
+
+      a.users.add(_me);
+      await _settle();
+      expect(server.patches, 0, reason: 'a signed-out choice is never sent');
+
+      final UserStateDrop drop = forgetAccountPreferencesWith(a.c.read);
+      a.users.add(null);
+      await drop();
+      await _settle();
+      final SettingsState s = a.c.read(settingsControllerProvider);
+      expect(s.currencyCode, 'EUR');
+      expect(s.reminderLeadDays, 7);
+      expect(s.reminderMinuteOfDay, 7 * 60);
     },
   );
 
@@ -252,6 +282,49 @@ void main() {
       await _settle();
       expect(notices.whereType<String>(), <String>['reminderLeadDays']);
       expect(a.c.read(settingsControllerProvider).reminderLeadDays, 3);
+    },
+  );
+
+  testWidgets(
+    '🔴 delta finding 3: a conflict the server won is one line naming the setting',
+    (WidgetTester tester) async {
+      final ProviderContainer c = ProviderContainer();
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: PreferenceRefusedNotice(child: Scaffold(body: SizedBox())),
+          ),
+        ),
+      );
+      c.read(preferenceConflictProvider.notifier).state = 'currencyCode';
+      await tester.pump();
+      expect(
+        find.text('Currency was changed on another device.'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  test(
+    '🔴 delta finding 3: through the real providers, a lost change raises the notice',
+    () async {
+      final _Server server = _Server()..elsewhere('currencyCode', 'INR');
+      final _Device a = _Device(server);
+      final List<String?> seen = <String?>[];
+      a.c.listen(preferenceConflictProvider, (_, String? k) => seen.add(k));
+      server.failWith = 0;
+      await _settle(); // the sign-in read fails: this device never saw INR
+      await a.settings.setCurrency('EUR'); // based on nothing
+      await _settle();
+      server.failWith = null;
+      await a.sync.sync();
+      await _settle();
+      expect(a.c.read(settingsControllerProvider).currencyCode, 'INR');
+      expect(seen.whereType<String>(), <String>['currencyCode']);
     },
   );
 

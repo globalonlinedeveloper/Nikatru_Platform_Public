@@ -96,21 +96,23 @@ class _Device {
   final _MemStore store = _MemStore();
   final Map<String, Object?> shown = <String, Object?>{};
   final List<String> refused = <String>[];
+  final List<String> conflicts = <String>[];
   String? user;
   late AccountPreferencesSync sync;
 
   /// A new process (or a rebuilt provider) over the SAME device store.
   void restart() => sync = AccountPreferencesSync(
     transport: () => server,
-    outbox: DurableOutbox(
+    outbox: preferencesOutbox(
       Future<KeyValueStore>.value(store),
-      key: kPreferencesOutboxKey,
       baseBackoff: Duration.zero,
+      maxBackoff: Duration.zero,
     ),
     store: Future<KeyValueStore>.value(store),
     currentUser: () => user,
     apply: (Map<String, Object?> v) async => shown.addAll(v),
     onRefused: refused.add,
+    onConflict: conflicts.add,
   );
 
   /// The user sets [key] here: shown at once, then synced.
@@ -427,6 +429,87 @@ void main() {
       await a.set('switch.weekly', true);
       await b.sync.sync(); // B comes back to the front
       expect(b.shown['switch.weekly'], true);
+    },
+  );
+
+  test(
+    '🔴 delta finding 2: six temporary failures, then success — the change is delivered, nothing is "refused"',
+    () async {
+      final _Server server = _Server();
+      final _Device a = _Device(server);
+      server.patchFailWith = 503;
+      await a.set('currencyCode', 'EUR'); // attempt 1
+      for (int i = 0; i < 5; i++) {
+        await a.sync.sync(); // attempts 2..6, a return to the front each time
+      }
+      expect(server.patches, 0);
+      server.patchFailWith = null;
+      await a.sync.sync();
+      expect(server.values['currencyCode'], 'EUR');
+      expect(a.shown['currencyCode'], 'EUR');
+      expect(a.refused, isEmpty);
+    },
+  );
+
+  test(
+    '🔴 delta finding 2: a 404 (a Worker older than the route) waits too',
+    () async {
+      final _Server server = _Server();
+      final _Device a = _Device(server);
+      server.patchFailWith = 404;
+      await a.set('themeMode', 'dark');
+      for (int i = 0; i < 7; i++) {
+        await a.sync.sync();
+      }
+      server.patchFailWith = null;
+      await a.sync.sync();
+      expect(server.values['themeMode'], 'dark');
+      expect(a.refused, isEmpty);
+    },
+  );
+
+  test(
+    '🔴 delta finding 3: a conflict the server wins is ANNOUNCED, naming the key',
+    () async {
+      final _Server server = _Server()..elsewhere('currencyCode', 'USD');
+      final _Device a = _Device(server);
+      server.failWith = 0;
+      await a.set(
+        'currencyCode',
+        'EUR',
+      ); // base 0: older than the account's row
+      server.failWith = null;
+      await a.sync.sync();
+      expect(a.shown['currencyCode'], 'USD', reason: 'server wins stays');
+      expect(a.conflicts, <String>['currencyCode']);
+    },
+  );
+
+  test('an accepted change announces nothing', () async {
+    final _Server server = _Server();
+    final _Device a = _Device(server);
+    await a.set('currencyCode', 'EUR');
+    expect(a.conflicts, isEmpty);
+  });
+
+  test(
+    '🔴 delta finding 1: heldKeys names only what the ACCOUNT holds',
+    () async {
+      final _Server server = _Server()..elsewhere('themeMode', 'dark');
+      final _Device a = _Device(server, user: null);
+      await a.set(
+        'currencyCode',
+        'EUR',
+      ); // signed out: a device choice, never sent
+      a.user = 'me';
+      await a.sync.sync(); // the account's themeMode arrives
+      await a.set('reminderLeadDays', 7); // sent: now held
+      expect(await a.sync.heldKeys('me'), <String>{
+        'themeMode',
+        'reminderLeadDays',
+      });
+      await a.sync.forget('me');
+      expect(await a.sync.heldKeys('me'), isEmpty);
     },
   );
 }

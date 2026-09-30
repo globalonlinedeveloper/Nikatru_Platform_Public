@@ -683,6 +683,11 @@
   "@exportDataCsv": {
     "description": "Data-export row. data-safety.json declares that export exists; deleting this row makes that declaration false."
   },
+  "preferenceChangedElsewhere": "{setting} was changed on another device.",
+  "@preferenceChangedElsewhere": {
+    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11), review #1080 delta finding 3: shown once when this device’s change lost to a newer value another device saved, and the screen flipped to it. {setting} is the settings section’s own name (Currency, Appearance, Language, Reminders, Notifications).",
+    "placeholders": { "setting": { "type": "String" } }
+  },
   "preferenceNotSaved": "Couldn’t save that setting to your account.",
   "@preferenceNotSaved": {
     "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11): the one-line notice shown when the account REFUSED a preference change this device sent (a 400 or 413); the change is dropped and the account’s value comes back."

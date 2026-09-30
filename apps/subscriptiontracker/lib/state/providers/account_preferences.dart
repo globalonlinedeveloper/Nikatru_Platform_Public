@@ -95,6 +95,12 @@ final StateProvider<String?> preferenceRefusedProvider = StateProvider<String?>(
   (_) => null,
 );
 
+/// The last preference key another device had already changed: the account's
+/// value won and was applied here, and the one-line notice says so (review
+/// #1080 delta finding 3 — a flip back is never silent).
+final StateProvider<String?> preferenceConflictProvider =
+    StateProvider<String?>((_) => null);
+
 /// Keeps this device's preferences and the signed-in account's in step.
 ///
 /// 🔴 IT WATCHES NOTHING (review #1080 finding 2c). It used to watch the
@@ -113,7 +119,7 @@ final Provider<core.AccountPreferencesSync?> accountPreferencesSyncProvider =
       final core.AccountPreferencesSync sync = core.AccountPreferencesSync(
         transport: () =>
             ref.mounted ? ref.read(accountPreferencesTransportProvider) : null,
-        outbox: core.DurableOutbox(store, key: core.kPreferencesOutboxKey),
+        outbox: core.preferencesOutbox(store),
         store: store,
         currentUser: currentUser,
         apply: (Map<String, Object?> values) async {
@@ -122,6 +128,11 @@ final Provider<core.AccountPreferencesSync?> accountPreferencesSyncProvider =
         onRefused: (String key) {
           if (ref.mounted) {
             ref.read(preferenceRefusedProvider.notifier).state = key;
+          }
+        },
+        onConflict: (String key) {
+          if (ref.mounted) {
+            ref.read(preferenceConflictProvider.notifier).state = key;
           }
         },
       );
@@ -216,10 +227,16 @@ UserStateDrop forgetAccountPreferencesWith(
   final ThemeModeController theme = read(themeModeProvider.notifier);
   final LocaleController locale = read(localeProvider.notifier);
   return () async {
-    if (sync == null) return; // no account copy: the stores are the device's
-    if (owner != null) await sync.forget(owner);
-    await settings.resetToDefaults();
-    await theme.set(ThemeMode.system);
-    await locale.set(null);
+    if (sync == null || owner == null) return; // no account copy to forget
+    // 🔴 ONLY WHAT THE ACCOUNT HOLDS (review #1080 delta finding 1). Those keys
+    // come back at the next sign-in. Every other key — chosen before this build,
+    // or while signed out — was never sent and lives only on this device, so
+    // resetting it would erase it for good (and quietly move the reminder
+    // schedule). Read BEFORE forget, which deletes the record it is read from.
+    final Set<String> held = await sync.heldKeys(owner);
+    await sync.forget(owner);
+    await settings.resetKeys(held);
+    if (held.contains(kPrefThemeMode)) await theme.set(ThemeMode.system);
+    if (held.contains(kPrefLocale)) await locale.set(null);
   };
 }
