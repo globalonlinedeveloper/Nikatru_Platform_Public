@@ -394,7 +394,7 @@
       "kind": "d1-table",
       "name": "reminder_sent",
       "personalData": true,
-      "holds": "⏱ 2026-09-28 · ST-R1. One row per renewal a reminder email was sent about: the Supabase `sub`, the app id, the subscription's id in that app's database, the renewal date (`due_on`), the kind (`renewal`), `sent_at`, and SHA-256 of the one-click unsubscribe token that email carried (never the token). UNIQUE on (user_id, app_id, subscription_id, due_on, kind), which is what stops a night mailing twice. It holds no email address, no subscription name and no amount — those are read from the app's own database and the identity provider when the mail is built, and go to Resend in that one message only.",
+      "holds": "⏱ 2026-09-28 · ST-R1. One row per renewal a reminder email was sent about: the Supabase `sub`, the app id, the subscription's id in that app's database, the renewal date (`due_on`), the kind (`renewal` at the account lead, or `renewal:<days>` at a lead the subscription chose itself — ⏱ 2026-09-30, O-REMINDER-DAYS-JSON-READ-AS-NUMBER), `sent_at`, and SHA-256 of the one-click unsubscribe token that email carried (never the token). UNIQUE on (user_id, app_id, subscription_id, due_on, kind), which is what stops a night mailing twice. It holds no email address, no subscription name and no amount — those are read from the app's own database and the identity provider when the mail is built, and go to Resend in that one message only.",
       "retention": {
         "kind": "swept",
         "periodDays": 400,
