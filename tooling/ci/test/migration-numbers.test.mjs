@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// migration-numbers.test.mjs — tooling/ci/migration-numbers.mjs, the limb
+// migration-numbers.test.mjs — duplicateMigrationNumbers (tooling/ci/migration-tables.mjs), the limb
 // tooling/ci/check-migrations.mjs runs (⏱ 2026-09-30, ADR no.NNN, third review
 // of #1070): one migration number per migrations directory.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { duplicateMigrationNumbers } from '../migration-numbers.mjs';
+import { duplicateMigrationNumbers } from '../migration-tables.mjs';
 
 const REPO = join(import.meta.dirname, '..', '..', '..');
 
