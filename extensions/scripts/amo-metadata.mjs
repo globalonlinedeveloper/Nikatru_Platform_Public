@@ -19,6 +19,9 @@
 //   support_url                                    ← store/_shared/support-url.txt
 //   version.custom_license                         ← LICENSE (lib/licence.mjs)
 //   version.approval_notes                         ← store/firefox/reviewer-notes.txt
+//   version.compatibility                          ← the Firefox overlay (tool.json
+//                                                    targets.firefox.overlay): "android"
+//                                                    only when it declares gecko_android
 // web-ext merges `version.upload` in itself (lib/util/submit-addon.js,
 // `doNewAddonSubmit`, in the tooling/web-ext island), so this payload never
 // names an upload.
@@ -37,6 +40,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { requiredNotice } from './lib/licence.mjs';
+import { codeHostOf } from './lib/listing-url.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 /** The extensions root: toolinfo's `repoRoot` default, and what tool dirs are relative to. */
@@ -148,6 +152,23 @@ export function buildAmoMetadata({ toolId, root = EXTENSIONS_ROOT }) {
     else licenceName = heading;
   }
 
+  /* ⏱ 2026-09-29 (rv2 EXB-11): the apps the listing is offered on, named rather
+     than left to AMO's default, and derived from the package: Firefox for Android
+     only when the overlay declares gecko_android, which
+     publish/verify-firefox-package.node.js allows only for a tool with an Android
+     e2e leg. AMO's version create takes "an array of applications, where min/max
+     versions from the manifest, or defaults, will be used" (PRIMARY_SOURCES.addonsApi). */
+  let compatibility = null;
+  const overlayRel = tool?.targets?.firefox?.overlay;
+  const overlayText = typeof overlayRel === 'string' ? readIf(path.join(dir, overlayRel)) : null;
+  try {
+    const bss = overlayText === null ? null : JSON.parse(overlayText).browser_specific_settings;
+    if (bss === null || typeof bss !== 'object') why.push(`${rel(String(overlayRel))} carries no browser_specific_settings, so the listing's apps cannot be derived.`);
+    else compatibility = 'gecko_android' in bss ? ['firefox', 'android'] : ['firefox'];
+  } catch (e) {
+    why.push(`${rel(String(overlayRel))} does not parse — ${e.message}`);
+  }
+
   let identity = null;
   const idText = readIf(path.join(dir, 'publish', 'identity.json'));
   try {
@@ -163,6 +184,13 @@ export function buildAmoMetadata({ toolId, root = EXTENSIONS_ROOT }) {
   }
   const sharedDir = tool?.storeMetadata?.sharedDir;
   const supportUrl = typeof sharedDir === 'string' ? valueLines(readIf(path.join(dir, sharedDir, 'support-url.txt')) ?? '')[0] ?? null : null;
+  /* ⏱ 2026-09-29 (EXL-13): a support or homepage URL on a code host is a
+     user-facing link into the repository that 404s once it goes private, and
+     the first submit fixes it into the public listing. Refused, never dropped. */
+  for (const [field, url] of [['support_url', supportUrl], ['homepage', identity?.homepageUrl]]) {
+    const host = typeof url === 'string' ? codeHostOf(url) : null;
+    if (host) why.push(`${field} would be "${url}", on ${host} — a listing URL into the code repository. Point it at a nikatru.com page.`);
+  }
 
   if (why.length) return { ok: false, why };
 
@@ -181,9 +209,75 @@ export function buildAmoMetadata({ toolId, root = EXTENSIONS_ROOT }) {
     version: {
       custom_license: { name: tr(licenceName), text: tr(licenceText) },
       approval_notes: approvalNotes,
+      compatibility,
     },
   };
   return { ok: true, payload };
+}
+
+/* ⏱ 2026-09-29 (rv2 EXL-12, O-AMO-FIRST-SUBMIT-SENDS-NO-SCREENSHOTS-OR-POLICY):
+   the two things the payload above cannot carry, because AMO takes neither on
+   the add-on create. "Image files cannot be uploaded as JSON" — a preview is a
+   multipart POST to …/addon/<id>/previews/, one per image — and the privacy
+   policy is the TEXT of a translated field PATCHed to …/addon/<id>/eula_policy/
+   (PRIMARY_SOURCES.addonsApi, fetched 2026-09-29). publish-amo.mjs sends both
+   after the sign; this builds them from files the repository grades:
+     previews        ← store/_shared/screenshots/*.png (check-listing-assets.mjs)
+     privacy_policy  ← publish/PRIVACY-POLICY.html, the policy's SOURCE, as text,
+                       closed by the served URL (store/_shared/privacy-policy-url.txt,
+                       held equal to publish/identity.json by check-store-metadata.mjs)
+   Refused, never filled in: no screenshot, no policy source, or a URL that is not
+   https, is exit 1 — a public listing without them is the defect. */
+
+/** The policy page as plain text: headings, paragraphs and list items as lines,
+ *  tags gone, the few entities the page uses decoded. AMO renders this field as
+ *  text; markup sent into it is shown as markup. */
+export function policyText(html) {
+  const body = (/<body[^>]*>([\s\S]*?)<\/body>/i.exec(html) || [null, html])[1]
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+  const text = body
+    .replace(/<li[^>]*>/gi, '\n• ')
+    .replace(/<\/(h[1-6]|p|li|ul|ol|div|table|tr)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<h[1-6][^>]*>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  return text.split('\n').map((l) => l.replace(/[ \t]+/g, ' ').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * The previews and the privacy-policy text the first submit's listing needs.
+ * @param {{ toolId: string, root?: string }} args  root = the extensions root
+ * @returns {{ ok: true, previews: string[], privacyPolicy: object, policyUrl: string } | { ok: false, why: string[] }}
+ */
+export function buildAmoListingAssets({ toolId, root = EXTENSIONS_ROOT }) {
+  const dir = toolDir(root, toolId);
+  if (dir === null) return { ok: false, why: [`no Extension/*/tool.json under ${root} declares id "${toolId}".`] };
+  const rel = (p) => path.relative(root, path.join(dir, p)).split(path.sep).join('/');
+  const tool = JSON.parse(fs.readFileSync(path.join(dir, 'tool.json'), 'utf8'));
+  const sharedDir = tool?.storeMetadata?.sharedDir;
+  if (typeof sharedDir !== 'string') return { ok: false, why: [`${rel('tool.json')} declares no storeMetadata.sharedDir.`] };
+  const why = [];
+  const shotsRel = `${sharedDir}/screenshots`;
+  const shotsAbs = path.join(dir, shotsRel);
+  const previews = fs.existsSync(shotsAbs)
+    ? fs.readdirSync(shotsAbs).filter((f) => /\.png$/i.test(f)).sort().map((f) => path.join(shotsAbs, f))
+    : [];
+  if (!previews.length) why.push(`${rel(shotsRel)} holds no .png — the listing would go public with no screenshots.`);
+  const policyUrl = valueLines(readIf(path.join(dir, sharedDir, 'privacy-policy-url.txt')) ?? '')[0] ?? null;
+  if (!policyUrl || !/^https:\/\//.test(policyUrl)) why.push(`${rel(`${sharedDir}/privacy-policy-url.txt`)} names no https URL (${JSON.stringify(policyUrl)}).`);
+  const html = readIf(path.join(dir, 'publish', 'PRIVACY-POLICY.html'));
+  const text = html === null ? '' : policyText(html);
+  if (html === null) why.push(`${rel('publish/PRIVACY-POLICY.html')} is absent — it is the policy's source.`);
+  else if (text.length < 200 || /[<⟨]\s*(TODO|FILL|REPLACE)/i.test(text)) why.push(`${rel('publish/PRIVACY-POLICY.html')} renders to ${text.length} characters of text, or carries a placeholder — not a policy AMO can publish.`);
+  if (why.length) return { ok: false, why };
+  return {
+    ok: true,
+    previews,
+    policyUrl,
+    privacyPolicy: { [AMO_LOCALE]: `${text}\n\nThis policy is also published at ${policyUrl}` },
+  };
 }
 
 // ── CLI ─────────────────────────────────────────────────────────────────────

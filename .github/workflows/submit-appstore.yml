@@ -102,6 +102,14 @@ jobs:
       # its paywall cannot buy (O-BRICK-SELLS-NOTHING-IN-A-STORE; tooling/ci/submit-preconditions.mjs).
       - name: A pending in-app purchase declaration is not submitted (macos-appstore)
         run: node tooling/ci/assert-app-yaml.mjs --for-submission=macos-appstore --app "$APP"
+      # why: AB-M5-02. A first-year App Store subscriber pays the standard commission until the owner enrols in the
+      # Small Business Program (A-18), and the Apple rows then net below web. A dry run prints NOT YET ENROLLED and never
+      # refuses; the job that publishes passes --real-submission (limb 3 of assert-publish-steps-guarded.mjs).
+      - name: The Small Business Program enrolment is recorded before an App Store sale (ios-appstore)
+        run: node tooling/ci/assert-small-business-program.mjs --for-submission=ios-appstore
+      # why: AB-M5-02. One step per channel, so a red names the store.
+      - name: The Small Business Program enrolment is recorded before an App Store sale (macos-appstore)
+        run: node tooling/ci/assert-small-business-program.mjs --for-submission=macos-appstore
       - name: Toolchain under test
         run: |
           sw_vers

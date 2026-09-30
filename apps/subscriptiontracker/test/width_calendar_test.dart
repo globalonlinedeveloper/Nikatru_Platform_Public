@@ -336,8 +336,18 @@ void main() {
     // arithmetic rather than as 90.57/56.29 so that a gutter or card-padding
     // change shows up as a red case with a readable diff instead of a mystery
     // decimal.
-    const double singleColumnCell = (AppBreakpoints.reading - 36 - 32 - 18) / 7;
-    const double twoPaneCell = (AppBreakpoints.pane - 36 - 32 - 18) / 7;
+    //
+    // ⏱ 2026-09-28 · train ST-D2: the grid is `MonthGrid` now and the three
+    // terms are its and the foundation's NAMES — two page gutters, the
+    // `AppCard`'s default `AppSpacing.lg` padding on both sides, and six
+    // `MonthGrid.cellSpacing` gaps (4, on the scale; the hand-rolled grid's 3
+    // was not). A change to any of them is still a readable red here.
+    const double chrome =
+        2 * AppSpacing.gutterCompact +
+        2 * AppSpacing.lg +
+        6 * MonthGrid.cellSpacing;
+    const double singleColumnCell = (AppBreakpoints.reading - chrome) / 7;
+    const double twoPaneCell = (AppBreakpoints.pane - chrome) / 7;
 
     testWidgets('at 768 the single column gives it ~90.6 px', (
       WidgetTester tester,
@@ -363,8 +373,8 @@ void main() {
         lessThan(singleColumnCell),
         reason:
             'THE POINT OF PUTTING THE GRID IN THE MASTER COLUMN. Handing the '
-            'calendar the whole 1280 would draw ~171 x 44 cells; handing it 720 '
-            'draws ~91 x 44. The 480 list cap draws ~56 x 44, which is within '
+            'calendar the whole 1280 would draw ~171 x 48 cells; handing it 720 '
+            'draws ~90 x 48. The 480 list cap draws ~56 x 48, which is within '
             '15 px of the ~41 the design was actually drawn at.',
       );
     });
@@ -492,20 +502,24 @@ void main() {
 
   // ── THE SQ-GRID DEFECT · the delegate, not the pane ────────────────────────
   group('the month grid decouples cell height from viewport width', () {
-    testWidgets('at 1280 a day cell is 44 px tall, not ~170', (
+    // ⏱ 2026-09-28 · train ST-D2: 44 → `MonthGrid.cellExtent` (48, the
+    // platform's minimum tap target — a marked cell IS a control from 840 up,
+    // and a 44 px control failed the tap-target guideline there). Named rather
+    // than restated, so the grid's own test and this one cannot disagree.
+    testWidgets('at 1280 a day cell is cellExtent tall, not ~170', (
       WidgetTester tester,
     ) async {
       await pumpAt(tester, kDesktop, const CalendarScreen());
       expect(
         tester.getSize(firstDayCell()).height,
-        44,
+        MonthGrid.cellExtent,
         reason:
             'SliverGridDelegateWithFixedCrossAxisCount inherits '
             'childAspectRatio: 1.0 when no mainAxisExtent is given, which makes '
             'every day cell a SQUARE — so its height tracks the viewport. At '
             'the 1280 cap that is a ~170 px cell and a ~1035 px month card of '
             'mostly-empty tinted boxes around 12 pt numerals that do not '
-            'scale. mainAxisExtent: 44 is what unties the two.',
+            'scale. mainAxisExtent is what unties the two.',
       );
     });
 
@@ -525,16 +539,32 @@ void main() {
     /// replacing the inherited data outright would drop the surface metrics that
     /// [pumpAt] just pinned, and the screen would lay out at the flutter_test
     /// default instead of at [kPhone].
-    Future<void> pumpScaled(WidgetTester tester, Size size, double s) => pumpAt(
-      tester,
-      size,
-      Builder(
-        builder: (BuildContext c) => MediaQuery(
-          data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(s)),
-          child: const CalendarScreen(),
+    ///
+    /// ⏱ 2026-09-28 · train ST-D2: and it SCROLLS THE GRID INTO VIEW. The
+    /// title is `headlineSmall` and the caption `bodyMedium` now (both on the
+    /// ramp, the caption no longer under the 12 px floor), so at 3.5× the two
+    /// of them are taller than the phone plus the list's cache extent and the
+    /// lazily built `GridView` does not exist until the list scrolls. The
+    /// headings scaling freely IS the behaviour; the grid is what is measured.
+    Future<void> pumpScaled(WidgetTester tester, Size size, double s) async {
+      await pumpAt(
+        tester,
+        size,
+        Builder(
+          builder: (BuildContext c) => MediaQuery(
+            data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(s)),
+            child: const CalendarScreen(),
+          ),
         ),
-      ),
-    );
+      );
+      await tester.scrollUntilVisible(
+        find.byType(GridView),
+        200,
+        scrollable: find
+            .descendant(of: gridPane(), matching: find.byType(Scrollable))
+            .first,
+      );
+    }
 
     // ── THE FIXED 44 px BOX vs TEXT THAT GROWS ────────────────────────────────
     //
@@ -570,7 +600,7 @@ void main() {
           tester.takeException(),
           isNull,
           reason:
-              'the cell is a fixed 44 px box around text that scales, so the '
+              'the cell is a fixed-extent box around text that scales, so the '
               'grid must be clamped (MediaQuery.withClampedTextScaling) rather '
               'than merely tall enough for the scale somebody tested at. '
               'Before the clamp this went red at 2.0 with 22 RenderFlex '
@@ -578,7 +608,7 @@ void main() {
         );
         expect(
           tester.getSize(firstDayCell()).height,
-          44,
+          MonthGrid.cellExtent,
           reason: 'the clamp must not be paid for by a taller cell',
         );
       });
@@ -609,26 +639,26 @@ void main() {
       );
       expect(
         at35,
-        at1 * 1.5,
+        at1 * MonthGrid.maxTextScale,
         reason:
-            'above the ceiling it stops at 1.5×, which is the number the 44 px '
-            'box was proved against: even a two-line wrap on a narrow 320 px '
-            'phone is 2×18 + 2 + 4 = 42 <= 44',
+            'above the ceiling it stops at 1.5×, which is the number the fixed '
+            'cell was proved against: one line (the numeral never wraps now) '
+            'of 20 × 1.5 + 2 + 4 = 36 <= 48',
       );
     });
 
     // The other half of "width-independent": the same number at phone width.
     // Together these two are the property — one alone could be satisfied by a
-    // childAspectRatio that happens to land on 44 at one surface.
-    testWidgets('at 375 the same cell is the same 44 px', (
+    // childAspectRatio that happens to land on the extent at one surface.
+    testWidgets('at 375 the same cell is the same cellExtent', (
       WidgetTester tester,
     ) async {
       await pumpAt(tester, kPhone, const CalendarScreen());
       expect(
         tester.getSize(firstDayCell()).height,
-        44,
+        MonthGrid.cellExtent,
         reason:
-            'the phone is the surface the 41 px square was designed on: 44 is '
+            'the phone is the surface the 41 px square was designed on: 48 is '
             'within 3 px of it, so the fix must leave this rendering alone',
       );
     });

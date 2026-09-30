@@ -438,6 +438,27 @@ export function refFilterMatches(patterns, name) {
   return selected;
 }
 
+/** B-5 (2026-09-29): a job's NAME is the one line of it a person reads on the
+ *  run page and in the digest. `failure-ledger` in ops-watch.yml was named
+ *  "(weekly, print-only)" while its step ended `exit "$code"` — it went red,
+ *  and `alert` paged on it — so the name told the reader the one thing about
+ *  it that was false. A job may call itself print-only only if no step of it
+ *  can exit non-zero on purpose (or the job is `continue-on-error: true`). */
+export const PRINT_ONLY_NAME = /\bprint[- ]only\b/i;
+const NONZERO_EXIT = /(?:^|[\s;&|(])exit\s+(?!0(?:\s|;|$))\S+/;
+
+/** `{ job, name, n, text }` for each job NAMED print-only whose steps carry an
+ *  `exit` of anything but a literal 0 — the name contradicting the job. */
+export function printOnlyJobsThatFail(wf) {
+  const out = [];
+  for (const job of wf?.jobs?.values() ?? []) {
+    if (!job.displayName || !PRINT_ONLY_NAME.test(job.displayName) || job.continueOnError) continue;
+    const hit = job.logical.find((l) => NONZERO_EXIT.test(l.text));
+    if (hit) out.push({ job: job.name, name: job.displayName, n: hit.n, text: hit.text.trim() });
+  }
+  return out;
+}
+
 /** Every workflow under `.github/workflows`, parsed, sorted by filename. */
 export function parseAllWorkflows(root) {
   const dir = join(root, WORKFLOW_DIR);

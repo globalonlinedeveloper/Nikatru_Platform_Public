@@ -728,6 +728,14 @@ Covered in §1.9. Practical mechanics from the same page:
   sub-keys."* So a single manifest can carry it safely.
 - Updating an MV2 add-on through the AMO API without an ID in the manifest requires passing the ID in
   the request.
+- **Platforms are claimed only where a suite runs (2026-09-29, rv2 EXB-11).** A package declares
+  `gecko_android` only for a tool that `extensions/scripts/e2e-suites.json` lists under
+  `geckoAndroidLegs` (none today); `verify-firefox-package.node.js` refuses it otherwise, and the
+  first-submit payload names `version.compatibility` from the overlay (`["firefox"]`). Without
+  the key, addons-linter derives the Android floor from `gecko.strict_min_version`, and
+  `data_collection_permissions` needs Android 142 — so FullShot's desktop floor is **142**
+  (web-ext 10.6.0 lint refused 140 with `KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION`). The
+  cost: Firefox ESR 140 is below the floor.
 
 ### 4.2 Privacy policy — conditional, same as the other two stores
 

@@ -167,25 +167,16 @@ class SettingsScreen extends ConsumerWidget {
           );
       return;
     }
-    final bool proceed =
-        await showDialog<bool>(
-          context: context,
-          builder: (BuildContext c) => AlertDialog(
-            title: Text(l10n.permissionPrimingTitle),
-            content: Text(l10n.permissionPrimingBody),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                child: Text(l10n.notNow),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(c, true),
-                child: Text(l10n.continueLabel),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    // ⏱ 2026-09-28 · train ST-D8: the design system's priming, not a
+    // hand-built `AlertDialog` — a sheet on a phone, a capped dialog wider, and
+    // any dismissal answers false exactly like "Not now".
+    final bool proceed = await showPermissionPriming(
+      context,
+      title: l10n.permissionPrimingTitle,
+      body: l10n.permissionPrimingBody,
+      allowLabel: l10n.continueLabel,
+      notNowLabel: l10n.notNow,
+    );
     // Declining the PRIMING must not spend the OS prompt — that is the whole
     // point of asking twice.
     if (!proceed) return;

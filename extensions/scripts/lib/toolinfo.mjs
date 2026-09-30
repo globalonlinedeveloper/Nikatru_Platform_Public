@@ -323,9 +323,12 @@ const DOC_KEYS = ['README', 'NOTES', 'absent'];
    ⏱ 2026-09-25 (O-EXTENSION-GATES-NAME-ONE-TOOL): `gates` — a tool's own store
    gates, per CI stage. scripts/discover.mjs reads it (`--run-gates`,
    `--assert-generic`) and checks each declaration; this loader only knows the
-   key exists. */
+   key exists.
+   ⏱ 2026-09-29 (EXB-13): `parity` — the feature x target table.
+   scripts/check-catalog.mjs grades it and scripts/render-listing.mjs renders
+   its fallback cells into the store listings. */
 const KNOWN_KEYS = ['$schema', 'id', 'name', 'surface', 'status', 'summary', 'aiHandoff',
-  'manifest', 'core', 'package', 'targets', 'tests', 'policy', 'listings', 'storeMetadata', 'build', 'gates', ...DOC_KEYS];
+  'manifest', 'core', 'package', 'targets', 'tests', 'policy', 'listings', 'storeMetadata', 'build', 'gates', 'parity', ...DOC_KEYS];
 
 export function loadTool(root, entry) {
   const rel = typeof entry === 'string' ? entry : entry.rel;

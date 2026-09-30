@@ -903,8 +903,10 @@ function preconditionsLimb(problems, summaries) {
   // ⏱ 9b (rv-c22): a submitting app row owes a declaration gate (an entry with realFlag) or
   // carries a written exemption (DECLARATION_EXEMPT). Neither is a finding: a new store lane
   // would otherwise submit with no declaration date ever asked for.
+  // ⏱ 2026-09-29 (AB-M5-02): read by `declaresConsole`, not by `realFlag` — the Small Business
+  // Program gate carries realFlag too and is no console declaration, so it cannot stand in for one.
   for (const row of submitting.filter((r) => r.surface === 'app')) {
-    const gated = SUBMIT_PRECONDITIONS.some((e) => e.realFlag && e.appliesTo(row, register));
+    const gated = SUBMIT_PRECONDITIONS.some((e) => e.realFlag && e.declaresConsole && e.appliesTo(row, register));
     const exempt = Object.hasOwn(DECLARATION_EXEMPT, row.id);
     if (!gated && !exempt) {
       mine.push(

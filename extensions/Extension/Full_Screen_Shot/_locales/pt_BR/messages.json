@@ -437,6 +437,12 @@
   "optionsAutoOpenEditorDesc": {
     "message": "Ir direto para as anotações (só em capturas de parte única)."
   },
+  "optionsSingleKeyShortcuts": {
+    "message": "Single-key shortcuts in the editor"
+  },
+  "optionsSingleKeyShortcutsDesc": {
+    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+  },
   "optionsTheme": {
     "message": "Tema"
   },
@@ -459,13 +465,16 @@
     "message": "Página inteira: $KEYFULL$ · Visível: $KEYVISIBLE$. Personalize em $URL$",
     "placeholders": {
       "keyfull": {
-        "content": "Alt+Shift+P"
+        "content": "$1",
+        "example": "Alt+Shift+P"
       },
       "keyvisible": {
-        "content": "Alt+Shift+V"
+        "content": "$2",
+        "example": "Alt+Shift+V"
       },
       "url": {
-        "content": "chrome://extensions/shortcuts"
+        "content": "$3",
+        "example": "chrome://extensions/shortcuts"
       }
     }
   },
@@ -1260,6 +1269,39 @@
   },
   "editorZoomFit": {
     "message": "Ajustar"
+  },
+  "editorZoomLevelName": {
+    "message": "$PERCENT$ zoom",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "100%"
+      }
+    }
+  },
+  "editorColorRed": {
+    "message": "Red"
+  },
+  "editorColorAmber": {
+    "message": "Amber"
+  },
+  "editorColorGreen": {
+    "message": "Green"
+  },
+  "editorColorBlue": {
+    "message": "Blue"
+  },
+  "editorColorViolet": {
+    "message": "Violet"
+  },
+  "editorColorPink": {
+    "message": "Pink"
+  },
+  "editorColorBlack": {
+    "message": "Black"
+  },
+  "editorColorWhite": {
+    "message": "White"
   },
   "editorZoomTipToHundred": {
     "message": "Ajustar à janela – clique para 100%"
@@ -2085,6 +2127,14 @@
       }
     }
   },
+  "regionHintEnter": {
+    "message": "$ENTER$ captures the whole visible area",
+    "placeholders": {
+      "enter": {
+        "content": "Enter"
+      }
+    }
+  },
   "errRestrictedBrowserPage": {
     "message": "Páginas do navegador como Configurações, Extensões e a nova aba são proibidas para qualquer extensão. Experimente o FullShot em uma página da web comum."
   },
@@ -2099,6 +2149,12 @@
   },
   "errRestrictedWebstore": {
     "message": "A Chrome Web Store impede que extensões leiam as páginas dela, então esta não pode ser capturada."
+  },
+  "errRestrictedEdgeAddons": {
+    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+  },
+  "errRestrictedAmo": {
+    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
   },
   "errRestrictedGeneric": {
     "message": "Esta página é protegida pelo navegador e não pode ser capturada."

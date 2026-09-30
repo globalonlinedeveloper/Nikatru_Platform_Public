@@ -188,6 +188,77 @@
       ]
     }
   ],
+  "nativeTargets": {
+    "_why": [
+      "⏱ 2026-09-29 · AB-E2E-02. READ BY tooling/ci/assert-e2e-legs.mjs limb NATIVE. Every leg above runs on web only, and",
+      "until today nothing graded a target axis at all: no leg ran on any native target and none declared an equivalent,",
+      "so a green nightly said nothing about android, ios, macos, windows or linux. The targets are NOT listed here as a",
+      "source: the guard derives them from tooling/channel-register.json (the platforms of every `surface: app` channel,",
+      "minus web), and a target with no row below for anonymous, sign-in AND account-delete-purges is COVERAGE LOST (exit 2).",
+      "",
+      "`leg` means e2e.yml job `job` runs `drive` on that target on a declared schedule — the same drive",
+      "native-auth-proof.yml dispatches per auth change (tooling/e2e/native_auth_proof.mjs over each app's `suite`), which",
+      "walks first-run to the real sign-in form, signs in to Home and signs out. The guard refuses a `leg` whose job is",
+      "missing, does not list the target in its matrix, does not run the drive, or can only start on a cron the workflow",
+      "does not declare (a leg nothing runs). `legAnchors` must resolve in the comment-stripped suite, as the web anchors do.",
+      "",
+      "`equivalent` means the leg is NOT walked on that target and names what proves it instead: `provenBy` must be a leg",
+      "the web suite has `asserted`, and `why` says why the web proof carries over. account-delete-purges is the one so",
+      "declared: the erasure is one Dart call (the chassis delete dialog -> DELETE /v1/account on the platform Worker) that",
+      "every target compiles from the same source, and the proof that matters is server-side — tooling/e2e/verify_purged.mjs",
+      "re-reading live D1 and the GoTrue admin API — which no target changes. Walking it natively would destroy the one",
+      "throwaway user each native leg signs in with.",
+      "",
+      "⚠️ WEEKLY, NOT NIGHTLY, AND DATED: the native job runs on e2e.yml's Sunday cron. A cost choice, stated here, the same",
+      "way the web-only cut above was."
+    ],
+    "workflow": ".github/workflows/e2e.yml",
+    "job": "native",
+    "drive": "tooling/e2e/native_auth_proof.mjs",
+    "suite": "integration_test/native_auth_proof_test.dart",
+    "declaredOn": "2026-09-29",
+    "legAnchors": {
+      "anonymous": [
+        "tapThrough: firstRun",
+        "find.byKey(E2EKeys.loginEmail)"
+      ],
+      "sign-in": [
+        "await proveFormSignIn(",
+        "debugPrint('NK_PROOF step=sign-in outcome=ok')",
+        "debugPrint('NK_PROOF step=sign-out outcome=ok')"
+      ]
+    },
+    "offlineRead": {
+      "_why": [
+        "AB-O1-05. The list read back with the network off, on each target's own shared_preferences backend",
+        "(integration_test/offline_read_steps.dart). `anchors` resolve in the native suite, `webAnchors` in the web suite;",
+        "tooling/e2e/native_auth_proof.mjs requires the printed line of every run whose suite declares it."
+      ],
+      "anchors": [
+        "await expectListSurvivesOffline(seeded)",
+        "debugPrint(kOfflineReadOkLine)"
+      ],
+      "webAnchors": [
+        "expectListSurvivesOffline(subNameB)"
+      ]
+    },
+    "equivalents": {
+      "account-delete-purges": {
+        "provenBy": "web",
+        "why": [
+          "One erasure call on every target (the chassis delete dialog -> DELETE /v1/account), and a server-side proof",
+          "(verify_purged.mjs) no target changes. The web leg walks it nightly; the native legs keep their user alive."
+        ]
+      }
+    },
+    "targets": {
+      "android": { "anonymous": "leg", "sign-in": "leg", "account-delete-purges": "equivalent" },
+      "ios": { "anonymous": "leg", "sign-in": "leg", "account-delete-purges": "equivalent" },
+      "macos": { "anonymous": "leg", "sign-in": "leg", "account-delete-purges": "equivalent" },
+      "windows": { "anonymous": "leg", "sign-in": "leg", "account-delete-purges": "equivalent" },
+      "linux": { "anonymous": "leg", "sign-in": "leg", "account-delete-purges": "equivalent" }
+    }
+  },
   "captchaGatedSurfaces": {
     "_why": [
       "READ BY tooling/ci/assert-captcha-gated-call-sites.mjs limb R3 (2026-09-26). Every captcha-gated call site",
