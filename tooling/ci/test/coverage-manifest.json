@@ -1,352 +1,1060 @@
 {
-  "a11y-coverage.test.mjs": 35,
-  "a11y-primitives.test.mjs": 28,
-  "adapter-capabilities.test.mjs": 32,
-  "adapter-set.test.mjs": 6,
-  "ads-declarations.test.mjs": 62,
-  "affected-guards.test.mjs": 8,
-  "agent-docs.test.mjs": 21,
-  "alert-disposition.test.mjs": 29,
-  "analytics-contract.test.mjs": 78,
-  "analytics-liveness.test.mjs": 28,
-  "android-channel-manifest.test.mjs": 4,
-  "android-signing.test.mjs": 66,
-  "android-target-sdk.test.mjs": 34,
-  "android-vapt-manifest.test.mjs": 49,
-  "app-address-shape.test.mjs": 32,
-  "app-dod.test.mjs": 38,
-  "app-id-contract.test.mjs": 13,
-  "app-licence-rows.test.mjs": 19,
-  "app-naming.test.mjs": 30,
-  "app-set.test.mjs": 10,
-  "app-versioning.test.mjs": 104,
-  "app-yaml.test.mjs": 180,
-  "appimage-signing.test.mjs": 77,
-  "apple-privacy-manifest.test.mjs": 66,
-  "apple-provisioning.test.mjs": 78,
-  "apple-signing-2026-09-09.test.mjs": 22,
-  "apple-signing-app-filter.test.mjs": 14,
-  "apple-signing-expiry.test.mjs": 19,
-  "apple-signing.test.mjs": 125,
-  "apps-gov-in-apk.test.mjs": 53,
-  "apps-gov-in-media.test.mjs": 25,
-  "appstore-submission.test.mjs": 49,
-  "artifact-shape.test.mjs": 32,
-  "artifact-signed-apple.test.mjs": 74,
-  "artifact-signed-msix.test.mjs": 72,
-  "assert-deploy-triggers-deploy.test.mjs": 34,
-  "assert-frames-carry-text.test.mjs": 11,
-  "assert-name-clearance.test.mjs": 34,
-  "assert-release-json.test.mjs": 60,
-  "assert-versions.test.mjs": 30,
-  "auth-callbacks.test.mjs": 50,
-  "auth-cutover-preflight.test.mjs": 100,
-  "availability.test.mjs": 33,
-  "await-pr-checks.test.mjs": 46,
-  "backup-headroom.test.mjs": 19,
-  "bounded-spawn.test.mjs": 9,
-  "brick-drivers.test.mjs": 5,
-  "built-artifact-pr-lane.test.mjs": 26,
-  "built-info-plist.test.mjs": 15,
-  "bundle-availability.test.mjs": 42,
-  "bundle-contract-limbs.test.mjs": 18,
-  "bundle-provenance-guards.test.mjs": 13,
-  "bundle-provenance.test.mjs": 10,
-  "capability-register-seams.test.mjs": 27,
-  "capability-register.test.mjs": 42,
-  "captcha-gated-call-sites.test.mjs": 28,
-  "capture-backend.test.mjs": 12,
-  "capture-fallback-fonts.test.mjs": 12,
-  "capture-precheck.test.mjs": 16,
-  "capture-row-edge.test.mjs": 10,
-  "case-count-honest.test.mjs": 57,
-  "catalog-contract.test.mjs": 40,
-  "catalog-reachable.test.mjs": 22,
-  "ceiling-budget.test.mjs": 73,
-  "channel-arming.test.mjs": 36,
-  "channel-claims.test.mjs": 50,
-  "channel-register.test.mjs": 339,
-  "channel-surface.test.mjs": 7,
-  "chassis-delegation.test.mjs": 54,
-  "chassis-ledger.test.mjs": 37,
-  "chassis-parity.test.mjs": 37,
-  "chrome-raster.test.mjs": 1,
-  "chrome-splice.test.mjs": 26,
-  "ci-map.test.mjs": 10,
-  "clone-contract.test.mjs": 46,
-  "code-scanning-age.test.mjs": 15,
-  "config-registry.test.mjs": 61,
-  "connect-origins.test.mjs": 38,
-  "consent-anon-id.test.mjs": 26,
-  "consent-withdrawal-surface.test.mjs": 45,
-  "content-licences.test.mjs": 13,
-  "content-pipeline.test.mjs": 51,
-  "content-qa-checks.test.mjs": 7,
-  "cors-allowlist.test.mjs": 33,
-  "credential-origin.test.mjs": 23,
-  "d1-bindings.test.mjs": 9,
-  "d1-fanout.test.mjs": 12,
-  "d1-location-hint.test.mjs": 12,
-  "d1-sql-inventory.test.mjs": 57,
-  "data-inventory.test.mjs": 55,
-  "dead-repo-names.test.mjs": 17,
-  "deletion-control.test.mjs": 39,
-  "deploy-ref.test.mjs": 31,
-  "deploy-triggers.test.mjs": 27,
-  "deploy-units.test.mjs": 7,
-  "deployment-record.test.mjs": 125,
-  "derived-sets.test.mjs": 14,
-  "desktop-runner-identity.test.mjs": 16,
-  "discovery-surface.test.mjs": 163,
-  "dod-sync.test.mjs": 20,
-  "dump-aab-permissions.test.mjs": 19,
-  "e2e-auth-target.test.mjs": 48,
-  "e2e-backend.test.mjs": 26,
-  "e2e-delete-headless.test.mjs": 27,
-  "e2e-legs.test.mjs": 46,
-  "e2e-proof-fresh.test.mjs": 61,
-  "e2e-run-resolver.test.mjs": 17,
-  "e2e-verify-target.test.mjs": 48,
-  "edge-ratelimit-rule.test.mjs": 16,
-  "edge-shield-probe.test.mjs": 18,
-  "elf-page-alignment.test.mjs": 23,
-  "enforcement-index.test.mjs": 31,
-  "ensure-monitors.test.mjs": 24,
-  "entitlement-contract.test.mjs": 104,
-  "erasure-reach.test.mjs": 53,
-  "extension-publish.test.mjs": 57,
-  "extension-submission.test.mjs": 64,
-  "extension-tool-identity.test.mjs": 79,
-  "extensions-build-free.test.mjs": 14,
-  "extensions-shared-constants.test.mjs": 13,
-  "failfast-coverage.test.mjs": 29,
-  "failure-ledger-lane.test.mjs": 29,
-  "finish-capture.test.mjs": 12,
-  "flag-exposure.test.mjs": 30,
-  "flutter-release-build.test.mjs": 33,
-  "free-api-scope-transient.test.mjs": 8,
-  "fs-read-once.test.mjs": 15,
-  "gen-auth-mail.test.mjs": 18,
-  "gen-issue-forms.test.mjs": 16,
-  "generate-apps-data.test.mjs": 8,
-  "github-matrix.test.mjs": 46,
-  "github-rate-limit.test.mjs": 36,
-  "glitchtip-no-ip.test.mjs": 17,
-  "glitchtip-project.test.mjs": 35,
-  "glitchtip-release-create.test.mjs": 20,
-  "green-means-ran.test.mjs": 48,
-  "guard-coverage.test.mjs": 81,
-  "guard-declaration.test.mjs": 8,
-  "guard-sweep-invocations.test.mjs": 12,
-  "guard-yield.test.mjs": 56,
-  "guards-refuse-empty.test.mjs": 18,
-  "guards.test.mjs": 487,
-  "heartbeats.test.mjs": 87,
-  "heavy-lock.test.mjs": 46,
-  "hook-messages.test.mjs": 5,
-  "hook-runner-pin.test.mjs": 19,
-  "hostname-depth.test.mjs": 7,
-  "house-identity.test.mjs": 16,
-  "hyperdrive-cap.test.mjs": 13,
-  "iap-review-screenshots.test.mjs": 16,
-  "identity-one-deleter.test.mjs": 8,
-  "inappwebview-waivers.test.mjs": 11,
-  "indexnow-ping.test.mjs": 11,
-  "input-contract.test.mjs": 29,
-  "install-hooks-worktree.test.mjs": 8,
-  "install-pinned-tool.test.mjs": 22,
-  "lane-detect.test.mjs": 19,
-  "lane-verdict.test.mjs": 12,
-  "launch-smoke.test.mjs": 17,
-  "launcher-icons.test.mjs": 62,
-  "legal-text-parity.test.mjs": 29,
-  "legal-tripwires.test.mjs": 26,
-  "licence-register.test.mjs": 80,
-  "lint-inheritance.test.mjs": 13,
-  "listing-assets-ink.test.mjs": 25,
-  "listing-assets.test.mjs": 100,
-  "live-signin-key.test.mjs": 19,
-  "live-writer-provenance.test.mjs": 69,
-  "local-chromedriver.test.mjs": 12,
-  "mail-auth-dns.test.mjs": 35,
-  "mail-transport-claims.test.mjs": 81,
-  "measure-frame-ink.test.mjs": 22,
-  "mechanism-claims.test.mjs": 47,
-  "modal-detection.test.mjs": 44,
-  "money-config.test.mjs": 67,
-  "money-dry-run.test.mjs": 16,
-  "monitor-coverage.test.mjs": 30,
-  "mor-adapters.test.mjs": 43,
-  "msix-visual-name.test.mjs": 14,
-  "mutation-proofs.test.mjs": 32,
-  "name-clearance.test.mjs": 39,
-  "native-auth-proof.test.mjs": 17,
-  "native-symbol-upload.test.mjs": 25,
-  "new-product-plan.test.mjs": 41,
-  "new-tool-chain.test.mjs": 12,
-  "no-clone-tells.test.mjs": 45,
-  "no-dead-files.test.mjs": 7,
-  "no-do-alarms.test.mjs": 26,
-  "no-gate-weakening.test.mjs": 26,
-  "no-generated-line-cites.test.mjs": 5,
-  "no-hardcoded-strings.test.mjs": 96,
-  "no-loop-cases.test.mjs": 11,
-  "no-origin-authz.test.mjs": 20,
-  "no-seam-forks.test.mjs": 87,
-  "no-secret-defines.test.mjs": 14,
-  "no-tls-pinning.test.mjs": 13,
-  "obfuscation-coupled.test.mjs": 40,
-  "one-entitlement-reader.test.mjs": 13,
-  "ops-auth-record-compare.test.mjs": 21,
-  "ops-bounded-retry.test.mjs": 116,
-  "ops-register.test.mjs": 435,
-  "ops-status.test.mjs": 53,
-  "ops-verifiers.test.mjs": 22,
-  "ops-watch-readers.test.mjs": 13,
-  "package-boundaries.test.mjs": 28,
-  "package-earned.test.mjs": 25,
-  "pages-deployments.test.mjs": 108,
-  "pages-origin.test.mjs": 26,
-  "palette-consistent.test.mjs": 56,
-  "password-reset-revokes.test.mjs": 16,
-  "paywall-flip-ready.test.mjs": 9,
-  "plan-deploy.test.mjs": 36,
-  "platform-proof-fresh.test.mjs": 91,
-  "platform-register.test.mjs": 107,
-  "play-declarations.test.mjs": 180,
-  "play-device-coverage.test.mjs": 61,
-  "play-submission.test.mjs": 87,
-  "policy-archive.test.mjs": 31,
-  "policy-claims.test.mjs": 62,
-  "post-deploy-smoke.test.mjs": 157,
-  "pr-rows.test.mjs": 50,
-  "precommit-pii.test.mjs": 5,
-  "preflight-ci-gate-coverage.test.mjs": 19,
-  "preflight-hung-leg.test.mjs": 5,
-  "preflight-smoke.test.mjs": 28,
-  "preflight-sweep-regression.test.mjs": 15,
-  "preflight-test-coverage.test.mjs": 11,
-  "preflight-untracked.test.mjs": 11,
-  "price-figure.test.mjs": 31,
-  "price-literals.test.mjs": 28,
-  "privacy-manifest.test.mjs": 20,
-  "prod-provenance-databases.test.mjs": 26,
-  "prod-provenance-walk.test.mjs": 30,
-  "prod-provenance.test.mjs": 152,
-  "propagate-versions.test.mjs": 15,
-  "provider-graph-acyclic.test.mjs": 12,
-  "provision-backend.test.mjs": 28,
-  "pseudonymity-firewall.test.mjs": 17,
-  "public-citations-ids.test.mjs": 10,
-  "public-citations-owner-ids.test.mjs": 43,
-  "public-citations-shards.test.mjs": 10,
-  "public-citations-tagpin.test.mjs": 10,
-  "publish-records.test.mjs": 68,
-  "publish-steps-guarded.test.mjs": 21,
-  "purchase-path.test.mjs": 133,
-  "rail-prices.test.mjs": 42,
-  "redeploy-stranded.test.mjs": 50,
-  "refresh-executed-floor.test.mjs": 11,
-  "regen-chain.test.mjs": 6,
-  "release-durable.test.mjs": 188,
-  "release-grades-legs.test.mjs": 7,
-  "release-lane-generic.test.mjs": 105,
-  "release-provenance.test.mjs": 159,
-  "release-tag-lanes.test.mjs": 24,
-  "render-payload.test.mjs": 56,
-  "render-play-graphics.test.mjs": 2,
-  "renovate-backlog.test.mjs": 53,
-  "renovate-reach.test.mjs": 25,
-  "repo-posture.test.mjs": 19,
-  "required-providers.test.mjs": 27,
-  "responsive-coverage.test.mjs": 26,
-  "retention-coverage.test.mjs": 47,
-  "retired-names-live.test.mjs": 16,
-  "retired-names-visible.test.mjs": 31,
-  "retired-names.test.mjs": 4,
-  "rollback.test.mjs": 25,
-  "rollup-lossless.test.mjs": 52,
-  "run-page-anchor.test.mjs": 67,
-  "runner-budget.test.mjs": 33,
-  "safe-rerun.test.mjs": 77,
-  "scan-secrets.test.mjs": 12,
-  "scan-workflows.test.mjs": 12,
-  "screen-set.test.mjs": 35,
-  "seams-wired.test.mjs": 27,
-  "selection-record.test.mjs": 12,
-  "self-host-fallback-fonts.test.mjs": 22,
-  "session-revocation.test.mjs": 15,
-  "setup-flutter-env.test.mjs": 4,
-  "signing-seam-census.test.mjs": 9,
-  "signing-seam.test.mjs": 40,
-  "signup-consent-shape.test.mjs": 34,
-  "signup-retention.test.mjs": 12,
-  "single-threaded-relaunch.test.mjs": 16,
-  "sink-disclosure.test.mjs": 49,
-  "site-bindings.test.mjs": 32,
-  "site-integrity.test.mjs": 109,
-  "small-business-program.test.mjs": 14,
-  "smoke-site-deploy.test.mjs": 14,
-  "smoke-web-artifact.test.mjs": 30,
-  "snap-submission.test.mjs": 48,
-  "snapcraft-generable.test.mjs": 92,
-  "spawn-ceiling.test.mjs": 11,
-  "spec-guards-worktree.test.mjs": 21,
-  "spec-guards.test.mjs": 9,
-  "stamp-app.test.mjs": 15,
-  "stamp-brand-assets.test.mjs": 19,
-  "stamp-chain-wiring.test.mjs": 4,
-  "stamp-channel.test.mjs": 19,
-  "stamp-identity.test.mjs": 15,
-  "stamp-platforms.test.mjs": 30,
-  "stamp-properties.test.mjs": 22,
-  "stamp-text-fidelity.test.mjs": 41,
-  "stamp-wiring.test.mjs": 20,
-  "start-here.test.mjs": 9,
-  "store-bijection.test.mjs": 26,
-  "store-build-config.test.mjs": 38,
-  "store-capture-board-parity.test.mjs": 26,
-  "store-capture-resolver.test.mjs": 17,
-  "store-identity.test.mjs": 70,
-  "store-key-secret.test.mjs": 8,
-  "store-metadata.test.mjs": 171,
-  "store-record.test.mjs": 19,
-  "store-screenshots-lane.test.mjs": 93,
-  "store-vocabulary.test.mjs": 28,
-  "submission-safety.test.mjs": 22,
-  "submit-common.test.mjs": 21,
-  "submit-lanes-record.test.mjs": 7,
-  "submit-lanes-take-dry-run-bytes.test.mjs": 10,
-  "supabase-templates.test.mjs": 48,
-  "sworn-store-files.test.mjs": 102,
-  "symbolication-proof.test.mjs": 75,
-  "tech-currency.test.mjs": 43,
-  "test-clock-mix.test.mjs": 25,
-  "text-reductions.test.mjs": 46,
-  "triage-failed-runs.test.mjs": 108,
-  "turnstile-hosts.test.mjs": 14,
-  "ungraded-baseline-doc.test.mjs": 26,
-  "update-coverage.test.mjs": 35,
-  "vacuity-a.test.mjs": 4,
-  "vacuity-b.test.mjs": 22,
-  "vacuity-c.test.mjs": 6,
-  "vendor-portability.test.mjs": 29,
-  "walks-bounded.test.mjs": 42,
-  "web-cache-policy.test.mjs": 46,
-  "web-drive-stages-fonts.test.mjs": 5,
-  "web-sourcemaps.test.mjs": 22,
-  "well-known-shape.test.mjs": 31,
-  "wildcard-dns.test.mjs": 13,
-  "windows-command.test.mjs": 19,
-  "windows-store-submission.test.mjs": 45,
-  "worker-error-sink.test.mjs": 30,
-  "worker-routes.test.mjs": 11,
-  "worker-set.test.mjs": 37,
-  "worker-shared-modules.test.mjs": 13,
-  "workflow-hardening.test.mjs": 11,
-  "workflow-readers.test.mjs": 19,
-  "workflow-scan.test.mjs": 89,
-  "workflow-timeouts.test.mjs": 21,
-  "wrangler-environments.test.mjs": 15,
-  "xcode-floor.test.mjs": 21
+  "a11y-coverage.test.mjs":
+    35,
+
+  "a11y-primitives.test.mjs":
+    28,
+
+  "adapter-capabilities.test.mjs":
+    32,
+
+  "adapter-set.test.mjs":
+    6,
+
+  "ads-declarations.test.mjs":
+    62,
+
+  "affected-guards.test.mjs":
+    8,
+
+  "agent-docs.test.mjs":
+    21,
+
+  "alert-disposition.test.mjs":
+    29,
+
+  "analytics-contract.test.mjs":
+    78,
+
+  "analytics-liveness.test.mjs":
+    28,
+
+  "android-channel-manifest.test.mjs":
+    4,
+
+  "android-signing.test.mjs":
+    66,
+
+  "android-target-sdk.test.mjs":
+    34,
+
+  "android-vapt-manifest.test.mjs":
+    49,
+
+  "app-address-shape.test.mjs":
+    32,
+
+  "app-dod.test.mjs":
+    38,
+
+  "app-id-contract.test.mjs":
+    13,
+
+  "app-licence-rows.test.mjs":
+    19,
+
+  "app-naming.test.mjs":
+    30,
+
+  "app-set.test.mjs":
+    10,
+
+  "app-versioning.test.mjs":
+    104,
+
+  "app-yaml.test.mjs":
+    180,
+
+  "appimage-signing.test.mjs":
+    77,
+
+  "apple-privacy-manifest.test.mjs":
+    66,
+
+  "apple-provisioning.test.mjs":
+    78,
+
+  "apple-signing-2026-09-09.test.mjs":
+    22,
+
+  "apple-signing-app-filter.test.mjs":
+    14,
+
+  "apple-signing-expiry.test.mjs":
+    19,
+
+  "apple-signing.test.mjs":
+    125,
+
+  "apps-gov-in-apk.test.mjs":
+    53,
+
+  "apps-gov-in-media.test.mjs":
+    25,
+
+  "appstore-submission.test.mjs":
+    49,
+
+  "artifact-shape.test.mjs":
+    32,
+
+  "artifact-signed-apple.test.mjs":
+    74,
+
+  "artifact-signed-msix.test.mjs":
+    72,
+
+  "assert-deploy-triggers-deploy.test.mjs":
+    34,
+
+  "assert-frames-carry-text.test.mjs":
+    11,
+
+  "assert-name-clearance.test.mjs":
+    34,
+
+  "assert-release-json.test.mjs":
+    60,
+
+  "assert-versions.test.mjs":
+    30,
+
+  "auth-callbacks.test.mjs":
+    50,
+
+  "auth-cutover-preflight.test.mjs":
+    100,
+
+  "availability.test.mjs":
+    33,
+
+  "await-pr-checks.test.mjs":
+    46,
+
+  "backup-headroom.test.mjs":
+    19,
+
+  "bounded-spawn.test.mjs":
+    9,
+
+  "brick-drivers.test.mjs":
+    5,
+
+  "built-artifact-pr-lane.test.mjs":
+    26,
+
+  "built-info-plist.test.mjs":
+    15,
+
+  "bundle-availability.test.mjs":
+    42,
+
+  "bundle-contract-limbs.test.mjs":
+    18,
+
+  "bundle-provenance-guards.test.mjs":
+    13,
+
+  "bundle-provenance.test.mjs":
+    10,
+
+  "capability-register-seams.test.mjs":
+    27,
+
+  "capability-register.test.mjs":
+    42,
+
+  "captcha-gated-call-sites.test.mjs":
+    28,
+
+  "capture-backend.test.mjs":
+    12,
+
+  "capture-fallback-fonts.test.mjs":
+    12,
+
+  "capture-precheck.test.mjs":
+    16,
+
+  "capture-row-edge.test.mjs":
+    10,
+
+  "case-count-honest.test.mjs":
+    57,
+
+  "catalog-contract.test.mjs":
+    40,
+
+  "catalog-reachable.test.mjs":
+    22,
+
+  "ceiling-budget.test.mjs":
+    73,
+
+  "channel-arming.test.mjs":
+    36,
+
+  "channel-claims.test.mjs":
+    50,
+
+  "channel-register.test.mjs":
+    341,
+
+  "channel-surface.test.mjs":
+    7,
+
+  "chassis-delegation.test.mjs":
+    54,
+
+  "chassis-ledger.test.mjs":
+    37,
+
+  "chassis-parity.test.mjs":
+    37,
+
+  "chrome-raster.test.mjs":
+    1,
+
+  "chrome-splice.test.mjs":
+    26,
+
+  "ci-map.test.mjs":
+    10,
+
+  "clone-contract.test.mjs":
+    46,
+
+  "code-scanning-age.test.mjs":
+    15,
+
+  "config-registry.test.mjs":
+    61,
+
+  "connect-origins.test.mjs":
+    38,
+
+  "consent-anon-id.test.mjs":
+    35,
+
+  "consent-withdrawal-surface.test.mjs":
+    45,
+
+  "content-licences.test.mjs":
+    13,
+
+  "content-pipeline.test.mjs":
+    51,
+
+  "content-qa-checks.test.mjs":
+    7,
+
+  "cors-allowlist.test.mjs":
+    33,
+
+  "credential-origin.test.mjs":
+    23,
+
+  "d1-bindings.test.mjs":
+    9,
+
+  "d1-fanout.test.mjs":
+    12,
+
+  "d1-location-hint.test.mjs":
+    12,
+
+  "d1-sql-inventory.test.mjs":
+    57,
+
+  "data-inventory.test.mjs":
+    55,
+
+  "dead-repo-names.test.mjs":
+    17,
+
+  "deletion-control.test.mjs":
+    39,
+
+  "deploy-ref.test.mjs":
+    31,
+
+  "deploy-triggers.test.mjs":
+    27,
+
+  "deploy-units.test.mjs":
+    7,
+
+  "deployment-record.test.mjs":
+    125,
+
+  "derived-sets.test.mjs":
+    14,
+
+  "desktop-runner-identity.test.mjs":
+    16,
+
+  "discovery-surface.test.mjs":
+    163,
+
+  "dod-sync.test.mjs":
+    20,
+
+  "dump-aab-permissions.test.mjs":
+    19,
+
+  "e2e-auth-target.test.mjs":
+    48,
+
+  "e2e-backend.test.mjs":
+    26,
+
+  "e2e-delete-headless.test.mjs":
+    27,
+
+  "e2e-legs.test.mjs":
+    46,
+
+  "e2e-proof-fresh.test.mjs":
+    61,
+
+  "e2e-run-resolver.test.mjs":
+    17,
+
+  "e2e-verify-target.test.mjs":
+    48,
+
+  "edge-ratelimit-rule.test.mjs":
+    16,
+
+  "edge-shield-probe.test.mjs":
+    18,
+
+  "elf-page-alignment.test.mjs":
+    23,
+
+  "enforcement-index.test.mjs":
+    31,
+
+  "ensure-monitors.test.mjs":
+    24,
+
+  "entitlement-contract.test.mjs":
+    104,
+
+  "erasure-reach.test.mjs":
+    53,
+
+  "ext-connect.test.mjs":
+    15,
+
+  "extension-publish.test.mjs":
+    57,
+
+  "extension-submission.test.mjs":
+    64,
+
+  "extension-tool-identity.test.mjs":
+    79,
+
+  "extensions-build-free.test.mjs":
+    14,
+
+  "extensions-shared-constants.test.mjs":
+    13,
+
+  "failfast-coverage.test.mjs":
+    29,
+
+  "failure-ledger-lane.test.mjs":
+    29,
+
+  "finish-capture.test.mjs":
+    12,
+
+  "flag-exposure.test.mjs":
+    30,
+
+  "flutter-release-build.test.mjs":
+    33,
+
+  "free-api-scope-transient.test.mjs":
+    8,
+
+  "fs-read-once.test.mjs":
+    15,
+
+  "gen-auth-mail.test.mjs":
+    18,
+
+  "gen-issue-forms.test.mjs":
+    16,
+
+  "generate-apps-data.test.mjs":
+    8,
+
+  "generated-merge.test.mjs":
+    8,
+
+  "github-matrix.test.mjs":
+    46,
+
+  "github-rate-limit.test.mjs":
+    36,
+
+  "glitchtip-no-ip.test.mjs":
+    17,
+
+  "glitchtip-project.test.mjs":
+    35,
+
+  "glitchtip-release-create.test.mjs":
+    20,
+
+  "green-means-ran.test.mjs":
+    48,
+
+  "guard-coverage.test.mjs":
+    81,
+
+  "guard-declaration.test.mjs":
+    8,
+
+  "guard-sweep-invocations.test.mjs":
+    12,
+
+  "guard-yield.test.mjs":
+    56,
+
+  "guards-refuse-empty.test.mjs":
+    18,
+
+  "guards.test.mjs":
+    491,
+
+  "heartbeats.test.mjs":
+    87,
+
+  "heavy-lock.test.mjs":
+    46,
+
+  "hook-messages.test.mjs":
+    5,
+
+  "hook-runner-pin.test.mjs":
+    19,
+
+  "hostname-depth.test.mjs":
+    7,
+
+  "house-identity.test.mjs":
+    16,
+
+  "hyperdrive-cap.test.mjs":
+    13,
+
+  "iap-review-screenshots.test.mjs":
+    16,
+
+  "identity-one-deleter.test.mjs":
+    8,
+
+  "inappwebview-waivers.test.mjs":
+    11,
+
+  "indexnow-ping.test.mjs":
+    11,
+
+  "input-contract.test.mjs":
+    29,
+
+  "install-hooks-worktree.test.mjs":
+    8,
+
+  "install-pinned-tool.test.mjs":
+    22,
+
+  "land-rules.test.mjs":
+    22,
+
+  "lane-detect.test.mjs":
+    19,
+
+  "lane-verdict.test.mjs":
+    12,
+
+  "launch-smoke.test.mjs":
+    17,
+
+  "launcher-icons.test.mjs":
+    62,
+
+  "legal-text-parity.test.mjs":
+    29,
+
+  "legal-tripwires.test.mjs":
+    26,
+
+  "licence-register.test.mjs":
+    80,
+
+  "lint-inheritance.test.mjs":
+    13,
+
+  "listing-assets-ink.test.mjs":
+    25,
+
+  "listing-assets.test.mjs":
+    100,
+
+  "live-signin-key.test.mjs":
+    19,
+
+  "live-writer-provenance.test.mjs":
+    69,
+
+  "local-chromedriver.test.mjs":
+    12,
+
+  "mail-auth-dns.test.mjs":
+    35,
+
+  "mail-transport-claims.test.mjs":
+    81,
+
+  "measure-frame-ink.test.mjs":
+    22,
+
+  "mechanism-claims.test.mjs":
+    47,
+
+  "modal-detection.test.mjs":
+    44,
+
+  "money-config.test.mjs":
+    67,
+
+  "money-dry-run.test.mjs":
+    16,
+
+  "monitor-coverage.test.mjs":
+    30,
+
+  "mor-adapters.test.mjs":
+    43,
+
+  "msix-visual-name.test.mjs":
+    14,
+
+  "mutation-proofs.test.mjs":
+    32,
+
+  "name-clearance.test.mjs":
+    39,
+
+  "native-auth-proof.test.mjs":
+    23,
+
+  "native-symbol-upload.test.mjs":
+    25,
+
+  "new-product-plan.test.mjs":
+    41,
+
+  "new-tool-chain.test.mjs":
+    12,
+
+  "no-clone-tells.test.mjs":
+    45,
+
+  "no-dead-files.test.mjs":
+    7,
+
+  "no-do-alarms.test.mjs":
+    26,
+
+  "no-gate-weakening.test.mjs":
+    26,
+
+  "no-generated-line-cites.test.mjs":
+    5,
+
+  "no-hardcoded-strings.test.mjs":
+    96,
+
+  "no-loop-cases.test.mjs":
+    11,
+
+  "no-origin-authz.test.mjs":
+    20,
+
+  "no-seam-forks.test.mjs":
+    87,
+
+  "no-secret-defines.test.mjs":
+    14,
+
+  "no-tls-pinning.test.mjs":
+    13,
+
+  "obfuscation-coupled.test.mjs":
+    40,
+
+  "one-entitlement-reader.test.mjs":
+    13,
+
+  "ops-auth-record-compare.test.mjs":
+    21,
+
+  "ops-bounded-retry.test.mjs":
+    116,
+
+  "ops-register.test.mjs":
+    435,
+
+  "ops-status.test.mjs":
+    53,
+
+  "ops-verifiers.test.mjs":
+    22,
+
+  "ops-watch-readers.test.mjs":
+    13,
+
+  "package-boundaries.test.mjs":
+    28,
+
+  "package-earned.test.mjs":
+    25,
+
+  "pages-deployments.test.mjs":
+    108,
+
+  "pages-origin.test.mjs":
+    26,
+
+  "palette-consistent.test.mjs":
+    56,
+
+  "password-reset-revokes.test.mjs":
+    16,
+
+  "paywall-flip-ready.test.mjs":
+    9,
+
+  "plan-deploy.test.mjs":
+    36,
+
+  "platform-proof-fresh.test.mjs":
+    91,
+
+  "platform-register.test.mjs":
+    107,
+
+  "play-declarations.test.mjs":
+    180,
+
+  "play-device-coverage.test.mjs":
+    61,
+
+  "play-submission.test.mjs":
+    87,
+
+  "policy-archive.test.mjs":
+    31,
+
+  "policy-claims.test.mjs":
+    62,
+
+  "post-deploy-smoke.test.mjs":
+    157,
+
+  "pr-rows.test.mjs":
+    50,
+
+  "precommit-pii.test.mjs":
+    5,
+
+  "preflight-ci-gate-coverage.test.mjs":
+    19,
+
+  "preflight-hung-leg.test.mjs":
+    5,
+
+  "preflight-smoke.test.mjs":
+    28,
+
+  "preflight-sweep-regression.test.mjs":
+    15,
+
+  "preflight-test-coverage.test.mjs":
+    11,
+
+  "preflight-untracked.test.mjs":
+    11,
+
+  "price-figure.test.mjs":
+    31,
+
+  "price-literals.test.mjs":
+    28,
+
+  "privacy-manifest.test.mjs":
+    20,
+
+  "prod-provenance-databases.test.mjs":
+    26,
+
+  "prod-provenance-walk.test.mjs":
+    30,
+
+  "prod-provenance.test.mjs":
+    152,
+
+  "propagate-versions.test.mjs":
+    15,
+
+  "provider-graph-acyclic.test.mjs":
+    12,
+
+  "provision-backend.test.mjs":
+    28,
+
+  "pseudonymity-firewall.test.mjs":
+    17,
+
+  "public-citations-ids.test.mjs":
+    10,
+
+  "public-citations-owner-ids.test.mjs":
+    43,
+
+  "public-citations-shards.test.mjs":
+    10,
+
+  "public-citations-tagpin.test.mjs":
+    10,
+
+  "publish-records.test.mjs":
+    68,
+
+  "publish-steps-guarded.test.mjs":
+    21,
+
+  "purchase-path.test.mjs":
+    133,
+
+  "rail-prices.test.mjs":
+    42,
+
+  "redeploy-stranded.test.mjs":
+    50,
+
+  "refresh-executed-floor.test.mjs":
+    11,
+
+  "regen-chain.test.mjs":
+    6,
+
+  "release-durable.test.mjs":
+    188,
+
+  "release-grades-legs.test.mjs":
+    7,
+
+  "release-lane-generic.test.mjs":
+    105,
+
+  "release-provenance.test.mjs":
+    159,
+
+  "release-tag-lanes.test.mjs":
+    24,
+
+  "render-payload.test.mjs":
+    56,
+
+  "render-play-graphics.test.mjs":
+    2,
+
+  "renovate-backlog.test.mjs":
+    53,
+
+  "renovate-reach.test.mjs":
+    25,
+
+  "repo-posture.test.mjs":
+    19,
+
+  "required-providers.test.mjs":
+    27,
+
+  "responsive-coverage.test.mjs":
+    26,
+
+  "retention-coverage.test.mjs":
+    47,
+
+  "retired-names-live.test.mjs":
+    16,
+
+  "retired-names-visible.test.mjs":
+    31,
+
+  "retired-names.test.mjs":
+    4,
+
+  "rollback.test.mjs":
+    25,
+
+  "rollup-lossless.test.mjs":
+    52,
+
+  "run-page-anchor.test.mjs":
+    67,
+
+  "runner-budget.test.mjs":
+    33,
+
+  "safe-rerun.test.mjs":
+    77,
+
+  "scan-secrets.test.mjs":
+    12,
+
+  "scan-workflows.test.mjs":
+    12,
+
+  "screen-set.test.mjs":
+    35,
+
+  "seams-wired.test.mjs":
+    27,
+
+  "selection-record.test.mjs":
+    12,
+
+  "self-host-fallback-fonts.test.mjs":
+    22,
+
+  "session-revocation.test.mjs":
+    15,
+
+  "setup-flutter-env.test.mjs":
+    4,
+
+  "signing-seam-census.test.mjs":
+    9,
+
+  "signing-seam.test.mjs":
+    40,
+
+  "signup-consent-shape.test.mjs":
+    34,
+
+  "signup-retention.test.mjs":
+    12,
+
+  "single-threaded-relaunch.test.mjs":
+    16,
+
+  "sink-disclosure.test.mjs":
+    49,
+
+  "site-bindings.test.mjs":
+    32,
+
+  "site-integrity.test.mjs":
+    109,
+
+  "small-business-program.test.mjs":
+    14,
+
+  "smoke-site-deploy.test.mjs":
+    14,
+
+  "smoke-web-artifact.test.mjs":
+    30,
+
+  "snap-submission.test.mjs":
+    48,
+
+  "snapcraft-generable.test.mjs":
+    92,
+
+  "spawn-ceiling.test.mjs":
+    11,
+
+  "spec-guards-worktree.test.mjs":
+    21,
+
+  "spec-guards.test.mjs":
+    9,
+
+  "stamp-app.test.mjs":
+    15,
+
+  "stamp-brand-assets.test.mjs":
+    19,
+
+  "stamp-chain-wiring.test.mjs":
+    4,
+
+  "stamp-channel.test.mjs":
+    19,
+
+  "stamp-identity.test.mjs":
+    15,
+
+  "stamp-platforms.test.mjs":
+    30,
+
+  "stamp-properties.test.mjs":
+    22,
+
+  "stamp-text-fidelity.test.mjs":
+    41,
+
+  "stamp-wiring.test.mjs":
+    20,
+
+  "start-here.test.mjs":
+    9,
+
+  "store-bijection.test.mjs":
+    26,
+
+  "store-build-config.test.mjs":
+    38,
+
+  "store-capture-board-parity.test.mjs":
+    26,
+
+  "store-capture-resolver.test.mjs":
+    17,
+
+  "store-identity.test.mjs":
+    70,
+
+  "store-key-secret.test.mjs":
+    8,
+
+  "store-metadata.test.mjs":
+    171,
+
+  "store-record.test.mjs":
+    19,
+
+  "store-screenshots-lane.test.mjs":
+    93,
+
+  "store-vocabulary.test.mjs":
+    28,
+
+  "submission-safety.test.mjs":
+    22,
+
+  "submit-common.test.mjs":
+    21,
+
+  "submit-lanes-record.test.mjs":
+    7,
+
+  "submit-lanes-take-dry-run-bytes.test.mjs":
+    10,
+
+  "supabase-templates.test.mjs":
+    48,
+
+  "sworn-store-files.test.mjs":
+    102,
+
+  "symbolication-proof.test.mjs":
+    75,
+
+  "tech-currency.test.mjs":
+    43,
+
+  "test-clock-mix.test.mjs":
+    25,
+
+  "text-reductions.test.mjs":
+    46,
+
+  "triage-failed-runs.test.mjs":
+    114,
+
+  "turnstile-hosts.test.mjs":
+    14,
+
+  "ungraded-baseline-doc.test.mjs":
+    26,
+
+  "update-coverage.test.mjs":
+    35,
+
+  "vacuity-a.test.mjs":
+    4,
+
+  "vacuity-b.test.mjs":
+    22,
+
+  "vacuity-c.test.mjs":
+    6,
+
+  "vendor-portability.test.mjs":
+    29,
+
+  "walks-bounded.test.mjs":
+    42,
+
+  "web-cache-policy.test.mjs":
+    46,
+
+  "web-drive-stages-fonts.test.mjs":
+    5,
+
+  "web-sourcemaps.test.mjs":
+    22,
+
+  "well-known-shape.test.mjs":
+    31,
+
+  "wildcard-dns.test.mjs":
+    13,
+
+  "windows-command.test.mjs":
+    19,
+
+  "windows-store-submission.test.mjs":
+    45,
+
+  "worker-error-sink.test.mjs":
+    30,
+
+  "worker-routes.test.mjs":
+    11,
+
+  "worker-set.test.mjs":
+    37,
+
+  "worker-shared-modules.test.mjs":
+    13,
+
+  "workflow-hardening.test.mjs":
+    11,
+
+  "workflow-readers.test.mjs":
+    23,
+
+  "workflow-scan.test.mjs":
+    89,
+
+  "workflow-timeouts.test.mjs":
+    21,
+
+  "wrangler-environments.test.mjs":
+    15,
+
+  "xcode-floor.test.mjs":
+    21
 }

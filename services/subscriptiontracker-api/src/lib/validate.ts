@@ -58,3 +58,12 @@ export function isCalendarDate(v: unknown): v is string {
   // so equality with the input is what actually rejects an impossible day.
   return new Date(ms).toISOString().slice(0, 10) === v;
 }
+
+/**
+ * A real calendar date (as `isCalendarDate`) within [earliest, latest], both
+ * 'YYYY-MM-DD' and inclusive. Compared as strings: for this fixed-width shape
+ * lexical order IS date order, so no second parse can disagree with the first.
+ */
+export function isCalendarDateBetween(v: unknown, earliest: string, latest: string): v is string {
+  return isCalendarDate(v) && v >= earliest && v <= latest;
+}

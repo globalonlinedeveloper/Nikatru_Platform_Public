@@ -5478,7 +5478,12 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     // into a callee (ADR 095), is excluded for the same reason.
     // ⏱ 2026-09-26: three. duty.workflow.site-drift-repair.yml left with its
     // workflow (D3b): the sitemap is generated in the deploy job, never committed.
-    assert.equal(census.excluded.length, 3, 'the committed register has exactly three trigger rows with no non-merge exit');
+    // ⏱ 2026-09-29: four. duty.workflow.main-healthy.yml (rv2-pipe-a P-1) runs only
+    // on a CI completion on main and declares no `workflow_dispatch` on purpose: a
+    // dispatched run has no workflow_run to read, would post nothing and go green,
+    // and would clear a red by not running. Excluded by the same derived reason.
+    assert.equal(census.excluded.length, 4, 'the committed register has exactly four trigger rows with no non-merge exit');
+    assert.ok(census.excluded.some((l) => /duty\.workflow\.main-healthy\.yml/.test(l)), 'main-healthy.yml is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.ci\.yml/.test(l)), 'ci.yml is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.extensions-ci\.yml/.test(l)), 'the extensions CI callee is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.lane-workers\.yml/.test(l)), 'the workers lane callee is excluded by derivation');

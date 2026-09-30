@@ -18,6 +18,13 @@ void main() {
     VoidCallback? onBack,
     VoidCallback? onRestore,
     VoidCallback? onCancel,
+    StatusKind? outcomeKind,
+    String? planDetail,
+    VoidCallback? onUpgrade,
+    bool loading = false,
+    VoidCallback? onReload,
+    bool offline = false,
+    VoidCallback? onReconnect,
   }) => ManagePlanView(
     title: 'Manage plan',
     isPro: isPro,
@@ -29,6 +36,14 @@ void main() {
     onBack: onBack ?? () {},
     onRestore: onRestore ?? () {},
     onCancel: onCancel ?? () {},
+    outcomeKind: outcomeKind,
+    planDetail: planDetail,
+    upgradeLabel: onUpgrade == null ? null : 'See plans',
+    onUpgrade: onUpgrade,
+    loading: loading,
+    onReload: onReload,
+    offline: offline,
+    onReconnect: onReconnect,
   );
 
   // ── (1) THE WIDTH DECISION, AT ALL THREE WINDOW CLASSES ───────────────────
@@ -48,19 +63,18 @@ void main() {
       expect(await paneWidthAt(tester, kPhone), kPhone.width);
     });
 
-    testWidgets('kTablet — still under the page cap', (
+    // ⏱ ST-D9: the cap is `reading` (720), the one the shipping app already
+    // chose — so the tablet is now capped too, not only the desktop.
+    testWidgets('kTablet — the reading cap engages', (
       WidgetTester tester,
     ) async {
-      expect(await paneWidthAt(tester, kTablet), kTablet.width);
+      expect(await paneWidthAt(tester, kTablet), AppBreakpoints.reading);
     });
 
-    testWidgets('kDesktop — the page cap engages', (
+    testWidgets('kDesktop — the reading cap holds', (
       WidgetTester tester,
     ) async {
-      expect(
-        await paneWidthAt(tester, kDesktop),
-        AppBreakpoints.kMaxBodyWidth,
-      );
+      expect(await paneWidthAt(tester, kDesktop), AppBreakpoints.reading);
     });
   });
 
@@ -118,6 +132,138 @@ void main() {
         view(outcomeMessage: 'We have recorded your request'),
       );
       expect(find.text('We have recorded your request'), findsOneWidget);
+    });
+  });
+
+  // ── (2b) THE ST-D9 STATES ─────────────────────────────────────────────────
+  //
+  // Loading, failed, offline, free (the "empty" state: no plan) and active
+  // (populated). In EVERY one of them Restore is still there: a user who cannot
+  // see their plan is exactly the user who needs it.
+  group('ST-D9 states', () {
+    // Text scaling is platform-owned: the user's 200% must reflow, never clip.
+    testWidgets('at 200% text on a phone nothing overflows', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(kPhone);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: ChassisLocalizations.localizationsDelegates,
+          supportedLocales: ChassisLocalizations.supportedLocales,
+          builder: (BuildContext context, Widget? child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: view(
+            planDetail: 'Plan and save are on',
+            outcomeMessage: 'Recorded',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    ChassisLocalizations l10nOf(WidgetTester tester) =>
+        ChassisLocalizations.of(tester.element(find.byType(ManagePlanView)));
+
+    testWidgets('loading: a placeholder where the plan goes; Restore stays', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(tester, kPhone, view(isPro: false, loading: true));
+      expect(find.byType(SkeletonList), findsOneWidget);
+      expect(find.byKey(ManagePlanView.statusCard), findsNothing);
+      expect(find.byKey(ManagePlanView.restoreTile), findsOneWidget);
+    });
+
+    testWidgets('failed: says so, retries, and Restore stays', (
+      WidgetTester tester,
+    ) async {
+      int reloaded = 0;
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(isPro: false, onReload: () => reloaded++),
+      );
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.text(l10n.managePlanLoadFailed), findsOneWidget);
+      expect(find.byKey(ManagePlanView.statusCard), findsNothing);
+      await tester.tap(find.text(l10n.retry));
+      expect(reloaded, 1);
+      expect(find.byKey(ManagePlanView.restoreTile), findsOneWidget);
+    });
+
+    testWidgets('offline: a warning strip above the plan', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(tester, kPhone, view(offline: true));
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.text(l10n.offlineMessage), findsOneWidget);
+      expect(find.byKey(ManagePlanView.statusCard), findsOneWidget);
+      expect(find.byKey(ManagePlanView.cancelTile), findsOneWidget);
+    });
+
+    testWidgets(
+      'free (empty): the way to a plan, when the adapter offers one',
+      (WidgetTester tester) async {
+        int upgraded = 0;
+        await pumpChassis(
+          tester,
+          kPhone,
+          view(isPro: false, onUpgrade: () => upgraded++),
+        );
+        expect(find.text('No active plan'), findsOneWidget);
+        await tester.tap(find.byKey(ManagePlanView.upgradeTile));
+        expect(upgraded, 1);
+        expect(find.byKey(ManagePlanView.cancelTile), findsNothing);
+      },
+    );
+
+    testWidgets('free, no upgrade passed (a build that sells nothing): none', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(tester, kPhone, view(isPro: false));
+      expect(find.byKey(ManagePlanView.upgradeTile), findsNothing);
+    });
+
+    testWidgets('active (populated): status, detail, and never an upgrade', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(planDetail: 'Plan and save are on', onUpgrade: () {}),
+      );
+      expect(find.text('Your plan is active'), findsOneWidget);
+      expect(find.text('Plan and save are on'), findsOneWidget);
+      expect(find.byKey(ManagePlanView.upgradeTile), findsNothing);
+    });
+
+    testWidgets('the outcome takes its tone from outcomeKind', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(outcomeMessage: 'Cancelled', outcomeKind: StatusKind.positive),
+      );
+      final DecisionStrip strip = tester.widget(
+        find.byKey(ManagePlanView.outcomeStrip),
+      );
+      expect(strip.kind, StatusKind.positive);
+    });
+
+    testWidgets('an ungraded outcome is a warning, never good news', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(tester, kPhone, view(outcomeMessage: 'Recorded'));
+      final DecisionStrip strip = tester.widget(
+        find.byKey(ManagePlanView.outcomeStrip),
+      );
+      expect(strip.kind, StatusKind.warn);
     });
   });
 
