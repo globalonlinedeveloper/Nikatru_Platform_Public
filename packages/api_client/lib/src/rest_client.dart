@@ -8,6 +8,7 @@ class ApiException implements Exception {
     this.message, {
     this.detail,
     this.malformed = false,
+    this.retryAfter,
   });
   final int statusCode;
   final String message;
@@ -24,6 +25,10 @@ class ApiException implements Exception {
   /// did not decode). Not "offline": the request arrived, so an outbox sets
   /// the entry aside as a visible problem (review #1075, round 2, minor d).
   final bool malformed;
+
+  /// The server's `Retry-After` (seconds), when it sent one — how long to wait
+  /// before asking again (a 409 "still processing" on an Idempotency-Key).
+  final Duration? retryAfter;
 
   /// [isOffline] for any thrown [error], false for anything that is not an
   /// [ApiException]: a failure this client did not classify is never assumed
@@ -173,7 +178,15 @@ class RestClient {
           ? data['error'].toString()
           : e.message ?? 'Network error';
       final Object? detail = data is Map ? data['detail'] : null;
-      throw ApiException(code, msg, detail: detail?.toString());
+      final int? wait = int.tryParse(
+        e.response?.headers.value('retry-after')?.trim() ?? '',
+      );
+      throw ApiException(
+        code,
+        msg,
+        detail: detail?.toString(),
+        retryAfter: wait == null ? null : Duration(seconds: wait),
+      );
     }
     throw ApiException(0, e.toString());
   }
