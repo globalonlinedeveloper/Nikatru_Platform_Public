@@ -121,6 +121,7 @@
       "codes",
       "token",
       "revoke",
+      "devices",
       "sessions",
       "revoke-all",
       "revoke-others",
