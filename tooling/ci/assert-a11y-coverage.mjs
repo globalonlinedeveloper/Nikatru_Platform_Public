@@ -851,7 +851,15 @@ const REQUIRED_COVERAGE = [
     // ⏱ 2026-10-01 · club apply-st merged onto main: BOTH raises above, so
     // 27 -> 32 surfaces and 63 -> 73 cases. Read off the per-root line:
     // `32 of 32 … from 5 a11y test file(s) across 73 case(s)`.
-    surfaces: 32,
+    // ⏱ 2026-10-01 · ST-N6 (#1080), merged with the above: 31 -> 32 surfaces —
+    // the chassis RefreshOnResume arrived swept in the consent-scrim chain of
+    // a11y_shell_test.dart (files and cases unchanged). Read off the per-root
+    // line on the merged tree: `32 of 32 … from 5 a11y test file(s) across 71
+    // case(s)`.
+    // ⏱ 2026-10-01 · club apply-st on ST-N6 (#1080): RefreshOnResume on top —
+    // read off the merged tree: `33 of 33 … from 5 a11y test file(s) across 73
+    // case(s)`.
+    surfaces: 33,
     a11yFiles: 5,
     cases: 73,
     label:

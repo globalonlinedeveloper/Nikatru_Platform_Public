@@ -56,6 +56,7 @@ import '../../data/portability/subscription_columns.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
+import '../../state/refresh_on_return.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 // The `/sub/:id` screen, imported so it can be BUILT IN PLACE in the second
@@ -109,6 +110,9 @@ class HomeScreen extends ConsumerWidget {
   /// The list column's pane; `test/width_home_test.dart` resolves the
   /// `ListView` through it rather than through `.first`.
   static const Key listPaneKey = Key('home-list-pane');
+
+  /// The list's pull-to-refresh (ST-N6), so a test can drag it by key.
+  static const Key pullToRefreshKey = Key('home-pull-to-refresh');
 
   /// The summary's own column, present from [asideMinBodyWidth] up.
   static const Key asideKey = Key('home-aside');
@@ -450,26 +454,34 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     // it is a no-op. It is a CONTENT width, not a navigation breakpoint.
     return ContentPane.reading(
       key: HomeScreen.listPaneKey,
-      child: ListView(
-        controller: _scroll,
-        padding: AppShell.pageInsetOf(context),
-        children: <Widget>[
-          // THE HEADER IS OUTSIDE THE DATA STATES. It is the route to
-          // notifications and settings, so no state may hide it — a spinner
-          // that ate it would be a screen with no door.
-          _header(context, l10n, user, now),
-          const SizedBox(height: AppSpacing.lg),
-          ..._states(
-            context,
-            l10n,
-            money,
-            subs,
-            now,
-            showUnused,
-            summaryInList: summaryInList,
-            twoPane: twoPane,
-          ),
-        ],
+      // ST-N6 (D23): pull down to re-read — the SAME re-read a return to the
+      // app runs, so the gesture and the resume cannot disagree about what
+      // "refresh" means. Always scrollable, or a short list cannot be pulled.
+      child: RefreshIndicator(
+        key: HomeScreen.pullToRefreshKey,
+        onRefresh: () => refreshOnReturn(ref),
+        child: ListView(
+          controller: _scroll,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: AppShell.pageInsetOf(context),
+          children: <Widget>[
+            // THE HEADER IS OUTSIDE THE DATA STATES. It is the route to
+            // notifications and settings, so no state may hide it — a spinner
+            // that ate it would be a screen with no door.
+            _header(context, l10n, user, now),
+            const SizedBox(height: AppSpacing.lg),
+            ..._states(
+              context,
+              l10n,
+              money,
+              subs,
+              now,
+              showUnused,
+              summaryInList: summaryInList,
+              twoPane: twoPane,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0008_tags.sql — a subscription can carry the user's own labels
+-- 0009_tags.sql — a subscription can carry the user's own labels
 -- (audit row AD-12, train T20 `st-polish`: tags, the API half).
 -- Applies to APP_DB (subscriptiontracker_db):
 --   wrangler d1 migrations apply APP_DB --local   (or --remote)

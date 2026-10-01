@@ -214,7 +214,7 @@ class Subscription {
   final String? cancelUrl;
 
   /// The user's own free-text labels ("family", "work") — the API's `tags`
-  /// (0008_tags.sql, ST-AD12). Normalised by [normaliseTags]: trimmed, never
+  /// (0009_tags.sql, ST-AD12). Normalised by [normaliseTags]: trimmed, never
   /// blank, one spelling per tag whatever its case, at most [maxTags] of at
   /// most [maxTagLength] characters each — the bounds the route enforces, so
   /// a list this model holds is a list the server accepts.
@@ -577,7 +577,7 @@ class Subscription {
     // Train T11's column, behind its capability exactly like `notice_days`.
     if (priceAfterTrialSupported)
       'price_after_trial_minor': priceAfterTrial?.minorUnits,
-    // ST-AD12 (0008_tags.sql). Always sent: an API before 0008 ignores a key
+    // ST-AD12 (0009_tags.sql). Always sent: an API before 0009 ignores a key
     // its validator does not name, and `[]` is how a PATCH clears them.
     'tags': tags,
   };

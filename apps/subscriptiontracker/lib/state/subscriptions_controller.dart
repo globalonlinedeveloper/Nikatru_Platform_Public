@@ -224,6 +224,40 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     return s.hasValue && !s.hasError ? s.requireValue : null;
   }
 
+  /// Re-read the list from the server and keep the list on screen if that
+  /// fails — ST-N6 (D23, F37): a return to the app and the pull-to-refresh
+  /// gesture both land here, through `refreshOnReturn`.
+  ///
+  /// 🔴 NOT `invalidateSelf()`, which is what a naive refresh would be. A
+  /// failed rebuild puts the provider in an ERROR state, [observedList] reads
+  /// that as "not observed", and the next add would then write a list of ONE
+  /// row — the rest of the user's subscriptions gone from the screen because a
+  /// phone came back to the front on a flat network. A resume happens many
+  /// times a day, offline more often than a first launch is.
+  ///
+  /// - still loading: nothing to do, the fetch in flight IS the refresh;
+  /// - failed with nothing observed: this is the Retry, so rebuild;
+  /// - observed: fetch, and replace the list only if nothing wrote it while
+  ///   the fetch was out (an add that landed meanwhile is newer than this).
+  Future<void> refresh() async {
+    final List<Subscription>? before = observedList;
+    if (before == null) {
+      if (state.hasError) ref.invalidateSelf();
+      return;
+    }
+    final List<Subscription> fetched;
+    try {
+      fetched = _visible(
+        await ref.read(subscriptionRepositoryProvider).fetchAll(),
+      );
+    } on Object {
+      return; // A flat network is not an empty account; the offline banner says so.
+    }
+    if (!ref.mounted || !identical(observedList, before)) return;
+    state = AsyncData<List<Subscription>>(fetched);
+    await _syncReminders(fetched);
+  }
+
   /// [primeReminders] is the PRIMING step (train ST-D8): the add sheet shows
   /// the design system's `showPermissionPriming` and answers whether the user
   /// chose to proceed. It is asked ONLY on the empty→first transition below,

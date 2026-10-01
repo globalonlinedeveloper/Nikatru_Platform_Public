@@ -104,7 +104,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/settings/settings_screen.dart",
           "linesAtSince": 1969,
-          "ceiling": 1946,
+          "ceiling": 1945,
           "template": 616
         }
       ],
@@ -201,6 +201,13 @@
           "on": "2026-10-01",
           "callSiteDelta": -82,
           "measured": "Train st-entry (EN-14) after its parity STOP: the resend rest that survives leave/return and 'Use a different email' were drafted INTO the private copy (162 -> 239, +77 over its ceiling), so they went into packages/chassis_screens/lib/auth/verify_email_screen.dart as three OPTIONAL parameters — `secondsUntilResend` (the adapter keeps the deadline; the view seeds and runs the countdown, read on arrival and after each send), `onUseDifferent`, and `panel` — so the brick adapter is untouched, and the app adopted the view. apps/subscriptiontracker/lib/features/auth/verify_email_screen.dart 162 -> 80 lines, `wc -l` against `git show origin/main:<path>`, both after `dart format` (Flutter 3.47.5). The 2026-09-20 note's blocker (no captcha slot, no error mapper on the view) is gone: `captcha` / `captchaController` landed with ST-A1 and the view maps through authErrorText. The adapter keeps `CaptchaHost` (the app's token holder IS the chassis `CaptchaTokenController`), passes `TurnstileGate`, and spends the token with `consume()` inside a CALL, not a tear-off, for assert-captcha-gated-call-sites. Two strings moved to the chassis arb (verifyEmailResendIn, verifyEmailUseDifferent, en + ta); every other string the view renders is byte-identical between app_*.arb and chassis_*.arb in both locales."
+        },
+        {
+          "file": "state/refresh_on_return.dart",
+          "piece": "RefreshOnResume",
+          "on": "2026-10-01",
+          "callSiteDelta": -6,
+          "measured": "ST-N6 (D23/F37, #1080), on merging main at c89cb4fa (O-APPS-GOV-IN-VAPT-CHECKLIST). Main's `_OfflineBanner` now wraps its child in the chassis `RootedDeviceNoticeHost`, and this PR's chassis `RefreshOnResume` wrapped the same child: nested in the fork, the two took apps/subscriptiontracker/lib/app.dart to 662 lines against its ceiling 660. Instead of raising the ceiling, the `RefreshOnResume(onRefresh:, elapsed:, child:)` construction moved out of the fork into the app's own state/refresh_on_return.dart as `refreshOnResume(ref, child:)`, beside the `refreshOnReturn` it calls, and the fork keeps one line, `RootedDeviceNoticeHost(child: refreshOnResume(ref, child: child))`: app.dart 662 -> 656 lines, `wc -l` after `dart format` (Flutter 3.47.5), and its ceiling re-recorded at 656 in the same commit."
         }
       ],
       "_adoptedWhy": "⏱ 2026-09-15 · [ADR 086] ONE PIECE AT A TIME: the app now imports the package in the files listed here; tooling/ci/assert-chassis-parity.mjs holds that list equal to the scan and every callSiteDelta negative ([ADR 066]). The row is deleted when the last template file is adopted.",

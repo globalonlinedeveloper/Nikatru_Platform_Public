@@ -84,7 +84,7 @@ export function serializeSubscription(row: Subscription) {
     // 0004_notice_days.sql (ST-R8). `?? null`: a DB 0004 has not reached yields
     // no such key on the row, and the wire says null ("no notice period").
     notice_days: row.notice_days ?? null,
-    // 0008_tags.sql (AD-12). Stored as the JSON text `validate` wrote, served as
+    // 0009_tags.sql (AD-12). Stored as the JSON text `validate` wrote, served as
     // the list; NULL, a DB 0007 has not reached, or text edited outside this
     // Worker is served as [] ("no tags"), never a 500.
     tags: parseTags(row.tags),

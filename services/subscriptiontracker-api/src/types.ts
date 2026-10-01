@@ -150,7 +150,7 @@ export interface Subscription {
   category_id: string | null; // a `categories` row; `category` keeps its name in step
   // ── added by 0004_notice_days.sql (ST-R8) ──
   notice_days: number | null; // whole days before next_renewal to cancel by; NULL = none
-  // ── added by 0008_tags.sql (AD-12) ──
+  // ── added by 0009_tags.sql (AD-12) ──
   tags?: string | null; // JSON text of a list of labels; NULL = none. Optional: a DB 0007 has not reached has no such key
 }
 

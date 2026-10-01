@@ -58,6 +58,7 @@
 // that it produces none. Putting a directive above it keeps the comment
 // attached to the export it explains.
 
+export 'providers/account_preferences.dart';
 export 'providers/analytics_envelope.dart';
 export 'providers/auth.dart';
 export 'providers/categories.dart';
@@ -75,6 +76,9 @@ export 'providers/review.dart';
 export 'providers/routing.dart';
 export 'providers/scope.dart';
 export 'providers/subscriptions.dart';
+// ST-N6 (#1080): the app's RefreshOnResume, built beside refreshOnReturn so the
+// app.dart fork does not grow (assert-chassis-parity).
+export 'refresh_on_return.dart' show refreshOnResume;
 
 /// 🔴 THE AMBIGUITY FIX — see note 1 in the header. These names are declared
 /// by the chassis spine AND by `analytics_providers.dart`. They are declared

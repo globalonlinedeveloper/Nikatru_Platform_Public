@@ -182,20 +182,20 @@ describe('the real tree: every database the register\'s Workers own, and only th
     const appMigrations = readdirSync(join(REPO, APP_MIGRATIONS)).filter((f) => f.endsWith('.sql')).length;
     assert.match(
       r.stdout,
-      new RegExp(`MONITOR · \\[pipeline B-17\\] · subscriptiontracker_db: 7 table\\(s\\) enumerated from services/subscriptiontracker-api/migrations \\(${appMigrations} migration file\\(s\\)\\), 0 row\\(s\\) · 7 exempt table\\(s\\), not queried`),
+      new RegExp(`MONITOR · \\[pipeline B-17\\] · subscriptiontracker_db: 8 table\\(s\\) enumerated from services/subscriptiontracker-api/migrations \\(${appMigrations} migration file\\(s\\)\\), 0 row\\(s\\) · 8 exempt table\\(s\\), not queried`),
     );
-    assert.match(r.stdout, /MONITOR · \[pipeline B-17\] · 2 database\(s\) walked \(platform_db, subscriptiontracker_db\): 36 table\(s\), 0 row\(s\)/); // ⏱ 2026-09-30: 35 -> 36, 0006 adds idempotency_keys (AB-O2-02, #1075). ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 31 -> 32, 0021 ext_link_floor (EXA-11). ⏱ 2026-09-29: 29 -> 31, 0005 adds categories + price_change. ⏱ 2026-09-28: 26 -> 29 and platform_db 22 -> 25, 0020's three reminder tables (ST-T4a).
+    assert.match(r.stdout, /MONITOR · \[pipeline B-17\] · 2 database\(s\) walked \(platform_db, subscriptiontracker_db\): 37 table\(s\), 0 row\(s\)/); // ⏱ 2026-09-30: 35 -> 36, 0006 adds idempotency_keys (AB-O2-02, #1075). ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 31 -> 32, 0021 ext_link_floor (EXA-11). ⏱ 2026-09-29: 29 -> 31, 0005 adds categories + price_change. ⏱ 2026-09-28: 26 -> 29 and platform_db 22 -> 25, 0020's three reminder tables (ST-T4a). // ⏱ 2026-10-01 ST-N6 (#1080, stacked): +1, 0007 adds preferences
     assert.match(r.stdout, /subscriptiontracker_db migration ledger: NOT READ \(fixture mode, no --schema-file\)/);
     assert.match(r.stdout, /⬜ {2}payment_history {10}exempt — not queried {3}\[no marker · exempt\]/);
-    assert.match(r.stdout, /9 exempt table\(s\) were not queried, and say so above/); // ⏱ 2026-09-30: 8 -> 9, idempotency_keys (AB-O2-02, #1075). ⏱ 2026-09-30 (ADR no.NNN): 7 -> 8, native_attest_counters. ⏱ 2026-09-30: 6 -> 7, ext_link_floor (EXA-11).
+    assert.match(r.stdout, /10 exempt table\(s\) were not queried, and say so above/); // ⏱ 2026-09-30: 8 -> 9, idempotency_keys (AB-O2-02, #1075). ⏱ 2026-09-30 (ADR no.NNN): 7 -> 8, native_attest_counters. ⏱ 2026-09-30: 6 -> 7, ext_link_floor (EXA-11). // ⏱ 2026-10-01 ST-N6 (#1080, stacked): +1, 0007 adds preferences
   });
 
   test('the gate prints both databases', () => {
     const r = gate(REPO);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     const appMigrations = readdirSync(join(REPO, APP_MIGRATIONS)).filter((f) => f.endsWith('.sql')).length;
-    assert.match(r.stdout, new RegExp(`ok {2}prod provenance — subscriptiontracker_db: 7 table\\(s\\) enumerated from services/subscriptiontracker-api/migrations \\(${appMigrations} migration file\\(s\\)\\), 7 rule\\(s\\), 0 uncovered`));
-    assert.match(r.stdout, /exempt: budget_categories, budgets, categories, idempotency_keys, payment_history, price_change, subscriptions/);
+    assert.match(r.stdout, new RegExp(`ok {2}prod provenance — subscriptiontracker_db: 8 table\\(s\\) enumerated from services/subscriptiontracker-api/migrations \\(${appMigrations} migration file\\(s\\)\\), 8 rule\\(s\\), 0 uncovered`));
+    assert.match(r.stdout, /exempt: budget_categories, budgets, categories, idempotency_keys, payment_history, preferences, price_change, subscriptions/);
     assert.match(r.stdout, /2 database\(s\), the set tooling\/platform-register\.json's Workers own: platform_db, subscriptiontracker_db/);
   });
 });
@@ -429,7 +429,7 @@ describe('the schema reads run per database, against each one\'s own ledger', ()
       assert.ok(recorded.includes('0001_init.sql'), 'the fixture records 0001, which is what makes `budgets` overdue');
       const schema = {
         subscriptiontracker_db: {
-          tables: ['subscriptions', 'budget_categories', 'payment_history', 'categories', 'price_change', 'idempotency_keys', 'd1_migrations', '_cf_KV'],
+          tables: ['subscriptions', 'budget_categories', 'payment_history', 'categories', 'price_change', 'idempotency_keys', 'preferences', 'd1_migrations', '_cf_KV'],
           migrations: recorded,
         },
       };
@@ -439,7 +439,7 @@ describe('the schema reads run per database, against each one\'s own ledger', ()
       assert.match(r.stderr, /subscriptiontracker_db\.budgets: absent from production, yet 0001_init\.sql is recorded in `d1_migrations`/);
       assert.match(
         r.stdout,
-        new RegExp(`subscriptiontracker_db migration ledger: ${recorded.length} migration\\(s\\) recorded in \`d1_migrations\` · 6 of 7 table\\(s\\) present`),
+        new RegExp(`subscriptiontracker_db migration ledger: ${recorded.length} migration\\(s\\) recorded in \`d1_migrations\` · 7 of 8 table\\(s\\) present`),
       );
       assert.match(r.stdout, /platform_db migration ledger: NOT READ \(fixture mode, the --schema-file names no schema for it\)/);
     } finally {

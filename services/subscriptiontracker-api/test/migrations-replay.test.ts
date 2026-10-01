@@ -164,6 +164,7 @@ const TABLES = [
   'categories',
   'idempotency_keys',
   'payment_history',
+  'preferences',
   'price_change',
   'subscriptions',
 ];
@@ -322,7 +323,7 @@ describe('subscriptiontracker_db migrations re-apply cleanly', () => {
     expect(cols('budget_categories')).toContain('category_id');
     // 0004_notice_days.sql — its one ADD COLUMN, asserted for the same reason.
     expect(cols('subscriptions')).toContain('notice_days');
-    // 0008_tags.sql (AD-12) — its one ADD COLUMN, for the same reason.
+    // 0009_tags.sql (AD-12) — its one ADD COLUMN, for the same reason.
     expect(cols('subscriptions')).toContain('tags');
   });
 });

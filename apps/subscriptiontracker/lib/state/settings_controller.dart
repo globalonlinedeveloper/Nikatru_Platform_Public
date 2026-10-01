@@ -12,7 +12,15 @@ import 'package:nikatru_notifications/nikatru_notifications.dart'
 import '../services/notifications/notification_service.dart'
     show ReminderRules, RenewalReminders;
 import 'analytics_providers.dart';
-import 'providers.dart' show linuxAutostartProvider, renewalRemindersProvider;
+import 'providers.dart'
+    show
+        kPrefCurrencyCode,
+        kPrefReminderLeadDays,
+        kPrefReminderMinuteOfDay,
+        linuxAutostartProvider,
+        renewalRemindersProvider,
+        reportPreferenceChange,
+        switchPreferenceKey;
 
 /// Where the settings live on disk — the same [core.KeyValueStore] seam the
 /// consent decision and the install id use ([ADR 005]). Namespaced like
@@ -273,6 +281,66 @@ class SettingsController extends Notifier<SettingsState> {
     }
     _touched = true;
     state = state.copyWith(currencyCode: code);
+    reportPreferenceChange(ref, kPrefCurrencyCode, code);
+    return _persist();
+  }
+
+  /// ⏱ 2026-09-30 · ST-N6 (D11): the ACCOUNT's values for the keys named in
+  /// [values] (`currencyCode`, the reminder lead and time, `switch.<name>`),
+  /// applied by `accountPreferencesSyncProvider` over what this device holds,
+  /// validated by [SettingsState.fromJson] exactly as a disk read is, and
+  /// persisted so the device cache matches. NOT reported back — it is the
+  /// account's value, not a change made here — and never a permission prompt:
+  /// the user is not at a switch.
+  Future<void> applyAccount(Map<String, Object?> values) {
+    _touched = true;
+    final Map<String, Object?> json = state.toJson();
+    final Map<String, bool> prefs = Map<String, bool>.of(state.prefs);
+    values.forEach((String key, Object? value) {
+      if (key.startsWith('switch.')) {
+        if (value is bool) prefs[key.substring('switch.'.length)] = value;
+      } else if (key == kPrefCurrencyCode ||
+          key == kPrefReminderLeadDays ||
+          key == kPrefReminderMinuteOfDay) {
+        json[key] = value;
+      }
+    });
+    state = SettingsState.fromJson(
+      <String, Object?>{...json, 'prefs': prefs},
+      fallbackCurrencyCode: _firstRunCurrency,
+    ).copyWith(blocked: state.blocked);
+    return _persist();
+  }
+
+  /// ⏱ 2026-09-30 · ST-N6 (D11): the explicit sign-out's reset of the keys in
+  /// [keys] ONLY — the ones the leaving account holds, which its next sign-in
+  /// restores (review #1080 delta finding 1). Any other value is a choice made
+  /// on this device and stays. Not reported: a default is never sent.
+  Future<void> resetKeys(Set<String> keys) {
+    if (keys.isEmpty) return Future<void>.value();
+    _touched = true;
+    const SettingsState defaults = SettingsState();
+    final Map<String, bool> prefs = Map<String, bool>.of(state.prefs);
+    for (final String key in keys) {
+      if (!key.startsWith('switch.')) continue;
+      final String name = key.substring('switch.'.length);
+      final bool? byDefault = defaults.prefs[name];
+      if (byDefault == null) {
+        prefs.remove(name);
+      } else {
+        prefs[name] = byDefault;
+      }
+    }
+    state = state.copyWith(
+      currencyCode: keys.contains(kPrefCurrencyCode) ? _firstRunCurrency : null,
+      reminderLeadDays: keys.contains(kPrefReminderLeadDays)
+          ? SettingsState.defaultLeadDays
+          : null,
+      reminderMinuteOfDay: keys.contains(kPrefReminderMinuteOfDay)
+          ? SettingsState.defaultMinuteOfDay
+          : null,
+      prefs: prefs,
+    );
     return _persist();
   }
 
@@ -294,6 +362,7 @@ class SettingsController extends Notifier<SettingsState> {
     }
     _touched = true;
     state = state.copyWith(reminderLeadDays: days);
+    reportPreferenceChange(ref, kPrefReminderLeadDays, days);
     return _persist();
   }
 
@@ -304,6 +373,7 @@ class SettingsController extends Notifier<SettingsState> {
     }
     _touched = true;
     state = state.copyWith(reminderMinuteOfDay: hour * 60 + minute);
+    reportPreferenceChange(ref, kPrefReminderMinuteOfDay, hour * 60 + minute);
     return _persist();
   }
 
@@ -333,6 +403,8 @@ class SettingsController extends Notifier<SettingsState> {
       prefs: next,
       blocked: <String>{...state.blocked}..remove(key),
     );
+    // D11: reported as it now reads; an OS refusal below reports OFF again.
+    reportPreferenceChange(ref, switchPreferenceKey(key), on);
     await _persist();
     if (!ref.mounted) return on; // Riverpod 3: the provider may be gone.
 
@@ -358,6 +430,8 @@ class SettingsController extends Notifier<SettingsState> {
           blocked: <String>{...state.blocked, key},
         );
         await _persist();
+        if (ref.mounted)
+          reportPreferenceChange(ref, switchPreferenceKey(key), false);
         return false;
       }
     }

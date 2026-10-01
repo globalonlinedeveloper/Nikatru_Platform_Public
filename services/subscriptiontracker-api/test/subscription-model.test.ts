@@ -369,7 +369,7 @@ describe('notice_days — the notice period round-trips, and null means none', (
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 0008_tags.sql (AD-12, train T20): the user's own labels.
+// 0009_tags.sql (AD-12, train T20): the user's own labels.
 describe('tags — the labels round-trip, and [] and null both mean none', () => {
   it('POST stores them as JSON text, and POST, GET /:id and GET / serve the list', async () => {
     const created = await create({ name: 'Netflix', price: 9.99, cycle: 'monthly', tags: ['family', 'Streaming'] });
@@ -536,7 +536,7 @@ const RED: ReadonlyArray<readonly [string, Row, string]> = [
   ['notice_days as a decimal', { notice_days: 1.5 }, 'notice_days'],
   ['notice_days past a year', { notice_days: 366 }, 'notice_days'],
   ['notice_days as a numeric string', { notice_days: '7' }, 'notice_days'],
-  // tags (0008_tags.sql, AD-12)
+  // tags (0009_tags.sql, AD-12)
   ['tags as a string', { tags: 'family' }, 'tags'],
   ['tags with a number', { tags: [1] }, 'tags'],
   ['tags with a blank label', { tags: [''] }, 'tags'],
