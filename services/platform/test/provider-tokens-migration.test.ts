@@ -16,12 +16,21 @@ import { describe, it, expect } from 'vitest';
 import providerTokens0016 from '../migrations/0016_provider_tokens.sql?raw';
 import { PLATFORM_MIGRATIONS, RealDb } from './harness';
 
-/** platform_db as it stands the moment BEFORE 0016 is applied. */
+/**
+ * platform_db as it stands the moment BEFORE 0016 is applied: every migration
+ * AHEAD of it, in order.
+ *
+ * ⏱ 2026-09-30 · this was "every migration but 0016", which stopped being a
+ * database the day 0023 joined the set — 0023 ALTERs the table 0016 creates, so
+ * it cannot apply without it. What precedes 0016 is the honest "before".
+ */
 function before0016(): RealDb {
-  const earlier = PLATFORM_MIGRATIONS.filter((sql) => sql !== providerTokens0016);
-  // COVERAGE: exactly one entry was removed, so the database really is "every
-  // migration but 0016" and not "a set that silently lost something else".
-  expect(earlier).toHaveLength(PLATFORM_MIGRATIONS.length - 1);
+  const at = PLATFORM_MIGRATIONS.indexOf(providerTokens0016);
+  // COVERAGE: 0016 is in the set and is not the first entry, so the database
+  // below really is "the migrations that precede 0016" and not an empty set.
+  expect(at).toBeGreaterThan(0);
+  const earlier = PLATFORM_MIGRATIONS.slice(0, at);
+  expect(earlier.some((sql) => /CREATE TABLE IF NOT EXISTS apple_provider_tokens/.test(sql)), '0012 precedes 0016').toBe(true);
   return new RealDb(earlier);
 }
 

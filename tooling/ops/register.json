@@ -1049,7 +1049,12 @@
         "while the grid could leave it unread for up to 6 h. Hourly is the finest cadence check-heartbeats.mjs",
         "parses, and :15 keeps it off every grid minute. It beats its OWN OPS_STUCK_RUNS_HEARTBEAT_URL, and that",
         "beat is WITHHELD while a run is stuck (unhandled > 0), the scan was truncated, or the read failed — so the",
-        "monitor goes down on the condition, not only on a dead timer. Its row stays ok=1 on a read that found work."
+        "monitor goes down on the condition, not only on a dead timer. Its row stays ok=1 on a read that found work.",
+        "",
+        "🔴 `provider_token_backfill` KEEPS THE NIGHTLY CRON, added 2026-09-30 (review round 2, security: provider refresh",
+        "tokens were plain text in D1 and in every R2 backup). It encrypts the provider_tokens rows stored before migration",
+        "0023 and empties the retired 0012 copies while the plain-text read window is open, then keeps running as the",
+        "invariant: ok=0 whenever a token row holds no ciphertext, or TOKEN_ENC_KEY_V1 is absent or malformed."
       ],
       "watchedJobs": {
         "supabase_keepalive": [
@@ -1105,6 +1110,9 @@
         ],
         "reminder_mail": [
           "0 6 * * *"
+        ],
+        "provider_token_backfill": [
+          "0 6 * * *"
         ]
       },
       "watchedJobsDeclaredAt": {
@@ -1123,7 +1131,8 @@
         "boxa_reachability": "2026-09-18T11:22:08Z",
         "ops_watchdog": "2026-09-18T11:22:08Z",
         "ops_stuck_runs": "2026-09-25T00:17:02Z",
-        "reminder_mail": "2026-09-28T11:33:25Z"
+        "reminder_mail": "2026-09-28T11:33:25Z",
+        "provider_token_backfill": "2026-10-01T02:41:21Z"
       },
       "_watchedJobsDeclaredAtWhy": [
         "⏱ 2026-09-11 — WHEN THE REGISTER BEGAN WATCHING EACH JOB, so a job with NO heartbeat row at all is NOT YET DUE until the",
@@ -4671,7 +4680,7 @@
       "store": "d1:platform_db:apple_provider_tokens",
       "what": "One row per subject who signed in with Apple: Apple’s OAuth refresh token for this relying party, which the account deletion revokes with; O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE.",
       "rule": "keep",
-      "keepWhy": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. ⏱ 2026-09-24 · RETIRED BY 0016: every row was copied into provider_tokens (the row below) and no code reads or writes this table any more. It is kept until a later migration drops it, once the copy has been read back in production; until then an erased account’s row is deleted when its erasure completes (services/platform/src/lib/provider-revoke.ts dropProviderTokens, from DELETE /v1/account and the nightly erasureRetry), because the copy did not move it. NEVER on a timer, for the reason the provider_tokens row gives.",
+      "keepWhy": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. ⏱ 2026-09-24 · RETIRED BY 0016: every row was copied into provider_tokens (the row below) and no code reads or writes this table any more (⏱ 2026-09-30 · but for the nightly provider_token_backfill, which re-runs 0016's copy and then empties each row's plain-text token while the plain-text window is open — migration 0023). It is kept until a later migration drops it, once the copy has been read back in production; until then an erased account’s row is deleted when its erasure completes (services/platform/src/lib/provider-revoke.ts dropProviderTokens, from DELETE /v1/account and the nightly erasureRetry), because the copy did not move it. NEVER on a timer, for the reason the provider_tokens row gives.",
       "mechanism": {
         "substrate": "cloudflare-d1",
         "anchor": "services/platform/migrations/0012_apple_provider_tokens.sql",

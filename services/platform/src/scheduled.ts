@@ -35,7 +35,7 @@ import {
 import { deleteIdentity, erasePlatformRows, purgeVerifiedSignups } from './lib/platform-erasure';
 import { runReminderMail } from './lib/reminders';
 import { refreshFxRates } from './fx';
-import { dropProviderTokens, providerOfRevokeStep, revokeProviderToken } from './lib/provider-revoke';
+import { backfillProviderTokens, dropProviderTokens, providerOfRevokeStep, revokeProviderToken } from './lib/provider-revoke';
 import {
   runOpsWatchdogChecks,
   scanStuckRuns,
@@ -1030,6 +1030,30 @@ export async function moneyRederive(env: Env, nowMs: number = Date.now()): Promi
     ],
     MONEY_REDERIVE_JOB,
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-30 · review round 2 (security) — THE PROVIDER TOKEN BACKFILL. The
+// provider refresh tokens are stored encrypted from migration 0023 on
+// (src/lib/token-crypto.ts); this limb encrypts the rows stored before that,
+// and empties the retired 0012 table's plain-text copies, while the plain-text
+// read window (wrangler.jsonc PROVIDER_TOKEN_PLAINTEXT_READS_UNTIL) is open.
+// The work is `backfillProviderTokens` in src/lib/provider-revoke.ts —
+// idempotent, resumable, MAX_TOKEN_BACKFILL_PER_RUN rows a night.
+//
+// ONE HEARTBEAT ROW A NIGHT, EVERY NIGHT, and it outlives the backfill: once the
+// window closes it counts the rows that hold no ciphertext (without reading the
+// plain-text column), so a token that ever lands unencrypted turns it red.
+// Red too when TOKEN_ENC_KEY_V1 is absent or malformed — nothing is touched then.
+// It runs before the erasure retry, so a revoke retried tonight reads a row the
+// backfill has already sealed. Its detail carries counts only, never a subject.
+// ─────────────────────────────────────────────────────────────────────────────
+export const PROVIDER_TOKEN_BACKFILL_JOB = 'provider_token_backfill';
+
+export async function providerTokenBackfill(env: Env, nowMs: number = Date.now()): Promise<void> {
+  const row = await backfillProviderTokens(env, nowMs);
+  if (!row.ok) console.error(`[cron] ${PROVIDER_TOKEN_BACKFILL_JOB}: ${row.detail}`);
+  await recordHeartbeat(env, [row], PROVIDER_TOKEN_BACKFILL_JOB);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2710,6 +2734,9 @@ async function runFiring(event: ScheduledController | undefined, env: Env): Prom
   // writer and the retention sweep never deletes an unconcluded row, so
   // nothing here depends on running before or after anything else.
   await moneyRederive(env);
+  // ⏱ 2026-09-30 · encrypts the provider tokens stored before 0023, BEFORE the
+  // erasure retry below reads any of them. Bounded: MAX_TOKEN_BACKFILL_PER_RUN.
+  await providerTokenBackfill(env);
   // [ADR 081] Finishes erasures DELETE /v1/account accepted but could not finish.
   // Before the destructive sweep only by position; it deletes its own ledger rows.
   await erasureRetry(env);
