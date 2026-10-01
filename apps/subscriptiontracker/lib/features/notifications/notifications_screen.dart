@@ -15,6 +15,7 @@ import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart'
     show monthDayFormat, subscriptionsControllerProvider;
 import '../shared/async_gate.dart';
+import '../shared/due.dart' show LifeStatus;
 
 /// What is coming up, derived from the subscriptions the user holds.
 ///
@@ -225,11 +226,17 @@ class NotificationsScreen extends ConsumerWidget {
     final DateTime now = ref.watch(nowProvider)();
     final MoneyBag savings = SubMath.savings(subs);
 
+    // ⏱ ST truth pass (NO-08): CHARGING rows only, for both cards. A paused or
+    // cancelled plan is not "renewing in 2 days" and did not just charge; it
+    // used to be listed as though it would, beside a Home total that rightly
+    // left it out.
+    final List<Subscription> charging = SubMath.charging(subs);
+
     // NO-10: a notice the user answered (paid, snoozed, kept) leaves the list
     // for this session.
     final Set<String> answered = ref.watch(answeredNoticesProvider);
     final List<Subscription> dueSoon =
-        subs.where((Subscription x) {
+        charging.where((Subscription x) {
           final int d = x.daysUntil(now);
           return d >= 0 && d <= 7 && !answered.contains(x.id);
         }).toList()..sort(
@@ -243,7 +250,7 @@ class NotificationsScreen extends ConsumerWidget {
     // list covers is not news.
     final DateTime today = DateTime(now.year, now.month, now.day);
     final List<Subscription> renewed =
-        subs.where((Subscription x) {
+        charging.where((Subscription x) {
           if (x.cycle == null) return false;
           final DateTime r = DateTime(
             x.nextRenewal.year,
@@ -342,6 +349,12 @@ class NotificationsScreen extends ConsumerWidget {
     DateFormat renewalDate,
   ) {
     final int days = x.daysUntil(now);
+    final String charge = l10n.notifChargeOn(
+      money.format(x.price),
+      renewalDate.format(x.nextCharge(now)),
+    );
+    // ST truth pass (NO-08): a trial says so before it charges.
+    final LifeStatus? life = LifeStatus.of(l10n, x);
     return AppListRow(
       leading: AppMonogram.icon(
         Icons.notifications_none,
@@ -355,10 +368,8 @@ class NotificationsScreen extends ConsumerWidget {
           // placeholder map, and the plural SELECTOR is the second one here.
           : l10n.notifRenewsInDays(x.name, days),
       titleMaxLines: 2,
-      subtitle: l10n.notifChargeOn(
-        money.format(x.price),
-        renewalDate.format(x.nextCharge(now)),
-      ),
+      subtitle: life == null ? charge : '${life.label} · $charge',
+      status: life?.kind,
       subtitleMaxLines: 3,
       onTap: () => context.push('/sub/${x.id}'),
     );

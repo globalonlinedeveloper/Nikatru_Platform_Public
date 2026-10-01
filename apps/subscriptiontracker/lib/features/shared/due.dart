@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show BrandTokensDark, StatusKind;
 
@@ -209,4 +210,42 @@ class DueInfo {
   /// subtitle: "in 4 days" is information, not a warning.
   static StatusKind? statusOf(Subscription s, DateTime now) =>
       s.daysUntil(now) <= 1 ? StatusKind.warn : null;
+}
+
+/// Where a row is in its life, as a WORD and a design-system [StatusKind] —
+/// "Paused", "Cancelled", "Free trial until Oct 3" — or null for a row that is
+/// simply active.
+///
+/// ⏱ ST truth pass (HO-02, NO-08). Pause and Mark cancelled kept a row on
+/// every list, and only the detail header said so: Home's list, the calendar
+/// and `/notifications` drew a paused plan exactly like a charging one. ONE
+/// rule for every surface, painted through `AppListRow.status` /
+/// `AppFigureTile.status`, so the word comes first and the scheme-forked tone
+/// second — no new colour.
+class LifeStatus {
+  const LifeStatus(this.label, this.kind);
+
+  final String label;
+  final StatusKind kind;
+
+  static LifeStatus? of(AppLocalizations l10n, Subscription s) {
+    final DateTime? trialEnds = s.trialEndsOn;
+    return switch (s.status) {
+      SubscriptionStatus.paused => LifeStatus(
+        l10n.statusPaused,
+        StatusKind.warn,
+      ),
+      SubscriptionStatus.cancelled => LifeStatus(
+        l10n.statusCancelled,
+        StatusKind.danger,
+      ),
+      SubscriptionStatus.trialing when trialEnds != null => LifeStatus(
+        l10n.statusTrialing(
+          DateFormat.yMMMd(l10n.localeName).format(trialEnds),
+        ),
+        StatusKind.warn,
+      ),
+      _ => null,
+    };
+  }
 }

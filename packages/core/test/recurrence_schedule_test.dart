@@ -158,4 +158,82 @@ void main() {
       expect(Cadence.quarterly.legacyCycle, isNull);
     });
   });
+
+  group('occurrencesBetween — the charges a window holds', () {
+    List<String> ymds(List<DateTime> ds) =>
+        ds.map(RecurrenceSchedule.ymd).toList();
+
+    test('a weekly plan charges four or five times in a month', () {
+      expect(
+        ymds(
+          RecurrenceSchedule.occurrencesBetween(
+            DateTime(2026, 10, 1),
+            Cadence.weekly,
+            DateTime(2026, 10, 1),
+            DateTime(2026, 10, 31),
+          ),
+        ),
+        <String>[
+          '2026-10-01',
+          '2026-10-08',
+          '2026-10-15',
+          '2026-10-22',
+          '2026-10-29',
+        ],
+      );
+    });
+
+    test('a stale stored date rolls into the window on its own day', () {
+      // Stored three months back; the chain carries day 14 into October.
+      expect(
+        ymds(
+          RecurrenceSchedule.occurrencesBetween(
+            DateTime(2026, 7, 14),
+            Cadence.monthly,
+            DateTime(2026, 10, 1),
+            DateTime(2026, 10, 31),
+          ),
+        ),
+        <String>['2026-10-14'],
+      );
+    });
+
+    test('a quarterly plan charges four times in twelve months', () {
+      expect(
+        RecurrenceSchedule.occurrencesBetween(
+          DateTime(2026, 11, 5),
+          Cadence.quarterly,
+          DateTime(2026, 10, 1),
+          DateTime(2027, 9, 30),
+        ).length,
+        4,
+      );
+    });
+
+    test('the clamp anchor is the stored day, as rollForward keeps it', () {
+      expect(
+        ymds(
+          RecurrenceSchedule.occurrencesBetween(
+            DateTime(2027, 1, 31),
+            Cadence.monthly,
+            DateTime(2027, 1, 1),
+            DateTime(2027, 3, 31),
+          ),
+        ),
+        <String>['2027-01-31', '2027-02-28', '2027-03-31'],
+      );
+    });
+
+    test('nothing before the stored date is invented', () {
+      expect(
+        RecurrenceSchedule.occurrencesBetween(
+          DateTime(2026, 10, 20),
+          Cadence.weekly,
+          DateTime(2026, 10, 1),
+          DateTime(2026, 10, 19),
+        ),
+        isEmpty,
+      );
+    });
+  });
 }

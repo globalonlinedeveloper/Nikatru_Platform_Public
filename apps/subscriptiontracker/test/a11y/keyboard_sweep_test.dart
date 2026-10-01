@@ -501,7 +501,12 @@ kExpected = <String, ({int controls, int reachable})>{
   // app-bar back button, the restore row and the cancel row, each named by
   // its own icon in `/manage-plan · a keyboard reaches the cancel-plan row`.
   '/manage-plan': (controls: 3, reachable: 3),
-  '/calendar': (controls: 7, reachable: 7),
+  // ⏱ ST truth pass (2026-10-01, CA-01): 7 -> 21, and NO control was added.
+  // Each renewal row is a control, and the calendar now draws EVERY charge in
+  // the month from the date engine instead of each row's one stored date: on
+  // the pinned 2026-08-21 every demo plan that charges in August is a row, not
+  // only the seven whose stored date happened to be in August.
+  '/calendar': (controls: 21, reachable: 21),
   // ⏱ ST-D3: 3 -> 6, measured by this suite on the rebuilt Insights.
   '/insights': (controls: 6, reachable: 6),
 };

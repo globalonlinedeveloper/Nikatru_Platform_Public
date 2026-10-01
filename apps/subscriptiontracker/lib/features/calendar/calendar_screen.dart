@@ -13,6 +13,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
         ContentPane,
         DateBadge,
         MonthGrid,
+        StatusKind,
         TwoPane;
 
 import '../../core/format/money_format.dart';
@@ -125,20 +126,23 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final DateTime now = clockFn();
     final int y = now.year, m = now.month;
 
+    // ⏱ ST truth pass (CA-01, CA-02): EVERY charge in the month, from the
+    // date engine `Subscription.nextCharge` uses, CHARGING rows only. This
+    // drew the one STORED date per row — a weekly plan got one dot, a stale
+    // date sat on a day that had passed, and a paused plan was drawn as a
+    // renewal. One list now feeds the dots, the rows and the total.
+    final List<_Charge> inMonth = SubMath.chargesInMonth(subs, y, m);
     final Map<int, int> byDay = <int, int>{};
-    for (final Subscription s in subs) {
-      if (s.renewsIn(y, m)) {
-        byDay[s.nextRenewal.day] = (byDay[s.nextRenewal.day] ?? 0) + 1;
-      }
+    final Map<int, List<Money>> spentByDay = <int, List<Money>>{};
+    for (final _Charge c in inMonth) {
+      byDay[c.date.day] = (byDay[c.date.day] ?? 0) + 1;
+      (spentByDay[c.date.day] ??= <Money>[]).add(c.sub.price);
     }
-    final List<Subscription> inMonth =
-        subs.where((Subscription s) => s.renewsIn(y, m)).toList()..sort(
-          (Subscription a, Subscription b) =>
-              a.nextRenewal.day.compareTo(b.nextRenewal.day),
-        );
-    // What LEAVES THE ACCOUNT this month: each renewal's whole charge. The
-    // same `renewsIn` test as `inMonth`, so the total and the list agree.
-    final MoneyBag monthTotal = SubMath.chargedInMonth(subs, y, m);
+    // What LEAVES THE ACCOUNT this month: each charge's whole price — the
+    // same list as `inMonth`, so the total and the list agree.
+    final MoneyBag monthTotal = MoneyBag.sum(
+      inMonth.map((_Charge c) => c.sub.price),
+    );
 
     // The selection, re-validated — see [_selectedDay]. `byDay` is the same map
     // the grid marks its days from, so "is selectable" and "is marked" are ONE
@@ -203,6 +207,19 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     locale: l10n.localeName,
                     today: now,
                     marks: byDay,
+                    // ST truth pass (CA-03): a cell NAMES its renewals — the
+                    // dot is decorative, so without this no reader heard which
+                    // days charge or what.
+                    dayLabel: (int day, {required bool isToday}) => <String>[
+                      DateFormat.MMMMEEEEd(
+                        l10n.localeName,
+                      ).format(DateTime(y, m, day)),
+                      if (isToday) l10n.calendarDayToday,
+                      if ((byDay[day] ?? 0) > 0) ...<String>[
+                        l10n.calendarDayRenewals(byDay[day]!),
+                        money.formatBag(MoneyBag.sum(spentByDay[day]!)),
+                      ],
+                    ].join(', '),
                     // 🔴 SELECTION EXISTS ONLY IN TWO-PANE MODE. Below 840
                     // there is no detail column for a selection to point at, so
                     // a selected cell would be a highlight that changed nothing
@@ -261,9 +278,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             selectedDay == null
                 ? inMonth
                 : inMonth
-                      .where(
-                        (Subscription s) => s.nextRenewal.day == selectedDay,
-                      )
+                      .where((_Charge c) => c.date.day == selectedDay)
                       .toList(),
           ),
         ),
@@ -286,7 +301,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     MoneyFormatter money,
     DateTime now,
     String heading,
-    List<Subscription> rows,
+    List<_Charge> rows,
   ) {
     final ThemeData theme = Theme.of(context);
     return <Widget>[
@@ -317,28 +332,52 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     ];
   }
 
-  /// One renewal: its date, its name, when it is due (in words, toned by
-  /// urgency), and the charge with its cycle. The row is one merged node,
+  /// One charge: its date, its name, when it is due (in words, toned by
+  /// urgency), and the price with its cycle. The row is one merged node,
   /// announced as a button, because `AppListRow` makes it so.
+  ///
+  /// ⏱ ST truth pass (CA-02): the badge and the words are THIS charge's date,
+  /// not the stored one — a weekly plan's third charge says "In 15 days", and
+  /// a charge earlier this month says it was charged. The urgent tone is the
+  /// same today-or-tomorrow threshold [DueInfo] keeps; a trial says so.
   Widget _row(
     BuildContext context,
     AppLocalizations l10n,
     MoneyFormatter money,
-    Subscription s,
+    _Charge c,
     DateTime now,
   ) {
-    // `DueInfo.localized` for the WORDS (arb-backed, plural-correct);
-    // `DueInfo.statusOf` for the tone, with the same threshold. The row paints
-    // the tone for the ambient scheme, so no brightness is threaded here.
-    final DueInfo due = DueInfo.localized(l10n, s, now);
+    final Subscription s = c.sub;
+    final int d = DateTime.utc(
+      c.date.year,
+      c.date.month,
+      c.date.day,
+    ).difference(DateTime.utc(now.year, now.month, now.day)).inDays;
+    // A row with NO cadence is never rolled, so a past date on it is OVERDUE
+    // (DueInfo's rule), not a charge the app can say happened.
+    final bool overdue = d < 0 && s.cycle == null;
+    final String when = overdue
+        ? l10n.dueOverdue
+        : (d < 0
+              ? l10n.calendarCharged
+              : (d == 0
+                    ? l10n.dueToday
+                    : (d == 1 ? l10n.renewsTomorrow : l10n.dueInDays(d))));
+    final LifeStatus? life = LifeStatus.of(l10n, s);
     return AppListRow(
-      leading: DateBadge(date: s.nextRenewal, locale: l10n.localeName),
+      leading: DateBadge(date: c.date, locale: l10n.localeName),
       title: s.name,
-      subtitle: due.label,
-      status: DueInfo.statusOf(s, now),
+      subtitle: life == null ? when : '$when · ${life.label}',
+      status:
+          life?.kind ??
+          (overdue || (d >= 0 && d <= 1) ? StatusKind.warn : null),
       figure: money.format(s.price),
       caption: cadenceCaption(l10n, s.cycle),
       onTap: () => context.push('/sub/${s.id}'),
     );
   }
 }
+
+/// One charge in the month: the row and the date it charges on
+/// ([SubMath.chargesInMonth]).
+typedef _Charge = ({Subscription sub, DateTime date});

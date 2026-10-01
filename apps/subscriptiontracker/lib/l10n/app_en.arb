@@ -2498,6 +2498,76 @@
   "@categoryOther": {
     "description": "ST-X8 (audit C6): the display name of the fallback category whose id is \"Other\" — a row with no category."
   },
+  "nameErrorRequired": "Enter a name",
+  "@nameErrorRequired": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart, the name field's errorText when it is blank (ST truth pass (2026-10-01). AD-01)."
+  },
+  "priceWithCadence": "{amount} {cadence}",
+  "@priceWithCadence": {
+    "description": "Consumed by features/insights/summary_tiles.dart: a price with its own cadence caption, e.g. \"₹900 every 3 months\" (ST truth pass (2026-10-01). IN-01). {cadence} is perEveryMonths and its siblings.",
+    "placeholders": {
+      "amount": {
+        "type": "String",
+        "example": "₹900"
+      },
+      "cadence": {
+        "type": "String",
+        "example": "every 3 months"
+      }
+    }
+  },
+  "calendarDayToday": "today",
+  "@calendarDayToday": {
+    "description": "Consumed by features/calendar/calendar_screen.dart: the word a screen reader hears in today's month-grid cell, after the date (ST truth pass (2026-10-01). CA-03)."
+  },
+  "calendarDayRenewals": "{count, plural, =1{1 renewal} other{{count} renewals}}",
+  "@calendarDayRenewals": {
+    "description": "Consumed by features/calendar/calendar_screen.dart: how many charges a month-grid cell carries, read by a screen reader (ST truth pass (2026-10-01). CA-03).",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "calendarCharged": "Charged",
+  "@calendarCharged": {
+    "description": "Consumed by features/calendar/calendar_screen.dart: a charge earlier this month, beside its date badge (ST truth pass (2026-10-01). CA-02)."
+  },
+  "nextChargeNone": "None",
+  "@nextChargeNone": {
+    "description": "Consumed by features/detail/subscription_detail_screen.dart: the Next charge tile's figure for a paused or cancelled row (ST truth pass (2026-10-01). DE-02)."
+  },
+  "detailPausedNoCharge": "Paused — no charge",
+  "@detailPausedNoCharge": {
+    "description": "Consumed by features/detail/subscription_detail_screen.dart: the Next charge tile's caption for a paused row (ST truth pass (2026-10-01). DE-02)."
+  },
+  "detailCancelledOn": "Cancelled on {date}",
+  "@detailCancelledOn": {
+    "description": "Consumed by features/detail/subscription_detail_screen.dart: the Next charge tile's caption for a cancelled row (ST truth pass (2026-10-01). DE-02).",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "Oct 3, 2026"
+      }
+    }
+  },
+  "detailFirstCharge": "First charge",
+  "@detailFirstCharge": {
+    "description": "Consumed by features/detail/subscription_detail_screen.dart, the details card: first_charge_on (ST truth pass (2026-10-01). DE-01)."
+  },
+  "detailCancelledOnLabel": "Cancelled on",
+  "@detailCancelledOnLabel": {
+    "description": "Consumed by features/detail/subscription_detail_screen.dart, the details card: cancelled_on (ST truth pass (2026-10-01). DE-01)."
+  },
+  "detailWebsiteNotOpened": "Couldn't open that website.",
+  "@detailWebsiteNotOpened": {
+    "description": "Consumed by features/detail/subscription_detail_screen.dart: the snackbar when the website to cancel did not open (ST truth pass (2026-10-01). DE-01)."
+  },
+  "detailRemindersNoDeviceNotifications": "This device does not send notifications — e-mail reminders and the calendar feed are in Settings",
+  "@detailRemindersNoDeviceNotifications": {
+    "description": "Consumed by features/detail/reminder_rows.dart: on a target that cannot schedule a notification, under the reminder rows; opens Settings (ST truth pass (2026-10-01). DE-03)."
+  },
   "reminderActionMarkPaid": "Mark as paid",
   "@reminderActionMarkPaid": {
     "description": "NO-10: button on a renewal reminder and on a /notifications row; records one payment."
