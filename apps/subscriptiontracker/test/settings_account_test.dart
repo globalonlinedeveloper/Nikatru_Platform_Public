@@ -16,6 +16,7 @@
 //     says "check both inboxes" and moves nothing yet.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +26,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/features/account/account_rows.dart';
 import 'package:subscriptiontracker/features/account/account_security.dart';
+import 'package:subscriptiontracker/features/account/email_change_sign_out.dart';
 import 'package:subscriptiontracker/features/settings/reminder_settings.dart'
     show emailRemindersOnProvider;
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
@@ -33,6 +35,8 @@ import 'package:subscriptiontracker/features/shared/chassis_adapters.dart'
 import 'package:subscriptiontracker/features/shared/widgets.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
+import 'package:subscriptiontracker/state/settings_controller.dart'
+    show SettingsState;
 
 import 'support/user_state_fakes.dart';
 import 'support/width_harness.dart' show MemStore;
@@ -51,6 +55,15 @@ class _Auth extends core.AuthRepository {
   final List<String> emailChanges = <String>[];
   final List<String> passwordChanges = <String>[];
 
+  /// Review of #1129: what the change sent and what the server says back.
+  final List<String?> currentPasswordsSent = <String?>[];
+  String email = 'ada@test.dev';
+  String sessionId = 's-old';
+  String? reauthRefusalCode;
+  String? changeRefusalCode;
+  bool providerFails = false;
+  core.SignOutScope? lastScope;
+
   /// Held open by a test to keep a save, or a sign-out, in flight.
   Completer<void>? gate;
 
@@ -61,7 +74,7 @@ class _Auth extends core.AuthRepository {
   core.AuthUser? get currentUser => signedIn
       ? core.AuthUser(
           id: 'u1',
-          email: 'ada@test.dev',
+          email: email,
           emailVerified: true,
           displayName: displayName,
           hasPasswordIdentity: hasPassword,
@@ -79,8 +92,20 @@ class _Auth extends core.AuthRepository {
     String? captchaToken,
   }) async {
     reauths.add(email);
+    final String? refused = reauthRefusalCode;
+    if (refused != null) throw core.AuthFailure('refused', code: refused);
     if (password != rightPassword) throw core.AuthFailure('Invalid login');
+    // A password sign-in MINTS A NEW SESSION, as GoTrue's does.
+    sessionId = 's-new';
     return currentUser!;
+  }
+
+  @override
+  Future<void> signInWithApple() async {
+    if (providerFails) throw core.AuthFailure('The sheet was dismissed.');
+    sessionId = 's-apple';
+    lastSignInAt = DateTime.now().toUtc();
+    _changes.add(currentUser);
   }
 
   @override
@@ -90,8 +115,14 @@ class _Auth extends core.AuthRepository {
   }
 
   @override
-  Future<core.AuthUser> updatePassword({required String newPassword}) async {
+  Future<core.AuthUser> updatePassword({
+    required String newPassword,
+    String? currentPassword,
+  }) async {
+    final String? refused = changeRefusalCode;
+    if (refused != null) throw core.AuthFailure('refused', code: refused);
     passwordChanges.add(newPassword);
+    currentPasswordsSent.add(currentPassword);
     return currentUser!;
   }
 
@@ -99,7 +130,7 @@ class _Auth extends core.AuthRepository {
   Stream<core.AuthUser?> authStateChanges() => _changes.stream;
 
   @override
-  Future<String?> currentAccessToken() async => 'tok';
+  Future<String?> currentAccessToken() async => _jwt(sessionId);
 
   @override
   Future<core.AuthUser> updateProfile({required String displayName}) async {
@@ -115,6 +146,7 @@ class _Auth extends core.AuthRepository {
     core.SignOutScope scope = core.SignOutScope.local,
   }) async {
     signOutCalls++;
+    lastScope = scope;
     await gate?.future;
     signedIn = false;
     _changes.add(null);
@@ -122,6 +154,14 @@ class _Auth extends core.AuthRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// An access token shaped like GoTrue's, naming its session.
+String _jwt(String sessionId) {
+  String part(Object o) =>
+      base64Url.encode(utf8.encode(jsonEncode(o))).replaceAll('=', '');
+  return '${part(<String, String>{'alg': 'ES256'})}.'
+      '${part(<String, String>{'session_id': sessionId})}.sig';
 }
 
 class _Sessions implements core.SessionsTransport {
@@ -145,22 +185,26 @@ class _Sessions implements core.SessionsTransport {
     required String id,
     required String? accessToken,
   }) async {
-    revoked.add('$id:$accessToken');
+    revoked.add('$id:${core.sessionIdOfAccessToken(accessToken)}');
     return const core.Result<void>.ok(null);
   }
 }
 
 class _Channels implements core.ReminderChannelsTransport {
-  _Channels({required this.emailOptIn});
+  _Channels({required this.emailOptIn, this.serverLead = 2});
 
   final bool emailOptIn;
+
+  /// The lead the platform holds before this screen writes one.
+  final int serverLead;
+  final List<int?> leadsWritten = <int?>[];
 
   @override
   Future<core.Result<core.ReminderPrefs>> readPrefs({
     required String appId,
     required String? accessToken,
   }) async => core.Result<core.ReminderPrefs>.ok(
-    core.ReminderPrefs(emailOptIn: emailOptIn, leadDays: 2),
+    core.ReminderPrefs(emailOptIn: emailOptIn, leadDays: serverLead),
   );
 
   @override
@@ -169,9 +213,15 @@ class _Channels implements core.ReminderChannelsTransport {
     required String? accessToken,
     required bool emailOptIn,
     int? leadDays,
-  }) async => core.Result<core.ReminderPrefs>.ok(
-    core.ReminderPrefs(emailOptIn: emailOptIn, leadDays: leadDays ?? 2),
-  );
+  }) async {
+    leadsWritten.add(leadDays);
+    return core.Result<core.ReminderPrefs>.ok(
+      core.ReminderPrefs(
+        emailOptIn: emailOptIn,
+        leadDays: leadDays ?? serverLead,
+      ),
+    );
+  }
 
   @override
   Future<core.Result<core.CalendarFeed>> mintCalendarFeed({
@@ -184,7 +234,9 @@ Future<ProviderContainer> _pump(
   WidgetTester tester,
   _Auth auth, {
   bool emailOn = false,
+  _Channels? channels,
   _Sessions? sessions,
+  Widget Function(Widget screen)? wrap,
 }) async {
   tester.view.physicalSize = const Size(1200, 5000);
   tester.view.devicePixelRatio = 1.0;
@@ -199,7 +251,7 @@ Future<ProviderContainer> _pump(
       renewalRemindersProvider.overrideWithValue(RecordingSublyNotifications()),
       reminderChannelsAvailableProvider.overrideWithValue(emailOn),
       reminderChannelsTransportProvider.overrideWithValue(
-        _Channels(emailOptIn: emailOn),
+        channels ?? _Channels(emailOptIn: emailOn),
       ),
       sessionsAvailableProvider.overrideWithValue(sessions != null),
       if (sessions != null)
@@ -216,7 +268,7 @@ Future<ProviderContainer> _pump(
           ChassisLocalizations.delegate,
         ],
         supportedLocales: AppLocalizations.supportedLocales,
-        home: const Scaffold(body: SettingsScreen()),
+        home: Scaffold(body: (wrap ?? (Widget s) => s)(const SettingsScreen())),
       ),
     ),
   );
@@ -341,6 +393,19 @@ void main() {
       }
     });
 
+    // Review of #1129, finding 6: an account whose platform lead predates
+    // the one row (5 days) is brought to the row's (2), not left on another
+    // schedule.
+    testWidgets('🔴 the platform lead CONVERGES on the one row', (
+      WidgetTester tester,
+    ) async {
+      final _Channels channels = _Channels(emailOptIn: true, serverLead: 5);
+      await _pump(tester, _Auth(), emailOn: true, channels: channels);
+      expect(channels.leadsWritten, <int?>[
+        SettingsState.defaultLeadDays,
+      ], reason: 'e-mail stayed on a different schedule from the row');
+    });
+
     testWidgets("🔴 signing out forgets the account's e-mail answer", (
       WidgetTester tester,
     ) async {
@@ -365,10 +430,14 @@ void main() {
       final _Auth auth = _Auth();
       await _pump(tester, auth, sessions: sessions);
       expect(find.text('Your devices'), findsOneWidget);
+      // Read on demand (review of #1129, finding 4).
+      await tester.ensureVisible(find.byKey(DevicesSection.show));
+      await tester.tap(find.byKey(DevicesSection.show));
+      await tester.pumpAndSettle();
       expect(find.byKey(DevicesSection.signOutButton('here')), findsNothing);
       await tester.tap(find.byKey(DevicesSection.signOutButton('phone')));
       await tester.pumpAndSettle();
-      expect(sessions.revoked, <String>['phone:tok']);
+      expect(sessions.revoked, <String>['phone:s-old']);
       expect(auth.signOutCalls, 0, reason: 'this device was signed out');
       expect(auth.currentUser, isNotNull);
       expect(find.byKey(DevicesSection.row('here')), findsOneWidget);
@@ -520,5 +589,134 @@ void main() {
         expect(auth.emailChanges, <String>['new@test.dev']);
       },
     );
+
+    // ── review of #1129 ─────────────────────────────────────────────────
+    // Finding 1, measured on the live GoTrue (Box C, v2.189.0): a signed-in
+    // password change without `current_password` is `400
+    // current_password_required`, a wrong one `current_password_invalid`.
+    testWidgets('🔴 a password change SENDS the current password', (
+      WidgetTester tester,
+    ) async {
+      final _Auth auth = _Auth();
+      await _pump(tester, auth);
+      await openChange(tester, AccountSecurityRows.changePassword);
+      await fill(
+        tester,
+        newValue: 'a-new-long-one',
+        current: _Auth.rightPassword,
+      );
+      expect(auth.currentPasswordsSent, <String?>[_Auth.rightPassword]);
+    });
+
+    testWidgets('🔴 the server refusing the current password says so', (
+      WidgetTester tester,
+    ) async {
+      final _Auth auth = _Auth()
+        ..changeRefusalCode = core.AuthFailure.currentPasswordInvalid;
+      await _pump(tester, auth);
+      await openChange(tester, AccountSecurityRows.changePassword);
+      await fill(
+        tester,
+        newValue: 'a-new-long-one',
+        current: _Auth.rightPassword,
+      );
+      expect(
+        message(tester),
+        'That password is not right. Nothing was changed.',
+        reason: 'a refused current password was shown as a generic failure',
+      );
+    });
+
+    // Finding 7: only a refused PASSWORD is a wrong password.
+    testWidgets('a captcha refusal is NOT told as a wrong password', (
+      WidgetTester tester,
+    ) async {
+      final _Auth auth = _Auth()
+        ..reauthRefusalCode = core.AuthFailure.captchaFailed;
+      await _pump(tester, auth);
+      await openChange(tester, AccountSecurityRows.changeEmail);
+      await fill(
+        tester,
+        newValue: 'new@test.dev',
+        current: _Auth.rightPassword,
+      );
+      expect(auth.emailChanges, isEmpty);
+      expect(
+        message(tester),
+        'That did not work, and nothing was changed. Try again.',
+      );
+    });
+
+    // Finding 3: the provider path's own red control.
+    testWidgets(
+      '🔴 an Apple account whose Apple sign-in fails changes NOTHING',
+      (WidgetTester tester) async {
+        final _Auth auth = _Auth()
+          ..hasPassword = false
+          // Outside the freshness window: the provider sheet MUST be shown.
+          ..lastSignInAt = DateTime.now().toUtc().subtract(
+            const Duration(hours: 1),
+          )
+          ..providerFails = true;
+        await _pump(tester, auth);
+        await openChange(tester, AccountSecurityRows.changeEmail);
+        await fill(tester, newValue: 'new@test.dev');
+        expect(
+          auth.emailChanges,
+          isEmpty,
+          reason: 'changed without the provider confirming it is the owner',
+        );
+        expect(
+          message(tester),
+          'That did not work, and nothing was changed. Try again.',
+        );
+      },
+    );
+
+    // Finding 5: the session the re-authentication replaced is ended.
+    testWidgets('🔴 the session the re-auth REPLACED is signed out', (
+      WidgetTester tester,
+    ) async {
+      final _Sessions sessions = _Sessions();
+      final _Auth auth = _Auth();
+      await _pump(tester, auth, sessions: sessions);
+      await openChange(tester, AccountSecurityRows.changeEmail);
+      await fill(
+        tester,
+        newValue: 'new@test.dev',
+        current: _Auth.rightPassword,
+      );
+      expect(auth.emailChanges, <String>['new@test.dev']);
+      expect(
+        sessions.revoked,
+        <String>['s-old:s-new'],
+        reason: 'the replaced session must be ended, with the NEW one\'s token',
+      );
+    });
+  });
+
+  // ── ADR 059 decision 2 · review of #1129, finding 2 ──────────────────────
+  group('a confirmed e-mail change signs out everywhere', () {
+    testWidgets('🔴 the same account under a NEW address ends every session', (
+      WidgetTester tester,
+    ) async {
+      final _Auth auth = _Auth();
+      final ProviderContainer c = await _pump(
+        tester,
+        auth,
+        wrap: (Widget s) => EmailChangeSignOut(child: s),
+      );
+      // A profile edit re-emits the SAME address: not a change.
+      auth._changes.add(auth.currentUser);
+      await tester.pumpAndSettle();
+      expect(auth.signOutCalls, 0);
+
+      auth.email = 'new@test.dev';
+      auth._changes.add(auth.currentUser);
+      await tester.pumpAndSettle();
+      expect(auth.signOutCalls, 1, reason: 'the old sessions stayed signed in');
+      expect(auth.lastScope, core.SignOutScope.global);
+      expect(c.read(emailChangeSignedOutProvider), isTrue);
+    });
   });
 }

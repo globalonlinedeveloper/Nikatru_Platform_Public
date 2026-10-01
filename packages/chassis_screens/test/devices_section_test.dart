@@ -38,7 +38,15 @@ class _Calls {
   bool failLoad = false;
 }
 
-Future<_Calls> _pump(WidgetTester tester, {_Calls? calls}) async {
+/// Pumps the section in a list; [open] taps "See where you are signed in",
+/// which is the only thing that reads the list. [tail] puts a tall block
+/// after it, so the section can be scrolled out of the list's cache.
+Future<_Calls> _pump(
+  WidgetTester tester, {
+  _Calls? calls,
+  bool open = true,
+  bool tail = false,
+}) async {
   final _Calls c = calls ?? _Calls();
   await tester.pumpWidget(
     MaterialApp(
@@ -46,6 +54,7 @@ Future<_Calls> _pump(WidgetTester tester, {_Calls? calls}) async {
       supportedLocales: ChassisLocalizations.supportedLocales,
       home: Scaffold(
         body: ListView(
+          key: const Key('list'),
           children: <Widget>[
             DevicesSection(
               load: () async {
@@ -63,16 +72,49 @@ Future<_Calls> _pump(WidgetTester tester, {_Calls? calls}) async {
                     : const core.Result<void>.ok(null);
               },
             ),
+            if (tail) const SizedBox(height: 5000),
           ],
         ),
       ),
     ),
   );
   await tester.pumpAndSettle();
+  if (open) {
+    await tester.tap(find.byKey(DevicesSection.show));
+    await tester.pumpAndSettle();
+  }
   return c;
 }
 
 void main() {
+  // ⏱ 2026-10-01 · review of #1129, finding 4: the host's sessions limiter
+  // (5 a minute per account) is shared by this read and the revoke beside
+  // it, so a read on every mount could spend the revoke's budget.
+  testWidgets('🔴 nothing is read until the person asks', (
+    WidgetTester tester,
+  ) async {
+    final _Calls c = await _pump(tester, open: false);
+    expect(c.loads, 0, reason: 'the list was read on mount');
+    expect(find.byKey(DevicesSection.show), findsOneWidget);
+    await tester.tap(find.byKey(DevicesSection.show));
+    await tester.pumpAndSettle();
+    expect(c.loads, 1);
+    expect(find.byKey(DevicesSection.row(_phone)), findsOneWidget);
+  });
+
+  testWidgets('🔴 scrolled away and back, the list is NOT read again', (
+    WidgetTester tester,
+  ) async {
+    final _Calls c = await _pump(tester, tail: true);
+    expect(c.loads, 1);
+    await tester.drag(find.byKey(const Key('list')), const Offset(0, -4000));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byKey(const Key('list')), const Offset(0, 4000));
+    await tester.pumpAndSettle();
+    expect(c.loads, 1, reason: 'remounting the section read the list again');
+    expect(find.byKey(DevicesSection.row(_phone)), findsOneWidget);
+  });
+
   testWidgets('lists every device, this one first and marked', (
     WidgetTester tester,
   ) async {
@@ -122,9 +164,15 @@ void main() {
   testWidgets('a failed read is said, never an empty list', (
     WidgetTester tester,
   ) async {
-    await _pump(tester, calls: _Calls()..failLoad = true);
+    final _Calls c = await _pump(tester, calls: _Calls()..failLoad = true);
     expect(find.byKey(DevicesSection.unavailable), findsOneWidget);
     expect(find.byType(TextButton), findsNothing);
+    // ...and it can be tried again from the row that says so.
+    c.failLoad = false;
+    await tester.tap(find.byKey(DevicesSection.unavailable));
+    await tester.pumpAndSettle();
+    expect(c.loads, 2);
+    expect(find.byKey(DevicesSection.row(_phone)), findsOneWidget);
   });
 
   // ── WIDTH (assert-responsive-coverage) ───────────────────────────────────
@@ -133,31 +181,34 @@ void main() {
   // section sits in a `ContentPane` exactly as a settings page puts it, so the
   // width decision measured is the one a person meets: the rows stop at the
   // pane's cap instead of stretching a phone row across a desktop.
-  Future<void> widthCase(WidgetTester tester, Size size, {double scale = 1}) =>
-      pumpChassis(
-        tester,
-        size,
-        MediaQuery(
-          data: MediaQueryData(
-            size: size,
-            textScaler: TextScaler.linear(scale),
-          ),
-          child: Scaffold(
-            body: ContentPane(
-              child: ListView(
-                children: <Widget>[
-                  DevicesSection(
-                    load: () async =>
-                        core.Result<List<core.DeviceSession>>.ok(_two),
-                    revoke: (String id) async =>
-                        const core.Result<void>.ok(null),
-                  ),
-                ],
-              ),
+  Future<void> widthCase(
+    WidgetTester tester,
+    Size size, {
+    double scale = 1,
+  }) async {
+    await pumpChassis(
+      tester,
+      size,
+      MediaQuery(
+        data: MediaQueryData(size: size, textScaler: TextScaler.linear(scale)),
+        child: Scaffold(
+          body: ContentPane(
+            child: ListView(
+              children: <Widget>[
+                DevicesSection(
+                  load: () async =>
+                      core.Result<List<core.DeviceSession>>.ok(_two),
+                  revoke: (String id) async => const core.Result<void>.ok(null),
+                ),
+              ],
             ),
           ),
         ),
-      );
+      ),
+    );
+    await tester.tap(find.byKey(DevicesSection.show));
+    await tester.pumpAndSettle();
+  }
 
   void expectContained(WidgetTester tester, Size size) {
     expect(tester.takeException(), isNull);

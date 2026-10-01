@@ -42,6 +42,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
+import '../auth/auth_error_sentence.dart';
 import '../auth/turnstile_gate.dart';
 
 /// Which account fact the dialog changes.
@@ -114,6 +115,9 @@ class _AccountChangeDialogState extends ConsumerState<AccountChangeDialog> {
       _error = null;
     });
 
+    // The session this device holds NOW — re-authenticating replaces it.
+    final String? before = await _sessionId(auth);
+
     // ── 1. RE-AUTHENTICATE. Nothing below runs unless this succeeded. ──────
     try {
       if (user.hasPasswordIdentity) {
@@ -125,27 +129,44 @@ class _AccountChangeDialogState extends ConsumerState<AccountChangeDialog> {
       } else {
         await core.confirmIdentityWithProvider(auth: auth, user: user);
       }
-    } on core.AuthFailure {
+    } on core.AuthFailure catch (e) {
+      // ⏱ review of #1129, finding 7: only a refused PASSWORD is told as a
+      // wrong password. A captcha refusal, a rate limit or no network said
+      // that would send someone holding the right one round a loop.
       _fail(
-        user.hasPasswordIdentity
+        user.hasPasswordIdentity && _wrongPassword(e)
             ? l10n.reauthWrongPassword
             : l10n.accountChangeFailed,
       );
       return;
     } catch (_) {
       // Not the provider saying no — no network, a captcha that never came.
-      // Telling someone their password is wrong would send them round a loop.
       _fail(l10n.accountChangeFailed);
       return;
     }
+
+    // ⏱ review of #1129, finding 5: the sign-in above minted a NEW session
+    // and the one it replaced lives on server-side — sessions never expire
+    // there (ADR 059 decision 6), so it would sit in "Your devices" for good,
+    // and a refresh token stolen before this would keep working. Signed out
+    // by id; best effort, because the change must not wait on it.
+    await _signOutReplaced(auth, before);
 
     // ── 2. THE CHANGE ─────────────────────────────────────────────────────
     try {
       if (_isEmail) {
         await auth.updateEmail(newEmail: newValue);
       } else {
-        await auth.updatePassword(newPassword: newValue);
+        // The project requires the CURRENT password with a signed-in change
+        // (finding 1, measured live: without it `current_password_required`).
+        await auth.updatePassword(
+          newPassword: newValue,
+          currentPassword: _current.text,
+        );
       }
+    } on core.AuthFailure catch (e) {
+      _fail(_changeRefusal(e, l10n));
+      return;
     } catch (_) {
       _fail(l10n.accountChangeFailed);
       return;
@@ -157,6 +178,51 @@ class _AccountChangeDialogState extends ConsumerState<AccountChangeDialog> {
           ? l10n.changeEmailCheckInboxes(user.email, newValue)
           : l10n.changePasswordDone;
     });
+  }
+
+  static bool _wrongPassword(core.AuthFailure e) =>
+      e.code == null || e.code == core.AuthFailure.invalidCredentials;
+
+  /// The CHANGE's refusal, said as what it is: a current password the server
+  /// would not take is a wrong password, a weak new one gets the sign-up
+  /// screens' own sentence, and only the rest is "that did not work".
+  String _changeRefusal(core.AuthFailure e, AppLocalizations l10n) {
+    if (e.code == core.AuthFailure.currentPasswordInvalid ||
+        e.code == core.AuthFailure.currentPasswordRequired) {
+      return l10n.reauthWrongPassword;
+    }
+    if (e.code == core.AuthFailure.weakPassword) {
+      return authErrorSentence(context, e);
+    }
+    return l10n.accountChangeFailed;
+  }
+
+  static Future<String?> _sessionId(core.AuthRepository auth) async {
+    try {
+      return core.sessionIdOfAccessToken(await auth.currentAccessToken());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _signOutReplaced(
+    core.AuthRepository auth,
+    String? before,
+  ) async {
+    if (before == null || !ref.read(sessionsAvailableProvider)) return;
+    try {
+      final String? token = await auth.currentAccessToken();
+      final String? after = core.sessionIdOfAccessToken(token);
+      // The provider path may not have signed in again at all (a sign-in in
+      // the last five minutes is confirmation enough): same session, nothing
+      // to end — and the host refuses the current one anyway.
+      if (after == null || after == before) return;
+      await ref
+          .read(sessionsTransportProvider)
+          .revoke(id: before, accessToken: token);
+    } catch (_) {
+      // Best effort: what is left behind is the state before this change.
+    }
   }
 
   void _fail(String message) {

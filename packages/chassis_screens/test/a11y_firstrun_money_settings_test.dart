@@ -1006,6 +1006,9 @@ void main() {
           ),
           brightness: Brightness.light,
         );
+        // The list is read on demand (review of #1129, finding 4).
+        await tester.tap(find.byKey(DevicesSection.show));
+        await tester.pumpAndSettle();
         expectSweepHadSubjects(tester, 'devices', tappable: 1, labelled: 4);
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
@@ -1033,6 +1036,9 @@ void main() {
           ),
           brightness: Brightness.dark,
         );
+        // The list is read on demand (review of #1129, finding 4).
+        await tester.tap(find.byKey(DevicesSection.show));
+        await tester.pumpAndSettle();
         expectSweepHadSubjects(tester, 'devices', tappable: 1, labelled: 4);
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));

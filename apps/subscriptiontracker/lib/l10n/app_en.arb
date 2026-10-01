@@ -2865,5 +2865,9 @@
   "accountChangeFailed": "That did not work, and nothing was changed. Try again.",
   "@accountChangeFailed": {
     "description": "SE-02 · Any other failure of a change-e-mail or change-password request."
+  },
+  "emailChangedSignedOut": "Your e-mail address changed, so every device was signed out — this one too. Sign in with your new address.",
+  "@emailChangedSignedOut": {
+    "description": "ADR 059 decision 2 · On the sign-in screen after a confirmed e-mail change ended every session (review of #1129, finding 2)."
   }
 }

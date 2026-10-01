@@ -42,11 +42,11 @@ abstract class AuthRepository {
   /// Both real implementations override this. A test double that does not still
   /// drives every gate that keys off sign-in and sign-out.
   Stream<AuthEvent> authEvents() => authStateChanges().map(
-        (AuthUser? user) => AuthEvent(
-          user == null ? AuthEventKind.signedOut : AuthEventKind.signedIn,
-          user,
-        ),
-      );
+    (AuthUser? user) => AuthEvent(
+      user == null ? AuthEventKind.signedOut : AuthEventKind.signedIn,
+      user,
+    ),
+  );
 
   /// 🔴 `captchaToken` IS THE SEAM FOR A GATE THAT DOES NOT EXIST YET ON THE
   /// PROVIDER WE CURRENTLY POINT AT, AND THAT IS DELIBERATE.
@@ -143,11 +143,23 @@ abstract class AuthRepository {
   /// commonest way this is reached, and "nothing happened" is the one outcome
   /// the user cannot tell from success.
   ///
+  /// [currentPassword] — ⏱ 2026-10-01 · review of #1129, finding 1 — is sent
+  /// with the change when given. The live project REQUIRES it for a session
+  /// that signed in with a password (measured on Box C GoTrue v2.189.0:
+  /// without it `400 current_password_required`, a wrong one
+  /// `400 current_password_invalid`, the right one `200`); a recovery session
+  /// is not asked for it, so the reset screen leaves it null. The refusals
+  /// arrive as [AuthFailure.currentPasswordRequired] and
+  /// [AuthFailure.currentPasswordInvalid].
+  ///
   /// Throws [AuthFailure] when there is no session, when the provider refused
   /// the password, or when the implementation has no such capability. The
   /// default body is that last case — see the block below for why a refusing
   /// default is the right one for a member eight test doubles inherit.
-  Future<AuthUser> updatePassword({required String newPassword}) async {
+  Future<AuthUser> updatePassword({
+    required String newPassword,
+    String? currentPassword,
+  }) async {
     throw AuthFailure('Setting a new password is not available here.');
   }
 

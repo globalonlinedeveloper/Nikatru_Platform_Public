@@ -8,6 +8,8 @@
 // channels — so they stay app-side; the mechanisms under them (the seam, the
 // transport, the link policy) are packages every app gets.
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -447,6 +449,7 @@ class _ReminderChannelsCardState extends ConsumerState<ReminderChannelsCard> {
           : core.ReminderPrefs.defaults,
     );
     _publish();
+    _reconcile();
   }
 
   /// Tells [ReminderRuleRows] whether e-mail uses the one "Remind me" row.
@@ -496,7 +499,24 @@ class _ReminderChannelsCardState extends ConsumerState<ReminderChannelsCard> {
     if (r is core.Ok<core.ReminderPrefs> && mounted) {
       setState(() => _prefs = r.value);
       _publish();
+      _reconcile(sent: leadDays);
     }
+  }
+
+  /// ⏱ review of #1129, finding 6 — ONE schedule for every channel, kept so:
+  /// after each read and each write the platform's lead is brought to the one
+  /// "Remind me" row's. A change made while a write was in flight (dropped by
+  /// [_run]) and a lead set before SE-09 both converge. Not when the platform
+  /// just answered another number for the lead it was SENT — it keeps its own
+  /// range, and insisting would loop.
+  void _reconcile({int? sent}) {
+    final core.ReminderPrefs? p = _prefs;
+    final int? lead = _accountLead();
+    if (p == null || !p.emailOptIn || lead == null || p.leadDays == lead) {
+      return;
+    }
+    if (sent != null && p.leadDays != sent) return;
+    unawaited(_write(leadDays: lead));
   }
 
   Future<void> _addToCalendar() async {

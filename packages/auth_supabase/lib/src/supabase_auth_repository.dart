@@ -534,8 +534,16 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// text only as a fallback (`authErrorText`, in `nikatru_chassis_screens`),
   /// so translating it here would break the fallback — the mapping is from a
   /// vendor TYPE to ours, not from their words to ours.
+  ///
+  /// [currentPassword] travels as `current_password` in the same `PUT /user`
+  /// ([_PasswordChange]) — gotrue 2.26.0's `UserAttributes` has no such field,
+  /// and the live project refuses a signed-in change without it (see the
+  /// contract on [core.AuthRepository.updatePassword]).
   @override
-  Future<core.AuthUser> updatePassword({required String newPassword}) async {
+  Future<core.AuthUser> updatePassword({
+    required String newPassword,
+    String? currentPassword,
+  }) async {
     if (_auth.currentSession == null) {
       throw core.AuthFailure(
         'Your reset link is no longer valid. Ask for a new one.',
@@ -543,7 +551,9 @@ class SupabaseAuthRepository implements core.AuthRepository {
     }
     try {
       final sb.UserResponse res = await _auth.updateUser(
-        sb.UserAttributes(password: newPassword),
+        currentPassword == null
+            ? sb.UserAttributes(password: newPassword)
+            : _PasswordChange(newPassword, currentPassword),
       );
       final core.AuthUser? u = _map(res.user);
       if (u == null) throw core.AuthFailure('Could not set your new password');
@@ -974,4 +984,21 @@ class SupabaseAuthRepository implements core.AuthRepository {
             );
     }
   }
+}
+
+/// A password change that carries the CURRENT password, as `current_password`
+/// beside `password` in the one `PUT /user` gotrue already sends — the field
+/// the project's `security_update_password_require_current_password` demands
+/// and gotrue 2.26.0's [sb.UserAttributes] cannot express.
+class _PasswordChange extends sb.UserAttributes {
+  _PasswordChange(String newPassword, this.currentPassword)
+      : super(password: newPassword);
+
+  final String currentPassword;
+
+  @override
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        ...super.toJson(),
+        'current_password': currentPassword,
+      };
 }

@@ -9,6 +9,9 @@
 // device in their hand with it. This is the contract every app's devices list
 // reads; the dio client is `DioSessionsTransport` in packages/api_client.
 // ─────────────────────────────────────────────────────────────────────────────
+import 'dart:convert';
+
+import 'auth/auth_models.dart';
 import 'result.dart';
 
 /// One signed-in session, as `GET /v1/sessions` describes it (`SessionView`
@@ -140,3 +143,45 @@ class UnavailableSessionsTransport implements SessionsTransport {
     required String? accessToken,
   }) async => const Result<void>.err(_unavailable);
 }
+
+/// The `session_id` claim of a GoTrue access token — which of the account's
+/// sessions the token belongs to — or null when [accessToken] is absent or is
+/// not a JWT carrying one.
+///
+/// ⏱ 2026-10-01 · review of #1129, finding 5. Re-authenticating by password
+/// (or with the provider again) MINTS A NEW SESSION and leaves the old one
+/// alive server-side, forever — sessions never expire there (ADR 059
+/// decision 6). Reading the id before and after the re-authentication is how
+/// the settings change knows which session to sign out once it has replaced
+/// it. Nothing here verifies the token: it is the app's own, read only to
+/// name a session the host will check again on `DELETE /v1/sessions/:id`.
+String? sessionIdOfAccessToken(String? accessToken) {
+  final List<String> parts = (accessToken ?? '').split('.');
+  if (parts.length != 3) return null;
+  try {
+    final Object? claims = jsonDecode(
+      utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+    );
+    final Object? id = claims is Map<String, Object?>
+        ? claims['session_id']
+        : null;
+    return id is String && id.isNotEmpty ? id : null;
+  } on FormatException {
+    return null;
+  }
+}
+
+/// Whether going from [before] to [after] is a CONFIRMED e-mail change: the
+/// same account, now under a different address.
+///
+/// ⏱ 2026-10-01 · ADR 059 decision 2 ("global sign-out after a successful
+/// change"), review of #1129 finding 2. With secure e-mail change the address
+/// moves only once BOTH links are followed, and only then does a session or a
+/// refresh carry the new address — so this is true exactly when the change
+/// has completed, never at the request and never on the first link. A
+/// different account (a sign-out and a sign-in) is not a change.
+bool emailChangeCompleted(AuthUser? before, AuthUser? after) =>
+    before != null &&
+    after != null &&
+    before.id == after.id &&
+    before.email.toLowerCase() != after.email.toLowerCase();

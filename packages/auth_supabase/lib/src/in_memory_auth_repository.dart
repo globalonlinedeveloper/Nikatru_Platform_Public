@@ -87,6 +87,10 @@ class InMemoryAuthRepository implements core.AuthRepository {
   /// apart. This can.
   final List<String> passwordsSet = <String>[];
 
+  /// The [updatePassword] calls' current passwords, in order (null = none
+  /// sent) — the settings change must send one; the reset screen must not.
+  final List<String?> currentPasswordsSent = <String?>[];
+
   /// The scope of every [signOut] that has reached this seam, newest last.
   ///
   /// Same reasoning as [passwordsSet]: "Log out" and "Log out of all devices"
@@ -309,8 +313,14 @@ class InMemoryAuthRepository implements core.AuthRepository {
   /// `signedIn` would still be holding the user here; one that cleared on
   /// `userUpdated` would throw them off the success screen the instant the save
   /// landed. Naming the event correctly is what lets the gate do neither.
+  ///
+  /// [currentPassword] is recorded in [currentPasswordsSent] and not judged:
+  /// this demo door keeps no password to compare it with.
   @override
-  Future<core.AuthUser> updatePassword({required String newPassword}) async {
+  Future<core.AuthUser> updatePassword({
+    required String newPassword,
+    String? currentPassword,
+  }) async {
     final core.AuthUser? current = _user;
     if (current == null) {
       throw core.AuthFailure('Your reset link is no longer valid.');
@@ -325,6 +335,7 @@ class InMemoryAuthRepository implements core.AuthRepository {
       );
     }
     passwordsSet.add(newPassword);
+    currentPasswordsSent.add(currentPassword);
     _changes.add(current);
     _events.add(core.AuthEvent(core.AuthEventKind.userUpdated, current));
     return current;

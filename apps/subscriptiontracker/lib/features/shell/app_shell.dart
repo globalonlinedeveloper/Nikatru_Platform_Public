@@ -5,6 +5,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../l10n/app_localizations.dart';
+import '../account/email_change_sign_out.dart';
 import '../add/add_subscription_sheet.dart';
 import '../shared/widgets.dart';
 import 'sync_problems_strip.dart';
@@ -180,11 +181,16 @@ class AppShell extends StatelessWidget {
     // the width harness pins layout without moving `MediaQuery` at all.
     // The offline outbox's dead letters sit under the shell (review #1075
     // finding 9); the bare shell while there are none.
-    return SyncProblemsStrip(
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) => _build(
-          context,
-          compact: windowClassFor(constraints.maxWidth) == WindowClass.compact,
+    // ADR 059 decision 2: a confirmed e-mail change ends every session; the
+    // shell is mounted whenever someone is signed in (email_change_sign_out).
+    return EmailChangeSignOut(
+      child: SyncProblemsStrip(
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) => _build(
+            context,
+            compact:
+                windowClassFor(constraints.maxWidth) == WindowClass.compact,
+          ),
         ),
       ),
     );
