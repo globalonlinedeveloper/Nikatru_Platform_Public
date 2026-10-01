@@ -44,6 +44,14 @@ import { defineConfig } from 'vitest/config';
 // That is the negative test for the block below — deleting `ssr` reproduces
 // those 7 failures on vite 7. `resolve` is kept for the client-side/optimizer
 // path and so a downgrade to vite 5 is not silently unprotected.
+//
+// ⏱ 2026-09-27 · jose 6 (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS, M2): jose now
+// publishes ONE build (export map `types` + `default` → dist/webapi, `fetch` in
+// every runtime), so the conditions below no longer choose jose's transport and
+// the negative test above no longer reproduces — measured on
+// services/platform, whose twin block ran its auth suite 65/65 green with both
+// blocks deleted. The blocks stay: harmless, and the protection returns if jose
+// is pinned back to 5.
 // ─────────────────────────────────────────────────────────────────────────────
 // ⏱ 2026-09-15 · [ADR 081]: `cloudflare:workers` IS A WORKERD BUILT-IN, and
 // src/erasure-entrypoint.ts imports `WorkerEntrypoint` from it. Node cannot load

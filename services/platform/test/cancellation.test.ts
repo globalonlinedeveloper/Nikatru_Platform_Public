@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
 import cancellation from '../src/routes/cancellation';
 import type { AppEnv } from '../src/types';
@@ -31,7 +31,7 @@ import { MOR_VERIFIERS, RAIL_CANCEL_PATH } from '../src/lib/mor/registry';
 const SUPABASE_URL = 'https://project-a.supabase.co';
 const ISSUER = `${SUPABASE_URL}/auth/v1`;
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 
 /** ⏱ 2026-09-29 · AB-M4-03 — what the stubbed Paddle API answers, and every call it saw. */

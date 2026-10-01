@@ -48,6 +48,22 @@
 // is not read. The OK line counts per channel, and a channel whose trees yield
 // no listing text is COVERAGE LOST by name.
 //
+// ⏱ 2026-10-01 — A FOURTH LIMB, THE OTHER HALF OF [ADR 078]
+// (O-COMMISSION-WORDING-UNGUARDED-IN-APP):
+//   D · COPY — no in-app string names the store's commission or points the
+//       buyer at a cheaper web price.
+// [ADR 078] sells in-app on Android and iOS, and its rule has two halves: the
+// price comes from the rail (A and B), and the copy never mentions the store
+// commission nor steers the buyer to a cheaper web price. The second half was
+// graded by nothing — `Skip the store commission` in app_en.arb exited 0 here.
+// The subjects are every ARB VALUE (a `@key` is a translator note, not copy)
+// under the scan roots, and every non-test dart string literal limb A reads,
+// with ADJACENT literals joined the way the compiler joins them, so a phrase
+// split across two lines is still one phrase. Every app in catalog/apps.json
+// and the brick must yield an ARB file, or the limb is COVERAGE LOST by name.
+// ⚠️ Residual: a `'''` multi-line literal and an interpolated phrase
+// (`'cheaper on $where'`) are not read as one string.
+//
 // Usage:  node tooling/ci/assert-no-price-literals.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync, statSync } from 'node:fs';
@@ -143,7 +159,7 @@ const SCAN_ROOTS = ['apps', 'packages', 'tooling/bricks'];
 const SKIP_DIR = new Set(['build', '.dart_tool', 'node_modules', 'test', 'integration_test']);
 const SKIP_PATH = [join('apps', 'probe')];
 
-function walk(dir, out = []) {
+function walk(dir, out = [], ext = '.dart') {
   let entries;
   try {
     entries = listDir(dir);
@@ -159,8 +175,8 @@ function walk(dir, out = []) {
       continue;
     }
     if (s.isDirectory()) {
-      if (!SKIP_DIR.has(e)) walk(p, out);
-    } else if (e.endsWith('.dart')) {
+      if (!SKIP_DIR.has(e)) walk(p, out, ext);
+    } else if (e.endsWith(ext)) {
       out.push(p);
     }
   }
@@ -601,6 +617,111 @@ for (const a of ALLOW) {
   }
   if (counted.some((c) => c.files > 0) && listingHits.length === 0) {
     ok('no price figure and no lifetime plan in listing text');
+  }
+}
+
+// ── D · in-app copy names no store commission and no cheaper web price ──────
+// [ADR 078]; see the header. The matcher is proven before use, like A's.
+{
+  const COMMISSION = new RegExp(
+    [
+      String.raw`\bcommissions?\b`,
+      String.raw`\bcheaper\s+(?:on|via|through|from|at)\s+(?:the\s+|our\s+)?(?:web(?:site)?|site|browser)\b`,
+      String.raw`\bsave\s+(?:\d+\s?%\s+)?by\s+(?:buying|subscribing|paying|upgrading)\s+(?:on|via|through|at)\s+(?:the\s+|our\s+)?(?:web(?:site)?|site|browser)\b`,
+    ].join('|'),
+    'i',
+  );
+  const WORDING = [
+    'Skip the 30% store commission',
+    'Commissions do not apply on the web',
+    'Pro is cheaper on the web',
+    'Cheaper via our website',
+    'Save 15% by subscribing on the web',
+  ];
+  const INNOCENT = [
+    'a commissioned illustration',
+    'Saying which line is load-bearing is cheaper than a test.',
+    'Manage your plan on the web',
+    'Open the web checkout',
+  ];
+  const missed = WORDING.filter((w) => !COMMISSION.test(w));
+  const wolves = INNOCENT.filter((w) => COMMISSION.test(w));
+  if (missed.length) {
+    coverageLost(`the commission matcher no longer matches ${missed.map((w) => JSON.stringify(w)).join(', ')}. Every clean result in limb D would be a result from a matcher that matches nothing.`);
+  } else if (wolves.length) {
+    problems.push(`the commission matcher fires on ${wolves.map((w) => JSON.stringify(w)).join(', ')}, which name no commission and no cheaper web price.`);
+  } else {
+    ok(`commission matcher verified: ${WORDING.length} known wording(s) matched, ${INNOCENT.length} innocent phrase(s) ignored`);
+  }
+
+  const RULE =
+    '[ADR 078]: in-app copy never mentions the store commission and never points the buyer at a cheaper web price; the price shown is the rail\'s, on the channel the buyer is on.';
+  const copyHits = [];
+  const hitOf = (text) => COMMISSION.exec(text)?.[0] ?? null;
+
+  // ARB values — every `.arb` under the scan roots, tests and apps/probe excluded as for dart.
+  const arbFiles = SCAN_ROOTS.flatMap((r) => walk(join(ROOT, r), [], '.arb')).filter(
+    (f) => !SKIP_PATH.some((skip) => f.startsWith(join(ROOT, skip) + sep)),
+  );
+  let arbValues = 0;
+  for (const f of arbFiles) {
+    let doc;
+    try {
+      doc = JSON.parse(readFileSync(f, 'utf8'));
+    } catch (e) {
+      coverageLost(`${rel(f)} is not valid JSON (${e.message}), so none of its in-app copy was read by limb D.`);
+      continue;
+    }
+    for (const [key, value] of Object.entries(doc ?? {})) {
+      if (key.startsWith('@') || typeof value !== 'string') continue; // `@key` metadata is a translator note
+      arbValues += 1;
+      const hit = hitOf(value);
+      if (hit) copyHits.push(`\`${rel(f)}\` key ${JSON.stringify(key)} names the store commission or a cheaper web price (${JSON.stringify(hit)}). ${RULE}`);
+    }
+  }
+  // Each app's copy and the brick's must have been opened: a clean result over
+  // the design system's ARB alone is a claim about apps this limb never read.
+  let slugs = [];
+  try {
+    const a = JSON.parse(readFileSync(join(ROOT, 'catalog/apps.json'), 'utf8'));
+    slugs = Array.isArray(a) ? a.map((x) => x?.slug).filter((s) => typeof s === 'string' && s !== '') : [];
+  } catch {
+    slugs = [];
+  }
+  if (slugs.length === 0) {
+    coverageLost('catalog/apps.json names no app, so limb D could name no app whose in-app copy it must read.');
+  }
+  const owners = [
+    ...slugs.map((s) => [`apps/${s}/lib`, `app "${s}"`]),
+    ['tooling/bricks/app/__brick__/apps/{{app_id}}/lib', 'the app brick (every stamped app)'],
+  ];
+  for (const [dir, who] of owners) {
+    if (!arbFiles.some((f) => rel(f).startsWith(`${dir}/`))) {
+      coverageLost(`${dir} holds no .arb file, so limb D read none of ${who}'s in-app copy.`);
+    }
+  }
+
+  // Dart literals — the same shipping files limb A reads, comments stripped,
+  // adjacent literals joined.
+  const ADJACENT = new RegExp(`(?:${STRINGS.source})(?:\\s*(?:${STRINGS.source}))*`, 'g');
+  const unquote = (lit) => lit.replace(/^r?(['"])/, '').replace(/(['"])$/, '');
+  for (const f of files) {
+    const src = readFileSync(f, 'utf8')
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of src.matchAll(ADJACENT)) {
+      const joined = (m[0].match(STRINGS) ?? []).map(unquote).join('');
+      const hit = hitOf(joined);
+      if (hit) copyHits.push(`\`${rel(f)}\` carries a literal that names the store commission or a cheaper web price (${JSON.stringify(hit)}). ${RULE}`);
+    }
+  }
+
+  for (const h of copyHits) problems.push(h);
+  if (copyHits.length === 0 && arbValues > 0) {
+    ok(
+      `in-app copy reaches ${arbValues} ARB value(s) in ${arbFiles.length} file(s) and ${files.length} non-test dart file(s); ` +
+        'none names the store commission or a cheaper web price',
+    );
   }
 }
 

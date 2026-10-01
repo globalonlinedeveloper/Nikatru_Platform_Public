@@ -49,6 +49,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { listDir } from './tree-walk.mjs';
+import { parseWorkflow, stepItemAround } from './workflow-scan.mjs';
 
 const repoRoot = process.argv[2] ?? process.cwd();
 
@@ -79,15 +80,19 @@ function declaredManager(unitRel) {
   }
 }
 
-/** The ONLY places a bare `npm install` is legitimate: a mason-stamped app has
- *  no lockfile yet by definition, so `npm ci` there would fail on purpose.
- *  These ship nothing. Delete an entry rather than widening this list — an
- *  unexplained hole is how a guard quietly stops meaning anything. */
-const BOOTSTRAP_EXCEPTIONS = [
-  'services/probeapi-api', // stamped by the app_brick lane seconds earlier
-  'apps/probe',
-  'apps/probeapi',
-];
+// ⏱ 2026-09-30 · rv2-security-020 (O-BRICK-PROBE-INSTALLS-WITHOUT-ITS-LOCK). A
+// list named BOOTSTRAP_EXCEPTIONS stood here, excusing a bare `npm install` near
+// `services/probeapi-api`, `apps/probe` or `apps/probeapi` because "a mason-stamped
+// app has no lockfile yet by definition". FALSE: the brick stamps its Worker's
+// package-lock.json with it, and `npm ci` over a stamp succeeds (measured the same
+// day). The exception let ci.yml's app-brick job install versions no stamped app
+// ships, and the success line said "every workflow install is reproducible" about a
+// directory this guard could not see at all — it exists only after the stamp. The
+// list is gone: a loose install is a finding everywhere, and a directory that is
+// absent from the tree is graded by limb 2b below.
+/** Directories a workflow installs into that exist only after a step MAKES them —
+ *  each declared with the template it is stamped from and why. */
+const STAMP_PRODUCED = 'tooling/ci/stamp-produced-dirs.json';
 
 const SKIP = new Set(['node_modules', 'build', '.dart_tool', '.wrangler', '_site', '.git']);
 
@@ -107,6 +112,10 @@ const problems = [];
 // workflow — so a build from it is exactly as reproducible-or-not as any unit
 // below. Its absence from this list is what let an unpinned pnpm workspace sit
 // in a repo whose CI reports "dependency resolution is reproducible".
+// ⏱ 2026-09-27 (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS, M4): pnpm is retired and the root
+// package.json with it — its one job was the `packageManager` pnpm pin, and nothing ran pnpm.
+// The root is still scanned: a package.json that reappears there is a unit again, held to its
+// lockfile, and the COVERAGE LOST check below still refuses a scan that skips it.
 const rootIsUnit = existsSync(join(repoRoot, 'package.json'));
 /** ⏱ 2026-09-24 (EXT-3) — THE TOOLING ISLANDS ARE NODE UNITS. Each is a directory
  *  whose only job is to hold one tool's exact version and its lockfile, installed
@@ -200,21 +209,131 @@ const LOOSE_INSTALLS = [
 const ANY_INSTALL = /\b(?:npm\s+(?:ci|install)|pnpm\s+(?:install|i)|yarn\s+install)\b/;
 let installLines = 0;
 
+/** Where an install on workflow line `n` (1-based) RUNS: its step's
+ *  `working-directory`, else its job's `defaults.run.working-directory`, else the
+ *  workflow's, else the repo root — then a `--prefix <dir>` on the line, relative to
+ *  that. Read off workflow-scan.mjs's one comment-blanked parse. Returns the path as
+ *  written (a `${{ … }}` expression is kept, and resolved by nobody here). */
+function installDir(parsed, n, line) {
+  const unq = (s) => s.trim().replace(/^(['"])(.*)\1$/, '$2');
+  let wd = null;
+  for (const job of parsed?.jobs?.values() ?? []) {
+    const at = job.lines.findIndex((l) => l.n === n);
+    if (at === -1) continue;
+    const item = stepItemAround(job.lines, at);
+    if (item) {
+      for (let j = item.start; j < item.end; j++) {
+        const t = j === item.start ? job.lines[j].text.replace(/^(\s*)-\s/, '$1  ') : job.lines[j].text;
+        const m = t.match(new RegExp(`^ {${item.indent + 2}}working-directory:\\s*(\\S.*?)\\s*$`));
+        if (m) wd = unq(m[1]);
+      }
+    }
+    if (wd === null) {
+      const d = job.lines.findIndex((l) => /^ {4}defaults:\s*$/.test(l.text));
+      for (let j = d + 1; d !== -1 && j < job.lines.length && !/^ {0,4}\S/.test(job.lines[j].text); j++) {
+        const m = job.lines[j].text.match(/^ {8}working-directory:\s*(\S.*?)\s*$/);
+        if (m) wd = unq(m[1]);
+      }
+    }
+    break;
+  }
+  if (wd === null) {
+    const head = (parsed?.lines ?? []).slice(0, (parsed?.jobsAt ?? 1) - 1);
+    const d = head.findIndex((l) => /^defaults:\s*$/.test(l.text));
+    for (let j = d + 1; d !== -1 && j < head.length && !/^\S/.test(head[j].text); j++) {
+      const m = head[j].text.match(/^ {4}working-directory:\s*(\S.*?)\s*$/);
+      if (m) wd = unq(m[1]);
+    }
+  }
+  const prefix = line.match(/--prefix[=\s]+(\S+)/);
+  return posix.normalize(posix.join(wd ?? '.', prefix ? unq(prefix[1]) : '.')).replace(/\/$/, '');
+}
+
+/** stamp-produced-dirs.json, or an empty declaration when the tree carries none. */
+const stampDecl = (() => {
+  const abs = join(repoRoot, STAMP_PRODUCED);
+  if (!existsSync(abs)) return { dirs: [] };
+  try {
+    const j = JSON.parse(readFileSync(abs, 'utf8'));
+    return { dirs: Array.isArray(j.dirs) ? j.dirs : [] };
+  } catch (e) {
+    console.error(`✗ COVERAGE LOST — ${STAMP_PRODUCED} does not parse as JSON: ${e.message}`);
+    return coverageLost();
+  }
+})();
+for (const d of stampDecl.dirs) {
+  if (typeof d?.dir !== 'string' || typeof d?.template !== 'string' || typeof d?.why !== 'string' || d.why.trim().length < 20) {
+    problems.push(`${STAMP_PRODUCED}: entry ${JSON.stringify(d)} needs "dir", "template" and a "why" of at least 20 characters.`);
+  }
+}
+const lostDirs = [];
+const stampUsed = new Set();
+let staticDirInstalls = 0;
+let runtimeDirInstalls = 0;
+let stampGraded = 0;
+
 for (const wf of workflows) {
   const text = readFileSync(join(wfDir, wf), 'utf8');
+  const parsed = parseWorkflow(repoRoot, `.github/workflows/${wf}`);
   text.split('\n').forEach((line, i) => {
     const code = line.replace(/#.*$/, '');
-    if (ANY_INSTALL.test(code)) installLines++;
+    if (!ANY_INSTALL.test(code)) return;
+    installLines++;
     const hit = LOOSE_INSTALLS.find((c) => c.re.test(code));
-    if (!hit) return;
-    // Allowed only inside a job step that belongs to a bootstrap exception. The
-    // working-directory is not on this line, so scan the surrounding block.
-    const near = text.split('\n').slice(Math.max(0, i - 6), i + 2).join('\n');
-    const excused = BOOTSTRAP_EXCEPTIONS.some((p) => near.includes(p));
-    if (!excused) {
-      problems.push(`.github/workflows/${wf}:${i + 1} installs non-reproducibly — ${hit.fix}`);
+    if (hit) problems.push(`.github/workflows/${wf}:${i + 1} installs non-reproducibly — ${hit.fix}`);
+
+    // ── 2b. WHERE the install runs must be a directory this guard can read ──
+    const dir = installDir(parsed, i + 1, code);
+    if (dir.includes('${{')) {
+      runtimeDirInstalls++; // a matrix/expression directory: resolved at run time, printed below
+      return;
+    }
+    if (existsSync(join(repoRoot, dir))) {
+      staticDirInstalls++;
+      return;
+    }
+    const decl = stampDecl.dirs.find((d) => d?.dir === dir);
+    if (!decl) {
+      lostDirs.push(`.github/workflows/${wf}:${i + 1} installs in \`${dir}\`, which does not exist in the tree`);
+      return;
+    }
+    const firstUse = !stampUsed.has(dir);
+    stampUsed.add(dir);
+    stampGraded++;
+    if (!firstUse) return; // the template is graded once, however many installs run in its stamp
+    // Graded against what the stamp TEMPLATE holds: its lockfile is the one the
+    // install will read, so it must exist, be tracked, and agree with the
+    // template's package.json — `npm ci` refuses a lock out of step with it.
+    const tpl = decl.template;
+    const tplLock = posix.join(tpl, 'package-lock.json');
+    const tplPkg = posix.join(tpl, 'package.json');
+    if (!existsSync(join(repoRoot, tplPkg)) || !existsSync(join(repoRoot, tplLock))) {
+      problems.push(
+        `.github/workflows/${wf}:${i + 1} installs in stamp-produced \`${dir}\`, and its template ${tpl} ` +
+          'does not carry both package.json and package-lock.json — the stamp ships no lock for the install to read.',
+      );
+      return;
+    }
+    if (gitAvailable && !isTracked(tplLock)) problems.push(`${tplLock} exists but is NOT tracked — the stamp would not carry it from a clone.`);
+    try {
+      const pkg = JSON.parse(readFileSync(join(repoRoot, tplPkg), 'utf8'));
+      const root = JSON.parse(readFileSync(join(repoRoot, tplLock), 'utf8'))?.packages?.[''] ?? {};
+      for (const k of ['dependencies', 'devDependencies']) {
+        const want = JSON.stringify(Object.entries(pkg[k] ?? {}).sort());
+        const got = JSON.stringify(Object.entries(root[k] ?? {}).sort());
+        if (want !== got) {
+          problems.push(`${tplLock} records ${k} that differ from ${tplPkg} — \`npm ci\` over the stamp refuses a lock out of step with its package.json.`);
+        }
+      }
+    } catch (e) {
+      problems.push(`${tpl}: package.json or package-lock.json does not parse (${e.message}).`);
     }
   });
+}
+for (const d of stampDecl.dirs) {
+  if (typeof d?.dir === 'string' && !stampUsed.has(d.dir)) {
+    lostDirs.push(`${STAMP_PRODUCED} declares \`${d.dir}\` stamp-produced, and no workflow install runs there (stale, or the install's directory stopped resolving)`);
+  }
 }
 
 // ── 3. nothing fetches a package from the registry at run time ───────────────
@@ -302,6 +421,18 @@ if (workflows.length === 0 || installLines === 0) {
   if (problems.length === 0) coverageLost(); process.exit(1); // a limb-1 finding printed "(also)" above keeps 1
 }
 
+// Reported here, after every limb, so a finding elsewhere still prints beside it.
+if (lostDirs.length) {
+  console.error(`✗ COVERAGE LOST — ${lostDirs.length} workflow install director(ies) this guard cannot grade:`);
+  for (const l of lostDirs) console.error(`    ${l}`);
+  console.error(`  A directory that exists only after a step makes it (a stamp) holds no lockfile this guard can read, so`);
+  console.error(`  "every workflow install is reproducible" would be vacuous for it. Declare it in ${STAMP_PRODUCED}`);
+  console.error('  with the template it is stamped from, so the install is graded against the lockfile that template ships.');
+  for (const p of problems) console.error(`    (also) ${p}`);
+  if (problems.length === 0) coverageLost();
+  process.exit(1);
+}
+
 if (problems.length) {
   console.error(`✗ ${problems.length} reproducibility problem(s):`);
   for (const p of problems) console.error(`    ${p}`);
@@ -315,7 +446,11 @@ const byManager = nodeUnits.reduce((acc, u) => {
 }, {});
 console.log(
   `ok  lockfile discipline — ${nodeUnits.length} node unit(s) locked (${Object.entries(byManager).map(([m, n]) => `${n} ${m}`).join(', ')}), ` +
-    `repo root included, every workflow install is reproducible, no npx fetch in ${workflows.length} workflow(s) or ${scripts.length} script(s)`,
+    `${rootIsUnit ? 'repo root included' : 'repo root scanned (no package.json there)'}, every workflow install is reproducible, no npx fetch in ${workflows.length} workflow(s) or ${scripts.length} script(s)`,
+);
+console.log(
+  `    install directories: ${staticDirInstalls} in the tree, ${stampGraded} stamp-produced (graded against the ` +
+    `template's lockfile, ${STAMP_PRODUCED}), ${runtimeDirInstalls} named by a \${{ }} expression (resolved at run time, not checked here)`,
 );
 
 /** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends

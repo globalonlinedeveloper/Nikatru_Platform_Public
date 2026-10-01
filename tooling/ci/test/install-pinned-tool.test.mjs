@@ -41,6 +41,7 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -437,5 +438,68 @@ describe('install-pinned-tool — glitchtip-cli, one entry and three runner plat
       () => install({ platform: 'darwin-arm64', versions: pinned(OTHER) }),
       (e) => e instanceof PinnedToolUnavailable && e.lines.some((l) => l.includes(`expected ${OTHER}`)),
     );
+  });
+});
+
+// ⏱ ADDED 2026-09-30 [rv2-security-017] — trufflehog, which ran as a MUTABLE registry tag
+// (ghcr.io/trufflesecurity/trufflehog:<version>) through the vendor's composite action. It is
+// now the release tarball, pinned by sha256 here and version-checked. NO NETWORK: a real
+// tar.gz is built from fixture bytes and served through `download`.
+describe('install-pinned-tool — trufflehog, pinned by digest AND by the version it reports', () => {
+  const tarball = () => {
+    const src = workDir();
+    writeFileSync(join(src, 'trufflehog'), '#!/bin/sh\necho fixture\n');
+    const r = spawnSync('tar', ['-czf', 'th.tar.gz', 'trufflehog'], { cwd: src, encoding: 'utf8', timeout: 30_000 });
+    assert.equal(r.status, 0, `tar could not build the fixture: ${r.stderr}`);
+    return readFileSync(join(src, 'th.tar.gz'));
+  };
+  const install = ({ body, versions, runVersion }) => {
+    const outDir = workDir();
+    const download = fakeDownload({ body });
+    const r = installPinnedTool({ name: 'trufflehog', outDir, versions, cacheDir: null, attempts: 2, download, sleep: noSleep, platform: 'linux-x64', runVersion });
+    return { r, outDir, download };
+  };
+  const sha = (b) => createHash('sha256').update(b).digest('hex');
+
+  test('T1 the release tarball is the URL, and the digest key sits beside the version key', () => {
+    const spec = specFor('trufflehog', 'linux-x64');
+    assert.equal(spec.url('3.97.9'), 'https://github.com/trufflesecurity/trufflehog/releases/download/v3.97.9/trufflehog_3.97.9_linux_amd64.tar.gz');
+    assert.equal(spec.digestKey, 'trufflehog_sha256');
+    assert.equal(spec.reports('3.97.9'), 'trufflehog 3.97.9');
+  });
+
+  test('T2 GREEN — bytes matching the digest, reporting the pinned version, install as trufflehog', () => {
+    const body = tarball();
+    const { r, outDir, download } = install({ body, versions: { trufflehog: '1.2.3', trufflehog_sha256: sha(body) }, runVersion: () => 'trufflehog 1.2.3' });
+    assert.deepEqual(download.calls, ['https://github.com/trufflesecurity/trufflehog/releases/download/v1.2.3/trufflehog_1.2.3_linux_amd64.tar.gz']);
+    assert.equal(r.binary, join(outDir, 'trufflehog'));
+    assert.ok(existsSync(r.binary));
+  });
+
+  test('T3 RED — a digest that is not the bytes refuses; nothing is installed', () => {
+    const body = tarball();
+    assert.throws(
+      () => install({ body, versions: { trufflehog: '1.2.3', trufflehog_sha256: sha('other bytes') }, runVersion: () => 'trufflehog 1.2.3' }),
+      (e) => e instanceof PinnedToolUnavailable && e.lines.some((l) => l.includes(`expected ${sha('other bytes')}`)),
+    );
+  });
+
+  test('T4 RED — a version bumped with the OLD digest left in place refuses on the version the binary reports', () => {
+    const body = tarball();
+    assert.throws(
+      () => install({ body, versions: { trufflehog: '1.2.4', trufflehog_sha256: sha(body) }, runVersion: () => 'trufflehog 1.2.3' }),
+      (e) => e instanceof PinnedToolUnavailable && /reports "trufflehog 1\.2\.3", not "trufflehog 1\.2\.4"/.test(e.lines.join('\n')),
+    );
+  });
+
+  test('T5 the real versions.json pins trufflehog by a digest, and trufflehog.yml installs it through this module', () => {
+    const v = readVersions();
+    assert.equal(safeDigest(v.trufflehog_sha256, 'trufflehog_sha256'), v.trufflehog_sha256);
+    const wf = readFileSync(join(WORKFLOWS, 'trufflehog.yml'), 'utf8');
+    assert.ok(wf.includes('install-pinned-tool.mjs trufflehog --out'), 'trufflehog.yml does not install trufflehog through the installer');
+    const code = wf.split('\n').filter((l) => !l.trimStart().startsWith('#')).join('\n');
+    assert.doesNotMatch(code, /uses:\s*trufflesecurity\/trufflehog@/, 'the vendor wrapper (docker run IMAGE:TAG) is back');
+    // A substring test, not an unanchored host regex (CodeQL js/regex/missing-regexp-anchor, #541).
+    assert.ok(!code.includes('ghcr.io/trufflesecurity/trufflehog'), 'a registry tag is back');
   });
 });

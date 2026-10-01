@@ -126,7 +126,11 @@ export function missingIdsOf(channelId, record, { sentinel = null } = {}) {
  */
 export function declaredOnRefusal(record, { appId, channelId, files = [], form = null }) {
   if (record?.declaredOn !== null) return null;
-  const from = files.length > 0 ? `from ${files.join(', ')}` : form ? `(${form})` : "from this app's store files";
+  // ⏱ 2026-10-01: a channel can owe BOTH — windows-store's age ratings are a sworn file and its
+  // Properties form is console-only — so the form and the files are named together.
+  const from =
+    [form ? `(${form})` : null, files.length > 0 ? `from ${files.join(', ')}` : null].filter(Boolean).join(' ') ||
+    "from this app's store files";
   return (
     `${record.rel} stores.${channelId}.declaredOn is null: the owner has not sworn app "${appId}"'s ` +
     `${channelId} declarations in the store console. Submit that console form ${from} first, then record ` +

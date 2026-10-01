@@ -2651,6 +2651,7 @@ describe('assert-channel-register — §8c: a publishing credential is read only
     kind: 'publishing-credential',
     why: 'the fixture store credential; authorises a submission and signs nothing',
     environment,
+    storedAt: 'environment',
   });
   const atRepository = (name, repositoryWhy = 'read by the env-less fixture job `dry-run`, by decision') => ({
     name,
@@ -2777,6 +2778,248 @@ describe('assert-channel-register — §8c: a publishing credential is read only
     const { code, out } = run(scoped([inEnvironment('FIXTURE_CLIENT_SECRET'), inEnvironment('FIXTURE_UNREAD_SECRET')]));
     assert.equal(code, 2, out);
     assert.match(out, /FAIL COVERAGE LOST — 8c rule \(d\): `ciSecretRegister\.nonSigning` scopes "FIXTURE_UNREAD_SECRET" to environment "store-publish", and no job/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 8c (2026-09-30) + 8d — rv2-security-001. Where GitHub STORES a scoped
+// credential (`storedAt`), a scope that is a list, the dated repository fallback,
+// a secret passed to an environment-bound reusable workflow, and — limb 8d — no
+// deploy, publish or signing secret in a job a pull request can run. The real
+// tree's first-line evidence is the guard run on ci.yml as it stood (three
+// `secrets.CLOUDFLARE_API_TOKEN` reads in `guard-meta` / `guards-platform`, each
+// an 8d FAIL); these fixtures pin every branch of the grammar.
+describe('assert-channel-register — §8c storage/fallback/call-pass and §8d: no deploy secret where a PR runs', () => {
+  const PR_WORKFLOW = '.github/workflows/pr-fixture.yml';
+  const DEPLOY_WORKFLOW = '.github/workflows/deploy-fixture.yml';
+  const register8 = (nonSigning) => ({
+    kinds: {
+      'build-config': 'a value compiled into or read by a build; not signing material',
+      'publishing-credential': 'authorises an upload or a deploy; is not what signs the artifact',
+      'service-credential': 'authenticates CI to a service it operates on',
+    },
+    nonSigning,
+  });
+  const deployRow = (extra = {}) => ({
+    name: 'FIXTURE_DEPLOY_TOKEN',
+    kind: 'publishing-credential',
+    why: 'the fixture deploy token; deploys production and signs nothing',
+    environment: 'production',
+    storedAt: 'environment',
+    ...extra,
+  });
+  const readRow = {
+    name: 'FIXTURE_READ_TOKEN',
+    kind: 'service-credential',
+    why: 'a read-only fixture token; deploys nothing and signs nothing',
+  };
+  /** A pull_request workflow with one job `check` reading `secrets` (each an env line) under `jobIf`. */
+  const prWorkflow = ({ on = ['  pull_request:'], jobIf = null, secretLines = ['          T: ${{ secrets.FIXTURE_READ_TOKEN }}'], extraJobs = [] } = {}) =>
+    [
+      'name: pr fixture',
+      'on:',
+      ...on,
+      'jobs:',
+      '  check:',
+      '    runs-on: ubuntu-24.04',
+      ...(jobIf ? [`    if: ${jobIf}`] : []),
+      '    steps:',
+      '      - name: Check',
+      '        env:',
+      ...secretLines,
+      '          PLACEHOLDER: fixture',
+      '        run: echo check',
+      ...extraJobs,
+      '',
+    ].join(NL);
+  /** An environment-bound deploy workflow that reads the deploy token (so the row has a reader). */
+  const deployWorkflow = ({ on = ['  workflow_dispatch:'], env = 'production' } = {}) =>
+    [
+      'name: deploy fixture',
+      'on:',
+      ...on,
+      'jobs:',
+      '  deploy:',
+      '    runs-on: ubuntu-24.04',
+      ...(env ? [`    environment: ${env}`] : []),
+      '    steps:',
+      '      - name: Deploy',
+      '        env:',
+      '          T: ${{ secrets.FIXTURE_DEPLOY_TOKEN }}',
+      '        run: echo deploy',
+      '',
+    ].join(NL);
+  const fixture = ({ rows = [deployRow(), readRow], files = {} } = {}) =>
+    tree({
+      extraFiles: { [DEPLOY_WORKFLOW]: deployWorkflow(), [PR_WORKFLOW]: prWorkflow(), ...files },
+      mutate: (r) => {
+        r.ciSecretRegister = register8(rows);
+      },
+    });
+  const runAt = (root, today) => {
+    const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8', env: { ...process.env, CHANNEL_REGISTER_TODAY: today } });
+    return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+  };
+
+  test('GREEN CONTROL: a PR job reads only a read-only token; the deploy token lives in its bound job', () => {
+    const { code, out } = run(fixture());
+    assert.equal(code, 0, out);
+    assert.match(out, /1 job\(s\) across 1 workflow\(s\) a pull request can run; 1 secret reference\(s\) in them graded/);
+    assert.match(out, /\[8d\]/);
+    assert.doesNotMatch(out, /8d:/);
+  });
+
+  test('🔴 RED CONTROL (8d): the deploy token handed to a pull_request job FAILS, at its line — the rv2-security-001 shape', () => {
+    const { code, out } = run(
+      fixture({ files: { [PR_WORKFLOW]: prWorkflow({ secretLines: ['          CLOUDFLARE_API_TOKEN: ${{ secrets.FIXTURE_DEPLOY_TOKEN }}'] }) } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /8d: \.github\/workflows\/pr-fixture\.yml:10 \(job "check", no environment\) reads `secrets\.FIXTURE_DEPLOY_TOKEN`, a publishing credential \(it deploys or publishes\), in a job a pull request can run/);
+  });
+
+  test('8d: a repository-scoped publishing credential is refused too — the scope is not what 8d reads, the trigger is', () => {
+    const repoRow = { ...deployRow(), environment: null, repositoryWhy: 'read by the env-less fixture job, by decision' };
+    delete repoRow.storedAt;
+    const { code, out } = run(
+      fixture({ rows: [repoRow, readRow], files: { [PR_WORKFLOW]: prWorkflow({ secretLines: ['          T: ${{ secrets.FIXTURE_DEPLOY_TOKEN }}'] }) } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /8d: .*reads `secrets\.FIXTURE_DEPLOY_TOKEN`, a publishing credential/);
+    assert.doesNotMatch(out, /8c rule/, 'at repository level with a reason, 8c itself is satisfied');
+  });
+
+  test('8d: a job-level `if: github.event_name == \'push\'` excludes pull requests, so the read is not graded as reachable', () => {
+    const repoRow = { ...deployRow(), environment: null, repositoryWhy: 'read by the env-less fixture job, by decision' };
+    delete repoRow.storedAt;
+    const { code, out } = run(
+      fixture({
+        rows: [repoRow, readRow],
+        files: { [PR_WORKFLOW]: prWorkflow({ on: ['  push:', '  pull_request:'], jobIf: "github.event_name == 'push' && github.ref == 'refs/heads/main'", secretLines: ['          T: ${{ secrets.FIXTURE_DEPLOY_TOKEN }}'] }) },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /8d:/);
+  });
+
+  test('8d: a `||` excludes only when EVERY side does — `schedule || pull_request` is reachable', () => {
+    const repoRow = { ...deployRow(), environment: null, repositoryWhy: 'read by the env-less fixture job, by decision' };
+    delete repoRow.storedAt;
+    const { code, out } = run(
+      fixture({
+        rows: [repoRow, readRow],
+        files: { [PR_WORKFLOW]: prWorkflow({ jobIf: "github.event.schedule == '0 1 * * *' || github.event_name == 'pull_request'", secretLines: ['          T: ${{ secrets.FIXTURE_DEPLOY_TOKEN }}'] }) },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /8d: .*reads `secrets\.FIXTURE_DEPLOY_TOKEN`/);
+  });
+
+  test('8d: under pull_request_target a `github.ref == refs/heads/main` test excludes NOTHING — that event runs on the base ref', () => {
+    const repoRow = { ...deployRow(), environment: null, repositoryWhy: 'read by the env-less fixture job, by decision' };
+    delete repoRow.storedAt;
+    const { code, out } = run(
+      fixture({
+        rows: [repoRow, readRow],
+        files: { [PR_WORKFLOW]: prWorkflow({ on: ['  pull_request_target:'], jobIf: "github.ref == 'refs/heads/main'", secretLines: ['          T: ${{ secrets.FIXTURE_DEPLOY_TOKEN }}'] }) },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /8d: .*reads `secrets\.FIXTURE_DEPLOY_TOKEN`/);
+  });
+
+  test('8d: a reusable workflow CALLED by a reachable PR job is reachable, and its own deploy read FAILS', () => {
+    const CALLEE = '.github/workflows/callee-fixture.yml';
+    const callee = ['name: callee', 'on:', '  workflow_call:', 'jobs:', '  inner:', '    runs-on: ubuntu-24.04', '    steps:', '      - name: Inner', '        env:', '          T: ${{ secrets.FIXTURE_SIGNING_KEY }}', '        run: echo inner', ''].join(NL);
+    const caller = prWorkflow({ extraJobs: ['  call:', `    uses: ./${CALLEE}`] });
+    const { code, out } = run(
+      tree({
+        extraFiles: { [DEPLOY_WORKFLOW]: deployWorkflow(), [PR_WORKFLOW]: caller, [CALLEE]: callee },
+        mutate: (r) => {
+          r.ciSecretRegister = register8([deployRow(), readRow, { name: 'FIXTURE_SIGNING_KEY', kind: 'publishing-credential', why: 'a fixture store key that authorises an upload', environment: null, repositoryWhy: 'read by the env-less fixture callee job, by decision' }]);
+        },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /8d: \.github\/workflows\/callee-fixture\.yml:10 \(job "inner", no environment\) reads `secrets\.FIXTURE_SIGNING_KEY`/);
+  });
+
+  test('8d: COVERAGE LOST when ci.yml is triggered by pull_request and not one of its jobs reads as reachable', () => {
+    const ci = ['name: CI', 'on:', '  pull_request:', 'jobs:', '  guards-store:', '    runs-on: ubuntu-24.04', "    if: github.event_name == 'push'", '    steps:', '      - run: node tooling/ci/assert-store-metadata.mjs', '  ci-gate:', '    runs-on: ubuntu-24.04', '    needs: [guards-store]', "    if: github.event.schedule == '0 1 * * *'", '    steps:', '      - run: echo gate', ''].join(NL);
+    const { code, out } = run(fixture({ files: { [GATE_CI]: ci } }));
+    assert.equal(code, 2, out);
+    assert.match(out, /FAIL COVERAGE LOST — 8d: \.github\/workflows\/ci\.yml is triggered by pull_request, and not one of its 2 job\(s\) was graded as reachable/);
+  });
+
+  test('8c (b) STORAGE: an environment-scoped row with no `storedAt` FAILS — the MS_STORE_CLIENT_SECRET mismatch', () => {
+    const row = deployRow();
+    delete row.storedAt;
+    const { code, out } = run(fixture({ rows: [row, readRow] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(b\): .*"FIXTURE_DEPLOY_TOKEN" is scoped to "production" and declares `storedAt: undefined`/);
+  });
+
+  test('8c (b) STORAGE: `storedAt: "repository"` needs a `moveStep`, and with one it PRINTS the lag instead of failing', () => {
+    let r = run(fixture({ rows: [deployRow({ storedAt: 'repository' }), readRow] }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /8c rule \(b\): .*"FIXTURE_DEPLOY_TOKEN" is scoped to "production" but `storedAt: "repository"`, and names no `moveStep`/);
+    r = run(fixture({ rows: [deployRow({ storedAt: 'repository', moveStep: 'OWNER: gh secret set FIXTURE_DEPLOY_TOKEN --env production, then delete the repository copy' }), readRow] }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /8c STORAGE LAGS SCOPE: 1 environment-scoped secret\(s\) are still stored at REPOSITORY level, .*FIXTURE_DEPLOY_TOKEN → production/);
+  });
+
+  test('8c (b) STORAGE: a `moveStep` left on a row already `storedAt: "environment"` FAILS', () => {
+    const { code, out } = run(fixture({ rows: [deployRow({ moveStep: 'OWNER: move it into the production environment please' }), readRow] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /is `storedAt: "environment"` and still carries a `moveStep`/);
+  });
+
+  test('8c (b): a LIST scope binds a job to any one of its environments; an empty or duplicated list FAILS', () => {
+    const files = { [DEPLOY_WORKFLOW]: deployWorkflow({ env: 'sandbox' }) };
+    let r = run(fixture({ rows: [deployRow({ environment: ['production', 'sandbox'] }), readRow], files }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /FIXTURE_DEPLOY_TOKEN → production \| sandbox/);
+    r = run(fixture({ rows: [deployRow({ environment: ['production'] }), readRow], files }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /8c rule \(a\): .*\(job "deploy", environment "sandbox"\) reads `secrets\.FIXTURE_DEPLOY_TOKEN`, which `ciSecretRegister\.nonSigning` scopes to environment "production"/);
+    r = run(fixture({ rows: [deployRow({ environment: ['production', 'production'] }), readRow] }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /declares `environment: \["production","production"\]`/);
+  });
+
+  test('8c (a) CALL-PASS: a secret passed to a local reusable workflow is graded where it lands — bound callee passes, env-less callee FAILS', () => {
+    const CALLEE = '.github/workflows/callee-deploy.yml';
+    const CALLER = '.github/workflows/caller-fixture.yml';
+    const callee = (env) => ['name: callee', 'on:', '  workflow_call:', '    secrets:', '      FIXTURE_DEPLOY_TOKEN:', '        required: false', 'jobs:', '  deploy:', '    runs-on: ubuntu-24.04', ...(env ? [`    environment: ${env}`] : []), '    steps:', '      - name: Deploy', '        env:', '          T: ${{ secrets.FIXTURE_DEPLOY_TOKEN }}', '        run: echo deploy', ''].join(NL);
+    const caller = ['name: caller', 'on:', '  push:', 'jobs:', '  deploy:', "    if: github.event_name == 'push'", `    uses: ./${CALLEE}`, '    secrets:', '      FIXTURE_DEPLOY_TOKEN: ${{ secrets.FIXTURE_DEPLOY_TOKEN }}', ''].join(NL);
+    let r = run(fixture({ files: { [CALLEE]: callee('production'), [CALLER]: caller } }));
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /8c rule \(a\)/);
+    r = run(fixture({ files: { [CALLEE]: callee(null), [CALLER]: caller } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /8c rule \(a\): \.github\/workflows\/caller-fixture\.yml:9 \(job "deploy", no environment\) reads `secrets\.FIXTURE_DEPLOY_TOKEN`/);
+  });
+
+  test('8c (a) FALLBACK: `secrets.<narrow> || secrets.<scoped>` in an env-less job passes until `until`, then FAILS; any other shape FAILS', () => {
+    const ENVLESS = '.github/workflows/ops-fixture.yml';
+    const envless = (expr) => ['name: ops', 'on:', '  schedule:', "    - cron: '0 1 * * *'", 'jobs:', '  read:', '    runs-on: ubuntu-24.04', '    steps:', '      - name: Read', '        env:', `          CLOUDFLARE_API_TOKEN: \${{ ${expr} }}`, '        run: echo read', ''].join(NL);
+    const fb = { via: ['FIXTURE_READ_TOKEN'], until: '2026-11-30', why: 'the narrow token answers once the owner moves the deploy token into production' };
+    const rows = [deployRow({ repositoryFallback: fb }), readRow];
+    let r = runAt(fixture({ rows, files: { [ENVLESS]: envless('secrets.FIXTURE_READ_TOKEN || secrets.FIXTURE_DEPLOY_TOKEN') } }), '2026-10-01');
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /8c TRANSITION: FIXTURE_DEPLOY_TOKEN may still be read .* until 2026-11-30 — 1 such read\(s\) today/);
+    r = runAt(fixture({ rows, files: { [ENVLESS]: envless('secrets.FIXTURE_READ_TOKEN || secrets.FIXTURE_DEPLOY_TOKEN') } }), '2026-12-01');
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /"FIXTURE_DEPLOY_TOKEN"'s `repositoryFallback` expired on 2026-11-30 \(today 2026-12-01\)/);
+    r = runAt(fixture({ rows, files: { [ENVLESS]: envless('secrets.FIXTURE_DEPLOY_TOKEN || secrets.FIXTURE_READ_TOKEN') } }), '2026-10-01');
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /8c rule \(a\): \.github\/workflows\/ops-fixture\.yml:11 .*licenses only the exact expression/);
+  });
+
+  test('8c (b) FALLBACK: `via` naming a publishing credential or an undeclared name FAILS — a fallback must be NARROWER', () => {
+    const fb = { via: ['FIXTURE_NOT_DECLARED'], until: '2026-11-30', why: 'the narrow token answers once the owner moves the deploy token' };
+    const { code, out } = run(fixture({ rows: [deployRow({ repositoryFallback: fb }), readRow] }));
+    assert.equal(code, 1, out);
+    assert.match(out, /`repositoryFallback\.via` names "FIXTURE_NOT_DECLARED", which is not declared/);
   });
 });
 

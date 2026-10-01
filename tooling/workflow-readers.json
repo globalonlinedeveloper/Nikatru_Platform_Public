@@ -236,6 +236,10 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/assert-signing-inputs-pinned.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-sink-disclosure.mjs",
       "property": "workflow-scan"
     },

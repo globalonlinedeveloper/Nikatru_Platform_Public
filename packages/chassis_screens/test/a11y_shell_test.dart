@@ -622,6 +622,20 @@ void main() {
           isTrue,
           reason: 'Retry is announced but cannot be activated.',
         );
+        // AB-O1-03: reachable is not announced. The notice appears while the
+        // user is elsewhere, so its message must be a LIVE REGION or a screen
+        // reader never says the app went offline.
+        expect(
+          traversal.any(
+            (SemanticsNode n) =>
+                n.getSemanticsData().flagsCollection.isLiveRegion &&
+                n.getSemanticsData().label.trim().isNotEmpty &&
+                n.getSemanticsData().label != 'Retry',
+          ),
+          isTrue,
+          reason: 'the offline message is not a live region, so its '
+              'appearance is never spoken. Announced: $announced',
+        );
 
         // The routed page's control and title, plus the banner's message and
         // its Retry: the tappable floor is the unannounced pin's plus one.

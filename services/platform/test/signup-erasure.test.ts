@@ -15,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
 import account from '../src/routes/account';
 import { erasureRetry } from '../src/scheduled';
@@ -49,7 +49,7 @@ const SUBJECT = 'signup-subject-41d2';
 /// on every future day without anybody re-dating anything.
 const NOW_MS = Date.now() + 24 * 60 * 60 * 1000;
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 /** Every call to the identity provider's admin user endpoint, in order. */
 let adminCalls: Array<{ method: string; url: string }> = [];

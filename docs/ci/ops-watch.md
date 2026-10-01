@@ -256,6 +256,49 @@ told you is the part that did not run" is the shape this whole file is
 written against — the same reason `status` below is its own job. It runs
 anyway and its own exit code still fails the job.
 
+### before step **Install OSV-Scanner (version and digest from tooling/versions.json)**
+
+── rv2-security-004 · AN ADVISORY AGAINST AN UNCHANGED MAIN ────────────
+
+OSV-Scanner ran only in `ci.yml`'s `security-scan` job, on a pull request
+or a push. A new advisory against dependencies main already had was
+therefore seen only when the next UNRELATED pull request's scan met it:
+js-yaml GHSA-2883-xcg3-v3hh (fixed by #557, 2026-09-08) and markdown-it
+GHSA-253c-mchw-3w2r (PR #1063, 2026-09-30, which changed neither lockfile).
+Dependabot had raised no alert on `pnpm-lock.yaml` or `pubspec.lock`, ever.
+
+These two steps run the SAME pinned binary (version and sha256 from
+`tooling/versions.json`, installed by `tooling/ci/install-pinned-tool.mjs`)
+and the SAME script (`tooling/ci/scan-dependencies.mjs`) over main, once a
+day on the 07:30 UTC slot. A red one fails this job, which is in `alert`'s
+`needs`, so the durable issue hears first.
+
+WHY STEPS HERE AND NOT A JOB OF THEIR OWN. A job must be the unit of a
+register row, and a new job with no history makes `assert-ops-register`'s
+unit scan read one job list per run back through the whole page: measured
+2026-09-30 on this change, the replay in `tooling/ci/test/ops-register.test.mjs`
+spent 45 GitHub requests against its ceiling of 30 (the edge-shield job
+measured 42 the same way on 2026-09-27). This job runs the register guard,
+so it is no row's unit and ages none — the name-clearance step's reason.
+The cost is stated: nothing in the register grades that these steps keep
+RUNNING; only their failing is loud.
+
+ONE SLOT A DAY, AND A DISPATCH RUNS THEM ONLY WHEN IT ASKS
+(`inputs.dependency_advisories`, default false): the land scripts dispatch
+this workflow after every merge (trap ci-55), and a scan red for as long as
+an advisory stands must not ride those.
+
+### before step **Known-vulnerable dependencies on main (canary, floor, then the tree)**
+
+rv2-security-018 · the script refuses to call a scan clean until it has
+shown the scan can see: for every lockfile format the tree tracks, a canary
+lockfile pinning a version with published advisories must be flagged by the
+same binary and the same `--config`; then every `git ls-files` lockfile must
+appear in OSV's "Scanned … file and found N packages" lines with N > 0.
+Either failing is exit 2, COVERAGE LOST. Exit 1 is an advisory, each printed
+with its lockfile, `name@version`, ecosystem and ids. `if:` names the install
+step's outcome, because the scan cannot run without the binary.
+
 ## job `status`
 
 ### above `status:`

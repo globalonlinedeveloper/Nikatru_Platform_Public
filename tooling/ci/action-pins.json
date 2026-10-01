@@ -106,14 +106,6 @@
       "using": "composite",
       "readAt": "2026-09-29",
       "source": "runs.using read from action.yml at the sha (git fetch --depth 1 https://github.com/subosito/flutter-action <sha>; git show <sha>:action.yml); version is a tag git ls-remote --tags lists at the sha."
-    },
-    {
-      "action": "trufflesecurity/trufflehog",
-      "sha": "4dd8831c5f12599465d4d45c3c447b4018a34c85",
-      "version": "v3.97.9",
-      "using": "composite",
-      "readAt": "2026-09-29",
-      "source": "runs.using read from action.yml at the sha (git fetch --depth 1 https://github.com/trufflesecurity/trufflehog <sha>; git show <sha>:action.yml); version is a tag git ls-remote --tags lists at the sha."
     }
   ]
 }

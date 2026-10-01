@@ -89,6 +89,11 @@
 // COVERAGE LOST; an app it does not declare is a finding). A row that carries the retired
 // key again FAILS by name: a second copy of the id is how the wrong one ships.
 //
+// ⏱ 2026-10-01 — O-PUBLIC-TEXT-NAMES-WHAT-IS-NOT-SO (C-24): the retired-token limb
+// reaches the SWORN STORE DECLARATIONS too — every string of every `.json` a store row
+// carries in `perChannel.additionalFiles`, in each app's tree and the brick's. See the
+// limb for why prose is a subject there and not in assert-retired-names.mjs.
+//
 // Usage:  node tooling/ci/assert-store-identity.mjs [repoRoot]
 // Exit 0 = every app × declared platform resolves to the one canonical id.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -475,6 +480,86 @@ for (const app of apps) {
   }
 }
 
+// ── the retired tokens, over every sworn store declaration ──────────────────
+// ⏱ 2026-10-01 — O-PUBLIC-TEXT-NAMES-WHAT-IS-NOT-SO (C-24). The owner swears these
+// files to a store as statements about THIS app, and three of them named it by the
+// retired name ("— Subly, channel `android-play`", "Subly is an application") while
+// every guard was green: the token was refused in identifiers only. The subjects are
+// DERIVED, like the sworn set in assert-sworn-store-files.mjs: every `.json` in a store
+// row's `storeMetadataContract.perChannel.<id>.additionalFiles`, in each app's tree and
+// in the brick's (every stamped app inherits the template). Every STRING in the file is
+// read, prose included — a history note can say what happened without the retired
+// token in it. Matching is per whitespace-separated word, case- and separator-
+// insensitive within the word, so `Subly's`, `sub-ly` and `com.nikatru.subly` are one
+// refusal and a `sub` beside a `lyric` is none.
+const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
+const retiredInProse = (text) => {
+  for (const word of String(text).split(/\s+/)) {
+    const hit = retiredIn(word);
+    if (hit) return hit;
+  }
+  return null;
+};
+/** Every string in a JSON value, with the path a reader types to find it. */
+function* stringsOf(value, path = '') {
+  if (typeof value === 'string') yield [path, value];
+  else if (Array.isArray(value)) for (const [i, v] of value.entries()) yield* stringsOf(v, `${path}[${i}]`);
+  else if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) yield* stringsOf(v, path === '' ? k : `${path}.${k}`);
+  }
+}
+const declarationContract = register.storeMetadataContract?.perChannel ?? {};
+const declarationNames = [];
+let declarationFiles = 0;
+let declarationStrings = 0;
+const declarationChannels = new Set();
+for (const row of rows) {
+  if (row?.kind !== 'store' || typeof row.storeMetadataDir !== 'string' || !row.storeMetadataDir.startsWith('apps/{app}/')) continue;
+  const sworn = (declarationContract[row.id]?.additionalFiles ?? []).filter((f) => typeof f === 'string' && f.endsWith('.json'));
+  for (const name of sworn) {
+    declarationNames.push(`${row.id}/${name}`);
+    const trees = [
+      ...apps.map((a) => (typeof a?.slug === 'string' ? row.storeMetadataDir.replace('{app}', a.slug) : null)).filter(Boolean),
+      row.storeMetadataDir.replace('apps/{app}', BRICK_APP),
+    ];
+    for (const dir of trees) {
+      const fileRel = `${dir}/${name}`;
+      let text;
+      try {
+        text = readFileSync(join(ROOT, fileRel), 'utf8');
+      } catch (e) {
+        if (e && e.code === 'ENOENT') continue; // an absent sworn file is assert-store-metadata's finding, not a read
+        throw e;
+      }
+      let doc;
+      try {
+        doc = JSON.parse(text);
+      } catch (e) {
+        coverageLost([`${fileRel} is not valid JSON (${e.message}), so the retired-name limb read none of its declarations.`]);
+      }
+      declarationFiles++;
+      declarationChannels.add(row.id);
+      for (const [at, value] of stringsOf(doc)) {
+        declarationStrings++;
+        const hit = retiredInProse(value);
+        if (hit) {
+          problems.push(
+            `${fileRel} \`${at}\` carries the RETIRED token "${hit}" (${REGISTER_REL} retiredIdentityTokens). A sworn store ` +
+              'declaration is a statement about THIS app; under a retired name it is a statement about an app that no longer exists. ' +
+              'Name the app as app.yaml does, or say "the app".',
+          );
+        }
+      }
+    }
+  }
+}
+if (declarationFiles === 0) {
+  coverageLost([
+    `the register names ${declarationNames.length} sworn declaration file(s) (${declarationNames.join(', ') || 'none'}) and ZERO were read.`,
+    'The retired-name limb over the sworn declarations would print "refused" over files it never opened.',
+  ]);
+}
+
 // ── the snap name: derived, exact, and never a retired token ────────────────
 const snapRows = rows.filter((r) => r?.snapName && typeof r.snapName === 'object');
 const SNAP_DERIVATION = 'param-case(apps/{app}/app.yaml name)';
@@ -677,6 +762,10 @@ console.log(
 console.log(
   `ok  snap name — ${snapChecked} snap name(s) equal ${SNAP_DERIVATION}; retired token(s) ${retiredTokens.map((t) => JSON.stringify(t)).join(', ')} ` +
     `refused across ${retiredChecked} store identity(ies) and ${snapChecked} snap name(s)`,
+);
+console.log(
+  `ok  store declarations — retired token(s) ${retiredTokens.map((t) => JSON.stringify(t)).join(', ')} refused across ` +
+    `${declarationStrings} string(s) in ${declarationFiles} sworn declaration file(s) on ${declarationChannels.size} channel(s)`,
 );
 console.log(
   `ok  store records — ${recordPairs} (app, channel) record(s) across ${apps.length} app(s) and ${STORE_CHANNELS.length} store channel(s); ` +

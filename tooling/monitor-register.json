@@ -611,7 +611,7 @@
       "CLOUD BOX'. That was stale: GlitchTip, its monitors, its alert evaluation and its backup chain",
       "moved to the Hostinger box (Box B) on 2026-09-02 — recorded in tooling/ops/alarm-chains.json →",
       "_expectedMonitorsWhy, whose whole subject is the 46-hour freeze that move caused, and in",
-      "tooling/ops/register.json:1508, where monitor 16 was renamed for the same reason on the same",
+      "tooling/ops/register.json:2817, where monitor 16 was renamed for the same reason on the same",
       "day (RE-MEASURED 2026-09-07: this read :1185, which was never right -- it was ~320 lines",
       "off, and TRAPS ci-22 says a citation is re-measured with `grep -n`, never offset from a",
       "number that was already wrong). The old sentence is NAMED here rather than quietly overwritten, because the correction is",

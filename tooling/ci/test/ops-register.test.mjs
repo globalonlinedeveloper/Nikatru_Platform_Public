@@ -6436,14 +6436,19 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
       'Live D1 still runs every statement the Workers send it',
       "Judge whether the analytics rail's silence is a FAULT",
       'Every name-clearance record is inside its 30-day ceiling',
+      // ⏱ 2026-09-30 [rv2-security-004] — the daily OSV scan of main, steps rather than a job (the replay's request ceiling).
+      'Install OSV-Scanner (version and digest from tooling/versions.json)',
+      'Known-vulnerable dependencies on main (canary, floor, then the tree)',
     ]);
-    assert.deepEqual(named.map((s) => s.runsGuard), [true, false, false, false, false]);
+    assert.deepEqual(named.map((s) => s.runsGuard), [true, false, false, false, false, false, false]);
     // ⏱ 2026-09-23 — this pinned `null`, the defect itself: with no condition the
     // heartbeat read was SKIPPED in every red register run (O-OPS-WATCH-HEARTBEAT-
     // READER-SKIPPED). It now runs whatever the register concluded.
     assert.match(named[1].cond, /!cancelled\(\)/, 'O-OPS-WATCH-HEARTBEAT-READER-SKIPPED: the heartbeat reader must carry !cancelled()');
     assert.match(named[2].cond, /!cancelled\(\)/);
     assert.match(named[4].cond, /!cancelled\(\)/, 'the name-clearance ceiling must be read after a red register too');
+    assert.match(named[5].cond, /!cancelled\(\)[\s\S]*github\.event\.schedule == '30 7 \* \* \*'[\s\S]*inputs\.dependency_advisories/, 'the OSV install runs after a red register, on its own daily slot or a named dispatch input (trap ci-55)');
+    assert.match(named[6].cond, /!cancelled\(\)[\s\S]*steps\.osv\.outcome == 'success'/, 'the OSV scan runs whenever its install succeeded');
     assert.equal(describeUnit({ workflow: 'w.yml', unit: RUN_UNIT }), 'the whole w.yml run');
   });
 
