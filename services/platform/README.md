@@ -80,6 +80,7 @@ because a caller can get them wrong in ways the others do not offer.)
    off-vendor backup alone; and `15 * * * *` runs the stuck-Actions-run check alone
    (`opsStuckRunsJob`, since 2026-09-24), whose own heartbeat
    (`OPS_STUCK_RUNS_HEARTBEAT_URL`) is sent only while no run is stuck.
+   That hourly firing also carries the **one-shot backup re-run** below.
    ⚠️ This read *"(Free-tier caps at 5 cron triggers/account)"* until 2026-09-03.
    The account is on **Workers Paid**, where the ceiling is **250 per account**
    ([limits](https://developers.cloudflare.com/workers/platform/limits/)).
@@ -102,6 +103,34 @@ because a caller can get them wrong in ways the others do not offer.)
      under `fx:ecb:latest`, and on ANY failure the last good table stays and
      the row is ok=0. No cron of its own: 06:00 UTC reads the previous
      working day's fix.
+
+### Re-running the backup once, the same day (after a fix)
+
+Cloudflare cannot fire a production cron on demand, and `backup_export` runs only
+on `30 2 * * *`. A fix that lands after 02:30Z therefore leaves the pre-fix rows
+as the newest ones, and ops-watch reads red until the next night. Never write a
+heartbeat by hand. Set this flag instead (the `expiresAt` is required; keep it
+within the day):
+
+```bash
+wrangler kv key put --remote --binding=CONFIG_KV "ops:rerun:backup_export" \
+  '{"requestedAt":"2026-10-01T12:20:00Z","by":"lead","reason":"re-prove #1108","expiresAt":"2026-10-01T23:59:00Z"}'
+```
+
+The next `:15` firing runs its stuck-run scan, reads the flag, **deletes it**,
+and only then runs the real export once (`backupRerunJob` in `src/scheduled.ts`).
+The Worker logs `[ops] rerun backup_export requestedAt=… by=…`. Then
+`backup_export` has fresh rows in `cron_heartbeat`.
+
+- **Export only.** The objects go under `reruns/<stamp>/` in `nikatru-backups`,
+  so the night's pre-sweep copy is left as it was. `manifests/latest.json`, which
+  Box B pulls, is not written. The retention sweep does not run and writes no
+  `retention` row.
+- **One-shot.** A flag that cannot be deleted runs nothing. An expired flag is
+  deleted and runs nothing. A malformed flag runs nothing and stays in place, so
+  you can read it: every field must be a non-empty string, both times must parse,
+  and `by` can only use `[A-Za-z0-9_ .@:-]`, up to 64 characters.
+- **An allowlist of one.** No other `ops:rerun:*` key is read.
 
 `GET /v1/health` is the deploy-verification endpoint (no auth).
 
