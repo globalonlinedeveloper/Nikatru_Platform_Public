@@ -182,10 +182,20 @@ jobs:
       # steps run ci.yml's own pinned OSV-Scanner and script over main, and a red one pages through `alert`.
       # why: STEPS in this job, not a job of their own, for the name-clearance step's reason above; a new job
       # was measured costing assert-ops-register's replay 45 GitHub requests against its ceiling of 30.
-      # why: the 07:30 UTC slot only, or a dispatch that asks for it by name (trap ci-55). docs/ci/ops-watch.md.
+      # why: DUE, NOT ONE SLOT (#1095 review finding 5). The 07:30 slot alone was dropped as often
+      # as GitHub drops slots (trap ci-16), and a dropped slot was a day with no scan that nothing
+      # noticed. Any SCHEDULED run scans when the newest graded scan is over 20 h old, and past
+      # 36 h the step warns; a dispatch scans only when it asks by name (trap ci-55).
+      - name: Is the daily OSV scan of main due on this run
+        id: osvdue
+        if: ${{ !cancelled() && github.event_name == 'schedule' }}
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ops/osv-scan-due.mjs
       - name: Install OSV-Scanner (version and digest from tooling/versions.json)
         id: osv
-        if: ${{ !cancelled() && (github.event.schedule == '30 7 * * *' || inputs.dependency_advisories) }}
+        if: ${{ !cancelled() && (steps.osvdue.outputs.due == 'true' || inputs.dependency_advisories) }}
         timeout-minutes: 3
         run: node tooling/ci/install-pinned-tool.mjs osv-scanner --out "${RUNNER_TEMP}"
 

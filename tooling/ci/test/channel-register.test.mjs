@@ -2385,7 +2385,8 @@ describe('assert-channel-register — [9]R-3 limb 2: only declared secrets may b
       'build-config': 'a value compiled into or read by a build; not signing material',
       'publishing-credential': 'authorises an upload; is not what signs the artifact',
     },
-    nonSigning,
+    // 8d (2026-10-02): every credential row declares its production-data reach; these cases grade §8, not 8d.
+    nonSigning: nonSigning.map((r) => ({ productionData: 'none', ...r })),
   });
   const buildConfig = (name, why = 'an endpoint the build is compiled against, not signing material') => ({
     name,
@@ -2644,7 +2645,8 @@ describe('assert-channel-register — §8c: a publishing credential is read only
       'build-config': 'a value compiled into or read by a build; not signing material',
       'publishing-credential': 'authorises an upload; is not what signs the artifact',
     },
-    nonSigning,
+    // 8d (2026-10-02): every credential row declares its production-data reach; these cases grade 8c.
+    nonSigning: nonSigning.map((r) => ({ productionData: 'none', ...r })),
   });
   const inEnvironment = (name, environment = 'store-publish') => ({
     name,
@@ -2798,7 +2800,8 @@ describe('assert-channel-register — §8c storage/fallback/call-pass and §8d: 
       'publishing-credential': 'authorises an upload or a deploy; is not what signs the artifact',
       'service-credential': 'authenticates CI to a service it operates on',
     },
-    nonSigning,
+    // 8d (2026-10-02): a row with no `productionData` is graded `none` here unless the case sets it.
+    nonSigning: nonSigning.map((r) => ({ productionData: 'none', ...r })),
   });
   const deployRow = (extra = {}) => ({
     name: 'FIXTURE_DEPLOY_TOKEN',
@@ -2941,6 +2944,69 @@ describe('assert-channel-register — §8c storage/fallback/call-pass and §8d: 
     );
     assert.equal(code, 1, out);
     assert.match(out, /8d: \.github\/workflows\/callee-fixture\.yml:10 \(job "inner", no environment\) reads `secrets\.FIXTURE_SIGNING_KEY`/);
+  });
+
+  // ⏱ 2026-10-02 · #1095 review findings 1, 2, 4 and 7 (lane fix-pr-token-scope).
+  const realRow = (name) => {
+    const real = JSON.parse(readFileSync(join(CI_DIR, '..', 'channel-register.json'), 'utf8'));
+    const row = real.ciSecretRegister.nonSigning.find((r) => r.name === name);
+    assert.ok(row, `the REAL register has no ${name} row; re-read this test`);
+    return row;
+  };
+  const prReads = (name) => fixture({ rows: [deployRow(), readRow, realRow(name)], files: { [PR_WORKFLOW]: prWorkflow({ secretLines: [`          T: \${{ secrets.${name} }}`] }) } });
+
+  test('🔴 RED CONTROL (8d, finding 1): the REAL CLOUDFLARE_D1_TOKEN row in a pull_request job FAILS — the reviewer\'s ci.yml:291 reproduction', () => {
+    const { code, out } = run(prReads('CLOUDFLARE_D1_TOKEN'));
+    assert.equal(code, 1, out);
+    assert.match(out, /8d: .*reads `secrets\.CLOUDFLARE_D1_TOKEN`, a credential that can write PRODUCTION user data/);
+  });
+
+  test('🔴 8d (finding 2): the REAL CLOUDFLARE_READ_TOKEN row — account-scoped D1 READ — in a pull_request job FAILS', () => {
+    const { code, out } = run(prReads('CLOUDFLARE_READ_TOKEN'));
+    assert.equal(code, 1, out);
+    assert.match(out, /reads `secrets\.CLOUDFLARE_READ_TOKEN`, a credential that can read PRODUCTION user data/);
+  });
+
+  test('8d: the field decides — the same real row declared `productionData: none` passes, so the verdict is not the name', () => {
+    const row = { ...realRow('CLOUDFLARE_D1_TOKEN'), productionData: 'none' };
+    const { code, out } = run(fixture({ rows: [deployRow(), readRow, row], files: { [PR_WORKFLOW]: prWorkflow({ secretLines: ['          T: ${{ secrets.CLOUDFLARE_D1_TOKEN }}'] }) } }));
+    assert.equal(code, 0, out);
+  });
+
+  test('🔴 8d: a service-credential row that declares no `productionData` FAILS, and so does an unknown value', () => {
+    const bare = run(tree({ extraFiles: { [DEPLOY_WORKFLOW]: deployWorkflow(), [PR_WORKFLOW]: prWorkflow() }, mutate: (r) => { r.ciSecretRegister = { kinds: register8([]).kinds, nonSigning: [{ productionData: 'none', ...deployRow() }, readRow] }; } }));
+    assert.equal(bare.code, 1, bare.out);
+    assert.match(bare.out, /8d: `ciSecretRegister\.nonSigning` entry "FIXTURE_READ_TOKEN" is a service-credential and declares no `productionData`/);
+    const odd = run(fixture({ rows: [deployRow(), { ...readRow, productionData: 'some' }] }));
+    assert.equal(odd.code, 1, odd.out);
+    assert.match(odd.out, /declares `productionData: "some"`; it is one of read \| write \| none/);
+  });
+
+  test('🔴 8d (finding 4): `${{ toJSON(secrets) }}` in a pull_request job FAILS; `needs.secrets-scan.result` is not the context', () => {
+    const dump = run(fixture({ files: { [PR_WORKFLOW]: prWorkflow({ secretLines: ['          T: ${{ secrets.FIXTURE_READ_TOKEN }}', '          ALL: ${{ toJSON(secrets) }}'] }) } }));
+    assert.equal(dump.code, 1, dump.out);
+    assert.match(dump.out, /8d: .*uses the whole `secrets` context \(`\$\{\{ toJSON\(secrets\) \}\}`\)/);
+    const named = run(fixture({ files: { [PR_WORKFLOW]: prWorkflow({ secretLines: ['          T: ${{ secrets.FIXTURE_READ_TOKEN }}', '          R: ${{ needs.secrets-scan.result }}'] }) } }));
+    assert.equal(named.code, 0, named.out);
+  });
+
+  test('🔴 8d (finding 7): reachability through TWO reusable hops does not depend on file order — the leaf\'s deploy read FAILS', () => {
+    // a-leaf.yml sorts before b-mid.yml, which sorts before pr-fixture.yml: one pass over the files
+    // in that order marks b-mid only after it has passed a-leaf, and never comes back.
+    const LEAF = '.github/workflows/a-leaf.yml';
+    const MID = '.github/workflows/b-mid.yml';
+    const leaf = ['name: leaf', 'on:', '  workflow_call:', 'jobs:', '  inner:', '    runs-on: ubuntu-24.04', '    steps:', '      - name: Inner', '        env:', '          T: ${{ secrets.FIXTURE_REPO_DEPLOY }}', '        run: echo inner', ''].join(NL);
+    const mid = ['name: mid', 'on:', '  workflow_call:', 'jobs:', '  hop:', `    uses: ./${LEAF}`, ''].join(NL);
+    const caller = prWorkflow({ extraJobs: ['  call:', `    uses: ./${MID}`] });
+    const repoDeploy = { name: 'FIXTURE_REPO_DEPLOY', kind: 'publishing-credential', why: 'a fixture deploy token read by the env-less leaf', environment: null, repositoryWhy: 'read by the env-less fixture leaf job, by decision' };
+    const { code, out } = run(
+      tree({
+        extraFiles: { [DEPLOY_WORKFLOW]: deployWorkflow(), [PR_WORKFLOW]: caller, [MID]: mid, [LEAF]: leaf },
+        mutate: (r) => { r.ciSecretRegister = register8([deployRow(), readRow, repoDeploy]); },
+      }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /8d: \.github\/workflows\/a-leaf\.yml:10 \(job "inner", no environment\) reads `secrets\.FIXTURE_REPO_DEPLOY`/);
   });
 
   test('8d: COVERAGE LOST when ci.yml is triggered by pull_request and not one of its jobs reads as reachable', () => {

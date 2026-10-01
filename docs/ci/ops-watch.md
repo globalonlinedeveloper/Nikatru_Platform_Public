@@ -271,7 +271,8 @@ Dependabot had raised no alert on `pnpm-lock.yaml` or `pubspec.lock`, ever.
 These two steps run the SAME pinned binary (version and sha256 from
 `tooling/versions.json`, installed by `tooling/ci/install-pinned-tool.mjs`)
 and the SAME script (`tooling/ci/scan-dependencies.mjs`) over main, once a
-day on the 07:30 UTC slot. A red one fails this job, which is in `alert`'s
+day: on the first SCHEDULED run after the newest graded scan is 20 h old (see
+below). A red one fails this job, which is in `alert`'s
 `needs`, so the durable issue hears first.
 
 WHY STEPS HERE AND NOT A JOB OF THEIR OWN. A job must be the unit of a
@@ -282,9 +283,17 @@ spent 45 GitHub requests against its ceiling of 30 (the edge-shield job
 measured 42 the same way on 2026-09-27). This job runs the register guard,
 so it is no row's unit and ages none — the name-clearance step's reason.
 The cost is stated: nothing in the register grades that these steps keep
-RUNNING; only their failing is loud.
+RUNNING; their failing is loud, and their absence is the due step below.
 
-ONE SLOT A DAY, AND A DISPATCH RUNS THEM ONLY WHEN IT ASKS
+DUE, NOT ONE SLOT (2026-10-02, #1095 review finding 5). Until then they ran
+on the 07:30 slot alone, and GitHub drops most cron slots (trap ci-16): on
+2026-10-01 the morning run skipped both steps, and a dropped slot was a day
+with no scan that nothing noticed. `tooling/ops/osv-scan-due.mjs` now runs on
+every SCHEDULED run and reads the history: the scan is due when the newest
+run whose scan step concluded success or failure is over 20 h old, so the next
+slot GitHub delivers catches up; past 36 h (1.5 x the daily cadence) it prints
+a `::warning::` naming the age. An unreadable history fails OPEN, towards
+scanning. A DISPATCH RUNS THEM ONLY WHEN IT ASKS
 (`inputs.dependency_advisories`, default false): the land scripts dispatch
 this workflow after every merge (trap ci-55), and a scan red for as long as
 an advisory stands must not ride those.

@@ -926,4 +926,33 @@ describe('--cloudflare-read-pending-until: a dated deferral of the TIMER limb on
     assert.match(out, /COVERAGE LOST/);
     assert.doesNotMatch(out, /deferred/);
   });
+
+  // ⏱ 2026-10-02 · #1095 review finding 2: no PR-reachable job holds a production-data token, so
+  // ci.yml's guards-platform passes `--timer-read-by-ops-watch` — a standing policy with no date.
+  test('GREEN CONTROL: --timer-read-by-ops-watch with no token grades the OUTCOME only and says why, never "BOTH records"', () => {
+    const { code, out } = guard(['--timer-read-by-ops-watch']);
+    assert.equal(code, 0, out);
+    assert.match(out, /NOT READ — not read in this job BY POLICY: .*limb 8d.*ops-watch\.yml's heartbeats job reads this row on schedule/);
+    assert.match(out, /this is ONE record, not the proof/);
+    assert.doesNotMatch(out, /BOTH records/);
+    assert.doesNotMatch(out, /::warning title=Nightly-proof TIMER limb NOT READ/, 'a policy is not a pending owner step');
+  });
+
+  test('🔴 the policy never masks the OUTCOME limb — a stale run is still exit 1', () => {
+    const { code, out } = guard(['--timer-read-by-ops-watch'], { ageHours: 24 * 5 });
+    assert.equal(code, 1, out);
+  });
+
+  test('🔴 with a token present the policy skips nothing: the timer is read (and its fixture failure is exit 2)', () => {
+    const { code, out } = guard(['--timer-read-by-ops-watch'], { token: 'fixture-cf-token' });
+    assert.equal(code, 2, out);
+    assert.match(out, /--timer-read-by-ops-watch is set and a Cloudflare token IS present, so the TIMER limb is read here as well/);
+    assert.doesNotMatch(out, /BY POLICY/);
+  });
+
+  test('🔴 the policy and the dated deferral together are refused: one stated reason per skip', () => {
+    const { code, out } = guard(['--timer-read-by-ops-watch', '--cloudflare-read-pending-until', '2099-01-01']);
+    assert.equal(code, 2, out);
+    assert.match(out, /one stated reason, never two/);
+  });
 });
