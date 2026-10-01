@@ -313,15 +313,23 @@ describe('fxRates — the nightly limb writes ITS row, under its own job', () =>
   });
 
   it('a good night writes ok=1 and the table', async () => {
-    const db = realPlatformDb();
-    const kv = new FakeKv();
-    vi.stubGlobal('fetch', (input: RequestInfo | URL) =>
-      String(input) === ECB_DAILY_URL ? Promise.resolve(new Response(ecbXml())) : Promise.reject(new TypeError('unexpected')),
-    );
-    await fxRates(envWith(kv, db));
-    const [row] = db.rows('SELECT ok, detail FROM cron_heartbeat WHERE job = ?', FX_RATES_JOB);
-    expect(row.ok).toBe(1);
-    expect(parseStoredFxTable(kv.store.get(FX_KV_KEY) ?? null)?.rates).toEqual(VECTOR.response.rates);
+    // ⏱ 2026-10-01 (lead): pin the clock to the fixture's fix date. Unpinned, the test read the real date and went red on
+    // 2026-10-01, when the fixture fix (VECTOR.response.asOf) became older than FX_MAX_FIX_GAP_DAYS: every PR's platform job failed.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(`${VECTOR.response.asOf}T16:00:00Z`));
+    try {
+      const db = realPlatformDb();
+      const kv = new FakeKv();
+      vi.stubGlobal('fetch', (input: RequestInfo | URL) =>
+        String(input) === ECB_DAILY_URL ? Promise.resolve(new Response(ecbXml())) : Promise.reject(new TypeError('unexpected')),
+      );
+      await fxRates(envWith(kv, db));
+      const [row] = db.rows('SELECT ok, detail FROM cron_heartbeat WHERE job = ?', FX_RATES_JOB);
+      expect(row.ok).toBe(1);
+      expect(parseStoredFxTable(kv.store.get(FX_KV_KEY) ?? null)?.rates).toEqual(VECTOR.response.rates);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
