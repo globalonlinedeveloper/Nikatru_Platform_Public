@@ -26,6 +26,11 @@
 //   · 'pending'                    → 409 idempotency_in_progress, a retry later —
 //     unless the claim is older than PENDING_CLAIM_TTL_MS: then it was
 //     abandoned, and is marked done (its row exists) or taken over;
+//     ⚠️ one narrow gap, stated: a claim whose row was committed, then PURGED
+//     (not soft-deleted — that answers 410), before the claim was finalised and
+//     before the TTL passed, is taken over and the row created again. It needs
+//     a crash between the insert and the final UPDATE plus a purge within the
+//     same 10 minutes; the client waits out a 409 until then (Retry-After);
 //   · the row soft-deleted         → 410 as well (the route's lookup says so).
 // A claim whose handler did not create the row is released, so a retry can.
 // A lost claim race is logged at INFO, never as an error.

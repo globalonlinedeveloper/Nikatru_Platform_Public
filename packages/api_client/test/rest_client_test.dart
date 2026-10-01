@@ -33,6 +33,26 @@ class _FakeAdapter implements HttpClientAdapter {
   }
 }
 
+/// Answers 409 "still processing" with a Retry-After of 30 s.
+class _RetryAfterAdapter implements HttpClientAdapter {
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async => ResponseBody.fromString(
+    jsonEncode(<String, dynamic>{'error': 'idempotency_in_progress'}),
+    409,
+    headers: <String, List<String>>{
+      Headers.contentTypeHeader: <String>['application/json'],
+      'retry-after': <String>['30'],
+    },
+  );
+}
+
 RestClient _client(_FakeAdapter adapter, {Future<String?> Function()? token}) {
   final Dio dio = Dio()..httpClientAdapter = adapter;
   return RestClient(
@@ -81,6 +101,28 @@ void main() {
     expect(adapter.lastRequest!.headers['Idempotency-Key'], 'k-2');
     await client.post('/things', body: <String, dynamic>{});
     expect(adapter.lastRequest!.headers.containsKey('Idempotency-Key'), isFalse);
+  });
+
+  // Review #1075 round 3, minor d: the outbox waits as long as the server says.
+  test('a Retry-After on a refusal is carried on the ApiException', () async {
+    final Dio dio = Dio()..httpClientAdapter = _RetryAfterAdapter();
+    final RestClient client = RestClient(
+      baseUrl: 'https://example.test/v1',
+      tokenProvider: () async => null,
+      httpClient: dio,
+    );
+    await expectLater(
+      client.post('/things', body: <String, dynamic>{}),
+      throwsA(
+        isA<ApiException>()
+            .having((ApiException e) => e.statusCode, 'status', 409)
+            .having(
+              (ApiException e) => e.retryAfter,
+              'retryAfter',
+              const Duration(seconds: 30),
+            ),
+      ),
+    );
   });
 
   test('maps a non-2xx response to ApiException carrying the error message',

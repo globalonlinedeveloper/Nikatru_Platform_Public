@@ -8,6 +8,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ChassisLocalizations;
+import 'package:subscriptiontracker/data/api/api_client.dart';
+import 'package:subscriptiontracker/data/api/cached_api_client.dart';
+import 'package:subscriptiontracker/data/local/subscription_store.dart';
+import 'package:subscriptiontracker/data/models/budget_info.dart';
+import 'package:subscriptiontracker/data/models/payment_record.dart';
+import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
 import 'package:subscriptiontracker/features/auth/verify_email_screen.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
@@ -49,6 +55,51 @@ class _MemStore implements core.KeyValueStore {
   @override
   Future<void> write(String key, String value) async => data[key] = value;
 }
+
+class _Network implements ApiClient {
+  Never _down() => throw ApiException(0, 'Network error');
+  @override
+  Future<List<Subscription>> getSubscriptions() async => <Subscription>[
+    Subscription(
+      id: 'a',
+      name: 'Gym of u1',
+      category: 'Health',
+      price: const core.Money(64900, 'INR'),
+      cycle: BillingCycle.monthly,
+      nextRenewal: DateTime.utc(2026, 10, 1),
+    ),
+  ];
+  @override
+  Future<BudgetInfo> getBudget() async => const BudgetInfo(
+    monthlyBudget: core.Money(500000, 'INR'),
+    categories: <BudgetCap>[],
+  );
+  @override
+  Future<Subscription> createSubscription(Subscription draft) async => _down();
+  @override
+  Future<Subscription> getSubscription(String id) async => _down();
+  @override
+  Future<Subscription> updateSubscription(
+    String id,
+    Map<String, dynamic> changes,
+  ) async => _down();
+  @override
+  Future<void> deleteSubscription(String id) async => _down();
+  @override
+  Future<List<PaymentRecord>> getPaymentHistory(String id) async => _down();
+  @override
+  Future<BudgetInfo> updateBudget(BudgetInfo budget) async => _down();
+  @override
+  Future<core.Entitlements> getEntitlements() async => _down();
+}
+
+/// The keys that hold [owner]'s offline copy of the list or the budget.
+Iterable<String> _offlineCopyOf(_MemStore kv, String owner) =>
+    kv.data.keys.where(
+      (String k) =>
+          k == '$kLocalSubscriptionsKey.u.$owner' ||
+          k == '$kLocalBudgetKey.u.$owner',
+    );
 
 class _OnboardingSeen extends OnboardingSeenController {
   @override
@@ -137,8 +188,9 @@ class _FakeAuth extends core.AuthRepository {
   FakeNotifications chassis,
   RecordingSublyNotifications fork,
 })
-_harness(_FakeAuth auth) {
+_harness(_FakeAuth auth, {_MemStore? kv, ApiClient? api}) {
   final MemSecureStore secure = MemSecureStore();
+  final _MemStore store = kv ?? _MemStore();
   final FakeNotifications chassis = FakeNotifications();
   final RecordingSublyNotifications fork = RecordingSublyNotifications();
   final ProviderContainer container = ProviderContainer(
@@ -146,7 +198,8 @@ _harness(_FakeAuth auth) {
       onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
       legalReacceptanceNeededProvider.overrideWithValue(false),
       authRepositoryProvider.overrideWithValue(auth),
-      keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
+      keyValueStoreProvider.overrideWith((ref) async => store),
+      if (api != null) apiClientProvider.overrideWithValue(api),
       analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
       secureStoreProvider.overrideWithValue(secure),
       notificationServiceProvider.overrideWithValue(chassis),
@@ -513,4 +566,99 @@ void main() {
     expect(rawEntitlementCache(secure), isNull);
     expect((await cache.readValid()).isPro, isFalse);
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 🔴 REVIEW #1075 ROUND 3, MAJOR 1 — the explicit sign-out left the user's
+  // offline copy (list and budget) on the device: the store's clear() dropped
+  // the cache's key index BEFORE forgetCache() read it. Driven through the
+  // real Settings controls and the real drop list, so the ORDER is what is
+  // tested, not the presence of a call.
+  // ───────────────────────────────────────────────────────────────────────────
+  group('every sign-out path leaves no offline copy of the user', () {
+    Future<({_FakeAuth auth, _MemStore kv, ProviderContainer container})>
+    seeded(WidgetTester tester) async {
+      final _FakeAuth auth = _FakeAuth();
+      final _MemStore kv = _MemStore();
+      final CachedApiClient api = CachedApiClient(
+        _Network(),
+        LocalSubscriptionStore(Future<core.KeyValueStore>.value(kv)),
+        currentUser: () => auth.currentUser?.id,
+      );
+      final h = _harness(auth, kv: kv, api: api);
+      await api.getSubscriptions();
+      await api.getBudget();
+      expect(
+        _offlineCopyOf(kv, 'u1'),
+        hasLength(2),
+        reason: 'the seed is real',
+      );
+      return (auth: auth, kv: kv, container: h.container);
+    }
+
+    testWidgets('Log out', (WidgetTester tester) async {
+      final r = await seeded(tester);
+      await _pumpSettings(tester, r.container);
+      await tester.tap(find.text('Log out'));
+      await tester.pumpAndSettle();
+      expect(r.auth.signOutCalls, 1);
+      expect(_offlineCopyOf(r.kv, 'u1'), isEmpty);
+    });
+
+    testWidgets('Delete account', (WidgetTester tester) async {
+      final r = await seeded(tester);
+      await _pumpSettings(tester, r.container);
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('deleteAccountPassword')),
+        'correct-horse',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('deleteAccountConfirm')));
+      await tester.pumpAndSettle();
+      expect(r.auth.deleteCalls, 1);
+      expect(_offlineCopyOf(r.kv, 'u1'), isEmpty);
+    });
+
+    test('a 401 forced sign-out', () async {
+      final _FakeAuth auth = _FakeAuth();
+      final _MemStore kv = _MemStore();
+      final LocalSubscriptionStore store = LocalSubscriptionStore(
+        Future<core.KeyValueStore>.value(kv),
+      );
+      final CachedApiClient api = CachedApiClient(
+        _Network(),
+        store,
+        currentUser: () => auth.currentUser?.id,
+      );
+      await api.getSubscriptions();
+      await api.getBudget();
+      expect(_offlineCopyOf(kv, 'u1'), hasLength(2));
+      auth.signedIn = true;
+      // The same helper the production 401 handler passes as onSignedOut.
+      await signOutOnlyIfSessionIsGone(
+        _GoneAuth(auth),
+        onSignedOut: () => forgetSignedInUser(
+          offlineStateDrops(
+            api: api,
+            store: store,
+            owner: null,
+            discardQueue: false,
+          ),
+        ),
+      );
+      expect(_offlineCopyOf(kv, 'u1'), isEmpty);
+    });
+  });
+}
+
+/// [inner], whose session the server has revoked.
+class _GoneAuth extends _FakeAuth {
+  _GoneAuth(this.inner);
+  final _FakeAuth inner;
+  @override
+  Future<bool> sessionIsGone() async => true;
+  @override
+  Future<void> signOut({core.SignOutScope scope = core.SignOutScope.local}) =>
+      inner.signOut(scope: scope);
 }

@@ -1999,8 +1999,10 @@ if (agg === null || typeof agg !== 'object' || typeof agg.workflow !== 'string' 
 }
 
 /** ⏱ 2026-09-23 — 6b-ii's parse and census, handed on to 6b-iv so the workflows
- *  are read ONCE: two parses of one tree are two answers waiting to disagree. */
-let releaseCensus = { workflows: [], domain: null };
+ *  are read ONCE: two parses of one tree are two answers waiting to disagree.
+ *  Assigned at the end of 6b-ii's block, which always runs; no placeholder value,
+ *  so a reader that ever ran first would fail loudly, not read an empty census. */
+let releaseCensus;
 
 // ── 6b-ii. every RELEASE build passes a RELEASE_CHANNEL at all ───────────────
 // ⏱ ADDED 2026-09-19 (O-BILLING-REVENUECAT-LANDING part 2, R10). 6b grades the

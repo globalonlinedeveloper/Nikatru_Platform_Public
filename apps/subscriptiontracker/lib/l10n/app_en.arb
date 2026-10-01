@@ -183,6 +183,10 @@
   "@syncDiscard": {
     "description": "Drops the changes that could not sync."
   },
+  "syncQueueUnreadable": "Your offline changes could not be read on this device. They are kept; try again.",
+  "@syncQueueUnreadable": {
+    "description": "Shown when the device store holding changes made offline cannot be read. The changes are not lost; Retry reads again."
+  },
   "signInTitle": "Sign in",
   "@signInTitle": {
     "description": "Title of the sign-in screen."

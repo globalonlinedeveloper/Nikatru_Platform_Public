@@ -450,9 +450,8 @@ describe('B6 — the exhausted failure is never swallowed, and never re-loops', 
   test('🔴 RED CONTROL — the exhausted path does not return a value', async () => {
     // The mutation "return [] when the plan is exhausted" is the shape that turns
     // a Cloudflare outage into a green sweep. Nothing may come back from here.
-    let returned = Symbol('nothing');
     try {
-      returned = await readWithBoundedRetry(async () => { throw transientLook('down'); }, { sleep: async () => {} });
+      const returned = await readWithBoundedRetry(async () => { throw transientLook('down'); }, { sleep: async () => {} });
       assert.fail(`the exhausted plan RETURNED ${JSON.stringify(returned)} instead of throwing`);
     } catch (e) {
       assert.ok(e instanceof CouldNotLook);

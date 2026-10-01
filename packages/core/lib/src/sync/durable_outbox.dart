@@ -65,8 +65,17 @@ enum OutboxFailure {
   /// keeps the entry for its owner.
   unauthorized,
 
-  /// Worth retrying later (5xx, 408, 409, 429). Costs an attempt.
+  /// Worth retrying later (5xx, 408, 429). Costs an attempt.
   transient,
+
+  /// The server is still PROCESSING this very write (a 409 on its
+  /// Idempotency-Key). Costs NO attempt and never becomes a dead letter: the
+  /// entry waits — the server's `Retry-After` when it sent one, a backoff
+  /// capped at [DurableOutbox.maxBackoff] otherwise — for as long as the
+  /// server holds the claim (review #1075 round 3, minor d: 5 counted 409s
+  /// dead-lettered an add in ~30 s while the server abandons a claim only
+  /// after 10 minutes).
+  busy,
 
   /// The server said no to this request, or answered what cannot be read. A
   /// dead letter at once.
@@ -98,6 +107,7 @@ class OutboxEntry {
     this.dead = false,
     this.mayHaveReached = false,
     this.rev = 0,
+    this.waits = 0,
   });
 
   /// The client-minted id — the `Idempotency-Key` every attempt sends.
@@ -141,6 +151,10 @@ class OutboxEntry {
   /// removes the entry only when the revision it sent is still current.
   final int rev;
 
+  /// How many times the server answered "still processing" ([OutboxFailure.busy]):
+  /// the busy backoff grows with it; it never counts as an attempt.
+  final int waits;
+
   OutboxEntry copyWith({
     String? recordId,
     Map<String, dynamic>? body,
@@ -151,6 +165,7 @@ class OutboxEntry {
     bool? dead,
     bool? mayHaveReached,
     int? rev,
+    int? waits,
   }) => OutboxEntry(
     id: id,
     owner: owner,
@@ -167,6 +182,7 @@ class OutboxEntry {
     dead: dead ?? this.dead,
     mayHaveReached: mayHaveReached ?? this.mayHaveReached,
     rev: rev ?? this.rev,
+    waits: waits ?? this.waits,
   );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -184,6 +200,7 @@ class OutboxEntry {
     if (dead) 'dead': true,
     if (mayHaveReached) 'sent': true,
     'rev': rev,
+    if (waits > 0) 'waits': waits,
   };
 
   /// Rebuild a stored entry; null when [json] is not one.
@@ -222,6 +239,7 @@ class OutboxEntry {
       // the safe direction (it is sent, never silently cancelled).
       mayHaveReached: json['sent'] == true || json['attempts'] != 0,
       rev: json['rev'] is int ? json['rev'] as int : 0,
+      waits: json['waits'] is int ? json['waits'] as int : 0,
     );
   }
 }
@@ -460,6 +478,7 @@ class DurableOutbox {
     required Future<String?> Function(OutboxEntry entry) send,
     OutboxFailure Function(Object error)? classify,
     bool Function(OutboxEntry entry)? accepts,
+    Duration? Function(Object error)? retryAfter,
   }) async {
     final KeyValueStore kv = await _store;
     final _Shared shared = _sharedFor(kv);
@@ -470,6 +489,7 @@ class DurableOutbox {
       send,
       classify ?? (Object _) => OutboxFailure.transient,
       accepts ?? (OutboxEntry _) => true,
+      retryAfter ?? (Object _) => null,
     ).whenComplete(() => shared.replaying = null);
   }
 
@@ -480,6 +500,7 @@ class DurableOutbox {
     Future<String?> Function(OutboxEntry entry) send,
     OutboxFailure Function(Object error) classify,
     bool Function(OutboxEntry entry) accepts,
+    Duration? Function(Object error) retryAfter,
   ) async {
     final int generation = shared.generation;
     final Set<String> attempted = <String>{};
@@ -534,6 +555,7 @@ class DurableOutbox {
           serverId,
           failure,
           error == null ? null : _describe(error),
+          error == null ? null : retryAfter(error),
         );
         sent += settled.sent;
         dead += settled.dead;
@@ -599,6 +621,7 @@ class DurableOutbox {
     String? serverId,
     OutboxFailure? failure,
     String? errorText,
+    Duration? hint,
   ) => _locked((KeyValueStore kv, _Shared shared) async {
     shared.sending = null;
     if (failure == OutboxFailure.offline ||
@@ -626,6 +649,16 @@ class DurableOutbox {
         }
       }
       sent = 1;
+    } else if (i >= 0 && failure == OutboxFailure.busy) {
+      final int waits = doc.entries[i].waits + 1;
+      Duration wait = _backoff(waits);
+      if (hint != null && hint > wait) wait = hint;
+      if (wait > maxBackoff) wait = maxBackoff;
+      doc.entries[i] = doc.entries[i].copyWith(
+        waits: waits,
+        lastError: errorText,
+        nextAttemptAt: _now().add(wait),
+      );
     } else if (i >= 0) {
       final int attempts = doc.entries[i].attempts + 1;
       final bool isDead =

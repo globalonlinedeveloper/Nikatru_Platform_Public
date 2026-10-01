@@ -14,7 +14,7 @@
 //     has exited, because a DESCENDANT still holds those pipes open.
 //
 // The bound converts both into a fast, named red. The pattern is
-// flutter-stock-assets.mjs:244 — `{ timeout, killSignal: 'SIGKILL' }`, then
+// flutter-stock-assets.mjs:271 — `{ timeout, killSignal: 'SIGKILL' }`, then
 // `r.error?.code === 'ETIMEDOUT'` reported as COVERAGE LOST — lifted here
 // UNCHANGED IN BEHAVIOUR the first time a second family of call sites needed it.
 // Eleven inline copies of a bound drift in the one way a green run cannot show:

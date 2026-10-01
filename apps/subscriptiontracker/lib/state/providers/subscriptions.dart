@@ -109,9 +109,16 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
       // is not a signed-out user. `read` inside the closure, never `watch`.
       onUnauthorized: () => signOutOnlyIfSessionIsGone(
         ref.read(authRepositoryProvider),
-        onSignedOut: () async {
-          if (client is CachedApiClient) await client.forgetCache();
-        },
+        // The same ordered helper every sign-out runs; the queue is KEPT on a
+        // forced 401, for this user's return.
+        onSignedOut: () => forgetSignedInUser(
+          offlineStateDrops(
+            api: client,
+            store: store,
+            owner: null,
+            discardQueue: false,
+          ),
+        ),
       ),
       // ST-C1: a currency-less row is read in the user's currency, asked at
       // decode time. `read` inside the closure, not `watch` here: a currency

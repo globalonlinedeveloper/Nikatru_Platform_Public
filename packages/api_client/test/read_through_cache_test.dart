@@ -256,7 +256,15 @@ void main() {
       classifyForOutbox(ApiException(401, 'x')),
       OutboxFailure.unauthorized,
     );
-    for (final int c in <int>[408, 409, 429, 500, 503]) {
+    // 409: the server is still processing the key — wait, never count it.
+    expect(classifyForOutbox(ApiException(409, 'x')), OutboxFailure.busy);
+    expect(
+      retryAfterFor(
+        ApiException(409, 'x', retryAfter: const Duration(seconds: 7)),
+      ),
+      const Duration(seconds: 7),
+    );
+    for (final int c in <int>[408, 429, 500, 503]) {
       expect(classifyForOutbox(ApiException(c, 'x')), OutboxFailure.transient);
     }
     for (final int c in <int>[400, 404, 422]) {
@@ -352,4 +360,40 @@ void main() {
     expect(bad.isOffline, isFalse);
     expect(classifyForOutbox(bad), OutboxFailure.refused);
   });
+
+  // 🔴 REVIEW #1075 ROUND 3, MINOR c — a sign-out that lands while the copy is
+  // being written: the write is re-checked AFTER it lands, and taken back.
+  test('a cache write racing a sign-out is taken back', () async {
+    final _GatedStore gated = _GatedStore();
+    final ReadThroughCache c = ReadThroughCache(
+      KeyValueJsonStore(Future<KeyValueStore>.value(gated)),
+      owner: () => 'user-a',
+    );
+    gated.gateKey = 'k.u.user-a';
+    final Future<List<String>> read = c.read(
+      'k',
+      _codec,
+      () async => <String>['a'],
+    );
+    await gated.reached.future; // the copy's write is in progress
+    await c.forget(); // the sign-out lands mid-write
+    gated.release.complete();
+    await read;
+    expect(await gated.read('k.u.user-a'), isNull, reason: 'no residue');
+  });
+}
+
+/// A store whose write of [gateKey] waits for [release].
+class _GatedStore extends InMemoryKeyValueStore {
+  String? gateKey;
+  final Completer<void> reached = Completer<void>();
+  final Completer<void> release = Completer<void>();
+  @override
+  Future<void> write(String key, String value) async {
+    if (key == gateKey && !reached.isCompleted) {
+      reached.complete();
+      await release.future;
+    }
+    await super.write(key, value);
+  }
 }

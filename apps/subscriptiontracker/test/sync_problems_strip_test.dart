@@ -58,4 +58,35 @@ void main() {
     expect(find.byType(DecisionStrip), findsNothing);
     expect(find.text('the shell'), findsOneWidget);
   });
+
+  testWidgets('a queue that cannot be read is shown, with Retry', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: <Override>[
+          syncProblemsProvider.overrideWith(
+            (Ref ref) async =>
+                throw const OutboxStoreFailure('storage unavailable'),
+          ),
+        ],
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: SyncProblemsStrip(child: Text('the shell'))),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(DecisionStrip), findsOneWidget);
+    expect(
+      find.text(
+        'Your offline changes could not be read on this device. They are kept; '
+        'try again.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('the shell'), findsOneWidget);
+  });
 }

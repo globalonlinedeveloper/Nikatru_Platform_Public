@@ -460,7 +460,12 @@ void main() {
   });
 
   group('reconciled by id and revision (review 2, minor a)', () {
-    test('a change queued while its entry is being sent survives', () async {
+    // Review #1075 round 3, minor a: the edit is queued in a MICROTASK
+    // scheduled by `send`, so it runs after `send` returns and before the
+    // write-back takes the lock — the window between "sent" and "recorded".
+    // (The round-2 version enqueued inside `send`, while `sending` was still
+    // set, and passed on the old code too.)
+    test('a change queued between "sent" and "recorded" survives', () async {
       final DurableOutbox b = box();
       await add(
         b,
@@ -470,33 +475,85 @@ void main() {
         body: <String, dynamic>{'a': 1},
       );
       final List<Map<String, dynamic>> bodies = <Map<String, dynamic>>[];
+      late Future<OutboxEnqueueResult> edit;
       await b.replay(
         owner: 'u',
         currentOwner: () => 'u',
         send: (OutboxEntry e) async {
           bodies.add(e.body);
           if (bodies.length == 1) {
-            // The user edits again between "sent" and "recorded".
-            unawaited(
-              add(
-                b,
-                'u',
-                'r',
+            edit = Future<OutboxEnqueueResult>.microtask(
+              () => b.enqueue(
+                owner: 'u',
+                recordId: 'r',
                 op: OutboxOp.update,
+                kind: 't',
                 body: <String, dynamic>{'a': 2},
               ),
             );
-            await Future<void>.delayed(Duration.zero);
           }
           return null;
         },
       );
-      final List<OutboxEntry> left = await b.pending();
-      if (left.isNotEmpty) {
-        expect(left.single.body['a'], 2, reason: 'the second edit is kept');
-      } else {
-        expect(bodies.last['a'], 2, reason: 'or already sent in the same run');
+      await edit;
+      final List<Map<String, dynamic>> left = (await b.pending())
+          .map((OutboxEntry e) => e.body)
+          .toList();
+      expect(
+        left.any((Map<String, dynamic> m) => m['a'] == 2) ||
+            bodies.any((Map<String, dynamic> m) => m['a'] == 2),
+        isTrue,
+        reason:
+            'the {a: 2} edit is either still queued or was sent: left=$left '
+            'sent=$bodies',
+      );
+    });
+  });
+
+  group('a claim the server is still processing (review 3, minor d)', () {
+    Future<OutboxReplayResult> busy(DurableOutbox b, {Duration? hint}) =>
+        b.replay(
+          owner: 'u',
+          currentOwner: () => 'u',
+          send: (_) async => throw _Fail(OutboxFailure.busy),
+          classify: _classify,
+          retryAfter: (_) => hint,
+        );
+
+    test('a 409 "in progress" costs no attempt and never becomes a dead '
+        'letter, however long the server holds the claim', () async {
+      final DurableOutbox b = box();
+      await add(b, 'u', 'k');
+      final DateTime start = now;
+      for (int i = 0; i < 20; i++) {
+        final OutboxEntry e = (await b.entries()).single;
+        if (e.nextAttemptAt != null) now = e.nextAttemptAt!;
+        await busy(b);
       }
+      final OutboxEntry e = (await b.entries()).single;
+      expect(e.dead, isFalse);
+      expect(e.attempts, 0);
+      expect(e.waits, 20);
+      expect(
+        now.difference(start),
+        greaterThan(const Duration(minutes: 10)),
+        reason: 'still pending past the server-side 10-minute stale-claim TTL',
+      );
+      expect(
+        e.nextAttemptAt!.difference(now),
+        lessThanOrEqualTo(const Duration(minutes: 5)),
+        reason: 'the wait is capped',
+      );
+    });
+
+    test("the server's Retry-After is honoured", () async {
+      final DurableOutbox b = box();
+      await add(b, 'u', 'k');
+      await busy(b, hint: const Duration(seconds: 90));
+      expect(
+        (await b.entries()).single.nextAttemptAt,
+        now.add(const Duration(seconds: 90)),
+      );
     });
   });
 

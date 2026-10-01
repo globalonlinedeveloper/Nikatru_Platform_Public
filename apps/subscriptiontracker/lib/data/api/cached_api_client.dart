@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:nikatru_api_client/nikatru_api_client.dart'
-    show ReadThroughCache, classifyForOutbox, kRevalidateAfter;
+    show ReadThroughCache, classifyForOutbox, kRevalidateAfter, retryAfterFor;
 import 'package:nikatru_core/nikatru_core.dart'
     show
         DurableOutbox,
@@ -8,6 +8,7 @@ import 'package:nikatru_core/nikatru_core.dart'
         OutboxEnqueueResult,
         OutboxEntry,
         OutboxOp,
+        OutboxReplayResult,
         OutboxStoreFailure,
         newOutboxId;
 
@@ -80,6 +81,8 @@ class CachedApiClient implements ApiClient {
     Duration revalidateAfter = kRevalidateAfter,
   }) : _currentUser = currentUser ?? _nobody,
        _onRevalidated = onRevalidated,
+       _report = onCacheWriteFailed ?? _reportCacheWriteFailure,
+       _onOutboxChanged = onOutboxChanged,
        _cache = ReadThroughCache(
          store.json,
          onWriteFailed: onCacheWriteFailed ?? _reportCacheWriteFailure,
@@ -99,6 +102,12 @@ class CachedApiClient implements ApiClient {
   final DurableOutbox _outbox;
   final String? Function() _currentUser;
   final void Function()? _onRevalidated;
+
+  /// The crash sink in production (`reportCacheWriteFailure`): every failure
+  /// of the device store goes here, never only to `debugPrint` (review #1075
+  /// round 3, minor b).
+  final void Function(Object error) _report;
+  final void Function()? _onOutboxChanged;
 
   static String? _nobody() => null;
 
@@ -126,7 +135,9 @@ class CachedApiClient implements ApiClient {
   }
 
   /// The signed-in user's writes the server refused or that failed too often:
-  /// "couldn't sync this change — retry or discard".
+  /// "couldn't sync this change — retry or discard". Throws
+  /// [OutboxStoreFailure] when the queue cannot be read, so the surface shows
+  /// that instead of nothing.
   Future<List<OutboxEntry>> syncProblems() async {
     final String? owner = _currentUser();
     return owner == null ? <OutboxEntry>[] : _outbox.deadLetters(owner: owner);
@@ -165,16 +176,30 @@ class CachedApiClient implements ApiClient {
     final String? owner = _currentUser();
     if (owner == null || _cache.knownOffline) return;
     try {
-      await _outbox.replay(
+      final OutboxReplayResult r = await _outbox.replay(
         owner: owner,
         currentOwner: _currentUser,
         send: _send,
         classify: classifyForOutbox,
+        // A 409 "still processing" waits as long as the server says (minor d).
+        retryAfter: retryAfterFor,
         accepts: (OutboxEntry e) => e.kind == kSubscriptionWrite,
       );
+      final Object? storeError = r.storeError;
+      if (storeError != null) _queueUnreadable(storeError);
     } catch (e) {
-      _reportCacheWriteFailure('outbox replay failed: $e');
+      _queueUnreadable(e);
     }
+  }
+
+  /// The queue could not be read (review #1075 round 3, minor b). The entries
+  /// stay stored; the failure reaches the crash sink, and [onOutboxChanged]
+  /// makes the sync-problems surface read again — [syncProblems] then THROWS,
+  /// and the shell shows "your offline changes could not be read" instead of a
+  /// list that is silently missing the user's queued adds.
+  void _queueUnreadable(Object error) {
+    _report(error);
+    _onOutboxChanged?.call();
   }
 
   Future<String?> _send(OutboxEntry e) async {
@@ -233,7 +258,7 @@ class CachedApiClient implements ApiClient {
       // The queue could not be READ (review round 2, minor e): it is kept as
       // stored, the list still shows, and the failure is reported — never
       // taken for an empty queue.
-      _reportCacheWriteFailure(e);
+      _queueUnreadable(e);
       return rows;
     }
     if (queued.isEmpty) return rows;

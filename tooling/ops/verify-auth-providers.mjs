@@ -38,8 +38,9 @@
 // Exit 0 = the declaration and the live project agree on every provider.
 // Exit 1 = they disagree, or the Dart declaration could not be PARSED (an
 //          unreadable declaration is a failure, never a pass — see below).
-// Exit 2 = could not look at all — no credentials, or the endpoint was
-//          unreachable. A DIFFERENT code on purpose: "I could not look" must
+// Exit 2 = could not look at all — no credentials, a SUPABASE_URL that is not
+//          the auth issuer (tooling/ops/credential-origin.mjs), or the endpoint
+//          was unreachable. A DIFFERENT code on purpose: "I could not look" must
 //          never read as "I looked and it was fine".
 //
 // 🔴 NO `process.exit()` ANYWHERE BELOW. Calling it while an undici (fetch)
@@ -52,6 +53,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchWithBoundedRetry } from './bounded-retry.mjs';
+import { CredentialOriginRefused, credentialOrigin } from './credential-origin.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 /// Where `AuthProviders.configured` lives under a repo root. A function of the
@@ -163,13 +165,25 @@ export function declared(root = ROOT) {
 }
 
 async function main() {
-  const url = cred('SUPABASE_URL');
+  const configuredUrl = cred('SUPABASE_URL');
   const key = cred('SUPABASE_PUBLISHABLE_KEY');
-  if (!url || !key) {
+  if (!configuredUrl || !key) {
     console.error(
       'verify-auth-providers: SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY are not set and ' +
         'no local vault was readable. I COULD NOT LOOK — this is exit 2, not a pass.',
     );
+    return 2;
+  }
+  // ⏱ 2026-09-30 — the key goes to its issuer or nowhere (CodeQL
+  // js/file-access-to-http #396/#417): SUPABASE_URL is pinned by
+  // tooling/ops/credential-origin.mjs before the one request. A wrong host is
+  // exit 2 like a missing credential — nothing was asked, so nothing was judged.
+  let url;
+  try {
+    url = credentialOrigin(configuredUrl, 'supabase');
+  } catch (e) {
+    if (!(e instanceof CredentialOriginRefused)) throw e;
+    console.error(`verify-auth-providers: ${e.message}. I COULD NOT LOOK — this is exit 2, not a pass.`);
     return 2;
   }
 
@@ -192,7 +206,7 @@ async function main() {
     // the plan is STILL exit 2 below: the retry tells a blip from an outage.
     const res = await fetchWithBoundedRetry(
       ({ signal }) =>
-        fetch(`${url.replace(/\/$/, '')}/auth/v1/settings`, {
+        fetch(`${url}/auth/v1/settings`, {
           headers: { apikey: key, Authorization: `Bearer ${key}` },
           signal,
         }),
