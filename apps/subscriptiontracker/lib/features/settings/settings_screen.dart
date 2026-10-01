@@ -817,11 +817,11 @@ class SettingsScreen extends ConsumerWidget {
               // 🔴 DO NOT DELETE IN A MERGE: data-safety.json declares this
               // export. test/settings_export_test.dart parses its file back.
               exportLabel: l10n.exportDataCsv,
-              onExport: exportDataTap(context, ref),
+              onExport: exportDataTap(ref, context),
               importLabel: l10n.importTitle,
               onImport: () => context.push('/import'),
               backupLabel: l10n.backupDataJson,
-              onBackup: backupDataTap(context, ref),
+              onBackup: backupDataTap(ref, context),
               restoreLabel: l10n.restoreTitle,
               onRestore: () => context.push('/import'),
             ),
