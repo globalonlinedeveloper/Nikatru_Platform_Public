@@ -855,3 +855,75 @@ describe('THE STALE PAGE (trap ci-48) — the union, the read line and the ceili
     assert.ok(elapsed < READ_ATTEMPTS * 200 + RETRY_CEILING_MS + 10_000, `took ${elapsed}ms, far past the shared bound`);
   });
 });
+
+// ⏱ 2026-09-30 · rv2-security-001. ci.yml hands this guard CLOUDFLARE_READ_TOKEN instead of the
+// production deploy token, and until the owner mints it the step carries
+// `--cloudflare-read-pending-until <date>`. Each case drives the REAL guard, with a fetch preload
+// standing in for GitHub (and for D1 when a token is present), so nothing reaches the network.
+describe('--cloudflare-read-pending-until: a dated deferral of the TIMER limb only', () => {
+  const preloadFor = (ageHours) => {
+    const p = join(TMP, `runs-${ageHours}h.mjs`);
+    writeFileSync(
+      p,
+      [
+        `const at = new Date(Date.now() - ${ageHours} * 3600e3).toISOString();`,
+        "const run = { id: 4242, status: 'completed', conclusion: 'success', head_branch: 'main', event: 'workflow_dispatch', created_at: at, updated_at: at, run_started_at: at, path: '.github/workflows/e2e.yml' };",
+        "globalThis.fetch = async () => new Response(JSON.stringify({ total_count: 1, workflow_runs: [run] }), { status: 200, headers: { 'content-type': 'application/json' } });",
+        '',
+      ].join('\n'),
+    );
+    return p;
+  };
+  const guard = (args, { ageHours = 1, token = null } = {}) => {
+    const env = { ...process.env, GITHUB_TOKEN: 'fixture-token', GITHUB_REPOSITORY: 'o/r' };
+    delete env.GH_TOKEN;
+    delete env.CLOUDFLARE_API_TOKEN;
+    delete env.CLOUDFLARE_ACCOUNT_ID;
+    if (token !== null) Object.assign(env, { CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: 'fixture-account' });
+    const r = spawnSync(process.execPath, ['--import', pathToFileURL(preloadFor(ageHours)).href, GUARD, ...args], { cwd: REPO, encoding: 'utf8', env });
+    return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+  };
+
+  test('GREEN CONTROL: no token, a date ahead, a fresh run — exit 0, loudly ONE record, never "BOTH records"', () => {
+    const { code, out } = guard(['--cloudflare-read-pending-until', '2099-01-01']);
+    assert.equal(code, 0, out);
+    assert.match(out, /::warning title=Nightly-proof TIMER limb NOT READ \(deferred until 2099-01-01\)::/);
+    assert.match(out, /TIMER {3}\(D1 cron_heartbeat\) : {2}NOT READ — deferred until 2099-01-01/);
+    assert.match(out, /this is ONE record, not the proof/);
+    assert.doesNotMatch(out, /BOTH records/);
+  });
+
+  test('🔴 the deferral never masks the OUTCOME limb — a stale run is still exit 1', () => {
+    const { code, out } = guard(['--cloudflare-read-pending-until', '2099-01-01'], { ageHours: 24 * 5 });
+    assert.equal(code, 1, out);
+    assert.match(out, /the nightly golden-path proof is not fresh/);
+  });
+
+  test('🔴 the day after the date an absent token is COVERAGE LOST again, naming CLOUDFLARE_READ_TOKEN', () => {
+    const { code, out } = guard(['--cloudflare-read-pending-until', '2020-01-01']);
+    assert.equal(code, 2, out);
+    assert.match(out, /deferral expired on 2020-01-01 and there is still no Cloudflare token here.*CLOUDFLARE_READ_TOKEN/);
+  });
+
+  test('a date that is not YYYY-MM-DD bounds nothing — COVERAGE LOST', () => {
+    const { code, out } = guard(['--cloudflare-read-pending-until', 'soon']);
+    assert.equal(code, 2, out);
+    assert.match(out, /--cloudflare-read-pending-until is "soon", not a YYYY-MM-DD date/);
+  });
+
+  test('🔴 with a token present the flag defers NOTHING — the D1 read happens, and its failure is exit 2', () => {
+    // The preload answers the D1 query with a GitHub-shaped body, so the timer read fails:
+    // proof that the timer limb was attempted rather than deferred.
+    const { code, out } = guard(['--cloudflare-read-pending-until', '2099-01-01'], { token: 'fixture-cf-token' });
+    assert.equal(code, 2, out);
+    assert.match(out, /defers nothing\. Once CLOUDFLARE_READ_TOKEN is minted, delete the flag/);
+    assert.doesNotMatch(out, /NOT READ — deferred/);
+  });
+
+  test('without the flag, no token is COVERAGE LOST exactly as before (the rule the flag is the one exception to)', () => {
+    const { code, out } = guard([]);
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST/);
+    assert.doesNotMatch(out, /deferred/);
+  });
+});

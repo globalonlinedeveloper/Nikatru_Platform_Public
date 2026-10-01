@@ -72,8 +72,6 @@
         ".gitleaks.toml",
         "osv-scanner.toml",
         "renovate.json",
-        "package.json",
-        "pnpm-lock.yaml",
         "pnpm-workspace.yaml"
       ]
     },

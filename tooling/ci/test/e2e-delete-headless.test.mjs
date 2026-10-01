@@ -208,7 +208,8 @@ describe('after the request — identity and rows, graded by trust', () => {
 const FULL_ENV = Object.freeze({
   E2E_EXPECT_CAPTCHA_GATE: 'yes',
   E2E_WORKERS_TRUST: 'yes',
-  SUPABASE_URL: 'https://auth.fixture.invalid',
+  // A closed loopback port: an origin tooling/ops/credential-origin.mjs admits (2026-10-01), where nothing answers.
+  SUPABASE_URL: 'http://127.0.0.1:9',
   SUPABASE_ANON_KEY: 'fixture-anon',
   SUPABASE_SERVICE_ROLE_KEY: 'fixture-service',
   E2E_DELETE_EMAIL: 'fixture@nikatru.invalid',

@@ -600,12 +600,12 @@
         "public repository's full history, outside F-2 and outside this guard's reach. That is the",
         "identical defect the gitleaks/zizmor/osv_scanner/trivy managers above were added to close,",
         "one workflow over.",
-        "⚠️ THE REGISTRY TAG HAS NO LEADING `v` AND THE GIT TAG DOES: ghcr.io publishes `3.97.4` and",
-        "404s on `v3.97.4`, while the release is tagged `v3.97.4`. extractVersionTemplate strips it,",
-        "and the workflow splices the bare value in after the colon.",
-        "⚠️ NO SIBLING DIGEST KEY: the action exposes only `image` and `version` joined by a colon, so",
-        "`image@sha256:...` is not expressible and a checksum here would be a pin nothing verifies.",
-        "See $trufflehog_comment in tooling/versions.json for the measurement behind that."
+        "⚠️ THE GIT TAG CARRIES A LEADING `v` AND THE ASSET NAME DOES NOT (`v3.97.9` /",
+        "`trufflehog_3.97.9_linux_amd64.tar.gz`); extractVersionTemplate strips it.",
+        "⏱ 2026-09-30 [rv2-security-017]: the wrapper action is gone. trufflehog.yml installs the release",
+        "tarball through tooling/ci/install-pinned-tool.mjs against the sibling `trufflehog_sha256`, so a",
+        "bump from this manager lands RED at that install step until a human writes the new digest - the",
+        "same mechanism as the four scanners above. See $trufflehog_comment in tooling/versions.json."
       ],
       "matchStrings": [
         "\"trufflehog\":\\s*\"(?<currentValue>[^\"]+)\""

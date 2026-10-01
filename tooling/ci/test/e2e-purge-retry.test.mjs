@@ -251,7 +251,7 @@ globalThis.fetch = async (url, init = {}) => {
       E2E_APP_ID: 'subscriptiontracker',
       CLOUDFLARE_ACCOUNT_ID: 'acct',
       CLOUDFLARE_API_TOKEN: 'tok',
-      SUPABASE_URL: 'https://auth.example.invalid',
+      SUPABASE_URL: 'http://127.0.0.1:9', // loopback: the origin credential-origin.mjs admits; FAKE_FETCH answers
       SUPABASE_SERVICE_ROLE_KEY: 'svc',
     });
     return spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, STEP], {

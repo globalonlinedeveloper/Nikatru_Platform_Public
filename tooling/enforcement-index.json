@@ -207,7 +207,8 @@
       "O-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-platform"
+      ".github/workflows/ci.yml#guards-platform",
+      ".github/workflows/codeql.yml#analyze"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-alert-disposition.mjs",
@@ -761,6 +762,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-cors-allowlist.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-credential-origin.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -1596,6 +1607,7 @@
   {
     "claims": [
       "ADR 066",
+      "ADR 078",
       "ADR 093",
       "M-11"
     ],
@@ -2301,6 +2313,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-signing-inputs-pinned.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 067",
       "ADR 071"
@@ -2461,6 +2483,18 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-stamp-wiring.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 068"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-store-audience.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -3000,12 +3034,14 @@
       ".github/workflows/build-platforms.yml#windows",
       ".github/workflows/ci.yml#security-scan",
       ".github/workflows/deploy-web.yml#deploy-web",
+      ".github/workflows/ops-watch.yml#heartbeats",
       ".github/workflows/submit-appstore.yml#dry-run",
       ".github/workflows/submit-play.yml#dry-run",
       ".github/workflows/submit-snap.yml#dry-run",
       ".github/workflows/submit-snap.yml#submit",
       ".github/workflows/submit-windows-store.yml#dry-run",
-      ".github/workflows/symbolication-proof.yml#prove"
+      ".github/workflows/symbolication-proof.yml#prove",
+      ".github/workflows/trufflehog.yml#scan"
     ],
     "kind": "guard",
     "ref": "tooling/ci/install-pinned-tool.mjs",
@@ -3192,6 +3228,17 @@
     "ref": "tooling/ci/run-page-anchor.mjs",
     "references": [],
     "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#security-scan",
+      ".github/workflows/ops-watch.yml#heartbeats"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/scan-dependencies.mjs",
+    "references": [],
+    "state": "WIRED"
   },
   {
     "claims": [

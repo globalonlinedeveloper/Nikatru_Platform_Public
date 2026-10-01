@@ -78,8 +78,14 @@ only one with a citation.
   product that accesses personal information, and Desktop Bridge / Win32 products
   *"must always have privacy policies"*. `privacy-policy-url.txt` is that URL and
   it must resolve; the page is `sites/nikatru/privacy.html`.
-- **Age rating** is a Partner Center questionnaire, not a repo file. See
-  `Private/runbooks/store-submission-windows.md`.
+- ✅ **Age rating** — Partner Center's IARC questionnaire. Its ANSWERS are a repo
+  file, `age-rating.json` (never the rating, which the authorities assign), DERIVED
+  claim by claim from `apps/subscriptiontracker/store/android-play/content-rating.json`:
+  IARC is one questionnaire behind both storefronts.
+  `tooling/ci/assert-store-audience.mjs` fails a Windows answer that differs from the
+  Play one and pins the adult posture ([ADR 068]);
+  `tooling/ci/assert-sworn-store-files.mjs` keeps it answered. The submission
+  procedure is `Private/runbooks/store-submission-windows.md`.
 
 ## Regenerating / validating
 

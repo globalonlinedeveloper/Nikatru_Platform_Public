@@ -60,12 +60,13 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
+      # why: NO CLOUDFLARE TOKEN HERE (rv2-security-001). This step runs every test file the PR
+      # carries, so it is PR-controlled code; the suites read Cloudflare only through fixtures.
+      # assert-channel-register limb 8d refuses a deploy or publish secret in any job a PR can run.
       - name: The guards must be able to fail
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test --test-reporter=spec  --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="${{ runner.temp }}/guard-tests.junit.xml" "tooling/ci/test/*.test.mjs"
       # The per-suite EXECUTED counts are the only Linux measurement of what ran.
       # tooling/scripts/refresh-executed-floor.mjs reads this artifact from a green
@@ -278,13 +279,16 @@ jobs:
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-glitchtip-no-ip.mjs
       # Slowest green 49 s (median 37), so 3 minutes.
+      # why: CLOUDFLARE_READ_TOKEN, never the deploy token (rv2-security-001, limb 8d): a PR runs
+      # this job. Until the owner mints it the Cloudflare rows read `unreadable`, inside the
+      # register's declared `_maxUnreadable` ceiling.
       - name: Every failure has a detector, a response and a cadence
         if: ${{ !cancelled() }}
         timeout-minutes: 3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --single-threaded tooling/ci/assert-ops-register.mjs
       # ⏱ 2026-09-28 · ops watch 36416498456: `reminder_mail` was declared at a
@@ -307,6 +311,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node --single-threaded tooling/ci/assert-alert-disposition.mjs
+      # 2026-10-01: spawns `git ls-files` synchronously and exits, the shape that
+      # hung, so --single-threaded and a bound of its own (a static read, ~1 s).
+      - name: A credential goes only to its pinned issuer
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        run: node --single-threaded tooling/ci/assert-credential-origin.mjs
       - name: No workflow or register names a repository that no longer exists
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-dead-repo-names.mjs
@@ -355,13 +365,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node --single-threaded tooling/ci/assert-platform-proof-fresh.mjs
+      # why: CLOUDFLARE_READ_TOKEN, never the deploy token (rv2-security-001, limb 8d). The dated
+      # flag defers ONLY the D1 timer limb while that token does not exist yet, loudly; on
+      # 2026-10-21 an absent token is COVERAGE LOST again. Delete the flag once the token is minted.
       - name: The nightly golden-path proof is fresh
         if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node tooling/ci/assert-e2e-proof-fresh.mjs
+        run: node tooling/ci/assert-e2e-proof-fresh.mjs --cloudflare-read-pending-until 2026-10-21
       - name: The nightly exercised the legs it claims
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-e2e-legs.mjs
@@ -635,6 +648,11 @@ jobs:
       - name: The sworn store declarations have not regressed toward the stamp
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-sworn-store-files.mjs
+      # why: O-STORE-AUDIENCE-GUARDED-BY-CONSISTENCY-ONLY — [ADR 068]'s adult posture is
+      # pinned per store channel, and the Windows IARC answers equal the Play ones.
+      - name: Every store channel declares the adult audience, and Windows answers IARC as Play does
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-store-audience.mjs
       - name: The advertising declarations still describe the shipped tree
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-ads-declarations.mjs
@@ -726,6 +744,12 @@ jobs:
       - name: Every derived listing set was derived from the files in this tree
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-derived-sets.mjs
+      # why: rv2-security-003. A job holding a signing secret (tooling/channel-register.json) downloads nothing
+      # it has not checked against a pinned sha256: the Flutter archive, every curl/wget, the Gradle distribution.
+      # Appended at the END of this job, like the steps above, to shift the fewest ci.yml citations.
+      - name: Every build input a signing job downloads is checked against a pinned sha256 first
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-signing-inputs-pinned.mjs
 
   ff-guards-store:
     # why: FF-2 — starts only once `guards-store` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
@@ -979,39 +1003,44 @@ jobs:
           set -euo pipefail
           node tooling/ci/install-pinned-tool.mjs osv-scanner --out "${RUNNER_TEMP}"
           "${RUNNER_TEMP}/osv-scanner" --version
-      - name: Known-vulnerable dependencies, INCLUDING the Dart ones
+      - name: Known-vulnerable dependencies, INCLUDING the Dart ones (canary, floor, then the tree)
         # why: the only scanner in this stack that reads pubspec.lock. Play
         # Console flags vulnerable SDK versions and can block updates, so this is
         # one of the two scanners here with a store consequence. Findings that
         # are acknowledged rather than fixed are DATED in osv-scanner.toml at the
-        # repo root, which this reads by its own default name.
-        run: |
-          set -euo pipefail
-          # why: --config is EXPLICIT. Without it v2 resolves a config per
-          # lockfile DIRECTORY, so a root file loads, prints "unused ignores"
-          # and ignores nothing for packages/tokens/package-lock.json.
-          # Measured: run 33960900452.
-          "${RUNNER_TEMP}/osv-scanner" scan source -r --config osv-scanner.toml .
+        # repo root, which the script passes with an explicit --config.
+        # why: [rv2-security-018] the script proves OSV still flags a canary
+        # lockfile per tracked format and reads every `git ls-files` lockfile
+        # (exit 2 otherwise) before a clean result is believed; ops-watch.yml's
+        # dependency-advisories job runs the same script over main daily.
+        run: node tooling/ci/scan-dependencies.mjs --osv "${RUNNER_TEMP}/osv-scanner"
       - name: Install Trivy (version and digest from tooling/versions.json)
         run: |
           set -euo pipefail
           node tooling/ci/install-pinned-tool.mjs trivy --out "${RUNNER_TEMP}"
           "${RUNNER_TEMP}/trivy" --version
-      - name: Vulnerabilities and misconfigurations in the filesystem
+      - name: Vulnerabilities in the filesystem (a second opinion on production dependencies)
         # why: HIGH and CRITICAL only, and only what has a fix. A gate that goes
         # red on something nobody can act on gets switched off, and a switched-off
         # gate is worse than no gate at all.
+        # why: vuln only — the misconfig scanner logged `Detected config files
+        # num=0` (run 36553219885), a limb with no subject [rv2-security-018].
+        # Trivy suppresses dev dependencies (4 of 12 lockfiles reported), so the
+        # canary and the lockfile floor live on OSV in the step above.
         env:
           TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
         run: |
           set -euo pipefail
-          "${RUNNER_TEMP}/trivy" fs --scanners vuln,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
+          "${RUNNER_TEMP}/trivy" fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
       # The named, reviewed rule codeql.yml's header asks for: CodeQL stays an alert
-      # sink, and THIS step fails the gate when the PR's own analysis adds a high or
-      # critical alert. LAST, so the scanners above have run while CodeQL (136-212 s
-      # over 8 PR runs, 2026-09-30) finishes; it polls for up to 10 minutes, and an
-      # analysis that never appears is COVERAGE LOST (exit 2), never a pass.
-      - name: This pull request adds no high or critical CodeQL alert
+      # sink, and THIS step fails the gate when the PR's own analysis adds ANY alert
+      # that is high or critical, or that the PR's own tooling/ci/codeql-dispositions.json
+      # does not answer (every severity since 2026-09-30). It sees only alerts on the
+      # PR's changed lines (the analysis is diff-informed); the rest is caught on main
+      # by the limb C step at the end of codeql.yml's `analyze` job. LAST, so the scanners above have run while
+      # CodeQL (136-212 s over 8 PR runs, 2026-09-30) finishes; it polls for up to 10
+      # minutes, and an analysis that never appears is COVERAGE LOST (exit 2), never a pass.
+      - name: This pull request adds no CodeQL alert its own dispositions do not answer
         if: ${{ !cancelled() }}
         timeout-minutes: 12
         env:
@@ -1445,10 +1474,15 @@ jobs:
       # declared - it installs the stamped Worker and runs the suite it inherits,
       # which is the chassis's own (services/_shared/test/**) plus the wiring test
       # the template owns. A failure here means a fresh stamp is born broken.
+      # `npm ci`, not `npm install` (rv2-security-020): the brick stamps its own
+      # package-lock.json, and `npm install` may re-resolve past it, so this job
+      # tested versions a real stamp's lane (lane-workers.yml, `npm ci`) never
+      # ships. assert-lockfile-discipline.mjs grades this directory against the
+      # brick's lockfile through tooling/ci/stamp-produced-dirs.json.
       - name: A stamped Worker typechecks and passes the suite it inherits
         working-directory: services/probeapi-api
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npx tsc --noEmit
           npm test
       # why: O-BRICK-ERASURE-DESTROYS-THE-IDENTITY. The stamped Worker is a fan-out leaf; limb 6 alone, because the full run fails limb 4 on a stamp not yet in APP_ERASURE_ENDPOINTS.
@@ -1533,7 +1567,7 @@ jobs:
       - name: Typecheck + dry-run the stamped service
         working-directory: services/probeapi-api
         run: |
-          npm install
+          npm ci --no-audit --no-fund
           npx tsc --noEmit
           npx wrangler deploy --dry-run
 

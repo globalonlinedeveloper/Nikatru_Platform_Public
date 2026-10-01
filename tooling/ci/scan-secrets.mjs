@@ -151,6 +151,20 @@ const CANARIES = [
     file: 'paddle-sbx.env',
     body: `PADDLE_API_KEY=${'pdl'}${U}${'sdbx'}${U}${'apikey'}${U}${'Jm4'.repeat(10)}`,
   },
+  // ── Resend and signing material (rv2-security-019, 2026-09-30) ────────────
+  // 8 + 24 base58 characters, assembled so no full key shape is on disk here.
+  {
+    rule: 'nikatru-resend-api-key',
+    file: 'resend.env',
+    body: `RESEND_API_KEY=${'re'}${U}${'Kx7m'.repeat(2)}${U}${'Wq2z'.repeat(6)}`,
+  },
+  // A PATH-ONLY rule: the FILE NAME is the canary, the body is incidental. The
+  // body is not a keystore and matches no content rule, so only the path fires.
+  {
+    rule: 'nikatru-signing-key-file',
+    file: 'upload-keystore.jks',
+    body: 'canary: a keystore file name, not a keystore',
+  },
   // ── Indian PII ───────────────────────────────────────────────────────────
   // These three rules exist because the proprietor's REAL PAN was committed to
   // this PUBLIC repository, in the PII scrubber's own test fixture, and every
@@ -230,6 +244,23 @@ const NEGATIVE_CANARIES = [
     why: 'the canonical PAN documentation placeholder, allowlisted by exact value',
     file: 'pan-placeholder.txt',
     body: 'PAN ABCDE1234F submitted',
+  },
+  {
+    // ⚠️ SYNTHETIC, and flagged so: no tracked line starts `re_` today (git grep,
+    // 2026-09-30), so the Resend rule's boundary is pinned by a made-up one. A
+    // snake_case name has `_` inside the groups, which the base58 classes exclude.
+    synthetic: true,
+    why: 'a snake_case identifier beginning re_ is not a Resend key',
+    file: 'identifiers.ts',
+    body: 'const re_validate_session_and_refresh_the_token_now = re_render_everything_for_the_new_locale;',
+  },
+  {
+    // SYNTHETIC too: the key-file path rule is anchored at the end, so an EXAMPLE
+    // of the Android signing properties file must stay quiet. None is tracked today.
+    synthetic: true,
+    why: 'key.properties.example documents the file shape and holds no secret',
+    file: 'key.properties.example',
+    body: 'storeFile=<path to your upload keystore>',
   },
 ];
 
@@ -461,7 +492,12 @@ for (const n of NEGATIVE_CANARIES) {
     rmSync(reportDir, { recursive: true, force: true });
   }
 }
-console.log(`ok  negative self-test — no rule fires on ordinary source (${NEGATIVE_CANARIES.length} real tracked lines)`);
+const SYNTHETIC_NEGATIVES = NEGATIVE_CANARIES.filter((n) => n.synthetic).length;
+const REAL_NEGATIVES = NEGATIVE_CANARIES.length - SYNTHETIC_NEGATIVES;
+console.log(
+  `ok  negative self-test — no rule fires on ordinary source (${REAL_NEGATIVES} real tracked lines, ` +
+    `${SYNTHETIC_NEGATIVES} synthetic boundary case(s))`,
+);
 
 const reportDir = mkdtempSync(join(tmpdir(), 'nikatru-scan-'));
 const reportPath = join(reportDir, 'findings.json');
@@ -624,7 +660,8 @@ if (scannedBytes === null) {
 const volume = scannedBytes === null ? 'volume unreported' : `${scannedBytes.toLocaleString('en-US')} bytes scanned`;
 console.log(
   `ok  secret scan — no findings in the working tree (${volume} under ${repoRoot}; ` +
-    `${CANARIES.length} planted shape(s) detected, ${NEGATIVE_CANARIES.length} real tracked line(s) left quiet)`,
+    `${CANARIES.length} planted shape(s) detected, ${REAL_NEGATIVES} real tracked line(s) and ` +
+    `${SYNTHETIC_NEGATIVES} synthetic boundary case(s) left quiet)`,
 );
 
 // ── 6. HISTORY: every commit in the change, not only the tree it ends on ─────

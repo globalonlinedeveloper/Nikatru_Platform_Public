@@ -49,7 +49,7 @@ const { readCliVerdict, uploadDebugFiles, transientCliLine, CLI_ATTEMPT_TIMEOUT_
   `file://${SCRIPT.split('\\').join('/')}`
 );
 
-const DSN = 'https://abc123@glitchtip.example.com/2';
+const DSN = 'https://abc123@glitchtip.nikatru.com/2';
 
 let TMP;
 before(() => { TMP = mkdtempSync(join(tmpdir(), 'nikatru-symupload-')); });
@@ -131,6 +131,24 @@ describe('upload-native-symbols — the refusals that happen before the CLI runs
     assert.equal(code, 1, out);
     assert.match(out, /did not parse into a server origin/);
     assert.doesNotMatch(out, /this-is-not-a-dsn/);
+  });
+
+  // ⏱ 2026-10-01 (review 2 of the CodeQL stack, finding 1): the DSN's host was
+  // handed to the CLI as SENTRY_URL with the token, whatever host it named. The
+  // GREEN CONTROL above is the pinned host reaching the spawn.
+  test('🔴 REFUSES a DSN on any host but the GlitchTip instance, before the CLI runs', () => {
+    const dir = symbolsDir(['app.linux-x64.symbols']);
+    for (const dsn of ['https://abc123@glitchtip.example.com/2', 'http://abc123@glitchtip.nikatru.com/2', 'https://abc123@glitchtip.nikatru.com.evil.test/2']) {
+      const { code, out } = run(
+        ['--cli', join(TMP, 'no-such-cli'), '--dir', dir, '--org', 'nikatru', '--project', 'subscriptiontracker'],
+        { GLITCHTIP_DSN: dsn, SENTRY_AUTH_TOKEN: 'tok-CANARY' },
+      );
+      assert.equal(code, 1, out);
+      assert.match(out, /the GLITCHTIP_DSN host: refusing to send the GlitchTip credential/, dsn);
+      assert.match(out, /SENTRY_AUTH_TOKEN was not handed to the CLI/);
+      assert.doesNotMatch(out, /debug file\(s\) in /, 'it reached the upload');
+      assert.doesNotMatch(out, /CANARY|abc123/);
+    }
   });
 
   test('FAILS when a required flag is missing', () => {

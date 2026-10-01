@@ -308,6 +308,43 @@ globalThis.fetch = async (url, init) => {
     assert.deepEqual(origins(r.asked), [GLITCHTIP_ORIGIN], r.out);
   });
 
+  // ⏱ 2026-10-01 (review 2 of the CodeQL stack, finding 1): the four e2e scripts
+  // that sent the service-role key to the raw SUPABASE_URL, and captcha_posture's
+  // anon key. RED: a hostile value is refused in the script's own code with ZERO
+  // requests. GREEN CONTROL: the issuer passes the pin, and the script stops at
+  // the NEXT thing it needs — so the refusal is the pin, not an earlier stop.
+  describe('the e2e scripts pin SUPABASE_URL before the first request', () => {
+    /** RED: refused in the script's own exit code, with zero requests. */
+    const refuses = (c) => {
+      const r = run(c.script, [], { ...c.env, SUPABASE_URL: HOSTILE_SUPABASE });
+      assert.equal(r.code, c.code, r.out);
+      assert.match(r.out, /SUPABASE_URL: refusing to send the Supabase auth credential to https:\/\/auth-api\.nikatru\.com\.evil\.invalid/);
+      assert.deepEqual(r.asked, []);
+    };
+    /** GREEN CONTROL: the issuer passes, and the script stops at its next need. */
+    const passes = (c) => {
+      const r = run(c.script, [], { ...c.env, SUPABASE_URL: GOTRUE_SELFHOSTED_ORIGIN });
+      assert.doesNotMatch(r.out, /refusing to send/, r.out);
+      assert.match(r.out, c.next, r.out);
+      assert.deepEqual(r.asked, []);
+    };
+    const DELETE = { script: 'tooling/e2e/delete_headless.mjs', code: 2, env: { E2E_EXPECT_CAPTCHA_GATE: 'yes', E2E_WORKERS_TRUST: 'yes' }, next: /missing required env var SUPABASE_ANON_KEY/ };
+    const VERIFY = { script: 'tooling/e2e/verify_purged.mjs', code: 2, env: { E2E_DELETE_USER_ID: 'u' }, next: /missing required env var SUPABASE_SERVICE_ROLE_KEY/ };
+    const ISSUER = { script: 'tooling/e2e/assert_one_issuer.mjs', code: 1, env: {}, next: /Missing required env var: SUPABASE_ANON_KEY/ };
+    const CAPTCHA = { script: 'tooling/e2e/captcha_posture.mjs', code: 1, env: {}, next: /Missing required env var: SUPABASE_ANON_KEY/ };
+    const PURGE = { script: 'tooling/e2e/purge.mjs', code: 1, env: { E2E_USER_ID: 'u', CLOUDFLARE_ACCOUNT_ID: 'a', CLOUDFLARE_API_TOKEN: 't' }, next: /Missing required env var: SUPABASE_SERVICE_ROLE_KEY/ };
+    test('tooling/e2e/delete_headless.mjs: hostile SUPABASE_URL → exit 2, zero requests', () => refuses(DELETE));
+    test('tooling/e2e/delete_headless.mjs GREEN CONTROL: the issuer passes the pin, and the next need is named', () => passes(DELETE));
+    test('tooling/e2e/verify_purged.mjs: hostile SUPABASE_URL → exit 2, zero requests', () => refuses(VERIFY));
+    test('tooling/e2e/verify_purged.mjs GREEN CONTROL: the issuer passes the pin, and the next need is named', () => passes(VERIFY));
+    test('tooling/e2e/assert_one_issuer.mjs: hostile SUPABASE_URL → exit 1, zero requests', () => refuses(ISSUER));
+    test('tooling/e2e/assert_one_issuer.mjs GREEN CONTROL: the issuer passes the pin, and the next need is named', () => passes(ISSUER));
+    test('tooling/e2e/captcha_posture.mjs: hostile SUPABASE_URL → exit 1, zero requests', () => refuses(CAPTCHA));
+    test('tooling/e2e/captcha_posture.mjs GREEN CONTROL: the issuer passes the pin, and the next need is named', () => passes(CAPTCHA));
+    test('tooling/e2e/purge.mjs: hostile SUPABASE_URL → exit 1, zero requests', () => refuses(PURGE));
+    test('tooling/e2e/purge.mjs GREEN CONTROL: the issuer passes the pin, and the next need is named', () => passes(PURGE));
+  });
+
   describe('provision_user (#68)', () => {
     const UUID = '0b6e1c2a-3d4f-4a5b-8c6d-7e8f9a0b1c2d';
     const provision = (url, userId) => {

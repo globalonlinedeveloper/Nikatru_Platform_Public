@@ -103,6 +103,49 @@ description = "Paddle SANDBOX API key (pdl_sdbx_apikey_ prefix) — scanned too,
 regex = '''\bpdl_sdbx_apikey_[A-Za-z0-9]{20,}'''
 keywords = ["pdl_sdbx_apikey_"]
 
+# ── RESEND — the transactional-mail sender (rv2-security-019, 2026-09-30) ─────
+# gitleaks v8.30.1's 222 default rules carry NO Resend rule; a key would fall to
+# generic-api-key, which needs a key/token/secret keyword beside the value. The
+# shape is TruffleHog's Resend detector's (pkg/detectors/resend, read 2026-09-30):
+# `re_`, 8 base58 characters, `_`, 24 base58 characters. Base58 excludes 0 O I l,
+# and neither group may contain `_`, so a snake_case identifier that begins `re_`
+# cannot match — scan-secrets.mjs plants one as a NEGATIVE canary to keep it so.
+# Measured against the tree the same day: `git grep` for this pattern, 0 hits.
+#
+# ⚠️ NO RULE FOR THE PREFIX-LESS SECRETS, deliberately: the Razorpay key secret,
+# the GlitchTip auth token, the RevenueCat secret and the AMO JWT secret carry no
+# vendor prefix, so a rule for them is "N chars of base62" — the shape this file's
+# header refuses. They stay with the default generic-api-key rule.
+[[rules]]
+id = "nikatru-resend-api-key"
+description = "Resend API key (re_ + 8 base58 + _ + 24 base58) — sends mail as nikatru.com"
+regex = '''\bre_[1-9A-HJ-NP-Za-km-z]{8}_[1-9A-HJ-NP-Za-km-z]{24}\b'''
+keywords = ["re_"]
+
+# ── SIGNING MATERIAL, BY PATH (rv2-security-019, 2026-09-30) ──────────────────
+# .gitignore keeps keystores, .p12s, provisioning profiles, App Store Connect .p8
+# keys and key.properties out — and `git add -f` walks straight past .gitignore.
+# The content rules above read TEXT: a binary Android keystore holds no pattern
+# any of them match, so a force-added one passed every scanner. (gitleaks'
+# default `pkcs12-file` rule does cover .p12/.pfx by path; this rule does not
+# lean on a default that a release may reshape, so they are listed here too.)
+# A PATH-ONLY rule (no regex) fires on the file's name alone.
+#
+# ⚠️ WHERE IT FIRES, MEASURED on gitleaks 8.30.1 the same day: in `detect
+# --no-git` (the working-tree scan scan-secrets.mjs runs in security-scan on
+# every PR and push) it fires on BINARY files too. In git modes — the pre-commit
+# hook's `gitleaks git --pre-commit --staged` and scan-secrets' `--range` history
+# scan — it fires on a TEXT file (key.properties, a PEM .p8) and NOT on a binary
+# one: gitleaks skips binary diffs before any rule runs. So a force-added binary
+# keystore is caught by CI's tree scan, not by the pre-commit hook.
+# ⚠️ And dir mode does NOT honour .gitignore: run over a checkout that holds the
+# gitignored `.claude/` vault, this rule names the vault's key files. CI's
+# checkout has no vault.
+[[rules]]
+id = "nikatru-signing-key-file"
+description = "App-signing material by file name (keystore, .jks, .p12/.pfx, .p8, provisioning profile, key.properties) — never in a public repo"
+path = '''(?i)(\.(jks|keystore|p12|pfx|p8|mobileprovision|provisionprofile)|(^|[\\/])key\.properties)$'''
+
 # ─────────────────────────────────────────────────────────────────────────────
 # INDIAN PII. Added 2026-08-05 after the proprietor's REAL PAN was found committed
 # to this public repository in packages/telemetry/test/pii_scrubber_test.dart —
