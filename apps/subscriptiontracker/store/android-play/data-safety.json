@@ -1596,7 +1596,7 @@
   "dataSecurity": {
     "encryptedInTransit": {
       "answer": true,
-      "basis": "Every endpoint the client can reach is https and the guard proves no `http://` string literal exists anywhere in the shipped Dart (apps/subscriptiontracker/lib, packages/*/lib). TLS terminates at the Cloudflare edge, provisioned by `custom_domain: true` in each Worker's wrangler config. No certificate pinning is used and tooling/ci/assert-no-tls-pinning.mjs keeps it that way.",
+      "basis": "Every endpoint the client can reach is https and the guard proves no `http://` string literal exists anywhere in the shipped Dart (apps/subscriptiontracker/lib, packages/*/lib) but one shape: ⏱ 2026-10-01, the RFC 8252 loopback redirect `http://127.0.0.1:<port>` that a DESKTOP build's system-browser sign-in listens on, which is an address on the device itself, so nothing crosses the network over it (packages/core/lib/src/auth/browser_handoff.dart; the guard sets aside exactly that shape, port required). TLS terminates at the Cloudflare edge, provisioned by `custom_domain: true` in each Worker's wrangler config. No certificate pinning is used and tooling/ci/assert-no-tls-pinning.mjs keeps it that way.",
       "clientRoots": [
         "apps/subscriptiontracker/lib",
         "packages"

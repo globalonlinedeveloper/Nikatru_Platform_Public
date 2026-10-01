@@ -6,6 +6,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import 'auth_redirect.dart';
+import 'browser_handoff_client.dart' show HandoffTokens;
 
 /// Supabase (GoTrue) implementation of core's [core.AuthRepository].
 ///
@@ -108,6 +109,16 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// strips `gotrue_meta_security` anyway. A token minted for the web site key
   /// has no business leaving a native build.
   String? _captcha(String? token) => _native == null ? token : null;
+
+  /// ⏱ 2026-10-01 · ADOPTS A SESSION THE SYSTEM-BROWSER HAND-OFF MINTED
+  /// (`signInThroughBrowser`, browser_handoff_client.dart) — the desktop
+  /// sign-in, where no attestation exists and no password reaches the app. The
+  /// main client takes it the way [_handOver] gives it a native-route session,
+  /// and for the same reason: `setSession` emits `signedIn`.
+  Future<void> adoptHandoffSession(HandoffTokens tokens) async {
+    if (tokens.refreshToken.isEmpty) throw core.AuthFailure('Sign-in failed');
+    await _auth.setSession(tokens.refreshToken, accessToken: tokens.accessToken);
+  }
 
   /// Hands a session the native client minted to the MAIN client, which owns
   /// persistence, refresh and the auth stream.
