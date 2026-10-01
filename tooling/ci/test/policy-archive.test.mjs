@@ -424,7 +424,7 @@ describe('assert-policy-archive · the comparison is <main>, positively', () => 
     // the policy changed when not one word of it had.
     const root = repo({ versions: ['2026-07-26'], workingVersion: '2026-07-26' });
     const live = join(root, 'sites', 'nikatru', 'privacy.html');
-    writeFileSync(live, withFooter(readFileSync(live, 'utf8'), 'Nikatru - Chennai - UDYAM-TN-02-0487004'));
+    writeFileSync(live, withFooter(readFileSync(live, 'utf8'), 'Nikatru - Chennai - UDYAM-XX-00-0000000'));
     const snapPath = join(root, 'sites', 'nikatru', 'legal', '2026-07-26', 'en', 'privacy.html');
     writeFileSync(snapPath, withFooter(readFileSync(snapPath, 'utf8'), 'an older footer, frozen on its date'));
     const r = run(root);

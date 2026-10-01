@@ -17,6 +17,7 @@
     "office-place": { "template": "{{office.city}}, {{office.state}}, {{office.country}}" },
     "phone-link": { "template": "<a href=\"tel:{{phone.href}}\">{{phone.display}}</a>" },
     "phone-display": { "template": "{{phone.display}}" },
+    "founder-role": { "byForm": { "sole-proprietorship": "proprietor" }, "why": "The founder's role in the business: a proprietor of a proprietorship, an officer of anything else." },
     "grievance-officer": { "template": "{{grievance.name}}, {{grievance.title}}" },
     "governing-law": { "template": "{{jurisdiction.law}}" },
     "courts": { "template": "{{jurisdiction.courts}}" }
@@ -42,6 +43,8 @@
     { "file": "apps/subscriptiontracker/dod-flip-draft.json", "pattern": "'Legal / owner: (?<v>[^']+) \\(Sole Proprietor\\)'", "template": "{{legalName}}", "escape": "json" },
     { "file": "apps/subscriptiontracker/dod-flip-draft.json", "pattern": "\"draft\": \"(?<v>[^\"]+) \\(owner, sole proprietor\\)\"", "template": "{{founder.name}}", "escape": "json", "why": "A person (who decided), not the entity." },
     { "file": "apps/subscriptiontracker/dod-flip-draft.json", "pattern": "\"draft\": \"(?<v>[^\"]+) \\(owner\\)\"", "template": "{{founder.name}}", "escape": "json", "why": "A person (the reviewer), not the entity." },
+    { "file": "SECURITY.md", "pattern": "^NIKATRU is a (?<v>[a-z ]+) — one person reads this mailbox", "flags": "m", "template": "{{form.longNoun}}", "why": "The security policy names the form; tooling/sites/generate-well-known.mjs serves a byte copy, the next entry." },
+    { "file": "sites/nikatru/.well-known/security-policy.txt", "pattern": "^NIKATRU is a (?<v>[a-z ]+) — one person reads this mailbox", "flags": "m", "template": "{{form.longNoun}}" },
     { "file": "tooling/channel-register.json", "pattern": "\"accountType\": \\{ \"store\": \"appleAppStore\", \"value\": \"(?<v>[^\"]*)\" \\}", "count": 2, "template": "{{storeAccounts.appleAppStore}}", "escape": "json", "why": "The account each store channel publishes through (entity `storeAccounts`). assert-business-facts also reads each channel's `accountStatus.note` for the type word." },
     { "file": "tooling/channel-register.json", "pattern": "\"accountType\": \\{ \"store\": \"googlePlay\", \"value\": \"(?<v>[^\"]*)\" \\}", "count": 1, "template": "{{storeAccounts.googlePlay}}", "escape": "json" },
     { "file": "tooling/channel-register.json", "pattern": "\"accountType\": \\{ \"store\": \"microsoftStore\", \"value\": \"(?<v>[^\"]*)\" \\}", "count": 2, "template": "{{storeAccounts.microsoftStore}}", "escape": "json" },
@@ -64,10 +67,16 @@
     "formWords": {
       "paths": ["entity.form.wording.noun", "entity.form.wording.longNoun", "entity.form.wording.roleNoun", "entity.form.wording.roleTitle"],
       "surfaces": ["sites/nikatru/", "extensions/Extension/", "apps/subscriptiontracker/store/", "apps/subscriptiontracker/lib/"],
+      "ignore": [
+        { "path": "extensions/Extension/Full_Screen_Shot/LICENSE", "why": "The licence's own definition of \"your company\" (\"any legal entity, sole proprietorship, or other kind of organization\"): the licence's words, not a statement about this business. Its Required Notice line is an anchored field." }
+      ],
       "why": "The words for the CURRENT form, refused on a printed surface outside a FACT region or an anchored field: a sentence that names the form is a sentence a form change must re-word, so it has to be one the dry run can list. Surfaces only; a code comment or a record may discuss the form."
     }
   },
-  "exempt": [],
+  "exempt": [
+    { "path": "sites/nikatru/legal/", "kind": "dated-history", "why": "The dated policy snapshots: what was served on each date, frozen (tooling/ci/assert-policy-archive.mjs). Re-rendering one would falsify the record of what a user consented to." },
+    { "path": "sites/rajasekarselvam/", "kind": "personal-site", "why": "The founder's own site, a person's shop window and not the entity's (tooling/sites/chrome.mjs CHROME_ROOT says the same). It names the person, who stays the same through an entity change." }
+  ],
   "floors": {
     "files": 800,
     "regions": 1,
