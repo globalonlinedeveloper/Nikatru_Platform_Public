@@ -50,7 +50,7 @@ export type D1DumpLine =
   | { kind: 'schema'; table: string; sql: string }
   | { kind: 'index'; name: string; sql: string }
   | { kind: 'row'; table: string; data: Record<string, unknown> }
-  | { kind: 'table-end'; table: string; rows: number; truncated: boolean; ephemeral?: true }
+  | { kind: 'table-end'; table: string; rows: number; truncated: boolean; ephemeral?: true; withheld?: number }
   | { kind: 'end'; tables: number; rows: number; truncated: boolean; queries: number };
 
 export interface D1DumpResult {
@@ -61,6 +61,8 @@ export interface D1DumpResult {
   queries: number;
   /** TRUE when the query budget ran out before the data did. Never green. */
   truncated: boolean;
+  /** Plain-text credential values written as '' instead (CREDENTIAL_COLUMNS). */
+  withheld: number;
 }
 
 /**
@@ -95,6 +97,29 @@ const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
  * export inside MAX_D1_QUERIES_PER_RUN's warn line (test/backup-export.test.ts).
  */
 export const EPHEMERAL_TABLES: ReadonlySet<string> = new Set(['native_attest_redeemed', 'native_attest_counters']);
+
+/**
+ * ⏱ 2026-09-30 · review round 2 (security): "provider refresh tokens are plain
+ * text in D1 and in every R2 backup". THE PLAIN-TEXT CREDENTIAL COLUMNS, which a
+ * dump NEVER carries a value of. The token itself is backed up — as the
+ * AES-256-GCM ciphertext in `provider_tokens.token_ct` (src/lib/token-crypto.ts),
+ * which is useless without the Worker secret TOKEN_ENC_KEY_V1, held in no backup.
+ * These columns are the legacy plain-text ones: every write since migration 0023
+ * leaves them empty and the nightly `provider_token_backfill` empties the rest.
+ *
+ * 🔴 WITHHELD HERE TOO, AND NOT ONLY EMPTIED AT THE SOURCE, because the backup
+ * runs at 02:30 and the backfill at 06:00: a deploy after 06:00 would otherwise
+ * put one night of plain text in R2. A withheld value is written as '' (the
+ * columns are NOT NULL, so a restore still loads) and counted as `withheld` on
+ * the table's end line — never red: the row still holds the value in D1, and a
+ * red export would cost the whole night's backup to keep one token out of it.
+ * test/token-encryption.test.ts fails if a named column stops existing, since a
+ * rename would leave this list withholding nothing.
+ */
+export const CREDENTIAL_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+  provider_tokens: ['refresh_token'],
+  apple_provider_tokens: ['refresh_token'],
+};
 
 /** Tables that are the vendor's bookkeeping, not the portfolio's data. */
 function isInternalTable(name: string): boolean {
@@ -145,7 +170,7 @@ export async function dumpD1Database(
   if (!take()) {
     // Not even the catalogue fits: no schema, no rows, and a RED dump that says so.
     lines.push({ kind: 'end', tables: 0, rows: 0, truncated: true, queries: 0 });
-    return { jsonl: lines.map((l) => JSON.stringify(l)).join('\n') + '\n', tables: [], rows: 0, queries: 0, truncated: true };
+    return { jsonl: lines.map((l) => JSON.stringify(l)).join('\n') + '\n', tables: [], rows: 0, queries: 0, truncated: true, withheld: 0 };
   }
   const catalogue = await db
     .prepare(
@@ -173,11 +198,14 @@ export async function dumpD1Database(
   }
 
   let rows = 0;
+  let withheld = 0;
   for (const table of tables) {
     if (EPHEMERAL_TABLES.has(table)) {
       lines.push({ kind: 'table-end', table, rows: 0, truncated: false, ephemeral: true });
       continue;
     }
+    const credentials = CREDENTIAL_COLUMNS[table] ?? [];
+    let tableWithheld = 0;
     let tableRows = 0;
     let tableTruncated = false;
     for (;;) {
@@ -191,17 +219,32 @@ export async function dumpD1Database(
         .bind(D1_PAGE_ROWS, tableRows)
         .all<Record<string, unknown>>();
       const batch = page.results ?? [];
-      for (const data of batch) lines.push({ kind: 'row', table, data });
+      for (const data of batch) {
+        for (const column of credentials) {
+          const value = data[column];
+          if (value === undefined || value === null || value === '') continue;
+          data[column] = '';
+          tableWithheld += 1;
+        }
+        lines.push({ kind: 'row', table, data });
+      }
       tableRows += batch.length;
       if (batch.length < D1_PAGE_ROWS) break;
     }
     rows += tableRows;
-    lines.push({ kind: 'table-end', table, rows: tableRows, truncated: tableTruncated });
+    withheld += tableWithheld;
+    lines.push({
+      kind: 'table-end',
+      table,
+      rows: tableRows,
+      truncated: tableTruncated,
+      ...(tableWithheld > 0 ? { withheld: tableWithheld } : {}),
+    });
   }
 
   const queries = pool.spent - spentBefore;
   lines.push({ kind: 'end', tables: tables.length, rows, truncated, queries });
-  return { jsonl: lines.map((l) => JSON.stringify(l)).join('\n') + '\n', tables, rows, queries, truncated };
+  return { jsonl: lines.map((l) => JSON.stringify(l)).join('\n') + '\n', tables, rows, queries, truncated, withheld };
 }
 
 export interface KvDumpResult {

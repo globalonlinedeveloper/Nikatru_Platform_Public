@@ -33,6 +33,26 @@ class _FakeAdapter implements HttpClientAdapter {
   }
 }
 
+/// Answers 409 "still processing" with a Retry-After of 30 s.
+class _RetryAfterAdapter implements HttpClientAdapter {
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async => ResponseBody.fromString(
+    jsonEncode(<String, dynamic>{'error': 'idempotency_in_progress'}),
+    409,
+    headers: <String, List<String>>{
+      Headers.contentTypeHeader: <String>['application/json'],
+      'retry-after': <String>['30'],
+    },
+  );
+}
+
 RestClient _client(_FakeAdapter adapter, {Future<String?> Function()? token}) {
   final Dio dio = Dio()..httpClientAdapter = adapter;
   return RestClient(
@@ -66,6 +86,50 @@ void main() {
     final RestClient client = _client(adapter);
     await client.post('/things', body: <String, dynamic>{'name': 'x'});
     expect(adapter.lastRequest!.data, <String, dynamic>{'name': 'x'});
+  });
+
+  // AB-O2-02: a replayed write carries the SAME key on every attempt, and a
+  // write that was not given one carries no header at all.
+  // AB-O2-02 + the pre-merge E2E on #1075: the key rides the QUERY STRING, so
+  // a server whose CORS allow-list predates it still accepts the request (a
+  // new header failed the browser preflight on every web add). The same key
+  // on every attempt; an unkeyed write carries none; no custom header ever.
+  test('a write carries its idempotency key as a query parameter, never as a '
+      'header', () async {
+    final _FakeAdapter adapter =
+        _FakeAdapter(jsonEncode(<String, dynamic>{'id': '1'}));
+    final RestClient client = _client(adapter);
+    await client.post('/things', body: <String, dynamic>{}, idempotencyKey: 'k-1');
+    expect(adapter.lastRequest!.queryParameters['idempotency_key'], 'k-1');
+    expect(adapter.lastRequest!.uri.query, contains('idempotency_key=k-1'));
+    expect(adapter.lastRequest!.headers.keys.map((String k) => k.toLowerCase()),
+        isNot(contains('idempotency-key')));
+    await client.patch('/things/1', body: <String, dynamic>{}, idempotencyKey: 'k-2');
+    expect(adapter.lastRequest!.queryParameters['idempotency_key'], 'k-2');
+    await client.post('/things', body: <String, dynamic>{});
+    expect(adapter.lastRequest!.queryParameters, isEmpty);
+  });
+
+  // Review #1075 round 3, minor d: the outbox waits as long as the server says.
+  test('a Retry-After on a refusal is carried on the ApiException', () async {
+    final Dio dio = Dio()..httpClientAdapter = _RetryAfterAdapter();
+    final RestClient client = RestClient(
+      baseUrl: 'https://example.test/v1',
+      tokenProvider: () async => null,
+      httpClient: dio,
+    );
+    await expectLater(
+      client.post('/things', body: <String, dynamic>{}),
+      throwsA(
+        isA<ApiException>()
+            .having((ApiException e) => e.statusCode, 'status', 409)
+            .having(
+              (ApiException e) => e.retryAfter,
+              'retryAfter',
+              const Duration(seconds: 30),
+            ),
+      ),
+    );
   });
 
   test('maps a non-2xx response to ApiException carrying the error message',

@@ -181,6 +181,8 @@ describe('preflight covers every method the routes actually expose — derived, 
     });
     expect(unansweredMethods(res.headers.get('Access-Control-Allow-Methods'), endpoints)).toEqual([]);
     expect(res.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
+    // AB-O2-02: a keyed create from a browser must survive its preflight.
+    expect(res.headers.get('Access-Control-Allow-Headers')).toContain('Idempotency-Key');
   });
 
   it('a disallowed origin gets no preflight approval', async () => {

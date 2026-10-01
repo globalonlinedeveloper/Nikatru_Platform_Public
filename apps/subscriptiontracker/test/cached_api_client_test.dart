@@ -8,8 +8,12 @@
 // The shape of every "survives" case is two CLIENTS over one store: the first
 // sees the network, the second is built fresh (a restart) with the network
 // dead. That is the only thing a unit test can do that a relaunch also does.
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_core/nikatru_core.dart' show OutboxEntry;
 import 'package:subscriptiontracker/data/api/api_client.dart';
 import 'package:subscriptiontracker/data/api/cached_api_client.dart';
 import 'package:subscriptiontracker/data/local/subscription_store.dart';
@@ -128,6 +132,66 @@ class _FakeNetwork implements ApiClient {
   Future<core.Entitlements> getEntitlements() async {
     _gate();
     return core.Entitlements.none;
+  }
+}
+
+/// A network that honours `Idempotency-Key` the way the Worker now does: a
+/// repeat of a key is answered with the row the first attempt made.
+class _IdempotentNetwork extends _FakeNetwork implements IdempotentCreates {
+  _IdempotentNetwork(super.subs, super.budget);
+
+  final List<String> keys = <String>[];
+  final Map<String, Subscription> _byKey = <String, Subscription>{};
+  final Map<String, String> _bodyByKey = <String, String>{};
+
+  /// Commit the next create, then fail as if the response was lost.
+  bool loseNextResponse = false;
+
+  /// When set, every create throws this (the list read still works).
+  ApiException? createFailure;
+
+  @override
+  Future<Subscription> createSubscriptionOnce(
+    Subscription draft, {
+    required String idempotencyKey,
+  }) async {
+    keys.add(idempotencyKey);
+    final ApiException? refused = createFailure;
+    if (refused != null) throw refused;
+    final String body = jsonEncode(draft.toJson());
+    final String? seen = _bodyByKey[idempotencyKey];
+    if (seen != null && seen != body) {
+      throw ApiException(422, 'idempotency_key_reused');
+    }
+    _bodyByKey[idempotencyKey] = body;
+    final Subscription row = _byKey[idempotencyKey] ??= await super
+        .createSubscription(draft);
+    if (loseNextResponse) {
+      loseNextResponse = false;
+      throw ApiException(0, 'receive timeout');
+    }
+    return row;
+  }
+}
+
+/// A network whose first live create waits on [release], so a test can act
+/// while a replay is in flight.
+class _GatedNetwork extends _IdempotentNetwork {
+  _GatedNetwork(super.subs, super.budget);
+
+  final Completer<void> firstSendStarted = Completer<void>();
+  final Completer<void> release = Completer<void>();
+
+  @override
+  Future<Subscription> createSubscriptionOnce(
+    Subscription draft, {
+    required String idempotencyKey,
+  }) async {
+    if (failure == null && !firstSendStarted.isCompleted) {
+      firstSendStarted.complete();
+      await release.future;
+    }
+    return super.createSubscriptionOnce(draft, idempotencyKey: idempotencyKey);
   }
 }
 
@@ -302,21 +366,25 @@ void main() {
       );
     });
 
+    // ⏱ 2026-09-30 · this case read "an offline write fails honestly". An
+    // offline ADD is now queued (audit D22, the group below); a write the server
+    // ANSWERED with a failure is still refused honestly and touches nothing.
     test(
-      'writes go to the server FIRST and an offline write fails honestly',
+      'writes go to the server FIRST and a refused write fails honestly',
       () async {
         final _FakeNetwork net = _FakeNetwork(<Subscription>[
           _sub('a', 'A'),
         ], _budget);
         final CachedApiClient c = CachedApiClient(net, store());
         await c.getSubscriptions();
-        net.failure = _offline;
+        net.failure = ApiException(503, 'unavailable');
         await expectLater(
           c.createSubscription(_sub('', 'Nope')),
           throwsA(isA<ApiException>()),
         );
         // And the copy was not touched: it still says what the server last said.
         expect(await store().readSubscriptions(), hasLength(1));
+        expect(await c.pendingWrites(), isEmpty);
       },
     );
 
@@ -330,6 +398,256 @@ void main() {
       );
       expect(kv.data.keys, isNot(contains(contains('entitle'))));
     });
+  });
+
+  // 🔴 AUDIT D22 / F48 — the red control. On the base an offline add threw and
+  // the user retyped it; now it is queued and replayed ONCE, keyed by its
+  // client id, and a replay of an add whose response was lost is not a second
+  // row.
+  // 🔴 AUDIT D22 / F48 and REVIEW #1075 findings 1 4 8 9: the red controls.
+  // The queue is packages/core's DurableOutbox; these drive it through the
+  // app's own adapter, as production does.
+  group('an add made offline is kept, owned and replayed once', () {
+    String? session = 'user-a';
+    CachedApiClient client(ApiClient net) =>
+        CachedApiClient(net, store(), currentUser: () => session);
+    setUp(() => session = 'user-a');
+
+    test('queued offline, shown at once, replayed once on reconnect', () async {
+      final _IdempotentNetwork net = _IdempotentNetwork(<Subscription>[
+        _sub('a', 'A'),
+      ], _budget);
+      final CachedApiClient c = client(net);
+      await c.getSubscriptions();
+
+      net.failure = _offline;
+      final Subscription shown = await c.createSubscription(_sub('', 'Gym'));
+      expect(shown.name, 'Gym');
+      expect(await c.pendingWrites(), hasLength(1));
+
+      // A restart while offline keeps it, and the offline list shows it.
+      final CachedApiClient restarted = client(net);
+      expect(
+        (await restarted.getSubscriptions()).map((Subscription s) => s.name),
+        <String>['A', 'Gym'],
+      );
+
+      net.failure = null;
+      final CachedApiClient online = client(net);
+      final List<Subscription> live = await online.getSubscriptions();
+      expect(live.map((Subscription s) => s.name), <String>['A', 'Gym']);
+      expect(net.keys.toSet(), <String>{shown.id}, reason: 'one client id');
+      expect(await online.pendingWrites(), isEmpty);
+      await client(net).getSubscriptions();
+      expect(net.subs, hasLength(2), reason: 'replayed ONCE, never again');
+    });
+
+    test('an add whose response was lost is not inserted twice', () async {
+      final _IdempotentNetwork net = _IdempotentNetwork(
+        <Subscription>[],
+        _budget,
+      );
+      final CachedApiClient c = client(net);
+      net.loseNextResponse = true; // the server commits; the reply never lands
+      await c.createSubscription(_sub('', 'Gym'));
+      expect(net.subs, hasLength(1));
+      expect(await c.pendingWrites(), hasLength(1));
+
+      await client(net).getSubscriptions(); // reconnect: the SAME key
+      expect(net.subs, hasLength(1), reason: 'the key made the replay a no-op');
+      expect(net.keys.toSet(), hasLength(1));
+    });
+
+    // Finding 1, path A: the first user's session died (a forced 401 keeps
+    // the queue), and a second user signs in on the same device.
+    test(
+      'the first user\'s queued add is never posted under the next user',
+      () async {
+        final _IdempotentNetwork net = _IdempotentNetwork(
+          <Subscription>[],
+          _budget,
+        );
+        net.failure = _offline;
+        await client(net).createSubscription(_sub('', 'Gym of A'));
+        net.failure = null;
+        session = 'user-b';
+        await client(net).getSubscriptions();
+        expect(net.subs, isEmpty, reason: 'the second session sent nothing');
+        expect(
+          await client(net).pendingWrites(),
+          isEmpty,
+          reason: 'the second user does not see the first user\'s queued rows',
+        );
+        session = 'user-a';
+        await client(net).getSubscriptions();
+        expect(net.subs.single.name, 'Gym of A', reason: 'kept for its owner');
+      },
+    );
+
+    // Finding 1, path B: Settings, Log out, while a replay is sending.
+    test('a sign-out during a replay stops it', () async {
+      final _GatedNetwork net = _GatedNetwork(<Subscription>[], _budget);
+      net.failure = _offline;
+      final CachedApiClient c = client(net);
+      await c.createSubscription(_sub('', 'X'));
+      await c.createSubscription(_sub('', 'Y'));
+      net.failure = null;
+      final Future<void> replay = client(net).replayPending();
+      await net.firstSendStarted.future;
+      session = null;
+      await c.discardPendingOf('user-a');
+      net.release.complete();
+      await replay;
+      expect(net.subs.map((Subscription s) => s.name), <String>[
+        'X',
+      ], reason: 'Y is never sent');
+      session = 'user-a';
+      expect(await c.pendingWrites(), isEmpty);
+    });
+
+    // Finding 4: a row that exists only on the device.
+    test(
+      'deleting a row that never left the device never reaches the server',
+      () async {
+        final _IdempotentNetwork net = _IdempotentNetwork(
+          <Subscription>[],
+          _budget,
+        );
+        net.failure = _offline;
+        final CachedApiClient c = client(net);
+        // A failed read proves the device offline: the add is then queued
+        // without a request, so it is known never to have left.
+        await expectLater(c.getSubscriptions(), throwsA(isA<ApiException>()));
+        final Subscription row = await c.createSubscription(_sub('', 'Gym'));
+        final int callsBefore = net.calls;
+        await c.deleteSubscription(row.id);
+        net.failure = null;
+        final List<Subscription> live = await client(net).getSubscriptions();
+        expect(live, isEmpty);
+        expect(
+          net.calls - callsBefore,
+          1,
+          reason: 'one GET; no POST, no DELETE',
+        );
+        expect(await c.pendingWrites(), isEmpty);
+      },
+    );
+
+    test(
+      'editing a row that never left the device edits the queued create',
+      () async {
+        final _IdempotentNetwork net = _IdempotentNetwork(
+          <Subscription>[],
+          _budget,
+        );
+        net.failure = _offline;
+        final CachedApiClient c = client(net);
+        await expectLater(c.getSubscriptions(), throwsA(isA<ApiException>()));
+        final Subscription row = await c.createSubscription(_sub('', 'Gym'));
+        final Subscription edited = await c.updateSubscription(
+          row.id,
+          <String, dynamic>{'name': 'Gym (annual)'},
+        );
+        expect(edited.name, 'Gym (annual)');
+        net.failure = null;
+        await client(net).getSubscriptions();
+        expect(
+          net.subs.single.name,
+          'Gym (annual)',
+          reason: 'one POST, edited',
+        );
+      },
+    );
+
+    test('once synced, the client id reaches the server row', () async {
+      final _IdempotentNetwork net = _IdempotentNetwork(
+        <Subscription>[],
+        _budget,
+      );
+      net.loseNextResponse = true;
+      final CachedApiClient c = client(net);
+      final Subscription row = await c.createSubscription(_sub('', 'Gym'));
+      await client(net).getSubscriptions(); // the replay resolves the id
+      await c.deleteSubscription(
+        row.id,
+      ); // the screen still holds the client id
+      expect(net.subs, isEmpty, reason: 'the DELETE went to the server row');
+    });
+
+    // 🔴 REVIEW ROUND 2, MAJOR 1 — a lost response costs no attempt, so
+    // "attempts == 0" said "never reached" of a row the server HAD.
+    test(
+      'a lost add response, then a delete: the server row is gone',
+      () async {
+        final _IdempotentNetwork net = _IdempotentNetwork(
+          <Subscription>[],
+          _budget,
+        );
+        final CachedApiClient c = client(net);
+        net.loseNextResponse = true; // committed; the reply never lands
+        final Subscription row = await c.createSubscription(_sub('', 'Gym'));
+        expect(net.subs, hasLength(1));
+        await c.deleteSubscription(row.id);
+        await client(net).getSubscriptions(); // reconnect
+        expect(net.subs, isEmpty, reason: 'the delete reached the server row');
+        expect(await c.syncProblems(), isEmpty);
+      },
+    );
+
+    test('a lost add response, then an edit: no 422, and the server holds the '
+        'edit', () async {
+      final _IdempotentNetwork net = _IdempotentNetwork(
+        <Subscription>[],
+        _budget,
+      );
+      final CachedApiClient c = client(net);
+      net.loseNextResponse = true;
+      final Subscription row = await c.createSubscription(_sub('', 'Gym'));
+      await c.updateSubscription(row.id, <String, dynamic>{
+        'name': 'Gym (annual)',
+      });
+      await client(net).getSubscriptions(); // reconnect
+      expect(await c.syncProblems(), isEmpty, reason: 'no 422 dead letter');
+      expect(net.subs.single.name, 'Gym (annual)');
+    });
+
+    // Finding 8: a live read while the queue is still waiting.
+    test(
+      'queued rows stay visible after a live read until they sync',
+      () async {
+        final _IdempotentNetwork net = _IdempotentNetwork(<Subscription>[
+          _sub('a', 'A'),
+        ], _budget);
+        net.failure = _offline;
+        await client(net).createSubscription(_sub('', 'Gym'));
+        net.failure = null;
+        net.createFailure = ApiException(503, 'unavailable');
+        final List<Subscription> live = await client(net).getSubscriptions();
+        expect(live.map((Subscription s) => s.name), <String>['A', 'Gym']);
+      },
+    );
+
+    // Finding 9: a refused add is SHOWN, never silently dropped.
+    test(
+      'a refused add is a sync problem the user can retry or discard',
+      () async {
+        final _IdempotentNetwork net = _IdempotentNetwork(
+          <Subscription>[],
+          _budget,
+        );
+        net.failure = _offline;
+        await client(net).createSubscription(_sub('', 'Gym'));
+        net.failure = null;
+        net.createFailure = ApiException(400, 'invalid_body');
+        final CachedApiClient c = client(net);
+        final List<Subscription> live = await c.getSubscriptions();
+        expect(live.single.name, 'Gym', reason: 'still on screen');
+        final List<OutboxEntry> problems = await c.syncProblems();
+        expect(problems, hasLength(1));
+        await c.discardSync(problems.single.id);
+        expect(await c.getSubscriptions(), isEmpty);
+      },
+    );
   });
 
   group('a cache write failure is never silent', () {

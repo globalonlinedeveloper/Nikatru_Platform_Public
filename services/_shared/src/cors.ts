@@ -92,7 +92,10 @@ export interface CorsPolicy {
 
 const LOCALHOST = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
-const ALLOW_HEADERS = 'Authorization, Content-Type, x-request-id';
+// `Idempotency-Key` (2026-09-30, AB-O2-02): the key a replayed write carries so
+// the server answers it instead of applying it twice. Without it on this list a
+// browser preflight refuses every keyed create before it is sent.
+const ALLOW_HEADERS = 'Authorization, Content-Type, x-request-id, Idempotency-Key';
 
 /** Exact origins, parsed from the comma-separated `ALLOWED_ORIGINS` var. */
 export function allowlist(allowedOrigins: string | undefined): string[] {

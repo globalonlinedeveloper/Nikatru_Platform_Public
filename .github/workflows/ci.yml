@@ -2277,9 +2277,18 @@ jobs:
   # The callees have no trigger of their own; each job's plan step decides whether
   # its unit publishes (tooling/ci/lane-map.json deployUnits). docs/ci/deploy-web.md,
   # docs/ci/deploy-workers.md.
+  #
+  # why: THE API DEPLOYS BEFORE THE WEB, ON THE SAME COMMIT (lead ruling on #1075,
+  # review finding 11). A web build that ships a new request shape - the
+  # Idempotency-Key a keyed create sends, which a browser preflight refuses until
+  # the Worker allowing it is live - must not reach users before its API. So
+  # deploy-web needs deploy-workers: it starts only after that job SUCCEEDED
+  # (migrations applied, Workers deployed or planned as unchanged), and a failed
+  # Worker deploy leaves the web on the build that matches the live API.
+  # tooling/ci/test/workflow-scan.test.mjs reads this edge off the real file.
   deploy-web:
     name: deploy-web
-    needs: [ci-gate]
+    needs: [ci-gate, deploy-workers]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy-web.yml
     permissions:

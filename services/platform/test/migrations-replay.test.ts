@@ -196,7 +196,8 @@ describe('platform_db migrations re-apply cleanly', () => {
     expect(tables).toEqual([
       // 0012 — the Apple refresh token a deletion revoked with
       // (O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE). Since 0016 it is only the source
-      // of the copy into `provider_tokens`; no code reads or writes it.
+      // of the copy into `provider_tokens`; ⏱ 2026-09-30 the provider-token
+      // backfill re-runs that copy and empties its tokens (migration 0023).
       'apple_provider_tokens',
       // 0009 — the bundle purchase ([ADR 057]). Four tables, and the list is
       // spelled out here rather than counted so a migration silently dropped

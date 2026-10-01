@@ -1,5 +1,6 @@
-import 'package:flutter/foundation.dart' show kReleaseMode;
+import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsService;
 
 import 'content_pane.dart';
 
@@ -75,10 +76,10 @@ class AppErrorScreen extends StatelessWidget {
   }) {
     final ErrorWidgetBuilder previous = ErrorWidget.builder;
     ErrorWidget.builder = (FlutterErrorDetails details) => AppErrorScreen(
-          title: title,
-          message: message,
-          details: details.exceptionAsString(),
-        );
+      title: title,
+      message: message,
+      details: details.exceptionAsString(),
+    );
     return previous;
   }
 
@@ -99,11 +100,7 @@ class AppErrorScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(
-              Icons.error_outline,
-              size: 48,
-              color: theme.colorScheme.error,
-            ),
+            Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
             const SizedBox(height: 16),
             Text(
               title,
@@ -205,11 +202,18 @@ class NotFoundScreen extends StatelessWidget {
 /// portals, DNS failures, an outage and airplane mode all look different to
 /// `connectivity_plus` and identical to the user. The app already knows when a
 /// request failed, and that is the honest signal.
-class OfflineNotice extends StatelessWidget {
+///
+/// 🔴 SPOKEN WHEN IT APPEARS, ON EVERY PLATFORM (AB-O1-03; review #1075 nit
+/// 15). The message is a live region, which the native screen readers speak.
+/// On web a live region inserted TOGETHER with its content is often not
+/// announced (an aria-live node must exist before its text changes), so there
+/// the notice also sends an explicit announcement once, when it mounts.
+class OfflineNotice extends StatefulWidget {
   const OfflineNotice({
     required this.message,
     this.onRetry,
     this.retryLabel,
+    this.announceOnAppear,
     super.key,
   });
 
@@ -217,8 +221,35 @@ class OfflineNotice extends StatelessWidget {
   final VoidCallback? onRetry;
   final String? retryLabel;
 
+  /// Send an explicit announcement when the notice mounts. Null means "on web
+  /// only", where the live region alone is unreliable; a test sets it.
+  final bool? announceOnAppear;
+
+  @override
+  State<OfflineNotice> createState() => _OfflineNoticeState();
+}
+
+class _OfflineNoticeState extends State<OfflineNotice> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.announceOnAppear ?? kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        SemanticsService.sendAnnouncement(
+          View.of(context),
+          widget.message,
+          Directionality.of(context),
+        );
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final String message = widget.message;
+    final VoidCallback? onRetry = widget.onRetry;
+    final String? retryLabel = widget.retryLabel;
     final ThemeData theme = Theme.of(context);
     return Material(
       color: theme.colorScheme.errorContainer,
@@ -235,10 +266,16 @@ class OfflineNotice extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  message,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onErrorContainer,
+                // 🔴 A LIVE REGION (AB-O1-03). Reachable in traversal was not
+                // enough: the notice APPEARS mid-session, and a screen reader
+                // user who is not on it was never told the app went offline.
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    message,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
                   ),
                 ),
               ),

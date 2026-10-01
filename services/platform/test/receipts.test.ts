@@ -16,7 +16,7 @@
 // Real ES256 keys, a real SQL engine with the real migrations, a stubbed JWKS —
 // the shape test/entitlements.test.ts established.
 // ─────────────────────────────────────────────────────────────────────────────
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { Hono } from 'hono';
 import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
@@ -670,6 +670,20 @@ describe('a RENEWAL re-post ADVANCES the grant — the store clock must move per
 });
 
 describe('double billing', () => {
+  // 🔴 The holding-rail pre-check compares a seeded grant's FIXED expiry
+  // (2027-09-01 / 2027-09-02) with the route's wall clock, so unpinned the
+  // refusal and the race both turn red at 00:00Z on 2027-09-01 — the shape
+  // fx.test.ts hit on 2026-10-01. Pin the wall clock after seedGrant's fixed
+  // `created_at` (2026-09-01, which the race needs to be the OLDER row) and
+  // before every seeded expiry. Date only — real timers run.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.parse('2026-09-15T00:00:00.000Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('answers 409 already_entitled and NAMES THE HOLDING RAIL before spending a store call', async () => {
     const db = realPlatformDb();
     seedGrant(db, {
