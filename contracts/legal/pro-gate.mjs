@@ -47,7 +47,8 @@ export function recurringOfferings(appConfig, id) {
  *  that amount, the web price an Indian buyer is charged (the edge-addons row's
  *  regionRails[IN] reasoning: "the range an Indian buyer sees is the one they can
  *  actually be charged"). The Edge listing (render-listing.mjs) and the one range
- *  assert-no-price-literals.mjs allows there both read THIS, so they cannot drift. */
+ *  assert-no-price-literals.mjs allows there both call this one function
+ *  (tooling/ci/test/price-literals.test.mjs LC7 reds when the guard reads another). */
 export function disclosedOfferings(appConfig, id) {
   const base = recurringOfferings(appConfig, id);
   const rows = appConfig?.prices?.apps?.[id];
