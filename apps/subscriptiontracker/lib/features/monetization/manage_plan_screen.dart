@@ -125,7 +125,7 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
   //
   // Container and rail are both resolved BEFORE the first await — the note on
   // `_cancel` above. The wait and the sentence live in `_converge` and
-  // `_restoreMessage`, outside this body, so `assert-purchase-path.mjs` §F
+  // `restoreSentence` (chassis_adapters.dart), outside this body, so `assert-purchase-path.mjs` §F
   // reads the whole of it.
   Future<void> _restore() async {
     final ProviderContainer container = ProviderScope.containerOf(
@@ -202,13 +202,22 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
           : null,
       offline: ref.watch(networkUnreachableProvider),
       onReconnect: () => ref.invalidate(appConfigProvider),
+      // 🔒 FOUR OUTCOMES, FOUR SENTENCES. Collapsing `recorded` into
+      // `executed` would have the app tell a user their subscription is
+      // cancelled on the strength of our having written down that they asked —
+      // while the merchant of record goes on billing them. That is the single
+      // most expensive sentence this screen could say.
       outcomeMessage: switch ((_outcome, _restored)) {
         (final CancellationOutcome o, _) => cancelOutcomeMessage(
           context,
           l10n,
           o,
         ),
-        (null, final _Restored r) => _restoreMessage(l10n, r),
+        (null, final _Restored r) => restoreSentence(
+          l10n,
+          r.outcome,
+          planActive: r.planActive,
+        ),
         (null, null) => null,
       },
       outcomeKind: switch ((_outcome, _restored)) {
@@ -237,26 +246,6 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
       periodEnds: paid.periodEnds,
       onManageInStore: paid.onManageInStore,
     );
-  }
-
-  /// 🔒 FOUR OUTCOMES, FOUR SENTENCES. Collapsing `recorded` into `executed`
-  /// would have the app tell a user their subscription is cancelled on the
-  /// strength of our having written down that they asked — while the merchant of
-  /// record goes on billing them. That is the single most expensive sentence
-  /// this screen could say.
-  /// 🔒 THE SENTENCE FOLLOWS THE SERVER, NOT THE STORE. A plan the re-read
-  /// shows is "found" whatever the store answered, because the plan row above
-  /// is that same read and the two must agree. With no plan, a store that
-  /// could not be asked gets its own sentence — "nothing found" would be a
-  /// claim we never checked. The store's `detail` is never shown — it is
-  /// untranslated engineering text.
-  String _restoreMessage(AppLocalizations l10n, _Restored r) {
-    if (r.planActive) return l10n.restoreFoundPlan;
-    return switch (r.outcome) {
-      RestoreOutcome.couldNotAsk => l10n.restoreCouldNotReachStore,
-      RestoreOutcome.askedStore ||
-      RestoreOutcome.serverOnly => l10n.restoreNothingFound,
-    };
   }
 }
 

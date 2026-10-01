@@ -54,14 +54,68 @@ VoidCallback? appleEulaOpener(PurchaseRailKind kind) =>
     ? () => openExternalUrl(AppConfig.appleEulaUrl)
     : null;
 
+/// What a finished restore says — Manage plan's sentence, and the paywall's.
+///
+/// 🔒 THE SENTENCE FOLLOWS THE SERVER, NOT THE STORE. A plan the re-read
+/// shows is "found" whatever the store answered, because the plan row is that
+/// same read and the two must agree. With no plan, a store that could not be
+/// asked gets its own sentence — "nothing found" would be a claim we never
+/// checked. The store's `detail` is never shown — it is untranslated
+/// engineering text.
+String restoreSentence(
+  AppLocalizations l10n,
+  RestoreOutcome asked, {
+  required bool planActive,
+}) {
+  if (planActive) return l10n.restoreFoundPlan;
+  return switch (asked) {
+    RestoreOutcome.couldNotAsk => l10n.restoreCouldNotReachStore,
+    RestoreOutcome.askedStore ||
+    RestoreOutcome.serverOnly => l10n.restoreNothingFound,
+  };
+}
+
 /// MO-03: Restore from the paywall — the rail first (the store, on a store
 /// build), then the server re-read, whose answer is the only unlock: the same
-/// order as Manage plan's Restore ([pipeline 5]M-10). True when the plan is now
-/// active, so the paywall can show it is.
-Future<bool> restoreFromPaywall(WidgetRef ref) async {
-  await restorePurchasesOf(ref.read(purchaseRailProvider));
-  return (await refreshEntitlements(ref)).isProAt(DateTime.now());
-}
+/// order and the same words as Manage plan's Restore ([pipeline 5]M-10).
+///
+/// ⏱ 2026-10-01 · review 1 of #1114 (item 4). It used to run silently: a tap
+/// that found nothing did visibly nothing, a re-read that threw escaped the
+/// async callback unhandled, and `ref` was read AFTER the store's await — a
+/// Back press during a slow store restore disposes the screen, and that read
+/// throws in release (money_providers.dart, `refreshEntitlementsIn`). Now the
+/// container and the messenger are taken BEFORE the first await, [update]
+/// gets `busy` on both edges (and `unlocked` at the end), every outcome is a
+/// sentence on screen, and nothing escapes.
+VoidCallback paywallRestore(
+  BuildContext context,
+  AppLocalizations l10n,
+  void Function(bool busy, bool unlocked) update,
+) => () async {
+  final ProviderContainer container = ProviderScope.containerOf(
+    context,
+    listen: false,
+  );
+  final ScaffoldMessengerState say = ScaffoldMessenger.of(context);
+  update(true, false);
+  bool active = false;
+  String message;
+  try {
+    final RestoreOutcome asked = await restorePurchasesOf(
+      container.read(purchaseRailProvider),
+    );
+    active = (await refreshEntitlementsIn(container)).isProAt(DateTime.now());
+    message = restoreSentence(l10n, asked, planActive: active);
+  } catch (_) {
+    message = l10n.restoreCouldNotCheck;
+  }
+  say.showSnackBar(SnackBar(content: Text(message)));
+  update(false, active);
+};
+
+/// The paywall's "check again": the server re-read, and whether it shows Pro.
+Future<bool> proAfterReread(WidgetRef ref) async =>
+    (await refreshEntitlements(ref)).isProAt(DateTime.now());
 
 /// The served feature CODES, in this app's words (D-11). A code this build has
 /// no words for draws nothing — never the raw code on a buyer's screen.

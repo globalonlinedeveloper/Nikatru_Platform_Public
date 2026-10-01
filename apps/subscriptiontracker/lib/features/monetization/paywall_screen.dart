@@ -64,6 +64,7 @@ class PaywallScreen extends ConsumerStatefulWidget {
 
 class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   _PaywallPhase _phase = _PaywallPhase.choosing;
+  bool _restoring = false;
   PaywallRefusalView _refusedView = PaywallRefusalView.retryable;
 
   @override
@@ -245,9 +246,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             offerings.firstWhere((Offering o) => o.productId == offer.id),
           ),
           onCheckAgain: () async {
-            final bool unlocked = (await refreshEntitlements(
-              ref,
-            )).isProAt(DateTime.now());
+            final bool unlocked = await proAfterReread(ref);
             if (!mounted) return;
             setState(
               () => _phase = unlocked
@@ -263,11 +262,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             PurchaseRailKind.playBilling => PaywallCancelWhere.googlePlay,
             _ => PaywallCancelWhere.here,
           },
-          onRestore: () async {
-            if (await restoreFromPaywall(ref) && mounted) {
-              setState(() => _phase = _PaywallPhase.unlocked);
-            }
-          },
+          restoring: _restoring,
+          onRestore: paywallRestore(context, l10n, (bool busy, bool on) {
+            if (!mounted) return;
+            setState(() => _restoring = busy);
+            if (on) setState(() => _phase = _PaywallPhase.unlocked);
+          }),
           onOpenTerms: () => openExternalUrl(AppConfig.termsUrl),
           onOpenPrivacy: () => openExternalUrl(AppConfig.privacyUrl),
           onOpenEula: appleEulaOpener(rail.railKind),

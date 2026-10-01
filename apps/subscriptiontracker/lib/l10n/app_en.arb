@@ -555,6 +555,10 @@
   "@restoreCouldNotReachStore": {
     "description": "After Restore on a store build, when the store could not be asked or did not answer and the server shows no active plan. Not 'nothing found': the store was never checked."
   },
+  "restoreCouldNotCheck": "We could not check for your plan right now. Please try again later.",
+  "@restoreCouldNotCheck": {
+    "description": "⏱ 2026-10-01 · review 1 of #1114. After Restore on the paywall, when the restore itself failed (the store call or the server re-read threw, e.g. offline). Says nothing was checked; never 'nothing found'."
+  },
   "cancelPlan": "Cancel Pro",
   "@cancelPlan": {
     "description": "Starts the cancellation. One tap from Manage, which is one tap from Settings — the same depth as Upgrade (ROSCA)."

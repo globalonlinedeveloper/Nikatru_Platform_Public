@@ -191,6 +191,7 @@ class PaywallView extends StatelessWidget {
     this.onReconnect,
     this.cancelWhere = PaywallCancelWhere.here,
     this.onRestore,
+    this.restoring = false,
     this.onOpenTerms,
     this.onOpenPrivacy,
     this.onOpenEula,
@@ -300,6 +301,11 @@ class PaywallView extends StatelessWidget {
   final VoidCallback? onOpenTerms;
   final VoidCallback? onOpenPrivacy;
   final VoidCallback? onOpenEula;
+
+  /// ⏱ 2026-10-01 · review 1 of #1114: a restore is in flight. Restore stays
+  /// drawn and is DISABLED, so a second tap cannot start a second store ask —
+  /// the same busy rule as Manage plan's controls.
+  final bool restoring;
 
   /// The only phase in which there is anything to pitch: plans on screen.
   bool get _choosingWithPlans =>
@@ -443,7 +449,7 @@ class PaywallView extends StatelessWidget {
       if (onRestore != null)
         TextButton(
           key: restoreLink,
-          onPressed: onRestore,
+          onPressed: restoring ? null : onRestore,
           child: Text(l10n.restorePurchases),
         ),
       if (onOpenTerms != null)

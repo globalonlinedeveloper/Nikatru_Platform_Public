@@ -179,6 +179,23 @@ class _RefusingRail implements PurchaseRail, IdentifiesBuyer {
   }
 }
 
+/// ⏱ 2026-10-01 · review 1 of #1114 (item 4). A store rail whose restore is
+/// HELD until the test answers it, so the paywall's Restore can be read while
+/// it is in flight — and then FAILS, the way a re-read fails offline. The
+/// interface says a restore never throws; the paywall must not depend on it.
+class _HeldRestoreRail extends _RefusingRail implements RestoresPurchases {
+  _HeldRestoreRail() : super(CheckoutRefusal.couldNotOpen);
+
+  final Completer<RestoreOutcome> held = Completer<RestoreOutcome>();
+  int asks = 0;
+
+  @override
+  Future<RestoreOutcome> restorePurchases() {
+    asks++;
+    return held.future;
+  }
+}
+
 /// ⏱ 2026-10-01 · O-ST-HOSTED-CHECKOUT-CANNOT-START. The platform host's
 /// `POST /v1/checkout`, answered here: the app's REAL hosted rail now asks it for
 /// the page, so a test of the real wiring must give it a host to ask. The served
@@ -502,5 +519,47 @@ void main() {
         expectRefused(en.paywallRetryMessage);
       });
     }
+  });
+
+  // ⏱ 2026-10-01 · review 1 of #1114 (item 4): the paywall's Restore reports.
+  testWidgets('Restore is busy while it runs, and a failure is a sentence, '
+      'not an unhandled error', (WidgetTester tester) async {
+    final _HeldRestoreRail rail = _HeldRestoreRail();
+    await _pumpPaywall(
+      tester,
+      rail: purchaseRailProvider.overrideWithValue(rail),
+    );
+    final Finder restore = find.byKey(const Key('paywallRestore'));
+    expect(restore, findsOneWidget);
+
+    await tester.tap(restore);
+    await _settle(tester);
+    expect(rail.asks, 1);
+    expect(
+      tester.widget<TextButton>(restore).onPressed,
+      isNull,
+      reason: 'a second tap must not start a second store ask',
+    );
+
+    rail.held.completeError(StateError('offline'));
+    await _settle(tester);
+    expect(tester.takeException(), isNull);
+    expect(find.text(en.restoreCouldNotCheck), findsOneWidget);
+    expect(tester.widget<TextButton>(restore).onPressed, isNotNull);
+  });
+
+  testWidgets("Restore that finds nothing says so, in Manage plan's words", (
+    WidgetTester tester,
+  ) async {
+    final _HeldRestoreRail rail = _HeldRestoreRail();
+    await _pumpPaywall(
+      tester,
+      rail: purchaseRailProvider.overrideWithValue(rail),
+    );
+    await tester.tap(find.byKey(const Key('paywallRestore')));
+    await _settle(tester);
+    rail.held.complete(RestoreOutcome.askedStore);
+    await _settle(tester);
+    expect(find.text(en.restoreNothingFound), findsOneWidget);
   });
 }
