@@ -849,8 +849,8 @@
         "purpose": "⏱ 2026-10-01 · O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH. THE SYSTEM-BROWSER HAND-OFF, browser half: the signed-in page https://nikatru.com/app/connect mints a desktop app's 120-second, single-use, PKCE-bound sign-in code for {app, user, redirect_uri, code_challenge}. `platformAuth` is carried AT THE HANDLER. It refuses an app outside NATIVE_AUTH_APPS (404), a token whose newest `amr` is older than RECENT_AUTH_SECONDS (401 handoff_needs_fresh_signin — a lifted access token must not become a new long-lived session), a redirect that is not the app's own loopback `http://127.0.0.1:<1024-65535>/nk-auth-callback` or deep link `com.nikatru.<app>://auth-callback?nk_auth=handoff`, and any method but S256. STATELESS: it writes nothing. Answers {code, redirect_uri, expires_in}.",
         "client": {
           "file": "sites/nikatru/app/connect.js",
-          "expression": "`${PLATFORM}/v1/auth/handoff/${request.app}/code`",
-          "note": "The URL the connect page POSTs to, at its one declaration."
+          "expression": "`${PLATFORM}/v1/auth/handoff/subscriptiontracker/code`",
+          "note": "The URL the connect page POSTs to, at its one declaration: a constant per app (MINT_URLS), never built from the address bar."
         },
         "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. Bounded anyway by SESSIONS_LIMITER keyed `handoff:<user>`, and it writes no row."
       }

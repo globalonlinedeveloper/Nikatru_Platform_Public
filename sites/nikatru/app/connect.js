@@ -36,6 +36,21 @@ const PLATFORM = 'https://platform.nikatru.com';
 /** The apps a desktop build of which may hand off — the native app set (services/platform/src/generated/app-targets.ts). */
 const APPS = { subscriptiontracker: 'Nikatru Subscription Tracker' };
 
+/**
+ * Each app's mint URL, WHOLE — a constant, as /ext/connect's CODES_URL is. No
+ * part of the URL the page POSTs a bearer token to is read from the address
+ * bar (CodeQL js/client-side-request-forgery): the app id only SELECTS a row.
+ */
+const MINT_URLS = Object.freeze({
+  subscriptiontracker: `${PLATFORM}/v1/auth/handoff/subscriptiontracker/code`,
+});
+
+/** The mint URL for `app`, or null for an app this page does not serve. */
+export function mintUrl(app) {
+  for (const [id, url] of Object.entries(MINT_URLS)) if (id === app) return url;
+  return null;
+}
+
 const LOOPBACK = /^http:\/\/127\.0\.0\.1:([0-9]{4,5})\/nk-auth-callback$/;
 
 /** Whether `uri` is one of `app`'s own return addresses — the server's rule, restated. */
@@ -122,12 +137,13 @@ if (typeof document !== 'undefined') {
   });
 
   $('continue').addEventListener('click', async () => {
-    if (session === null || request === null) return;
+    const mint = request === null ? null : mintUrl(request.app);
+    if (session === null || mint === null) return;
     $('continue').disabled = true;
     say('Signing the app in…');
     let res;
     try {
-      res = await fetch(`${PLATFORM}/v1/auth/handoff/${request.app}/code`, {
+      res = await fetch(mint, {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({

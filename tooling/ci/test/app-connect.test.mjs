@@ -27,7 +27,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const { returnUrl, readRequest, mintFailure, isReturnAddress } = await import(
+const { returnUrl, readRequest, mintFailure, isReturnAddress, mintUrl } = await import(
   pathToFileURL(resolve(ROOT, 'sites/nikatru/app/connect.js')).href
 );
 
@@ -104,5 +104,20 @@ describe('mintFailure', () => {
     assert.equal(mintFailure(401, { error: 'handoff_needs_fresh_signin' }).signInAgain, true);
     assert.equal(mintFailure(400, { error: 'redirect_uri_mismatch' }).signInAgain, false);
     assert.equal(mintFailure(0, null).signInAgain, false);
+  });
+});
+
+describe('mintUrl — the URL the bearer token is POSTed to', () => {
+  // ⏱ 2026-10-01 · CodeQL js/client-side-request-forgery (#550 on #1133): the URL
+  // was a template over the address bar's `app`. It is now a constant per app.
+  test('a served app gets its constant mint URL', () => {
+    assert.equal(mintUrl(APP), `https://platform.nikatru.com/v1/auth/handoff/${APP}/code`);
+  });
+
+  test('🔴 an app id the page does not serve, or one carrying a path, gets no URL', () => {
+    assert.equal(mintUrl('otherapp'), null);
+    assert.equal(mintUrl(`${APP}/../../v1/ext/codes`), null);
+    assert.equal(mintUrl('__proto__'), null);
+    assert.equal(mintUrl(null), null);
   });
 });
