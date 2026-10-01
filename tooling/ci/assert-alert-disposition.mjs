@@ -508,8 +508,13 @@ async function fetchOpenIssues(repo) {
   throw new Error(`more than ${ISSUE_PAGE_CAP * ISSUE_PAGE_SIZE} open issues — this enumeration is truncated and cannot claim to have seen every firing`);
 }
 
+// ⏱ 2026-10-01 — `event=schedule` IN THE QUERY, not only in `sourceHealth`'s
+// filter. Every reader here grades SCHEDULED runs alone, but the page was the
+// newest 30 runs of ANY event: 30 hand-dispatched e2e.yml runs since 09-30 10:31Z
+// pushed every scheduled run off it, and limb A went COVERAGE LOST on every PR
+// (#1114, run 36841273358). The extensions freshness reader filters the same way.
 async function fetchRuns(repo, workflowFile) {
-  const read = await anchoredRunRead({ workflow: workflowFile, url: `${GH_API}/repos/${repo}/actions/workflows/${workflowFile}/runs?per_page=${RUN_SAMPLE}`, token: ghToken(), label: `${workflowFile} runs`, userAgent: 'nikatru-alert-disposition' });
+  const read = await anchoredRunRead({ workflow: workflowFile, url: `${GH_API}/repos/${repo}/actions/workflows/${workflowFile}/runs?event=schedule&per_page=${RUN_SAMPLE}`, token: ghToken(), label: `${workflowFile} runs`, userAgent: 'nikatru-alert-disposition' });
   console.log(`   ·  ${workflowFile}: ${describeRead(read, newestScheduled)}`);
   return read.union; // ⏱ 2026-09-28 — anchored like every freshness reader; see the file end
 }
