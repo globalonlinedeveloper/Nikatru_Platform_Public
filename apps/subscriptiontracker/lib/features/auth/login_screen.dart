@@ -292,8 +292,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       // happen — an extra record of a real, affirmative act, never a missing one.
       // ⏱ 2026-10-01 · EN-05 — an acceptance the server did not receive now
       // THROWS here, and the provider is NOT called: the record has to exist
-      // before an account can. It is an `AuthFailure` with the network code,
-      // so `_snack` says it as the connection sentence.
+      // before an account can. It carries `consent_not_recorded`, which
+      // `authErrorText` maps to its own sentence (reacceptTermsNotRecorded).
       if (termsOwed) {
         await ref
             .read(legalAcceptanceProvider.notifier)
