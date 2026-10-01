@@ -14,7 +14,9 @@ import { deriveAndApply, persistNotification } from '../src/lib/mor/store';
 import { type GrantDeps, grantFromVerifiedEvent, storeSkuFor } from '../src/lib/mor/grant';
 import { STORE_SKUS, type StoreSku } from '../src/lib/mor/store-skus';
 import { isAttributableProduct, isKnownProduct } from '../src/config';
-import { PADDLE_PRICE_IDS, RAIL_PRICE_PENDING, oneTimeOfferingFor } from '../src/routes/checkout';
+import { RAIL_PRICE_PENDING, oneTimeOfferingFor } from '../src/routes/checkout';
+// ⏱ 2026-10-01 · port-pay-core: the route names no rail's map; the rendered module does.
+import { PADDLE_PRICE_IDS } from '../src/routes/rail-price-ids';
 import { mintFeatureSetFromRegister } from '../src/routes/receipts';
 import { allRows } from '../src/lib/d1';
 import { isMoneyEnvironment } from '../src/lib/mor/contract';

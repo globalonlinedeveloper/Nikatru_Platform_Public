@@ -1,4 +1,4 @@
-// O-ST-FX-RATES-UNUSED-BY-THE-APP · the loader every app fetches its FxTable
+// T12 (IN-06) · the loader every app fetches its FxTable
 // through, and the bag fold every "one total" figure takes.
 import 'package:nikatru_core/nikatru_core.dart';
 import 'package:test/test.dart';

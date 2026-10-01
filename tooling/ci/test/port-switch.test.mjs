@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseArgs, feeFor } from '../../ops/port-switch.mjs';
+import { parseArgs, feeFor, webhook, channelsChanging, storeBilledRails } from '../../ops/port-switch.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -222,6 +222,115 @@ describe('port-switch — margin over a copy of the REAL registers', () => {
     const paddle = doc.adapters.find((a) => a.id === 'paddle');
     assert.deepEqual(feeFor(paddle, 'paddle', 599, cells).cells, ['paddle-under-10']);
     assert.deepEqual(feeFor(paddle, 'paddle', 3499, cells).cells, ['paddle-checkout']);
+  });
+});
+
+// ⏱ 2026-10-01 · port-pay-core · the payments dry run's own lines (C9–C12) and the per-case
+// PENDING lines, over a copy of the REAL registers plus the Worker config and the conformance files.
+describe('port-switch — the payments additions over a copy of the REAL registers', () => {
+  let root;
+  before(() => {
+    root = mkdtempSync(join(tmpdir(), 'port-switch-pay-'));
+    for (const rel of ['tooling/ports', 'tooling/catalog/fee-register.json', 'tooling/channel-register.json', 'tooling/house-identity.json',
+      'services/platform/src/app-config-data.json', 'services/platform/src/types.ts', 'services/subscriptiontracker-api/src/types.ts',
+      'services/platform/wrangler.jsonc', 'services/platform/test', 'apps/subscriptiontracker/app.yaml', 'catalog', 'extensions/catalog/extensions.json']) {
+      cpSync(join(REPO, rel), join(root, rel), { recursive: true });
+    }
+  });
+  it('red: --to razorpay prints every pending case as FAIL and exits 1', () => {
+    const r = run(['payments', '--to', 'razorpay', '--dry-run', '--root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /^FAIL  C5 conformance: \d+ pending case\(s\)/m);
+    assert.match(r.out, /^FAIL  C5 pending: purchase grants \(O-RAZORPAY-CHECKOUT-ADAPTER\)$/m);
+    // Counted off the real tree: subscriptiontracker's 3 offerings and, since #1117, FullShot Pro's 2.
+    assert.match(r.out, /^FAIL  C10 prices: 5 of 5 offering\(s\) have no razorpay price id yet/m);
+    assert.match(r.out, /to create on razorpay: subscriptiontracker pro_monthly/);
+  });
+  it('red: --to fake for live is a FAIL (C1), whatever else passes', () => {
+    const r = run(['payments', '--to', 'fake', '--dry-run', '--root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /^port-switch: FAIL — C1 target: `fake` is a fake; a fake is never selectable in live/);
+  });
+  it('--to paddle prints the webhook URL, the secrets by name, the prices, the channels and the run-off', () => {
+    const r = run(['payments', '--to', 'paddle', '--from', 'revenuecat', '--dry-run', '--root', root]);
+    assert.match(r.out, /^PASS  C9 webhook: register https:\/\/platform\.nikatru\.com\/v1\/money\/paddle at paddle; secrets by name: PADDLE_NOTIFICATION_SECRET, PADDLE_API_KEY$/m);
+    // FullShot Pro (#1117) is served with no Paddle price yet (RAIL_PRICE_PENDING), so C10 names it.
+    assert.match(r.out, /^FAIL  C10 prices: 2 of 5 offering\(s\) have no paddle price id yet/m);
+    assert.match(r.out, /to create on paddle: fullshot pro_monthly/);
+    assert.doesNotMatch(r.out, /to create on paddle: subscriptiontracker/);
+    // #1127 money review, finding 3: RevenueCat's channels are billed by the STORES, so a web rail
+    // cannot take them. Nothing moves, and no margin is counted for them.
+    assert.match(r.out, /^PASS  C11 channels: no channel's purchaseRail changes; 3 store-billed channel\(s\) stay on their store's billing, which `paddle` cannot take: android-play \(play-billing\), ios-appstore \(apple-iap\), macos-appstore \(apple-iap\)$/m);
+    assert.match(r.out, /^PASS  C12 run-off: a RUN-OFF, not a cutover: card and UPI mandates do not move/m);
+    assert.match(r.out, /^ {4}run-off revenuecat: Leaves with us/m);
+    assert.match(r.out, /^PASS  C8 margin: no channel served by revenuecat would change rail; no net moves$/m);
+  });
+
+  // #1127 money review, finding 3: the dry run said android-play, ios-appstore and macos-appstore
+  // move to Razorpay and counted their margin gain. A store-billed channel never moves to a web rail.
+  it('red: --to razorpay moves no store-billed channel, and C8 nets only the channels that move', () => {
+    const r = run(['payments', '--to', 'razorpay', '--dry-run', '--root', root]);
+    const c11 = r.out.split('\n').find((l) => /C11 channels/.test(l)) ?? '';
+    for (const ch of ['android-play', 'ios-appstore', 'macos-appstore']) {
+      assert.doesNotMatch(c11, new RegExp(`${ch} \\([a-z-]+ → razorpay\\)`), `${ch} is billed by its store`);
+      assert.doesNotMatch(r.out, new RegExp(`^ {4}${ch} \\(`, 'm'), `C8 nets nothing for ${ch}`);
+    }
+    assert.match(c11, /^PASS  C11 channels: 8 channel\(s\) would change purchaseRail: web \(paddle → razorpay\)/);
+    assert.match(c11, /3 store-billed channel\(s\) stay on their store's billing, which `razorpay` cannot take/);
+    assert.match(r.out, /^PASS  C8 margin: \d+ net\(s\)/m, 'the per-channel net per price, current against target');
+    assert.match(r.out, /^ {4}web \(paddle\): paddle → razorpay$/m);
+  });
+  it('green control: a store-billing target CAN take a store-billed channel (the rule is derived, not a name list)', () => {
+    const doc = JSON.parse(readFileSync(join(root, 'tooling/ports/payments.json'), 'utf8'));
+    const revenuecat = doc.adapters.find((a) => a.id === 'revenuecat');
+    const otherStore = { id: 'store-two', capabilities: ['verify', 'cancel-store'], cost: { feeCells: ['play-billing-subscription'] } };
+    const r = channelsChanging(root, otherStore, [revenuecat], [...doc.adapters, otherStore]);
+    assert.equal(r.verdict, 'PASS');
+    assert.match(r.detail, /channel\(s\) would change purchaseRail: ios-appstore \(apple-iap → store-two\), macos-appstore \(apple-iap → store-two\)$/);
+    assert.ok(storeBilledRails(doc.adapters, JSON.parse(readFileSync(join(root, 'tooling/catalog/fee-register.json'), 'utf8')).cells).has('play-billing'));
+  });
+  it('a port other than payments prints none of C9–C12', () => {
+    const r = run(['telemetry', '--to', 'sentry', '--dry-run', '--root', root]);
+    assert.doesNotMatch(r.out, /C9 webhook|C10 prices|C11 channels|C12 run-off/);
+  });
+  it('a declared per-SALE unit cost is a fee (the fake costs 0), never LOST', () => {
+    const fake = { id: 'fake', cost: { feeCells: [], unit: { usd: 0, per: 'sale', asOf: '2026-10-01', verify: 'no vendor, no fee' } } };
+    assert.deepEqual(feeFor(fake, 'paddle', 599, {}).fee, { percentBps: 0, fixedMinor: 0 });
+    const perMonth = { id: 'x', cost: { feeCells: [], unit: { usd: 5, per: 'month', asOf: '2026-10-01', verify: 'a flat plan' } } };
+    assert.match(feeFor(perMonth, 'paddle', 599, {}).lost, /carries no fee cells/);
+  });
+});
+
+// #1127 CodeQL #546 js/regex-injection: `webhook` is exported, so it allowlists `env` itself
+// and finds the env block by comparing keys as strings, never by a RegExp built from input.
+describe('port-switch — C9 never builds a RegExp from --env', () => {
+  let root;
+  before(() => {
+    root = mkdtempSync(join(tmpdir(), 'port-switch-env-'));
+    mkdirSync(join(root, 'services/platform'), { recursive: true });
+    writeFileSync(join(root, 'services/platform/wrangler.jsonc'), JSON.stringify({
+      name: 'platform',
+      routes: [{ pattern: 'platform.example.test', custom_domain: true }],
+      env: {
+        'sandbox-old': { routes: [{ pattern: 'platform-old.example.test', custom_domain: true }] },
+        sandbox: { routes: [{ pattern: 'platform.sandbox.example.test', custom_domain: true }] },
+      },
+    }, null, 2));
+  });
+  const target = { id: 'paddle', vendor: 'paddle', secrets: ['PADDLE_API_KEY'] };
+  it('green control: each declared environment finds its OWN block', () => {
+    assert.deepEqual(webhook(root, 'live', target).verdict, 'PASS');
+    assert.match(webhook(root, 'live', target).detail, /^register https:\/\/platform\.example\.test\/v1\/money\/paddle/);
+    const s = webhook(root, 'sandbox', target);
+    assert.equal(s.verdict, 'PASS', s.detail);
+    assert.match(s.detail, /^register https:\/\/platform\.sandbox\.example\.test\/v1\/money\/paddle/);
+  });
+  it('red: an --env carrying regex syntax is refused, never matched as a pattern', () => {
+    for (const env of ['sand.ox', 'sandbox|live', '.*', 'Sandbox']) {
+      const r = webhook(root, env, target);
+      assert.equal(r.verdict, 'FAIL', `${env}: ${r.detail}`);
+      assert.match(r.detail, /is not a declared environment \(live, sandbox, test\)/);
+    }
   });
 });
 

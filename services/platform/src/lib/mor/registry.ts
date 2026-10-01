@@ -2,6 +2,11 @@
 // The MoR adapter registry — [ADR 004]'s "per-provider signature adapters" made
 // enumerable.
 //
+// ⏱ 2026-10-01 · port-pay-core: the provider set is now RENDERED (src/generated/ports.ts
+// `MOR_VERIFIER_IDS`, by tooling/ports/render.mjs from tooling/ports/payments.json) and bound
+// in src/ports.ts; the guards below read the rendered table. The paragraph that follows is
+// the reason the set is DATA at all, and it holds of the rendered table unchanged.
+//
 // It exists as DATA rather than as a switch statement in the route for one
 // reason: `tooling/ci/assert-mor-adapters.mjs` derives the provider set FROM
 // THIS FILE. A guard whose right-hand side is a hand-kept list in the guard
@@ -12,9 +17,8 @@
 // is COVERAGE LOST rather than a clean run over nothing.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { MoRWebhookVerifier } from './contract';
-import { paddleVerifier } from './paddle';
-import { razorpayVerifier } from './razorpay';
-import { revenuecatVerifier } from './revenuecat';
+import { MOR_VERIFIERS } from '../../ports';
+import { RAIL_CANCEL_PATH, type RailCancelPath } from '../../generated/ports';
 
 /**
  * Every rail that can verify a notification today.
@@ -41,12 +45,17 @@ import { revenuecatVerifier } from './revenuecat';
 // that refuses. O-REVENUECAT-VERIFIER: the store rails' webhook belongs on this door,
 // not on a per-app Worker behind a bearer string ([ADR 020]:18). What the refusal
 // waits on is four row facts, named in revenuecat.ts, not a missing signature check.
-export const MOR_VERIFIERS: readonly MoRWebhookVerifier[] = [paddleVerifier, razorpayVerifier, revenuecatVerifier];
-
-const BY_PROVIDER = new Map(MOR_VERIFIERS.map((v) => [v.provider, v]));
+// ⏱ 2026-10-01 · port-pay-core: THE HAND ARRAY IS GONE. The rail SET is rendered
+// (src/generated/ports.ts `MOR_VERIFIER_IDS`, by tooling/ports/render.mjs from
+// tooling/ports/payments.json) and bound to each adapter's verifier in the Worker's one
+// composition root, src/ports.ts, which is the only module that may import an adapter
+// (assert-ports limb 4). The guards that derived the provider set by parsing the literal
+// that stood here now read the rendered table. Re-exported so every reader keeps its import.
+export { MOR_VERIFIERS };
 
 export function verifierFor(provider: string): MoRWebhookVerifier | null {
-  return BY_PROVIDER.get(provider) ?? null;
+  // Looked up at call time, not cached at module load: src/ports.ts is the one binding.
+  return MOR_VERIFIERS.find((v) => v.provider === provider) ?? null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -150,13 +159,12 @@ export function verifierFor(provider: string): MoRWebhookVerifier | null {
 // which was untrue for a store row, and the CLIENT chose the path by build
 // channel rather than by where the person paid.
 // ─────────────────────────────────────────────────────────────────────────────
-export type RailCancelPath = 'api' | 'store' | 'none';
-
-export const RAIL_CANCEL_PATH: Readonly<Record<string, RailCancelPath>> = {
-  paddle: 'api',
-  razorpay: 'none',
-  revenuecat: 'store',
-};
+// ⏱ 2026-10-01 · port-pay-core: the map is RENDERED (src/generated/ports.ts, by
+// tooling/ports/render.mjs) from each adapter's DECLARED capabilities in
+// tooling/ports/payments.json — `cancel` → api, `cancel-store` → store, neither → none — and is
+// re-exported here so every reader keeps its import. A hand map here is the table that row retired.
+export type { RailCancelPath };
+export { RAIL_CANCEL_PATH };
 
 /** The cancel path for a row's provider; an unregistered provider has none. */
 export function cancelPathFor(provider: string): RailCancelPath {

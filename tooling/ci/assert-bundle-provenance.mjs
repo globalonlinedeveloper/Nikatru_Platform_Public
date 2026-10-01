@@ -104,7 +104,7 @@ const DECIDING_FIELDS = [
  * silent pass — the same reason INSTANT_PATHS in assert-entitlement-contract.mjs
  * names its two canonicalisers by file.
  */
-const VERIFY_CALL = /\.\s*verify\s*\(|verifierFor\s*\(|receiptVerifierFor\s*\(/;
+const VERIFY_CALL = /\.\s*verify\s*\(|verifierFor\s*\(|receiptVerifierFor\s*\(|inboundFor\s*\(/;
 // ⏱ RE-POINTED 2026-09-09, AND THE RENAME IS EXACTLY WHY THIS IS MATCHED AS
 // SOURCE TEXT. `services/platform/src/lib/receipts/registry.ts` became
 // `verifiers.ts` in the same change that made its modules reachable — two files
@@ -115,7 +115,14 @@ const VERIFY_CALL = /\.\s*verify\s*\(|verifierFor\s*\(|receiptVerifierFor\s*\(/;
 // is the same reason INSTANT_PATHS in assert-entitlement-contract.mjs names its
 // two canonicalisers by file. Both spellings are accepted so a merge from either
 // side of the rename is not a false red.
-const VERIFY_IMPORT = /from\s+['"][^'"]*(?:receipts|mor)\/(?:registry|verifiers)['"]/;
+// ⏱ RE-POINTED 2026-10-01 (port-pay-core), the same way: the money door now resolves its
+// verifier through the Worker's composition root (`services/platform/src/ports.ts`
+// `inboundFor`, the only module that may import an adapter), and this guard went red
+// on the real tree reporting the door unverified while it still calls `.verify(` above
+// the grant. The root's import (`from '../ports'`) is accepted beside the two above, and
+// its lookup `inboundFor(` beside `verifierFor(` — the nightly re-derivation (scheduled.ts)
+// replays a stored, door-verified notification through it, as it did through verifierFor.
+const VERIFY_IMPORT = /from\s+['"](?:[^'"]*(?:receipts|mor)\/(?:registry|verifiers)|(?:\.\.?\/)+ports)['"]/;
 
 const problems = [];
 const notes = [];

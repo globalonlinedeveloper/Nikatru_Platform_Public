@@ -11,7 +11,7 @@ import 'money_bag.dart';
 //
 // The platform Worker has served `GET /v1/fx/latest` nightly since ST-I3 and
 // [FxTable] could convert, yet nothing in any app ever asked for the table
-// (O-ST-FX-RATES-UNUSED-BY-THE-APP). This is the seam every app fetches it
+// (T12, IN-06). This is the seam every app fetches it
 // through: a transport (the HTTP half lives in packages/api_client, ADR 005)
 // and a loader that keeps the LAST GOOD table on the device, so an offline
 // launch still converts — with the date of the table it converted at.

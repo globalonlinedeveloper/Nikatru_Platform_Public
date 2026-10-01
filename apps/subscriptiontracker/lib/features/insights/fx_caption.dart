@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// "CONVERTED AT ECB RATES OF {date}" — T12, IN-06 (O-ST-FX-RATES-UNUSED-BY-THE-APP).
+// "CONVERTED AT ECB RATES OF {date}" — T12, IN-06.
 //
 // The line under every Insights total that folded another currency into the
 // home one, and the one control that lets the user put their OWN rate on one

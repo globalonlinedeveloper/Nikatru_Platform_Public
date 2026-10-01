@@ -818,6 +818,32 @@ const WIRE_CONTRACTS = [
       drives: `'/v1/auth/native/$_app/attest/${op}'`,
     },
   })),
+  // ⏱ 2026-10-01 · O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH — the desktop
+  // system-browser hand-off. The exchange is built by ONE client function,
+  // exchangeHandoffCode, from the native route base; its wire is ours and tiny
+  // (`{code, code_verifier, redirect_uri}` → GoTrue's own session JSON), so the
+  // `sdk` kind pins the same three things: the Worker serves it, the client
+  // names it, and the package test drives it. The mint's caller is plain JS.
+  {
+    id: 'native-auth-handoff-token',
+    kind: 'sdk',
+    op: 'handoff/token',
+    sdk: 'exchangeHandoffCode',
+    server: { file: 'services/platform/src/routes/native-auth.ts', marker: "nativeAuth.post('/auth/native/:app/handoff/token'" },
+    client: {
+      file: 'packages/auth_supabase/lib/src/browser_handoff_client.dart',
+      marker: "'$nativeBaseUrl/handoff/token'",
+      test: 'packages/auth_supabase/test/browser_handoff_client_test.dart',
+      drives: "'$base/handoff/token'",
+    },
+  },
+  {
+    id: 'native-auth-handoff-code',
+    kind: 'gap',
+    reason:
+      'NO DART CLIENT, BY CONSTRUCTION — the caller is sites/nikatru/app/connect.js, the signed-in page a desktop app opens in the system browser, and it is plain JavaScript served by Cloudflare Pages. It reads exactly two keys of the answer, `code` and `redirect_uri`, and navigates only to a server-returned `redirect_uri` that is the app\'s own loopback or deep link (tooling/ci/test/app-connect.test.mjs). The desktop app never calls it: it only opens the page.',
+    absentFromDart: '/v1/auth/handoff/',
+  },
 ];
 
 /** Where limb 5's "no Dart client" claims are checked. Roots rather than the

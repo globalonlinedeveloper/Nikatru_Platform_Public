@@ -1,5 +1,5 @@
-// SECTION · THE HOME-CURRENCY RATE TABLE (T12, IN-06;
-// O-ST-FX-RATES-UNUSED-BY-THE-APP). Re-exported from `../providers.dart`.
+// SECTION · THE HOME-CURRENCY RATE TABLE (T12, IN-06).
+// Re-exported from `../providers.dart`.
 //
 // The platform Worker serves the ECB's euro reference rates nightly at
 // `GET /v1/fx/latest`, and `packages/core`'s FxTable converts with them; until
