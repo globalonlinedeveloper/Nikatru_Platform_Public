@@ -75,7 +75,7 @@
     },
     "C": {
       "claim": "held",
-      "note": "assert-stamp-properties.mjs EXEMPTs apps/subscriptiontracker by name (EXEMPT_APPS), so the five-class pin runs HERE, in this app's own suite: chassis_properties_test.dart's 'five window classes, at Material 600/840/1200/1600' on the pure resolver, and 'the scaffold really switches control at the 600 boundary' pumping AppScaffold across it. Per-screen width is now measured on the ROUTED SET, not three screens: responsive_width_test.dart (onboarding · settings · manage-plan) plus seven per-screen suites — width_calendar · width_budget · width_insights · width_scan · width_detail · width_add_sheet · width_cancel_sheet — at 375/768/1280(/1920), each with a stated falsifiable case. ⬜ ONE GAP: HomeScreen's ContentPane has no width group (home_screen.dart's own comment says so), so that one wrapper can still be deleted with every test green"
+      "note": "assert-stamp-properties.mjs EXEMPTs apps/subscriptiontracker by name (EXEMPT_APPS), so the five-class pin runs HERE, in this app's own suite: chassis_properties_test.dart's 'five window classes, at Material 600/840/1200/1600' on the pure resolver, and 'the scaffold really switches control at the 600 boundary' pumping AppScaffold across it. Per-screen width is now measured on the ROUTED SET, not three screens: responsive_width_test.dart (onboarding · settings · manage-plan) plus seven per-screen suites — width_calendar · width_budget · width_insights · width_scan · width_detail · width_add_sheet · width_stop — at 375/768/1280(/1920), each with a stated falsifiable case. ⬜ ONE GAP: HomeScreen's ContentPane has no width group (home_screen.dart's own comment says so), so that one wrapper can still be deleted with every test green"
     },
     "D": {
       "claim": "held",
@@ -261,18 +261,18 @@
     },
     {
       "name": "cancel subscription",
-      "primaryAction": "confirming a removal drives the repository, and a failed removal never shows the removed step",
-      "test": "cancel sheet: a failed cancel never claims success",
-      "effect": "lib/features/cancel/cancel_sheet.dart:_confirm",
+      "primaryAction": "choosing \"just remove\" in the stop-a-charge flow drives the repository, and a failed write never reports success or leaves the flow",
+      "test": "stop flow: a failed remove never claims success",
+      "effect": "lib/features/stop/stop_flow.dart:_run",
       "mutation": {
-        "symbol": "lib/features/cancel/cancel_sheet.dart:_confirm catch → _step stays 0",
-        "observedRed": "cancel sheet: a failed cancel never claims success",
+        "symbol": "lib/features/stop/stop_flow.dart:_run catch → reports success",
+        "observedRed": "stop flow: a failed remove never claims success",
         "date": "2026-10-01",
         "edit": {
-          "find": "_failure = ApiException.isOfflineError(e)",
-          "replace": "_step = 1; _failure = ApiException.isOfflineError(e)"
+          "find": "      return false;\n    }\n  }",
+          "replace": "      return true;\n    }\n  }"
         },
-        "codeHash": "a0ebb7307f3b00cad3c70e21ec62f2335025c7663e425e1b4603b817b72306d9"
+        "codeHash": "fefae3e00eddb0b9fa90f3f3b285478ac213cf946bbbf1579a483d1210d10e67"
       }
     }
   ],

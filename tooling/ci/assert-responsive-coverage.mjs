@@ -502,7 +502,17 @@ const REQUIRED_COVERAGE = [
     // (EN-18): the after-sign-in setup (`/setup`) is a new surface, measured
     // at every window class by `width_setup_test.dart`. `widthTestFiles`
     // stays 16 for the guards.test.mjs fixture reason recorded below.
-    surfaces: 19,
+    // ⏱ RAISED 18 → 19 (and coveredSurfaces with it) on 2026-10-01 by train
+    // ST-detail-stop (DE-07): the cancel sheet RETIRED (−1) and the stop flow
+    // that replaced it is two surfaces (+2), `showStopSheet` and the
+    // `/sub/:id/stop` route's `StopScreen`, both measured at kPhone, kTablet
+    // and kDesktop by width_stop_test.dart, which replaces
+    // width_cancel_sheet_test.dart. Measured by this guard's own run: "19
+    // surface(s) reachable, 19 measured — the two sets are EQUAL".
+    // ⏱ 2026-10-01 · club apply-st: the two raises above landed TOGETHER, so
+    // 18 → 20 — /setup (+1) and the stop flow's net +1. Read off this guard's
+    // own run: "20 surface(s) reachable, 20 measured — the two sets are EQUAL".
+    surfaces: 20,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
     // MEASURED 2026-09-05: `ls apps/subscriptiontracker/test | grep -cE
@@ -519,8 +529,13 @@ const REQUIRED_COVERAGE = [
     // red on `only 16 width test file(s) … floor is 17`.
     // 📌 OWED, AND REPORTED TO THE OWNER RATHER THAN LEFT IN A COMMENT: raise
     // this to 17 in the same change that grows that fixture's `N`.
-    widthTestFiles: 16, // 15 `width_*_test.dart` + `responsive_width_test.dart`
-    coveredSurfaces: 19,
+    // ⏱ 2026-10-01 · ST-detail-stop: THE OWED RAISE, PAID — 16 → 17, in the
+    // same change that grows guards.test.mjs's fixture `N` 16 → 17 (one more
+    // single-subject width file there). The tree holds 18 (`corpus: … — 18
+    // file(s)`), so this is still one under it: the raise is the one the note
+    // above owed, not a re-measure to the tree.
+    widthTestFiles: 17, // 16 `width_*_test.dart` + `responsive_width_test.dart`
+    coveredSurfaces: 20,
     label: 'the app this guard was written for — every surface measured, and it fails if one stops being',
   },
   {

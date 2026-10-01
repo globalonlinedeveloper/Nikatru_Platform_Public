@@ -709,9 +709,21 @@ const REQUIRED_COVERAGE = [
     // steps`, two cases). Read off the per-root line: `19 of 19 reachable
     // surface(s) carry an a11y sweep, from 1 a11y test file(s) across 115
     // case(s)`.
-    surfaces: 19,
+    //
+    // ⏱ RAISED 18 → 19 and cases 113 → 114 on 2026-10-01 by train
+    // ST-detail-stop (DE-07): the cancel sheet RETIRED and the stop flow is two
+    // surfaces — `showStopSheet` (swept by the four cases that swept the cancel
+    // sheet, re-pointed) and `StopScreen` at `/sub/:id/stop` (one new case,
+    // 'nothing on the stop page is naked'). assert-responsive-coverage.mjs
+    // re-measured to 19 in the same change. Measured by this guard's own run:
+    // "19 of 19 reachable surface(s) carry an a11y sweep, from 1 a11y test
+    // file(s) across 114 case(s)".
+    // ⏱ 2026-10-01 · club apply-st: BOTH raises above landed together — 18 → 20
+    // surfaces and 113 → 116 cases (SetupScreen's two cases, the stop page's
+    // one). Read off the per-root line: `20 of 20 … across 116 case(s)`.
+    surfaces: 20,
     a11yFiles: 1,
-    cases: 115,
+    cases: 116,
     label: 'the app P5 wrote this guard for — 19 surfaces, all nineteen swept',
   },
   {
@@ -1039,7 +1051,11 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'features/monetization/manage_plan_screen.dart#ManagePlanScreen',
         'features/onboarding/onboarding_screen.dart#OnboardingScreen',
         'features/add/add_subscription_sheet.dart#showAddSubscriptionSheet',
-        'features/cancel/cancel_sheet.dart#showCancelSheet',
+        // 2026-10-01 (DE-07): the cancel sheet RETIRED; the stop flow that
+        // replaced it is two surfaces — the sheet the detail opens and the
+        // `/sub/:id/stop` page — each swept in a11y_semantics_test.dart.
+        'features/stop/stop_flow.dart#showStopSheet',
+        'features/stop/stop_flow.dart#StopScreen',
         // 2026-09-29 (ST-D3 D3-2): the budget editor, the first surface that
         // can WRITE a budget, swept in a11y_semantics_test.dart.
         'features/insights/budget_editor.dart#showBudgetEditorSheet',

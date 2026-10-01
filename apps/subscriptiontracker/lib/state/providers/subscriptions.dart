@@ -21,6 +21,7 @@ import '../../data/api/persisted_api_client.dart';
 import '../../data/api/seed_api_client.dart';
 import '../../data/local/subscription_store.dart';
 import '../../data/models/payment_record.dart';
+import '../../data/models/price_change.dart';
 import '../../data/subscriptions/subscription_repository.dart';
 import '../settings_controller.dart' show currencyCodeProvider;
 import '../subscriptions_controller.dart' show subscriptionsControllerProvider;
@@ -292,6 +293,14 @@ final Provider<SubscriptionRepository> subscriptionRepositoryProvider =
 final FutureProviderFamily<List<PaymentRecord>, String> paymentHistoryProvider =
     FutureProvider.family<List<PaymentRecord>, String>(
       (ref, String id) => ref.watch(subscriptionRepositoryProvider).history(id),
+    );
+
+/// One row's price edits, newest first (DE-05) — the timeline merges these
+/// with [paymentHistoryProvider]. Not cached, for the same reason.
+final FutureProviderFamily<List<PriceChange>, String> priceHistoryProvider =
+    FutureProvider.family<List<PriceChange>, String>(
+      (ref, String id) =>
+          ref.watch(subscriptionRepositoryProvider).priceHistory(id),
     );
 
 // ── `purchasesServiceProvider` WAS HERE, AND IT IS GONE ON PURPOSE ──────────

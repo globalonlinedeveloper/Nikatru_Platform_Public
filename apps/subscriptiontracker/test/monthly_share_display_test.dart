@@ -41,7 +41,7 @@ import 'package:subscriptiontracker/data/api/seed_api_client.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
-import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
+import 'package:subscriptiontracker/features/stop/stop_flow.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
 import 'package:subscriptiontracker/features/scan/scan_screen.dart';
 import 'package:subscriptiontracker/features/shared/widgets.dart';
@@ -302,7 +302,7 @@ void main() {
                 body: Builder(
                   builder: (BuildContext context) => Center(
                     child: TextButton(
-                      onPressed: () => showCancelSheet(context, _yearly()),
+                      onPressed: () => showStopSheet(context, _yearly()),
                       child: const Text('open'),
                     ),
                   ),
@@ -318,7 +318,7 @@ void main() {
         // The sheet deletes a row from THIS app's list. It used to print the
         // share and the yearly charge as "savings" (B32); neither is a fact
         // about anything the sheet does.
-        expect(find.text(l10n.removeStep1Body), findsOneWidget);
+        expect(find.text(l10n.stopChoiceRemoveDetail), findsOneWidget);
         expect(find.textContaining(_share), findsNothing);
         expect(
           find.textContaining(_money.formatRounded(const Money(12053, 'USD'))),

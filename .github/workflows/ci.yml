@@ -814,6 +814,9 @@ jobs:
       - name: No hardcoded user-facing strings in the brick
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-hardcoded-strings.mjs
+      - name: The stop-a-charge copy never claims we cancel or names a debit time
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-stop-copy.mjs
       - name: Every adapter declares where it works
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-adapter-capabilities.mjs

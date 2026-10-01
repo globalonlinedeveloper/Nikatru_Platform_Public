@@ -32,6 +32,7 @@ import '../../features/monetization/paywall_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/scan/scan_screen.dart';
+import '../../features/stop/stop_flow.dart';
 import 'navigator_key.dart';
 
 /// Thin seam onto `package:nikatru_core`'s shared implementation — the WHY,
@@ -204,6 +205,16 @@ List<RouteBase> appRoutes() => <RouteBase>[
     parentNavigatorKey: rootNavigatorKey,
     builder: (_, GoRouterState state) =>
         SubscriptionDetailScreen(id: state.pathParameters['id']!),
+    caseSensitive: false,
+  ),
+  // DE-07: the stop-a-charge flow as a page — a deep link (a "cancel by"
+  // reminder, a shared URL) lands on the choose step. The detail screen opens
+  // the same flow as a sheet, which also works in its two-pane mount.
+  GoRoute(
+    path: '/sub/:id/stop',
+    parentNavigatorKey: rootNavigatorKey,
+    builder: (_, GoRouterState state) =>
+        StopScreen(id: state.pathParameters['id']!),
     caseSensitive: false,
   ),
 

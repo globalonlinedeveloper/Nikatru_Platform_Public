@@ -2767,6 +2767,11 @@
         "reason": "exposed 59 of the 90 days a zero needs before it is evidence (firstSeen 2026-07-29); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-stop-copy.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ci/assert-store-audience.mjs": {
       "catches": 0,
       "firstSeen": "2026-10-01",

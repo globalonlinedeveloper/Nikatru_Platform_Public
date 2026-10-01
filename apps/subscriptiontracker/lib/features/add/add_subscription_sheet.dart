@@ -9,6 +9,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/e2e_keys.dart';
 import '../../core/format/category_label.dart';
+import '../../core/format/rail_label.dart';
 import '../../data/api/api_client.dart' show ApiException;
 import '../../data/models/budget_info.dart';
 import '../../data/models/category.dart';
@@ -231,7 +232,7 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
   String? _serviceId;
 
   /// "Paid with" (AD-06): one of [Subscription.kRails], or null.
-  String? _rail;
+  PaymentRail? _rail;
   final TextEditingController _railHolder = TextEditingController();
 
   /// The row's own reminder lead days (AD-07); empty = the account default.
@@ -801,15 +802,15 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
   }
 
   /// "Paid with" (AD-06) — the API's closed `rail` set, or not set.
-  Widget _railField(AppLocalizations l10n) => _dropdown<String?>(
+  Widget _railField(AppLocalizations l10n) => _dropdown<PaymentRail?>(
     key: E2EKeys.addRail,
     label: l10n.fieldLabelPaidWith,
     value: _rail,
-    items: <(String?, String)>[
+    items: <(PaymentRail?, String)>[
       (null, l10n.railNotSet),
-      for (final String r in Subscription.kRails) (r, railLabel(l10n, r)),
+      for (final PaymentRail r in Subscription.kRails) (r, railLabel(l10n, r)!),
     ],
-    onChanged: (String? v) => setState(() => _rail = v),
+    onChanged: (PaymentRail? v) => setState(() => _rail = v),
   );
 
   /// "Remind me" (AD-07): the row's own `reminder_days`, several at once.
@@ -1245,15 +1246,3 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     return (l10n.fieldLabelName, _serverErrors['name']);
   }
 }
-
-/// The label for a `rail` value (ST-T9, AD-06) — the sheet's dropdown and the
-/// row's badge read the same words.
-String railLabel(AppLocalizations l10n, String rail) => switch (rail) {
-  'upi_autopay' => l10n.railUpiAutopay,
-  'card_emandate' => l10n.railCard,
-  'nach' => l10n.railNach,
-  'app_store' => l10n.railAppStore,
-  'play' => l10n.railPlay,
-  'paypal' => l10n.railPaypal,
-  _ => l10n.railOther,
-};

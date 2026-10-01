@@ -210,6 +210,25 @@ class RenewalReminders {
   ///
   /// A TRIALING row is also reminded before its trial ends (ST-T3b, ST-E5),
   /// at the same leads and time of day.
+  /// When the next reminder for [sub] fires — the first entry of the schedule
+  /// [plannedFor] arms — or null when none will: the platform cannot schedule
+  /// ([unavailability]), the row is not charging, or every lead has passed.
+  /// The detail screen's "Next reminder" row (DE-11) reads THIS, so it can
+  /// never name a reminder the device is not going to post.
+  DateTime? nextReminderAt(
+    Subscription sub, {
+    required ReminderCopy copy,
+    required ReminderRules rules,
+  }) {
+    if (unavailability != null || !sub.isCharging) return null;
+    final List<core.ScheduledNotification> plan = plannedFor(
+      sub,
+      copy: copy,
+      rules: rules,
+    );
+    return plan.isEmpty ? null : plan.first.at;
+  }
+
   @visibleForTesting
   List<core.ScheduledNotification> plannedFor(
     Subscription sub, {

@@ -2843,5 +2843,477 @@
         "type": "int"
       }
     }
+  },
+  "detailsHeading": "Details",
+  "@detailsHeading": {
+    "description": "DE-11 · Heading of the detail screen card that lists every fact about the subscription."
+  },
+  "detailNextReminder": "Next reminder",
+  "@detailNextReminder": {
+    "description": "DE-11 · Details row label: when the next reminder for this subscription fires, from the armed schedule."
+  },
+  "detailPaidWith": "Paid with",
+  "@detailPaidWith": {
+    "description": "DE-11 · Details row label: the payment rail and its holder, e.g. \"UPI Autopay · name@okaxis\"."
+  },
+  "detailCategory": "Category",
+  "@detailCategory": {
+    "description": "DE-11 · Details row label: the category."
+  },
+  "detailWebsite": "Website",
+  "@detailWebsite": {
+    "description": "DE-11 · Details row label: the provider website the user saved."
+  },
+  "detailNotes": "Notes",
+  "@detailNotes": {
+    "description": "DE-11 · Details row label: the user's own notes."
+  },
+  "detailFirstCharge": "First charge",
+  "@detailFirstCharge": {
+    "description": "DE-11 · Details row label: the date of the first charge."
+  },
+  "detailCancelledOn": "Cancelled on",
+  "@detailCancelledOn": {
+    "description": "DE-11 / DE-07 · Details row label and the stop flow's date field: the day the user cancelled with the provider."
+  },
+  "markAsPaid": "Mark as paid",
+  "@markAsPaid": {
+    "description": "DE-04 · The detail action that records a payment the user already made. No money moves."
+  },
+  "markAsPaidTitle": "Mark {name} as paid",
+  "@markAsPaidTitle": {
+    "description": "DE-04 · Title of the mark-as-paid dialog.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "markAsPaidBody": "This records a payment you already made. No money moves.",
+  "@markAsPaidBody": {
+    "description": "DE-04 · The line under the title: what saving does and does not do."
+  },
+  "markAsPaidAmount": "Amount",
+  "@markAsPaidAmount": {
+    "description": "DE-04 · Amount field label; prefilled from the plan, editable."
+  },
+  "markAsPaidDate": "Paid on",
+  "@markAsPaidDate": {
+    "description": "DE-04 · Date field label; today unless changed."
+  },
+  "markAsPaidSave": "Save payment",
+  "@markAsPaidSave": {
+    "description": "DE-04 · The dialog's confirm button."
+  },
+  "markAsPaidAmountInvalid": "Enter the amount you paid",
+  "@markAsPaidAmountInvalid": {
+    "description": "DE-04 · Shown under the amount field when it is not a number."
+  },
+  "paymentRecorded": "Payment recorded",
+  "@paymentRecorded": {
+    "description": "DE-04 · Snackbar after a payment is saved."
+  },
+  "timelinePriceRose": "Price rose from {from} to {to} on {date}",
+  "@timelinePriceRose": {
+    "description": "DE-05 · A timeline row for a price rise. {from} and {to} are formatted money, {date} a short date.",
+    "placeholders": {
+      "from": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "to": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "date": {
+        "type": "String",
+        "example": "3 Sep"
+      }
+    }
+  },
+  "timelinePriceFell": "Price fell from {from} to {to} on {date}",
+  "@timelinePriceFell": {
+    "description": "DE-05 · A timeline row for a price drop.",
+    "placeholders": {
+      "from": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "to": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "date": {
+        "type": "String",
+        "example": "3 Sep"
+      }
+    }
+  },
+  "timelinePriceChanged": "Price changed from {from} to {to} on {date}",
+  "@timelinePriceChanged": {
+    "description": "DE-05 · A timeline row for a change of currency, which is neither a rise nor a fall.",
+    "placeholders": {
+      "from": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "to": {
+        "type": "String",
+        "example": "₹499"
+      },
+      "date": {
+        "type": "String",
+        "example": "3 Sep"
+      }
+    }
+  },
+  "howToCancelTitle": "How to cancel {name}",
+  "@howToCancelTitle": {
+    "description": "DE-06 · Heading of the how-to-cancel card.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "howToCancelProviderPage": "Open {name}'s cancel page",
+  "@howToCancelProviderPage": {
+    "description": "DE-06 · Opens the provider's own cancel page in the browser.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "howToCancelPlay": "Manage in Google Play subscriptions",
+  "@howToCancelPlay": {
+    "description": "DE-06 · Opens Google Play's subscription page, for a row paid through Play."
+  },
+  "howToCancelAppStore": "Manage in App Store subscriptions",
+  "@howToCancelAppStore": {
+    "description": "DE-06 · Opens the App Store's subscription page, for a row paid through Apple."
+  },
+  "howToCancelStep1": "Sign in to your account on the provider's website or app.",
+  "@howToCancelStep1": {
+    "description": "DE-06 · Generic step 1, for a row with no catalogue match."
+  },
+  "howToCancelStep2": "Find Subscription, Membership or Billing in the account settings.",
+  "@howToCancelStep2": {
+    "description": "DE-06 · Generic step 2."
+  },
+  "howToCancelStep3": "Choose Cancel and keep the confirmation the provider sends.",
+  "@howToCancelStep3": {
+    "description": "DE-06 · Generic step 3."
+  },
+  "linkNotOpened": "Couldn't open that link.",
+  "@linkNotOpened": {
+    "description": "DE-06 · Snackbar when the external link launcher did not open a link."
+  },
+  "stopOrRemove": "Stop or remove",
+  "@stopOrRemove": {
+    "description": "DE-07 · The detail screen button that opens the stop-a-charge flow. Replaces \"Remove\"."
+  },
+  "stopChooseTitle": "What do you want to do with {name}?",
+  "@stopChooseTitle": {
+    "description": "DE-07 · Title of the choose step.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopChoiceStop": "Stop the charge",
+  "@stopChoiceStop": {
+    "description": "DE-07 · Choice 1."
+  },
+  "stopChoiceStopDetail": "Cancel with the provider. We'll show you where.",
+  "@stopChoiceStopDetail": {
+    "description": "DE-07 · Under choice 1. The app shows the way; it does not cancel anything itself."
+  },
+  "stopChoicePause": "Pause it",
+  "@stopChoicePause": {
+    "description": "DE-07 · Choice 2."
+  },
+  "stopChoicePauseDetail": "It stays on your list. Reminders stop until you resume.",
+  "@stopChoicePauseDetail": {
+    "description": "DE-07 · Under choice 2."
+  },
+  "stopChoiceAlreadyCancelled": "I already cancelled",
+  "@stopChoiceAlreadyCancelled": {
+    "description": "DE-07 · Choice 3."
+  },
+  "stopChoiceAlreadyCancelledDetail": "Mark it cancelled. Its history stays.",
+  "@stopChoiceAlreadyCancelledDetail": {
+    "description": "DE-07 · Under choice 3."
+  },
+  "stopChoiceRemove": "Just remove it from the tracker",
+  "@stopChoiceRemove": {
+    "description": "DE-07 · Choice 4."
+  },
+  "stopChoiceRemoveDetail": "Deletes it from this app only. It doesn't cancel anything.",
+  "@stopChoiceRemoveDetail": {
+    "description": "DE-07 · Under choice 4."
+  },
+  "stopWalkthroughTitle": "Stop the charge for {name}",
+  "@stopWalkthroughTitle": {
+    "description": "DE-07 · Title of the walkthrough step.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopPlayStep1": "Open the Google Play Store app and tap your profile picture.",
+  "@stopPlayStep1": {
+    "description": "DE-07 · Google Play walkthrough, step 1."
+  },
+  "stopPlayStep2": "Tap Payments & subscriptions, then Subscriptions.",
+  "@stopPlayStep2": {
+    "description": "DE-07 · Google Play walkthrough, step 2. Menu names as Google Play shows them."
+  },
+  "stopPlayStep3": "Choose {name} and tap Cancel subscription.",
+  "@stopPlayStep3": {
+    "description": "DE-07 · Google Play walkthrough, step 3.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopAppStoreStep1": "Open Settings on your iPhone or iPad and tap your name.",
+  "@stopAppStoreStep1": {
+    "description": "DE-07 · App Store walkthrough, step 1."
+  },
+  "stopAppStoreStep2": "Tap Subscriptions.",
+  "@stopAppStoreStep2": {
+    "description": "DE-07 · App Store walkthrough, step 2."
+  },
+  "stopAppStoreStep3": "Choose {name} and tap Cancel Subscription.",
+  "@stopAppStoreStep3": {
+    "description": "DE-07 · App Store walkthrough, step 3.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopProviderFirst": "Cancel with {name} first, on its website or app.",
+  "@stopProviderFirst": {
+    "description": "DE-07 · Card, UPI and NACH walkthroughs, step 1.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopCardStep2": "Then open your bank's app or card portal, find standing instructions or e-mandates, and remove the one for {name}.",
+  "@stopCardStep2": {
+    "description": "DE-07 · Card walkthrough, step 2.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopUpiStep2": "Then open the UPI app you approved it in, find Autopay or Mandates, and revoke the one for {name}.",
+  "@stopUpiStep2": {
+    "description": "DE-07 · UPI Autopay walkthrough, step 2.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopNachStep2": "Then ask your bank to cancel the mandate for {name}, in its app, net banking or at a branch.",
+  "@stopNachStep2": {
+    "description": "DE-07 · NACH walkthrough, step 2.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopKeepConfirmation": "Keep the confirmation you are sent.",
+  "@stopKeepConfirmation": {
+    "description": "DE-07 · Card, UPI and NACH walkthroughs, last step."
+  },
+  "stopDidItWork": "Did it work?",
+  "@stopDidItWork": {
+    "description": "DE-07 · The question after the walkthrough."
+  },
+  "stopDidItWorkBody": "When the provider confirms, mark it cancelled here. Its history stays.",
+  "@stopDidItWorkBody": {
+    "description": "DE-07 · The line under \"Did it work?\"."
+  },
+  "stopItWorked": "Yes, mark it cancelled",
+  "@stopItWorked": {
+    "description": "DE-07 · The answer that marks the row cancelled with the date above."
+  },
+  "stopNotYet": "Not yet",
+  "@stopNotYet": {
+    "description": "DE-07 · The answer that leaves the row as it is."
+  },
+  "stopDoneTitle": "{name} is marked cancelled",
+  "@stopDoneTitle": {
+    "description": "DE-07 · Title of the done step.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "stopDoneBody": "Its reminders have stopped. Its history stays on its page.",
+  "@stopDoneBody": {
+    "description": "DE-07 · Body of the done step."
+  },
+  "railPanelUpiTitle": "About UPI Autopay",
+  "@railPanelUpiTitle": {
+    "description": "DE-08 · R3 allowed copy. Heading of the India rail panel for a UPI Autopay row."
+  },
+  "railPanelUpiWhat": "UPI Autopay is a permission you gave in your UPI app for {name} to collect payments on a schedule.",
+  "@railPanelUpiWhat": {
+    "description": "DE-08 · R3 allowed copy: what the mandate is. Never name a debit time.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "railPanelUpiWhere": "Revoke it in the UPI app you approved it in, under Autopay or Mandates.",
+  "@railPanelUpiWhere": {
+    "description": "DE-08 · R3 allowed copy: where to revoke it — the user's own app."
+  },
+  "railPanelCardTitle": "About card mandates",
+  "@railPanelCardTitle": {
+    "description": "DE-08 · R3 allowed copy. Heading for a card e-mandate row."
+  },
+  "railPanelCardWhat": "A card e-mandate is a standing instruction on your card that lets {name} charge it on a schedule.",
+  "@railPanelCardWhat": {
+    "description": "DE-08 · R3 allowed copy: what the mandate is.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "railPanelCardWhere": "Remove it in your bank's app or card portal, under standing instructions or e-mandates.",
+  "@railPanelCardWhere": {
+    "description": "DE-08 · R3 allowed copy: where to revoke it."
+  },
+  "railPanelNachTitle": "About NACH / e-mandates",
+  "@railPanelNachTitle": {
+    "description": "DE-08 · R3 allowed copy. Heading for a NACH row."
+  },
+  "railPanelNachWhat": "A NACH or e-mandate is a standing instruction with your bank that lets {name} collect from your account on a schedule.",
+  "@railPanelNachWhat": {
+    "description": "DE-08 · R3 allowed copy: what the mandate is.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "railPanelNachWhere": "Cancel it through your bank's app, net banking or a branch.",
+  "@railPanelNachWhere": {
+    "description": "DE-08 · R3 allowed copy: where to revoke it."
+  },
+  "railPanelNotTheSame": "Cancelling with {name} is not the same as revoking the mandate. Do both.",
+  "@railPanelNotTheSame": {
+    "description": "DE-08 · R3 allowed copy, all three rails: the two acts are different.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "pauseConfirmTitle": "Pause {name}?",
+  "@pauseConfirmTitle": {
+    "description": "DE-09 · The one confirmation before Pause.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "pauseConfirmBody": "Reminders stop until you resume.",
+  "@pauseConfirmBody": {
+    "description": "DE-09 · Under the pause question."
+  },
+  "markCancelledConfirmTitle": "Mark {name} as cancelled?",
+  "@markCancelledConfirmTitle": {
+    "description": "DE-09 · The one confirmation before Mark as cancelled.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "markCancelledConfirmBody": "It leaves your totals and reminders. Its history stays.",
+  "@markCancelledConfirmBody": {
+    "description": "DE-09 · Under the mark-cancelled question."
+  },
+  "subscriptionPaused": "{name} paused",
+  "@subscriptionPaused": {
+    "description": "DE-09 · Snackbar after Pause, with Undo.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "subscriptionMarkedCancelled": "{name} marked cancelled",
+  "@subscriptionMarkedCancelled": {
+    "description": "DE-09 · Snackbar after Mark as cancelled, with Undo.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "changeRefused": "That change was refused. Nothing was saved.",
+  "@changeRefused": {
+    "description": "DE-09 / B08 · A write the server answered 4xx. Never blames the connection."
+  },
+  "changeOffline": "You're offline. Nothing was saved. Try again when you're connected.",
+  "@changeOffline": {
+    "description": "DE-09 / B08 · A write that never got an answer."
+  },
+  "changeServerError": "The server had a problem. Nothing was saved. Try again in a moment.",
+  "@changeServerError": {
+    "description": "DE-09 / B08 · A write the server answered 5xx."
+  },
+  "changeFailed": "Couldn't save that change. Try again.",
+  "@changeFailed": {
+    "description": "DE-09 / B08 · Any other failed write."
+  },
+  "reminderSaveFailed": "Couldn't save the reminders for {name}. Try again.",
+  "@reminderSaveFailed": {
+    "description": "DE-09 / B09 · A reminder row whose subscription save failed. Names the save, not a \"reminder service\".",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
   }
 }

@@ -368,6 +368,8 @@ const Map<String, String> kCannotBeSwept = <String, String>{
 const Map<String, Map<String, String>> kPathParameters =
     <String, Map<String, String>>{
       '/sub/:id': <String, String>{'id': '1'},
+      // DE-07: the stop flow for the same row.
+      '/sub/:id/stop': <String, String>{'id': '1'},
     };
 
 /// `state.extra` for the one route whose builder reads it.
@@ -491,7 +493,13 @@ kExpected = <String, ({int controls, int reachable})>{
   // opens the row's lifecycle menu (Pause, Mark as cancelled, Delete).
   // ⏱ 2026-09-28 · ST-R3: 4 -> 5, the detail's own Reminders row (the notice
   // row appears only once the API emits notice_days; the seed does not).
-  '/sub/:id': (controls: 5, reachable: 5),
+  // ⏱ 2026-10-01 · DE-04: 5 -> 6, "Mark as paid" on the history heading. The
+  // seed row matches no catalogue entry, so "How to cancel" is its generic
+  // steps — text, no control.
+  '/sub/:id': (controls: 6, reachable: 6),
+  // ⏱ 2026-10-01 · DE-07: the stop flow's choose step — back, plus its four
+  // answers (stop, pause, already cancelled, remove) for an active row.
+  '/sub/:id/stop': (controls: 5, reachable: 5),
   // ⏱ 2026-09-27 · ST-U2 (audit C34): the paywall's back button.
   '/paywall': (controls: 1, reachable: 1),
   // 2 -> 3 on 2026-08-26, and NO WIDGET CHANGED. The third control was
@@ -754,12 +762,13 @@ void main() {
 
   group('the router is the only declaration of the route set', () {
     // ⏱ 2026-10-01 · ST-T9 (EN-18): 19 -> 20 and 16 -> 17, `/setup`.
-    test('20 routes, 17 of them build a screen, 3 are redirect-only', () {
+    // ⏱ 2026-10-01 · DE-07: 20 -> 21 and 17 -> 18, `/sub/:id/stop`.
+    test('21 routes, 18 of them build a screen, 3 are redirect-only', () {
       expect(
         declared.length,
-        20,
+        21,
         reason:
-            'the router declares ${declared.length} GoRoutes, not 20. That is '
+            'the router declares ${declared.length} GoRoutes, not 21. That is '
             'not a failure by itself — an app may gain a route — but this '
             "file's coverage claim is about a set of that size, and the new "
             'route needs a kExpected entry before any number here can be read. '
@@ -768,9 +777,9 @@ void main() {
       expect(
         // ⏱ ST-D3 D3-3: 17 → 16 — `/budget` is a redirect to `/insights` now.
         screenBearing.length,
-        17,
+        18,
         reason:
-            '${screenBearing.length} routes build a screen, not 17. Screen '
+            '${screenBearing.length} routes build a screen, not 18. Screen '
             'paths: ${screenPaths.toList()..sort()}',
       );
       for (final GoRoute r in declared) {

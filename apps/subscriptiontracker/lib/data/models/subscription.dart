@@ -40,6 +40,43 @@ enum SubscriptionStatus {
       );
 }
 
+/// HOW a row is paid — the API's `rail` (0003, `RAILS` in
+/// services/subscriptiontracker-api `routes/subscriptions.ts`). The stop flow
+/// picks its walkthrough by it, the detail's India rail panel shows for the
+/// three mandate rails, and "How to cancel" offers the store's manage page
+/// for the two store rails (DE-06..08).
+enum PaymentRail {
+  upiAutopay('upi_autopay'),
+  cardEmandate('card_emandate'),
+  nach('nach'),
+  appStore('app_store'),
+  play('play'),
+  paypal('paypal'),
+  manual('manual'),
+  unknown('unknown');
+
+  const PaymentRail(this.wire);
+
+  /// The value on the wire.
+  final String wire;
+
+  /// The rail for [raw], or null for none or a value this build does not
+  /// know — never a guess, because the walkthrough a guess picks is wrong.
+  static PaymentRail? tryParse(Object? raw) {
+    for (final PaymentRail r in PaymentRail.values) {
+      if (r.wire == raw) return r;
+    }
+    return null;
+  }
+
+  /// A standing instruction the user's bank, card or UPI app holds, which
+  /// keeps charging until it is revoked THERE (the India rail panel, R3).
+  bool get isMandate =>
+      this == PaymentRail.upiAutopay ||
+      this == PaymentRail.cardEmandate ||
+      this == PaymentRail.nach;
+}
+
 /// A single tracked subscription. JSON is snake_case to match the Worker/D1 API.
 ///
 /// Subly-domain model — lives in the app, not the shared spine (de-Subly-fy
@@ -87,8 +124,10 @@ class Subscription {
   final String? categoryId;
 
   /// How it is paid (ST-T9, AD-06) — the API's closed `rail` set
-  /// ([kRails]) — or null when the user did not say.
-  final String? rail;
+  /// ([kRails]) — or null when the user did not say (or the wire carried a
+  /// value this build does not know). The stop flow picks its walkthrough by
+  /// it and the detail's India rail panel shows for a mandate (DE-07, DE-08).
+  final PaymentRail? rail;
 
   /// Whose card / which UPI handle, as a label the user typed — the API's
   /// `rail_holder`. Never a number: a label like "HDFC card" or "Mum's UPI".
@@ -103,15 +142,16 @@ class Subscription {
   /// does for notice — a server without the column would drop the value.
   final bool priceAfterTrialSupported;
 
-  /// The API's `rail` values, in the order the sheet offers them.
-  static const List<String> kRails = <String>[
-    'upi_autopay',
-    'card_emandate',
-    'nach',
-    'app_store',
-    'play',
-    'paypal',
-    'manual',
+  /// The rails the sheet offers, in its order — every [PaymentRail] but
+  /// `unknown`, which is a reading, not a choice.
+  static const List<PaymentRail> kRails = <PaymentRail>[
+    PaymentRail.upiAutopay,
+    PaymentRail.cardEmandate,
+    PaymentRail.nach,
+    PaymentRail.appStore,
+    PaymentRail.play,
+    PaymentRail.paypal,
+    PaymentRail.manual,
   ];
 
   final String id;
@@ -307,7 +347,7 @@ class Subscription {
     noticeDaysSupported: j.containsKey('notice_days'),
     serviceId: _textOrNull(j['service_id']),
     categoryId: _textOrNull(j['category_id']),
-    rail: _textOrNull(j['rail']),
+    rail: PaymentRail.tryParse(j['rail']),
     railHolder: _textOrNull(j['rail_holder']),
     priceAfterTrial: j['price_after_trial_minor'] is int
         ? Money(
@@ -461,7 +501,7 @@ class Subscription {
     // cannot clear a value another device wrote.
     if (serviceId != null) 'service_id': serviceId,
     if (categoryId != null) 'category_id': categoryId,
-    if (rail != null) 'rail': rail,
+    if (rail != null) 'rail': rail!.wire,
     if (railHolder != null) 'rail_holder': railHolder,
     // Train T11's column, behind its capability exactly like `notice_days`.
     if (priceAfterTrialSupported)

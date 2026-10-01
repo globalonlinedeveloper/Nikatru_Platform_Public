@@ -19,6 +19,7 @@ import 'package:nikatru_external_links/nikatru_external_links.dart'
 
 import '../../core/app_config.dart';
 import 'analytics_envelope.dart' show kPlatformBaseUrl;
+import 'content_pack.dart' show serviceCatalogueProvider;
 
 /// Every link this app's configuration names, and its one support address.
 /// A constant that is not absolute https widens nothing
@@ -62,3 +63,24 @@ final Provider<core.ExternalLinkLauncher> calendarLinkLauncherProvider =
         policy: appLinkPolicy.withCalendarFeedUrl(kPlatformBaseUrl),
       ),
     );
+
+/// "How to cancel {name}"'s launcher (DE-06): [appLinkPolicy] plus the host
+/// of every cancel and store-manage page the SERVICE CATALOGUE names — the
+/// pack the store signed with the app, so the widening is content this build
+/// already trusts, never a URL a user typed. A PROVIDER, like the calendar's,
+/// so a test sees which link was opened without a platform channel.
+final Provider<core.ExternalLinkLauncher> cancelLinkLauncherProvider =
+    Provider<core.ExternalLinkLauncher>((ref) {
+      core.LinkPolicy policy = appLinkPolicy;
+      final core.ServiceCatalogue? catalogue = ref
+          .watch(serviceCatalogueProvider('en'))
+          .value;
+      for (final core.ServiceEntry e
+          in catalogue?.entries ?? const <core.ServiceEntry>[]) {
+        policy = policy
+            .withHttpsUrl(e.cancelUrl.toString())
+            .withHttpsUrl(e.playManageUrl.toString())
+            .withHttpsUrl(e.appStoreManageUrl.toString());
+      }
+      return UrlLauncherExternalLinks(policy: policy);
+    });

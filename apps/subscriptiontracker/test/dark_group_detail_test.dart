@@ -199,7 +199,7 @@ void main() {
         expect(find.text(l10n.usageThisMonth), findsOneWidget);
         expect(find.text(l10n.paymentHistory), findsOneWidget);
         expect(find.text(l10n.editPlan), findsOneWidget);
-        expect(find.text(l10n.cancelPlanButton), findsOneWidget);
+        expect(find.text(l10n.stopOrRemove), findsOneWidget);
         // The invisible tier — mini-card labels and the per-cycle caption.
         expect(find.text(l10n.fieldLabelPrice), findsOneWidget);
         expect(find.text(l10n.nextChargeLabel), findsOneWidget);

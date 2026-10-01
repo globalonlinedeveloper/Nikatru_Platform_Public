@@ -6,6 +6,7 @@ import 'package:nikatru_core/nikatru_core.dart'
 import '../models/budget_info.dart';
 import '../models/category.dart';
 import '../models/payment_record.dart';
+import '../models/price_change.dart';
 import '../models/subscription.dart';
 import 'api_client.dart';
 
@@ -14,7 +15,8 @@ import 'api_client.dart';
 /// ApiException); this class maps Subly's endpoints to its domain models, and
 /// routes every parse through `_rest.decode` so a malformed 2xx body also
 /// surfaces as an ApiException (single failure contract).
-class DioApiClient implements ApiClient, IdempotentCreates, CategoriesApi {
+class DioApiClient
+    implements ApiClient, IdempotentCreates, CategoriesApi, PaymentWrites {
   DioApiClient({
     required String baseUrl,
     required Future<String?> Function() tokenProvider,
@@ -135,6 +137,54 @@ class DioApiClient implements ApiClient, IdempotentCreates, CategoriesApi {
       return hist
           .map(
             (dynamic e) => PaymentRecord.fromJson(
+              e as Map<String, dynamic>,
+              fallbackCurrencyCode: _currencyCode(),
+            ),
+          )
+          .toList();
+    });
+  }
+
+  /// `POST /v1/subscriptions/:id/payments` (DE-04): `amount` in major units
+  /// and `paid_on` as the route reads them, the currency the row is in, and
+  /// the Idempotency-Key every retry of one tap shares.
+  @override
+  Future<PaymentRecord> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {
+    final Object? data = await _rest.post(
+      '/subscriptions/$id/payments',
+      body: <String, dynamic>{
+        'amount': amount.toMajorUnits(),
+        'paid_on': Subscription.dateOnly(paidOn),
+        'currency': amount.currencyCode,
+      },
+      idempotencyKey: idempotencyKey,
+    );
+    return _rest.decode(
+      data,
+      (Object? b) => PaymentRecord.fromJson(
+        b! as Map<String, dynamic>,
+        fallbackCurrencyCode: amount.currencyCode,
+      ),
+    );
+  }
+
+  /// `price_history` off `GET /v1/subscriptions/:id` (DE-05). A server that
+  /// predates 0005 serves no such key: no edits, not a failure.
+  @override
+  Future<List<PriceChange>> getPriceHistory(String id) async {
+    final Object? data = await _rest.get('/subscriptions/$id');
+    return _rest.decode(data, (Object? b) {
+      final Map<String, dynamic> m = b! as Map<String, dynamic>;
+      final List<dynamic> rows =
+          (m['price_history'] as List<dynamic>?) ?? <dynamic>[];
+      return rows
+          .map(
+            (dynamic e) => PriceChange.fromJson(
               e as Map<String, dynamic>,
               fallbackCurrencyCode: _currencyCode(),
             ),

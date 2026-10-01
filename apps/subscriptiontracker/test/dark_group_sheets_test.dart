@@ -30,7 +30,6 @@
 // Nothing here measures a width; the phone is chosen because it is the
 // narrowest, so the Tamil sentences are also being asked to fit.
 // ─────────────────────────────────────────────────────────────────────────────
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -43,7 +42,7 @@ import 'package:subscriptiontracker/core/format/money_format.dart';
 import 'package:subscriptiontracker/core/format/monthly_share.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/add/add_subscription_sheet.dart';
-import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
+import 'package:subscriptiontracker/features/stop/stop_flow.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 
 import 'support/catalogue_fixture.dart';
@@ -165,13 +164,6 @@ BoxDecoration _cancelSurface(WidgetTester tester) {
   return hits.single;
 }
 
-/// WCAG relative-luminance contrast of two opaque colours.
-double _contrast(Color a, Color b) {
-  final double la = a.computeLuminance();
-  final double lb = b.computeLuminance();
-  return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
-}
-
 TextStyle _styleOf(WidgetTester tester, Finder finder) {
   expect(finder, findsOneWidget);
   return tester.widget<Text>(finder).style!;
@@ -287,7 +279,7 @@ void main() {
         await _openSheet(
           tester,
           mode: mode,
-          open: (BuildContext c) => showCancelSheet(c, _sub()),
+          open: (BuildContext c) => showStopSheet(c, _sub()),
         );
 
         expect(
@@ -297,7 +289,7 @@ void main() {
         expect(_cancelSurface(tester).color, isNot(AppColors.bg));
         final TextStyle heading = _styleOf(
           tester,
-          find.text(en.cancelSubscriptionTitle('Netflix')),
+          find.text(en.stopChooseTitle('Netflix')),
         );
         expect(heading.color, theme.colorScheme.onSurface);
         expect(heading.color, isNot(AppColors.ink));
@@ -305,42 +297,9 @@ void main() {
         expect(tester.takeException(), isNull);
       });
 
-      // 🔴 THE CONFIRM IS THE DANGER PAIR, AND IT IS MEASURED. It was the fixed
-      // `AppColors.danger` fill with a stated white label. The fill is now the
-      // scheme-forked danger TONE — a light rose in dark — and white on that
-      // is ~2:1, so the label is the pair's own opaque tint. Setting it back to
-      // `Colors.white` turns the contrast line red in dark.
-      //
-      // ⚠️ ONE MODE PER CASE, NOT A LOOP INSIDE ONE. `pumpWidget` reuses the
-      // MaterialApp element, so its Navigator keeps the route stack: a second
-      // `pumpWidget` in the same case leaves the FIRST sheet mounted above the
-      // launcher and the tap lands on the scrim.
-      testWidgets('[$name] the destructive confirm is the danger pair', (
-        WidgetTester tester,
-      ) async {
-        await _openSheet(
-          tester,
-          mode: mode,
-          open: (BuildContext c) => showCancelSheet(c, _sub()),
-        );
-        final StatusTones tones = StatusTones.forBrightness(b);
-        final FilledButton confirm = tester.widget<FilledButton>(
-          find.byKey(E2EKeys.cancelConfirm),
-        );
-        final Color fg = confirm.style!.foregroundColor!.resolve(
-          <WidgetState>{},
-        )!;
-        final Color bg = confirm.style!.backgroundColor!.resolve(
-          <WidgetState>{},
-        )!;
-        expect(bg, tones.danger);
-        expect(fg, tones.dangerTint);
-        expect(
-          _contrast(fg, bg),
-          greaterThanOrEqualTo(4.5),
-          reason: '$name: the confirm label must clear AA on its fill',
-        );
-      });
+      // ⏱ 2026-10-01 · DE-07: the danger-pair case for the cancel sheet's
+      // destructive confirm retired with that button. The stop flow has no
+      // destructive fill: removing is one choice among four, with Undo.
     }
   });
 
@@ -360,15 +319,15 @@ void main() {
           tester,
           mode: ThemeMode.light,
           locale: Locale(code),
-          open: (BuildContext c) => showCancelSheet(c, _sub()),
+          open: (BuildContext c) => showStopSheet(c, _sub()),
         );
         final AppLocalizations l10n = await AppLocalizations.delegate.load(
           Locale(code),
         );
         final Subscription s = _sub();
 
-        expect(find.text(l10n.cancelSubscriptionTitle(s.name)), findsOneWidget);
-        expect(find.text(l10n.removeStep1Body), findsOneWidget);
+        expect(find.text(l10n.stopChooseTitle(s.name)), findsOneWidget);
+        expect(find.text(l10n.stopChoiceRemoveDetail), findsOneWidget);
         // No share, no yearly charge, no renewal date: the app deletes a row
         // and knows none of the provider's terms.
         expect(
@@ -388,14 +347,14 @@ void main() {
         expect(tester.takeException(), isNull);
       });
 
-      testWidgets('[$code] step 1 says removed, and points at the provider', (
+      testWidgets('[$code] the walkthrough points at the provider', (
         WidgetTester tester,
       ) async {
         await _openSheet(
           tester,
           mode: ThemeMode.light,
           locale: Locale(code),
-          open: (BuildContext c) => showCancelSheet(c, _sub()),
+          open: (BuildContext c) => showStopSheet(c, _sub()),
         );
         final AppLocalizations l10n = await AppLocalizations.delegate.load(
           Locale(code),
@@ -403,12 +362,16 @@ void main() {
 
         // Step 1 is reached by confirming against the unoverridden seed chain —
         // see `defaultWidthOverrides`, which leaves the repository resolving.
-        await tester.tap(find.text(l10n.confirmCancel));
+        // DE-07: "Stop the charge" leads to the walkthrough, which points at
+        // the provider and claims nothing was cancelled here.
+        await tester.tap(find.byKey(E2EKeys.stopChoiceStop));
         await tester.pumpAndSettle();
 
-        expect(find.text(l10n.cancelledHeading), findsOneWidget);
-        expect(find.text(l10n.removeStep2Body), findsOneWidget);
-        expect(find.text(l10n.done), findsOneWidget);
+        expect(
+          find.text(l10n.stopWalkthroughTitle(_sub().name)),
+          findsOneWidget,
+        );
+        expect(find.text(l10n.stopDidItWork), findsOneWidget);
         expect(
           find.textContaining(kMoney.formatShareFigure(_sub().monthlyShare)),
           findsNothing,
@@ -424,7 +387,7 @@ void main() {
         tester,
         mode: ThemeMode.light,
         locale: const Locale('ta'),
-        open: (BuildContext c) => showCancelSheet(c, _sub()),
+        open: (BuildContext c) => showStopSheet(c, _sub()),
       );
       expect(find.textContaining('save'), findsNothing);
       expect(find.textContaining('Access continues'), findsNothing);

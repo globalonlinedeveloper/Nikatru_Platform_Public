@@ -47,6 +47,7 @@ import 'package:nikatru_purchases/nikatru_purchases.dart';
 
 import '../../core/app_config.dart';
 import '../../core/format/category_label.dart';
+import '../../core/format/rail_label.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../core/windows_notification_identity.g.dart';
@@ -60,7 +61,6 @@ import '../../state/subscriptions_controller.dart';
 // pane. It is still a route — a phone still pushes it — this import only gives
 // the wide layout a way to render the same widget without a navigation.
 import '../add/add_subscription_sheet.dart';
-import '../cancel/cancel_sheet.dart';
 import '../detail/subscription_detail_screen.dart';
 import '../shared/async_gate.dart';
 import '../shared/cadence_label.dart';
@@ -70,6 +70,7 @@ import '../shared/due.dart';
 // shell, so the arithmetic does too.
 import '../setup/setup_screen.dart' show shouldOfferSetup;
 import '../shell/app_shell.dart';
+import '../stop/stop_flow.dart' show showStopSheet;
 import 'home_search.dart';
 import 'home_signals.dart';
 
@@ -861,7 +862,8 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
             label: stop ? l10n.homeSignalStop : l10n.homeSignalOpen,
             primary: true,
             onPressed: stop
-                ? () => showCancelSheet(context, s)
+                // DE-07: the stop-a-charge flow replaced the cancel sheet.
+                ? () => showStopSheet(context, s)
                 : () => context.push('/sub/${s.id}'),
           ),
         ],
@@ -952,7 +954,7 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         : ref.watch(serviceLogoAssetsProvider)[s.serviceId];
     // ST-T9 (AD-06): how it is paid, as neutral text in the subtitle's own
     // colour — no new tone; the row's status stays the only coloured signal.
-    final String? rail = s.rail;
+    final String? rail = railLabel(l10n, s.rail);
     return AppListRow(
       // The mark is a visual shorthand; the title names the plan, so the
       // logo or letters are silent rather than read before the name.
@@ -972,9 +974,7 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
               ),
       ),
       title: s.name,
-      subtitle: rail == null
-          ? subtitle
-          : '$subtitle · ${railLabel(l10n, rail)}',
+      subtitle: rail == null ? subtitle : '$subtitle · $rail',
       status: status,
       // The list SORTS by monthly share and the row SHOWS the charge with its
       // own cycle: a share is not a price.

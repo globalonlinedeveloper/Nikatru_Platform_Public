@@ -1,10 +1,11 @@
-import 'package:nikatru_core/nikatru_core.dart' show RecurrenceRoll;
+import 'package:nikatru_core/nikatru_core.dart' show Money, RecurrenceRoll;
 
 import '../../core/app_config.dart';
 import '../models/budget_info.dart';
 import '../models/category.dart';
 import '../models/entitlement.dart';
 import '../models/payment_record.dart';
+import '../models/price_change.dart';
 import '../models/subscription.dart';
 import '../seed/demo_data.dart';
 import 'api_client.dart';
@@ -19,9 +20,20 @@ import 'api_client.dart';
 /// (id minting, the glyph and plan defaults, the derived payment history) while
 /// the decorator owns only WHERE the bytes end up — so the two can never drift
 /// into two different answers for "what does adding a subscription do".
-class SeedApiClient implements ApiClient, CategoriesApi {
+class SeedApiClient implements ApiClient, CategoriesApi, PaymentWrites {
   List<Subscription> _subs = DemoData.subscriptions();
   BudgetInfo _budget = DemoData.budget();
+
+  /// Payments recorded by hand ("Mark as paid", DE-04), by Idempotency-Key:
+  /// a replay of one key answers the first record and adds nothing — the
+  /// behaviour the live route gains with lane fix-payments-idempotency.
+  final Map<String, ({String subId, PaymentRecord record})> _manual =
+      <String, ({String subId, PaymentRecord record})>{};
+
+  /// Every price edit, by row, newest first — the in-memory twin of the
+  /// route's `INSERT INTO price_change` on a PATCH that moves the price.
+  final Map<String, List<PriceChange>> _priceChanges =
+      <String, List<PriceChange>>{};
 
   /// Replace the working set with what a durable store already held.
   ///
@@ -83,9 +95,46 @@ class SeedApiClient implements ApiClient, CategoriesApi {
     // EVERY key the body carries, with the route's cross-key rules — this
     // applied `name`, `price` and `unused` and silently dropped the rest, so
     // an edit of the cycle or the date "saved" and changed nothing.
+    final Money before = _subs[i].price;
     _subs[i] = _subs[i].patched(changes);
+    final Money after = _subs[i].price;
+    if (before != after) {
+      _priceChanges
+          .putIfAbsent(id, () => <PriceChange>[])
+          .insert(
+            0,
+            PriceChange(changedOn: DateTime.now(), from: before, to: after),
+          );
+    }
     return _subs[i];
   }
+
+  @override
+  Future<PaymentRecord> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {
+    final ({String subId, PaymentRecord record})? seen =
+        _manual[idempotencyKey];
+    if (seen != null) return seen.record;
+    if (!_subs.any((Subscription s) => s.id == id && s.deletedAt == null)) {
+      throw ApiException(404, 'Not found');
+    }
+    final PaymentRecord record = PaymentRecord(
+      date: DateTime(paidOn.year, paidOn.month, paidOn.day),
+      amount: amount,
+    );
+    _manual[idempotencyKey] = (subId: id, record: record);
+    return record;
+  }
+
+  @override
+  Future<List<PriceChange>> getPriceHistory(String id) async =>
+      List<PriceChange>.unmodifiable(
+        _priceChanges[id] ?? const <PriceChange>[],
+      );
 
   @override
   Future<void> deleteSubscription(String id) async =>
@@ -105,17 +154,28 @@ class SeedApiClient implements ApiClient, CategoriesApi {
     final Subscription s = _subs.firstWhere((Subscription s) => s.id == id);
     final DateTime? first = s.firstChargeOn;
     final Cadence? cadence = s.cycle;
-    if (first == null || cadence == null) return const <PaymentRecord>[];
-    final DateTime now = DateTime.now();
-    final RecurrenceRoll roll = RecurrenceSchedule.rollForward(
-      first,
-      cadence,
-      DateTime(now.year, now.month, now.day),
-    );
-    return <PaymentRecord>[
-      for (final DateTime d in roll.crossings.reversed)
-        PaymentRecord(date: d, amount: s.price),
+    final List<PaymentRecord> manual = <PaymentRecord>[
+      for (final ({String subId, PaymentRecord record}) m in _manual.values)
+        if (m.subId == id) m.record,
     ];
+    final List<PaymentRecord> derived;
+    if (first == null || cadence == null) {
+      derived = const <PaymentRecord>[];
+    } else {
+      final DateTime now = DateTime.now();
+      final RecurrenceRoll roll = RecurrenceSchedule.rollForward(
+        first,
+        cadence,
+        DateTime(now.year, now.month, now.day),
+      );
+      derived = <PaymentRecord>[
+        for (final DateTime d in roll.crossings.reversed)
+          PaymentRecord(date: d, amount: s.price),
+      ];
+    }
+    // Newest first, as the route's `ORDER BY paid_at DESC` serves both kinds.
+    return <PaymentRecord>[...manual, ...derived]
+      ..sort((PaymentRecord a, PaymentRecord b) => b.date.compareTo(a.date));
   }
 
   @override

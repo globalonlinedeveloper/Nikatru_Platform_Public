@@ -959,6 +959,8 @@
   "start-here.test.mjs":
     9,
 
+  "stop-copy.test.mjs":
+    10,
   "store-audience.test.mjs":
     18,
 

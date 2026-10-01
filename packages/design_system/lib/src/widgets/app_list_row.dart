@@ -281,8 +281,13 @@ class AppListRow extends StatelessWidget {
         selected: selected,
         child: onTap == null
             ? marked
+            // `enabled: true` beside `button`: a tappable row announces
+            // itself as a LIVE control, as a Material button does — the row
+            // with no `onTap` is not a button at all, so there is no
+            // disabled arm to announce (train ST-detail-stop, DE-07).
             : Semantics(
                 button: true,
+                enabled: true,
                 child: InkWell(onTap: onTap, child: marked),
               ),
       ),

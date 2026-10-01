@@ -5,6 +5,7 @@ import 'package:nikatru_core/nikatru_core.dart'
     show
         DurableOutbox,
         Entitlements,
+        Money,
         OutboxEnqueueResult,
         OutboxEntry,
         OutboxOp,
@@ -16,6 +17,7 @@ import '../local/subscription_store.dart';
 import '../models/category.dart';
 import '../models/budget_info.dart';
 import '../models/payment_record.dart';
+import '../models/price_change.dart';
 import '../models/subscription.dart';
 import 'api_client.dart';
 
@@ -65,7 +67,7 @@ const String kSubscriptionWrite = 'subscription';
 /// [ApiClient] over a network client, with the device's key-value store as a
 /// read-through cache of what the server last said and an outbox of the
 /// writes it has not heard yet.
-class CachedApiClient implements ApiClient, CategoriesApi {
+class CachedApiClient implements ApiClient, CategoriesApi, PaymentWrites {
   CachedApiClient(
     this._network,
     LocalSubscriptionStore store, {
@@ -433,6 +435,39 @@ class CachedApiClient implements ApiClient, CategoriesApi {
   @override
   Future<List<PaymentRecord>> getPaymentHistory(String id) async =>
       _network.getPaymentHistory(await _outbox.resolve(id));
+
+  /// Straight to the network, like [getPaymentHistory]: a payment is a fact
+  /// the user is recording NOW, and the Idempotency-Key makes the user's own
+  /// retry safe. Not queued in the outbox — "saved" must mean the server has
+  /// it, and an offline tap says it was not recorded (DE-09).
+  @override
+  Future<PaymentRecord> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {
+    final ApiClient network = _network;
+    if (network is! PaymentWrites) {
+      throw UnsupportedError('this client cannot record a payment');
+    }
+    return (network as PaymentWrites).recordPayment(
+      await _outbox.resolve(id),
+      amount: amount,
+      paidOn: paidOn,
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
+  /// Not cached, for the reason [getPaymentHistory] is not.
+  @override
+  Future<List<PriceChange>> getPriceHistory(String id) async {
+    final ApiClient network = _network;
+    if (network is! PaymentWrites) return const <PriceChange>[];
+    return (network as PaymentWrites).getPriceHistory(
+      await _outbox.resolve(id),
+    );
+  }
 
   @override
   Future<BudgetInfo> getBudget() => _cache.read(

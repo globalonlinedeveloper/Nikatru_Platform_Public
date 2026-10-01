@@ -520,14 +520,17 @@ void main() {
     );
 
     test(
-      'a server that refuses deleted_at (400) falls back to DELETE, with no Undo',
+      // ⏱ 2026-10-01 · DE-10: `DELETE /v1/subscriptions/:id` is a SOFT delete
+      // now (`SET deleted_at = COALESCE(deleted_at, ?)`), so the fallback is
+      // undoable too — this case used to pin the refused Undo.
+      'a server that refuses deleted_at (400) falls back to DELETE, still undoable',
       () async {
         expect(ctl().canUndoDelete('a'), isFalse);
         api.refuseDeletedAt = true;
         await ctl().cancelSubscription('a');
         expect(api.deletes, 1);
         expect(rows().map((Subscription s) => s.id), <String>['b']);
-        expect(ctl().canUndoDelete('a'), isFalse);
+        expect(ctl().canUndoDelete('a'), isTrue);
         expect(notifier.cancelledFor, <String>['a']);
 
         api.refuseDeletedAt = false;

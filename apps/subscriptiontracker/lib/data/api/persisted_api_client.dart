@@ -1,10 +1,11 @@
 import 'package:flutter/foundation.dart' show debugPrint;
-import 'package:nikatru_core/nikatru_core.dart' show Entitlements;
+import 'package:nikatru_core/nikatru_core.dart' show Entitlements, Money;
 
 import '../local/subscription_store.dart';
 import '../models/budget_info.dart';
 import '../models/category.dart';
 import '../models/payment_record.dart';
+import '../models/price_change.dart';
 import '../models/subscription.dart';
 import 'api_client.dart';
 import 'seed_api_client.dart';
@@ -41,7 +42,7 @@ import 'seed_api_client.dart';
 /// of a live API is a different piece of work with conflict resolution and
 /// replay ordering in it, and it is deliberately not started here.
 /// ═══════════════════════════════════════════════════════════════════════════
-class PersistedApiClient implements ApiClient, CategoriesApi {
+class PersistedApiClient implements ApiClient, CategoriesApi, PaymentWrites {
   /// Mirror [_seed]'s working set into [_store].
   PersistedApiClient(this._seed, this._store);
 
@@ -175,6 +176,30 @@ class PersistedApiClient implements ApiClient, CategoriesApi {
   Future<List<PaymentRecord>> getPaymentHistory(String id) async {
     await _ready();
     return _seed.getPaymentHistory(id);
+  }
+
+  /// Recorded by the seed, in memory: the demo has no server to keep it, and
+  /// the device store mirrors the subscription list, not its history.
+  @override
+  Future<PaymentRecord> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {
+    await _ready();
+    return _seed.recordPayment(
+      id,
+      amount: amount,
+      paidOn: paidOn,
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
+  @override
+  Future<List<PriceChange>> getPriceHistory(String id) async {
+    await _ready();
+    return _seed.getPriceHistory(id);
   }
 
   @override

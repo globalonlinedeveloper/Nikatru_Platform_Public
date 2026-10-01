@@ -251,8 +251,8 @@ void main() {
       final Subscription s = _row().patched(<String, dynamic>{
         'rail': 'card_emandate',
       });
-      expect(s.rail, 'card_emandate');
-      expect(Subscription.fromJson(s.toJson()).rail, 'card_emandate');
+      expect(s.rail, PaymentRail.cardEmandate);
+      expect(Subscription.fromJson(s.toJson()).rail, PaymentRail.cardEmandate);
     });
   });
 

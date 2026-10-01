@@ -1491,41 +1491,127 @@ void main() {
     ); // sub name shown in the detail header
     await shot('12-detail');
 
-    // ── 13 Cancel/delete A (exercises DELETE /v1/subscriptions/:id) ───────────
+    // ── 12b Mark as paid (DE-04: POST /v1/subscriptions/:id/payments) ────────
+    // The amount is prefilled from the plan; Save posts ONE payment with ONE
+    // Idempotency-Key, and the history card gains its row.
     await scrollUntilFound(
       tester,
-      target: find.text('Remove'),
+      target: find.byKey(E2EKeys.detailMarkPaid),
       scrollable: find.byType(Scrollable),
-      what: 'the "Remove" button on the subscription detail sheet',
+      what: 'the "Mark as paid" action on the detail history heading',
       maxScrolls: 20,
       delta: 200,
     );
-    await tester.tap(find.text('Remove'));
+    await tester.tap(find.byKey(E2EKeys.detailMarkPaid));
     await pumpFor(tester, const Duration(seconds: 2));
-    expect(find.text('Yes, remove'), findsOneWidget);
-    await tester.tap(find.text('Yes, remove'));
-    await pumpFor(tester, const Duration(seconds: 8)); // DELETE round-trip
+    expect(find.byKey(E2EKeys.markPaidAmount), findsOneWidget);
+    await tester.tap(find.byKey(E2EKeys.markPaidSave));
     expect(
-      find.text('Removed from your tracker'),
-      findsWidgets,
-      // Says what was LOOKED FOR and what was THERE INSTEAD, and asserts nothing
-      // about DELETE: a missing widget cannot tell a failed round-trip from a
-      // renamed string, a slow rebuild or a screen that never opened, and naming
-      // the wrong cause sends the next reader to the wrong system.
+      await waitFor(
+        tester,
+        find.text('Payment recorded'),
+        timeout: const Duration(seconds: 15),
+      ),
+      isTrue,
       reason:
-          'expected a "Removed from your tracker" text widget after confirming the '
-          'removal; it matched nothing 8s after tapping "Yes, remove"',
+          'no "Payment recorded" snackbar 15 s after Save: the POST to '
+          '/payments failed or never returned',
     );
-    await tester.tap(find.text('Done'));
-    await pumpFor(
+    await shot('12b-marked-paid');
+
+    // ── 12c Pause → Resume (DE-09: asks once, Undo offered) ─────────────────
+    await tester.tap(find.byKey(E2EKeys.detailMoreOptions));
+    await pumpFor(tester, const Duration(seconds: 2));
+    await tester.tap(find.text('Pause'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    await tester.tap(find.byKey(E2EKeys.confirmYes));
+    await pumpFor(tester, const Duration(seconds: 5)); // PATCH round-trip
+    expect(
+      find.textContaining('Paused'),
+      findsWidgets,
+      reason: 'the header does not say Paused after confirming Pause',
+    );
+    await tester.tap(find.byKey(E2EKeys.detailMoreOptions));
+    await pumpFor(tester, const Duration(seconds: 2));
+    await tester.tap(find.text('Resume'));
+    await pumpFor(tester, const Duration(seconds: 5));
+    expect(
+      find.textContaining('Paused'),
+      findsNothing,
+      reason: 'the header still says Paused after Resume',
+    );
+
+    // ── 12d Mark cancelled THROUGH THE STOP FLOW (DE-07) ────────────────────
+    await scrollUntilFound(
       tester,
-      const Duration(seconds: 4),
-    ); // sheet + detail pop → home
+      target: find.byKey(E2EKeys.detailCancelPlan),
+      scrollable: find.byType(Scrollable),
+      what: 'the "Stop or remove" button on the subscription detail',
+      maxScrolls: 20,
+      delta: 200,
+    );
+    await tester.tap(find.byKey(E2EKeys.detailCancelPlan));
+    await pumpFor(tester, const Duration(seconds: 2));
+    await tester.tap(find.byKey(E2EKeys.stopChoiceCancelled));
+    await pumpFor(tester, const Duration(seconds: 2));
+    await tester.tap(find.byKey(E2EKeys.stopItWorked));
+    await pumpFor(tester, const Duration(seconds: 5)); // PATCH round-trip
+    expect(
+      find.byKey(E2EKeys.stopDone),
+      findsOneWidget,
+      reason:
+          'the stop flow never reached "done" after "Yes, mark it cancelled"',
+    );
+    await tester.tap(find.byKey(E2EKeys.stopDone));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(find.textContaining('Cancelled'), findsWidgets);
+    await shot('12d-marked-cancelled');
+
+    // ── 13 Remove → Undo → remove (DE-07 / DE-10: a soft delete, undoable) ──
+    Future<void> removeThroughStopFlow() async {
+      await scrollUntilFound(
+        tester,
+        target: find.byKey(E2EKeys.detailCancelPlan),
+        scrollable: find.byType(Scrollable),
+        what: 'the "Stop or remove" button on the subscription detail',
+        maxScrolls: 20,
+        delta: 200,
+      );
+      await tester.tap(find.byKey(E2EKeys.detailCancelPlan));
+      await pumpFor(tester, const Duration(seconds: 2));
+      await tester.tap(find.byKey(E2EKeys.stopChoiceRemove));
+      await pumpFor(tester, const Duration(seconds: 6)); // the write round-trip
+    }
+
+    await removeThroughStopFlow();
     expect(shellIndex(), 0);
+    expect(
+      find.byKey(E2EKeys.snackUndo),
+      findsOneWidget,
+      reason:
+          'no Undo on the removal snackbar: the soft delete is not undoable',
+    );
+    await tester.tap(find.byKey(E2EKeys.snackUndo));
+    await pumpFor(tester, const Duration(seconds: 6)); // PATCH deleted_at: null
+    await scrollUntilFound(
+      tester,
+      target: subFinder.first,
+      scrollable: find.byType(Scrollable),
+      what: 'the subscription Undo brought back, on Home',
+      maxScrolls: 40,
+    );
+
+    // And removed for good, which is what the CI verify step expects of A.
+    await tester.tap(subFinder.first);
+    await pumpFor(tester, const Duration(seconds: 3));
+    await removeThroughStopFlow();
+    expect(shellIndex(), 0);
+    // Past the snackbar's own life, so the Undo cannot be what is on screen.
+    await pumpFor(tester, const Duration(seconds: 6));
     expect(
       find.text(subName),
       findsNothing,
-      reason: 'Cancelled subscription still shows on Home — delete failed',
+      reason: 'Removed subscription still shows on Home — the removal failed',
     );
     await shot('13-after-cancel');
 

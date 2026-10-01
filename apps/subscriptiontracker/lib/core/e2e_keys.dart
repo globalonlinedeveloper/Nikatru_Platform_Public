@@ -74,17 +74,36 @@ class E2EKeys {
   /// The header's "More options" — the row's lifecycle menu (ST-T3b ST-E3).
   static const Key detailMoreOptions = Key('e2e_detail_more_options');
   static const Key notificationsClose = Key('e2e_notifications_close');
-  // ── Stop a charge (the cancel sheet) — train ST-D7 ────────────────────────
+  // ── Stop a charge — `features/stop/stop_flow.dart` (DE-07) ──────────────
   //
-  // Keyed rather than found by words: 'Keep it', 'Confirm cancel' and 'Done'
-  // are translated, and 'Cancel' is a substring of half the sheet.
-  static const Key cancelKeep = Key('e2e_cancel_keep');
-  static const Key cancelConfirm = Key('e2e_cancel_confirm');
-  static const Key cancelDone = Key('e2e_cancel_done');
+  // ⏱ 2026-10-01: the cancel sheet's four keys (`e2e_cancel_keep`, `_confirm`,
+  // `_done`, `_failure`) retired with the sheet. Keyed rather than found by
+  // words: every label is translated, and "cancel" is a substring of half the
+  // flow. `detailCancelPlan` above keeps its value; its label is now
+  // "Stop or remove" and it opens this flow.
+  static const Key stopChoiceStop = Key('e2e_stop_choice_stop');
+  static const Key stopChoicePause = Key('e2e_stop_choice_pause');
+  static const Key stopChoiceCancelled = Key('e2e_stop_choice_cancelled');
+  static const Key stopChoiceRemove = Key('e2e_stop_choice_remove');
+  static const Key stopNext = Key('e2e_stop_next');
+  static const Key stopCancelledOn = Key('e2e_stop_cancelled_on');
+  static const Key stopNotYet = Key('e2e_stop_not_yet');
+  static const Key stopItWorked = Key('e2e_stop_it_worked');
+  static const Key stopDone = Key('e2e_stop_done');
 
-  /// The sheet's inline failure strip — present only after a cancel that did
-  /// NOT happen, which is the state the unit suite asserts.
-  static const Key cancelFailure = Key('e2e_cancel_failure');
+  /// The flow's inline failure strip — present only after a write that did
+  /// NOT happen.
+  static const Key stopFailure = Key('e2e_stop_failure');
+
+  /// The Undo on every lifecycle snackbar (pause, mark cancelled, remove) —
+  /// DE-09/DE-10. One key: one action, whichever change it reverses.
+  static const Key snackUndo = Key('e2e_snack_undo');
+
+  // ── Detail: mark as paid and how to cancel (DE-04, DE-06) ────────────────
+  static const Key detailMarkPaid = Key('e2e_detail_mark_paid');
+  static const Key markPaidAmount = Key('e2e_mark_paid_amount');
+  static const Key markPaidSave = Key('e2e_mark_paid_save');
+  static const Key confirmYes = Key('e2e_confirm_yes');
 
   // ── Import (`/scan`, first-run setup) — train ST-D7 ───────────────────────
   //
