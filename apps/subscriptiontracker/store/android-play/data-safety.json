@@ -1315,7 +1315,7 @@
       "inventoryRows": [
         "table:subscriptiontracker_db.subscriptions"
       ],
-      "basis": "The subscription NAME is free text the user types (add_subscription_sheet.dart:495). Under backend-live it is transmitted and stored in subscriptiontracker_db.subscriptions; under demo it stays on the device, in the app's own namespaced key-value store, and is never transmitted. Required — an app for tracking subscriptions cannot work without the subscription. The price and cycle from the same form are declared under Financial info > Other financial info; the same input is not double-counted, it is split by what each field IS."
+      "basis": "The subscription NAME is free text the user types (add_subscription_sheet.dart:519). Under backend-live it is transmitted and stored in subscriptiontracker_db.subscriptions; under demo it stays on the device, in the app's own namespaced key-value store, and is never transmitted. Required — an app for tracking subscriptions cannot work without the subscription. The price and cycle from the same form are declared under Financial info > Other financial info; the same input is not double-counted, it is split by what each field IS."
     },
     {
       "category": "App activity",
@@ -1871,7 +1871,7 @@
           "Email address",
           "User IDs"
         ],
-        "why": "First-party. Wires the Supabase session through OS-backed secure storage so the refresh token is not written in plaintext. Under demo it is never initialised (main.dart:147 gates on isBackendLive)."
+        "why": "First-party. Wires the Supabase session through OS-backed secure storage so the refresh token is not written in plaintext. Under demo it is never initialised (main.dart:153 gates on isBackendLive)."
       },
       "nikatru_telemetry": {
         "introduces": [

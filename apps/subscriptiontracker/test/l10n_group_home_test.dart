@@ -390,6 +390,35 @@ void main() {
 
   // ───────────────────────────────────────────────────────────────────────────
   group('the shell reads its chrome from the arb', () {
+    // ⏱ ST truth pass (2026-10-01, SH-01): the tab labels were a 9 px
+    // literal — the smallest text in the app, on its only navigation on a
+    // phone. They are the ramp's 12 px floor now, and may take two lines.
+    testWidgets('the tab labels are at least the 12 px floor, two lines', (
+      WidgetTester tester,
+    ) async {
+      final AppLocalizations l = await _l10n('en');
+      await _pumpShell(tester, const Locale('en'));
+      for (final String label in <String>[
+        l.navHome,
+        l.navCalendar,
+        l.navInsights,
+        l.navSettings,
+      ]) {
+        final Text t = tester.widget<Text>(
+          find.descendant(
+            of: find.byKey(AppShell.navPillKey),
+            matching: find.text(label),
+          ),
+        );
+        expect(
+          t.style?.fontSize,
+          greaterThanOrEqualTo(AppTypeRamp.minimumSize),
+          reason: 'tab "$label" is under the 12 px floor',
+        );
+        expect(t.maxLines, 2, reason: 'tab "$label" may wrap at 200 %');
+      }
+    });
+
     for (final String code in <String>['en', 'ta']) {
       testWidgets('[$code] five tab labels, the demo banner and the FAB', (
         WidgetTester tester,

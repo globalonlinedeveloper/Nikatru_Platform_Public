@@ -192,6 +192,15 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
   /// has just opened does not greet the user with one.
   bool _priceEmptied = false;
 
+  /// The name was typed in and then emptied (ST truth pass, AD-01): blank is
+  /// then an error the field names, as for [_priceEmptied].
+  bool _nameEmptied = false;
+
+  /// The category the edited row ARRIVED with, when this sheet's vocabulary
+  /// does not know it (ST truth pass, AD-02) — offered in the dropdown for
+  /// this row only, so an edit that does not touch it sends it back unchanged.
+  String? _ownCategory;
+
   /// Field errors the API named in a 400 (ST-E2), by field. Cleared when the
   /// field is edited.
   final Map<String, String> _serverErrors = <String, String>{};
@@ -218,9 +227,12 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
       _trial = s.status == SubscriptionStatus.trialing && s.trialEndsOn != null;
       _renewal = _dateOnly(_trial ? s.trialEndsOn! : s.nextRenewal);
       _renewalChosen = true;
-      _category = _categories.contains(s.category)
-          ? s.category
-          : _uncategorised;
+      // ⏱ ST truth pass (AD-02): a category this sheet does not know (one
+      // the API or an import wrote, e.g. "entertainment") is KEPT and offered
+      // for this row. Replacing it with 'Other' made every edit of such a row
+      // PATCH a category the user never touched.
+      _category = s.category;
+      if (!_categories.contains(s.category)) _ownCategory = s.category;
     }
     for (final (TextEditingController c, String key)
         in <(TextEditingController, String)>[
@@ -234,6 +246,7 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
       c.addListener(() {
         _serverErrors.remove(key);
         if (identical(c, _price)) _priceEmptied = _price.text.trim().isEmpty;
+        if (identical(c, _name)) _nameEmptied = _name.text.trim().isEmpty;
         if (mounted) setState(() {});
       });
     }
@@ -313,8 +326,13 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
         u.host.isNotEmpty;
   }
 
+  /// A row needs a name (ST truth pass, AD-01): a blank one saved a nameless
+  /// row whose list entry, detail header and reminders all read "".
+  bool get _nameOk => _name.text.trim().isNotEmpty;
+
   bool _canSave(String localeName) =>
       !_saving &&
+      _nameOk &&
       _parsedPrice(localeName) != null &&
       _cadence != null &&
       _websiteOk;
@@ -405,7 +423,13 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     // 🔴 THE 9.99 FALLBACK IS GONE (ST-E2). A price that did not parse used
     // to be saved as 9.99 without a word; now the button is disabled and the
     // field says why, so this is only reached with a real amount.
-    if (_saving || price == null || cadence == null || !_websiteOk) return;
+    if (_saving ||
+        !_nameOk ||
+        price == null ||
+        cadence == null ||
+        !_websiteOk) {
+      return;
+    }
     setState(() {
       _saving = true;
       _failure = null;
@@ -731,7 +755,9 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     key: E2EKeys.addCategory,
     label: l10n.fieldLabelCategory,
     value: _category,
-    items: <(String, String)>[for (final String c in _categories) (c, c)],
+    items: <(String, String)>[
+      for (final String c in <String>[..._categories, ?_ownCategory]) (c, c),
+    ],
     onChanged: (String? v) => setState(() => _category = v ?? _uncategorised),
   );
 
@@ -899,6 +925,14 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     if (identical(c, _notes)) {
       return (l10n.fieldLabelNotes, _serverErrors['notes']);
     }
-    return (l10n.fieldLabelName, _serverErrors['name']);
+    // ST truth pass (AD-01): blank says so — once the name was typed and
+    // emptied, or once a price is in and the name is the one thing missing,
+    // so a sheet that has just opened does not greet the user with an error.
+    final bool nameMissing =
+        !_nameOk && (_nameEmptied || _price.text.trim().isNotEmpty);
+    return (
+      l10n.fieldLabelName,
+      _serverErrors['name'] ?? (nameMissing ? l10n.nameErrorRequired : null),
+    );
   }
 }

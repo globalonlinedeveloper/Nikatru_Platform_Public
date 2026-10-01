@@ -13,6 +13,7 @@ import 'package:nikatru_telemetry/nikatru_telemetry.dart';
 import 'app.dart';
 import 'package:nikatru_chassis_screens/shell/web_semantics.dart';
 import 'core/app_config.dart';
+import 'core/router.dart' show appErrorCopy, goHomeAfterError;
 import 'core/windows_notification_identity.g.dart';
 import 'state/providers.dart';
 
@@ -97,7 +98,12 @@ Future<void> main() async {
       // error widget is what the user sees if one of them does during the first
       // build. Installing it after the thing it protects is installing it too
       // late.
-      AppErrorScreen.install();
+      // ST truth pass (EN-17): the copy is localized where the error widget
+      // is built, and "Go home" is its way out.
+      AppErrorScreen.install(
+        localized: appErrorCopy,
+        onGoHome: goHomeAfterError,
+      );
 
       // ⏱ 2026-09-28 (ST-R4): ONE notification adapter, and it is the chassis
       // one. Subly's own fork used to initialise the SAME process-singleton

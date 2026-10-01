@@ -557,8 +557,10 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
       label: l10n.monthlySpend,
       figure: money.formatBag(SubMath.totalMonthly(subs)),
       facts: <String>[
-        // PLURAL, so an inflecting language gets its arms.
-        l10n.activeCount(subs.length),
+        // PLURAL, so an inflecting language gets its arms. ⏱ ST truth pass
+        // (HO-01): the CHARGING rows, the set the figure above is summed
+        // over — a paused or cancelled row is on the list, not "active".
+        l10n.activeCount(SubMath.charging(subs).length),
         // The plans' own yearly charges, never twelve rounded twelfths.
         l10n.perYearTotal(money.formatBagRounded(SubMath.totalYearly(subs))),
       ],
@@ -607,12 +609,19 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
           : (s.unused
                 ? l10n.usageRarelyUsed
                 : (s.usedPct > 60 ? l10n.usageActive : l10n.usageOccasional));
-      subtitle = usage == null ? s.category : '${s.category} · $usage';
-      status = !hasUsage
-          ? null
-          : (s.unused
-                ? StatusKind.warn
-                : (s.usedPct > 60 ? StatusKind.positive : null));
+      // ⏱ ST truth pass (HO-02): a row that is not simply active SAYS so —
+      // "Paused", "Cancelled", "Free trial until …" — in its status tone, and
+      // that outranks the usage band, which is about a plan still charging.
+      final LifeStatus? life = LifeStatus.of(l10n, s);
+      final String? note = life?.label ?? usage;
+      subtitle = note == null ? s.category : '${s.category} · $note';
+      status =
+          life?.kind ??
+          (!hasUsage
+              ? null
+              : (s.unused
+                    ? StatusKind.warn
+                    : (s.usedPct > 60 ? StatusKind.positive : null)));
     }
 
     return AppListRow(
