@@ -682,13 +682,14 @@ export const CONTENT_SUBJECTS = Object.freeze([
     // the guard reads as data (the static extraction's blind spot, header above). So
     // the rule reads the same registries, by CONTENT, never a path list kept here.
     guard: 'tooling/ci/assert-ports.mjs',
-    what: 'tooling/ports/**, services/_shared/src/ports/**, and every file a tooling/ports/*.json registry names',
+    what: 'tooling/ports/**, services/_shared/src/ports/**, services/*/src/ports.ts and src/generated/ports.ts, and every file a tooling/ports/*.json registry names',
     build(readSource, tree) {
       const regs = (tree?.list ?? []).filter((f) => /^tooling\/ports\/[^/]+\.json$/.test(f) && !f.endsWith('/port.schema.json'));
       if (!regs.length) throw new Error('tooling/ports/ holds no registry — the port guard\'s subjects cannot be read');
       const named = new Set();
       const walk = (v, key) => {
-        if (typeof v === 'string') { if (key === 'file') named.add(v); return; }
+        // `modules`: an adapter's outbound private modules (port-pay-core), protected by limb 4 like its file.
+        if (typeof v === 'string') { if (key === 'file' || key === 'modules') named.add(v); return; }
         if (Array.isArray(v)) { for (const x of v) walk(x, key); return; }
         if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, k);
       };
@@ -699,7 +700,10 @@ export const CONTENT_SUBJECTS = Object.freeze([
         if (typeof src === 'string') named.add(src.split('#')[0]);
       }
       if (!named.size) throw new Error('no tooling/ports/*.json registry names a file — the port guard\'s subjects cannot be read');
-      return (path) => named.has(path) || path.startsWith('tooling/ports/') || path.startsWith('services/_shared/src/ports/');
+      // A Worker's composition root and its rendered port table are subjects by CONVENTION
+      // (tooling/ports/README.md §3; limbs 4 and 3), so they are matched by shape, not listed.
+      return (path) => named.has(path) || path.startsWith('tooling/ports/') || path.startsWith('services/_shared/src/ports/') ||
+        /^services\/[^/]+\/src\/(?:generated\/)?ports\.ts$/.test(path);
     },
   },
 ]);

@@ -22,7 +22,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { nowIso } from '../d1';
 import { isMoneyEnvironment } from './contract';
-import { cancelPaddleSubscription } from './paddle-cancel';
+import { cancelThrough, railCan } from '../../../../_shared/src/ports/payments';
+import type { Env } from '../../types';
+import { railFor } from '../../ports';
 import { cancelPathFor } from './registry';
 
 interface LiveSubscription {
@@ -44,7 +46,7 @@ export type CancelBeforeDeleteOutcome =
 export async function cancelBillingBeforeDelete(
   db: D1Database,
   userId: string,
-  paddleApiKey: string | undefined,
+  env: Env,
 ): Promise<CancelBeforeDeleteOutcome> {
   const rows =
     (
@@ -63,7 +65,10 @@ export async function cancelBillingBeforeDelete(
   for (const row of rows) {
     const path = cancelPathFor(row.provider);
     if (path === 'store') continue;
-    if (path !== 'api' || row.provider !== 'paddle') {
+    // ⏱ 2026-10-01 · port-pay-core: the rail is the composition root's (src/ports.ts), chosen by
+    // the row's provider; a rail whose declared capabilities lack `cancel` has no executor here.
+    const rail = path === 'api' ? railFor(row.provider, env) : null;
+    if (rail === null || !railCan(rail, 'cancel')) {
       return {
         ok: false,
         why: `a live ${row.provider} subscription for ${row.app_id} has no cancel this server can carry out`,
@@ -82,20 +87,20 @@ export async function cancelBillingBeforeDelete(
     if (!isMoneyEnvironment(row.provider_environment ?? undefined)) {
       return {
         ok: false,
-        why: `a live paddle row for ${row.app_id} names no money environment`,
+        why: `a live ${row.provider} row for ${row.app_id} names no money environment`,
         sentence: 'We could not stop your subscription billing, so your account was not deleted. Please try again later.',
       };
     }
     const environment = row.provider_environment as 'live' | 'sandbox';
-    const done = await cancelPaddleSubscription({
+    const done = await cancelThrough(rail, {
+      subscriptionRef: row.provider_subscription_id,
+      when: 'period_end',
       environment,
-      apiKey: paddleApiKey,
-      subscriptionId: row.provider_subscription_id,
     });
-    if (done.kind !== 'executed') {
+    if (!done.ok) {
       return {
         ok: false,
-        why: `paddle cancel for ${row.app_id} not executed: ${done.why}`,
+        why: `${row.provider} cancel for ${row.app_id} not executed: ${done.detail}`,
         sentence: 'We could not stop your subscription billing, so your account was not deleted. Please try again later.',
       };
     }

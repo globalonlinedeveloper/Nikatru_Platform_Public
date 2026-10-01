@@ -262,7 +262,7 @@ account.delete('/account', async (c) => {
   // bills its own account. src/lib/mor/cancel-on-delete.ts.
   let billing: Awaited<ReturnType<typeof cancelBillingBeforeDelete>>;
   try {
-    billing = await cancelBillingBeforeDelete(c.env.PLATFORM_DB, userId, c.env.PADDLE_API_KEY);
+    billing = await cancelBillingBeforeDelete(c.env.PLATFORM_DB, userId, c.env);
   } catch (err) {
     console.error(`[account] rid=${rid} app=${c.env.APP_ID} refusing deletion: the live-subscription read failed`, err);
     return c.json({ error: 'account_deletion_failed' }, 503);

@@ -1640,7 +1640,9 @@ const flat = (v) =>
 // NOT AN OMISSION. [ADR 094] §4 item 1 says the row must take Razorpay; item 5
 // says its `store/apps-gov-in/form-answers.json` answers flip only in a build
 // that actually carries the checkout. The row keeps `rail: none` until then.
-const MOR_REGISTRY = 'services/platform/src/lib/mor/registry.ts';
+// ⏱ 2026-10-01 · port-pay-core: the rail set is the RENDERED table (tooling/ports/render.mjs from
+// tooling/ports/payments.json), which replaced lib/mor/registry.ts's hand array MOR_VERIFIERS.
+const MOR_REGISTRY = 'services/platform/src/generated/ports.ts';
 const LEGAL_REGISTER = 'tooling/legal/provider-register.json';
 {
   const before = problems.length;
@@ -1748,7 +1750,7 @@ const LEGAL_REGISTER = 'tooling/legal/provider-register.json';
     const distinct = [...new Set(claims.map((c) => c.rail))].sort();
 
     // ── I3 · THE SERVER CAN VERIFY A WEBHOOK FROM EVERY CLAIMED RAIL ──────
-    // The provider set is DATA, in `MOR_VERIFIERS` — the same parse
+    // The provider set is DATA, in the rendered `MOR_VERIFIER_IDS` — the same parse
     // tooling/ci/assert-mor-adapters.mjs limb 2 runs, deliberately, so the two
     // guards cannot disagree about which rails this repo can hear from. The
     // registered IDENTIFIER is the tell; assert-mor-adapters is the guard that
@@ -1760,18 +1762,18 @@ const LEGAL_REGISTER = 'tooling/legal/provider-register.json';
           `${MOR_REGISTRY} does not exist, so "every rail a region claims can be verified" ranges over nothing while ${CHANNELS} claims [${distinct.join(', ')}].`,
         );
       } else {
-        const arr = /MOR_VERIFIERS\s*:\s*readonly\s+MoRWebhookVerifier\[\]\s*=\s*\[([^\]]*)\]/.exec(code(regRaw));
-        const idents = arr ? [...new Set([...arr[1].matchAll(/([A-Za-z_$][\w$]*)Verifier/g)].map((m) => m[1].toLowerCase()))] : [];
+        const arr = /MOR_VERIFIER_IDS\s*=\s*\[([^\]]*)\]/.exec(code(regRaw));
+        const idents = arr ? [...new Set([...arr[1].matchAll(/'([a-z][a-z0-9-]*)'/g)].map((m) => m[1].toLowerCase()))] : [];
         if (idents.length === 0) {
           coverageLost(
-            `no \`MOR_VERIFIERS\` array could be parsed out of ${MOR_REGISTRY}, so every region rail below was checked against an EMPTY provider set — which is a check that cannot fail. (assert-mor-adapters.mjs limb 2 runs the same parse and reports the same absence.)`,
+            `no \`MOR_VERIFIER_IDS\` array could be parsed out of ${MOR_REGISTRY}, so every region rail below was checked against an EMPTY provider set — which is a check that cannot fail. (assert-mor-adapters.mjs limb 2 runs the same parse and reports the same absence.)`,
           );
         } else {
           for (const rail of distinct) {
             if (!idents.includes(rail.toLowerCase())) {
               const who = claims.filter((c) => c.rail === rail).map((c) => `${c.channel}/${c.region}`).join(', ');
               problems.push(
-                `A REGION PAYS THROUGH \`${rail}\` AND THIS REPO CANNOT HEAR FROM IT — ${CHANNELS} routes ${who} to \`${rail}\`, and ${MOR_REGISTRY} registers no \`${rail}Verifier\` (it has ${idents.join(', ')}). A payment taken on a rail whose webhook nobody verifies is money in, entitlement never, and the buyer's only evidence is a receipt from a company this repository has never heard of.`,
+                `A REGION PAYS THROUGH \`${rail}\` AND THIS REPO CANNOT HEAR FROM IT — ${CHANNELS} routes ${who} to \`${rail}\`, and ${MOR_REGISTRY} renders no \`${rail}\` in MOR_VERIFIER_IDS (it has ${idents.join(', ')}). A payment taken on a rail whose webhook nobody verifies is money in, entitlement never, and the buyer's only evidence is a receipt from a company this repository has never heard of.`,
               );
             }
           }

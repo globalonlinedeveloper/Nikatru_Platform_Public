@@ -138,7 +138,9 @@ const problems = [];
 const fail = (m) => problems.push(m); const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 
 const SERVICES = join(ROOT, 'services');
-const REGISTRY = 'services/platform/src/lib/mor/registry.ts';
+// ⏱ 2026-10-01 · port-pay-core: the rail set is the RENDERED table (tooling/ports/render.mjs from
+// tooling/ports/payments.json); the hand array MOR_VERIFIERS in lib/mor/registry.ts is gone.
+const REGISTRY = 'services/platform/src/generated/ports.ts';
 const ROUTE = 'services/platform/src/routes/money.ts';
 /** The Worker that owns the rail, and therefore the one that must declare it. */
 const MONEY_WORKER = 'platform';
@@ -620,8 +622,8 @@ if (!existsSync(registryPath)) {
   // literal still counts (strings are deliberately not blanked), and nothing
   // here checks that the name the adapter declares is the name it READS.
   const registry = stripSourceComments(readFileSync(registryPath, 'utf8'), extname(registryPath).toLowerCase());
-  const arr = /MOR_VERIFIERS\s*:\s*readonly\s+MoRWebhookVerifier\[\]\s*=\s*\[([^\]]*)\]/.exec(registry);
-  const providers = arr ? [...new Set([...arr[1].matchAll(/([A-Za-z_$][\w$]*)Verifier/g)].map((m) => m[1]))] : [];
+  const arr = /MOR_VERIFIER_IDS\s*=\s*\[([^\]]*)\]/.exec(registry);
+  const providers = arr ? [...new Set([...arr[1].matchAll(/'([a-z][a-z0-9-]*)'/g)].map((m) => m[1]))] : [];
   for (const p of providers) {
     const adapter = join(ROOT, `services/platform/src/lib/mor/${p}.ts`);
     if (!existsSync(adapter)) continue;

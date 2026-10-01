@@ -95,7 +95,8 @@ import { isKnownApp, isSellableExtension } from '../config';
 import { isMoneyEnvironment } from '../lib/mor/contract';
 import { readBoundedBody } from '../lib/body';
 import { cancelPathFor, storeCancelPage } from '../lib/mor/registry';
-import { cancelPaddleSubscription } from '../lib/mor/paddle-cancel';
+import { cancelThrough, railCan, type RailOutbound } from '../../../_shared/src/ports/payments';
+import { railFor } from '../ports';
 
 const cancellation = new Hono<AppEnv>();
 
@@ -204,20 +205,22 @@ cancellation.post('/plan/cancel', async (c) => {
   // recoverable by a human; none is an error the user caused.
   let notExecutedReason: NotExecutedReason | null;
   let effectiveAt: string | null = null;
+  let rail: RailOutbound | null = null;
   if (row.provider === null) {
     notExecutedReason = 'no_provider_on_row';
-  } else if (cancelPathFor(row.provider) === 'api' && row.provider === 'paddle') {
-    const done = await cancelPaddleSubscription({
+  } else if (cancelPathFor(row.provider) === 'api' && (rail = railFor(row.provider, c.env)) !== null && railCan(rail, 'cancel')) {
+    // ⏱ 2026-10-01 · port-pay-core: through the row's rail (src/ports.ts), never a named vendor.
+    const done = await cancelThrough(rail, {
+      subscriptionRef: row.provider_subscription_id ?? '',
+      when: 'period_end',
       environment,
-      apiKey: c.env.PADDLE_API_KEY,
-      subscriptionId: row.provider_subscription_id ?? '',
     });
-    if (done.kind === 'executed') {
+    if (done.ok) {
       notExecutedReason = null;
       effectiveAt = done.effectiveAt;
     } else {
-      console.error(`[cancel] rid=${rid} app=${appId} paddle cancel not executed: ${done.why}`);
-      notExecutedReason = done.kind === 'not_configured' ? 'provider_not_configured' : 'provider_error';
+      console.error(`[cancel] rid=${rid} app=${appId} ${row.provider} cancel not executed: ${done.detail}`);
+      notExecutedReason = done.sent ? 'provider_error' : 'provider_not_configured';
     }
   } else {
     notExecutedReason = 'provider_not_configured';
