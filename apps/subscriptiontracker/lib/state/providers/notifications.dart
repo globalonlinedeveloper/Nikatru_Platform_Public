@@ -5,7 +5,8 @@
 // [notificationTapSourceProvider] stood at the tail of SECTION F (identity) and
 // is carried here, with the rest of the notification wiring it belongs to.
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
@@ -17,6 +18,7 @@ import 'package:nikatru_notifications/nikatru_notifications.dart';
 import '../../core/app_config.dart';
 import '../../core/windows_notification_identity.g.dart';
 import '../../services/notifications/notification_service.dart';
+import '../subscriptions_controller.dart' show reminderCopyFor;
 import '../analytics_providers.dart';
 import 'analytics_envelope.dart' show kPlatformBaseUrl;
 
@@ -46,11 +48,27 @@ final Provider<core.NotificationService> notificationTapSourceProvider =
 /// file header for the three pieces of evidence that forced the direction.
 ///
 /// [pipeline C-2/C-7] Platform reality is DECLARED, not assumed — see
-/// [NotificationCapabilities]: Android/iOS/macOS show and schedule; Linux shows
-/// but cannot schedule; Windows does neither on the pinned 17.x; Web has no
-/// plugin at all. Unsupported calls degrade to a safe no-op, so a caller never
+/// [NotificationCapabilities]: Android/iOS/macOS show and schedule; Linux
+/// shows and schedules inexactly through the package's ledger (NO-04); Windows
+/// needs the app's identity; Web has no plugin at all. Unsupported calls degrade to a safe no-op, so a caller never
 /// crashes on a platform that cannot do the thing — but it also never silently
 /// believes a reminder was set.
+/// The ONE adapter `main()` initialises (ST-R4): the chassis call, plus what
+/// Subly adds to it. [kWindowsNotificationIdentity] is the toast identity from
+/// app.yaml (without it Windows has no notifications at all); [AppConfig.appId]
+/// names the Linux ledger (NO-04); and Apple registers a notification's buttons
+/// by category once, at initialize, so their words are rendered here in the
+/// language the app opens in — an in-app language change reaches iOS/macOS at
+/// the next launch, while Android and Windows carry them per notification
+/// (NO-10). Here rather than in `main.dart`, a chassis fork held at its
+/// ceiling (tooling/chassis-parity.json).
+core.NotificationService createLaunchNotificationService() =>
+    createLocalNotificationService(
+      windows: kWindowsNotificationIdentity,
+      linuxAppId: AppConfig.appId,
+      darwinActions: RenewalReminders.actionsFor(reminderCopyFor(null)),
+    );
+
 final Provider<core.NotificationService> notificationServiceProvider =
     Provider<core.NotificationService>(
       (ref) =>
@@ -346,3 +364,84 @@ final NotifierProvider<CatchUpNudgeController, DateTime?> catchUpNudgeProvider =
     NotifierProvider<CatchUpNudgeController, DateTime?>(
       CatchUpNudgeController.new,
     );
+
+// ── NO-04 · NO-12 ────────────────────────────────────────────────────────────
+
+/// NO-04: the XDG autostart entry that shows due reminders at login — Linux
+/// only, null everywhere else (web included). "Renewal alerts" ON creates it
+/// and OFF removes it (SettingsController.toggle). A provider so a test can
+/// hand in one over a temp directory.
+final Provider<LinuxAutostartControl?> linuxAutostartProvider =
+    Provider<LinuxAutostartControl?>(
+      (ref) => createLinuxAutostart(
+        appId: AppConfig.appId,
+        appName: AppConfig.appName,
+      ),
+    );
+
+/// NO-12: Android's "Alarms & reminders" access, or null where the service
+/// has none (the no-op seam, web).
+final Provider<ExactAlarmAccess?> exactAlarmAccessProvider =
+    Provider<ExactAlarmAccess?>((ref) {
+      final core.NotificationService svc = ref.watch(
+        notificationServiceProvider,
+      );
+      return svc is ExactAlarmAccess ? svc as ExactAlarmAccess : null;
+    });
+
+/// Whether this target has an exact-alarm permission to offer: Android only.
+/// A provider so a widget test can stand on Android.
+final Provider<bool> offersExactAlarmsProvider = Provider<bool>(
+  (ref) => !kIsWeb && defaultTargetPlatform == TargetPlatform.android,
+);
+
+const String _exactAlarmOfferKey = 'nikatru.exact_alarm_offer';
+
+/// NO-12: the answer to the ONE "Alarms & reminders" offer — null = never
+/// offered, else `granted` or `refused`. Persisted, because "once" is per
+/// install, not per launch; a refusal is what Settings says "reminders may
+/// arrive a little late" about.
+class ExactAlarmOfferController extends Notifier<String?> {
+  static const String granted = 'granted';
+  static const String refused = 'refused';
+
+  late final PersistedValue<core.KeyValueStore, String?> _stored =
+      PersistedValue<core.KeyValueStore, String?>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_exactAlarmOfferKey),
+        write: (kv, raw) => kv.write(_exactAlarmOfferKey, raw),
+        decode: (raw) => raw,
+        encode: (answer) => answer ?? '',
+        apply: (answer) => state = answer,
+        mounted: () => ref.mounted,
+      );
+
+  @override
+  String? build() {
+    _stored.hydrate();
+    return null;
+  }
+
+  /// Whether the offer was ever answered — read from the store, so a launch
+  /// whose hydration is still in flight cannot offer it twice.
+  Future<bool> wasOffered() async {
+    if (state != null) return true;
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      final String? raw = await kv.read(_exactAlarmOfferKey);
+      return raw != null && raw.isNotEmpty;
+    } catch (_) {
+      // An unreadable store: do not nag; offering is a nicety.
+      return true;
+    }
+  }
+
+  Future<void> record(String answer) => _stored.set(answer);
+}
+
+final NotifierProvider<ExactAlarmOfferController, String?>
+exactAlarmOfferProvider = NotifierProvider<ExactAlarmOfferController, String?>(
+  ExactAlarmOfferController.new,
+);

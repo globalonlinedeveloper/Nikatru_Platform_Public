@@ -12,6 +12,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_notifications/nikatru_notifications.dart'
+    show ExactAlarmAccess;
 
 import '../../core/app_config.dart';
 import '../../l10n/app_localizations.dart';
@@ -38,7 +40,65 @@ Future<void> toggleReminderPref(
     final bool go = await primeReminderPermission(context);
     if (!go || !context.mounted) return;
   }
-  await ref.read(settingsControllerProvider.notifier).toggle(key);
+  final bool on = await ref
+      .read(settingsControllerProvider.notifier)
+      .toggle(key);
+  // NO-12: the first time renewal reminders go ON on Android, offer exact
+  // alarms — once per install.
+  if (on && key == 'alerts' && context.mounted) {
+    await maybeOfferExactAlarms(context, ref);
+  }
+}
+
+/// NO-12: Android's "Alarms & reminders", offered ONCE.
+///
+/// SCHEDULE_EXACT_ALARM is not pre-granted from Android 13 and Android 14
+/// revokes it on restore, so without it reminders arrive inside an OS window
+/// rather than at the minute. The offer says so and opens the system page;
+/// the answer is recorded either way, and a refusal is said in Settings
+/// ("reminders may arrive a little late") where the user can come back to it.
+/// Already allowed = recorded as granted, nothing shown.
+Future<void> maybeOfferExactAlarms(BuildContext context, WidgetRef ref) async {
+  if (!ref.read(offersExactAlarmsProvider)) return;
+  final ExactAlarmAccess? access = ref.read(exactAlarmAccessProvider);
+  if (access == null) return;
+  final ExactAlarmOfferController offer = ref.read(
+    exactAlarmOfferProvider.notifier,
+  );
+  if (await offer.wasOffered()) return;
+  if (await access.canScheduleExact()) {
+    await offer.record(ExactAlarmOfferController.granted);
+    return;
+  }
+  if (!context.mounted) return;
+  final AppLocalizations l10n = AppLocalizations.of(context);
+  final bool open =
+      await showDialog<bool>(
+        context: context,
+        builder: (BuildContext c) => AlertDialog(
+          key: const Key('settings.reminder.exactOffer'),
+          title: Text(l10n.exactAlarmOfferTitle),
+          content: Text(l10n.exactAlarmOfferBody),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: Text(l10n.exactAlarmOfferLater),
+            ),
+            TextButton(
+              key: const Key('settings.reminder.exactOffer.open'),
+              onPressed: () => Navigator.pop(c, true),
+              child: Text(l10n.exactAlarmOfferOpen),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+  final bool granted = open && await access.requestExactAlarms();
+  await offer.record(
+    granted
+        ? ExactAlarmOfferController.granted
+        : ExactAlarmOfferController.refused,
+  );
 }
 
 /// The priming dialog. True = go on to the OS prompt.
@@ -88,8 +148,11 @@ class ReminderRuleRows extends ConsumerWidget {
         .watch(renewalRemindersProvider)
         .capabilities
         .canSchedule;
+    // NO-12 / NO-13: the tools rows follow the rules on both paths, mounted
+    // from here so settings_screen.dart, a chassis fork at its ceiling, does
+    // not grow by them.
     if (!deliverable || !(s.prefs['alerts'] ?? false)) {
-      return const SizedBox.shrink();
+      return const ReminderToolsRows();
     }
     final AppLocalizations l10n = AppLocalizations.of(context);
     final SettingsController c = ref.read(settingsControllerProvider.notifier);
@@ -129,6 +192,123 @@ class ReminderRuleRows extends ConsumerWidget {
               if (t != null) await c.setReminderTime(t.hour, t.minute);
             },
           ),
+          const ReminderToolsRows(),
+        ],
+      ),
+    );
+  }
+}
+
+/// NO-12 / NO-13: quiet hours, the test reminder, and the exact-alarm line —
+/// under the rule rows.
+class ReminderToolsRows extends ConsumerWidget {
+  const ReminderToolsRows({super.key});
+
+  Future<void> _sendTest(BuildContext context, WidgetRef ref) async {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(
+      context,
+    );
+    final bool armed = await ref
+        .read(renewalRemindersProvider)
+        .sendTest(copy: reminderCopyFor(ref.read(localeProvider)));
+    if (!armed) return;
+    messenger?.showSnackBar(
+      SnackBar(content: Text(l10n.testReminderSentLocal)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final SettingsState s = ref.watch(settingsControllerProvider);
+    final SettingsController c = ref.read(settingsControllerProvider.notifier);
+    final bool local = ref
+        .watch(renewalRemindersProvider)
+        .capabilities
+        .canSchedule;
+    final bool quietOn = s.prefs['quiet'] ?? false;
+    Future<void> pick(bool start) async {
+      final int m = start ? s.quietStartMinute : s.quietEndMinute;
+      final TimeOfDay? t = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay(hour: m ~/ 60, minute: m % 60),
+      );
+      if (t == null) return;
+      final int v = t.hour * 60 + t.minute;
+      await c.setQuietHours(
+        startMinute: start ? v : null,
+        endMinute: start ? null : v,
+      );
+    }
+
+    return Material(
+      type: MaterialType.transparency,
+      child: Column(
+        children: <Widget>[
+          if (local && (s.prefs['alerts'] ?? false)) ...<Widget>[
+            SwitchListTile.adaptive(
+              key: const Key('settings.reminder.quiet'),
+              secondary: const Icon(Icons.bedtime_outlined),
+              title: Text(l10n.quietHoursTitle),
+              subtitle: Text(
+                l10n.quietHoursSubtitle(
+                  _time(context, s.quietStartMinute),
+                  _time(context, s.quietEndMinute),
+                ),
+              ),
+              value: quietOn,
+              onChanged: (_) => c.toggle('quiet'),
+            ),
+            if (quietOn)
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: ListTile(
+                      key: const Key('settings.reminder.quiet.start'),
+                      title: Text(_time(context, s.quietStartMinute)),
+                      onTap: () => pick(true),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListTile(
+                      key: const Key('settings.reminder.quiet.end'),
+                      title: Text(_time(context, s.quietEndMinute)),
+                      onTap: () => pick(false),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+          if (ref.watch(exactAlarmOfferProvider) ==
+              ExactAlarmOfferController.refused)
+            ListTile(
+              key: const Key('settings.reminder.exactRefused'),
+              leading: const Icon(Icons.alarm_off_outlined),
+              title: Text(l10n.exactAlarmRefused),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                final ExactAlarmAccess? access = ref.read(
+                  exactAlarmAccessProvider,
+                );
+                if (access == null) return;
+                if (await access.requestExactAlarms()) {
+                  await ref
+                      .read(exactAlarmOfferProvider.notifier)
+                      .record(ExactAlarmOfferController.granted);
+                }
+              },
+            ),
+          // Only where a local test can fire. Web waits for a host route that
+          // would spend the shared daily reminder-mail share (an owner call),
+          // and a row that can only fail is not offered.
+          if (local)
+            ListTile(
+              key: const Key('settings.reminder.test'),
+              leading: const Icon(Icons.notification_add_outlined),
+              title: Text(l10n.settingsSendTestReminder),
+              onTap: () => _sendTest(context, ref),
+            ),
         ],
       ),
     );
