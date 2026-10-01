@@ -22,6 +22,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import '../../core/format/category_label.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/budget_info.dart';
@@ -310,7 +311,7 @@ class _BudgetEditorState extends ConsumerState<BudgetEditor> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    c.name,
+                    categoryLabel(l10n, c.name),
                     style: text.titleMedium?.copyWith(color: scheme.onSurface),
                   ),
                   Text(
@@ -327,7 +328,7 @@ class _BudgetEditorState extends ConsumerState<BudgetEditor> {
           SizedBox(
             width: AppBreakpoints.form / 3,
             child: Semantics(
-              label: l10n.budgetCapLabel(c.name),
+              label: l10n.budgetCapLabel(categoryLabel(l10n, c.name)),
               child: TextField(
                 key: BudgetEditor.capField(c.name),
                 controller: controller,

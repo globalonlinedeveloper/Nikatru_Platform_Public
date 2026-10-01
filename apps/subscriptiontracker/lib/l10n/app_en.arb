@@ -2422,5 +2422,49 @@
         "example": "Subscriptions"
       }
     }
+  },
+  "categoryStreaming": "Streaming",
+  "@categoryStreaming": {
+    "description": "ST-X8 (audit C6): the display name of the category whose id is \"Streaming\"."
+  },
+  "categoryMusic": "Music",
+  "@categoryMusic": {
+    "description": "ST-X8 (audit C6): the display name of the category whose id is \"Music\"."
+  },
+  "categoryAiTools": "AI tools",
+  "@categoryAiTools": {
+    "description": "ST-X8 (audit C6): the display name of the category whose id is \"AI tools\"."
+  },
+  "categoryCreative": "Creative",
+  "@categoryCreative": {
+    "description": "ST-X8 (audit C6): the display name of the category whose id is \"Creative\"."
+  },
+  "categoryFitness": "Fitness",
+  "@categoryFitness": {
+    "description": "ST-X8 (audit C6): the display name of the category whose id is \"Fitness\"."
+  },
+  "categoryDeveloper": "Developer",
+  "@categoryDeveloper": {
+    "description": "ST-X8 (audit C6): the display name of the category whose id is \"Developer\"."
+  },
+  "categoryProductivity": "Productivity",
+  "@categoryProductivity": {
+    "description": "ST-X8 (audit C6): the display name of the category whose id is \"Productivity\"."
+  },
+  "categoryCloud": "Cloud",
+  "@categoryCloud": {
+    "description": "ST-X8 (audit C6): the display name of the category whose id is \"Cloud\"."
+  },
+  "categoryNews": "News",
+  "@categoryNews": {
+    "description": "ST-X8 (audit C6): the display name of the category whose id is \"News\"."
+  },
+  "categorySecurity": "Security",
+  "@categorySecurity": {
+    "description": "ST-X8 (audit C6): the display name of the category whose id is \"Security\"."
+  },
+  "categoryOther": "Other",
+  "@categoryOther": {
+    "description": "ST-X8 (audit C6): the display name of the fallback category whose id is \"Other\" — a row with no category."
   }
 }

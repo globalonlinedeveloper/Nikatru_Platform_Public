@@ -485,5 +485,16 @@
   "rateApp": "{appName} ஐ மதிப்பிடுங்கள்",
   "rateAppUnavailable": "இந்தப் பதிப்பிலிருந்து ஸ்டோரைத் திறக்க முடியவில்லை.",
   "sendFeedback": "கருத்தை அனுப்பு",
-  "feedbackMailSubject": "{appName} கருத்து"
+  "feedbackMailSubject": "{appName} கருத்து",
+  "categoryStreaming": "ஸ்ட்ரீமிங்",
+  "categoryMusic": "இசை",
+  "categoryAiTools": "AI கருவிகள்",
+  "categoryCreative": "படைப்பாக்கம்",
+  "categoryFitness": "உடற்பயிற்சி",
+  "categoryDeveloper": "டெவலப்பர் கருவிகள்",
+  "categoryProductivity": "உற்பத்தித்திறன்",
+  "categoryCloud": "கிளவுட் சேமிப்பு",
+  "categoryNews": "செய்திகள்",
+  "categorySecurity": "பாதுகாப்பு",
+  "categoryOther": "மற்றவை"
 }
