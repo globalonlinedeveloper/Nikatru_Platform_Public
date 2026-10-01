@@ -388,6 +388,7 @@ class AppScaffold extends StatelessWidget {
 /// |----------|---------------------------------------------------------|
 /// | **N**    | [onPrimaryAction] — the screen's primary action          |
 /// | **/**    | [onSearch] — focus the search                            |
+/// | **Ctrl/⌘+F** | [onSearch] too — the platform's find chord           |
 /// | **Esc**  | in a field: leaves it; focus returns to the shell        |
 /// | **1–9**  | the destination at that position (1 = the first)         |
 ///
@@ -454,6 +455,10 @@ class _SearchIntent extends Intent {
   const _SearchIntent();
 }
 
+class _FindIntent extends Intent {
+  const _FindIntent();
+}
+
 class _LeaveFieldIntent extends Intent {
   const _LeaveFieldIntent();
 }
@@ -512,6 +517,14 @@ class _ShellShortcutsState extends State<_ShellShortcuts> {
               const _PrimaryActionIntent(),
         if (widget.onSearch != null)
           const CharacterActivator('/'): const _SearchIntent(),
+        // SH-02: the platform's own find chord, too — Ctrl+F, and ⌘+F on
+        // Apple. Live even inside a field: it names no character to type.
+        if (widget.onSearch != null)
+          const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+              const _FindIntent(),
+        if (widget.onSearch != null)
+          const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
+              const _FindIntent(),
         const SingleActivator(LogicalKeyboardKey.escape):
             const _LeaveFieldIntent(),
         for (int i = 0; i < digits; i++)
@@ -526,6 +539,12 @@ class _ShellShortcutsState extends State<_ShellShortcuts> {
             },
           ),
           _SearchIntent: _NotWhileTyping<_SearchIntent>(
+            onInvoke: (_) {
+              widget.onSearch?.call();
+              return null;
+            },
+          ),
+          _FindIntent: CallbackAction<_FindIntent>(
             onInvoke: (_) {
               widget.onSearch?.call();
               return null;

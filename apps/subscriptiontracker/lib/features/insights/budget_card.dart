@@ -11,7 +11,13 @@
 //
 // ⚠️ THE FIGURE IS THE MONTHLY AVERAGE, NOT A LEDGER, as it always was: a
 // yearly plan counts a twelfth. It is labelled as spend against a monthly
-// budget, never as "charged this month".
+// budget, never as "charged this month" — and since T12 (IN-09, audit C13) the
+// card SAYS so under its title ("Average monthly share"), because a reader
+// comparing it with their statement could not otherwise know.
+//
+// ⏱ T12 (IN-06): spend in other currencies is converted into the BUDGET's
+// currency at the ECB table (`HomeTotals`), so a dollar plan counts against a
+// rupee budget instead of sitting beside it uncounted.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -19,6 +25,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import '../../core/format/home_totals.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/budget_info.dart';
@@ -28,7 +35,17 @@ import 'budget_editor.dart';
 
 /// The budget, spent against it, and the one control that changes it.
 class BudgetCard extends ConsumerWidget {
-  const BudgetCard({super.key, required this.subs, required this.currencyCode});
+  const BudgetCard({
+    super.key,
+    required this.subs,
+    required this.currencyCode,
+    this.totals = const HomeTotals(null, ''),
+  });
+
+  /// The rate table; the spend is folded into the BUDGET's own currency.
+  final HomeTotals totals;
+
+  static const Key averageNote = Key('insights.budget.average');
 
   final List<Subscription> subs;
 
@@ -62,6 +79,7 @@ class BudgetCard extends ConsumerWidget {
       budget: budget,
       subs: subs,
       money: MoneyFormatter(l10n.localeName, emptyCurrencyCode: currencyCode),
+      totals: HomeTotals(totals.fx, budget.currencyCode),
     );
   }
 }
@@ -71,11 +89,13 @@ class _Loaded extends StatelessWidget {
     required this.budget,
     required this.subs,
     required this.money,
+    required this.totals,
   });
 
   final BudgetInfo budget;
   final List<Subscription> subs;
   final MoneyFormatter money;
+  final HomeTotals totals;
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +105,7 @@ class _Loaded extends StatelessWidget {
     final ColorScheme scheme = theme.colorScheme;
     final StatusTones tones = StatusTones.of(context);
 
-    final MoneyBag spent = SubMath.totalMonthly(subs);
+    final MoneyBag spent = totals.of(SubMath.totalMonthly(subs));
     final BudgetUsage usage = budget.usageOf(spent);
     final Money limit = budget.monthlyBudget;
     final bool hasBudget = limit.minorUnits > 0;
@@ -105,7 +125,10 @@ class _Loaded extends StatelessWidget {
       context,
       budget: budget,
       spent: spent,
-      categories: SubMath.categoryTotals(subs),
+      categories: <CategoryTotal>[
+        for (final CategoryTotal c in SubMath.categoryTotals(subs))
+          CategoryTotal(c.name, totals.of(c.value)),
+      ],
     );
 
     return AppCard(
@@ -116,14 +139,29 @@ class _Loaded extends StatelessWidget {
           Row(
             children: <Widget>[
               Expanded(
-                child: Semantics(
-                  header: true,
-                  child: Text(
-                    l10n.budgetCardTitle,
-                    style: text.labelLarge?.copyWith(
-                      color: scheme.onSurfaceVariant,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Semantics(
+                      header: true,
+                      child: Text(
+                        l10n.budgetCardTitle,
+                        style: text.labelLarge?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
-                  ),
+                    // IN-09: what the meter measures, in words — under the
+                    // title, inside the row the Edit button already makes
+                    // 48 px tall.
+                    Text(
+                      key: BudgetCard.averageNote,
+                      l10n.budgetAverageShare,
+                      style: text.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               // The button keeps its OWN node (role + tap); only its NAME is

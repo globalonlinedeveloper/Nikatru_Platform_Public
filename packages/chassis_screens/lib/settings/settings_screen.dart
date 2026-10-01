@@ -377,18 +377,15 @@ class SettingsView extends StatelessWidget {
                   onChanged: (String? code) => onLanguageChanged(code ?? ''),
                   child: Column(
                     children: <Widget>[
-                      RadioListTile<String>(
-                        value: '',
-                        title: Text(l10n.languageSystem),
-                      ),
-                      RadioListTile<String>(
-                        value: 'en',
-                        title: Text(l10n.languageEnglish),
-                      ),
-                      RadioListTile<String>(
-                        value: 'ta',
-                        title: Text(l10n.languageTamil),
-                      ),
+                      // T20 (XP-06): हिन्दी joins the list; one tile per language.
+                      for (final (String code, String name)
+                          in <(String, String)>[
+                            ('', l10n.languageSystem),
+                            ('en', l10n.languageEnglish),
+                            ('ta', l10n.languageTamil),
+                            ('hi', l10n.languageHindi),
+                          ])
+                        RadioListTile<String>(value: code, title: Text(name)),
                     ],
                   ),
                 ),

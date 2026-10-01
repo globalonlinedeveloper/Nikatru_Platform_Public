@@ -21,6 +21,7 @@ import '../../data/api/persisted_api_client.dart';
 import '../../data/api/seed_api_client.dart';
 import '../../data/local/subscription_store.dart';
 import '../../data/models/payment_record.dart';
+import '../../data/models/price_change.dart';
 import '../../data/subscriptions/subscription_repository.dart';
 import '../settings_controller.dart' show currencyCodeProvider;
 import '../subscriptions_controller.dart' show subscriptionsControllerProvider;
@@ -87,17 +88,26 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
   if (!AppConfig.isApiConfigured) {
     return PersistedApiClient(SeedApiClient(), store);
   }
-  final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
-  final String baseUrl = apiBaseFor(
-    pinned: AppConfig.pinnedBackend,
-    configured: cfg?.apiBaseUrl,
-    define: AppConfig.apiBaseUrl,
+  // ✅ HO-10: the base URL is FOLLOWED, never watched. This watched the
+  // config document, which resolves after the first list read,
+  // so every cold launch rebuilt this client, the repository and the list —
+  // two `GET /v1/subscriptions` per launch. [followApiBase] reads the base
+  // once and moves the SAME client when the config names another.
+  late final DioApiClient network;
+  final String baseUrl = followApiBase(
+    ref,
+    decide: (String? configured) => apiBaseFor(
+      pinned: AppConfig.pinnedBackend,
+      configured: configured,
+      define: AppConfig.apiBaseUrl,
+    ),
+    rebase: (String next) => network.rebase(next),
   );
   // The client itself is needed inside its own 401 handler (to drop its copy
   // on that sign-out path); `late` because the handler runs only after it exists.
   late final ApiClient client;
   return client = cachedApiClientOver(
-    DioApiClient(
+    network = DioApiClient(
       baseUrl: baseUrl,
       tokenProvider: ref.watch(authTokenProvider),
       // ✅ ST-U7 (D20): a 401 on the list is asked whether the session is GONE,
@@ -185,6 +195,37 @@ void reportCacheWriteFailure(Object error) {
   );
 }
 
+/// The base URL [decide] gives the config document now, with [rebase] called
+/// on every later change — the ONE way a client provider learns its base
+/// (HO-10). [decide] is the caller's, so the host decision (`apiBaseFor`,
+/// L-PIN) stays visible in the provider that owns the client.
+///
+/// 🔴 `listen`, NOT `watch`. A watch makes the caller REBUILD on the config
+/// resolve, and a rebuilt client is a rebuilt repository and a second list
+/// read on every cold launch. A listen keeps the caller and moves its client;
+/// a resolve that leaves the base unchanged moves nothing.
+/// NAMED so `one_list_fetch_test.dart` drives exactly this function across a
+/// resolve with a counting fake.
+String followApiBase(
+  Ref ref, {
+  required String Function(String? configured) decide,
+  required void Function(String baseUrl) rebase,
+}) {
+  String now = decide(ref.read(appConfigProvider).value?.apiBaseUrl);
+  ref.listen<String?>(
+    appConfigProvider.select(
+      (AsyncValue<core.AppConfig> c) => c.value?.apiBaseUrl,
+    ),
+    (String? _, String? configured) {
+      final String next = decide(configured);
+      if (next == now) return;
+      now = next;
+      rebase(next);
+    },
+  );
+  return now;
+}
+
 /// The API base URL [apiClientProvider] builds its client on.
 ///
 /// 🔴 A PINNED BUILD TAKES THE DEFINE AND NEVER THE CONFIG DOCUMENT (F1, row
@@ -254,6 +295,14 @@ final FutureProviderFamily<List<PaymentRecord>, String> paymentHistoryProvider =
       (ref, String id) => ref.watch(subscriptionRepositoryProvider).history(id),
     );
 
+/// One row's price edits, newest first (DE-05) — the timeline merges these
+/// with [paymentHistoryProvider]. Not cached, for the same reason.
+final FutureProviderFamily<List<PriceChange>, String> priceHistoryProvider =
+    FutureProvider.family<List<PriceChange>, String>(
+      (ref, String id) =>
+          ref.watch(subscriptionRepositoryProvider).priceHistory(id),
+    );
+
 // ── `purchasesServiceProvider` WAS HERE, AND IT IS GONE ON PURPOSE ──────────
 // [pipeline 5]M-11/M-13/M-15, [ADR 026]. `lib/services/purchases/` held a
 // RevenueCat-shaped stub: a `PurchasesService` whose `purchase()` returned
@@ -286,6 +335,28 @@ final FutureProviderFamily<List<PaymentRecord>, String> paymentHistoryProvider =
 ///
 /// ⚠️ Production never overrides it, so behaviour is unchanged: the screen still
 /// "renders identically today and correctly tomorrow".
+///
+/// ✅ HO-04: IT IS RE-READ AT LOCAL MIDNIGHT. A screen left open overnight
+/// said "Renews tomorrow" about a charge that was now due today, until
+/// something else rebuilt it. Home schedules [untilLocalMidnight] and
+/// invalidates this provider when it lands, so every reader rebuilds on the
+/// new day. A FRESH CLOSURE per evaluation, so the invalidation is a change
+/// its readers see (a tear-off of `DateTime.now` is equal to the last one).
+///
+/// 🔴 THE TIMER IS NOT IN HERE, deliberately: a provider-owned timer outlives
+/// every widget test whose container is disposed at teardown, and fails each
+/// with `!timersPending`. A widget's timer dies with the widget.
 final Provider<DateTime Function()> nowProvider = Provider<DateTime Function()>(
-  (Ref ref) => DateTime.now,
+  (Ref ref) =>
+      () => DateTime.now(),
 );
+
+/// How long from [now] until the next LOCAL midnight — calendar arithmetic,
+/// so a daylight-saving day is as long as it really is. At least a second, so
+/// a tick that lands a hair early cannot spin.
+Duration untilLocalMidnight(DateTime now) {
+  final DateTime local = now.toLocal();
+  final DateTime next = DateTime(local.year, local.month, local.day + 1);
+  final Duration d = next.difference(local);
+  return d < const Duration(seconds: 1) ? const Duration(seconds: 1) : d;
+}

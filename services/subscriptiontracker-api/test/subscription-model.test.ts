@@ -369,6 +369,54 @@ describe('notice_days — the notice period round-trips, and null means none', (
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
+// 0009_tags.sql (AD-12, train T20): the user's own labels.
+describe('tags — the labels round-trip, and [] and null both mean none', () => {
+  it('POST stores them as JSON text, and POST, GET /:id and GET / serve the list', async () => {
+    const created = await create({ name: 'Netflix', price: 9.99, cycle: 'monthly', tags: ['family', 'Streaming'] });
+    expect(created.tags).toEqual(['family', 'Streaming']);
+    expect((await getOne(created.id as string)).tags).toEqual(['family', 'Streaming']);
+    expect((await getAll())[0].tags).toEqual(['family', 'Streaming']);
+    expect(db.rows('SELECT tags FROM subscriptions')).toEqual([{ tags: '["family","Streaming"]' }]);
+  });
+
+  it('a body without them reads back [] — every row that predates 0007', async () => {
+    const created = await create({ name: 'Spotify', price: 1.99, cycle: 'monthly' });
+    expect(created).toHaveProperty('tags', []);
+    expect(db.rows('SELECT tags FROM subscriptions')).toEqual([{ tags: null }]);
+  });
+
+  it('PATCH sets them, leaves them alone when absent, and clears them with [] or null', async () => {
+    const { id } = await create({ name: 'Gym', price: 40, cycle: 'monthly' });
+    const set = await patch(id as string, { tags: ['work'] });
+    expect(set.status).toBe(200);
+    expect(await set.json()).toMatchObject({ tags: ['work'] });
+
+    const untouched = await patch(id as string, { notes: 'ask HR' });
+    expect(await untouched.json()).toMatchObject({ tags: ['work'], notes: 'ask HR' });
+
+    const emptied = await patch(id as string, { tags: [] });
+    expect(await emptied.json()).toMatchObject({ tags: [] });
+    expect(db.rows('SELECT tags FROM subscriptions WHERE id = ?', id as string)).toEqual([{ tags: null }]);
+
+    await patch(id as string, { tags: ['x'] });
+    const cleared = await patch(id as string, { tags: null });
+    expect(await cleared.json()).toMatchObject({ tags: [] });
+  });
+
+  it('the bounds are accepted at their edges: ten labels, a 32-character one', async () => {
+    const ten = Array.from({ length: 10 }, (_, i) => `t${i}`);
+    expect(await create({ tags: ten })).toMatchObject({ tags: ten });
+    expect(await create({ tags: ['a'.repeat(32)] })).toMatchObject({ tags: ['a'.repeat(32)] });
+  });
+
+  it('text edited outside the Worker is served as [], never a 500', async () => {
+    const { id } = await create({ name: 'Odd', price: 1, cycle: 'monthly' });
+    db.db.prepare("UPDATE subscriptions SET tags = 'not json' WHERE id = ?").run(id as string);
+    expect((await getOne(id as string)).tags).toEqual([]);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
 describe('payment history is served in its subscription’s currency', () => {
   /** An overdue monthly INR row, rolled by the REAL platform fan-out — the
    *  only writer of payment_history. ⏱ 2026-09-28 · ST-T3b (ST-E3): the
@@ -488,6 +536,14 @@ const RED: ReadonlyArray<readonly [string, Row, string]> = [
   ['notice_days as a decimal', { notice_days: 1.5 }, 'notice_days'],
   ['notice_days past a year', { notice_days: 366 }, 'notice_days'],
   ['notice_days as a numeric string', { notice_days: '7' }, 'notice_days'],
+  // tags (0009_tags.sql, AD-12)
+  ['tags as a string', { tags: 'family' }, 'tags'],
+  ['tags with a number', { tags: [1] }, 'tags'],
+  ['tags with a blank label', { tags: [''] }, 'tags'],
+  ['tags with an untrimmed label', { tags: [' family'] }, 'tags'],
+  ['tags repeated ignoring case', { tags: ['Family', 'family'] }, 'tags'],
+  ['tags too many', { tags: Array.from({ length: 11 }, (_, i) => `t${i}`) }, 'tags'],
+  ['tags with a label over its width', { tags: ['a'.repeat(33)] }, 'tags'],
 ];
 
 describe('a RED CONTROL for every new rule — POST refuses and stores nothing', () => {

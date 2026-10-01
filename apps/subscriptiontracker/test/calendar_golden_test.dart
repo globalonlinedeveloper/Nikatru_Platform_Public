@@ -21,6 +21,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 
 import 'support/calendar_fixture.dart';
 
@@ -30,6 +31,31 @@ void main() {
       expect(windowClassFor(w.value.width).name, w.key);
     }
   });
+
+  // ⏱ T12 (CA-04) · THE PAGER: one page forward from the pinned September,
+  // at the phone and the two-pane window — October's PROJECTED renewals.
+  for (final String w in <String>['compact', 'large']) {
+    for (final Brightness b in Brightness.values) {
+      testWidgets('calendar · next month · $w · ${b.name}', (
+        WidgetTester tester,
+      ) async {
+        await pumpCalendar(
+          tester,
+          size: kCalendarWindows[w]!,
+          repository: CalendarRepository.populated(),
+          brightness: b,
+          devicePixelRatio: 0.5,
+        );
+        await tester.tap(find.byKey(CalendarScreen.nextKey));
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        await expectLater(
+          find.byType(MaterialApp),
+          matchesGoldenFile('goldens/calendar_next_${w}_${b.name}.png'),
+        );
+      }, skip: !Platform.isLinux);
+    }
+  }
 
   for (final MapEntry<String, Size> w in kCalendarWindows.entries) {
     for (final Brightness b in Brightness.values) {

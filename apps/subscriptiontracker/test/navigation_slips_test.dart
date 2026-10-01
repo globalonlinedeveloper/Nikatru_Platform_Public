@@ -20,15 +20,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
-import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
+import 'package:subscriptiontracker/core/e2e_keys.dart';
+import 'package:subscriptiontracker/features/stop/stop_flow.dart';
 import 'package:subscriptiontracker/features/notifications/notifications_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
 import 'support/width_harness.dart';
-
-Future<AppLocalizations> _en() =>
-    AppLocalizations.delegate.load(const Locale('en'));
 
 Subscription _sub(String id, DateTime renews) => Subscription(
   id: id,
@@ -88,8 +86,8 @@ Future<void> _pumpRouted(
 
 void main() {
   group('B15 · the remove sheet reports whether anything was removed', () {
-    Future<List<bool>> open(WidgetTester tester) async {
-      final List<bool> results = <bool>[];
+    Future<List<StopOutcome?>> open(WidgetTester tester) async {
+      final List<StopOutcome?> results = <StopOutcome?>[];
       await setSurface(tester, kPhone);
       await tester.pumpWidget(
         ProviderScope(
@@ -102,7 +100,7 @@ void main() {
                 builder: (BuildContext context) => Center(
                   child: TextButton(
                     onPressed: () async => results.add(
-                      await showCancelSheet(
+                      await showStopSheet(
                         context,
                         _sub('1', DateTime.utc(2026, 10, 1)),
                       ),
@@ -120,26 +118,23 @@ void main() {
       return results;
     }
 
-    testWidgets('"Keep it" reports false, so the detail stays open', (
+    testWidgets('closing the flow reports nothing, so the detail stays open', (
       WidgetTester tester,
     ) async {
-      final List<bool> results = await open(tester);
-      await tester.tap(find.text((await _en()).keepPlan));
+      final List<StopOutcome?> results = await open(tester);
+      // The scrim: a close that chose nothing.
+      await tester.tapAt(const Offset(5, 5));
       await tester.pumpAndSettle();
-      expect(results, <bool>[false]);
+      expect(results, <StopOutcome?>[null]);
     });
 
-    testWidgets('a completed removal reports true', (
+    testWidgets('a completed removal reports removed', (
       WidgetTester tester,
     ) async {
-      final List<bool> results = await open(tester);
-      final AppLocalizations l10n = await _en();
-      await tester.tap(find.text(l10n.confirmCancel));
+      final List<StopOutcome?> results = await open(tester);
+      await tester.tap(find.byKey(E2EKeys.stopChoiceRemove));
       await tester.pumpAndSettle();
-      expect(find.text(l10n.cancelledHeading), findsOneWidget);
-      await tester.tap(find.text(l10n.done));
-      await tester.pumpAndSettle();
-      expect(results, <bool>[true]);
+      expect(results, <StopOutcome?>[StopOutcome.removed]);
     });
   });
 

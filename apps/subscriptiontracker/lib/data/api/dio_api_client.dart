@@ -4,7 +4,9 @@ import 'package:nikatru_core/nikatru_core.dart'
     show Entitlements, Money, newOutboxId;
 
 import '../models/budget_info.dart';
+import '../models/category.dart';
 import '../models/payment_record.dart';
+import '../models/price_change.dart';
 import '../models/subscription.dart';
 import 'api_client.dart';
 
@@ -13,7 +15,8 @@ import 'api_client.dart';
 /// ApiException); this class maps Subly's endpoints to its domain models, and
 /// routes every parse through `_rest.decode` so a malformed 2xx body also
 /// surfaces as an ApiException (single failure contract).
-class DioApiClient implements ApiClient, IdempotentCreates {
+class DioApiClient
+    implements ApiClient, IdempotentCreates, CategoriesApi, PaymentWrites {
   DioApiClient({
     required String baseUrl,
     required Future<String?> Function() tokenProvider,
@@ -29,6 +32,13 @@ class DioApiClient implements ApiClient, IdempotentCreates {
        );
 
   final RestClient _rest;
+
+  /// The base URL this client sends to; see [rebase].
+  String get baseUrl => _rest.baseUrl;
+
+  /// Moves every later request to [baseUrl] — [RestClient.rebase], so a
+  /// config resolve does not rebuild the client and re-read the list (HO-10).
+  void rebase(String baseUrl) => _rest.rebase(baseUrl);
 
   /// 🔴 THE UNIT A ROW WITH NO `currency` OF ITS OWN IS READ IN — THE USER'S
   /// CHOICE, ASKED AT DECODE TIME (ST-C1, audit B21/D5/D18).
@@ -133,6 +143,69 @@ class DioApiClient implements ApiClient, IdempotentCreates {
           )
           .toList();
     });
+  }
+
+  /// `price_history` off `GET /v1/subscriptions/:id` (DE-05). A server that
+  /// predates 0005 serves no such key: no edits, not a failure.
+  @override
+  Future<List<PriceChange>> getPriceHistory(String id) async {
+    final Object? data = await _rest.get('/subscriptions/$id');
+    return _rest.decode(data, (Object? b) {
+      final Map<String, dynamic> m = b! as Map<String, dynamic>;
+      final List<dynamic> rows =
+          (m['price_history'] as List<dynamic>?) ?? <dynamic>[];
+      return rows
+          .map(
+            (dynamic e) => PriceChange.fromJson(
+              e as Map<String, dynamic>,
+              fallbackCurrencyCode: _currencyCode(),
+            ),
+          )
+          .toList();
+    });
+  }
+
+  @override
+  Future<List<SubscriptionCategory>> getCategories() async {
+    final Object? data = await _rest.get('/categories');
+    return _rest.decode(
+      data,
+      (Object? b) => (b! as List<dynamic>)
+          .map(
+            (dynamic j) =>
+                SubscriptionCategory.fromJson(j as Map<String, dynamic>),
+          )
+          .toList(),
+    );
+  }
+
+  @override
+  Future<SubscriptionCategory> createCategory(String name) async {
+    final Object? data = await _rest.post(
+      '/categories',
+      body: <String, dynamic>{'name': name},
+    );
+    return _rest.decode(
+      data,
+      (Object? b) => SubscriptionCategory.fromJson(b! as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Future<SubscriptionCategory> renameCategory(String id, String name) async {
+    final Object? data = await _rest.patch(
+      '/categories/$id',
+      body: <String, dynamic>{'name': name},
+    );
+    return _rest.decode(
+      data,
+      (Object? b) => SubscriptionCategory.fromJson(b! as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Future<void> deleteCategory(String id) async {
+    await _rest.delete('/categories/$id');
   }
 
   @override
