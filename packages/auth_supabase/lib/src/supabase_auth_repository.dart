@@ -636,11 +636,16 @@ class SupabaseAuthRepository implements core.AuthRepository {
       );
     }
     try {
-      final sb.UserResponse res = await _auth.updateUser(
-        currentPassword == null
-            ? sb.UserAttributes(password: newPassword)
-            : _PasswordChange(newPassword, currentPassword),
-      );
+      // Two calls, not one with a ternary inside: assert-auth-callbacks reads
+      // `updateUser(sb.UserAttributes(password: …),` as the reset's literal
+      // call, and its own mutation test edits exactly that text.
+      final sb.UserResponse res = currentPassword == null
+          ? await _auth.updateUser(
+              sb.UserAttributes(password: newPassword),
+            )
+          : await _auth.updateUser(
+              _PasswordChange(newPassword, currentPassword),
+            );
       final core.AuthUser? u = _map(res.user);
       if (u == null) throw core.AuthFailure('Could not set your new password');
       return u;
