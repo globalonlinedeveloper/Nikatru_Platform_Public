@@ -77,3 +77,31 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   ref.onDispose(taps.stop);
   return router;
 });
+
+/// The error screen's copy in the user's language, asked for where the error
+/// widget is BUILT (ST truth pass, EN-17) — null before the app's
+/// localizations exist, which keeps the design system's English last resort
+/// for an error in the very first build.
+AppErrorCopy? appErrorCopy(BuildContext context) {
+  final AppLocalizations? l10n = Localizations.of<AppLocalizations>(
+    context,
+    AppLocalizations,
+  );
+  return l10n == null
+      ? null
+      : (
+          title: l10n.errorTitle,
+          message: l10n.errorMessage,
+          goHomeLabel: l10n.goHome,
+        );
+}
+
+/// Subly's [AppErrorScreen.install]: localized copy and a "Go home" way out
+/// (ST truth pass, EN-17). Here, not inline in main.dart, because main.dart is
+/// a private copy of the chassis file and may not grow (chassis parity).
+void installAppErrorScreen() =>
+    AppErrorScreen.install(localized: appErrorCopy, onGoHome: goHomeAfterError);
+
+/// The error screen's recovery: `/home`, through the root navigator — the
+/// error widget replaces a subtree, so the router above it is still there.
+void goHomeAfterError() => rootNavigatorKey.currentContext?.go('/home');
