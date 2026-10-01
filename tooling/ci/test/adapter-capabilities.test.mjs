@@ -552,7 +552,10 @@ describe('assert-adapter-capabilities', () => {
       out,
       /ok {3}platformMatrix parity — NotificationCapabilities: 7 platform\(s\) agree with packages\/notifications\/lib\/src\/notification_capabilities\.dart/,
     );
-    assert.match(out, /shows, cannot schedule: linux/);
+    // ⏱ 2026-10-01 · NO-04: Linux schedules (packages/notifications brokers
+    // it), so it is in the scheduling set. Proven on the REAL tree: the
+    // register's linux.canSchedule flipped back to false → 1.
+    assert.match(out, /shows and schedules: android, ios, macos, linux, windows/);
   });
 
   test('R6 · FAILS when the register says linux can schedule and the Dart says it cannot', () => {
