@@ -312,6 +312,28 @@ describe('the APP BRICK stamps a bootstrap that satisfies the deploy', () => {
   /** mason's delimiter change plus the brick-only comment it enables, exactly as
    *  mason removes them: `{{=<% %>=}}` then one comment in the CHANGED delimiters. */
   const BRICK_PREAMBLE = /^\{\{=<% %>=\}\}<%!(?:(?!%>)[\s\S])*%>/;
+  /** sha256 of the stamped bootstrap (brick minus mason preamble), measured 2026-10-01. */
+  const STAMPED_BOOTSTRAP_SHA256 = '13c1f680698d4d73156ee6db3937ca04b49f1ed2df309c59c93e75788a7b4a83';
+  const BRICK_IGNORE = 'tooling/bricks/**/__brick__/**';
+  const APP_BOOT_IGNORE = /^apps\/[a-z0-9_]+\/web\/flutter_bootstrap\.js$/;
+  /** Every paths-ignore entry of .github/codeql/codeql-config.yml (or [text]), unquoted
+   *  and with any trailing comment dropped. A flow-style list is refused. */
+  const codeqlPathsIgnore = (text = readFileSync(join(REPO, '.github', 'codeql', 'codeql-config.yml'), 'utf8')) => {
+    const lines = text.split(/\r?\n/);
+    const at = lines.findIndex((l) => /^paths-ignore\s*:/.test(l));
+    assert.ok(at !== -1, 'codeql-config.yml has no paths-ignore');
+    if (!/^paths-ignore\s*:\s*(#.*)?$/.test(lines[at])) throw new Error('paths-ignore must be a block list, one entry per line');
+    const out = [];
+    for (const l of lines.slice(at + 1)) {
+      if (/^\s*(#.*)?$/.test(l)) continue;
+      const m = /^\s+-\s+(.*)$/.exec(l);
+      if (!m) break;
+      let v = m[1].replace(/\s+#.*$/, '').trim();
+      if (/^(['"]).*\1$/.test(v)) v = v.slice(1, -1);
+      out.push(v);
+    }
+    return out;
+  };
 
   test('the template ships web/flutter_bootstrap.js at all', () => {
     assert.ok(
@@ -336,6 +358,42 @@ describe('the APP BRICK stamps a bootstrap that satisfies the deploy', () => {
   test('template and app do not fork: the stamped bytes are IDENTICAL to apps/subscriptiontracker/web/flutter_bootstrap.js', () => {
     const stamped = readFileSync(BRICK_BOOT, 'utf8').replace(BRICK_PREAMBLE, '');
     assert.equal(stamped, readFileSync(APP_BOOT, 'utf8'), 'the brick template and the app it was derived from have drifted apart');
+  });
+
+  // ⏱ 2026-10-01 (review 2 of the CodeQL stack, finding 3): CodeQL does not scan an
+  // app bootstrap .github/codeql/codeql-config.yml excludes, so THIS is what catches
+  // a hand edit to one. The list is read from the config, not restated here.
+  test('every app bootstrap CodeQL excludes is named per app and IS the stamp, byte for byte', () => {
+    const ignored = codeqlPathsIgnore();
+    const apps = ignored.filter((e) => e !== BRICK_IGNORE);
+    assert.ok(apps.length >= 1, 'codeql-config.yml excludes no app bootstrap: this test would assert nothing (and #322/#323 would re-open)');
+    const stamped = readFileSync(BRICK_BOOT, 'utf8').replace(BRICK_PREAMBLE, '');
+    for (const path of apps) {
+      assert.ok(existsSync(join(REPO, path)), `${path} is excluded and does not exist`);
+      assert.equal(readFileSync(join(REPO, path), 'utf8'), stamped, `${path} is excluded from CodeQL and is NOT the brick's stamp: it carries code nothing scans`);
+    }
+  });
+
+  // ⏱ 2026-10-01 (review of #1097, finding 5b): "the app equals the brick" proves
+  // nothing when BOTH are excluded from CodeQL — the same handler added to both stays
+  // identical. So the stamp's bytes are PINNED here. A change to the bootstrap is a
+  // change to this hash, made in a reviewed diff beside the code it lets unscanned.
+  test('the stamped bootstrap CodeQL does not scan is the pinned bytes (sha256)', () => {
+    const stamped = readFileSync(BRICK_BOOT, 'utf8').replace(BRICK_PREAMBLE, '');
+    assert.equal(createHash('sha256').update(stamped).digest('hex'), STAMPED_BOOTSTRAP_SHA256, 'the stamped flutter_bootstrap.js changed: read the diff, then re-pin STAMPED_BOOTSTRAP_SHA256');
+  });
+
+  // ⏱ 2026-10-01 (review of #1097, finding 5a): a QUOTED `'apps/*/web/…'` (or one with a
+  // trailing comment) slipped past a regex that only knew bare entries, while CodeQL
+  // honoured it. Every entry is parsed, unquoted and checked against the two forms.
+  test('every paths-ignore entry is the brick glob or ONE exact app bootstrap; a quoted wildcard is refused', () => {
+    for (const e of codeqlPathsIgnore()) {
+      assert.ok(e === BRICK_IGNORE || APP_BOOT_IGNORE.test(e), `codeql-config.yml paths-ignore holds ${JSON.stringify(e)}: only ${BRICK_IGNORE} and exact apps/<id>/web/flutter_bootstrap.js are allowed`);
+    }
+    const quoted = codeqlPathsIgnore("paths-ignore:\n  - tooling/bricks/**/__brick__/**\n  - 'apps/*/web/flutter_bootstrap.js' # every app\n");
+    assert.deepEqual(quoted, ['tooling/bricks/**/__brick__/**', 'apps/*/web/flutter_bootstrap.js']);
+    assert.equal(APP_BOOT_IGNORE.test(quoted[1]), false);
+    assert.throws(() => codeqlPathsIgnore('paths-ignore: [apps/*/web/flutter_bootstrap.js]\n'), /block list/);
   });
 
   test('ci.yml grades the STAMPED probe with the deploy step itself, on a bundle built the deploy way', () => {

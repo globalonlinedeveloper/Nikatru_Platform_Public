@@ -118,6 +118,7 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readWithBoundedRetry, transientLook, CouldNotLook, isTransientStatus } from './bounded-retry.mjs';
+import { CredentialOriginRefused, credentialOrigin } from './credential-origin.mjs';
 
 /** The longest ONE run of the CLI may take before it is stopped and counted as
  *  a transient attempt. Defended in the header (⏱ APPENDED 2026-09-23). */
@@ -379,7 +380,20 @@ if (!m) {
     'Expected https://<key>@<host>/<project id>. The value itself is NOT printed.',
   ]);
 }
-const server = `${dsn.startsWith('http://') ? 'http' : 'https'}://${m[1]}`;
+// ⏱ 2026-10-01 — 🔴 THE TOKEN GOES TO ITS ISSUER OR NOWHERE (review 2 of the CodeQL
+// stack, finding 1). The server was the DSN's host as given, http included, and
+// SENTRY_AUTH_TOKEN went to it through the CLI — the flow upload-web-sourcemaps.mjs
+// had already pinned. tooling/ops/credential-origin.mjs pins it here, before the CLI
+// is spawned, and the CLI is given the origin it RETURNS. Held by
+// tooling/ci/assert-credential-origin.mjs; the refusal is tested in
+// tooling/ci/test/native-symbol-upload.test.mjs.
+let server;
+try {
+  server = credentialOrigin(`${dsn.startsWith('http://') ? 'http' : 'https'}://${m[1]}`, 'glitchtip');
+} catch (e) {
+  if (!(e instanceof CredentialOriginRefused)) throw e;
+  fail([`the GLITCHTIP_DSN host: ${e.message}.`, 'SENTRY_AUTH_TOKEN was not handed to the CLI, and nothing was uploaded.']);
+}
 
 const abs = resolve(dir);
 if (!existsSync(abs) || !statSync(abs).isDirectory()) {

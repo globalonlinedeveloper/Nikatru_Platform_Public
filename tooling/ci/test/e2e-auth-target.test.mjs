@@ -35,7 +35,7 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -112,11 +112,15 @@ after(async () => {
  *  applied — the way a regression would arrive. Deleted by the caller. */
 function mutatedCopy(script, from, to) {
   const dir = mkdtempSync(join(tmpdir(), 'nikatru-e2e-target-'));
-  copyFileSync(HELPER, join(dir, 'auth_target_expectation.mjs'));
+  // The tree's own layout: both scripts import ../ops/credential-origin.mjs (2026-10-01).
+  mkdirSync(join(dir, 'e2e'));
+  mkdirSync(join(dir, 'ops'));
+  copyFileSync(HELPER, join(dir, 'e2e', 'auth_target_expectation.mjs'));
+  copyFileSync(join(REPO, 'tooling', 'ops', 'credential-origin.mjs'), join(dir, 'ops', 'credential-origin.mjs'));
   const src = readFileSync(script, 'utf8');
   const mutated = src.replace(from, to);
   assert.notEqual(mutated, src, 'the mutation did not apply — agents-05');
-  const file = join(dir, script.split(/[\\/]/).pop());
+  const file = join(dir, 'e2e', script.split(/[\\/]/).pop());
   writeFileSync(file, mutated);
   return { dir, file };
 }

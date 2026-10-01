@@ -6372,7 +6372,8 @@ import { credentialOrigin, GLITCHTIP_ORIGIN } from '../ops/credential-origin.mjs
 /** The pinned GlitchTip origin, or an `unreadable` probe result naming the refusal. */
 function pinnedGlitchtipBase() {
   try {
-    return credentialOrigin(process.env.GLITCHTIP_URL ?? GLITCHTIP_ORIGIN, 'glitchtip');
+    // `||`, as its four siblings: an EMPTY GLITCHTIP_URL means the instance, not a refusal (review nit 9).
+    return credentialOrigin(process.env.GLITCHTIP_URL || GLITCHTIP_ORIGIN, 'glitchtip');
   } catch (e) {
     return { unreadable: true, why: e.message };
   }
