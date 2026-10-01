@@ -28,7 +28,7 @@ import {
   runReminderMail,
   ymdOf,
 } from '../src/lib/reminders';
-import { RESEND_EMAILS_URL } from '../src/lib/report-notify';
+import { RESEND_EMAILS_URL } from '../src/adapters/mail/resend';
 import reminders, { MAX_PREFS_BODY_BYTES, parsePrefs } from '../src/routes/reminders';
 import { app as realApp } from '../src/index';
 import type { AppEnv, Env } from '../src/types';
