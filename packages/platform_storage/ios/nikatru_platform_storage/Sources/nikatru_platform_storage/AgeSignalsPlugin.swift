@@ -25,6 +25,8 @@ public final class AgeSignalsPlugin: NSObject, FlutterPlugin {
     // ⏱ 2026-09-29 · native sign-in attestation rides the package's one iOS
     // pluginClass (NativeAttestPlugin.swift, channel `nikatru/native_attest`).
     NativeAttestPlugin.register(with: registrar)
+    // ⏱ 2026-10-01 · jailbreak detection rides it too (DeviceIntegrityPlugin.swift).
+    DeviceIntegrityPlugin.register(with: registrar)
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

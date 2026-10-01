@@ -1,16 +1,19 @@
 // SECTION D of the spine — the secure store, the resolved feature flags and
 // the offline entitlement cache. Re-exported from `../providers.dart`.
 
+import 'package:flutter/widgets.dart' show BuildContext;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart'
     show FlutterSecureStore, ShareFileExporter;
 
+import '../../core/device_integrity.dart' show exportAllowedOnThisDevice;
 import '../../data/local/subscription_store.dart';
 import '../../data/models/subscription.dart' show Subscription;
 import '../../data/portability/subscription_columns.dart';
 import '../analytics_providers.dart';
 import '../subscriptions_controller.dart' show subscriptionsControllerProvider;
+import 'auth.dart' show authRepositoryProvider;
 import 'config.dart';
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -48,11 +51,21 @@ final Provider<core.FileExporter> fileExporterProvider =
 ///
 /// A list that failed to load exports nothing, never an empty file that reads
 /// like a user with no subscriptions. The exporter itself never throws.
-void Function()? exportDataTap(WidgetRef ref) {
+///
+/// ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST — ON A ROOTED DEVICE THE EXPORT
+/// ASKS THE USER TO RE-AUTHENTICATE FIRST (`core.SensitiveAction.exportData`),
+/// and a cancel or a failed re-auth exports nothing. Every other device goes
+/// straight through, exactly as before. [context] hosts the password prompt.
+void Function()? exportDataTap(WidgetRef ref, BuildContext context) {
   final core.AppConfig cfg =
       ref.watch(appConfigProvider).value ?? kAppDefaultConfig;
   if (!cfg.feature('exports')) return null;
   return () async {
+    final bool allowed = await exportAllowedOnThisDevice(
+      context,
+      () => ref.read(authRepositoryProvider),
+    );
+    if (!allowed) return;
     final core.FileExporter exporter = ref.read(fileExporterProvider);
     final List<Subscription> subs;
     try {

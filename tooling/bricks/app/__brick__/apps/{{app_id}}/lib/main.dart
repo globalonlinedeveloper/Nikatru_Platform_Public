@@ -18,10 +18,6 @@ import 'state/providers.dart';
 /// for each step; this file supplies the four things a package that declares no
 /// third-party dependency cannot carry, and nothing else.
 Future<void> main() async {
-  // Telemetry chassis: no DSN -> NoOp client (appRunner runs directly);
-  // a GLITCHTIP_DSN via --dart-define enables GlitchTip/Sentry with PII
-  // scrubbing. sentry_flutter is isolated inside packages/telemetry.
-  //
   // `release` is AppConfig.telemetryRelease — `<this app's id>@<this build's
   // version>` — and NOT a literal. A literal here is right for at most one of
   // fifty apps: this line used to carry the CI throwaway probe's own id and a
@@ -46,7 +42,11 @@ Future<void> main() async {
     windows: kWindowsNotificationIdentity,
   );
 
+  final TelemetryClient sink = TelemetryBootstrap.clientFor(config);
   await bootstrapNikatru(
+    releaseChannel: AppConfig.releaseChannel, // step 3½: root + signer check
+    integrityProbe: platformDeviceIntegrityProbe(),
+    recordIntegrity: integrityRecorder(sink.addBreadcrumb, sink.captureMessage),
     notifications: notifications,
     runGuarded: (Future<void> Function() appRunner) =>
         TelemetryBootstrap.init(config, appRunner: appRunner),
