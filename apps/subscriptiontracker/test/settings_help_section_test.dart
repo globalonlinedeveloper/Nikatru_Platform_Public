@@ -8,8 +8,8 @@
 //          section holds all four, the support mail exactly once.
 //  * D14 — "© 2026" was a literal in both arb files; the year is the clock's.
 //
-// MUTATION PROOF (run 2026-09-30 on this tree): drop `header: true` from
-// `_sectionLabel` and "every group is a header node" goes red; take the
+// MUTATION PROOF (run 2026-09-30 on this tree): drop `header: true` from the
+// chassis `SettingsHeading` and "every group is a header node" goes red; take the
 // Contact-support row out of Help, or hide the Rate row, and "Help holds…"
 // goes red; pass a literal '2026' as the footer's year and "a 2027 clock
 // renders © 2027" goes red.
@@ -17,6 +17,7 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_chassis_screens/settings/help_section.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
@@ -153,9 +154,9 @@ void main() {
 
       for (final Finder row in <Finder>[
         find.text(en.helpAndSupport),
-        find.byKey(SettingsScreen.contactSupportRow),
-        find.byKey(SettingsScreen.rateAppRow),
-        find.byKey(SettingsScreen.feedbackRow),
+        find.byKey(HelpKeys.contactSupport),
+        find.byKey(HelpKeys.rate),
+        find.byKey(HelpKeys.feedback),
       ]) {
         expect(row, findsOneWidget);
         final double y = tester.getTopLeft(row).dy;
@@ -185,9 +186,9 @@ void main() {
           storeListingAvailableProvider.overrideWithValue(false),
         ],
       );
-      expect(find.byKey(SettingsScreen.rateAppRow), findsNothing);
+      expect(find.byKey(HelpKeys.rate), findsNothing);
       expect(
-        find.byKey(SettingsScreen.feedbackRow),
+        find.byKey(HelpKeys.feedback),
         findsOneWidget,
         reason: 'feedback is a mail, and a mail works everywhere',
       );
@@ -201,7 +202,7 @@ void main() {
           reviewPrompterProvider.overrideWithValue(prompter),
         ],
       );
-      await tester.tap(find.byKey(SettingsScreen.rateAppRow));
+      await tester.tap(find.byKey(HelpKeys.rate));
       await tester.pumpAndSettle();
       expect(prompter.listingOpens, 1);
       expect(find.text(en.rateAppUnavailable), findsNothing);
@@ -219,7 +220,7 @@ void main() {
           reviewPrompterProvider.overrideWithValue(prompter),
         ],
       );
-      await tester.tap(find.byKey(SettingsScreen.rateAppRow));
+      await tester.tap(find.byKey(HelpKeys.rate));
       await tester.pumpAndSettle();
       expect(prompter.listingOpens, 1);
       expect(
@@ -230,7 +231,10 @@ void main() {
     });
 
     test('Feedback is a mail to the support address, subject translated', () {
-      final Uri enMail = SettingsScreen.feedbackMailUri(en);
+      final Uri enMail = supportMailUri(
+        AppConfig.supportEmail,
+        en.feedbackMailSubject(AppConfig.appName),
+      );
       expect(enMail.scheme, 'mailto');
       expect(enMail.path, AppConfig.supportEmail);
       expect(
@@ -239,7 +243,10 @@ void main() {
       );
       final AppLocalizations ta = lookupAppLocalizations(const Locale('ta'));
       expect(
-        SettingsScreen.feedbackMailUri(ta).queryParameters['subject'],
+        supportMailUri(
+          AppConfig.supportEmail,
+          ta.feedbackMailSubject(AppConfig.appName),
+        ).queryParameters['subject'],
         ta.feedbackMailSubject(AppConfig.appName),
       );
       expect(
