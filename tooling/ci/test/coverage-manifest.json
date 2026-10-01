@@ -87,7 +87,7 @@
     125,
 
   "apps-gov-in-apk.test.mjs":
-    53,
+    57,
 
   "apps-gov-in-media.test.mjs":
     25,
@@ -198,7 +198,7 @@
     50,
 
   "channel-register.test.mjs":
-    356,
+    357,
 
   "channel-surface.test.mjs":
     7,
@@ -771,7 +771,7 @@
     6,
 
   "release-durable.test.mjs":
-    188,
+    200,
 
   "release-grades-legs.test.mjs":
     7,

@@ -1783,6 +1783,13 @@ consistent reading refuses the .msix and keeps the .aab, the .ipa or the .pkg.
   `--verify --expect-formats --for-workflow` prints that the register expects no release format of
   this workflow. Both stay COVERAGE LOST when a lane DOES emit a format a Release carries and none
   arrived, or when no lane emits anything.
+- ⏱ 2026-10-01 (O-APPS-GOV-IN-APK-HAS-NO-ORIGIN-ROW): the `apps-gov-in` row's lane is
+  `linux_web_android`, so its `.apk` is lane-backed. While `signingCertificate.sha256` is null the
+  `.apk` is WITHHELD (`withheldFormats`): owed by no Release, and printed on a line of its own by
+  `--stage`, `--verify --expect-formats` and `--emit-environments`. Once the pin is set it is owed:
+  `--verify --expect-formats` demands it, and `--emit-environments` names `<app>-apps-gov-in`, which
+  the record step writes with `--state pending_manual_publish` (no submission API exists; the owner
+  uploads the Release's file by hand).
 - `--emit-environments` never records a ruled-out row as an origin, whatever its signing posture,
   and says so on stderr.
 
