@@ -2075,6 +2075,19 @@ export function evaluate(reg, tree, nowMs) {
         '`tooling/ops/post-deploy-smoke.mjs` step to this job, or declare a written `_deploySmokeExemptions` entry.',
     );
   }
+  // ⏱ 2026-10-01 · PB-25: a `site:<name>` exemption for a site a deploy job publishes
+  // (the derivation's `sitesPublishedByJob`) is stale — that job records the site and
+  // is graded above like any other. An exemption that outlives its reason reads as a
+  // gap still open, and is the next exemption copied.
+  for (const { site, environment } of tree.sitesPublishedByJob ?? []) {
+    if (Object.hasOwn(reg._deploySmokeExemptions ?? {}, `site:${site}`)) {
+      bad(
+        `\`_deploySmokeExemptions["site:${site}"]\` is STALE: sites/${site} is published by a deploy job that records ` +
+          `\`${environment}\` (tooling/channel-register.json siteEnvironments), and that job's own probe is graded above. ` +
+          'Retire the entry, with a dated note in the block\'s `_why`.',
+      );
+    }
+  }
   // `_`-prefixed keys are the block's own prose, not exemptions. Counting them
   // would inflate the number that exists precisely so the exemption list cannot
   // grow quietly.
@@ -5741,7 +5754,9 @@ async function main() {
       // (deploy-workers.yml's `edge-shield` job). The shield owns no body and no health
       // route, so there is no field to join on; what it adds to every answer is one
       // header, and the probe reads it on both routes it binds and exits 1 without it.
-      const smokes = (text.match(/post-deploy-smoke\.mjs|smoke-site-deploy\.mjs|check-edge-shield\.mjs/g) ?? []).length;
+      // ⏱ 2026-10-01 · PB-08: rollback.yml's smoke is `rollback.mjs --run-smoke`, which runs the
+      // re-promoted unit's OWN deploy smoke — one of the three above, by rollback.mjs SMOKE_SCRIPTS.
+      const smokes = (text.match(/post-deploy-smoke\.mjs|smoke-site-deploy\.mjs|check-edge-shield\.mjs|rollback\.mjs\s+--run-smoke\b/g) ?? []).length;
       for (const environment of new Set(envs)) {
         deployJobs.push({ workflow: wf.rel ?? wf.file ?? '?', job: jobName, environment, smokes });
       }
@@ -5757,10 +5772,30 @@ async function main() {
   // instead. That is a real answer and it has to be WRITTEN DOWN: each such site
   // must carry an exemption naming the covering mechanism, so a new site arrives
   // unclassified and red rather than unwatched and quiet.
+  //
+  // ⏱ 2026-10-01 · PB-25 (row O-APEX-SMOKE-EXEMPTION-STALE). A site a deploy job now
+  // PUBLISHES is not one of them: tooling/channel-register.json's `siteEnvironments` row
+  // whose `source` is `sites/<name>` names its ledger environment, and when a job above
+  // records that environment, the job is already in this domain and its own probe is
+  // graded there. Such a site leaves the "no job" set, and a `site:<name>` exemption left
+  // standing for it is STALE: it exempts a surface from a probe its job already runs.
   const sitesDir = join(ROOT, 'sites');
+  const recordedEnvs = new Set(deployJobs.map((d) => d.environment));
+  let siteRows = [];
+  try {
+    siteRows = JSON.parse(readFileSync(join(ROOT, 'tooling', 'channel-register.json'), 'utf8')).siteEnvironments ?? [];
+  } catch {
+    // unread: every site stays in the "no job" set, so none leaves this domain silently
+  }
+  const sitesPublishedByJob = [];
   if (existsSync(sitesDir)) {
     for (const e of listDir(sitesDir, { withFileTypes: true })) {
       if (!e.isDirectory() || e.name.startsWith('_')) continue;
+      const row = siteRows.find((r) => r?.source === `sites/${e.name}` && recordedEnvs.has(r?.deploymentEnvironment));
+      if (row) {
+        sitesPublishedByJob.push({ site: e.name, environment: row.deploymentEnvironment });
+        continue;
+      }
       deployJobs.push({ workflow: `sites/${e.name}`, job: '(cloudflare git integration — no job)', environment: `site:${e.name}`, smokes: 0 });
     }
   }
@@ -5783,7 +5818,7 @@ async function main() {
   }
 
   const now = Date.now();
-  const { errors, prints, stats, anchored } = evaluate(reg, { workflows, paths, deployJobs, readerSource }, now);
+  const { errors, prints, stats, anchored } = evaluate(reg, { workflows, paths, deployJobs, sitesPublishedByJob, readerSource }, now);
 
   // ── the OTHER direction: a duty row anchored at a workflow that is gone ───
   for (const [anchor, row] of anchored) {

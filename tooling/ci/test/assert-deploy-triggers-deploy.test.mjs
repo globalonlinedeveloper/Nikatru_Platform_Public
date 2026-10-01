@@ -411,3 +411,116 @@ describe('assert-deploy-triggers-deploy — limb 1 reads each matrix leg as its 
     assert.equal(movedGlobClaims('a/b?c', 'a/bxc'), null);
   });
 });
+
+// ── LIMB 5 · PLATFORM_DB migrates before every deploy that binds it (⏱ 2026-10-01, PB-03) ──
+// Row O-APP-WORKERS-DEPLOY-BEFORE-THE-MIGRATION. The REAL ci.yml and the three callees are
+// written into a tmpdir root, mutated by one replace, and graded against the real binding
+// configs and app Worker legs, so a fixture cannot encode the guard's own reading.
+import { judgePlatformDbOrder, platformDbConfigs } from '../assert-deploy-triggers-deploy.mjs';
+
+const REAL_FLOW = Object.fromEntries(
+  ['ci.yml', 'deploy-workers.yml', 'deploy-web.yml', 'migrate-platform-db.yml'].map((f) => [
+    `.github/workflows/${f}`,
+    readFileSync(resolve(WORKFLOW_DIR, f), 'utf8'),
+  ]),
+);
+const REAL_ENTRIES = appWorkerMatrix(REPO_ROOT).entries;
+const REAL_CONFIGS = platformDbConfigs(REPO_ROOT);
+const gradeOrder = (mutate = (files) => files, configs = REAL_CONFIGS, entries = REAL_ENTRIES) => {
+  const files = mutate({ ...REAL_FLOW });
+  return judgePlatformDbOrder(parseAllWorkflows(plantTree(files)), configs, entries);
+};
+const swapIn = (rel, from, to) => (files) => ({ ...files, [`.github/workflows/${rel}`]: swap(files[`.github/workflows/${rel}`], from, to) });
+
+describe('assert-deploy-triggers-deploy — limb 5 (judgePlatformDbOrder)', () => {
+  test('the REAL tree: three configs bind PLATFORM_DB, and each one\'s production deploy needs the one migration', () => {
+    assert.deepEqual(REAL_CONFIGS, ['services/platform', 'services/subscriptiontracker-api', 'tooling/sites/nikatru-apex']);
+    const r = judgePlatformDbOrder(parseAllWorkflows(REPO_ROOT), REAL_CONFIGS, REAL_ENTRIES);
+    assert.deepEqual(r.problems, []);
+    assert.equal(r.applier, '.github/workflows/migrate-platform-db.yml:migrate');
+    assert.deepEqual(r.deployers, [
+      '.github/workflows/deploy-web.yml:site (tooling/sites/nikatru-apex)',
+      '.github/workflows/deploy-workers.yml:app-worker (services/subscriptiontracker-api)',
+      '.github/workflows/deploy-workers.yml:platform (services/platform)',
+    ]);
+  });
+
+  test('GREEN CONTROL — the real four workflows, planted', () => {
+    assert.deepEqual(gradeOrder().problems, []);
+  });
+
+  test('🔴 RED CONTROL — deploy-workers no longer needs platform-db-migrate: every Worker deploy in it is a finding', () => {
+    const r = gradeOrder(swapIn('ci.yml', '    needs: [ci-gate, platform-db-migrate]\n', '    needs: [ci-gate]\n'));
+    assert.equal(r.problems.length, 2, r.problems.join('\n'));
+    assert.match(r.problems[0], /deploy-workers\.yml:app-worker deploys services\/subscriptiontracker-api, whose wrangler\.jsonc binds PLATFORM_DB, and does not transitively need/);
+    assert.match(r.problems[1], /deploy-workers\.yml:platform deploys services\/platform/);
+  });
+
+  test('🔴 RED CONTROL — neither deploy call needs it: the apex site\'s Function is a finding too', () => {
+    const r = gradeOrder((files) =>
+      swapIn('ci.yml', '    needs: [ci-gate, platform-db-migrate, deploy-workers]\n', '    needs: [ci-gate, deploy-workers]\n')(
+        swapIn('ci.yml', '    needs: [ci-gate, platform-db-migrate]\n', '    needs: [ci-gate]\n')(files),
+      ),
+    );
+    assert.ok(r.problems.some((p) => /deploy-web\.yml:site deploys tooling\/sites\/nikatru-apex/.test(p)), r.problems.join('\n'));
+  });
+
+  test('deploy-web needing it only THROUGH deploy-workers is still "transitively needs" — green', () => {
+    const r = gradeOrder(swapIn('ci.yml', '    needs: [ci-gate, platform-db-migrate, deploy-workers]\n', '    needs: [ci-gate, deploy-workers]\n'));
+    assert.deepEqual(r.problems, []);
+  });
+
+  test('🔴 RED CONTROL — THE SHAPE THAT SHIPPED: the migration back inside the platform job, after every app Worker', () => {
+    // A sibling of the applier is NOT ordered after it by the call that encloses them both.
+    const r = gradeOrder((files) => {
+      const out = { ...files };
+      delete out['.github/workflows/migrate-platform-db.yml'];
+      out['.github/workflows/deploy-workers.yml'] = swap(
+        out['.github/workflows/deploy-workers.yml'],
+        '      # why: NO PLATFORM_DB MIGRATION HERE ANY MORE (PB-03).',
+        "      - name: Apply PLATFORM_DB migrations (before deploy)\n        if: steps.plan.outputs.deploy == 'true'\n" +
+          '        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3\n' +
+          '        with:\n          workingDirectory: services/platform\n          command: d1 migrations apply PLATFORM_DB --remote\n' +
+          '      # why: NO PLATFORM_DB MIGRATION HERE ANY MORE (PB-03).',
+      );
+      return out;
+    });
+    assert.equal(r.applier, '.github/workflows/deploy-workers.yml:platform');
+    // Every app Worker went live before the platform job migrated: the finding PB-03 names.
+    // (The site waits on the whole deploy-workers call, and the platform job migrates what it
+    // then deploys, so neither is one here.)
+    assert.equal(r.problems.length, 1, r.problems.join('\n'));
+    assert.match(r.problems[0], /deploy-workers\.yml:app-worker deploys services\/subscriptiontracker-api, whose wrangler\.jsonc binds PLATFORM_DB, and does not transitively need \.github\/workflows\/deploy-workers\.yml:platform/);
+  });
+
+  test('🔴 two appliers, or none, is a finding naming the count', () => {
+    const none = gradeOrder(swapIn('migrate-platform-db.yml', 'command: d1 migrations apply PLATFORM_DB --remote', 'command: d1 migrations list PLATFORM_DB --remote'));
+    assert.match(none.problems[0], /^0 job\(s\) run `d1 migrations apply PLATFORM_DB --remote`/);
+    const two = gradeOrder((files) => ({
+      ...files,
+      '.github/workflows/zz-second.yml': files['.github/workflows/migrate-platform-db.yml'],
+    }));
+    assert.match(two.problems[0], /^2 job\(s\) run `d1 migrations apply PLATFORM_DB --remote`/);
+  });
+
+  test('a SANDBOX migration or deploy (`--env sandbox`) is neither the applier nor a production deploy', () => {
+    const sandbox = readFileSync(resolve(WORKFLOW_DIR, 'deploy-sandbox.yml'), 'utf8');
+    const r = gradeOrder((files) => ({ ...files, '.github/workflows/deploy-sandbox.yml': sandbox }));
+    assert.deepEqual(r.problems, []);
+    assert.equal(r.applier, '.github/workflows/migrate-platform-db.yml:migrate');
+  });
+
+  test('🔴 a config that binds PLATFORM_DB and that no job deploys is named, not skipped', () => {
+    const r = gradeOrder(undefined, [...REAL_CONFIGS, 'tooling/sites/zz-nowhere']);
+    assert.match(r.problems.join('\n'), /tooling\/sites\/zz-nowhere\/wrangler\.jsonc binds PLATFORM_DB and no workflow job deploys it/);
+  });
+
+  test('platformDbConfigs reads bindings, not comments that name one', () => {
+    const root = plantTree({
+      'services/a/wrangler.jsonc': '{\n  // "binding": "PLATFORM_DB" is owned by services/platform\n  "name": "a"\n}\n',
+      'services/b/wrangler.jsonc': '{ "d1_databases": [{ "binding": "PLATFORM_DB", "database_name": "platform_db" }] }\n',
+      'tooling/sites/c/wrangler.jsonc': '{ "d1_databases": [{ "binding" : "PLATFORM_DB" }] }\n',
+    });
+    assert.deepEqual(platformDbConfigs(root), ['services/b', 'tooling/sites/c']);
+  });
+});

@@ -4109,7 +4109,9 @@
       "name": "Edge shield Worker (in front of Box B and Box C)",
       "url": "https://auth-api.nikatru.com",
       "source": "services/edge-shield",
-      "notes": "NOT app-scoped and mounts no route: bound by zone routes on auth-api.nikatru.com/auth/v1/* and glitchtip.nikatru.com/api/* (LEAD RULING SHIELD-R1). `url` is the first host it fronts. It has no /v1/health: its deploy smoke is tooling/ops/check-edge-shield.mjs --settle, so rollback.mjs's service smoke does not fit it — a rollback of it through rollback.yml re-promotes the version and then FAILS that smoke (rv-c21 SHIELD-F6; a per-unit smoke is a follow-up the Private pass records as a row). Until then the bypass is: delete its two zone routes on nikatru.com (the origins answer directly again, exactly as before the shield), or `wrangler rollback` from services/edge-shield. Deploying it also applies the zone's per-IP credential rule (tooling/edge-ratelimit-rule.json, LEAD RULING SHIELD-R3), which a Worker rollback does not touch. Deployed by .github/workflows/deploy-workers.yml."
+      "_rollbackSmokeWhy": "⏱ 2026-10-01 · PB-08, row O-EDGE-SHIELD-ROLLBACK-SMOKE-MISFIT. It has no /v1/health, so rollback.mjs's service smoke (a `build` field) cannot ask it anything. `rollbackSmoke` is THIS unit's own deploy smoke, read by rollback.mjs in place of its kind's and run by rollback.yml: both routes must answer x-nikatru-shield with the RECORDED SHA, which the re-promoted version echoes because a Worker version keeps the RELEASE var it was deployed with. `{sha}` and `{url}` are the ledger Deployment's commit and environment URL.",
+      "rollbackSmoke": { "script": "tooling/ops/check-edge-shield.mjs", "args": ["--settle", "--expect-release", "{sha}"] },
+      "notes": "NOT app-scoped and mounts no route: bound by zone routes on auth-api.nikatru.com/auth/v1/* and glitchtip.nikatru.com/api/* (LEAD RULING SHIELD-R1). `url` is the first host it fronts. It has no /v1/health: its deploy smoke is tooling/ops/check-edge-shield.mjs --settle --expect-release <sha>, and since 2026-10-01 (PB-08) rollback.yml runs that same smoke for it, from `rollbackSmoke` above, so a rollback through the lane is judged the way its deploy is. The bypass, should the lane itself be down: delete its two zone routes on nikatru.com (the origins answer directly again, exactly as before the shield), or `wrangler rollback` from services/edge-shield. Deploying it also applies the zone's per-IP credential rule (tooling/edge-ratelimit-rule.json, LEAD RULING SHIELD-R3), which a Worker rollback does not touch. Deployed by .github/workflows/deploy-workers.yml."
     }
   ],
   "_siteEnvironmentsWhy": [
@@ -4118,7 +4120,12 @@
     "release channel (no `{app}` in it, no store) and it is not a Worker: rollback.mjs reads a service row's",
     "`source` as the directory it runs `wrangler rollback` from. So it gets a list of its own, matched",
     "exactly by resolveEnvironment in tooling/ci/deployment-record.mjs, and `kind: \"site\"`, which",
-    "record-deployment.mjs gives no published-id flag and rollback.mjs refuses by kind."
+    "record-deployment.mjs gives no published-id flag and rollback.mjs refuses by kind.",
+    "",
+    "⏱ 2026-10-01 · PB-07, row O-APEX-SITE-HAS-NO-ROLLBACK. The last sentence above is history: the `site` job",
+    "records the Pages deployment it published (`--pages-deployment-id`), and rollback.mjs re-promotes a",
+    "`kind: \"site\"` row's deployment on the Direct Upload project its `pagesProject` names, then runs the",
+    "site's own deploy smoke. The paused Git project `nikatru` stops being the apex's only way back."
   ],
   "siteEnvironments": [
     {
@@ -4128,7 +4135,8 @@
       "name": "Apex site (sites/nikatru) and its Pages Functions",
       "url": "https://nikatru-apex.pages.dev",
       "source": "sites/nikatru",
-      "notes": "Direct Upload Pages project nikatru-apex, deployed by the `site` job of .github/workflows/deploy-web.yml. nikatru.com still serves the Git-connected project `nikatru` until the owner moves the custom domain (D3b)."
+      "pagesProject": "nikatru-apex",
+      "notes": "Direct Upload Pages project nikatru-apex, deployed by the `site` job of .github/workflows/deploy-web.yml, which serves nikatru.com since the owner moved the custom domain (D3b, 2026-09-26). The Git-connected project `nikatru` is paused and kept for rollback only (tooling/ops/pages-rollback-only.json). Re-promoted by .github/workflows/rollback.yml (unit nikatru-site) on `pagesProject`, and judged by the site's own deploy smoke."
     }
   ],
   "nonChannelSigningIdentities": [

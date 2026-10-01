@@ -285,11 +285,14 @@ still fails the job.
 
 ## job `platform`
 
-### above `Apply PLATFORM_DB migrations (before deploy)`
+### was above `Apply PLATFORM_DB migrations (before deploy)` (gone since 2026-10-01, PB-03: the step moved to migrate-platform-db.yml)
 
 MIGRATIONS BEFORE DEPLOY — see the note in the app-worker job.
 platform is the SOLE applier of platform_db migrations, so this is the
 only place the shared entitlements/events/consent schema advances.
+
+⏱ 2026-10-01 — the step is gone from this job; the section
+"PLATFORM_DB migrates before every deploy that reads it" below says where it went and why.
 
 ### above `The deployed SQL is SQL live D1 will run`
 
@@ -522,3 +525,40 @@ row" holds for it), holds an edge row to its committed lockfile and to nothing e
 `dsnSecret`, smoke URL or migrations), keeps it in `--emit` (the Workers lane still typechecks,
 tests and dry-runs it), and selects the app matrix by `appWorkers` rows only — never "every row but
 the serving Worker", which would have put the shield into the app matrix.
+
+## ⏱ 2026-10-01 — PLATFORM_DB migrates before every deploy that reads it (row O-APP-WORKERS-DEPLOY-BEFORE-THE-MIGRATION, PB-03)
+
+platform_db is read by every app Worker (entitlements, through `PLATFORM_DB`), by the platform
+Worker and by the apex site's Pages Function (`tooling/sites/nikatru-apex/wrangler.jsonc`). Its
+migrations ran in this file's `platform` job, which `needs: app-worker`, so every app Worker deployed
+and went live on a platform_db without the schema it reads, and the site deployed unordered against it.
+
+The migration now runs in `.github/workflows/migrate-platform-db.yml`, called by ci.yml's
+`platform-db-migrate` job after ci-gate, and BOTH deploy calls (`deploy-workers` and `deploy-web`)
+need that job. Its one job runs, in order: the ref check, `plan-deploy.mjs platform` (the same plan the
+`platform` job here runs, against the same ledger, on the same commit), `npm ci`,
+`d1 migrations apply PLATFORM_DB --remote` and the live-SQL check — every step after the plan only on
+`deploy == 'true'`. A failed migration therefore publishes nothing that reads platform_db. The
+`platform` job keeps `needs: app-worker`, because it holds a service binding to every app's ERASURE
+Worker, and keeps its own live-SQL check, which runs after the app Workers' migrations.
+
+Two guards hold this:
+
+- `tooling/ci/assert-deploy-triggers-deploy.mjs` limb 5 reads every wrangler config under `services/*/`
+  and `tooling/sites/*/` that binds `PLATFORM_DB`, finds each production job that deploys one, and
+  requires it to transitively need the ONE job that runs `d1 migrations apply PLATFORM_DB --remote`.
+  A job enclosed by the same call as the applier does not count as needing it.
+- `tooling/ci/assert-prod-provenance.mjs` limb 9 accepts a migration in a callee that ci.yml's
+  `deploy-workers` call needs, when that callee plans the same unit, its migration step carries exactly
+  `if: steps.plan.outputs.deploy == 'true'`, and the `platform` job deploys on that same plan and
+  condition. A platform Deployment is then still proof that its migrations ran.
+
+## ⏱ 2026-10-01 — the edge shield echoes its RELEASE (row O-EDGE-SHIELD-SMOKE-NOT-JOINED-TO-SHA, PB-26)
+
+`x-nikatru-shield: 1` proved that A shield was in path, not that THIS commit's was. The `edge-shield` job
+now deploys with `--var RELEASE:${{ github.sha }}`, the Worker echoes that SHA as the header's value
+(`services/edge-shield/src/index.ts` `shieldMark`; `1` when no RELEASE was deployed), and the smoke runs
+`check-edge-shield.mjs --settle --expect-release ${{ github.sha }}`, so an older version still in path is
+red. ops-watch's weekly probe passes no `--expect-release` and accepts `1` or any SHA. A Worker rollback
+keeps the vars it was deployed with, so a re-promoted shield echoes its recorded SHA, and rollback.yml's
+smoke for it (docs/ci/rollback.md) expects exactly that.

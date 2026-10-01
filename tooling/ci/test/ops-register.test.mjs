@@ -1325,6 +1325,43 @@ describe('assert-ops-register — O-7: every recorded deployment is probed', () 
     assert.match(v.prints.join(' | '), /exempt: Cloudflare Git integration/);
   });
 
+  // ⏱ 2026-10-01 · PB-25 (row O-APEX-SMOKE-EXEMPTION-STALE): sites/nikatru is published by
+  // deploy-web.yml's `site` job now, so its old "no job to probe from" exemption is stale.
+  test('🔴 RED CONTROL — a `site:<name>` exemption for a site a deploy job publishes is STALE', () => {
+    const reg = baseRegister();
+    reg._deploySmokeExemptions = { 'site:nikatru': 'Cloudflare Git integration; covered by the external prober.' };
+    const v = evaluate(
+      reg,
+      {
+        ...tree,
+        deployJobs: [{ workflow: '.github/workflows/deploy-web.yml', job: 'site', environment: 'nikatru-site', smokes: 1 }],
+        sitesPublishedByJob: [{ site: 'nikatru', environment: 'nikatru-site' }],
+      },
+      NOW,
+    );
+    assert.match(v.errors.join(' | '), /`_deploySmokeExemptions\["site:nikatru"\]` is STALE: sites\/nikatru is published by a deploy job that records `nikatru-site`/);
+  });
+
+  test('GREEN CONTROL — the same site with its exemption retired', () => {
+    const v = evaluate(
+      baseRegister(),
+      {
+        ...tree,
+        deployJobs: [{ workflow: '.github/workflows/deploy-web.yml', job: 'site', environment: 'nikatru-site', smokes: 1 }],
+        sitesPublishedByJob: [{ site: 'nikatru', environment: 'nikatru-site' }],
+      },
+      NOW,
+    );
+    assert.equal(v.errors.length, 0, v.errors.join(' | '));
+  });
+
+  test('THE REAL REGISTER retires `site:nikatru` with a dated note, and keeps the one Git-integration site', () => {
+    const real = JSON.parse(readFileSync(join(CI_DIR, '..', 'ops', 'register.json'), 'utf8'))._deploySmokeExemptions;
+    assert.equal(Object.hasOwn(real, 'site:nikatru'), false);
+    assert.ok(Object.hasOwn(real, 'site:rajasekarselvam'));
+    assert.ok(real._why.some((l) => /^RETIRED 2026-10-01 — `site:nikatru`/.test(l)), 'no dated retirement note in `_why`');
+  });
+
   test('an EMPTY exemption is not an exemption', () => {
     const v = withJobs([{ workflow: 'sites/x', job: '(no job)', environment: 'site:x', smokes: 0 }], { 'site:x': '   ' });
     assert.match(v.errors.join(' | '), /records a deployment for `site:x`/);
@@ -5440,7 +5477,8 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     const byFile = new Map(parseAllWorkflows(REPO_ROOT).map((wf) => [String(wf.rel).split('/').pop(), wf]));
     const postGate = postGateAdmission(byFile, gateTopology(REPO_ROOT));
     assert.ok(postGate, 'the gate workflow or its gate job could not be derived — the post-gate admission is gone');
-    assert.deepEqual([...postGate.jobs].sort(), ['deploy-web', 'deploy-workers'], 'the post-gate jobs of ci.yml have changed');
+    // ⏱ 2026-10-01 · PB-03: platform-db-migrate, which both deploys need, is post-gate too.
+    assert.deepEqual([...postGate.jobs].sort(), ['deploy-web', 'deploy-workers', 'platform-db-migrate'], 'the post-gate jobs of ci.yml have changed');
     assert.equal(dispatchable.has('deploy-web.yml'), false, 'deploy-web.yml has grown a `workflow_dispatch` — a second way to start the lane that skips the gate');
     assert.equal(dispatchable.has('deploy-workers.yml'), false, 'deploy-workers.yml has grown a `workflow_dispatch` — same');
     assert.equal(dispatchable.has('ci.yml'), false, 'ci.yml has grown a `workflow_dispatch` — re-read the deadlock argument before letting it into this domain');
@@ -5449,6 +5487,7 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     const ids = redSinceDomain(real, dispatchable, postGate).map((r) => r.id);
     assert.ok(ids.includes('duty.workflow.deploy-web.yml'), 'the web deploy lane has fallen out of the RED-SINCE domain — the 2026-09-09 defect is back');
     assert.ok(ids.includes('duty.workflow.deploy-workers.yml'), 'the workers deploy lane has fallen out of the RED-SINCE domain');
+    assert.ok(ids.includes('duty.workflow.migrate-platform-db.yml'), 'the platform_db migration lane has fallen out of the RED-SINCE domain');
     assert.equal(ids.includes('duty.workflow.ci.yml'), false);
     const without = redSinceDomain(real, dispatchable).map((r) => r.id);
     assert.equal(without.includes('duty.workflow.deploy-web.yml'), false, 'without the post-gate admission the web lane must be out — else this test proves nothing about it');
@@ -5458,7 +5497,12 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     // strand it exists to end, and it must be graded like the lanes it serves.
     assert.ok(dispatchable.has('redeploy-stranded.yml'), '.github/workflows/redeploy-stranded.yml no longer declares `workflow_dispatch`');
     const census = redSinceTriggerCensus(real, dispatchable, postGate);
-    assert.deepEqual(census.admitted.sort(), ['duty.workflow.deploy-web.yml', 'duty.workflow.deploy-workers.yml', 'duty.workflow.redeploy-stranded.yml']);
+    assert.deepEqual(census.admitted.sort(), [
+      'duty.workflow.deploy-web.yml',
+      'duty.workflow.deploy-workers.yml',
+      'duty.workflow.migrate-platform-db.yml',
+      'duty.workflow.redeploy-stranded.yml',
+    ]);
     assert.equal(census.admittedBy['duty.workflow.deploy-web.yml'], 'post-gate');
     assert.equal(census.admittedBy['duty.workflow.deploy-workers.yml'], 'post-gate');
     assert.equal(census.admittedBy['duty.workflow.redeploy-stranded.yml'], 'workflow_dispatch');
@@ -5592,8 +5636,10 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
       assert.equal(t.selfGated.has('deploy-web.yml'), false, 'deploy-web.yml runs the gate script again — it is a post-gate callee');
       assert.equal(t.selfGated.has('deploy-workers.yml'), false, 'deploy-workers.yml runs the gate script again — it is a post-gate callee');
       const ci = parseAllWorkflows(REPO_ROOT).find((wf) => String(wf.rel).split('/').pop() === 'ci.yml');
-      assert.deepEqual(postGateJobs(ci, t.gateName).sort(), ['deploy-web', 'deploy-workers'], 'the post-gate jobs of ci.yml have changed');
-      for (const j of ['deploy-web', 'deploy-workers']) {
+      // ⏱ 2026-10-01 · PB-03: platform-db-migrate is post-gate too, and both deploys need it.
+      assert.deepEqual(postGateJobs(ci, t.gateName).sort(), ['deploy-web', 'deploy-workers', 'platform-db-migrate'], 'the post-gate jobs of ci.yml have changed');
+      assert.equal(t.selfGated.has('migrate-platform-db.yml'), false, 'migrate-platform-db.yml runs the gate script again — it is a post-gate callee');
+      for (const j of ['deploy-web', 'deploy-workers', 'platform-db-migrate']) {
         const needs = ci.jobs.get(j)?.needs ?? [];
         assert.ok(needs.includes(t.gateName), `${j} no longer needs ${t.gateName}`);
       }
@@ -6269,7 +6315,8 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
       // 9 → 10 on 2026-09-23: duty.workflow.redeploy-stranded.yml is RED-SINCE graded.
       // 10 → 11 on 2026-09-24: so is duty.workflow.name-clearance.yml, a workflow on a clock.
       // 11 → 12 on 2026-09-29: so is duty.workflow.mutation-proofs.yml (A-2), a workflow on a clock.
-      assert.match(r.out, /every one of the 12 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
+      // 12 → 13 on 2026-10-01: so is duty.workflow.migrate-platform-db.yml (PB-03), a post-gate lane.
+      assert.match(r.out, /every one of the 13 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
     }
   });
 
