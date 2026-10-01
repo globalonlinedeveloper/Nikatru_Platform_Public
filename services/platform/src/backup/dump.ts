@@ -13,28 +13,97 @@
 // test/harness.ts's REAL sqlite engine with the REAL migrations, so "the dump
 // round-trips" is a property this repo can prove rather than assert.
 //
-// ⚠️ AND IT HAS A CEILING THE REST PATH DOES NOT. Every page is one D1 query and
-// `d1.queriesPerInvocation` is 50 on the plan of record's recorded value, so this
-// path outgrows itself at some table size. It does NOT degrade quietly: the
-// budget is counted, exhaustion sets `truncated`, and `truncated` turns the run
-// RED (see index.ts), while `d1-budget` turns red first, once a night spends
-// most of the pool. When that day comes, the known next step is the REST export
-// named above, driven from a Workflow so its polling can span invocations, and
-// paying for it with the credential this file was written to avoid. No runbook
-// holds that procedure yet; this paragraph is where it is written down.
+// ⚠️ AND IT HAS A CEILING THE REST PATH DOES NOT. Every statement is one D1
+// query and `d1.queriesPerInvocation` is 50 on the plan of record's recorded
+// value. It does NOT degrade quietly: the budget is counted, exhaustion sets
+// `truncated`, and `truncated` turns the run RED (see index.ts), while
+// `d1-budget` turns red first, once a night spends most of the pool. When that
+// day comes, the known next step is the REST export named above, driven from a
+// Workflow so its polling can span invocations, and paying for it with the
+// credential this file was written to avoid. No runbook holds that procedure
+// yet; this paragraph is where it is written down.
+//
+// ⏱ 2026-10-01 · ops-watch run 36810231743: `d1-budget` RED at 37 of 42 (88%),
+// platform_db 29 + subscriptiontracker_db 8, export complete. THE COST WAS ONE
+// QUERY PER TABLE, so every migration that added a table moved the night one
+// query closer to a truncated backup — three did on the day it went red. IT IS
+// NOW FLAT IN THE TABLE COUNT. A database costs four statements whatever its
+// table count: the catalogue, ONE column read for every table, ONE size read
+// (each table's row count and widest row), and ONE read that pages every table
+// at once (readTablesSql). That stays true up to TABLES_PER_READ tables a
+// database; only a single table's volume past one page adds a round.
+// MEASURED 2026-10-01 against both production databases (read-only, through
+// this function, pages rewritten to LIMIT 0): all four shapes ACCEPTED, the
+// known-refused statement refused on the same connection, 4 + 4 of 42.
+//
+// 🔴 NOT `db.batch()`, AND THIS IS WHY. tooling/ceilings.json records that the
+// vendor does not say whether a batch of N statements spends one query or N, and
+// mandates the worst-case reading for every derivation: N. Under that reading a
+// batch of one page per table costs exactly what the old loop cost, so it would
+// have turned `d1-budget` green by changing the accounting rather than the
+// spend. Each read here is ONE statement, which is one query under either
+// reading. And not one `UNION ALL` either: D1 refuses a compound SELECT past a
+// handful of terms (measured, services/_shared/src/erasure.ts) — the scalar
+// subqueries of readTablesSql are not a compound SELECT.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Rows read per `SELECT` page.
+ * Rows read from ONE table per read round, at most.
  *
- * @ceiling none — bounds the size of ONE result set, not a platform resource.
- *   The resource this file spends is QUERIES (see MAX_D1_QUERIES_PER_RUN in
- *   index.ts, which derives from `d1.queriesPerInvocation`); a bigger page spends
- *   FEWER of them, so this number moving up is safer, not riskier. It is bounded
- *   above only by what fits in a Worker's memory, and the whole estate is under
- *   400 KB.
+ * @ceiling none — bounds the size of ONE result set, not a platform resource;
+ *   the platform resource a page can exhaust is bytes, which D1_PAGE_BYTES
+ *   bounds. A bigger page spends FEWER queries, so this moving up is safer, not
+ *   riskier.
  */
 export const D1_PAGE_ROWS = 5000;
+
+/**
+ * Bytes of JSON one table's page may carry in a read round.
+ *
+ * @ceiling none — half of D1's 2,000,000-byte "Maximum string, BLOB or table row
+ *   size" (https://developers.cloudflare.com/d1/platform/limits/), which no row
+ *   of tooling/ceilings.json records. A table's page arrives as ONE
+ *   `json_group_array` string, so a fixed row count is not a safe page: rows
+ *   here run from 71 bytes to 4,749 (provider_notifications' webhook bodies,
+ *   measured 2026-10-01), and 1,000 of the widest would be 4.7 MB — SQLITE_TOOBIG,
+ *   a RED night. So each table's page is this divided by its widest row, read
+ *   in the size statement; the half left over absorbs a wider row written
+ *   between that read and the page.
+ */
+export const D1_PAGE_BYTES = 1_000_000;
+
+/**
+ * Tables read by ONE statement.
+ *
+ * @ceiling none — D1 caps a table, and a result set, at 100 columns
+ *   (https://developers.cloudflare.com/d1/platform/limits/ "Maximum columns per
+ *   table"), and no row of tooling/ceilings.json records it. Each table is one
+ *   result column of readTablesSql, so half that cap leaves the margin, and a
+ *   database past 50 tables costs one more statement per round, not one per table.
+ */
+export const TABLES_PER_READ = 50;
+
+/**
+ * Arguments one `json_array(...)` call may take.
+ *
+ * @ceiling none — D1's "Maximum arguments per SQL function" is 32
+ *   (https://developers.cloudflare.com/d1/platform/limits/), and no row of
+ *   tooling/ceilings.json records it. `node:sqlite` allows far more, so a row
+ *   built as ONE json_array over a wide table would pass every test here and be
+ *   refused at 02:30. Columns are therefore grouped by this many, and the groups
+ *   wrapped in one more json_array: 32 × 32 covers D1's 100-column table cap.
+ */
+export const SQL_FUNCTION_ARGS = 32;
+
+/**
+ * Bytes one statement this file builds may reach before it is split.
+ *
+ * @ceiling none — under D1's 100,000-byte "Maximum SQL statement length"
+ *   (https://developers.cloudflare.com/d1/platform/limits/), with a tenth left as
+ *   margin; no row of tooling/ceilings.json records it. Today's widest read is a
+ *   few kilobytes.
+ */
+export const MAX_STATEMENT_BYTES = 90_000;
 
 /**
  * Keys listed per `KVNamespace.list()` call — the vendor's own page size.
@@ -86,15 +155,15 @@ export interface D1QueryPool {
  * threat is a name this code cannot quote correctly producing a SILENTLY EMPTY
  * table in a backup. Refusing loudly is the only safe answer to that.
  */
-const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_$]*$/;
 
 /**
  * ⏱ 2026-09-30 · ADR no.NNN (native sign-in attestation). Tables whose rows are
  * EPHEMERAL by design and worthless after a restore: a redeemed challenge nonce
  * guards a replay for the challenge's own 120 seconds, and a daily counter only
  * counts today. Their SCHEMA is exported (a restore recreates them, empty) and
- * their rows are not — which spends no query on them, and keeps the nightly
- * export inside MAX_D1_QUERIES_PER_RUN's warn line (test/backup-export.test.ts).
+ * their rows are not — they are left out of the column read and of every
+ * table read (test/backup-export.test.ts).
  */
 export const EPHEMERAL_TABLES: ReadonlySet<string> = new Set(['native_attest_redeemed', 'native_attest_counters']);
 
@@ -124,6 +193,70 @@ export const CREDENTIAL_COLUMNS: Readonly<Record<string, readonly string[]>> = {
 /** Tables that are the vendor's bookkeeping, not the portfolio's data. */
 function isInternalTable(name: string): boolean {
   return name.startsWith('sqlite_') || name.startsWith('_cf_');
+}
+
+/**
+ * `items` in runs of at most `max`, each run's rendered SQL under
+ * MAX_STATEMENT_BYTES. Every statement below is built from one run, so a long
+ * schema costs one more statement, never one that D1 refuses for its length.
+ */
+function runsOf(items: readonly string[], max: number, bytes: (item: string) => number): string[][] {
+  const out: string[][] = [];
+  let run: string[] = [];
+  let size = 0;
+  for (const item of items) {
+    const n = bytes(item);
+    if (run.length > 0 && (run.length >= max || size + n > MAX_STATEMENT_BYTES)) {
+      out.push(run);
+      run = [];
+      size = 0;
+    }
+    run.push(item);
+    size += n;
+  }
+  if (run.length > 0) out.push(run);
+  return out;
+}
+
+/**
+ * Every column of every table in `tables`, in ONE statement.
+ *
+ * The pragma is fed a VALUES list, one of the shapes D1 was measured to accept
+ * (tooling/ci/d1-sql-inventory.mjs); this statement does not name the schema
+ * table, which is the half of the refused shape it must never carry. The names
+ * are SAFE_IDENTIFIER-checked before they reach here, so they quote as literals.
+ */
+function columnsSql(tables: readonly string[]): string {
+  const list = tables.map((t) => `('${t}')`).join(', ');
+  return `SELECT v.column1 AS tbl, p.cid AS cid, p.name AS name FROM (VALUES ${list}) AS v JOIN pragma_table_info(v.column1) AS p`;
+}
+
+/**
+ * One row as one JSON value: an array of column groups (SQL_FUNCTION_ARGS
+ * columns a group), in column order. A BLOB would make `json_array` throw —
+ * loud, and no production column held one when this was measured.
+ */
+function rowJson(columns: readonly string[]): string {
+  const groups: string[] = [];
+  for (let i = 0; i < columns.length; i += SQL_FUNCTION_ARGS) {
+    groups.push(`json_array(${columns.slice(i, i + SQL_FUNCTION_ARGS).map((c) => `"${c}"`).join(', ')})`);
+  }
+  return `json_array(${groups.join(', ')})`;
+}
+
+/** One table's `[rows, widest row in bytes]`, which sizes its page. */
+function tableSizeSql(table: string, columns: readonly string[]): string {
+  return `SELECT json_array(count(*), coalesce(max(length(${rowJson(columns)})), 0)) FROM "${table}"`;
+}
+
+/** One page of one table as ONE JSON string: an array of rowJson values. */
+function tableReadSql(table: string, columns: readonly string[], limit: number, offset: number): string {
+  return `SELECT json_group_array(${rowJson(columns)}) FROM (SELECT * FROM "${table}" LIMIT ${limit} OFFSET ${offset})`;
+}
+
+/** Many tables' pages in ONE statement: one scalar subquery, one result column, a table. */
+function readTablesSql(pages: readonly string[]): string {
+  return `SELECT ${pages.map((page, i) => `(${page}) AS "t${i}"`).join(', ')}`;
 }
 
 /**
@@ -197,6 +330,112 @@ export async function dumpD1Database(
     }
   }
 
+  // ── The columns: ONE statement per run of tables, not one per table ───────
+  const live = tables.filter((t) => !EPHEMERAL_TABLES.has(t));
+  const columns = new Map<string, string[]>(live.map((t) => [t, []]));
+  let columnsRead = true;
+  for (const run of runsOf(live, Number.POSITIVE_INFINITY, (t) => t.length + 8)) {
+    if (!take()) {
+      columnsRead = false;
+      truncated = true;
+      break;
+    }
+    const listed = await db.prepare(columnsSql(run)).all<{ tbl: string; cid: number; name: string }>();
+    const byTable = new Map<string, { cid: number; name: string }[]>();
+    for (const c of listed.results ?? []) byTable.set(c.tbl, [...(byTable.get(c.tbl) ?? []), c]);
+    for (const table of run) {
+      const found = (byTable.get(table) ?? []).sort((a, b) => a.cid - b.cid).map((c) => c.name);
+      // 🔴 A TABLE THE CATALOGUE NAMES AND THE PRAGMA DOES NOT KNOW IS GONE, and
+      // every table has at least one column. Reading on would export it as an
+      // empty table that looks complete, so the dump refuses — RED, not quiet.
+      if (found.length === 0) {
+        throw new Error(
+          `refusing to dump ${databaseName}: table ${JSON.stringify(table)} is in the catalogue and has no columns — it is missing from the database, and its export would be an empty table that looks complete`,
+        );
+      }
+      for (const column of found) {
+        if (!SAFE_IDENTIFIER.test(column)) {
+          throw new Error(
+            `refusing to dump ${databaseName}: column ${JSON.stringify(column)} of ${table} is not a plain identifier, so this dumper cannot quote it`,
+          );
+        }
+      }
+      columns.set(table, found);
+    }
+  }
+
+  // ── The page sizes: ONE statement per run, each table's widest row ────────
+  const read = new Map(
+    live.map((t) => [t, { rows: [] as Record<string, unknown>[], done: false, withheld: 0, limit: D1_PAGE_ROWS }]),
+  );
+  let sized = columnsRead;
+  if (sized) {
+    const size = (t: string): string => tableSizeSql(t, columns.get(t) ?? []);
+    for (const run of runsOf(live, TABLES_PER_READ, (t) => size(t).length + 16)) {
+      if (!take()) {
+        sized = false;
+        truncated = true;
+        break;
+      }
+      const answer = await db.prepare(readTablesSql(run.map(size))).first<Record<string, unknown>>();
+      run.forEach((table, i) => {
+        const raw = answer?.[`t${i}`];
+        if (typeof raw !== 'string') {
+          throw new Error(`dump of ${databaseName}: the size read of ${table} answered ${typeof raw}, not JSON`);
+        }
+        const [, widest] = JSON.parse(raw) as [number, number];
+        read.get(table)!.limit = Math.max(1, Math.min(D1_PAGE_ROWS, Math.floor(D1_PAGE_BYTES / Math.max(1, widest))));
+      });
+    }
+  }
+
+  // ── The rows: every unfinished table paged in ONE statement a round ───────
+  const page = (t: string): string => {
+    const state = read.get(t)!;
+    return tableReadSql(t, columns.get(t) ?? [], state.limit, state.rows.length);
+  };
+  let pending = sized ? [...live] : [];
+  while (pending.length > 0 && !truncated) {
+    const more: string[] = [];
+    for (const run of runsOf(pending, TABLES_PER_READ, (t) => page(t).length + 16)) {
+      if (!take()) {
+        truncated = true;
+        break;
+      }
+      const answer = await db.prepare(readTablesSql(run.map(page))).first<Record<string, unknown>>();
+      run.forEach((table, i) => {
+        const raw = answer?.[`t${i}`];
+        if (typeof raw !== 'string') {
+          throw new Error(`dump of ${databaseName}: the read of ${table} answered ${typeof raw}, not a JSON page`);
+        }
+        const names = columns.get(table) ?? [];
+        const credentials = CREDENTIAL_COLUMNS[table] ?? [];
+        const state = read.get(table)!;
+        const pageRows = JSON.parse(raw) as unknown[][][];
+        for (const groups of pageRows) {
+          const values = groups.flat();
+          if (values.length !== names.length) {
+            throw new Error(`dump of ${databaseName}: a row of ${table} carried ${values.length} values for ${names.length} columns`);
+          }
+          const data: Record<string, unknown> = {};
+          names.forEach((name, n) => {
+            data[name] = values[n];
+          });
+          for (const column of credentials) {
+            const value = data[column];
+            if (value === undefined || value === null || value === '') continue;
+            data[column] = '';
+            state.withheld += 1;
+          }
+          state.rows.push(data);
+        }
+        if (pageRows.length < state.limit) state.done = true;
+        else more.push(table);
+      });
+    }
+    pending = more;
+  }
+
   let rows = 0;
   let withheld = 0;
   for (const table of tables) {
@@ -204,41 +443,16 @@ export async function dumpD1Database(
       lines.push({ kind: 'table-end', table, rows: 0, truncated: false, ephemeral: true });
       continue;
     }
-    const credentials = CREDENTIAL_COLUMNS[table] ?? [];
-    let tableWithheld = 0;
-    let tableRows = 0;
-    let tableTruncated = false;
-    for (;;) {
-      if (!take()) {
-        tableTruncated = true;
-        truncated = true;
-        break;
-      }
-      const page = await db
-        .prepare(`SELECT * FROM "${table}" LIMIT ?1 OFFSET ?2`)
-        .bind(D1_PAGE_ROWS, tableRows)
-        .all<Record<string, unknown>>();
-      const batch = page.results ?? [];
-      for (const data of batch) {
-        for (const column of credentials) {
-          const value = data[column];
-          if (value === undefined || value === null || value === '') continue;
-          data[column] = '';
-          tableWithheld += 1;
-        }
-        lines.push({ kind: 'row', table, data });
-      }
-      tableRows += batch.length;
-      if (batch.length < D1_PAGE_ROWS) break;
-    }
-    rows += tableRows;
-    withheld += tableWithheld;
+    const state = read.get(table)!;
+    for (const data of state.rows) lines.push({ kind: 'row', table, data });
+    rows += state.rows.length;
+    withheld += state.withheld;
     lines.push({
       kind: 'table-end',
       table,
-      rows: tableRows,
-      truncated: tableTruncated,
-      ...(tableWithheld > 0 ? { withheld: tableWithheld } : {}),
+      rows: state.rows.length,
+      truncated: !state.done,
+      ...(state.withheld > 0 ? { withheld: state.withheld } : {}),
     });
   }
 
