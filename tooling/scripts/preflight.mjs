@@ -637,7 +637,8 @@ export const SECURITY_LEG = 'secret and workflow scanners (gitleaks / zizmor fro
  *  what of the job stays CI's. A need is in exactly one of this table and
  *  NOT_REPRODUCIBLE, and `ciGateCoverage` refuses the run otherwise. */
 export const CI_GATE_LEGS = {
-  'guard-meta': { legs: [GUARD_SUITES_LEG, SWEEP_LEG], ciOnly: 'the junit reporter and its artifact upload' },
+  'guard-tests': { legs: [GUARD_SUITES_LEG], ciOnly: 'the split into shards, and the junit reporter and artifact upload of each' },
+  'guard-meta': { legs: [SWEEP_LEG], ciOnly: 'nothing' },
   'guards-platform': { legs: [SWEEP_LEG], ciOnly: 'nothing' },
   'guards-legal': { legs: [SWEEP_LEG], ciOnly: 'nothing' },
   'guards-store': { legs: [SWEEP_LEG, CITATIONS_LEG], ciOnly: 'the discovery-surface generation step' },
@@ -654,6 +655,7 @@ export const CI_GATE_LEGS = {
 /** Each ci-gate need this run does NOT reproduce, and why. A reason is a fact
  *  about this machine or this script, never "slow". */
 export const NOT_REPRODUCIBLE = {
+  'guard-tests-floor': 'it reads the junit artifacts of the guard-tests shards, which exist only inside a CI run; the guard-suites leg here runs the suite whole, in one process, and writes no junit',
   'lane-workers': "each Worker's own `npm ci` (a network install into services/<worker>), then tsc, its suite and two `wrangler deploy --dry-run`s — this script installs nothing",
   'site-tokens': '`npm ci` into packages/tokens (a network install), then a build that rewrites three tracked files — this script installs nothing',
   'site-shared': '`npm ci` into sites/_shared (a network install), then the site build — this script installs nothing',

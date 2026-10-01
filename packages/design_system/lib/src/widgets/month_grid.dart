@@ -52,7 +52,20 @@ class MonthGrid extends StatelessWidget {
     this.marks = const <int, int>{},
     this.selectedDay,
     this.onDayTap,
+    this.dayLabel,
   });
+
+  /// What a reader hears for [day] — e.g. "Wednesday, October 14, today,
+  /// 2 renewals, ₹1,148" — in place of the bare numeral. The grid carries no
+  /// copy, so the words and the domain ("renewals", the amount) are the
+  /// app's; [isToday] says whether this is the cell drawn as today, so the
+  /// app's word for it is not a second guess at the date.
+  ///
+  /// ⏱ ST truth pass (CA-03): the mark is a decorative dot and the today fill
+  /// is a colour, so without this a cell said "14" and nothing else — no day
+  /// of the week, no "today", and no cell named what it carried. Null keeps
+  /// the numeral, for a grid with nothing to say about its days.
+  final String Function(int day, {required bool isToday})? dayLabel;
 
   /// Any moment inside the month to draw; only its year and month are read.
   final DateTime month;
@@ -165,7 +178,8 @@ class MonthGrid extends StatelessWidget {
       final Color dot = isToday ? scheme.onPrimary : scheme.primary;
       final BorderRadius radius = BorderRadius.circular(AppRadius.control);
 
-      final Widget content = Column(
+      final String? label = dayLabel?.call(day, isToday: isToday);
+      final Widget drawn = Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
           // ONE line, scaled down to the cell's width if a scaled two-digit
@@ -196,6 +210,16 @@ class MonthGrid extends StatelessWidget {
             const SizedBox(height: dotSize),
         ],
       );
+      // The app's sentence REPLACES the numeral, and the cell is its own node
+      // (`container`), or neighbouring label-only cells merge into one stop.
+      final Widget content = label == null
+          ? drawn
+          : Semantics(
+              container: true,
+              label: label,
+              excludeSemantics: true,
+              child: drawn,
+            );
 
       final bool control = onDayTap != null && marked;
       return Container(

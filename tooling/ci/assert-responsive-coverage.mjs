@@ -756,15 +756,21 @@ const REQUIRED_COVERAGE = [
     //   surfaces        38 → 43
     //   coveredSurfaces 30 → 36
     //
-    // ⏱ 2026-10-01 · train st-entry (EN-11) — `SwallowSystemBack` joined the
-    // root and is PRINTED unmeasured on purpose: it paints nothing (a
-    // `SizedBox.shrink`), so it has no width to decide. Read off the run's own
-    // line: "36 of 44 surface(s) measured — 8 PRINTED".
+    // ⏱ 2026-10-01 · ST truth pass (EN-17) — ForceUpdateGate, printed as
+    // unmeasured until now, pumped at 375 / 768 / 1280 by
+    // system_screens_text_scale_test.dart (and at 360 × 640 / 200 % text).
+    // Read off the run's own line: "37 of 43 surface(s) measured — 6 PRINTED".
+    //   coveredSurfaces 36 → 37
+    //
+    // ⏱ 2026-10-01 · train st-entry (EN-11), on top of the truth pass —
+    // `SwallowSystemBack` joined the root and is PRINTED unmeasured on purpose:
+    // it paints nothing (a `SizedBox.shrink`), so it has no width to decide.
+    // Read off the run's own line: "37 of 44 surface(s) measured — 7 PRINTED".
     //   surfaces        43 → 44
     enforce: false,
     surfaces: 44,
     widthTestFiles: 19,
-    coveredSurfaces: 36,
+    coveredSurfaces: 37,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, content_pane, two_pane and fifteen ' +
       'more, whose width decisions every stamped app inherits',

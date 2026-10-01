@@ -19,6 +19,7 @@ import '../../core/format/sub_math.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
+import '../../state/providers.dart' show nowProvider;
 import '../../state/settings_controller.dart';
 import '../add/add_subscription_sheet.dart';
 import '../shared/async_gate.dart';
@@ -222,7 +223,13 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
                   // figures, not cards of the grid.
                   _header(context, l10n),
                   const SizedBox(height: AppSpacing.lg),
-                  SummaryTiles(subs: subs, money: money, now: DateTime.now()),
+                  // `nowProvider` (ST truth pass, IN-02): the 30-day window
+                  // is a function of today, and a test must pin it.
+                  SummaryTiles(
+                    subs: subs,
+                    money: money,
+                    now: ref.watch(nowProvider)(),
+                  ),
                   const SizedBox(height: AppSpacing.lg),
                   if (twoUp)
                     _twoColumnCards(keyed, _cardGap)
