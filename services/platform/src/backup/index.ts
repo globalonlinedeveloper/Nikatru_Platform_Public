@@ -43,6 +43,9 @@ import { APP_KV, APP_TARGETS } from '../generated/app-targets';
  * pool is 50 - 8 = 42. The old comment said 45 "leaves five queries for the
  * heartbeat write" when that write was already seven statements, and the
  * catalogue query ran outside the budget, one per database.
+ * ⏱ 2026-10-01 · a ONE-SHOT RE-RUN (BackupOptions) shares the hourly firing's
+ * invocation, which has already written ONE row (ops_stuck_runs), and writes 7
+ * rows of its own, with no `retention`: 1 + 42 + 7 = 50, the same ceiling.
  * test/backup-export.test.ts counts the whole invocation on the databases
  * themselves and fails if pool + batch ever exceeds the recorded ceiling.
  *
@@ -135,6 +138,26 @@ interface ManifestEntry {
   truncated: boolean;
 }
 
+/**
+ * How a run was asked for. The 02:30 firing passes nothing.
+ *
+ * ⏱ 2026-10-01 · `rerun` is the lead's ONE-SHOT re-run after a fix (scheduled.ts,
+ * BACKUP_RERUN_KEY), on the hourly firing: EXPORT ONLY. It differs from the
+ * nightly run in three places, and each is a write it must not make:
+ *  · its objects and manifest go under `reruns/<stamp>/`, so the nightly's
+ *    `d1/…/<date>` objects stay byte-identical. A re-run lands after the 06:00
+ *    sweep, so overwriting them would swap the copy taken BEFORE the sweep for
+ *    one taken after it;
+ *  · `manifests/latest.json` is not written: Box B's puller reads only that
+ *    document, so its contract stays the nightly's alone;
+ *  · the retention sweep does not run and writes NO row, so a red `retention`
+ *    row from the night stays the newest one instead of being masked.
+ * Its keys start with the date, so `isExpired` ages them out with the rest.
+ */
+export interface BackupOptions {
+  rerun?: boolean;
+}
+
 /** `YYYY-MM-DD` in UTC — the only timezone any of this estate's schedules use. */
 export function backupDate(nowMs: number): string {
   return new Date(nowMs).toISOString().slice(0, 10);
@@ -164,11 +187,17 @@ export function isExpired(key: string, nowMs: number, retentionDays: number): bo
  * would restore cleanly and silently lose rows. That is the precise failure a
  * backup exists to prevent, so it sets `ok = false` and the manifest records it.
  */
-export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Promise<BackupOutcome[]> {
+export async function runBackup(
+  env: BackupEnv,
+  nowMs: number = Date.now(),
+  opts: BackupOptions = {},
+): Promise<BackupOutcome[]> {
   const out: BackupOutcome[] = [];
   const bucket = env.BACKUPS_R2;
   const date = backupDate(nowMs);
   const nowIso = new Date(nowMs).toISOString();
+  // '' for the nightly run; `reruns/2026-10-01T131500Z/` for a re-run (BackupOptions).
+  const prefix = opts.rerun ? `reruns/${nowIso.slice(0, 19).replace(/:/g, '')}Z/` : '';
 
   if (!bucket) {
     return [
@@ -194,7 +223,7 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
     ...APP_TARGETS.map((t) => ({ name: t.databaseName, db: bound[t.dbBinding] })),
   ];
   for (const { name, db } of databases) {
-    const key = `d1/${name}/${date}.jsonl.gz`;
+    const key = `${prefix}d1/${name}/${date}.jsonl.gz`;
     if (!db) {
       out.push({ target: `d1:${name}`, ok: false, detail: 'binding absent — nothing was exported' });
       continue;
@@ -252,7 +281,7 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
     ...APP_KV.map((k) => ({ name: k.name, ns: (env as unknown as Record<string, KVNamespace | undefined>)[k.binding] })),
   ];
   for (const { name, ns } of namespaces) {
-    const key = `kv/${name}/${date}.json.gz`;
+    const key = `${prefix}kv/${name}/${date}.json.gz`;
     if (!ns) {
       out.push({ target: `kv:${name}`, ok: false, detail: 'binding absent — nothing was exported' });
       continue;
@@ -309,14 +338,31 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
     1,
   );
   try {
-    await bucket.put(`manifests/${date}.json`, doc, { httpMetadata: { contentType: 'application/json' } });
-    await bucket.put('manifests/latest.json', doc, { httpMetadata: { contentType: 'application/json' } });
-    out.push({ target: 'manifest', ok: true, detail: `${manifest.length} objects, complete=${complete}` });
+    if (opts.rerun) {
+      await bucket.put(`${prefix}manifest.json`, doc, { httpMetadata: { contentType: 'application/json' } });
+    } else {
+      await bucket.put(`manifests/${date}.json`, doc, { httpMetadata: { contentType: 'application/json' } });
+      await bucket.put('manifests/latest.json', doc, { httpMetadata: { contentType: 'application/json' } });
+    }
+    out.push({
+      target: 'manifest',
+      ok: true,
+      detail: `${manifest.length} objects, complete=${complete}${opts.rerun ? `, one-shot re-run under ${prefix}` : ''}`,
+    });
   } catch (err) {
     out.push({ target: 'manifest', ok: false, detail: `manifest write failed: ${String(err)}` });
   }
 
+  // A re-run is export only: no sweep, and no row (BackupOptions).
+  if (opts.rerun) return out;
+
   // ── Retention ─────────────────────────────────────────────────────────────
+  // The ONE delete in this file, and purely age-based: `isExpired` reads the
+  // date in the key against `nowMs`, and an object dated D expires once now
+  // passes D + 30 d, so within one UTC day the doomed set is fixed and a second
+  // run that day deletes nothing the first left (bar what MAX_R2_DELETES_PER_RUN
+  // held back, which is just as expired). It never deletes an undatable key or
+  // latest.json.
   try {
     let deleted = 0;
     let cursor: string | undefined;
