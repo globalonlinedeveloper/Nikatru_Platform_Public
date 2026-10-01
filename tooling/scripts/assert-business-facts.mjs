@@ -62,7 +62,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { ENTITY_SOURCE, SURFACES, entityContext, factRegions, anchoredSpans, REPO_ROOT } from '../entity/facts.mjs';
 import { FOOTER_CLOSE, FOOTER_OPEN, isFooterPage, readText, renderSurfaces, trackedTextFiles } from '../entity/render.mjs';
 import { renderEntityAt } from '../ports/render-entity.mjs';
