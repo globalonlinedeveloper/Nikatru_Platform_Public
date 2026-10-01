@@ -2504,6 +2504,10 @@ export const NIGHTLY_CRON = '0 6 * * *';
  * branch below is now a three-way, the register maps this job to this cron, and
  * the test asserts the partition rather than the old two-case shape. A cron that
  * fires with nothing watching it is what check-heartbeats.mjs refuses outright.
+ *
+ * ⏱ 2026-10-01 · A FOURTH KIND OF FIRING writes this job too: the lead's one-shot
+ * re-run after a fix, on OPS_HOURLY_CRON, gated by a KV flag (BACKUP_RERUN_KEY).
+ * It is export only. The schedule this job keeps is still BACKUP_CRON alone.
  */
 export const BACKUP_JOB = 'backup_export';
 
@@ -2624,6 +2628,8 @@ export async function opsWatchdogJob(
  * and never beats PLATFORM_CRON_HEARTBEAT_URL or OPS_WATCHDOG_HEARTBEAT_URL,
  * whose monitors (37 and 40) prove the six-hourly grid ran. :15 keeps it clear
  * of the :00 grid firings and the 02:30 backup.
+ * ⏱ 2026-10-01: after the scan it also reads the lead's one-shot backup re-run
+ * flag (BACKUP_RERUN_KEY), and with no flag it does nothing more.
  */
 export const OPS_HOURLY_CRON = '15 * * * *';
 
