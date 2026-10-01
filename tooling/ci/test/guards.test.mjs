@@ -9041,7 +9041,11 @@ describe('assert-responsive-coverage', () => {
   // own width file — the file COUNT is what that floor measures. The surface
   // floor moved 18 → 19 in the same change; the fixture's 17 + paywall + 2
   // sheets = 20 clears it.
-  const N = 17;
+  // ⏱ 18 SINCE 2026-10-01 (club apply-st): the app's surface floor is 21 with
+  // SetupScreen, the stop flow's net +1 and the share-a-month sheet, so `N`
+  // follows 17 → 18 — s18 joins the shared multi-subject file, because the
+  // width-FILE floor (17) did not move.
+  const N = 18;
   const ids = Array.from({ length: N }, (_, i) => i + 1);
   const screenFile = (i, dir = `s${i}`) => `${LIB}/features/${dir}/s${i}_screen.dart`;
   const screenSrc = (i) => `class S${i}Screen extends StatelessWidget {\n  const S${i}Screen({super.key});\n}\n`;
@@ -9129,8 +9133,13 @@ describe('assert-responsive-coverage', () => {
       files[`${TEST}/width_s${i}_test.dart`] = testSrc([`features/s${i}/s${i}_screen.dart`], [`const S${i}Screen()`]);
     }
     files[`${TEST}/responsive_width_test.dart`] = testSrc(
-      [`features/s15/s15_screen.dart`, `features/s16/s16_screen.dart`, `features/s17/s17_screen.dart`],
-      ['const S15Screen()', 'const S16Screen()', 'const S17Screen()'],
+      [
+        `features/s15/s15_screen.dart`,
+        `features/s16/s16_screen.dart`,
+        `features/s17/s17_screen.dart`,
+        `features/s18/s18_screen.dart`,
+      ],
+      ['const S15Screen()', 'const S16Screen()', 'const S17Screen()', 'const S18Screen()'],
     );
     files[`${TEST}/width_sheets_test.dart`] = testSrc(
       ['features/add/add_sheet.dart', 'features/stop/stop_sheet.dart'],
@@ -9142,7 +9151,7 @@ describe('assert-responsive-coverage', () => {
   test('PASSES when the routed set and the measured set are EQUAL', () => {
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-ok') });
     assert.equal(code, 0);
-    assert.match(out, /apps\/subscriptiontracker: 20 surface\(s\) reachable, 20 measured/);
+    assert.match(out, /apps\/subscriptiontracker: 21 surface\(s\) reachable, 21 measured/);
     assert.match(out, /the two sets are EQUAL/);
     assert.match(out, /apps\/subscriptiontracker: every measured surface is pumped at kPhone \(375\), kTablet \(768\), kDesktop \(1280\)/);
   });
@@ -9160,7 +9169,8 @@ describe('assert-responsive-coverage', () => {
   });
 
   test('FAILS naming the SCREEN when a routed screen has no width test', () => {
-    // An 18th routed screen with no test (18 since 2026-10-01: `N` is 17). The
+    // A 19th routed screen with no test (19 since 2026-10-01, club apply-st:
+    // `N` is 18). The
     // floor is untouched (21 >= 19) and
     // the test-file count is untouched, so the ONLY failure is the uncovered one.
     //
@@ -9171,12 +9181,12 @@ describe('assert-responsive-coverage', () => {
     // prove, so the case passed its exit code and asserted the wrong message.
     const dir = build(
       'rc-uncovered',
-      { [screenFile(18)]: screenSrc(18) },
-      { screens: [...ids, 18] },
+      { [screenFile(19)]: screenSrc(19) },
+      { screens: [...ids, 19] },
     );
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: dir });
     assert.equal(code, 1);
-    assert.match(out, /UNCOVERED SURFACE — `S18Screen`/);
+    assert.match(out, /UNCOVERED SURFACE — `S19Screen`/);
   });
 
   test('FAILS naming the SUBJECT when a width test measures an unrouted twin', () => {
