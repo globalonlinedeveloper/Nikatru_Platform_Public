@@ -80,6 +80,18 @@ void main() {
     },
   );
 
+  test('🔴 NO-04 · Linux schedules renewals (the package ledger)', () async {
+    final RecordingSeam seam = await _sync(
+      (RecordingSeam s) => RenewalReminders.forTesting(
+        platform: TargetPlatform.linux,
+        isWeb: false,
+        service: s,
+        now: now,
+      ),
+    );
+    expect(seam.pending, isNotEmpty);
+  });
+
   test('Windows WITHOUT an identity schedules nothing', () async {
     final RecordingSeam seam = await _sync(
       (RecordingSeam s) => RenewalReminders(
@@ -97,11 +109,9 @@ void main() {
 
   for (final ({String name, TargetPlatform p, bool web}) c
       in <({String name, TargetPlatform p, bool web})>[
-        (
-          name: 'Linux (shows, cannot schedule)',
-          p: TargetPlatform.linux,
-          web: false,
-        ),
+        // ⏱ 2026-10-01 · NO-04: Linux left this list — it schedules now
+        // (packages/notifications' ledger); see the case below.
+        (name: 'Fuchsia (neither)', p: TargetPlatform.fuchsia, web: false),
         (name: 'web', p: TargetPlatform.android, web: true),
       ]) {
     test('${c.name}: nothing reaches the seam, and nothing throws', () async {
@@ -135,10 +145,22 @@ void main() {
   });
 
   test('unavailability names the reason a settings screen shows', () {
+    // NO-04: no shipped target is "shows but cannot schedule" any more —
+    // Linux schedules — so the reason is proven on the matrix row itself.
     expect(
       RenewalReminders.forTesting(
         platform: TargetPlatform.linux,
         isWeb: false,
+      ).unavailability,
+      isNull,
+    );
+    expect(
+      RenewalReminders(
+        service: RecordingSeam(),
+        capabilities: const NotificationCapabilities(
+          canNotify: true,
+          canSchedule: false,
+        ),
       ).unavailability,
       ReminderUnavailability.noScheduling,
     );

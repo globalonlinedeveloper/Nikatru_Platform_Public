@@ -2591,5 +2591,119 @@
   "detailRemindersNoDeviceNotifications": "This device does not send notifications — e-mail reminders and the calendar feed are in Settings",
   "@detailRemindersNoDeviceNotifications": {
     "description": "Consumed by features/detail/reminder_rows.dart: on a target that cannot schedule a notification, under the reminder rows; opens Settings (ST truth pass (2026-10-01). DE-03)."
+  },
+  "reminderActionMarkPaid": "Mark as paid",
+  "@reminderActionMarkPaid": {
+    "description": "NO-10: button on a renewal reminder and on a /notifications row; records one payment."
+  },
+  "reminderActionSnooze": "Snooze 1 day",
+  "@reminderActionSnooze": {
+    "description": "NO-10: button on a renewal reminder and on a /notifications row; the reminder comes back in 24 hours."
+  },
+  "reminderActionKeep": "Keep it",
+  "@reminderActionKeep": {
+    "description": "NO-10: /notifications row button — the user keeps the plan; hides the notice, no network."
+  },
+  "reminderActionHowToStop": "How to stop",
+  "@reminderActionHowToStop": {
+    "description": "NO-10: /notifications row button — opens the plan's stop entry."
+  },
+  "reminderMarkedPaid": "Marked {name} as paid",
+  "@reminderMarkedPaid": {
+    "description": "Snackbar after Mark as paid.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "reminderMarkPaidFailed": "Couldn't mark it as paid. Try again.",
+  "@reminderMarkPaidFailed": {
+    "description": "Snackbar when the payment could not be recorded."
+  },
+  "reminderSnoozed": "We'll remind you again tomorrow",
+  "@reminderSnoozed": {
+    "description": "Snackbar after Snooze 1 day."
+  },
+  "testReminderTitle": "Test reminder",
+  "@testReminderTitle": {
+    "description": "NO-13: title of the test notification."
+  },
+  "testReminderBody": "Reminders work on this device.",
+  "@testReminderBody": {
+    "description": "NO-13: body of the test notification."
+  },
+  "settingsSendTestReminder": "Send a test reminder",
+  "@settingsSendTestReminder": {
+    "description": "NO-13: Settings row."
+  },
+  "testReminderSentLocal": "A test reminder arrives in 10 seconds.",
+  "@testReminderSentLocal": {
+    "description": "NO-13: after the test on a device that schedules."
+  },
+  "quietHoursTitle": "Quiet hours",
+  "@quietHoursTitle": {
+    "description": "NO-13: Settings switch."
+  },
+  "quietHoursSubtitle": "No reminders {start}–{end}; they arrive after.",
+  "@quietHoursSubtitle": {
+    "description": "NO-13: under the switch.",
+    "placeholders": {
+      "start": {
+        "type": "String",
+        "example": "22:00"
+      },
+      "end": {
+        "type": "String",
+        "example": "07:00"
+      }
+    }
+  },
+  "exactAlarmOfferTitle": "Get reminders on time?",
+  "@exactAlarmOfferTitle": {
+    "description": "NO-12: one-time Android offer."
+  },
+  "exactAlarmOfferBody": "Allow “Alarms & reminders” for this app so reminders arrive at the time you chose.",
+  "@exactAlarmOfferBody": {
+    "description": "NO-12: one-time Android offer body."
+  },
+  "exactAlarmOfferOpen": "Open settings",
+  "@exactAlarmOfferOpen": {
+    "description": "NO-12: opens the system Alarms & reminders page."
+  },
+  "exactAlarmOfferLater": "Not now",
+  "@exactAlarmOfferLater": {
+    "description": "NO-12: declines the offer."
+  },
+  "exactAlarmRefused": "Reminders may arrive a little late.",
+  "@exactAlarmRefused": {
+    "description": "NO-12: Settings line after a refusal."
+  },
+  "notificationsStatusOn": "Reminders: on, {days, plural, =0{on the day} =1{1 day before} other{{days} days before}} at {time}",
+  "@notificationsStatusOn": {
+    "description": "NO-09: /notifications status where this device posts reminders.",
+    "placeholders": {
+      "days": {
+        "type": "int",
+        "example": "2"
+      },
+      "time": {
+        "type": "String",
+        "example": "09:00"
+      }
+    }
+  },
+  "notificationsStatusOff": "Reminders: off",
+  "@notificationsStatusOff": {
+    "description": "NO-09: /notifications status where the user turned renewal alerts off."
+  },
+  "notificationsStatusNoPush": "This device can't show reminders. Get them by e-mail or add the calendar feed.",
+  "@notificationsStatusNoPush": {
+    "description": "NO-09: /notifications status where push is absent (web)."
+  },
+  "notificationsOpenSettings": "Reminder settings",
+  "@notificationsOpenSettings": {
+    "description": "NO-09: link from the /notifications status line to Settings."
   }
 }

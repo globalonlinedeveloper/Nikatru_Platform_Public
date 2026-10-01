@@ -85,6 +85,20 @@ void main() {
             '${debugDefaultTargetPlatformOverride?.name} cannot schedule a '
             'reminder, and slide 2 still promises one',
       );
+      // ⏱ 2026-10-01 (NO-04): Fuchsia, not Linux — Linux schedules now
+      // (packages/notifications' ledger), and web is out of a variant's reach.
+    }, variant: TargetPlatformVariant.only(TargetPlatform.fuchsia));
+
+    testWidgets('linux can now (NO-04), and keeps the reminder sentence', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, kPhone, const OnboardingScreen());
+      await _toSlide(tester, 1);
+      final AppLocalizations l10n = await _en();
+      expect(
+        find.text(l10n.subscriptiontrackerOnboarding2Body),
+        findsOneWidget,
+      );
     }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
 
     // ⏱ 2026-09-28 (ST-R4): Windows schedules now — the app carries its toast

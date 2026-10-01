@@ -130,6 +130,15 @@ class _GatedApi implements ApiClient {
     subs = subs.where((Subscription s) => s.id != id).toList();
   }
 
+  // NO-10 · "Mark as paid": not exercised by this suite.
+  @override
+  Future<void> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {}
+
   @override
   Future<List<PaymentRecord>> getPaymentHistory(String id) async =>
       const <PaymentRecord>[];

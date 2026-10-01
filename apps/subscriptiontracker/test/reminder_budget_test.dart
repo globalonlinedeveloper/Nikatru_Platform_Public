@@ -80,9 +80,20 @@ void main() {
                 .map((core.ScheduledNotification n) => n.at)
                 .toList()
               ..sort();
-        final DateTime lastKept = kept.last;
-        // Row 59 is the 60th soonest; row 60 renews a day after it.
-        expect(lastKept, DateTime(2026, 10, 4 + 59 - 2, 9));
+        // ⏱ 2026-10-01 · NO-11: three charges per plan are wanted now, so
+        // "the soonest" is read off the whole plan rather than counted by
+        // hand: the kept set is exactly its first [renewalReminderBudget].
+        final List<DateTime> wanted = <DateTime>[
+          for (final Subscription s in _subs(80))
+            for (final core.ScheduledNotification n in w.svc.plannedFor(
+              s,
+              copy: _copy(),
+              rules: const ReminderRules(),
+            ))
+              n.at,
+        ]..sort();
+        expect(kept, wanted.take(RenewalReminders.renewalReminderBudget));
+        expect(kept.last.isBefore(wanted.last), isTrue);
       },
     );
 
@@ -91,7 +102,8 @@ void main() {
         TargetPlatform.iOS,
       );
       await w.svc.syncAll(_subs(10), copy: _copy());
-      expect(w.seam.pending.length, 10);
+      // NO-11: 10 plans × 3 charges = 30, inside 60.
+      expect(w.seam.pending.length, 10 * RenewalReminders.cyclesPerPlan);
       expect(w.svc.remindersDroppedByBudget, 0);
     });
 
@@ -102,7 +114,8 @@ void main() {
       await w.svc.syncAll(_subs(80), copy: _copy());
       expect(
         w.svc.remindersDroppedByBudget,
-        80 - RenewalReminders.renewalReminderBudget,
+        80 * RenewalReminders.cyclesPerPlan -
+            RenewalReminders.renewalReminderBudget,
       );
     });
 
@@ -152,7 +165,8 @@ void main() {
         TargetPlatform.android,
       );
       await w.svc.syncAll(_subs(80), copy: _copy());
-      expect(w.seam.pending.length, 80);
+      // NO-11: three charges each — AlarmManager has no pool to overflow.
+      expect(w.seam.pending.length, 80 * RenewalReminders.cyclesPerPlan);
       expect(w.svc.remindersDroppedByBudget, 0);
     });
 
