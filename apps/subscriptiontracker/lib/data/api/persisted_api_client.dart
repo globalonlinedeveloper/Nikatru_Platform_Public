@@ -178,28 +178,26 @@ class PersistedApiClient implements ApiClient, CategoriesApi, PaymentWrites {
     return _seed.getPaymentHistory(id);
   }
 
-  /// Recorded by the seed, in memory: the demo has no server to keep it, and
-  /// the device store mirrors the subscription list, not its history.
   @override
-  Future<PaymentRecord> recordPayment(
+  Future<List<PriceChange>> getPriceHistory(String id) async {
+    await _ready();
+    return _seed.getPriceHistory(id);
+  }
+
+  @override
+  Future<void> recordPayment(
     String id, {
     required Money amount,
     required DateTime paidOn,
     required String idempotencyKey,
   }) async {
     await _ready();
-    return _seed.recordPayment(
+    await _seed.recordPayment(
       id,
       amount: amount,
       paidOn: paidOn,
       idempotencyKey: idempotencyKey,
     );
-  }
-
-  @override
-  Future<List<PriceChange>> getPriceHistory(String id) async {
-    await _ready();
-    return _seed.getPriceHistory(id);
   }
 
   @override

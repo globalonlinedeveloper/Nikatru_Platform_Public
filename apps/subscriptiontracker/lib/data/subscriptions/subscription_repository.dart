@@ -18,28 +18,22 @@ class SubscriptionRepository {
   Future<void> cancel(String id) => _api.deleteSubscription(id);
   Future<List<PaymentRecord>> history(String id) => _api.getPaymentHistory(id);
 
-  /// Whether this client can record a payment at all (DE-04). The detail
-  /// screen offers "Mark as paid" only then — never a button that cannot work.
-  bool get canRecordPayments => _api is PaymentWrites;
+  /// Whether this client can record a payment (DE-04). Every [ApiClient]
+  /// can since NO-10 (#1119); a test fake overrides it to hide the action.
+  bool get canRecordPayments => true;
 
-  /// "Mark as paid" — see [PaymentWrites.recordPayment].
-  Future<PaymentRecord> recordPayment(
+  /// "Mark as paid" — [ApiClient.recordPayment], idempotent by key.
+  Future<void> recordPayment(
     String id, {
     required Money amount,
     required DateTime paidOn,
     required String idempotencyKey,
-  }) {
-    final ApiClient api = _api;
-    if (api is! PaymentWrites) {
-      throw UnsupportedError('this client cannot record a payment');
-    }
-    return (api as PaymentWrites).recordPayment(
-      id,
-      amount: amount,
-      paidOn: paidOn,
-      idempotencyKey: idempotencyKey,
-    );
-  }
+  }) => _api.recordPayment(
+    id,
+    amount: amount,
+    paidOn: paidOn,
+    idempotencyKey: idempotencyKey,
+  );
 
   /// Every price edit on [id], newest first; none from a client that cannot
   /// read them.

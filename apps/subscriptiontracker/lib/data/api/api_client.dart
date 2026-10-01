@@ -23,30 +23,30 @@ abstract class ApiClient {
   );
   Future<void> deleteSubscription(String id);
   Future<List<PaymentRecord>> getPaymentHistory(String id);
-  Future<BudgetInfo> getBudget();
-  Future<BudgetInfo> updateBudget(BudgetInfo budget);
-  Future<Entitlements> getEntitlements();
-}
 
-/// "Mark as paid" and the price timeline (DE-04, DE-05): the two server
-/// features `services/subscriptiontracker-api` already served —
-/// `POST /v1/subscriptions/:id/payments` and `price_history` on
-/// `GET /v1/subscriptions/:id` — that no client called.
-///
-/// A SEPARATE interface, like [IdempotentCreates], so a client that predates
-/// it (a test fake) still compiles; [SubscriptionRepository] asks for it and
-/// says plainly when a client cannot record a payment.
-abstract interface class PaymentWrites {
-  /// Record a payment the user already made. Every attempt of ONE tap sends
-  /// the same [idempotencyKey], so a replay after a lost answer adds nothing
-  /// where the server honours the key (lane fix-payments-idempotency).
-  Future<PaymentRecord> recordPayment(
+  /// Record that [id] was paid [amount] on [paidOn] — "Mark as paid" (ST-R5,
+  /// NO-10): `POST /v1/subscriptions/:id/payments`. [idempotencyKey] makes a
+  /// retried press (a notification action can be delivered twice) one
+  /// payment; a host that does not read it yet ignores the query parameter.
+  Future<void> recordPayment(
     String id, {
     required Money amount,
     required DateTime paidOn,
     required String idempotencyKey,
   });
+  Future<BudgetInfo> getBudget();
+  Future<BudgetInfo> updateBudget(BudgetInfo budget);
+  Future<Entitlements> getEntitlements();
+}
 
+/// The price timeline (DE-05): `price_history` on `GET /v1/subscriptions/:id`,
+/// which the API served and no client read. "Mark as paid" (DE-04) is
+/// [ApiClient.recordPayment], which every client carries (#1119, NO-10).
+///
+/// A SEPARATE interface, like [IdempotentCreates], so a client that predates
+/// it (a test fake) still compiles; [SubscriptionRepository] asks for it and
+/// says plainly when a client cannot record a payment.
+abstract interface class PaymentWrites {
   /// Every price edit on [id], newest first.
   Future<List<PriceChange>> getPriceHistory(String id);
 }

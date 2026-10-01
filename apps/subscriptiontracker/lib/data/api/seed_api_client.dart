@@ -24,12 +24,6 @@ class SeedApiClient implements ApiClient, CategoriesApi, PaymentWrites {
   List<Subscription> _subs = DemoData.subscriptions();
   BudgetInfo _budget = DemoData.budget();
 
-  /// Payments recorded by hand ("Mark as paid", DE-04), by Idempotency-Key:
-  /// a replay of one key answers the first record and adds nothing — the
-  /// behaviour the live route gains with lane fix-payments-idempotency.
-  final Map<String, ({String subId, PaymentRecord record})> _manual =
-      <String, ({String subId, PaymentRecord record})>{};
-
   /// Every price edit, by row, newest first — the in-memory twin of the
   /// route's `INSERT INTO price_change` on a PATCH that moves the price.
   final Map<String, List<PriceChange>> _priceChanges =
@@ -110,27 +104,6 @@ class SeedApiClient implements ApiClient, CategoriesApi, PaymentWrites {
   }
 
   @override
-  Future<PaymentRecord> recordPayment(
-    String id, {
-    required Money amount,
-    required DateTime paidOn,
-    required String idempotencyKey,
-  }) async {
-    final ({String subId, PaymentRecord record})? seen =
-        _manual[idempotencyKey];
-    if (seen != null) return seen.record;
-    if (!_subs.any((Subscription s) => s.id == id && s.deletedAt == null)) {
-      throw ApiException(404, 'Not found');
-    }
-    final PaymentRecord record = PaymentRecord(
-      date: DateTime(paidOn.year, paidOn.month, paidOn.day),
-      amount: amount,
-    );
-    _manual[idempotencyKey] = (subId: id, record: record);
-    return record;
-  }
-
-  @override
   Future<List<PriceChange>> getPriceHistory(String id) async =>
       List<PriceChange>.unmodifiable(
         _priceChanges[id] ?? const <PriceChange>[],
@@ -139,6 +112,26 @@ class SeedApiClient implements ApiClient, CategoriesApi, PaymentWrites {
   @override
   Future<void> deleteSubscription(String id) async =>
       _subs.removeWhere((Subscription s) => s.id == id);
+
+  /// Payments recorded by hand this session, per subscription — demo data,
+  /// so it lives as long as the process does. Keyed by idempotency key too,
+  /// so a repeated press records one.
+  final Map<String, List<PaymentRecord>> _manual =
+      <String, List<PaymentRecord>>{};
+  final Set<String> _manualKeys = <String>{};
+
+  @override
+  Future<void> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {
+    if (!_manualKeys.add(idempotencyKey)) return;
+    (_manual[id] ??= <PaymentRecord>[]).add(
+      PaymentRecord(date: paidOn, amount: amount),
+    );
+  }
 
   /// The charges this row has DATES for: every renewal from its
   /// `firstChargeOn` up to today, by the platform's own rule
@@ -154,10 +147,8 @@ class SeedApiClient implements ApiClient, CategoriesApi, PaymentWrites {
     final Subscription s = _subs.firstWhere((Subscription s) => s.id == id);
     final DateTime? first = s.firstChargeOn;
     final Cadence? cadence = s.cycle;
-    final List<PaymentRecord> manual = <PaymentRecord>[
-      for (final ({String subId, PaymentRecord record}) m in _manual.values)
-        if (m.subId == id) m.record,
-    ];
+    // Recorded by hand ("Mark as paid"), merged with the rolled ones below.
+    final List<PaymentRecord> manual = <PaymentRecord>[...?_manual[id]];
     final List<PaymentRecord> derived;
     if (first == null || cadence == null) {
       derived = const <PaymentRecord>[];

@@ -145,34 +145,6 @@ class DioApiClient
     });
   }
 
-  /// `POST /v1/subscriptions/:id/payments` (DE-04): `amount` in major units
-  /// and `paid_on` as the route reads them, the currency the row is in, and
-  /// the Idempotency-Key every retry of one tap shares.
-  @override
-  Future<PaymentRecord> recordPayment(
-    String id, {
-    required Money amount,
-    required DateTime paidOn,
-    required String idempotencyKey,
-  }) async {
-    final Object? data = await _rest.post(
-      '/subscriptions/$id/payments',
-      body: <String, dynamic>{
-        'amount': amount.toMajorUnits(),
-        'paid_on': Subscription.dateOnly(paidOn),
-        'currency': amount.currencyCode,
-      },
-      idempotencyKey: idempotencyKey,
-    );
-    return _rest.decode(
-      data,
-      (Object? b) => PaymentRecord.fromJson(
-        b! as Map<String, dynamic>,
-        fallbackCurrencyCode: amount.currencyCode,
-      ),
-    );
-  }
-
   /// `price_history` off `GET /v1/subscriptions/:id` (DE-05). A server that
   /// predates 0005 serves no such key: no edits, not a failure.
   @override
@@ -234,6 +206,28 @@ class DioApiClient
   @override
   Future<void> deleteCategory(String id) async {
     await _rest.delete('/categories/$id');
+  }
+
+  @override
+  Future<void> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {
+    final String ymd =
+        '${paidOn.year.toString().padLeft(4, '0')}-'
+        '${paidOn.month.toString().padLeft(2, '0')}-'
+        '${paidOn.day.toString().padLeft(2, '0')}';
+    await _rest.post(
+      '/subscriptions/$id/payments',
+      body: <String, Object?>{
+        'amount': amount.toMajorUnits(),
+        'paid_on': ymd,
+        'currency': amount.currencyCode,
+      },
+      idempotencyKey: idempotencyKey,
+    );
   }
 
   @override

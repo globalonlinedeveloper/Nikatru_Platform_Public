@@ -170,14 +170,20 @@ import 'support/width_harness.dart';
 
 /// The desktop shell width (see the header) at a viewport tall enough that no
 /// screen in the sweep scrolls. Both halves are asserted, not assumed:
-/// [_everythingIsLaidOut] fails if 2600 ever stops being enough.
+/// [_everythingIsLaidOut] fails if 3000 ever stops being enough.
 ///
 /// ⏱ 2026-09-30 · ST-Y3/ST-Y4: 2400 -> 2600. Settings gained three card
 /// headings and the Help section's Rate and Feedback rows and scrolled by
 /// 142 px at 2400 — measured by [_everythingIsLaidOut], which is what it is for.
 /// ⏱ 2026-10-01 · ST-T9 (AD-05): 2600 -> 2700. Settings gained the Categories
 /// row and scrolled by 10 px at 2600, measured the same way.
-const Size kKeyboardSurface = Size(1079, 2700);
+// ⏱ 2026-10-01 · NO-12/NO-13: 2600 -> 2800. Settings grew again by quiet
+// hours and "Send a test reminder" — [_everythingIsLaidOut] measures it. The
+// width, and so every count, is as it was; the height only has to hold the
+// whole screen.
+// ⏱ 2026-10-01 · club apply-st on NO-12/NO-13: both growths together; the
+// height is re-measured by [_everythingIsLaidOut].
+const Size kKeyboardSurface = Size(1079, 3000);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
 ///
@@ -677,8 +683,12 @@ void main() {
         // ⏱ 2026-10-01 · T20 (XP-06): 26 -> 27, the हिन्दी radio — a control,
         // and like en and ta reached by arrow inside the group, not by Tab.
         // (On top of ST-T9's Categories row: 29 -> 30, reachable 27.)
-        controls: 30 + core.Money.symbols.length,
-        reachable: 27 + core.Money.symbols.length,
+        // ⏱ 2026-10-01 · NO-13: 28 -> 30 and 26 -> 28 — the "Quiet hours"
+        // switch and "Send a test reminder", both in the Tab orbit.
+        // ⏱ 2026-10-01 · club apply-st on NO-13: both sets together — 32
+        // controls, 29 reachable (the three radios stay off the Tab orbit).
+        controls: 32 + core.Money.symbols.length,
+        reachable: 29 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,

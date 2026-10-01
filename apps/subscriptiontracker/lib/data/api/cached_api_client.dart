@@ -436,28 +436,23 @@ class CachedApiClient implements ApiClient, CategoriesApi, PaymentWrites {
   Future<List<PaymentRecord>> getPaymentHistory(String id) async =>
       _network.getPaymentHistory(await _outbox.resolve(id));
 
-  /// Straight to the network, like [getPaymentHistory]: a payment is a fact
-  /// the user is recording NOW, and the Idempotency-Key makes the user's own
-  /// retry safe. Not queued in the outbox — "saved" must mean the server has
-  /// it, and an offline tap says it was not recorded (DE-09).
+  /// A write: the network or an error, never the cache, and not queued — the
+  /// outbox carries subscription rows only, so an offline "Mark as paid"
+  /// fails where the user sees it (the notification stays up, the row says
+  /// so) and a second press is the same payment (the key is derived). A row
+  /// added offline is resolved to its server id first, as on every read.
   @override
-  Future<PaymentRecord> recordPayment(
+  Future<void> recordPayment(
     String id, {
     required Money amount,
     required DateTime paidOn,
     required String idempotencyKey,
-  }) async {
-    final ApiClient network = _network;
-    if (network is! PaymentWrites) {
-      throw UnsupportedError('this client cannot record a payment');
-    }
-    return (network as PaymentWrites).recordPayment(
-      await _outbox.resolve(id),
-      amount: amount,
-      paidOn: paidOn,
-      idempotencyKey: idempotencyKey,
-    );
-  }
+  }) async => _network.recordPayment(
+    await _outbox.resolve(id),
+    amount: amount,
+    paidOn: paidOn,
+    idempotencyKey: idempotencyKey,
+  );
 
   /// Not cached, for the reason [getPaymentHistory] is not.
   @override

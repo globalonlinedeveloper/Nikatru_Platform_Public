@@ -484,7 +484,9 @@ kExpected = <String, ({int controls, int reachable})>{
   // due within seven days of the pinned 2026-08-21 (see [kSweptAs]); each
   // opens its plan (ST-U8, C16). On stored dates every seed row was in the
   // past, so no card was ever built and this read 1.
-  '/notifications': (controls: 5, reachable: 5),
+  // ⏱ 2026-10-01 · NO-10: 5 -> 21. Each of the four cards gains its row
+  // actions — Mark as paid, Snooze, Keep it, How to stop — all on the orbit.
+  '/notifications': (controls: 21, reachable: 21),
   // 2 -> 4, i.e. NOTHING on this route is off the orbit any more. `Back`
   // and `More options` were the app bar; `_iconButton` now builds on
   // `FocusableTap`. ⏱ 2026-09-28 · ST-U5 (B14): 4 -> 3, because "More
