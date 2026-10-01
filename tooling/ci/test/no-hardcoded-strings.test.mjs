@@ -1757,13 +1757,22 @@ const b = Text('Hardcoded right after a URL');
     // misunderstanding as the limb I wrote — assert-seams-wired.mjs shipped with
     // all six of its fixture tests passing against a broken guard.
     describe('against the REAL repository', () => {
-      test('prints the three dead keys, exits 0, and states its domain', () => {
+      test('prints the dead keys, exits 0, and states its domain', () => {
         const { code, out } = run(REPO);
         assert.equal(code, 0, out);
         assert.match(out, /👤 OWNER l10n render direction/);
-        for (const key of ['errorTitle', 'errorMessage', 'notificationActionOpen']) {
+        for (const key of ['notificationActionOpen']) {
           assert.match(out, new RegExp(`${key} \\[declared in \\d of 3 enforced tree\\(s\\)\\]`), key);
         }
+        // ⏱ 2026-10-01 · ST truth pass (EN-17) — errorTitle AND errorMessage
+        // ARE RENDERED NOW, so they left this list (it was "the three dead
+        // keys"). `AppErrorScreen.install` asks the app for its copy where the
+        // error widget is BUILT, and the app answers from
+        // `appErrorCopy` (apps/subscriptiontracker/lib/core/router/
+        // router_provider.dart) — the localized error screen the owner line
+        // was asking for. Pinned ABSENT, as appTitle is below.
+        assert.doesNotMatch(out, /^\s+errorTitle \[declared in/m);
+        assert.doesNotMatch(out, /^\s+errorMessage \[declared in/m);
         // appTitle has a LIVE JavaScript reader — assert-stamp-text-fidelity.mjs
         // fails the brick lane when it disagrees with the stamped display name.
         // Filing it beside errorTitle would invite a delete that reddens CI, so
@@ -1776,7 +1785,9 @@ const b = Text('Hardcoded right after a URL');
         // offer. Pinned ABSENT, so the day it goes unrendered again it is
         // re-filed here instead of drifting back in unread.
         assert.doesNotMatch(out, /^\s+appTitle \[declared in/m);
-        assert.match(out, /ships as a hardcoded LITERAL at packages\/design_system\/lib\/src\/widgets\/system_screens\.dart:\d+/);
+        // The LITERAL branch, still exercised: it was errorTitle's English
+        // fallback in system_screens.dart until that key started rendering.
+        assert.match(out, /notificationActionOpen \[declared in \d of 3 enforced tree\(s\)\] — but its English copy ships as a hardcoded LITERAL at /);
         assert.doesNotMatch(out, /COVERAGE LOST/);
 
         // 🔴 THE DOMAIN SENTENCE, PINNED TO THE REST OF THE PRINT. The title of

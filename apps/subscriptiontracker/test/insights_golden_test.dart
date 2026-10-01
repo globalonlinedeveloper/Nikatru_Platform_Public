@@ -33,6 +33,7 @@ import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/features/insights/budget_card.dart';
 import 'package:subscriptiontracker/features/insights/budget_editor.dart';
+import 'package:subscriptiontracker/features/insights/forecast_card.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/money_providers.dart';
@@ -65,6 +66,39 @@ List<Subscription> _subs() {
     s('3', 'Tunes', 'Music', 1099, 20),
     s('4', 'Chat', 'AI tools', 2000, 40),
     s('5', 'Drive', 'Cloud', 299, 45),
+  ];
+}
+
+/// The unlocked forecast's rows: every cadence the projection has to count,
+/// and a paused plan it must not.
+List<Subscription> _forecastRows() {
+  Subscription s(
+    String id,
+    int cents,
+    Cadence cycle,
+    DateTime next, {
+    SubscriptionStatus status = SubscriptionStatus.active,
+  }) => Subscription(
+    id: id,
+    name: id,
+    category: 'Video',
+    price: Money(cents, 'USD'),
+    cycle: cycle,
+    nextRenewal: next,
+    status: status,
+  );
+  return <Subscription>[
+    s('weekly', 500, Cadence.weekly, DateTime(2026, 10, 2)),
+    s('monthly', 1549, Cadence.monthly, DateTime(2026, 10, 15)),
+    s('quarterly', 2999, Cadence.quarterly, DateTime(2026, 11, 5)),
+    s('yearly', 9900, Cadence.yearly, DateTime(2027, 3, 1)),
+    s(
+      'paused',
+      4000,
+      Cadence.monthly,
+      DateTime(2026, 10, 20),
+      status: SubscriptionStatus.paused,
+    ),
   ];
 }
 
@@ -109,6 +143,8 @@ Future<void> _pump(
   Brightness brightness,
   Widget home, {
   _Repo? repo,
+  bool locked = true,
+  DateTime Function()? now,
 }) async {
   tester.view.physicalSize = size * 0.5;
   tester.view.devicePixelRatio = 0.5;
@@ -119,7 +155,8 @@ Future<void> _pump(
       ...defaultWidthOverrides(),
       subscriptionRepositoryProvider.overrideWithValue(repo ?? _Repo()),
       currencyCodeProvider.overrideWithValue('USD'),
-      paywallLockedProvider.overrideWithValue(true),
+      paywallLockedProvider.overrideWithValue(locked),
+      if (now != null) nowProvider.overrideWithValue(now),
     ],
   );
   addTearDown(c.dispose);
@@ -180,6 +217,39 @@ void main() {
         await expectLater(
           find.byType(MaterialApp),
           matchesGoldenFile('goldens/insights_${c.key}_${b.name}.png'),
+        );
+      }, skip: !Platform.isLinux);
+
+      // ⏱ ST truth pass (2026-10-01, IN-03): the Pro card UNLOCKED — the
+      // goldens above photograph only its locked preview, so the one paid
+      // feature's real bars had no picture. A pinned day and fixed dates: a
+      // weekly, a monthly, a quarterly and a yearly plan, and a paused one
+      // that must draw nothing.
+      testWidgets('Forecast unlocked · ${c.key} · ${b.name}', (
+        WidgetTester tester,
+      ) async {
+        final List<Subscription> rows = _forecastRows();
+        await _pump(
+          tester,
+          c.value,
+          b,
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: ForecastCard(
+              subs: rows,
+              money: MoneyFormatter('en'),
+              currencyCode: 'USD',
+            ),
+          ),
+          repo: _Repo(subs: rows),
+          locked: false,
+          now: () => DateTime(2026, 10, 1, 9),
+        );
+        await expectLater(
+          find.byType(MaterialApp),
+          matchesGoldenFile(
+            'goldens/insights_forecast_unlocked_${c.key}_${b.name}.png',
+          ),
         );
       }, skip: !Platform.isLinux);
 
