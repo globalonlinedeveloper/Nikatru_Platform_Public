@@ -64,6 +64,23 @@ void Function()? exportDataTap(WidgetRef ref) {
   };
 }
 
+/// T20 (HO-08, IN-12) — the SAME seam for a file a screen built itself: the
+/// rows a home selection exports, the month Insights shares. Null while
+/// `features.exports` is off, exactly as [exportDataTap] is, so one flag
+/// governs every way a file leaves the app.
+///
+/// 🔴 NOTHING LEAVES THE DEVICE UNTIL THE USER HANDS IT ON. The exporter
+/// opens the platform's share sheet, download or save dialog; no byte is sent
+/// anywhere by this app, and no network call is made to build the file.
+Future<core.ExportOutcome> Function(core.ExportFile file)? exportFileTap(
+  WidgetRef ref,
+) {
+  final core.AppConfig cfg =
+      ref.watch(appConfigProvider).value ?? kAppDefaultConfig;
+  if (!cfg.feature('exports')) return null;
+  return (core.ExportFile file) => ref.read(fileExporterProvider).export(file);
+}
+
 /// Where the subscriptions and the budget live when no backend is configured —
 /// which is the DEFAULT posture and what every unconfigured build ships as.
 ///

@@ -193,6 +193,8 @@ void main() {
       'cancelled_on',
       'deleted_at',
       'cancel_url',
+      // ⏱ 2026-10-01 · T20 (AD-12): the tags cell — kept and listed too.
+      'tags',
     ], reason: 'kept and listed, never dropped');
     final core.ImportPlan plan = core.ImportPlan.build(
       table,

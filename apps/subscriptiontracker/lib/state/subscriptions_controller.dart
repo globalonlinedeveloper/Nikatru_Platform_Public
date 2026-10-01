@@ -460,6 +460,80 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     ref.invalidate(paymentHistoryProvider(id));
   }
 
+  // ── BULK (train T20, HO-08) ────────────────────────────────────────────────
+  // A selection on home, or a swipe, acts on rows through the SAME one-row
+  // writes above — one PATCH per row, each re-arming the reminders — so a bulk
+  // pause cannot mean anything a single pause does not. What a bulk action
+  // adds is ONE Undo: each method returns the rows as they were, and its twin
+  // puts every one of them back.
+
+  /// Soft-delete every row in [ids] ([cancelSubscription] each). Returns the
+  /// rows as they were, in [ids]' order — the input to [undoDeleteMany].
+  Future<List<Subscription>> deleteMany(Iterable<String> ids) async {
+    final List<Subscription> removed = <Subscription>[];
+    for (final String id in ids.toList()) {
+      final Subscription? was = await cancelSubscription(id);
+      if (was != null) removed.add(was);
+      if (!ref.mounted) break; // Riverpod 3: the provider may be gone.
+    }
+    return removed;
+  }
+
+  /// Undo [deleteMany]: every row that CAN come back ([canUndoDelete]) does.
+  /// A row the hard-DELETE fallback removed has nothing left to restore.
+  Future<void> undoDeleteMany(Iterable<String> ids) async {
+    for (final String id in ids.toList()) {
+      if (!canUndoDelete(id)) continue;
+      await undoDelete(id);
+      if (!ref.mounted) return;
+    }
+  }
+
+  /// Pause every row in [ids]. Returns the rows as they were, for
+  /// [restoreStatuses].
+  Future<List<Subscription>> pauseMany(Iterable<String> ids) =>
+      _statusMany(ids, SubscriptionStatus.paused, pauseSubscription);
+
+  /// Mark every row in [ids] cancelled (today). Returns the rows as they
+  /// were, for [restoreStatuses].
+  Future<List<Subscription>> markCancelledMany(Iterable<String> ids) =>
+      _statusMany(ids, SubscriptionStatus.cancelled, markCancelled);
+
+  /// Undo [pauseMany] / [markCancelledMany]: each row back to the status and
+  /// the cancel date it had — not to "active", which would end a trial.
+  Future<void> restoreStatuses(Iterable<Subscription> before) async {
+    for (final Subscription was in before.toList()) {
+      final DateTime? on = was.cancelledOn;
+      await updateSubscription(was.id, <String, dynamic>{
+        'status': was.status.name,
+        'cancelled_on': on == null ? null : Subscription.dateOnly(on),
+      });
+      if (!ref.mounted) return;
+    }
+  }
+
+  /// [write] for every row of [ids] not already [target]; the rows as they
+  /// were before it.
+  Future<List<Subscription>> _statusMany(
+    Iterable<String> ids,
+    SubscriptionStatus target,
+    Future<void> Function(String id) write,
+  ) async {
+    final Map<String, Subscription> byId = <String, Subscription>{
+      for (final Subscription s in observedList ?? const <Subscription>[])
+        s.id: s,
+    };
+    final List<Subscription> before = <Subscription>[];
+    for (final String id in ids.toList()) {
+      final Subscription? was = byId[id];
+      if (was == null || was.status == target) continue;
+      await write(id);
+      before.add(was);
+      if (!ref.mounted) break;
+    }
+    return before;
+  }
+
   /// Keep the OS reminder set in step with [subs] — AWAITED, and never a
   /// throw.
   ///

@@ -512,7 +512,11 @@ const REQUIRED_COVERAGE = [
     // ⏱ 2026-10-01 · club apply-st: the two raises above landed TOGETHER, so
     // 18 → 20 — /setup (+1) and the stop flow's net +1. Read off this guard's
     // own run: "20 surface(s) reachable, 20 measured — the two sets are EQUAL".
-    surfaces: 20,
+    // ⏱ 2026-10-01 · T20 (IN-12): 20 → 21 — the share-a-month sheet, a dialog
+    // from a tablet up (showAdaptiveSheet), measured at kPhone, kTablet and
+    // kDesktop by width_share_month_test.dart. Read off this guard's own run:
+    // "21 surface(s) reachable, 21 measured — the two sets are EQUAL".
+    surfaces: 21,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
     // MEASURED 2026-09-05: `ls apps/subscriptiontracker/test | grep -cE
@@ -535,7 +539,7 @@ const REQUIRED_COVERAGE = [
     // file(s)`), so this is still one under it: the raise is the one the note
     // above owed, not a re-measure to the tree.
     widthTestFiles: 17, // 16 `width_*_test.dart` + `responsive_width_test.dart`
-    coveredSurfaces: 20,
+    coveredSurfaces: 21,
     label: 'the app this guard was written for — every surface measured, and it fails if one stops being',
   },
   {

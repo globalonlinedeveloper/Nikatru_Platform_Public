@@ -5,6 +5,11 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../../l10n/app_localizations.dart';
 
+// ST-T9 (EN-18): the after-sign-in setup is the chassis step list; the app
+// screen hands it this app's three steps. Reached through this file, the one
+// recorded import of the chassis (tooling/chassis-parity.json `adopted`).
+export 'package:nikatru_chassis_screens/firstrun/setup_steps_view.dart'
+    show SetupStep, SetupStepsView;
 export 'package:nikatru_chassis_screens/settings/help_section.dart'
     show HelpKeys, SettingsHeading, helpCard;
 export 'package:nikatru_chassis_screens/settings/settings_screen.dart'

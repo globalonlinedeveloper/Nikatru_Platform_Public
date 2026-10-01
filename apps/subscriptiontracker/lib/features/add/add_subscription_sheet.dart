@@ -95,7 +95,10 @@ const int _pickLimit = 12;
 // LABELS are arb keys in both locales.
 
 /// Opens the add sheet — or, with [initial], the EDIT sheet (ST-E1):
-/// prefilled from the row, and saving sends one PATCH of only what changed.
+/// prefilled from the row, and saving sends one PATCH of only what changed —
+/// or, with [duplicateOf], the ADD sheet prefilled from that row (train T20,
+/// AD-10), named `<name> (2)`: saving POSTs a NEW row and leaves the original
+/// exactly as it was.
 ///
 /// The presentation — root navigator, scroll-controlled, M3's 640 width cap —
 /// is the chassis's [showAppFormSheet]; `width_add_sheet_test.dart` measures the
@@ -106,11 +109,26 @@ const int _pickLimit = 12;
 Future<void> showAddSubscriptionSheet(
   BuildContext context, {
   Subscription? initial,
+  Subscription? duplicateOf,
 }) {
+  assert(
+    initial == null || duplicateOf == null,
+    'an edit and a duplicate are two different sheets',
+  );
+  // Named HERE, where a context is live: the sheet's `initState` cannot read
+  // the localisations. A copy is told apart from its original by its name,
+  // so the list never shows two rows nobody can tell apart.
+  final Subscription? copy = duplicateOf?.copyWith(
+    name: AppLocalizations.of(context).duplicateName(duplicateOf.name),
+  );
   return showAppFormSheet<void>(
     context,
-    builder: (_) =>
-        SubscriptionFormSheet(initial: initial, pickFirst: initial == null),
+    builder: (_) => SubscriptionFormSheet(
+      initial: initial,
+      // A duplicate opens on the form, prefilled: it is a copy, not a pick.
+      pickFirst: initial == null && copy == null,
+      duplicateOf: copy,
+    ),
   );
 }
 
@@ -153,6 +171,7 @@ class SubscriptionFormSheet extends ConsumerStatefulWidget {
     super.key,
     this.initial,
     this.pickFirst = false,
+    this.duplicateOf,
     @visibleForTesting this.now = DateTime.now,
   });
 
@@ -162,6 +181,11 @@ class SubscriptionFormSheet extends ConsumerStatefulWidget {
   /// Whether an add opens on the catalogue pick step (ST-T9, AD-03).
   /// [showAddSubscriptionSheet] sets it; a test of the bare form leaves it off.
   final bool pickFirst;
+
+  /// The row a NEW one is copied from (AD-10), already renamed by
+  /// [showAddSubscriptionSheet], or null. Only prefills: the save is an add,
+  /// so [initial] stays null and nothing is PATCHed.
+  final Subscription? duplicateOf;
 
   /// The clock "today" is read from — the default renewal date, the picker's
   /// range and the past-start note. A parameter only so a golden of the form
@@ -178,6 +202,10 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
   final TextEditingController _plan = TextEditingController();
   final TextEditingController _notes = TextEditingController();
   final TextEditingController _website = TextEditingController();
+
+  /// ST-AD12: the row's tags as typed, comma-separated; normalised on save by
+  /// `Subscription.normaliseTags`, the rule the route enforces.
+  final TextEditingController _tags = TextEditingController();
 
   /// The custom cadence's count ("every [N] …").
   final TextEditingController _every = TextEditingController(text: '1');
@@ -262,12 +290,14 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
   @override
   void initState() {
     super.initState();
-    final Subscription? s = widget.initial;
+    final Subscription? s = widget.initial ?? widget.duplicateOf;
     _currency =
         s?.currencyCode ??
         ref.read(subscriptionsControllerProvider.notifier).newRowCurrencyCode;
     if (s != null) {
+      // AD-10: a duplicate arrives already named "<name> (2)".
       _name.text = s.name;
+      _tags.text = s.tags.join(', ');
       _price.text = _plainAmount(s.price);
       _plan.text = s.plan;
       _notes.text = s.notes;
@@ -302,6 +332,7 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
           (_notes, 'notes'),
           (_website, 'cancel_url'),
           (_every, 'cycle_every'),
+          (_tags, 'tags'),
         ]) {
       c.addListener(() {
         _serverErrors.remove(key);
@@ -322,6 +353,7 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     _search.dispose();
     _railHolder.dispose();
     _thenPrice.dispose();
+    _tags.dispose();
     super.dispose();
   }
 
@@ -485,6 +517,7 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
           : was?.priceAfterTrial,
       priceAfterTrialSupported:
           was?.priceAfterTrialSupported ?? _afterTrialSupported,
+      tags: _typedTags,
     );
   }
 
@@ -538,6 +571,10 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
   /// channel defaults to INR), else the device's.
   String? get _region =>
       _currency == 'INR' ? 'IN' : ref.read(deviceRegionProvider);
+
+  /// The tags field as the list the route accepts (ST-AD12).
+  List<String> get _typedTags =>
+      Subscription.normaliseTags(_tags.text.split(','));
 
   static bool _sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
@@ -601,6 +638,9 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
   /// with the column (`price must be …`, `cancel_url must be …`).
   static String? _fieldOf(String detail) {
     for (final (String prefix, String field) in <(String, String)>[
+      // First: the tags detail ("tags must be a list of … labels") names no
+      // other column, and nothing else names tags.
+      ('tags', 'tags'),
       ('price', 'price'),
       ('currency', 'price'),
       ('name', 'name'),
@@ -693,7 +733,17 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
         if (_rail != null) _input(_railHolder, null),
         _leadDaysField(l10n),
         _noticeField(l10n),
-        _input(_plan, null),
+        // ST-AD12: the tags SHARE the plan's row, as the currency shares the
+        // price's — two short free-text fields — so the sheet is no taller
+        // and its actions stay where a 375 px phone already showed them.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(child: _input(_plan, null)),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(child: _input(_tags, l10n.tagsHint)),
+          ],
+        ),
         _input(_website, null, keyboard: TextInputType.url),
         _input(_notes, null, keyboard: TextInputType.multiline),
       ],
@@ -1242,6 +1292,9 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
         _serverErrors['price_after_trial_minor'] ??
             (bad ? l10n.priceErrorInvalid : null),
       );
+    }
+    if (identical(c, _tags)) {
+      return (l10n.fieldLabelTags, _serverErrors['tags']);
     }
     return (l10n.fieldLabelName, _serverErrors['name']);
   }

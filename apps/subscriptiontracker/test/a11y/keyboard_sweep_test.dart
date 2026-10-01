@@ -520,7 +520,8 @@ kExpected = <String, ({int controls, int reachable})>{
   // ⏱ T12: 6 -> 17 — each of the seed's ten category rows is a control now
   // (IN-07, it opens Home filtered), and the still-using question gained its
   // "No" (IN-08).
-  '/insights': (controls: 17, reachable: 17),
+  // ⏱ T20 (IN-12): 17 -> 18, the header's Share control.
+  '/insights': (controls: 18, reachable: 18),
 };
 
 /// Every [GoRoute] in the tree, including the ones nested under a shell.

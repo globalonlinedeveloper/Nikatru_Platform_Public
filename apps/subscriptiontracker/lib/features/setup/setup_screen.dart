@@ -12,7 +12,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:nikatru_chassis_screens/firstrun/setup_steps_view.dart';
 import 'package:nikatru_core/nikatru_core.dart'
     show ServiceCatalogue, ServiceEntry;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
@@ -24,6 +23,7 @@ import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 import '../add/service_prefill.dart';
 import '../settings/reminder_settings.dart' show ReminderChannelsCard;
+import '../shared/chassis_adapters.dart' show SetupStep, SetupStepsView;
 
 /// How many catalogue tiles the pick step offers: the region's first, the
 /// same ordering the add sheet's pick step uses.

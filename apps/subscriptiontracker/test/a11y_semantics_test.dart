@@ -90,6 +90,7 @@ import 'package:subscriptiontracker/features/detail/subscription_detail_screen.d
 import 'package:subscriptiontracker/features/home/home_screen.dart';
 import 'package:subscriptiontracker/features/insights/budget_editor.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
+import 'package:subscriptiontracker/features/insights/share_month.dart';
 import 'package:subscriptiontracker/features/monetization/manage_plan_screen.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
 import 'package:subscriptiontracker/features/notifications/notifications_screen.dart';
@@ -1776,6 +1777,75 @@ void main() {
           isTrue,
           reason: 'two identical "No cap" fields are two unnamed fields',
         );
+      });
+    });
+  });
+
+  // ═══ TIER 1 · INSIGHTS › SHARE (T20, IN-12) ═══════════════════════════════
+  group('share a month · the sheet', () {
+    testWidgets('nothing on the share-a-month sheet is naked', (
+      WidgetTester tester,
+    ) async {
+      final GlobalKey tiles = GlobalKey();
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    RepaintBoundary(
+                      key: tiles,
+                      child: const SizedBox(height: 8),
+                    ),
+                    TextButton(
+                      onPressed: () => showShareMonthSheet(
+                        context,
+                        subs: const <Subscription>[],
+                        month: DateTime(2026, 9),
+                        tiles: tiles,
+                        export: (core.ExportFile _) async =>
+                            core.ExportOutcome.exported,
+                      ),
+                      child: const Text('open'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        // The modal scrim is stepped around by the property that identifies
+        // it (a dismiss action), as the budget editor's sweep argues.
+        final List<SemanticsNode> tappable = _nodes(tester)
+            .where(
+              (SemanticsNode n) =>
+                  n.getSemanticsData().hasAction(SemanticsAction.tap),
+            )
+            .toList();
+        final List<SemanticsNode> barrier = tappable
+            .where(
+              (SemanticsNode n) =>
+                  n.getSemanticsData().hasAction(SemanticsAction.dismiss),
+            )
+            .toList();
+        expect(barrier, hasLength(1));
+        final List<NakedControl> naked = tappable
+            .where(
+              (SemanticsNode n) =>
+                  !n.getSemanticsData().hasAction(SemanticsAction.dismiss),
+            )
+            .map(NakedControl.new)
+            .where((NakedControl n) => n.missesRole || n.missesName)
+            .toList();
+        // The picture and the CSV: two answers, each a named button.
+        expect(tappable.length - barrier.length, greaterThanOrEqualTo(2));
+        expect(naked, isEmpty, reason: naked.join(', '));
+        expect(nakedControls(tester), hasLength(1));
       });
     });
   });

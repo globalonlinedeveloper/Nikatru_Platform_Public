@@ -111,6 +111,7 @@ class Subscription {
     this.railHolder,
     this.priceAfterTrial,
     this.priceAfterTrialSupported = false,
+    this.tags = const <String>[],
   });
 
   /// The catalogue service this row was picked from (ST-T9, AD-03) — the
@@ -211,6 +212,47 @@ class Subscription {
 
   /// Where to cancel it — an http(s) URL the API validated.
   final String? cancelUrl;
+
+  /// The user's own free-text labels ("family", "work") — the API's `tags`
+  /// (0007_tags.sql, ST-AD12). Normalised by [normaliseTags]: trimmed, never
+  /// blank, one spelling per tag whatever its case, at most [maxTags] of at
+  /// most [maxTagLength] characters each — the bounds the route enforces, so
+  /// a list this model holds is a list the server accepts.
+  final List<String> tags;
+
+  /// The route's bounds on [tags] (`MAX_TAGS`, `MAX_TAG` in
+  /// services/subscriptiontracker-api/src/routes/subscriptions.ts).
+  static const int maxTags = 10;
+  static const int maxTagLength = 32;
+
+  /// Whether this row carries [tag], compared without case: "Family" and
+  /// "family" are one label, and a filter must not split them.
+  bool hasTag(String tag) {
+    final String want = tag.trim().toLowerCase();
+    return tags.any((String t) => t.toLowerCase() == want);
+  }
+
+  /// [raw] as a tag list: strings only, trimmed, blanks dropped, the first
+  /// spelling of each case-insensitive duplicate kept, capped at [maxTags]
+  /// tags of at most [maxTagLength] characters. Anything that is not a list
+  /// is no tags — never a guess.
+  static List<String> normaliseTags(Object? raw) {
+    if (raw is! List) return const <String>[];
+    final List<String> out = <String>[];
+    final Set<String> seen = <String>{};
+    for (final Object? t in raw) {
+      if (t is! String) continue;
+      final String trimmed = t.trim();
+      if (trimmed.isEmpty) continue;
+      final String tag = trimmed.length > maxTagLength
+          ? trimmed.substring(0, maxTagLength).trim()
+          : trimmed;
+      if (!seen.add(tag.toLowerCase())) continue;
+      out.add(tag);
+      if (out.length == maxTags) break;
+    }
+    return List<String>.unmodifiable(out);
+  }
 
   /// The cadence every MONEY figure is computed with: [cycle], or monthly for
   /// a row that has none (see [cycle] on why the date does not do the same).
@@ -363,6 +405,7 @@ class Subscription {
       j['price_history'],
       fallbackCurrencyCode: fallbackCurrencyCode,
     ),
+    tags: normaliseTags(j['tags']),
   );
 
   static String? _textOrNull(Object? raw) =>
@@ -506,6 +549,9 @@ class Subscription {
     // Train T11's column, behind its capability exactly like `notice_days`.
     if (priceAfterTrialSupported)
       'price_after_trial_minor': priceAfterTrial?.minorUnits,
+    // ST-AD12 (0007_tags.sql). Always sent: an API before 0007 ignores a key
+    // its validator does not name, and `[]` is how a PATCH clears them.
+    'tags': tags,
   };
 
   /// ⚠️ [price] IS A `num` OF MAJOR UNITS, NOT A [Money], AND THE ODD ONE OUT
@@ -528,6 +574,7 @@ class Subscription {
     bool? unused,
     SubscriptionStatus? status,
     String? notes,
+    List<String>? tags,
   }) => _with(
     name: name ?? this.name,
     category: category ?? this.category,
@@ -541,6 +588,7 @@ class Subscription {
     unused: unused ?? this.unused,
     status: status ?? this.status,
     notes: notes ?? this.notes,
+    tags: tags == null ? null : normaliseTags(tags),
   );
 
   /// Replaces the AMOUNT, currency and all — for a caller that really does
@@ -595,7 +643,7 @@ class Subscription {
     final Map<String, dynamic> out = <String, dynamic>{};
     for (final String k in b.keys) {
       if (k == 'id') continue;
-      if (a[k] != b[k]) out[k] = b[k];
+      if (!_sameWireValue(a[k], b[k])) out[k] = b[k];
     }
     for (final List<String> group in _togetherKeys) {
       if (group.any(out.containsKey)) {
@@ -605,6 +653,20 @@ class Subscription {
       }
     }
     return out;
+  }
+
+  /// Wire equality: a list (`tags`, `reminder_days`) is compared by its
+  /// elements, since two decodes of one list are two objects and `!=` would
+  /// send every list on every edit.
+  static bool _sameWireValue(Object? a, Object? b) {
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (int i = 0; i < a.length; i++) {
+        if (a[i] != b[i]) return false;
+      }
+      return true;
+    }
+    return a == b;
   }
 
   static const List<List<String>> _togetherKeys = <List<String>>[
@@ -623,6 +685,7 @@ class Subscription {
     bool? unused,
     SubscriptionStatus? status,
     String? notes,
+    List<String>? tags,
   }) => Subscription(
     id: id,
     name: name ?? this.name,
@@ -654,6 +717,7 @@ class Subscription {
     railHolder: railHolder,
     priceAfterTrial: priceAfterTrial,
     priceAfterTrialSupported: priceAfterTrialSupported,
+    tags: tags ?? this.tags,
   );
 
   /// The mark a row wears when nobody chose one: the first three letters of

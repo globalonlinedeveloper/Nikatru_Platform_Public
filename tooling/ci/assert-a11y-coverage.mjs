@@ -721,9 +721,13 @@ const REQUIRED_COVERAGE = [
     // ⏱ 2026-10-01 · club apply-st: BOTH raises above landed together — 18 → 20
     // surfaces and 113 → 116 cases (SetupScreen's two cases, the stop page's
     // one). Read off the per-root line: `20 of 20 … across 116 case(s)`.
-    surfaces: 20,
+    // ⏱ 2026-10-01 · T20 (IN-12): 20 → 21 surfaces and 116 → 117 cases — the
+    // share-a-month sheet (`showShareMonthSheet`) arrived swept ('nothing on
+    // the share-a-month sheet is naked'). Read off the per-root line:
+    // `21 of 21 … across 117 case(s)`.
+    surfaces: 21,
     a11yFiles: 1,
-    cases: 116,
+    cases: 117,
     label: 'the app P5 wrote this guard for — 19 surfaces, all nineteen swept',
   },
   {

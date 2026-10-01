@@ -169,17 +169,48 @@ Map<String, dynamic> _readArb(String relative) {
   return jsonDecode(f.readAsStringSync()) as Map<String, dynamic>;
 }
 
+/// Every translation the app ships, by locale — the template is `en`.
+///
+/// ⏱ 2026-10-01 · train T20 (XP-06): Hindi is the third locale. Every limb
+/// below that compared en with ta now ranges over THIS map, so a locale added
+/// here is held to exactly what Tamil is held to, and one forgotten here is
+/// caught by 'the arb directory holds exactly these locales'.
+const List<String> kTranslations = <String>['ta', 'hi'];
+
 void main() {
   late Map<String, dynamic> en;
-  late Map<String, dynamic> ta;
   late Set<String> enKeys;
-  late Set<String> taKeys;
+  late Map<String, Map<String, dynamic>> arbs;
+  late Map<String, Set<String>> keys;
 
   setUpAll(() {
     en = _readArb('lib/l10n/app_en.arb');
-    ta = _readArb('lib/l10n/app_ta.arb');
     enKeys = _messageKeys(en);
-    taKeys = _messageKeys(ta);
+    arbs = <String, Map<String, dynamic>>{
+      for (final String l in kTranslations) l: _readArb('lib/l10n/app_$l.arb'),
+    };
+    keys = <String, Set<String>>{
+      for (final String l in kTranslations) l: _messageKeys(arbs[l]!),
+    };
+  });
+
+  test('the arb directory holds exactly en and the translations listed', () {
+    // A locale file nobody listed above would be checked by nothing; a listed
+    // one that is gone would make every loop below range over one fewer.
+    final Set<String> found = <String>{
+      for (final FileSystemEntity f in Directory('lib/l10n').listSync())
+        if (RegExp(r'app_(\w+)\.arb$').firstMatch(f.path)
+            case final RegExpMatch m)
+          m[1]!,
+    };
+    expect(found, <String>{'en', ...kTranslations});
+    for (final String l in kTranslations) {
+      expect(
+        arbs[l]!['@@locale'],
+        l,
+        reason: 'app_$l.arb names another locale in its @@locale header',
+      );
+    }
   });
 
   group('the arb files are actually being read', () {
@@ -244,6 +275,12 @@ void main() {
       // ⏱ ST-D3 D3-5: a11yCategoryShare left with the donut; its successor.
       'a11yCategoryRowNoShare':
           'two placeholders and a colon: no word to translate',
+      'languageHindi':
+          'the language picker names each language in itself: "हिन्दी" is '
+          'Hindi written in Hindi, in every file (T20, XP-06)',
+      'duplicateName':
+          'a placeholder and "(2)": a copy\'s name is its original\'s with a '
+          'number, which reads the same in every language (T20, AD-10)',
     };
     const List<String> unrecoverable = <String>[
       'updateRequiredTitle',
@@ -251,20 +288,21 @@ void main() {
       'updateRequiredAction',
     ];
 
-    test('no Tamil value equals its English one unless it is named', () {
+    test('no translated value equals its English one unless it is named', () {
       final List<String> pasted = <String>[
-        for (final String key in enKeys.toList()..sort())
-          if (taKeys.contains(key) &&
-              ta[key] == en[key] &&
-              !sameInBothLocales.containsKey(key))
-            '$key = ${jsonEncode(en[key])}',
+        for (final String l in kTranslations)
+          for (final String key in enKeys.toList()..sort())
+            if (keys[l]!.contains(key) &&
+                arbs[l]![key] == en[key] &&
+                !sameInBothLocales.containsKey(key))
+              '$l $key = ${jsonEncode(en[key])}',
       ];
       expect(
         pasted,
         isEmpty,
         reason:
-            '${pasted.length} key(s) carry the SAME value in app_ta.arb as in '
-            'app_en.arb, so a Tamil reader is shown English:\n  '
+            '${pasted.length} key(s) carry the SAME value in a translation as '
+            'in app_en.arb, so its reader is shown English:\n  '
             '${pasted.join('\n  ')}\n'
             'Translate each. Only a value that is legitimately the same in both '
             'languages goes in `sameInBothLocales`, with its why.',
@@ -276,19 +314,20 @@ void main() {
       // the next English paste under that name, so it must leave the list.
       final List<String> stale = <String>[
         for (final String key in sameInBothLocales.keys)
-          if (!enKeys.contains(key) || ta[key] != en[key]) key,
+          for (final String l in kTranslations)
+            if (!enKeys.contains(key) || arbs[l]![key] != en[key]) '$l $key',
       ];
       expect(
         stale,
         isEmpty,
         reason:
             'These keys are in `sameInBothLocales` but are gone from app_en.arb '
-            'or now differ in Tamil. Remove them from the list:\n  '
+            'or now differ in a translation. Remove them from the list:\n  '
             '${stale.join('\n  ')}',
       );
     });
 
-    test('the force-update wall carries Tamil, and is never on the list', () {
+    test('the force-update wall is translated, and is never on the list', () {
       for (final String key in unrecoverable) {
         expect(
           enKeys,
@@ -305,20 +344,22 @@ void main() {
               'the whole app and cannot be dismissed, English is a Tamil reader '
               'locked out in a language they may not read.',
         );
-        expect(
-          ta[key],
-          isNot(en[key]),
-          reason:
-              '$key is byte-identical in both locales. On a screen that replaces '
-              'the whole app and cannot be dismissed, that is a Tamil reader '
-              'locked out in a language they may not read.',
-        );
-        expect(
-          (ta[key] as String).trim(),
-          isNotEmpty,
-          reason:
-              '$key is blank in Tamil — the wall would render nothing at all',
-        );
+        for (final String l in kTranslations) {
+          expect(
+            arbs[l]![key],
+            isNot(en[key]),
+            reason:
+                '$key is byte-identical in en and $l. On a screen that '
+                'replaces the whole app and cannot be dismissed, that is a '
+                'reader locked out in a language they may not read.',
+          );
+          expect(
+            (arbs[l]![key] as String).trim(),
+            isNotEmpty,
+            reason:
+                '$key is blank in $l — the wall would render nothing at all',
+          );
+        }
       }
     });
   });
@@ -334,7 +375,8 @@ void main() {
   // the point.
   group('what a store build shows names no web checkout', () {
     final RegExp webWording = RegExp(
-      r'browser|web|site|உலாவி|இணைய',
+      // ⏱ T20 (XP-06): and the Hindi words for browser, web and site.
+      r'browser|web|site|உலாவி|இணைய|ब्राउज़र|वेब|साइट',
       caseSensitive: false,
     );
     const List<String> storeReachable = <String>[
@@ -359,7 +401,10 @@ void main() {
       );
       final List<String> hits = <String>[];
       for (final (String locale, Map<String, dynamic> arb)
-          in <(String, Map<String, dynamic>)>[('en', en), ('ta', ta)]) {
+          in <(String, Map<String, dynamic>)>[
+            ('en', en),
+            for (final String l in kTranslations) (l, arbs[l]!),
+          ]) {
         for (final String key in keys) {
           expect(
             arb.containsKey(key),
@@ -382,29 +427,37 @@ void main() {
     });
   });
 
-  group('en and ta hold exactly the same keys', () {
-    test('every English key has a Tamil value', () {
-      final List<String> missing = (enKeys.difference(taKeys).toList()..sort());
+  group('en and every translation hold exactly the same keys', () {
+    test('every English key has a value in every translation', () {
+      final List<String> missing = <String>[
+        for (final String l in kTranslations)
+          for (final String k in enKeys.difference(keys[l]!).toList()..sort())
+            '$l $k',
+      ];
       expect(
         missing,
         isEmpty,
         reason:
-            '${missing.length} key(s) are in app_en.arb and NOT in app_ta.arb, so '
-            'gen-l10n will silently serve the ENGLISH text to a Tamil reader:\n'
+            '${missing.length} key(s) are in app_en.arb and NOT in a '
+            'translation, so gen-l10n will silently serve the ENGLISH text to '
+            'its reader:\n'
             '  ${missing.join('\n  ')}\n'
             'Add a Tamil value for each. `apps/subscriptiontracker/l10n-untranslated.json` carries '
             'the same list in the form a translator can be handed.',
       );
     });
 
-    test('every Tamil key has an English original', () {
-      final List<String> orphaned = (taKeys.difference(enKeys).toList()
-        ..sort());
+    test('every translated key has an English original', () {
+      final List<String> orphaned = <String>[
+        for (final String l in kTranslations)
+          for (final String k in keys[l]!.difference(enKeys).toList()..sort())
+            '$l $k',
+      ];
       expect(
         orphaned,
         isEmpty,
         reason:
-            '${orphaned.length} key(s) are in app_ta.arb with no counterpart in '
+            '${orphaned.length} key(s) are in a translation with no counterpart in '
             'app_en.arb. gen-l10n resolves everything from the template, so these '
             'are translated strings the app can never show — usually a rename that '
             'landed on one side only:\n  ${orphaned.join('\n  ')}',
@@ -430,15 +483,19 @@ void main() {
       );
     });
 
-    test('no Tamil value drops a placeholder its English original uses', () {
+    test('no translated value drops a placeholder its original uses', () {
       final List<String> broken = <String>[];
-      for (final String key in enKeys.toList()..sort()) {
-        if (!taKeys.contains(key)) continue; // reported by limb 1 already.
-        final Set<String> want = _placeholdersIn(en[key] as String);
-        final Set<String> got = _placeholdersIn(ta[key] as String);
-        final Set<String> lost = want.difference(got);
-        if (lost.isNotEmpty) {
-          broken.add('$key is missing ${(lost.toList()..sort()).join(', ')}');
+      for (final String l in kTranslations) {
+        for (final String key in enKeys.toList()..sort()) {
+          if (!keys[l]!.contains(key)) continue; // reported by limb 1 already.
+          final Set<String> want = _placeholdersIn(en[key] as String);
+          final Set<String> got = _placeholdersIn(arbs[l]![key] as String);
+          final Set<String> lost = want.difference(got);
+          if (lost.isNotEmpty) {
+            broken.add(
+              '$l $key is missing ${(lost.toList()..sort()).join(', ')}',
+            );
+          }
         }
       }
       expect(
@@ -455,15 +512,17 @@ void main() {
     // The opposite direction is a separate failure with a separate cause: a
     // Tamil value referencing an argument the template never declares does not
     // render an empty gap, it renders the literal braces.
-    test('no Tamil value invents a placeholder its English original lacks', () {
+    test('no translated value invents a placeholder its original lacks', () {
       final List<String> invented = <String>[];
-      for (final String key in enKeys.toList()..sort()) {
-        if (!taKeys.contains(key)) continue;
-        final Set<String> extra = _placeholdersIn(
-          ta[key] as String,
-        ).difference(_placeholdersIn(en[key] as String));
-        if (extra.isNotEmpty) {
-          invented.add('$key adds ${(extra.toList()..sort()).join(', ')}');
+      for (final String l in kTranslations) {
+        for (final String key in enKeys.toList()..sort()) {
+          if (!keys[l]!.contains(key)) continue;
+          final Set<String> extra = _placeholdersIn(
+            arbs[l]![key] as String,
+          ).difference(_placeholdersIn(en[key] as String));
+          if (extra.isNotEmpty) {
+            invented.add('$l $key adds ${(extra.toList()..sort()).join(', ')}');
+          }
         }
       }
       expect(

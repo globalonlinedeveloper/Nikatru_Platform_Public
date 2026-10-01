@@ -350,4 +350,23 @@ class SubMath {
     final int d = x.daysUntil(now);
     return d >= 0 && d <= days;
   }).toList();
+
+  /// Every tag on [s] once — the first spelling met, case ignored — sorted
+  /// without case (ST-AD12). The home list's tag filter offers exactly these,
+  /// so it never offers a tag that would show nothing.
+  static List<String> tagsOf(List<Subscription> s) {
+    final Map<String, String> byKey = <String, String>{};
+    for (final Subscription x in s) {
+      for (final String t in x.tags) {
+        byKey.putIfAbsent(t.toLowerCase(), () => t);
+      }
+    }
+    final List<String> keys = byKey.keys.toList()..sort();
+    return <String>[for (final String k in keys) byKey[k]!];
+  }
+
+  /// The rows of [s] that carry [tag] (case ignored), in [s]'s order — or
+  /// [s] itself when [tag] is null, which is "no filter".
+  static List<Subscription> taggedWith(List<Subscription> s, String? tag) =>
+      tag == null ? s : s.where((Subscription x) => x.hasTag(tag)).toList();
 }

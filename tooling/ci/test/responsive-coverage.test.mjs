@@ -217,7 +217,7 @@ describe('the guard says YES on the tree as it is', () => {
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
     assert.match(out, /packages\/chassis_screens: 28 surface\(s\) reachable, 28 measured — the two sets are EQUAL/ /* ⏱ 2026-10-01 ST-T9 (club apply-st): +1 chassis surface (SetupStepsView) on top of SettingsHeading, +1 app surface (SetupScreen) */);
 
-    assert.match(out, /apps\/subscriptiontracker: 20 surface\(s\) reachable, 20 measured — the two sets are EQUAL/ /* ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen, width_setup_test) and +1 chassis surface (SetupStepsView, setup_steps_view_test) */);
+    assert.match(out, /apps\/subscriptiontracker: 21 surface\(s\) reachable, 21 measured — the two sets are EQUAL/ /* ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen, width_setup_test) and +1 chassis surface (SetupStepsView, setup_steps_view_test) */);
     assert.match(
       out,
       /apps\/subscriptiontracker: every measured surface is pumped at kPhone \(375\), kTablet \(768\), kDesktop \(1280\)/,
@@ -260,7 +260,7 @@ describe('the guard says YES on the tree as it is', () => {
       /2 root\(s\) DERIVED, never listed — packages\/chassis_screens \(workspace package member: declares flutter_test AND a public widget\) · apps\/subscriptiontracker \(workspace app member\)/,
     );
     assert.match(out, /PARTIAL TREE: the declared-root-must-exist clause is SKIPPED/);
-    assert.match(out, /apps\/subscriptiontracker: 20 surface\(s\) reachable, 20 measured — the two sets are EQUAL/ /* ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen, width_setup_test) and +1 chassis surface (SetupStepsView, setup_steps_view_test) */);
+    assert.match(out, /apps\/subscriptiontracker: 21 surface\(s\) reachable, 21 measured — the two sets are EQUAL/ /* ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen, width_setup_test) and +1 chassis surface (SetupStepsView, setup_steps_view_test) */);
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
     assert.match(out, /packages\/chassis_screens: 28 surface\(s\) reachable, 28 measured — the two sets are EQUAL/ /* ⏱ 2026-10-01 ST-T9 (club apply-st): +1 chassis surface (SetupStepsView) on top of SettingsHeading, +1 app surface (SetupScreen) */);
     // ⏱ 2026-09-22 · 36 → 37 TEST FILES, SURFACES UNCHANGED. The app gained
@@ -279,7 +279,7 @@ describe('the guard says YES on the tree as it is', () => {
       // corpus. Both per-root equalities above are untouched.
       // ⏱ 2026-09-29 · train ST-D9 on DW2: +1 chassis width file (plan_golden_test.dart), surfaces unchanged.
     // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: +1 chassis surface (SettingsSection), +1 width file (settings_design_test.dart).
-      /48 reachable surface\(s\), 48 measured by 50 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-10-01 ST-T9 (club apply-st): +1 chassis surface (SetupStepsView) on top of SettingsHeading, +1 app surface (SetupScreen) */ /* ⏱ 2026-10-01 fix-rv2-st-after-dw: +1 chassis surface (SettingsHeading), +1 width file (help_section_test.dart) */ /* ⏱ 2026-09-29 ST-D10: +1 chassis width file (auth_frame_adoption_test.dart), surfaces unchanged */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet), measured in an existing width file */ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
+      /49 reachable surface\(s\), 49 measured by 51 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-10-01 ST-T9 (club apply-st): +1 chassis surface (SetupStepsView) on top of SettingsHeading, +1 app surface (SetupScreen) */ /* ⏱ 2026-10-01 fix-rv2-st-after-dw: +1 chassis surface (SettingsHeading), +1 width file (help_section_test.dart) */ /* ⏱ 2026-09-29 ST-D10: +1 chassis width file (auth_frame_adoption_test.dart), surfaces unchanged */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet), measured in an existing width file */ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
     );
     assert.equal(fails(out).length, 0, out);
   });
@@ -307,7 +307,7 @@ describe('set equality, both directions, in apps/subscriptiontracker', () => {
     // suppressed the whole equality section and the run reported "18 measured,
     // floor is 19" and NEVER NAMED THE SURFACE. This assertion is what pins
     // the fix: the specific finding must survive the general one.
-    assert.match(out, /FAIL COVERAGE LOST — `apps\/subscriptiontracker` has 19 measured surface\(s\).*floor is 20/s /* ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen, width_setup_test) and +1 chassis surface (SetupStepsView, setup_steps_view_test) */);
+    assert.match(out, /FAIL COVERAGE LOST — `apps\/subscriptiontracker` has 20 measured surface\(s\).*floor is 21/s /* ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen, width_setup_test) and +1 chassis surface (SetupStepsView, setup_steps_view_test) */);
     assert.equal(fails(out).length, 2, out);
   });
 
@@ -414,6 +414,8 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
       // ⏱ 2026-10-01 (DE-07): the stop flow replaced the cancel sheet.
       'stop/stop_flow.dart',
       'insights/budget_editor.dart',
+      // ⏱ 2026-10-01 (T20, IN-12): the share-a-month sheet.
+      'insights/share_month.dart',
     ]) {
       writeIn(root, `${FEATURES}/${sheet}`, 'const int stub = 0;\n');
     }
@@ -441,7 +443,7 @@ describe('an empty scan is COVERAGE LOST, never a pass', () => {
     rmSync(join(root, `${TESTS}/width_notifications_test.dart`));
     const { code, out } = run(root);
     assert.equal(code, 2, out);
-    assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` has only 19 responsive surface\(s\).*floor is 20/s /* ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen, width_setup_test) and +1 chassis surface (SetupStepsView, setup_steps_view_test) */);
+    assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` has only 20 responsive surface\(s\).*floor is 21/s /* ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen, width_setup_test) and +1 chassis surface (SetupStepsView, setup_steps_view_test) */);
     // Proof the equality really did stay quiet — the thing this floor exists
     // for. If an UNCOVERED or DEAD line appears here the mutation stopped being
     // the silent one it is named for.

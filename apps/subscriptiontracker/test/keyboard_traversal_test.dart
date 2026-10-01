@@ -674,17 +674,21 @@ void main() {
         // ⏱ 2026-10-01 · ST-T9 (AD-05): 28 -> 29 and 26 -> 27 — the
         // "Categories" row that opens the categories manager, wired and in
         // the orbit.
-        controls: 29 + core.Money.symbols.length,
+        // ⏱ 2026-10-01 · T20 (XP-06): 26 -> 27, the हिन्दी radio — a control,
+        // and like en and ta reached by arrow inside the group, not by Tab.
+        // (On top of ST-T9's Categories row: 29 -> 30, reachable 27.)
+        controls: 30 + core.Money.symbols.length,
         reachable: 27 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,
-        2,
+        3,
         reason:
             'settings controls outside the Tab orbit: ${s.deadLabels}. EXACTLY '
-            'two are expected and both must be RadioListTiles inside the '
-            'language RadioGroup, which is a single Tab stop by design. A '
-            'third would be a real regression wearing the same shape',
+            'three are expected (en, ta, hi — T20) and all must be '
+            'RadioListTiles inside the language RadioGroup, which is a single '
+            'Tab stop by design. A fourth would be a real regression wearing '
+            'the same shape',
       );
       for (final Element e in s.dead) {
         expect(

@@ -3538,5 +3538,109 @@
         "type": "int"
       }
     }
+  },
+  "languageHindi": "हिन्दी",
+  "@languageHindi": {
+    "description": "Hindi, written in Hindi — see languageEnglish (train T20, XP-06)."
+  },
+  "selectAction": "Select",
+  "@selectAction": {
+    "description": "train T20 (st-polish), HO-08 · The All-subscriptions section action that starts choosing several rows at once."
+  },
+  "selectDone": "Done",
+  "@selectDone": {
+    "description": "train T20 (st-polish), HO-08 · The same action while choosing: leaves the selection mode."
+  },
+  "selectedCount": "{count, plural, =0{None selected} =1{1 selected} other{{count} selected}}",
+  "@selectedCount": {
+    "description": "train T20 (st-polish), HO-08 · Above the selection's actions on home. PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "exportSelected": "Export",
+  "@exportSelected": {
+    "description": "train T20 (st-polish), HO-08 · The selection action that exports the chosen rows as a CSV file."
+  },
+  "bulkPaused": "{count, plural, =1{1 subscription paused} other{{count} subscriptions paused}}",
+  "@bulkPaused": {
+    "description": "train T20 (st-polish), HO-08 · Snackbar after pausing chosen rows; it carries one Undo for all of them. PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bulkMarkedCancelled": "{count, plural, =1{1 subscription marked as cancelled} other{{count} subscriptions marked as cancelled}}",
+  "@bulkMarkedCancelled": {
+    "description": "train T20 (st-polish), HO-08 · Snackbar after marking chosen rows cancelled; one Undo. PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bulkDeleted": "{count, plural, =1{1 subscription deleted} other{{count} subscriptions deleted}}",
+  "@bulkDeleted": {
+    "description": "train T20 (st-polish), HO-08 · Snackbar after deleting chosen rows; one Undo brings every one back. PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "subscriptionResumed": "{name} resumed",
+  "@subscriptionResumed": {
+    "description": "train T20 (st-polish), HO-08 · Snackbar after a swipe resumes a paused or cancelled row.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "exportFailed": "Couldn't export that file. Try again.",
+  "@exportFailed": {
+    "description": "train T20 (st-polish) · Snackbar when the platform could not take an exported file (share sheet, download or save)."
+  },
+  "fieldLabelTags": "Tags",
+  "@fieldLabelTags": {
+    "description": "train T20 (st-polish), AD-12 · The add/edit sheet's tags field, and the name of the chips on the detail page."
+  },
+  "tagsHint": "e.g. family, work",
+  "@tagsHint": {
+    "description": "train T20 (st-polish), AD-12 · Hint under the tags field."
+  },
+  "tagFilterLabel": "Filter by tag",
+  "@tagFilterLabel": {
+    "description": "train T20 (st-polish), AD-12 · Screen-reader name of the tag chips above All subscriptions."
+  },
+  "actionDuplicate": "Duplicate",
+  "@actionDuplicate": {
+    "description": "train T20 (st-polish), AD-10 · Detail › More options: opens the add sheet prefilled from this row."
+  },
+  "duplicateName": "{name} (2)",
+  "@duplicateName": {
+    "description": "train T20 (st-polish), AD-10 · The name a duplicate is prefilled with, so it is told apart from its original.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "shareMonth": "Share this month",
+  "@shareMonth": {
+    "description": "train T20 (st-polish), IN-12 · Insights header control; opens the share choices."
+  },
+  "shareSummaryImage": "Summary as a picture",
+  "@shareSummaryImage": {
+    "description": "train T20 (st-polish), IN-12 · Share choice: a PNG of the four summary tiles."
+  },
+  "shareMonthCsv": "This month's charges (CSV)",
+  "@shareMonthCsv": {
+    "description": "train T20 (st-polish), IN-12 · Share choice: every charge this month and its total, as a CSV file."
   }
 }

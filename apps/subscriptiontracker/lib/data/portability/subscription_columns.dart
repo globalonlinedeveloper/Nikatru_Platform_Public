@@ -30,7 +30,14 @@ const List<String> kSubscriptionCsvHeader = <String>[
   // ⏱ 2026-09-29 · ST-T3b: the ADR no.077 §5 fields, each written as
   // `Subscription.toJson()` writes it (see [_modelCells]).
   ..._kModelColumns,
+  // ST-AD12 (0007_tags.sql): the row's labels in ONE cell, `; `-separated —
+  // a spreadsheet filters on a cell, and a JSON array is not one a person
+  // reads.
+  'tags',
 ];
+
+/// The `tags` cell: the labels joined by `; `, empty for none.
+String subscriptionTagsCell(Subscription s) => s.tags.join('; ');
 
 /// The ADR no.077 §5 columns (ST-T3b), cell = the wire value, empty for null.
 const List<String> _kModelColumns = <String>[
@@ -70,6 +77,7 @@ List<String> subscriptionCsvRow(Subscription s) {
     s.usageNote,
     '${s.unused}',
     ..._modelCells(s),
+    subscriptionTagsCell(s),
   ];
 }
 

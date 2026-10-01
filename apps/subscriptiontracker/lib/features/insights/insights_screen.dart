@@ -12,6 +12,9 @@ import 'package:go_router/go_router.dart';
 // The two-column branch below reads `AppBreakpoints.large`, and
 // `app_theme.dart`'s shim re-exports `AppSpacing` and `AppRadius` but NOT
 // `AppBreakpoints`.
+import 'package:nikatru_core/nikatru_core.dart'
+    as core
+    show ExportFile, ExportOutcome;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show AppBreakpoints, ContentPane;
 
@@ -30,6 +33,7 @@ import 'budget_card.dart';
 import 'category_card.dart';
 import 'forecast_card.dart';
 import 'fx_caption.dart';
+import 'share_month.dart';
 import 'signals.dart';
 import 'summary_tiles.dart';
 
@@ -136,6 +140,10 @@ class InsightsScreen extends ConsumerStatefulWidget {
 
 class _InsightsScreenState extends ConsumerState<InsightsScreen> {
   InsightsPeriod _period = InsightsPeriod.month;
+
+  /// The layer the summary tiles are painted in, so Share (IN-12) can hand
+  /// on exactly the picture on screen.
+  final GlobalKey _tilesKey = GlobalKey();
 
   /// The breakdown for [period], ranked by the MONTHLY ranking in both units so
   /// flipping the switch never reorders the rows under the reader's eye.
@@ -260,13 +268,17 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
                   // The heading and the summary stay FULL WIDTH in both
                   // layouts: they are the page's label and its headline
                   // figures, not cards of the grid.
-                  _header(context, l10n),
+                  _header(context, l10n, subs, now),
                   const SizedBox(height: AppSpacing.lg),
-                  SummaryTiles(
-                    subs: subs,
-                    money: money,
-                    now: now,
-                    totals: totals,
+                  // IN-12: the tiles are what "Share" photographs.
+                  RepaintBoundary(
+                    key: _tilesKey,
+                    child: SummaryTiles(
+                      subs: subs,
+                      money: money,
+                      now: now,
+                      totals: totals,
+                    ),
                   ),
                   // "Converted at ECB rates of {date}" — only when the plans
                   // are in more than one currency.
@@ -290,8 +302,16 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
 
   /// The title and the Month / Year switch on one line; the switch drops under
   /// the title when the two do not fit (a phone at 200 % text).
-  Widget _header(BuildContext context, AppLocalizations l10n) {
+  Widget _header(
+    BuildContext context,
+    AppLocalizations l10n,
+    List<Subscription> subs,
+    DateTime now,
+  ) {
     final ThemeData theme = Theme.of(context);
+    // IN-12: absent while `features.exports` is off, like every export.
+    final Future<core.ExportOutcome> Function(core.ExportFile)? export =
+        exportFileTap(ref);
     return Wrap(
       alignment: WrapAlignment.spaceBetween,
       crossAxisAlignment: WrapCrossAlignment.center,
@@ -307,25 +327,53 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
             ),
           ),
         ),
-        Semantics(
-          label: l10n.insightsPeriodLabel,
-          container: true,
-          child: SegmentedButton<InsightsPeriod>(
-            key: const Key('insights.period'),
-            segments: <ButtonSegment<InsightsPeriod>>[
-              ButtonSegment<InsightsPeriod>(
-                value: InsightsPeriod.month,
-                label: Text(l10n.insightsPeriodMonth),
+        // A Wrap, not a Row: at 200 % text on a phone the share control
+        // drops under the switch rather than overflowing beside it.
+        Wrap(
+          spacing: AppSpacing.sm,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: <Widget>[
+            Semantics(
+              label: l10n.insightsPeriodLabel,
+              container: true,
+              child: SegmentedButton<InsightsPeriod>(
+                key: const Key('insights.period'),
+                segments: <ButtonSegment<InsightsPeriod>>[
+                  ButtonSegment<InsightsPeriod>(
+                    value: InsightsPeriod.month,
+                    label: Text(l10n.insightsPeriodMonth),
+                  ),
+                  ButtonSegment<InsightsPeriod>(
+                    value: InsightsPeriod.year,
+                    label: Text(l10n.insightsPeriodYear),
+                  ),
+                ],
+                selected: <InsightsPeriod>{_period},
+                onSelectionChanged: (Set<InsightsPeriod> next) =>
+                    setState(() => _period = next.single),
               ),
-              ButtonSegment<InsightsPeriod>(
-                value: InsightsPeriod.year,
-                label: Text(l10n.insightsPeriodYear),
+            ),
+            if (export != null)
+              // The NAME is the icon's label, not the tooltip: a tooltip is
+              // announced as a hint, and a control named only by one is
+              // "nothing" to the a11y sweep. The tooltip stays for a pointer
+              // and is kept out of the tree so the name is not read twice.
+              Tooltip(
+                message: l10n.shareMonth,
+                excludeFromSemantics: true,
+                child: IconButton(
+                  key: ShareMonthKeys.open,
+                  icon: Icon(Icons.ios_share, semanticLabel: l10n.shareMonth),
+                  onPressed: () => showShareMonthSheet(
+                    context,
+                    subs: subs,
+                    month: now,
+                    tiles: _tilesKey,
+                    export: export,
+                  ),
+                ),
               ),
-            ],
-            selected: <InsightsPeriod>{_period},
-            onSelectionChanged: (Set<InsightsPeriod> next) =>
-                setState(() => _period = next.single),
-          ),
+          ],
         ),
       ],
     );

@@ -63,7 +63,7 @@ import '../../state/settings_controller.dart';
 import '../auth/turnstile_gate.dart';
 import '../shared/chassis_adapters.dart';
 import '../shared/widgets.dart';
-import 'categories_manager.dart' show showCategoriesManager;
+import 'categories_manager.dart' show CategoriesSettingsRow;
 import 'reminder_settings.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -364,18 +364,15 @@ class SettingsScreen extends ConsumerWidget {
                       ),
                   child: Column(
                     children: <Widget>[
-                      RadioListTile<String>(
-                        value: '',
-                        title: Text(l10n.languageSystem),
-                      ),
-                      RadioListTile<String>(
-                        value: 'en',
-                        title: Text(l10n.languageEnglish),
-                      ),
-                      RadioListTile<String>(
-                        value: 'ta',
-                        title: Text(l10n.languageTamil),
-                      ),
+                      // T20 (XP-06): हिन्दी joins the list; one tile per language.
+                      for (final (String code, String name)
+                          in <(String, String)>[
+                            ('', l10n.languageSystem),
+                            ('en', l10n.languageEnglish),
+                            ('ta', l10n.languageTamil),
+                            ('hi', l10n.languageHindi),
+                          ])
+                        RadioListTile<String>(value: code, title: Text(name)),
                     ],
                   ),
                 ),
@@ -530,23 +527,8 @@ class SettingsScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(2, 8, 2, 0),
               child: Text(l10n.currencyHint, style: AppText.of(context).muted),
             ),
-            // ⏱ ST-T9 (AD-05): the categories manager — built-ins by id, the
-            // user's own added, renamed and deleted through /v1/categories.
             const SizedBox(height: AppSpacing.md),
-            Container(
-              decoration: cardDecoration(context),
-              clipBehavior: Clip.antiAlias,
-              child: Material(
-                color: Colors.transparent,
-                child: ListTile(
-                  key: E2EKeys.settingsCategories,
-                  leading: const Icon(Icons.label_outline),
-                  title: Text(l10n.settingsCategories),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => showCategoriesManager(context),
-                ),
-              ),
-            ),
+            const CategoriesSettingsRow(),
 
             // ── PREFERENCES (live-only) ──────────────────────────────────────
             _sectionLabel(context, l10n.preferences),

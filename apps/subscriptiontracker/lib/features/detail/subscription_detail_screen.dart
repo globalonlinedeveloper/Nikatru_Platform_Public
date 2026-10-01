@@ -270,6 +270,23 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  // ST-AD12: the row's tags, as chips, only when it has any —
+                  // a row without labels draws nothing here.
+                  if (s.tags.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: AppSpacing.md),
+                    Semantics(
+                      label: l10n.fieldLabelTags,
+                      container: true,
+                      child: Wrap(
+                        key: const Key('detail-tags'),
+                        spacing: AppSpacing.sm,
+                        runSpacing: AppSpacing.sm,
+                        children: <Widget>[
+                          for (final String t in s.tags) Chip(label: Text(t)),
+                        ],
+                      ),
+                    ),
+                  ],
                   // 🔴 THE USAGE CARD IS GATED ON USAGE DATA EXISTING.
                   // `unused` and `usedPct` are never collected: the add sheet
                   // builds every draft without them and the API never writes
@@ -1156,6 +1173,19 @@ Future<void> _showMoreOptions(
                     );
                   }),
                 ),
+              // AD-10 (train T20): a NEW row prefilled from this one, named
+              // `<name> (2)`. The sheet opens after this menu closes; this
+              // row is not written.
+              ListTile(
+                key: const Key('detail-duplicate'),
+                leading: const Icon(Icons.copy_outlined),
+                title: Text(l10n.actionDuplicate),
+                onTap: () => Navigator.of(sheet).pop(() async {
+                  if (context.mounted) {
+                    await showAddSubscriptionSheet(context, duplicateOf: s);
+                  }
+                }),
+              ),
               ListTile(
                 leading: const Icon(Icons.delete_outline),
                 title: Text(l10n.actionDeleteFromTracker),

@@ -47,6 +47,7 @@ class AppListRow extends StatelessWidget {
     this.figure,
     this.caption,
     this.onTap,
+    this.onLongPress,
     this.showChevron = true,
     this.selected,
     this.titleMaxLines = 1,
@@ -81,6 +82,12 @@ class AppListRow extends StatelessWidget {
 
   /// Makes the row one tap target.
   final VoidCallback? onTap;
+
+  /// A long press on the row — how a touch list enters a multi-select mode
+  /// (train T20, HO-08). Rides the SAME ink and the same one node as [onTap],
+  /// so a screen reader is offered it as the row's long-press action rather
+  /// than as a second control.
+  final VoidCallback? onLongPress;
 
   /// Draws a trailing chevron on a tappable row. Off for a row whose tap
   /// toggles rather than navigates.
@@ -279,7 +286,7 @@ class AppListRow extends StatelessWidget {
     return MergeSemantics(
       child: Semantics(
         selected: selected,
-        child: onTap == null
+        child: onTap == null && onLongPress == null
             ? marked
             // `enabled: true` beside `button`: a tappable row announces
             // itself as a LIVE control, as a Material button does — the row
@@ -288,7 +295,11 @@ class AppListRow extends StatelessWidget {
             : Semantics(
                 button: true,
                 enabled: true,
-                child: InkWell(onTap: onTap, child: marked),
+                child: InkWell(
+                  onTap: onTap,
+                  onLongPress: onLongPress,
+                  child: marked,
+                ),
               ),
       ),
     );

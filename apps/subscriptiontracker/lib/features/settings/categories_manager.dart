@@ -13,11 +13,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import '../../core/e2e_keys.dart';
 import '../../data/models/category.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../../state/subscriptions_controller.dart';
 import '../insights/budget_editor.dart' show budgetProvider;
+import '../shared/widgets.dart' show cardDecoration;
 
 /// The localised name of the built-in [id], or null for an id that is not a
 /// built-in.
@@ -34,6 +36,31 @@ String? builtinCategoryLabel(AppLocalizations l10n, String id) => switch (id) {
   'security' => l10n.categorySecurity,
   _ => null,
 };
+
+/// Settings' "Categories" row (ST-T9, AD-05): the categories manager — the
+/// built-ins by id, the user's own added, renamed and deleted through
+/// `/v1/categories`. Its own widget, here, because Settings is a capped
+/// private fork of a chassis file (tooling/chassis-parity.json) that may not
+/// grow; the fork mounts this in two lines.
+class CategoriesSettingsRow extends StatelessWidget {
+  const CategoriesSettingsRow({super.key});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    decoration: cardDecoration(context),
+    clipBehavior: Clip.antiAlias,
+    child: Material(
+      color: Colors.transparent,
+      child: ListTile(
+        key: E2EKeys.settingsCategories,
+        leading: const Icon(Icons.label_outline),
+        title: Text(AppLocalizations.of(context).settingsCategories),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => showCategoriesManager(context),
+      ),
+    ),
+  );
+}
 
 /// Opens Settings › Categories.
 Future<void> showCategoriesManager(BuildContext context) =>
