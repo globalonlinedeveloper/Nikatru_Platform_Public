@@ -40,6 +40,8 @@ void main() {
     VoidCallback? onRetry,
     void Function({required bool granted})? onAnswer,
     ThemeMode themeMode = ThemeMode.light,
+    Future<void> Function()? onReturn,
+    Duration Function()? elapsed,
   }) {
     return NikatruApp(
       title: 'Probe',
@@ -57,18 +59,22 @@ void main() {
       ),
       mustUpdate: mustUpdate,
       onUpdate: () {},
-      shell: (Widget routed) => AppLifecycleFlush(
-        onBackground: onBackground ?? () {},
-        child: ConsentScrim(
-          asking: asking,
-          prompt: ConsentPromptCard(
-            appName: 'Probe',
-            onAnswer: onAnswer ?? ({required bool granted}) {},
-          ),
-          child: OfflineBannerHost(
-            unreachable: unreachable,
-            onRetry: onRetry ?? () {},
-            child: routed,
+      shell: (Widget routed) => RefreshOnResume(
+        onRefresh: onReturn ?? () async {},
+        elapsed: elapsed,
+        child: AppLifecycleFlush(
+          onBackground: onBackground ?? () {},
+          child: ConsentScrim(
+            asking: asking,
+            prompt: ConsentPromptCard(
+              appName: 'Probe',
+              onAnswer: onAnswer ?? ({required bool granted}) {},
+            ),
+            child: OfflineBannerHost(
+              unreachable: unreachable,
+              onRetry: onRetry ?? () {},
+              child: routed,
+            ),
           ),
         ),
       ),
@@ -85,6 +91,8 @@ void main() {
     VoidCallback? onRetry,
     void Function({required bool granted})? onAnswer,
     TextScaler? incomingScale,
+    Future<void> Function()? onReturn,
+    Duration Function()? elapsed,
   }) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -95,6 +103,8 @@ void main() {
       onBackground: onBackground,
       onRetry: onRetry,
       onAnswer: onAnswer,
+      onReturn: onReturn,
+      elapsed: elapsed,
     );
     await tester.pumpWidget(
       incomingScale == null
@@ -302,6 +312,73 @@ void main() {
       await pumpShell(tester, kPhone, onBackground: () => flushes += 1);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       expect(flushes, 0);
+    });
+  });
+
+  // ── ⏱ 2026-09-30 · ST-N6 · A RETURN TO THE FRONT RE-READS ────────────────
+  //
+  // `RefreshOnResume` is a pass-through: nothing to lay out, so the width
+  // question is only whether the routed body still fills every window class
+  // with it in the chain. The lifecycle cases are the behaviour.
+  group('property: return-to-the-front-re-reads', () {
+    for (final Size size in kAllWindows) {
+      testWidgets('the routed body renders under it at ${size.width}', (
+        WidgetTester tester,
+      ) async {
+        await pumpShell(tester, size);
+        expect(find.text('routed body'), findsOneWidget);
+        expect(find.byType(RefreshOnResume), findsOneWidget);
+      });
+    }
+
+    testWidgets('paused -> resumed re-reads; a flick inside the floor does not', (
+      WidgetTester tester,
+    ) async {
+      DateTime now = DateTime.utc(2026, 9, 30, 12);
+      int runs = 0;
+      await pumpShell(
+        tester,
+        kPhone,
+        onReturn: () async => runs++,
+        elapsed: () => now.difference(DateTime.utc(2026)),
+      );
+      now = now.add(const Duration(minutes: 5));
+      for (final AppLifecycleState state in <AppLifecycleState>[
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+      await tester.pump();
+      expect(runs, 1);
+
+      // Alt-tab straight back (desktop, web): inactive -> resumed.
+      now = now.add(const Duration(seconds: 2));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(runs, 1);
+    });
+
+    testWidgets('unmounted, it stops listening', (WidgetTester tester) async {
+      DateTime now = DateTime.utc(2026, 9, 30, 12);
+      int runs = 0;
+      await pumpShell(
+        tester,
+        kPhone,
+        onReturn: () async => runs++,
+        elapsed: () => now.difference(DateTime.utc(2026)),
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      now = now.add(const Duration(minutes: 5));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(runs, 0);
     });
   });
 

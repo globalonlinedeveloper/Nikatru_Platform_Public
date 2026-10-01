@@ -822,7 +822,12 @@ const REQUIRED_COVERAGE = [
     // RootedDeviceNoticeHost and ReauthDialog arrived swept in
     // a11y_integrity_test.dart (light kPhone + dark kDesktop each). Read off the
     // per-root line: `31 of 31 … from 5 a11y test file(s) across 71 case(s)`.
-    surfaces: 31,
+    // ⏱ 2026-10-01 · ST-N6 (#1080), merged with the above: 31 -> 32 surfaces —
+    // the chassis RefreshOnResume arrived swept in the consent-scrim chain of
+    // a11y_shell_test.dart (files and cases unchanged). Read off the per-root
+    // line on the merged tree: `32 of 32 … from 5 a11y test file(s) across 71
+    // case(s)`.
+    surfaces: 32,
     a11yFiles: 5,
     cases: 71,
     label:

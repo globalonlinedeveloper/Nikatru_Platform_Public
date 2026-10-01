@@ -28,9 +28,10 @@ import '../integrity/device_integrity_gate.dart' show DeviceIntegrityScope;
 /// re-exported sibling the resolver never added.
 ///
 /// The brick's `app.dart` needs [NikatruApp], [ConsentScrim],
-/// [ConsentPromptCard], [OfflineBannerHost] and [AppLifecycleFlush]. One file
-/// makes all five reachable from one import with no reliance on that
-/// convention. They are one subject anyway — the shell an app is mounted in.
+/// [ConsentPromptCard], [OfflineBannerHost], [AppLifecycleFlush] and (ST-N6)
+/// [RefreshOnResume]. One file makes all six reachable from one import with
+/// no reliance on that convention. They are one subject anyway — the shell an
+/// app is mounted in.
 ///
 /// ⚠️ WHAT DID NOT MOVE, AND WHY IT IS NOT AN OVERSIGHT:
 ///   · `MaterialApp.router`'s `title`, `theme`, `darkTheme`, `themeMode`,
@@ -172,7 +173,6 @@ class NikatruApp extends StatelessWidget {
   }
 }
 
-
 /// The first-run analytics consent question — the BODY, moved here by
 /// [ADR 067] decision 2.
 ///
@@ -238,7 +238,9 @@ class ConsentPromptCard extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: AppBreakpoints.form),
+                constraints: const BoxConstraints(
+                  maxWidth: AppBreakpoints.form,
+                ),
                 child: Material(
                   color: theme.colorScheme.surface,
                   borderRadius: BorderRadius.circular(20),
@@ -379,7 +381,6 @@ class ConsentScrim extends StatelessWidget {
     );
   }
 }
-
 
 /// 🔴 [pipeline C-13] `OfflineNotice`'s ONLY CALL SITE — and until 2026-08-06
 /// there was none, anywhere in the repository.
@@ -540,7 +541,6 @@ class _RootedDeviceNoticeHostState extends State<RootedDeviceNoticeHost> {
   }
 }
 
-
 /// Calls [onBackground] on every edge that means "this app is on its way out".
 ///
 /// 🏗️ MOVED HERE BY [ADR 067] decision 2 from the brick's `AnalyticsGate`,
@@ -627,6 +627,70 @@ class _AppLifecycleFlushState extends State<AppLifecycleFlush>
         state == AppLifecycleState.hidden) {
       widget.onBackground();
     }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// ⏱ 2026-09-30 · ST-N6 (D23, F37, AB-M3-03). Re-reads the server whenever the
+/// app comes back to the front — every stamped app mounts it once, at the root,
+/// and names what to re-read in [onRefresh]; nothing else is per app.
+///
+/// "Back to the front" is [AppLifecycleListener.onResume], which is the one
+/// edge every target reports: a phone app returning from the background, a
+/// desktop window regaining focus, and on web the tab becoming visible or
+/// focused again (the engine maps `visibilitychange` and focus onto the same
+/// lifecycle states). [core.ResumeRefresh] decides whether that edge is worth a
+/// request.
+class RefreshOnResume extends StatefulWidget {
+  const RefreshOnResume({
+    required this.onRefresh,
+    required this.child,
+    this.minInterval = core.ResumeRefresh.defaultMinInterval,
+    this.elapsed,
+    super.key,
+  });
+
+  /// What a return re-reads — the same function a pull-to-refresh calls, so a
+  /// list screen does not keep a second list of what "refresh" means.
+  final Future<void> Function() onRefresh;
+
+  /// The floor between two resume-driven re-reads ([core.ResumeRefresh]).
+  final Duration minInterval;
+
+  /// Injectable for tests; production reads a monotonic stopwatch.
+  final Duration Function()? elapsed;
+
+  final Widget child;
+
+  @override
+  State<RefreshOnResume> createState() => _RefreshOnResumeState();
+}
+
+class _RefreshOnResumeState extends State<RefreshOnResume> {
+  late final core.ResumeRefresh _resume;
+  late final AppLifecycleListener _listener;
+
+  @override
+  void initState() {
+    super.initState();
+    // 🔴 BUILT HERE, NOT IN A `late` INITIALISER: that would run at the first
+    // resume, stamp THAT moment as the last read, and skip the very re-read the
+    // resume asked for. `widget.onRefresh` is read at call time, so a rebuilt
+    // parent's newer callback is the one that runs.
+    _resume = core.ResumeRefresh(
+      refresh: () => widget.onRefresh(),
+      minInterval: widget.minInterval,
+      elapsed: widget.elapsed,
+    );
+    _listener = AppLifecycleListener(onResume: () => _resume.onResumed());
+  }
+
+  @override
+  void dispose() {
+    _listener.dispose();
+    super.dispose();
   }
 
   @override

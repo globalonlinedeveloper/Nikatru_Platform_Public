@@ -48,6 +48,7 @@ import '../../data/api/cached_api_client.dart' show CachedApiClient;
 import '../../data/auth/auth_repository.dart';
 import '../../data/local/subscription_store.dart' show LocalSubscriptionStore;
 import '../analytics_providers.dart';
+import 'account_preferences.dart' show forgetAccountPreferences;
 import 'notifications.dart';
 import 'persistence.dart';
 import 'subscriptions.dart' show apiClientProvider, nowProvider;
@@ -647,7 +648,10 @@ typedef UserStateDrop = Future<void> Function();
 /// and the user was told a successful sign-out had failed. Resolve the drops
 /// FIRST, then await. Callers cannot get this wrong by accident any more,
 /// because [forgetSignedInUser] takes the resolved list and never a `ref`.
-List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
+List<UserStateDrop> userStateDrops(
+  WidgetRef ref, {
+  bool accountDeleted = false,
+}) => <UserStateDrop>[
   ref.read(entitlementCacheProvider).clear,
   ref.read(notificationServiceProvider).cancelAll,
   ref.read(renewalRemindersProvider).cancelAll,
@@ -660,6 +664,12 @@ List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
     owner: ref.read(authRepositoryProvider).currentUser?.id,
     discardQueue: true,
   ),
+  // ⏱ 2026-09-30 · ST-N6 (D11): the preferences the ACCOUNT holds or has a
+  // change pending for are reset on this device (they come back at the next
+  // sign-in, pending sends included); a device-only choice keeps its value.
+  // [accountDeleted] (review 4 of #1080): the account is gone, so its pending
+  // preference sends go with it instead of waiting for a sign-in.
+  forgetAccountPreferences(ref, erase: accountDeleted),
 ];
 
 /// 🔴 THE ONE ORDER IN WHICH THIS DEVICE FORGETS A USER'S OFFLINE STATE —

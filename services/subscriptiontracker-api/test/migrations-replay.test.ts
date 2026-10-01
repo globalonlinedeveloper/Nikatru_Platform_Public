@@ -164,6 +164,7 @@ const TABLES = [
   'categories',
   'idempotency_keys',
   'payment_history',
+  'preferences',
   'price_change',
   'subscriptions',
 ];
