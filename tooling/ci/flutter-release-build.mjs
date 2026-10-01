@@ -50,6 +50,18 @@
 //   `--root <dir>` reads another tree (tests). The default is this file's repository.
 // Exit 0 = composed (and, without --print, flutter exited 0). 1 = a refusal or a
 // failed build: the first line names the input it could not compose from.
+//
+// ⏱ 2026-10-01 · THE ONE BUILD-TIME REFUSAL OF THE RUNTIME SIGNATURE CHECK
+// (row O-APPS-GOV-IN-VAPT-CHECKLIST). The binary compiles in the expected signer
+// digests of its RELEASE_CHANNEL (packages/core/lib/src/integrity/
+// signer_pins.g.dart, generated from tooling/channel-register.json
+// `runtimeSignerCheck` by assert-runtime-signer-check.mjs). A channel whose
+// `unpinnedReleaseBuild` is `refused` may not be RELEASE-SIGNED while one of its
+// pins is null: that binary could not recognise its own signer. The decision is
+// `unpinnedReleaseRefusal`, made on the run path only — `--print` and the census
+// compose the same argv whatever the signing — and only when Gradle's four
+// signing variables are all set, so the debug-signed NOT-FOR-UPLOAD build of the
+// same channel still builds.
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -195,6 +207,57 @@ export function composeReleaseBuild({ root, app, channel, target, lane = 'releas
   return { argv, env, symbolsDir };
 }
 
+/** The four variables Gradle's `releaseSigningEnv` reads. All four set is a
+ *  release-signed build; none is the debug-signed build proof (a partial set
+ *  fails in Gradle itself). */
+export const RELEASE_SIGNING_ENV = ['ANDROID_KEYSTORE_PATH', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD'];
+
+/** The value at a dotted `path` of `row`, or `undefined` when a step is absent. */
+export function fieldAt(row, path) {
+  let at = row;
+  for (const step of String(path).split('.')) {
+    if (at === null || typeof at !== 'object' || !Object.hasOwn(at, step)) return undefined;
+    at = at[step];
+  }
+  return at;
+}
+
+/** The runtime signature check's pins for `channel`: `null` when the register's
+ *  `runtimeSignerCheck` has no entry for it, else each declared pin path with
+ *  the value it holds (`null` when the pin is not yet set). Throws when the
+ *  entry names a path the row does not have. */
+export function signerPinsOf(register, channel) {
+  const entry = register?.runtimeSignerCheck?.channels?.[channel];
+  if (entry === undefined) return null;
+  const row = (register.channels ?? []).find((c) => c.id === channel);
+  if (row === undefined) throw new Error(`runtimeSignerCheck names "${channel}", which is not a channel row.`);
+  const pins = (entry.pins ?? []).map((path) => {
+    const value = fieldAt(row, path);
+    if (value === undefined) throw new Error(`runtimeSignerCheck.channels.${channel} names pin "${path}", which row "${channel}" does not have.`);
+    return { path, value };
+  });
+  return { pins, unpinnedReleaseBuild: entry.unpinnedReleaseBuild, complete: pins.length > 0 && pins.every((p) => p.value !== null) };
+}
+
+/** Why a RELEASE-SIGNED build of `channel` must not run, or null when it may.
+ *  `env` is the build's environment; release-signed means every
+ *  RELEASE_SIGNING_ENV name is set and non-empty. */
+export function unpinnedReleaseRefusal({ root, channel, env }) {
+  const releaseSigned = RELEASE_SIGNING_ENV.every((n) => String(env?.[n] ?? '').trim() !== '');
+  if (!releaseSigned) return null;
+  const pins = signerPinsOf(readJson(join(root, 'tooling', 'channel-register.json')), channel);
+  if (pins === null || pins.unpinnedReleaseBuild !== 'refused') return null;
+  const unset = pins.pins.filter((p) => p.value === null).map((p) => p.path);
+  if (pins.pins.length === 0) unset.push('(no pin declared)');
+  if (unset.length === 0) return null;
+  return (
+    `channel "${channel}" is being RELEASE-SIGNED and its runtime signature pin ${unset.join(', ')} is not set in ` +
+    'tooling/channel-register.json, so the binary could not recognise its own signer. Pin the fingerprint ' +
+    '(`keytool -list -v`), run `node tooling/ci/assert-runtime-signer-check.mjs --write`, and build again — ' +
+    'or build without the signing variables for a debug-signed NOT-FOR-UPLOAD proof.'
+  );
+}
+
 /** The command as one line, the way a workflow types it. */
 export const printed = (argv) => ['flutter', ...argv].join(' ');
 
@@ -245,6 +308,12 @@ function main(args) {
   if (print) {
     console.log(printed(composed.argv));
     return 0;
+  }
+
+  const refusal = unpinnedReleaseRefusal({ root, channel, env: process.env });
+  if (refusal !== null) {
+    console.error(`FAIL ${refusal}`);
+    return 1;
   }
 
   // Run: every `$NAME` from this process's environment. A NAME the step never put
