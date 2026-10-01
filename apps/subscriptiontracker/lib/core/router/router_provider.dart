@@ -14,6 +14,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/notification_tap_observer.dart' show NotificationTapRouter;
 import '../../state/providers.dart';
+import '../../state/share_inbox.dart';
 import 'gates.dart';
 import 'navigator_key.dart';
 import 'routes.dart';
@@ -75,5 +76,16 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   );
   unawaited(taps.start());
   ref.onDispose(taps.stop);
+
+  // IM-06: a file shared to the app opens the import hub with it — here for
+  // the same reason as the taps above (the router opens it and lives as long
+  // as the app).
+  final ShareInboxRouter shares = ShareInboxRouter(
+    source: ref.read(sharedImportSourceProvider),
+    deliver: (f) => ref.read(importInboxProvider.notifier).deliver(f),
+    open: router.go,
+  );
+  unawaited(shares.start());
+  ref.onDispose(shares.stop);
   return router;
 });

@@ -5,6 +5,7 @@ library;
 
 export 'src/asset_content_pack_source.dart';
 export 'src/export_capabilities.dart';
+export 'src/selector_file_importer.dart';
 export 'src/share_plus_file_exporter.dart';
 export 'src/storage_capabilities.dart';
 export 'src/review_capabilities.dart';

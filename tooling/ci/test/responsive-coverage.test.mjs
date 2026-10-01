@@ -279,7 +279,7 @@ describe('the guard says YES on the tree as it is', () => {
       // corpus. Both per-root equalities above are untouched.
       // ⏱ 2026-09-29 · train ST-D9 on DW2: +1 chassis width file (plan_golden_test.dart), surfaces unchanged.
     // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: +1 chassis surface (SettingsSection), +1 width file (settings_design_test.dart).
-      /45 reachable surface\(s\), 45 measured by 48 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-10-01 fix-rv2-st-after-dw: +1 chassis surface (SettingsHeading), +1 width file (help_section_test.dart) */ /* ⏱ 2026-09-29 ST-D10: +1 chassis width file (auth_frame_adoption_test.dart), surfaces unchanged */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet), measured in an existing width file */ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
+      /45 reachable surface\(s\), 45 measured by 49 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-10-01 train ST import hub: +1 chassis test file (data_section_test.dart), surfaces unchanged */ /* ⏱ 2026-10-01 fix-rv2-st-after-dw: +1 chassis surface (SettingsHeading), +1 width file (help_section_test.dart) */ /* ⏱ 2026-09-29 ST-D10: +1 chassis width file (auth_frame_adoption_test.dart), surfaces unchanged */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet), measured in an existing width file */ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
     );
     assert.equal(fails(out).length, 0, out);
   });
@@ -874,7 +874,7 @@ describe('the chassis_screens floors are floors, not report lines', () => {
       // ⏱ 28/29 ON 2026-09-29 (train ST-D10): `auth_frame_adoption_test.dart`
       // joined the corpus; the floor was raised to the measured 29 and the
       // assertion moved with it, not loosened.
-      /COVERAGE LOST — `packages\/chassis_screens` yielded only 29 width test file\(s\).*checked-in floor is 30/s, // ⏱ 2026-10-01: 29 → 30 (help_section_test.dart)
+      /COVERAGE LOST — `packages\/chassis_screens` yielded only 30 width test file\(s\).*checked-in floor is 31/s, // ⏱ 2026-10-01: 29 → 30 (help_section_test.dart); 30 → 31 (data_section_test.dart)
     );
     // This root ENFORCES, so the surface the deleted file measured is a FAIL and
     // not a print — the half R12 pins for apps/subscriptiontracker, here for the new root.

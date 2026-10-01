@@ -88,13 +88,13 @@ import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
+import 'package:subscriptiontracker/features/import/import_screen.dart';
 import 'package:subscriptiontracker/features/insights/budget_editor.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/features/monetization/manage_plan_screen.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
 import 'package:subscriptiontracker/features/notifications/notifications_screen.dart';
 import 'package:subscriptiontracker/features/onboarding/onboarding_screen.dart';
-import 'package:subscriptiontracker/features/scan/scan_screen.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
 import 'package:subscriptiontracker/features/shared/due.dart';
 import 'package:subscriptiontracker/features/shared/widgets.dart';
@@ -1767,56 +1767,50 @@ void main() {
     });
   });
 
-  // ═══ TIER 1 · SCAN ═════════════════════════════════════════════════════════
-  group('scan · the ring says the percentage', () {
-    testWidgets('[en] it announces 0% and then TRACKS the value', (
+  // ═══ TIER 1 · IMPORT (`/import`, IM-01 — was SCAN, ADR 077 §2.2) ═══════════
+  group('import · every control is named', () {
+    testWidgets('nothing on the import hub is naked', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const ScanScreen());
+        await pumpScreen(tester, const ImportScreen());
         final AppLocalizations l10n = await _load('en');
-        expect(announced(tester), contains(l10n.a11yScanRing('0%')));
-
-        // 🔴 THE SECOND HALF IS WHAT MAKES THE FIRST MEAN ANYTHING. A label
-        // hardcoded to "0%" passes the assertion above. `_pct` advances on a
-        // 560 ms `Timer.periodic` in steps of 100/5, so one tick is 20%.
-        await tester.pump(const Duration(milliseconds: 560));
-        expect(announced(tester), contains(l10n.a11yScanRing('20%')));
-        expect(announced(tester), isNot(contains(l10n.a11yScanRing('0%'))));
+        expect(
+          find.text(l10n.importSubtitle),
+          findsOneWidget,
+          reason: 'the hub phase is on screen, so the sweep is about it',
+        );
+        expectNothingNaked(tester, 'import (hub)');
       });
     });
 
-    testWidgets('nothing on scan is naked — measured in the DONE phase', (
+    // The review list is a different subtree — the selectable rows and an
+    // error strip — reached only after a paste and the mapping step.
+    // 🔴 RED ON ITS FIRST RUN, AND THAT WAS THE POINT: the rows were
+    // `CheckboxListTile`s, whose inner `Checkbox` is a second, unnamed tap
+    // target merged up under the row. The rows now carry the checked state
+    // themselves and the visual box is excluded from semantics.
+    testWidgets('nothing on the import review list is naked', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const ScanScreen());
+        await pumpScreen(tester, const ImportScreen());
         final AppLocalizations l10n = await _load('en');
-
-        // 🔴 THE CLOCK IS WALKED FORWARD, AND THE FIRST ATTEMPT AT THIS CASE
-        // WENT RED FOR A GOOD REASON. During the SCANNING phase the screen's
-        // only control is the CTA, and it is genuinely disabled
-        // (`onPressed: null`) — a disabled InkWell contributes no tap action at
-        // all, so the sweep found ZERO activatable nodes and the coverage floor
-        // said so rather than passing over nothing. The phase worth sweeping is
-        // the one with controls in it.
-        //
-        // Six ticks: `_stepCount` is 5 and the sixth flips `_done`. The
-        // sentinel is positive proof the phase arrived rather than an
-        // assumption that six pumps were enough — `pumpAndSettle` is not an
-        // option against a periodic timer, for the reason
-        // `width_scan_test.dart`'s header records.
-        for (int i = 0; i < 6; i++) {
-          await tester.pump(const Duration(milliseconds: 560));
-        }
-        expect(
-          find.text(l10n.goToDashboard),
-          findsOneWidget,
-          reason:
-              'the scan never reached its results phase, so the sweep below is '
-              'about the scanning screen again',
+        await tester.enterText(
+          find.byKey(E2EKeys.importPaste),
+          'name,price,currency\nNetflix,649,INR\nBroken,abc,INR\n',
         );
-        expectNothingNaked(tester, 'scan (results)');
+        await tester.pump();
+        await tester.tap(find.byKey(E2EKeys.importRead));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(E2EKeys.importContinue));
+        await tester.pumpAndSettle();
+        expect(
+          find.text(l10n.importReviewTitle),
+          findsOneWidget,
+          reason: 'the review phase is on screen, so the sweep is about it',
+        );
+        expectNothingNaked(tester, 'import (review)');
       });
     });
   });
@@ -3539,27 +3533,14 @@ void main() {
       });
     }, variant: kTapTargetPlatforms);
 
-    testWidgets('every tap target on scan (results) is at least 48×48', (
+    testWidgets('every tap target on the import hub is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const ScanScreen(), theme: appTheme());
-        final AppLocalizations l10n = await _load('en');
-        // Six ticks to the DONE phase, for the naked sweep's reason: during
-        // SCANNING the only control is genuinely disabled and contributes no
-        // tap action, so the guideline would inspect nothing and pass.
-        for (int i = 0; i < 6; i++) {
-          await tester.pump(const Duration(milliseconds: 560));
-        }
-        expect(
-          find.text(l10n.goToDashboard),
-          findsOneWidget,
-          reason:
-              'the scan never reached its results phase, so the sweep below is '
-              'about the scanning screen again',
-        );
-        // 1 subject — the dashboard CTA is the whole activatable surface here.
-        await expectGuidelineHadSubjects(tester, 'scan (results)');
+        await pumpScreen(tester, const ImportScreen(), theme: appTheme());
+        // The close action and the paste field: "Read it" is genuinely
+        // disabled until there is text, and contributes no tap action.
+        await expectGuidelineHadSubjects(tester, 'import (hub)');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
     }, variant: kTapTargetPlatforms);
@@ -4444,50 +4425,17 @@ void main() {
       });
     });
 
-    testWidgets('every string on scan (results) meets WCAG AA contrast', (
+    testWidgets('every string on the import hub meets WCAG AA contrast', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const ScanScreen(), theme: appTheme());
+        await pumpScreen(tester, const ImportScreen(), theme: appTheme());
         final AppLocalizations l10n = await _load('en');
-        for (int i = 0; i < 6; i++) {
-          await tester.pump(const Duration(milliseconds: 560));
-        }
-        // ⏱ 2026-09-28 · train ST-D7: the primary action is now a theme
-        // `FilledButton`, which ANIMATES from its disabled to its enabled
-        // colours over Material's 200 ms theme-change duration (the old
-        // `GradientButton` swapped instantly). Swept on the flip frame it
-        // measured 1.49:1 — a colour halfway between the two states, never
-        // at rest on screen. One pump past the transition sweeps what the user
-        // actually reads.
-        await tester.pump(const Duration(milliseconds: 300));
-        expect(
-          find.text(l10n.goToDashboard),
-          findsOneWidget,
-          reason:
-              'the scan never reached its results phase, so the sweep below is '
-              'about the scanning screen again',
-        );
-        // ⏱ train ST-D7: the gradient hero this history describes is gone —
-        // the summary is an opaque `AppCard` in the scheme's ink.
-        // 6 subjects. ✅ THIS CASE WAS RED ON 2026-08-13 AND IS GREEN SINCE.
-        // MEASURED THEN: `YOUR SUBSCRIPTIONS` (11px) was 3.97:1 — #6C57F7 on
-        // #EAE6FE — against a 4.5 target.
-        // 🔴 AND THE DIAGNOSIS IN THIS COMMENT WAS WRONG, which is why it is
-        // corrected rather than deleted. It read the pair as `AppColors.accent`
-        // used as TEXT. It is the other way round: #6C57F7 is the GRADIENT and
-        // #EAE6FE is the INK — white at **0.85 alpha** blended over
-        // `brandGradient`. The defect was the ALPHA, not the accent. Opaque
-        // white is 4.90:1 at the accent end and 4.51:1 at the #8950FF end.
-        // 📌 The guideline reports two MODES, not foreground and background;
-        // reading the darker one as "the text" is how a blended white became an
-        // accent-as-text finding and got filed to the palette lane it did not
-        // belong to.
-        await expectOpaqueGround(tester, 'scan (results)');
+        await expectOpaqueGround(tester, 'import (hub)');
         await expectContrastHadSubjects(
           tester,
-          'scan (results)',
-          covers: const <String>['All set', 'Go to dashboard'],
+          'import (hub)',
+          covers: <String>[l10n.importSubtitle],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });

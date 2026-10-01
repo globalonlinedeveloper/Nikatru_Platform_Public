@@ -221,15 +221,17 @@
       "testFile": "test/budget_editor_test.dart"
     },
     {
-      "name": "scan",
-      "primaryAction": "first-run setup finishes its steps and hands the user the list of what it actually found",
-      "test": "at 1280 the RESULTS hero is capped too",
-      "effect": "lib/features/scan/scan_screen.dart:_done",
+      "name": "import",
+      "primaryAction": "a pasted or dropped CSV becomes rows in the list through the add route, with rows already in the list and rows that do not parse shown and not added",
+      "test": "RED CONTROL · 3 rows, one already in the list, imports 2",
+      "effect": "lib/features/import/import_screen.dart:addAll",
+      "note": "⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): replaces the `scan` row — `/scan` was a timed loader over the list fetch that imported nothing, and is a redirect onto `/import` now. Mutation run on this tree: the review plan built with `existingKeys: const <String>[]` adds the duplicate and the case counts 3 adds, not 2; restored, it passes.",
       "mutation": {
-        "symbol": "lib/features/scan/scan_screen.dart:setState(() => _done = true)",
-        "observedRed": "at 1280 the RESULTS hero is capped too",
-        "date": "2026-08-08"
-      }
+        "symbol": "lib/features/import/import_screen.dart:existingKeys: existing.map(subscriptionExistingKey)",
+        "observedRed": "RED CONTROL · 3 rows, one already in the list, imports 2",
+        "date": "2026-10-01"
+      },
+      "testFile": "test/import_hub_test.dart"
     },
     {
       "name": "detail",

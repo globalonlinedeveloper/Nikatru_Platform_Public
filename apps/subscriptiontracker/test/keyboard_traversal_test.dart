@@ -169,12 +169,16 @@ import 'support/width_harness.dart';
 
 /// The desktop shell width (see the header) at a viewport tall enough that no
 /// screen in the sweep scrolls. Both halves are asserted, not assumed:
-/// [_everythingIsLaidOut] fails if 2600 ever stops being enough.
+/// [_everythingIsLaidOut] fails if 2760 ever stops being enough.
 ///
 /// ⏱ 2026-09-30 · ST-Y3/ST-Y4: 2400 -> 2600. Settings gained three card
 /// headings and the Help section's Rate and Feedback rows and scrolled by
 /// 142 px at 2400 — measured by [_everythingIsLaidOut], which is what it is for.
-const Size kKeyboardSurface = Size(1079, 2600);
+///
+/// ⏱ 2026-10-01 · IM-01/IM-03: 2600 -> 2760. Settings › Your data gained three
+/// rows (Import, Back up, Restore) and still scrolled by 37 px at 2700 —
+/// measured by [_everythingIsLaidOut].
+const Size kKeyboardSurface = Size(1079, 2760);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
 ///
@@ -668,8 +672,10 @@ void main() {
         // ⏱ 2026-09-30 · ST-Y4 (audit D12/F53): 26 -> 28 and 24 -> 26 — the
         // Help section's "Rate" and "Send feedback" _LinkRows, both wired.
         // (Contact support MOVED into Help; it is not a new control.)
-        controls: 28 + core.Money.symbols.length,
-        reachable: 26 + core.Money.symbols.length,
+        // ⏱ 2026-10-01 · IM-01/IM-03: 28 -> 31 and 26 -> 29 — Your data's
+        // Import, Back up (JSON) and Restore rows, each wired and in the orbit.
+        controls: 31 + core.Money.symbols.length,
+        reachable: 29 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,

@@ -884,7 +884,7 @@
       },
       "evidence": [],
       "inventoryRows": [],
-      "basis": "🔴 THE APP READS NO MAILBOX, AND THE COPY THAT SUGGESTED OTHERWISE WAS ALREADY REMOVED. apps/subscriptiontracker/lib/features/scan/scan_screen.dart:20-29 records why: the scan screen's labels once said 'Scanning inbox receipts' and 'Reading bank statements' and were changed on 2026-07-27 because 'the app does NONE of those: there is no bank or mail integration anywhere in the dependency graph'. The screen is a Timer.periodic over five fixed strings. The EMAIL ADDRESS a user signs in with is declared under Personal info > Email address; that is an identifier, not a message."
+      "basis": "🔴 THE APP READS NO MAILBOX, AND THE COPY THAT SUGGESTED OTHERWISE WAS ALREADY REMOVED. The retired /scan screen's labels once said 'Scanning inbox receipts' and 'Reading bank statements' and were changed on 2026-07-27 because 'the app does NONE of those: there is no bank or mail integration anywhere in the dependency graph'; the screen itself was deleted by ADR 077 §2.2 (2026-10-01). Its successor, apps/subscriptiontracker/lib/features/import/import_screen.dart, reads ONLY text the user pastes, shares or drops in — a receipt is parsed on the device by core's ReceiptParser and never sent; what leaves the device is the subscription rows the user reviews and adds (name, price, cycle, dates), through the same add route as a typed row, already declared under App activity. No mailbox is read and no message is collected. The EMAIL ADDRESS a user signs in with is declared under Personal info > Email address; that is an identifier, not a message."
     },
     {
       "category": "Messages",
@@ -1315,7 +1315,7 @@
       "inventoryRows": [
         "table:subscriptiontracker_db.subscriptions"
       ],
-      "basis": "The subscription NAME is free text the user types (add_subscription_sheet.dart:497). Under backend-live it is transmitted and stored in subscriptiontracker_db.subscriptions; under demo it stays on the device, in the app's own namespaced key-value store, and is never transmitted. Required — an app for tracking subscriptions cannot work without the subscription. The price and cycle from the same form are declared under Financial info > Other financial info; the same input is not double-counted, it is split by what each field IS."
+      "basis": "The subscription NAME is free text the user types (add_subscription_sheet.dart:507). Under backend-live it is transmitted and stored in subscriptiontracker_db.subscriptions; under demo it stays on the device, in the app's own namespaced key-value store, and is never transmitted. Required — an app for tracking subscriptions cannot work without the subscription. The price and cycle from the same form are declared under Financial info > Other financial info; the same input is not double-counted, it is split by what each field IS."
     },
     {
       "category": "App activity",

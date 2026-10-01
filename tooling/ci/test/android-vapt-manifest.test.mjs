@@ -433,6 +433,46 @@ describe('assert-android-vapt-manifest', () => {
   test('V5: an auth-callback filter with no BROWSABLE category is NOT the recorded one, and fails',
     notTheRecordedOne({ cats: ['DEFAULT'] }));
 
+  // ⏱ 2026-10-01 · IM-06 — the ONE recorded share target: SEND + DEFAULT with
+  // only <data android:mimeType>, each one the import hub reads.
+  const shareFilter = ({ mimes = ['text/plain', 'text/csv', 'application/json'], cats = ['DEFAULT'], action = 'SEND', extra = [] } = {}) =>
+    el('intent-filter', [], [
+      el('action', [A('name', `android.intent.action.${action}`)]),
+      ...cats.map((c) => el('category', [A('name', `android.intent.category.${c}`)])),
+      ...mimes.map((m) => el('data', [A('mimeType', m)])),
+      ...extra,
+    ]);
+
+  test('V5: the launcher keeps its exemption with the exact share target beside it, and names it', () => {
+    const { code, out } = run(fixture({ manifest: baseManifest({ activityFilters: [launcherFilter(), authFilter(), shareFilter()] }) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /launcher entry point \+ auth callback com\.nikatru\.demo:\/\/auth-callback \+ share target \(SEND, mime types only\)/);
+  });
+
+  const notTheRecordedShare = (opts) => () => {
+    const { code, out } = run(fixture({ manifest: baseManifest({ activityFilters: [launcherFilter(), shareFilter(opts)] }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL V5 exported — <activity android:name="com\.example\.demo\.MainActivity">/);
+  };
+
+  test('V5: a share filter taking any mime type (*/*) is NOT the recorded one, and fails',
+    notTheRecordedShare({ mimes: ['*/*'] }));
+
+  test('V5: a share filter that is BROWSABLE is NOT the recorded one, and fails',
+    notTheRecordedShare({ cats: ['DEFAULT', 'BROWSABLE'] }));
+
+  test('V5: a share filter carrying a scheme beside its mime type is NOT the recorded one, and fails',
+    notTheRecordedShare({ extra: [el('data', [A('scheme', 'https')])] }));
+
+  test('V5: a SEND_MULTIPLE filter is NOT the recorded one, and fails',
+    notTheRecordedShare({ action: 'SEND_MULTIPLE' }));
+
+  test('V5: the exact share target on an activity WITHOUT the launcher filter fails — it rides the launcher exemption', () => {
+    const { code, out } = run(fixture({ manifest: baseManifest({ activityFilters: [shareFilter()] }) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL V5 exported — <activity android:name="com\.example\.demo\.MainActivity">/);
+  });
+
   test('V5: the exact auth callback on an activity WITHOUT the launcher filter fails — it rides the launcher exemption, it is not one', () => {
     const { code, out } = run(fixture({ manifest: baseManifest({ activityFilters: [authFilter()] }) }));
     assert.equal(code, 1, out);

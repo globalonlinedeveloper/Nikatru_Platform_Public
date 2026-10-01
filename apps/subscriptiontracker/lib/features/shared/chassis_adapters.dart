@@ -7,6 +7,8 @@ import '../../l10n/app_localizations.dart';
 
 export 'package:nikatru_chassis_screens/settings/help_section.dart'
     show HelpKeys, SettingsHeading, helpCard;
+export 'package:nikatru_chassis_screens/settings/data_section.dart'
+    show DataKeys, dataCard;
 export 'package:nikatru_chassis_screens/settings/settings_screen.dart'
     show EditProfileDialog, RowChevron;
 
