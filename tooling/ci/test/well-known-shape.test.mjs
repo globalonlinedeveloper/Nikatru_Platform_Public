@@ -34,7 +34,22 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { aasaDetail, appIdentity, mobilePresence, planWellKnown, SURFACES, AASA_REL, ASSETLINKS_REL, CHECKOUT_RETURN_PATH } from '../../sites/generate-well-known.mjs';
+import {
+  aasaDetail,
+  appIdentity,
+  mobilePresence,
+  planSecurityTxt,
+  planWellKnown,
+  SURFACES,
+  AASA_REL,
+  ASSETLINKS_REL,
+  BRICK_APP_CONFIG,
+  CHECKOUT_RETURN_PATH,
+  SECURITY_FILES,
+  SECURITY_POLICY_REL,
+  SECURITY_TXT_EXPIRES,
+  SECURITY_TXT_REL,
+} from '../../sites/generate-well-known.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CI_DIR = resolve(HERE, '..');
@@ -44,11 +59,11 @@ const GENERATOR = join(REPO, 'tooling', 'sites', 'generate-well-known.mjs');
 
 /* Never through a pipe, and never `$?` beside a command substitution: this
    corpus has read "EXIT 0" off a guard that exited 1 exactly that way. */
-const spawn = (script, root) => {
-  const r = spawnSync(process.execPath, [script, root], { encoding: 'utf8' });
+const spawn = (script, root, env = {}) => {
+  const r = spawnSync(process.execPath, [script, root], { encoding: 'utf8', env: { ...process.env, ...env } });
   return { code: r.status === null ? 2 : r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 };
-const run = (root) => spawn(GUARD, root);
+const run = (root, env = {}) => spawn(GUARD, root, env);
 const generate = (root) => spawn(GENERATOR, root);
 
 const CATALOG_REL = 'catalog/apps.json';
@@ -112,12 +127,19 @@ const appleRegister = (mutate = null) => {
 /** The `_headers` line limb H requires once an AASA exists. */
 const AASA_HEADER = '/.well-known/apple-app-site-association\n  Content-Type: application/json\n';
 
+/** The two sources security.txt is derived from (⏱ 2026-10-01, limb I): a fixture
+ *  address, never the real one, so a case that passes is not passing on the repo. */
+const FIXTURE_SUPPORT = 'security@example.test';
+const SECURITY_MD_TEXT = `# Security policy\n\nEmail \`${FIXTURE_SUPPORT}\`.\n`;
+
 /**
  * A root carrying only what this guard reads: the catalogue, the declarations,
- * and `_headers`. Everything else is absent on purpose — a fixture that copies
- * the repository grades the repository.
+ * `_headers`, and the two sources of security.txt — whose generated pair is
+ * written too (`security: false` leaves all four out), so a case about the
+ * association files stays about them. Everything else is absent on purpose — a
+ * fixture that copies the repository grades the repository.
  */
-function tree({ rows = [ROW()], decls = [DECL()], headers = '', catalog = undefined, apple = appleRegister() } = {}) {
+function tree({ rows = [ROW()], decls = [DECL()], headers = '', catalog = undefined, apple = appleRegister(), security = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'well-known-'));
   mkdirSync(join(root, 'catalog'), { recursive: true });
   writeFileSync(join(root, ...CATALOG_REL.split('/')), catalog === undefined ? `${JSON.stringify(rows, null, 2)}\n` : catalog);
@@ -131,6 +153,17 @@ function tree({ rows = [ROW()], decls = [DECL()], headers = '', catalog = undefi
   if (apple !== null) {
     mkdirSync(join(root, 'tooling'), { recursive: true });
     writeFileSync(join(root, 'tooling', 'apple-provisioning.json'), apple);
+  }
+  if (security) {
+    writeFileSync(join(root, 'SECURITY.md'), SECURITY_MD_TEXT);
+    mkdirSync(join(root, ...BRICK_APP_CONFIG.split('/').slice(0, -1)), { recursive: true });
+    writeFileSync(join(root, ...BRICK_APP_CONFIG.split('/')), `class AppConfig {\n  static const String supportEmail = '${FIXTURE_SUPPORT}';\n}\n`);
+    const sec = planSecurityTxt(root);
+    assert.deepEqual(sec.problems, [], 'the fixture security.txt sources must plan cleanly');
+    for (const [rel, body] of sec.files) {
+      mkdirSync(join(root, ...rel.split('/').slice(0, -1)), { recursive: true });
+      writeFileSync(join(root, ...rel.split('/')), body);
+    }
   }
   return root;
 }
@@ -157,15 +190,19 @@ describe('assert-well-known-shape — the real tree', () => {
     const { code, out } = run(REPO);
     assert.equal(code, 0, `the shipped tree must pass, or every red below is about a tree nobody ships:\n${out}`);
     assert.match(out, /NOTHING DECLARED AND NOTHING PUBLISHED/);
-    assert.match(out, /0 qualifying app\/surface pair\(s\), 0 file\(s\)/);
+    assert.match(out, /0 qualifying app\/surface pair\(s\), 0 association file\(s\)/);
+    assert.match(out, /limb I — sites\/nikatru\/\.well-known\/security\.txt graded against RFC 9116/);
   });
 
-  test('the generator writes NOTHING on this tree, and says why', () => {
+  test('the generator writes NOTHING on this tree but security.txt and its Policy copy, and says why', () => {
     const { code, out } = generate(REPO);
     assert.equal(code, 0, out);
-    assert.match(out, /0 file\(s\) planned, 0 written/);
-    assert.match(out, /NOTHING TO DECLARE, SO NOTHING IS PUBLISHED/);
-    assert.equal(existsSync(join(REPO, 'sites', 'nikatru', '.well-known')), false, 'a run with nothing to declare must not create the directory either');
+    // ⏱ 2026-10-01 · the committed pair is what it plans, so a run writes nothing.
+    assert.match(out, /2 file\(s\) planned, 0 written, 0 unowned/);
+    assert.match(out, /NO ASSOCIATION TO DECLARE, SO NO ASSOCIATION FILE IS PUBLISHED/);
+    for (const rel of [AASA_REL, ASSETLINKS_REL]) {
+      assert.equal(existsSync(join(REPO, ...rel.split('/'))), false, `${rel}: a run with nothing to declare must not write it`);
+    }
   });
 
   test('the apex is imported, never typed: no literal hostname or app id in either file', () => {
@@ -265,7 +302,9 @@ describe('limb A — the measured pair', () => {
     assert.equal(code, 0, out);
     const gen = generate(root);
     assert.equal(gen.code, 0, gen.out);
-    assert.match(gen.out, /0 qualifying \(ios\+android\), 0 file\(s\) planned/);
+    // The two planned files are security.txt and its Policy copy, never an association file.
+    assert.match(gen.out, /0 qualifying \(ios\+android\), 2 file\(s\) planned/);
+    assert.match(gen.out, /NO ASSOCIATION TO DECLARE/);
     kill(root);
   });
 
@@ -463,11 +502,164 @@ describe('the plan itself', () => {
     kill(emptyPrint);
   });
 
-  test('a plan over this repository writes no file and reports the pair', () => {
+  test('a plan over this repository writes no association file and reports the pair', () => {
     const plan = planWellKnown(REPO);
     assert.equal(plan.problems.length, 0, plan.problems.join('\n'));
     assert.equal(plan.qualifying.length, 0);
-    assert.equal(plan.files.size, 0, 'an EMPTY association file is a cached negative answer, not a harmless placeholder');
+    const associations = [...plan.files.keys()].filter((rel) => !SECURITY_FILES.includes(rel));
+    assert.deepEqual(associations, [], 'an EMPTY association file is a cached negative answer, not a harmless placeholder');
+    assert.deepEqual([...plan.files.keys()].filter((rel) => SECURITY_FILES.includes(rel)).sort(), [...SECURITY_FILES].sort());
     assert.ok(plan.comparisons > 0, 'a plan that compared nothing cannot support "nothing qualifies"');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · rv2-security-021 — LIMB I, security.txt (RFC 9116). The red control
+// the lane names is the first case: a security.txt whose Expires is 10 days away
+// exits 1. Measured on the REAL tree before it was written: green control EXIT 0;
+// `WELL_KNOWN_NOW` set to 20 days before SECURITY_TXT_EXPIRES ⇒ EXIT 1 naming limb I;
+// deleting the real security.txt ⇒ EXIT 1 (limbs B and I); regenerated ⇒ EXIT 0.
+describe('limb I — security.txt', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const setExpires = (root, iso) => {
+    const abs = join(root, ...SECURITY_TXT_REL.split('/'));
+    writeFileSync(abs, readFileSync(abs, 'utf8').replace(/^Expires: .*$/m, `Expires: ${iso}`));
+  };
+  const editField = (root, re, line) => {
+    const abs = join(root, ...SECURITY_TXT_REL.split('/'));
+    const before = readFileSync(abs, 'utf8');
+    const after = before.replace(re, line);
+    assert.notEqual(after, before, `the fixture security.txt no longer matches ${re}; re-read this case`);
+    writeFileSync(abs, after);
+  };
+
+  test('GREEN CONTROL: the generated pair passes, with the fixture address as its Contact', () => {
+    const root = tree();
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    const txt = readFileSync(join(root, ...SECURITY_TXT_REL.split('/')), 'utf8');
+    assert.match(txt, /^Contact: mailto:security@example\.test$/m);
+    assert.match(txt, /^Canonical: https:\/\/nikatru\.com\/\.well-known\/security\.txt$/m);
+    assert.match(txt, /^Policy: https:\/\/nikatru\.com\/\.well-known\/security-policy\.txt$/m);
+    assert.match(txt, /^Preferred-Languages: en$/m);
+    assert.equal(readFileSync(join(root, ...SECURITY_POLICY_REL.split('/')), 'utf8'), SECURITY_MD_TEXT, 'the Policy is a byte copy of SECURITY.md');
+    kill(root);
+  });
+
+  test('🔴 RED CONTROL: Expires 10 days away exits 1, naming the renewal window', () => {
+    const root = tree();
+    setExpires(root, new Date(Date.now() + 10 * DAY).toISOString());
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /limb I \(security\.txt\) — Expires \S+ is (9|10) day\(s\) away, under the 30-day renewal window/);
+    kill(root);
+  });
+
+  test('🔴 the REAL file goes red 20 days before its own Expires (WELL_KNOWN_NOW), with no other finding', () => {
+    const now = new Date(Date.parse(SECURITY_TXT_EXPIRES) - 20 * DAY).toISOString();
+    const { code, out } = run(REPO, { WELL_KNOWN_NOW: now });
+    assert.equal(code, 1, out);
+    assert.match(out, /✗ limb I \(security\.txt\) refused — 1 finding/);
+    assert.match(out, /20 day\(s\) away, under the 30-day renewal window/);
+  });
+
+  test('an Expires in the PAST says so', () => {
+    const root = tree();
+    setExpires(root, '2020-01-01T00:00:00.000Z');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /is in the PAST/);
+    kill(root);
+  });
+
+  test('an Expires more than a year out is refused (RFC 9116: less than a year)', () => {
+    const root = tree();
+    setExpires(root, new Date(Date.now() + 400 * DAY).toISOString());
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /RFC 9116 asks for less than a year/);
+    kill(root);
+  });
+
+  test('🔴 a missing security.txt is a finding even when no generator plans one', () => {
+    const root = tree({ security: false });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /limb I \(security\.txt\) — sites\/nikatru\/\.well-known\/security\.txt does not exist/);
+    // ...and the generator refuses to plan it from a tree with no sources, naming both.
+    const gen = generate(root);
+    assert.equal(gen.code, 1, gen.out);
+    assert.match(gen.out, /SECURITY\.md does not exist/);
+    assert.match(gen.out, /declares no AppConfig\.supportEmail/);
+    kill(root);
+  });
+
+  test('a hand edit of the generated security.txt is limb B drift', () => {
+    const root = tree();
+    editField(root, /^Preferred-Languages: en$/m, 'Preferred-Languages: en, ta');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /limb B \(drift\) — sites\/nikatru\/\.well-known\/security\.txt differs/);
+    kill(root);
+  });
+
+  test('a Policy copy that drifted from SECURITY.md is limb B drift', () => {
+    const root = tree();
+    writeFileSync(join(root, 'SECURITY.md'), `${SECURITY_MD_TEXT}\nA new paragraph.\n`);
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /limb B \(drift\) — sites\/nikatru\/\.well-known\/security-policy\.txt differs/);
+    kill(root);
+  });
+
+  test('no Contact field is a finding', () => {
+    const root = tree();
+    editField(root, /^Contact: .*\n/m, '');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /has no Contact field, which RFC 9116 requires/);
+    kill(root);
+  });
+
+  test('a Contact that is neither mailto: nor https is a finding', () => {
+    const root = tree();
+    editField(root, /^Contact: .*$/m, 'Contact: http://example.test/report');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /is neither a mailto: address nor an https URL/);
+    kill(root);
+  });
+
+  test('a Canonical naming another URL is a finding', () => {
+    const root = tree();
+    editField(root, /^Canonical: .*$/m, 'Canonical: https://example.test/.well-known/security.txt');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /Canonical is .* and the file is served at https:\/\/nikatru\.com\/\.well-known\/security\.txt/);
+    kill(root);
+  });
+
+  test('a Policy whose file is not in the deploy root is a finding — the link would 404', () => {
+    const root = tree();
+    rmSync(join(root, ...SECURITY_POLICY_REL.split('/')));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /names sites\/nikatru\/\.well-known\/security-policy\.txt, which is not in the deploy root: the link would 404/);
+    kill(root);
+  });
+
+  test('two Expires fields are a finding', () => {
+    const root = tree();
+    editField(root, /^(Expires: .*)$/m, '$1\n$1');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /carries 2 Expires field\(s\); RFC 9116 requires exactly one/);
+    kill(root);
+  });
+
+  test('WELL_KNOWN_NOW that is not a date is COVERAGE LOST (exit 2), not a pass', () => {
+    const { code, out } = run(REPO, { WELL_KNOWN_NOW: 'tomorrow' });
+    assert.equal(code, 2, out);
+    assert.match(out, /WELL_KNOWN_NOW="tomorrow" is not a date/);
   });
 });
