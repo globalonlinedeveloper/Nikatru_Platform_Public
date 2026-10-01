@@ -12,6 +12,7 @@ import 'package:test/test.dart';
 Future<({String base, List<String> seen})> _server({
   int status = 200,
   String body = '{"preferences":{}}',
+  Map<String, String> headers = const <String, String>{},
 }) async {
   final HttpServer server = await HttpServer.bind(
     InternetAddress.loopbackIPv4,
@@ -24,6 +25,7 @@ Future<({String base, List<String> seen})> _server({
       seen.add('${req.method} ${req.uri} $sent');
       req.response.statusCode = status;
       req.response.headers.contentType = ContentType.json;
+      headers.forEach(req.response.headers.set);
       req.response.write(body);
       await req.response.close();
     }),
@@ -74,7 +76,7 @@ void main() {
     },
   );
 
-  for (final int status in <int>[400, 404, 413, 401, 503]) {
+  for (final int status in <int>[400, 403, 404, 405, 410, 413, 401, 503]) {
     test(
       'a $status is a failure carrying $status, not a throw of another kind',
       () async {
@@ -105,6 +107,29 @@ void main() {
       },
     );
   }
+
+  test(
+    'a Retry-After rides on the failure, for the queue to wait at least that long (review 3 of #1080)',
+    () async {
+      final s = await _server(
+        status: 503,
+        body: '{"error":"x"}',
+        headers: <String, String>{'retry-after': '120'},
+      );
+      await expectLater(
+        _over(s.base).patch(<String, core.PreferenceChange>{
+          'themeMode': const core.PreferenceChange('dark', 0),
+        }),
+        throwsA(
+          isA<core.AccountPreferencesFailure>().having(
+            (core.AccountPreferencesFailure f) => f.retryAfter,
+            'retryAfter',
+            const Duration(seconds: 120),
+          ),
+        ),
+      );
+    },
+  );
 
   test('no answer at all is status 0 — offline', () async {
     final RestAccountPreferencesTransport t = _over('http://127.0.0.1:1/v1');

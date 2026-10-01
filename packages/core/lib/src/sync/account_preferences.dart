@@ -19,9 +19,10 @@
 //     nor one changed since the read began, nor with a version older than one
 //     this device already holds.
 //  5. Every request is bound to the user id it started under; its answer is
-//     dropped if the user changed. Sign-out forgets that user's dirty set and
-//     versions. A permanent refusal (400/413/422) drops that key's change,
-//     says so once, and the read goes on — it never loops.
+//     dropped if the user changed. Sign-out forgets that user's versions; their
+//     pending changes stay queued, bound to them, for their next sign-in. A
+//     permanent refusal (400/403/405/410/413/422) drops that key's change, says
+//     so once, and the account's value is read back — it never loops.
 //
 // This is the DECISION half, pure Dart. The app supplies the transport, the
 // user id, and how to apply values to its own settings; nothing here knows
@@ -30,6 +31,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' show Random;
 
 import '../storage/key_value_store.dart';
 import 'durable_outbox.dart';
@@ -70,10 +72,14 @@ class PreferencesPatchResult {
 
 /// A request that did not succeed. [status] 0 means there was no answer.
 class AccountPreferencesFailure implements Exception {
-  const AccountPreferencesFailure(this.status, [this.detail]);
+  const AccountPreferencesFailure(this.status, [this.detail, this.retryAfter]);
 
   final int status;
   final String? detail;
+
+  /// The server's `Retry-After`, when it sent one: the queue waits at least
+  /// this long before trying the change again.
+  final Duration? retryAfter;
 
   @override
   String toString() =>
@@ -101,13 +107,15 @@ const String kPreferencesOutboxKey = 'nikatru.outbox.preferences.v1';
 /// document, with NO attempt cap (review #1080 delta finding 2): a transient
 /// failure (no answer, 5xx, 408/429, the 404 of a Worker older than the route)
 /// keeps the change pending with capped backoff however long it lasts, so the
-/// only dead letter is a REFUSAL (400/413/422), which is final. The queue holds
-/// at most one entry per key, so an uncapped retry cannot grow it.
+/// only dead letter is a REFUSAL (see [classifyPreferencesFailure]), which is
+/// final. The queue holds at most one entry per key, so an uncapped retry
+/// cannot grow it. Each wait is [preferencesRetryWait]'s.
 DurableOutbox preferencesOutbox(
   Future<KeyValueStore> store, {
   Duration baseBackoff = const Duration(seconds: 2),
   Duration maxBackoff = const Duration(minutes: 5),
   DateTime Function()? now,
+  double Function()? random,
 }) => DurableOutbox(
   store,
   key: kPreferencesOutboxKey,
@@ -115,7 +123,40 @@ DurableOutbox preferencesOutbox(
   baseBackoff: baseBackoff,
   maxBackoff: maxBackoff,
   now: now,
+  retryWait: preferencesRetryWait(random: random),
 );
+
+/// The longest `Retry-After` the preferences queue obeys: a larger (or
+/// garbled) one must not park a change for days.
+const Duration kPreferencesMaxRetryAfter = Duration(hours: 1);
+
+/// The wait after a failed preferences send (review 3 of #1080):
+///
+///  - JITTER: a random point in the upper half of the backoff
+///    (`[backoff/2, backoff]`), so devices that failed together (one outage)
+///    do not all come back in the same second. The backoff itself still doubles
+///    up to its cap: a repeated 500 keeps backing off.
+///  - `Retry-After`: never sooner than the server asked, up to
+///    [kPreferencesMaxRetryAfter].
+///
+/// [random] returns a value in `[0, 1)`; tests pin it.
+Duration Function(Duration backoff, Duration? retryAfter) preferencesRetryWait({
+  double Function()? random,
+}) {
+  final double Function() next = random ?? Random().nextDouble;
+  return (Duration backoff, Duration? retryAfter) {
+    final Duration jittered = backoff * 0.5 + backoff * (0.5 * next());
+    if (retryAfter == null) return jittered;
+    final Duration asked = retryAfter > kPreferencesMaxRetryAfter
+        ? kPreferencesMaxRetryAfter
+        : retryAfter;
+    return asked > jittered ? asked : jittered;
+  };
+}
+
+/// The server's `Retry-After` on a failed preferences send, for the queue.
+Duration? preferencesRetryAfter(Object error) =>
+    error is AccountPreferencesFailure ? error.retryAfter : null;
 
 /// Large enough that no transient run of failures reaches it (at one attempt
 /// per backoff capped at five minutes, about 20 000 years).
@@ -123,14 +164,19 @@ const int kPreferencesNoAttemptCap = 1 << 31;
 
 /// How a failed preferences request is treated by the outbox.
 ///
-/// 404 is TRANSIENT, not a refusal: it is what a Worker deployed before this
-/// route answers, and the change must wait for the route, not be dropped.
+/// REFUSED — final, the change is dropped and the account's value read back:
+/// 400 / 422 (malformed), 413 (too large), and the answers no retry can turn
+/// around (review 3 of #1080): 403 (this account may not), 405 (the method is
+/// not allowed there) and 410 (gone for good). Everything else is TRANSIENT,
+/// retried with backoff for as long as it lasts — 5xx, 408, 429, and 404,
+/// which is what a Worker deployed before this route answers: the change must
+/// wait for the route, not be dropped.
 OutboxFailure classifyPreferencesFailure(Object error) {
   if (error is! AccountPreferencesFailure) return OutboxFailure.transient;
   return switch (error.status) {
     0 => OutboxFailure.offline,
     401 => OutboxFailure.unauthorized,
-    400 || 413 || 422 => OutboxFailure.refused,
+    400 || 403 || 405 || 410 || 413 || 422 => OutboxFailure.refused,
     _ => OutboxFailure.transient,
   };
 }
@@ -198,6 +244,8 @@ class AccountPreferencesSync {
         op: OutboxOp.update,
         kind: kPreferenceOutboxKind,
         body: <String, dynamic>{'value': value, 'base_version': base},
+        // A new change is tried at once, not after the old one's backoff.
+        freshBackoff: true,
       );
     } catch (_) {
       return; // the device store refused; the change is only on screen
@@ -219,19 +267,24 @@ class AccountPreferencesSync {
         currentOwner: _currentUser,
         send: (OutboxEntry e) => _send(owner, e),
         classify: classifyPreferencesFailure,
+        retryAfter: preferencesRetryAfter,
         // Its own queue document already; this only makes a stray kind wait
         // for its own sender instead of being sent by this one.
         accepts: (OutboxEntry e) => e.kind == kPreferenceOutboxKind,
       );
-      // A refusal is final: drop that change (the key is no longer dirty, so
-      // the next read gives it the account's value), say so once, move on.
+      // A refusal is final: drop that change, say so once, and read the
+      // account back — the key is no longer dirty, so the read restores the
+      // account's value (in a sync this IS that sync; it is shared).
+      bool refused = false;
       for (final OutboxEntry dead in await _outbox.deadLetters(owner: owner)) {
         if (dead.kind != kPreferenceOutboxKind) continue;
         await _outbox.discard(dead.id);
+        refused = true;
         if (_currentUser() == owner && !_disposed) {
           _onRefused?.call(dead.recordId);
         }
       }
+      if (refused && !_stale(owner)) unawaited(sync());
     } catch (_) {
       // Never thrown to a listener nobody awaits.
     }
@@ -244,16 +297,9 @@ class AccountPreferencesSync {
     final AccountPreferencesTransport? transport = _transport();
     if (transport == null) throw const AccountPreferencesFailure(0);
     final String key = e.recordId;
-    final int queuedBase = e.body['base_version'] is int
-        ? e.body['base_version'] as int
-        : 0;
-    // A change queued behind this device's OWN accepted write to the same key
-    // was based on the version before it; the version that write produced is
-    // the one it really follows.
-    final int base = await _locked(() async {
-      final List<int>? own = (await _load(owner)).own[key];
-      return own != null && own[0] == queuedBase ? own[1] : queuedBase;
-    });
+    final int base = await _locked(
+      () async => _baseOf(await _load(owner), key, e),
+    );
     final PreferencesPatchResult result = await transport.patch(
       <String, PreferenceChange>{key: PreferenceChange(e.body['value'], base)},
     );
@@ -300,29 +346,67 @@ class AccountPreferencesSync {
       final int started = _seq;
       final Map<String, PreferenceValue> server = await transport.read();
       if (_stale(owner)) return; // A's answer never lands in B
-      final Set<String> dirty = <String>{
+      final List<OutboxEntry> pending = <OutboxEntry>[
         for (final OutboxEntry e in await _outbox.pending(owner: owner))
-          if (e.kind == kPreferenceOutboxKind) e.recordId,
-      };
+          if (e.kind == kPreferenceOutboxKind) e,
+      ];
       final Map<String, Object?> take = <String, Object?>{};
+      // Dirty keys another device has moved past: see below.
+      final Map<String, List<OutboxEntry>> overtaken =
+          <String, List<OutboxEntry>>{};
       await _locked(() async {
         if (_stale(owner))
           return; // a sign-out landed: never re-create its versions
         final _Versions doc = await _load(owner);
         server.forEach((String key, PreferenceValue v) {
-          if (dirty.contains(key)) return;
           if ((_changedAt[key] ?? 0) > started) return;
           if (v.version < (doc.versions[key] ?? 0)) return;
+          final List<OutboxEntry> mine = <OutboxEntry>[
+            for (final OutboxEntry e in pending)
+              if (e.recordId == key) e,
+          ];
+          if (mine.isNotEmpty) {
+            // 🔴 A DIRTY KEY STILL PICKS UP ANOTHER DEVICE'S VALUE (review 3 of
+            // #1080). After the push above, a change still pending is one in
+            // backoff (a 5xx, a Retry-After). If the account already holds a
+            // newer version than the one it was based on, its send can only
+            // be a conflict the server wins — so the answer is known now: the
+            // account's value is applied, said once, and the change dropped,
+            // instead of the screen holding a value the account never takes
+            // until the backoff ends.
+            if (mine.any(
+              (OutboxEntry e) => v.version <= _baseOf(doc, key, e),
+            )) {
+              return;
+            }
+            overtaken[key] = mine;
+          }
           doc.versions[key] = v.version;
           take[key] = v.value;
         });
         await _save(owner, doc);
       });
       // Checked again at the last moment: a change made while the versions were
-      // being written is newer than this read.
+      // being written is newer than this read. Checked before EACH discard too:
+      // a change made from here on is queued after it, never into it.
+      take.removeWhere((String key, _) => (_changedAt[key] ?? 0) > started);
+      for (final MapEntry<String, List<OutboxEntry>> o in overtaken.entries) {
+        for (final OutboxEntry e in o.value) {
+          if (!take.containsKey(o.key) || _stale(owner)) break;
+          if ((_changedAt[o.key] ?? 0) > started) {
+            take.remove(o.key);
+            break;
+          }
+          await _outbox.discard(e.id);
+        }
+      }
       take.removeWhere((String key, _) => (_changedAt[key] ?? 0) > started);
       if (take.isEmpty || _stale(owner)) return;
       await _apply(take);
+      for (final String key in overtaken.keys) {
+        if (!take.containsKey(key) || _stale(owner)) continue;
+        _onConflict?.call(key);
+      }
     } catch (_) {
       // Offline, refused, or a store that would not answer: the device keeps
       // what it shows, and the next trigger reads again.
@@ -330,6 +414,17 @@ class AccountPreferencesSync {
   }
 
   bool _stale(String owner) => _disposed || _currentUser() != owner;
+
+  /// The version [e]'s change really follows. A change queued behind this
+  /// device's OWN accepted write to the same key was based on the version
+  /// before it; the version that write produced is the one it follows.
+  static int _baseOf(_Versions doc, String key, OutboxEntry e) {
+    final int queued = e.body['base_version'] is int
+        ? e.body['base_version'] as int
+        : 0;
+    final List<int>? own = doc.own[key];
+    return own != null && own[0] == queued ? own[1] : queued;
+  }
 
   /// The keys [owner]'s ACCOUNT holds — a version above 0 on this device's
   /// record. Read BEFORE [forget]: a sign-out resets these and [pendingKeys]

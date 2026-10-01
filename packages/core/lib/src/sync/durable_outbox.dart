@@ -303,12 +303,19 @@ class DurableOutbox {
     this.readAttempts = 3,
     DateTime Function()? now,
     void Function()? onChanged,
+    Duration Function(Duration backoff, Duration? retryAfter)? retryWait,
   }) : _now = now ?? DateTime.now,
-       _onChanged = onChanged;
+       _onChanged = onChanged,
+       _retryWait = retryWait;
 
   final Future<KeyValueStore> _store;
   final DateTime Function() _now;
   final void Function()? _onChanged;
+
+  /// How long a counted failure waits, from the exponential backoff and the
+  /// server's `Retry-After` (when it sent one). Null: the backoff, exactly.
+  /// The preferences queue sets it (review 3 of #1080: Retry-After and jitter).
+  final Duration Function(Duration backoff, Duration? retryAfter)? _retryWait;
 
   /// The store key the queue lives under.
   final String key;
@@ -387,8 +394,10 @@ class DurableOutbox {
   /// Queue a write, coalescing it with what is already waiting for the same
   /// record (see the header). [mayHaveReached] is true when the caller already
   /// dispatched this write once itself (a first attempt whose outcome is
-  /// unknown). Throws whatever the store throws: the caller must then tell the
-  /// user the write was NOT kept.
+  /// unknown). [freshBackoff]: a merge into a waiting entry also clears its
+  /// backoff, so a NEW change is tried at once (review 3 of #1080). Throws
+  /// whatever the store throws: the caller must then tell the user the write
+  /// was NOT kept.
   Future<OutboxEnqueueResult> enqueue({
     required String owner,
     required String recordId,
@@ -397,6 +406,7 @@ class DurableOutbox {
     Map<String, dynamic> body = const <String, dynamic>{},
     String? id,
     bool mayHaveReached = false,
+    bool freshBackoff = false,
   }) => _locked((KeyValueStore kv, _Shared shared) async {
     final _Doc doc = await _read(kv);
     final String record = doc.aliases[recordId] ?? recordId;
@@ -430,6 +440,9 @@ class DurableOutbox {
           final OutboxEntry merged = last.copyWith(
             body: <String, dynamic>{...last.body, ...body},
             rev: last.rev + 1,
+            attempts: freshBackoff ? 0 : null,
+            waits: freshBackoff ? 0 : null,
+            clearNextAttempt: freshBackoff,
           );
           doc.entries[doc.entries.indexOf(last)] = merged;
           result = OutboxEnqueueResult._(merged, cancelled: false);
@@ -668,13 +681,20 @@ class DurableOutbox {
         attempts: attempts,
         dead: isDead,
         lastError: errorText,
-        nextAttemptAt: isDead ? null : _now().add(_backoff(attempts)),
+        nextAttemptAt: isDead ? null : _now().add(_waitAfter(attempts, hint)),
         clearNextAttempt: isDead,
       );
     }
     await _write(kv, doc);
     return _Settled(sent, dead);
   });
+
+  /// The wait after the [attempts]th counted failure; see [_retryWait].
+  Duration _waitAfter(int attempts, Duration? hint) {
+    final Duration backoff = _backoff(attempts);
+    final Duration Function(Duration, Duration?)? policy = _retryWait;
+    return policy == null ? backoff : policy(backoff, hint);
+  }
 
   Duration _backoff(int attempts) {
     final int factor = 1 << (attempts - 1).clamp(0, 20);

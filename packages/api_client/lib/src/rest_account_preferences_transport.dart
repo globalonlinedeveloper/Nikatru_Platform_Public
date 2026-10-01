@@ -86,6 +86,7 @@ class RestAccountPreferencesTransport
     return core.AccountPreferencesFailure(
       malformed ? 502 : e.statusCode,
       e.message,
+      e.retryAfter,
     );
   }
 }

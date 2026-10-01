@@ -19,6 +19,9 @@ class _Server implements AccountPreferencesTransport {
   /// GET and fails the write.
   int? patchFailWith;
 
+  /// The `Retry-After` a failed PATCH carries.
+  Duration? patchRetryAfter;
+
   /// When set, the next read/patch waits for it — a slow server.
   Completer<void>? holdRead;
   Completer<void>? holdPatch;
@@ -44,7 +47,9 @@ class _Server implements AccountPreferencesTransport {
     holdPatch = null;
     if (hold != null) await hold.future;
     if (failWith != null) throw AccountPreferencesFailure(failWith!);
-    if (patchFailWith != null) throw AccountPreferencesFailure(patchFailWith!);
+    if (patchFailWith != null) {
+      throw AccountPreferencesFailure(patchFailWith!, null, patchRetryAfter);
+    }
     patches++;
     final Set<String> conflicts = <String>{};
     changes.forEach((String key, PreferenceChange ch) {
@@ -107,9 +112,21 @@ class _GatedStore extends _MemStore {
 }
 
 class _Device {
-  _Device(this.server, {this.user = 'me'}) {
+  _Device(
+    this.server, {
+    this.user = 'me',
+    this.backoff = Duration.zero,
+    this.maxBackoff = Duration.zero,
+    this.now,
+    this.random,
+  }) {
     restart();
   }
+
+  final Duration backoff;
+  final Duration maxBackoff;
+  final DateTime Function()? now;
+  final double Function()? random;
 
   final _Server server;
   final _GatedStore store = _GatedStore();
@@ -124,8 +141,10 @@ class _Device {
     transport: () => server,
     outbox: preferencesOutbox(
       Future<KeyValueStore>.value(store),
-      baseBackoff: Duration.zero,
-      maxBackoff: Duration.zero,
+      baseBackoff: backoff,
+      maxBackoff: maxBackoff,
+      now: now,
+      random: random,
     ),
     store: Future<KeyValueStore>.value(store),
     currentUser: () => user,
@@ -140,6 +159,15 @@ class _Device {
     await sync.changed(key, value);
     await settle();
   }
+
+  /// What this device's queue holds for [key] — read from the store.
+  Future<List<OutboxEntry>> queued(String key) async => <OutboxEntry>[
+    for (final OutboxEntry e in await DurableOutbox(
+      Future<KeyValueStore>.value(store),
+      key: kPreferencesOutboxKey,
+    ).pending(owner: user))
+      if (e.recordId == key) e,
+  ];
 
   Future<void> settle() async {
     for (int i = 0; i < 20; i++) {
@@ -567,4 +595,144 @@ void main() {
       expect(a.shown['themeMode'], 'light');
     },
   );
+
+  group('review 3 of #1080: retries', () {
+    test(
+      '🔴 403, 405 and 410 are permanent: refused once, and the account value comes back by itself',
+      () async {
+        for (final int status in <int>[403, 405, 410]) {
+          final _Server server = _Server()..elsewhere('currencyCode', 'INR');
+          final _Device a = _Device(server);
+          await a.sync.sync();
+          expect(a.shown['currencyCode'], 'INR');
+          server.patchFailWith = status;
+          await a.set('currencyCode', 'EUR');
+          await a.settle();
+          expect(a.refused, <String>['currencyCode'], reason: '$status');
+          expect(a.shown['currencyCode'], 'INR', reason: '$status re-synced');
+          expect(await a.queued('currencyCode'), isEmpty, reason: '$status');
+        }
+      },
+    );
+
+    test(
+      '🔴 a repeated 500 keeps backing off, never gives up, and lands when the server recovers',
+      () async {
+        DateTime t = DateTime.utc(2026, 10, 1);
+        final _Server server = _Server()..patchFailWith = 500;
+        final _Device a = _Device(
+          server,
+          backoff: const Duration(seconds: 2),
+          maxBackoff: const Duration(minutes: 5),
+          now: () => t,
+          random: () => 0.5,
+        );
+        await a.set('themeMode', 'dark');
+        final List<Duration> waits = <Duration>[];
+        for (int i = 0; i < 12; i++) {
+          final OutboxEntry e = (await a.queued('themeMode')).single;
+          waits.add(e.nextAttemptAt!.difference(t));
+          t = e.nextAttemptAt!; // due now
+          await a.sync.push();
+          await a.settle();
+        }
+        expect(a.refused, isEmpty);
+        for (int i = 1; i < waits.length; i++) {
+          expect(waits[i] >= waits[i - 1], isTrue, reason: '$waits');
+        }
+        expect(waits.last, const Duration(seconds: 225), reason: 'at the cap');
+        server.patchFailWith = null;
+        t = (await a.queued('themeMode')).single.nextAttemptAt!;
+        await a.sync.push();
+        await a.settle();
+        expect(server.values['themeMode'], 'dark');
+        expect(await a.queued('themeMode'), isEmpty);
+      },
+    );
+
+    test('🔴 Retry-After is honoured, and the backoff is jittered', () async {
+      final DateTime t = DateTime.utc(2026, 10, 1);
+      final _Server server = _Server()
+        ..patchFailWith = 503
+        ..patchRetryAfter = const Duration(minutes: 10);
+      final _Device a = _Device(
+        server,
+        backoff: const Duration(seconds: 2),
+        maxBackoff: const Duration(minutes: 5),
+        now: () => t,
+        random: () => 0.5,
+      );
+      await a.set('themeMode', 'dark');
+      expect(
+        (await a.queued('themeMode')).single.nextAttemptAt,
+        t.add(const Duration(minutes: 10)),
+      );
+
+      server.patchRetryAfter = null;
+      Future<Duration> firstWait(double r) async {
+        final _Device d = _Device(
+          server,
+          backoff: const Duration(seconds: 2),
+          maxBackoff: const Duration(minutes: 5),
+          now: () => t,
+          random: () => r,
+        );
+        await d.set('locale', 'ta');
+        return (await d.queued('locale')).single.nextAttemptAt!.difference(t);
+      }
+
+      expect(await firstWait(0), const Duration(seconds: 1));
+      expect(await firstWait(0.5), const Duration(milliseconds: 1500));
+    });
+
+    test('🔴 a NEW change to a setting in backoff is sent at once', () async {
+      final DateTime t = DateTime.utc(2026, 10, 1);
+      final _Server server = _Server()..patchFailWith = 500;
+      final _Device a = _Device(
+        server,
+        backoff: const Duration(minutes: 1),
+        maxBackoff: const Duration(minutes: 5),
+        now: () => t,
+        random: () => 0.5,
+      );
+      await a.set('themeMode', 'dark');
+      expect((await a.queued('themeMode')).single.attempts, 1);
+      server.patchFailWith = null; // recovered, but the old change waits 45 s
+      await a.set('themeMode', 'light');
+      expect(server.values['themeMode'], 'light');
+      expect(await a.queued('themeMode'), isEmpty);
+    });
+
+    test(
+      '🔴 a key stuck in backoff still picks up another device’s value on read',
+      () async {
+        final DateTime t = DateTime.utc(2026, 10, 1);
+        final _Server server = _Server()..elsewhere('currencyCode', 'INR');
+        final _Device a = _Device(
+          server,
+          backoff: const Duration(minutes: 1),
+          maxBackoff: const Duration(minutes: 5),
+          now: () => t,
+          random: () => 0.5,
+        );
+        await a.sync.sync();
+        server.patchFailWith = 500;
+        await a.set('themeMode', 'dark'); // based on nothing
+        await a.set('currencyCode', 'EUR'); // based on version 1
+        expect((await a.queued('themeMode')).single.attempts, 1);
+        server.elsewhere('themeMode', 'light'); // device B, meanwhile
+        server.patchFailWith =
+            null; // healthy; this device is still backing off
+        await a.sync.sync();
+        await a.settle();
+        expect(a.shown['themeMode'], 'light', reason: 'B is picked up');
+        expect(a.conflicts, <String>['themeMode'], reason: 'and said once');
+        expect(await a.queued('themeMode'), isEmpty);
+        // Control: the key no other device touched keeps its pending change.
+        expect(a.shown['currencyCode'], 'EUR');
+        expect((await a.queued('currencyCode')).single.body['value'], 'EUR');
+        expect(server.values['themeMode'], 'light');
+      },
+    );
+  });
 }
