@@ -18,9 +18,7 @@
 // every wall-clock loop through its `guardedPump`, and a helper with a private
 // loop would be the one pump in that suite that escapes it.
 // ─────────────────────────────────────────────────────────────────────────────
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 /// Signs in WITHOUT the login form, by spending the single-use magic-link token
@@ -48,36 +46,17 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 /// wrong-password legs; what is not covered post-cutover is a SUCCESSFUL form
 /// submit, which no headless driver can do against a live captcha.
 ///
-/// 🔴 AND IT NAVIGATES TO `/scan` ITSELF — THE NAVIGATION IS PART OF SIGNING IN
-/// ON THIS PATH, NOT SOMETHING THE CALLER REMEMBERS TO ADD. `/scan` has exactly
-/// one entry point in the app: `LoginScreen._submit`'s `context.go('/scan')`.
-/// Every other occurrence in the tree is a comment ABOUT it. So a sign-in that
-/// skips the form skips the navigation too, and the caller lands on the home
-/// shell instead.
-///
-/// ⚠️ WHY IT LIVES HERE RATHER THAN AT THE CALL SITE, AND THE COST OF LEARNING
-/// THAT THE OTHER WAY. It was written at the call site first, in the full-walk
-/// test only. The full walk went green — 17 screenshots, /scan reached — and
-/// run 33844142953 still failed, because the DELETE-ACCOUNT test signs in the
-/// same way with its own token and never got the two lines. Its screen text was
-/// `Home | Calendar | Insights | Budget | More | Good morning` — the home shell,
-/// exactly the symptom the full walk had just stopped showing. Two call sites,
-/// one of them patched, and the diff looked complete. A helper that leaves out
-/// the step its own doc comment says is mandatory is a trap for the next caller
-/// as well as this one.
-///
-/// ⚠️ A `Scaffold` IS THE CONTEXT, NOT `AppShell`. By this point the router has
-/// already put an authenticated user with no clickwrap record on the
-/// `/reaccept-terms` interstitial, where no `AppShell` exists.
-///
-/// 🔴 BEFORE THE CLICKWRAP, NOT AFTER — the gate does not BLOCK the destination,
-/// it BANKS it. `_gateWithNext` stores `/scan` as `?next=` and the gate's exit
-/// hands it back via `_nextOr(state, '/home')`. Navigate after the interstitial
-/// is cleared and there is no gate left to bank anything, which is what run
-/// 33843443550 measured. Pinned locally, on the real router, by
-/// `test/scan_survives_the_gate_test.dart` — both halves: that asking for
-/// `/scan` while the gate is CLOSED banks `?next=%2Fscan`, and that clearing it
-/// the way a user clears it lands on `/scan`.
+/// ⏱ 2026-10-01 · IM-07 (ADR 077 §2.2): IT NO LONGER NAVIGATES ANYWHERE.
+/// It used to force `go('/scan')` here, standing in for the form's old
+/// `context.go('/scan')` — a timed loader that imported nothing and that
+/// nothing in the app navigated to any more (sign-in lands on the banked
+/// `?next=` or `/home`, `afterSignInDestination`). The session appearing is
+/// now the whole of signing in, exactly as it is for a person: the router's
+/// refresh moves the user off `/sign-in` through the gate chain, and every
+/// caller asserts the HOME it lands on (`expectLandedOnHome` in app_test.dart).
+/// The forcing was inside this helper rather than at each call site because a
+/// call site once missed it (run 33844142953); removing it here removes it for
+/// every caller at once, which is the same argument in the other direction.
 Future<bool> signInWithMagicToken(
   WidgetTester tester,
   String tokenHash, {
@@ -90,8 +69,5 @@ Future<bool> signInWithMagicToken(
   );
   // The same settle the form path takes: GoTrue round trip + route change.
   await pumpFor(tester, const Duration(seconds: 10));
-  // Stand in for `LoginScreen._submit`'s `context.go('/scan')`. See above.
-  GoRouter.of(tester.firstElement(find.byType(Scaffold))).go('/scan');
-  await pumpFor(tester, const Duration(seconds: 2));
   return true;
 }

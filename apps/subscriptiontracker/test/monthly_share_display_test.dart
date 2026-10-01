@@ -9,6 +9,7 @@
 //   * The Calendar month total: the twelfth of a yearly plan renewing that
 //     month, 12x short in the month the money actually goes.
 //   * Calendar and Scan rows: the share, bare or beside a cycle it is not.
+//     (Scan is retired, ADR 077 §2.2, and its group with it.)
 //   * The cancel sheet's "/yr" figure: twelve rounded twelfths again.
 //
 // The share is now `MonthlyShare`, an extension type with no `implements
@@ -43,7 +44,6 @@ import 'package:subscriptiontracker/data/subscriptions/subscription_repository.d
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
-import 'package:subscriptiontracker/features/scan/scan_screen.dart';
 import 'package:subscriptiontracker/features/shared/widgets.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
@@ -112,7 +112,7 @@ Future<AppLocalizations> _en() =>
 /// with the per-year label and never the share.
 ///
 /// ⏱ 2026-09-28 · train ST-D1: [row] is `AppListRow` on Home, whose rows are
-/// the design system's now, and stays `RowCard` on Scan.
+/// the design system's now; `RowCard` is the default for the other rows.
 void _expectRowsShowTheCharge(
   String name,
   AppLocalizations l10n, {
@@ -266,29 +266,6 @@ void main() {
         expect(find.text(_charge), findsWidgets);
         expect(find.text(l10n.perYear), findsWidgets);
         expect(find.text(_share), findsNothing);
-        expect(tester.takeException(), isNull);
-      });
-    }
-  });
-
-  group('Scan results print charges', () {
-    for (final Size size in _widths) {
-      testWidgets('at ${size.width.toInt()}', (WidgetTester tester) async {
-        await pumpAt(tester, size, const ScanScreen(), overrides: _overrides());
-        // Past the 560 ms dwell of every step; see `width_scan_test.dart`.
-        for (int i = 0; i < 10; i++) {
-          await tester.pump(const Duration(milliseconds: 560));
-        }
-        final AppLocalizations l10n = await _en();
-
-        expect(
-          find.text(l10n.scanResultsHeading),
-          findsOneWidget,
-          reason: 'the phase sentinel: the results list is built',
-        );
-        // ⏱ 2026-09-28 · train ST-D7: Import's rows are the foundation's
-        // `AppListRow`, no longer the app's `RowCard`.
-        _expectRowsShowTheCharge(_yearly().name, l10n, row: AppListRow);
         expect(tester.takeException(), isNull);
       });
     }

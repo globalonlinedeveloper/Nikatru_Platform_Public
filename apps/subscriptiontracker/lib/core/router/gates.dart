@@ -36,19 +36,16 @@ import '../../state/providers.dart';
 
 /// Locations that must never be banked as a gate's `?next=` destination.
 ///
-/// 🔴 `/scan` IS DELIBERATELY ABSENT, AND THAT ABSENCE IS THE FIX. `/scan` sits
-/// on the signed-out `authFlow` allowlist below, but it is ALSO the real
-/// post-sign-in destination — `LoginScreen._submit` ends on
-/// `context.go('/scan')` — so excluding every `authFlow` path (the obvious
-/// reading) makes the capture a no-op for the one journey that regressed.
-///
 /// What IS listed is listed because nobody can be "returning" to it: four are
 /// the interstitials themselves, and handing one back re-opens the gate the
 /// user has just cleared. `/sign-in` is the load-bearing entry —
 /// `refreshListenable` can re-run this redirect at `/sign-in` in the gap
-/// between the session appearing and `context.go('/scan')` landing, so a naive
-/// capture banks `/sign-in`, and the signed-in rule at the foot of the redirect
-/// bounces that straight home again: the regression, unchanged.
+/// between the session appearing and the post-sign-in navigation landing, so
+/// a naive capture banks `/sign-in`, and the signed-in rule at the foot of the
+/// redirect bounces that straight home again.
+///
+/// (`/scan` was the post-sign-in destination this paragraph was first written
+/// about; ADR 077 §2.2 retired it to a redirect onto `/import`.)
 const Set<String> _neverADestination = <String>{
   '/onboarding',
   '/login',
@@ -184,7 +181,9 @@ GateVerdict? signedOutGate(GateContext ctx) {
     '/login',
     '/sign-in',
     '/sign-up',
-    '/scan',
+    // `/scan` LEFT THIS LIST WITH ADR 077 §2.2 (IM-01). It was a timed loader a
+    // signed-out visitor could stand on; its successor, `/import`, writes rows
+    // through the add route and so belongs to somebody with a session.
     // 🔴 ITS WHOLE AUDIENCE IS SIGNED OUT, WHICH IS WHY IT HAS TO BE HERE.
     // With "Confirm email" ON, `signUp` returns a user and NO SESSION, so
     // the person who has just registered fails `loggedIn` like any visitor.
@@ -234,8 +233,18 @@ GateVerdict? signedOutGate(GateContext ctx) {
   // simply arrives somewhere they did not ask for afterwards. Leaving
   // `/login` allowed makes the guard decline and hands the job to the
   // route-level redirect below.
+  //
+  // IM-01: AND THE PLACE THEY ASKED FOR IS BANKED. A signed-out visitor sent
+  // here from a deep link (`/import` from a share, a bookmark) was handed a
+  // bare `/sign-in` and, signed in, landed on `/home`. `_gateWithNext` banks
+  // the location as `?next=` — through `_neverADestination`, so an interstitial
+  // is never banked — and `afterSignInDestination` already reads it. `/home`
+  // is not banked either: it is where a sign-in lands with no `next` anyway,
+  // so `?next=/home` would be a longer URL that says nothing.
   if (!loggedIn && !authFlow.contains(loc)) {
-    return const GateVerdict('/sign-in');
+    return GateVerdict(
+      loc == '/home' ? '/sign-in' : _gateWithNext('/sign-in', ctx.state),
+    );
   }
   return null;
 }
@@ -372,11 +381,10 @@ GateVerdict? legalReacceptanceGate(GateContext ctx) {
   //
   // 🔴 THIS LINE ATE THE DESTINATION, AND THE NIGHTLY E2E IS WHAT NOTICED.
   // #280 (a6a0646) put the gate in front of everything. A user signing in
-  // runs `context.go('/scan')` (login_screen.dart `_submit`), the gate
-  // intercepts, and this line then handed them '/home' instead of the
-  // '/scan' they were going to. ScanScreen is the ONLY renderer of
-  // `l10n.goToDashboard`, so `find.text('Go to dashboard')` found nothing
-  // at app_test.dart:849 and :1232.
+  // ran `context.go('/scan')` (then login_screen.dart `_submit`; `/scan` is a
+  // redirect onto `/import` since ADR 077 §2.2), the gate intercepted, and
+  // this line then handed them '/home' instead of the destination they were
+  // going to — found only because the nightly looked for that screen's copy.
   //
   // A redirect that silently SUBSTITUTES a destination is invisible to any
   // test that only asserts the user reached the INTERSTITIAL —

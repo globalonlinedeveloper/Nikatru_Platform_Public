@@ -104,7 +104,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/settings/settings_screen.dart",
           "linesAtSince": 1969,
-          "ceiling": 1947,
+          "ceiling": 1946,
           "template": 616
         }
       ],
@@ -165,6 +165,13 @@
           "on": "2026-10-01",
           "callSiteDelta": -104,
           "measured": "Lane fix-rv2-st-after-dw (audit D8, D12/F53) after its parity STOP on run 36806466768: the cloud draft built the header-node headings and the ONE Help section (contact page, support mail, Rate, Send feedback) inside the fork and took apps/subscriptiontracker/lib/features/settings/settings_screen.dart from its ceiling 1948 to 2053. Instead of raising the ceiling, the heading node (SettingsHeading) and the Help rows with their order, keys, mailto subjects, the store-listing Rate and its unavailable SnackBar (helpCard, HelpKeys, supportMailUri) moved into packages/chassis_screens/lib/settings/help_section.dart with their own tests (packages/chassis_screens/test/help_section_test.dart, width-measured at all three classes), re-exported through features/shared/chassis_adapters.dart beside EditProfileDialog/RowChevron so the fork keeps a single chassis path (chassis-delegation follows one). The fork keeps its strings, its card decoration and its row widget (passed as `_LinkRow.new`); its private `_contactSupport` went with the move. Fork 2053 -> 1947 = -106, adapter +2 (the export directive), callSiteDelta -104; wc -l after dart format (0 changed), Flutter 3.47.5. Net against origin/main: fork 1948 -> 1947, and the ceiling falls 1948 -> 1947 in the same commit. No ceiling rose."
+        },
+        {
+          "file": "features/shared/chassis_adapters.dart",
+          "piece": "dataCard, DataKeys",
+          "on": "2026-10-01",
+          "callSiteDelta": -23,
+          "measured": "Lane apply-st-import (train ST import hub, IM-01/IM-03/IM-08) after its parity STOP measured locally: the cloud draft added Settings › Your data's Import, Back up (JSON) and Restore rows inside the fork and, merged onto origin/main 96e0eb13, took apps/subscriptiontracker/lib/features/settings/settings_screen.dart from its ceiling 1947 to 1971. Instead of raising the ceiling, the Account & data card's Export, Import, Back up and Restore rows with their order, keys and last-row rule (dataCard, DataKeys) moved into packages/chassis_screens/lib/settings/data_section.dart with their own tests (packages/chassis_screens/test/data_section_test.dart, four mutations each red), re-exported through features/shared/chassis_adapters.dart beside helpCard so the fork keeps a single chassis path. The fork keeps its strings, its card decoration, its row widget (passed as `_LinkRow.new`), its taps (exportDataTap, backupDataTap, context.push('/import')) and the inert Connected accounts row (passed as `leading`). Fork 1971 -> 1946 = -25, adapter +2 (the export directive), callSiteDelta -23; wc -l after dart format (0 changed), Flutter 3.47.5. Net against origin/main: fork 1947 -> 1946, and the ceiling falls 1947 -> 1946 in the same commit. No ceiling rose."
         },
         {"file": "features/onboarding/onboarding_screen.dart", "piece": "OnboardingView", "on": "2026-09-28", "callSiteDelta": -285, "measured": "apps/subscriptiontracker/lib/features/onboarding/onboarding_screen.dart 467 -> 182 lines (wc -l, after dart format, Flutter 3.47.5, against `git show <base>:<path>`; re-measured 2026-09-29 on the train ST-D DW2 base, which carries ST-U3's capability-aware slide 2). Train ST-D8: the carousel mechanism — the reading cap on the WHOLE column (the chassis view had it per page, so its controls ran 1232 px wide on a 1280 window; this app's own width_onboarding_test was the property), scale-safe pages, the spoken \"Page 2 of 3\" (chassis key onboardingPageIndicator, en + ta) and Skip beside the primary — now lives in packages/chassis_screens/lib/firstrun/onboarding_screen.dart. The app file keeps its adapter: the subscriptiontrackerOnboarding1..3 copy with the [O3] AppConfig.copy override, the onboardingSeenProvider write and the /sign-in hand-off, and the first page's tile art (theme roles + AppSpacing/AppRadius only). The forced-dark stage (AppColors.onboardBg + white-alpha literals) is gone: the carousel follows the theme."},
         {

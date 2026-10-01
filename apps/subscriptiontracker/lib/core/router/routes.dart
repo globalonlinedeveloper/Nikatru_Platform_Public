@@ -26,11 +26,11 @@ import '../../features/auth/reaccept_terms_screen.dart';
 import '../../features/auth/reset_password_screen.dart';
 import '../../features/auth/verify_email_screen.dart';
 import '../../features/detail/subscription_detail_screen.dart';
+import '../../features/import/import_screen.dart';
 import '../../features/monetization/manage_plan_screen.dart';
 import '../../features/monetization/paywall_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
-import '../../features/scan/scan_screen.dart';
 import 'navigator_key.dart';
 
 /// Thin seam onto `package:nikatru_core`'s shared implementation — the WHY,
@@ -93,9 +93,14 @@ List<RouteBase> appRoutes() => <RouteBase>[
         state.uri.replace(path: '/insights').toString(),
     caseSensitive: false,
   ),
+  // ── THE RETIRED `/scan`, KEPT AS A REDIRECT (ADR 077 §2.2, IM-01) ────────
+  // `/scan` was a timed loader over the ordinary list fetch that imported
+  // nothing; the import hub at `/import` is what the word means now. Same shape
+  // as `/login` and `/budget`: only the PATH is rewritten, so a query survives.
   GoRoute(
     path: '/scan',
-    builder: (_, __) => const ScanScreen(),
+    redirect: (BuildContext context, GoRouterState state) =>
+        state.uri.replace(path: '/import').toString(),
     caseSensitive: false,
   ),
 
@@ -194,6 +199,18 @@ List<RouteBase> appRoutes() => <RouteBase>[
     parentNavigatorKey: rootNavigatorKey,
     builder: (_, GoRouterState state) =>
         SubscriptionDetailScreen(id: state.pathParameters['id']!),
+    caseSensitive: false,
+  ),
+
+  // ── THE IMPORT HUB (IM-01) ─────────────────────────────────────────────
+  // Above the shell, like the notifications screen: a CSV mapping step is a
+  // task with an end, and a bottom nav bar under it is a way to lose it half
+  // done. Signed-in only — it writes rows through the add route, so the
+  // signed-out rule sends a visitor to `/sign-in` with `?next=/import`.
+  GoRoute(
+    path: '/import',
+    parentNavigatorKey: rootNavigatorKey,
+    builder: (_, __) => const ImportScreen(),
     caseSensitive: false,
   ),
 
