@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:nikatru_core/nikatru_core.dart'
     show NotificationAction, NotificationService;
 
@@ -48,6 +49,25 @@ NotificationService createLocalNotificationService({
 /// Whether this process was started by the XDG autostart entry to show due
 /// reminders and exit (NO-04) — Linux only; false everywhere else.
 bool isRemindLaunch() => platformIsRemindLaunch();
+
+/// The login-time `--remind` run (NO-04), whole: when [isRemindLaunch], show
+/// every reminder the Linux ledger holds that fell due while the app was
+/// closed, then leave — no window (the Linux runner draws none for it), no
+/// telemetry, no daemon. True when it ran, and the caller's `main()` returns
+/// at once; false everywhere else, off Linux always. Every app's autostart
+/// entry runs its binary this way, so the run lives here, not in an app.
+Future<bool> runRemindLaunch({String? linuxAppId}) async {
+  if (!isRemindLaunch()) return false;
+  final NotificationService remind = createLocalNotificationService(
+    linuxAppId: linuxAppId,
+  );
+  try {
+    await remind.init();
+  } finally {
+    await SystemNavigator.pop();
+  }
+  return true;
+}
 
 /// The XDG autostart entry that shows due reminders at login (NO-04) — on
 /// Linux only; null on every other target, web included. Create it when the

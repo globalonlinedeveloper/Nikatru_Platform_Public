@@ -148,8 +148,11 @@ class ReminderRuleRows extends ConsumerWidget {
         .watch(renewalRemindersProvider)
         .capabilities
         .canSchedule;
+    // NO-12 / NO-13: the tools rows follow the rules on both paths, mounted
+    // from here so settings_screen.dart, a chassis fork at its ceiling, does
+    // not grow by them.
     if (!deliverable || !(s.prefs['alerts'] ?? false)) {
-      return const SizedBox.shrink();
+      return const ReminderToolsRows();
     }
     final AppLocalizations l10n = AppLocalizations.of(context);
     final SettingsController c = ref.read(settingsControllerProvider.notifier);
@@ -189,6 +192,7 @@ class ReminderRuleRows extends ConsumerWidget {
               if (t != null) await c.setReminderTime(t.hour, t.minute);
             },
           ),
+          const ReminderToolsRows(),
         ],
       ),
     );

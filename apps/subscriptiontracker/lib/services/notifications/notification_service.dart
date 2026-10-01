@@ -76,6 +76,7 @@ class ReminderCopy {
   /// English fallback for a sentence the caller did not render.
   final String? overBudgetTitle;
   final String Function(String spent, String budget)? overBudgetBody;
+
   /// NO-10: the two buttons on a renewal reminder. Null = no buttons.
   final String? markPaidAction;
   final String? snoozeAction;

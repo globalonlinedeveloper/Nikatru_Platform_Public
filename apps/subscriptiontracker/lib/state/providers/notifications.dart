@@ -18,6 +18,7 @@ import 'package:nikatru_notifications/nikatru_notifications.dart';
 import '../../core/app_config.dart';
 import '../../core/windows_notification_identity.g.dart';
 import '../../services/notifications/notification_service.dart';
+import '../subscriptions_controller.dart' show reminderCopyFor;
 import '../analytics_providers.dart';
 import 'analytics_envelope.dart' show kPlatformBaseUrl;
 
@@ -47,11 +48,27 @@ final Provider<core.NotificationService> notificationTapSourceProvider =
 /// file header for the three pieces of evidence that forced the direction.
 ///
 /// [pipeline C-2/C-7] Platform reality is DECLARED, not assumed — see
-/// [NotificationCapabilities]: Android/iOS/macOS show and schedule; Linux shows
-/// but cannot schedule; Windows does neither on the pinned 17.x; Web has no
-/// plugin at all. Unsupported calls degrade to a safe no-op, so a caller never
+/// [NotificationCapabilities]: Android/iOS/macOS show and schedule; Linux
+/// shows and schedules inexactly through the package's ledger (NO-04); Windows
+/// needs the app's identity; Web has no plugin at all. Unsupported calls degrade to a safe no-op, so a caller never
 /// crashes on a platform that cannot do the thing — but it also never silently
 /// believes a reminder was set.
+/// The ONE adapter `main()` initialises (ST-R4): the chassis call, plus what
+/// Subly adds to it. [kWindowsNotificationIdentity] is the toast identity from
+/// app.yaml (without it Windows has no notifications at all); [AppConfig.appId]
+/// names the Linux ledger (NO-04); and Apple registers a notification's buttons
+/// by category once, at initialize, so their words are rendered here in the
+/// language the app opens in — an in-app language change reaches iOS/macOS at
+/// the next launch, while Android and Windows carry them per notification
+/// (NO-10). Here rather than in `main.dart`, a chassis fork held at its
+/// ceiling (tooling/chassis-parity.json).
+core.NotificationService createLaunchNotificationService() =>
+    createLocalNotificationService(
+      windows: kWindowsNotificationIdentity,
+      linuxAppId: AppConfig.appId,
+      darwinActions: RenewalReminders.actionsFor(reminderCopyFor(null)),
+    );
+
 final Provider<core.NotificationService> notificationServiceProvider =
     Provider<core.NotificationService>(
       (ref) =>

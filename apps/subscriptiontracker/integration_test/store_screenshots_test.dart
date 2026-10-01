@@ -552,7 +552,7 @@ void main() {
     );
 
     // `app.main()` installs AppErrorScreen as `ErrorWidget.builder`
-    // (main.dart:124 → system_screens.dart:72) and flutter_test fails any test
+    // (main.dart:102 → system_screens.dart:72) and flutter_test fails any test
     // that leaves that global changed, so the last line of this body puts it
     // back — the shape `launchApp` already uses at app_test.dart:638.
     final ErrorWidgetBuilder builderBeforeTest = ErrorWidget.builder;

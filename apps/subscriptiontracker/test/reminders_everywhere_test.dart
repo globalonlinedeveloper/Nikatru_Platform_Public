@@ -231,7 +231,8 @@ void main() {
         expect(
           id >= RenewalReminders.snoozeIdBase &&
               id <
-                  RenewalReminders.snoozeIdBase + RenewalReminders.snoozeIdRange,
+                  RenewalReminders.snoozeIdBase +
+                      RenewalReminders.snoozeIdRange,
           isFalse,
         );
       }
