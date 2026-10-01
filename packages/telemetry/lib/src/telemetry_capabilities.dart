@@ -9,13 +9,17 @@ import 'package:flutter/foundation.dart' show TargetPlatform, immutable;
 /// A Dart exception is caught inside the VM and reported by ordinary code, so it
 /// works anywhere the SDK runs. A NATIVE crash — a segfault in a plugin's C++,
 /// an OOM kill, an ANR — takes the process down before any Dart code can run.
-/// Catching those needs a native crash handler installed by the SDK, and
-/// `sentry_flutter` only ships one for Android, iOS and macOS.
+/// Catching those needs a native crash handler installed by the SDK.
 ///
-/// So on Windows, Linux and web, the exact failures a user calls "the app just
-/// closed" are the ones that produce NO report. An app that builds on Windows,
-/// crashes natively and reports nothing is passing CI and failing the user —
-/// which is the gap this requirement exists to make visible rather than fix.
+/// ⏱ 2026-10-01 · full review AA-08. The pinned `sentry_flutter` (9.26.0)
+/// ships one for every non-web target — sentry-android (JVM + NDK), KSCrash on
+/// iOS/macOS, sentry-native on Windows/Linux — and turns it on by default.
+/// [TelemetryBootstrap] turns it OFF everywhere (`enableNativeCrashHandling =
+/// false`, and the Android NDK's `io.sentry.ndk.enable` manifest switch),
+/// because no native symbols are uploaded and a native event bypasses the
+/// Dart-side PII scrub. So on EVERY target the exact failures a user calls
+/// "the app just closed" produce NO report, by decision — and this table says
+/// so rather than letting a green build imply otherwise.
 @immutable
 class TelemetryCapabilities {
   const TelemetryCapabilities({
@@ -39,32 +43,43 @@ class TelemetryCapabilities {
     required bool isWeb,
   }) {
     if (isWeb) {
+      // ⏱ 2026-10-01: Dart exceptions only. The browser SDK's window-level JS
+      // error handlers were given up on 2026-09-12 (W5, see
+      // TelemetryBootstrap.useHttpTransportOnWeb), so a JS error that never
+      // becomes a Dart exception is not reported.
       return const TelemetryCapabilities(
         dartErrors: true,
         nativeCrashes: false,
-        note: 'Web: JS errors and Dart exceptions are reported. There is no '
-            'native crash concept — a tab kill is invisible to the page.',
+        note: 'Web: Dart exceptions are reported; window-level JS errors are '
+            'not (the browser SDK is not loaded). There is no native crash '
+            'concept — a tab kill is invisible to the page.',
       );
     }
+    const String nativeOff = 'The native crash handler is OFF by decision '
+        '(TelemetryBootstrap: enableNativeCrashHandling = false): no native '
+        'symbols are uploaded and a native event would bypass the Dart PII '
+        'scrub, so a native crash takes the process down and produces no '
+        'report — exactly what a user means by "it just closed".';
     return switch (platform) {
-      TargetPlatform.android ||
+      TargetPlatform.android => const TelemetryCapabilities(
+          dartErrors: true,
+          nativeCrashes: false,
+          note: 'Android: Dart errors only. $nativeOff The NDK handler is off '
+              "too, by each app manifest's io.sentry.ndk.enable.",
+        ),
       TargetPlatform.iOS ||
       TargetPlatform.macOS =>
         const TelemetryCapabilities(
           dartErrors: true,
-          nativeCrashes: true,
-          note: '',
+          nativeCrashes: false,
+          note: 'iOS/macOS: Dart errors only. $nativeOff',
         ),
       TargetPlatform.windows ||
       TargetPlatform.linux =>
         const TelemetryCapabilities(
           dartErrors: true,
-          // sentry_flutter ships no native crash handler for desktop
-          // Windows/Linux — a segfault or OOM kill reports NOTHING.
           nativeCrashes: false,
-          note: 'Desktop Windows/Linux: Dart errors only. A native crash takes '
-              'the process down before any Dart code runs and produces no '
-              'report — which is exactly what a user means by "it just closed".',
+          note: 'Desktop Windows/Linux: Dart errors only. $nativeOff',
         ),
       TargetPlatform.fuchsia => const TelemetryCapabilities(
           dartErrors: false,
