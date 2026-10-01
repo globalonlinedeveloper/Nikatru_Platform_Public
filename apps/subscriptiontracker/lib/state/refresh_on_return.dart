@@ -6,11 +6,25 @@
 // and the home list's pull-to-refresh calls the same function. A list read
 // once per process showed a web tab left open for a day, or a phone app back
 // from the background, whatever the server said when it was opened.
+import 'package:flutter/widgets.dart' show Widget;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nikatru_chassis_screens/shell/app_shell.dart'
+    show RefreshOnResume;
 
 import 'money_providers.dart';
 import 'providers.dart';
 import 'subscriptions_controller.dart';
+
+/// The app's [RefreshOnResume] around [child]: every return to the front runs
+/// [refreshOnReturn], throttled by the chassis. Built HERE, not in app.dart:
+/// app.dart is a private copy of a chassis file and may not grow
+/// (assert-chassis-parity, O-CHASSIS-PHASE-2B).
+Widget refreshOnResume(WidgetRef ref, {required Widget child}) =>
+    RefreshOnResume(
+      onRefresh: () => refreshOnReturn(ref),
+      elapsed: ref.read(resumeElapsedProvider), // a test steps the floor
+      child: child,
+    );
 
 /// The monotonic time `RefreshOnResume` throttles by — null in production (a
 /// stopwatch); a test overrides it to step past the 30 s floor.

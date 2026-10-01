@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:nikatru_core/nikatru_core.dart' show ResumeRefresh;
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+
+import '../integrity/device_integrity_gate.dart' show DeviceIntegrityScope;
 
 /// The app ROOT every stamped app inherits — [ADR 067] decision 2.
 ///
@@ -171,7 +173,6 @@ class NikatruApp extends StatelessWidget {
   }
 }
 
-
 /// The first-run analytics consent question — the BODY, moved here by
 /// [ADR 067] decision 2.
 ///
@@ -237,7 +238,9 @@ class ConsentPromptCard extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: AppBreakpoints.form),
+                constraints: const BoxConstraints(
+                  maxWidth: AppBreakpoints.form,
+                ),
                 child: Material(
                   color: theme.colorScheme.surface,
                   borderRadius: BorderRadius.circular(20),
@@ -379,7 +382,6 @@ class ConsentScrim extends StatelessWidget {
   }
 }
 
-
 /// 🔴 [pipeline C-13] `OfflineNotice`'s ONLY CALL SITE — and until 2026-08-06
 /// there was none, anywhere in the repository.
 ///
@@ -456,6 +458,88 @@ class OfflineBannerHost extends StatelessWidget {
   }
 }
 
+/// ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST — the once-per-session,
+/// non-blocking notice on a rooted device, painted above the app the way
+/// [OfflineBannerHost] paints its notice. Returns [child]
+/// untouched on every other device and after the notice was dismissed.
+class RootedDeviceNoticeHost extends StatefulWidget {
+  const RootedDeviceNoticeHost({required this.child, this.session, super.key});
+
+  /// The app below the notice.
+  final Widget child;
+
+  /// The session to read; [DeviceIntegrityScope.session] when null.
+  final core.IntegritySession? session;
+
+  /// The notice, for tests.
+  static const Key notice = ValueKey<String>('rooted-device-notice');
+
+  @override
+  State<RootedDeviceNoticeHost> createState() => _RootedDeviceNoticeHostState();
+}
+
+class _RootedDeviceNoticeHostState extends State<RootedDeviceNoticeHost> {
+  late bool _show;
+
+  @override
+  void initState() {
+    super.initState();
+    // Taken ONCE, here: a rebuild, a second host or a later route never shows
+    // it again this session.
+    _show = (widget.session ?? DeviceIntegrityScope.session).takeRootNotice();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_show) return widget.child;
+    final ChassisLocalizations l10n = context.chassisL10n;
+    final ThemeData theme = Theme.of(context);
+    // Painted AFTER the child for the reason OfflineBannerHost records: a
+    // route's BlockSemantics drops the semantics of everything painted before
+    // it, so a notice painted first is invisible to a screen reader.
+    return Flex(
+      direction: Axis.vertical,
+      verticalDirection: VerticalDirection.up,
+      children: <Widget>[
+        Expanded(child: widget.child),
+        Material(
+          key: RootedDeviceNoticeHost.notice,
+          color: theme.colorScheme.secondaryContainer,
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    Icons.info_outline,
+                    color: theme.colorScheme.onSecondaryContainer,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        l10n.rootedDeviceNotice,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSecondaryContainer,
+                        ),
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _show = false),
+                    child: Text(l10n.rootedDeviceNoticeDismiss),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 /// Calls [onBackground] on every edge that means "this app is on its way out".
 ///
@@ -557,13 +641,13 @@ class _AppLifecycleFlushState extends State<AppLifecycleFlush>
 /// edge every target reports: a phone app returning from the background, a
 /// desktop window regaining focus, and on web the tab becoming visible or
 /// focused again (the engine maps `visibilitychange` and focus onto the same
-/// lifecycle states). [ResumeRefresh] decides whether that edge is worth a
+/// lifecycle states). [core.ResumeRefresh] decides whether that edge is worth a
 /// request.
 class RefreshOnResume extends StatefulWidget {
   const RefreshOnResume({
     required this.onRefresh,
     required this.child,
-    this.minInterval = ResumeRefresh.defaultMinInterval,
+    this.minInterval = core.ResumeRefresh.defaultMinInterval,
     this.elapsed,
     super.key,
   });
@@ -572,7 +656,7 @@ class RefreshOnResume extends StatefulWidget {
   /// list screen does not keep a second list of what "refresh" means.
   final Future<void> Function() onRefresh;
 
-  /// The floor between two resume-driven re-reads ([ResumeRefresh]).
+  /// The floor between two resume-driven re-reads ([core.ResumeRefresh]).
   final Duration minInterval;
 
   /// Injectable for tests; production reads a monotonic stopwatch.
@@ -585,7 +669,7 @@ class RefreshOnResume extends StatefulWidget {
 }
 
 class _RefreshOnResumeState extends State<RefreshOnResume> {
-  late final ResumeRefresh _resume;
+  late final core.ResumeRefresh _resume;
   late final AppLifecycleListener _listener;
 
   @override
@@ -595,7 +679,7 @@ class _RefreshOnResumeState extends State<RefreshOnResume> {
     // resume, stamp THAT moment as the last read, and skip the very re-read the
     // resume asked for. `widget.onRefresh` is read at call time, so a rebuilt
     // parent's newer callback is the one that runs.
-    _resume = ResumeRefresh(
+    _resume = core.ResumeRefresh(
       refresh: () => widget.onRefresh(),
       minInterval: widget.minInterval,
       elapsed: widget.elapsed,

@@ -27,6 +27,7 @@ import io.flutter.plugin.common.MethodChannel
 class AgeSignalsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
     private var channel: MethodChannel? = null
     private var attestChannel: MethodChannel? = null
+    private var integrityChannel: MethodChannel? = null
     private var context: Context? = null
     private var activity: Activity? = null
 
@@ -40,6 +41,11 @@ class AgeSignalsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activit
         attestChannel = MethodChannel(binding.binaryMessenger, "nikatru/native_attest").also {
             it.setMethodCallHandler(NativeAttestHandler(binding.applicationContext))
         }
+        // ⏱ 2026-10-01 · root detection and the runtime signature check ride it
+        // too (DeviceIntegrityHandler, row O-APPS-GOV-IN-VAPT-CHECKLIST).
+        integrityChannel = MethodChannel(binding.binaryMessenger, "nikatru/device_integrity").also {
+            it.setMethodCallHandler(DeviceIntegrityHandler(binding.applicationContext))
+        }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -47,6 +53,8 @@ class AgeSignalsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activit
         channel = null
         attestChannel?.setMethodCallHandler(null)
         attestChannel = null
+        integrityChannel?.setMethodCallHandler(null)
+        integrityChannel = null
         context = null
     }
 

@@ -820,7 +820,7 @@ class SettingsScreen extends ConsumerWidget {
                     icon: '⇩',
                     label: l10n.exportDataCsv,
                     last: true,
-                    onTap: exportDataTap(ref),
+                    onTap: exportDataTap(ref, context),
                   ),
                 ],
               ),

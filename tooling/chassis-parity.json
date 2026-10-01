@@ -92,7 +92,7 @@
         {
           "file": "apps/subscriptiontracker/lib/app.dart",
           "linesAtSince": 661,
-          "ceiling": 660,
+          "ceiling": 656,
           "template": 347
         },
         {
@@ -180,6 +180,13 @@
           "on": "2026-09-29",
           "callSiteDelta": -79,
           "measured": "Train ST-D9. apps/subscriptiontracker/lib/features/monetization/paywall_screen.dart 373 -> 294 lines, `wc -l` against `git show origin/main:<path>` at 600cc6dc, both after `dart format` (Flutter 3.47.5). The whole `_body` phase switch and the layout moved into the chassis PaywallView, which ST-D9 redrew on the ST-D0 foundation (AppCard plans, DecisionStrip pending / unlocked / refused, a config-driven features card, two columns from 840 up). The private `_PaywallPhase` and `_RefusedView` enums became the chassis PaywallPhase (a typedef, as in the brick) and PaywallRefusalView. ST-T2's `PlansLoadGate` still asks the rail once and feeds the view's loading flag (the chassis skeleton carries PlansLoading's key), so `_asking` never landed. What stayed: the phase machine, the four funnel emissions, `startCheckout` + `awaitUnlock`, the price under the reader's locale (`MoneyFormatter(l10n.localeName).format(o.price)`, handed to the view as its formatted price), and the D-11 pitch codes resolved through this app's catalogue. Every paywall string the view draws was already byte-identical between the app and chassis arb files in both shipped locales."
+        },
+        {
+          "file": "state/refresh_on_return.dart",
+          "piece": "RefreshOnResume",
+          "on": "2026-10-01",
+          "callSiteDelta": -6,
+          "measured": "ST-N6 (D23/F37, #1080), on merging main at c89cb4fa (O-APPS-GOV-IN-VAPT-CHECKLIST). Main's `_OfflineBanner` now wraps its child in the chassis `RootedDeviceNoticeHost`, and this PR's chassis `RefreshOnResume` wrapped the same child: nested in the fork, the two took apps/subscriptiontracker/lib/app.dart to 662 lines against its ceiling 660. Instead of raising the ceiling, the `RefreshOnResume(onRefresh:, elapsed:, child:)` construction moved out of the fork into the app's own state/refresh_on_return.dart as `refreshOnResume(ref, child:)`, beside the `refreshOnReturn` it calls, and the fork keeps one line, `RootedDeviceNoticeHost(child: refreshOnResume(ref, child: child))`: app.dart 662 -> 656 lines, `wc -l` after `dart format` (Flutter 3.47.5), and its ceiling re-recorded at 656 in the same commit."
         }
       ],
       "_adoptedWhy": "⏱ 2026-09-15 · [ADR 086] ONE PIECE AT A TIME: the app now imports the package in the files listed here; tooling/ci/assert-chassis-parity.mjs holds that list equal to the scan and every callSiteDelta negative ([ADR 066]). The row is deleted when the last template file is adopted.",

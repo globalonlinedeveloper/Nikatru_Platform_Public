@@ -817,13 +817,19 @@ const REQUIRED_COVERAGE = [
     // chassis SettingsHeading arrived swept with the Help card
     // (`a11y: help-section`, light + dark kPhone). Read off the per-root line:
     // `27 of 27 … across 63 case(s)`.
-    // ⏱ 2026-10-01 · ST-N6 (#1080), merged with the above: 27 -> 28 surfaces —
+    // ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST: 27 -> 31 surfaces, 4 -> 5
+    // files, 63 -> 71 cases — TamperedBuildScreen, TamperedBuildApp,
+    // RootedDeviceNoticeHost and ReauthDialog arrived swept in
+    // a11y_integrity_test.dart (light kPhone + dark kDesktop each). Read off the
+    // per-root line: `31 of 31 … from 5 a11y test file(s) across 71 case(s)`.
+    // ⏱ 2026-10-01 · ST-N6 (#1080), merged with the above: 31 -> 32 surfaces —
     // the chassis RefreshOnResume arrived swept in the consent-scrim chain of
-    // a11y_shell_test.dart (cases unchanged). Read off the per-root line on the
-    // merged tree: `28 of 28 … across 63 case(s)`.
-    surfaces: 28,
-    a11yFiles: 4,
-    cases: 63,
+    // a11y_shell_test.dart (files and cases unchanged). Read off the per-root
+    // line on the merged tree: `32 of 32 … from 5 a11y test file(s) across 71
+    // case(s)`.
+    surfaces: 32,
+    a11yFiles: 5,
+    cases: 71,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -1082,6 +1088,11 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         // 2026-09-23: the two home bodies, swept in a11y_home_test.dart.
         'home/home_screen.dart#CatchUpBannerView',
         'home/home_screen.dart#WelcomeView',
+        // 2026-10-01 (O-APPS-GOV-IN-VAPT-CHECKLIST): device integrity, swept in
+        // a11y_integrity_test.dart in the same change.
+        'integrity/device_integrity_gate.dart#ReauthDialog',
+        'integrity/tampered_build_screen.dart#TamperedBuildApp',
+        'integrity/tampered_build_screen.dart#TamperedBuildScreen',
         'monetization/manage_plan_screen.dart#ManagePlanView',
         'monetization/paywall_screen.dart#PaywallView',
         'settings/report_content_dialog.dart#ReportContentDialog',
@@ -1096,6 +1107,7 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'shell/app_shell.dart#ConsentScrim',
         'shell/app_shell.dart#NikatruApp',
         'shell/app_shell.dart#OfflineBannerHost',
+        'shell/app_shell.dart#RootedDeviceNoticeHost',
       ].map((k) => `packages/chassis_screens/lib/${k}`),
     ),
   ],

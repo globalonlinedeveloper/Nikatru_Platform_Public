@@ -674,14 +674,21 @@ const REQUIRED_COVERAGE = [
     // (lib/settings/help_section.dart) joined, and `test/help_section_test.dart`
     // pumps it with the Help card at all three classes. Read off this guard's
     // per-root lines — `27 surface(s) reachable, 27 measured` and `— 30 file(s)`.
-    // ⏱ RAISED 27 → 28 surfaces / 27 → 28 covered ON 2026-10-01 · ST-N6
+    // ⏱ RAISED 2026-10-01 (O-APPS-GOV-IN-VAPT-CHECKLIST), on top of the line
+    // above: surfaces 27 → 31, coveredSurfaces 27 → 31 and `widthTestFiles` 30 → 32,
+    // IN THE CHANGE THAT EARNED THEM: TamperedBuildScreen, TamperedBuildApp,
+    // ReauthDialog and RootedDeviceNoticeHost arrived with
+    // test/device_integrity_gate_test.dart (all three classes) and
+    // test/a11y_integrity_test.dart. Read off the per-root lines,
+    // `31 surface(s) reachable, 31 measured` and `— 32 file(s)`.
+    // ⏱ RAISED 31 → 32 surfaces / 31 → 32 covered ON 2026-10-01 · ST-N6
     // (D23/F37, #1080), merged with the above: the chassis `RefreshOnResume`,
     // pumped at all three classes by test/app_shell_view_test.dart (files
-    // unchanged). Read off the merged tree: `28 surface(s) reachable, 28
-    // measured` and `— 30 file(s)`.
-    surfaces: 28,
-    widthTestFiles: 30,
-    coveredSurfaces: 28,
+    // unchanged). Read off the merged tree: `32 surface(s) reachable, 32
+    // measured` and `— 32 file(s)`.
+    surfaces: 32,
+    widthTestFiles: 32,
+    coveredSurfaces: 32,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',

@@ -770,6 +770,10 @@ jobs:
       - name: Obfuscation and symbol retention are one increment or neither
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-obfuscation-coupled.mjs
+      # why: the apps.gov.in §11 runtime signature check — its pins are the register's and it runs at boot (O-APPS-GOV-IN-VAPT-CHECKLIST).
+      - name: Every Android channel's build compiles in its pinned signer and checks it at boot
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-runtime-signer-check.mjs
       - name: No shipped client overrides TLS certificate trust
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-tls-pinning.mjs
