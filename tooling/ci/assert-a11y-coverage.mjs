@@ -813,13 +813,17 @@ const REQUIRED_COVERAGE = [
     // ⏱ 2026-09-29 · ST-D4: 25 -> 26 surfaces, 61 -> 62 cases — the chassis
     // SettingsSection arrived swept (`a11y: settings-section`, light + dark
     // kPhone). Read off the per-root line: `26 of 26 … across 62 case(s)`.
-    // ⏱ 2026-09-30 · ST-N6 (#1080): 26 -> 27 surfaces — the chassis
-    // RefreshOnResume arrived swept in the consent-scrim chain of
-    // a11y_shell_test.dart (cases unchanged). Read off the per-root line:
-    // `27 of 27 … across 62 case(s)`.
-    surfaces: 27,
+    // ⏱ 2026-10-01 · audit D8, D12/F53: 26 -> 27 surfaces, 62 -> 63 cases — the
+    // chassis SettingsHeading arrived swept with the Help card
+    // (`a11y: help-section`, light + dark kPhone). Read off the per-root line:
+    // `27 of 27 … across 63 case(s)`.
+    // ⏱ 2026-10-01 · ST-N6 (#1080), merged with the above: 27 -> 28 surfaces —
+    // the chassis RefreshOnResume arrived swept in the consent-scrim chain of
+    // a11y_shell_test.dart (cases unchanged). Read off the per-root line on the
+    // merged tree: `28 of 28 … across 63 case(s)`.
+    surfaces: 28,
     a11yFiles: 4,
-    cases: 62,
+    cases: 63,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -1081,13 +1085,13 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'monetization/manage_plan_screen.dart#ManagePlanView',
         'monetization/paywall_screen.dart#PaywallView',
         'settings/report_content_dialog.dart#ReportContentDialog',
+        // 2026-10-01 (audit D8): the heading node, in the same change as its sweep.
+        'settings/help_section.dart#SettingsHeading',
         'settings/settings_screen.dart#EditProfileDialog',
         // 2026-09-29 (ST-D4): the settings group, in the same change as its sweep.
         'settings/settings_screen.dart#SettingsSection',
         'settings/settings_screen.dart#SettingsView',
         'shell/app_shell.dart#AppLifecycleFlush',
-        // 2026-09-30 (ST-N6, #1080): the return-to-the-front re-read, in the chain.
-        'shell/app_shell.dart#RefreshOnResume',
         'shell/app_shell.dart#ConsentPromptCard',
         'shell/app_shell.dart#ConsentScrim',
         'shell/app_shell.dart#NikatruApp',

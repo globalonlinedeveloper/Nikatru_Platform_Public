@@ -9,6 +9,7 @@ import 'package:intl/intl.dart' show DateFormat;
 import '../core/format/money_format.dart';
 import '../core/format/sub_math.dart';
 import '../data/api/api_client.dart' show ApiException;
+import '../data/models/budget_info.dart';
 import '../data/models/subscription.dart';
 import '../l10n/app_localizations.dart';
 import '../services/notifications/notification_service.dart';
@@ -102,6 +103,9 @@ ReminderCopy reminderCopyFor(Locale? chosen) {
     cancelByTitle: (DateTime d) => l10n.cancelByTitle(monthDay.format(d)),
     cancelByBody: (String name, DateTime d) =>
         l10n.cancelByBody(name, monthDay.format(d)),
+    // ST-I2 (audit C14): the over-budget alert, in the same language.
+    overBudgetTitle: l10n.overBudgetTitle,
+    overBudgetBody: l10n.overBudgetBody,
   );
 }
 
@@ -445,6 +449,16 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     _undoable.remove(id);
   }
 
+  /// Re-run the reminder sync against the list already observed — for a
+  /// write that changes what a reminder says without changing the list. The
+  /// budget editor's save is the one caller (ST-I2): a new budget can put the
+  /// same subscriptions over it. Nothing observed yet: nothing to do, and
+  /// `build()` syncs the moment the list arrives.
+  Future<void> resyncReminders() async {
+    final List<Subscription>? observed = observedList;
+    if (observed != null) await _syncReminders(observed);
+  }
+
   /// Keep the OS reminder set in step with [subs] — AWAITED, and never a
   /// throw.
   ///
@@ -528,6 +542,64 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     } else {
       await notifier.cancelWeeklyDigest();
     }
+
+    await _syncOverBudget(notifier, copy, settings, chosenLocale, subs, plan);
+  }
+
+  /// ST-I2 (audit C14) — THE OVER-BUDGET ALERT, through the same seam as the
+  /// renewals. Until this, a budget could be set (ST-D3) and nothing anywhere
+  /// in the app ever told anyone they had passed it outside the Insights tab.
+  ///
+  /// Behind `alerts` ("Renewal alerts"), the app's one switch for "may we
+  /// notify you about money": a user who turned that off gets no alert from
+  /// here either, and the armed one is cancelled.
+  ///
+  /// 🔴 AN UNREAD BUDGET IS NOT "NO BUDGET". A failed read leaves whatever is
+  /// armed exactly as it is — the same rule as `observedList` for the list:
+  /// cancelling on a transport failure would silence a real alert because
+  /// the network blinked. The read is skipped where nothing can be scheduled
+  /// (web), so the build that can never post one never pays for it.
+  Future<void> _syncOverBudget(
+    RenewalReminders notifier,
+    ReminderCopy copy,
+    SettingsState settings,
+    Locale? chosenLocale,
+    List<Subscription> subs,
+    ReminderPlan plan,
+  ) async {
+    if (!notifier.capabilities.canSchedule) return;
+    final String currencyCode = newRowCurrencyCode;
+    final MoneyFormatter money = MoneyFormatter(
+      resolvedLocaleName(chosenLocale),
+      emptyCurrencyCode: currencyCode,
+    );
+    final MoneyBag spent = SubMath.totalMonthly(subs);
+    if (!plan.syncRenewals) {
+      await notifier.syncOverBudget(
+        budget: null,
+        spent: spent,
+        copy: copy,
+        rules: settings.reminderRules,
+        money: money,
+      );
+      return;
+    }
+    final BudgetInfo budget;
+    try {
+      budget = await ref.read(subscriptionRepositoryProvider).budget();
+    } on Object {
+      return;
+    }
+    if (!ref.mounted) return; // Riverpod 3: the provider may be gone by now.
+    await notifier.syncOverBudget(
+      // Read in the display currency exactly as the budget card reads it
+      // (`BudgetInfo.inCurrency`), so the two cannot disagree about "over".
+      budget: budget.inCurrency(currencyCode),
+      spent: spent,
+      copy: copy,
+      rules: settings.reminderRules,
+      money: money,
+    );
   }
 }
 

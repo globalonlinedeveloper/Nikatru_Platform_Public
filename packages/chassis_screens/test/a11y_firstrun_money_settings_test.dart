@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_chassis_screens/firstrun/onboarding_screen.dart';
 import 'package:nikatru_chassis_screens/monetization/manage_plan_screen.dart';
 import 'package:nikatru_chassis_screens/monetization/paywall_screen.dart';
+import 'package:nikatru_chassis_screens/settings/help_section.dart';
 import 'package:nikatru_chassis_screens/settings/report_content_dialog.dart';
 import 'package:nikatru_chassis_screens/settings/settings_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart';
@@ -699,6 +700,61 @@ void main() {
     }
   });
 
+  // ── SettingsHeading + helpCard (audit D8, D12/F53) ────────────────────────
+  // A heading node over the ONE Help section, its four rows drawn by a
+  // ListTile the way an app's own row widget is passed in.
+  group('a11y: help-section', () {
+    for (final Brightness b in Brightness.values) {
+      testWidgets('${b.name}, kPhone', (WidgetTester tester) async {
+        final SemanticsHandle handle = tester.ensureSemantics();
+        try {
+          await pumpForA11y(
+            tester,
+            kPhone,
+            Scaffold(
+              body: Builder(
+                builder: (BuildContext context) => ListView(
+                  children: <Widget>[
+                    const SettingsHeading('Help', paint: 'HELP'),
+                    helpCard(
+                      context,
+                      decoration: const BoxDecoration(),
+                      row: _HelpRow.new,
+                      contactPageLabel: 'Help & support',
+                      openContactPage: _noop,
+                      contactSupportLabel: 'Contact support',
+                      supportEmail: 'support@example.com',
+                      supportSubject: 'App support',
+                      feedbackLabel: 'Send feedback',
+                      feedbackSubject: 'App feedback',
+                      openMail: (Uri mail) async {},
+                      canRate: true,
+                      rateLabel: 'Rate App',
+                      openStoreListing: () async => StoreListingOutcome.opened,
+                      rateUnavailable: 'The store could not be opened.',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            brightness: b,
+          );
+          expectSweepHadSubjects(
+            tester,
+            'help-section (${b.name})',
+            tappable: 4,
+            labelled: 5,
+          );
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+        } finally {
+          handle.dispose();
+        }
+      }, variant: kTapTargetPlatforms);
+    }
+  });
+
   // ── EditProfileDialog ─────────────────────────────────────────────────────
   group('a11y: edit-profile', () {
     testWidgets('light, kPhone', (WidgetTester tester) async {
@@ -922,3 +978,28 @@ void main() {
 void _noop() {}
 
 void _noopBool(bool _) {}
+
+/// The app's row widget as [helpCard] takes it — a ListTile here.
+class _HelpRow extends StatelessWidget {
+  const _HelpRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.last,
+    this.subtitle,
+    this.onTap,
+  });
+
+  final String icon;
+  final String label;
+  final bool last;
+  final String? subtitle;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    title: Text(label),
+    subtitle: subtitle == null ? null : Text(subtitle!),
+    onTap: onTap,
+  );
+}

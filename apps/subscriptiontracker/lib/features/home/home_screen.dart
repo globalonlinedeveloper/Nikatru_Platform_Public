@@ -37,6 +37,7 @@ import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 
 import '../../core/app_config.dart';
+import '../../core/format/category_label.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../core/windows_notification_identity.g.dart';
@@ -619,7 +620,8 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
           : (s.unused
                 ? l10n.usageRarelyUsed
                 : (s.usedPct > 60 ? l10n.usageActive : l10n.usageOccasional));
-      subtitle = usage == null ? s.category : '${s.category} · $usage';
+      final String category = categoryLabel(l10n, s.category);
+      subtitle = usage == null ? category : '$category · $usage';
       status = !hasUsage
           ? null
           : (s.unused

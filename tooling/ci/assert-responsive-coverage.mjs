@@ -669,12 +669,19 @@ const REQUIRED_COVERAGE = [
     // surfaces unchanged: `test/auth_frame_adoption_test.dart` (every chassis
     // auth view on the shared AuthFrame, pumped at kPhone and 1440) joined the
     // corpus. Read off the per-root line, `— 29 file(s)`.
-    // ⏱ RAISED 2026-09-30 · ST-N6 (D23/F37, #1080): surfaces 26 → 27 and
-    // coveredSurfaces 26 → 27 for the chassis `RefreshOnResume`, pumped at all
-    // three classes by test/app_shell_view_test.dart; `widthTestFiles` unchanged.
-    surfaces: 27,
-    widthTestFiles: 29,
-    coveredSurfaces: 27,
+    // ⏱ RAISED 26 → 27 surfaces / 29 → 30 files / 26 → 27 covered ON 2026-10-01
+    // (audit D8, D12/F53, lane fix-rv2-st-after-dw): `SettingsHeading`
+    // (lib/settings/help_section.dart) joined, and `test/help_section_test.dart`
+    // pumps it with the Help card at all three classes. Read off this guard's
+    // per-root lines — `27 surface(s) reachable, 27 measured` and `— 30 file(s)`.
+    // ⏱ RAISED 27 → 28 surfaces / 27 → 28 covered ON 2026-10-01 · ST-N6
+    // (D23/F37, #1080), merged with the above: the chassis `RefreshOnResume`,
+    // pumped at all three classes by test/app_shell_view_test.dart (files
+    // unchanged). Read off the merged tree: `28 surface(s) reachable, 28
+    // measured` and `— 30 file(s)`.
+    surfaces: 28,
+    widthTestFiles: 30,
+    coveredSurfaces: 28,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',
