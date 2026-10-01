@@ -259,22 +259,24 @@ void main() {
     // 409 idempotency_in_progress: the server is still processing the key —
     // wait, never count it.
     expect(
-      classifyForOutbox(ApiException(409, 'idempotency_in_progress')),
+      classifyForOutbox(ApiException(409, kIdempotencyInProgress)),
       OutboxFailure.busy,
     );
-    // 🔴 ANY OTHER 409 is final (review 4 of #1080): a name clash does not
-    // clear up by waiting, so it must not be retried for ever as "busy".
-    expect(
-      classifyForOutbox(ApiException(409, 'name_taken')),
-      OutboxFailure.refused,
-    );
-    expect(classifyForOutbox(ApiException(409, 'x')), OutboxFailure.refused);
     expect(
       retryAfterFor(
-        ApiException(409, 'x', retryAfter: const Duration(seconds: 7)),
+        ApiException(
+          409,
+          kIdempotencyInProgress,
+          retryAfter: const Duration(seconds: 7),
+        ),
       ),
       const Duration(seconds: 7),
     );
+    // Review #1075 round 4, minor 1: ANY other 409 is permanent — a refusal,
+    // never a wait that holds the entry (and the queue behind it) forever.
+    for (final String code in <String>['x', 'conflict', 'idempotency']) {
+      expect(classifyForOutbox(ApiException(409, code)), OutboxFailure.refused);
+    }
     for (final int c in <int>[408, 429, 500, 503]) {
       expect(classifyForOutbox(ApiException(c, 'x')), OutboxFailure.transient);
     }
