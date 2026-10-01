@@ -237,6 +237,61 @@ class _GoogleOnlyAuth extends _FakeAuth {
   }
 }
 
+/// ⏱ 2026-10-01 · AB-A5-01 — an EMAIL account with [provider] LINKED, signed
+/// in through that provider. It has a password identity, and the password grant
+/// refuses it the way a native build's does (`captcha_failed`): the dialog used
+/// to send it there. [lastSignInAt] is stale, so the provider sheet must open,
+/// and it completes with a fresh sign-in of the same account.
+class _LinkedAuth extends _FakeAuth {
+  _LinkedAuth(this.provider);
+
+  final String provider;
+  DateTime lastSignInAt = DateTime.now().toUtc().subtract(
+    const Duration(hours: 3),
+  );
+  int passwordGrants = 0;
+  int appleCalls = 0;
+  int googleCalls = 0;
+
+  @override
+  core.AuthUser? get currentUser => signedIn
+      ? core.AuthUser(
+          id: 'u1',
+          email: 'a@b.test',
+          emailVerified: true,
+          oauthProviders: <String>[provider],
+          lastSignInAt: lastSignInAt,
+        )
+      : null;
+
+  @override
+  Future<core.AuthUser> signInWithEmail({
+    required String email,
+    required String password,
+    String? captchaToken,
+  }) async {
+    passwordGrants++;
+    throw core.AuthFailure('captcha protection: request disallowed');
+  }
+
+  void _freshSignIn() {
+    lastSignInAt = DateTime.now().toUtc();
+    _authChanges.add(currentUser);
+  }
+
+  @override
+  Future<void> signInWithApple() async {
+    appleCalls++;
+    _freshSignIn();
+  }
+
+  @override
+  Future<void> signInWithGoogle() async {
+    googleCalls++;
+    _freshSignIn();
+  }
+}
+
 /// A preferences server this device cannot reach: every call is "no answer",
 /// so a queued change stays queued until something removes it.
 class _UnreachablePreferences implements core.AccountPreferencesTransport {
@@ -1094,4 +1149,69 @@ void main() {
       },
     );
   });
+
+  // ⏱ 2026-10-01 · AB-A5-01. An email account with Apple or Google LINKED was
+  // sent to the password grant because it has a password identity — on a native
+  // build that grant is captcha-gated and refused, so the account could not
+  // delete itself in-app. Each case below is red on the `hasPasswordIdentity`
+  // branch it replaces: the password field shows, and nothing is deleted.
+  group('an email account with a provider LINKED', () {
+    for (final String provider in <String>['apple', 'google']) {
+      testWidgets(
+        '🔴 $provider linked: NO password prompt, the $provider sheet, and the '
+        'account is deleted',
+        (WidgetTester tester) async {
+          final _LinkedAuth auth = _LinkedAuth(provider);
+          await _pumpSettings(tester, auth);
+          await tester.tap(find.text('Delete account'));
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const Key('deleteAccountPassword')),
+            findsNothing,
+            reason: 'a linked account re-proves at its provider, not by typing',
+          );
+          await tester.tap(find.byKey(const Key('deleteAccountConfirm')));
+          await tester.pump();
+          await tester.pumpAndSettle();
+          expect(
+            auth.passwordGrants,
+            0,
+            reason: 'the password grant is never sent',
+          );
+          expect(provider == 'apple' ? auth.appleCalls : auth.googleCalls, 1);
+          expect(auth.deleteCalls, 1);
+        },
+      );
+    }
+
+    testWidgets('a password-only account still gets its password re-auth', (
+      WidgetTester tester,
+    ) async {
+      final _FakeAuth auth = _FakeAuth();
+      await _pumpSettings(tester, auth);
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('deleteAccountPassword')), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('deleteAccountConfirm')))
+            .onPressed,
+        isNull,
+        reason: 'nothing typed, nothing sent',
+      );
+      await _typePassword(tester, _FakeAuth.rightPassword);
+      await tester.tap(find.byKey(const Key('deleteAccountConfirm')));
+      await tester.pumpAndSettle();
+      expect(auth.deleteCalls, 1);
+    });
+  });
+}
+
+/// Types [password] into the dialog that is already open.
+Future<void> _typePassword(WidgetTester tester, String password) async {
+  await tester.enterText(
+    find.byKey(const Key('deleteAccountPassword')),
+    password,
+  );
+  await tester.pumpAndSettle();
 }

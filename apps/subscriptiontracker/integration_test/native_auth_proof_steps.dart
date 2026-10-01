@@ -269,6 +269,18 @@ const String kFailedResetCallbackLine =
 /// The workflow waits for it before it fires the URL.
 const String kAwaitCallbackMarker = 'NK_PROOF_AWAIT_CALLBACK';
 
+/// ⏱ 2026-10-01 · AB-A1-02 — the line the native repository writes when an
+/// OAuth RETURN reached the session exchange: supabase_flutter ran the PKCE
+/// exchange for `nk_auth=oauth` (and it failed — no flow minted the code), and
+/// the seam classed it by the deep link's marker. The same string
+/// `tooling/e2e/native_auth_proof.mjs` `OAUTH_RETURN_LINE` requires.
+const String kOAuthReturnCallbackLine =
+    'nk_auth_callback flow=oauth outcome=failed';
+
+/// What the OAuth-return suite prints once it has seen
+/// [kOAuthReturnCallbackLine] — `OAUTH_RETURN_OK_LINE` in the drive.
+const String kOAuthReturnOkLine = 'NK_PROOF step=oauth-return outcome=ok';
+
 /// The consent prompt's decline control (chassis l10n `consentDecline`).
 const String kConsentDecline = 'No thanks';
 

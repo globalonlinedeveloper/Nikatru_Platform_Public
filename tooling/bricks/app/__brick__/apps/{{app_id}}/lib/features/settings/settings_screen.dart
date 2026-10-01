@@ -328,10 +328,12 @@ class SettingsScreen extends ConsumerWidget {
     final TextEditingController password = TextEditingController();
     // ST-A1: the reauth is a captcha-gated sign-in; owned as [password] is.
     final CaptchaTokenController captcha = newCaptchaController();
-    // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH — read once, before the dialog: which
-    // kind of proof this account can give.
+    // O-OAUTH-DELETE-REAUTH, AB-A5-01 — read once, before the dialog: the proof
+    // this account gives, by the rule `_deleteAccount` runs (`deletionReauthOf`).
     final core.AuthUser? current = ref.read(authRepositoryProvider).currentUser;
-    final bool passwordless = current != null && !current.hasPasswordIdentity;
+    final bool passwordless =
+        current != null &&
+        core.deletionReauthOf(current) == core.DeletionReauth.provider;
     showDialog<void>(
       context: context,
       // 🔴 WAS THE DEFAULT, WHICH IS `true`. A tap on the barrier closed the
@@ -419,15 +421,13 @@ class SettingsScreen extends ConsumerWidget {
     String? detail;
     try {
       if (user == null) throw core.AuthFailure('Not signed in');
-      // Re-authenticate through the SAME seam sign-in uses, so it works against
-      // whatever identity provider is wired.
-      // ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH (owner ruling on OWNER_QUEUE A-10). A
-      // PASSWORD-LESS account (Sign in with Apple) has nothing to type here, so
-      // it confirms by signing in with its provider AGAIN — unless it has just
-      // done so (on web Apple's redirect reloads the app, and the user taps
-      // Delete a second time). `DELETE /v1/account` re-checks the token's own
-      // authentication time and refuses a stale one with `reauth_required`.
-      if (user.hasPasswordIdentity) {
+      // Re-authenticate through the SAME seam sign-in uses. O-OAUTH-DELETE-REAUTH
+      // (owner ruling, OWNER_QUEUE A-10) + AB-A5-01: an account with no password,
+      // or with Apple or Google LINKED, signs in with its provider AGAIN unless it
+      // just did (`core.deletionReauthOf`) — a native build cannot pass the
+      // password grant unattested. `DELETE /v1/account` refuses a password-less
+      // token without a recent sign-in (`reauth_required`).
+      if (core.deletionReauthOf(user) == core.DeletionReauth.password) {
         await auth.signInWithEmail(
           email: user.email,
           password: password,
