@@ -499,6 +499,10 @@ describe('the census is actually wired into the nightly cron', () => {
       // Added 2026-09-18 (O-LAPTOP-ROUTINES-DIE-OVERNIGHT): the ops watchdog, run
       // right after the dispatcher on every non-backup firing.
       'ops_watchdog',
+      // Added 2026-09-30 (review round 2, security): the provider token backfill,
+      // right before the erasure retry. This env sets no TOKEN_ENC_KEY_V1, so its
+      // row is the honest REFUSED ok=0 — which still makes it a written job.
+      'provider_token_backfill',
       // Added 2026-09-28 (ST-R1): the renewal reminder digest, right after the
       // renewals pass. Red first here, by name, as the header promises.
       'reminder_mail',

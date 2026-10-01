@@ -222,9 +222,13 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
       out.push({
         target: `d1:${name}`,
         ok: !dump.truncated,
-        detail: dump.truncated
-          ? `TRUNCATED at ${dump.queries} queries — ${dump.rows} rows of ${dump.tables.length} tables written, the export is PARTIAL`
-          : `${dump.rows} rows, ${dump.tables.length} tables, ${blob.bytes}B gz`,
+        detail:
+          (dump.truncated
+            ? `TRUNCATED at ${dump.queries} queries — ${dump.rows} rows of ${dump.tables.length} tables written, the export is PARTIAL`
+            : `${dump.rows} rows, ${dump.tables.length} tables, ${blob.bytes}B gz`) +
+          // ⏱ 2026-09-30 · plain-text credential values the dump kept out of R2
+          // (dump.ts CREDENTIAL_COLUMNS) — rows the token backfill has not sealed yet.
+          (dump.withheld > 0 ? `, ${dump.withheld} plain-text credential(s) withheld` : ''),
       });
     } catch (err) {
       out.push({ target: `d1:${name}`, ok: false, detail: `export failed: ${String(err)}` });
