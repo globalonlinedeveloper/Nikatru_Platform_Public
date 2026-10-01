@@ -2922,6 +2922,16 @@
   },
   {
     "claims": [],
+    "invokedBy": [
+      ".github/workflows/native-auth-proof.yml#gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/darwin-inputs.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/deploy-globs.mjs",
@@ -3696,6 +3706,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-heartbeats.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#edge-shield"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-jwks-error-rate.mjs",
     "references": [],
     "state": "WIRED"
   },

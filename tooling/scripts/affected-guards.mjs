@@ -28,6 +28,9 @@
 //   dart    each pub workspace member (the root pubspec's `workspace:`), analysed
 //           and tested alone through melos. Subject: the member's own directory.
 //           The root pubspec.yaml / pubspec.lock select every member's analyze.
+//   content a guard whose subject is "any file whose TEXT has X" (CONTENT_SUBJECTS:
+//           assert-workflow-readers, assert-mechanism-claims) is also selected by
+//           the changed file's own text, matched with the guard's own detector.
 //   worker  each services/<w> with a package.json: `tsc --noEmit` + `npm test`, as
 //           lane-workers.yml runs them. Subject: services/<w>/**, and every glob
 //           of the `workers` lane in tooling/ci/lane-map.json (the register of what
@@ -415,6 +418,9 @@ export function covers(subject, path) {
     return literal.length <= 1 && /\*$/.test(subject.path) && wide(subject) ? 'broad' : 'specific';
   }
   if (subject.kind === 'lane') return subject.re.test(path) ? 'specific' : null;
+  // A guard whose subject is a SHAPE OF TEXT, not a place (CONTENT_SUBJECTS below):
+  // the changed file's own text decides, and a match is as specific as a named file.
+  if (subject.kind === 'content') return subject.test(path, subject.read(path)) ? 'specific' : null;
   return null;
 }
 
@@ -579,6 +585,98 @@ function laneOf(laneMap, wfName) {
   return null;
 }
 
+// ── CONTENT SUBJECTS — guards whose subject is a shape of text, not a place ──
+// ⏱ 2026-10-01 (#1076 cycle 3). Every subject above is a PATH a guard's source
+// names. Some guards name none, because their subject is "ANY file whose text
+// has X": assert-workflow-readers.mjs grades any code file that reads a workflow
+// by text, and assert-mechanism-claims.mjs any text file carrying a claim shape.
+// A path cannot map them — tooling/ops/land-rules.mjs began to name
+// '.github/workflows/ci.yml', and nothing selected the workflow-readers guard
+// that then went red in CI; a prose edit selected no mechanism-claims run at all.
+// So these get a CONTENT subject, matched against the changed file's own text,
+// and built FROM WHAT THE GUARD ITSELF DECLARES — its detector read out of its
+// source, its register's shapes and rows — never from a second copy kept here,
+// which is the copy that drifts. A rule that cannot read its declaration is
+// COVERAGE LOST: a content subject that silently matches nothing is a guard that
+// silently stopped being selected.
+
+/** The regex literals of `const <name> = [ /…/, … ];` in [src], one per line. */
+function regexArrayIn(src, name, guard) {
+  const m = new RegExp(`const ${name} = \\[\\n([\\s\\S]*?)\\n\\];`).exec(src);
+  const out = [];
+  for (const line of (m?.[1] ?? '').split('\n')) {
+    const r = /^\s*\/(.+)\/([a-z]*),?\s*$/.exec(line);
+    if (r) out.push(new RegExp(r[1], r[2]));
+  }
+  if (!out.length) throw new Error(`${guard} no longer declares \`const ${name} = [ /…/, … ];\` — its content subject cannot be read`);
+  return out;
+}
+
+/** The single regex literal of `const <name> = /…/flags;` in [src]. */
+function regexIn(src, name, guard) {
+  const m = new RegExp(`const ${name} = \\/(.+)\\/([a-z]*);`).exec(src);
+  if (!m) throw new Error(`${guard} no longer declares \`const ${name} = /…/;\` — its content subject cannot be read`);
+  return new RegExp(m[1], m[2]);
+}
+
+/** A JSON register the rule reads, or a thrown reason. */
+function registerOf(readSource, rel, guard) {
+  try {
+    return JSON.parse(readSource(rel));
+  } catch (e) {
+    throw new Error(`${rel} (what ${guard} judges against) could not be read: ${e.message}`);
+  }
+}
+
+export const CONTENT_SUBJECTS = Object.freeze([
+  {
+    guard: 'tooling/ci/assert-workflow-readers.mjs',
+    what: 'any code file that reads a workflow by text, or a row of tooling/workflow-readers.json',
+    build(readSource) {
+      const src = readSource(this.guard);
+      const reads = regexArrayIn(src, 'READS', this.guard);
+      const code = regexIn(src, 'CODE', this.guard);
+      const reg = registerOf(readSource, 'tooling/workflow-readers.json', this.guard);
+      const rows = new Set((reg.readers ?? []).map((r) => r?.path).filter((x) => typeof x === 'string'));
+      if (!rows.size) throw new Error('tooling/workflow-readers.json declares no `readers` — the rows a deletion would leave behind cannot be read');
+      return (path, text) =>
+        rows.has(path) ||
+        (code.test(path) && !/\.test\.(mjs|js|ts)$/.test(path) && !path.startsWith('.github/') && reads.some((re) => re.test(text)));
+    },
+  },
+  {
+    guard: 'tooling/ci/assert-mechanism-claims.mjs',
+    what: 'any text file carrying a mechanism-claim shape, or one tooling/mechanism-claims.json names',
+    build(readSource) {
+      const src = readSource(this.guard);
+      const gap = /const GAP = '([^']+)';/.exec(src);
+      if (!gap) throw new Error(`${this.guard} no longer declares \`const GAP = '…';\` — its shapes cannot be compiled as it compiles them`);
+      const GAP = gap[1].replaceAll('\\\\', '\\');
+      const reg = registerOf(readSource, 'tooling/mechanism-claims.json', this.guard);
+      const shapes = (reg.shapes ?? []).map((x) => new RegExp(String(x.pattern).split(' ').join(GAP), 'i'));
+      if (!shapes.length) throw new Error('tooling/mechanism-claims.json declares no `shapes`');
+      const named = new Set([...Object.keys(reg.backlog ?? {}), ...(reg.claims ?? []).map((c) => c?.file)].filter((x) => typeof x === 'string'));
+      return (path, text) => named.has(path) || shapes.some((re) => re.test(text));
+    },
+  },
+]);
+
+/** The changed file's text for a content subject: '' when it is gone or too big to be prose. */
+function textReader(root) {
+  const cache = new Map();
+  return (rel) => {
+    if (!cache.has(rel)) {
+      let text = '';
+      try {
+        const buf = readFileSync(join(root, rel));
+        if (buf.length <= 2_000_000 && !buf.includes(0)) text = buf.toString('utf8');
+      } catch { /* deleted or unreadable: the rule's named rows still answer */ }
+      cache.set(rel, text);
+    }
+    return cache.get(rel);
+  };
+}
+
 /** The whole check universe, with each check's subjects. Pure over its inputs
  *  except for reading sources through `readSource`. */
 export function buildChecks(root, tree, { parsed, readSource = (rel) => readFileSync(join(root, rel), 'utf8'), laneMap = readMap(root), pubspec } = {}) {
@@ -651,6 +749,22 @@ export function buildChecks(root, tree, { parsed, readSource = (rel) => readFile
     if (laneGlobs.length) c.subjects = [...c.subjects, ...laneGlobs.map((g) => ({ kind: 'lane', path: g.glob, re: g.re }))];
   }
 
+  // content — the guards whose subject is a shape of text (CONTENT_SUBJECTS)
+  const contentLost = [];
+  const read = textReader(root);
+  for (const rule of CONTENT_SUBJECTS) {
+    const targets = checks.filter((c) => c.kind === 'guard' && c.rel === rule.guard);
+    if (!targets.length) continue; // not a CI guard of this tree: nothing to attach the rule to
+    let test;
+    try {
+      test = rule.build(readSource);
+    } catch (e) {
+      contentLost.push(e.message);
+      continue;
+    }
+    for (const c of targets) c.subjects = [...c.subjects, { kind: 'content', path: rule.what, test, read }];
+  }
+
   // dart — each pub workspace member
   const members = pubspec ?? workspaceMembers(root);
   for (const m of members) {
@@ -677,7 +791,7 @@ export function buildChecks(root, tree, { parsed, readSource = (rel) => readFile
     checks.push({ kind: 'worker', id: `worker:${m[1]}`, dir, label: `tsc --noEmit + npm test (${dir})`, subjects,
       ceilingMs: 600_000, baseComparable: true }); // a load-timed-out vitest case is red on main too (measured 2026-09-30)
   }
-  return { checks, blocked };
+  return { checks, blocked, contentLost };
 }
 
 export function workspaceMembers(root) {
@@ -719,7 +833,7 @@ export function select(checks, changed, laneMap) {
         hit = 'specific';
         // a directory, glob or lane glob is a looser tie than any named file (tier 3), except
         // a package gate's or Worker suite's OWN directory, which is its code (tier 0)
-        tier = Math.min(tier, s.kind === 'file' ? (s.tier ?? 1) : OWN_DIR_KINDS.has(c.kind) ? (s.tier ?? 3) : 3);
+        tier = Math.min(tier, s.kind === 'file' || s.kind === 'content' ? (s.tier ?? 1) : OWN_DIR_KINDS.has(c.kind) ? (s.tier ?? 3) : 3);
       }
       // A broad subject (one whole top-level directory) neither selects nor maps: it
       // names no place specific enough to tie the check to this change.
@@ -1107,7 +1221,11 @@ export async function main(argv = process.argv.slice(2), { root = ROOT, log = co
     err(`🔴 COVERAGE LOST — ${e.message}`);
     return 2;
   }
-  const { checks, blocked } = buildChecks(root, tree, { laneMap });
+  const { checks, blocked, contentLost } = buildChecks(root, tree, { laneMap });
+  if (contentLost.length) {
+    for (const why of contentLost) err(`🔴 COVERAGE LOST — ${why}`);
+    return 2;
+  }
   if (checks.filter((c) => c.kind === 'guard').length === 0 || checks.filter((c) => c.kind === 'test').length === 0) {
     err('🔴 COVERAGE LOST — the workflows yielded no guard or no test call, so nothing could be selected. The workflow parse is blind.');
     return 2;

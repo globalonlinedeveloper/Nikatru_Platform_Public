@@ -254,7 +254,7 @@ export function recoveryAuthenticatedAt(payload: Record<string, unknown>): numbe
  * flow has yet been measured reaching this Worker (E2E follow-up).
  *
  * The floor (lib/ext-links.ts) is raised to the server's now, so every link —
- * and every code — minted by a session that authenticated before it is dead,
+ * and every code — minted by a session that started before it is dead,
  * whenever it was minted. The owner's re-link after the reset comes from a
  * fresh sign-in and passes.
  *

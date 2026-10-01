@@ -4811,7 +4811,7 @@
       "id": "retention.d1.platform_db.ext_link_floor",
       "kind": "retention",
       "store": "d1:platform_db:ext_link_floor",
-      "what": "⏱ 2026-09-30 · EXA-11. At most one row per account: the Supabase `sub`, `not_before` (no browser-extension link minted by a session that authenticated before it is honoured), `recovery_session` and `updated_at`. Written by POST /v1/sessions/revoke-all and the recovery door in middleware/auth.ts (lib/ext-links.ts `raiseLinkFloor`); read by middleware/ext-device-auth.ts and routes/ext.ts. No email address.",
+      "what": "⏱ 2026-09-30 · EXA-11. At most one row per account: the Supabase `sub`, `not_before` (no browser-extension link minted by a session that started before it is honoured), `recovery_session` and `updated_at`. Written by POST /v1/sessions/revoke-all and the recovery door in middleware/auth.ts (lib/ext-links.ts `raiseLinkFloor`); read by middleware/ext-device-auth.ts and routes/ext.ts. No email address.",
       "rule": "keep",
       "keepWhy": "A STANDING SECURITY RULE, at most one row per account (PRIMARY KEY user_id), so the table cannot outgrow the account count. Deleting it by age would revive every link a reset or a sign-out-everywhere ended. It carries `user_id`, so it leaves with the account through the derived erasure sweep rather than on a timer (tooling/legal/data-inventory.json `table:platform_db.ext_link_floor`, erasure `purge`).",
       "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
