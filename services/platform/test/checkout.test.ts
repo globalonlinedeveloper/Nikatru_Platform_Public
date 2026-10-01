@@ -43,7 +43,7 @@ import checkout, {
   serializeCreateTransactionBody,
   type PaddleCreateTransactionBody,
 } from '../src/routes/checkout';
-import { DEFAULT_CONFIGS, baseConfig } from '../src/config';
+import { DEFAULT_CONFIGS, EXTENSION_PAYWALLS, resolvePaywall } from '../src/config';
 import {
   PADDLE_CUSTOM_DATA_APP_ID,
   PADDLE_CUSTOM_DATA_USER_ID,
@@ -225,6 +225,9 @@ function harness({
 }
 
 const BUY = { app_id: 'subscriptiontracker', offering_id: 'pro_monthly' };
+
+/** Every product the checkout can sell: each served app, and each extension with a committed paywall. */
+const SELLABLE = [...Object.keys(DEFAULT_CONFIGS), ...Object.keys(EXTENSION_PAYWALLS)];
 
 // ═════════════════════════════════════════════════════════════════════════════
 describe('🔴 status:"billed" is STRUCTURALLY IMPOSSIBLE on the create path', () => {
@@ -616,14 +619,62 @@ describe('the refusals that happen BEFORE any transaction is created', () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
+// ⏱ 2026-10-01 · EXM-01. FullShot Pro had no purchase path: the checkout asked
+// `isKnownApp`, whose domain is catalog/apps.json, and answered 404 for every
+// extension. An extension with a committed paywall is now sold through the same
+// switch (its `config:<id>` KV override) and the same price map.
+describe('an EXTENSION is sold through the same switch and the same price map', () => {
+  const noCall = () => expect(paddleCalls).toHaveLength(0);
+  const FULLSHOT = { app_id: 'fullshot', offering_id: 'pro_yearly' };
+
+  it('FullShot is a sellable extension with a committed paywall', () => {
+    expect(Object.keys(EXTENSION_PAYWALLS)).toContain('fullshot');
+    expect(Object.prototype.hasOwnProperty.call(DEFAULT_CONFIGS, 'fullshot')).toBe(false);
+  });
+
+  it('the SHIPPED state is 403 paywall_disabled, never 404 unknown_app, and reads its own KV key', async () => {
+    const h = harness({ kv: null });
+    const res = await h.post(FULLSHOT, `Bearer ${await token(USER)}`);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'paywall_disabled' });
+    expect(h.kvReads).toEqual(['config:fullshot']);
+    noCall();
+  });
+
+  it('with the paywall switched on, an offering whose Paddle price is PENDING is 503, and Paddle is never called', async () => {
+    const h = harness();
+    const res = await h.post(FULLSHOT, `Bearer ${await token(USER)}`);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'offering_not_available' });
+    noCall();
+  });
+
+  it('an offering FullShot does not sell is 404 unknown_offering', async () => {
+    const h = harness();
+    const res = await h.post({ ...FULLSHOT, offering_id: 'pro_lifetime' }, `Bearer ${await token(USER)}`);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'unknown_offering' });
+    noCall();
+  });
+
+  it('the KV override reaches an extension through its `paywall` member only', () => {
+    const on = resolvePaywall('fullshot', PAYWALL_ON);
+    expect(on?.enabled).toBe(true);
+    expect((on?.offerings as unknown[]).length).toBe((EXTENSION_PAYWALLS.fullshot.offerings as unknown[]).length);
+    expect(resolvePaywall('fullshot', '{not json')?.enabled).toBe(false);
+    expect(resolvePaywall('fullshot', JSON.stringify({ paywall: 'on' }))?.enabled).toBe(false);
+    expect(resolvePaywall('not_a_product', PAYWALL_ON)).toBeNull();
+  });
+});
+
 describe('REQUIRED_COVERAGE — the price map and the served offerings cannot drift apart', () => {
   it('the map is not empty (an empty map makes every unknown_offering test vacuous)', () => {
     expect(Object.keys(PADDLE_PRICE_IDS).length).toBeGreaterThan(0);
   });
 
-  it('every app in the price map is an app this Worker serves', () => {
+  it('every product in the price map is an app this Worker serves or an extension it sells', () => {
     for (const appId of Object.keys(PADDLE_PRICE_IDS)) {
-      expect(Object.prototype.hasOwnProperty.call(DEFAULT_CONFIGS, appId)).toBe(true);
+      expect(SELLABLE, appId).toContain(appId);
     }
   });
 
@@ -641,10 +692,10 @@ describe('REQUIRED_COVERAGE — the price map and the served offerings cannot dr
     // written reason, never neither and never both, and the `paywall.enabled`
     // limb below forbids selling under a pending one.
     let compared = 0;
-    for (const appId of Object.keys(DEFAULT_CONFIGS)) {
-      const cfg = baseConfig(appId);
-      if (cfg === null) continue;
-      const offerings = (cfg.paywall.offerings ?? []) as Array<{ product_id?: unknown }>;
+    for (const appId of SELLABLE) {
+      const paywall = resolvePaywall(appId, null);
+      if (paywall === null) continue;
+      const offerings = (paywall.offerings ?? []) as Array<{ product_id?: unknown }>;
       const served = offerings
         .map((o) => o.product_id)
         .filter((p): p is string => typeof p === 'string')
@@ -683,10 +734,10 @@ describe('REQUIRED_COVERAGE — the price map and the served offerings cannot dr
     // cannot: the Paddle amount is a fact about a vendor's catalogue, not a
     // literal in our UI.
     let compared = 0;
-    for (const appId of Object.keys(DEFAULT_CONFIGS)) {
-      const cfg = baseConfig(appId);
-      if (cfg === null) continue;
-      const offerings = (cfg.paywall.offerings ?? []) as Array<{ product_id?: unknown; amount_minor?: unknown }>;
+    for (const appId of SELLABLE) {
+      const paywall = resolvePaywall(appId, null);
+      if (paywall === null) continue;
+      const offerings = (paywall.offerings ?? []) as Array<{ product_id?: unknown; amount_minor?: unknown }>;
       for (const o of offerings) {
         const id = o.product_id;
         if (typeof id !== 'string') continue;
@@ -715,12 +766,12 @@ describe('REQUIRED_COVERAGE — the price map and the served offerings cannot dr
     // price yet, and `paywall.enabled` is the switch that would break the
     // promise. Flipping it with an entry standing is the failure.
     for (const appId of Object.keys(RAIL_PRICE_PENDING)) {
-      const cfg = baseConfig(appId);
-      if (cfg === null) continue;
+      const paywall = resolvePaywall(appId, null);
+      if (paywall === null) continue;
       const ids = Object.keys(RAIL_PRICE_PENDING[appId] ?? {});
       if (ids.length === 0) continue;
       expect(
-        cfg.paywall.enabled,
+        paywall.enabled,
         `${appId} has paywall.enabled true while ${ids.join(', ')} are declared RAIL_PRICE_PENDING. ` +
           'Clear the pending entries by re-pricing the Paddle catalogue before opening the paywall.',
       ).not.toBe(true);

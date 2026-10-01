@@ -134,6 +134,9 @@
   "popupLinkBatch": {
     "message": "一括"
   },
+  "popupUpgrade": {
+    "message": "Upgrade to FullShot Pro"
+  },
   "popupLinkOptions": {
     "message": "設定"
   },

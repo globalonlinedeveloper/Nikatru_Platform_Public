@@ -134,6 +134,9 @@
   "popupLinkBatch": {
     "message": "Kundi"
   },
+  "popupUpgrade": {
+    "message": "Upgrade to FullShot Pro"
+  },
   "popupLinkOptions": {
     "message": "Chaguo"
   },

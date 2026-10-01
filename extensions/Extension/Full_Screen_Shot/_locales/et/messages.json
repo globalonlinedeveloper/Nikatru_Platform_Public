@@ -134,6 +134,9 @@
   "popupLinkBatch": {
     "message": "Hulgitöö"
   },
+  "popupUpgrade": {
+    "message": "Upgrade to FullShot Pro"
+  },
   "popupLinkOptions": {
     "message": "Suvandid"
   },

@@ -1,5 +1,5 @@
 {
-  "_readme": "THE ONE SOURCE of FullShot's store listing copy (EXT-4, 2026-09-25). Every store/{chrome,edge,firefox}/*.txt is rendered from this file by `node scripts/render-listing.mjs fullshot`, and check-store-metadata.mjs fails a listing file that differs from the rendering. A line may be a plain string, or an object {text, when, stores, requires}: `when: \"free\"` renders only while the tool neither transmits nor sells, `when: \"pro\"` only when it does either, `when: \"sells\"` only when it sells; `stores` limits a line to the named stores; `requires` skips it when the named value is absent. {{shortcutsPage}} comes from the store entry, {{seller}} from LICENSE's Required Notice, {{priceRange}} from the recurring offerings in app-config-data (never one_time). A {\"parity\": \"<heading>\"} line renders, per store, the tool.json parity cells of that store's build target whose state is `fallback` ({{browser}} comes from the store entry), and renders nothing where there are none (EXB-13). `language` declares the one language the long description is rendered in and why every other store locale receives it (EXB-07); check-store-metadata.mjs fails a store locale that has neither.",
+  "_readme": "THE ONE SOURCE of FullShot's store listing copy (EXT-4, 2026-09-25). Every store/{chrome,edge,firefox}/*.txt is rendered from this file by `node scripts/render-listing.mjs fullshot`, and check-store-metadata.mjs fails a listing file that differs from the rendering. A line may be a plain string, or an object {text, when, stores, requires}: `when: \"free\"` renders only while the tool neither transmits nor sells, `when: \"pro\"` only when it does either, `when: \"sells\"` only when it sells; `stores` limits a line to the named stores; `requires` skips it when the named value is absent. {{shortcutsPage}} comes from the store entry, {{seller}} from the store's channel row in tooling/channel-register.json (its purchaseRail and regionRails; the licensor from LICENSE's Required Notice is named only where the licensor is the seller of record), {{priceRange}} from the recurring offerings in app-config-data (never one_time). A {\"parity\": \"<heading>\"} line renders, per store, the tool.json parity cells of that store's build target whose state is `fallback` ({{browser}} comes from the store entry), and renders nothing where there are none (EXB-13). `language` declares the one language the long description is rendered in and why every other store locale receives it (EXB-07); check-store-metadata.mjs fails a store locale that has neither.",
   "language": {
     "rendered": "en",
     "englishOnly": "The long description, the reviewer notes and the Edge search terms are English on every store and in every locale. The name and the summary the stores show come from the manifest's __MSG_ keys and are translated in every _locales catalogue; the long description carries the privacy and redaction claims, and a translation of those is a claim nobody here can review in 55 languages, so none is published. render-listing.mjs has no locale axis and amo-metadata.mjs sends the description under en-US only."
@@ -47,11 +47,11 @@
     { "parity": "── IN {{browser}} ──" },
     "",
     "Free, private, and pixel-perfect.",
-    { "when": "pro", "text": "" },
-    { "when": "pro", "text": "Optional FullShot Pro: sign in with a Nikatru account for watermarks and logos, brand kits, and saved annotation and redaction presets. Capturing, annotating, redacting and exporting stay free and need no account." },
-    { "when": "sells", "stores": ["chrome"], "text": "FullShot Pro is sold by {{seller}}, not by Google." },
-    { "when": "sells", "stores": ["firefox"], "text": "FullShot Pro is sold by {{seller}}, not by Mozilla." },
-    { "when": "sells", "stores": ["edge"], "requires": "priceRange", "text": "In-extension purchases: FullShot Pro, an optional subscription billed monthly or yearly. Prices range from {{priceRange}}. The Upgrade button in FullShot starts that purchase." }
+    { "when": "signin", "text": "" },
+    { "when": "signin", "text": "Optional FullShot Pro: sign in with a Nikatru account for watermarks and logos, brand kits, and saved annotation and redaction presets. Capturing, annotating, redacting and exporting stay free and need no account." },
+    { "when": "sells", "stores": ["chrome"], "text": "FullShot Pro is sold through {{seller}}, not by Google." },
+    { "when": "sells", "stores": ["firefox"], "text": "FullShot Pro is sold through {{seller}}, not by Mozilla." },
+    { "when": "sells", "stores": ["edge"], "requires": "priceRange", "text": "In-extension purchases: FullShot Pro, an optional subscription billed monthly or yearly. Prices range from {{priceRange}}. The Upgrade button in FullShot opens that purchase on nikatru.com, sold through {{seller}}." }
   ],
   "stores": {
     "chrome": {
@@ -85,7 +85,8 @@
       ],
       "reviewerNotes": [
         { "when": "free", "text": "FullShot is a screenshot utility that runs entirely on-device. There are no accounts, no servers, and no test credentials to provide." },
-        { "when": "pro", "text": "FullShot is a screenshot utility; capturing runs entirely on-device and needs no account. The optional FullShot Pro features sign in with a Nikatru account." },
+        { "when": "signin", "text": "FullShot is a screenshot utility; capturing runs entirely on-device and needs no account. The optional FullShot Pro features sign in with a Nikatru account." },
+        { "when": "nosignin", "text": "FullShot is a screenshot utility; capturing runs entirely on-device and needs no account. There are no accounts to sign in to and no test credentials to provide: the package carries the FullShot Pro account check, and Pro sign-in is not enabled in this version, so that check never runs." },
         "",
         "To exercise the add-on: open any web page, click the FullShot toolbar icon, and choose Full page / Visible / Region / Element. The capture opens in the extension's own result page, where it can be annotated, redacted, beautified, and exported as PNG / JPEG / WebP / PDF.",
         "",
@@ -93,10 +94,12 @@
         "- No remotely hosted code. Every script is a local relative path inside the package; there is no eval, no new Function, no CDN, and no WASM.",
         { "when": "free", "text": "- No network activity of any kind. The package contains no fetch, XMLHttpRequest, WebSocket, sendBeacon, or EventSource call." },
         { "when": "pro", "text": "- Capturing contacts no server. The only network calls are the Pro account check's, to the destinations tool.json policy.networkAllowlist names." },
+        { "when": "signin", "text": "- data_collection_permissions declares no REQUIRED collection and one OPTIONAL type, authenticationInfo: the Pro account check sends a device credential, and that permission is asked for at Pro sign-in. Without it, FullShot collects nothing." },
+        { "when": "nosignin", "text": "- data_collection_permissions declares no REQUIRED collection and one OPTIONAL type, authenticationInfo, for the Pro account check. Pro sign-in is not enabled in this version, so that permission is never requested and FullShot collects nothing." },
         "- Broad host access is declared as an OPTIONAL host permission and is never requested at install. It is requested at runtime, from a user gesture, only when the user enables cross-origin frame expansion (Options) or Batch URL capture. Declining leaves all other functionality working.",
         "- The optional PII redaction feature scans page text locally and paints opaque blocks over matches. Detected values are never stored, indexed, or sent.",
         { "when": "free", "text": "- data_collection_permissions declares that no data is collected: every byte FullShot touches stays in the add-on's own storage on the user's machine." },
-        "- In Firefox the background runs from background.scripts (pages/db.js, pages/batch.js, background.js); background.js guards its importScripts calls behind a typeof check, because importScripts exists only in a service worker.",
+        "- In Firefox the background runs from background.scripts (pages/db.js, pages/batch.js, vendor/core/entitlement-client.js, pro/account.js, background.js); background.js guards its importScripts calls behind a typeof check, because importScripts exists only in a service worker.",
         "- permissions.request is called only from user gestures (the Options toggle, the popup capture click, and Batch \"start\").",
         "- The code ships unminified and unobfuscated; no build step or source archive is needed for review."
       ]

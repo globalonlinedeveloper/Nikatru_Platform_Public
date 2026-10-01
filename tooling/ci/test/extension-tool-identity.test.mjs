@@ -442,12 +442,19 @@ describe('the amo lane answers skip for a tool with no Firefox package, and --pl
   });
   after(() => { rmSync(dir, { recursive: true, force: true }); });
 
-  function laneTree(name, mutateTool) {
+  /* ⏱ 2026-10-01 (#1117 review 1): FullShot carries the Pro account check, so the
+     sign-in axis refuses it on a channel with a null extensionRedirectUri — which
+     every row of the real register is today. The fixture records a measured-shape
+     URI on the amo row, so these cases grade the axes they name; `signIn: false`
+     keeps the real register's null. */
+  function laneTree(name, mutateTool, { signIn = true } = {}) {
     const root = join(dir, name);
     const tdir = join(root, 'extensions', 'Extension', 'Full_Screen_Shot');
     mkdirSync(join(tdir, 'publish'), { recursive: true });
     mkdirSync(join(root, 'tooling'), { recursive: true });
-    cpSync(join(REPO, 'tooling', 'channel-register.json'), join(root, 'tooling', 'channel-register.json'));
+    const register = readJson(join(REPO, 'tooling', 'channel-register.json'));
+    if (signIn) register.channels.find((c) => c.id === 'amo').extensionRedirectUri = 'https://0123456789abcdef0123456789abcdef01234567.extensions.allizom.org/';
+    writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify(register, null, 2));
     const tool = readJson(join(FULLSHOT, 'tool.json'));
     if (mutateTool) mutateTool(tool);
     writeFileSync(join(tdir, 'tool.json'), JSON.stringify(tool, null, 2));
@@ -529,12 +536,34 @@ describe('the amo lane answers skip for a tool with no Firefox package, and --pl
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /^ARMING_VERDICT=refuse$/m);
   });
-  test('--plan on the real tree: exit 0, the derived id, and SKIPPED: not a release run', () => {
+  test('--plan on the real tree: the derived id, then exit 1 on the sign-in axis (no amo sign-in yet), and SKIPPED: not a release run', () => {
     const r = spawnSync(process.execPath, [ARMING_CLI, '--channel', 'amo', '--tool', 'fullshot', '--plan'], { encoding: 'utf8', env: BARE_ENV });
-    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /identity axis: "fullshot@nikatru\.com" — derived/);
     assert.match(r.stdout, /arming axis: channel "amo" is ARMED/);
+    assert.match(r.stdout, /sign-in axis: 🔴 REFUSED — tool "fullshot" carries the Pro account check/);
     assert.match(r.stdout.trimEnd(), /SKIPPED: not a release run$/);
+  });
+  // ⏱ 2026-10-01 (#1117 review 1, finding 3): no FullShot submission until sign-in lands.
+  test('a tool carrying the Pro account check is REFUSED on a channel with a null extensionRedirectUri, credentials or not', () => {
+    const root = laneTree('signin-null', undefined, { signIn: false });
+    for (const env of [FIXTURE_ENV, {}]) {
+      const v = arming.laneVerdict('amo', { toolId: 'fullshot', env, root });
+      assert.equal(v.verdict, 'refuse');
+      assert.match(v.lines[0], /channel "amo" has a null extensionRedirectUri/);
+    }
+  });
+  test('...a tool that carries no account check is not refused on the same channel', () => {
+    const root = laneTree('signin-null-free', (t) => { t.policy.networkAllowlist = []; }, { signIn: false });
+    const v = arming.laneVerdict('amo', { toolId: 'fullshot', env: FIXTURE_ENV, root });
+    assert.equal(v.verdict, 'go');
+  });
+  test('CLI: the sign-in refusal exits 1 and prints ARMING_VERDICT=refuse', () => {
+    const root = laneTree('cli-signin-null', undefined, { signIn: false });
+    const r = cli(root, '--channel', 'amo', '--tool', 'fullshot');
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /^ARMING_VERDICT=refuse$/m);
+    assert.match(r.stdout, /^ARMING_REASON=🔴 REFUSED — tool "fullshot" carries the Pro account check/m);
   });
   test('--plan reads no credential: the same tree answers the same with made-up credentials set', () => {
     const root = laneTree('plan-creds');
