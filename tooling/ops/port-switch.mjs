@@ -310,6 +310,13 @@ export function run(opts) {
 /** C9 · the webhook URL to register: the platform Worker's own custom domain for `env`. */
 export function webhook(root, env, target) {
   const rel = 'services/platform/wrangler.jsonc';
+  // `env` arrives from the command line through an EXPORTED function, so it is
+  // allowlisted HERE (shape, then membership) and never becomes a RegExp: the env block
+  // is found by comparing each `"<key>": {` key to it as a string (#1127, CodeQL #546
+  // js/regex-injection).
+  if (typeof env !== 'string' || !/^[a-z0-9-]+$/.test(env) || !ENVS.has(env)) {
+    return { verdict: 'FAIL', detail: `--env ${JSON.stringify(env)} is not a declared environment (${[...ENVS].join(', ')})` };
+  }
   let raw;
   try { raw = stripSourceComments(readFileSync(join(root, rel), 'utf8'), '.jsonc'); } catch (e) { return { verdict: 'LOST', detail: `${rel} could not be read (${e.message})` }; }
   const name = /"name"\s*:\s*"([^"]+)"/.exec(raw)?.[1];
@@ -317,7 +324,8 @@ export function webhook(root, env, target) {
   let scope;
   if (env === 'live') scope = envAt >= 0 ? raw.slice(0, envAt) : raw;
   else {
-    const at = envAt >= 0 ? raw.slice(envAt).search(new RegExp(`"${env}"\\s*:\\s*\\{`)) : -1;
+    const block = envAt >= 0 ? [...raw.slice(envAt).matchAll(/"([a-z0-9-]+)"\s*:\s*\{/g)].find((m) => m[1] === env) : undefined;
+    const at = block === undefined ? -1 : block.index;
     scope = at >= 0 ? raw.slice(envAt + at) : '';
   }
   const domains = [...scope.matchAll(/"pattern"\s*:\s*"([^"]+)"\s*,\s*"custom_domain"\s*:\s*true/g)].map((x) => x[1]);

@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseArgs, feeFor } from '../../ops/port-switch.mjs';
+import { parseArgs, feeFor, webhook } from '../../ops/port-switch.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -266,5 +266,38 @@ describe('port-switch — the payments additions over a copy of the REAL registe
     assert.deepEqual(feeFor(fake, 'paddle', 599, {}).fee, { percentBps: 0, fixedMinor: 0 });
     const perMonth = { id: 'x', cost: { feeCells: [], unit: { usd: 5, per: 'month', asOf: '2026-10-01', verify: 'a flat plan' } } };
     assert.match(feeFor(perMonth, 'paddle', 599, {}).lost, /carries no fee cells/);
+  });
+});
+
+// #1127 CodeQL #546 js/regex-injection: `webhook` is exported, so it allowlists `env` itself
+// and finds the env block by comparing keys as strings, never by a RegExp built from input.
+describe('port-switch — C9 never builds a RegExp from --env', () => {
+  let root;
+  before(() => {
+    root = mkdtempSync(join(tmpdir(), 'port-switch-env-'));
+    mkdirSync(join(root, 'services/platform'), { recursive: true });
+    writeFileSync(join(root, 'services/platform/wrangler.jsonc'), JSON.stringify({
+      name: 'platform',
+      routes: [{ pattern: 'platform.example.test', custom_domain: true }],
+      env: {
+        'sandbox-old': { routes: [{ pattern: 'platform-old.example.test', custom_domain: true }] },
+        sandbox: { routes: [{ pattern: 'platform.sandbox.example.test', custom_domain: true }] },
+      },
+    }, null, 2));
+  });
+  const target = { id: 'paddle', vendor: 'paddle', secrets: ['PADDLE_API_KEY'] };
+  it('green control: each declared environment finds its OWN block', () => {
+    assert.deepEqual(webhook(root, 'live', target).verdict, 'PASS');
+    assert.match(webhook(root, 'live', target).detail, /^register https:\/\/platform\.example\.test\/v1\/money\/paddle/);
+    const s = webhook(root, 'sandbox', target);
+    assert.equal(s.verdict, 'PASS', s.detail);
+    assert.match(s.detail, /^register https:\/\/platform\.sandbox\.example\.test\/v1\/money\/paddle/);
+  });
+  it('red: an --env carrying regex syntax is refused, never matched as a pattern', () => {
+    for (const env of ['sand.ox', 'sandbox|live', '.*', 'Sandbox']) {
+      const r = webhook(root, env, target);
+      assert.equal(r.verdict, 'FAIL', `${env}: ${r.detail}`);
+      assert.match(r.detail, /is not a declared environment \(live, sandbox, test\)/);
+    }
   });
 });
