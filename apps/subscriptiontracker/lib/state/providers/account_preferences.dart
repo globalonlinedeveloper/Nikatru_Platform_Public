@@ -117,7 +117,19 @@ class PreferenceNotice {
 /// here until a screen takes it.
 class PreferenceNotices extends Notifier<List<PreferenceNotice>> {
   @override
-  List<PreferenceNotice> build() => const <PreferenceNotice>[];
+  List<PreferenceNotice> build() {
+    // 🔴 A NOTICE BELONGS TO THE USER IT WAS RAISED FOR (review 4 of #1080).
+    // Any change of signed-in user — every sign-out path, the forced 401 that
+    // runs no drops included, and an account switch — empties the queue, so
+    // the next person never sees the last one's "changed on another device".
+    ref.listen<String?>(
+      authUserProvider.select((AsyncValue<core.AuthUser?> u) => u.value?.id),
+      (String? before, String? now) {
+        if (before != now) state = const <PreferenceNotice>[];
+      },
+    );
+    return const <PreferenceNotice>[];
+  }
 
   void raise(PreferenceNoticeKind kind, String key) =>
       state = <PreferenceNotice>[...state, PreferenceNotice(kind, key)];
@@ -260,13 +272,18 @@ Future<void> setLocaleByUserWith(
 /// pending sends stay queued, bound to them, and are delivered at their next
 /// sign-in. Resolved BEFORE the sign-out (see `userStateDrops`), so the user
 /// id is the one leaving. A forced 401 does not run it at all.
-UserStateDrop forgetAccountPreferences(WidgetRef ref) =>
-    forgetAccountPreferencesWith(ref.read);
+///
+/// [erase]: the ACCOUNT DELETION path (review 4 of #1080, finding 1). The
+/// account is gone, so its pending sends are discarded with its id instead of
+/// waiting for a sign-in that can never come.
+UserStateDrop forgetAccountPreferences(WidgetRef ref, {bool erase = false}) =>
+    forgetAccountPreferencesWith(ref.read, erase: erase);
 
 /// [forgetAccountPreferences] over any provider reader (a container, a ref).
 UserStateDrop forgetAccountPreferencesWith(
-  T Function<T>(ProviderListenable<T> provider) read,
-) {
+  T Function<T>(ProviderListenable<T> provider) read, {
+  bool erase = false,
+}) {
   final core.AccountPreferencesSync? sync = read(
     accountPreferencesSyncProvider,
   );
@@ -286,7 +303,7 @@ UserStateDrop forgetAccountPreferencesWith(
       ...await sync.heldKeys(owner),
       ...await sync.pendingKeys(owner),
     };
-    await sync.forget(owner);
+    await sync.forget(owner, erase: erase);
     await settings.resetKeys(reset);
     if (reset.contains(kPrefThemeMode)) await theme.set(ThemeMode.system);
     if (reset.contains(kPrefLocale)) await locale.set(null);

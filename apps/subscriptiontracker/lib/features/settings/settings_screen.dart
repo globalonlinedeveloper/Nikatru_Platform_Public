@@ -1304,7 +1304,7 @@ class SettingsScreen extends ConsumerWidget {
     // `return outcome` ever ran — into `_DeleteAccountDialog._run`, which does
     // not catch: the dialog stays `_busy` (so `PopScope` refuses to close) and
     // the login screen is handed no outcome at all. That is the live E2E flake.
-    final List<UserStateDrop> drops = userStateDrops(ref);
+    final List<UserStateDrop> drops = userStateDrops(ref, accountDeleted: true);
     final StateController<core.AccountDeletionOutcome?> outcomeSink = ref.read(
       lastAccountDeletionOutcomeProvider.notifier,
     );

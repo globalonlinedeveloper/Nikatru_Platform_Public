@@ -518,6 +518,37 @@ void main() {
     },
   );
 
+  test(
+    '🔴 review 4 of #1080: a notice queued for one user is never shown to the next',
+    () async {
+      final _Server server = _Server();
+      final _Device d = _Device(server);
+      await _settle();
+      final PreferenceNotices notices = d.c.read(
+        preferenceNoticesProvider.notifier,
+      );
+      notices.raise(PreferenceNoticeKind.conflict, 'currencyCode');
+      expect(d.c.read(preferenceNoticesProvider), hasLength(1));
+      // Signed out with no screen to show it — a forced 401 runs no drop.
+      d.users.add(null);
+      await _settle();
+      expect(d.c.read(preferenceNoticesProvider), isEmpty);
+
+      // And a switch straight to another account.
+      d.users.add(_me);
+      await _settle();
+      notices.raise(PreferenceNoticeKind.refused, 'locale');
+      d.users.add(const core.AuthUser(id: 'b', email: 'b@example.test'));
+      await _settle();
+      expect(d.c.read(preferenceNoticesProvider), isEmpty);
+
+      // A notice raised for the user who is signed in stays for them.
+      notices.raise(PreferenceNoticeKind.conflict, 'themeMode');
+      await _settle();
+      expect(d.c.read(preferenceNoticesProvider), hasLength(1));
+    },
+  );
+
   testWidgets(
     '🔴 finding 10a/b: a return to the app reads the account — another device’s change arrives',
     (WidgetTester tester) async {
