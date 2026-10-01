@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import VECTOR_RAW from '../../../contracts/fx/latest.v1.example.json?raw';
 import {
   ECB_DAILY_URL,
@@ -295,6 +295,19 @@ describe('refreshFxRates — a good table is cached, and on ANY failure the last
 });
 
 describe('fxRates — the nightly limb writes ITS row, under its own job', () => {
+  // 🔴 fxRates passes no `nowMs`, so refreshFxRates reads Date.now(), and the
+  // vector's asOf is a FIXED day: unpinned, "a good night" went red the morning
+  // the wall clock passed asOf + FX_MAX_FIX_GAP_DAYS (2026-10-01, CI run
+  // 36797237259). Pin the wall clock to the vector's own fetchedAt; fake Date
+  // only, so the fetch timeout's real timers still fire.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(FETCHED_AT_MS);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('🔴 a timeout on the nightly run writes a FAILED heartbeat and keeps the last good table', async () => {
     const db = realPlatformDb();
     const { kv, lastGood } = kvWithLastGood();
@@ -314,11 +327,10 @@ describe('fxRates — the nightly limb writes ITS row, under its own job', () =>
   });
 
   it('a good night writes ok=1 and the table', async () => {
-    // Read at the vector's own fetch time. On the wall clock this test was a time
-    // bomb: green until FX_MAX_FIX_GAP_DAYS after the fixture's asOf, red from
-    // 2026-10-01 on every branch whose CI runs the platform suite.
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(FETCHED_AT_MS);
+    // fxRates reads the wall clock (it has no nowMs seam), so pin Date to the
+    // fixture's fetch instant. Unpinned, this case went red the day the
+    // fixture's ECB fix (2026-09-25) grew older than FX_MAX_FIX_GAP_DAYS.
+    vi.useFakeTimers({ toFake: ['Date'], now: FETCHED_AT_MS });
     const db = realPlatformDb();
     const kv = new FakeKv();
     vi.stubGlobal('fetch', (input: RequestInfo | URL) =>

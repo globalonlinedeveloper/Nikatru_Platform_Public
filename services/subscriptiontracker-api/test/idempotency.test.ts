@@ -169,6 +169,21 @@ describe('POST /v1/subscriptions — Idempotency-Key', () => {
     expect(await idempotentRowId('user-a', CLIENT_ID)).not.toBe(await idempotentRowId('user-b', CLIENT_ID));
   });
 
+  // Pre-merge E2E on #1075: the app sends the key as a QUERY PARAMETER (a new
+  // header failed the browser's CORS preflight against the Worker as deployed).
+  it('the key as the idempotency_key query parameter is the same key', async () => {
+    const viaQuery = () =>
+      subs('user-a', `/v1/subscriptions?idempotency_key=${CLIENT_ID}`, { method: 'POST', body: BODY });
+    const first = await viaQuery();
+    expect(first.status).toBe(201);
+    const again = await viaQuery();
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as { id: string }).id).toBe(((await first.json()) as { id: string }).id);
+    // ...and the header and the parameter name ONE key.
+    expect((await post('user-a', CLIENT_ID)).status).toBe(200);
+    expect(await count('user-a')).toBe(1);
+  });
+
   it('no key behaves as before: two posts, two rows', async () => {
     expect((await post('user-a')).status).toBe(201);
     expect((await post('user-a')).status).toBe(201);
