@@ -50,6 +50,16 @@ import { firstRow, nowIso, run } from './d1';
 
 export const IDEMPOTENCY_HEADER = 'Idempotency-Key';
 
+/**
+ * The same key as a QUERY PARAMETER — what the app sends (pre-merge E2E on
+ * #1075). A new request header must be on a server's CORS allow-list before a
+ * browser will send it, so a client that sent only the header failed every web
+ * add against a Worker deployed before it. The query parameter needs nothing
+ * from CORS: an older Worker ignores it (a plain create), this one reads it.
+ * The header stays accepted for non-browser clients.
+ */
+export const IDEMPOTENCY_PARAM = 'idempotency_key';
+
 /** A key is 8-128 URL-safe characters: a UUID fits, and so does a ULID. */
 const KEY_RE = /^[A-Za-z0-9_-]{8,128}$/;
 
@@ -118,7 +128,7 @@ export function idempotentCreate(
   existing: (c: Context<AppEnv>, id: string) => Promise<Response | null>,
 ): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    const key = c.req.header(IDEMPOTENCY_HEADER);
+    const key = c.req.header(IDEMPOTENCY_HEADER) ?? c.req.query(IDEMPOTENCY_PARAM);
     if (key === undefined) return next();
     if (!KEY_RE.test(key)) {
       return c.json(

@@ -90,17 +90,24 @@ void main() {
 
   // AB-O2-02: a replayed write carries the SAME key on every attempt, and a
   // write that was not given one carries no header at all.
-  test('a write sends its Idempotency-Key; an unkeyed write sends none',
-      () async {
+  // AB-O2-02 + the pre-merge E2E on #1075: the key rides the QUERY STRING, so
+  // a server whose CORS allow-list predates it still accepts the request (a
+  // new header failed the browser preflight on every web add). The same key
+  // on every attempt; an unkeyed write carries none; no custom header ever.
+  test('a write carries its idempotency key as a query parameter, never as a '
+      'header', () async {
     final _FakeAdapter adapter =
         _FakeAdapter(jsonEncode(<String, dynamic>{'id': '1'}));
     final RestClient client = _client(adapter);
     await client.post('/things', body: <String, dynamic>{}, idempotencyKey: 'k-1');
-    expect(adapter.lastRequest!.headers['Idempotency-Key'], 'k-1');
+    expect(adapter.lastRequest!.queryParameters['idempotency_key'], 'k-1');
+    expect(adapter.lastRequest!.uri.query, contains('idempotency_key=k-1'));
+    expect(adapter.lastRequest!.headers.keys.map((String k) => k.toLowerCase()),
+        isNot(contains('idempotency-key')));
     await client.patch('/things/1', body: <String, dynamic>{}, idempotencyKey: 'k-2');
-    expect(adapter.lastRequest!.headers['Idempotency-Key'], 'k-2');
+    expect(adapter.lastRequest!.queryParameters['idempotency_key'], 'k-2');
     await client.post('/things', body: <String, dynamic>{});
-    expect(adapter.lastRequest!.headers.containsKey('Idempotency-Key'), isFalse);
+    expect(adapter.lastRequest!.queryParameters, isEmpty);
   });
 
   // Review #1075 round 3, minor d: the outbox waits as long as the server says.

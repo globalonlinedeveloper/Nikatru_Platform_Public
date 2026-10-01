@@ -90,29 +90,39 @@ class RestClient {
   /// GET [path] → the decoded JSON body.
   Future<dynamic> get(String path) => _send(() => _dio.get<dynamic>(path));
 
-  /// The header a write carries so a replay of it is answered, not re-applied.
+  /// The query parameter a write carries so a replay of it is answered, not
+  /// re-applied.
   ///
   /// 🔴 A LOST RESPONSE IS NOT A FAILED WRITE (AB-O2-02). A POST that commits
   /// and then times out looks exactly like one that never arrived, so a retry
   /// inserted a second row. With a key the server answers a repeat with the
   /// row the first attempt made. The key is minted by the caller (an outbox
   /// entry's client id) and must be the SAME on every attempt of one write.
-  static const String idempotencyKeyHeader = 'Idempotency-Key';
+  ///
+  /// 🔴 A QUERY PARAMETER, NOT A HEADER (pre-merge E2E on #1075, run
+  /// 36797465703). A new request HEADER must be on the server's CORS
+  /// allow-list before a browser will send it, and a server that predates it
+  /// fails the preflight: every add from the web app then failed against the
+  /// API as deployed. A query parameter needs nothing from the server. A
+  /// server that does not know it ignores it and creates as before (a plain,
+  /// unkeyed create); one that does reads it (the Worker also still accepts
+  /// the `Idempotency-Key` header). So this client works against the server
+  /// as deployed AND the next one, and the server works with old clients.
+  static const String idempotencyKeyParam = 'idempotency_key';
 
-  static Options? _keyed(String? idempotencyKey) => idempotencyKey == null
+  static Map<String, dynamic>? _keyed(String? idempotencyKey) =>
+      idempotencyKey == null
       ? null
-      : Options(
-          headers: <String, Object>{idempotencyKeyHeader: idempotencyKey},
-        );
+      : <String, dynamic>{idempotencyKeyParam: idempotencyKey};
 
   /// POST [body] to [path] → the decoded JSON body. See
-  /// [idempotencyKeyHeader] for [idempotencyKey].
+  /// [idempotencyKeyParam] for [idempotencyKey].
   Future<dynamic> post(String path, {Object? body, String? idempotencyKey}) =>
       _send(
         () => _dio.post<dynamic>(
           path,
           data: body,
-          options: _keyed(idempotencyKey),
+          queryParameters: _keyed(idempotencyKey),
         ),
       );
 
@@ -122,7 +132,7 @@ class RestClient {
         () => _dio.put<dynamic>(
           path,
           data: body,
-          options: _keyed(idempotencyKey),
+          queryParameters: _keyed(idempotencyKey),
         ),
       );
 
@@ -132,7 +142,7 @@ class RestClient {
         () => _dio.patch<dynamic>(
           path,
           data: body,
-          options: _keyed(idempotencyKey),
+          queryParameters: _keyed(idempotencyKey),
         ),
       );
 
