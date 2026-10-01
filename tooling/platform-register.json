@@ -826,6 +826,34 @@
           "note": "⏱ 2026-09-29 · ADR no.NNN (native sign-in serves only attested app installs). The same native route BASE; packages/auth_supabase NativeAttestationClient (the http.Client under that GoTrueClient) appends /attest/challenge and /attest/install to it before every op. packages/auth_supabase/test/native_attestation_client_test.dart drives both."
         }
       }
+      ,
+      {
+        "id": "native-auth-handoff-token",
+        "method": "POST",
+        "path": "/v1/auth/native/:app/handoff/token",
+        "auth": "public",
+        "owningFile": "services/platform/src/routes/native-auth.ts",
+        "purpose": "⏱ 2026-10-01 · O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH (ADR draft native-sign-in-per-target, amending ADR no.084). THE SYSTEM-BROWSER HAND-OFF, app half: a desktop build (Windows, macOS, Linux — none can attest) exchanges {code, code_verifier, redirect_uri} for a NEW GoTrue session of its own. The code (services/platform/src/lib/native-attest/handoff.ts) is AES-GCM-sealed under a key derived from NATIVE_ATTEST_CHALLENGE_KEY, lives 120 s, is bound to the app in the path and to the redirect byte for byte, is PKCE S256-bound, and is single-use (its nonce is redeemed into native_attest_redeemed after the PKCE check). Every refusal is ONE 400 `invalid_grant`. The session is minted with the service-role key as admin/users/<id> → admin/generate_link (magiclink, sends no mail) → /verify, and withheld unless it names the code's user. Behind NATIVE_AUTH_EDGE_LIMITER (fail closed); a browser is refused by the shared CORS middleware's refuseBrowsersOn prefix. services/platform/test/native-handoff.test.ts holds every rule red-first.",
+        "client": {
+          "file": "packages/auth_supabase/lib/src/native_credential_client.dart",
+          "expression": "'$root/v1/auth/native/$appId'",
+          "note": "⏱ 2026-10-01 · The same native route BASE (nativeCredentialBaseUrl); packages/auth_supabase exchangeHandoffCode (browser_handoff_client.dart) appends /handoff/token. packages/auth_supabase/test/browser_handoff_client_test.dart pins the URL and the body."
+        }
+      },
+      {
+        "id": "native-auth-handoff-code",
+        "method": "POST",
+        "path": "/v1/auth/handoff/:app/code",
+        "auth": "required",
+        "owningFile": "services/platform/src/routes/native-handoff.ts",
+        "purpose": "⏱ 2026-10-01 · O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH. THE SYSTEM-BROWSER HAND-OFF, browser half: the signed-in page https://nikatru.com/app/connect mints a desktop app's 120-second, single-use, PKCE-bound sign-in code for {app, user, redirect_uri, code_challenge}. `platformAuth` is carried AT THE HANDLER. It refuses an app outside NATIVE_AUTH_APPS (404), a token whose newest `amr` is older than RECENT_AUTH_SECONDS (401 handoff_needs_fresh_signin — a lifted access token must not become a new long-lived session), a redirect that is not the app's own loopback `http://127.0.0.1:<1024-65535>/nk-auth-callback` or deep link `com.nikatru.<app>://auth-callback?nk_auth=handoff`, and any method but S256. STATELESS: it writes nothing. Answers {code, redirect_uri, expires_in}.",
+        "client": {
+          "file": "sites/nikatru/app/connect.js",
+          "expression": "`${PLATFORM}/v1/auth/handoff/${request.app}/code`",
+          "note": "The URL the connect page POSTs to, at its one declaration."
+        },
+        "noLimiterReason": "NOT APPLICABLE — `auth: required`, so limb 4 does not range over it. Bounded anyway by SESSIONS_LIMITER keyed `handoff:<user>`, and it writes no row."
+      }
   ],
   "bindings": [
     {

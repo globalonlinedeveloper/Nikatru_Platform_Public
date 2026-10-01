@@ -250,13 +250,22 @@ export async function challengeIsOurs(env: Env, app: string, challenge: string, 
 export async function redeemChallenge(env: Env, app: string, challenge: string, now: number): Promise<boolean> {
   if (!(await challengeIsOurs(env, app, challenge, now))) return false;
   const [, , expRaw, nonce] = CHALLENGE.exec(challenge)!;
-  const exp = Number(expRaw) * 1000;
+  return redeemNonce(env, app, nonce!, Number(expRaw) * 1000, now);
+}
+
+/**
+ * Writes a single-use `nonce` (expiring at `expMs`) into native_attest_redeemed,
+ * first deleting the expired ones. True exactly once per nonce. ⏱ 2026-10-01:
+ * shared by challenges and by the system-browser hand-off codes (handoff.ts) —
+ * both nonces are 16 random bytes, so the two never collide.
+ */
+export async function redeemNonce(env: Env, app: string, nonce: string, expMs: number, now: number): Promise<boolean> {
   const inserted = await pruneThenWrite(
     env.PLATFORM_DB,
     env.PLATFORM_DB.prepare('DELETE FROM native_attest_redeemed WHERE expires_at < ?').bind(iso(now)),
     env.PLATFORM_DB.prepare(
       'INSERT INTO native_attest_redeemed (nonce, app_id, expires_at) VALUES (?, ?, ?) ON CONFLICT(nonce) DO NOTHING',
-    ).bind(nonce!, app, iso(exp)),
+    ).bind(nonce, app, iso(expMs)),
   );
   return inserted?.meta.changes === 1;
 }
