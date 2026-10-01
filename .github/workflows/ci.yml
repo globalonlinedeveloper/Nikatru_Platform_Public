@@ -899,6 +899,9 @@ jobs:
       - name: Every vendor satisfies the portability checklist
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-vendor-portability.mjs
+      - name: Every port earns the level it claims, and every vendor is placed
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-ports.mjs
       - name: One convention set reaches every app, and can fail a build
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-lint-inheritance.mjs

@@ -1902,6 +1902,19 @@
     "state": "WIRED"
   },
   {
+    "claims": [
+      "ADR 004",
+      "C-8"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-chassis"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-ports.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [],
     "invokedBy": [
       ".github/workflows/ci.yml#guard-meta"
