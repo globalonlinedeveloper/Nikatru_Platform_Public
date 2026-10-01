@@ -37,16 +37,32 @@ enum BillingSource {
     ),
   };
 
-  /// The source of one entitlement row's `store`.
-  static BillingSource ofStore(String store) => switch (store) {
+  /// What our own merchant-of-record rows carry in `store`: NOTHING. The
+  /// Paddle webhook (services/platform/src/lib/mor/paddle.ts) names no store,
+  /// so `store.ts` writes NULL, the entitlement read serves `null`, and
+  /// [core.Entitlement.fromJson] reads it as the empty string.
+  static const String webStore = '';
+
+  /// The source of one entitlement row's `store`, or null for a store this
+  /// client cannot name.
+  ///
+  /// ⏱ 2026-10-01 · review 1 of #1114 (item 5). Every unrecognised value used to
+  /// fall through to [web], so a RevenueCat `PROMOTIONAL`, `STRIPE`, `AMAZON`
+  /// or `RC_BILLING` row was told "your plan is cancelled first" on delete and
+  /// "Bought on the web" on Manage plan — both false. Web is now the one value
+  /// our own rows carry, and anything else is null: no sentence is worded for a
+  /// source nobody here has read.
+  static BillingSource? ofStore(String store) => switch (store) {
+    webStore => BillingSource.web,
     'APP_STORE' || 'MAC_APP_STORE' => BillingSource.appStore,
     'PLAY_STORE' => BillingSource.googlePlay,
-    _ => BillingSource.web,
+    _ => null,
   };
 
   /// The plan that is active [now], and where it was bought — or null when no
   /// row is valid (a free user, or a bundle grant with no row of its own).
-  static ({BillingSource source, DateTime? periodEnds})? activePlanOf(
+  /// `source` is null when the row's store is one [ofStore] cannot name.
+  static ({BillingSource? source, DateTime? periodEnds})? activePlanOf(
     core.Entitlements ent,
     DateTime now,
   ) {

@@ -171,10 +171,10 @@ typedef PaidAt = ({
 /// launcher) and no Cancel, so nothing posts /v1/plan/cancel for a plan only the
 /// store can stop. [ent] is null for no active plan.
 PaidAt paidAtOf(core.Entitlements? ent) {
-  final ({BillingSource source, DateTime? periodEnds})? paid = ent == null
+  final ({BillingSource? source, DateTime? periodEnds})? paid = ent == null
       ? null
       : BillingSource.activePlanOf(ent, DateTime.now());
-  final Uri? page = paid?.source.manageUrl;
+  final Uri? page = paid?.source?.manageUrl;
   return (
     source: switch (paid?.source) {
       BillingSource.web => PlanSourceView.web,
