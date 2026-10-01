@@ -74,7 +74,7 @@ export function extLinkExpired(row: { created_at: string; last_seen_at: string |
 }
 
 /**
- * True when a link (or a code) minted by a session that authenticated at
+ * True when a link (or a code) minted by a session that started at
  * `authAt` is below the account's floor `notBefore`. No floor → false. With a
  * floor, fail-closed: a NULL or unparseable `authAt` (a link minted before
  * 0021) is older than any floor, and an unparseable floor refuses everything.

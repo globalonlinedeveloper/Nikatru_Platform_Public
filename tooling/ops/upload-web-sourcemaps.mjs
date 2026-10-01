@@ -174,8 +174,13 @@ if (!token) die('SENTRY_AUTH_TOKEN is empty, so nothing could be uploaded');
 // ⏱ 2026-09-30 · The token goes to its issuer only (review of #1086, finding 3): a
 // bare origin that is not https://glitchtip.nikatru.com (or a loopback test stub)
 // is refused here, before the first request carries SENTRY_AUTH_TOKEN.
+// ⏱ 2026-10-01 (review 2, finding 6): the RETURNED origin is what every request is
+// built from. `base` passed the pin and was then used raw, so a value such as
+// `https://glitchtip.nikatru.com?` passed both checks and broke every path appended
+// to it. Held by tooling/ci/assert-credential-origin.mjs limb R.
+let origin;
 try {
-  credentialOrigin(base, 'glitchtip');
+  origin = credentialOrigin(base, 'glitchtip');
 } catch (e) {
   die(e.message);
 }
@@ -387,7 +392,22 @@ const auth = { authorization: `Bearer ${token}`, accept: 'application/json' };
 // Blob and string bodies are re-serialised by each fetch, so an attempt never
 // sends a consumed stream.
 const api = async (path, init = {}) => {
-  const url = path.startsWith('http') ? path : `${base}${path}`;
+  // ⏱ 2026-10-01 (review 2, finding 6): the chunk-upload answer's `url` is an
+  // ABSOLUTE URL the server supplies, and it was followed with the token attached
+  // to whatever host it named — the shape provision-apple.mjs closed for
+  // `links.next`. Every request, relative or absolute, is resolved against the
+  // pinned origin and refused unless it lands on it; tested in
+  // tooling/ci/test/web-sourcemaps.test.mjs.
+  let target;
+  try {
+    target = new URL(path, origin);
+  } catch {
+    return die(`refusing a request URL that does not parse (${String(path).length} characters); SENTRY_AUTH_TOKEN was not sent`);
+  }
+  if (target.origin !== origin) {
+    return die(`refusing to send SENTRY_AUTH_TOKEN to ${target.origin}: the server named a URL off the pinned GlitchTip origin`);
+  }
+  const url = target.href;
   const method = init.method ?? 'GET';
   let res;
   try {
@@ -493,4 +513,4 @@ console.log(`ok  ${listed.length} file(s) now stored against release "${release}
 for (const f of listed.slice(0, 20)) {
   console.log(`      ${f.name ?? JSON.stringify(f).slice(0, 120)}`);
 }
-console.log(`\n    proof: curl -H "authorization: Bearer <token>" ${base}${filesUrl}`);
+console.log(`\n    proof: curl -H "authorization: Bearer <token>" ${origin}${filesUrl}`);

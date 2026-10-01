@@ -207,7 +207,8 @@
       "O-5"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guards-platform"
+      ".github/workflows/ci.yml#guards-platform",
+      ".github/workflows/codeql.yml#analyze"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-alert-disposition.mjs",
@@ -761,6 +762,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-cors-allowlist.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-platform"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-credential-origin.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -2908,6 +2919,16 @@
     "ref": "tooling/ci/dart-source.mjs",
     "references": [],
     "state": "LIBRARY"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/native-auth-proof.yml#gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/darwin-inputs.mjs",
+    "references": [],
+    "state": "WIRED"
   },
   {
     "claims": [],

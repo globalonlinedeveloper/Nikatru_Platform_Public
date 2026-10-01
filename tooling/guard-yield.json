@@ -774,6 +774,11 @@
         }
       ]
     },
+    "tooling/ci/assert-credential-origin.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-30",
+      "evidence": []
+    },
     "tooling/ci/assert-d1-bindings.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-29",
@@ -3218,6 +3223,11 @@
     "tooling/ci/dart-source.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ci/darwin-inputs.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ci/deploy-globs.mjs": {

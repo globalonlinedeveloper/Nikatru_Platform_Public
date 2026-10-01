@@ -516,6 +516,18 @@ async function fetchRuns(repo, workflowFile) {
 
 async function main() {
   const probeFile = flag('--probe-file');
+  // `--limb C` runs limb C alone: the last step of codeql.yml's `analyze` job, after
+  // each analysis of main. That job holds `security-events: write` (which includes
+  // the read limb C needs) and none of the scopes limb A reads.
+  const only = flag('--limb');
+  if (only !== null) {
+    if (only !== 'C') {
+      console.error(`FAIL  --limb ${only}: only limb C runs alone (limbs A and B share one read)`);
+      process.exit(1);
+    }
+    await limbC(probeFile);
+    return;
+  }
   const nowFlag = flag('--now');
   const nowMs = nowFlag ? Date.parse(nowFlag) : Date.now();
   if (Number.isNaN(nowMs)) {
@@ -694,14 +706,22 @@ function newestScheduled(runs) {
 // stands in for `git show`; a probe with no `codeql` key is COVERAGE LOST.
 // ─────────────────────────────────────────────────────────────────────────────
 import { spawnSync } from 'node:child_process';
-import { readAlerts, shapeProblem, isTriaged } from '../ops/check-code-scanning-age.mjs';
+import { readAlerts, shapeProblem, isTriaged, CouldNotLook, GITHUB_API } from '../ops/check-code-scanning-age.mjs';
+import { fetchWithBoundedRetry } from '../ops/bounded-retry.mjs';
+import { SUPABASE_HOSTED_HOST_SHA256 } from '../ops/credential-origin.mjs';
 
 export const CODEQL_DISPOSITIONS_REL = 'tooling/ci/codeql-dispositions.json';
 export const DISPOSITION_KINDS = Object.freeze(['by-design', 'fixed-in-tree']);
 /** The flow rules whose by-design reason holds for ONE host only. */
 export const HOST_RULES = Object.freeze(['js/file-access-to-http', 'js/http-to-file-access']);
-/** A bare hostname; a leading `*.` names a provider zone whose exact host is not public (a hosted Supabase project ref). */
-const HOSTNAME = /^(?=.{1,253}$)(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+/** A bare hostname. No wildcard: ⏱ 2026-10-01 (review 2, finding 7) — `*.supabase.co` named
+ *  every tenant of the zone while the code admits exactly one project. */
+const HOSTNAME = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+/** OUR hosted Supabase project, named by the sha256 of its hostname: the project ref
+ *  is deliberately not in the public tree, and this is the one hash
+ *  tooling/ops/credential-origin.mjs pins the service-role key to. Any other hash is
+ *  refused, so an entry cannot name a host the code does not admit. */
+export const PINNED_SUPABASE_HOST = `sha256:${SUPABASE_HOSTED_HOST_SHA256}`;
 
 const nonEmptyText = (v) => typeof v === 'string' && v.trim().length > 0;
 
@@ -739,7 +759,7 @@ export function parseDispositions(text) {
     }
     if (e.disposition === 'by-design' && HOST_RULES.includes(e.rule)) {
       const hosts = Array.isArray(e.host) ? e.host : [e.host];
-      if (hosts.length === 0 || !hosts.every((h) => typeof h === 'string' && HOSTNAME.test(h))) {
+      if (hosts.length === 0 || !hosts.every((h) => typeof h === 'string' && (HOSTNAME.test(h) || h === PINNED_SUPABASE_HOST))) {
         problems.push(`${at} is a by-design ${e.rule} with no bare \`host\` (got ${JSON.stringify(e.host)}). The reason holds for one provider's host; name it.`);
       }
     }
@@ -765,9 +785,9 @@ export function codeqlShapeProblem(a) {
 /** PURE. The limb C verdict. `claimAt(sha, number)` answers "does the dispositions
  *  file at commit `sha` carry a fixed-in-tree claim for this alert?" with true,
  *  false, or null (that commit is not readable here). */
-export function judgeCodeql({ open, dismissed, entries, claimAt = () => null }) {
+export function judgeCodeql({ open, dismissed, entries, claimAt = () => null, fixed = null }) {
   const byNumber = new Map(entries.map((e) => [e.alert, e]));
-  const out = { undispositioned: [], mismatched: [], disproved: [], pending: [], byDesign: [], stale: [] };
+  const out = { undispositioned: [], mismatched: [], disproved: [], pending: [], byDesign: [], stale: [], notOnMain: [] };
   const matches = (a, e) => {
     if (e.rule === a.rule.id && e.path === alertPath(a)) return true;
     out.mismatched.push({ alert: a, entry: e });
@@ -793,10 +813,120 @@ export function judgeCodeql({ open, dismissed, entries, claimAt = () => null }) 
     if (e) matches(a, e);
     else if (!isTriaged(a)) out.undispositioned.push(a);
   }
+  // ⏱ 2026-10-01 (review 2, finding 4): an entry whose alert main does not list is
+  // STALE only when main lists it as FIXED. An alert main has never seen — a PR's
+  // own new by-design entry, before main's analysis reads it — is NOT ON MAIN YET,
+  // and deleting its entry would redden main the moment the PR merged. `fixed` is
+  // main's fixed alerts; without it (an older probe) every such entry is stale.
   const live = new Set([...open, ...dismissed].map((a) => a.number));
-  for (const e of entries) if (!live.has(e.alert)) out.stale.push(e);
+  const fixedOnMain = fixed === null ? null : new Set(fixed.map((a) => a.number));
+  for (const e of entries) {
+    if (live.has(e.alert)) continue;
+    if (fixedOnMain === null || fixedOnMain.has(e.alert)) out.stale.push(e);
+    else out.notOnMain.push(e);
+  }
   out.failed = out.undispositioned.length + out.mismatched.length + out.disproved.length > 0;
   return out;
+}
+
+/** PURE. On a pull request, the limb C findings the PR cannot have caused: those
+ *  about an alert in a path the PR does not change move to `debt` (printed, not
+ *  failed). `touched` is the set of changed paths, or null = grade everything
+ *  (a push, a schedule, or a PR whose diff could not be read). */
+//
+// ⏱ 2026-10-01 (review of #1097, finding 1, MAJOR): the first version judged an
+// alert "mine" only by its OWN file, so a PR that deleted or edited a LIVE entry in
+// the dispositions file turned its own breakage into MAIN DEBT, exit 0, and main went
+// red on the merge. MAIN DEBT now means ONLY an undispositioned alert whose file the
+// PR does not change AND whose entry the PR did not add, remove or edit. A mismatched
+// entry and a disproved claim always fail. `changed` is the set of alert numbers whose
+// entry differs between the PR's base and its head; null when the base file could not
+// be read, and then a PR that touches the dispositions file is graded strictly.
+export function scopeToPr(v, touched, changed = new Set()) {
+  const out = { ...v, debt: [] };
+  if (touched === null) return out;
+  if (touched.has(CODEQL_DISPOSITIONS_REL) && changed === null) return out;
+  const mine = (a) => touched.has(alertPath(a)) || changed.has(a.number);
+  out.debt = v.undispositioned.filter((a) => !mine(a)).map((a) => ({ alert: a, why: 'has NO disposition' }));
+  out.undispositioned = v.undispositioned.filter(mine);
+  out.failed = out.undispositioned.length + out.mismatched.length + out.disproved.length > 0;
+  return out;
+}
+
+/** PURE. The alert numbers whose disposition entry differs between two entry lists:
+ *  added, removed, or changed in any field. */
+export function changedEntries(baseEntries, headEntries) {
+  const canon = (e) => JSON.stringify(Object.keys(e).sort().map((k) => [k, e[k]]));
+  const base = new Map(baseEntries.map((e) => [e.alert, canon(e)]));
+  const head = new Map(headEntries.map((e) => [e.alert, canon(e)]));
+  const out = new Set();
+  for (const [n, c] of base) if (head.get(n) !== c) out.add(n);
+  for (const n of head.keys()) if (!base.has(n)) out.add(n);
+  return out;
+}
+
+/** The CodeQL analyses listed for `ref` (newest first, one page of 20). Throws
+ *  CouldNotLook on any failed read, which limb C turns into COVERAGE LOST. */
+async function readAnalyses({ repository, token, ref, note }) {
+  const url = `${GITHUB_API}/repos/${repository}/code-scanning/analyses?ref=${encodeURIComponent(ref)}&tool_name=CodeQL&per_page=20`;
+  const headers = { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' };
+  const res = await fetchWithBoundedRetry(({ signal }) => fetch(url, { headers, signal }), { note, describe: (why) => `GET ${url}: ${why}` });
+  const text = await res.text();
+  if (!res.ok) throw new CouldNotLook(`GET ${url} answered HTTP ${res.status}: ${text.slice(0, 300)}`);
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new CouldNotLook(`GET ${url} answered unparseable JSON`);
+  }
+  if (!Array.isArray(body)) throw new CouldNotLook(`GET ${url} answered ${text.slice(0, 200)}, not a list of analyses`);
+  return body;
+}
+
+/** The PR base's dispositions entries (`git show <base>:…`), or null when the base
+ *  commit or the file cannot be read there. */
+function prBaseEntries(root) {
+  const git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  const parents = git(['rev-list', '--parents', '-n', '1', 'HEAD']);
+  const two = parents.status === 0 && parents.stdout.trim().split(/\s+/).length === 3;
+  const base = process.env.GITHUB_BASE_REF;
+  const ref = two ? 'HEAD^1' : base ? `origin/${base}` : null;
+  if (!ref) return null;
+  const r = git(['show', `${ref}:${CODEQL_DISPOSITIONS_REL}`]);
+  if (r.status !== 0) return null;
+  return baseEntriesOf(r.stdout);
+}
+
+/** PURE. The entries of a BASE dispositions file, read only to diff against the
+ *  head: never validated, because the base may predate a rule the head enforces
+ *  (on 2026-10-01 main's file still held `*.supabase.co` hosts, which this PR
+ *  refuses, and validating it made every PR that touched the file "unreadable").
+ *  null when the text is not a dispositions document. */
+export function baseEntriesOf(text) {
+  let doc;
+  try {
+    doc = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(doc?.dispositions)) return null;
+  return doc.dispositions.filter((e) => e && Number.isInteger(e.alert));
+}
+
+/** The paths this pull request changes, or null when the event is not a pull
+ *  request or the diff cannot be read (then limb C grades everything: strict). */
+function prTouchedPaths(root) {
+  if (process.env.GITHUB_EVENT_NAME !== 'pull_request') return null;
+  const git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  const parents = git(['rev-list', '--parents', '-n', '1', 'HEAD']);
+  const two = parents.status === 0 && parents.stdout.trim().split(/\s+/).length === 3;
+  const base = process.env.GITHUB_BASE_REF;
+  const diff = two ? git(['diff', '--name-only', 'HEAD^1', 'HEAD']) : base ? git(['diff', '--name-only', `origin/${base}...HEAD`]) : null;
+  if (!diff || diff.status !== 0) {
+    console.log('   ⬜ the pull request\'s changed paths could not be read, so every alert is graded as if it were this PR\'s (strict).');
+    return null;
+  }
+  return new Set(diff.stdout.split('\n').map((l) => l.trim()).filter(Boolean));
 }
 
 /** `git show <sha>:<dispositions>` — the fixed-in-tree claims a commit carried.
@@ -845,14 +975,23 @@ async function limbC(probeFile) {
 
   let open;
   let dismissed;
+  let fixed = null;
   let claimAt;
+  let touched = null;
+  let baseEntries = null;
+  let analyses = null;
+  const analysisOf = flag('--analysis-of');
   if (probeFile) {
     const probe = JSON.parse(readFileSync(probeFile, 'utf8'));
     if (probe.codeqlError) unreadable([`limb C — the code-scanning alerts are NOT readable: ${probe.codeqlError}`]);
     if (!probe.codeql) unreadable(['limb C — the probe carries no `codeql` answer, so no code-scanning alert was read.']);
     ({ open, dismissed } = probe.codeql);
+    fixed = probe.codeql.fixed ?? null;
+    analyses = probe.codeql.analyses ?? null;
     const claims = probe.codeqlClaims ?? {};
     claimAt = (sha, n) => (sha in claims ? claims[sha].includes(n) : null);
+    touched = Array.isArray(probe.prTouched) ? new Set(probe.prTouched) : null;
+    baseEntries = Array.isArray(probe.prBaseDispositions) ? baseEntriesOf(JSON.stringify({ dispositions: probe.prBaseDispositions })) : null;
   } else {
     const token = ghToken();
     if (!token) unreadable(['limb C — neither GITHUB_TOKEN nor GH_TOKEN is in the environment, so no code-scanning alert was read.']);
@@ -861,27 +1000,67 @@ async function limbC(probeFile) {
     try {
       open = await readAlerts({ repository, token, state: 'open', note });
       dismissed = await readAlerts({ repository, token, state: 'dismissed', note });
+      fixed = await readAlerts({ repository, token, state: 'fixed', note });
+      if (analysisOf) analyses = await readAnalyses({ repository, token, ref: process.env.GITHUB_REF || 'refs/heads/main', note });
     } catch (e) {
       unreadable([`limb C — the code-scanning alerts could not be read: ${e.message}`]);
     }
     claimAt = gitClaimAt(ROOT);
+    touched = prTouchedPaths(ROOT);
+    if (touched?.has(CODEQL_DISPOSITIONS_REL)) baseEntries = prBaseEntries(ROOT);
   }
   if (!Array.isArray(open) || !Array.isArray(dismissed)) unreadable(['limb C — the alert enumeration did not return two lists.']);
+  // ⏱ 2026-10-01 (review of #1097, finding 4): an EMPTY read is never a pass. With
+  // no alert in any state nothing can fail, so a reset of code scanning, a deleted
+  // analysis or an API answering [] for every state graded nothing and said ✓.
+  // `--analysis-of <sha>` (codeql.yml, after each analysis of main) also proves the
+  // read follows THIS commit's analysis, and says which of the two happened.
+  let analysis = null;
+  if (analysisOf) {
+    if (!Array.isArray(analyses)) unreadable([`limb C — the analysis list for ${analysisOf.slice(0, 12)} could not be read.`]);
+    analysis = analyses.find((a) => a?.commit_sha === analysisOf) ?? null;
+    if (!analysis) {
+      unreadable([`limb C — NO ANALYSIS FOUND: no CodeQL analysis of ${analysisOf.slice(0, 12)} is listed (${analyses.length} read), so these alerts are not this commit's.`]);
+    }
+  }
+  if (open.length === 0 && dismissed.length === 0 && (fixed ?? []).length === 0) {
+    unreadable([
+      analysis
+        ? `limb C — ZERO ALERTS WHILE THE ANALYSIS EXISTS: analysis ${analysis.id} of ${analysisOf.slice(0, 12)} (results ${analysis.results_count}) is listed, and the API returned no alert in any state (open, dismissed, fixed). Nothing was graded.`
+        : 'limb C — EMPTY READ: the API returned no alert in any state (open, dismissed, fixed), so nothing was graded. Code scanning may be reset or its analyses deleted.',
+    ]);
+  }
+  if (analysis) console.log(`   graded after analysis ${analysis.id} of ${analysisOf.slice(0, 12)} (results ${analysis.results_count})`);
   for (const a of [...open, ...dismissed]) {
     const p = codeqlShapeProblem(a);
     if (p) unreadable([`limb C — ${p}. The response shape changed; grading what parsed would be a partial count.`]);
   }
 
-  const v = judgeCodeql({ open, dismissed, entries, claimAt });
+  const changed = baseEntries === null ? null : changedEntries(baseEntries, entries);
+  const v = scopeToPr(judgeCodeql({ open, dismissed, entries, claimAt, fixed }), touched, changed ?? (touched?.has(CODEQL_DISPOSITIONS_REL) ? null : new Set()));
   console.log(
     `   ${open.length} open and ${dismissed.length} dismissed alert(s) read · ${entries.length} disposition(s) · ` +
-      `${v.byDesign.length} by design · ${v.pending.length} fixed in tree, awaiting main's analysis`,
+      `${v.byDesign.length} by design · ${v.pending.length} fixed in tree, awaiting main's analysis` +
+      (touched === null
+        ? ''
+        : ` · pull request: graded on the ${touched.size} path(s) it changes` +
+          (touched.has(CODEQL_DISPOSITIONS_REL) ? (changed === null ? ', and STRICTLY (it changes the dispositions file and its base could not be read)' : `, and on the ${changed.size} entr(ies) it adds, removes or edits`) : '')),
   );
   for (const e of v.stale) {
-    console.log(`   ⬜ STALE — #${e.alert} ${e.rule} ${e.path} is neither open nor dismissed any more. Delete its entry (this prints, never fails).`);
+    console.log(`   ⬜ STALE — #${e.alert} ${e.rule} ${e.path} is FIXED on main. Delete its entry (this prints, never fails).`);
+  }
+  for (const e of v.notOnMain) {
+    console.log(`   ⬜ NOT ON MAIN YET — #${e.alert} ${e.rule} ${e.path} is not an alert main has read. KEEP the entry: it is a new alert's disposition, and main needs it the moment it merges.`);
+  }
+  for (const { alert: a, why } of v.debt) {
+    console.log(`   ⬜ MAIN DEBT — #${a.number} ${a.rule.id} ${alertWhere(a)} ${why}, in a path this pull request does not change and with an entry it did not touch. It blocks nothing here; main's own run and the limb C step of codeql.yml's analyze job fail on it.`);
   }
   if (!v.failed) {
-    console.log('✓ limb C — every open code-scanning alert is fixed in code or carries a disposition.');
+    console.log(
+      v.debt.length === 0
+        ? '✓ limb C — every open code-scanning alert is fixed in code or carries a disposition.'
+        : `✓ limb C — every alert in a path this pull request changes carries a disposition; ${v.debt.length} main-debt alert(s) printed above.`,
+    );
     return;
   }
   if (v.undispositioned.length) {

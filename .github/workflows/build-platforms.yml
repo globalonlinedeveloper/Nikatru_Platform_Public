@@ -1219,6 +1219,13 @@ jobs:
           # 🔴 AN ASSIGNMENT, NOT A `for` WORD LIST: `set -e` fails the step on the assignment's
           # exit and never on a word list's (O-APP-RELEASE-RECORDS-NO-DEPLOYMENT-SILENTLY).
           environments="$(node tooling/ci/release-manifest.mjs --emit-environments dist --app "$APP")"
+          # apps.gov.in has no submission API: this Release is the ORIGIN of the .apk the owner uploads
+          # by hand, the state record-deployment.mjs accepts on `submittable: false` store rows only
+          # (O-APPS-GOV-IN-APK-HAS-NO-ORIGIN-ROW). A direct row takes no state.
           for environment in $environments; do
-            node tooling/ci/record-deployment.mjs "$environment" "$RELEASE_URL"
+            state=()
+            case "$environment" in
+              *-apps-gov-in) state=(--state pending_manual_publish) ;;
+            esac
+            node tooling/ci/record-deployment.mjs "$environment" "$RELEASE_URL" "${state[@]}"
           done

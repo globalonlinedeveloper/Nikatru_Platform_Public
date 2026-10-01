@@ -18,7 +18,13 @@
 // `instance`, and nothing compared that origin with the credential's ISSUER. One
 // wrong or tampered line, and a production admin key is sent to any host that
 // asks. assert-glitchtip-project.mjs had already pinned the register's instance
-// (#293) and left the environment override open; this closes the class once.
+// (#293) and left the environment override open; this module is the one answer.
+// ⏱ 2026-10-01 (review 2 of the CodeQL stack, finding 1): "this closes the class
+// once" was written here while four e2e scripts and upload-native-symbols.mjs still
+// sent the key to the raw value. A helper closes nothing by existing. The class is
+// held by tooling/ci/assert-credential-origin.mjs, which reads CREDENTIAL_ENV below
+// and refuses a script that reads one of those credentials and sends a request
+// without routing its base through credentialOrigin().
 //
 // ── THE RULE: THE ISSUER, OR THIS MACHINE, NOTHING ELSE ─────────────────────
 // The value is parsed with `new URL` and its ORIGIN compared EXACTLY — never a
@@ -85,6 +91,26 @@ const ISSUERS = Object.freeze({
 
 /** The credential kinds this module knows. */
 export const CREDENTIAL_KINDS = Object.freeze(Object.keys(ISSUERS));
+
+/** Per kind, the environment names that CARRY the credential, and the names that
+ *  carry the base URL it is sent to. THE list tooling/ci/assert-credential-origin.mjs
+ *  reads: a new credential or base variable is added HERE, and the guard then holds
+ *  every script that reads it. A DSN is a base: its host is where the token goes. */
+export const CREDENTIAL_ENV = Object.freeze({
+  supabase: Object.freeze({
+    credentials: Object.freeze([
+      'SUPABASE_SERVICE_ROLE_KEY',
+      'SUPABASE_ANON_KEY',
+      'SUPABASE_PUBLISHABLE_KEY',
+      'SELFHOSTED_SUPABASE_ANON_KEY',
+    ]),
+    bases: Object.freeze(['SUPABASE_URL', 'SELFHOSTED_SUPABASE_URL']),
+  }),
+  glitchtip: Object.freeze({
+    credentials: Object.freeze(['GLITCHTIP_TOKEN', 'SENTRY_AUTH_TOKEN']),
+    bases: Object.freeze(['GLITCHTIP_URL', 'SENTRY_URL', 'GLITCHTIP_DSN']),
+  }),
+});
 
 /** Thrown for every refusal; the message is the line a caller prints. It never
  *  carries the raw value when that value did not parse, nor any userinfo. */

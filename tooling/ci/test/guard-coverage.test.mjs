@@ -255,10 +255,20 @@ function repo(
   // a test of assert-d1-sql-inventory.mjs for editing a COMMENT inside it.
   // 'names-only' reproduces exactly that shape, kept so the repair has a failing
   // case of its own.
-  const scriptLines = (rel) =>
+  // 'rel-chain' and 'rel-sibling' (⏱ 2026-10-01, D-CLASS-FIXES-LEAD): the path
+  // bound once as a `_REL` literal and joined onto a root under a SECOND name,
+  // which the spawn then runs — and a sibling fixture path derived from the same
+  // constant, which the spawn runs instead of the script.
+  const scriptLines = (rel, k) =>
     mentionScripts === 'names-only'
       ? `test('edits ${rel} as fixture material', () => { edit(root, '${rel}', (s) => s.replace('a', 'b')); });`
-      : `test('runs ${rel}', () => { spawnSync(process.execPath, ['${rel}', '--self-check'], { encoding: 'utf8' }); });`;
+      : mentionScripts === 'rel-chain'
+        ? `const S${k}_REL = '${rel}';\nconst S${k} = join(ROOT, ...S${k}_REL.split('/'));\n` +
+          `test('runs ${rel}', () => { spawnSync(process.execPath, [S${k}, '--self-check'], { encoding: 'utf8' }); });`
+        : mentionScripts === 'rel-sibling'
+          ? `const S${k}_REL = '${rel}';\nconst F${k} = join(dirname(S${k}_REL), 'fixture.mjs');\n` +
+            `test('runs a fixture beside ${rel}', () => { spawnSync(process.execPath, [F${k}, '--self-check'], { encoding: 'utf8' }); });`
+          : `test('runs ${rel}', () => { spawnSync(process.execPath, ['${rel}', '--self-check'], { encoding: 'utf8' }); });`;
   for (let i = 0; i < testFiles; i++) {
     // commentsOnly reproduces this fixture's ORIGINAL behaviour, kept so the fix
     // that removed it has a failing case of its own.
@@ -274,7 +284,7 @@ function repo(
     }
     const body = [
       ...covered.map((n) => `test('exercises ${n}', () => { assert.ok('${n}'); });`),
-      ...(mentionScripts === false ? [] : scripts.map(scriptLines)),
+      ...(mentionScripts === false ? [] : scripts.map((rel, k) => scriptLines(rel, k))),
     ].join('\n');
     writeFileSync(
       join(t, `t${i}.test.mjs`),
@@ -750,6 +760,22 @@ describe('assert-guard-coverage', () => {
       assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /no longer distinguishes a script that is RUN from one that is merely NAMED/);
       assert.match(r.stderr, /must be null/);
+    });
+
+    test('the DETECTOR losing the `_REL` chain is COVERAGE LOST, not a quieter count', () => {
+      // The fifth canary's failing case: drop the fixed-point binding pass and the
+      // guard must refuse, not go back to reading those tests as never running.
+      const r = runReal(
+        seeded({
+          mutateGuard: (s) => {
+            const anchor = '  for (let chained = true; chained; ) {';
+            assert.ok(s.includes(anchor), 'the `_REL` binding pass moved — this mutation no longer reaches it');
+            return s.replace(anchor, '  for (let chained = false; chained; ) {');
+          },
+        }),
+      );
+      assert.equal(r.status, 2, r.stdout);
+      assert.match(r.stderr, /through a `_REL` constant read as null \(must not be null\)/);
     });
 
     // ── NOT_CI_RUNNABLE — R2's one exemption, and the failing cases it owes ──
@@ -1260,6 +1286,22 @@ describe('assert-guard-coverage', () => {
       assert.match(r.stderr, /a byte touched and not a behaviour exercised/);
     });
 
+    // ⏱ 2026-10-01 · D-CLASS-FIXES-LEAD — the guard-meta false negatives. A test
+    // that binds `X_REL` and spawns `join(ROOT, ...X_REL.split('/'))` under a
+    // second name RUNS the script; `exercisedBy` bound only an expression ending
+    // in the literal, so it read that test as never running it.
+    test('🔴 a script RUN through a `_REL` constant joined under a second name IS covered', () => {
+      const r = run(repo(compliant(), { mentionScripts: 'rel-chain' }));
+      assert.equal(r.status, 0, r.stderr + r.stdout);
+      assert.match(r.stdout, /1 workflow-invoked script\(s\) outside tooling\/ci also covered, 0 excused/);
+    });
+
+    test('a FIXTURE path derived from that `_REL` constant is not the script, and does not cover it', () => {
+      const r = run(repo(compliant(), { mentionScripts: 'rel-sibling' }));
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stderr, /tooling\/scripts\/provision-backend\.mjs — a workflow runs it and no test file EXERCISES it/);
+    });
+
     test('a name-only mention does not outrank a recorded exception', () => {
       // The half that made the real defect SILENT rather than merely wrong. With
       // the credit gone the exemption is primary again, printed with its reason.
@@ -1658,17 +1700,17 @@ describe('A-5: a recorded failing case is code, and the exemption lists have cei
     assert.equal(r.status, 0, r.stdout + r.stderr);
   });
 
-  test('RED: more guards NAMED in code and exercised by none than the ceiling of 13 is a finding, listing them', () => {
-    // The generated test files name each guard in a string and run none: 14 of them.
-    const r = run(repo(compliant({}, 14)));
+  test('RED: more guards NAMED in code and exercised by none than the ceiling of 12 is a finding, listing them', () => {
+    // The generated test files name each guard in a string and run none: 13 of them, one over.
+    const r = run(repo(compliant({}, 13)));
     assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stderr, /14 guard\(s\) are NAMED by a test and exercised by none, over the ceiling of 13/);
+    assert.match(r.stderr, /13 guard\(s\) are NAMED by a test and exercised by none, over the ceiling of 12/);
   });
 
   test('GREEN CONTROL: four named-only guards sit under the ceiling and are PRINTED, not hidden', () => {
     const r = run(repo(compliant()));
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /⬜ 4 guard\(s\) NAMED by a test and exercised by none \(ceiling 13, falling only\)/);
+    assert.match(r.stdout, /⬜ 4 guard\(s\) NAMED by a test and exercised by none \(ceiling 12, falling only\)/);
   });
 
   const seeded = (opts) => {

@@ -57,6 +57,7 @@
 //
 //   node tooling/e2e/native_auth_proof.mjs --app <id> --target <t>
 //        [--device <id>] [--callback] [--log <path>] [--expect-refusal]
+//        [--stagger-anchor <epoch ms> --stagger-apps <JSON app list>]
 //
 // Env: E2E_EMAIL, E2E_PASSWORD, SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL.
 // Exit 0 = every step read back · 1 = a step failed or is missing · 2 = the
@@ -140,8 +141,82 @@ export function gradeRefusal(answers) {
   return problems;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 (fourth review of #1070) · THE REFUSAL LEGS SHARE ONE RATE BUDGET.
+// Every Sunday leg of e2e.yml (each app × each target) fires at the same cron
+// minute, and GitHub-hosted runners share a handful of networks — the platform
+// Worker's per-network limiters key on `edge:<colo>:<asn>`, so to them the legs
+// are ONE caller. One leg spends 8 calls of NATIVE_AUTH_EDGE_LIMITER (60/min:
+// a challenge plus an op for each attested step, an op for each bare one) and 2
+// of NATIVE_AUTH_UNATTESTED_LIMITER (10/min). All at once, a second app's legs
+// already overrun the unattested budget and a third's the edge one: the leg reads
+// `429 over_request_rate_limit`, which is not an attestation refusal, and reds.
+// So the legs are STAGGERED (refusalSchedule): ordered app by app, target by
+// target, and packed into one-minute slots holding no more than HALF of each
+// budget — any sixty seconds then spans at most two slots, so a sliding window
+// can never see more than the whole budget. And a 429 that still arrives (a
+// runner that started late, a limiter that is per colo and eventually
+// consistent) is waited out and the step re-asked (probeRefusals): it is the
+// limiter speaking, not the gate, and the step's final answer is what is graded.
+// The limits are services/platform/wrangler.jsonc's, held equal to it by
+// tooling/ci/test/native-auth-proof.test.mjs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The per-network limiters a refusal leg spends, and what each REFUSAL_STEPS step costs it. */
+export const REFUSAL_LIMITS = Object.freeze([
+  Object.freeze({ binding: 'NATIVE_AUTH_EDGE_LIMITER', limit: 60, period: 60, cost: (s) => (s.kind ? 2 : 1) }),
+  Object.freeze({ binding: 'NATIVE_AUTH_UNATTESTED_LIMITER', limit: 10, period: 60, cost: (s) => (s.kind === 'install-key' ? 1 : 0) }),
+  Object.freeze({ binding: 'NATIVE_AUTH_PLAY_VERIFY_LIMITER', limit: 10, period: 60, cost: (s) => (s.kind === 'play-integrity' ? 1 : 0) }),
+]);
+
+/** One slot of the schedule — the limiters' own period. */
+export const REFUSAL_SLOT_MS = 60_000;
+
+/** What one whole leg costs [limiter]. */
+export const legCost = (limiter) => REFUSAL_STEPS.reduce((n, s) => n + limiter.cost(s), 0);
+
+/** PURE. How many legs one slot holds: each limiter's budget halved, over one leg's cost. */
+export function legsPerSlot(limits = REFUSAL_LIMITS) {
+  let n = Infinity;
+  for (const l of limits) {
+    const cost = legCost(l);
+    if (cost > 0) n = Math.min(n, Math.floor(Math.floor(l.limit / 2) / cost));
+  }
+  if (!Number.isFinite(n) || n < 1) throw new Error('a single refusal leg costs more than half of a limiter budget — no slot can hold it');
+  return n;
+}
+
+/** PURE. Every leg's slot: apps in the order given, targets in TARGETS order. */
+export function refusalSchedule(apps, targets = TARGETS, limits = REFUSAL_LIMITS) {
+  const per = legsPerSlot(limits);
+  const legs = [];
+  for (const app of apps) for (const target of targets) legs.push({ app, target, slot: Math.floor(legs.length / per) });
+  return legs;
+}
+
+/** PURE. [app]/[target]'s slot of the schedule for [apps], and the slot count — or null when the leg is not in it. */
+export function refusalSlot(apps, app, target, targets = TARGETS) {
+  const schedule = refusalSchedule(apps, targets);
+  const leg = schedule.find((l) => l.app === app && l.target === target);
+  return leg ? { slot: leg.slot, slots: schedule[schedule.length - 1].slot + 1 } : null;
+}
+
+/** How many times a rate-limited step is waited out and re-asked before its 429 is graded. */
+export const REFUSAL_RETRIES = 2;
+
+/** A 429 from one of the limiters: the limiter speaking, not the gate. */
+const rateLimited = (status, body) => status === 429 && body?.error_code === 'over_request_rate_limit';
+
+/** Retry-After in ms, bounded to 1..120 s; 60 s when absent or unreadable. */
+export function retryAfterMs(headerValue) {
+  const n = Number(headerValue);
+  return (Number.isFinite(n) && n > 0 ? Math.min(Math.max(n, 1), 120) : 60) * 1000;
+}
+
+const realSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 /** IMPURE. Sends each REFUSAL_STEPS call to production's native route for [app]. */
-export async function probeRefusals(app, { email, password, doFetch = fetch, origin = PLATFORM_ORIGIN } = {}) {
+export async function probeRefusals(app, { email, password, doFetch = fetch, origin = PLATFORM_ORIGIN, sleep = realSleep, out = console } = {}) {
   const base = `${origin}/v1/auth/native/${app}`;
   const answers = [];
   const read = async (res) => {
@@ -151,15 +226,14 @@ export async function probeRefusals(app, { email, password, doFetch = fetch, ori
       return null;
     }
   };
-  for (const { step, op, kind } of REFUSAL_STEPS) {
+  const ask = async ({ op, kind }) => {
     const headers = { 'Content-Type': 'application/json', 'User-Agent': `nikatru-e2e-refusal/${app}` };
     if (kind) {
       const ch = await doFetch(`${base}/attest/challenge`, { method: 'POST', headers, body: '{}', signal: AbortSignal.timeout(15_000) });
       const chBody = await read(ch);
       if (!ch.ok) {
         // No challenge at all is the gate refusing earlier (no kind listed, or no challenge key): graded as is.
-        answers.push({ step, status: ch.status, body: chBody });
-        continue;
+        return { status: ch.status, body: chBody, retryAfter: ch.headers?.get?.('Retry-After') ?? null };
       }
       headers['X-NK-Attest-Kind'] = kind;
       headers['X-NK-Attest-Challenge'] = String(chBody?.challenge ?? '');
@@ -168,7 +242,19 @@ export async function probeRefusals(app, { email, password, doFetch = fetch, ori
     }
     const path = op === 'token' ? `${base}/token?grant_type=password` : `${base}/${op}`;
     const res = await doFetch(path, { method: 'POST', headers, body: JSON.stringify({ email, password }), signal: AbortSignal.timeout(15_000) });
-    answers.push({ step, status: res.status, body: await read(res) });
+    return { status: res.status, body: await read(res), retryAfter: res.headers?.get?.('Retry-After') ?? null };
+  };
+  for (const s of REFUSAL_STEPS) {
+    for (let attempt = 0; ; attempt++) {
+      const a = await ask(s);
+      if (!rateLimited(a.status, a.body) || attempt >= REFUSAL_RETRIES) {
+        answers.push({ step: s.step, status: a.status, body: a.body });
+        break;
+      }
+      const wait = retryAfterMs(a.retryAfter);
+      out.log(`NK_PROOF step=${s.step} rate-limited (429 over_request_rate_limit) — the limiter, not the gate; asking again in ${wait / 1000} s (${attempt + 1} of ${REFUSAL_RETRIES})`);
+      await sleep(wait);
+    }
   }
   return answers;
 }
@@ -180,7 +266,7 @@ export async function probeRefusals(app, { email, password, doFetch = fetch, ori
  * starts no app, so no consent prompt was answered, and the purge after it must
  * read a finished log as "no row" rather than a cut-off one as unresolved.
  */
-export async function runRefusalLeg(o, { log = null, env = process.env, probe = probeRefusals, egress = printEgressIp, out = console } = {}) {
+export async function runRefusalLeg(o, { log = null, env = process.env, probe = probeRefusals, egress = printEgressIp, out = console, now = Date.now, sleep = realSleep } = {}) {
   const finish = (code, refused) => {
     if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=none mode=expect-refusal exit=${code}${refused ? ` refused=${refused}` : ''}\n`);
     return code;
@@ -190,6 +276,26 @@ export async function runRefusalLeg(o, { log = null, env = process.env, probe = 
       out.error(`${NAME}: missing env ${k} — the refusal probe sends the provisioned user's credentials`);
       return finish(2, 'env');
     }
+  }
+  // The stagger (fourth review of #1070): with --stagger-anchor and --stagger-apps
+  // the leg waits for its own slot of refusalSchedule. Both or neither; a value
+  // that cannot place this leg is a workflow defect and refuses, never probes early.
+  if (o.staggerAnchor !== undefined || o.staggerApps !== undefined) {
+    const anchor = Number(o.staggerAnchor);
+    let apps = null;
+    try {
+      apps = JSON.parse(o.staggerApps ?? '');
+    } catch {
+      apps = null;
+    }
+    const place = Number.isFinite(anchor) && anchor > 0 && Array.isArray(apps) ? refusalSlot(apps, o.app, o.target) : null;
+    if (!place) {
+      out.error(`${NAME}: --stagger-anchor ${JSON.stringify(o.staggerAnchor ?? null)} --stagger-apps ${JSON.stringify(o.staggerApps ?? null)} cannot place ${o.app}/${o.target} in the refusal schedule`);
+      return finish(2, 'stagger');
+    }
+    const wait = anchor + place.slot * REFUSAL_SLOT_MS - now();
+    out.log(`${NAME}: ${o.app}/${o.target} is slot ${place.slot + 1} of ${place.slots} (${legsPerSlot()} leg(s) a minute)${wait > 0 ? `; waiting ${Math.ceil(wait / 1000)} s` : '; its slot has begun'}`);
+    if (wait > 0) await sleep(wait);
   }
   await egress();
   let answers;
@@ -320,6 +426,8 @@ function args(argv) {
     if (a === '--callback') o.callback = true;
     else if (a === '--expect-refusal') o.expectRefusal = true;
     else if (a === '--app' || a === '--target' || a === '--device' || a === '--log') o[a.slice(2)] = argv[++i];
+    else if (a === '--stagger-anchor') o.staggerAnchor = argv[++i];
+    else if (a === '--stagger-apps') o.staggerApps = argv[++i];
     else throw new Error(`unknown argument ${a}`);
   }
   return o;
