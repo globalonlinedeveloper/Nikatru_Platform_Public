@@ -5047,7 +5047,7 @@
       "cadence": "365d",
       "mechanism": {
         "substrate": "cloudflare-d1",
-        "anchor": "services/subscriptiontracker-api/migrations/0007_preferences.sql",
+        "anchor": "services/subscriptiontracker-api/migrations/0008_preferences.sql",
         "record": "the table itself",
         "failingValue": "not applicable to a reasoned keep",
         "readBy": "tooling/ci/assert-retention-coverage.mjs"

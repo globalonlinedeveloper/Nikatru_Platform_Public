@@ -116,7 +116,7 @@ describe('PUT /v1/budget — happy path', () => {
   it('GET returns defaults when nothing is stored', async () => {
     const { call } = setup();
     const res = await call(A, '/v1/budget');
-    expect(await res.json()).toEqual({ monthly_budget: 0, categories: [] });
+    expect(await res.json()).toEqual({ monthly_budget: 0, currency: null, categories: [] });
   });
 });
 
@@ -237,6 +237,127 @@ describe('PUT /v1/budget — the category id is an address, not a fresh uuid', (
     });
     expect(res.status).toBe(200);
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE BUDGET HAS A UNIT AND A CEILING (rv2-services 032, 0007_budget_currency.sql).
+//
+// Before 0007 `monthly_budget` and each cap had to be finite and ≥ 0 and
+// nothing else, so 1.7e308 was stored and served; and they had no currency, so
+// the unit was whatever the client assumed — while every subscription has
+// carried its own since 0003. Each test below is red against that version.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('PUT /v1/budget — amounts are bounded by MAX_PRICE', () => {
+  const tooBig: Array<[string, unknown]> = [
+    ['monthly_budget is 1e12', { monthly_budget: 1e12, categories: [] }],
+    ['monthly_budget is 1.7e308', { monthly_budget: 1.7e308, categories: [] }],
+    ['a cap is 1e12', { monthly_budget: 500, categories: [{ name: 'Music', cap: 1e12 }] }],
+  ];
+  for (const [label, body] of tooBig) {
+    it(`400s when ${label}, writing nothing`, async () => {
+      const { db, call } = setup();
+      await seed(call);
+      const res = await call(A, '/v1/budget', { method: 'PUT', body });
+      expect(res.status, label).toBe(400);
+      expect(((await res.json()) as { detail: string }).detail).toMatch(/must not exceed 1000000000/);
+      expect(caps(db), 'the DELETE must not have run').toEqual(['Music:20', 'Video:35']);
+      expect(db.rows('SELECT monthly_budget FROM budgets WHERE user_id = ?', A)[0].monthly_budget).toBe(500);
+    });
+  }
+
+  it('MAX_PRICE itself is accepted — the bound is inclusive, like a price', async () => {
+    const { db, call } = setup();
+    const res = await call(A, '/v1/budget', {
+      method: 'PUT',
+      body: { monthly_budget: 1_000_000_000, categories: [{ name: 'Rent', cap: 1_000_000_000 }] },
+    });
+    expect(res.status).toBe(200);
+    expect(caps(db)).toEqual(['Rent:1000000000']);
+  });
+});
+
+describe('PUT /v1/budget — the budget carries its currency', () => {
+  const currencyOf = (db: ReturnType<typeof realAppDb>) =>
+    db.rows('SELECT currency FROM budgets WHERE user_id = ?', A)[0]?.currency;
+
+  it('a currency round-trips: stored upper case, served by GET and by PUT', async () => {
+    const { db, call } = setup();
+    const res = await call(A, '/v1/budget', {
+      method: 'PUT',
+      body: { monthly_budget: 5000, currency: 'inr', categories: [{ name: 'Video', cap: 649 }] },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { currency: string | null }).currency).toBe('INR');
+    expect(currencyOf(db)).toBe('INR');
+    const body = (await (await call(A, '/v1/budget')).json()) as { currency: string | null };
+    expect(body.currency).toBe('INR');
+  });
+
+  it('NULL reads as the user\'s currency: a budget saved with none serves `currency: null`', async () => {
+    const { db, call } = setup();
+    await seed(call); // SEED sends no currency, as the app does for a bare budget
+    expect(currencyOf(db)).toBeNull();
+    const body = (await (await call(A, '/v1/budget')).json()) as Record<string, unknown>;
+    expect(body).toHaveProperty('currency', null);
+    expect(body.monthly_budget).toBe(500);
+  });
+
+  it('a budget row written before 0007 reads back with `currency: null`', async () => {
+    // The shape of every production row on the day 0007 applies: the column is
+    // there and holds NULL, because the migration adds it with no default.
+    const { db, call } = setup();
+    db.db.prepare('INSERT INTO budgets (user_id, monthly_budget, updated_at) VALUES (?, ?, ?)').run(
+      A,
+      300,
+      '2026-09-01T00:00:00.000Z',
+    );
+    const body = (await (await call(A, '/v1/budget')).json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ monthly_budget: 300, currency: null });
+  });
+
+  it('an ABSENT currency leaves the stored code alone — an old client must not wipe it', async () => {
+    const { db, call } = setup();
+    await call(A, '/v1/budget', { method: 'PUT', body: { monthly_budget: 10, currency: 'EUR' } });
+    const res = await call(A, '/v1/budget', { method: 'PUT', body: SEED });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { currency: string | null }).currency).toBe('EUR');
+    expect(currencyOf(db)).toBe('EUR');
+  });
+
+  it('an explicit null clears it back to the user\'s currency', async () => {
+    const { db, call } = setup();
+    await call(A, '/v1/budget', { method: 'PUT', body: { monthly_budget: 10, currency: 'EUR' } });
+    const res = await call(A, '/v1/budget', {
+      method: 'PUT',
+      body: { monthly_budget: 10, currency: null },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { currency: string | null }).currency).toBeNull();
+    expect(currencyOf(db)).toBeNull();
+  });
+
+  const badCurrencies: Array<[string, unknown]> = [
+    ['currency is a number', 356],
+    ['currency is two letters', 'IN'],
+    ['currency is four letters', 'INRS'],
+    ['currency is blank', ''],
+    ['currency has a digit', 'US1'],
+    ['currency is an object', { code: 'INR' }],
+  ];
+  for (const [label, currency] of badCurrencies) {
+    it(`400s when ${label}, writing nothing`, async () => {
+      const { db, call } = setup();
+      await call(A, '/v1/budget', { method: 'PUT', body: { ...SEED, currency: 'EUR' } });
+      const res = await call(A, '/v1/budget', {
+        method: 'PUT',
+        body: { monthly_budget: 999, currency, categories: [] },
+      });
+      expect(res.status, label).toBe(400);
+      expect(((await res.json()) as { detail: string }).detail).toMatch(/currency/);
+      expect(currencyOf(db)).toBe('EUR');
+      expect(caps(db), 'the DELETE must not have run').toEqual(['Music:20', 'Video:35']);
+    });
+  }
 });
 
 describe('PUT /v1/budget — a rejected body must not destroy the stored set', () => {

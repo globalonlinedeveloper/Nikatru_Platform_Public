@@ -77,7 +77,7 @@ describe('the delete set is derived from the real schema', () => {
       // 0006 (AB-O2-02): a person's Idempotency-Key claims are theirs to erase.
       'idempotency_keys',
       'payment_history',
-      // ⏱ 2026-09-30 · ST-N6 (D11): 0007_preferences.sql, derived in by its user_id.
+      // ⏱ 2026-09-30 · ST-N6 (D11): 0008_preferences.sql, derived in by its user_id.
       'preferences',
       'price_change',
       'subscriptions',

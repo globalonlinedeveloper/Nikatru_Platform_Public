@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0007_preferences.sql — the account's preferences, ONE ROW PER KEY (audit D11,
+-- 0008_preferences.sql — the account's preferences, ONE ROW PER KEY (audit D11,
 -- label ST-N6: "preferences follow the account", the API half).
 -- Applies to APP_DB (subscriptiontracker_db):
 --   wrangler d1 migrations apply APP_DB --local   (or --remote)

@@ -909,7 +909,7 @@
         "reason": "Same mechanism as table:subscriptiontracker_db.budgets: the column is spelled `user_id`, so the erasure route derives this table into its sweep without naming it (services/subscriptiontracker-api/test/erasure-derivation.test.ts pins the five-table set). tooling/ci/assert-erasure-reach.mjs is what refuses to let it drop back out."
       },
       "writtenBy": [
-        "services/subscriptiontracker-api/migrations/0007_preferences.sql",
+        "services/subscriptiontracker-api/migrations/0008_preferences.sql",
         "services/subscriptiontracker-api/src/routes/preferences.ts"
       ],
       "disclosure": {

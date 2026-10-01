@@ -338,10 +338,13 @@ describe('R5 · an `exempt` rule must argue for itself', () => {
   test('🔴 a column added to an exempt table re-opens the exemption', () => {
     const root = realCopy();
     try {
-      appendFileSync(join(root, APP_MIGRATIONS, '0002_schema_debt.sql'), '\nALTER TABLE budgets ADD COLUMN currency TEXT;\n');
+      // A column NO migration gives `budgets`. This probe was `currency` until
+      // 0007_budget_currency.sql made that column real and the reason named it,
+      // after which the append was a duplicate column the reason already covered.
+      appendFileSync(join(root, APP_MIGRATIONS, '0002_schema_debt.sql'), '\nALTER TABLE budgets ADD COLUMN probe_rollover TEXT;\n');
       const g = gate(root);
       assert.equal(g.status, 1, g.stdout + g.stderr);
-      assert.match(g.stderr, /`budgets` is exempt and its reason never names `currency`/);
+      assert.match(g.stderr, /`budgets` is exempt and its reason never names `probe_rollover`/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
