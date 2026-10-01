@@ -9290,6 +9290,10 @@ describe('per-root coverage — a root that contributes nothing is named', () =>
         '{"channels":[{"id":"android-play","kind":"store","surface":"app","storeMetadataDir":"apps/{app}/store/android-play"}]}\n',
       'catalog/apps.json': '[{"slug":"subscriptiontracker"}]\n',
       'apps/subscriptiontracker/store/android-play/title.txt': 'Subly\n',
+      // …and one ARB per app and in the brick, for limb D (2026-10-01,
+      // O-COMMISSION-WORDING-UNGUARDED-IN-APP): an app whose copy was never read is COVERAGE LOST.
+      'apps/subscriptiontracker/lib/l10n/app_en.arb': '{"@@locale":"en","appTitle":"Subscriptions"}\n',
+      'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/l10n/app_en.arb': '{"@@locale":"en","appTitle":"App"}\n',
     };
     // Enough filler to clear BOTH union floors (40 dart, 80 dart/ts/sql) from a
     // single root — which is precisely why the floors cannot see a quiet one.
