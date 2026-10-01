@@ -436,7 +436,7 @@ class SettingsScreen extends ConsumerWidget {
                         // 🔴 THE OFF CHIP WAS A PINNED WHITE BLOCK, AND IN
                         // DARK IT WAS THE BRIGHTEST THING ON THE SCREEN.
                         // Measured against `buildAppTheme(seed: 0xFF6459F5,
-                        // brightness: dark)` — what `app.dart:84` supplies —
+                        // brightness: dark)` — what `app.dart:85` supplies —
                         // on 2026-08-21: #FFFFFF on the scaffold #131318 is
                         // **18.52:1**, i.e. three white slabs glaring out of
                         // a dark screen, with an #ECECF2 hairline round each
@@ -1577,7 +1577,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
   /// in a dark app — and every descendant that takes its colour from the THEME
   /// rather than from an `AppColors` literal then followed the DARK scheme onto
   /// that white. Measured against `buildAppTheme(seed: 0xFF6459F5, brightness:
-  /// dark)` — what `app.dart:84` actually supplies — on 2026-08-21:
+  /// dark)` — what `app.dart:85` actually supplies — on 2026-08-21:
   ///
   ///   · the TITLE. Neither `AlertDialog` sets `titleTextStyle`, and there is
   ///     no `dialogTheme` anywhere in `build_app_theme.dart`, so M3 resolves

@@ -37,6 +37,16 @@ import 'auth.dart';
 class LegalAcceptanceController extends Notifier<String?> {
   bool _userChose = false;
 
+  /// ⏱ 2026-10-01 · EN-05 — an acceptance is on its way to the server. The
+  /// state reads `null` ("not known yet") meanwhile, so the gate DECLINES TO
+  /// DECIDE: it neither releases on a record that may not land nor bounces a
+  /// just-registered user to `/reaccept-terms` for the length of an upload.
+  bool _inFlight = false;
+
+  /// What the disk said, when it answered during an in-flight accept — the
+  /// value a failed accept falls back to.
+  String? _hydrated;
+
   /// Whether the identity stream has resolved at least once, and whether there
   /// was a session when it did. Two plain bools: no identifier is kept here,
   /// and that is the point — see [_reaskKey].
@@ -133,30 +143,52 @@ class LegalAcceptanceController extends Notifier<String?> {
       // A session ended on this device since the last acceptance, so whoever is
       // holding it now has to answer for themselves. The ARTIFACT is untouched:
       // it is the append-only legal record and it is not this flag's business.
-      state = (!reask && status == core.ConsentStatus.granted && a != null)
+      final String read =
+          (!reask && status == core.ConsentStatus.granted && a != null)
           ? a.policyVersion
           : '';
+      // EN-05: an accept in flight owns the state; keep the answer for it.
+      if (_inFlight) {
+        _hydrated = read;
+      } else {
+        state = read;
+      }
     } catch (_) {
       // Unreadable store ⇒ ASK AGAIN. Resolving to '' rather than staying null
       // matters: null blocks the decision forever and the user sees a spinner
       // where the app should be. The cost is asymmetric in the same direction
       // as onboarding's — asking twice is a nuisance, never asking means
       // somebody is using the product under terms they were never shown.
-      if (!_userChose && ref.mounted) state = '';
+      if (_inFlight) {
+        _hydrated = '';
+      } else if (!_userChose && ref.mounted) {
+        state = '';
+      }
     }
   }
 
   /// Record acceptance of [kLegalVersions] plus the express marketing decision,
   /// and make the router's gate open.
   ///
-  /// In memory FIRST, exactly as [OnboardingSeenController.set] is: the redirect
-  /// reads this synchronously the moment the screen navigates away, and a slow
-  /// write must not bounce the user straight back into the interstitial.
+  /// 🔴 ⏱ 2026-10-01 · EN-05 — THE STAMP IS WRITTEN ONLY ONCE THE CONSENT
+  /// ARTIFACT IS. This set the stamp FIRST and then swallowed the upload
+  /// (`} catch (_) {`), so an offline re-acceptance released the gate with no
+  /// legal record anywhere. Now a failed upload throws
+  /// [core.LegalAcceptanceNotRecorded], the stamp is not written, and the gate keeps
+  /// the user where they are: `ReacceptTermsView` says why and offers Retry.
+  ///
+  /// What "in memory FIRST" protected is kept another way: while the record is
+  /// in flight the state reads `null`, which the gate already treats as "not
+  /// known yet" and declines to decide on. So a user who has just signed up is
+  /// not bounced to `/reaccept-terms` for the length of the upload, and nobody
+  /// is released before the server holds the record. A failure restores what
+  /// was owed (or what the disk said meanwhile).
   ///
   /// [marketingEmail] null = THIS SURFACE DID NOT ASK — see [acceptTermsOnly].
   Future<void> accept({required bool? marketingEmail}) async {
-    _userChose = true;
-    state = kLegalVersions.stamp;
+    final String? before = state;
+    _inFlight = true;
+    state = null;
     try {
       final core.ConsentController controller = await ref.read(
         consentControllerProvider.future,
@@ -169,17 +201,28 @@ class LegalAcceptanceController extends Notifier<String?> {
         anonId: anonId,
         marketingEmail: marketingEmail,
       );
-      // The re-ask marker is cleared AFTER the artifact, so a half-written pair
-      // reads as "still owed" rather than "settled" over a record that is not
-      // there. Safe direction, same as everywhere else in this class.
+    } catch (e) {
+      // Not recorded: back to what was owed. The local store or the install id
+      // not answering is the same fact for the user — no record was sent.
+      _inFlight = false;
+      if (ref.mounted) state = _hydrated ?? before ?? '';
+      if (e is core.LegalAcceptanceNotRecorded) rethrow;
+      throw core.LegalAcceptanceNotRecorded();
+    }
+    _inFlight = false;
+    if (!ref.mounted) return;
+    _userChose = true;
+    state = kLegalVersions.stamp;
+    // The re-ask marker is cleared AFTER the artifact, so a half-written pair
+    // reads as "still owed" rather than "settled" over a record that is not
+    // there. Safe direction, same as everywhere else in this class.
+    try {
       final core.KeyValueStore kv = await ref.read(
         keyValueStoreProvider.future,
       );
       await kv.remove(_reaskKey);
     } catch (_) {
-      // Best-effort, and the in-memory state above is what the user experiences.
-      // A failed write means the interstitial returns next launch — the safe
-      // direction, and the same one every other decision here takes.
+      // Best-effort: a marker that survives asks once more next launch.
     }
   }
 

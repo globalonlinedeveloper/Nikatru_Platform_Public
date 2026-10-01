@@ -789,7 +789,7 @@ void main() {
       // 644 − 81 = 563, which is where it sat on every run before the key was
       // supplied — so the capture's three CI failures and the two local
       // rehearsals of 2026-09-20 are the SAME geometry, not a flake. The form is
-      // already inside a `SingleChildScrollView` (login_screen.dart:375, with
+      // already inside a `SingleChildScrollView` (login_screen.dart:422, with
       // the gate at :548 immediately above the button at :553), so
       // `ensureVisible` is the whole fix; the assertion after it is the guard,
       // written the way the add-sheet one below is, for the same reason — a

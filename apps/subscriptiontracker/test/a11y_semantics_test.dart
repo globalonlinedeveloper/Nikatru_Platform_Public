@@ -1042,7 +1042,7 @@ Future<void> semantically(
   }
 }
 
-/// The seed `app.dart:83` stamps this app with, spelled the way seven other
+/// The seed `app.dart:84` stamps this app with, spelled the way seven other
 /// files under `apps/subscriptiontracker/test` already spell it.
 ///
 /// ⚠️ IT IS A COPY, AND THE COPY IS ALREADY GUARDED SOMEWHERE ELSE —
@@ -5221,7 +5221,7 @@ void main() {
         // ✅ THIS CASE WAS RED ON 2026-08-13 AND IS GREEN SINCE.
         // MEASURED THEN: the `Calendar →` jump was 3.78:1 — #6459F5 on #131318.
         // That was `AppColors.accent` painted UNCONDITIONALLY, i.e. the light
-        // palette on the dark surface — the cost app.dart:70-77 names in prose
+        // palette on the dark surface — the cost app.dart:71-78 names in prose
         // (`126 AppColors.* references paint the LIGHT palette
         // unconditionally`) with a number attached for the first time.
         // FIXED by forking to `scheme.primary` in dark, which is the same seed
@@ -5256,7 +5256,7 @@ void main() {
         // MEASURED THEN: the `Settings` heading was 1.01:1 — #141420 on
         // #131318. `AppColors.ink` on the dark surface: the text was INVISIBLE,
         // not merely low. `themeMode` defaults to `ThemeMode.system`
-        // (app.dart:88), so that is what every dark-OS user was handed.
+        // (app.dart:89), so that is what every dark-OS user was handed.
         // FIXED by adopting `AppText.of(context)` — the resolver already built
         // for this, which had ONE caller in the app against 114 static uses.
         // ⚠️ It was NOT the "scheduled theme fork" this comment assigned it to.

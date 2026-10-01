@@ -161,11 +161,23 @@ String? firstRunDestination(GoRouterState state) {
 // EXEMPT from the auth gate below: a first run happens before there is an
 // account, so falling through would hand '/onboarding' to the signed-out
 // rule, and the user never sees onboarding at all.
+//
+// ⏱ 2026-10-01 · EN-12 — A DEVICE HOLDING A SESSION HAS USED THE APP. A
+// reinstall over a session the platform kept (the iOS keychain outlives the
+// app) read `onboarded == false` off a fresh store and paged a returning user
+// through the pitch. The session is the stronger fact, so it skips the
+// carousel. This now reads the session on the first-run path, which the
+// `late final` note on [GateContext.loggedIn] says it once did not — the cost
+// is one read, and only when the flag says "not seen".
 GateVerdict? onboardingGate(GateContext ctx) {
   final bool? onboarded = ctx.ref.read(onboardingSeenProvider);
-  // Still reading the disk. Decline to decide rather than guessing.
+  // Still reading the disk. Decline to decide rather than guessing — and
+  // `OnboardingScreen` paints a neutral frame, not the carousel, meanwhile
+  // (EN-11), so a returning user is never flashed the first run.
   if (onboarded == null) return const GateVerdict(null);
-  if (!onboarded) return GateVerdict(firstRunDestination(ctx.state));
+  if (!onboarded && !ctx.loggedIn) {
+    return GateVerdict(firstRunDestination(ctx.state));
+  }
   // LIVE DIVERGENCE FROM THE STAMP: home is '/home' here, not '/'.
   if (ctx.loc == '/onboarding') return const GateVerdict('/home');
   return null;
@@ -234,8 +246,22 @@ GateVerdict? signedOutGate(GateContext ctx) {
   // simply arrives somewhere they did not ask for afterwards. Leaving
   // `/login` allowed makes the guard decline and hands the job to the
   // route-level redirect below.
+  //
+  // ⏱ 2026-10-01 · EN-03 (O-SIGN-IN-DROPS-THE-NEXT-ROUTE): the destination is
+  // BANKED, through the same `_gateWithNext` / `_neverADestination` pair every
+  // other gate uses. A bare '/sign-in' sent a signed-out `/insights` or
+  // `/paywall` deep link home after sign-in, because `afterSignInDestination`
+  // had no `next` to read. `nextOr` refuses anything that is not a same-origin
+  // path, so `?next=https://evil` still ends on '/home'. `/` and `/home` are
+  // not banked: home is `afterSignInDestination`'s own fallback, and banking
+  // it only puts `?next=%2Fhome` in the address bar of every signed-out cold
+  // start.
   if (!loggedIn && !authFlow.contains(loc)) {
-    return const GateVerdict('/sign-in');
+    return GateVerdict(
+      (loc == '/' || loc == '/home')
+          ? '/sign-in'
+          : _gateWithNext('/sign-in', ctx.state),
+    );
   }
   return null;
 }

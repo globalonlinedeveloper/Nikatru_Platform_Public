@@ -471,7 +471,9 @@ kExpected = <String, ({int controls, int reachable})>{
   '/sign-up': (controls: 13, reachable: 11),
   // ⏱ 2026-09-27 · ST-A5 (audit A-6): + resend and "wrong address?".
   '/check-inbox': (controls: 3, reachable: 3),
-  '/verify-email': (controls: 3, reachable: 3),
+  // ⏱ 2026-10-01 · EN-14: 3 -> 4, "Use a different email" — a TextButton on
+  // the Tab orbit, so both halves move together.
+  '/verify-email': (controls: 4, reachable: 4),
   // 2 -> 4, and it is the SAME TWO LINKS: this screen renders
   // `LegalConsentFields` too, so one widget fix moved two routes.
   '/reaccept-terms': (controls: 5, reachable: 4),
