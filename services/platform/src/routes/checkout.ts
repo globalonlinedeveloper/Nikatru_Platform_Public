@@ -193,6 +193,12 @@ export { RAIL_PRICE_AMOUNTS_MINOR, RAIL_PRICE_PENDING };
  * offering, so a completed transaction for it grants nothing. The committed
  * config is read (no KV override): a webhook's meaning does not move with an
  * operator's display override.
+ *
+ * ⏱ 2026-10-01 · port-pay-core — A BEHAVIOUR CHANGE, NAMED (#1127 money review, nit 6).
+ * This was Paddle-only (`provider !== 'paddle'` → null). It now consults
+ * RAIL_PRICE_IDS[provider], so Razorpay's plan ids are in scope too. Effect today: none.
+ * Razorpay's `parse` refuses every event, and its map holds plans, which are recurring,
+ * so no Razorpay price resolves to a `one_time` offering.
  */
 export function oneTimeOfferingFor(
   provider: string,
