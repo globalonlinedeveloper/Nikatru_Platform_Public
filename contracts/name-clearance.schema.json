@@ -70,9 +70,10 @@
         "additionalProperties": false,
         "anyOf": [
           { "properties": { "verdict": { "enum": ["PROVEN-FREE", "PROVEN-TAKEN", "UNDETERMINED", "NOT-APPLICABLE"] } } },
-          { "required": ["storeRecordId", "heldBy", "heldOn"], "properties": { "verdict": { "const": "HELD" } } }
+          { "required": ["storeRecordId", "heldBy", "heldOn"], "properties": { "verdict": { "const": "HELD" }, "heldBy": { "const": "owner" } } },
+          { "required": ["storeRecordId", "heldBy", "heldOn", "delegation", "proof"], "properties": { "verdict": { "const": "HELD" }, "heldBy": { "const": "lead" } } }
         ],
-        "description": "The `anyOf` is `if verdict is HELD then storeRecordId, heldBy and heldOn are required`, spelled in the keywords tooling/app-yaml/schema-validate.mjs implements (it has no `if`/`then`, and refuses a keyword it does not implement).",
+        "description": "The `anyOf` is `if verdict is HELD then storeRecordId, heldBy and heldOn are required — and a hold the LEAD recorded also carries the owner delegation it acted under and the API proof it rests on`, spelled in the keywords tooling/app-yaml/schema-validate.mjs implements (it has no `if`/`then`, and refuses a keyword it does not implement).",
         "properties": {
           "verdict": {
             "type": "string",
@@ -86,8 +87,24 @@
           },
           "heldBy": {
             "type": "string",
-            "const": "owner",
-            "description": "HELD only. Always `owner`: a reservation is made in a console the owner signs into, so nobody else can attest it."
+            "enum": ["owner", "lead"],
+            "description": "HELD only. WHO RECORDED THE HOLD. `owner`: the owner read the reservation off a console they sign into. `lead` (⏱ 2026-10-01, #1099 review finding 3): the lead recorded it under a cited owner delegation, from a store API that proves the record is ours — so it must carry `delegation` and `proof`. Provenance is the whole value of this record; it never says `owner` for an act the owner did not perform."
+          },
+          "delegation": {
+            "type": "string",
+            "minLength": 1,
+            "description": "HELD by `lead` only. The owner delegation the lead acted under, cited: who said it, when, and where it is recorded."
+          },
+          "proof": {
+            "type": "object",
+            "required": ["call", "result", "observedOn"],
+            "additionalProperties": false,
+            "description": "HELD by `lead` only. The authenticated store-API read that proves the store record is this factory's: the call made, what it answered, and the date.",
+            "properties": {
+              "call": { "type": "string", "minLength": 1 },
+              "result": { "type": "string", "minLength": 1 },
+              "observedOn": { "type": "string", "format": "date" }
+            }
           },
           "heldOn": {
             "type": "string",
