@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+
+import '../integrity/device_integrity_gate.dart' show DeviceIntegrityScope;
 
 /// The app ROOT every stamped app inherits — [ADR 067] decision 2.
 ///
@@ -448,6 +451,89 @@ class OfflineBannerHost extends StatelessWidget {
           message: l10n.offlineMessage,
           retryLabel: l10n.retry,
           onRetry: onRetry,
+        ),
+      ],
+    );
+  }
+}
+
+/// ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST — the once-per-session,
+/// non-blocking notice on a rooted device, painted above the app the way
+/// [OfflineBannerHost] paints its notice. Returns [child]
+/// untouched on every other device and after the notice was dismissed.
+class RootedDeviceNoticeHost extends StatefulWidget {
+  const RootedDeviceNoticeHost({required this.child, this.session, super.key});
+
+  /// The app below the notice.
+  final Widget child;
+
+  /// The session to read; [DeviceIntegrityScope.session] when null.
+  final core.IntegritySession? session;
+
+  /// The notice, for tests.
+  static const Key notice = ValueKey<String>('rooted-device-notice');
+
+  @override
+  State<RootedDeviceNoticeHost> createState() => _RootedDeviceNoticeHostState();
+}
+
+class _RootedDeviceNoticeHostState extends State<RootedDeviceNoticeHost> {
+  late bool _show;
+
+  @override
+  void initState() {
+    super.initState();
+    // Taken ONCE, here: a rebuild, a second host or a later route never shows
+    // it again this session.
+    _show = (widget.session ?? DeviceIntegrityScope.session).takeRootNotice();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_show) return widget.child;
+    final ChassisLocalizations l10n = context.chassisL10n;
+    final ThemeData theme = Theme.of(context);
+    // Painted AFTER the child for the reason OfflineBannerHost records: a
+    // route's BlockSemantics drops the semantics of everything painted before
+    // it, so a notice painted first is invisible to a screen reader.
+    return Flex(
+      direction: Axis.vertical,
+      verticalDirection: VerticalDirection.up,
+      children: <Widget>[
+        Expanded(child: widget.child),
+        Material(
+          key: RootedDeviceNoticeHost.notice,
+          color: theme.colorScheme.secondaryContainer,
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    Icons.info_outline,
+                    color: theme.colorScheme.onSecondaryContainer,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        l10n.rootedDeviceNotice,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSecondaryContainer,
+                        ),
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _show = false),
+                    child: Text(l10n.rootedDeviceNoticeDismiss),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ],
     );

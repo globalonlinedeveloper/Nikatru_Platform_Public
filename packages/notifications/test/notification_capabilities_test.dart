@@ -24,13 +24,43 @@ void main() {
       }
     });
 
-    test('Linux can show but not schedule (no zonedSchedule on Linux)', () {
+    test('Linux shows and schedules, but not at an exact time (NO-04)', () {
       final NotificationCapabilities c = NotificationCapabilities.forPlatform(
         TargetPlatform.linux,
         isWeb: false,
       );
       expect(c.canNotify, isTrue);
-      expect(c.canSchedule, isFalse);
+      // The plugin has no zonedSchedule on Linux; this package's in-process
+      // scheduler and the XDG autostart `--remind` entry broker it instead.
+      expect(c.canSchedule, isTrue);
+      expect(c.exactTime, isFalse);
+      expect(c.canAct, isFalse);
+    });
+
+    test('actions and the pending pool, per target (NO-10, NO-11)', () {
+      NotificationCapabilities of(TargetPlatform p) =>
+          NotificationCapabilities.forPlatform(p, isWeb: false);
+      for (final TargetPlatform p in <TargetPlatform>[
+        TargetPlatform.android,
+        TargetPlatform.iOS,
+        TargetPlatform.macOS,
+        TargetPlatform.windows,
+      ]) {
+        expect(of(p).canAct, isTrue, reason: '$p carries actions');
+        expect(of(p).exactTime, isTrue, reason: '$p fires at the instant');
+      }
+      expect(of(TargetPlatform.iOS).pendingLimit, 64);
+      expect(of(TargetPlatform.macOS).pendingLimit, 64);
+      expect(of(TargetPlatform.android).pendingLimit, isNull);
+      expect(of(TargetPlatform.windows).pendingLimit, isNull);
+      expect(of(TargetPlatform.linux).pendingLimit, isNull);
+      expect(
+        NotificationCapabilities.forPlatform(
+          TargetPlatform.android,
+          isWeb: true,
+        ).canAct,
+        isFalse,
+      );
     });
 
     test('Windows shows and schedules (the 22.x Windows plugin)', () {
@@ -65,7 +95,8 @@ void main() {
         isWeb: false,
         windows: id,
       );
-      expect(linux.canSchedule, isFalse);
+      expect(linux.canSchedule, isTrue);
+      expect(linux.exactTime, isFalse);
     });
 
     test('web supports neither, even on a notify-capable host platform', () {

@@ -10,12 +10,16 @@
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  // NO-04: started by the XDG autostart entry with `--remind` — show the
+  // reminders that fell due, then exit, without ever drawing a window.
+  gboolean remind_only;
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
+  if (self->remind_only) return;
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
 }
 
@@ -116,6 +120,12 @@ static gboolean my_application_local_command_line(GApplication* application,
   MyApplication* self = MY_APPLICATION(application);
   // Strip out the first argument as it is the binary name.
   self->dart_entrypoint_arguments = g_strdupv(*arguments + 1);
+  self->remind_only = g_strv_contains(
+      const_cast<const gchar* const*>(self->dart_entrypoint_arguments),
+      "--remind");
+  // Dart reads this (packages/notifications `isRemindLaunch`) — the one
+  // signal that survives into the engine without changing `main()`.
+  if (self->remind_only) g_setenv("NIKATRU_REMIND", "1", TRUE);
 
   g_autoptr(GError) error = nullptr;
   if (!g_application_register(application, nullptr, &error)) {
@@ -137,6 +147,14 @@ static gboolean my_application_local_command_line(GApplication* application,
       *exit_status = 1;
       return TRUE;
     }
+  }
+
+  // NO-04: a login-time `--remind` while the app is ALREADY running has
+  // nothing to do — that process's own scheduler shows its reminders — and
+  // activating it would raise its window at login.
+  if (self->remind_only && g_application_get_is_remote(application)) {
+    *exit_status = 0;
+    return TRUE;
   }
 
   g_application_activate(application);

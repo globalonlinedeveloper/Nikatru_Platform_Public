@@ -8,6 +8,8 @@ import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'device_timezone.dart';
+import 'linux_autostart.dart';
+import 'linux_reminders.dart';
 import 'notification_capabilities.dart';
 import 'windows_notification_identity.dart';
 
@@ -20,8 +22,28 @@ export 'device_timezone.dart' show deviceOffsetLocation;
 NotificationService createPlatformNotificationService({
   LocalTimezoneResolver? localTimezone,
   WindowsNotificationIdentity? windows,
-}) =>
-    LocalNotificationService(localTimezone: localTimezone, windows: windows);
+  String? linuxAppId,
+  List<NotificationAction> darwinActions = const <NotificationAction>[],
+}) => LocalNotificationService(
+  localTimezone: localTimezone,
+  windows: windows,
+  linuxAppId: linuxAppId,
+  darwinActions: darwinActions,
+);
+
+/// The XDG autostart entry on Linux, null anywhere else — see
+/// `createLinuxAutostart`.
+LinuxAutostartControl? createPlatformLinuxAutostart({
+  String? appId,
+  required String appName,
+}) => createIoLinuxAutostart(appId: appId, appName: appName);
+
+/// Whether this is the login-time `--remind` run — see `isRemindLaunch`.
+bool platformIsRemindLaunch() => ioIsRemindLaunch();
+
+/// The Darwin category every notification with actions posts under: Apple
+/// registers a notification's buttons by CATEGORY, once, at initialize.
+const String kDarwinActionCategory = 'nikatru_actions';
 
 /// iOS/macOS init settings that ask the OS for NOTHING.
 ///
@@ -55,7 +77,7 @@ abstract interface class NotificationPlugin {
   /// remove it and this port stops compiling, rather than going silently deaf.
   Future<void> initialize(void Function(NotificationTap tap) onTap);
   Future<bool> requestPermission();
-  Future<void> showNow(int id, String title, String body);
+  Future<void> showNow(int id, String title, String body, {String? payload});
   Future<void> scheduleDaily(
     int id,
     String title,
@@ -73,7 +95,12 @@ abstract interface class NotificationPlugin {
     required bool exact,
     String? payload,
     NotificationChannel? channel,
+    List<NotificationAction> actions = const <NotificationAction>[],
   });
+
+  /// Opens Android's "Alarms & reminders" settings for this app (NO-12) and
+  /// returns whether exact alarms are allowed afterwards. True elsewhere.
+  Future<bool> requestExactAlarms();
 
   /// Whether the OS will honour an EXACT alarm right now. Asked fresh: the
   /// user can revoke "Alarms & reminders" at any moment.
@@ -95,7 +122,8 @@ abstract interface class NotificationPlugin {
 /// unsupported platform degrades to a safe no-op instead of throwing (Windows
 /// can't schedule without its identity; a web build uses the stub factory,
 /// never this class).
-class LocalNotificationService implements NotificationService {
+class LocalNotificationService
+    implements NotificationService, ExactAlarmAccess {
   LocalNotificationService({
     NotificationPlugin? plugin,
     TargetPlatform? platform,
@@ -104,19 +132,50 @@ class LocalNotificationService implements NotificationService {
     TZDateTimeNow? now,
     DeviceUtcOffset? deviceUtcOffset,
     WindowsNotificationIdentity? windows,
-  })  : _plugin =
-            plugin ?? _FlutterLocalNotificationsAdapter(windows: windows),
-        _caps = NotificationCapabilities.resolve(
-          platform ?? defaultTargetPlatform,
-          isWeb: isWeb,
-          windows: windows,
-        ),
-        _resolveTimezone = localTimezone,
-        _now = now,
-        _deviceUtcOffset = deviceUtcOffset ?? _hostUtcOffset;
+    String? linuxAppId,
+    LinuxReminderScheduler? linuxScheduler,
+    List<NotificationAction> darwinActions = const <NotificationAction>[],
+  }) : _plugin =
+           plugin ??
+           _FlutterLocalNotificationsAdapter(
+             windows: windows,
+             darwinActions: darwinActions,
+           ),
+       _caps = NotificationCapabilities.resolve(
+         platform ?? defaultTargetPlatform,
+         isWeb: isWeb,
+         windows: windows,
+       ),
+       _resolveTimezone = localTimezone,
+       _now = now,
+       _deviceUtcOffset = deviceUtcOffset ?? _hostUtcOffset {
+    // NO-04: where the plugin cannot schedule but this package can (Linux —
+    // `canSchedule && !exactTime`), every schedule goes through the ledger.
+    if (_caps.canSchedule && !_caps.exactTime) {
+      _linux = linuxScheduler ?? _defaultLinuxScheduler(linuxAppId);
+    }
+  }
 
   final NotificationPlugin _plugin;
   final NotificationCapabilities _caps;
+
+  /// The Linux scheduler, or null on every target whose OS schedules.
+  LinuxReminderScheduler? _linux;
+
+  LinuxReminderScheduler? _defaultLinuxScheduler(String? appId) {
+    final ReminderLedgerStore? store = defaultLinuxLedger(
+      appId ?? defaultLinuxAppId(),
+    );
+    if (store == null) return null;
+    return LinuxReminderScheduler(
+      store: store,
+      show: (int id, String title, String body, String? payload) =>
+          _plugin.showNow(id, title, body, payload: payload),
+      // Under `flutter test` nothing fires on its own: a real timer left
+      // pending fails the widget test that happened to schedule.
+      timer: isFlutterTest ? _inertTimer : null,
+    );
+  }
 
   /// NULLABLE, and null means the CHASSIS DEFAULT — the device's IANA zone via
   /// `flutter_timezone` — see [resolveLocalTimezone]. Inject only from a test.
@@ -177,6 +236,35 @@ class LocalNotificationService implements NotificationService {
       await _plugin.initialize(_taps.add);
     }
     _initialized = true;
+    final LinuxReminderScheduler? linux = _linux;
+    if (linux != null) {
+      // NO-04 · THE LAUNCH CATCH-UP, and the whole of the headless `--remind`
+      // entry: anything that fell due while the app was closed shows once,
+      // then the in-process timer takes over for the rest.
+      try {
+        await linux.showDue();
+        await linux.start();
+      } on Object catch (e) {
+        debugPrint('[notifications] linux catch-up failed: $e');
+      }
+    }
+  }
+
+  /// Shows every Linux reminder already due and returns how many — the
+  /// headless `--remind` entry calls this after [init]. 0 off Linux.
+  Future<int> showDueReminders() async => await _linux?.showDue() ?? 0;
+
+  @override
+  Future<bool> canScheduleExact() => _exact();
+
+  @override
+  Future<bool> requestExactAlarms() async {
+    if (!_caps.canSchedule) return false;
+    try {
+      return await _plugin.requestExactAlarms();
+    } on Object {
+      return false;
+    }
   }
 
   /// The taps, as a broadcast stream. See [NotificationService.notificationTaps].
@@ -218,11 +306,22 @@ class LocalNotificationService implements NotificationService {
   Future<void> scheduleDaily(DailyReminder reminder) async {
     if (!_caps.canSchedule) return;
     final tz.TZDateTime base = _now?.call() ?? tz.TZDateTime.now(tz.local);
+    final tz.TZDateTime when = nextInstanceOfTime(
+      reminder.hour,
+      reminder.minute,
+      base,
+    );
+    final LinuxReminderScheduler? linux = _linux;
+    if (linux != null) {
+      // The next instance only, like Windows: the boot-path resync re-arms it.
+      await linux.schedule(reminder.id, reminder.title, reminder.body, when);
+      return;
+    }
     await _plugin.scheduleDaily(
       reminder.id,
       reminder.title,
       reminder.body,
-      nextInstanceOfTime(reminder.hour, reminder.minute, base),
+      when,
     );
   }
 
@@ -241,6 +340,7 @@ class LocalNotificationService implements NotificationService {
       at.day,
       at.hour,
       at.minute,
+      at.second,
     );
     return when.isAfter(_nowTz()) ? when : null;
   }
@@ -262,7 +362,11 @@ class LocalNotificationService implements NotificationService {
     // must be able to rebuild its set without wiping the other's.
     final Set<int> owned = _scheduledThisProcess.where(owns).toSet();
     try {
-      owned.addAll((await _plugin.pendingIds()).where(owns));
+      final LinuxReminderScheduler? linux = _linux;
+      owned.addAll(
+        (await (linux != null ? linux.pendingIds() : _plugin.pendingIds()))
+            .where(owns),
+      );
     } on Object catch (e) {
       // A platform whose pending list cannot be read: fall back to what this
       // process knows it scheduled.
@@ -271,7 +375,7 @@ class LocalNotificationService implements NotificationService {
     // Cancel-then-post, including ids about to be re-posted: Windows keeps a
     // second scheduled toast under a re-used id rather than replacing it.
     for (final int id in owned) {
-      await _plugin.cancel(id);
+      await _cancelOne(id);
       _scheduledThisProcess.remove(id);
     }
     // ONE reading of the exact-alarm permission for the whole batch: eighty
@@ -283,6 +387,7 @@ class LocalNotificationService implements NotificationService {
   }
 
   Future<bool> _exact() async {
+    if (_linux != null) return false;
     try {
       return await _plugin.canScheduleExact();
     } on Object {
@@ -309,15 +414,23 @@ class LocalNotificationService implements NotificationService {
   Future<void> _post(ScheduledNotification n, {required bool exact}) async {
     final tz.TZDateTime? when = _instantOf(n.at);
     if (when == null) return;
+    final LinuxReminderScheduler? linux = _linux;
+    if (linux != null) {
+      await linux.schedule(n.id, n.title, n.body, when, payload: n.payload);
+      _scheduledThisProcess.add(n.id);
+      return;
+    }
     Future<void> post(bool e) => _plugin.scheduleOnce(
-          n.id,
-          n.title,
-          n.body,
-          when,
-          exact: e,
-          payload: n.payload,
-          channel: n.channel,
-        );
+      n.id,
+      n.title,
+      n.body,
+      when,
+      exact: e,
+      payload: n.payload,
+      channel: n.channel,
+      // NO-10: buttons only where a press reaches the app.
+      actions: _caps.canAct ? n.actions : const <NotificationAction>[],
+    );
     try {
       await post(exact);
     } on PlatformException catch (e) {
@@ -327,10 +440,17 @@ class LocalNotificationService implements NotificationService {
     _scheduledThisProcess.add(n.id);
   }
 
+  /// The plugin's cancel (a shown notification is dismissed) AND, on Linux,
+  /// the ledger's (a pending one is never shown).
+  Future<void> _cancelOne(int id) async {
+    await _plugin.cancel(id);
+    await _linux?.cancel(id);
+  }
+
   @override
   Future<void> cancel(int id) async {
     if (!_caps.canNotify) return;
-    await _plugin.cancel(id);
+    await _cancelOne(id);
     _scheduledThisProcess.remove(id);
   }
 
@@ -338,6 +458,7 @@ class LocalNotificationService implements NotificationService {
   Future<void> cancelAll() async {
     if (!_caps.canNotify) return;
     await _plugin.cancelAll();
+    await _linux?.cancelAll();
     _scheduledThisProcess.clear();
   }
 }
@@ -362,12 +483,39 @@ tz.TZDateTime nextInstanceOfTime(int hour, int minute, tz.TZDateTime now) {
 
 /// The default [NotificationPlugin] — thin glue onto `flutter_local_notifications`.
 class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
-  _FlutterLocalNotificationsAdapter({WindowsNotificationIdentity? windows})
-      : _windows = windows;
+  _FlutterLocalNotificationsAdapter({
+    WindowsNotificationIdentity? windows,
+    List<NotificationAction> darwinActions = const <NotificationAction>[],
+  }) : _windows = windows,
+       _darwinActions = darwinActions;
 
   final FlutterLocalNotificationsPlugin _fln =
       FlutterLocalNotificationsPlugin();
   final WindowsNotificationIdentity? _windows;
+
+  /// The buttons Apple registers under [kDarwinActionCategory] at initialize —
+  /// Darwin cannot take them per notification.
+  final List<NotificationAction> _darwinActions;
+
+  List<DarwinNotificationCategory> get _darwinCategories =>
+      _darwinActions.isEmpty
+      ? const <DarwinNotificationCategory>[]
+      : <DarwinNotificationCategory>[
+          DarwinNotificationCategory(
+            kDarwinActionCategory,
+            actions: <DarwinNotificationAction>[
+              for (final NotificationAction a in _darwinActions)
+                DarwinNotificationAction.plain(
+                  a.id,
+                  a.title,
+                  // Foreground: the press must reach the app's Dart side.
+                  options: const <DarwinNotificationActionOption>{
+                    DarwinNotificationActionOption.foreground,
+                  },
+                ),
+            ],
+          ),
+        ];
 
   static const AndroidNotificationDetails _androidDetails =
       AndroidNotificationDetails(
@@ -386,23 +534,45 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
     windows: WindowsNotificationDetails(),
   );
 
-  /// [_details] on [channel] — Android's per-channel row; every other
-  /// platform's details are the defaults above.
-  static NotificationDetails _detailsOn(NotificationChannel? channel) {
-    if (channel == null) return _details;
+  /// [_details] on [channel] — Android's per-channel row — carrying
+  /// [actions] (NO-10) as each platform's own buttons.
+  static NotificationDetails _detailsOn(
+    NotificationChannel? channel, {
+    List<NotificationAction> actions = const <NotificationAction>[],
+  }) {
+    if (channel == null && actions.isEmpty) return _details;
+    final DarwinNotificationDetails darwin = DarwinNotificationDetails(
+      categoryIdentifier: actions.isEmpty ? null : kDarwinActionCategory,
+    );
     return NotificationDetails(
       android: AndroidNotificationDetails(
-        channel.id,
-        channel.name,
-        channelDescription: channel.description,
-        importance:
-            channel.important ? Importance.high : Importance.defaultImportance,
-        priority: channel.important ? Priority.high : Priority.defaultPriority,
+        channel?.id ?? _androidDetails.channelId,
+        channel?.name ?? _androidDetails.channelName,
+        channelDescription:
+            channel?.description ?? _androidDetails.channelDescription,
+        importance: (channel?.important ?? false)
+            ? Importance.high
+            : Importance.defaultImportance,
+        priority: (channel?.important ?? false)
+            ? Priority.high
+            : Priority.defaultPriority,
+        actions: <AndroidNotificationAction>[
+          for (final NotificationAction a in actions)
+            // showsUserInterface: the press runs the app's Dart handler in
+            // the foreground isolate — a background isolate would need its
+            // own API client and session.
+            AndroidNotificationAction(a.id, a.title, showsUserInterface: true),
+        ],
       ),
-      iOS: const DarwinNotificationDetails(),
-      macOS: const DarwinNotificationDetails(),
+      iOS: darwin,
+      macOS: darwin,
       linux: const LinuxNotificationDetails(),
-      windows: const WindowsNotificationDetails(),
+      windows: WindowsNotificationDetails(
+        actions: <WindowsAction>[
+          for (final NotificationAction a in actions)
+            WindowsAction(content: a.title, arguments: a.id),
+        ],
+      ),
     );
   }
 
@@ -411,8 +581,8 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
     final WindowsNotificationIdentity? w = _windows;
     final InitializationSettings settings = InitializationSettings(
       android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
-      iOS: kDarwinInitNoAsk,
-      macOS: kDarwinInitNoAsk,
+      iOS: _darwinInit,
+      macOS: _darwinInit,
       linux: const LinuxInitializationSettings(defaultActionName: 'Open'),
       // The app's own identity (app.yaml -> windows_notification_identity.g
       // .dart). Without it the Windows plugin cannot start, which is why
@@ -431,10 +601,26 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
       // plugin's `NotificationResponse` stops here and a pure-Dart
       // `NotificationTap` continues, so `packages/core` — and every consumer
       // above it, on all six platforms — never sees the plugin's types.
-      onDidReceiveNotificationResponse: (NotificationResponse r) =>
-          onTap(NotificationTap(id: r.id ?? -1, payload: r.payload)),
+      onDidReceiveNotificationResponse: (NotificationResponse r) => onTap(
+        NotificationTap(
+          id: r.id ?? -1,
+          payload: r.payload,
+          // NO-10: a BUTTON press carries its action id; a body tap none.
+          actionId: (r.actionId?.isEmpty ?? true) ? null : r.actionId,
+        ),
+      ),
     );
   }
+
+  /// [kDarwinInitNoAsk] plus the action category — still asking for nothing.
+  DarwinInitializationSettings get _darwinInit => _darwinActions.isEmpty
+      ? kDarwinInitNoAsk
+      : DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestSoundPermission: false,
+          requestBadgePermission: false,
+          notificationCategories: _darwinCategories,
+        );
 
   @override
   Future<bool> requestPermission() async {
@@ -471,12 +657,13 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
   }
 
   @override
-  Future<void> showNow(int id, String title, String body) =>
+  Future<void> showNow(int id, String title, String body, {String? payload}) =>
       _fln.show(
         id: id,
         title: title,
         body: body,
         notificationDetails: _details,
+        payload: payload,
       );
 
   @override
@@ -509,21 +696,21 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
     required bool exact,
     String? payload,
     NotificationChannel? channel,
-  }) =>
-      _fln.zonedSchedule(
-        id: id,
-        title: title,
-        body: body,
-        scheduledDate: when,
-        notificationDetails: _detailsOn(channel),
-        payload: payload,
-        // ONE-OFF: no matchDateTimeComponents. A body naming a concrete date
-        // ("renews on Aug 12") re-posted every month would be wrong from its
-        // second firing, and a repeat buys no slot in iOS's 64-request pool.
-        androidScheduleMode: exact
-            ? AndroidScheduleMode.exactAllowWhileIdle
-            : AndroidScheduleMode.inexactAllowWhileIdle,
-      );
+    List<NotificationAction> actions = const <NotificationAction>[],
+  }) => _fln.zonedSchedule(
+    id: id,
+    title: title,
+    body: body,
+    scheduledDate: when,
+    notificationDetails: _detailsOn(channel, actions: actions),
+    payload: payload,
+    // ONE-OFF: no matchDateTimeComponents. A body naming a concrete date
+    // ("renews on Aug 12") re-posted every month would be wrong from its
+    // second firing, and a repeat buys no slot in iOS's 64-request pool.
+    androidScheduleMode: exact
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle,
+  );
 
   @override
   Future<bool> canScheduleExact() async {
@@ -541,12 +728,27 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
   }
 
   @override
+  Future<bool> requestExactAlarms() async {
+    final AndroidFlutterLocalNotificationsPlugin? android = _fln
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    if (android == null) return true;
+    await android.requestExactAlarmsPermission();
+    return canScheduleExact();
+  }
+
+  @override
   Future<NotificationTap?> launchTap() async {
     final NotificationAppLaunchDetails? d =
         await _fln.getNotificationAppLaunchDetails();
     final NotificationResponse? r = d?.notificationResponse;
     if (d == null || !d.didNotificationLaunchApp || r == null) return null;
-    return NotificationTap(id: r.id ?? -1, payload: r.payload);
+    return NotificationTap(
+      id: r.id ?? -1,
+      payload: r.payload,
+      actionId: (r.actionId?.isEmpty ?? true) ? null : r.actionId,
+    );
   }
 
   @override
@@ -561,4 +763,21 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
 
   @override
   Future<void> cancelAll() => _fln.cancelAll();
+}
+
+Timer _inertTimer(Duration delay, void Function() fire) => _InertTimer();
+
+/// A timer that never fires — [LocalNotificationService]'s default Linux
+/// scheduler under `flutter test` (see `isFlutterTest`).
+class _InertTimer implements Timer {
+  bool _active = true;
+
+  @override
+  void cancel() => _active = false;
+
+  @override
+  bool get isActive => _active;
+
+  @override
+  int get tick => 0;
 }

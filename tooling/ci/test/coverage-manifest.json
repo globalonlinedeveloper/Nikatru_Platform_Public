@@ -393,7 +393,7 @@
     30,
 
   "flutter-release-build.test.mjs":
-    33,
+    37,
 
   "flutter-stock-assets-injection.test.mjs":
     1,
@@ -853,6 +853,9 @@
 
   "runner-budget.test.mjs":
     33,
+
+  "runtime-signer-check.test.mjs":
+    37,
 
   "safe-rerun.test.mjs":
     77,
