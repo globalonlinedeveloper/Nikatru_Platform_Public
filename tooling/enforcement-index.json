@@ -554,7 +554,7 @@
       "F-10"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guard-meta"
+      ".github/workflows/ci.yml#guard-tests-floor"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-case-count-honest.mjs",
@@ -3035,6 +3035,17 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-tests",
+      ".github/workflows/ci.yml#guard-tests-floor"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/guard-test-shards.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "F-2"
     ],
@@ -4244,7 +4255,7 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/ci.yml#content-gate",
-      ".github/workflows/ci.yml#guard-meta",
+      ".github/workflows/ci.yml#guard-tests",
       ".github/workflows/extensions-ci.yml#core",
       ".github/workflows/extensions-ci.yml#selftest"
     ],

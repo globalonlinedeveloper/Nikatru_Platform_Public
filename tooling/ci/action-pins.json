@@ -20,6 +20,22 @@
       "source": "runs.using read from action.yml at the sha (git fetch --depth 1 https://github.com/actions/cache <sha>; git show <sha>:action.yml); version is a tag git ls-remote --tags lists at the sha."
     },
     {
+      "action": "actions/cache/restore",
+      "sha": "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+      "version": "v6.1.0",
+      "using": "node24",
+      "readAt": "2026-10-01",
+      "source": "runs.using read from restore/action.yml at the sha (gh api repos/actions/cache/contents/restore/action.yml?ref=<sha>); version is the tag actions/cache carries at the sha."
+    },
+    {
+      "action": "actions/cache/save",
+      "sha": "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+      "version": "v6.1.0",
+      "using": "node24",
+      "readAt": "2026-10-01",
+      "source": "runs.using read from save/action.yml at the sha (gh api repos/actions/cache/contents/save/action.yml?ref=<sha>); version is the tag actions/cache carries at the sha."
+    },
+    {
       "action": "actions/checkout",
       "sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
       "version": "v7.0.1",

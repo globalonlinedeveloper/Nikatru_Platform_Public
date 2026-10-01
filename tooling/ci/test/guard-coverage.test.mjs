@@ -1626,7 +1626,12 @@ describe('the coverage manifest is diffed by CI', () => {
   });
 
   test('D2 the step FAILS the run rather than printing', () => {
-    const step = ciYml.slice(ciYml.indexOf('The ratchet the guard just wrote'), ciYml.indexOf('The recorded floor must not exceed'));
+    // The step runs to the next `- name:`. Its old end marker, the floor step, moved to
+    // guard-tests-floor on 2026-10-01 and now sits ABOVE it, which sliced nothing.
+    const at = ciYml.indexOf('The ratchet the guard just wrote');
+    assert.ok(at > 0, 'ci.yml has no ratchet read-back step');
+    const next = ciYml.indexOf('\n      - name:', at);
+    const step = ciYml.slice(at, next === -1 ? undefined : next);
     assert.match(step, /exit 1/, 'a read-back that cannot fail is a comment');
     assert.match(step, /::error title=coverage-manifest.json was not regenerated::/);
     assert.ok(
