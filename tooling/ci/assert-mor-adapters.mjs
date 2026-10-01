@@ -79,7 +79,7 @@ const REQUIRED_COVERAGE = [
   },
 ];
 
-const REGISTRY = 'services/platform/src/lib/mor/registry.ts';
+// (registry.ts is no longer read here: since #1127, limb 2 derives the provider set from RENDERED_RAILS below. CodeQL #551.)
 /** ⏱ 2026-10-01 · the rendered rail set (tooling/ports/render.mjs); limb 2 reads the provider set here. */
 const RENDERED_RAILS = 'services/platform/src/generated/ports.ts';
 /** ⏱ 2026-10-01 · the Worker's composition root: the door resolves a provider through its `inboundFor`. */
