@@ -1390,7 +1390,7 @@
       {
         "name": "CLOUDFLARE_READ_TOKEN",
         "kind": "service-credential",
-        "why": "A READ-ONLY Cloudflare token (rv2-security-001): D1 read, Pages read, Workers scripts read, zone DNS / rulesets read, Turnstile read, analytics read — no edit scope of any kind. It is the only Cloudflare token a pull_request-reachable job may hold (ci.yml `guards-platform`: the ops register's D1 heartbeat probe and the nightly-proof freshness guard), and ops-watch.yml's readers prefer it over CLOUDFLARE_API_TOKEN. It deploys nothing and signs nothing; a PR author who exfiltrates it can read what the guards read."
+        "why": "A READ-ONLY Cloudflare token (rv2-security-001): D1 read, Pages read, Workers scripts read, zone DNS / rulesets read, Turnstile read, analytics read (including ZONE Analytics Read on nikatru.com, which ops-watch.yml's JWKS error-rate step needs for GraphQL httpRequestsAdaptiveGroups) — no edit scope of any kind. It is the only Cloudflare token a pull_request-reachable job may hold (ci.yml `guards-platform`: the ops register's D1 heartbeat probe and the nightly-proof freshness guard), and ops-watch.yml's readers prefer it over CLOUDFLARE_API_TOKEN. It deploys nothing and signs nothing; a PR author who exfiltrates it can read what the guards read."
       },
       {
         "name": "CLOUDFLARE_D1_TOKEN",
@@ -3586,13 +3586,35 @@
         "flutter",
         "java"
       ],
-      "lane": null,
+      "lane": {
+        "workflow": ".github/workflows/build-platforms.yml",
+        "job": "linux_web_android",
+        "_why": [
+          "⏱ SET 2026-10-01 (O-APPS-GOV-IN-ROW-SAYS-NO-LANE-EMITS-IT, review AA-24). The row's lane is the job",
+          "that EMITS the format the row accepts, and since 2026-09-22 that is this job: after the Play .apk and",
+          ".aab it signs THIS channel's .apk with the APPSGOVIN_* key (step `agi_key`), builds it apart",
+          "(`build_apk_agi`, RELEASE_CHANNEL=apps-gov-in, into apps/<app>/build/apps-gov-in/), stamps it, reads",
+          "its signer back with assert-apps-gov-in-apk.mjs (`agi_verify`) and uploads it under the name that",
+          "verifier chose. `null` here said no job built it while one did, so every lane-derived reader saw a",
+          "channel nothing builds: assert-channel-register.mjs printed its three stamp sites UNANCHORED.",
+          "",
+          "⚠️ A LANE THAT BUILDS THE .apk IS NOT A RELEASE THAT CARRIES IT. The release job downloads it only",
+          "under `apps-gov-in-<app>-apk`, the name given a build signed by the PINNED key, so while",
+          "`signing.signingCertificate.sha256` is null release-manifest.mjs counts the .apk as WITHHELD",
+          "(`withheldFormats`): lane-backed, owed by no Release, and named as such by --stage, --verify",
+          "--expect-formats and --emit-environments. The pin makes it owed, with no edit here.",
+          "",
+          "⚠️ `served` stays false and `submittable` stays false: a lane that BUILDS the artifact is not a",
+          "channel that SHIPS it, and this channel has no submission API at all. Each Release that carries the",
+          ".apk records `<app>-apps-gov-in` as `pending_manual_publish` — the origin, never a submission."
+        ]
+      },
       "crashSink": {
         "layers": [
           "dart"
         ],
         "native": false,
-        "note": "THE DART LAYER ONLY, and this row NAMES NO LANE, so assert-seams-wired.mjs does not grade it — the declaration records what the artifact carries, not a promise an absent lane makes. The .apk this channel would upload is the one build-platforms.yml's `linux_web_android` job already emits for android-play, and that job supplies --dart-define=GLITCHTIP_DSN. Native (NDK) frames are not captured on any Android channel here; that is the same gap the android-play row records, not a new one. ⏱ 2026-09-24: until then this said assert-seams-wired graded only a row's declared lane job; since O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY (patch B) it grades every census-graded Flutter build, so the apk stamped RELEASE_CHANNEL=apps-gov-in in build-platforms.yml's `linux_web_android` job is graded with no lane named here."
+        "note": "THE DART LAYER ONLY. ⏱ CORRECTED 2026-10-01 (O-APPS-GOV-IN-ROW-SAYS-NO-LANE-EMITS-IT): this said the row NAMES NO LANE and that its .apk was the one the `linux_web_android` job emits for android-play. Both were false since 2026-09-22: the row's lane is that job, and the .apk is this channel's OWN build there (`build_apk_agi`, signed with the APPSGOVIN_* key, RELEASE_CHANNEL=apps-gov-in), whose command supplies --dart-define=GLITCHTIP_DSN; assert-seams-wired.mjs grades it as a declared lane. Native (NDK) frames are not captured on any Android channel here; that is the same gap the android-play row records, not a new one. ⏱ 2026-09-24: until then this said assert-seams-wired graded only a row's declared lane job; since O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY (patch B) it grades every census-graded Flutter build, so the apk stamped RELEASE_CHANNEL=apps-gov-in in build-platforms.yml's `linux_web_android` job is graded with no lane named here."
       },
       "deploymentEnvironment": "{app}-apps-gov-in",
       "storeMetadataDir": "apps/{app}/store/apps-gov-in",
@@ -3657,7 +3679,11 @@
         "",
         "⬜ NO LANE. Nothing in this repository emits an artifact FOR this row; the .apk exists already",
         "as a by-product of the android-play lane, and giving this row a lane would claim a build that",
-        "does not run. The runbook names which artifact to take and where it comes from."
+        "does not run. The runbook names which artifact to take and where it comes from.",
+        "⏱ CORRECTED 2026-10-01 (O-APPS-GOV-IN-ROW-SAYS-NO-LANE-EMITS-IT): the build runs. Since 2026-09-22",
+        "build-platforms.yml's `linux_web_android` job builds this channel's OWN .apk, so the row names that",
+        "job as its lane (see `lane._why`). The artifact to take is the Release's `.apk`, present once the pin",
+        "is set; until then the job's `apps-gov-in-<app>-apk-NOT-FOR-UPLOAD-*` artifact says why in its name."
       ]
     },
     {

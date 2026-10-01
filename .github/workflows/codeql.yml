@@ -48,6 +48,10 @@ run-name: "CodeQL (${{ github.event_name }})"
 #     tooling/ci/codeql-dispositions.json.
 # The first reads this workflow's analysis of refs/pull/<N>/merge, so a change to
 # the `category` above or to the pull_request trigger must move it too.
+# ⏱ 2026-10-01 · A THIRD, HERE, AND ONLY ON MAIN. The PR analysis is diff-informed,
+# so an alert on an unchanged line passes the first reader and opens on main; the
+# last step of `analyze` runs limb C after every analysis of main (push, schedule)
+# and turns THAT run red. A pull request never runs it: nothing here fails ci-gate.
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
@@ -120,3 +124,31 @@ jobs:
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           category: /language:javascript-typescript
+
+      # ⏱ 2026-10-01 · THE MAIN-SIDE HALF OF THE PR RULE (review 2 of the CodeQL
+      # stack, finding 2). The PR analysis is diff-informed, so an alert whose
+      # location is an UNCHANGED line passes assert-codeql-pr-no-new-high.mjs and
+      # first opens HERE, on main. On a pull request limb C prints such an alert as
+      # MAIN DEBT rather than reddening PRs that did not cause it; these steps are
+      # where it turns red — on the analysis of the main commit that let it in,
+      # right after the upload above (which waits for the alerts to be processed).
+      # Steps, not a job: a second job would end this job's sole-job FF-2 exception
+      # (tooling/ci/assert-failfast-coverage.mjs). security-events: write above
+      # includes the read limb C needs. Not on pull_request: a PR's own alerts are
+      # the PR rule's subject.
+      - uses: ./.github/actions/setup-node
+        if: ${{ github.event_name != 'pull_request' }}
+      - name: Every open CodeQL alert on main is fixed in code or carries a disposition
+        if: ${{ github.event_name != 'pull_request' }}
+        timeout-minutes: 4
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        # The history first: a fixed-in-tree claim is read at the commit main's
+        # analysis last saw the alert at (`git show <sha>:…`). Spawns git
+        # synchronously and exits, the shape that hung in ci.yml (2026-09-26), so
+        # --single-threaded. `--analysis-of` refuses (exit 2) unless the analysis of THIS
+        # commit is listed, and an empty alert read is exit 2 too (review of #1097, finding 4).
+        run: |
+          set -euo pipefail
+          git fetch --quiet --unshallow origin
+          node --single-threaded tooling/ci/assert-alert-disposition.mjs --limb C --analysis-of "$GITHUB_SHA"

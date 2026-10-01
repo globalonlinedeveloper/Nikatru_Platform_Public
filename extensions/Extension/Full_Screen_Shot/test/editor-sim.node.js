@@ -2633,6 +2633,31 @@ console.log('\n=== failure text ===');
   }
 }
 
+/* ⏱ 2026-10-01 (CodeQL stack review 1, nit 8, carried): the page globals other
+   page scripts call were listed in common.js's module.exports only so CodeQL
+   would see them used. This makes that list a contract with a real reader: every
+   fs* function common.js declares that another page script calls must be
+   exported, so a rename in common.js that leaves a page calling nothing is red
+   here, not in a user's browser. */
+{
+  const COMMON_SRC = fs.readFileSync(path.join(ROOT, 'pages', 'common.js'), 'utf8');
+  const declared = new Set([...COMMON_SRC.matchAll(/^function (fs[A-Z]\w*)\s*\(/gm)].map((m) => m[1]));
+  const callers = ['pages', 'popup'].flatMap((dir) => fs.readdirSync(path.join(ROOT, dir))
+    .filter((f) => f.endsWith('.js') && !(dir === 'pages' && f === 'common.js'))
+    .map((f) => path.join(dir, f)));
+  const called = new Set();
+  for (const rel of callers) {
+    const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    for (const m of src.matchAll(/\b(fs[A-Z]\w*)\s*\(/g)) {
+      if (declared.has(m[1]) && !src.includes('function ' + m[1] + '(')) called.add(m[1]);
+    }
+  }
+  const missing = [...called].filter((n) => typeof COMMON[n] !== 'function');
+  check('every common.js function another page script calls is exported (the page-global contract)',
+    called.size > 0 && missing.length === 0,
+    missing.length ? 'not exported: ' + missing.join(', ') : called.size + ' page global(s) across ' + callers.length + ' script(s)');
+}
+
 console.log('\nchecks: ' + CHECKS);
 console.log(FAILS ? 'FAILURES: ' + FAILS : 'ALL PASS');
 process.exit(FAILS ? 1 : 0);

@@ -311,6 +311,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node --single-threaded tooling/ci/assert-alert-disposition.mjs
+      # 2026-10-01: spawns `git ls-files` synchronously and exits, the shape that
+      # hung, so --single-threaded and a bound of its own (a static read, ~1 s).
+      - name: A credential goes only to its pinned issuer
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        run: node --single-threaded tooling/ci/assert-credential-origin.mjs
       - name: No workflow or register names a repository that no longer exists
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-dead-repo-names.mjs
@@ -1027,11 +1033,14 @@ jobs:
           set -euo pipefail
           "${RUNNER_TEMP}/trivy" fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress .
       # The named, reviewed rule codeql.yml's header asks for: CodeQL stays an alert
-      # sink, and THIS step fails the gate when the PR's own analysis adds a high or
-      # critical alert. LAST, so the scanners above have run while CodeQL (136-212 s
-      # over 8 PR runs, 2026-09-30) finishes; it polls for up to 10 minutes, and an
-      # analysis that never appears is COVERAGE LOST (exit 2), never a pass.
-      - name: This pull request adds no high or critical CodeQL alert
+      # sink, and THIS step fails the gate when the PR's own analysis adds ANY alert
+      # that is high or critical, or that the PR's own tooling/ci/codeql-dispositions.json
+      # does not answer (every severity since 2026-09-30). It sees only alerts on the
+      # PR's changed lines (the analysis is diff-informed); the rest is caught on main
+      # by the limb C step at the end of codeql.yml's `analyze` job. LAST, so the scanners above have run while
+      # CodeQL (136-212 s over 8 PR runs, 2026-09-30) finishes; it polls for up to 10
+      # minutes, and an analysis that never appears is COVERAGE LOST (exit 2), never a pass.
+      - name: This pull request adds no CodeQL alert its own dispositions do not answer
         if: ${{ !cancelled() }}
         timeout-minutes: 12
         env:
