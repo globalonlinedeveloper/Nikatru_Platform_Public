@@ -286,6 +286,11 @@ export const LISTING_FIELDS = /** @type {const} */ ([
   // topics/api/addons.html, fetched 2026-09-24). extensions/scripts/amo-metadata.mjs
   // sends store/firefox/reviewer-notes.txt as that field on the first submit.
   { name: 'reviewer-notes.txt', kind: 'text', app: null, extension: 'per-store-additional', rendered: false },
+  // ⏱ 2026-10-01 (lane prep-play-first-release): Play's per-release "What's new"
+  // notes. tooling/release/submit-play.mjs sends it with the release as the
+  // default-language notes and bounds it at Play's 500 characters. Hand-written
+  // per release, so never rendered.
+  { name: 'release-notes.txt', kind: 'text', app: 'additional', extension: null, rendered: false },
   { name: 'snap-name.txt', kind: 'text', app: 'additional', extension: null, rendered: false },
   { name: 'license.txt', kind: 'text', app: 'additional', extension: null, rendered: false },
   { name: 'privacy-manifest.json', kind: 'json', app: 'additional', extension: null, rendered: false },

@@ -50,7 +50,7 @@
  *  actually ask. `pulled` is distinct from `rejected` on purpose: rejected is
  *  the store refusing, pulled is us withdrawing, and the response to each is a
  *  different runbook. */
-export const STATES = Object.freeze(['in_review', 'live', 'rejected', 'pulled', 'pending_manual_publish']);
+export const STATES = Object.freeze(['in_review', 'live', 'rejected', 'pulled', 'pending_manual_publish', 'draft_staged']);
 
 /** 🔴 `pending_manual_publish` IS NOT A SUBMISSION STATE, AND THAT IS THE WHOLE
  *  REASON IT EXISTS. Added 2026-09-06 with the three browser add-on store rows.
@@ -72,7 +72,21 @@ export const STATES = Object.freeze(['in_review', 'live', 'rejected', 'pulled', 
  *  It carries no listing URL because there is none: a listing does not exist
  *  before the first publish (`tool.json`'s `listings` are null on all three
  *  today), which is exactly what this state says out loud. */
-export const NOT_SUBMITTED_STATES = Object.freeze(['pending_manual_publish']);
+export const NOT_SUBMITTED_STATES = Object.freeze(['pending_manual_publish', 'draft_staged']);
+
+/** ⏱ 2026-10-01 (#1099 review, finding 1) · `draft_staged` — THE OTHER WAY NOTHING IS SUBMITTED.
+ *
+ *  A lane that CAN submit (`submittable: true`) sometimes uploads without submitting. A Play
+ *  release with status `draft` is one whose "APKs are not being served to users" (the tracks
+ *  resource), and on a Play draft app it is the ONLY status the API accepts. The store holds the
+ *  bundle and its versionCode is consumed, but nothing was sent for review: the owner's console
+ *  "Send changes for review" does that, later. `in_review` would be the same fiction
+ *  `pending_manual_publish` exists to avoid, and [10]D-6's cadence would count a submission that
+ *  never happened. So it is NOT_SUBMITTED, and it is `pending_manual_publish`'s mirror in where it
+ *  may be written: ONLY on a row a lane submits through. It carries the listing URL the release
+ *  will be published at and the versionCode it consumed. */
+export const MANUAL_PUBLISH_STATES = Object.freeze(['pending_manual_publish']);
+export const STAGED_STATES = Object.freeze(['draft_staged']);
 
 /** The states that mean the store HAS the thing — what [10]D-6's cadence counts,
  *  and the one declaration of that boundary. `STATES` is the vocabulary; this is
@@ -97,8 +111,12 @@ export const SUBMISSION_STATES = Object.freeze(STATES.filter((s) => !NOT_SUBMITT
  *
  *  This list is the ONE declaration of that boundary. assert-publish-records.mjs
  *  reads it to grade `--state` in workflow YAML, and record-deployment.mjs reads
- *  it to decide that a STORE channel may not fall back to the `live` default. */
-export const SUBMIT_TIME_STATES = Object.freeze(['in_review']);
+ *  it to decide that a STORE channel may not fall back to the `live` default.
+ *
+ *  ⏱ 2026-10-01: `draft_staged` joins it. An uploading run that staged a DRAFT knows a different
+ *  single fact — *it uploaded and did not submit* — and asserting it is equally a submit-time act.
+ *  `in_review` stays FIRST: every message that names "the" submit-time state reads index 0. */
+export const SUBMIT_TIME_STATES = Object.freeze(['in_review', 'draft_staged']);
 
 /** Why each state exists, in the words a report should use. Kept beside STATES
  *  so a new state cannot be added without saying what it claims. */
@@ -109,6 +127,8 @@ export const STATE_MEANING = Object.freeze({
   pulled: 'we withdrew it. Ours, not the store\'s, and deliberately distinct from `rejected`.',
   pending_manual_publish:
     'the release is the ORIGIN of the artifact destined for this channel and nothing was submitted: the channel is `submittable: false`, so the publish is a manual act somebody still owes. NOT a submission — [10]D-6\'s cadence does not count it.',
+  draft_staged:
+    'uploaded and staged as a DRAFT on a channel a lane submits through: the store holds the bundle and its versionCode is consumed, but nothing was sent for review and nothing is served. The owner\'s "send for review" is still owed. NOT a submission — [10]D-6\'s cadence does not count it.',
 });
 
 /** ⏱ 2026-09-26 · THE RUN'S MODE — O-SUBMISSION-LANE-WITHOUT-RECORDER.

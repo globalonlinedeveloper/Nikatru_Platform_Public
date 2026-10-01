@@ -813,9 +813,13 @@ const REQUIRED_COVERAGE = [
     // ⏱ 2026-09-29 · ST-D4: 25 -> 26 surfaces, 61 -> 62 cases — the chassis
     // SettingsSection arrived swept (`a11y: settings-section`, light + dark
     // kPhone). Read off the per-root line: `26 of 26 … across 62 case(s)`.
-    surfaces: 26,
+    // ⏱ 2026-10-01 · audit D8, D12/F53: 26 -> 27 surfaces, 62 -> 63 cases — the
+    // chassis SettingsHeading arrived swept with the Help card
+    // (`a11y: help-section`, light + dark kPhone). Read off the per-root line:
+    // `27 of 27 … across 63 case(s)`.
+    surfaces: 27,
     a11yFiles: 4,
-    cases: 62,
+    cases: 63,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -1077,6 +1081,8 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'monetization/manage_plan_screen.dart#ManagePlanView',
         'monetization/paywall_screen.dart#PaywallView',
         'settings/report_content_dialog.dart#ReportContentDialog',
+        // 2026-10-01 (audit D8): the heading node, in the same change as its sweep.
+        'settings/help_section.dart#SettingsHeading',
         'settings/settings_screen.dart#EditProfileDialog',
         // 2026-09-29 (ST-D4): the settings group, in the same change as its sweep.
         'settings/settings_screen.dart#SettingsSection',

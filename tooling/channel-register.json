@@ -1022,7 +1022,8 @@
           "content-rating.json",
           "ads-declaration.json",
           "feature-graphic.png",
-          "store-icon-512.png"
+          "store-icon-512.png",
+          "release-notes.txt"
         ],
         "maxChars": {
           "title.txt": {
@@ -1036,6 +1037,10 @@
           "long-description.txt": {
             "max": 4000,
             "source": "support.google.com/googleplay/android-developer/answer/9859152 (fetched 2026-07-29) — full description, 4000 characters"
+          },
+          "release-notes.txt": {
+            "max": 500,
+            "source": "support.google.com/googleplay/android-developer/answer/9859348 (fetched 2026-10-01) — release notes, verbatim: \"You can enter release notes using up to 500 Unicode characters per language.\""
           }
         },
         "graphicAssets": {
