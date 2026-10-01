@@ -1,0 +1,22 @@
+{
+  "$comment": "Read by tooling/ci/assert-web-cache-policy.mjs (the site CSP limb, rv2-security-005 / O-EXT-CONNECT-CSP-HAS-NO-READER). Every static deploy root (sites/* with an index.html) is declared in scope or out of scope, both ways. An in-scope site's /* Content-Security-Policy and every declared per-path override are floored; an undeclared override fails; a declared override whose block no longer sets a CSP fails; a declaration the tree no longer matches is COVERAGE LOST.",
+  "inScope": [
+    {
+      "site": "sites/nikatru",
+      "why": "Served at https://nikatru.com, the same origin as every Flutter web app and its session token in web storage (ADR 075), so an XSS on any page of the site reaches every app."
+    }
+  ],
+  "outOfScope": [
+    {
+      "site": "sites/rajasekarselvam",
+      "why": "A separate origin (rajasekarselvam.com) holding no app session; its policy carries script-src 'unsafe-inline' by design and rv2-security-005 scopes this limb to nikatru.com only."
+    }
+  ],
+  "overrides": [
+    {
+      "site": "sites/nikatru",
+      "path": "/ext/connect",
+      "why": "The browser-extension link page signs in against GoTrue and asks the platform Worker for a one-time code, so it alone needs connect-src https://auth-api.nikatru.com and https://platform.nikatru.com; the global policy is detached and restated whole, because Cloudflare joins a header two rules set and a browser enforces every CSP it receives."
+    }
+  ]
+}

@@ -667,6 +667,45 @@ const SWORN_SPECS = new Map([
       ],
     },
   ],
+  [
+    // The SIXTH sworn declaration (2026-10-01, O-WINDOWS-AGE-RATING-ANSWERS-UNRECORDED)
+    // — Partner Center's IARC age-rating answers. Until today only the declaration
+    // DATE was gated for Windows (submit-preconditions.mjs DECLARATION_ONLY_CHANNELS)
+    // and the answers existed nowhere. Its answers are DERIVED from
+    // android-play/content-rating.json, and assert-store-audience.mjs owns "do they
+    // still equal the Play answers"; this spec owns the same duller question as the
+    // five above — "is this still an ANSWERED declaration at all".
+    //
+    // The template has no `assignedRating` key, for the reason the ios-appstore
+    // age-rating spec above gives: limb 2 would otherwise read the answered copy's
+    // deliberate null as a regression.
+    'windows-store/age-rating.json',
+    {
+      // `_readme` measured 28 live / 20 in the brick template.
+      minReadme: 22,
+      /** ZERO, for the same reason as the Apple age-rating spec: `sources` is a
+       *  list of plain strings (a local file, three ADRs and three guards), none
+       *  of which has a url or a fetch date to cite. `sources` is in
+       *  `nonEmptyArrays` instead. */
+      minCitations: 0,
+      nonEmptyArrays: ['claims', 'sources'],
+      /** `derivedFrom` measured 4 keys (file, rule, guard, why), `audienceFloor` 3,
+       *  `questionnaireWording` 3 and `humanOwned` 4. `derivedFrom` is the block
+       *  that says the answers are carried from Play rather than measured; delete
+       *  it and the file reads as a second, independent measurement. */
+      minKeys: [
+        { at: 'derivedFrom', min: 4 },
+        { at: 'audienceFloor', min: 3 },
+        { at: 'questionnaireWording', min: 3 },
+        { at: 'humanOwned', min: 3 },
+      ],
+      booleans: ['questionnaireWording.verified'],
+      /** `fromPlayClaim` is the derivation itself: a row without it is an answer
+       *  nobody can compare to the Play one. `answer` is not here — the answers
+       *  are booleans, and their EQUALITY to Play's is assert-store-audience's. */
+      entryKeys: [{ at: 'claims', keys: ['id', 'fromPlayClaim', 'claim', 'derivation', 'note'] }],
+    },
+  ],
 ]);
 
 /**
@@ -1618,7 +1657,8 @@ let submissionLine = '';
 if (forSubmission !== null) {
   const wanted = swornWanted.filter((s) => s.channel === forSubmission);
   // ⏱ 9b (rv-c22, LEAD RULING 2026-09-26 22:00Z): a channel whose declaration lives only in
-  // its console (windows-store) has no file to read; its date alone is graded below.
+  // its console has no file to read; its date alone is graded below. ⏱ 2026-10-01: windows-store
+  // now has one sworn file (its age ratings) beside a console-only form (Properties); both apply.
   const consoleForm = Object.hasOwn(DECLARATION_ONLY_CHANNELS, forSubmission) ? DECLARATION_ONLY_CHANNELS[forSubmission] : null;
   if (wanted.length === 0 && consoleForm === null) {
     coverageLost([

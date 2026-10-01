@@ -1139,9 +1139,13 @@ async function backupBeforeWrite({ edit, details, live, slots }) {
 
 /** ⏱ 2026-10-01 (CodeQL js/http-to-file-access on the backup): the backup writes the bytes an image
  *  url answers, so the url's HOST is pinned. Play's Image.url is "A URL that will serve a preview of
- *  the image" on Google's image CDN, `*.googleusercontent.com`, over https; anything else refuses
+ *  the image" on Google's image CDN — MEASURED 2026-10-01 as `lh3.googleusercontent.com` for every slot — over https; anything else refuses
  *  before a byte is fetched. Under the loopback test seam (PLAY_API_BASE_URL) only that same loopback
  *  origin is accepted. The file names are fixed by this script; a response never chooses a path. */
+/** The one host a listing-image backup reads from. A bare host, never a wildcard: CodeQL #543's
+ *  by-design disposition names exactly this host (assert-alert-disposition limb C). Measured
+ *  2026-10-01 off edits.images.list on all five slots of the live record (edit discarded). */
+const PLAY_IMAGE_HOST = 'lh3.googleusercontent.com';
 function playImageUrlOrRefuse(raw, type, i) {
   let u = null;
   try {
@@ -1149,11 +1153,11 @@ function playImageUrlOrRefuse(raw, type, i) {
   } catch {
     u = null;
   }
-  const google = u !== null && u.protocol === 'https:' && u.hostname.endsWith('.googleusercontent.com');
+  const google = u !== null && u.protocol === 'https:' && u.hostname === PLAY_IMAGE_HOST;
   const seam = u !== null && PLAY_BASE !== PLAY_API_ORIGIN && u.origin === new URL(PLAY_BASE).origin;
   if (!google && !seam) {
     throw new Error(
-      `backup: ${type} image ${i} is served from ${JSON.stringify(raw || null)}, not Play's image CDN (https://*.googleusercontent.com), so it was not fetched and could not be kept. Nothing was written.`,
+      `backup: ${type} image ${i} is served from ${JSON.stringify(raw || null)}, not Play's image CDN (https://${PLAY_IMAGE_HOST}), so it was not fetched and could not be kept. Nothing was written.`,
     );
   }
 }

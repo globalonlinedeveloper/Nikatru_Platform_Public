@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:nikatru_api_client/nikatru_api_client.dart'
+    show CacheCodec, KeyValueJsonStore, StoreWriteFailure;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../models/budget_info.dart';
@@ -19,10 +21,13 @@ import '../models/subscription.dart';
 //
 // ⚠️ SO THIS IS NOT A CACHE. There is no server behind the unconfigured branch
 // to be a cache OF; this store is the system of record for that posture. The
-// configured branch is untouched and keeps its server as the record — an
-// offline write queue in front of a live Worker is a different piece of work
-// with different failure modes (conflict resolution, replay ordering), and
-// pretending this file is a step towards it would be the wrong claim.
+// configured branch keeps its server as the record; its offline write queue is
+// packages/core's `DurableOutbox` (audit D22), stored under [kLocalOutboxKey]
+// and scoped per user, so a sign-out drops only the signed-out user's entries.
+//
+// ⏱ 2026-09-30 · the read/write/remove mechanics moved to the shared
+// `KeyValueJsonStore` (audit D28). This file keeps the ROW TYPE: the keys, the
+// codec and the typed read/write pairs.
 //
 // 🔴 WHY KEY-VALUE JSON AND NOT A DATABASE, measured rather than assumed.
 // There is no sqlite/drift/isar/hive anywhere in this tree, so a database is a
@@ -60,6 +65,10 @@ const String kLocalSubscriptionsKey = 'nikatru.subscriptions';
 
 /// The user's budget (monthly cap + per-category caps), as one JSON object.
 const String kLocalBudgetKey = 'nikatru.budget';
+
+/// Writes made offline, waiting for the server — packages/core's
+/// `DurableOutbox` (audit D22), one document of user-scoped entries.
+const String kLocalOutboxKey = 'nikatru.subscriptions.outbox';
 
 /// The subscriptions the user has ANSWERED "yes, still using" for on Insights
 /// (ST-D3 D3-4). A JSON list of ids. Asked, never inferred: nothing in the app
@@ -129,6 +138,19 @@ class SubscriptionCodec {
     }
   }
 
+  /// [encodeSubscriptions]/[decodeSubscriptions] as the shared cache's codec.
+  static final CacheCodec<List<Subscription>> subscriptions =
+      CacheCodec<List<Subscription>>(
+        encode: encodeSubscriptions,
+        decode: decodeSubscriptions,
+      );
+
+  /// [encodeBudget]/[decodeBudget] as the shared cache's codec.
+  static final CacheCodec<BudgetInfo> budget = CacheCodec<BudgetInfo>(
+    encode: encodeBudget,
+    decode: decodeBudget,
+  );
+
   static Object? _tryDecode(String raw) {
     try {
       return jsonDecode(raw);
@@ -143,23 +165,12 @@ class SubscriptionCodec {
 /// 🔴 THIS USED TO BE A `catch (_) {}`. `_write` swallowed every failure —
 /// full disk, blocked storage, a plugin that is not there — and
 /// `PersistedApiClient.createSubscription` then returned the created row as if
-/// it had been kept. On the next launch it was gone, and three tests ASSERTED
-/// that silence (`completes`, then `readSubscriptions()` is null). A write the
-/// user cannot see fail is a write the user finds out about a week later, so
-/// the failure now travels: the persisted client rolls back and rethrows, and
-/// the cache client counts and reports it.
-class LocalStoreWriteFailure implements Exception {
-  const LocalStoreWriteFailure(this.key, this.cause);
-
-  /// The store key the write was for.
-  final String key;
-
-  /// What the store threw.
-  final Object cause;
-
-  @override
-  String toString() => 'LocalStoreWriteFailure: could not write $key — $cause';
-}
+/// it had been kept. The failure now travels: the persisted client rolls back
+/// and rethrows, and the cache client counts and reports it.
+///
+/// ⏱ 2026-09-30 · the shared `StoreWriteFailure` (packages/api_client, audit
+/// D28); the name stays so every caller and test reads as before.
+typedef LocalStoreWriteFailure = StoreWriteFailure;
 
 /// The durable home of the subscriptions and the budget in the unconfigured
 /// (no `API_BASE_URL`) posture, and the read-through cache of the server's
@@ -182,14 +193,21 @@ class LocalStoreWriteFailure implements Exception {
 /// Swallowing it here was how a full disk turned into "it was there yesterday".
 class LocalSubscriptionStore {
   /// Persist through [store] once it resolves.
-  LocalSubscriptionStore(this._store);
+  LocalSubscriptionStore(Future<core.KeyValueStore> store)
+    : kv = store,
+      json = KeyValueJsonStore(store);
 
   /// A store that never persists anything — the honest no-op for a posture that
-  /// has no backing store, and what a failed [_store] degrades to.
+  /// has no backing store.
   LocalSubscriptionStore.inMemory()
-    : _store = Future<core.KeyValueStore>.value(core.InMemoryKeyValueStore());
+    : this(Future<core.KeyValueStore>.value(core.InMemoryKeyValueStore()));
 
-  final Future<core.KeyValueStore> _store;
+  /// The raw store, for the shared `DurableOutbox` (packages/core).
+  final Future<core.KeyValueStore> kv;
+
+  /// The shared store underneath — what the read-through cache and the outbox
+  /// are built on, so all three share one backing store and one namespace.
+  final KeyValueJsonStore json;
 
   /// The stored subscriptions, or null when nothing is stored yet or the stored
   /// text is unreadable.
@@ -202,30 +220,24 @@ class LocalSubscriptionStore {
   /// who cleared their list — the same defect shape
   /// `SubscriptionsController.addSubscription` documents at
   /// `state.value ?? const []`.
-  Future<List<Subscription>?> readSubscriptions() async {
-    final String? raw = await _read(kLocalSubscriptionsKey);
-    return raw == null ? null : SubscriptionCodec.decodeSubscriptions(raw);
-  }
+  Future<List<Subscription>?> readSubscriptions() =>
+      json.read(kLocalSubscriptionsKey, SubscriptionCodec.subscriptions);
 
   /// Replace the stored subscriptions with [subs].
   ///
   /// Throws [LocalStoreWriteFailure] when the store refuses — never silently.
-  Future<void> writeSubscriptions(List<Subscription> subs) => _write(
-    kLocalSubscriptionsKey,
-    SubscriptionCodec.encodeSubscriptions(subs),
-  );
+  Future<void> writeSubscriptions(List<Subscription> subs) =>
+      json.write(kLocalSubscriptionsKey, subs, SubscriptionCodec.subscriptions);
 
   /// The stored budget, or null when nothing is stored yet or it is unreadable.
-  Future<BudgetInfo?> readBudget() async {
-    final String? raw = await _read(kLocalBudgetKey);
-    return raw == null ? null : SubscriptionCodec.decodeBudget(raw);
-  }
+  Future<BudgetInfo?> readBudget() =>
+      json.read(kLocalBudgetKey, SubscriptionCodec.budget);
 
   /// Replace the stored budget with [budget].
   ///
   /// Throws [LocalStoreWriteFailure] when the store refuses — never silently.
   Future<void> writeBudget(BudgetInfo budget) =>
-      _write(kLocalBudgetKey, SubscriptionCodec.encodeBudget(budget));
+      json.write(kLocalBudgetKey, budget, SubscriptionCodec.budget);
 
   /// The ids answered "still using", or an empty set when none is stored or
   /// the stored text is unreadable — a lost answer is asked again, never
@@ -260,36 +272,21 @@ class LocalSubscriptionStore {
   /// A store that was never reachable has nothing to forget and answers
   /// normally; a store that IS there and refuses throws [LocalStoreWriteFailure],
   /// because "forgotten" is a promise `forgetSignedInUser` relays to the user.
-  Future<void> clear() async {
-    final core.KeyValueStore kv;
-    try {
-      kv = await _store;
-    } catch (_) {
-      return; // never reachable ⇒ nothing was ever written here
-    }
-    try {
-      await kv.remove(kLocalSubscriptionsKey);
-      await kv.remove(kLocalBudgetKey);
-      await kv.remove(kLocalStillUsingKey);
-    } catch (e) {
-      throw LocalStoreWriteFailure(kLocalSubscriptionsKey, e);
-    }
-  }
+  Future<void> clear() => json.remove(<String>[
+    kLocalSubscriptionsKey,
+    kLocalBudgetKey,
+    kLocalStillUsingKey,
+    // NOT kLocalOutboxKey: the outbox is per user. An explicit sign-out drops
+    // THAT user's entries (`discardPendingOf`); a forced 401 keeps them for
+    // the same user's return; nobody else's replay ever sends them.
+    // NOT kCacheIndexKey: the read cache owns its index, and `forget()`
+    // reads it to find the owner-scoped copies. Removing it here first left
+    // those copies behind (review #1075 round 3, major 1).
+  ]);
 
-  Future<String?> _read(String key) async {
-    try {
-      return await (await _store).read(key);
-    } catch (_) {
-      return null;
-    }
-  }
+  // The still-using answers (ST-D3 D3-4) read and write through the shared
+  // store, with its read-degrades / write-throws contract.
+  Future<String?> _read(String key) => json.readRaw(key);
 
-  Future<void> _write(String key, String value) async {
-    try {
-      await (await _store).write(key, value);
-    } catch (e) {
-      // 🔴 NOT SWALLOWED. The caller is holding the user's data; it decides.
-      throw LocalStoreWriteFailure(key, e);
-    }
-  }
+  Future<void> _write(String key, String value) => json.writeRaw(key, value);
 }

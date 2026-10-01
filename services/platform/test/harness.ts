@@ -56,6 +56,7 @@ import oneTimeSource0019 from '../migrations/0019_one_time_source.sql?raw';
 import reminders0020 from '../migrations/0020_reminders.sql?raw';
 import extLinkFloor0021 from '../migrations/0021_ext_link_floor.sql?raw';
 import nativeAttest0022 from '../migrations/0022_native_attest.sql?raw';
+import providerTokenEncryption0023 from '../migrations/0023_provider_token_encryption.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -118,6 +119,10 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // ⏱ 2026-09-29 · ADR no.NNN — the native sign-in attestation state: redeemed
   // challenge nonces, registered install keys and the daily counters.
   nativeAttest0022,
+  // ⏱ 2026-09-30 · review round 2 (security) — the provider refresh tokens are
+  // encrypted at rest: `token_ct` and `token_key_id` on provider_tokens. ADD
+  // COLUMN, so ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
+  providerTokenEncryption0023,
 ];
 
 /**
@@ -321,6 +326,14 @@ export class RealDb {
     return Number((row as { n: number }).n);
   }
 }
+
+/**
+ * ⏱ 2026-09-30 · a TOKEN_ENC_KEY_V1 for tests: 32 bytes (0x01…0x20), standard
+ * base64 — the shape `openssl rand -base64 32` gives the owner. Fixed, so a
+ * failing case reproduces; its only job is to be a VALID key. Every provider
+ * token a test stores is sealed with it (src/lib/token-crypto.ts).
+ */
+export const TEST_TOKEN_ENC_KEY = btoa(String.fromCharCode(...Array.from({ length: 32 }, (_, i) => i + 1)));
 
 /** platform_db with the real migrations applied, in order. */
 export function realPlatformDb(extraSchema: readonly string[] = []): RealDb {

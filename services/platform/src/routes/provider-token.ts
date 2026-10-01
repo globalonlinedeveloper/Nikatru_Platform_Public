@@ -77,7 +77,10 @@ async function keepProviderToken(c: Context<AppEnv>, fixedProvider: ProviderName
     return c.json({ error: 'provider_not_linked' }, 400);
   }
   try {
-    await putProviderToken(c.env.PLATFORM_DB, userId, provider, appId, token.trim(), new Date().toISOString());
+    // ⏱ 2026-09-30 · stored ENCRYPTED (src/lib/token-crypto.ts). Without a usable
+    // TOKEN_ENC_KEY_V1 this throws and the answer is the 503 below: a token is
+    // never kept in plain text, not even "for now".
+    await putProviderToken(c.env, userId, provider, appId, token.trim(), new Date().toISOString());
   } catch (err) {
     console.error(`[account] rid=${rid} app=${c.env.APP_ID} could not store the ${provider} token`, err);
     // `apple_token_store_failed` is the body the alias always answered here.

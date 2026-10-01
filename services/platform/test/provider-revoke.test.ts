@@ -29,7 +29,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, exportPKCS8, generateKeyPair, importJWK, jwtVerify, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, exportPKCS8, generateKeyPair, importJWK, jwtVerify, type JWK, type CryptoKey } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
 import account from '../src/routes/account';
 import providerToken from '../src/routes/provider-token';
@@ -44,14 +44,15 @@ import {
   revokeGoogleToken,
 } from '../src/lib/provider-revoke';
 import { erasureRetry } from '../src/scheduled';
+import { decryptToken, tokenKey } from '../src/lib/token-crypto';
 import type { AppEnv } from '../src/types';
-import { realPlatformDb, type RealDb } from './harness';
+import { realPlatformDb, TEST_TOKEN_ENC_KEY, type RealDb } from './harness';
 
 const SUPABASE_URL = 'https://apple-revoke-test.supabase.co';
 const ISSUER = `${SUPABASE_URL}/auth/v1`;
 const APP_ORIGIN = 'https://api.test';
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 /** The owner's Sign in with Apple key, as a PKCS#8 PEM — the `.p8` shape. */
 let applePrivatePem: string;
@@ -199,6 +200,7 @@ function appleEnv(db: RealDb, overrides: Partial<Record<string, unknown>> = {}) 
     APPLE_REVOKE_TEAM_ID: 'TEAM123456',
     APPLE_REVOKE_KEY_ID: 'KEY7890123',
     APPLE_REVOKE_PRIVATE_KEY: applePrivatePem,
+    TOKEN_ENC_KEY_V1: TEST_TOKEN_ENC_KEY,
     ...overrides,
   } as unknown as AppEnv['Bindings'];
 }
@@ -249,10 +251,23 @@ function harness(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-const storedToken = (db: RealDb, subject: string, provider = 'apple') =>
-  db
-    .rows('SELECT refresh_token FROM provider_tokens WHERE subject_ref = ? AND provider = ?', subject, provider)
-    .map((r) => String(r.refresh_token));
+/** The row's token, DECRYPTED with the test key (⏱ 2026-09-30, migration 0023) —
+ *  and 🔴 its plain-text column asserted EMPTY on every read, so no case in this
+ *  file can pass on a token that was stored in clear. */
+const storedToken = async (db: RealDb, subject: string, provider = 'apple') => {
+  const out: string[] = [];
+  for (const r of db.rows(
+    'SELECT refresh_token, token_ct, token_key_id FROM provider_tokens WHERE subject_ref = ? AND provider = ?',
+    subject,
+    provider,
+  )) {
+    expect(String(r.refresh_token), 'the plain-text column is never written').toBe('');
+    const key = await tokenKey({ TOKEN_ENC_KEY_V1: TEST_TOKEN_ENC_KEY }, String(r.token_key_id));
+    if ('refused' in key) throw new Error(key.refused);
+    out.push(String(await decryptToken(key.key, String(r.token_key_id), { subjectRef: subject, provider }, String(r.token_ct))));
+  }
+  return out;
+};
 const pendingSteps = (db: RealDb, subject: string) =>
   db.rows('SELECT app_id FROM pending_erasures WHERE subject_ref = ? AND confirmed_at IS NULL', subject).map((r) => String(r.app_id));
 const ledgerRows = (db: RealDb, subject: string) =>
@@ -293,7 +308,7 @@ describe('PUT /v1/account/apple-token', () => {
     const res = await h.put('/v1/account/apple-token', { refreshToken: 'r-secret-token-value', appId: 'subscriptiontracker' }, `Bearer ${await appleUser()}`);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, stored: 1 });
-    expect(storedToken(h.db, 'user-a')).toEqual(['r-secret-token-value']);
+    expect(await storedToken(h.db, 'user-a')).toEqual(['r-secret-token-value']);
     expect(logLines.join('\n')).not.toContain('r-secret-token-value');
   });
 
@@ -302,7 +317,7 @@ describe('PUT /v1/account/apple-token', () => {
     const authz = `Bearer ${await appleUser()}`;
     await h.put('/v1/account/apple-token', { refreshToken: 'first-token-value', appId: 'subscriptiontracker' }, authz);
     await h.put('/v1/account/apple-token', { refreshToken: 'second-token-value', appId: 'subscriptiontracker' }, authz);
-    expect(storedToken(h.db, 'user-a')).toEqual(['second-token-value']);
+    expect(await storedToken(h.db, 'user-a')).toEqual(['second-token-value']);
   });
 
   it('refuses an empty, tiny or unauthenticated token', async () => {
@@ -321,7 +336,7 @@ describe('PUT /v1/account/apple-token', () => {
     ).toBe(400);
     // 🔴 UNAUTHENTICATED IS A 401, NOT A ROW KEYED BY NOTHING.
     expect((await h.put('/v1/account/apple-token', { refreshToken: 'r-token-value', appId: 'subscriptiontracker' })).status).toBe(401);
-    expect(storedToken(h.db, 'user-a')).toEqual([]);
+    expect(await storedToken(h.db, 'user-a')).toEqual([]);
   });
 });
 
@@ -339,7 +354,7 @@ describe('DELETE /v1/account revokes the Apple token', () => {
     expect(appleCalls[0].body.get('token')).toBe('r-live-token-value');
     expect(appleCalls[0].body.get('token_type_hint')).toBe('refresh_token');
     expect(appleCalls[0].body.get('client_secret')).toMatch(/^[\w-]+\.[\w-]+\.[\w-]+$/);
-    expect(storedToken(h.db, 'user-a')).toEqual([]);
+    expect(await storedToken(h.db, 'user-a')).toEqual([]);
     expect(identityCalls).toHaveLength(1);
     expect(pendingSteps(h.db, 'user-a')).toEqual([]);
     expect(logLines.join('\n')).not.toContain('r-live-token-value');
@@ -366,7 +381,7 @@ describe('DELETE /v1/account revokes the Apple token', () => {
     expect(await res.json()).toMatchObject({ status: 'erasure_pending', pending: [APPLE_REVOKE_STEP] });
     expect(identityCalls, 'the identity must NOT be deleted while Apple still lists this app').toHaveLength(0);
     expect(pendingSteps(h.db, 'user-a')).toEqual([APPLE_REVOKE_STEP]);
-    expect(storedToken(h.db, 'user-a'), 'the token is what the retry revokes with').toEqual(['r-live-token-value']);
+    expect(await storedToken(h.db, 'user-a'), 'the token is what the retry revokes with').toEqual(['r-live-token-value']);
     // The refusal NAMES the missing secrets, so an operator does not have to guess.
     expect(logLines.join('\n')).toContain('APPLE_REVOKE_KEY_ID');
     expect(logLines.join('\n')).toContain('APPLE_REVOKE_PRIVATE_KEY');
@@ -421,7 +436,7 @@ describe('the nightly retry finishes what the deletion could not', () => {
     expect(appleCalls[0].body.get('token')).toBe('r-live-token-value');
     expect(pendingSteps(h.db, 'user-a')).toEqual([]);
     expect(identityCalls, 'the identity goes LAST, once the revoke confirmed').toHaveLength(1);
-    expect(storedToken(h.db, 'user-a')).toEqual([]);
+    expect(await storedToken(h.db, 'user-a')).toEqual([]);
   });
 
   it('🔴 while the credentials are still missing the retry keeps the order open and the identity alive', async () => {
@@ -435,7 +450,7 @@ describe('the nightly retry finishes what the deletion could not', () => {
     expect(appleCalls).toHaveLength(0);
     expect(pendingSteps(h.db, 'user-a')).toEqual([APPLE_REVOKE_STEP]);
     expect(identityCalls).toHaveLength(0);
-    expect(storedToken(h.db, 'user-a')).toEqual(['r-live-token-value']);
+    expect(await storedToken(h.db, 'user-a')).toEqual(['r-live-token-value']);
   });
 });
 
@@ -445,7 +460,7 @@ describe('the nightly retry finishes what the deletion could not', () => {
 // the wrong URL and was answered 200 by something else would pass a status check.
 describe('revokeGoogleToken — one call to Google, the token and nothing else', () => {
   const seedGoogle = async (db: RealDb, subject = 'user-g') =>
-    putProviderToken(db as unknown as D1Database, subject, 'google', 'subscriptiontracker', 'g-live-token-value', '2026-09-24T00:00:00.000Z');
+    putProviderToken(appleEnv(db), subject, 'google', 'subscriptiontracker', 'g-live-token-value', '2026-09-24T00:00:00.000Z');
 
   it('POSTs exactly `token=…` to https://oauth2.googleapis.com/revoke, with no Authorization and a timeout; 200 is revoked', async () => {
     const h = harness();
@@ -466,7 +481,7 @@ describe('revokeGoogleToken — one call to Google, the token and nothing else',
     // The ceiling: the call carries the signal AbortSignal.timeout minted from it.
     expect(timeoutSpy).toHaveBeenCalledWith(PROVIDER_REVOKE_TIMEOUT_MS);
     expect(googleCalls[0].signal).toBe(timeoutSpy.mock.results[0]?.value);
-    expect(storedToken(h.db, 'user-g', 'google'), 'a revoked token is forgotten').toEqual([]);
+    expect(await storedToken(h.db, 'user-g', 'google'), 'a revoked token is forgotten').toEqual([]);
     expect(logLines.join('\n')).not.toContain('g-live-token-value');
   });
 
@@ -478,7 +493,7 @@ describe('revokeGoogleToken — one call to Google, the token and nothing else',
 
     expect(await revokeGoogleToken(h.env, 'user-g', 'rid-g')).toEqual({ kind: 'none' });
     expect(googleCalls).toHaveLength(1);
-    expect(storedToken(h.db, 'user-g', 'google')).toEqual([]);
+    expect(await storedToken(h.db, 'user-g', 'google')).toEqual([]);
   });
 
   it('a 5xx is `transient`, and the token is KEPT for the retry', async () => {
@@ -488,7 +503,7 @@ describe('revokeGoogleToken — one call to Google, the token and nothing else',
 
     expect(await revokeGoogleToken(h.env, 'user-g', 'rid-g')).toEqual({ kind: 'transient', why: 'google answered 503' });
     expect(googleCalls).toHaveLength(1);
-    expect(storedToken(h.db, 'user-g', 'google')).toEqual(['g-live-token-value']);
+    expect(await storedToken(h.db, 'user-g', 'google')).toEqual(['g-live-token-value']);
   });
 
   it('a network failure is `transient`, and the token is KEPT for the retry', async () => {
@@ -499,7 +514,7 @@ describe('revokeGoogleToken — one call to Google, the token and nothing else',
     const outcome = await revokeGoogleToken(h.env, 'user-g', 'rid-g');
     expect(outcome.kind).toBe('transient');
     expect(googleCalls).toHaveLength(1);
-    expect(storedToken(h.db, 'user-g', 'google')).toEqual(['g-live-token-value']);
+    expect(await storedToken(h.db, 'user-g', 'google')).toEqual(['g-live-token-value']);
   });
 
   it('🔴 a Google that never answers is cut off by the ceiling and is `transient`', async () => {
@@ -514,7 +529,7 @@ describe('revokeGoogleToken — one call to Google, the token and nothing else',
     const outcome = await revokeGoogleToken(h.env, 'user-g', 'rid-g');
     expect(outcome.kind).toBe('transient');
     expect(googleCalls).toHaveLength(1);
-    expect(storedToken(h.db, 'user-g', 'google')).toEqual(['g-live-token-value']);
+    expect(await storedToken(h.db, 'user-g', 'google')).toEqual(['g-live-token-value']);
   });
 
   it('any other 4xx is `blocked` and said out loud; the token is KEPT', async () => {
@@ -525,7 +540,7 @@ describe('revokeGoogleToken — one call to Google, the token and nothing else',
 
     expect(await revokeGoogleToken(h.env, 'user-g', 'rid-g')).toEqual({ kind: 'blocked', why: 'google answered 400' });
     expect(logLines.join('\n')).toContain('Google refused the revoke with 400');
-    expect(storedToken(h.db, 'user-g', 'google')).toEqual(['g-live-token-value']);
+    expect(await storedToken(h.db, 'user-g', 'google')).toEqual(['g-live-token-value']);
   });
 
   it('a 429 is `transient`, not blocked', async () => {
@@ -593,8 +608,8 @@ describe('DELETE /v1/account revokes at every provider the account kept a token 
     expect(appleCalls).toHaveLength(1);
     expect(googleCalls).toHaveLength(1);
     expect(googleCalls[0].url).toBe('https://oauth2.googleapis.com/revoke');
-    expect(storedToken(h.db, 'user-ag', 'apple'), 'Apple settled: its token is gone').toEqual([]);
-    expect(storedToken(h.db, 'user-ag', 'google'), 'the retry revokes with this').toEqual(['g-live-token-value']);
+    expect(await storedToken(h.db, 'user-ag', 'apple'), 'Apple settled: its token is gone').toEqual([]);
+    expect(await storedToken(h.db, 'user-ag', 'google'), 'the retry revokes with this').toEqual(['g-live-token-value']);
     expect(identityCalls, 'the identity stays while Google is pending').toHaveLength(0);
 
     // Google comes back; the cron runs the google-revoke step itself.
@@ -619,7 +634,7 @@ describe('DELETE /v1/account revokes at every provider the account kept a token 
     h.db.db
       .prepare('INSERT INTO apple_provider_tokens (subject_ref, app_id, refresh_token, stored_at) VALUES (?,?,?,?)')
       .run('user-other', 'subscriptiontracker', 'o-copied-token-value', '2026-09-22T10:00:00.000Z');
-    await putProviderToken(h.db as unknown as D1Database, 'user-a', 'apple', 'subscriptiontracker', 'a-copied-token-value', '2026-09-22T10:00:00.000Z');
+    await putProviderToken(h.env, 'user-a', 'apple', 'subscriptiontracker', 'a-copied-token-value', '2026-09-22T10:00:00.000Z');
 
     const res = await h.del('/v1/account', `Bearer ${await appleUser()}`);
     expect(res.status).toBe(200);

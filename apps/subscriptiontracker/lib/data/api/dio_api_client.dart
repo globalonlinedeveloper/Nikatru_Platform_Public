@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart';
-import 'package:nikatru_core/nikatru_core.dart' show Entitlements, Money;
+import 'package:nikatru_core/nikatru_core.dart'
+    show Entitlements, Money, newOutboxId;
 
 import '../models/budget_info.dart';
 import '../models/payment_record.dart';
@@ -12,7 +13,7 @@ import 'api_client.dart';
 /// ApiException); this class maps Subly's endpoints to its domain models, and
 /// routes every parse through `_rest.decode` so a malformed 2xx body also
 /// surfaces as an ApiException (single failure contract).
-class DioApiClient implements ApiClient {
+class DioApiClient implements ApiClient, IdempotentCreates {
   DioApiClient({
     required String baseUrl,
     required Future<String?> Function() tokenProvider,
@@ -60,11 +61,21 @@ class DioApiClient implements ApiClient {
     );
   }
 
+  /// A one-shot create still carries a key: a lost response to it is then at
+  /// worst a missing row, never a duplicate one.
   @override
-  Future<Subscription> createSubscription(Subscription draft) async {
+  Future<Subscription> createSubscription(Subscription draft) =>
+      createSubscriptionOnce(draft, idempotencyKey: newOutboxId());
+
+  @override
+  Future<Subscription> createSubscriptionOnce(
+    Subscription draft, {
+    required String idempotencyKey,
+  }) async {
     final Object? data = await _rest.post(
       '/subscriptions',
       body: draft.toJson(),
+      idempotencyKey: idempotencyKey,
     );
     return _rest.decode(
       data,

@@ -15,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, generateKeyPair, exportJWK, type KeyLike } from 'jose';
+import { SignJWT, generateKeyPair, exportJWK, type CryptoKey } from 'jose';
 import { supabaseAuth, erasureAuth } from '../src/middleware/auth';
 import type { AppEnv } from '../src/types';
 
@@ -182,8 +182,8 @@ describe('supabaseAuth REJECTS', () => {
 // with no origin answers 502/530 rather than refusing the connection.
 // -----------------------------------------------------------------------------
 describe('the JWKS outage does NOT downgrade this boundary to a shared secret', () => {
-  let signingKey: KeyLike;
-  let foreignKey: KeyLike;
+  let signingKey: CryptoKey;
+  let foreignKey: CryptoKey;
   let publicJwk: Record<string, unknown>;
   let rotatedJwk: Record<string, unknown>;
 
@@ -256,7 +256,7 @@ describe('the JWKS outage does NOT downgrade this boundary to a shared secret', 
   const es256 = (
     url: string,
     {
-      signer = null as KeyLike | null,
+      signer = null as CryptoKey | null,
       issuer = null as string | null,
       audience = 'authenticated',
     } = {},
@@ -435,7 +435,7 @@ describe('a REVOKED session is refused at both boundaries, and the read fails op
   const UP = 'https://revoke-up.test';
   const DOWN = 'https://revoke-down.test';
   const nowS = () => Math.floor(Date.now() / 1000);
-  let signer: KeyLike;
+  let signer: CryptoKey;
   let jwk: Record<string, unknown>;
 
   beforeAll(async () => {

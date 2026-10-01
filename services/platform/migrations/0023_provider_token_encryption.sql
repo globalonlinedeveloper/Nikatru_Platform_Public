@@ -1,0 +1,45 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0023_provider_token_encryption.sql — THE PROVIDER REFRESH TOKENS ARE
+-- ENCRYPTED AT REST (review round 2, security: "provider refresh tokens are
+-- plain text in D1 and in every R2 backup").
+--
+-- Applies to the SHARED platform_db (services/platform is the sole applier):
+--   wrangler d1 migrations apply PLATFORM_DB --local    (or --remote)
+--
+-- TWO ADDITIVE, NULLABLE COLUMNS, and nothing else in this file:
+--   token_ct      — the token as AES-256-GCM ciphertext: base64url(iv ‖
+--                   ciphertext ‖ tag), a fresh random IV per write, the row
+--                   (provider, subject, key id) as authenticated data
+--                   (src/lib/token-crypto.ts).
+--   token_key_id  — which key sealed it: `v1` is the Worker secret
+--                   TOKEN_ENC_KEY_V1. A read picks the key by the ROW's id, which
+--                   is what lets a later key rotate in without a flag day.
+--
+-- `refresh_token` STAYS, as the empty string. It is NOT NULL (0016) and SQLite
+-- cannot relax that without rebuilding the table, which check-migrations.mjs
+-- rightly refuses — so from the Worker that ships with this file on, every write
+-- stores '' there (src/lib/provider-revoke.ts `putProviderToken`), and the
+-- nightly `provider_token_backfill` (src/scheduled.ts) encrypts each row still
+-- holding plain text into `token_ct` and empties its `refresh_token` — bounded
+-- per run, conditional on the value it read, so it is resumable and running it
+-- twice changes nothing. It also empties the retired 0012 table's copies, after
+-- re-running 0016's conflict-safe copy so no token is lost. It can do that only
+-- while the plain-text read window is open (wrangler.jsonc
+-- PROVIDER_TOKEN_PLAINTEXT_READS_UNTIL); once it closes, no code reads that
+-- column at all (test/token-encryption.test.ts holds it).
+--
+-- Why the backfill is not SQL here: AES-GCM needs the key, and the key is a
+-- Worker secret no migration can see. That is the point of it.
+--
+-- ⚠️ THE OLD WORKER KEEPS WORKING IN THE DEPLOY WINDOW. The deploy applies this
+-- file BEFORE the new Worker is live, and the old Worker names its columns, so
+-- it neither sees nor breaks the new ones. A token it stores in that window is
+-- plain text in `refresh_token`, which the backfill then encrypts.
+--
+-- REPLAY: `ALTER TABLE … ADD COLUMN` is the one ledger-protected form
+-- test/migrations-replay.test.ts allows, so this file is NOT in
+-- REPLAY_SAFE_MIGRATIONS (test/harness.ts); D1's ledger applies it once.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE provider_tokens ADD COLUMN token_ct TEXT;
+ALTER TABLE provider_tokens ADD COLUMN token_key_id TEXT;

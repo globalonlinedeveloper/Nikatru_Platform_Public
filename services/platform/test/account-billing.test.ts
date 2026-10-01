@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
 import account from '../src/routes/account';
 import type { AppEnv } from '../src/types';
@@ -19,7 +19,7 @@ const APP_ORIGIN = 'https://api.test';
 const LIVE_KEY = `pdl_live_apikey_${'x'.repeat(24)}`;
 const USER = 'user-billing';
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 let paddleCalls: Array<{ url: string; body: string }> = [];
 let paddleStatus = 200;

@@ -46,11 +46,15 @@ import { APP_KV, APP_TARGETS } from '../generated/app-targets';
  * test/backup-export.test.ts counts the whole invocation on the databases
  * themselves and fails if pool + batch ever exceeds the recorded ceiling.
  *
- * ESTIMATED, not measured: one catalogue query plus one page per table per
- * database, from the table counts of their migrations plus `d1_migrations`,
- * and assuming every table still fits one D1_PAGE_ROWS page — 21 for
- * platform_db and 6 for subscriptiontracker_db, 27 of 42. The MEASURED number
- * is the `d1-budget` heartbeat row, written every night.
+ * ⏱ 2026-10-01 · THE SPEND NO LONGER GROWS WITH THE TABLE COUNT. It was one
+ * query per table and reached 37 of 42 (ops-watch run 36810231743: platform_db
+ * 29, subscriptiontracker_db 8). A database now costs four statements — the
+ * catalogue, one column read, one size read and one read of every table at
+ * once (dump.ts) — up to TABLES_PER_READ tables, plus a round only when one
+ * table's volume passes a page. MEASURED that day against both production
+ * databases through dumpD1Database itself: 4 + 4 = 8 of 42 (19%), 30 and 8
+ * tables, 1,775 and 45 rows, nothing truncated. The nightly number is the
+ * `d1-budget` heartbeat row.
  */
 export const MAX_D1_QUERIES_PER_RUN = 42;
 
@@ -61,8 +65,9 @@ export const MAX_D1_QUERIES_PER_RUN = 42;
  * @ceiling none — an ALARM LINE inside the pool above, not a platform resource.
  *   Its job is to go red while the export is still COMPLETE, so the pool is
  *   raised, or the REST export built (dump.ts header), before a night truncates.
- *   27 of 42 is 64%, under it; the first growth that crosses it is a warning
- *   with room left, not a partial backup.
+ *   8 of 42 is 19%, under it; what can now cross it is row VOLUME (a table past
+ *   a page), not a migration adding a table, and that is a warning with room
+ *   left, not a partial backup.
  */
 export const D1_BUDGET_WARN_PERCENT = 80;
 
@@ -222,9 +227,13 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
       out.push({
         target: `d1:${name}`,
         ok: !dump.truncated,
-        detail: dump.truncated
-          ? `TRUNCATED at ${dump.queries} queries — ${dump.rows} rows of ${dump.tables.length} tables written, the export is PARTIAL`
-          : `${dump.rows} rows, ${dump.tables.length} tables, ${blob.bytes}B gz`,
+        detail:
+          (dump.truncated
+            ? `TRUNCATED at ${dump.queries} queries — ${dump.rows} rows of ${dump.tables.length} tables written, the export is PARTIAL`
+            : `${dump.rows} rows, ${dump.tables.length} tables, ${blob.bytes}B gz`) +
+          // ⏱ 2026-09-30 · plain-text credential values the dump kept out of R2
+          // (dump.ts CREDENTIAL_COLUMNS) — rows the token backfill has not sealed yet.
+          (dump.withheld > 0 ? `, ${dump.withheld} plain-text credential(s) withheld` : ''),
       });
     } catch (err) {
       out.push({ target: `d1:${name}`, ok: false, detail: `export failed: ${String(err)}` });

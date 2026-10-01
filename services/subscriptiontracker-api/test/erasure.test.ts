@@ -27,7 +27,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import worker from '../src/index';
 import account from '../src/routes/account';
 import { supabaseAuth } from '../src/middleware/auth';
@@ -46,7 +46,7 @@ const HS256_SECRET = new TextEncoder().encode('legacy-shared-secret-for-tests-on
 const SUBJECT = 'erasure-subject-9f3a';
 const BYSTANDER = 'bystander-7c21';
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 /** Every fetch the Worker made that was NOT the JWKS document. This route must
  *  make none: the identity record is the platform Worker's to delete, and a
@@ -73,7 +73,7 @@ afterAll(() => vi.unstubAllGlobals());
 
 async function token(
   claims: Record<string, unknown>,
-  { issuer = ISSUER, audience = 'authenticated', alg = 'ES256', key = null as KeyLike | null } = {},
+  { issuer = ISSUER, audience = 'authenticated', alg = 'ES256', key = null as CryptoKey | null } = {},
 ) {
   let t = new SignJWT(claims)
     .setProtectedHeader({ alg, kid: alg === 'ES256' ? 'test-key-1' : undefined })

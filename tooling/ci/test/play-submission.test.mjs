@@ -1560,7 +1560,7 @@ describe('submit-play --sync-listing — the repo listing tree becomes the Play 
       apiOpts: { images: { phoneScreenshots: [{ id: 'x', sha256: 'old-a', url: 'https://evil.example/x.png' }] } },
     });
     assert.equal(code, 1, out);
-    assert.match(out, /not Play's image CDN \(https:\/\/\*\.googleusercontent\.com\), so it was not fetched/);
+    assert.match(out, /not Play's image CDN \(https:\/\/lh3\.googleusercontent\.com\), so it was not fetched/);
     assert.deepEqual(calls.filter((c) => WRITES.test(c)), [], calls.join('\n'));
   });
 

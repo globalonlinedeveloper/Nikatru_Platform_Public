@@ -232,7 +232,7 @@ const startStub = (opts = {}) =>
           if (opts.chunkUploadStatus) return send(opts.chunkUploadStatus, { detail: 'nope' });
           if (opts.chunkUploadRaw !== undefined) return send(200, null, opts.chunkUploadRaw);
           return send(200, {
-            url: `${origin}/chunks/`,
+            url: opts.chunkUrl ?? `${origin}/chunks/`,
             chunkSize: opts.chunkSize ?? 8 * 1024 * 1024,
             chunksPerRequest: opts.chunksPerRequest ?? 1,
             hashAlgorithm: opts.hashAlgorithm ?? 'sha1',
@@ -346,6 +346,31 @@ describe('upload-web-sourcemaps: the bundle is refused before the network', () =
 });
 
 describe('upload-web-sourcemaps: the protocol', () => {
+  // ⏱ 2026-10-01 (review 2 of the CodeQL stack, finding 6): the chunk-upload
+  // answer's `url` was followed with the token attached, to any host it named.
+  // The second stub is a DIFFERENT origin (another port) that records what reaches
+  // it; the relative control shows a same-origin path is still followed.
+  test('🔴 a chunk-upload url on ANOTHER origin is refused, and the token never reaches it', async () => {
+    await withStub({}, async (other) => {
+      await withStub({ chunkUrl: `${other.origin}/chunks/` }, async (stub) => {
+        const r = await run(ok(buildDir()), { SENTRY_URL: stub.origin, ...TOKEN });
+        assert.equal(r.code, 1, r.all);
+        assert.match(r.all, /refusing to send SENTRY_AUTH_TOKEN to http:\/\/127\.0\.0\.1:\d+: the server named a URL off the pinned GlitchTip origin/);
+        assert.equal(other.seen.requests.length, 0, 'a request reached the host the response named');
+        assert.equal(stub.seen.uploads.length, 0);
+        assert.doesNotMatch(r.all, /stub-token/);
+      });
+    });
+  });
+
+  test('a RELATIVE chunk-upload url resolves on the pinned origin and is followed (the control)', async () => {
+    await withStub({ chunkUrl: '/chunks/' }, async (stub) => {
+      const r = await run(ok(buildDir()), { SENTRY_URL: stub.origin, ...TOKEN });
+      assert.equal(r.code, 0, r.all);
+      assert.equal(stub.seen.uploads.length, 1);
+    });
+  });
+
   test('an instance that does not advertise release_files is refused', async () => {
     await withStub({ accept: ['artifact_bundle'] }, async (stub) => {
       const r = await run(ok(buildDir()), { SENTRY_URL: stub.origin, ...TOKEN });

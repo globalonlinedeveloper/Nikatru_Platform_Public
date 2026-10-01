@@ -775,6 +775,299 @@ if (cspBundlesWithInline > 0 && cspHashesChecked === 0) {
   process.exit(2);
 }
 
+// ── THE nikatru.com STATIC-SITE CSP, EVERY LINE OF IT, AND EVERY PER-PATH OVERRIDE
+//
+// ⏱ 2026-09-30 · rv2-security-005 (O-EXT-CONNECT-CSP-HAS-NO-READER). The limb above
+// reads flutter-web bundles only, so the static site that shares the nikatru.com
+// origin with every app's session had NO reader of its policy. The discovery
+// generator (tooling/sites/generate-discovery.mjs) rewrites the script-src of the
+// FIRST CSP line of sites/nikatru/_headers at deploy and touches nothing else, so:
+//   · the /ext/connect block — the signed-in page that hands an extension its link
+//     code — detaches the global policy (`! Content-Security-Policy`) and restates
+//     it. Deleting the restated line while keeping the detach served that page with
+//     NO policy at all, and CI stayed green;
+//   · the non-script floor (default-src, object-src, base-uri, frame-ancestors,
+//     form-action) was held by nothing on either line.
+//
+// WHAT IS ASSERTED, over the static sites tooling/ci/site-csp.json puts IN SCOPE
+// (the nikatru.com origin; every static deploy root must be declared in scope or
+// out of it, with a reason, both ways — so a new site cannot arrive unassessed):
+//   1. the `/*` rule carries a Content-Security-Policy, and it meets the floor;
+//   2. every OTHER rule that sets or detaches (`! Content-Security-Policy`) a CSP
+//      is an OVERRIDE, and an override must be DECLARED with a reason. Undeclared
+//      ⇒ finding;
+//   3. a declared override whose block no longer sets a CSP ⇒ finding (the
+//      override silently lost its policy — the detach-without-restate case);
+//   4. each override's CSP meets the same floor, and its script-src admits no
+//      source the global line's script-src does not (hashes aside): an override may
+//      widen connect-src, never script execution;
+//   5. RESOLVED THE WAY CLOUDFLARE DOES IT: at every override path and at the entry
+//      points, the policies that SURVIVE the detaches (a value from rule R survives
+//      unless another matching rule detaches the header) must be non-empty.
+//   A declared override or scoped site the tree no longer has ⇒ COVERAGE LOST: the
+//   declaration promises a check this run cannot make.
+//
+// ⚠️ OUT OF SCOPE BY DECLARATION, NOT BY OMISSION: sites/rajasekarselvam is its own
+// origin and carries script-src 'unsafe-inline'; site-csp.json says so and why.
+const SITE_CSP_DECLARATION = 'tooling/ci/site-csp.json';
+const SITE_CSP_MIN_WHY = 20;
+const SITE_CSP_ANCHOR = 'sites/nikatru';
+/** The floor every in-scope CSP line must hold — read off the global line of
+ *  sites/nikatru/_headers as it stood on 2026-09-30, which holds all of it. */
+const SITE_CSP_FLOOR = [
+  { dir: 'default-src', ok: (v) => v.length > 0 && v.every((s) => s === "'self'" || s === "'none'"), want: "default-src 'self' (or 'none'), and nothing broader" },
+  { dir: 'object-src', ok: (v) => v.length === 1 && v[0] === "'none'", want: "object-src 'none'" },
+  { dir: 'base-uri', ok: (v) => v.length > 0 && v.every((s) => s === "'self'" || s === "'none'"), want: "base-uri 'self' (or 'none')" },
+  { dir: 'frame-ancestors', ok: (v) => v.length === 1 && v[0] === "'none'", want: "frame-ancestors 'none'" },
+  { dir: 'form-action', ok: (v) => v.length > 0 && v.every((s) => s === "'self'" || s === "'none'"), want: "form-action 'self' (or 'none')" },
+];
+/** script-src sources no in-scope line may carry: each re-opens what the hash list closes. */
+const SCRIPT_SRC_FORBIDDEN = /^('unsafe-inline'|'unsafe-eval'|'unsafe-hashes'|'wasm-unsafe-eval'|\*|[a-z][a-z0-9+.-]*:)$/i;
+const HASH_SOURCE = /^'(sha256|sha384|sha512)-[A-Za-z0-9+/=_-]+'$/;
+
+/** CSP value → Map(directive → sources[]). The FIRST occurrence of a directive
+ *  wins, as the CSP spec says a repeated directive is ignored. */
+function parseCsp(value) {
+  const out = new Map();
+  for (const part of value.split(';')) {
+    const toks = part.trim().split(/\s+/).filter(Boolean);
+    if (toks.length === 0) continue;
+    const name = toks[0].toLowerCase();
+    if (!out.has(name)) out.set(name, toks.slice(1));
+  }
+  return out;
+}
+
+/**
+ * A Cloudflare `_headers` file as an ORDERED list of blocks, keeping what
+ * parseHeaders() drops: a header set twice, and the `! Name` DETACH lines
+ * (developers.cloudflare.com/pages/configuration/headers/ — "Detach a header").
+ */
+function parseHeaderBlocks(text) {
+  const blocks = [];
+  let cur = null;
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/\r$/, '');
+    if (line.trim() === '' || line.trim().startsWith('#')) continue;
+    if (/^\S/.test(line)) {
+      cur = { pattern: line.trim(), line: i + 1, sets: [], detaches: [] };
+      blocks.push(cur);
+      continue;
+    }
+    if (cur === null) continue;
+    const t = line.trim();
+    const d = t.match(/^!\s*([A-Za-z0-9-]+)\s*$/);
+    if (d) {
+      cur.detaches.push({ name: d[1].toLowerCase(), line: i + 1 });
+      continue;
+    }
+    const m = t.match(/^([A-Za-z0-9-]+)\s*:\s*(.*)$/);
+    if (m) cur.sets.push({ name: m[1].toLowerCase(), value: m[2].trim(), line: i + 1 });
+  }
+  return blocks;
+}
+
+/** The CSP values that SURVIVE at `path`: every matching block's value, minus the
+ *  values of any block that ANOTHER matching block detaches the header from. */
+function effectiveCsps(blocks, path) {
+  const matching = blocks.filter((b) => compilePattern(b.pattern).test(path));
+  const out = [];
+  for (const b of matching) {
+    const detachedByOther = matching.some((o) => o !== b && o.detaches.some((d) => d.name === 'content-security-policy'));
+    if (detachedByOther) continue;
+    for (const s of b.sets) if (s.name === 'content-security-policy') out.push({ block: b, value: s.value });
+  }
+  return out;
+}
+
+/** The floor findings for one CSP line; `globalScript` is the global line's
+ *  script-src (null when grading the global line itself). */
+function gradeSiteCsp(where, value, globalScript) {
+  const found = [];
+  const csp = parseCsp(value);
+  for (const f of SITE_CSP_FLOOR) {
+    const v = csp.get(f.dir);
+    if (!v || !f.ok(v)) found.push(`${where} does not hold ${f.want} (it has ${v ? `"${f.dir} ${v.join(' ')}"` : 'no ' + f.dir}).`);
+  }
+  const script = csp.get('script-src') ?? csp.get('default-src') ?? [];
+  const bad = script.filter((s) => SCRIPT_SRC_FORBIDDEN.test(s));
+  if (bad.length) {
+    found.push(
+      `${where} script-src admits ${bad.join(', ')}. On the one origin every app's session lives on, that lets an ` +
+        'injected script execute; the site runs on per-block hashes and must keep doing so.',
+    );
+  }
+  if (globalScript) {
+    const allowed = new Set(globalScript.filter((s) => !HASH_SOURCE.test(s)));
+    const wider = script.filter((s) => !HASH_SOURCE.test(s) && !SCRIPT_SRC_FORBIDDEN.test(s) && !allowed.has(s));
+    if (wider.length) {
+      found.push(
+        `${where} script-src admits ${wider.join(', ')}, which the global /* policy does not. An override exists ` +
+          'to widen what ONE page may connect to, never where script may come from.',
+      );
+    }
+  }
+  return found;
+}
+
+let siteCspLines = 0;
+let siteCspSites = 0;
+let siteCspOverrides = 0;
+{
+  const staticSites = bundles.filter((b) => b.kind === 'static-site').map((b) => b.dir);
+  const declAbs = join(ROOT, ...SITE_CSP_DECLARATION.split('/'));
+  if (staticSites.length > 0 && !existsSync(declAbs)) {
+    coverageLost([
+      `${SITE_CSP_DECLARATION} is absent, and ${staticSites.length} static deploy root(s) were scanned (${staticSites.join(', ')}).`,
+      'That file says which static sites are on the nikatru.com origin and which per-path CSP overrides are',
+      'intended. Without it the site CSP limb has no subject, and would print ok about a policy it never read.',
+    ]);
+  }
+  if (existsSync(declAbs)) {
+    let decl;
+    try {
+      decl = JSON.parse(readFileSync(declAbs, 'utf8'));
+    } catch (e) {
+      coverageLost([`${SITE_CSP_DECLARATION} does not parse as JSON: ${e.message}`]);
+    }
+    const inScope = Array.isArray(decl.inScope) ? decl.inScope : [];
+    const outOfScope = Array.isArray(decl.outOfScope) ? decl.outOfScope : [];
+    const overrides = Array.isArray(decl.overrides) ? decl.overrides : [];
+    for (const e of [...inScope, ...outOfScope, ...overrides]) {
+      if (typeof e?.site !== 'string' || typeof e?.why !== 'string' || e.why.trim().length < SITE_CSP_MIN_WHY) {
+        problems.push(
+          `${SITE_CSP_DECLARATION}: entry ${JSON.stringify(e)} needs a "site" and a "why" of at least ${SITE_CSP_MIN_WHY} ` +
+            'characters. A declaration without its reason is an allow-list entry nobody can review.',
+        );
+      }
+    }
+    const declaredSites = new Set([...inScope, ...outOfScope].map((e) => e?.site));
+    // BOTH WAYS: a scanned root nobody assessed is a finding; a declared root the
+    // scan never found is a promise this run cannot keep.
+    for (const s of staticSites) {
+      if (!declaredSites.has(s)) {
+        problems.push(
+          `${s} is a static deploy root that ${SITE_CSP_DECLARATION} neither puts in scope nor out of scope. ` +
+            'Declare whether it is served on the nikatru.com origin (its CSP is then graded here) or why it is not.',
+        );
+      }
+    }
+    const staleSites = [...declaredSites].filter((s) => typeof s === 'string' && !staticSites.includes(s));
+    if (staleSites.length) {
+      coverageLost([
+        `${SITE_CSP_DECLARATION} declares ${staleSites.join(', ')}, and the scan found no such static deploy root.`,
+        'The declaration is stale: it promises a site CSP check this run did not make.',
+      ]);
+    }
+    const inScopeSites = new Set(inScope.map((e) => e?.site));
+    // THE ANCHOR, the mirror of BRICK_WEB above: the both-ways check lets the one
+    // site this limb exists for be moved to outOfScope with a plausible reason, and
+    // every line below would then grade nothing while printing ok.
+    if (staticSites.includes(SITE_CSP_ANCHOR) && !inScopeSites.has(SITE_CSP_ANCHOR)) {
+      coverageLost([
+        `${SITE_CSP_ANCHOR} is scanned and ${SITE_CSP_DECLARATION} does not put it in scope.`,
+        'It is the nikatru.com deploy root, served on the origin beside every app\'s session (ADR 075); it is the',
+        'subject this limb exists for, and declaring it out of scope retires the limb silently.',
+      ]);
+    }
+    for (const o of overrides) {
+      if (typeof o?.path !== 'string' || !inScopeSites.has(o.site)) {
+        problems.push(
+          `${SITE_CSP_DECLARATION}: override ${JSON.stringify(o)} needs a "path" and a "site" that is declared in scope.`,
+        );
+      }
+    }
+
+    for (const site of staticSites.filter((s) => inScopeSites.has(s))) {
+      const rel = `${site}/_headers`;
+      const abs = join(ROOT, ...rel.split('/'));
+      if (!existsSync(abs)) continue; // the cache limb already reported the missing file
+      const blocks = parseHeaderBlocks(readFileSync(abs, 'utf8'));
+      siteCspSites++;
+      const setsCsp = (b) => b.sets.some((s) => s.name === 'content-security-policy');
+      const detachesCsp = (b) => b.detaches.some((d) => d.name === 'content-security-policy');
+
+      // 1. the global line
+      const globals = blocks.filter((b) => b.pattern === '/*' && setsCsp(b));
+      let globalScript = null;
+      if (globals.length === 0) {
+        problems.push(
+          `${rel} has no Content-Security-Policy on its /* rule. That is the policy every page of the nikatru.com ` +
+            'site runs under, beside every app\'s session on the same origin.',
+        );
+      }
+      for (const g of globals) {
+        for (const s of g.sets.filter((x) => x.name === 'content-security-policy')) {
+          siteCspLines++;
+          problems.push(...gradeSiteCsp(`${rel}:${s.line} (the /* policy)`, s.value, null));
+          globalScript ??= parseCsp(s.value).get('script-src') ?? parseCsp(s.value).get('default-src') ?? [];
+        }
+      }
+      for (const g of blocks.filter((b) => b.pattern === '/*' && detachesCsp(b))) {
+        problems.push(`${rel}:${g.line} the /* rule detaches Content-Security-Policy, which leaves every page of the site with none.`);
+      }
+
+      // 2. every other block that sets or detaches a CSP is an override
+      const declared = overrides.filter((o) => o?.site === site);
+      const declaredPaths = new Set(declared.map((o) => o.path));
+      for (const b of blocks.filter((x) => x.pattern !== '/*' && (setsCsp(x) || detachesCsp(x)))) {
+        if (!declaredPaths.has(b.pattern)) {
+          problems.push(
+            `${rel}:${b.line} "${b.pattern}" ${detachesCsp(b) ? 'detaches' : 'sets'} a Content-Security-Policy and is not ` +
+              `declared in ${SITE_CSP_DECLARATION}. A per-path policy on the origin every app's session lives on must be ` +
+              'declared with its reason — the discovery generator regenerates only the FIRST CSP line, so nothing ' +
+              'else keeps an override honest.',
+          );
+        }
+      }
+      // 3 + 4. each declared override: present, still carrying a CSP, and floored
+      const stale = [];
+      for (const o of declared) {
+        const own = blocks.filter((b) => b.pattern === o.path);
+        if (own.length === 0) {
+          stale.push(o.path);
+          continue;
+        }
+        siteCspOverrides++;
+        const lines = own.flatMap((b) => b.sets.filter((s) => s.name === 'content-security-policy'));
+        if (lines.length === 0) {
+          problems.push(
+            `${rel} "${o.path}" is a declared CSP override whose block no longer sets a Content-Security-Policy` +
+              (own.some(detachesCsp) ? ' while it still DETACHES the global one — that page is served with NO policy' : '') +
+              '. Restate the whole policy in the block, or remove the override and its declaration together.',
+          );
+        }
+        for (const s of lines) {
+          siteCspLines++;
+          problems.push(...gradeSiteCsp(`${rel}:${s.line} (the "${o.path}" override)`, s.value, globalScript));
+        }
+      }
+      if (stale.length) {
+        coverageLost([
+          `${SITE_CSP_DECLARATION} declares CSP override(s) ${stale.join(', ')} on ${site}, and ${rel} has no such block.`,
+          'The declaration is stale: it promises a check on an override this run could not find. Remove it with the block.',
+        ]);
+      }
+      // 5. resolved: what survives the detaches at each override and entry point
+      const EMPTY_PROBES = [...ENTRY_POINTS['static-site'], ...declared.map((o) => o.path).filter((p) => !/[*:]/.test(p))];
+      for (const p of EMPTY_PROBES) {
+        if (effectiveCsps(blocks, p).length === 0) {
+          problems.push(
+            `${rel}: a request for "${p}" is served with NO Content-Security-Policy once Cloudflare applies the ` +
+              '`! Content-Security-Policy` detaches (a value survives unless another matching rule detaches it).',
+          );
+        }
+      }
+    }
+    // NO "zero lines graded" floor, deliberately: an in-scope site either grades its
+    // /* line or reports that line missing as a FINDING, so such a floor could never
+    // fire (measured: it pre-empted that finding with exit 2 and was otherwise
+    // unreachable). The emptiable domain is the SET of in-scope sites, and the
+    // SITE_CSP_ANCHOR check above is its floor.
+  }
+}
+
 const FUNCTION_SECURITY_HEADERS = [
   'x-content-type-options',
   'x-frame-options',
@@ -868,6 +1161,10 @@ console.log(
 console.log(
   `    Pages Functions — ${functionFilesChecked} file(s) building a Response, each asserted to have ONE ` +
     `construction site carrying ${FUNCTION_SECURITY_HEADERS.length} security header(s); _headers reaches none of them`,
+);
+console.log(
+  `    site CSP (nikatru.com origin, ${SITE_CSP_DECLARATION}) — ${siteCspSites} in-scope site(s), ${siteCspLines} ` +
+    `policy line(s) floored, ${siteCspOverrides} declared per-path override(s) resolved through the \`!\` detach`,
 );
 console.log(`    scanned: ${bundles.map((b) => b.dir).join(', ')}`);
 console.log(
