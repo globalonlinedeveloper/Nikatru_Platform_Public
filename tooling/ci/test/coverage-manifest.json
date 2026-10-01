@@ -695,6 +695,12 @@
   "policy-claims.test.mjs":
     62,
 
+  "port-switch.test.mjs":
+    21,
+
+  "ports.test.mjs":
+    40,
+
   "post-deploy-smoke.test.mjs":
     157,
 
