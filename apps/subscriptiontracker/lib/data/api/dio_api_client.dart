@@ -4,6 +4,7 @@ import 'package:nikatru_core/nikatru_core.dart'
     show Entitlements, Money, newOutboxId;
 
 import '../models/budget_info.dart';
+import '../models/category.dart';
 import '../models/payment_record.dart';
 import '../models/subscription.dart';
 import 'api_client.dart';
@@ -13,7 +14,7 @@ import 'api_client.dart';
 /// ApiException); this class maps Subly's endpoints to its domain models, and
 /// routes every parse through `_rest.decode` so a malformed 2xx body also
 /// surfaces as an ApiException (single failure contract).
-class DioApiClient implements ApiClient, IdempotentCreates {
+class DioApiClient implements ApiClient, IdempotentCreates, CategoriesApi {
   DioApiClient({
     required String baseUrl,
     required Future<String?> Function() tokenProvider,
@@ -140,6 +141,49 @@ class DioApiClient implements ApiClient, IdempotentCreates {
           )
           .toList();
     });
+  }
+
+  @override
+  Future<List<SubscriptionCategory>> getCategories() async {
+    final Object? data = await _rest.get('/categories');
+    return _rest.decode(
+      data,
+      (Object? b) => (b! as List<dynamic>)
+          .map(
+            (dynamic j) =>
+                SubscriptionCategory.fromJson(j as Map<String, dynamic>),
+          )
+          .toList(),
+    );
+  }
+
+  @override
+  Future<SubscriptionCategory> createCategory(String name) async {
+    final Object? data = await _rest.post(
+      '/categories',
+      body: <String, dynamic>{'name': name},
+    );
+    return _rest.decode(
+      data,
+      (Object? b) => SubscriptionCategory.fromJson(b! as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Future<SubscriptionCategory> renameCategory(String id, String name) async {
+    final Object? data = await _rest.patch(
+      '/categories/$id',
+      body: <String, dynamic>{'name': name},
+    );
+    return _rest.decode(
+      data,
+      (Object? b) => SubscriptionCategory.fromJson(b! as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Future<void> deleteCategory(String id) async {
+    await _rest.delete('/categories/$id');
   }
 
   @override

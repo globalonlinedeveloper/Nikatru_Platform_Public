@@ -1,19 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import 'package:nikatru_core/nikatru_core.dart' show MoneyParser;
+import 'package:nikatru_core/nikatru_core.dart'
+    show MoneyParser, ServiceCatalogue, ServiceEntry;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/e2e_keys.dart';
 import '../../core/format/category_label.dart';
 import '../../data/api/api_client.dart' show ApiException;
 import '../../data/models/budget_info.dart';
+import '../../data/models/category.dart';
 import '../../data/models/subscription.dart';
 import '../../data/seed/demo_data.dart';
 import '../../l10n/app_localizations.dart';
-import '../../state/providers.dart' show networkUnreachableProvider;
+import '../../state/providers.dart'
+    show
+        categoriesProvider,
+        networkUnreachableProvider,
+        serviceCatalogueProvider;
+import '../../state/settings_controller.dart' show deviceRegionProvider;
 import '../../state/subscriptions_controller.dart';
+import '../detail/reminder_rows.dart' show kNoticeChoices;
+import 'service_prefill.dart';
 import '../shared/priming.dart';
 
 // ⏱ 2026-09-29 · trains ST-T3b + ST-D6. TWO THINGS OF RECORD, ONE SHEET.
@@ -66,6 +76,18 @@ final List<String> _categories = <String>[
   _uncategorised,
 ];
 
+/// The lead days the sheet's "Remind me" chips offer (AD-07) — the detail
+/// screen's chooser offers the same reminders through `chooseLeadDays`.
+const List<int> _leadChoices = <int>[1, 3, 7, 14];
+
+/// How many POPULAR tiles the pick step opens with — the count the hand-kept
+/// `DemoData.popular` list had, so the grid keeps its measured shape.
+const int _popularCount = 8;
+
+/// How many search results the pick step lists at once. The search narrows
+/// as the user types; a 200-row list on a phone sheet is a scroll, not a pick.
+const int _pickLimit = 12;
+
 // The category VALUES are IDS, not copy: the row stores the id and every
 // match is on it. Only the PAINT is translated, through `categoryLabel`
 // (ST-X8, audit C6) — the dropdown shows the name and saves the id. The field
@@ -77,13 +99,17 @@ final List<String> _categories = <String>[
 /// The presentation — root navigator, scroll-controlled, M3's 640 width cap —
 /// is the chassis's [showAppFormSheet]; `width_add_sheet_test.dart` measures the
 /// cap at 768 and 1280.
+///
+/// ST-T9 (AD-03): an ADD opens on the pick step — a search over the bundled
+/// catalogue — and a pick prefills the form; an EDIT opens on the form.
 Future<void> showAddSubscriptionSheet(
   BuildContext context, {
   Subscription? initial,
 }) {
   return showAppFormSheet<void>(
     context,
-    builder: (_) => SubscriptionFormSheet(initial: initial),
+    builder: (_) =>
+        SubscriptionFormSheet(initial: initial, pickFirst: initial == null),
   );
 }
 
@@ -109,7 +135,9 @@ extension _CyclePresetX on _CyclePreset {
 /// [showAddSubscriptionSheet].
 ///
 /// ## Its states
-///  * **empty** — an add: nothing typed, the POPULAR shortcuts offered, Add
+///  * **picking** — an add opened through [showAddSubscriptionSheet]
+///    (ST-T9): a search over the catalogue, the POPULAR tiles, "Add by hand".
+///  * **empty** — an add by hand: nothing typed, Add
 ///    disabled until the form describes a real row.
 ///  * **populated** — an edit: every field prefilled from the row.
 ///  * **loading** — a save in flight: fields and shortcuts disabled, the
@@ -123,11 +151,16 @@ class SubscriptionFormSheet extends ConsumerStatefulWidget {
   const SubscriptionFormSheet({
     super.key,
     this.initial,
+    this.pickFirst = false,
     @visibleForTesting this.now = DateTime.now,
   });
 
   /// The row being edited, or null for a new one.
   final Subscription? initial;
+
+  /// Whether an add opens on the catalogue pick step (ST-T9, AD-03).
+  /// [showAddSubscriptionSheet] sets it; a test of the bare form leaves it off.
+  final bool pickFirst;
 
   /// The clock "today" is read from — the default renewal date, the picker's
   /// range and the past-start note. A parameter only so a golden of the form
@@ -175,6 +208,10 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
   /// added here fell into one bucket.
   String _category = _uncategorised;
 
+  /// The picked category's ID (ST-T9, AD-05), sent as `category_id` beside
+  /// the name — null for the uncategorised bucket or a legacy free-text name.
+  String? _categoryId;
+
   /// The row's own currency (ST-E2). Defaults to Settings for a new row, and
   /// to the row's for an edit.
   late String _currency;
@@ -184,6 +221,27 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
   bool _trial = false;
 
   bool _saving = false;
+
+  /// ST-T9 (AD-03): the pick step is showing instead of the form.
+  late bool _picking = widget.initial == null && widget.pickFirst;
+
+  final TextEditingController _search = TextEditingController();
+
+  /// The catalogue service the form was prefilled from, sent as `service_id`.
+  String? _serviceId;
+
+  /// "Paid with" (AD-06): one of [Subscription.kRails], or null.
+  String? _rail;
+  final TextEditingController _railHolder = TextEditingController();
+
+  /// The row's own reminder lead days (AD-07); empty = the account default.
+  final Set<int> _leadDays = <int>{};
+
+  /// Days of notice the plan needs (AD-07), or null for none.
+  int? _noticeDays;
+
+  /// "Then {price}" (AD-08): what the trial turns into.
+  final TextEditingController _thenPrice = TextEditingController();
 
   /// What the last failed save said, shown in the danger banner until the
   /// next attempt (ST-D6: on the sheet, never under its barrier).
@@ -220,10 +278,21 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
       _trial = s.status == SubscriptionStatus.trialing && s.trialEndsOn != null;
       _renewal = _dateOnly(_trial ? s.trialEndsOn! : s.nextRenewal);
       _renewalChosen = true;
-      _category = _categories.contains(s.category)
-          ? s.category
-          : _uncategorised;
+      // ST-T9: the user's own categories are offered too, so an edit keeps a
+      // row filed under one rather than dropping it to "Other".
+      _category = s.category;
+      _categoryId = s.categoryId;
+      _serviceId = s.serviceId;
+      _rail = s.rail;
+      _railHolder.text = s.railHolder ?? '';
+      _leadDays.addAll(s.reminderDays ?? const <int>[]);
+      _noticeDays = s.noticeDays;
+      final Money? then = s.priceAfterTrial;
+      if (then != null) _thenPrice.text = _plainAmount(then);
     }
+    _search.addListener(() {
+      if (mounted) setState(() {});
+    });
     for (final (TextEditingController c, String key)
         in <(TextEditingController, String)>[
           (_name, 'name'),
@@ -249,6 +318,9 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     _notes.dispose();
     _website.dispose();
     _every.dispose();
+    _search.dispose();
+    _railHolder.dispose();
+    _thenPrice.dispose();
     super.dispose();
   }
 
@@ -371,6 +443,7 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
       id: was?.id ?? '',
       name: name,
       category: _category,
+      categoryId: _categoryId,
       price: price,
       cycle: cadence,
       nextRenewal: next,
@@ -392,8 +465,78 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
       deletedAt: was?.deletedAt,
       notes: _notes.text.trim(),
       cancelUrl: website.isEmpty ? null : website,
+      // An edit that leaves the chips alone keeps the row's own value (its
+      // null "account default" included) rather than rewriting it.
+      reminderDays: _leadDays.isEmpty
+          ? null
+          : List<int>.unmodifiable(
+              _leadDays.toList()..sort((int a, int b) => b - a),
+            ),
+      noticeDays: _noticeDays,
+      noticeDaysSupported: was?.noticeDaysSupported ?? false,
+      serviceId: _serviceId,
+      rail: _rail,
+      railHolder: _rail == null || _railHolder.text.trim().isEmpty
+          ? null
+          : _railHolder.text.trim(),
+      priceAfterTrial: _trial && _afterTrialSupported
+          ? _parsedThenPrice()
+          : was?.priceAfterTrial,
+      priceAfterTrialSupported:
+          was?.priceAfterTrialSupported ?? _afterTrialSupported,
     );
   }
+
+  /// Whether the API carries train T11's `price_after_trial_minor` — known
+  /// from the row being edited, or from any row the list already holds. A
+  /// server without the column would drop the value, so the field waits.
+  bool get _afterTrialSupported {
+    final Subscription? was = widget.initial;
+    if (was != null) return was.priceAfterTrialSupported;
+    final List<Subscription> rows =
+        ref.read(subscriptionsControllerProvider).value ??
+        const <Subscription>[];
+    return rows.any((Subscription r) => r.priceAfterTrialSupported);
+  }
+
+  Money? _parsedThenPrice() {
+    final Money? m = MoneyParser.parse(
+      _thenPrice.text,
+      currencyCode: _currency,
+      localeName: AppLocalizations.of(context).localeName,
+    );
+    return m == null || m.minorUnits <= 0 ? null : m;
+  }
+
+  /// ST-T9 (AD-03): a pick fills what the catalogue KNOWS — name, category,
+  /// cycle, cancel page, notice and `service_id` — and the price only when the
+  /// pack carries one in the row's currency. Never a converted guess: no rate
+  /// table exists, and a wrong price is worse than a blank one.
+  void _pick(ServiceEntry e) {
+    setState(() {
+      _picking = false;
+      _serviceId = e.id;
+      _name.text = e.name;
+      final String? mapped = serviceCategoryName(e);
+      _category = mapped != null && _categories.contains(mapped)
+          ? mapped
+          : _uncategorised;
+      _categoryId = mapped == null ? null : serviceCategoryId(e);
+      _preset = _CyclePresetX.of(serviceCadence(e));
+      final Cadence c = _preset.cadence!;
+      if (!_renewalChosen) _renewal = _oneCycleFrom(widget.now(), c);
+      _website.text = e.cancelUrl.toString();
+      _noticeDays = e.noticeDays;
+      final Money? price = e.priceFor(_currency);
+      _price.text = price == null ? '' : _plainAmount(price);
+      _priceEmptied = false;
+    });
+  }
+
+  /// The region the pick step puts first: India for a rupee user (the gov
+  /// channel defaults to INR), else the device's.
+  String? get _region =>
+      _currency == 'INR' ? 'IN' : ref.read(deviceRegionProvider);
 
   static bool _sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
@@ -464,6 +607,8 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
       ('notes', 'notes'),
       ('cancel_url', 'cancel_url'),
       ('cycle', 'cycle_every'),
+      ('rail_holder', 'rail_holder'),
+      ('price_after_trial', 'price_after_trial_minor'),
     ]) {
       if (detail.contains(prefix)) return field;
     }
@@ -474,6 +619,7 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final bool offline = ref.watch(networkUnreachableProvider);
+    if (_picking) return _pickStep(l10n, offline: offline);
     final VoidCallback? submit = _canSave(l10n.localeName) ? _save : null;
     return AppFormSheet(
       title: _editing ? l10n.editSubscriptionTitle : l10n.addSubscriptionTitle,
@@ -492,8 +638,6 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
         onSubmit: submit,
       ),
       children: <Widget>[
-        if (!_editing)
-          AppFormField(label: l10n.addPopularHeading, child: _popular()),
         _input(_name, l10n.addNameHint, fieldKey: E2EKeys.addName),
         // ⚠️ THE PRICE AND ITS CURRENCY SHARE A ROW; the date and category do
         // not, and the reason is text scaling rather than taste: a formatted
@@ -531,18 +675,178 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
             ],
           ),
         _trialSwitch(l10n),
+        if (_trial && _afterTrialSupported)
+          _input(
+            _thenPrice,
+            null,
+            keyboard: const TextInputType.numberWithOptions(decimal: true),
+            fieldKey: E2EKeys.addThenPrice,
+          ),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[_renewalField(l10n), ..._nextRenewalNote(l10n)],
         ),
         _categoryField(l10n),
+        _railField(l10n),
+        if (_rail != null) _input(_railHolder, null),
+        _leadDaysField(l10n),
+        _noticeField(l10n),
         _input(_plan, null),
         _input(_website, null, keyboard: TextInputType.url),
         _input(_notes, null, keyboard: TextInputType.multiline),
       ],
     );
   }
+
+  /// ST-T9 (AD-03): the pick step — a search over the bundled catalogue,
+  /// offline, region-first, with "Add by hand" and "Import instead".
+  Widget _pickStep(AppLocalizations l10n, {required bool offline}) {
+    final AsyncValue<ServiceCatalogue?> cat = ref.watch(
+      serviceCatalogueProvider(l10n.localeName),
+    );
+    final ServiceCatalogue? catalogue = cat.value;
+    final List<ServiceEntry> hits = catalogue == null
+        ? const <ServiceEntry>[]
+        : catalogue.search(_search.text, region: _region);
+    final GoRouter? router = GoRouter.maybeOf(context);
+    final ThemeData theme = Theme.of(context);
+    return AppFormSheet(
+      title: l10n.addSubscriptionTitle,
+      banner: _banner(l10n, offline: offline),
+      actions: AppFormActions(
+        cancelKey: E2EKeys.addCancel,
+        cancelLabel: l10n.cancel,
+        onCancel: () => Navigator.of(context).pop(),
+        submitKey: E2EKeys.addByHand,
+        submitLabel: l10n.addPickByHand,
+        busyLabel: l10n.addPickByHand,
+        busy: false,
+        onSubmit: () => setState(() => _picking = false),
+      ),
+      children: <Widget>[
+        TextField(
+          key: E2EKeys.addSearch,
+          controller: _search,
+          autofocus: true,
+          textInputAction: TextInputAction.search,
+          style: AppFieldDecoration.valueStyle(context),
+          decoration: AppFieldDecoration.of(
+            context,
+            label: l10n.addPickSearchLabel,
+          ),
+        ),
+        // Loading paints nothing but the search and "Add by hand": the
+        // bundled pack reads in a frame or two, and a spinner for that long
+        // is motion with no information.
+        if (cat.isLoading && catalogue == null)
+          const SizedBox.shrink()
+        else if (catalogue == null)
+          Text(l10n.addPickUnavailable, style: theme.textTheme.bodyMedium)
+        else if (hits.isEmpty)
+          Text(l10n.addPickNoMatch, style: theme.textTheme.bodyMedium)
+        // Before anything is typed: the POPULAR tiles, now the catalogue's
+        // first services for this region rather than a hand-kept demo list.
+        else if (_search.text.trim().isEmpty)
+          AppFormField(
+            label: l10n.addPopularHeading,
+            child: _popular(hits.take(_popularCount).toList()),
+          )
+        else ...<Widget>[
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              l10n.addPickResults(hits.length),
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          for (final ServiceEntry e in hits.take(_pickLimit))
+            AppListRow(
+              key: E2EKeys.addPickRow(e.id),
+              leading: ExcludeSemantics(
+                child: CircleAvatar(
+                  backgroundColor: theme.colorScheme.primaryContainer,
+                  child: Text(
+                    Subscription.glyphFor(e.name).substring(0, 2),
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+              ),
+              title: e.name,
+              subtitle: categoryLabel(
+                l10n,
+                serviceCategoryName(e) ?? _uncategorised,
+              ),
+              onTap: () => _pick(e),
+            ),
+        ],
+        if (router != null)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton(
+              key: E2EKeys.addImport,
+              onPressed: () {
+                Navigator.of(context).pop();
+                router.push('/scan');
+              },
+              child: Text(l10n.addPickImport),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// "Paid with" (AD-06) — the API's closed `rail` set, or not set.
+  Widget _railField(AppLocalizations l10n) => _dropdown<String?>(
+    key: E2EKeys.addRail,
+    label: l10n.fieldLabelPaidWith,
+    value: _rail,
+    items: <(String?, String)>[
+      (null, l10n.railNotSet),
+      for (final String r in Subscription.kRails) (r, railLabel(l10n, r)),
+    ],
+    onChanged: (String? v) => setState(() => _rail = v),
+  );
+
+  /// "Remind me" (AD-07): the row's own `reminder_days`, several at once.
+  Widget _leadDaysField(AppLocalizations l10n) => AppFormField(
+    label: l10n.fieldLabelRemindMe,
+    child: Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: <Widget>[
+        for (final int d in _leadChoices)
+          FilterChip(
+            key: E2EKeys.addLead(d),
+            label: Text(l10n.reminderLeadValue(d)),
+            selected: _leadDays.contains(d),
+            onSelected: _saving
+                ? null
+                : (bool on) => setState(
+                    () => on ? _leadDays.add(d) : _leadDays.remove(d),
+                  ),
+          ),
+      ],
+    ),
+  );
+
+  /// "Notice to cancel" (AD-07): the row's `notice_days`, the detail
+  /// screen's choices.
+  Widget _noticeField(AppLocalizations l10n) => _dropdown<int?>(
+    key: E2EKeys.addNotice,
+    label: l10n.fieldLabelNotice,
+    value: _noticeDays,
+    items: <(int?, String)>[
+      (null, l10n.detailNoticeNone),
+      for (final int d in <int>{...kNoticeChoices, ?_noticeDays})
+        (d, l10n.detailNoticeValue(d)),
+    ],
+    onChanged: (int? v) => setState(() => _noticeDays = v),
+  );
 
   /// The one banner the form is in, most urgent first: a failed save outranks
   /// being offline, because it is about something the user just did.
@@ -565,7 +869,8 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     return null;
   }
 
-  /// The POPULAR shortcuts: one tap fills the name.
+  /// The POPULAR shortcuts (ST-T9: the catalogue's first services for the
+  /// user's region): one tap picks the service and prefills the form.
   ///
   /// 🔴 THE COLUMN COUNT IS DERIVED, NOT DECLARED. Four columns is a PHONE
   /// decision and the sheet is not phone-only: M3 caps a modal sheet at 640, so
@@ -573,7 +878,7 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
   /// count follow — 4 columns at 375, 6 at 640. `width_add_sheet_test.dart`
   /// pins both endpoints. Contrast the calendar grid, where
   /// `crossAxisCount: 7` is SEMANTIC (days of the week) and must stay fixed.
-  Widget _popular() {
+  Widget _popular(List<ServiceEntry> services) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme scheme = theme.colorScheme;
     return GridView.builder(
@@ -585,16 +890,18 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
         crossAxisSpacing: AppSpacing.sm,
         childAspectRatio: 0.82,
       ),
-      itemCount: DemoData.popular.length,
+      itemCount: services.length,
       itemBuilder: (BuildContext context, int i) {
-        // `service[1]` is the abbreviation ("NF"), `service[0]` the name
-        // ("Netflix"). The mark is excluded and the tile merged, so it is ONE
-        // node — "Netflix, button" — and, being a `FocusableTap`, a keyboard
-        // stop that Enter or Space activates (ST-E2).
-        final List<String> service = DemoData.popular[i];
+        // The mark is the name's first two letters ("NE"), the label the
+        // name ("Netflix"). The mark is excluded and the tile merged, so it is
+        // ONE node — "Netflix, button" — and, being a `FocusableTap`, a
+        // keyboard stop that Enter or Space activates (ST-E2). ST-T9: a tap
+        // is a PICK — it prefills the whole form, not just the name.
+        final ServiceEntry service = services[i];
         return FocusableTap(
+          key: E2EKeys.addPickRow(service.id),
           borderRadius: BorderRadius.circular(AppRadius.control),
-          onTap: _saving ? null : () => _name.text = service[0],
+          onTap: _saving ? null : () => _pick(service),
           child: Column(
             children: <Widget>[
               Expanded(
@@ -607,7 +914,7 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
                       borderRadius: BorderRadius.circular(AppRadius.control),
                     ),
                     child: Text(
-                      service[1],
+                      Subscription.glyphFor(service.name).substring(0, 2),
                       style: theme.textTheme.titleSmall?.copyWith(
                         color: scheme.onPrimaryContainer,
                         fontWeight: FontWeight.w700,
@@ -618,7 +925,7 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
-                service[0],
+                service.name,
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -724,20 +1031,40 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     onChanged: (String? c) => setState(() => _currency = c ?? _currency),
   );
 
-  /// The category, chosen from [_categories].
+  /// The category (ST-T9, AD-05): the built-ins LOCALISED BY ID, the user's
+  /// own from `GET /v1/categories`, and the uncategorised bucket. The value
+  /// is the stored name (what a row and a cap carry); the id rides beside it.
   ///
   /// A dropdown rather than a row of chips: eleven chips would add eleven tap
-  /// targets to a sheet already capped in height, and the vocabulary is closed,
-  /// so the compact control is the honest one.
-  Widget _categoryField(AppLocalizations l10n) => _dropdown<String>(
-    key: E2EKeys.addCategory,
-    label: l10n.fieldLabelCategory,
-    value: _category,
-    items: <(String, String)>[
-      for (final String c in _categories) (c, categoryLabel(l10n, c)),
-    ],
-    onChanged: (String? v) => setState(() => _category = v ?? _uncategorised),
-  );
+  /// targets to a sheet already capped in height.
+  Widget _categoryField(AppLocalizations l10n) {
+    final List<SubscriptionCategory> all =
+        ref.watch(categoriesProvider).value ?? kBuiltinCategoryRows;
+    final List<(String, String)> items = <(String, String)>[
+      for (final String c in _categories)
+        if (c != _uncategorised) (c, categoryLabel(l10n, c)),
+      for (final SubscriptionCategory c in all)
+        if (!c.builtin && !_categories.contains(c.name)) (c.name, c.name),
+      // A legacy free-text value no list carries is kept, never rewritten.
+      if (!_categories.contains(_category) &&
+          !all.any((SubscriptionCategory c) => c.name == _category))
+        (_category, _category),
+      (_uncategorised, categoryLabel(l10n, _uncategorised)),
+    ];
+    return _dropdown<String>(
+      key: E2EKeys.addCategory,
+      label: l10n.fieldLabelCategory,
+      value: _category,
+      items: items,
+      onChanged: (String? v) => setState(() {
+        _category = v ?? _uncategorised;
+        _categoryId = all
+            .where((SubscriptionCategory c) => c.name == _category)
+            .firstOrNull
+            ?.id;
+      }),
+    );
+  }
 
   /// A free trial (ST-E5). One merged node — "Free trial, switch, off" —
   /// rather than a ListTile, whose ink needs a Material the sheet's fill would
@@ -903,6 +1230,30 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     if (identical(c, _notes)) {
       return (l10n.fieldLabelNotes, _serverErrors['notes']);
     }
+    if (identical(c, _railHolder)) {
+      return (l10n.fieldLabelPaidHolder, _serverErrors['rail_holder']);
+    }
+    if (identical(c, _thenPrice)) {
+      final bool bad =
+          _thenPrice.text.trim().isNotEmpty && _parsedThenPrice() == null;
+      return (
+        l10n.fieldLabelThenPrice,
+        _serverErrors['price_after_trial_minor'] ??
+            (bad ? l10n.priceErrorInvalid : null),
+      );
+    }
     return (l10n.fieldLabelName, _serverErrors['name']);
   }
 }
+
+/// The label for a `rail` value (ST-T9, AD-06) — the sheet's dropdown and the
+/// row's badge read the same words.
+String railLabel(AppLocalizations l10n, String rail) => switch (rail) {
+  'upi_autopay' => l10n.railUpiAutopay,
+  'card_emandate' => l10n.railCard,
+  'nach' => l10n.railNach,
+  'app_store' => l10n.railAppStore,
+  'play' => l10n.railPlay,
+  'paypal' => l10n.railPaypal,
+  _ => l10n.railOther,
+};

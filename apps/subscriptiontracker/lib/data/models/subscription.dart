@@ -69,7 +69,50 @@ class Subscription {
     this.noticeDaysSupported = false,
     this.serviceId,
     this.previousPrice,
+    this.categoryId,
+    this.rail,
+    this.railHolder,
+    this.priceAfterTrial,
+    this.priceAfterTrialSupported = false,
   });
+
+  /// The catalogue service this row was picked from (ST-T9, AD-03) — the
+  /// pack's id, e.g. `netflix` — or null for a row added by hand
+  /// (`service_id`, 0003). Home shows the catalogue's logo for it (HO-06).
+  final String? serviceId;
+
+  /// The category BY ID (ST-T9, AD-05) — the API's `category_id` (0005): a
+  /// built-in's id (`streaming`) or one of the user's own. [category] stays
+  /// the stored name beside it, which the server resolves from this.
+  final String? categoryId;
+
+  /// How it is paid (ST-T9, AD-06) — the API's closed `rail` set
+  /// ([kRails]) — or null when the user did not say.
+  final String? rail;
+
+  /// Whose card / which UPI handle, as a label the user typed — the API's
+  /// `rail_holder`. Never a number: a label like "HDFC card" or "Mum's UPI".
+  final String? railHolder;
+
+  /// What a trial turns into (ST-T9, AD-08): the API's
+  /// `price_after_trial_minor`, in [price]'s currency. Null when unknown.
+  final Money? priceAfterTrial;
+
+  /// Whether the wire CARRIED `price_after_trial_minor` (train T11's column):
+  /// the sheet offers the "Then" field only then, as [noticeDaysSupported]
+  /// does for notice — a server without the column would drop the value.
+  final bool priceAfterTrialSupported;
+
+  /// The API's `rail` values, in the order the sheet offers them.
+  static const List<String> kRails = <String>[
+    'upi_autopay',
+    'card_emandate',
+    'nach',
+    'app_store',
+    'play',
+    'paypal',
+    'manual',
+  ];
 
   final String id;
   final String name;
@@ -167,10 +210,6 @@ class Subscription {
   /// answer with a row that no longer has it. Deploy order is the API first.
   final bool noticeDaysSupported;
 
-  /// The catalogue key this row was added from (`service_id`, 0003), or null
-  /// for a row typed by hand. Home shows the catalogue's logo for it (HO-06).
-  final String? serviceId;
-
   /// The price before the newest price change, when the row carries its
   /// `price_history` (`GET /v1/subscriptions/:id` serves it, newest first;
   /// ST-I4). Null when there is no history on this row. Home's price-rise
@@ -266,15 +305,28 @@ class Subscription {
     reminderDays: readReminderDays(j['reminder_days']),
     noticeDays: readNoticeDays(j['notice_days']),
     noticeDaysSupported: j.containsKey('notice_days'),
-    serviceId: switch (j['service_id']) {
-      final String id when id.isNotEmpty => id,
-      _ => null,
-    },
+    serviceId: _textOrNull(j['service_id']),
+    categoryId: _textOrNull(j['category_id']),
+    rail: _textOrNull(j['rail']),
+    railHolder: _textOrNull(j['rail_holder']),
+    priceAfterTrial: j['price_after_trial_minor'] is int
+        ? Money(
+            j['price_after_trial_minor'] as int,
+            readPrice(
+              j,
+              fallbackCurrencyCode: fallbackCurrencyCode,
+            ).currencyCode,
+          )
+        : null,
+    priceAfterTrialSupported: j.containsKey('price_after_trial_minor'),
     previousPrice: readPreviousPrice(
       j['price_history'],
       fallbackCurrencyCode: fallbackCurrencyCode,
     ),
   );
+
+  static String? _textOrNull(Object? raw) =>
+      raw is String && raw.isNotEmpty ? raw : null;
 
   /// The OLD price of the newest entry in a `price_history` list, or null for
   /// no history or a shape this cannot read — never a guess.
@@ -404,8 +456,16 @@ class Subscription {
     // The cache round-trips this row through toJson, so the capability rides
     // with it: a cached row must not lose the field the API had emitted.
     if (noticeDaysSupported && noticeDays == null) 'notice_days': null,
-    // Sent only when set, so a hand-typed row's body is unchanged.
+    // ST-T9: the server has stored these three since 0003 and the client never
+    // sent them. Sent only when set, so an edit that does not touch them
+    // cannot clear a value another device wrote.
     if (serviceId != null) 'service_id': serviceId,
+    if (categoryId != null) 'category_id': categoryId,
+    if (rail != null) 'rail': rail,
+    if (railHolder != null) 'rail_holder': railHolder,
+    // Train T11's column, behind its capability exactly like `notice_days`.
+    if (priceAfterTrialSupported)
+      'price_after_trial_minor': priceAfterTrial?.minorUnits,
   };
 
   /// ⚠️ [price] IS A `num` OF MAJOR UNITS, NOT A [Money], AND THE ODD ONE OUT
@@ -547,6 +607,13 @@ class Subscription {
     noticeDaysSupported: noticeDaysSupported,
     serviceId: serviceId,
     previousPrice: previousPrice,
+    categoryId: category == null || category == this.category
+        ? categoryId
+        : null,
+    rail: rail,
+    railHolder: railHolder,
+    priceAfterTrial: priceAfterTrial,
+    priceAfterTrialSupported: priceAfterTrialSupported,
   );
 
   /// The mark a row wears when nobody chose one: the first three letters of

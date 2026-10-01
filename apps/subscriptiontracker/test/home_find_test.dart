@@ -102,9 +102,17 @@ Future<void> _home(
   overrides: <Override>[
     subscriptionRepositoryProvider.overrideWithValue(_Repo(rows)),
     if (fixedClock) nowProvider.overrideWithValue(() => _now),
+    // ST-T9's after-sign-in setup reads the account's "seen" flag through
+    // auth; Home's finding and deciding is not about it, so it is settled.
+    setupSeenProvider.overrideWith(_SetupSeen.new),
     ...extra,
   ],
 );
+
+class _SetupSeen extends SetupSeenController {
+  @override
+  bool? build() => true;
+}
 
 List<String> _allNames(WidgetTester tester) => tester
     .widgetList<AppListRow>(

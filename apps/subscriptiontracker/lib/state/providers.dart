@@ -60,6 +60,7 @@
 
 export 'providers/analytics_envelope.dart';
 export 'providers/auth.dart';
+export 'providers/categories.dart';
 export 'providers/config.dart';
 export 'providers/content_pack.dart';
 export 'providers/force_update.dart';

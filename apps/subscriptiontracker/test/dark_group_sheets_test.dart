@@ -34,6 +34,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
@@ -45,6 +46,7 @@ import 'package:subscriptiontracker/features/add/add_subscription_sheet.dart';
 import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 
+import 'support/catalogue_fixture.dart';
 import 'support/width_harness.dart';
 
 /// The seed `app.dart` passes to BOTH `theme:` and `darkTheme:`. A literal, as
@@ -89,7 +91,7 @@ Widget _host({
   required Locale locale,
   required void Function(BuildContext) open,
 }) => ProviderScope(
-  overrides: defaultWidthOverrides(),
+  overrides: <Override>[...defaultWidthOverrides(), ...catalogueOverrides()],
   child: MaterialApp(
     locale: locale,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -119,6 +121,11 @@ Future<void> _openSheet(
   required void Function(BuildContext) open,
 }) async {
   await setSurface(tester, kPhone);
+  // ST-T9: the sheet-or-dialog choice reads `MediaQuery`, which `setSurface`
+  // leaves at 800×600 — pin the view too, or every sheet here is a dialog.
+  tester.view.physicalSize = kPhone;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
   await tester.pumpWidget(_host(mode: mode, locale: locale, open: open));
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
@@ -236,6 +243,9 @@ void main() {
           _styleOf(tester, find.text(en.addPopularHeading)).color,
           scheme.onSurfaceVariant,
         );
+        // ST-T9: POPULAR is on the add's pick step; the fields follow it.
+        await tester.tap(find.byKey(E2EKeys.addByHand));
+        await tester.pumpAndSettle();
 
         // ⏱ ST-T3b (ST-E4): the cadence is a FIELD now — a dropdown that can
         // say weekly or quarterly — on the one field skin, so it rests on the

@@ -37,6 +37,23 @@ class E2EKeys {
   static const Key addCancel = Key('e2e_add_cancel');
   static const Key addBanner = Key('e2e_add_banner');
 
+  /// ST-T9 (AD-03): the pick step's search, its "Add by hand" and "Import
+  /// instead", and one row per catalogue service, keyed by the pack's id.
+  static const Key addSearch = Key('e2e_add_search');
+  static const Key addByHand = Key('e2e_add_by_hand');
+  static const Key addImport = Key('e2e_add_import');
+  static Key addPickRow(String serviceId) => Key('e2e_add_pick_$serviceId');
+
+  /// ST-T9 (AD-06..08): "Paid with", the reminder chips, the notice
+  /// dropdown and the "Then" price after a trial.
+  static const Key addRail = Key('e2e_add_rail');
+  static Key addLead(int days) => Key('e2e_add_lead_$days');
+  static const Key addNotice = Key('e2e_add_notice');
+  static const Key addThenPrice = Key('e2e_add_then_price');
+
+  /// ST-T9 (AD-05): Settings › Categories.
+  static const Key settingsCategories = Key('e2e_settings_categories');
+
   // Subscription detail. The button that opens the edit sheet (train ST-D6);
   // its label is `l10n.editPlan`.
   static const Key detailEdit = Key('e2e_detail_edit');

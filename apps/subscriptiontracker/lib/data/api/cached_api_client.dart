@@ -13,6 +13,7 @@ import 'package:nikatru_core/nikatru_core.dart'
         newOutboxId;
 
 import '../local/subscription_store.dart';
+import '../models/category.dart';
 import '../models/budget_info.dart';
 import '../models/payment_record.dart';
 import '../models/subscription.dart';
@@ -64,7 +65,7 @@ const String kSubscriptionWrite = 'subscription';
 /// [ApiClient] over a network client, with the device's key-value store as a
 /// read-through cache of what the server last said and an outbox of the
 /// writes it has not heard yet.
-class CachedApiClient implements ApiClient {
+class CachedApiClient implements ApiClient, CategoriesApi {
   CachedApiClient(
     this._network,
     LocalSubscriptionStore store, {
@@ -453,4 +454,29 @@ class CachedApiClient implements ApiClient {
   /// `EntitlementCache` remembers.
   @override
   Future<Entitlements> getEntitlements() => _network.getEntitlements();
+
+  // ST-T9 (AD-05): categories are not cached or queued — a rename has to
+  // reach the server to move its rows and its cap — so they pass straight to
+  // the network client, or to the built-ins when it serves none.
+  CategoriesApi? get _categories =>
+      _network is CategoriesApi ? _network as CategoriesApi : null;
+
+  @override
+  Future<List<SubscriptionCategory>> getCategories() async =>
+      await _categories?.getCategories() ?? kBuiltinCategoryRows;
+
+  @override
+  Future<SubscriptionCategory> createCategory(String name) =>
+      _categoriesOrThrow.createCategory(name);
+
+  @override
+  Future<SubscriptionCategory> renameCategory(String id, String name) =>
+      _categoriesOrThrow.renameCategory(id, name);
+
+  @override
+  Future<void> deleteCategory(String id) =>
+      _categoriesOrThrow.deleteCategory(id);
+
+  CategoriesApi get _categoriesOrThrow =>
+      _categories ?? (throw UnsupportedError('no /v1/categories client'));
 }

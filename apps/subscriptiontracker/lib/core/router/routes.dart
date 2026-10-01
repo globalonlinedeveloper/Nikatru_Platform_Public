@@ -26,6 +26,7 @@ import '../../features/auth/reaccept_terms_screen.dart';
 import '../../features/auth/reset_password_screen.dart';
 import '../../features/auth/verify_email_screen.dart';
 import '../../features/detail/subscription_detail_screen.dart';
+import '../../features/setup/setup_screen.dart';
 import '../../features/monetization/manage_plan_screen.dart';
 import '../../features/monetization/paywall_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
@@ -183,6 +184,15 @@ List<RouteBase> appRoutes() => <RouteBase>[
 
   // ── LIVE ROOT-NAVIGATOR ROUTES ────────────────────────────────────────
   // parentNavigatorKey pins these ABOVE the shell so they cover the nav bar.
+  // ⏱ ST-T9 (EN-18): the after-sign-in setup, offered once per account by
+  // home when a first sign-in's list loads empty. Signed-in only (the
+  // signed-out gate does not list it), above the shell like a first run.
+  GoRoute(
+    path: '/setup',
+    parentNavigatorKey: rootNavigatorKey,
+    builder: (_, __) => const SetupScreen(),
+    caseSensitive: false,
+  ),
   GoRoute(
     path: '/notifications',
     parentNavigatorKey: rootNavigatorKey,

@@ -1,8 +1,8 @@
 {
   "pack_id": "subscriptiontracker",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "key_id": "test-k1",
-  "content_hash": "74068490eca5bd8fddc8d47d0a4c50a24426f7d2e37c44bdb0486a03a0ceb478",
+  "content_hash": "73d4cb8e86d7a291f0ad7fdce2410aa3b1cdfb8d9a3bad6baefeab7bfc8d54d8",
   "assets": [],
   "generators": [
     "none/hand-authored"

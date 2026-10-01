@@ -68,6 +68,7 @@ import '../shared/due.dart';
 // The shell this screen is a BRANCH of, imported for one number:
 // [AppShell.pageInsetOf]. The FAB that inset reserves room for belongs to the
 // shell, so the arithmetic does too.
+import '../setup/setup_screen.dart' show shouldOfferSetup;
 import '../shell/app_shell.dart';
 import 'home_search.dart';
 import 'home_signals.dart';
@@ -254,6 +255,22 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     final AsyncValue<List<Subscription>> subs = ref.watch(
       subscriptionsControllerProvider,
     );
+
+    // ⏱ ST-T9 (EN-18): a first sign-in whose list loads EMPTY is offered the
+    // after-sign-in setup, once per account. After the frame, because a
+    // navigation is not something a build may do; `maybeOf`, because a test
+    // that pumps home without a router has nowhere to go.
+    if (shouldOfferSetup(
+      seen: ref.watch(setupSeenProvider),
+      subscriptions: subs,
+    )) {
+      final GoRouter? router = GoRouter.maybeOf(context);
+      if (router != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) router.go('/setup');
+        });
+      }
+    }
 
     // 🔴 IT MEASURES THE BOX, NOT THE WINDOW. `AppShell`'s scaffold hands this
     // body the window minus its navigation, so a `MediaQuery` reading here
@@ -933,6 +950,9 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     final String? logo = s.serviceId == null
         ? null
         : ref.watch(serviceLogoAssetsProvider)[s.serviceId];
+    // ST-T9 (AD-06): how it is paid, as neutral text in the subtitle's own
+    // colour — no new tone; the row's status stays the only coloured signal.
+    final String? rail = s.rail;
     return AppListRow(
       // The mark is a visual shorthand; the title names the plan, so the
       // logo or letters are silent rather than read before the name.
@@ -952,7 +972,9 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
               ),
       ),
       title: s.name,
-      subtitle: subtitle,
+      subtitle: rail == null
+          ? subtitle
+          : '$subtitle · ${railLabel(l10n, rail)}',
       status: status,
       // The list SORTS by monthly share and the row SHOWS the charge with its
       // own cycle: a share is not a price.

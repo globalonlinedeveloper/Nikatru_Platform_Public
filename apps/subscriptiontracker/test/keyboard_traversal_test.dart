@@ -175,7 +175,9 @@ import 'support/width_harness.dart';
 /// ⏱ 2026-09-30 · ST-Y3/ST-Y4: 2400 -> 2600. Settings gained three card
 /// headings and the Help section's Rate and Feedback rows and scrolled by
 /// 142 px at 2400 — measured by [_everythingIsLaidOut], which is what it is for.
-const Size kKeyboardSurface = Size(1079, 2600);
+/// ⏱ 2026-10-01 · ST-T9 (AD-05): 2600 -> 2700. Settings gained the Categories
+/// row and scrolled by 10 px at 2600, measured the same way.
+const Size kKeyboardSurface = Size(1079, 2700);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
 ///
@@ -669,8 +671,11 @@ void main() {
         // ⏱ 2026-09-30 · ST-Y4 (audit D12/F53): 26 -> 28 and 24 -> 26 — the
         // Help section's "Rate" and "Send feedback" _LinkRows, both wired.
         // (Contact support MOVED into Help; it is not a new control.)
-        controls: 28 + core.Money.symbols.length,
-        reachable: 26 + core.Money.symbols.length,
+        // ⏱ 2026-10-01 · ST-T9 (AD-05): 28 -> 29 and 26 -> 27 — the
+        // "Categories" row that opens the categories manager, wired and in
+        // the orbit.
+        controls: 29 + core.Money.symbols.length,
+        reachable: 27 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,

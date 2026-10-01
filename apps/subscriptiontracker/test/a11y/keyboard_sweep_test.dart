@@ -458,6 +458,8 @@ kExpected = <String, ({int controls, int reachable})>{
   // seed's 12 rows, and each now opens its detail (an InkWell, on the Tab
   // orbit) beside the one CTA.
   '/scan': (controls: 13, reachable: 13),
+  // ⏱ 2026-10-01 · ST-T9 (EN-18): the after-sign-in setup.
+  '/setup': (controls: 3, reachable: 3),
   // 5 -> 7 on 2026-08-26: the two `_LegalLink`s joined the orbit. The
   // control count did NOT move — `FocusableTap` still builds a
   // `GestureDetector` with an `onTap`, so the rig counts the same nine.
@@ -751,12 +753,13 @@ void main() {
       .toSet();
 
   group('the router is the only declaration of the route set', () {
-    test('19 routes, 16 of them build a screen, 3 are redirect-only', () {
+    // ⏱ 2026-10-01 · ST-T9 (EN-18): 19 -> 20 and 16 -> 17, `/setup`.
+    test('20 routes, 17 of them build a screen, 3 are redirect-only', () {
       expect(
         declared.length,
-        19,
+        20,
         reason:
-            'the router declares ${declared.length} GoRoutes, not 19. That is '
+            'the router declares ${declared.length} GoRoutes, not 20. That is '
             'not a failure by itself — an app may gain a route — but this '
             "file's coverage claim is about a set of that size, and the new "
             'route needs a kExpected entry before any number here can be read. '
@@ -765,9 +768,9 @@ void main() {
       expect(
         // ⏱ ST-D3 D3-3: 17 → 16 — `/budget` is a redirect to `/insights` now.
         screenBearing.length,
-        16,
+        17,
         reason:
-            '${screenBearing.length} routes build a screen, not 16. Screen '
+            '${screenBearing.length} routes build a screen, not 17. Screen '
             'paths: ${screenPaths.toList()..sort()}',
       );
       for (final GoRoute r in declared) {

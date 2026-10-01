@@ -525,9 +525,16 @@ String detailSubtitle(AppLocalizations l10n, Subscription s) => <String>[
   if (s.status == SubscriptionStatus.paused) l10n.statusPaused,
   if (s.status == SubscriptionStatus.cancelled) l10n.statusCancelled,
   if (s.status == SubscriptionStatus.trialing && s.trialEndsOn != null)
-    l10n.statusTrialing(
-      DateFormat.yMMMd(l10n.localeName).format(s.trialEndsOn!),
-    ),
+    // ST-T9 (AD-08): with the price after the trial known, the line says
+    // what the trial turns into — the moment a user most needs the number.
+    s.priceAfterTrial == null
+        ? l10n.statusTrialing(
+            DateFormat.yMMMd(l10n.localeName).format(s.trialEndsOn!),
+          )
+        : l10n.statusTrialingThen(
+            DateFormat.yMMMd(l10n.localeName).format(s.trialEndsOn!),
+            MoneyFormatter(l10n.localeName).format(s.priceAfterTrial!),
+          ),
 ].join(' · ');
 
 /// "More options" (ST-E3): the row's lifecycle, as stock Material list tiles

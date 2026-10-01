@@ -58,6 +58,7 @@ import 'dart:ui' show CheckedState, Tristate;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_chassis_screens/firstrun/setup_steps_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:intl/date_symbols.dart' show DateSymbols;
@@ -76,7 +77,6 @@ import 'package:subscriptiontracker/core/format/sub_math.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
-import 'package:subscriptiontracker/data/seed/demo_data.dart';
 import 'package:subscriptiontracker/features/add/add_subscription_sheet.dart';
 import 'package:subscriptiontracker/features/auth/check_inbox_screen.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
@@ -96,6 +96,7 @@ import 'package:subscriptiontracker/features/notifications/notifications_screen.
 import 'package:subscriptiontracker/features/onboarding/onboarding_screen.dart';
 import 'package:subscriptiontracker/features/scan/scan_screen.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
+import 'package:subscriptiontracker/features/setup/setup_screen.dart';
 import 'package:subscriptiontracker/features/shared/due.dart';
 import 'package:subscriptiontracker/features/shared/widgets.dart';
 import 'package:subscriptiontracker/features/shell/app_shell.dart';
@@ -105,6 +106,7 @@ import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/state/settings_controller.dart';
 import 'package:subscriptiontracker/state/subscriptions_controller.dart';
 
+import 'support/catalogue_fixture.dart';
 import 'support/width_harness.dart';
 
 // ─── the walk ────────────────────────────────────────────────────────────────
@@ -1107,7 +1109,14 @@ Future<ProviderContainer> pumpScreen(
 }) async {
   await sizeSurface(tester, size);
   final ProviderContainer c = ProviderContainer(
-    overrides: defaultWidthOverrides(),
+    overrides: <Override>[
+      ...defaultWidthOverrides(),
+      // ST-T9: the add sheet's pick step reads the catalogue; the bundled
+      // asset never finishes loading inside the fake-async zone.
+      serviceCatalogueProvider.overrideWith(
+        (Ref ref, String _) async => kFixtureCatalogue,
+      ),
+    ],
   );
   addTearDown(c.dispose);
   await tester.pumpWidget(
@@ -3033,6 +3042,50 @@ void main() {
     });
   });
 
+  // ═══ TIER 1 · SETUP (after sign-in, ST-T9 EN-18) ══════════════════════════
+  group('setup · the after-sign-in steps', () {
+    testWidgets('nothing on any setup step is naked', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, SetupScreen(now: () => DateTime(2026, 10, 1)));
+        await tester.pumpAndSettle();
+        // Step 1: the currency field, Skip and Next.
+        expectNothingNaked(tester, 'setup · currency', floor: 3);
+        await tester.tap(find.byKey(SetupStepsView.advanceButton));
+        await tester.pumpAndSettle();
+        // Step 2: Skip, Back, Next (+ the push switch where it can schedule).
+        expectNothingNaked(tester, 'setup · reminders', floor: 3);
+        await tester.tap(find.byKey(SetupStepsView.advanceButton));
+        await tester.pumpAndSettle();
+        // Step 3: the catalogue tiles beside Skip, Back and Done.
+        expectNothingNaked(tester, 'setup · pick', floor: 3 + 8);
+      });
+    });
+
+    testWidgets('every setup string AA, every tap target 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          SetupScreen(now: () => DateTime(2026, 10, 1)),
+          theme: appTheme(),
+          paintBackground: true,
+        );
+        await tester.pumpAndSettle();
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await tester.tap(find.byKey(SetupStepsView.advanceButton));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(SetupStepsView.advanceButton));
+        await tester.pumpAndSettle();
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+  });
+
   // ═══ TIER 1 · ADD SHEET (modal) ═══════════════════════════════════════════
   group('add sheet · the quick-add grid and the cycle toggle', () {
     testWidgets('the POPULAR tiles announce the NAME, never the two-letter mark', (
@@ -3059,7 +3112,15 @@ void main() {
         await tester.pumpAndSettle();
 
         final List<String> labels = announced(tester);
-        for (final List<String> service in DemoData.popular) {
+        // ST-T9: the tiles are the catalogue's first eight for the region
+        // (`orderedFor`), each a [name, two-letter mark] pair as before.
+        final List<List<String>> popular = <List<String>>[
+          for (final core.ServiceEntry e
+              in kFixtureCatalogue.orderedFor('US').take(8))
+            <String>[e.name, Subscription.glyphFor(e.name).substring(0, 2)],
+        ];
+        expect(popular, hasLength(8));
+        for (final List<String> service in popular) {
           expect(
             labels,
             contains(service[0]),
@@ -3105,6 +3166,9 @@ void main() {
             ),
           );
           await tester.tap(find.text('open'));
+          await tester.pumpAndSettle();
+          // ST-T9: past the pick step to the form, by hand.
+          await tester.tap(find.byKey(E2EKeys.addByHand));
           await tester.pumpAndSettle();
           final AppLocalizations l10n = await _load('en');
 
@@ -3221,12 +3285,12 @@ void main() {
             )
             .toList();
         // The coverage floor, for [expectNothingNaked]'s reason: "nothing is
-        // naked" is also true of a sheet that failed to mount. 8 POPULAR tiles
-        // + name + price + 2 cycle arms + Cancel + Add = 14, and the tile count
-        // is READ rather than typed so the seed stays the thing that drives it.
+        // naked" is also true of a sheet that failed to mount. ST-T9: the add
+        // opens on its pick step — 8 POPULAR tiles + the search + Cancel +
+        // "Add by hand" = 11.
         expect(
           ours.length,
-          greaterThanOrEqualTo(DemoData.popular.length + 6),
+          greaterThanOrEqualTo(8 + 3),
           reason:
               'COVERAGE LOST — the add sheet offered only ${ours.length} of '
               'its own activatable node(s); the sweep below then ranges over '
@@ -5137,10 +5201,22 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'the edit sheet',
-          covers: const <String>['Edit subscription', 'Save'],
+          covers: const <String>['Edit subscription'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         await expectGuidelineHadSubjects(tester, 'the edit sheet');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        // ⏱ ST-T9: the form grew (paid with, reminders, notice), so Save sits
+        // below the fold at 375×812 — swept again from the bottom, which also
+        // puts the new fields in front of both guidelines.
+        await tester.ensureVisible(find.byKey(E2EKeys.addSubmit));
+        await tester.pumpAndSettle();
+        await expectContrastHadSubjects(
+          tester,
+          'the edit sheet, scrolled to Save',
+          covers: const <String>['Save'],
+        );
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
     });

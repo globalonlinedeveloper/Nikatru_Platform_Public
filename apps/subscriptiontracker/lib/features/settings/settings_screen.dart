@@ -63,6 +63,7 @@ import '../../state/settings_controller.dart';
 import '../auth/turnstile_gate.dart';
 import '../shared/chassis_adapters.dart';
 import '../shared/widgets.dart';
+import 'categories_manager.dart' show showCategoriesManager;
 import 'reminder_settings.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -528,6 +529,23 @@ class SettingsScreen extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(2, 8, 2, 0),
               child: Text(l10n.currencyHint, style: AppText.of(context).muted),
+            ),
+            // ⏱ ST-T9 (AD-05): the categories manager — built-ins by id, the
+            // user's own added, renamed and deleted through /v1/categories.
+            const SizedBox(height: AppSpacing.md),
+            Container(
+              decoration: cardDecoration(context),
+              clipBehavior: Clip.antiAlias,
+              child: Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  key: E2EKeys.settingsCategories,
+                  leading: const Icon(Icons.label_outline),
+                  title: Text(l10n.settingsCategories),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => showCategoriesManager(context),
+                ),
+              ),
             ),
 
             // ── PREFERENCES (live-only) ──────────────────────────────────────

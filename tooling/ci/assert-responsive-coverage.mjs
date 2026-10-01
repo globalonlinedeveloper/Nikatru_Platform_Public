@@ -498,7 +498,11 @@ const REQUIRED_COVERAGE = [
     // ⏱ LOWERED 19 → 18 the same day by ST-D3 D3-3, deliberately: `BudgetScreen`
     // is RETIRED (ADR 077 §A) and `width_budget_test.dart` went with it; the
     // file count stays above its floor (17 files, floor 16).
-    surfaces: 18,
+    // ⏱ RAISED 18 → 19 (and coveredSurfaces with it) on 2026-10-01 by ST-T9
+    // (EN-18): the after-sign-in setup (`/setup`) is a new surface, measured
+    // at every window class by `width_setup_test.dart`. `widthTestFiles`
+    // stays 16 for the guards.test.mjs fixture reason recorded below.
+    surfaces: 19,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
     // MEASURED 2026-09-05: `ls apps/subscriptiontracker/test | grep -cE
@@ -516,7 +520,7 @@ const REQUIRED_COVERAGE = [
     // 📌 OWED, AND REPORTED TO THE OWNER RATHER THAN LEFT IN A COMMENT: raise
     // this to 17 in the same change that grows that fixture's `N`.
     widthTestFiles: 16, // 15 `width_*_test.dart` + `responsive_width_test.dart`
-    coveredSurfaces: 18,
+    coveredSurfaces: 19,
     label: 'the app this guard was written for — every surface measured, and it fails if one stops being',
   },
   {
@@ -674,9 +678,14 @@ const REQUIRED_COVERAGE = [
     // (lib/settings/help_section.dart) joined, and `test/help_section_test.dart`
     // pumps it with the Help card at all three classes. Read off this guard's
     // per-root lines — `27 surface(s) reachable, 27 measured` and `— 30 file(s)`.
-    surfaces: 27,
-    widthTestFiles: 30,
-    coveredSurfaces: 27,
+    // ⏱ RAISED 27 → 28 surfaces / 30 → 31 files / 27 → 28 covered ON 2026-10-01
+    // (ST-T9, EN-18, on top of audit D8): the chassis `SetupStepsView` arrived
+    // with `test/setup_steps_view_test.dart`, pumped at kPhone, kTablet and
+    // kDesktop. Read off the per-root lines — `28 surface(s) reachable, 28
+    // measured` and `— 31 file(s)`.
+    surfaces: 28,
+    widthTestFiles: 31,
+    coveredSurfaces: 28,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',

@@ -2,6 +2,7 @@ import 'package:nikatru_core/nikatru_core.dart' show RecurrenceRoll;
 
 import '../../core/app_config.dart';
 import '../models/budget_info.dart';
+import '../models/category.dart';
 import '../models/entitlement.dart';
 import '../models/payment_record.dart';
 import '../models/subscription.dart';
@@ -18,7 +19,7 @@ import 'api_client.dart';
 /// (id minting, the glyph and plan defaults, the derived payment history) while
 /// the decorator owns only WHERE the bytes end up — so the two can never drift
 /// into two different answers for "what does adding a subscription do".
-class SeedApiClient implements ApiClient {
+class SeedApiClient implements ApiClient, CategoriesApi {
   List<Subscription> _subs = DemoData.subscriptions();
   BudgetInfo _budget = DemoData.budget();
 
@@ -124,6 +125,116 @@ class SeedApiClient implements ApiClient {
   Future<BudgetInfo> updateBudget(BudgetInfo budget) async {
     _budget = budget;
     return _budget;
+  }
+
+  /// The user's own categories (ST-T9) — the in-memory twin of the API's
+  /// `categories` rows with a `user_id`.
+  final List<SubscriptionCategory> _own = <SubscriptionCategory>[];
+  int _nextOwn = 1;
+
+  @override
+  Future<List<SubscriptionCategory>> getCategories() async {
+    final Set<String> known = <String>{
+      ...kBuiltinCategories.values,
+      ..._own.map((SubscriptionCategory c) => c.name),
+    };
+    // A name a row or a cap already uses is that user's category, exactly as
+    // migration 0005 back-filled them — so a demo row typed before this
+    // existed is not orphaned.
+    final List<SubscriptionCategory> used = <SubscriptionCategory>[
+      for (final String n in <String>{
+        ..._subs.map((Subscription s) => s.category),
+        ..._budget.categories.map((BudgetCap c) => c.name),
+      })
+        if (!known.contains(n) && n != 'Other')
+          SubscriptionCategory(id: 'name:$n', name: n, builtin: false),
+    ];
+    return <SubscriptionCategory>[...kBuiltinCategoryRows, ..._own, ...used];
+  }
+
+  @override
+  Future<SubscriptionCategory> createCategory(String name) async {
+    final String n = name.trim();
+    final List<SubscriptionCategory> all = await getCategories();
+    if (n.isEmpty || all.any((SubscriptionCategory c) => c.name == n)) {
+      throw ApiException(n.isEmpty ? 400 : 409, 'invalid_body');
+    }
+    final SubscriptionCategory c = SubscriptionCategory(
+      id: 'own-${_nextOwn++}',
+      name: n,
+      builtin: false,
+    );
+    _own.add(c);
+    return c;
+  }
+
+  /// The route's one batch, mirrored: the category, every row that names it
+  /// and its budget cap move to the new name together — so a rename keeps
+  /// both the rows and the cap (routes/categories.ts PATCH).
+  @override
+  Future<SubscriptionCategory> renameCategory(String id, String name) async {
+    final String n = name.trim();
+    final List<SubscriptionCategory> all = await getCategories();
+    final SubscriptionCategory? was = all
+        .where((SubscriptionCategory c) => c.id == id)
+        .firstOrNull;
+    if (was == null) throw ApiException(404, 'not_found');
+    if (was.builtin) throw ApiException(403, 'builtin_category');
+    if (n.isEmpty) throw ApiException(400, 'invalid_body');
+    if (all.any((SubscriptionCategory c) => c.name == n && c.id != id)) {
+      throw ApiException(409, 'name_taken');
+    }
+    final SubscriptionCategory now = SubscriptionCategory(
+      id: id,
+      name: n,
+      builtin: false,
+    );
+    _own.removeWhere((SubscriptionCategory c) => c.id == id);
+    _own.add(now);
+    _subs = <Subscription>[
+      for (final Subscription s in _subs)
+        s.category == was.name
+            ? s.patched(<String, dynamic>{'category': n, 'category_id': id})
+            : s,
+    ];
+    _budget = BudgetInfo(
+      monthlyBudget: _budget.monthlyBudget,
+      currencyKnown: _budget.currencyKnown,
+      categories: <BudgetCap>[
+        for (final BudgetCap c in _budget.categories)
+          c.name == was.name ? BudgetCap(n, c.cap) : c,
+      ],
+    );
+    return now;
+  }
+
+  /// Rows that named it become uncategorised and its cap goes, as the route's
+  /// DELETE batch does. A built-in cannot be deleted.
+  @override
+  Future<void> deleteCategory(String id) async {
+    final SubscriptionCategory? was = (await getCategories())
+        .where((SubscriptionCategory c) => c.id == id)
+        .firstOrNull;
+    if (was == null) return;
+    if (was.builtin) throw ApiException(403, 'builtin_category');
+    _own.removeWhere((SubscriptionCategory c) => c.id == id);
+    _subs = <Subscription>[
+      for (final Subscription s in _subs)
+        s.category == was.name
+            ? s.patched(<String, dynamic>{
+                'category': 'Other',
+                'category_id': null,
+              })
+            : s,
+    ];
+    _budget = BudgetInfo(
+      monthlyBudget: _budget.monthlyBudget,
+      currencyKnown: _budget.currencyKnown,
+      categories: <BudgetCap>[
+        for (final BudgetCap c in _budget.categories)
+          if (c.name != was.name) c,
+      ],
+    );
   }
 
   @override

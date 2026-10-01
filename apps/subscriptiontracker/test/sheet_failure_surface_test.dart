@@ -12,6 +12,8 @@ import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/services/notifications/notification_service.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
+import 'support/catalogue_fixture.dart';
+
 /// THE SHEETS HAD NO FAILURE PATH AT ALL.
 ///
 /// `_save()` and `_confirm()` awaited a call that goes through the repository to
@@ -84,6 +86,7 @@ Widget _app(void Function(BuildContext) open) {
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(_WriteFailsRepository()),
       renewalRemindersProvider.overrideWithValue(_SilentNotifications()),
+      ...catalogueOverrides(),
     ],
     // 🔴 THE DELEGATES ARE NOT DECORATION — WITHOUT THEM THIS HOST THROWS.
     // `l10n.yaml` sets `nullable-getter: false`, so the generated
@@ -128,6 +131,7 @@ Widget _appScaled(void Function(BuildContext) open, double scale) {
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(_WriteFailsRepository()),
       renewalRemindersProvider.overrideWithValue(_SilentNotifications()),
+      ...catalogueOverrides(),
     ],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -208,6 +212,9 @@ void main() {
     );
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
+    // ST-T9: past the catalogue pick step, to the form by hand.
+    await tester.tap(find.byKey(E2EKeys.addByHand));
+    await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(E2EKeys.addName), 'Hulu');
     // ST-T3b (ST-E2): Add waits for a real price — a blank one used to save
@@ -218,6 +225,10 @@ void main() {
     final Finder submit = find.byKey(E2EKeys.addSubmit);
     await tester.ensureVisible(submit);
     await tester.pumpAndSettle();
+    // ST-T9: the focused field re-shows its caret once the scroll settles;
+    // on the longer form that can carry Save back below the fold.
+    await tester.ensureVisible(submit);
+    await tester.pump();
     await tester.tap(submit);
     await tester.pumpAndSettle();
 
@@ -244,7 +255,7 @@ void main() {
       find.descendant(of: submit, matching: find.text('Add subscription')),
       findsOneWidget,
     );
-    // Scoped to the field: 'Hulu' is also one of the POPULAR tiles.
+    // Scoped to the field, as it was when 'Hulu' was also a POPULAR tile.
     expect(
       find.descendant(
         of: find.byKey(E2EKeys.addName),

@@ -2633,5 +2633,215 @@
   "homeFilterLabel": "Filter",
   "@homeFilterLabel": {
     "description": "Consumed by features/home/home_screen.dart: the toggle that shows the filter chips (status, category, currency) under the search (HO-03)."
+  },
+  "addPickSearchLabel": "Search services",
+  "@addPickSearchLabel": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the pick step's search over the bundled catalogue (AD-03)."
+  },
+  "addPickByHand": "Add by hand",
+  "@addPickByHand": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): opens the blank form instead of a catalogue pick."
+  },
+  "addPickImport": "Import instead",
+  "@addPickImport": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): leaves the sheet for the import screen."
+  },
+  "addPickNoMatch": "No service matches. Add it by hand.",
+  "@addPickNoMatch": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the search found nothing."
+  },
+  "addPickUnavailable": "The service list is not available. Add it by hand.",
+  "@addPickUnavailable": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the bundled catalogue did not load."
+  },
+  "fieldLabelPaidWith": "Paid with",
+  "@fieldLabelPaidWith": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the payment rail (AD-06), sent as `rail`."
+  },
+  "fieldLabelPaidHolder": "Card or account label (optional)",
+  "@fieldLabelPaidHolder": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): a label for whose card or which UPI handle, sent as `rail_holder`. Never a number."
+  },
+  "railNotSet": "Not set",
+  "@railNotSet": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): no payment method chosen."
+  },
+  "railUpiAutopay": "UPI Autopay",
+  "@railUpiAutopay": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail upi_autopay."
+  },
+  "railCard": "Card",
+  "@railCard": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail card_emandate."
+  },
+  "railNach": "Net banking / NACH",
+  "@railNach": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail nach."
+  },
+  "railAppStore": "App Store",
+  "@railAppStore": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail app_store."
+  },
+  "railPlay": "Google Play",
+  "@railPlay": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail play."
+  },
+  "railPaypal": "PayPal",
+  "@railPaypal": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail paypal."
+  },
+  "railOther": "Other",
+  "@railOther": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): rail manual."
+  },
+  "fieldLabelRemindMe": "Remind me",
+  "@fieldLabelRemindMe": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the row's own reminder days (AD-07), sent as `reminder_days`."
+  },
+  "fieldLabelNotice": "Notice to cancel",
+  "@fieldLabelNotice": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the row's notice period (AD-07), sent as `notice_days`."
+  },
+  "fieldLabelThenPrice": "Then (price after trial)",
+  "@fieldLabelThenPrice": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): the price a trial turns into (AD-08), sent as `price_after_trial_minor`."
+  },
+  "addPickResults": "{count, plural, =1{1 service} other{{count} services}}",
+  "@addPickResults": {
+    "description": "Consumed by features/add/add_subscription_sheet.dart. ST-T9 (train st-add-catalogue): how many services the search shows.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "statusTrialingThen": "Free trial until {date}, then {price}",
+  "@statusTrialingThen": {
+    "description": "Consumed by features/detail/subscription_detail_screen.dart, the status line. ST-T9 (AD-08): a trial whose price after the trial is known (`price_after_trial_minor`).",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "Oct 3, 2026"
+      },
+      "price": {
+        "type": "String",
+        "example": "₹649.00"
+      }
+    }
+  },
+  "settingsCategories": "Categories",
+  "@settingsCategories": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): the Settings row that opens the categories manager."
+  },
+  "categoriesBuiltinHeading": "BUILT IN",
+  "@categoriesBuiltinHeading": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): heading over the built-in categories, which cannot be renamed."
+  },
+  "categoriesOwnHeading": "YOUR CATEGORIES",
+  "@categoriesOwnHeading": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): heading over the user's own categories."
+  },
+  "categoriesOwnEmpty": "None yet. Add one below.",
+  "@categoriesOwnEmpty": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): shown when the user has no categories of their own."
+  },
+  "categoriesNewLabel": "New category",
+  "@categoriesNewLabel": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): the add field's name."
+  },
+  "categoriesAdd": "Add category",
+  "@categoriesAdd": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): the add action."
+  },
+  "categoriesRename": "Rename",
+  "@categoriesRename": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): the rename action on a row."
+  },
+  "categoriesDelete": "Delete",
+  "@categoriesDelete": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): the delete action on a row."
+  },
+  "categoriesRenameTitle": "Rename category",
+  "@categoriesRenameTitle": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): the rename dialog's title."
+  },
+  "categoriesFailed": "Could not save that category. Check the name and try again.",
+  "@categoriesFailed": {
+    "description": "Consumed by features/settings/categories_manager.dart and the add sheet's category picker. ST-T9 (AD-05): a failed add, rename or delete."
+  },
+  "setupCurrencyTitle": "Your home currency",
+  "@setupCurrencyTitle": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupCurrencyBody": "We picked {code} from your device's region. New subscriptions start in it, and each one can still have its own. You can change it in Settings later.",
+  "@setupCurrencyBody": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup.",
+    "placeholders": {
+      "code": {
+        "type": "String",
+        "example": "INR"
+      }
+    }
+  },
+  "setupRemindersTitle": "How should we remind you?",
+  "@setupRemindersTitle": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupRemindersBody": "Before a subscription renews, we can remind you. Choose where — you can change this in Settings.",
+  "@setupRemindersBody": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupRemindersPush": "Notifications on this device",
+  "@setupRemindersPush": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupRemindersNoPush": "This device cannot schedule notifications. E-mail and the calendar feed reach every device once you are signed in.",
+  "@setupRemindersNoPush": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupPickTitle": "Pick what you pay for",
+  "@setupPickTitle": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupPickBody": "Tap every service you pay for. Each one is added with what we know about it; you fill in the price.",
+  "@setupPickBody": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupNext": "Next",
+  "@setupNext": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupFinish": "Done",
+  "@setupFinish": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupSkip": "Skip",
+  "@setupSkip": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupBack": "Back",
+  "@setupBack": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup."
+  },
+  "setupPosition": "Step {step} of {count}",
+  "@setupPosition": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup.",
+    "placeholders": {
+      "step": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "setupPicked": "{count, plural, =0{Nothing picked yet} =1{1 picked} other{{count} picked}}",
+  "@setupPicked": {
+    "description": "Consumed by features/setup/setup_screen.dart. ST-T9 (EN-18): the after-sign-in setup.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   }
 }

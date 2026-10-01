@@ -703,10 +703,16 @@ const REQUIRED_COVERAGE = [
     // Measured by this guard's own run on the merge: "18 of 18 reachable
     // surface(s) carry an a11y sweep, from 1 a11y test file(s) across 113
     // case(s)".
-    surfaces: 18,
+    // ⏱ 2026-10-01 · ST-T9 (EN-18): 18 → 19 surfaces and 113 → 115 cases,
+    // RAISED IN THE CHANGE THAT EARNED THEM — the after-sign-in setup
+    // (`/setup`, SetupScreen) arrived swept (`setup · the after-sign-in
+    // steps`, two cases). Read off the per-root line: `19 of 19 reachable
+    // surface(s) carry an a11y sweep, from 1 a11y test file(s) across 115
+    // case(s)`.
+    surfaces: 19,
     a11yFiles: 1,
-    cases: 113,
-    label: 'the app P5 wrote this guard for — 18 surfaces, all eighteen swept',
+    cases: 115,
+    label: 'the app P5 wrote this guard for — 19 surfaces, all nineteen swept',
   },
   {
     dir: BRICK,
@@ -817,9 +823,13 @@ const REQUIRED_COVERAGE = [
     // chassis SettingsHeading arrived swept with the Help card
     // (`a11y: help-section`, light + dark kPhone). Read off the per-root line:
     // `27 of 27 … across 63 case(s)`.
-    surfaces: 27,
+    // ⏱ 2026-10-01 · ST-T9 (EN-18), on top of audit D8: 27 -> 28 surfaces,
+    // 63 -> 65 cases — the chassis SetupStepsView arrived swept (`a11y:
+    // after-sign-in setup`, light + dark kPhone). Read off the per-root line:
+    // `28 of 28 … across 65 case(s)`.
+    surfaces: 28,
     a11yFiles: 4,
-    cases: 63,
+    cases: 65,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -1033,6 +1043,9 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         // 2026-09-29 (ST-D3 D3-2): the budget editor, the first surface that
         // can WRITE a budget, swept in a11y_semantics_test.dart.
         'features/insights/budget_editor.dart#showBudgetEditorSheet',
+        // 2026-10-01 (ST-T9 EN-18): the after-sign-in setup, in the same
+        // change as its sweep (a11y_semantics_test.dart "setup · …").
+        'features/setup/setup_screen.dart#SetupScreen',
       ].map((k) => `apps/subscriptiontracker/lib/${k}`),
     ),
   ],
@@ -1075,6 +1088,9 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'auth/turnstile_gate.dart#TurnstileGate',
         'auth/verify_email_screen.dart#VerifyEmailView',
         'firstrun/onboarding_screen.dart#OnboardingView',
+        // 2026-10-01 (ST-T9 EN-18): the setup step list, in the same change
+        // as its sweep (a11y_firstrun_money_settings_test.dart).
+        'firstrun/setup_steps_view.dart#SetupStepsView',
         // 2026-09-23: the two home bodies, swept in a11y_home_test.dart.
         'home/home_screen.dart#CatchUpBannerView',
         'home/home_screen.dart#WelcomeView',

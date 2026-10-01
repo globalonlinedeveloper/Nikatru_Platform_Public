@@ -9177,7 +9177,7 @@ describe('assert-responsive-coverage', () => {
     for (const i of ids.slice(0, 13)) over[`${TEST}/width_s${i}_test.dart`] = null;
     const { code, out } = run('assert-responsive-coverage.mjs', { cwd: build('rc-notests', over) });
     assert.equal(code, 1);
-    assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` has 0 measured surface\(s\) and its measured floor is 18/); // 19 -> 18 on 2026-09-28 (ST-T1b, audit A-5); 18 -> 19 the same day (ST-D6: showEditSubscriptionSheet arrived measured); 19 -> 18 on 2026-09-29 (ST-D DW1: on ST-T3b the edit form is showAddSubscriptionSheet(initial:))
+    assert.match(out, /COVERAGE LOST — `apps\/subscriptiontracker` has 0 measured surface\(s\) and its measured floor is 19/); // 18 -> 19 on 2026-10-01 (ST-T9: /setup arrived measured by width_setup_test); 19 -> 18 on 2026-09-28 (ST-T1b, audit A-5); 18 -> 19 the same day (ST-D6: showEditSubscriptionSheet arrived measured); 19 -> 18 on 2026-09-29 (ST-D DW1: on ST-T3b the edit form is showAddSubscriptionSheet(initial:))
   });
 
   test('FAILS when a route builds something this guard cannot classify', () => {
