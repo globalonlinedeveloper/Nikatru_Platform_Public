@@ -30,6 +30,11 @@
 // portfolio, discovered on somebody else's device. Hand-editing is the failure
 // mode; this generator plus `tooling/ci/assert-well-known-shape.mjs` is the fix.
 //
+// 🔄 2026-10-01 · rv2-security-021 — APPENDED: it now ALSO emits the origin's
+// security.txt and its Policy copy of SECURITY.md (see `planSecurityTxt` below),
+// which are owed whatever the catalogue says. Everything in the next section is
+// about the two ASSOCIATION files, and for them it is still true.
+//
 // ── WHAT IT EMITS TODAY: NOTHING. MEASURED, NOT ASSUMED ──────────────────────
 // Measured on this tree 2026-09-09:
 //   · `catalog/apps.json` holds ONE row — `subscriptiontracker`, `platforms: ["web"]`, and
@@ -161,7 +166,7 @@
 // workflow is owed at that moment and belongs to that unit's owner.
 //
 // Usage:  node tooling/sites/generate-well-known.mjs [repoRoot]
-// Exit 0 = the tree matches the plan (today: nothing to write, nothing written)
+// Exit 0 = the tree matches the plan (today: security.txt and its Policy copy, no association file)
 //      1 = the sources cannot be turned into a file that is safe to publish.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -170,7 +175,7 @@ import { fileURLToPath } from 'node:url';
 import { listDir } from '../ci/tree-walk.mjs';
 import { bundleIdOf, teamIdOf, REGISTER as APPLE_REGISTER } from '../ci/apple-provisioning.mjs';
 import { storeRecordOf } from '../store/store-record.mjs';
-import { APEX_HOST, appBaseHref, publicAppUrl } from './apex.mjs';
+import { APEX_HOST, APEX_ORIGIN, appBaseHref, publicAppUrl } from './apex.mjs';
 
 /** The published catalogue — the set of apps that HAVE a path on the apex. The
  *  registry `generate-discovery.mjs` reads (`sites/_shared/_data/apps.json`) is
@@ -209,6 +214,86 @@ export const SURFACES = [
 ];
 
 const jsonFile = (value) => `${JSON.stringify(value, null, 2)}\n`;
+
+// ── security.txt (RFC 9116) ──────────────────────────────────────────────────
+// ⏱ 2026-10-01 · rv2-security-021 (folds O-NO-SECURITY-TXT). The ORIGIN's security
+// contact, at the one path a researcher's tooling looks for it. It is the third
+// file this directory holds and the reason the stray-file check below names
+// "security.txt" among the units that would share it: a hand-written one would be
+// refused, so it is generated here, beside the association files, and graded by
+// the same guard (assert-well-known-shape.mjs limb I).
+//
+// EVERY FIELD IS DERIVED, NOT TYPED:
+//   · Contact — `mailto:` + `AppConfig.supportEmail` from the brick's app_config.dart,
+//     the ONE place the support address is decided. assert-repo-posture.mjs holds
+//     this Contact equal to SECURITY.md, sites/nikatru/contact.html and every app's
+//     compiled-in address, so there is still exactly one address to get wrong;
+//   · Policy — a BYTE COPY of the repository's SECURITY.md, served from this origin
+//     (SECURITY_POLICY_REL). Linking GitHub instead would make the policy a page on
+//     a host this origin does not control, and the copy cannot drift: limb B diffs it;
+//   · Canonical — this file's own URL, built from the apex (apex.mjs), never retyped;
+//   · Expires — SECURITY_TXT_EXPIRES below, the ONE hand-set value, because RFC 9116
+//     makes an expiry a promise that someone re-reads the file. The guard reds 30
+//     days before it lapses and refuses one more than a year out, so renewing it is
+//     a dated edit of that constant plus a run of this generator.
+export const SECURITY_TXT_REL = `${WELL_KNOWN_DIR}/security.txt`;
+export const SECURITY_POLICY_REL = `${WELL_KNOWN_DIR}/security-policy.txt`;
+/** Both files the security.txt unit owns — the guard keeps them out of the
+ *  association limbs (A, C), which are about deep-link files only. */
+export const SECURITY_FILES = [SECURITY_TXT_REL, SECURITY_POLICY_REL];
+export const SECURITY_MD = 'SECURITY.md';
+export const BRICK_APP_CONFIG = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/app_config.dart';
+/** ⏱ Set 2026-10-01, 364 days out (RFC 9116 §2.5.5: less than a year). Renew by
+ *  moving it forward and re-running this generator; the guard reds from 30 days out. */
+export const SECURITY_TXT_EXPIRES = '2027-09-30T00:00:00.000Z';
+export const SECURITY_TXT_LANGUAGES = 'en';
+/** The URL a file under the deploy root (`sites/nikatru/`) is served at, from the apex. */
+const DEPLOY_ROOT_PREFIX = WELL_KNOWN_DIR.replace(/\.well-known$/, '');
+export const servedUrl = (rel) => new URL(rel.slice(DEPLOY_ROOT_PREFIX.length), APEX_ORIGIN).href;
+
+/** The security.txt pair, as bytes, plus the problems that stop it being written. */
+export function planSecurityTxt(repoRoot) {
+  const problems = [];
+  const files = new Map();
+  const read = (rel) => {
+    try {
+      return readFileSync(join(repoRoot, ...rel.split('/')), 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  const policy = read(SECURITY_MD);
+  if (policy === null) {
+    problems.push(`${SECURITY_MD} does not exist, so security.txt would publish a Policy link to nothing.`);
+  }
+  const contact = read(BRICK_APP_CONFIG)?.match(/supportEmail\s*=\s*'([^']+)'/)?.[1] ?? null;
+  if (contact === null) {
+    problems.push(
+      `${BRICK_APP_CONFIG} declares no AppConfig.supportEmail, the one place the support address is decided, so ` +
+        'security.txt has no Contact to publish.',
+    );
+  }
+  if (Number.isNaN(Date.parse(SECURITY_TXT_EXPIRES))) {
+    problems.push(`SECURITY_TXT_EXPIRES (${SECURITY_TXT_EXPIRES}) is not an ISO 8601 date-time.`);
+  }
+  if (problems.length) return { files, problems, contact };
+  files.set(
+    SECURITY_TXT_REL,
+    [
+      `# The security contact for ${APEX_HOST} (RFC 9116).`,
+      `# GENERATED by tooling/sites/generate-well-known.mjs from ${SECURITY_MD} and AppConfig.supportEmail.`,
+      '# Do not edit by hand: assert-well-known-shape.mjs diffs this file against the plan.',
+      `Contact: mailto:${contact}`,
+      `Expires: ${new Date(SECURITY_TXT_EXPIRES).toISOString()}`,
+      `Policy: ${servedUrl(SECURITY_POLICY_REL)}`,
+      `Preferred-Languages: ${SECURITY_TXT_LANGUAGES}`,
+      `Canonical: ${servedUrl(SECURITY_TXT_REL)}`,
+      '',
+    ].join('\n'),
+  );
+  files.set(SECURITY_POLICY_REL, policy);
+  return { files, problems, contact };
+}
 
 /** Does this catalogue row claim a mobile channel? Either half counts: a store
  *  listing URL is a shipped app, and `platforms` is what the served-channel
@@ -395,6 +480,13 @@ export function planWellKnown(repoRoot) {
     files.set(ASSETLINKS_REL, jsonFile(android.map((q) => assetlinksStatement(q.identity))));
   }
 
+  // security.txt is owed whatever the catalogue says: it is the origin's, not an app's.
+  const security = planSecurityTxt(repoRoot);
+  if (security.problems.length) {
+    return { files: new Map(), catalog, qualifying, presence, problems: security.problems, comparisons, catalogUsable: true };
+  }
+  for (const [rel, contents] of security.files) files.set(rel, contents);
+
   return { files, catalog, qualifying, presence, problems, comparisons, catalogUsable: true };
 }
 
@@ -456,9 +548,10 @@ if (isMain) {
   }
 
   // A file this plan does not own is reported rather than deleted: deleting is a
-  // destructive act on a directory a future unit (webcredentials, appclips,
-  // security.txt) will legitimately share. Naming it is enough — the guard reds
-  // on the same finding independently.
+  // destructive act on a directory a future unit (webcredentials, appclips) will
+  // legitimately share. Naming it is enough — the guard reds on the same finding
+  // independently. (security.txt was the third such unit; since 2026-10-01 it is
+  // planned above, so this check is what keeps it generated.)
   const stray = wellKnownOnDisk(root).filter((rel) => !files.has(rel));
   for (const rel of stray) {
     console.error(`✗ ${rel} exists and this generator does not own it. Association files are GENERATED; a hand-written one is`);
@@ -470,9 +563,11 @@ if (isMain) {
       `${qualifying.length} qualifying (ios+android), ${files.size} file(s) planned, ${written} written, ` +
       `${stray.length} unowned file(s) under ${WELL_KNOWN_DIR}/`,
   );
-  if (files.size === 0) {
+  const associations = [...files.keys()].filter((rel) => !SECURITY_FILES.includes(rel));
+  console.log(`    security.txt — ${SECURITY_FILES.filter((rel) => files.has(rel)).length} file(s) planned (${SECURITY_FILES.join(', ')})`);
+  if (associations.length === 0) {
     console.log(
-      '    NOTHING TO DECLARE, SO NOTHING IS PUBLISHED: an empty AASA is cached by Apple\'s CDN as an ' +
+      '    NO ASSOCIATION TO DECLARE, SO NO ASSOCIATION FILE IS PUBLISHED: an empty AASA is cached by Apple\'s CDN as an ' +
         'authoritative "no app claims this origin", which the first real file then has to outlive.',
     );
   }
