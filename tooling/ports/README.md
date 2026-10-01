@@ -11,7 +11,9 @@ This file is normative and stands alone: later trains read the standard from her
 
 The first subjects, at their honest levels: `tooling/ports/payments.json` (inbound, `MoRWebhookVerifier`),
 `tooling/ports/auth.json` (Dart `AuthRepository`) and `tooling/ports/telemetry.json` (Dart `TelemetryClient`), each
-claiming L2 with target L3; every other vendor is placed in `tooling/ports/_non-port.json`.
+claiming L2 with target L3; every other vendor is placed in `tooling/ports/_non-port.json`. `tooling/ports/mail.json`
+(TS `MailTransport`, port-mail) is the first port at L3: Resend and a fake conformant, an Amazon SES draft passing the
+same suite to prove the port is not Resend-shaped.
 
 ## 1. Levels
 
@@ -20,7 +22,7 @@ claiming L2 with target L3; every other vendor is placed in `tooling/ports/_non-
 | **L0** | Hard-coded at call sites. | — |
 | **L1** | Centralised, but vendor-shaped. | The registry validates and its `interface` symbols are declared where it says. |
 | **L2** | Behind a port (an interface), one adapter, chosen by config; no caller imports an adapter. | L1, plus a `selection` (a `source` or a `default`), at least one built non-fake adapter, limb 4 clean for the port, and no fake selectable in live. |
-| **L3** | L2, plus a conformance suite any adapter must pass, at least two conformant adapters (one may be a fake) with zero pending cases, a switch runbook, and a dry-run command. | L2, plus `conformance.suite` whose runner is declared in its file, two or more adapters whose `conformance.file` **calls** that runner and have no `pending` case, a `switch.runbook`, and `tooling/ops/port-switch.mjs` present. |
+| **L3** | L2, plus a conformance suite any adapter must pass, at least two conformant adapters (one may be a fake) with zero pending cases, a switch runbook, and a dry-run command. | L2, plus `conformance.suite` whose runner is declared in its file, two or more adapters — never a `draft` or `retired` one — whose `conformance.file` **calls** that runner and have no `pending` case, a `switch.runbook`, and `tooling/ops/port-switch.mjs` present. |
 
 A claim above the earned level fails the build. The guard prints `port · claimed · earned · target` on every run, so
 the distance to target is never hidden.
@@ -43,12 +45,14 @@ wherever the shape can hold it).
 | `adapters[].capabilities` | The port's own verbs (e.g. `verify`, `parse`, `cancel-api`). Capability verbs, never vendor nouns. |
 | `adapters[].secrets` | Secret **names** only — rows of `tooling/worker-secrets.json` once it exists, until then members of a Worker's `interface Env`. |
 | `adapters[].identity` | Field **paths** into `tooling/house-identity.json` (the entity source) that the vendor account carries. Never the values. |
-| `adapters[].environments` | Which of `test`, `sandbox`, `live` it may serve. A fake never lists `live`. |
+| `adapters[].environments` | Which of `test`, `sandbox`, `live` it may serve. A fake never lists `live`. Empty only for a `draft` or `retired` adapter: selectable nowhere. |
 | `adapters[].cost` | `feeCells` — `tooling/catalog/fee-register.json` cell ids applied per sale; `unit` — `{usd, per, asOf, verify}` or null. |
 | `adapters[].conformance` | `{file}` — the adapter's test that **calls** the suite's runner; null until it exists. |
 | `adapters[].exportDuty` | What leaves with us, what must be exported, what cannot move. |
 | `adapters[].readAt` | `{url, on}` — the vendor page the adapter's facts were read from, and when; null if none was read. |
+| `adapters[].delivery` | Mail only: `{rail, dnsNeeded, domainVerification, warming, suppression: {export, import}}` — the `tooling/mail-transport.json` rail whose `authRecords` it sends under (or, with none yet, the records to publish), the verification step, the warm-up, and how the suppression list leaves and enters it (null until the runbook names the method). Read by the mail dry run (C9–C14). |
 | `adapters[].c8Seam` | Optional, a **declared, printed** divergence: the vendor's C-8 `seam.file` is not this port's interface. Names the C-8 file exactly, with `why` and `until`. |
+| `streams` | For `selection.by: stream`: `{<stream>: {adapter, secrets, from, to?, why}}` — the adapter, its secret NAMES in preference order (the first one set wins), and the From (and a fixed recipient) as entity-source PATHS. Each adapter is one of the port's and each secret one that adapter declares (limb 1); each path resolves (limb 9). |
 | `selection.by` | `single` · `environment` · `stream` · `channel-market` · `per-call`. |
 | `selection.source` | `<file>#<pointer>` when another register (or one code site) holds the answer — e.g. `tooling/channel-register.json#purchaseRails`; null when `default` is the whole answer. |
 | `selection.default` | `{live, sandbox, test}` adapter ids or null. Null in every slot is honest for a port selected per channel. |
@@ -86,6 +90,9 @@ wherever the shape can hold it).
   of a Worker bundle and may import adapters to test them). Until a port is `generated`, a file named in its
   `handTables` is the declared exception.
 - Fakes live in `services/_shared/src/ports/fakes/`.
+- **No business fact is a literal in Worker source.** An address is an entity-source field, rendered into the Worker's
+  `src/generated/entity.ts` (`tooling/ports/render-entity.mjs`, `--check`); limb 9 refuses an owner-domain address
+  anywhere else in `services/*/src`.
 
 ### Dart ports (apps)
 
@@ -159,9 +166,12 @@ Where one of these appears as a vendor in a register, `_non-port.json` carries i
 ## 8. The guard and the tool
 
 `node tooling/ci/assert-ports.mjs` — exit 0 green, 1 a finding, 2 coverage lost; the first line names the deciding limb.
-Limbs: 1 schema · 2 symbols · 3 waivers · 4 imports · 5 secrets · 6 level · 7 fakes · 8 cross-register. Every limb has a
-recorded mutation in `tooling/ci/test/ports.test.mjs`.
+Limbs: 1 schema · 2 symbols · 3 waivers · 4 imports · 5 secrets · 6 level · 7 fakes · 8 cross-register · 9 literals.
+Every limb has a recorded mutation in `tooling/ci/test/ports.test.mjs`. Limb 8 places a vendor once per port: mail's
+Resend HTTP adapter and its SMTP relay (auth mail) are one vendor in one port.
 
 `node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>]` —
 one line per check, `PASS | FAIL | LOST C<n> <name>: <detail>`; exit 1 on any FAIL, 2 on any LOST, 0 only when all
-pass. Without `--dry-run` it refuses. Tests: `tooling/ci/test/port-switch.test.mjs`.
+pass. A port with `streams` (mail) adds C9 dns (SPF include, DKIM, return-path, DMARC alignment), C10 domain
+verification, C11 streams and their secret names, **C12 the suppression-list export and import — FAIL until the runbook
+names the method**, C13 warming, and C14 the per-stream cost from `tooling/ceilings.json` (LOST while it records none). Without `--dry-run` it refuses. Tests: `tooling/ci/test/port-switch.test.mjs`.

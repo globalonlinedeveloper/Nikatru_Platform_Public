@@ -375,17 +375,18 @@
       "surface": "⏱ 2026-09-18 · O-PLAY-AI-CONTENT-REPORTING. Transactional email from a Worker — TWO uses since 2026-09-28: the support notice that an in-app AI content report arrived (sender alerts@mail.nikatru.com), and the renewal reminder digest a user opts in to (ST-R1, sender reminders@mail.nikatru.com, capped at MAX_REMINDER_MAILS_PER_DAY in services/platform/src/lib/reminders.ts). Resend already carries the portfolio's auth mail through Supabase SMTP ([ADR 029], tooling/mail-transport.json), but that path is configured in Supabase, not in this tree; this record is for the code in services/ that calls Resend's API itself. The auth+alerts container ([ADR 041]).",
       "stickiness": "★ — the least sticky kind of vendor: one POST with a from, a to, a subject and a text body. No template, no audience, no stored record we read back.",
       "surfaces": [
-        "RESEND_API_KEY"
+        "RESEND_API_KEY",
+        "RESEND_REMINDERS_API_KEY"
       ],
       "openProtocol": "PARTIAL — the API is Resend's own, but what it sends is plain SMTP mail from our own DKIM-signed subdomain (mail.nikatru.com), and the same message could leave through Resend's SMTP relay or any other provider without the recipient seeing a difference.",
       "seam": {
-        "file": "services/platform/src/lib/report-notify.ts",
-        "symbol": "sendResendMail",
-        "note": "Every Resend fact — the URL, the Bearer header, the body shape, the timeout — lives in this one function (⏱ 2026-09-28: extracted from notifyReport when the reminder digest became the second sender). notifyReport and services/platform/src/lib/reminders.ts both call it and know nothing else about who delivers the mail."
+        "file": "services/_shared/src/ports/mail.ts",
+        "symbol": "MailTransport",
+        "note": "⏱ 2026-10-01 · port-mail. The seam is the mail PORT: notifyReport and services/platform/src/lib/reminders.ts send a MailMessage on a stream through mailFor (services/platform/src/ports.ts, the composition root) and know nothing about who delivers it. Every Resend fact — the URL, the Bearer header, the body shape, the timeout, the idempotency header — lives in the adapter services/platform/src/adapters/mail/resend.ts (until then lib/report-notify.ts sendResendMail). Registry: tooling/ports/mail.json."
       },
       "configKeyed": {
         "kind": "runtime-secret",
-        "reason": "A Worker SECRET (`wrangler secret put RESEND_API_KEY`), never a committed var. It is the auth+alerts container's key — the same credential as the vault's SMTP_PASS — so it ROTATES TOGETHER with Supabase smtp_pass and Box A's EMAIL_URL. Absent, the notice is skipped and the report is still stored: nothing needs a release to repoint."
+        "reason": "A Worker SECRET (`wrangler secret put RESEND_API_KEY`), never a committed var. It is the auth+alerts container's key — the same credential as the vault's SMTP_PASS — so it ROTATES TOGETHER with Supabase smtp_pass and Box A's EMAIL_URL. Absent, the notice is skipped and the report is still stored: nothing needs a release to repoint. ⏱ 2026-10-01 · port-mail: RESEND_REMINDERS_API_KEY is the reminders stream's own key (tooling/ports/mail.json streams.reminders), declared and not provisioned; until it is set the reminders stream uses RESEND_API_KEY."
       },
       "ownTheRecord": "YES — the report is ours, in platform_db.content_reports (migration 0013). Resend holds only its own log of the notice it delivered, which carries a report id, an app, a reason and a time — no user content. Losing Resend loses a notification, never a report. ⏱ 2026-09-28: a reminder digest DOES carry user content — the recipient's confirmed address and the names, dates and amounts of the subscriptions about to renew — and Resend's log of it holds them; the per-app privacy notice says so (apps/subscriptiontracker/privacy.yaml, processor `resend`). What was sent is ours, in platform_db.reminder_sent (migration 0020), without the address or the names.",
       "exportPath": {
@@ -394,7 +395,34 @@
       },
       "exitPlan": {
         "alternative": "Amazon SES ([ADR 029] §3 names it as the documented fallback), or any provider with an HTTP send API — the body is from/to/subject/text.",
-        "swapCost": "One function (notifyReport): a new URL, header and body shape, and one secret. No schema change, no client change, no store release."
+        "swapCost": "One adapter behind MailTransport (services/_shared/src/ports/mail.ts) and a stream row in tooling/ports/mail.json: the SES draft (services/platform/src/adapters/mail/ses.ts) already passes the port's conformance suite. Plus the DNS, the domain verification and the SUPPRESSION LIST, which must move with any switch (`node tooling/ops/port-switch.mjs mail --to <adapter> --dry-run` lists each). No schema change, no client change, no store release."
+      }
+    },
+    "amazon-ses": {
+      "surface": "⏱ 2026-10-01 · port-mail. NOT IN USE — the DRAFT second adapter of the mail port (services/platform/src/adapters/mail/ses.ts; tooling/ports/mail.json row `ses`, status draft, no environment). [ADR 029] §3 names Amazon SES as the documented fallback; the draft exists to prove the mail port is not Resend-shaped. No AWS account exists; the two credential names are declared on the platform Worker's Env and not provisioned.",
+      "stickiness": "★ — the same one-POST shape as Resend (from, to, subject, text/html), signed with SigV4 instead of a Bearer key. Nothing is stored at the vendor that we read back.",
+      "surfaces": [
+        "AWS_SES_ACCESS_KEY_ID",
+        "AWS_SES_SECRET_ACCESS_KEY"
+      ],
+      "openProtocol": "PARTIAL — the SendEmail API is AWS's own; what it sends is plain SMTP mail from our DKIM-signed subdomain, indistinguishable to a recipient from the same mail sent through Resend.",
+      "seam": {
+        "file": "services/_shared/src/ports/mail.ts",
+        "symbol": "MailTransport",
+        "note": "The mail port; the SES adapter is one implementation of it, constructed by nothing until a switch selects it."
+      },
+      "configKeyed": {
+        "kind": "runtime-secret",
+        "reason": "Worker SECRETS (`wrangler secret put AWS_SES_ACCESS_KEY_ID` / `AWS_SES_SECRET_ACCESS_KEY`), never committed vars; declared, not provisioned. Selecting SES is a change to tooling/ports/mail.json streams and the composition root, never a client release."
+      },
+      "ownTheRecord": "YES — as for Resend: every report and reminder is ours in platform_db; SES would hold only its delivery log and its account-level suppression list.",
+      "exportPath": {
+        "path": "services/platform/migrations/0013_content_reports.sql",
+        "detail": "The records never leave our database; the suppression list is the one thing that must be exported from SES on leaving (SES v2 ListSuppressedDestinations)."
+      },
+      "exitPlan": {
+        "alternative": "Resend (the live adapter), or any provider with an HTTP send API behind MailTransport.",
+        "swapCost": "One adapter and a stream row in tooling/ports/mail.json, plus DNS, domain verification and the suppression list (port-switch.mjs mail --dry-run)."
       }
     }
   },
