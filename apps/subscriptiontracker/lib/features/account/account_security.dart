@@ -214,7 +214,9 @@ class _AccountChangeDialogState extends ConsumerState<AccountChangeDialog> {
                   ],
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
-                    labelText: _isEmail ? l10n.changeEmailNew : l10n.newPassword,
+                    labelText: _isEmail
+                        ? l10n.changeEmailNew
+                        : l10n.newPassword,
                     errorText:
                         _isEmail && typed.isNotEmpty && !_looksLikeEmail(typed)
                         ? l10n.changeEmailInvalid

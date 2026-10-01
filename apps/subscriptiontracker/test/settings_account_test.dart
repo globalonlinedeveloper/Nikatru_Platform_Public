@@ -23,6 +23,7 @@ import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:subscriptiontracker/features/account/account_rows.dart';
 import 'package:subscriptiontracker/features/account/account_security.dart';
 import 'package:subscriptiontracker/features/settings/reminder_settings.dart'
     show emailRemindersOnProvider;
@@ -288,7 +289,7 @@ void main() {
     ) async {
       final _Auth auth = _Auth()..gate = Completer<void>();
       await _pump(tester, auth);
-      await tester.tap(find.byKey(SettingsScreen.settingsLogOutAllButton));
+      await tester.tap(find.byKey(LogOutEverywhereButton.button));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Log out everywhere'));
       await tester.pump();
@@ -296,7 +297,7 @@ void main() {
       expect(find.text('Logging out everywhere…'), findsOneWidget);
       expect(auth.signOutCalls, 1);
       await tester.tap(
-        find.byKey(SettingsScreen.settingsLogOutAllButton),
+        find.byKey(LogOutEverywhereButton.button),
         warnIfMissed: false,
       );
       await tester.pump();
@@ -415,7 +416,7 @@ void main() {
     ) async {
       final _Auth auth = _Auth();
       await _pump(tester, auth);
-      await openChange(tester, SettingsScreen.changeEmailRow);
+      await openChange(tester, AccountSecurityRows.changeEmail);
       await fill(tester, newValue: 'new@test.dev', current: 'wrong');
       expect(auth.reauths, <String>['ada@test.dev']);
       expect(auth.emailChanges, isEmpty, reason: 'changed without the owner');
@@ -426,7 +427,7 @@ void main() {
 
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
-      await openChange(tester, SettingsScreen.changePasswordRow);
+      await openChange(tester, AccountSecurityRows.changePassword);
       await fill(tester, newValue: 'a-new-long-one', current: 'wrong');
       expect(auth.passwordChanges, isEmpty);
     });
@@ -436,7 +437,7 @@ void main() {
     ) async {
       final _Auth auth = _Auth();
       await _pump(tester, auth);
-      await openChange(tester, SettingsScreen.changeEmailRow);
+      await openChange(tester, AccountSecurityRows.changeEmail);
       await fill(
         tester,
         newValue: ' new@test.dev ',
@@ -454,7 +455,7 @@ void main() {
     ) async {
       final _Auth auth = _Auth();
       await _pump(tester, auth);
-      await openChange(tester, SettingsScreen.changeEmailRow);
+      await openChange(tester, AccountSecurityRows.changeEmail);
       for (final String bad in <String>['ada@test.dev', 'not-an-address']) {
         await tester.enterText(
           find.byKey(AccountChangeDialog.newValueField),
@@ -483,7 +484,7 @@ void main() {
     ) async {
       final _Auth auth = _Auth();
       await _pump(tester, auth);
-      await openChange(tester, SettingsScreen.changePasswordRow);
+      await openChange(tester, AccountSecurityRows.changePassword);
       expect(find.byType(AuthPasswordChecklist), findsOneWidget);
       await fill(
         tester,
@@ -504,8 +505,8 @@ void main() {
           // provider sheet is not shown again.
           ..lastSignInAt = DateTime.now().toUtc();
         await _pump(tester, auth);
-        expect(find.byKey(SettingsScreen.changePasswordRow), findsNothing);
-        await openChange(tester, SettingsScreen.changeEmailRow);
+        expect(find.byKey(AccountSecurityRows.changePassword), findsNothing);
+        await openChange(tester, AccountSecurityRows.changeEmail);
         expect(
           find.byKey(AccountChangeDialog.currentPasswordField),
           findsNothing,

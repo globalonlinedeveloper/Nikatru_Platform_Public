@@ -202,23 +202,23 @@ class ReminderRuleRows extends ConsumerWidget {
             },
           ),
           if (local)
-          ListTile(
-            key: const Key('settings.reminder.time'),
-            leading: const Icon(Icons.schedule),
-            title: Text(l10n.reminderTimeTitle),
-            subtitle: Text(_time(context, s.reminderMinuteOfDay)),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () async {
-              final TimeOfDay? t = await showTimePicker(
-                context: context,
-                initialTime: TimeOfDay(
-                  hour: s.reminderMinuteOfDay ~/ 60,
-                  minute: s.reminderMinuteOfDay % 60,
-                ),
-              );
-              if (t != null) await c.setReminderTime(t.hour, t.minute);
-            },
-          ),
+            ListTile(
+              key: const Key('settings.reminder.time'),
+              leading: const Icon(Icons.schedule),
+              title: Text(l10n.reminderTimeTitle),
+              subtitle: Text(_time(context, s.reminderMinuteOfDay)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                final TimeOfDay? t = await showTimePicker(
+                  context: context,
+                  initialTime: TimeOfDay(
+                    hour: s.reminderMinuteOfDay ~/ 60,
+                    minute: s.reminderMinuteOfDay % 60,
+                  ),
+                );
+                if (t != null) await c.setReminderTime(t.hour, t.minute);
+              },
+            ),
           const ReminderToolsRows(),
         ],
       ),

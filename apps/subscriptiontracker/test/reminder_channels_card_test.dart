@@ -131,7 +131,10 @@ Future<({_Transport t, _Launcher l})> _pump(
           body: withRuleRows
               // SE-09: the ONE "Remind me" row lives in ReminderRuleRows.
               ? const Column(
-                  children: <Widget>[ReminderRuleRows(), ReminderChannelsCard()],
+                  children: <Widget>[
+                    ReminderRuleRows(),
+                    ReminderChannelsCard(),
+                  ],
                 )
               : const ReminderChannelsCard(),
         ),
