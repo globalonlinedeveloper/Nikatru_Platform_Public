@@ -143,6 +143,9 @@
   "brick-drivers.test.mjs":
     5,
 
+  "brick-payment-fakes.test.mjs":
+    4,
+
   "built-artifact-pr-lane.test.mjs":
     27,
 
@@ -702,13 +705,13 @@
     62,
 
   "port-render.test.mjs":
-    10,
+    16,
 
   "port-switch.test.mjs":
-    35,
+    37,
 
   "ports.test.mjs":
-    56,
+    64,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -786,7 +789,7 @@
     21,
 
   "purchase-path.test.mjs":
-    133,
+    136,
 
   "rail-prices.test.mjs":
     61,

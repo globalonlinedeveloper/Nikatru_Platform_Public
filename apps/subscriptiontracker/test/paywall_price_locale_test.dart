@@ -23,6 +23,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ChassisLocalizations;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
+import 'package:nikatru_purchases/testing.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/money_providers.dart';
@@ -44,34 +45,19 @@ class _MemSecureStore implements core.SecureStore {
 
 /// Twelve and a half lakh rupees — the figure where the two groupings differ
 /// in every separator position.
-class _InrRail implements PurchaseRail {
-  @override
-  PurchaseRailKind get railKind => PurchaseRailKind.paddle;
-
-  @override
-  List<Offering> get offerings => const <Offering>[
+FakePurchaseRail _inrRail() => FakePurchaseRail(
+  offerings: const <Offering>[
     Offering(
       productId: 'pro_lifetime_inr',
       amountMinor: 125000000,
       currencyCode: 'INR',
       term: OfferingTerm.year,
     ),
-  ];
-
-  @override
-  bool get canStartCheckout => true;
-
-  @override
-  Future<CheckoutStart> startCheckout(Offering offering) async =>
-      const CheckoutRefused(
-        CheckoutRefusal.notSignedIn,
-        detail: 'this test buys nothing',
-      );
-
-  @override
-  Future<CancellationOutcome> requestCancellation() async =>
-      CancellationOutcome.noActivePlan;
-}
+  ],
+  canStartCheckout: true,
+  refusal: CheckoutRefusal.notSignedIn,
+  refusalDetail: 'this test buys nothing',
+);
 
 /// A STORE rail — O-IAP-PAYWALL-SHOWS-WEB-PRICE. Nothing to sell until the
 /// store answers, then the store's price and a trial in the store's own unit.
@@ -144,7 +130,7 @@ Future<void> _pump(
         free: const <String>[],
         trialCopy: trialCopy,
       )),
-      purchaseRailProvider.overrideWithValue(rail ?? _InrRail()),
+      purchaseRailProvider.overrideWithValue(rail ?? _inrRail()),
     ],
   );
   addTearDown(c.dispose);

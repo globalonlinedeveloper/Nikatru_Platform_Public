@@ -3,7 +3,8 @@
   "port": "payments",
   "level": { "claimed": 3, "target": 3 },
   "interface": {
-    "ts": { "file": "services/_shared/src/ports/payments.ts", "symbols": ["RailOutbound", "RailWith", "Outcome"] }
+    "ts": { "file": "services/_shared/src/ports/payments.ts", "symbols": ["RailOutbound", "RailWith", "Outcome"] },
+    "dart": { "file": "packages/purchases/lib/nikatru_purchases.dart", "symbols": ["PurchaseRail", "IapBridge"] }
   },
   "adapters": [
     {
@@ -98,6 +99,27 @@
       { "adapter": "razorpay", "case": "cancel at the period end is idempotent", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
       { "adapter": "revenuecat", "case": "dispute holds", "row": "O-REVENUECAT-VERIFIER" },
       { "adapter": "revenuecat", "case": "refund reversed or dispute won restores", "row": "O-REVENUECAT-VERIFIER" }
+    ]
+  },
+  "client": {
+    "level": { "claimed": 3, "target": 3 },
+    "seams": [
+      { "interface": "PurchaseRail", "suite": { "file": "packages/purchases/lib/testing/conformance.dart", "runner": "runPurchaseRailConformance" } },
+      { "interface": "IapBridge", "suite": { "file": "packages/purchases/lib/testing/conformance.dart", "runner": "runIapBridgeConformance" } }
+    ],
+    "adapters": [
+      { "id": "hosted", "seam": "PurchaseRail", "status": "built", "impl": { "file": "packages/purchases/lib/src/hosted_checkout_rail.dart", "symbol": "HostedCheckoutRail" }, "conformance": { "file": "packages/purchases/test/conformance/hosted_checkout_rail_conformance_test.dart" } },
+      { "id": "iap", "seam": "PurchaseRail", "status": "built", "impl": { "file": "packages/purchases/lib/src/iap_rail.dart", "symbol": "IapRail" }, "conformance": { "file": "packages/purchases/test/conformance/iap_rail_conformance_test.dart" } },
+      { "id": "none", "seam": "PurchaseRail", "status": "built", "impl": { "file": "packages/purchases/lib/src/chassis_billing.dart", "symbol": "UnavailablePurchaseRail" }, "conformance": null, "waits": "The rail that sells nothing (apps-gov-in's `none`, a store channel with no bridge, an undeclared channel): no purchase, cancel, pending or lifetime scenario exists for it to pass. assert-purchase-path §G holds it to a literal `canStartCheckout => false` and no launcher instead." },
+      { "id": "fake-rail", "seam": "PurchaseRail", "status": "fake", "impl": { "file": "packages/purchases/lib/testing.dart", "symbol": "FakePurchaseRail" }, "conformance": { "file": "packages/purchases/test/conformance/fakes_conformance_test.dart" } },
+      { "id": "revenuecat-bridge", "seam": "IapBridge", "status": "built", "impl": { "file": "packages/billing_revenuecat/lib/src/revenuecat_bridge.dart", "symbol": "RevenueCatBridge" }, "conformance": { "file": "packages/billing_revenuecat/test/revenuecat_bridge_conformance_test.dart" } },
+      { "id": "fake-bridge", "seam": "IapBridge", "status": "fake", "impl": { "file": "packages/purchases/lib/testing.dart", "symbol": "FakeIapBridge" }, "conformance": { "file": "packages/purchases/test/conformance/fakes_conformance_test.dart" } }
+    ],
+    "pending": [],
+    "_why": [
+      "THE CLIENT HALF (port-pay-client): the Dart seams an app speaks — PurchaseRail (the rail a channel sells through) and IapBridge (the store SDK behind a store rail) — declared in packages/purchases and exported from its library file, interface.dart.",
+      "L3: every seam has two or more adapters whose conformance test CALLS its runner (packages/purchases/lib/testing/conformance.dart) with nothing pending — PurchaseRail: the hosted rail on every hosted channel, the store rail on every store channel, and the shared fake; IapBridge: RevenueCat against a fake method channel, and the shared fake. assert-ports limb 10 earns it; the rail that sells nothing waits, printed.",
+      "SELECTION is the port's: the channel row decides (selection.source). The client reads it RENDERED — tooling/ports/render.mjs writes packages/purchases/lib/src/generated/rails.dart (channel → rail kind) — so a channel changing rail is a register edit and a re-render, and no Dart names a payment vendor: every hosted-page rail is `hosted`, and which merchant serves it is the server's business."
     ]
   },
   "switch": {
