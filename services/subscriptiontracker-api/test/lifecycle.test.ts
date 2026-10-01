@@ -505,6 +505,34 @@ describe('review of #1089, finding 1 — removing a row twice is a 200, not a fa
     ]);
   });
 
+  // ⏱ 2026-10-01 (#1091 review nit) — THE updated_at RULE, both halves. The case
+  // above proves a repeated removal leaves `updated_at` alone; it would pass just
+  // the same if no removal ever moved it. A change moves it to the server's now;
+  // a no-op does not. Red control: `updated_at = updated_at` for every removal —
+  // the first removal and the Undo keep the creation stamp, and this fails.
+  it('updated_at moves on the first removal and on the Undo, and not on a repeated removal', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-09-30T10:00:00.000Z'));
+      const id = await create();
+      const stamp = () => db.rows('SELECT updated_at FROM subscriptions WHERE id = ?', id)[0]?.updated_at as string;
+      const created = stamp();
+      vi.setSystemTime(new Date('2026-09-30T11:00:00.000Z'));
+      expect((await patch(id, { deleted_at: new Date().toISOString() })).status).toBe(200);
+      const removed = stamp();
+      expect(removed, 'the first removal changed the row and did not move updated_at').not.toBe(created);
+      expect(Date.parse(removed)).toBe(Date.parse('2026-09-30T11:00:00.000Z'));
+      vi.setSystemTime(new Date('2026-09-30T12:00:00.000Z'));
+      expect((await patch(id, { deleted_at: new Date().toISOString() })).status).toBe(200);
+      expect(stamp(), 'a repeated removal changed nothing and must not move updated_at').toBe(removed);
+      vi.setSystemTime(new Date('2026-09-30T13:00:00.000Z'));
+      expect((await patch(id, { deleted_at: null })).status).toBe(200);
+      expect(Date.parse(stamp()), 'the Undo changed the row and did not move updated_at').toBe(Date.parse('2026-09-30T13:00:00.000Z'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // Red control: as the first test — a write limited to live rows matches
   // nothing once the other device's removal lands between read and write.
   it('a removal racing another device’s (removed between the read and the write) is a 200 and keeps that stamp', async () => {

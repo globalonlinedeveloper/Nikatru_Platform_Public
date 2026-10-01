@@ -2922,6 +2922,16 @@
   },
   {
     "claims": [],
+    "invokedBy": [
+      ".github/workflows/native-auth-proof.yml#gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/darwin-inputs.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/deploy-globs.mjs",

@@ -15,7 +15,7 @@
     62,
 
   "affected-guards.test.mjs":
-    8,
+    11,
 
   "agent-docs.test.mjs":
     21,
@@ -272,6 +272,9 @@
   "d1-sql-inventory.test.mjs":
     57,
 
+  "darwin-inputs.test.mjs":
+    13,
+
   "data-inventory.test.mjs":
     55,
 
@@ -353,6 +356,9 @@
   "erasure-reach.test.mjs":
     53,
 
+  "ext-connect-dom.test.mjs":
+    7,
+
   "ext-connect.test.mjs":
     15,
 
@@ -426,7 +432,7 @@
     48,
 
   "guard-coverage.test.mjs":
-    81,
+    84,
 
   "guard-declaration.test.mjs":
     8,
@@ -450,6 +456,9 @@
     46,
 
   "hook-messages.test.mjs":
+    5,
+
+  "hook-own-tree.test.mjs":
     5,
 
   "hook-runner-pin.test.mjs":
@@ -543,7 +552,7 @@
     47,
 
   "migration-numbers.test.mjs":
-    3,
+    8,
 
   "modal-detection.test.mjs":
     44,
@@ -570,7 +579,7 @@
     41,
 
   "native-auth-proof.test.mjs":
-    34,
+    42,
 
   "native-symbol-upload.test.mjs":
     26,

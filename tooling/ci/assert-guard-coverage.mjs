@@ -1830,9 +1830,35 @@ const exercisedBy = (text, base) => {
   // tooling/scripts/provision-backend.mjs …' })` also mentions the name, and
   // binding that identifier would credit a fixture root for being a script.
   const bound = new Set();
+  const bindings = [];
   for (const m of text.matchAll(new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=([^;]*?);`, 'g'))) {
     if (!isCode(m.index)) continue;
-    if (new RegExp(`['"\`][^'"\`]*${b}['"\`][\\s)]*$`).test(m[2].trim())) bound.add(m[1]);
+    const expr = m[2].trim();
+    if (new RegExp(`['"\`][^'"\`]*${b}['"\`][\\s)]*$`).test(expr)) bound.add(m[1]);
+    else bindings.push({ name: m[1], expr });
+  }
+  // ⏱ 2026-10-01 (D-CLASS-FIXES-LEAD, the guard-meta false negatives) · AND
+  // THROUGH A SECOND BINDING. `const X_REL = 'tooling/…/x.mjs'; const X =
+  // join(ROOT, X_REL);` — or `join(ROOT, ...X_REL.split('/'))` — then
+  // `spawnSync(process.execPath, [X])` RUNS the file, and was read as "never
+  // run": only a binding whose expression ENDS IN THE LITERAL was bound, so the
+  // identifier the spawn actually names was not. The rule is the same one, one
+  // step removed: an expression that ENDS IN an already-bound identifier (bare,
+  // or split into path segments) binds too, to a fixed point. The tail is still
+  // the whole test — `join(dirname(X_REL), 'fixture.json')` ends in another
+  // literal and stays unbound, which is the fixture-root shape above.
+  for (let chained = true; chained; ) {
+    chained = false;
+    for (const { name, expr } of bindings) {
+      if (bound.has(name)) continue;
+      const tail = [...bound].some((i) =>
+        new RegExp(`(?:^|[^\\w$.])(?:\\.\\.\\.)?${reEscape(i)}(?:\\.split\\(\\s*['"\`][\\\\/]+['"\`]\\s*\\))?[\\s)]*$`).test(expr),
+      );
+      if (tail) {
+        bound.add(name);
+        chained = true;
+      }
+    }
   }
   const namesFile = (expr) => literal.test(expr) || [...bound].some((i) => new RegExp(`\\b${reEscape(i)}\\b`).test(expr));
 
@@ -1901,9 +1927,25 @@ const CANARY_IMPORT_REAL = [
   'assert.equal(subject.check(), 1);',
   '',
 ].join('\n');
+// ⏱ APPENDED 2026-10-01 — a FIFTH and SIXTH, the `_REL` pair (D-CLASS-FIXES-LEAD).
+// A path bound once as a literal and then joined onto a root under a second name
+// IS the file the spawn runs, and must come out covered; a sibling fixture path
+// derived from it ends in a literal of its own and must not.
+const CANARY_REL_CHAIN = [
+  "const SUBJECT_REL = 'tooling/e2e/canary_subject.mjs';",
+  "const SUBJECT = join(ROOT, ...SUBJECT_REL.split('/'));",
+  "const r = spawnSync(process.execPath, [SUBJECT, '--check'], { encoding: 'utf8' });",
+  '',
+].join('\n');
+const CANARY_REL_SIBLING = [
+  "const SUBJECT_REL = 'tooling/e2e/canary_subject.mjs';",
+  "const FIXTURE = join(dirname(SUBJECT_REL), 'fixture.mjs');",
+  "const r = spawnSync(process.execPath, [FIXTURE, '--check'], { encoding: 'utf8' });",
+  '',
+].join('\n');
 const canary = (t) => exercisedBy(t, 'canary_subject.mjs');
 const maskLen = codeMask(CANARY_IMPORT_QUOTED).length;
-if (canary(CANARY_NAMED_ONLY) || !canary(CANARY_RUNS_IT) || canary(CANARY_IMPORT_QUOTED) || !canary(CANARY_IMPORT_REAL) || maskLen !== CANARY_IMPORT_QUOTED.length) {
+if (canary(CANARY_NAMED_ONLY) || !canary(CANARY_RUNS_IT) || canary(CANARY_IMPORT_QUOTED) || !canary(CANARY_IMPORT_REAL) || maskLen !== CANARY_IMPORT_QUOTED.length || !canary(CANARY_REL_CHAIN) || canary(CANARY_REL_SIBLING)) {
   coverageLost([
     'the negative-test DETECTOR no longer distinguishes a script that is RUN from one that is merely NAMED.',
     `A fixture edit naming the file read as ${canary(CANARY_NAMED_ONLY) ?? 'null'} (must be null) and a`,
@@ -1912,6 +1954,8 @@ if (canary(CANARY_NAMED_ONLY) || !canary(CANARY_RUNS_IT) || canary(CANARY_IMPORT
     `same import written as code read as ${canary(CANARY_IMPORT_REAL) ?? 'null'} (must not be null).`,
     `The mask measured ${maskLen} over a ${CANARY_IMPORT_QUOTED.length}-char fixture (must be EQUAL — it carries an`,
     'astral character, and a mask built per CODE POINT is shorter than its input, so every offset past it is wrong).',
+    `A spawn of a path bound through a \`_REL\` constant read as ${canary(CANARY_REL_CHAIN) ?? 'null'} (must not be null)`,
+    `and a sibling fixture derived from that constant read as ${canary(CANARY_REL_SIBLING) ?? 'null'} (must be null).`,
     'Until this holds, every "has a negative test" verdict for a script outside tooling/ci is the basename',
     'grep that credited tooling/e2e/verify_purged.mjs to a test of assert-d1-sql-inventory.mjs, which edits a',
     'COMMENT inside it and asserts on another guard entirely.',
@@ -1940,7 +1984,11 @@ const scriptExempt = [];
 //     spawns it: accepted, PRINTED by name, and capped at NAMED_ONLY_CEILING —
 //     the thirteen measured on this day, which only fall;
 //   · otherwise — in a comment only, or nowhere: refused.
-const NAMED_ONLY_CEILING = 13;
+// ⏱ 2026-10-01: 13 -> 12, measured by `node tooling/ci/assert-guard-coverage.mjs`
+// ("12 guard(s) NAMED by a test and exercised by none") once `exercisedBy`
+// followed a `_REL` constant through a second binding: assert-palette-consistent.mjs
+// is RUN by palette-consistent.test.mjs (`GUARD = join(REPO, GUARD_REL)`).
+const NAMED_ONLY_CEILING = 12;
 const namedOnly = [];
 for (const guard of guards) {
   let exercised = false;
