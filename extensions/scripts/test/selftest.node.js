@@ -2152,14 +2152,24 @@ const LISTING_SRC = {
   language: { rendered: 'en' },
 };
 const OFFER = (term, amount) => ({ product_id: 'pro_' + term, amount_minor: amount, currency_code: 'USD', term, trial_days: 0 });
+/* The fixture's channel register (business-010): one row per store, each the
+   real register's extension shape — Paddle, and Razorpay for India — and a
+   measured redirect URI, so a buyer can sign in there (#1117 review 1: a
+   `sells` line renders only where one can; R19 below nulls it). */
+const SIGN_IN_URI = 'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/';
+const CHANNEL_ROW = (dir, rail = 'paddle', regionRails = [{ region: 'IN', rail: 'razorpay' }], extensionRedirectUri = SIGN_IN_URI) =>
+  ({ id: 'ch-' + dir, storeMetadataDir: 'extensions/Extension/{tool}/store/' + dir, purchaseRail: { rail, regionRails }, extensionRedirectUri });
+const CHANNELS = { channels: ['chrome', 'edge', 'firefox'].map(d => CHANNEL_ROW(d)) };
 function withListing(offerings, mutate = () => {}) {
   return withStores((t, root) => {
     writeJson(root, TOOL + '/store/listing.json', LISTING_SRC);
     writeJson(root, 'app-config.json', { apps: offerings ? { goodtool: { paywall: { enabled: false, offerings } } } : {} });
+    writeJson(root, 'channel-register.json', CHANNELS);
     mutate(t, root);
   });
 }
-const cfg = root => ['--app-config', path.join(root, 'app-config.json')];
+const cfg = root => ['--app-config', path.join(root, 'app-config.json'), '--channel-register', path.join(root, 'channel-register.json')];
+const SELLER = 'Paddle, our merchant of record (in India, by Example Licensor via Razorpay)';
 {
   const root = withListing(null);
   expect('render-listing: a free tool renders its listing byte-exact and keeps the Pro lines dark', {
@@ -2226,7 +2236,7 @@ const cfg = root => ['--app-config', path.join(root, 'app-config.json')];
   const chrome = fs.readFileSync(path.join(root, TOOL, 'store/chrome/long-description.txt'), 'utf8');
   const label = 'the Edge price range is the RECURRING offerings only, and Chrome carries the seller instead';
   if (res.code === 0 && edge.includes('Pro: USD 5.99 a month to USD 34.99 a year.') && !/89\.00/.test(edge + chrome + res.out) &&
-      chrome.includes('Sold by Example Licensor, not by Google.') && !chrome.includes('USD')) ok(label, 'exit 0 · edge: USD 5.99 a month to USD 34.99 a year');
+      chrome.includes('Sold by ' + SELLER + ', not by Google.') && !chrome.includes('USD')) ok(label, 'exit 0 · edge: USD 5.99 a month to USD 34.99 a year');
   else bad(label, 'exit ' + res.code + '\n--- edge ---\n' + edge.slice(-200) + '\n--- chrome ---\n' + chrome.slice(-200) + '\n--- output ---\n' + res.out.slice(-800));
 }
 {
@@ -2238,8 +2248,8 @@ const cfg = root => ['--app-config', path.join(root, 'app-config.json')];
   const read = s => fs.readFileSync(path.join(root, TOOL, 'store/' + s + '/long-description.txt'), 'utf8');
   const [chrome, firefox, edge] = [read('chrome'), read('firefox'), read('edge')];
   const label = 'a tool that sells renders the Chrome, Firefox and Edge "sells" lines, each on its own store only';
-  if (res.code === 0 && chrome.includes('Sold by Example Licensor, not by Google.') && !chrome.includes('Mozilla') && !chrome.includes('Pro: USD') &&
-      firefox.includes('Sold by Example Licensor, not by Mozilla.') && !firefox.includes('Google') && !firefox.includes('Pro: USD') &&
+  if (res.code === 0 && chrome.includes('Sold by ' + SELLER + ', not by Google.') && !chrome.includes('Mozilla') && !chrome.includes('Pro: USD') &&
+      firefox.includes('Sold by ' + SELLER + ', not by Mozilla.') && !firefox.includes('Google') && !firefox.includes('Pro: USD') &&
       edge.includes('Pro: USD 5.99 a month to USD 34.99 a year.') && !edge.includes('Sold by') &&
       chrome.includes('Optional Pro: sign in.') && firefox.includes('Optional Pro: sign in.') && edge.includes('Optional Pro: sign in.')) ok(label, 'exit 0 · three sells lines, one per store');
   else bad(label, 'exit ' + res.code + '\n--- chrome ---\n' + chrome.slice(-200) + '\n--- firefox ---\n' + firefox.slice(-200) + '\n--- edge ---\n' + edge.slice(-200) + '\n--- output ---\n' + res.out.slice(-800));
@@ -2266,6 +2276,125 @@ const cfg = root => ['--app-config', path.join(root, 'app-config.json')];
   const label = 'two currencies give two ranges, one per currency, joined with "; "';
   if (res.code === 0 && edge.includes('Pro: INR 499.00 a month to INR 3499.00 a year; USD 5.99 a month to USD 34.99 a year.')) ok(label, 'exit 0 · INR …; USD …');
   else bad(label, 'exit ' + res.code + '\n--- edge ---\n' + edge.slice(-300) + '\n--- output ---\n' + res.out.slice(-800));
+}
+
+{
+  /* #1117 review 1, finding 5 — the India web price. prices.apps.<id>.<product>.webInrMinor
+     is what an Indian buyer is charged, so the Edge range carries it in INR beside USD. */
+  const root = withListing([OFFER('month', 599), OFFER('year', 3499)], (t, r) => {
+    t.policy.networkAllowlist = ['api.example.test'];
+    edit(r, 'app-config.json', x => JSON.stringify({ ...JSON.parse(x),
+      prices: { apps: { goodtool: { pro_month: { webInrMinor: 14900 }, pro_year: { webInrMinor: 99900 } } } } }, null, 2) + '\n');
+  });
+  const res = run('render-listing.mjs', ['goodtool', ...cfg(root)], root);
+  const edge = fs.readFileSync(path.join(root, TOOL, 'store/edge/long-description.txt'), 'utf8');
+  const label = 'the Edge range carries the India web price (webInrMinor) in INR beside the USD range';
+  if (res.code === 0 && edge.includes('Pro: INR 149.00 a month to INR 999.00 a year; USD 5.99 a month to USD 34.99 a year.')) ok(label, 'exit 0 · INR from webInrMinor; USD');
+  else bad(label, 'exit ' + res.code + '\n--- edge ---\n' + edge.slice(-300) + '\n--- output ---\n' + res.out.slice(-800));
+}
+
+/* 🔴 R19 · SELLING NEEDS A SIGN-IN ON THAT STORE (#1117 review 1, 2026-10-01).
+   Edge's channel has a null extensionRedirectUri: no buyer can sign in there,
+   so Edge renders no `sells` line and no `signin` line, and does render the
+   `nosignin` line; Chrome, which can sign in, renders the opposite. */
+{
+  const root = withListing([OFFER('month', 599), OFFER('year', 3499)], (t, r) => {
+    t.policy.networkAllowlist = ['api.example.test'];
+    writeJson(r, 'channel-register.json', { channels: [CHANNEL_ROW('chrome'), CHANNEL_ROW('edge', 'paddle', [], null), CHANNEL_ROW('firefox')] });
+    edit(r, TOOL + '/store/listing.json', x => {
+      const o = JSON.parse(x);
+      o.long.push({ when: 'signin', text: 'Sign in to Pro here.' }, { when: 'nosignin', text: 'Pro sign-in is not enabled here.' });
+      return JSON.stringify(o, null, 2) + '\n';
+    });
+  });
+  const res = run('render-listing.mjs', ['goodtool', ...cfg(root)], root);
+  const read = s => fs.readFileSync(path.join(root, TOOL, 'store/' + s + '/long-description.txt'), 'utf8');
+  const [chrome, edge] = [read('chrome'), read('edge')];
+  const label = 'a store whose channel cannot sign in renders no "sells" and no "signin" line, and its "nosignin" line';
+  if (res.code === 0 && !edge.includes('Pro: USD') && !edge.includes('Sign in to Pro here.') && edge.includes('Pro sign-in is not enabled here.') &&
+      chrome.includes('Sold by ' + SELLER + ', not by Google.') && chrome.includes('Sign in to Pro here.') && !chrome.includes('not enabled here')) ok(label, 'exit 0 · edge dark, chrome sells');
+  else bad(label, 'exit ' + res.code + '\n--- edge ---\n' + edge.slice(-300) + '\n--- chrome ---\n' + chrome.slice(-300) + '\n--- output ---\n' + res.out.slice(-600));
+}
+{
+  const root = withListing(null, (t, r) => {
+    edit(r, TOOL + '/store/listing.json', x => { const o = JSON.parse(x); o.long.push({ when: 'singin', text: 'typo' }); return JSON.stringify(o, null, 2) + '\n'; });
+  });
+  expect('a listing line with an unknown "when" is a finding (1), never a line that renders everywhere', {
+    script: 'render-listing.mjs', argv: ['goodtool', '--check', ...cfg(root)], code: 1, contains: 'which is none of pro, sells, signin, nosignin, free', root
+  });
+}
+
+/* 🔴 business-010 · THE SELLER IS THE CHANNEL'S RAIL, NOT THE LICENCE (2026-10-01,
+   O-EXTENSION-LISTING-SELLER-FROM-LICENCE). Outside India the seller of record
+   is Paddle, so a listing that names the licensor as the seller on a Paddle
+   channel says something untrue to every buyer it reaches. */
+{
+  const root = withListing([OFFER('month', 599)], (t, r) => {
+    t.policy.networkAllowlist = ['api.example.test'];
+    edit(r, TOOL + '/store/listing.json', x => {
+      const o = JSON.parse(x);
+      o.long = o.long.map(l => (l && l.stores && l.stores[0] === 'chrome' ? { ...l, text: 'Sold by Example Licensor, not by Google.' } : l));
+      return JSON.stringify(o, null, 2) + '\n';
+    });
+  });
+  expect('a listing that names the LICENSOR as seller on a Paddle (merchant-of-record) channel is a finding (1)', {
+    script: 'render-listing.mjs', argv: ['goodtool', '--check', ...cfg(root)], code: 1, contains: 'sells on a merchant-of-record rail', root
+  });
+}
+/* #1117 review 1, finding 4: "sold by" was the only phrasing caught. On a
+   merchant-of-record rail the licensor may appear in a `sells` line only inside
+   the rendered {{seller}} sentence, however the rest of the line is worded. */
+for (const [phrase, text] of [['"Offered by"', 'Offered by Example Licensor.'], ['"Seller:"', 'Seller: Example Licensor.']]) {
+  const root = withListing([OFFER('month', 599)], (t, r) => {
+    t.policy.networkAllowlist = ['api.example.test'];
+    edit(r, TOOL + '/store/listing.json', x => {
+      const o = JSON.parse(x);
+      o.long = o.long.map(l => (l && l.stores && l.stores[0] === 'chrome' ? { ...l, text } : l));
+      return JSON.stringify(o, null, 2) + '\n';
+    });
+  });
+  expect('a "sells" line that names the licensor as ' + phrase + ' on a merchant-of-record channel is a finding (1)', {
+    script: 'render-listing.mjs', argv: ['goodtool', '--check', ...cfg(root)], code: 1, contains: 'outside the merchant-of-record sentence', root
+  });
+}
+{
+  /* ...while the licensor INSIDE the rendered sentence ("in India, by <licensor>
+     via Razorpay") is the sentence itself, and passes. */
+  const root = withListing([OFFER('month', 599)], t => { t.policy.networkAllowlist = ['api.example.test']; });
+  expect('the licensor inside the rendered merchant-of-record sentence is not a finding', {
+    script: 'render-listing.mjs', argv: ['goodtool', ...cfg(root)], code: 0, contains: 'Pro text RENDERS', root
+  });
+}
+{
+  /* Where the licensor IS the seller of record (a Razorpay-only channel), the
+     licensor is what {{seller}} says. */
+  const root = withListing([OFFER('month', 599)], (t, r) => {
+    t.policy.networkAllowlist = ['api.example.test'];
+    writeJson(r, 'channel-register.json', { channels: [CHANNEL_ROW('chrome', 'razorpay', []), CHANNEL_ROW('edge'), CHANNEL_ROW('firefox')] });
+  });
+  const res = run('render-listing.mjs', ['goodtool', ...cfg(root)], root);
+  const chrome = fs.readFileSync(path.join(root, TOOL, 'store/chrome/long-description.txt'), 'utf8');
+  const label = 'on a channel whose rail makes the licensor the seller of record, {{seller}} names the licensor';
+  if (res.code === 0 && chrome.includes('Sold by Example Licensor, not by Google.')) ok(label, 'exit 0 · razorpay → licensor');
+  else bad(label, 'exit ' + res.code + '\n' + chrome.slice(-200) + '\n--- output ---\n' + res.out.slice(-600));
+}
+{
+  const root = withListing([OFFER('month', 599)], (t, r) => {
+    t.policy.networkAllowlist = ['api.example.test'];
+    writeJson(r, 'channel-register.json', { channels: [CHANNEL_ROW('chrome', 'stripe', []), CHANNEL_ROW('edge'), CHANNEL_ROW('firefox')] });
+  });
+  expect('a selling channel on a rail nobody can word is COVERAGE LOST (2), never a guessed seller', {
+    script: 'render-listing.mjs', argv: ['goodtool', '--check', ...cfg(root)], code: 2, contains: 'which RAIL_SELLER cannot word', root
+  });
+}
+{
+  const root = withListing([OFFER('month', 599)], (t, r) => {
+    t.policy.networkAllowlist = ['api.example.test'];
+    fs.rmSync(path.join(r, 'channel-register.json'));
+  });
+  expect('a tool that sells with no readable channel register cannot name its seller (2)', {
+    script: 'render-listing.mjs', argv: ['goodtool', '--check', ...cfg(root)], code: 2, contains: 'who sells goodtool Pro on each store cannot be decided', root
+  });
 }
 
 /* 🔴 6b · EVERY STORE LOCALE HAS A LONG DESCRIPTION, OR AN HONEST LINE (EXB-07,

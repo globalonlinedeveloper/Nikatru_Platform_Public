@@ -134,6 +134,9 @@
   "popupLinkBatch": {
     "message": "ಬ್ಯಾಚ್"
   },
+  "popupUpgrade": {
+    "message": "Upgrade to FullShot Pro"
+  },
   "popupLinkOptions": {
     "message": "ಆಯ್ಕೆಗಳು"
   },

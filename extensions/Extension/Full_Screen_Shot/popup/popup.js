@@ -288,3 +288,22 @@ document.getElementById('optionsLink').addEventListener('click', (e) => {
   e.preventDefault();
   chrome.runtime.openOptionsPage();
 });
+
+/* ---- FullShot Pro (EXM-01, 2026-10-01) -------------------------------------
+   The Upgrade control shows ONLY when the worker answers that this browser is
+   not Pro. The worker decides (vendor/core/entitlement-client.js isPro over OUR
+   API's answer, never a store); the popup never reads the credential. A worker
+   that does not answer leaves the control hidden: offering to sell Pro to a
+   browser that may already have it is the wrong failure. */
+const upgradeBtn = document.getElementById('upgradeBtn');
+async function showUpgrade() {
+  try {
+    const s = await chrome.runtime.sendMessage({ type: 'PRO_STATE' });
+    upgradeBtn.hidden = !(s && s.pro === false && typeof s.upgradeUrl === 'string');
+  } catch (_) { upgradeBtn.hidden = true; }
+}
+upgradeBtn.addEventListener('click', async () => {
+  try { await chrome.runtime.sendMessage({ type: 'PRO_UPGRADE' }); } catch (_) {}
+  window.close();
+});
+showUpgrade();
