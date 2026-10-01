@@ -18,7 +18,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { BUNDLES_REGISTER } from '../../catalog/read.mjs';
-import { netAfterFee } from '../../catalog/render-rail-prices.mjs';
+import { netAfterFee, EXTENSION_REGISTER } from '../../catalog/render-rail-prices.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'catalog', 'render-rail-prices.mjs');
@@ -57,7 +57,7 @@ const REAL_NOW = new Date(
 /** A copy of exactly the files the renderer reads, from the real tree, with every fee cell read at FIXTURE_READ_AT. */
 function fixture() {
   const root = join(TMP, `f${++seq}`);
-  for (const rel of [REGISTER, RENDERED, CHECKOUT, BUNDLES_REGISTER, APP_YAML, FEES, CHANNELS]) {
+  for (const rel of [REGISTER, RENDERED, CHECKOUT, BUNDLES_REGISTER, APP_YAML, FEES, CHANNELS, EXTENSION_REGISTER]) {
     mkdirSync(dirname(join(root, rel)), { recursive: true });
     copyFileSync(join(REPO, rel), join(root, rel));
   }
@@ -223,6 +223,54 @@ describe('limb D — the store column, [ADR 093] §2', () => {
   });
 });
 
+// ⏱ 2026-10-01 · EXM-04. FullShot Pro is priced at [ADR 093]'s single-app web tier and sold on the
+// nikatru.com checkout only: no browser store sells an in-extension product, so it has no store column.
+describe('limb D — an extension is web-only', () => {
+  const EXT = 'fullshot';
+
+  test('the real tree prices FullShot Pro monthly and yearly, with no store column', () => {
+    const data = JSON.parse(readFileSync(join(REPO, REGISTER), 'utf8'));
+    assert.deepEqual(Object.keys(data.prices.apps[EXT]).sort(), ['pro_monthly', 'pro_yearly']);
+    for (const e of Object.values(data.prices.apps[EXT])) assert.equal(e.store, undefined);
+  });
+
+  test('a store column on an extension plan is exit 1', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      d.prices.apps[EXT].pro_monthly.store = { USD: 719, INR: 17900, readBack: { apple: null, google: null } };
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /fullshot\.pro_monthly prices an extension .* carries a `store` price/);
+  });
+
+  test('the same product is store-graded again once the extension register does not name it', () => {
+    const root = fixture();
+    writeFileSync(join(root, EXTENSION_REGISTER), '[]\n');
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /fullshot\.pro_monthly has no `store` object/);
+  });
+
+  test('an unreadable extension register is exit 2, never "no extension"', () => {
+    const root = fixture();
+    rmSync(join(root, EXTENSION_REGISTER));
+    const r = run(root, '--check');
+    assert.equal(r.code, 2, r.all);
+    assert.match(r.all, /extensions\/catalog\/extensions\.json does not exist/);
+  });
+
+  test('an extension offering with no price row is exit 1 (the brief\'s red control)', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      delete d.prices.apps[EXT].pro_yearly;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /apps\.fullshot serves offering "pro_yearly" and prices\.apps\.fullshot has no entry/);
+  });
+});
+
 describe('limb C — the rails', () => {
   test('a pending rail with no reason is exit 1', () => {
     const root = fixture();
@@ -352,7 +400,7 @@ describe('COVERAGE LOST', () => {
   test('a register that serves zero offerings is exit 2, not a clean pass', () => {
     const root = fixture();
     mutate(root, (d) => {
-      d.apps[APP].paywall.offerings = [];
+      for (const a of Object.values(d.apps)) if (a.paywall) a.paywall.offerings = [];
       d.prices.apps = {};
     });
     const r = run(root, '--check');

@@ -197,6 +197,7 @@ function tree({
   hook = preGen(),
   discovery = DISCOVERY_MJS,
   dart = DART,
+  extensions = [{ slug: 'fullshot', status: 'preview' }],
   omit = null,
 } = {}) {
   const root = join(TMP, `t${seq++}`);
@@ -207,6 +208,7 @@ function tree({
     'services/platform/src/types.ts': typesTs,
     'tooling/bricks/app/hooks/pre_gen.dart': hook,
     'tooling/sites/generate-discovery.mjs': discovery,
+    'extensions/catalog/extensions.json': JSON.stringify(extensions, null, 2),
     ...dart,
   };
   for (const [rel, body] of Object.entries(files)) {
@@ -315,6 +317,33 @@ describe('assert-config-registry — the seven observations', () => {
     const r = run(tree({ data: { ...DATA, apps: { ...DATA.apps, lingo: { content_pack: 'x' } } } }));
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /which is not a slug in/);
+  });
+
+  // ⏱ 2026-10-01 · EXM-01. An extension is SOLD through its paywall (config.ts
+  // buildExtensionPaywalls → POST /v1/checkout) and served nothing else.
+  const FULLSHOT_PAYWALL = { paywall: { enabled: false, offerings: [{ product_id: 'pro_monthly', amount_minor: 599, currency_code: 'USD', term: 'month', trial_days: 0 }] } };
+
+  test('3b · an EXTENSION entry carrying `paywall` alone passes — it is sold, not dead data', () => {
+    const r = run(tree({ data: { ...DATA, apps: { ...DATA.apps, fullshot: FULLSHOT_PAYWALL } } }));
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('3c · an extension entry carrying any key beside `paywall` fails — nothing serves it', () => {
+    const r = run(tree({ data: { ...DATA, apps: { ...DATA.apps, fullshot: { ...FULLSHOT_PAYWALL, features: { x: true } } } } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /apps\.fullshot names an extension .* carries features/);
+  });
+
+  test('3d · the same entry is dead data when the extension register does not name it', () => {
+    const r = run(tree({ extensions: [], data: { ...DATA, apps: { ...DATA.apps, fullshot: FULLSHOT_PAYWALL } } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /"fullshot", which is not a slug in/);
+  });
+
+  test('3e · an unreadable extension register is COVERAGE LOST, never "no extension"', () => {
+    const r = run(tree({ omit: 'extensions/catalog/extensions.json', data: { ...DATA, apps: { ...DATA.apps, fullshot: FULLSHOT_PAYWALL } } }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /extensions\/catalog\/extensions\.json does not exist/);
   });
 
   test('4 · a catalogue slug APP_ID_PATTERN rejects is reported, not silently dropped', () => {
