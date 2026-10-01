@@ -5,6 +5,14 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 
 import '../../l10n/app_localizations.dart';
 
+// ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST — the device-integrity pieces
+// lib/core/device_integrity.dart calls, re-exported like the two above.
+export 'package:nikatru_chassis_screens/integrity/device_integrity_gate.dart'
+    show
+        DeviceIntegrityScope,
+        integrityRecorder,
+        modifiedCopyBlocked,
+        reauthenticateUser;
 export 'package:nikatru_chassis_screens/settings/settings_screen.dart'
     show EditProfileDialog, RowChevron;
 

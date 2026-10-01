@@ -215,7 +215,7 @@ describe('the guard says YES on the tree as it is', () => {
     // staying at reachable == measured is the property, and "17 reachable, 12
     // measured" would print as a cheerful report-mode line if it ever slipped.
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
-    assert.match(out, /packages\/chassis_screens: 26 surface\(s\) reachable, 26 measured — the two sets are EQUAL/);
+    assert.match(out, /packages\/chassis_screens: 30 surface\(s\) reachable, 30 measured — the two sets are EQUAL/); // ⏱ 2026-10-01: +4 (TamperedBuildScreen, TamperedBuildApp, ReauthDialog, RootedDeviceNoticeHost), each measured at every window class
 
     assert.match(out, /apps\/subscriptiontracker: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
     assert.match(
@@ -262,7 +262,7 @@ describe('the guard says YES on the tree as it is', () => {
     assert.match(out, /PARTIAL TREE: the declared-root-must-exist clause is SKIPPED/);
     assert.match(out, /apps\/subscriptiontracker: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
-    assert.match(out, /packages\/chassis_screens: 26 surface\(s\) reachable, 26 measured — the two sets are EQUAL/);
+    assert.match(out, /packages\/chassis_screens: 30 surface\(s\) reachable, 30 measured — the two sets are EQUAL/); // ⏱ 2026-10-01: +4 (TamperedBuildScreen, TamperedBuildApp, ReauthDialog, RootedDeviceNoticeHost), each measured at every window class
     // ⏱ 2026-09-22 · 36 → 37 TEST FILES, SURFACES UNCHANGED. The app gained
     // `width_shell_fab_test.dart`, which pumps the five shell branches at all
     // three widths to prove the FAB clears each list's last row. It measures
@@ -789,7 +789,7 @@ describe('the chassis_screens floors are floors, not report lines', () => {
   test('R14-control · GREEN CONTROL — the same fixture, unmutated, is 21/21 and passes', () => {
     const { code, out } = run(treeWithNewRoots());
     assert.equal(code, 0, out);
-    assert.match(out, /packages\/chassis_screens: 26 surface\(s\) reachable, 26 measured/); // ⏱ 2026-09-23: 18 → 20 (chassis home)
+    assert.match(out, /packages\/chassis_screens: 30 surface\(s\) reachable, 30 measured/); // ⏱ 2026-09-23: 18 → 20 (chassis home); 2026-10-01: → 30 (device integrity)
   });
 
   // ── R14a · A SURFACE LEAVES ────────────────────────────────────────────────

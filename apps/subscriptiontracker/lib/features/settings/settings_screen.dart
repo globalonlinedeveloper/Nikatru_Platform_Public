@@ -821,7 +821,7 @@ class SettingsScreen extends ConsumerWidget {
                     icon: '⇩',
                     label: l10n.exportDataCsv,
                     last: false,
-                    onTap: exportDataTap(ref),
+                    onTap: exportDataTap(ref, context),
                   ),
                   // The published contact PAGE — a form, reachable without a
                   // mail client, which is the route most web users take. The
