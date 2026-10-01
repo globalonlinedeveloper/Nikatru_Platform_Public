@@ -439,4 +439,15 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           LISTING_URL: ${{ inputs.listing_url }}
           RUN_NUMBER: ${{ github.run_number }}
-        run: node tooling/ci/record-deployment.mjs "${APP}-android-play" --state in_review --listing-url "$LISTING_URL" --version-code "$RUN_NUMBER" --mode production
+          RELEASE_STATUS: ${{ inputs.release_status }}
+        # why: a DRAFT is uploaded and NOT sent for review (#1099 review, finding 1), so it is recorded
+        # `draft_staged`, which [10]D-6's cadence does not count; only the owner's console "send for review"
+        # makes it in_review. Two LITERAL calls in one unconditional step, so assert-publish-records grades
+        # both states and the step cannot be skipped (rule 6).
+        run: |
+          set -euo pipefail
+          if [ "$RELEASE_STATUS" = draft ]; then
+            node tooling/ci/record-deployment.mjs "${APP}-android-play" --state draft_staged --listing-url "$LISTING_URL" --version-code "$RUN_NUMBER" --mode production
+          else
+            node tooling/ci/record-deployment.mjs "${APP}-android-play" --state in_review --listing-url "$LISTING_URL" --version-code "$RUN_NUMBER" --mode production
+          fi

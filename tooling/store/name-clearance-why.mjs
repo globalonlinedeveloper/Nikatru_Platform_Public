@@ -32,7 +32,7 @@
  *  under its own name, after them. */
 const GROUPS = [
   ['PROVEN-FREE', 'Clear (PROVEN-FREE) — an authority answered "no such name" with its red control green'],
-  ['HELD', 'Held (HELD) — the owner reserved the name in that store\'s console and recorded its id'],
+  ['HELD', 'Held (HELD) — the name is reserved in that store\'s console under a recorded id, attested by the owner, or by the lead under a cited owner delegation with the store-API proof'],
   ['PROVEN-TAKEN', 'Blocked for a submission (PROVEN-TAKEN) — a live record holds the name'],
   ['UNDETERMINED', 'Blocked for a submission (UNDETERMINED) — could not check, which is never a pass'],
   ['NOT-APPLICABLE', 'Not applicable (NOT-APPLICABLE) — no third party holds a name there, and no submission passes on it'],
@@ -45,7 +45,10 @@ const text = (v, fallback) => (typeof v === 'string' && v.trim() !== '' ? v : fa
 function mention(id, ch) {
   const marks = [];
   if (ch?.uniqueness === 'global') marks.push('global');
-  if (ch?.verdict === 'HELD') marks.push(`store record ${text(ch.storeRecordId, '(none recorded)')}, ${text(ch.heldOn, 'undated')}`);
+  if (ch?.verdict === 'HELD') {
+    marks.push(`store record ${text(ch.storeRecordId, '(none recorded)')}, ${text(ch.heldOn, 'undated')}`);
+    if (ch.heldBy === 'lead') marks.push(`recorded by the lead under ${text(ch.delegation, '(no delegation cited)')}`);
+  }
   return marks.length ? `${id} (${marks.join('; ')})` : id;
 }
 

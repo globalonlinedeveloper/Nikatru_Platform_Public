@@ -72,6 +72,8 @@
 //   node tooling/store/name-clearance.mjs <Name> [--app <slug>] [--json]
 //   node tooling/store/name-clearance.mjs <Name> --app <slug> --execute
 //   node tooling/store/name-clearance.mjs --hold <channel> --record <store record id> --app <slug>   (offline; exit 2 on an unknown channel)
+//        [--held-by lead --delegation <cited owner delegation> --proof-call <api call> --proof-result <its answer> --proof-on <YYYY-MM-DD>]
+//        ⏱ 2026-10-01: a hold the LEAD records says so, and carries the delegation and the API proof.
 //   node tooling/store/name-clearance.mjs --why --app <slug>   (offline; rewrites `_why` and nothing else)
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -384,7 +386,16 @@ export function writeRecord(root, record, { force = false, dryRun = false } = {}
   const carriedHeld = [];
   for (const [id, prev] of Object.entries(priorChannels ?? {})) {
     if (prev?.verdict !== HELD || !channels[id]) continue;
-    channels[id] = { ...channels[id], verdict: HELD, why: prev.why, storeRecordId: prev.storeRecordId, heldBy: prev.heldBy, heldOn: prev.heldOn };
+    channels[id] = {
+      ...channels[id],
+      verdict: HELD,
+      why: prev.why,
+      storeRecordId: prev.storeRecordId,
+      heldBy: prev.heldBy,
+      heldOn: prev.heldOn,
+      ...(prev.delegation === undefined ? {} : { delegation: prev.delegation }),
+      ...(prev.proof === undefined ? {} : { proof: prev.proof }),
+    };
     carriedHeld.push(id);
   }
   // ⏱ 2026-09-24 — `_why` was carried over from the prior record verbatim, so
@@ -471,7 +482,22 @@ const BEFORE_HOLD = ' Before the hold the probe read ';
  * recorded INTO a probed record; `--execute` makes one), a channel that record
  * is silent on, or an empty store record id.
  */
-export function holdChannel(root, { app, channel, storeRecordId, now = new Date() }) {
+export function holdChannel(root, { app, channel, storeRecordId, heldBy = 'owner', delegation = null, proof = null, now = new Date() }) {
+  if (heldBy !== 'owner' && heldBy !== 'lead') {
+    throw new CoverageLost([`--held-by ${JSON.stringify(heldBy)} is not \`owner\` or \`lead\`.`, 'A hold says who recorded it, and those are the two who can.']);
+  }
+  if (heldBy === 'lead') {
+    const missing = [];
+    if (typeof delegation !== 'string' || delegation.trim() === '') missing.push('--delegation');
+    if (!proof || ['call', 'result'].some((k) => typeof proof[k] !== 'string' || proof[k].trim() === '')) missing.push('--proof-call and --proof-result');
+    if (!proof || !/^\d{4}-\d{2}-\d{2}$/.test(String(proof.observedOn ?? ''))) missing.push('--proof-on <YYYY-MM-DD>');
+    if (missing.length) {
+      throw new CoverageLost([
+        `--held-by lead needs ${missing.join(', ')}.`,
+        'A hold the lead records rests on two things the owner\'s own word does not need: the delegation it acted under, and the store-API read that proves the record is ours.',
+      ]);
+    }
+  }
   if (typeof app !== 'string' || app.trim() === '') {
     throw new CoverageLost(['--hold needs --app <slug>: a hold is recorded into ONE app\'s record, and no app was named.']);
   }
@@ -517,16 +543,23 @@ export function holdChannel(root, { app, channel, storeRecordId, now = new Date(
     ...prev,
     verdict: HELD,
     why:
-      `HELD by the owner, recorded ${heldOn}: the name is reserved in this store's own console under record ${id}. ` +
+      (heldBy === 'lead'
+        ? `HELD, recorded by the lead on ${heldOn} under ${delegation.trim()}: the store's own API shows record ${id} is ours (${proof.call.trim()} → ${proof.result.trim()}, observed ${proof.observedOn}). `
+        : `HELD by the owner, recorded ${heldOn}: the name is reserved in this store's own console under record ${id}. `) +
       'No unauthenticated probe can see a console reservation, so --execute carries this verdict forward rather than re-probing over it.' +
       before,
     storeRecordId: id,
-    heldBy: 'owner',
+    heldBy,
     heldOn,
+    ...(heldBy === 'lead' ? { delegation: delegation.trim(), proof: { call: proof.call.trim(), result: proof.result.trim(), observedOn: proof.observedOn } } : {}),
   };
+  if (heldBy === 'owner') {
+    delete rec.channels[channel].delegation;
+    delete rec.channels[channel].proof;
+  }
   rec.overall = rollUp(rec).overall;
   writeFileSync(abs, `${JSON.stringify(withWhy(rec), null, 2)}\n`);
-  return { rel, why: `${rel} — ${channel} HELD under store record ${id} (heldBy owner, heldOn ${heldOn}); overall ${rec.overall}.` };
+  return { rel, why: `${rel} — ${channel} HELD under store record ${id} (heldBy ${heldBy}, heldOn ${heldOn}); overall ${rec.overall}.` };
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
@@ -540,7 +573,7 @@ if (isMain) {
     const i = argv.indexOf(n);
     return i === -1 ? d : argv[i + 1];
   };
-  const FLAGS_WITH_VALUES = new Set(['--app', '--repo', '--hold', '--record']);
+  const FLAGS_WITH_VALUES = new Set(['--app', '--repo', '--hold', '--record', '--held-by', '--delegation', '--proof-call', '--proof-result', '--proof-on']);
   const positional = argv.filter((a, i) => !a.startsWith('--') && !FLAGS_WITH_VALUES.has(argv[i - 1]));
   /** A flag's value, or null when it is absent or the next slot is another flag. */
   const valueOf = (n) => {
@@ -557,7 +590,16 @@ if (isMain) {
   // ── --hold: offline, the owner's word with the store's record id ──────────
   if (argv.includes('--hold')) {
     try {
-      const h = holdChannel(resolve(flag('--repo', DEFAULT_ROOT)), { app: valueOf('--app'), channel: valueOf('--hold'), storeRecordId: valueOf('--record') });
+      const heldBy = valueOf('--held-by') ?? 'owner';
+      const proof = heldBy === 'lead' ? { call: valueOf('--proof-call'), result: valueOf('--proof-result'), observedOn: valueOf('--proof-on') } : null;
+      const h = holdChannel(resolve(flag('--repo', DEFAULT_ROOT)), {
+        app: valueOf('--app'),
+        channel: valueOf('--hold'),
+        storeRecordId: valueOf('--record'),
+        heldBy,
+        delegation: valueOf('--delegation'),
+        proof,
+      });
       console.log(`✔ ${h.why}`);
       process.exit(0);
     } catch (e) {
