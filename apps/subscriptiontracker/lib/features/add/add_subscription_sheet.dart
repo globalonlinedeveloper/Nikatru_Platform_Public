@@ -853,16 +853,15 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
               onTap: () => _pick(e),
             ),
         ],
+        // IM-01 (T13, the import hub): a list kept somewhere else is imported,
+        // not typed — the sheet closes and the hub opens on the root navigator.
         if (router != null)
           Align(
             alignment: AlignmentDirectional.centerStart,
             child: TextButton(
-              key: E2EKeys.addImport,
-              onPressed: () {
-                Navigator.of(context).pop();
-                router.push('/scan');
-              },
-              child: Text(l10n.addPickImport),
+              key: E2EKeys.addImportInstead,
+              onPressed: _importInstead,
+              child: Text(l10n.importInstead),
             ),
           ),
       ],
@@ -916,6 +915,14 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     ],
     onChanged: (int? v) => setState(() => _noticeDays = v),
   );
+
+  void _importInstead() {
+    // The router is read BEFORE the pop: the sheet's context leaves the tree
+    // with it.
+    final GoRouter? router = GoRouter.maybeOf(context);
+    Navigator.of(context).pop();
+    router?.push('/import');
+  }
 
   /// The one banner the form is in, most urgent first: a failed save outranks
   /// being offline, because it is about something the user just did.

@@ -1,6 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // P4·L4 — THE DETAIL + SCAN GROUP: both locales, both brightnesses.
 //
+// ⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): SCAN is retired; its section is now
+// the IMPORT hub's, held to the same two locales and the dark scaffold rule.
+//
 // These two screens moved together because they share nothing structurally and
 // everything in kind: each is a full route outside the shell, each paints a
 // gradient hero over a light-palette body, and each was hardcoding the same
@@ -60,18 +63,15 @@ import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
-import 'package:subscriptiontracker/core/format/money_format.dart';
-import 'package:subscriptiontracker/core/format/sub_math.dart';
 import 'package:subscriptiontracker/data/api/seed_api_client.dart';
 import 'package:subscriptiontracker/data/models/payment_record.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/seed/demo_data.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
-import 'package:subscriptiontracker/features/scan/scan_screen.dart';
+import 'package:subscriptiontracker/features/import/import_screen.dart';
 import 'package:subscriptiontracker/features/shared/due.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
-import 'package:subscriptiontracker/state/settings_controller.dart';
 
 import 'support/width_harness.dart';
 
@@ -87,19 +87,6 @@ const String kNetflixId = '1';
 /// Adobe CC — `demo_data.dart:15`. `unused: true`, so it renders the OTHER arm
 /// of the usage ternary. Both arms are l10n'd and only pumping both proves it.
 const String kAdobeId = '6';
-
-/// A seed client whose subscription list is the first [n] of the demo set.
-///
-/// Subclassed rather than hand-implemented: `ApiClient` has eight methods and
-/// seven of them are irrelevant here, so re-typing them would be seven more
-/// places for this fake to disagree with the real one.
-class _NSubsApi extends SeedApiClient {
-  _NSubsApi(this.n);
-  final int n;
-  @override
-  Future<List<Subscription>> getSubscriptions() async =>
-      DemoData.subscriptions().take(n).toList();
-}
 
 /// A seed client with no payment history — the only way to reach the detail
 /// screen's `noPaymentsYet` branch, since the real seed always generates four
@@ -149,22 +136,11 @@ Future<ProviderContainer> _pump(
     ),
   );
   // Bare pumps, as in the harness: several provider futures resolve in
-  // sequence, and `pumpAndSettle` against ScanScreen's periodic timer either
-  // burns its whole run or spins. Advancing the scan clock is explicit, below.
+  // sequence, and `pumpAndSettle` would be a lie about why we are waiting.
   for (int i = 0; i < 12; i++) {
     await tester.pump();
   }
   return c;
-}
-
-/// Walks the scan screen's 560 ms timer to its results phase.
-///
-/// Five steps then the flip: six periods. Only a pump WITH a duration advances
-/// fake time. `width_scan_test.dart` does the same walk for the same reason.
-Future<void> _toResults(WidgetTester tester) async {
-  for (int i = 0; i < 6; i++) {
-    await tester.pump(const Duration(milliseconds: 560));
-  }
 }
 
 Color? _textColor(WidgetTester tester, String text) =>
@@ -588,253 +564,47 @@ void main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // SCAN / FIRST-RUN SETUP
+  // IMPORT (`/import`) — the hub that replaced SCAN (ADR 077 §2.2, IM-01)
   // ═══════════════════════════════════════════════════════════════════════════
-  group('scan speaks the arb', () {
+  group('import speaks the arb', () {
     for (final String code in <String>['en', 'ta']) {
-      testWidgets('[$code] the busy phase: title, subtitle, button, step', (
+      testWidgets('[$code] the hub: title, subtitle, paste, read', (
         WidgetTester tester,
       ) async {
         final AppLocalizations l10n = await AppLocalizations.delegate.load(
           Locale(code),
         );
-        await _pump(tester, const ScanScreen(), locale: Locale(code));
-
-        expect(find.text(l10n.scanBusyTitle), findsOneWidget);
-        expect(find.text(l10n.scanBusySubtitle), findsOneWidget);
-        expect(find.text(l10n.scanningEllipsis), findsOneWidget);
-        expect(
-          find.text(l10n.scanStatusInitial),
-          findsOneWidget,
-          reason:
-              'the pre-first-tick caption — on screen for 560 ms of every '
-              'first run, which is why it is a key and not a placeholder',
-        );
-
-        // Walk the five step captions. They were a `static const List<String>`
-        // the timer copied into a field; localized, they must be derived in
-        // build, because AppLocalizations is an inherited lookup and illegal
-        // in initState. This is the assertion that the derivation is right —
-        // including its off-by-one.
-        final List<String> steps = <String>[
-          l10n.scanStep1,
-          l10n.scanStep2,
-          l10n.scanStep3,
-          l10n.scanStep4,
-          l10n.scanStep5,
-        ];
-        for (int i = 0; i < steps.length; i++) {
-          await tester.pump(const Duration(milliseconds: 560));
+        await _pump(tester, const ImportScreen(), locale: Locale(code));
+        expect(find.text(l10n.importTitle), findsOneWidget);
+        expect(find.text(l10n.importSubtitle), findsOneWidget);
+        expect(find.text(l10n.importPasteLabel), findsOneWidget);
+        expect(find.text(l10n.importRead), findsOneWidget);
+        if (code == 'ta') {
           expect(
-            find.text(steps[i]),
-            findsOneWidget,
-            reason: 'tick ${i + 1} must show scanStep${i + 1} in [$code]',
+            find.text('Import subscriptions'),
+            findsNothing,
+            reason: 'the English title on a Tamil screen: the arb was not read',
           );
         }
-      });
-
-      testWidgets('[$code] the results phase: heading, total, button', (
-        WidgetTester tester,
-      ) async {
-        final AppLocalizations l10n = await AppLocalizations.delegate.load(
-          Locale(code),
-        );
-        final ProviderContainer c = await _pump(
-          tester,
-          const ScanScreen(),
-          locale: Locale(code),
-          overrides: <Override>[
-            apiClientProvider.overrideWithValue(_NSubsApi(3)),
-          ],
-        );
-        await _toResults(tester);
-
-        expect(
-          c.read(currencyCodeProvider),
-          'USD',
-          reason:
-              'the demo seed is dollar-priced; if this moves the expected '
-              'string below moves with it rather than silently agreeing',
-        );
-        final MoneyFormatter money = MoneyFormatter(l10n.localeName);
-        final MoneyBag total = SubMath.totalMonthly(
-          DemoData.subscriptions().take(3).toList(),
-        );
-
-        expect(find.text(l10n.scanDoneTitle), findsOneWidget);
-        expect(find.text(l10n.scanDoneSubtitle), findsOneWidget);
-        expect(find.text(l10n.goToDashboard), findsOneWidget);
-        expect(find.text(l10n.scanResultsHeading), findsOneWidget);
-        expect(
-          find.text(l10n.perMonthTotal(money.formatBag(total))),
-          findsOneWidget,
-        );
-      });
-    }
-
-    testWidgets('[ta] the pre-l10n English literals are GONE', (
-      WidgetTester tester,
-    ) async {
-      await _pump(tester, const ScanScreen(), locale: const Locale('ta'));
-      expect(find.text('Setting up your board'), findsNothing);
-      expect(find.text('This only takes a moment.'), findsNothing);
-      expect(find.text('Scanning…'), findsNothing);
-      expect(find.text('Setting things up'), findsNothing);
-      await tester.pump(const Duration(milliseconds: 560));
-      expect(find.text('Preparing your board'), findsNothing);
-
-      await _toResults(tester);
-      expect(find.text('All set'), findsNothing);
-      expect(find.text('YOUR SUBSCRIPTIONS'), findsNothing);
-      expect(find.text('Go to dashboard'), findsNothing);
-    });
-  });
-
-  group('scan pluralizes the subscription count', () {
-    // 🔴 ONE TEST, TWO COUNTS, DELIBERATELY. A plural key wired to a constant —
-    // `subscriptionCount(1)`, or a stray `subs.length + 1` — passes whichever
-    // single case you happen to write. Only the pair pins that the count comes
-    // from the list.
-    testWidgets('one subscription reads "1 subscription", two read "2"', (
-      WidgetTester tester,
-    ) async {
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-
-      await _pump(
-        tester,
-        const ScanScreen(),
-        overrides: <Override>[
-          apiClientProvider.overrideWithValue(_NSubsApi(1)),
-        ],
-      );
-      await _toResults(tester);
-      expect(find.text(en.subscriptionCount(1)), findsOneWidget);
-      expect(
-        find.text(en.subscriptionCount(2)),
-        findsNothing,
-        reason: 'a hardcoded count would show here',
-      );
-      expect(
-        find.text('1 subscriptions'),
-        findsNothing,
-        reason:
-            'THE SHIPPED BUG THIS FIXES. The live line was '
-            "'\${subs.length} subscriptions', so the one-plan user — the "
-            'likeliest audience for a first-run screen — was told '
-            '"1 subscriptions".',
-      );
-
-      await _pump(
-        tester,
-        const ScanScreen(),
-        overrides: <Override>[
-          apiClientProvider.overrideWithValue(_NSubsApi(2)),
-        ],
-      );
-      await _toResults(tester);
-      expect(find.text(en.subscriptionCount(2)), findsOneWidget);
-      expect(find.text(en.subscriptionCount(1)), findsNothing);
-    });
-
-    testWidgets('the arb arms are actually distinct', (
-      WidgetTester tester,
-    ) async {
-      // Pins the KEY, not the screen: if the =1 arm were ever "tidied" away
-      // the two assertions above would still pass against each other while
-      // both rendered "1 subscriptions".
-      final AppLocalizations en = await AppLocalizations.delegate.load(
-        const Locale('en'),
-      );
-      expect(en.subscriptionCount(1), '1 subscription');
-      expect(en.subscriptionCount(2), '2 subscriptions');
-      expect(en.subscriptionCount(1), isNot(en.subscriptionCount(2)));
-    });
-  });
-
-  group('scan is theme-aware', () {
-    // ⏱ 2026-09-28 · train ST-D7 ("Import"). The LIGHT-literal pin is
-    // RETIRED deliberately: the screen moved onto the ST-D0 foundation, so both
-    // brightnesses read the same scheme slots and the old per-brightness fork
-    // (and its `AppColors.line` track, and the gradient hero's whites) is gone.
-    // The dark defect this group was written for — near-black ink on a dark
-    // first-run screen — stays pinned: the ink is `onSurface` in both.
-    for (final (String name, ThemeMode mode) in <(String, ThemeMode)>[
-      ('light', ThemeMode.light),
-      ('dark', ThemeMode.dark),
-    ]) {
-      testWidgets('[$name] the ink is the scheme\'s, never a literal', (
-        WidgetTester tester,
-      ) async {
-        final AppLocalizations en = await AppLocalizations.delegate.load(
-          const Locale('en'),
-        );
-        final ColorScheme scheme = mode == ThemeMode.light ? light : dark;
-        await _pump(tester, const ScanScreen(), mode: mode);
-
-        expect(_textColor(tester, en.scanBusyTitle), scheme.onSurface);
-        expect(_textColor(tester, en.scanBusyTitle), isNot(AppColors.ink));
-        expect(
-          _textColor(tester, en.scanBusySubtitle),
-          scheme.onSurfaceVariant,
-        );
-        expect(_textColor(tester, en.scanBusySubtitle), isNot(AppColors.muted));
-        // The bar takes the theme's own indicator colours: no track literal.
-        final LinearProgressIndicator bar = tester
-            .widget<LinearProgressIndicator>(
-              find.byType(LinearProgressIndicator),
-            );
-        expect(bar.backgroundColor, isNull);
-        expect(bar.color, isNull);
-      });
-
-      testWidgets('[$name] the results summary is a card, in the scheme ink', (
-        WidgetTester tester,
-      ) async {
-        final AppLocalizations en = await AppLocalizations.delegate.load(
-          const Locale('en'),
-        );
-        final ColorScheme scheme = mode == ThemeMode.light ? light : dark;
-        await _pump(
-          tester,
-          const ScanScreen(),
-          mode: mode,
-          overrides: <Override>[
-            apiClientProvider.overrideWithValue(_NSubsApi(3)),
-          ],
-        );
-        await _toResults(tester);
-
-        expect(
-          find.ancestor(
-            of: find.text(en.scanResultsHeading),
-            matching: find.byType(AppCard),
-          ),
-          findsOneWidget,
-          reason: 'the summary is the foundation card, not a gradient hero',
-        );
-        expect(_textColor(tester, en.subscriptionCount(3)), scheme.onSurface);
-        expect(
-          _textColor(tester, en.subscriptionCount(3)),
-          isNot(Colors.white),
-        );
-        expect(find.byType(AppListRow), findsNWidgets(3));
       });
     }
 
     testWidgets('the scaffold INHERITS instead of painting AppColors.bg', (
       WidgetTester tester,
     ) async {
-      await _pump(tester, const ScanScreen(), mode: ThemeMode.dark);
+      await _pump(tester, const ImportScreen(), mode: ThemeMode.dark);
       expect(
         tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
         isNull,
         reason:
-            'AppColors.bg is 0xFFF4F4F8 — an explicit override painted the '
-            'whole first-run screen near-white under dark chrome.',
+            'AppColors.bg is 0xFFF4F4F8 — an explicit override would paint '
+            'the whole import hub near-white under dark chrome.',
       );
-      expect(darkTheme.scaffoldBackgroundColor, isNot(AppColors.bg));
+      final AppLocalizations en = await AppLocalizations.delegate.load(
+        const Locale('en'),
+      );
+      expect(_textColor(tester, en.importTitle), dark.onSurface);
+      expect(_textColor(tester, en.importTitle), isNot(AppColors.ink));
     });
   });
 }

@@ -181,8 +181,11 @@ import 'support/width_harness.dart';
 // hours and "Send a test reminder" — [_everythingIsLaidOut] measures it. The
 // width, and so every count, is as it was; the height only has to hold the
 // whole screen.
-// ⏱ 2026-10-01 · club apply-st on NO-12/NO-13: both growths together; the
-// height is re-measured by [_everythingIsLaidOut].
+// ⏱ 2026-10-01 · IM-01/IM-03: 2800 -> 2880. Settings › Your data's Import, Back
+// up and Restore rows on top of NO-12/NO-13 scrolled by 73 px at 2800 —
+// measured by [_everythingIsLaidOut].
+// ⏱ 2026-10-01 · club apply-st on IM-01/IM-03 and NO-12/NO-13: every growth
+// above together, and the Categories row; re-measured by [_everythingIsLaidOut].
 const Size kKeyboardSurface = Size(1079, 3000);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
@@ -687,8 +690,12 @@ void main() {
         // switch and "Send a test reminder", both in the Tab orbit.
         // ⏱ 2026-10-01 · club apply-st on NO-13: both sets together — 32
         // controls, 29 reachable (the three radios stay off the Tab orbit).
-        controls: 32 + core.Money.symbols.length,
-        reachable: 29 + core.Money.symbols.length,
+        // ⏱ 2026-10-01 · IM-01/IM-03: 30 -> 33 and 28 -> 31 — Your data's
+        // Import, Back up (JSON) and Restore rows, each wired and in the orbit.
+        // ⏱ 2026-10-01 · club apply-st on IM-01/IM-03: both sets — 35 controls,
+        // 32 reachable.
+        controls: 35 + core.Money.symbols.length,
+        reachable: 32 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,

@@ -96,7 +96,7 @@
         "APPENDED 2026-09-07 (ADR 067 · cutover-blockers). e2e.yml now carries an auth_target axis",
         "(hosted | boxa), and `asserted` above is a HOSTED fact. Under auth_target=boxa the suite",
         "returns early at apps/subscriptiontracker/integration_test/app_test.dart into expectOneIssuerRefusal, whose",
-        "own expectation is that find.text('Go to dashboard') findsNothing — the anchors listed below",
+        "own expectation is that the signed-in Home never loads its list — the anchors listed below",
         "are still IN the file, which is what assert-e2e-legs greps for and why it still prints",
         "'3 of 6 ... equality holds', but under boxa they are not REACHED. What a boxa run proves is",
         "the one-issuer refusal (the deployed Worker rejects a Box A-minted session), not this leg.",
@@ -110,8 +110,8 @@
       ],
       "anchors": [
         "E2EKeys.loginSubmit",
-        "shot('03-scan')",
-        "find.text('Go to dashboard')"
+        "shot('03-landing')",
+        "expectLandedOnHome(tester, 'the full walk', sawReacceptance)"
       ]
     },
     {

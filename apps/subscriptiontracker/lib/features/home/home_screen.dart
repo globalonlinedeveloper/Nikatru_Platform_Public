@@ -46,6 +46,7 @@ import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 
 import '../../core/app_config.dart';
+import '../../core/e2e_keys.dart';
 import '../../core/format/category_label.dart';
 import '../../core/format/rail_label.dart';
 import '../../core/format/money_format.dart';
@@ -525,6 +526,15 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
           body: l10n.dataEmptyBody,
           actionLabel: l10n.addSubscriptionTitle,
           onAction: () => showAddSubscriptionSheet(context),
+        ),
+        // IM-01 — the second first step: a list kept somewhere else comes in
+        // through the import hub rather than being typed row by row.
+        Center(
+          child: TextButton(
+            key: E2EKeys.homeImport,
+            onPressed: () => context.push('/import'),
+            child: Text(l10n.importTitle),
+          ),
         ),
       ];
     }

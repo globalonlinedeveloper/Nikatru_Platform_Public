@@ -1048,7 +1048,9 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
     new Set(
       [
         'features/insights/insights_screen.dart#InsightsScreen',
-        'features/scan/scan_screen.dart#ScanScreen',
+        // 2026-10-01 (IM-01, ADR 077 §2.2): `/scan` retired to a redirect; the
+        // import hub that replaced it is swept in a11y_semantics_test.dart.
+        'features/import/import_screen.dart#ImportScreen',
         'features/calendar/calendar_screen.dart#CalendarScreen',
         'features/detail/subscription_detail_screen.dart#SubscriptionDetailScreen',
         'features/auth/check_inbox_screen.dart#CheckInboxScreen',

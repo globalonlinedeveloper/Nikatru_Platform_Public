@@ -803,28 +803,27 @@ class SettingsScreen extends ConsumerWidget {
 
             // ── ACCOUNT & DATA (live-only rows) ──────────────────────────────
             _sectionLabel(context, l10n.settingsAccountSection),
-            Container(
+            // IM-01/IM-03: Export, Import, Back up and Restore are the chassis
+            // Your data card (dataCard); Restore opens the same import hub.
+            dataCard(
+              context,
               decoration: cardDecoration(context),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: <Widget>[
-                  // Not yet wired — see the OPEN QUESTION in MANIFEST.md. Kept
-                  // because deleting it is a product decision, not a merge one.
-                  _LinkRow(
-                    icon: '⇄',
-                    label: l10n.connectedAccounts,
-                    last: false,
-                  ),
-                  // 🔴 DO NOT DELETE IN A MERGE: data-safety.json declares this
-                  // export. test/settings_export_test.dart parses its file back.
-                  _LinkRow(
-                    icon: '⇩',
-                    label: l10n.exportDataCsv,
-                    last: true,
-                    onTap: exportDataTap(ref, context),
-                  ),
-                ],
-              ),
+              row: _LinkRow.new,
+              leading: <Widget>[
+                // Not yet wired — see the OPEN QUESTION in MANIFEST.md. Kept
+                // because deleting it is a product decision, not a merge one.
+                _LinkRow(icon: '⇄', label: l10n.connectedAccounts, last: false),
+              ],
+              // 🔴 DO NOT DELETE IN A MERGE: data-safety.json declares this
+              // export. test/settings_export_test.dart parses its file back.
+              exportLabel: l10n.exportDataCsv,
+              onExport: exportDataTap(ref, context),
+              importLabel: l10n.importTitle,
+              onImport: () => context.push('/import'),
+              backupLabel: l10n.backupDataJson,
+              onBackup: backupDataTap(ref, context),
+              restoreLabel: l10n.restoreTitle,
+              onRestore: () => context.push('/import'),
             ),
 
             _sectionLabel(context, l10n.settingsHelpSection),

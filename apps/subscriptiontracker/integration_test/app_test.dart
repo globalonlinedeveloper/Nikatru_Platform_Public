@@ -28,7 +28,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ChassisL10nX, MonthGrid;
+    show ChassisL10nX, DataStateView, MonthGrid;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
@@ -49,6 +49,7 @@ import 'package:subscriptiontracker/state/analytics_providers.dart'
     show kInstallIdKey;
 
 import 'consent.dart';
+import 'import_steps.dart';
 import 'magic_link_sign_in.dart';
 import 'offline_read_steps.dart';
 
@@ -136,7 +137,7 @@ void main() {
     'E2E_DELETE_TOKEN_HASH',
   );
 
-  // The app animates forever in places (scan progress ring/timer, loaders), so
+  // The app animates forever in places (progress indicators, loaders), so
   // pumpAndSettle() would hang. Advance a fixed wall-clock slice instead — this
   // still lets real network futures resolve on the live binding.
   //
@@ -788,8 +789,8 @@ void main() {
           'renamed, or the list being dragged is not the one it lives in. '
           'On screen: ${onScreen(tester)}',
     );
-    // NOT pumpAndSettle: this app animates forever in places (the scan progress
-    // ring, loaders), so settling never returns — the reason `pumpFor` exists at
+    // NOT pumpAndSettle: this app animates forever in places (progress
+    // indicators, loaders), so settling never returns — the reason `pumpFor` exists at
     // the top of this file.
     await pumpFor(tester, const Duration(milliseconds: 200));
   }
@@ -948,12 +949,10 @@ void main() {
     //
     // 🔴 12s, NOT 6s, AND THE GATE'S `?next=` FIX IS WHY. This window now has
     // to cover TWO things where it used to cover one: the acceptance round
-    // trip AND the screen the gate hands back. The user no longer lands on
-    // /home but on the destination they were actually going to, and for the
-    // sign-in leg that is /scan — whose progress timer needs 6 × 560ms =
-    // 3.36s to reach `_done` and render 'Go to dashboard' (scan_screen.dart
-    // `_stepCount = 5`). At 6s the assertion below rested on the live Worker
-    // answering inside 2.64s, which is a coin toss wearing a test's clothes.
+    // trip AND the screen the gate hands back. The user lands on the
+    // destination they were actually going to — Home, since IM-07 (it was
+    // /scan, whose 3.36s timer this window was first sized for) — and Home's
+    // list is one more live Worker round trip before the landing is asserted.
     await pumpFor(tester, const Duration(seconds: 12));
     expect(
       find.byKey(ReacceptTermsScreen.acceptButton),
@@ -981,6 +980,46 @@ void main() {
           '${onScreen(tester)}',
     );
     expect(find.byKey(E2EKeys.loginHeading), findsOneWidget);
+  }
+
+  /// True when the signed-in HOME is on screen with the list LOADED: neither
+  /// the skeleton nor the failed state. What ScanScreen's "Go to dashboard"
+  /// used to stand in for (it rendered only once the list had loaded).
+  bool listLoadedOnHome(WidgetTester tester) =>
+      find.byType(HomeScreen).evaluate().isNotEmpty &&
+      find.byKey(DataStateView.failedKey).evaluate().isEmpty &&
+      find.byKey(DataStateView.loadingKey).evaluate().isEmpty;
+
+  /// IM-07 — where a sign-in lands: Home, list loaded.
+  ///
+  /// 🔴 THE REASON REPORTS WHAT WAS OBSERVED AND DIAGNOSES NOTHING, for the
+  /// reason recorded 2026-09-02: the old "sign-in likely failed" guess sent
+  /// three investigations at Supabase auth when the cause was a transient D1
+  /// fault inside subscriptiontracker-api. The cause is ON THE SCREEN, and
+  /// `onScreen` prints it.
+  void expectLandedOnHome(
+    WidgetTester tester,
+    String leg,
+    bool sawReacceptance,
+  ) {
+    expect(
+      listLoadedOnHome(tester),
+      isTrue,
+      reason:
+          'Timed out waiting for $leg to land on Home with the list loaded: '
+          '10s pumped after sign-in, plus the 12s window inside '
+          'acceptTermsIfShown. Post-sign-in clickwrap interstitial seen this '
+          'run: $sawReacceptance — true means the session was already valid, '
+          'because the router serves that screen to authenticated users only. '
+          'Read the cause off the screen text below, do not infer it: '
+          '"Could not load: ApiException(5xx)" is a backend failure (the '
+          'Worker answered 5xx; look for `service=subscriptiontracker-api` in '
+          'GlitchTip), "Could not load" with any other error is a client-side '
+          'throw that may mean NO REQUEST WAS EVER SENT, and the loading '
+          'skeleton on its own means the list was still loading when the '
+          'window expired. On screen: ${onScreen(tester)}',
+    );
+    expect(find.byType(AppShell), findsOneWidget);
   }
 
   /// The `E2E_EXPECT_WORKERS_TRUST=no` half of every Worker-dependent leg — a
@@ -1029,8 +1068,8 @@ void main() {
     // The same window the trusted path gets before it asserts it has arrived.
     await pumpFor(tester, const Duration(seconds: 12));
     expect(
-      find.text('Go to dashboard'),
-      findsNothing,
+      listLoadedOnHome(tester),
+      isFalse,
       reason:
           'E2E_EXPECT_WORKERS_TRUST=no and $leg reached the authenticated app. '
           'The Workers are configured for ONE issuer and it is not this one, '
@@ -1210,17 +1249,15 @@ void main() {
     // Token first; the form is the fallback for a run with no token supplied
     // (a hosted target, or a hand-run drive).
     //
-    // 🔴 NO `/scan` NAVIGATION HERE ANY MORE, AND ITS ABSENCE IS THE FIX. It
-    // stood in this block until 2026-09-04, which made the walk green and left
-    // the delete-account test — the only other caller — on the home shell. The
-    // navigation is now inside `signInWithMagicToken`, where no caller can be
-    // written without it. The form branch below needs none: `_submit` navigates.
+    // NO NAVIGATION HERE, AND SINCE IM-07 NONE IN THE HELPER EITHER: the
+    // session appearing is the whole of signing in, and the router lands it on
+    // Home (`afterSignInDestination`). The form branch below needs none.
     if (!await signInWithMagicToken(tester, tokenHash, pumpFor: pumpFor)) {
       await tester.enterText(find.byKey(E2EKeys.loginEmail), email);
       await tester.enterText(find.byKey(E2EKeys.loginPassword), password);
       await pumpFor(tester, const Duration(milliseconds: 500));
       await tester.tap(find.byKey(E2EKeys.loginSubmit));
-      // GoTrue sign-in + navigation to /scan.
+      // GoTrue sign-in; the router then lands the session on Home.
       await pumpFor(tester, const Duration(seconds: 10));
     }
 
@@ -1239,52 +1276,47 @@ void main() {
     // the router's gate puts them here before anything else. See the helper.
     //
     // The result is CAPTURED rather than discarded, because it is the single
-    // most load-bearing observation the scan assertion below can make: the
+    // most load-bearing observation the landing assertion below can make: the
     // router serves this interstitial to an AUTHENTICATED user only, so `true`
     // here is the suite's own proof that sign-in succeeded.
     final bool sawReacceptance = await acceptTermsIfShown(tester);
 
-    // ── 03 Scan ──────────────────────────────────────────────────────────────
-    await shot('03-scan');
-    // 🔴 THIS REASON REPORTS WHAT WAS OBSERVED AND DIAGNOSES NOTHING — AND
-    // THAT IS THE WHOLE POINT OF IT. Until 2026-09-02 it read "sign-in likely
-    // failed (bad/unconfirmed credentials or backend down)". That was a guess,
-    // it was wrong, and it sent three separate investigations at Supabase
-    // auth. Root-caused that day from three independent sources (the CI logs,
-    // GlitchTip issues 24 and 25 tagged `service=subscriptiontracker-api`, and Supabase
-    // `edge_logs`): the cause was a transient Cloudflare D1 fault —
-    // `D1_ERROR: D1 DB storage operation exceeded timeout which caused
-    // object to be reset` — which `services/subscriptiontracker-api/src/index.ts` maps to
-    // `internal_error`/500, and nothing retried it. `POST /auth/v1/token`
-    // returned 200 for this user ~25s earlier on EVERY red night. Sign-in
-    // never failed. The retry now lives in `services/*/src/lib/d1.ts`.
-    // Do not put a cause back into this string: the cause is already ON THE
-    // SCREEN, and `onScreen` prints it.
-    expect(
-      find.text('Go to dashboard'),
-      findsOneWidget,
-      reason:
-          'Timed out waiting for the scan screen to render "Go to dashboard": '
-          '10s pumped after the login-submit tap, plus the 12s window inside '
-          'acceptTermsIfShown. Post-sign-in clickwrap interstitial seen this '
-          'run: $sawReacceptance — true means the session was already valid, '
-          'because the router serves that screen to authenticated users only. '
-          'Read the cause off the screen text below, do not infer it: '
-          '"Could not load: ApiException(5xx)" is a backend failure (the '
-          'Worker answered 5xx; look for `service=subscriptiontracker-api` in GlitchTip), '
-          '"Could not load" with any other error is a client-side throw that '
-          'may mean NO REQUEST WAS EVER SENT, and "Setting up your board" on '
-          'its own means the scan was still running when the window expired. '
-          'On screen: ${onScreen(tester)}',
-    );
-    await tester.tap(find.text('Go to dashboard'));
-    await pumpFor(tester, const Duration(seconds: 4));
+    // ── 03 Landing ───────────────────────────────────────────────────────────
+    // ⏱ 2026-10-01 · IM-07 (ADR 077 §2.2): this was "03 Scan", a timed loader
+    // the helper forced the walk onto and nothing in the app navigated to. A
+    // signed-in user lands on HOME now — the same place a person lands — and
+    // the assertion is that the list LOADED there, which is what "Go to
+    // dashboard" used to stand in for. The evidence rules of the old block
+    // (2026-09-02: print what is on screen, never a guessed cause) hold.
+    await shot('03-landing');
+    expectLandedOnHome(tester, 'the full walk', sawReacceptance);
 
     // ── 04 Home ──────────────────────────────────────────────────────────────
     expect(find.byType(AppShell), findsOneWidget);
     expect(find.byType(HomeScreen), findsWidgets);
     expect(shellIndex(), 0);
     await shot('04-home');
+
+    // ── 04b Import, and 04c restore (IM-07) ─────────────────────────────────
+    // The product's way in, walked through the deployed Workers and READ BACK
+    // from them: a 3-row CSV through the add sheet's "Import instead", then a
+    // backup of those rows restored after one is deleted. Both clean up.
+    final String importStamp = '${DateTime.now().millisecondsSinceEpoch}';
+    await importCsvAndReadBack(
+      tester,
+      stamp: importStamp,
+      pumpFor: pumpFor,
+      onScreen: onScreen,
+    );
+    await shot('04b-imported');
+    await restoreBackupAndReadBack(
+      tester,
+      stamp: importStamp,
+      pumpFor: pumpFor,
+      onScreen: onScreen,
+    );
+    await shot('04c-restored');
+    expect(shellIndex(), 0);
 
     // ── 05 Calendar ──────────────────────────────────────────────────────────
     // 🔴 TAPPED BY ICON, NOT BY LABEL, AND ONLY THIS ONE OF THE FIVE.
@@ -1822,7 +1854,7 @@ void main() {
     // signOut() is an async round-trip to Supabase; the router then refreshes
     // and redirects. A signed-out user on a non-auth route (/settings) lands on
     // /sign-in — NOT first-run onboarding — per the core/router.dart redirect (a
-    // signed-out user is only left on /onboarding|/sign-in|/scan; /login is a
+    // signed-out user is only left on /onboarding|/sign-in|…; /login is a
     // redirect onto /sign-in since 2026-08-10). Poll for it.
     expect(
       await waitFor(tester, find.byKey(E2EKeys.loginHeading)),
@@ -1998,32 +2030,9 @@ void main() {
     // the one that used to guess about exactly that.
     final bool sawReacceptance = await acceptTermsIfShown(tester);
 
-    // 🔴 SAME CORRECTION AS THE FULL-WALK SCAN ASSERTION, 2026-09-02 — the
-    // long version of the evidence is written out there. This string used to
-    // end "— sign-in likely failed", and it is the one the red nights of
-    // 2026-08-28, 08-29 and 09-01 actually printed, which is why the wrong
-    // guess travelled so far. Measured cause: a transient Cloudflare D1 reset
-    // inside subscriptiontracker-api, surfacing to the app as `ApiException(500):
-    // internal_error`. Supabase answered this user's `POST /auth/v1/token`
-    // with 200 roughly 25s before every one of those failures. Never re-add a
-    // cause to this sentence — print the evidence and let the reader judge.
-    expect(
-      find.text('Go to dashboard'),
-      findsOneWidget,
-      reason:
-          'Timed out waiting for the delete-leg scan to render "Go to '
-          'dashboard": 10s pumped after the login-submit tap, plus the 12s '
-          'window inside acceptTermsIfShown. Post-sign-in clickwrap '
-          'interstitial seen this run: $sawReacceptance — true means the '
-          'session was already valid, so this is NOT an auth failure. The '
-          'cause is in the screen text: an "ApiException(5xx)" there is the '
-          'backend answering 5xx (join it to a GlitchTip event by request '
-          'id), while "Setting up your board" on its own means the scan was '
-          'still running when the window expired. '
-          'On screen: ${onScreen(tester)}',
-    );
-    await tester.tap(find.text('Go to dashboard'));
-    await pumpFor(tester, const Duration(seconds: 4));
+    // ⏱ 2026-10-01 · IM-07: the delete leg lands on Home like the full walk;
+    // see `expectLandedOnHome` for the evidence rules (2026-09-02).
+    expectLandedOnHome(tester, 'the delete leg', sawReacceptance);
 
     // ── 18 Give the account something to lose ────────────────────────────────
     final String doomed = 'E2E Doomed ${DateTime.now().millisecondsSinceEpoch}';

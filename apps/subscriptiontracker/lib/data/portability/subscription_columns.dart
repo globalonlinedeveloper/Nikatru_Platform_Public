@@ -235,3 +235,142 @@ String subscriptionCycleCell(Subscription s) {
   if (c == null) return '';
   return c.legacyCycle ?? '${c.every} ${c.unit.name}';
 }
+
+// ── OTHER TRACKERS' EXPORTS (IM-05) ─────────────────────────────────────────
+// MAPPING ONLY: each preset is a header signature and the field each of its
+// columns fills — no copied text, no logo, no claim of affiliation. A file is
+// RECOGNISED by its header (`core.ColumnPreset.recognise`), so nobody has to
+// know which app a file came from. Columns a preset does not name still go
+// through the synonyms above, and the mapping step can override any of them.
+//
+// ⚠️ THE SIGNATURES ARE THE COLUMN NAMES THESE APPS' CSV EXPORTS ARE KNOWN TO
+// CARRY AS OF 2026-10. An export that renames a column is simply not
+// recognised and falls back to the synonym inference — never a wrong mapping,
+// because a preset only applies when EVERY header it names is present.
+// `test/import_hub_test.dart` holds each one to "every column maps".
+
+/// The CSV exports of other subscription trackers this import recognises.
+const List<core.ColumnPreset> kTrackerPresets = <core.ColumnPreset>[
+  core.ColumnPreset(
+    name: 'Bobby',
+    fieldByHeader: <String, String>{
+      'Title': 'name',
+      'Price': 'price',
+      'Currency': 'currency',
+      'Cycle Period': 'cycle',
+      'Next Bill': 'next_renewal',
+      'Description': 'notes',
+    },
+  ),
+  core.ColumnPreset(
+    name: 'TrackMySubs',
+    fieldByHeader: <String, String>{
+      'Subscription Name': 'name',
+      'Cost': 'price',
+      'Currency': 'currency',
+      'Billing Frequency': 'cycle',
+      'Next Bill Date': 'next_renewal',
+      'Category': 'category',
+      'Notes': 'notes',
+    },
+  ),
+  core.ColumnPreset(
+    name: 'Subby',
+    fieldByHeader: <String, String>{
+      'Service': 'name',
+      'Price': 'price',
+      'Currency': 'currency',
+      'Renewal Period': 'cycle',
+      'Renewal Date': 'next_renewal',
+      'Category': 'category',
+    },
+  ),
+  core.ColumnPreset(
+    name: 'Rocket Money',
+    fieldByHeader: <String, String>{
+      'Merchant': 'name',
+      'Amount': 'price',
+      'Frequency': 'cycle',
+      'Next Charge Date': 'next_renewal',
+      'Category': 'category',
+    },
+  ),
+];
+
+/// The five fields the mapping step asks about, in the order it asks.
+const List<String> kImportMappedFieldIds = <String>[
+  'name',
+  'price',
+  'currency',
+  'cycle',
+  'next_renewal',
+];
+
+/// Where `core.ReceiptParser` puts what it reads off a pasted receipt.
+const core.ReceiptFieldIds kSubscriptionReceiptIds = core.ReceiptFieldIds(
+  seller: 'name',
+  amount: 'price',
+  currency: 'currency',
+  date: 'next_renewal',
+  period: 'cycle',
+);
+
+/// One reviewed import row as a NEW subscription draft — the shape the add
+/// sheet hands `addSubscription`, so an import goes through the same add route
+/// and nothing else.
+///
+/// A date in the past (a receipt's charge date, a stale sheet) is rolled
+/// forward by the row's cadence to the next renewal on or after [today]; with
+/// no cadence it is kept as given. No date is today. No category is `Other`,
+/// the add sheet's own fallback.
+Subscription subscriptionFromCandidate(
+  core.ImportCandidate c, {
+  required DateTime today,
+}) {
+  final String name = c.text('name') ?? '';
+  final core.Cadence? cadence = core.Cadence.fromLegacy(c.text('cycle'));
+  final DateTime day = DateTime(today.year, today.month, today.day);
+  final DateTime? given = c.date('next_renewal');
+  final DateTime first = given == null
+      ? day
+      : DateTime(given.year, given.month, given.day);
+  final DateTime next = cadence == null
+      ? first
+      : core.RecurrenceSchedule.nextOnOrAfter(first, cadence, day);
+  final String category = (c.text('category') ?? '').trim();
+  return Subscription(
+    id: '',
+    name: name,
+    category: category.isEmpty ? 'Other' : category,
+    price: c.money('price')!,
+    cycle: cadence,
+    nextRenewal: next,
+    plan: c.text('plan') ?? '',
+    glyph: Subscription.glyphFor(name),
+    firstChargeOn: given == null ? null : first,
+    notes: c.text('notes') ?? '',
+  );
+}
+
+// ── BACKUP AND RESTORE (IM-03) ──────────────────────────────────────────────
+
+/// The `appId` a backup is stamped with, and the only one this app restores.
+const String kBackupAppId = 'subscriptiontracker';
+
+/// The whole list as a `core.BackupEnvelope` — each row exactly as
+/// `Subscription.toJson()` writes it, so a restore reads back what the wire
+/// reads.
+core.ExportFile subscriptionsBackupFile(
+  Iterable<Subscription> subs, {
+  required DateTime now,
+}) => core.ExportFile(
+  bytes: core.BackupEnvelope(
+    appId: kBackupAppId,
+    exportedAt: now,
+    records: <Map<String, Object?>>[
+      for (final Subscription s in subs) Map<String, Object?>.of(s.toJson()),
+    ],
+  ).encodeBytes(),
+  fileName: 'subscriptions-backup.json',
+  mimeType: core.BackupEnvelope.mimeType,
+);

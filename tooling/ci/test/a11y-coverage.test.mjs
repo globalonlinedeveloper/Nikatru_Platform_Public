@@ -175,6 +175,9 @@ const ALL_19_SWEPT = [
   'CalendarScreen',
   'CheckInboxScreen',
   'HomeScreen',
+  // 'ScanScreen' left on 2026-10-01 (IM-01, ADR 077 §2.2): `/scan` is a
+  // redirect onto `/import`, and the import hub arrived swept.
+  'ImportScreen',
   'InsightsScreen',
   'LoginScreen',
   'ManagePlanScreen',
@@ -183,7 +186,6 @@ const ALL_19_SWEPT = [
   'PaywallScreen',
   'ReacceptTermsScreen',
   'ResetPasswordScreen',
-  'ScanScreen',
   'SettingsScreen',
   // ⏱ 2026-10-01 · ST-T9 (EN-18): the after-sign-in setup arrived swept.
   'SetupScreen',
@@ -451,7 +453,9 @@ describe('the guard says YES on the tree as it is', () => {
     // day this guard was written until 2026-08-13, and a family that has never
     // been non-zero is a limb nothing has exercised — so the number that proves
     // it started is worth holding. `contrast` started the same day: ×0 → ×24.
-    assert.match(out, /sweep families used: naked-controls ×28, tap-target ×22, contrast ×26/); // ⏱ 2026-10-01 ST-T9: SetupScreen's two cases add one of each family;  ⏱ 2026-09-28 · ST-D6: +1 tap-target, +1 contrast (the edit sheet)
+    // ⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): naked-controls 25 → 26 — scan's one naked sweep went with `/scan`, and the import hub arrived with two (its hub and its review list); tap-target and contrast swapped one for one.
+    // ⏱ 2026-10-01 · club apply-st on IM-01: the club's +3 naked-controls, +1 tap-target, +1 contrast on top.
+    assert.match(out, /sweep families used: naked-controls ×29, tap-target ×22, contrast ×26/);
   });
 
   test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {

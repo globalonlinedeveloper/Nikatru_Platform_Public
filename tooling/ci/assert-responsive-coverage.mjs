@@ -516,6 +516,12 @@ const REQUIRED_COVERAGE = [
     // from a tablet up (showAdaptiveSheet), measured at kPhone, kTablet and
     // kDesktop by width_share_month_test.dart. Read off this guard's own run:
     // "21 surface(s) reachable, 21 measured — the two sets are EQUAL".
+    // ⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): UNCHANGED AT 18, one for one —
+    // `ScanScreen` left with `width_scan_test.dart` and `ImportScreen` arrived
+    // with `width_import_test.dart` at kPhone, kTablet and kDesktop. Measured by
+    // this guard's own run: "18 surface(s) reachable, 18 measured", 18 files.
+    // ⏱ 2026-10-01 · club apply-st on IM-01: the swap above is one for one,
+    // so 21 stands.
     surfaces: 21,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
@@ -712,8 +718,14 @@ const REQUIRED_COVERAGE = [
     // ⏱ 2026-10-01 · club apply-st merged onto main: BOTH raises above, so
     // 27 → 32 surfaces / 30 → 33 files / 27 → 32 covered. Read off the
     // per-root lines — `32 surface(s) reachable, 32 measured` and `— 33 file(s)`.
+    // ⏱ RAISED `widthTestFiles` 32 → 33 ON 2026-10-01 (train ST import hub),
+    // surfaces unchanged: `test/data_section_test.dart` joined the corpus with
+    // the Your data card (`dataCard`, a function, not a surface). Read off the
+    // per-root line, `— 33 file(s)`.
+    // ⏱ 2026-10-01 · club apply-st on the import hub: 32 surfaces, and 34
+    // files with both data_section_test.dart and setup_steps_view_test.dart.
     surfaces: 32,
-    widthTestFiles: 33,
+    widthTestFiles: 34,
     coveredSurfaces: 32,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
