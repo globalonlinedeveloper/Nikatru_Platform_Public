@@ -190,9 +190,9 @@
       ],
       "openProtocol": "NO — payment APIs are proprietary and there is no standard to speak. Which is exactly why parts 2 and 4 carry the weight here: the SIGNATURE SCHEME is proprietary and lives in one adapter file, and the entitlement it produces is written in our own vocabulary into our own table.",
       "seam": {
-        "file": "services/platform/src/lib/mor/contract.ts",
-        "symbol": "MoRWebhookVerifier",
-        "note": "[ADR 004] specifies this seam by name: 'build the payment webhook provider-agnostic (MoRWebhookVerifier interface + per-provider signature adapters) so the choice can flip with zero app changes'. Every Paddle-specific fact — the header name, the HMAC construction, the status vocabulary, the id prefixes — lives in services/platform/src/lib/mor/paddle.ts and nowhere else, and each one carries the developer.paddle.com URL it was verified against."
+        "file": "services/_shared/src/ports/payments.ts",
+        "symbol": "RailOutbound",
+        "note": "⏱ 2026-10-01 port-pay-core: the seam is the payments PORT — RailOutbound beside RailInbound (= [ADR 004]'s MoRWebhookVerifier, re-exported from lib/mor/contract.ts), reached only through services/platform/src/ports.ts; Paddle's outbound half is lib/mor/paddle-rail.ts. [ADR 004] specifies the inbound seam by name: 'build the payment webhook provider-agnostic (MoRWebhookVerifier interface + per-provider signature adapters) so the choice can flip with zero app changes'. Every Paddle-specific fact — the header name, the HMAC construction, the status vocabulary, the id prefixes — lives in services/platform/src/lib/mor/paddle.ts and nowhere else, and each one carries the developer.paddle.com URL it was verified against."
       },
       "configKeyed": {
         "kind": "runtime",
@@ -219,9 +219,9 @@
       ],
       "openProtocol": "NO — payment APIs are proprietary and there is no standard to speak. The signature scheme (HMAC-SHA256 over the raw body, in X-Razorpay-Signature) and the event-id header live in one adapter file, services/platform/src/lib/mor/razorpay.ts, and what the rail produces is written in our own vocabulary into our own table.",
       "seam": {
-        "file": "services/platform/src/lib/mor/contract.ts",
-        "symbol": "MoRWebhookVerifier",
-        "note": "The same seam paddle and revenuecat sit behind ([ADR 004]). Every Razorpay-specific fact — the signature header, the HMAC construction, the `x-razorpay-event-id` header the door reads through `eventIdHeader` — lives in services/platform/src/lib/mor/razorpay.ts and nowhere else, quoted from the razorpay.com page it was read from."
+        "file": "services/_shared/src/ports/payments.ts",
+        "symbol": "RailOutbound",
+        "note": "The same port paddle sits behind (services/_shared/src/ports/payments.ts, port-pay-core 2026-10-01; inbound is [ADR 004]'s MoRWebhookVerifier). Every Razorpay-specific fact — the signature header, the HMAC construction, the `x-razorpay-event-id` header the door reads through `eventIdHeader` — lives in services/platform/src/lib/mor/razorpay.ts and nowhere else, quoted from the razorpay.com page it was read from."
       },
       "configKeyed": {
         "kind": "runtime",

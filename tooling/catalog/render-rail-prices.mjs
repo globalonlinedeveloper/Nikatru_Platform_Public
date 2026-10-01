@@ -281,6 +281,7 @@ export const MAP_NAMES = [
   'RAIL_PRICE_PENDING',
   'RAZORPAY_PLAN_IDS',
   'RAZORPAY_PRICE_PENDING',
+  'RAIL_PRICE_IDS',
 ];
 
 const MIN_REASON = 20;
@@ -933,6 +934,16 @@ export function renderRailPriceIds(book) {
       return p === null ? null : `${id}: ${q(p)},`;
     },
     'string',
+  );
+  // ⏱ 2026-10-01 · port-pay-core: the payments port's ONE price map, keyed by the registry's adapter id
+  // (tooling/ports/payments.json), so an adapter resolves its own id and no route names a rail's map.
+  L.push(
+    '// RAIL → OUR offering id → that rail\'s sellable id, per app: the map the payments port reads',
+    '// (RAIL_PRICE_IDS[railId][appId][offeringId]). Keyed by tooling/ports/payments.json adapter ids.',
+    'export const RAIL_PRICE_IDS: Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, string>>>>>> = {',
+    ...RAILS.map((r) => `  ${r}: ${r === 'paddle' ? 'PADDLE_PRICE_IDS' : 'RAZORPAY_PLAN_IDS'},`),
+    '};',
+    '',
   );
   return `${L.join('\n').trimEnd()}\n`;
 }

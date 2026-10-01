@@ -177,6 +177,25 @@ describe('assert-ports — every limb reddens', () => {
     assert.equal(r.code, 1, r.out);
     assert.match(r.first, /limb 4 \(imports\).*services\/w\/src\/routes\/x\.ts/);
   });
+  it('limb 2: an outbound symbol that is not declared exits 1', () => {
+    const out = { file: 'services/w/src/lib/acme.ts', symbol: 'acmeRail', modules: [] };
+    const r = run(fixture({ ports: { widgets: port({ adapters: [adapter({ outbound: out }), port().adapters[1]] }) } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /outbound symbol `acmeRail` is not declared/);
+  });
+  it('limb 4: a route importing an adapter\'s outbound MODULE exits 1; the adapter\'s own outbound file may', () => {
+    const out = { file: 'services/w/src/lib/acme-rail.ts', symbol: 'acmeRail', modules: ['services/w/src/lib/acme-cancel.ts'] };
+    const files = {
+      'services/w/src/lib/acme-cancel.ts': 'export const cancelAcme = () => true;\n',
+      'services/w/src/lib/acme-rail.ts': "import { cancelAcme } from './acme-cancel';\nexport const acmeRail = { cancel: cancelAcme };\n",
+    };
+    const ports = { widgets: port({ adapters: [adapter({ outbound: out }), port().adapters[1]] }) };
+    const green = run(fixture({ ports, files }));
+    assert.equal(green.code, 0, green.out);
+    const red = run(fixture({ ports, files: { ...files, 'services/w/src/routes/y.ts': "import { cancelAcme } from '../lib/acme-cancel';\nexport const y = cancelAcme;\n" } }));
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.first, /limb 4 \(imports\).*services\/w\/src\/routes\/y\.ts.*acme-cancel\.ts/);
+  });
   it('limb 4: the same import from the composition root is allowed', () => {
     const r = run(fixture({ files: { 'services/w/src/ports.ts': "import { acmeVerifier } from './lib/acme';\nexport const portFor = () => acmeVerifier;\n" } }));
     assert.equal(r.code, 0, r.out);
@@ -295,13 +314,17 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     root = mkdtempSync(join(tmpdir(), 'ports-real-'));
     const copy = (rel) => { if (existsSync(join(REPO, rel))) cpSync(join(REPO, rel), join(root, rel), { recursive: true }); };
     for (const rel of ['tooling/ports', 'tooling/capability-register.json', 'tooling/legal/provider-register.json', 'tooling/channel-register.json',
-      'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart']) copy(rel);
+      'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart',
+      'tooling/ops/port-switch.mjs']) copy(rel);
     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
   });
-  it('green control: payments, auth and telemetry each claim and earn L2', () => {
+  it('green control: payments claims and earns L3; auth and telemetry claim and earn L2', () => {
     const r = run(root);
     assert.equal(r.code, 0, r.out);
-    for (const p of ['auth', 'payments', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
+    assert.match(r.out, /payments\s+L3\s+L3\s+L3/);
+    for (const p of ['auth', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
+    assert.match(r.out, /limb 3: services\/platform\/src\/generated\/ports\.ts matches tooling\/ports\/payments\.json/);
+    assert.match(r.out, /PENDING payments\/revenuecat: refund reversed or dispute won restores \(O-REVENUECAT-VERIFIER\)/);
   });
   it('red: deleting one vendor from _non-port.json reddens limb 8', () => {
     const rel = join(root, 'tooling/ports/_non-port.json');
@@ -327,17 +350,51 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       assert.match(r.out, /adapter `paddle`: vendor `paddle`'s C-8 seam\.file is `services\/platform\/src\/lib\/mor\/registry\.ts`/);
     } finally { writeFileSync(rel, before); }
   });
-  it('red: dropping the checkout waiver reddens limb 4 and payments earns L1', () => {
+  // ⏱ 2026-10-01 · port-pay-core: the checkout waiver is gone (the route dispatches through
+  // src/ports.ts), so the red that stood here is replaced by the brief's own: a ROUTE that imports
+  // Paddle's outbound module is a limb-4 finding, and the level falls with it.
+  it('red: a route importing lib/mor/paddle-cancel reddens limb 4 and payments earns L1', () => {
+    const rel = join(root, 'services/platform/src/routes/vendor-shaped.ts');
+    try {
+      writeFileSync(rel, "import { cancelPaddleSubscription } from '../lib/mor/paddle-cancel';\nexport const c = cancelPaddleSubscription;\n");
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 4 \(imports\).*routes\/vendor-shaped\.ts.*lib\/mor\/paddle-cancel\.ts/);
+      assert.match(r.out, /payments\s+L3\s+L1/);
+    } finally { rmSync(rel, { force: true }); }
+  });
+  it('red: a hand edit of the rendered table reddens limb 3', () => {
+    const rel = join(root, 'services/platform/src/generated/ports.ts');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, before.replace("razorpay: 'none',", "razorpay: 'api',"));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 3 \(waivers\): render --check: services\/platform\/src\/generated\/ports\.ts differs from its render/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: the fake selected for live reddens limb 7', () => {
     const rel = join(root, 'tooling/ports/payments.json');
     const before = readFileSync(rel, 'utf8');
     try {
       const doc = JSON.parse(before);
-      doc.handTables = doc.handTables.filter((h) => !h.file.endsWith('routes/checkout.ts'));
+      doc.selection.default.live = 'fake';
       writeFileSync(rel, JSON.stringify(doc));
       const r = run(root);
       assert.equal(r.code, 1, r.out);
-      assert.match(r.first, /limb 4 \(imports\).*routes\/checkout\.ts/);
-      assert.match(r.out, /payments\s+L2\s+L1/);
+      assert.match(r.out, /limb 7 \(fakes\) tooling\/ports\/payments\.json selection\.default\.live is the fake `fake`/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: claiming L3 with a scenario pending on the fake reddens limb 6', () => {
+    const rel = join(root, 'tooling/ports/payments.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.conformance.pending.push({ adapter: 'fake', case: 'an older event after a newer one cannot re-grant', row: 'O-FIXTURE' });
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 6 \(level\).*payments\.json claims L3 and earns L2: 1 conformant adapter/);
     } finally { writeFileSync(rel, before); }
   });
 });
@@ -353,5 +410,9 @@ describe('affected-guards selects assert-ports by REGISTRY CONTENT', () => {
     assert.equal(picks('tooling/ports/payments.json'), true);
     assert.equal(picks('services/_shared/src/ports/payments.ts'), true);
     assert.equal(picks('services/platform/src/routes/money.ts'), false, 'no registry names it');
+    assert.equal(picks('services/platform/src/lib/mor/paddle-cancel.ts'), true, 'named by payments.json outbound.modules');
+    assert.equal(picks('services/platform/src/lib/mor/paddle-rail.ts'), true, 'named by payments.json outbound.file');
+    assert.equal(picks('services/platform/src/generated/ports.ts'), true, 'the rendered table limb 3 checks');
+    assert.equal(picks('services/platform/src/ports.ts'), true, 'the composition root limb 4 allows');
   });
 });

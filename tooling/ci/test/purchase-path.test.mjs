@@ -527,8 +527,8 @@ class PaywallScreen extends ConsumerStatefulWidget {
 // runs, deliberately: two guards that parse the provider set two ways can
 // disagree about which rails this repo can hear from, and the disagreement
 // shows up as money taken on a rail nothing verifies.
-const MOR_REGISTRY_TS = `import type { MoRWebhookVerifier } from './types';
-export const MOR_VERIFIERS: readonly MoRWebhookVerifier[] = [paddleVerifier, razorpayVerifier];
+// ⏱ 2026-10-01 · port-pay-core: the set is the RENDERED table now (services/platform/src/generated/ports.ts).
+const MOR_REGISTRY_TS = `export const MOR_VERIFIER_IDS = ['paddle', 'razorpay'] as const;
 `;
 
 const legalRow = (id, status, namedIn) => ({ id, status, namedIn, role: id === 'paddle' ? 'merchant_of_record' : 'payment_gateway' });
@@ -564,7 +564,7 @@ function run(o = {}) {
   // §I's two subjects. A region rail is a claim about MONEY, and it is settled
   // against these two files: the registry says this repo can verify a webhook
   // from that rail, the legal register says a published page names who collects.
-  if (o.morRegistry !== null) write(root, 'services/platform/src/lib/mor/registry.ts', o.morRegistry ?? MOR_REGISTRY_TS);
+  if (o.morRegistry !== null) write(root, 'services/platform/src/generated/ports.ts', o.morRegistry ?? MOR_REGISTRY_TS);
   if (o.legalRegister !== null) write(root, 'tooling/legal/provider-register.json', o.legalRegister ?? LEGAL_REGISTER_JSON);
   write(root, 'packages/purchases/test/purchase_capabilities_test.dart', 'void main() {}');
   if (o.railTest !== null) write(root, 'packages/purchases/test/hosted_checkout_rail_test.dart', o.railTest ?? RAIL_TEST);
@@ -1946,7 +1946,7 @@ describe('assert-purchase-path §I — a region takes a different rail', () => {
   test('🔴 FAILS when a region pays through a rail no verifier is registered for', () => {
     // Money in, entitlement never: the buyer's only evidence is a receipt from
     // a company this repository has never heard of.
-    const r = run({ morRegistry: 'export const MOR_VERIFIERS: readonly MoRWebhookVerifier[] = [paddleVerifier];\n' });
+    const r = run({ morRegistry: "export const MOR_VERIFIER_IDS = ['paddle'] as const;\n" });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /A REGION PAYS THROUGH `razorpay` AND THIS REPO CANNOT HEAR FROM IT/);
     assert.match(r.out, /web\/IN/);
@@ -1955,11 +1955,11 @@ describe('assert-purchase-path §I — a region takes a different rail', () => {
   test('COVERAGE LOST when the MoR registry is not on disk', () => {
     const r = run({ morRegistry: null });
     assert.equal(r.code, 2, r.out);
-    assert.match(r.out, /registry\.ts does not exist, so/);
+    assert.match(r.out, /generated\/ports\.ts does not exist, so/);
   });
 
   test('🔴 COVERAGE LOST when the verifier array cannot be parsed — an empty set cannot fail', () => {
-    const r = run({ morRegistry: 'export const VERIFIERS = [paddleVerifier, razorpayVerifier];\n' });
+    const r = run({ morRegistry: "export const VERIFIER_IDS = ['paddle', 'razorpay'] as const;\n" });
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /checked against an EMPTY provider set/);
   });

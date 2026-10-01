@@ -9,9 +9,10 @@ This file is normative and stands alone: later trains read the standard from her
 [`port.schema.json`](port.schema.json); the guard is `tooling/ci/assert-ports.mjs`; the switch rehearsal is
 `tooling/ops/port-switch.mjs`. Row `O-NO-PORT-SELECTS-AN-ADAPTER-BY-CONFIG` tracks the trains that close it.
 
-The first subjects, at their honest levels: `tooling/ports/payments.json` (inbound, `MoRWebhookVerifier`),
-`tooling/ports/auth.json` (Dart `AuthRepository`) and `tooling/ports/telemetry.json` (Dart `TelemetryClient`), each
-claiming L2 with target L3; every other vendor is placed in `tooling/ports/_non-port.json`.
+The first subjects, at their honest levels: `tooling/ports/payments.json` (both halves — `RailInbound`, which is
+[ADR 004]'s `MoRWebhookVerifier`, and `RailOutbound` — at L3 since port-pay-core), `tooling/ports/auth.json` (Dart
+`AuthRepository`) and `tooling/ports/telemetry.json` (Dart `TelemetryClient`), each claiming L2 with target L3; every
+other vendor is placed in `tooling/ports/_non-port.json`.
 
 ## 1. Levels
 
@@ -40,6 +41,7 @@ wherever the shape can hold it).
 | `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. |
 | `adapters[].status` | `draft` · `built` · `live` · `standby` · `retired` · `fake` · `external`. |
 | `adapters[].impl` | `{file, symbol}`; for `external` (e.g. a self-hosted GoTrue configured by env) `{configAt, verify}`. |
+| `adapters[].outbound` | Optional `{file, symbol, modules}` — the adapter's outbound half (e.g. `RailOutbound`) and its further private modules. Limb 2 holds the symbol declared; limb 4 protects `file` and every `modules` path exactly as it protects `impl.file`. |
 | `adapters[].capabilities` | The port's own verbs (e.g. `verify`, `parse`, `cancel-api`). Capability verbs, never vendor nouns. |
 | `adapters[].secrets` | Secret **names** only — rows of `tooling/worker-secrets.json` once it exists, until then members of a Worker's `interface Env`. |
 | `adapters[].identity` | Field **paths** into `tooling/house-identity.json` (the entity source) that the vendor account carries. Never the values. |
@@ -53,7 +55,7 @@ wherever the shape can hold it).
 | `selection.source` | `<file>#<pointer>` when another register (or one code site) holds the answer — e.g. `tooling/channel-register.json#purchaseRails`; null when `default` is the whole answer. |
 | `selection.default` | `{live, sandbox, test}` adapter ids or null. Null in every slot is honest for a port selected per channel. |
 | `selection.canary` | Reserved; null. |
-| `generated` | `true` once code reads a **rendered** table instead of a hand array. No port may claim it before the render tool (`tooling/ops/render-port-tables.mjs`, port-pay-core) exists. |
+| `generated` | `true` once code reads a **rendered** table instead of a hand array. The render tool is `tooling/ports/render.mjs [--check]` (port-pay-core); assert-ports limb 3 runs its check on every build, so a hand edit of a rendered table fails whether or not `generated` is claimed yet. |
 | `handTables[]` | `{file, anchor, until, why}` — a declared, printed waiver for a hand-written table (or a pre-port import) that the port will replace. The anchor must still exist. |
 | `conformance.suite` | `{file, runner}` or null. |
 | `conformance.pending[]` | `{adapter, case, row}` — a scenario an adapter cannot pass yet. Names its `O-` row, prints on every run, and blocks L3 for that adapter. |
@@ -164,4 +166,10 @@ recorded mutation in `tooling/ci/test/ports.test.mjs`.
 
 `node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>]` —
 one line per check, `PASS | FAIL | LOST C<n> <name>: <detail>`; exit 1 on any FAIL, 2 on any LOST, 0 only when all
-pass. Without `--dry-run` it refuses. Tests: `tooling/ci/test/port-switch.test.mjs`.
+pass. Without `--dry-run` it refuses. Tests: `tooling/ci/test/port-switch.test.mjs`. For `payments` it adds C9 the
+webhook URL to register and the secrets by name, C10 the price ids still to create per offering, C11 the channels whose
+`purchaseRails` would change, and C12 the run-off note; each pending conformance case prints as its own `FAIL` line.
+
+`node tooling/ports/render.mjs [--check]` renders the tables code reads (today
+`services/platform/src/generated/ports.ts` from `payments.json`); `--check` exits 1 on any difference, and limb 3
+runs the same check on every build.

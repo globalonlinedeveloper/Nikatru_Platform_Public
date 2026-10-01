@@ -222,3 +222,49 @@ describe('port-switch — margin over a copy of the REAL registers', () => {
     assert.deepEqual(feeFor(paddle, 'paddle', 3499, cells).cells, ['paddle-checkout']);
   });
 });
+
+// ⏱ 2026-10-01 · port-pay-core · the payments dry run's own lines (C9–C12) and the per-case
+// PENDING lines, over a copy of the REAL registers plus the Worker config and the conformance files.
+describe('port-switch — the payments additions over a copy of the REAL registers', () => {
+  let root;
+  before(() => {
+    root = mkdtempSync(join(tmpdir(), 'port-switch-pay-'));
+    for (const rel of ['tooling/ports', 'tooling/catalog/fee-register.json', 'tooling/channel-register.json', 'tooling/house-identity.json',
+      'services/platform/src/app-config-data.json', 'services/platform/src/types.ts', 'services/subscriptiontracker-api/src/types.ts',
+      'services/platform/wrangler.jsonc', 'services/platform/test', 'apps/subscriptiontracker/app.yaml', 'catalog']) {
+      cpSync(join(REPO, rel), join(root, rel), { recursive: true });
+    }
+  });
+  it('red: --to razorpay prints every pending case as FAIL and exits 1', () => {
+    const r = run(['payments', '--to', 'razorpay', '--dry-run', '--root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /^FAIL  C5 conformance: \d+ pending case\(s\)/m);
+    assert.match(r.out, /^FAIL  C5 pending: purchase grants \(O-RAZORPAY-CHECKOUT-ADAPTER\)$/m);
+    assert.match(r.out, /^FAIL  C10 prices: 3 of 3 offering\(s\) have no razorpay price id yet/m);
+    assert.match(r.out, /to create on razorpay: subscriptiontracker pro_monthly/);
+  });
+  it('red: --to fake for live is a FAIL (C1), whatever else passes', () => {
+    const r = run(['payments', '--to', 'fake', '--dry-run', '--root', root]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /^port-switch: FAIL — C1 target: `fake` is a fake; a fake is never selectable in live/);
+  });
+  it('--to paddle prints the webhook URL, the secrets by name, the prices, the channels and the run-off', () => {
+    const r = run(['payments', '--to', 'paddle', '--from', 'revenuecat', '--dry-run', '--root', root]);
+    assert.match(r.out, /^PASS  C9 webhook: register https:\/\/platform\.nikatru\.com\/v1\/money\/paddle at paddle; secrets by name: PADDLE_NOTIFICATION_SECRET, PADDLE_API_KEY$/m);
+    assert.match(r.out, /^PASS  C10 prices: all 3 offering\(s\) carry a paddle price id$/m);
+    assert.match(r.out, /^PASS  C11 channels: 3 channel\(s\) would change purchaseRail: android-play \(play-billing → paddle\)/m);
+    assert.match(r.out, /^PASS  C12 run-off: a RUN-OFF, not a cutover: card and UPI mandates do not move/m);
+    assert.match(r.out, /^ {4}run-off revenuecat: Leaves with us/m);
+    assert.match(r.out, /^PASS  C8 margin: \d+ net\(s\)/m, 'the per-channel net per price, current against target');
+  });
+  it('a port other than payments prints none of C9–C12', () => {
+    const r = run(['telemetry', '--to', 'sentry', '--dry-run', '--root', root]);
+    assert.doesNotMatch(r.out, /C9 webhook|C10 prices|C11 channels|C12 run-off/);
+  });
+  it('a declared per-SALE unit cost is a fee (the fake costs 0), never LOST', () => {
+    const fake = { id: 'fake', cost: { feeCells: [], unit: { usd: 0, per: 'sale', asOf: '2026-10-01', verify: 'no vendor, no fee' } } };
+    assert.deepEqual(feeFor(fake, 'paddle', 599, {}).fee, { percentBps: 0, fixedMinor: 0 });
+    const perMonth = { id: 'x', cost: { feeCells: [], unit: { usd: 5, per: 'month', asOf: '2026-10-01', verify: 'a flat plan' } } };
+    assert.match(feeFor(perMonth, 'paddle', 599, {}).lost, /carries no fee cells/);
+  });
+});

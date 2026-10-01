@@ -34,15 +34,19 @@ import { Hono } from 'hono';
 import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
 import checkout, {
-  FORBIDDEN_CREATE_KEYS,
   MAX_CHECKOUT_BODY_BYTES,
-  PADDLE_PRICE_IDS,
   RAIL_PRICE_AMOUNTS_MINOR,
   RAIL_PRICE_PENDING,
+} from '../src/routes/checkout';
+// ⏱ 2026-10-01 · port-pay-core: the route names no rail's map; the rendered module does.
+import { PADDLE_PRICE_IDS } from '../src/routes/rail-price-ids';
+// ⏱ 2026-10-01 · port-pay-core: the create body moved behind `paddleRail`, unchanged.
+import {
+  FORBIDDEN_CREATE_KEYS,
   buildCreateTransactionBody,
   serializeCreateTransactionBody,
   type PaddleCreateTransactionBody,
-} from '../src/routes/checkout';
+} from '../src/lib/mor/paddle-rail';
 import { DEFAULT_CONFIGS, baseConfig } from '../src/config';
 import {
   PADDLE_CUSTOM_DATA_APP_ID,

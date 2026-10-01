@@ -573,7 +573,7 @@
     30,
 
   "mor-adapters.test.mjs":
-    43,
+    44,
 
   "msix-visual-name.test.mjs":
     14,
@@ -698,11 +698,14 @@
   "policy-claims.test.mjs":
     62,
 
+  "port-render.test.mjs":
+    8,
+
   "port-switch.test.mjs":
-    21,
+    26,
 
   "ports.test.mjs":
-    40,
+    45,
 
   "post-deploy-smoke.test.mjs":
     157,

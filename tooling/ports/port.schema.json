@@ -134,6 +134,17 @@
             "verify": { "type": "string", "minLength": 4 }
           }
         },
+        "outbound": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "symbol", "modules"],
+          "description": "The adapter's RailOutbound half (services/_shared/src/ports/payments.ts). Limb 2 holds `symbol` declared in `file`; limb 4 refuses any module but the composition root importing `file` or any of `modules` (the adapter's further private modules).",
+          "properties": {
+            "file": { "$ref": "#/$defs/path" },
+            "symbol": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+            "modules": { "type": "array", "items": { "$ref": "#/$defs/path" } }
+          }
+        },
         "capabilities": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" } },
         "secrets": { "type": "array", "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }, "description": "NAMES only." },
         "identity": { "type": "array", "items": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)*$" }, "description": "Field paths into tooling/house-identity.json, never the values." },

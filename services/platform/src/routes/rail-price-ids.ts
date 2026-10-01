@@ -39,3 +39,10 @@ export const RAZORPAY_PRICE_PENDING: Readonly<Record<string, Readonly<Record<str
     pro_lifetime: 'no Razorpay one-time item exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here',
   },
 };
+
+// RAIL → OUR offering id → that rail's sellable id, per app: the map the payments port reads
+// (RAIL_PRICE_IDS[railId][appId][offeringId]). Keyed by tooling/ports/payments.json adapter ids.
+export const RAIL_PRICE_IDS: Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, string>>>>>> = {
+  paddle: PADDLE_PRICE_IDS,
+  razorpay: RAZORPAY_PLAN_IDS,
+};
