@@ -1,0 +1,357 @@
+// ports.test.mjs — assert-ports.mjs must be able to FAIL, limb by limb.
+//
+// Every limb's red control is a RECORDED MUTATION of a green fixture (vacuous-03):
+// the green control runs first, then one change per case reddens exactly the
+// limb it names, and the first output line must name that limb. The last block
+// runs the guard over a copy of the REAL registries and reddens it there too
+// ("a fixture passing is not a guard working").
+import { describe, it, before } from 'node:test';
+import assert from 'node:assert/strict';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { validate, forbiddenValues, evaluate, portLineFor, callsRunner } from '../assert-ports.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO = resolve(HERE, '..', '..', '..');
+const GUARD = join(HERE, '..', 'assert-ports.mjs');
+const SCHEMA = JSON.parse(readFileSync(join(REPO, 'tooling/ports/port.schema.json'), 'utf8'));
+
+const run = (root) => {
+  const r = spawnSync(process.execPath, [GUARD, root], { cwd: root, encoding: 'utf8', timeout: 120_000 });
+  const out = `${r.stderr}${r.stdout}`;
+  return { code: r.status, out, first: (r.stderr.trim() ? r.stderr : r.stdout).split('\n')[0] };
+};
+
+const adapter = (over = {}) => ({
+  id: 'acme',
+  vendor: 'acme',
+  status: 'live',
+  impl: { file: 'services/w/src/lib/acme.ts', symbol: 'acmeVerifier' },
+  capabilities: ['verify'],
+  secrets: ['ACME_SECRET'],
+  identity: ['ownerDomain'],
+  environments: ['sandbox', 'live'],
+  cost: { feeCells: [], unit: null },
+  conformance: null,
+  exportDuty: 'Leaves with us: every row. Cannot move: the mandates.',
+  readAt: null,
+  ...over,
+});
+
+const port = (over = {}) => ({
+  $schema: './port.schema.json',
+  port: 'widgets',
+  level: { claimed: 2, target: 3 },
+  interface: { ts: { file: 'services/w/src/lib/contract.ts', symbols: ['WidgetPort'] } },
+  adapters: [adapter(), adapter({ id: 'fake', vendor: null, status: 'fake', impl: { file: 'services/w/src/lib/fake.ts', symbol: 'fakeWidget' }, secrets: [], identity: [], environments: ['test'] })],
+  selection: { by: 'single', source: null, default: { live: 'acme', sandbox: 'acme', test: 'fake' }, canary: null },
+  generated: false,
+  handTables: [{ file: 'services/w/src/registry.ts', anchor: 'export const ADAPTERS', until: 'port-x', why: 'the adapter set is a hand array until the render tool lands' }],
+  conformance: { suite: null, pending: [] },
+  switch: { runbook: 'Private/runbooks/switch-vendor.md#widgets', dryRun: 'node tooling/ops/port-switch.mjs widgets --to <adapter> --dry-run' },
+  _why: ['fixture'],
+  ...over,
+});
+
+const nonPort = (rows) => ({ $schema: './port.schema.json#/$defs/nonPortRegister', _why: ['fixture'], rows });
+
+function fixture({ ports = { widgets: port() }, nonPortRows = [{ vendor: 'other', registers: ['provider-register'], reason: 'a fixture vendor nobody ports', nonPort: true }], files = {} } = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'ports-'));
+  const w = (rel, text) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), text); };
+  w('tooling/ports/port.schema.json', JSON.stringify(SCHEMA));
+  for (const [name, doc] of Object.entries(ports)) w(`tooling/ports/${name}.json`, JSON.stringify(doc, null, 2));
+  w('tooling/ports/_non-port.json', JSON.stringify(nonPort(nonPortRows), null, 2));
+  w('tooling/capability-register.json', JSON.stringify({ vendors: { _why: [], acme: { seam: { file: 'services/w/src/lib/contract.ts', symbol: 'WidgetPort' } } } }));
+  w('tooling/legal/provider-register.json', JSON.stringify({ providers: [{ id: 'acme' }, { id: 'other' }] }));
+  w('services/w/src/types.ts', 'export interface Env {\n  ACME_SECRET?: string;\n  OTHER: string;\n}\n');
+  w('services/w/src/lib/contract.ts', 'export interface WidgetPort {\n  verify(): boolean;\n}\n');
+  w('services/w/src/lib/acme.ts', "import type { WidgetPort } from './contract';\nexport const acmeVerifier: WidgetPort = { verify: () => true };\n");
+  w('services/w/src/lib/fake.ts', "import type { WidgetPort } from './contract';\nexport const fakeWidget: WidgetPort = { verify: () => false };\n");
+  w('services/w/src/registry.ts', "import { acmeVerifier } from './lib/acme';\nexport const ADAPTERS = [acmeVerifier];\n");
+  w('services/w/src/index.ts', "import { ADAPTERS } from './registry';\nexport default ADAPTERS;\n");
+  for (const [rel, text] of Object.entries(files)) {
+    if (text === null) rmSync(join(root, rel), { force: true });
+    else w(rel, text);
+  }
+  return root;
+}
+
+describe('assert-ports — the schema validator reads port.schema.json', () => {
+  it('green: the fixture registry validates', () => {
+    assert.deepEqual(validate(port(), SCHEMA, SCHEMA), []);
+  });
+  it('red: an unknown key is refused (additionalProperties: false)', () => {
+    const errs = validate(port({ vendorNotes: 'x' }), SCHEMA, SCHEMA);
+    assert.ok(errs.some((e) => e.includes('unknown key `vendorNotes`')), errs.join('\n'));
+  });
+  it('red: an unknown key inside an adapter is refused too', () => {
+    const errs = validate(port({ adapters: [adapter({ apiKey: 'x' })] }), SCHEMA, SCHEMA);
+    assert.ok(errs.some((e) => e.includes('unknown key `apiKey`')), errs.join('\n'));
+  });
+  it('red: a secret-looking value is refused', () => {
+    // Assembled at run time: a literal vendor-key shape here is itself what gitleaks
+    // (stripe-access-token) refuses at the pre-commit hook, fixtures included.
+    const doc = port({ _why: [`the key is ${['sk', 'live', 'Ab3dE5gH7jK9mN1pQ'].join('_')}`] });
+    assert.ok(forbiddenValues(doc).length > 0);
+    const jwt = port({ _why: ['eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig'] });
+    assert.ok(forbiddenValues(jwt).length > 0);
+    const email = port({ _why: ['mail owner@example.com'] });
+    assert.ok(forbiddenValues(email).some((f) => f.what.includes('e-mail')));
+    assert.deepEqual(forbiddenValues(port()), [], 'the green registry carries none');
+  });
+  it('red: a secret NAME that is not a NAME is refused by the schema', () => {
+    const errs = validate(port({ adapters: [adapter({ secrets: ['not a name'] })] }), SCHEMA, SCHEMA);
+    assert.ok(errs.some((e) => e.includes('secrets[0]')), errs.join('\n'));
+  });
+  it('the validator refuses a keyword it does not implement rather than ignoring it', () => {
+    const errs = validate('x', { type: 'string', format: 'email' });
+    assert.ok(errs.some((e) => e.includes('keyword `format`')));
+  });
+});
+
+describe('assert-ports — every limb reddens', () => {
+  it('green control: the fixture passes, with the table and the printed waiver', () => {
+    const r = run(fixture());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.first, /^assert-ports: ok/);
+    assert.match(r.out, /widgets\s+L2\s+L2\s+L3/);
+    assert.match(r.out, /hand table `export const ADAPTERS`/);
+  });
+  it('limb 1: an unknown key exits 1 and the first line names limb 1', () => {
+    const r = run(fixture({ ports: { widgets: port({ extra: true }) } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 1 \(schema\)/);
+  });
+  it('limb 1: a secret-looking value exits 1', () => {
+    const r = run(fixture({ ports: { widgets: port({ _why: ['pdl_live_apikey_01abcdefghijklmnop'] }) } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 1/);
+  });
+  it('limb 1: the file name must equal `port`', () => {
+    const r = run(fixture({ ports: { gadgets: port() } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /the port is the file name/);
+  });
+  it('limb 1: an EMPTY port set is COVERAGE LOST (exit 2), not a pass (vacuous-02)', () => {
+    const root = fixture({ ports: {} });
+    const r = run(root);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /COVERAGE LOST — limb 1/);
+  });
+  it('the shape is READ from port.schema.json: tightening the schema file alone reddens limb 1', () => {
+    const tight = structuredClone(SCHEMA);
+    tight.properties.level.properties.claimed.maximum = 1;
+    const r = run(fixture({ files: { 'tooling/ports/port.schema.json': JSON.stringify(tight) } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 1 \(schema\).*level\.claimed: above 1/);
+  });
+  it('limb 1: an unreadable schema is exit 2', () => {
+    const r = run(fixture({ files: { 'tooling/ports/port.schema.json': '{ not json' } }));
+    assert.equal(r.code, 2, r.out);
+  });
+  it('limb 2: an interface symbol renamed in its file exits 1', () => {
+    const r = run(fixture({ files: { 'services/w/src/lib/contract.ts': 'export interface GadgetPort {}\n' } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 2 \(symbols\)/);
+  });
+  it('limb 2: a declaration that only survives in a comment is not one', () => {
+    const r = run(fixture({ files: { 'services/w/src/lib/acme.ts': '// export const acmeVerifier = 1;\nexport {};\n' } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /symbol `acmeVerifier` is not declared/);
+  });
+  it('limb 3: a handTables anchor that is gone exits 1', () => {
+    const r = run(fixture({ files: { 'services/w/src/registry.ts': "import { acmeVerifier } from './lib/acme';\nexport const SET = [acmeVerifier];\n" } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 3 \(waivers\)/);
+  });
+  it('limb 3: `generated: true` before the render tool exists exits 1', () => {
+    const r = run(fixture({ ports: { widgets: port({ generated: true }) } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /generated: true/);
+  });
+  it('limb 4: a route importing the adapter directly exits 1', () => {
+    const r = run(fixture({ files: { 'services/w/src/routes/x.ts': "import { acmeVerifier } from '../lib/acme';\nexport const x = acmeVerifier;\n" } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 4 \(imports\).*services\/w\/src\/routes\/x\.ts/);
+  });
+  it('limb 4: the same import from the composition root is allowed', () => {
+    const r = run(fixture({ files: { 'services/w/src/ports.ts': "import { acmeVerifier } from './lib/acme';\nexport const portFor = () => acmeVerifier;\n" } }));
+    assert.equal(r.code, 0, r.out);
+  });
+  it('limb 4: a test file importing the adapter is not a module of the Worker', () => {
+    const r = run(fixture({ files: { 'services/w/test/acme.test.ts': "import { acmeVerifier } from '../src/lib/acme';\n" } }));
+    assert.equal(r.code, 0, r.out);
+  });
+  it('limb 4: without its handTables waiver the hand registry itself is a finding', () => {
+    const r = run(fixture({ ports: { widgets: port({ handTables: [] }) } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 4.*services\/w\/src\/registry\.ts/);
+    assert.match(r.out, /widgets\s+L2\s+L1/, 'the earned level drops with it');
+  });
+  it('limb 5: a secret name nothing declares exits 1', () => {
+    const r = run(fixture({ ports: { widgets: port({ adapters: [adapter({ secrets: ['NOT_DECLARED'] }), port().adapters[1]] }) } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 5 \(secrets\)/);
+    assert.match(r.out, /manifest absent, read interface Env/);
+  });
+  it('limb 5: when the manifest exists, the manifest decides', () => {
+    const r = run(fixture({ files: { 'tooling/worker-secrets.json': JSON.stringify({ rows: [{ name: 'SOMETHING_ELSE' }] }) } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /no row of tooling\/worker-secrets\.json/);
+  });
+  it('limb 5: no interface Env anywhere is COVERAGE LOST', () => {
+    const r = run(fixture({ files: { 'services/w/src/types.ts': 'export type X = 1;\n' } }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /^assert-ports: COVERAGE LOST — limb 5 \(secrets\): no `interface Env` member/);
+  });
+  it('limb 6: a claim above the earned level exits 1, and the table says so', () => {
+    const r = run(fixture({ ports: { widgets: port({ level: { claimed: 3, target: 3 } }) } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 6 \(level\).*claims L3 and earns L2/);
+  });
+  it('limb 6: L3 is earned by two adapters whose tests CALL the runner, and not by an import alone', () => {
+    const suite = { file: 'services/w/test/conformance.ts', runner: 'runWidgetConformance' };
+    const p3 = port({
+      level: { claimed: 3, target: 3 },
+      conformance: { suite, pending: [] },
+      adapters: [adapter({ conformance: { file: 'services/w/test/acme.test.ts' } }), { ...port().adapters[1], conformance: { file: 'services/w/test/fake.test.ts' } }],
+    });
+    const files = {
+      'services/w/test/conformance.ts': 'export function runWidgetConformance(a: unknown) { return a; }\n',
+      'services/w/test/acme.test.ts': "import { runWidgetConformance } from './conformance';\nrunWidgetConformance(1);\n",
+      'services/w/test/fake.test.ts': "import { runWidgetConformance } from './conformance';\nrunWidgetConformance(2);\n",
+      'tooling/ops/port-switch.mjs': '// present\n',
+    };
+    const green = run(fixture({ ports: { widgets: p3 }, files }));
+    assert.equal(green.code, 0, green.out);
+    assert.match(green.out, /widgets\s+L3\s+L3/);
+    const importOnly = run(fixture({ ports: { widgets: p3 }, files: { ...files, 'services/w/test/fake.test.ts': "import { runWidgetConformance } from './conformance';\nvoid runWidgetConformance;\n" } }));
+    assert.equal(importOnly.code, 1, importOnly.out);
+    assert.match(importOnly.first, /earns L2: 1 conformant adapter/);
+    const pending = run(fixture({ ports: { widgets: { ...p3, conformance: { suite, pending: [{ adapter: 'fake', case: 'refuses a forged body', row: 'O-FIXTURE' }] } } }, files }));
+    assert.equal(pending.code, 1, pending.out);
+    assert.match(pending.out, /PENDING widgets\/fake: refuses a forged body \(O-FIXTURE\)/);
+  });
+  it('limb 7: a fake that lists live exits 1', () => {
+    const fake = { ...port().adapters[1], environments: ['test', 'live'] };
+    const r = run(fixture({ ports: { widgets: port({ adapters: [adapter(), fake] }) } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /limb 7 \(fakes\)/);
+  });
+  it('limb 7: a fake selected for live exits 1', () => {
+    const r = run(fixture({ ports: { widgets: port({ selection: { by: 'single', source: null, default: { live: 'fake', sandbox: 'acme', test: 'fake' }, canary: null } }) } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /selection\.default\.live is the fake/);
+  });
+  it('limb 8: a vendor placed nowhere exits 1', () => {
+    const r = run(fixture({ nonPortRows: [{ vendor: 'acme-not', registers: ['provider-register'], reason: 'a row for a vendor that is not there', nonPort: true }] }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /vendor `other` .* is no adapter's `vendor` and no tooling\/ports\/_non-port\.json row/);
+  });
+  it('limb 8: a vendor placed twice exits 1', () => {
+    const r = run(fixture({ nonPortRows: [{ vendor: 'other', registers: ['provider-register'], reason: 'a fixture vendor nobody ports', nonPort: true }, { vendor: 'acme', registers: ['provider-register'], reason: 'placed twice on purpose here', until: 'port-x' }] }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /vendor `acme` is placed 2 times/);
+  });
+  it('limb 8: a row with both `until` and `nonPort` exits 1', () => {
+    const r = run(fixture({ nonPortRows: [{ vendor: 'other', registers: ['provider-register'], reason: 'a fixture vendor nobody ports', nonPort: true, until: 'port-x' }] }));
+    assert.equal(r.code, 1, r.out);
+  });
+  it("limb 8: a ported vendor whose C-8 seam.file differs from its port's interface exits 1", () => {
+    const r = run(fixture({ files: { 'tooling/capability-register.json': JSON.stringify({ vendors: { acme: { seam: { file: 'services/w/src/lib/elsewhere.ts', symbol: 'X' } } } }) } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /limb 8 .*C-8 seam\.file is `services\/w\/src\/lib\/elsewhere\.ts`/);
+  });
+  it('limb 8: …unless the adapter declares that EXACT divergence, which is then printed', () => {
+    const cap = JSON.stringify({ vendors: { acme: { seam: { file: 'services/w/src/lib/elsewhere.ts', symbol: 'X' } } } });
+    const declared = port({ adapters: [adapter({ c8Seam: { file: 'services/w/src/lib/elsewhere.ts', why: 'the client half is the C-8 seam today', until: 'port-x' } }), port().adapters[1]] });
+    const r = run(fixture({ ports: { widgets: declared }, files: { 'tooling/capability-register.json': cap } }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /C-8 seam is services\/w\/src\/lib\/elsewhere\.ts, not this port's interface — until port-x/);
+    const stale = run(fixture({ ports: { widgets: declared } }));
+    assert.equal(stale.code, 1, stale.out);
+    assert.match(stale.out, /Remove the stale waiver/);
+  });
+  it('the exported reader gives C-8 its one line per vendor', () => {
+    const r = evaluate(fixture());
+    assert.equal(portLineFor(r, 'acme'), 'port: widgets (adapter acme, earned L2)');
+    assert.equal(portLineFor(r, 'other'), 'port: none — deliberately not ported');
+    assert.equal(portLineFor(r, 'nobody'), 'port: UNPLACED (assert-ports limb 8)');
+  });
+  it('callsRunner matches a CALL, never the declaring file or a bare name', () => {
+    assert.equal(callsRunner('runX(adapter);', 'runX', '.ts'), true);
+    assert.equal(callsRunner('import { runX } from "./s";', 'runX', '.ts'), false);
+    assert.equal(callsRunner('export function runX() {}\nrunX();', 'runX', '.ts'), false);
+    assert.equal(callsRunner('  runXConformance(a);', 'runX', '.dart'), false);
+  });
+});
+
+describe('assert-ports — on a copy of the REAL registries', () => {
+  let root;
+  before(() => {
+    root = mkdtempSync(join(tmpdir(), 'ports-real-'));
+    const copy = (rel) => { if (existsSync(join(REPO, rel))) cpSync(join(REPO, rel), join(root, rel), { recursive: true }); };
+    for (const rel of ['tooling/ports', 'tooling/capability-register.json', 'tooling/legal/provider-register.json', 'tooling/channel-register.json',
+      'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart']) copy(rel);
+    rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
+  });
+  it('green control: payments, auth and telemetry each claim and earn L2', () => {
+    const r = run(root);
+    assert.equal(r.code, 0, r.out);
+    for (const p of ['auth', 'payments', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
+  });
+  it('red: deleting one vendor from _non-port.json reddens limb 8', () => {
+    const rel = join(root, 'tooling/ports/_non-port.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.rows = doc.rows.filter((x) => x.vendor !== 'resend');
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 8 \(cross-register\): vendor `resend`/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it("red: paddle's C-8 seam moved off MoRWebhookVerifier's file reddens limb 8", () => {
+    const rel = join(root, 'tooling/capability-register.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.vendors.paddle.seam.file = 'services/platform/src/lib/mor/registry.ts';
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /adapter `paddle`: vendor `paddle`'s C-8 seam\.file is `services\/platform\/src\/lib\/mor\/registry\.ts`/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: dropping the checkout waiver reddens limb 4 and payments earns L1', () => {
+    const rel = join(root, 'tooling/ports/payments.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.handTables = doc.handTables.filter((h) => !h.file.endsWith('routes/checkout.ts'));
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 4 \(imports\).*routes\/checkout\.ts/);
+      assert.match(r.out, /payments\s+L2\s+L1/);
+    } finally { writeFileSync(rel, before); }
+  });
+});
+
+describe('affected-guards selects assert-ports by REGISTRY CONTENT', () => {
+  it('a registry-named impl file, a registry, and a shared port module select it; an unnamed route does not', async () => {
+    const { buildChecks, select, trackedTree } = await import('../../scripts/affected-guards.mjs');
+    const { checks, contentLost } = buildChecks(REPO, trackedTree(REPO));
+    assert.deepEqual(contentLost, []);
+    const picks = (p) => select(checks, [p], null).selected.some((c) => c.id === 'guard:assert-ports');
+    assert.equal(picks('services/platform/src/lib/mor/paddle.ts'), true, 'named by payments.json impl.file');
+    assert.equal(picks('packages/telemetry/lib/src/noop_telemetry_client.dart'), true, 'named by telemetry.json impl.file');
+    assert.equal(picks('tooling/ports/payments.json'), true);
+    assert.equal(picks('services/_shared/src/ports/payments.ts'), true);
+    assert.equal(picks('services/platform/src/routes/money.ts'), false, 'no registry names it');
+  });
+});

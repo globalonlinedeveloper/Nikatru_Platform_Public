@@ -10,6 +10,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Hono } from 'hono';
 import appInit0001 from '../../subscriptiontracker-api/migrations/0001_init.sql?raw';
 import appSchemaDebt0002 from '../../subscriptiontracker-api/migrations/0002_schema_debt.sql?raw';
+import appModel0003 from '../../subscriptiontracker-api/migrations/0003_subscription_model.sql?raw';
 import calendar from '../src/routes/calendar';
 import { escapeText, foldLine, writeCalendar, ICS_MAX_LINE_OCTETS } from '../src/lib/ics';
 import { sha256Hex } from '../src/middleware/ext-device-auth';
@@ -185,8 +186,13 @@ describe('R2 — the token is the capability, and only its hash is kept', () => 
     const del = await appFor(ALICE).request(`https://x/v1/calendar/feed?app_id=${APP}`, { method: 'DELETE' }, envOf(platform, app));
     expect(del.status).toBe(204);
     expect((await fetchFeed(platform, app, token)).status).toBe(404);
-    // Revoking again finds no live feed.
-    expect((await appFor(ALICE).request(`https://x/v1/calendar/feed?app_id=${APP}`, { method: 'DELETE' }, envOf(platform, app))).status).toBe(404);
+    // ⏱ 2026-10-01 · rv2-services-003. Revoking again is a 204: the feed is
+    // revoked, which is what DELETE asked for — and it is the answer a retry
+    // gets after a committed first attempt, which must not read as "no feed".
+    expect((await appFor(ALICE).request(`https://x/v1/calendar/feed?app_id=${APP}`, { method: 'DELETE' }, envOf(platform, app))).status).toBe(204);
+    expect((await fetchFeed(platform, app, token)).status).toBe(404);
+    // A person who never had a feed is the 404.
+    expect((await appFor(BOB).request(`https://x/v1/calendar/feed?app_id=${APP}`, { method: 'DELETE' }, envOf(platform, app))).status).toBe(404);
   });
 
   it('rotating kills the old URL at once and the new one works; one row per account and app', async () => {
@@ -231,5 +237,127 @@ describe('R2 — the token is the capability, and only its hash is kept', () => 
     const res = await realApp.request(`https://x/v1/calendar/${token}.ics`, {}, env);
     expect(res.status).toBe(429);
     expect(platform.sql.length).toBe(before);
+  });
+});
+
+// ⏱ 2026-10-01 · rv2-services-015. RED before: neither authed route had a
+// per-person limiter, so a limiter that says no changed nothing.
+describe('R2 — mint and revoke are behind a per-person burst breaker', () => {
+  class FakeLimiter {
+    keys: string[] = [];
+    constructor(private readonly allow: boolean) {}
+    limit = async ({ key }: { key: string }) => {
+      this.keys.push(key);
+      return { success: this.allow };
+    };
+  }
+  const limitedEnv = (platform: RealDb, app: RealDb, limiter: FakeLimiter) =>
+    ({ PLATFORM_DB: platform, SUBSCRIPTIONTRACKER_DB: app, EVENTS_LIMITER: limiter }) as never;
+
+  it('🔴 POST /v1/calendar/feed: a limiter that says no is a 429 and NO reminder_feed write', async () => {
+    const platform = realPlatformDb();
+    const limiter = new FakeLimiter(false);
+    const res = await appFor(ALICE).request(
+      'https://x/v1/calendar/feed',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app_id: APP }) },
+      limitedEnv(platform, appDb(), limiter),
+    );
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ error: 'rate_limited' });
+    expect(limiter.keys).toEqual([`calendar:${ALICE}`]);
+    expect(platform.count('reminder_feed')).toBe(0);
+    expect(platform.sql.filter((q) => q.includes('reminder_feed'))).toEqual([]);
+  });
+
+  it('🔴 DELETE /v1/calendar/feed: a limiter that says no is a 429 and the feed stays live', async () => {
+    const platform = realPlatformDb();
+    const app = appDb();
+    const { token } = await mint(platform, app);
+    const limiter = new FakeLimiter(false);
+    const res = await appFor(ALICE).request(`https://x/v1/calendar/feed?app_id=${APP}`, { method: 'DELETE' }, limitedEnv(platform, app, limiter));
+    expect(res.status).toBe(429);
+    expect(limiter.keys).toEqual([`calendar:${ALICE}`]);
+    expect(platform.count('reminder_feed', 'revoked_at IS NULL')).toBe(1);
+    expect((await fetchFeed(platform, app, token)).status).toBe(200);
+  });
+
+  it('a limiter that says yes is charged once per request, on the caller’s key', async () => {
+    const platform = realPlatformDb();
+    const limiter = new FakeLimiter(true);
+    const res = await appFor(BOB).request(
+      'https://x/v1/calendar/feed',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app_id: APP }) },
+      limitedEnv(platform, appDb(), limiter),
+    );
+    expect(res.status).toBe(201);
+    expect(limiter.keys).toEqual([`calendar:${BOB}`]);
+  });
+});
+
+// ⏱ 2026-10-01 · rv2-services-019. RED before: escapeText passed C0 controls
+// and DEL straight into the feed.
+describe('R2 — no control character reaches the feed', () => {
+  it('🔴 a name carrying U+0007 (and its kin) yields feed bytes with no C0 except CR and LF, and no DEL', async () => {
+    const platform = realPlatformDb();
+    const app = appDb();
+    // No U+0000 here: node:sqlite binds TEXT as a C string and would cut the name
+    // at it, so the NUL is held by the unit case below instead.
+    seedSub(app, ALICE, 's-bel', 'Ring\u0007Bell\u0001Soh\u001bEsc\u000bVt\u000cFf\u007fDel', '2099-04-01');
+    const { token } = await mint(platform, app);
+    const res = await fetchFeed(platform, app, token);
+    expect(res.status).toBe(200);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const bad = [...bytes].filter((b) => (b < 0x20 && b !== 0x0d && b !== 0x0a) || b === 0x7f);
+    expect(bad).toEqual([]);
+    // Every CR is a line ending's, and so is every LF.
+    const text = new TextDecoder().decode(bytes);
+    expect(text.replace(/\r\n/g, '')).not.toMatch(/[\r\n]/);
+    // The visible text survives, with only the controls gone.
+    expect(unfold(text)).toContain('SUMMARY:RingBellSohEscVtFfDel renews');
+  });
+
+  it('escapeText strips the forbidden controls first, and keeps HTAB and the line-break escape', () => {
+    expect(escapeText('a\u0007b\u007fc\u0000d\u001fe')).toBe('abcde');
+    expect(escapeText('a\tb')).toBe('a\tb');
+    expect(escapeText('a\r\nb')).toBe('a\\nb');
+    // Stripped BEFORE the escapes: a control between a backslash and a comma
+    // cannot make either one disappear or double.
+    expect(escapeText('\\\u0001,')).toBe('\\\\\\,');
+  });
+});
+
+// ⏱ 2026-10-01 · rv2-services-020. RED before: the event printed `9.99` for a
+// USD plan and an INR plan alike, though subscriptiontracker_db has stored the
+// currency since its migration 0003.
+describe('R2 — the amount carries its currency', () => {
+  function modelDb(): RealDb {
+    return new RealDb([appInit0001, appSchemaDebt0002, appModel0003]);
+  }
+  function seedPriced(app: RealDb, id: string, price: number, currency: string | null, priceMinor: number | null): void {
+    app.db
+      .prepare('INSERT INTO subscriptions (id, user_id, name, price, cycle, next_renewal, currency, price_minor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, ALICE, `Plan ${id}`, price, 'monthly', '2099-05-01', currency, priceMinor);
+  }
+
+  it('🔴 a USD plan’s event says USD, a yen plan has no decimals, and a dinar has three', async () => {
+    const platform = realPlatformDb();
+    const app = modelDb();
+    seedPriced(app, 'usd', 9.99, 'USD', 999);
+    seedPriced(app, 'jpy', 1200, 'JPY', 1200);
+    seedPriced(app, 'kwd', 3.5, 'KWD', 3500);
+    const { token } = await mint(platform, app);
+    const text = unfold(await (await fetchFeed(platform, app, token)).text());
+    expect(text).toContain('DESCRIPTION:Renews monthly · Amount USD 9.99');
+    expect(text).toContain('DESCRIPTION:Renews monthly · Amount JPY 1200');
+    expect(text).toContain('DESCRIPTION:Renews monthly · Amount KWD 3.500');
+  });
+
+  it('a row with no currency (every row before 0003) keeps the bare amount — no guessed code', async () => {
+    const platform = realPlatformDb();
+    const app = modelDb();
+    seedPriced(app, 'legacy', 12.5, null, null);
+    const { token } = await mint(platform, app);
+    const text = unfold(await (await fetchFeed(platform, app, token)).text());
+    expect(text).toContain('DESCRIPTION:Renews monthly · Amount 12.50');
   });
 });

@@ -1,0 +1,56 @@
+{
+  "$schema": "./port.schema.json",
+  "port": "telemetry",
+  "level": { "claimed": 2, "target": 3 },
+  "interface": {
+    "dart": { "file": "packages/telemetry/lib/src/telemetry_client.dart", "symbols": ["TelemetryClient"] }
+  },
+  "adapters": [
+    {
+      "id": "sentry",
+      "vendor": "glitchtip",
+      "status": "live",
+      "impl": { "file": "packages/telemetry/lib/src/sentry_telemetry_client.dart", "symbol": "SentryTelemetryClient" },
+      "capabilities": ["capture-error", "capture-message", "breadcrumb", "scrub-pii"],
+      "secrets": [],
+      "identity": [],
+      "environments": ["sandbox", "live"],
+      "cost": { "feeCells": [], "unit": null },
+      "conformance": null,
+      "exportDuty": "Leaves with us: nothing needs to — error events are short-retention diagnostics, scrubbed of PII before send. Export: the alert and monitor configuration (tooling/monitor-register.json is already the source). The Sentry protocol is open, so any Sentry-compatible sink takes the same client with a new DSN.",
+      "readAt": null
+    },
+    {
+      "id": "noop",
+      "vendor": null,
+      "status": "fake",
+      "impl": { "file": "packages/telemetry/lib/src/noop_telemetry_client.dart", "symbol": "NoOpTelemetryClient" },
+      "capabilities": ["capture-error", "capture-message", "breadcrumb"],
+      "secrets": [],
+      "identity": [],
+      "environments": ["test"],
+      "cost": { "feeCells": [], "unit": null },
+      "conformance": null,
+      "exportDuty": "Nothing leaves: the no-op client records nothing and has no record to export.",
+      "readAt": null
+    }
+  ],
+  "selection": {
+    "by": "environment",
+    "source": "packages/telemetry/lib/src/telemetry_bootstrap.dart#config.enabled",
+    "default": { "live": "sentry", "sandbox": "sentry", "test": "noop" },
+    "canary": null
+  },
+  "generated": false,
+  "handTables": [],
+  "conformance": { "suite": null, "pending": [] },
+  "switch": {
+    "runbook": "Private/runbooks/switch-vendor.md#telemetry",
+    "dryRun": "node tooling/ops/port-switch.mjs telemetry --to <adapter> --dry-run"
+  },
+  "_why": [
+    "L2: callers hold a TelemetryClient; TelemetryBootstrap.init is the one place that chooses, from configuration (an empty GLITCHTIP_DSN selects the no-op client).",
+    "The adapter is named for the SDK (sentry_flutter) and its vendor is the sink it posts to, GlitchTip, self-hosted; GLITCHTIP_DSN is a write-only ingest key classified build-config, not a secret.",
+    "The server half of the glitchtip vendor (heartbeats, GLITCHTIP_TOKEN) is not behind this port; port-telemetry brings it."
+  ]
+}

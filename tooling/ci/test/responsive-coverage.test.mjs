@@ -235,7 +235,8 @@ describe('the guard says YES on the tree as it is', () => {
     // sheet and Home components arrived measured; 8 PRINTED is unchanged.
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 31 → 27 of 35.
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 30 of 38 → 36 of 43 — the auth frame's five parts and AuthField, pumped at 375 / 768 / 1280 / 1440 by auth_frame_test.dart.
-    assert.match(out, /packages\/design_system: 36 of 43 surface\(s\) measured — 7 PRINTED and not failed/);
+    // ⏱ 2026-10-01 · ST truth pass (EN-17): 36 of 43 → 37 of 43 — ForceUpdateGate, pumped at 375 / 768 / 1280 by system_screens_text_scale_test.dart.
+    assert.match(out, /packages\/design_system: 37 of 43 surface\(s\) measured — 6 PRINTED and not failed/);
   });
 
   test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
@@ -548,7 +549,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
       // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 15 of 17 → 21 of 23 (floor re-based to 23).
       // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 21 of 23 → 25 of 27 (floor re-based to 27).
       // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): the measured floor rose 30 → 36, so the same deletion reads 34 against 36.
-      /COVERAGE LOST — `packages\/design_system` has 34 measured surface\(s\) and its measured floor is 36/s,
+      // ⏱ 2026-10-01 · ST truth pass (EN-17): the floor rose 36 → 37 with ForceUpdateGate's width case, so the same deletion reads 35 against 37.
+      /COVERAGE LOST — `packages\/design_system` has 35 measured surface\(s\) and its measured floor is 37/s,
     );
   });
 
@@ -613,7 +615,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 17 of 26 → 23 of 32 (measured arrivals).
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 32 → 27 of 36 (measured arrivals).
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 30 of 39 → 36 of 44 — six more measured; the probe is the one new unmeasured surface.
-    assert.match(out, /packages\/design_system: 36 of 44 surface\(s\) measured — 8 PRINTED/);
+    // ⏱ 2026-10-01 · ST truth pass (EN-17): 36 of 44 → 37 of 44 — ForceUpdateGate measured; the probe is still the one new unmeasured surface.
+    assert.match(out, /packages\/design_system: 37 of 44 surface\(s\) measured — 7 PRINTED/);
   });
 });
 

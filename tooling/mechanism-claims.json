@@ -489,7 +489,7 @@
       "anchor": "// the header cannot drift from the buckets underneath it.",
       "status": "proven",
       "test": "tooling/ci/test/no-hardcoded-strings.test.mjs",
-      "case": "prints the three dead keys, exits 0, and states its domain",
+      "case": "prints the dead keys, exits 0, and states its domain",
       "proves": "The assertion right under the sentence counts the printed per-key lines and requires them to equal the number in the owner header. A header computed apart from the buckets and disagreeing with them fails it."
     },
     {
@@ -1457,6 +1457,22 @@
       "test": "tooling/ci/test/auth-callbacks.test.mjs",
       "case": "FAILS when enum AuthFlow gains a marker the allow list does not admit",
       "proves": "The case adds magicLink('magic-link') to enum AuthFlow in a fixture copy and requires exit 1 naming the missing `?nk_auth=magic-link` allow-list entry; it passes only while the allow-list limb reads its markers off the enum. Mutation 2026-09-23: the enum read at assert-auth-callbacks.mjs:238 replaced with a typed list of the five markers turns it red; restored byte-exact (sha256 0534ce7cefa16d55), green again. Added with the native-auth-callback lane (sign-in audit PR A)."
+    },
+    {
+      "file": "tooling/ci/assert-ports.mjs",
+      "anchor": "no second copy of",
+      "status": "proven",
+      "test": "tooling/ci/test/ports.test.mjs",
+      "case": "the shape is READ from port.schema.json: tightening the schema file alone reddens limb 1",
+      "proves": "The case tightens ONLY the schema file (claimed maximum 1) and the guard reddens limb 1 on an unchanged registry; a shape copied into the guard would stay green."
+    },
+    {
+      "file": "tooling/ports/port.schema.json",
+      "anchor": "the guard holds no second copy",
+      "status": "proven",
+      "test": "tooling/ci/test/ports.test.mjs",
+      "case": "the shape is READ from port.schema.json: tightening the schema file alone reddens limb 1",
+      "proves": "The same case: editing this file alone changes the guard's verdict, which is only true while the guard reads it."
     }
   ],
   "backlog": {}

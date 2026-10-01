@@ -27,7 +27,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ChassisL10nX, DataStateView;
+    show ChassisL10nX, DataStateView, MonthGrid;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
@@ -1536,6 +1536,124 @@ void main() {
     // browser's localStorage by the app's own cache client; a second client
     // over a dead transport must still read it (offline_read_steps.dart).
     await tester.runAsync(() => expectListSurvivesOffline(subNameB));
+
+    // ── 14c A WEEKLY plan: every charge on the calendar, then paused ─────────
+    // ST truth pass (2026-10-01, CA-01 / HO-01 / HO-02). The calendar drew ONE
+    // dot per row, from its stored date, so a weekly plan showed once a month;
+    // and a paused row still counted as "active" and looked charging on Home.
+    // Dated the 1st of THIS month (a past start is allowed, ST-E4), so the
+    // month holds four or five of its charges whatever day the run lands on.
+    final String weeklyName =
+        'E2E Weekly ${DateTime.now().millisecondsSinceEpoch}';
+    final DateTime firstOfMonth = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+    );
+    int activeShown() {
+      final Finder f = find.textContaining(RegExp(r'^\d+ active$'));
+      expect(f, findsOneWidget, reason: 'the "N active" fact on Home');
+      final String t = tester.widget<Text>(f).data!;
+      return int.parse(t.split(' ').first);
+    }
+
+    await tester.tap(find.byKey(E2EKeys.fabAdd));
+    await pumpFor(tester, const Duration(seconds: 2));
+    await tester.enterText(find.byKey(E2EKeys.addName), weeklyName);
+    await tester.enterText(find.byKey(E2EKeys.addPrice), '2.50');
+    // The cadence: the dropdown reads its value ("Monthly") until changed.
+    await tester.tap(find.text('Monthly').last);
+    await pumpFor(tester, const Duration(seconds: 1));
+    await tester.tap(find.text('Weekly').last);
+    await pumpFor(tester, const Duration(seconds: 1));
+    // The date: the picker's own text-entry mode, in its own locale's format.
+    await tester.ensureVisible(find.byKey(E2EKeys.addRenewal));
+    await tester.tap(find.byKey(E2EKeys.addRenewal));
+    await pumpFor(tester, const Duration(seconds: 1));
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await pumpFor(tester, const Duration(seconds: 1));
+    final Finder dateField = find.descendant(
+      of: find.byType(DatePickerDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(
+      dateField,
+      MaterialLocalizations.of(
+        tester.element(dateField),
+      ).formatCompactDate(firstOfMonth),
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byType(DatePickerDialog),
+        matching: find.text('OK'),
+      ),
+    );
+    await pumpFor(tester, const Duration(seconds: 1));
+    await submitAddSheet(tester, 'the WEEKLY subscription');
+    final int activeBefore = activeShown();
+
+    await tester.tap(find.byIcon(Icons.calendar_month_rounded));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(shellIndex(), 1);
+    final Map<int, int> marks = tester
+        .widget<MonthGrid>(find.byType(MonthGrid))
+        .marks;
+    final List<int> weeklyDays = <int>[
+      for (int d = 1; d <= 31; d += 7)
+        if (DateTime(firstOfMonth.year, firstOfMonth.month, d).month ==
+            firstOfMonth.month)
+          d,
+    ];
+    expect(
+      weeklyDays.where((int d) => (marks[d] ?? 0) > 0).length,
+      greaterThanOrEqualTo(4),
+      reason:
+          'the weekly plan dated the 1st must mark every one of its days this '
+          'month ($weeklyDays); the grid marked ${marks.keys.toList()..sort()}',
+    );
+    await shot('14c-calendar-weekly');
+
+    // Pause it from the detail's More options, and read Home again.
+    await tester.tap(find.text('Home'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    final Finder weeklyRow = find.text(weeklyName);
+    await scrollUntilFound(
+      tester,
+      target: weeklyRow.first,
+      scrollable: find.byType(Scrollable),
+      what: 'the weekly subscription, on Home',
+      maxScrolls: 40,
+    );
+    await tester.tap(weeklyRow.first);
+    await pumpFor(tester, const Duration(seconds: 3));
+    await tester.tap(find.byKey(E2EKeys.detailMoreOptions));
+    await pumpFor(tester, const Duration(seconds: 1));
+    await tester.tap(find.text('Pause'));
+    await pumpFor(tester, const Duration(seconds: 4)); // PATCH round-trip
+    await tester.tap(find.byKey(E2EKeys.detailBack));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(shellIndex(), 0);
+    expect(
+      activeShown(),
+      activeBefore - 1,
+      reason: 'a paused plan is not "active": the count must drop by one',
+    );
+    await scrollUntilFound(
+      tester,
+      target: find.text('Other · Paused'),
+      scrollable: find.byType(Scrollable),
+      what: 'the paused weekly row\'s status on Home',
+      maxScrolls: 40,
+    );
+    await shot('14c-home-paused');
+
+    // Leave nothing behind: Delete from tracker (a soft delete).
+    await tester.tap(weeklyRow.first);
+    await pumpFor(tester, const Duration(seconds: 3));
+    await tester.tap(find.byKey(E2EKeys.detailMoreOptions));
+    await pumpFor(tester, const Duration(seconds: 1));
+    await tester.tap(find.text('Delete from tracker'));
+    await pumpFor(tester, const Duration(seconds: 4));
+    expect(shellIndex(), 0);
 
     // ── 15 Settings: switch currency (client-state propagation) ──────────────
     await tester.tap(find.text('Settings'));

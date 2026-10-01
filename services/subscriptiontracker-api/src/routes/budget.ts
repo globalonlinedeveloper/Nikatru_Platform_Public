@@ -5,6 +5,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { allRows, firstRow, nowIso, uuid } from '../lib/d1';
+import { CURRENCY, MAX_PRICE } from './subscriptions';
 
 const app = new Hono<AppEnv>();
 
@@ -12,6 +13,7 @@ interface BudgetRow {
   user_id: string;
   monthly_budget: number | null;
   updated_at: string | null;
+  currency: string | null; // 0007: ISO 4217, upper case; NULL = the user's currency
 }
 interface CategoryRow {
   user_id: string;
@@ -58,8 +60,11 @@ const MAX_NAME_LENGTH = 120;
 const MAX_ID_LENGTH = 64;
 
 type ValidatedCategory = { id: string | null; name: string; cap: number; categoryId: string | null };
+/** `currency` as the body sent it: ABSENT leaves the stored code alone, `null`
+ *  clears it back to "the user's currency", a code sets it. */
+type CurrencyChange = { set: false } | { set: true; value: string | null };
 type Validated =
-  | { ok: true; monthlyBudget: number; categories: ValidatedCategory[] }
+  | { ok: true; monthlyBudget: number; currency: CurrencyChange; categories: ValidatedCategory[] }
   | { ok: false; detail: string };
 
 /** Full-body validation. Returns a 400 detail string instead of throwing, so no
@@ -68,8 +73,13 @@ function validate(body: unknown): Validated {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     return { ok: false, detail: 'body must be a JSON object' };
   }
-  const raw = body as { monthly_budget?: unknown; categories?: unknown };
+  const raw = body as { monthly_budget?: unknown; currency?: unknown; categories?: unknown };
 
+  // ── AN AMOUNT IS BOUNDED, NOT JUST FINITE (rv2-services 032) ──────────────
+  // "Finite and ≥ 0" stored 1.7e308 in a REAL column and served it back to
+  // every client that renders a budget. MAX_PRICE is the bound a subscription's
+  // price already has (routes/subscriptions.ts): a budget is an amount of the
+  // same money, so it gets the same ceiling rather than a second opinion.
   let monthlyBudget = 0;
   if (raw.monthly_budget !== undefined && raw.monthly_budget !== null) {
     if (typeof raw.monthly_budget !== 'number' || !Number.isFinite(raw.monthly_budget)) {
@@ -78,12 +88,38 @@ function validate(body: unknown): Validated {
     if (raw.monthly_budget < 0) {
       return { ok: false, detail: 'monthly_budget must not be negative' };
     }
+    if (raw.monthly_budget > MAX_PRICE) {
+      return { ok: false, detail: `monthly_budget must not exceed ${MAX_PRICE}` };
+    }
     monthlyBudget = raw.monthly_budget;
+  }
+
+  // ── THE BUDGET'S CURRENCY (0007) ──────────────────────────────────────────
+  // ⚠️ THE MINIMAL VALID-CODE CHECK, NOT THE ISO 4217 SET: three letters,
+  // stored upper case — the rule subscriptions.ts `CURRENCY` applies to a
+  // subscription's currency, imported so the two cannot disagree. Checking
+  // membership of the assigned set is lane fix-st-api-bounds' contracts table;
+  // when it lands, both routes move to it together.
+  //
+  // ABSENT IS NOT NULL. The app's BudgetInfo.toJson sends `currency` only when
+  // it KNOWS the budget's unit, and omits it for a figure that arrived bare —
+  // as does any build older than that field. Treating a missing `currency` as
+  // "clear it" would let such a save wipe the code another device set. Absent
+  // leaves the stored code alone; an explicit `null` clears it.
+  let currency: CurrencyChange = { set: false };
+  if (raw.currency !== undefined) {
+    if (raw.currency === null) {
+      currency = { set: true, value: null };
+    } else if (typeof raw.currency !== 'string' || !CURRENCY.test(raw.currency)) {
+      return { ok: false, detail: 'currency must be a three-letter ISO 4217 code, e.g. INR, or null' };
+    } else {
+      currency = { set: true, value: raw.currency.toUpperCase() };
+    }
   }
 
   const list = raw.categories;
   if (list === undefined || list === null) {
-    return { ok: true, monthlyBudget, categories: [] };
+    return { ok: true, monthlyBudget, currency, categories: [] };
   }
   if (!Array.isArray(list)) {
     return { ok: false, detail: 'categories must be an array' };
@@ -119,6 +155,10 @@ function validate(body: unknown): Validated {
     }
     if (cap < 0) {
       return { ok: false, detail: `categories[${i}].cap must not be negative` };
+    }
+    // A cap is part of the budget, in the budget's currency: same bound.
+    if (cap > MAX_PRICE) {
+      return { ok: false, detail: `categories[${i}].cap must not exceed ${MAX_PRICE}` };
     }
     // (user_id, name) is the PRIMARY KEY. Left to the database this surfaces as
     // a failed batch AFTER the delete — the exact wipe this route is fixing.
@@ -171,10 +211,12 @@ function validate(body: unknown): Validated {
     categories.push({ id: categoryId, name, cap, categoryId: catId });
   }
 
-  return { ok: true, monthlyBudget, categories };
+  return { ok: true, monthlyBudget, currency, categories };
 }
 
-// GET / — returns defaults when nothing is stored yet.
+// GET / — returns defaults when nothing is stored yet. `currency` is NULL until
+// a client sets one, and NULL means the user's own currency: the unit every
+// budget saved before 0007 was typed in.
 app.get('/', async (c) => {
   const userId = c.get('userId');
 
@@ -198,6 +240,7 @@ app.get('/', async (c) => {
 
   return c.json({
     monthly_budget: budget?.monthly_budget ?? 0,
+    currency: budget?.currency ?? null,
     categories: categories.map((r) => ({ id: r.id, name: r.name, cap: r.cap, category_id: r.category_id })),
   });
 });
@@ -217,7 +260,7 @@ app.put('/', async (c) => {
   if (!checked.ok) {
     return c.json({ error: 'invalid_body', detail: checked.detail }, 400);
   }
-  const { monthlyBudget, categories } = checked;
+  const { monthlyBudget, currency, categories } = checked;
 
   const ts = nowIso();
 
@@ -304,22 +347,38 @@ app.put('/', async (c) => {
     // writing NULL here would re-open the unaddressable-row gap it paid down.
     'INSERT INTO budget_categories (user_id, name, cap, id, category_id) VALUES (?, ?, ?, ?, ?)',
   );
-  await c.env.APP_DB.batch([
-    c.env.APP_DB.prepare(
-      `INSERT INTO budgets (user_id, monthly_budget, updated_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET
-         monthly_budget = excluded.monthly_budget,
-         updated_at = excluded.updated_at`,
-    ).bind(userId, monthlyBudget, ts),
+  // The upsert names `currency` only when the body did (see `validate`), and
+  // RETURNs the stored code either way, so the answer below carries the unit
+  // without a further statement: the count the ceiling note measures holds.
+  const upsert = currency.set
+    ? c.env.APP_DB.prepare(
+        `INSERT INTO budgets (user_id, monthly_budget, updated_at, currency)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET
+           monthly_budget = excluded.monthly_budget,
+           updated_at = excluded.updated_at,
+           currency = excluded.currency
+         RETURNING currency`,
+      ).bind(userId, monthlyBudget, ts, currency.value)
+    : c.env.APP_DB.prepare(
+        `INSERT INTO budgets (user_id, monthly_budget, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET
+           monthly_budget = excluded.monthly_budget,
+           updated_at = excluded.updated_at
+         RETURNING currency`,
+      ).bind(userId, monthlyBudget, ts);
+  const [stored] = (await c.env.APP_DB.batch([
+    upsert,
     c.env.APP_DB.prepare(
       'DELETE FROM budget_categories WHERE user_id = ?',
     ).bind(userId),
     ...resolved.map((cat) => insert.bind(userId, cat.name, cat.cap, cat.id, cat.category_id)),
-  ]);
+  ])) as Array<{ results?: Array<{ currency?: string | null }> }>;
 
   return c.json({
     monthly_budget: monthlyBudget,
+    currency: stored?.results?.[0]?.currency ?? null,
     categories: resolved,
   });
 });

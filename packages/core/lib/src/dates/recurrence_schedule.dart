@@ -189,6 +189,33 @@ abstract final class RecurrenceSchedule {
     int? anchorDay,
   }) => rollForward(next, cadence, today, anchorDay: anchorDay).next;
 
+  /// Every charge date from [from] to [to] (both inclusive) for a row whose
+  /// stored next charge is [next] — a weekly plan's four or five in a month, a
+  /// quarterly plan's one in three.
+  ///
+  /// The chain is [nextOnOrAfter]'s: [next] rolled to [from], then [advance]d
+  /// with ONE anchor (read from [next] once), so a Jan 31 monthly plan lands
+  /// on Feb 28 and Mar 31 here exactly as it does in [rollForward]. A charge
+  /// BEFORE [next] is never invented: the stored date is the newest thing the
+  /// row knows, and what came before it is the payment history's to say.
+  static List<DateTime> occurrencesBetween(
+    DateTime next,
+    Cadence cadence,
+    DateTime from,
+    DateTime to, {
+    int? anchorDay,
+  }) {
+    final int anchor = anchorDay ?? next.day;
+    final int toKey = _key(to);
+    final List<DateTime> out = <DateTime>[];
+    DateTime cur = nextOnOrAfter(next, cadence, from, anchorDay: anchor);
+    while (_key(cur) <= toKey && out.length < maxCrossings) {
+      out.add(cur);
+      cur = advance(cur, cadence, anchorDay: anchor);
+    }
+    return out;
+  }
+
   /// `YYYY-MM-DD` for [d]'s date fields — the wire's date shape.
   static String ymd(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'

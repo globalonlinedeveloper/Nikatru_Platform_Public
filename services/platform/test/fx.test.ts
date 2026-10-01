@@ -386,6 +386,22 @@ describe('GET /v1/fx/latest — public, edge-ceilinged, cached, and never an emp
     expect((await call(kv, new FakeLimiter())).status).toBe(503);
   });
 
+  it('🔴 a CONFIG_KV whose get REJECTS is the same 503, not cached — never a 500 and never a stand-in table', async () => {
+    // ⏱ 2026-10-01 · rv2-services-013. RED before: the throw reached onError, a 500.
+    const kv = new FakeKv();
+    kv.get = async (key: string) => {
+      kv.reads.push(key);
+      throw new Error('KV GET failed: 503 Service Unavailable');
+    };
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await call(kv, new FakeLimiter());
+    expect(kv.reads).toEqual([FX_KV_KEY]);
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    expect(await res.json()).toEqual({ error: 'fx_unavailable' });
+  });
+
   it('an unbound ceiling fails OPEN, like every limiter on this Worker', async () => {
     const kv = new FakeKv();
     kv.store.set(FX_KV_KEY, JSON.stringify(VECTOR.response));
