@@ -69,7 +69,7 @@ import { fileURLToPath } from 'node:url';
 import { Report, parseArgs, die } from './lib/report.mjs';
 import { repoRoot, resolveTool, loadAllTools, readText } from './lib/toolinfo.mjs';
 import { requiredNotice } from './lib/licence.mjs';
-import { transmits, recurringOfferings, canSignIn } from '../../contracts/legal/pro-gate.mjs';
+import { transmits, recurringOfferings, disclosedOfferings, canSignIn } from '../../contracts/legal/pro-gate.mjs';
 
 /** The file's text, or null if it is not there. One read answers both questions, so nothing can change
  *  between a check and a use. Anything else still throws: a permissions error is not "absent". */
@@ -189,8 +189,13 @@ export function planListing(root, tool, { appConfigPath, channelRegisterPath } =
   const cfgAbs = path.resolve(appConfigPath || path.join(root, APP_CONFIG_REL));
   const wantsPro = /"(?:pro|sells|signin|nosignin)"/.test(JSON.stringify(src));
   let offers = [];
+  let disclosed = [];
   if (fs.existsSync(cfgAbs)) {
-    try { offers = recurringOfferings(JSON.parse(fs.readFileSync(cfgAbs, 'utf8')), raw.id); } catch (e) {
+    try {
+      const appConfig = JSON.parse(fs.readFileSync(cfgAbs, 'utf8'));
+      offers = recurringOfferings(appConfig, raw.id);
+      disclosed = disclosedOfferings(appConfig, raw.id);
+    } catch (e) {
       lost.push(cfgAbs + ' is not valid JSON (' + e.message + '), so whether ' + raw.id + ' sells cannot be decided.');
     }
   } else if (wantsPro) {
@@ -199,7 +204,8 @@ export function planListing(root, tool, { appConfigPath, channelRegisterPath } =
   }
   const sells = offers.length > 0;
   const pro = doesTransmit || sells;
-  const vars = { seller: null, priceRange: priceRange(offers) };
+  /* The range adds INR from the register's webInrMinor (#1117 review 1, finding 5): pro-gate disclosedOfferings. */
+  const vars = { seller: null, priceRange: priceRange(disclosed) };
   if (sells && !doesTransmit) {
     problems.push(tool.rel + ': app-config-data holds ' + offers.length + ' recurring offering(s) for "' + raw.id +
       '", but tool.json policy.networkAllowlist is empty. Selling Pro needs the account check, which is a network call; ' +

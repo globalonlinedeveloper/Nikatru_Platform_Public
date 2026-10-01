@@ -2278,6 +2278,21 @@ const SELLER = 'Paddle, our merchant of record (in India, by Example Licensor vi
   else bad(label, 'exit ' + res.code + '\n--- edge ---\n' + edge.slice(-300) + '\n--- output ---\n' + res.out.slice(-800));
 }
 
+{
+  /* #1117 review 1, finding 5 — the India web price. prices.apps.<id>.<product>.webInrMinor
+     is what an Indian buyer is charged, so the Edge range carries it in INR beside USD. */
+  const root = withListing([OFFER('month', 599), OFFER('year', 3499)], (t, r) => {
+    t.policy.networkAllowlist = ['api.example.test'];
+    edit(r, 'app-config.json', x => JSON.stringify({ ...JSON.parse(x),
+      prices: { apps: { goodtool: { pro_month: { webInrMinor: 14900 }, pro_year: { webInrMinor: 99900 } } } } }, null, 2) + '\n');
+  });
+  const res = run('render-listing.mjs', ['goodtool', ...cfg(root)], root);
+  const edge = fs.readFileSync(path.join(root, TOOL, 'store/edge/long-description.txt'), 'utf8');
+  const label = 'the Edge range carries the India web price (webInrMinor) in INR beside the USD range';
+  if (res.code === 0 && edge.includes('Pro: INR 149.00 a month to INR 999.00 a year; USD 5.99 a month to USD 34.99 a year.')) ok(label, 'exit 0 · INR from webInrMinor; USD');
+  else bad(label, 'exit ' + res.code + '\n--- edge ---\n' + edge.slice(-300) + '\n--- output ---\n' + res.out.slice(-800));
+}
+
 /* 🔴 R19 · SELLING NEEDS A SIGN-IN ON THAT STORE (#1117 review 1, 2026-10-01).
    Edge's channel has a null extensionRedirectUri: no buyer can sign in there,
    so Edge renders no `sells` line and no `signin` line, and does render the

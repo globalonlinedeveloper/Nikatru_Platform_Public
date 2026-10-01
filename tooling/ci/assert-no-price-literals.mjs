@@ -73,7 +73,7 @@ import { listDir } from './tree-walk.mjs';
 import { delegationOfAbs as delegationOf } from './chassis-delegation.mjs';
 import { PRICE, LIFETIME } from './price-figure.mjs';
 import { LISTING_FIELDS } from '../../contracts/store/vocabulary.js';
-import { recurringOfferings } from '../../contracts/legal/pro-gate.mjs';
+import { disclosedOfferings } from '../../contracts/legal/pro-gate.mjs';
 import { priceRange } from '../../extensions/scripts/render-listing.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -519,7 +519,9 @@ for (const a of ALLOW) {
      of in-product purchases offered and the range of prices" — "So the PRICE RANGE belongs
      in the listing". On that channel, and only there, a price is allowed INSIDE the one
      range extensions/scripts/render-listing.mjs priceRange() derives from the register's
-     recurring offerings for that tool — the same function that renders the line, read
+     recurring offerings for that tool, plus their India web price (webInrMinor) in INR
+     (contracts/legal/pro-gate.mjs disclosedOfferings, #1117 review 1) — the same
+     functions that render the line, read
      from the same register on every run, so the figure cannot go stale. Any other
      figure, a lifetime plan, or a range the register no longer derives is still a
      finding. The exemption stands on the register's quote: if the row stops citing
@@ -563,7 +565,7 @@ for (const a of ALLOW) {
     if (!m) return null;
     const tool = readJson(`${m[1]}/tool.json`).value;
     appConfig ??= readJson('services/platform/src/app-config-data.json').value;
-    return tool && typeof tool.id === 'string' ? priceRange(recurringOfferings(appConfig, tool.id)) : null;
+    return tool && typeof tool.id === 'string' ? priceRange(disclosedOfferings(appConfig, tool.id)) : null;
   };
   for (const row of rows) {
     const id = String(row.id);
