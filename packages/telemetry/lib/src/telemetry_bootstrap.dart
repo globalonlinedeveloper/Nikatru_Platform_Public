@@ -217,4 +217,12 @@ class TelemetryBootstrap {
 
     return event;
   }
+
+  /// The client [init] returns for [config], without initialising anything:
+  /// for a caller that runs INSIDE `appRunner` and so cannot await [init]'s
+  /// result — today the device-integrity record (O-APPS-GOV-IN-VAPT-CHECKLIST).
+  /// Both clients are const and stateless, so this is the same client.
+  static TelemetryClient clientFor(TelemetryConfig config) => config.enabled
+      ? const SentryTelemetryClient()
+      : const NoOpTelemetryClient();
 }
