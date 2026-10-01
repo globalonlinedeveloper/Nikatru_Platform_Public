@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show showPermissionPriming;
@@ -27,12 +28,18 @@ import '../../l10n/app_localizations.dart';
 /// this answers yes without drawing anything. Priming there would explain an
 /// ask that never comes — and on the first add it would hold the add sheet
 /// open behind a question, which is what the live web e2e would have met.
+///
+/// ⏱ 2026-10-01 · NO-04: Linux SCHEDULES now (packages/notifications'
+/// ledger) but still has no permission prompt — a desktop notification
+/// server asks nobody — so it stays on the no-priming side by name.
 Future<bool> primeReminders(BuildContext context, {String? reason, Key? key}) {
-  if (!NotificationCapabilities.resolve(
-    defaultTargetPlatform,
-    isWeb: kIsWeb,
-    windows: kWindowsNotificationIdentity,
-  ).canSchedule) {
+  final bool linux = !kIsWeb && defaultTargetPlatform == TargetPlatform.linux;
+  if (linux ||
+      !NotificationCapabilities.resolve(
+        defaultTargetPlatform,
+        isWeb: kIsWeb,
+        windows: kWindowsNotificationIdentity,
+      ).canSchedule) {
     return Future<bool>.value(true);
   }
   final AppLocalizations l10n = AppLocalizations.of(context);
