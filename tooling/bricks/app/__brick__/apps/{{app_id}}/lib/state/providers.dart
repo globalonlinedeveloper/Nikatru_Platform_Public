@@ -2664,6 +2664,7 @@ class LegalAcceptanceController extends Notifier<String?> {
   ///
   /// [marketingEmail] null = THIS SURFACE DID NOT ASK — see [acceptTermsOnly].
   Future<void> accept({required bool? marketingEmail}) async {
+    _hydrated = null;
     final String? before = state;
     _inFlight = true;
     state = null;

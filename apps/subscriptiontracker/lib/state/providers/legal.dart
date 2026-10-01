@@ -186,6 +186,9 @@ class LegalAcceptanceController extends Notifier<String?> {
   ///
   /// [marketingEmail] null = THIS SURFACE DID NOT ASK — see [acceptTermsOnly].
   Future<void> accept({required bool? marketingEmail}) async {
+    // The fallback is only what the disk said during THIS accept (review of
+    // #1122): a hydrate that landed during an earlier accept is stale.
+    _hydrated = null;
     final String? before = state;
     _inFlight = true;
     state = null;
