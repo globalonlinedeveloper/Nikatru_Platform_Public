@@ -936,7 +936,7 @@ for (const rel of dartFiles) {
 // file's header) says the map is read directly on THREE surfaces. Re-measured
 // today with `grep -rn "copy\[" --include=*.dart apps packages tooling`: there
 // are FOUR non-test sites, not three — subscriptiontracker's home_screen.dart:1535 and
-// onboarding_screen.dart:100, AND BOTH brick screens,
+// onboarding_screen.dart:103, AND BOTH brick screens,
 // `tooling/bricks/…/features/firstrun/onboarding_screen.dart:53` and
 // `tooling/bricks/…/features/home/home_screen.dart:300`. The prose above is left
 // as written and corrected here rather than rewritten. The count this limb

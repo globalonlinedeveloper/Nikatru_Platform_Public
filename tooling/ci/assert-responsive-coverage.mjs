@@ -755,8 +755,14 @@ const REQUIRED_COVERAGE = [
     // measured — 7 PRINTED".
     //   surfaces        38 → 43
     //   coveredSurfaces 30 → 36
+    //
+    // ⏱ 2026-10-01 · train st-entry (EN-11) — `SwallowSystemBack` joined the
+    // root and is PRINTED unmeasured on purpose: it paints nothing (a
+    // `SizedBox.shrink`), so it has no width to decide. Read off the run's own
+    // line: "36 of 44 surface(s) measured — 8 PRINTED".
+    //   surfaces        43 → 44
     enforce: false,
-    surfaces: 43,
+    surfaces: 44,
     widthTestFiles: 19,
     coveredSurfaces: 36,
     label:

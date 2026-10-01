@@ -890,8 +890,10 @@ Future<core.ConsentArtifact> applyLegalAcceptance({
 }) async {
   final DateTime at = now ?? DateTime.now();
   final String plat = platform ?? analyticsPlatformName();
-  final core.ConsentArtifact terms = await controller.record(
-    core.ConsentPurpose.terms,
+  // 🔴 EN-05 — the terms are SENT FIRST and kept only once the server has
+  // them (`send` answers `err`, never throws). Marketing stays best-effort.
+  final core.ConsentArtifact terms = core.ConsentArtifact.create(
+    purpose: core.ConsentPurpose.terms,
     granted: true,
     policyVersion: versions.stamp,
     anonId: anonId,
@@ -899,8 +901,12 @@ Future<core.ConsentArtifact> applyLegalAcceptance({
     appVersion: appVersion,
     platform: plat,
   );
-  // Best-effort by contract, exactly as the analytics decision is.
-  await transport.send(appId: appId, artifact: terms);
+  final core.Result<void> sent = await transport.send(
+    appId: appId,
+    artifact: terms,
+  );
+  if (!sent.isOk) throw core.LegalAcceptanceNotRecorded();
+  await controller.adopt(terms);
   if (marketingEmail != null) {
     final core.ConsentArtifact marketing = await controller.record(
       core.ConsentPurpose.marketingEmail,
@@ -1347,8 +1353,10 @@ class PasswordResetArrivalController
         // ST-A2 (audit BUG-2): the stream types EVERY failed link this way;
         // only a reset arrival belongs on the reset screen. A confirmation or
         // an OAuth return lands on sign-in with a sentence for its flow.
-        final AuthFlow? other = failedArrivalFlowOf(
-          ref.read(launchUriProvider),
+        // EN-04: by the flow the adapter read off the native deep link.
+        final AuthFlow? other = failedEventFlowOf(
+          event,
+          launchUri: ref.read(launchUriProvider),
         );
         if (other != null) {
           ref.read(failedAuthArrivalProvider.notifier).state = other;
@@ -2520,6 +2528,12 @@ final NotifierProvider<OnboardingSeenController, bool?> onboardingSeenProvider =
 class LegalAcceptanceController extends Notifier<String?> {
   bool _userChose = false;
 
+  /// EN-05 — an accept is in flight; the state reads `null` meanwhile.
+  bool _inFlight = false;
+
+  /// What the disk said during an in-flight accept: a failure falls back to it.
+  String? _hydrated;
+
   /// Whether the identity stream has resolved at least once, and whether there
   /// was a session when it did. Two plain bools: no identifier is kept here,
   /// and that is the point — see [_reaskKey].
@@ -2616,30 +2630,43 @@ class LegalAcceptanceController extends Notifier<String?> {
       // A session ended on this device since the last acceptance, so whoever is
       // holding it now has to answer for themselves. The ARTIFACT is untouched:
       // it is the append-only legal record and it is not this flag's business.
-      state = (!reask && status == core.ConsentStatus.granted && a != null)
+      final String read =
+          (!reask && status == core.ConsentStatus.granted && a != null)
           ? a.policyVersion
           : '';
+      // EN-05: an accept in flight owns the state; keep the answer for it.
+      if (_inFlight) {
+        _hydrated = read;
+      } else {
+        state = read;
+      }
     } catch (_) {
       // Unreadable store ⇒ ASK AGAIN. Resolving to '' rather than staying null
       // matters: null blocks the decision forever and the user sees a spinner
       // where the app should be. The cost is asymmetric in the same direction
       // as onboarding's — asking twice is a nuisance, never asking means
       // somebody is using the product under terms they were never shown.
-      if (!_userChose && ref.mounted) state = '';
+      if (_inFlight) {
+        _hydrated = '';
+      } else if (!_userChose && ref.mounted) {
+        state = '';
+      }
     }
   }
 
   /// Record acceptance of [kLegalVersions] plus the express marketing decision,
   /// and make the router's gate open.
   ///
-  /// In memory FIRST, exactly as [OnboardingSeenController.set] is: the redirect
-  /// reads this synchronously the moment the screen navigates away, and a slow
-  /// write must not bounce the user straight back into the interstitial.
+  /// 🔴 EN-05 — THE STAMP IS WRITTEN ONLY ONCE THE CONSENT ARTIFACT IS; a
+  /// failed upload throws [core.LegalAcceptanceNotRecorded]. In flight the
+  /// state is `null`, on which the gate declines to decide (the app's
+  /// `LegalAcceptanceController.accept` carries the full reasoning).
   ///
   /// [marketingEmail] null = THIS SURFACE DID NOT ASK — see [acceptTermsOnly].
   Future<void> accept({required bool? marketingEmail}) async {
-    _userChose = true;
-    state = kLegalVersions.stamp;
+    final String? before = state;
+    _inFlight = true;
+    state = null;
     try {
       final core.ConsentController controller = await ref.read(
         consentControllerProvider.future,
@@ -2651,17 +2678,27 @@ class LegalAcceptanceController extends Notifier<String?> {
         anonId: await ref.read(installIdProvider.future),
         marketingEmail: marketingEmail,
       );
-      // The re-ask marker is cleared AFTER the artifact, so a half-written pair
-      // reads as "still owed" rather than "settled" over a record that is not
-      // there. Safe direction, same as everywhere else in this class.
+    } catch (e) {
+      // Not recorded (or the store / install id did not answer): back to owed.
+      _inFlight = false;
+      if (ref.mounted) state = _hydrated ?? before ?? '';
+      if (e is core.LegalAcceptanceNotRecorded) rethrow;
+      throw core.LegalAcceptanceNotRecorded();
+    }
+    _inFlight = false;
+    if (!ref.mounted) return;
+    _userChose = true;
+    state = kLegalVersions.stamp;
+    // The re-ask marker is cleared AFTER the artifact, so a half-written pair
+    // reads as "still owed" rather than "settled" over a record that is not
+    // there. Safe direction, same as everywhere else in this class.
+    try {
       final core.KeyValueStore kv = await ref.read(
         keyValueStoreProvider.future,
       );
       await kv.remove(_reaskKey);
     } catch (_) {
-      // Best-effort, and the in-memory state above is what the user experiences.
-      // A failed write means the interstitial returns next launch — the safe
-      // direction, and the same one every other decision here takes.
+      // Best-effort: a marker that survives asks once more next launch.
     }
   }
 
