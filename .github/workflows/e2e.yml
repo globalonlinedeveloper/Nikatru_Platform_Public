@@ -54,18 +54,24 @@ jobs:
     timeout-minutes: 5
     outputs:
       apps: ${{ steps.workspace.outputs.apps }}
+      refusal_anchor: ${{ steps.workspace.outputs.refusal_anchor }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # why: DERIVED, NOT LISTED. A hand-written app list here is a second copy of the
       # workspace, and the copy is the one that rots toward looking healthier.
+      # why: refusal_anchor is the ONE instant every native refusal leg counts its
+      # slot from (tooling/e2e/native_auth_proof.mjs refusalSchedule): four minutes
+      # out, room for the runners to start, so the legs share the per-network limiters
+      # a slot at a time instead of all landing in one minute.
       - name: The matrix comes from the workspace, never from this file
         id: workspace
         run: |
           set -euo pipefail
           apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
           echo "apps=${apps}" >> "$GITHUB_OUTPUT"
+          echo "refusal_anchor=$(( $(date +%s) * 1000 + 240000 ))" >> "$GITHUB_OUTPUT"
           echo "Driving: ${apps}" >> "$GITHUB_STEP_SUMMARY"
 
   e2e:
@@ -715,6 +721,12 @@ jobs:
       TARGET: ${{ matrix.target }}
       DEVICE: ${{ matrix.device }}
       CALLBACK: ${{ matrix.callback }}
+      # why: the stagger (fourth review of #1070). Every leg of every app fires at the
+      # same cron minute and the runners share networks, so unstaggered a third app's
+      # legs overrun the platform Worker's per-network limiters and read 429. Each leg
+      # waits for its own slot of refusalSchedule, counted from prepare's one anchor.
+      REFUSAL_ANCHOR: ${{ needs.prepare.outputs.refusal_anchor }}
+      REFUSAL_APPS: ${{ needs.prepare.outputs.apps }}
       # why: the proof's own log, written by the proof step and read by the
       # purge — the consent row's install id, or proof that none was written
       # (tooling/e2e/consent_anon_id.mjs, resolveProofLogConsent). Relative to
@@ -822,7 +834,7 @@ jobs:
         # serves native sign-in only to a VERIFIED attestation, and a CI device
         # cannot attest, so this leg now proves the gate: every call such a build
         # sends is refused and no session comes back. A 2xx is the leg's red.
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" --log "$E2E_PROOF_LOG" $CALLBACK --expect-refusal
+        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" --log "$E2E_PROOF_LOG" $CALLBACK --expect-refusal --stagger-anchor "$REFUSAL_ANCHOR" --stagger-apps "$REFUSAL_APPS"
       - name: The native leg — the bundle under xvfb, one D-Bus session
         id: proof_linux
         if: matrix.target == 'linux'
@@ -834,7 +846,7 @@ jobs:
         run: |
           # why: no display and no keyring in refusal mode — the probe never opens the bundle.
           if [ "$PROOF_NEEDS_DEVICE" != true ]; then
-            node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal
+            node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal --stagger-anchor "$REFUSAL_ANCHOR" --stagger-apps "$REFUSAL_APPS"
             exit
           fi
           dbus-run-session -- bash -c '
@@ -842,7 +854,7 @@ jobs:
             eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
             xvfb-run -a -s "-screen 0 1920x1200x24" \
-              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal --stagger-anchor "$REFUSAL_ANCHOR" --stagger-apps "$REFUSAL_APPS"
           '
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
