@@ -19,13 +19,17 @@
 // new credential is added in one place and this guard holds it from that commit.
 //
 // A file is IN SCOPE when it READS a credential: `process.env.K`,
-// `process.env['K']`, `env.K`, `env['K']`, or a one-argument call on the literal,
-// `need('K')` / `cred('K')` / `vault.get('K')`. Naming K in a message or a list is
-// not a read.
+// `process.env['K']`, `env.K`, `env['K']`, destructuring from `env` or `process.env`,
+// or a call carrying the literal as ANY argument: `need('K')`, `vault.get('K')`, and
+// the two-argument `cred('K', 'FALLBACK')`. ⏱ 2026-10-01 (review of #1097, finding
+// 3): only a one-argument call matched, which kept verify-password-reset-revokes.mjs,
+// a service-role caller, out of scope. A literal inside an array or object literal
+// (a list of names) is not a read.
 //
 // ── THE LIMBS ─────────────────────────────────────────────────────────────────
 //   P · PINNED. An in-scope file that sends — `fetch…(`, `http(s).request(`, or a
 //       spawn/exec (a CLI given the token in its env) — calls credentialOrigin().
+//       If it does not, EVERY credential read site in it is a finding of its own.
 //   R · NO RAW BASE. In an in-scope file, every read of a base-URL variable is
 //       either inside a credentialOrigin() call on the same line, or bound to a
 //       name X (`const X = …`, `X = …`) that the file passes to
@@ -34,9 +38,12 @@
 //       RESULT is what a request may be built from. Reverting one call site to
 //       the raw value is a finding (the red control in the test does exactly that
 //       to the real tooling/e2e/delete_headless.mjs).
-//   E · EXEMPTIONS ARE LIVE. tooling/ci/credential-origin-exempt.json rows, each
-//       {path, limb, reason}, suppress a finding; a row that suppresses nothing
-//       any more is itself a finding, so an exemption cannot outlive its reason.
+//   E · AN EXEMPTION IS A CALL SITE, AND LIVE. tooling/ci/credential-origin-exempt.json
+//       rows, each {path, limb, at, reason}, suppress a finding only when the
+//       finding's own line contains `at` (the read or use it excuses), never a whole
+//       file: ⏱ 2026-10-01 (review of #1097, finding 2) a file-wide row let a NEW
+//       service-role send, appended to an exempted file, pass green. A row that
+//       suppresses nothing any more is itself a finding.
 //
 // A response-supplied URL (a server's `info.url` carrying the token onward) is not
 // a base read and no static rule here sees it; upload-web-sourcemaps.mjs refuses it
@@ -66,7 +73,12 @@ export const EXEMPT_REL = 'tooling/ci/credential-origin-exempt.json';
 
 /** Files that pin today and read a credential themselves. If one of them is not in
  *  scope, the READ patterns stopped matching and every verdict is empty: exit 2. */
-export const SENTINELS = Object.freeze(['tooling/e2e/provision_user.mjs', 'tooling/ops/upload-web-sourcemaps.mjs']);
+export const SENTINELS = Object.freeze([
+  'tooling/e2e/provision_user.mjs',
+  'tooling/ops/upload-web-sourcemaps.mjs',
+  // Reads the service-role key through the TWO-argument cred('K', 'FALLBACK') (review of #1097, finding 3).
+  'tooling/ops/verify-password-reset-revokes.mjs',
+]);
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -85,7 +97,14 @@ export function envNames(list = CREDENTIAL_ENV) {
 export function readPattern(name) {
   const n = esc(name);
   return new RegExp(
-    `process\\.env\\.${n}\\b|process\\.env\\[\\s*['"\`]${n}['"\`]\\s*\\]|(?<![\\w$.])env\\.${n}\\b|(?<![\\w$.])env\\[\\s*['"\`]${n}['"\`]\\s*\\]|[\\w$.]+\\(\\s*['"\`]${n}['"\`]\\s*\\)`,
+    [
+      // process.env.K · process.env['K'] · env.K · env['K']
+      `process\\.env\\.${n}\\b|process\\.env\\[\\s*['"\`]${n}['"\`]\\s*\\]|(?<![\\w$.])env\\.${n}\\b|(?<![\\w$.])env\\[\\s*['"\`]${n}['"\`]\\s*\\]`,
+      // f('K') · f('A', 'K') · cred('K', 'FALLBACK'): the literal as ANY argument, with no list or object before it
+      `[\\w$.]+\\(\\s*(?:[^()\\[\\]{}\\n]*?,\\s*)?['"\`]${n}['"\`]\\s*[,)]`,
+      // const { K } = process.env · const { K: k } = env
+      `\\{[^{}]*?(?<![\\w$'"])${n}\\b[^{}]*\\}\\s*=\\s*(?:process\\.)?env\\b`,
+    ].join('|'),
     'g',
   );
 }
@@ -134,14 +153,22 @@ export function scanSource(code, names = envNames()) {
   const pins = PINS.test(code);
   const findings = [];
   if (reads.length === 0) return { reads, sends, pins, findings };
-  if (sends && !pins) {
-    findings.push({
-      limb: 'P',
-      line: 0,
-      what: `reads ${reads.join(', ')} and sends a request, and never calls credentialOrigin(): the credential goes to whatever host the configuration names`,
-    });
-  }
   const lines = code.split('\n');
+  if (sends && !pins) {
+    // One finding per READ SITE, so an exemption names the site it excuses and a
+    // new read in the same file is a new finding (review of #1097, finding 2).
+    for (const k of reads) {
+      for (const m of code.matchAll(readPattern(k))) {
+        const line = lineAt(code, m.index);
+        findings.push({
+          limb: 'P',
+          line,
+          text: lines[line - 1].trim(),
+          what: `reads ${k} here, the file sends a request, and it never calls credentialOrigin(): the credential goes to whatever host the configuration names`,
+        });
+      }
+    }
+  }
   for (const base of names.bases) {
     for (const m of code.matchAll(readPattern(base))) {
       const line = lineAt(code, m.index);
@@ -150,11 +177,11 @@ export function scanSource(code, names = envNames()) {
       const column = m.index - (code.lastIndexOf('\n', m.index - 1) + 1);
       const x = boundName(text, column);
       if (!x) {
-        findings.push({ limb: 'R', line, what: `reads ${base} and uses it unpinned (not inside credentialOrigin(), not bound to a name)` });
+        findings.push({ limb: 'R', line, text: text.trim(), what: `reads ${base} and uses it unpinned (not inside credentialOrigin(), not bound to a name)` });
         continue;
       }
       if (!new RegExp(`(?<![\\w$.])credentialOrigin\\s*\\([^;\\n]*?(?<![\\w$.'"])${esc(x)}\\b`).test(code)) {
-        findings.push({ limb: 'R', line, what: `reads ${base} into \`${x}\`, and \`${x}\` never passes through credentialOrigin()` });
+        findings.push({ limb: 'R', line, text: text.trim(), what: `reads ${base} into \`${x}\`, and \`${x}\` never passes through credentialOrigin()` });
         continue;
       }
       const raw = rawUse(code, x);
@@ -162,6 +189,7 @@ export function scanSource(code, names = envNames()) {
         findings.push({
           limb: 'R',
           line: raw.line,
+          text: lines[raw.line - 1].trim(),
           what: `\`${x}\` holds the RAW ${base} (read at line ${line}) and is ${raw.what}; build requests from credentialOrigin()'s result`,
         });
       }
@@ -174,7 +202,7 @@ export function scanSource(code, names = envNames()) {
  * PURE. Apply the exemptions. Returns the findings left, the stale rows, and the
  * in-scope paths.
  * @param {{path: string, code: string}[]} files
- * @param {{path: string, limb: string, reason: string}[]} exempt
+ * @param {{path: string, limb: string, at: string, reason: string}[]} exempt
  */
 export function judge(files, exempt, names = envNames()) {
   const findings = [];
@@ -184,7 +212,8 @@ export function judge(files, exempt, names = envNames()) {
     const r = scanSource(f.code, names);
     if (r.reads.length > 0) inScope.push(f.path);
     for (const x of r.findings) {
-      const at = exempt.findIndex((e) => e.path === f.path && e.limb === x.limb);
+      // A CALL SITE, never a file: the row's `at` must be on the finding's own line.
+      const at = exempt.findIndex((e) => e.path === f.path && e.limb === x.limb && x.text.includes(e.at));
       if (at !== -1) {
         used.add(at);
         continue;
@@ -206,8 +235,15 @@ export function parseExempt(text) {
   }
   if (!Array.isArray(doc?.exempt)) return 'has no `exempt` array';
   for (const [i, e] of doc.exempt.entries()) {
-    if (typeof e?.path !== 'string' || !['P', 'R'].includes(e?.limb) || typeof e?.reason !== 'string' || e.reason.trim().length < 20) {
-      return `row ${i} is not {path, limb: "P"|"R", reason (20+ characters)}`;
+    if (
+      typeof e?.path !== 'string' ||
+      !['P', 'R'].includes(e?.limb) ||
+      typeof e?.at !== 'string' ||
+      e.at.trim().length < 12 ||
+      typeof e?.reason !== 'string' ||
+      e.reason.trim().length < 40
+    ) {
+      return `row ${i} is not {path, limb: "P"|"R", at (the call site, 12+ characters), reason (40+ characters)}`;
     }
   }
   return doc.exempt;
@@ -269,7 +305,7 @@ function main() {
   if (findings.length > 0 || stale.length > 0) {
     console.error(`${NAME}: FAILED — ${findings.length} finding(s), ${stale.length} stale exemption(s):`);
     for (const f of findings) console.error(`    ${f.path}${f.line ? `:${f.line}` : ''} [${f.limb}] ${f.what}`);
-    for (const s of stale) console.error(`    ${EXEMPT_REL}: STALE — ${s.path} [${s.limb}] suppresses nothing any more. Delete the row.`);
+    for (const s of stale) console.error(`    ${EXEMPT_REL}: STALE — ${s.path} [${s.limb}] at ${JSON.stringify(s.at)} suppresses nothing any more. Delete the row.`);
     console.error('');
     console.error('  Route the base through credentialOrigin(url, kind) from tooling/ops/credential-origin.mjs and');
     console.error('  build every request from the origin it RETURNS, refusing before the first request. An');

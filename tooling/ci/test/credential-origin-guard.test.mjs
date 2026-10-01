@@ -69,7 +69,7 @@ describe('assert-credential-origin — red controls on the real files', () => {
       "supaUrl = credentialOrigin(need('SUPABASE_URL'), 'supabase');",
       "supaUrl = need('SUPABASE_URL').replace(/\\/+$/, '');",
     ));
-    assert.deepEqual(r.findings.map((f) => f.limb).sort(), ['P', 'R']);
+    assert.deepEqual([...new Set(r.findings.map((f) => f.limb))].sort(), ['P', 'R']);
     assert.match(r.findings.find((f) => f.limb === 'R').what, /reads SUPABASE_URL into `supaUrl`, and `supaUrl` never passes through credentialOrigin\(\)/);
   });
 
@@ -85,7 +85,7 @@ describe('assert-credential-origin — red controls on the real files', () => {
       "server = credentialOrigin(`${dsn.startsWith('http://') ? 'http' : 'https'}://${m[1]}`, 'glitchtip');",
       "server = `${dsn.startsWith('http://') ? 'http' : 'https'}://${m[1]}`;",
     ));
-    assert.deepEqual(r.findings.map((f) => f.limb).sort(), ['P', 'R']);
+    assert.deepEqual([...new Set(r.findings.map((f) => f.limb))].sort(), ['P', 'R']);
   });
 
   test('🔴 create-glitchtip-release.mjs creating the release on the configured value: limb R', () => {
@@ -121,18 +121,62 @@ describe('assert-credential-origin — the rules, on small inputs', () => {
     assert.equal(rawUse('if (!/^https?:/.test(b)) die();', 'b'), null);
   });
 
-  test('exemptions: a row suppresses its (path, limb); a row that suppresses nothing is STALE', () => {
-    const files = [{ path: 'tooling/a.mjs', code: "const k = process.env.GLITCHTIP_TOKEN;\nawait fetch('https://x');\n" }];
-    const live = judge(files, [{ path: 'tooling/a.mjs', limb: 'P', reason: 'x'.repeat(20) }]);
-    assert.deepEqual([live.findings.length, live.stale.length], [0, 0]);
-    const stale = judge(files, [{ path: 'tooling/a.mjs', limb: 'P', reason: 'r' }, { path: 'tooling/a.mjs', limb: 'R', reason: 'r' }]);
-    assert.deepEqual(stale.stale.map((s) => s.limb), ['R']);
-    assert.deepEqual(judge(files, []).findings.map((f) => f.limb), ['P']);
+  // ⏱ 2026-10-01 (review of #1097, finding 2): a row is a CALL SITE. A file-wide row
+  // let a new service-role send in an exempted file pass green.
+  test('exemptions: a row suppresses only the finding on its own line; a second site is a finding; an unused row is STALE', () => {
+    const files = [{ path: 'tooling/a.mjs', code: "const k = process.env.GLITCHTIP_TOKEN;\nawait fetch('https://x');\nconst j = process.env.GLITCHTIP_TOKEN + 'x';\n" }];
+    const row = { path: 'tooling/a.mjs', limb: 'P', at: 'const k = process.env.GLITCHTIP_TOKEN', reason: 'r' };
+    const one = judge(files, [row]);
+    assert.deepEqual(one.findings.map((f) => [f.limb, f.line]), [['P', 3]], 'the second read site must stay a finding');
+    assert.deepEqual(one.stale, []);
+    const stale = judge(files, [row, { path: 'tooling/a.mjs', limb: 'P', at: 'a line that is not in the file', reason: 'r' }]);
+    assert.deepEqual(stale.stale.map((x) => x.at), ['a line that is not in the file']);
+    assert.deepEqual(judge(files, []).findings.map((f) => f.limb), ['P', 'P']);
+  });
+
+  test('🔴 REVIEW REPRO: a service-role send appended to the real, exempted auth-cutover-preflight.mjs is a finding', () => {
+    const rel = 'tooling/ops/auth-cutover-preflight.mjs';
+    const exempt = parseExempt(readFileSync(join(REPO, 'tooling', 'ci', 'credential-origin-exempt.json'), 'utf8'));
+    const leak = "\nexport function leak() { const k = process.env.SUPABASE_SERVICE_ROLE_KEY; return fetch(`${process.env.SUPABASE_URL}/auth/v1/admin/users`, { headers: { apikey: k } }); }\n";
+    assert.deepEqual(judge([{ path: rel, code: code(rel) }], exempt).findings, [], 'GREEN control: the real file is clean under its rows');
+    const red = judge([{ path: rel, code: code(rel) + leak }], exempt).findings;
+    assert.ok(red.some((f) => f.limb === 'P' && /SUPABASE_SERVICE_ROLE_KEY/.test(f.what)), JSON.stringify(red));
+  });
+
+  test('🔴 REVIEW REPRO: a raw GLITCHTIP_URL send appended to the real glitchtip-monitor-api.mjs is a finding', () => {
+    const rel = 'tooling/ops/glitchtip-monitor-api.mjs';
+    const exempt = parseExempt(readFileSync(join(REPO, 'tooling', 'ci', 'credential-origin-exempt.json'), 'utf8'));
+    const leak = "\nexport const leak = () => fetch(`${process.env.GLITCHTIP_URL}/api/0/`, { headers: { Authorization: `Bearer ${process.env.GLITCHTIP_TOKEN}` } });\n";
+    assert.deepEqual(judge([{ path: rel, code: code(rel) }], exempt).findings, []);
+    const red = judge([{ path: rel, code: code(rel) + leak }], exempt).findings;
+    assert.deepEqual(red.map((f) => f.limb), ['R'], JSON.stringify(red));
+  });
+
+  // ⏱ 2026-10-01 (review of #1097, finding 3): the two-argument cred('K', 'FALLBACK').
+  test('🔴 REVIEW REPRO: verify-password-reset-revokes.mjs (two-argument cred) is in scope, and losing its pin is red', () => {
+    const rel = 'tooling/ops/verify-password-reset-revokes.mjs';
+    const real = scanSource(code(rel));
+    assert.ok(real.reads.includes('SUPABASE_SERVICE_ROLE_KEY'), 'cred(\'SUPABASE_SERVICE_ROLE_KEY\', …) is not read as a read');
+    assert.deepEqual(real.findings, []);
+    const red = scanSource(mutated(rel, "url = credentialOrigin(configuredUrl, 'supabase');", "url = configuredUrl.replace(/[/]+$/, '');"));
+    assert.ok(red.findings.some((f) => f.limb === 'P') && red.findings.some((f) => f.limb === 'R'), JSON.stringify(red.findings));
+  });
+
+  test('every reader form is a read: two-argument call, destructuring; a list of names is not', () => {
+    const reads = (src) => scanSource(src).reads;
+    assert.deepEqual(reads("const k = cred('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_Secret_key');"), ['SUPABASE_SERVICE_ROLE_KEY']);
+    assert.deepEqual(reads("const k = pick('x', 'GLITCHTIP_TOKEN');"), ['GLITCHTIP_TOKEN']);
+    assert.deepEqual(reads('const { SUPABASE_SERVICE_ROLE_KEY: k } = process.env;'), ['SUPABASE_SERVICE_ROLE_KEY']);
+    assert.deepEqual(reads('const { GLITCHTIP_TOKEN } = env;'), ['GLITCHTIP_TOKEN']);
+    assert.deepEqual(reads("const NAMES = Object.freeze(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);"), []);
   });
 
   test('parseExempt refuses a row without a real reason, and the checked-in file parses', () => {
-    assert.match(parseExempt('{"exempt":[{"path":"a","limb":"P","reason":"short"}]}'), /row 0/);
-    assert.match(parseExempt('{"exempt":[{"path":"a","limb":"X","reason":"a reason of twenty characters"}]}'), /row 0/);
+    const LONG = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+    assert.match(parseExempt(JSON.stringify({ exempt: [{ path: 'a', limb: 'P', at: 'a call site here', reason: 'short' }] })), /row 0/);
+    assert.match(parseExempt(JSON.stringify({ exempt: [{ path: 'a', limb: 'X', at: 'a call site here', reason: LONG }] })), /row 0/);
+    assert.match(parseExempt(JSON.stringify({ exempt: [{ path: 'a', limb: 'P', reason: LONG }] })), /row 0 .*at \(the call site/, 'a row with no call site is a whole-file row');
+    assert.ok(Array.isArray(parseExempt(JSON.stringify({ exempt: [{ path: 'a', limb: 'P', at: 'a call site here', reason: LONG }] }))));
     assert.match(parseExempt('nope'), /does not parse/);
     assert.ok(Array.isArray(parseExempt(readFileSync(join(REPO, 'tooling', 'ci', 'credential-origin-exempt.json'), 'utf8'))));
   });
