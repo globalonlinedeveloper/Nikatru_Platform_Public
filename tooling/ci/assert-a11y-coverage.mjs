@@ -921,7 +921,16 @@ const REQUIRED_COVERAGE = [
     //   surfaces  38 → 43
     //   a11yFiles 13 → 14
     //   cases     27 → 28
-    surfaces: 43,
+    //
+    // ⏱ 2026-10-01 · train st-entry (EN-11): `SwallowSystemBack` arrived
+    // UNSWEPT and stays in the printed ⬜ list on purpose: it paints nothing (a
+    // `SizedBox.shrink`) — it is a claim on the router's back-button
+    // dispatcher, not a layer a reader traverses, so a semantics sweep of it
+    // could not fail. Its behaviour is pinned by swallow_system_back_test.dart.
+    // Read off the per-root line: "26 of 44 reachable surface(s) carry an a11y
+    // sweep, from 14 a11y test file(s) across 28 case(s)".
+    //   surfaces  43 → 44
+    surfaces: 44,
     a11yFiles: 14,
     cases: 28,
     label:

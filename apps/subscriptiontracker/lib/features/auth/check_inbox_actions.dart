@@ -30,7 +30,7 @@ class CheckInboxActions extends ConsumerStatefulWidget {
   /// ⏱ 2026-09-29 · ST-D10 (`CheckInbox`: "Resend link in 0:24"). How long the
   /// resend rests after a mail was SENT. A resend that failed rests not at all
   /// — the user has nothing in their inbox to wait for.
-  static const Duration cooldown = Duration(seconds: 30);
+  static const Duration cooldown = kResendCooldown;
 
   final String email;
 
@@ -47,6 +47,20 @@ class _CheckInboxActionsState extends ConsumerState<CheckInboxActions>
   int _wait = 0;
   Timer? _tick;
 
+  /// ⏱ 2026-10-01 · EN-13 — the rest SURVIVES leaving: a return within the
+  /// cooldown picks up where it was (see `resendCooldownProvider`).
+  @override
+  void initState() {
+    super.initState();
+    final int left = ref
+        .read(resendCooldownProvider.notifier)
+        .secondsLeft(widget.email);
+    if (left > 0) {
+      _wait = left;
+      _countDown();
+    }
+  }
+
   @override
   void dispose() {
     _tick?.cancel();
@@ -54,8 +68,13 @@ class _CheckInboxActionsState extends ConsumerState<CheckInboxActions>
   }
 
   void _rest() {
-    _tick?.cancel();
+    ref.read(resendCooldownProvider.notifier).start(widget.email);
     setState(() => _wait = CheckInboxActions.cooldown.inSeconds);
+    _countDown();
+  }
+
+  void _countDown() {
+    _tick?.cancel();
     _tick = Timer.periodic(const Duration(seconds: 1), (Timer t) {
       if (!mounted) return t.cancel();
       setState(() => _wait -= 1);
@@ -121,7 +140,14 @@ class _CheckInboxActionsState extends ConsumerState<CheckInboxActions>
         const SizedBox(height: AppSpacing.sm),
         TextButton(
           key: CheckInboxActions.changeEmailButton,
-          onPressed: _busy ? null : () => context.go('/sign-in'),
+          // ⏱ 2026-10-01 · EN-13 — "Wrong address?" goes back to the SIGN-UP
+          // door with the address already in the box, to be corrected rather
+          // than retyped. It went to `/sign-in`, an empty form on the wrong
+          // arm. Through `extra`, never the location: the address is not
+          // written into a URL (see `/check-inbox`'s own route).
+          onPressed: _busy
+              ? null
+              : () => context.go('/sign-up', extra: widget.email),
           child: Text(l10n.checkInboxChangeEmail),
         ),
       ],

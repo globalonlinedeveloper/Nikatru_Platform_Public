@@ -157,7 +157,7 @@
           "client": {
             "file": "services/platform/src/routes/account.ts",
             "expression": "`${origin}/v1/account`",
-            "note": "The relay. THE CALLER IS THE SHARED HOST, NOT THE APP: the Dart seam calls platform’s /v1/account once, and platform checks the service-role precondition, empties platform_db, relays to each app’s own DELETE /v1/account, and deletes the identity LAST. That ordering is the safety property, which is why the client must not own it (apps/subscriptiontracker/lib/state/providers/auth.dart:64-102 records the same thing from the other side)."
+            "note": "The relay. THE CALLER IS THE SHARED HOST, NOT THE APP: the Dart seam calls platform’s /v1/account once, and platform checks the service-role precondition, empties platform_db, relays to each app’s own DELETE /v1/account, and deletes the identity LAST. That ordering is the safety property, which is why the client must not own it (apps/subscriptiontracker/lib/state/providers/auth.dart:65-102 records the same thing from the other side)."
           }
         },
         {
@@ -527,7 +527,7 @@
       "auth": "required",
       "owningFile": "services/platform/src/routes/account.ts",
       "purpose": "G2 in-app account deletion ([4]B-5). THE FIRST `auth: required` ROUTE ON THIS WORKER, and the reason src/middleware/auth.ts is not a dead file. Three limbs: every user-owned table in platform_db (DERIVED from the schema — a `user_id` column is the selector — not from a literal array somebody must remember to extend), then the identity record itself. Refuses 501 while SUPABASE_SERVICE_ROLE_KEY is unset, so it ships honest rather than not at all.",
-      "unconsumedReason": "🔄 CORRECTED 2026-08-06 — THE CLIENT HALF EXISTS. `packages/core/lib/src/auth/account_deletion.dart` models the three refusals this route answers with, `packages/auth_supabase/lib/src/supabase_auth_repository.dart:43` calls `DELETE /v1/account`, and `packages/core/test/account_deletion_test.dart` covers the 501. The claim that it was \"blocked on stage 2\" was true when written and false at head. [4]B-14 pins the STATUS SET rather than a body, because this route's client reads no body key — `AccountDeletionFailure.forStatus` is the contract."
+      "unconsumedReason": "🔄 CORRECTED 2026-08-06 — THE CLIENT HALF EXISTS. `packages/core/lib/src/auth/account_deletion.dart` models the three refusals this route answers with, `packages/auth_supabase/lib/src/supabase_auth_repository.dart:49` calls `DELETE /v1/account`, and `packages/core/test/account_deletion_test.dart` covers the 501. The claim that it was \"blocked on stage 2\" was true when written and false at head. [4]B-14 pins the STATUS SET rather than a body, because this route's client reads no body key — `AccountDeletionFailure.forStatus` is the contract."
     },
     {
       "id": "account-apple-token",
