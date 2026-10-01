@@ -16,7 +16,7 @@ export 'package:nikatru_chassis_screens/integrity/device_integrity_gate.dart'
 export 'package:nikatru_chassis_screens/settings/help_section.dart'
     show HelpKeys, SettingsHeading, helpCard;
 export 'package:nikatru_chassis_screens/settings/settings_screen.dart'
-    show EditProfileDialog, RowChevron;
+    show DevicesSection, EditProfileDialog, RowChevron;
 
 /// ST-U7/U5 adapters: this app's entitlement read and strings, handed to the
 /// chassis states that own the rendering — plan status (C42) and the chevron

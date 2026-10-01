@@ -74,6 +74,11 @@ class InMemoryAuthRepository implements core.AuthRepository {
   /// assertion from a button proven not to crash.
   int verificationResends = 0;
 
+  /// Every address [updateEmail] has been asked to move to, newest last. The
+  /// account's own address does not change: the real provider moves it only
+  /// once the mailed confirmation is followed, and nothing here follows it.
+  final List<String> emailChangesRequested = <String>[];
+
   /// Every password [updatePassword] has been asked to set, newest last.
   ///
   /// The VALUES, not a count, and the difference is a real defect class: a
@@ -274,6 +279,19 @@ class InMemoryAuthRepository implements core.AuthRepository {
     throw core.AuthFailure(
       'Linking another sign-in method needs a configured identity provider.',
     );
+  }
+
+  /// SE-02: records the request and changes nothing — see
+  /// [emailChangesRequested].
+  @override
+  Future<core.AuthUser> updateEmail({required String newEmail}) async {
+    final core.AuthUser? current = _user;
+    if (current == null) {
+      throw core.AuthFailure('You are signed out. Sign in and try again.');
+    }
+    emailChangesRequested.add(newEmail.trim());
+    _events.add(core.AuthEvent(core.AuthEventKind.userUpdated, current));
+    return current;
   }
 
   /// Sets the password, for real — within the limits of a class that never

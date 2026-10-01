@@ -553,6 +553,30 @@ class SupabaseAuthRepository implements core.AuthRepository {
     }
   }
 
+  /// SE-02 (2026-10-01). The confirmation mail is the one the project
+  /// already templates for an e-mail change; its link carries
+  /// [AuthFlow.emailChange] so it lands back in THIS app, not on the
+  /// project's Site URL (`assert-auth-callbacks.mjs` holds every
+  /// `updateUser(email:)` to that). Refuses with no session, as
+  /// [updatePassword] does, rather than letting the SDK throw its own type.
+  @override
+  Future<core.AuthUser> updateEmail({required String newEmail}) async {
+    if (_auth.currentSession == null) {
+      throw core.AuthFailure('You are signed out. Sign in and try again.');
+    }
+    try {
+      final sb.UserResponse res = await _auth.updateUser(
+        sb.UserAttributes(email: newEmail.trim()),
+        emailRedirectTo: redirects(AuthFlow.emailChange),
+      );
+      final core.AuthUser? u = _map(res.user);
+      if (u == null) throw core.AuthFailure('Could not change your e-mail');
+      return u;
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
+  }
+
   /// 🔴 THE SCOPE IS MAPPED, NEVER DROPPED. gotrue's own default is
   /// [sb.SignOutScope.local], so a `signOut()` here that forgot to pass the
   /// scope would compile, sign this device out, and leave every other device
