@@ -137,7 +137,7 @@ function fakeProfile({ name = 'Subly App Store', team = TEAM, bundleId = 'com.ni
 	<string>${team}</string>
 	</array>
 	<key>TeamName</key>
-	<string>Fixture Person</string>
+	<string>Rajasekar Selvam</string>
 	<key>UUID</key>
 	<string>3f9c2a10-7b4e-4f1a-9d55-1c2e3f4a5b6c</string>
 	<key>Version</key>

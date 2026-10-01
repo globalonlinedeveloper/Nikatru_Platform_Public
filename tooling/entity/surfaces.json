@@ -75,6 +75,7 @@
   },
   "exempt": [
     { "path": "sites/nikatru/legal/", "kind": "dated-history", "why": "The dated policy snapshots: what was served on each date, frozen (tooling/ci/assert-policy-archive.mjs). Re-rendering one would falsify the record of what a user consented to." },
+    { "path": "tooling/ci/test/apple-signing.test.mjs", "kind": "pinned-fixture", "why": "The ZIP64 case's archive digest is a HISTORICAL measurement over exact fixture bytes, and the stub profile's TeamName is among them. The test's own comment forbids re-baselining (\"Restoring the names is the fix rather than repasting node's new numbers\"), so the name in it is a frozen artefact, never printed and never rendered." },
     { "path": "sites/rajasekarselvam/", "kind": "personal-site", "why": "The founder's own site, a person's shop window and not the entity's (tooling/sites/chrome.mjs CHROME_ROOT says the same). It names the person, who stays the same through an entity change." }
   ],
   "floors": {
