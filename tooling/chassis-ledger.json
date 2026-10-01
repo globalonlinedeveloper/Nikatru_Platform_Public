@@ -567,6 +567,12 @@
       "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
     },
     {
+      "path": "store/windows-store/age-rating.json",
+      "lines": 52,
+      "verdict": "STAYS",
+      "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
+    },
+    {
       "path": "store/windows-store/category.txt",
       "lines": 1,
       "verdict": "STAYS",

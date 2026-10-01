@@ -1596,6 +1596,7 @@
   {
     "claims": [
       "ADR 066",
+      "ADR 078",
       "ADR 093",
       "M-11"
     ],
@@ -2461,6 +2462,18 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-stamp-wiring.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [
+      "ADR 068"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-store-audience.mjs",
     "references": [],
     "state": "WIRED"
   },

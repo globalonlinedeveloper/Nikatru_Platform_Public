@@ -372,7 +372,8 @@
       ],
       "windows-store": {
         "additionalFiles": [
-          "search-terms.txt"
+          "search-terms.txt",
+          "age-rating.json"
         ],
         "maxLines": {
           "search-terms.txt": {
@@ -2676,7 +2677,11 @@
       },
       "notes": [
         "A separate submission from iOS even though it shares an account, which is why it is a separate",
-        "row: one App Store Connect record per platform, one metadata tree, one review outcome.",
+        "row: one metadata tree and one review outcome per platform.",
+        "⏱ CORRECTED 2026-10-01 (O-APPLE-RECORD-COUNT-CONTRADICTED): this note said \"one App Store Connect record",
+        "per platform\". It is ONE record for iOS and macOS — apps/{app}/app.yaml gives both channels one recordId, and",
+        "tooling/ci/assert-store-identity.mjs fails an app whose two differ — so the age-rating answers are one file,",
+        "store/ios-appstore/age-rating.json, whose `channels` names both, and assert-store-audience.mjs pins it per channel.",
         "Same Xcode 26 floor as ios-appstore."
       ]
     },

@@ -20,6 +20,8 @@ import { join } from 'node:path';
 
 /** The catalogue directory, repo-relative. */
 export const CATALOG_DIR = 'catalog';
+/** The product register: one row per app, `{ slug, … }`. */
+export const APPS_REGISTER = 'catalog/apps.json';
 /** The bundle register: one row per feature set, `{ featureSet, version, status, members }`. */
 export const BUNDLES_REGISTER = 'catalog/bundles.json';
 /** The minted-membership lock: `featureSet@version` → the sorted member slugs, append-only. */
