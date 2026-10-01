@@ -69,17 +69,27 @@ jobs:
         run: node tooling/ci/assert-gate-passed.mjs ${{ github.sha }}
 
   prove:
-    name: An obfuscated Android crash, symbolicated by GlitchTip, against its known line
+    name: An obfuscated ${{ matrix.target }} crash, symbolicated by GlitchTip, against its known line
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     needs: gate
     permissions:
       contents: read
+    # why: ONE LEG PER TARGET (full review AA-06, row O-SYMBOLICATION-PROOF-ANDROID-ONLY). The proof ran
+    # android-x64 only, so no other target had ever had a Dart frame read back. Each leg is held against its
+    # own record, tooling/ops/symbolication-expectation.json `targets.<target>`; the targets with no leg are
+    # listed there as `none`, each with why. symbolication-proof.test.mjs holds this list to the `leg` entries.
+    # fail-fast off: one target's finding must not cancel another target's reading.
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [android-x64, linux-x64]
     # why: the gate's checked output, never inputs.app.
     env:
       APP: ${{ needs.gate.outputs.app }}
+      TARGET: ${{ matrix.target }}
       PROBE_SOURCE: live_probe/symbolication_crash_probe.dart
-      SYMBOLS_DIR: build/symbols/probe-android-x64
+      SYMBOLS_DIR: build/symbols/probe-${{ matrix.target }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -115,6 +125,7 @@ jobs:
       # the release lanes' flags, so the frame under test is shaped exactly as a
       # shipped build's. No upload key: this APK is debug-signed and ships nowhere.
       - name: Build the crash probe (obfuscated release apk)
+        if: ${{ matrix.target == 'android-x64' }}
         working-directory: apps/${{ needs.gate.outputs.app }}
         env:
           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
@@ -125,12 +136,36 @@ jobs:
           -t "$PROBE_SOURCE"
           --dart-define=GLITCHTIP_DSN="$GLITCHTIP_DSN"
 
+      # why: the Linux leg's toolchain is build-platforms.yml's, plus xvfb: a release bundle is a GTK
+      # window and needs a display to reach main(). The run step below is where it is used.
+      - name: Install the Linux desktop toolchain and a virtual display
+        if: ${{ matrix.target == 'linux-x64' }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            xvfb
+
+      # why: the same flags as the apk leg and the release lanes, so the frame under test is shaped as a
+      # shipped Linux bundle's. x64 is the runner's own architecture.
+      - name: Build the crash probe (obfuscated release Linux bundle)
+        if: ${{ matrix.target == 'linux-x64' }}
+        working-directory: apps/${{ needs.gate.outputs.app }}
+        env:
+          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+        run: >
+          flutter build linux --release
+          --obfuscate --split-debug-info="$SYMBOLS_DIR"
+          -t "$PROBE_SOURCE"
+          --dart-define=GLITCHTIP_DSN="$GLITCHTIP_DSN"
+
       # why: before any network call, for the reason build-platforms.yml gives:
       # a later failure must not take the only mapping of this build with it.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: symbols-symbolication-probe-android-x64
-          path: apps/${{ needs.gate.outputs.app }}/build/symbols/probe-android-x64
+          name: symbols-symbolication-probe-${{ matrix.target }}
+          path: apps/${{ needs.gate.outputs.app }}/build/symbols/probe-${{ matrix.target }}
           retention-days: 30
           if-no-files-found: error
 
@@ -168,6 +203,7 @@ jobs:
       # ANDROID_AVD_HOME, so it is set once for both, and the AVD is listed back
       # from the emulator's side before anything waits on it.
       - name: Boot an emulator, run the probe, capture logcat
+        if: ${{ matrix.target == 'android-x64' }}
         env:
           API_LEVEL: '34'
         run: |
@@ -287,6 +323,50 @@ jobs:
           grep -E "^[0-9-]+ [0-9:.]+ +${app_pid:-NO_PID} .*(Sentry|sentry|TrafficStats|okhttp|SSL|Unknown[Hh]ost|[Cc]onnect)" \
             "${RUNNER_TEMP}/logcat.txt" | tail -n 40 || echo "(none)"
 
+      # why: the Linux leg's probe prints its SYMPROBE| lines to stdout, which is written to the SAME path
+      # the android leg writes logcat to, so one extract step serves both. The phases are asserted in order
+      # as on android, and the bundle stays up after SENT (runApp) while the Dart transport sends.
+      - name: Run the probe under xvfb, capture its output
+        if: ${{ matrix.target == 'linux-x64' }}
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/logcat.txt"
+          bundle="apps/${APP}/build/linux/x64/release/bundle"
+          bin="$(find "$bundle" -maxdepth 1 -type f -perm -u+x | head -n 1)"
+          if [ -z "$bin" ]; then
+            ls -la "$bundle" || true
+            echo "::error title=Probe::no executable in ${bundle}"
+            exit 1
+          fi
+          xvfb-run -a -s "-screen 0 1280x800x24" "$bin" > "$out" 2>&1 &
+          probe_pid=$!
+          probe_why() {
+            echo "::error title=Probe::$1"
+            echo "── probe output (tail) ──"
+            tail -n 120 "$out" || true
+            kill "$probe_pid" 2>/dev/null || true
+            exit 1
+          }
+          wait_for() {
+            local what="$1" needle="$2" until_s=$((SECONDS + $3))
+            while :; do
+              if grep -qF "$needle" "$out"; then
+                echo "phase ok: ${what} (${SECONDS}s)"
+                return 0
+              fi
+              kill -0 "$probe_pid" 2>/dev/null || { grep -qF "$needle" "$out" && return 0; probe_why "${what}: the probe exited before \"${needle}\" appeared"; }
+              [ "$SECONDS" -gt "$until_s" ] && probe_why "${what}: \"${needle}\" not in the output within ${3}s"
+              sleep 3
+            done
+          }
+          wait_for "BEGIN (probe main ran)" "SYMPROBE|BEGIN " 60
+          wait_for "TRACE (the throw was caught and printed)" "SYMPROBE|TRACE-END" 60
+          wait_for "SENT (captureException returned)" "SYMPROBE|SENT " 120
+          # The Dart HTTP transport sends the envelope asynchronously; the bundle is still running.
+          sleep 20
+          kill "$probe_pid" 2>/dev/null || true
+          grep -F 'SYMPROBE|' "$out"
+
       - name: Extract the raw trace and this run's marker from logcat
         id: extract
         working-directory: apps/${{ needs.gate.outputs.app }}
@@ -310,7 +390,7 @@ jobs:
           nst="$(node -p "require('../../tooling/versions.json').native_stack_traces")"
           dart pub global activate native_stack_traces "$nst"
           dart pub global run native_stack_traces:decode translate \
-            -d "${SYMBOLS_DIR}/app.android-x64.symbols" \
+            -d "${SYMBOLS_DIR}/app.${TARGET}.symbols" \
             -i "${RUNNER_TEMP}/trace.txt" -o "${RUNNER_TEMP}/symbolized.txt"
           cat "${RUNNER_TEMP}/symbolized.txt"
 
@@ -332,6 +412,7 @@ jobs:
           GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
         run: >
           node ../../tooling/ops/symbolication-proof.mjs verdict
+          --target "$TARGET"
           --source "$PROBE_SOURCE"
           --trace "${RUNNER_TEMP}/trace.txt"
           --symbolized "${RUNNER_TEMP}/symbolized.txt"
@@ -343,7 +424,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: symbolication-proof-evidence
+          name: symbolication-proof-evidence-${{ matrix.target }}
           path: |
             ${{ runner.temp }}/logcat.txt
             ${{ runner.temp }}/trace.txt
@@ -355,7 +436,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Stop the emulator
-        if: always()
+        if: ${{ always() && matrix.target == 'android-x64' }}
         run: |
           adb="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/platform-tools/adb"
           [ -x "$adb" ] && timeout 30 "$adb" emu kill || true

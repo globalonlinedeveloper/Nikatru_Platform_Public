@@ -824,17 +824,35 @@ class _AccountDeletionNotice extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme scheme = theme.colorScheme;
-    final TextStyle? small = theme.textTheme.bodySmall?.copyWith(
-      color: scheme.onSurfaceVariant,
-    );
     final core.AccountDeletionOutcome? outcome = ref.watch(
       lastAccountDeletionOutcomeProvider,
     );
     final String? detail = ref.watch(lastAccountDeletionDetailProvider);
     final String? billing = ref.watch(lastDeletionBillingSentenceProvider);
     if (outcome == null) return const SizedBox.shrink();
+    // ⏱ ST truth pass (EN-16): a LIVE REGION. This notice appears on the
+    // sign-in screen the deletion lands on, and is the only place the outcome
+    // is said — a reader on the heading never heard it arrive.
+    return Semantics(
+      key: const Key('accountDeletionNoticeLive'),
+      container: true,
+      liveRegion: true,
+      child: _card(context, l10n, outcome, detail, ref),
+    );
+  }
+
+  Widget _card(
+    BuildContext context,
+    AppLocalizations l10n,
+    core.AccountDeletionOutcome outcome,
+    String? detail,
+    WidgetRef ref,
+  ) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final TextStyle? small = theme.textTheme.bodySmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
     return Container(
       key: E2EKeys.accountDeletionNotice,
       margin: const EdgeInsets.only(bottom: AppSpacing.lg),

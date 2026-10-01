@@ -202,10 +202,38 @@ class Subscription {
         : price.times(r.numerator).dividedBy(r.denominator);
   }
 
-  /// Whether this row's one renewal falls in [month] of [year]. The calendar's
-  /// list and its month total both ask this, so they cannot disagree.
-  bool renewsIn(int year, int month) =>
-      nextRenewal.year == year && nextRenewal.month == month;
+  /// Every charge this row makes from [from] to [to], both inclusive: the
+  /// [RecurrenceSchedule] chain [nextCharge] reads its first link from, so a
+  /// weekly plan charges four or five times in a month and a stored date three
+  /// months stale lands on its rolled day. A row with no cadence charges once,
+  /// on its stored date, when that falls inside.
+  ///
+  /// ⏱ ST truth pass (CA-01, IN-03). The calendar and the forecast used to
+  /// read the STORED date once — one dot for a weekly plan, a forecast month
+  /// for a quarterly plan only when its stored month came round.
+  List<DateTime> chargesBetween(DateTime from, DateTime to) {
+    final Cadence? c = cycle;
+    if (c != null && c.isValid) {
+      return RecurrenceSchedule.occurrencesBetween(nextRenewal, c, from, to);
+    }
+    final DateTime d = DateTime(
+      nextRenewal.year,
+      nextRenewal.month,
+      nextRenewal.day,
+    );
+    final bool inside =
+        !d.isBefore(DateTime(from.year, from.month, from.day)) &&
+        !d.isAfter(DateTime(to.year, to.month, to.day));
+    return inside ? <DateTime>[d] : const <DateTime>[];
+  }
+
+  /// The charges that fall in [month] of [year] ([chargesBetween]). The
+  /// calendar's dots, its list and its month total all read this.
+  List<DateTime> chargesIn(int year, int month) =>
+      chargesBetween(DateTime(year, month), DateTime(year, month + 1, 0));
+
+  /// Whether this row charges at all in [month] of [year].
+  bool renewsIn(int year, int month) => chargesIn(year, month).isNotEmpty;
 
   bool get isActive => !unused && usedPct > 60;
 

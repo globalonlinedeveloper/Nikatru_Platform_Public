@@ -1,18 +1,53 @@
 {
-  "groundTruth": "match",
-  "sink": "mismatch",
-  "recordedBy": "ADR 090",
-  "row": "O-GLITCHTIP-UPGRADE-SYMBOLICATION",
-  "broken": "GlitchTip does not symbolicate an obfuscated Flutter Android frame: the throw-site frame comes back with function=null, file=null, line=null, so every Flutter Android line number and function name GlitchTip displays is unreliable.",
-  "until": "a GlitchTip release containing upstream MR !2474 (\"fix(difs): Use debug_meta image_addr for native symbolication\", merged 2026-08-15, in no release as of 2026-09-20) is installed on the box that serves GlitchTip",
-  "triageInstead": "decode the build's kept symbols-* artifact with the pinned native_stack_traces (tooling/versions.json), never the GlitchTip frame",
-  "evidence": {
-    "run": "35470727346",
-    "event": "ce8754f619d1408c93e01a371a4938ea",
-    "group": "39",
-    "glitchtipVersion": "6.2.6",
-    "measuredOn": "2026-09-20",
-    "artifact": "symbolication-proof-evidence (symbolication-report.json)"
+  "targets": {
+    "android-x64": {
+      "proof": "leg",
+      "groundTruth": "match",
+      "sink": "mismatch",
+      "recordedBy": "ADR 090",
+      "row": "O-GLITCHTIP-UPGRADE-SYMBOLICATION",
+      "broken": "GlitchTip does not symbolicate an obfuscated Flutter Android frame: the throw-site frame comes back with function=null, file=null, line=null, so every Flutter Android line number and function name GlitchTip displays is unreliable.",
+      "until": "a GlitchTip release containing upstream MR !2474 (\"fix(difs): Use debug_meta image_addr for native symbolication\", merged 2026-08-15, in no release as of 2026-09-20) is installed on the box that serves GlitchTip",
+      "triageInstead": "decode the build's kept symbols-* artifact with the pinned native_stack_traces (tooling/versions.json), never the GlitchTip frame",
+      "evidence": {
+        "run": "35470727346",
+        "event": "ce8754f619d1408c93e01a371a4938ea",
+        "group": "39",
+        "glitchtipVersion": "6.2.6",
+        "measuredOn": "2026-09-20",
+        "artifact": "symbolication-proof-evidence (symbolication-report.json)"
+      }
+    },
+    "linux-x64": {
+      "proof": "leg",
+      "groundTruth": "unmeasured",
+      "sink": "unmeasured",
+      "recordedBy": "full review AA-06 (2026-10-01)",
+      "row": "O-SYMBOLICATION-PROOF-ANDROID-ONLY",
+      "broken": "No Dart frame from an obfuscated Linux build has ever been read back from GlitchTip. Its .symbols go through the same debug-file path measured broken on Android (ADR 090), so until this leg is recorded, treat every Linux line number GlitchTip shows as unproven.",
+      "until": "the first dispatch of this leg is recorded here: both readings, and that run as evidence",
+      "triageInstead": "decode the build's kept symbols-* artifact with the pinned native_stack_traces (tooling/versions.json), never the GlitchTip frame"
+    },
+    "windows-x64": {
+      "proof": "none",
+      "row": "O-SYMBOLICATION-PROOF-ANDROID-ONLY",
+      "why": "no leg yet. The probe's raw trace reaches the verdict through its printed output, and a release Windows runner is a GUI-subsystem .exe whose printed output has no capture path measured here (Flutter's runner attaches a console only in some launch modes). A windows-2025 leg that captures it is the next step; it is not added untested."
+    },
+    "macos-arm64": {
+      "proof": "none",
+      "row": "O-SYMBOLICATION-PROOF-ANDROID-ONLY",
+      "why": "no leg yet. A hosted macos runner can run the release .app, so this is unwritten rather than impossible; it is not added untested because a leg nobody has dispatched is a second unknown on top of the first."
+    },
+    "ios-arm64": {
+      "proof": "none",
+      "row": "O-SYMBOLICATION-PROOF-ANDROID-ONLY",
+      "why": "not provable on a hosted runner: a release (AOT, obfuscated) Flutter build does not run on the iOS simulator, which runs JIT debug builds only, and no physical device is reachable from GitHub-hosted runners. iOS line numbers in GlitchTip stay UNPROVEN, and triage decodes the kept symbols-* artifact offline."
+    },
+    "web": {
+      "proof": "none",
+      "row": "O-SYMBOLICATION-PROOF-ANDROID-ONLY",
+      "why": "a different mechanism, not a missing leg: a web frame is resolved by an uploaded SOURCE MAP (tooling/ops/upload-web-sourcemaps.mjs), not by a .symbols file, and nothing here decodes it offline. Source maps are stored and read back on every deploy, but a RESOLVED web frame has never been observed; a web leg belongs with the built-artifact smoke, which already boots the bundle."
+    }
   },
   "_why": [
     "WHAT THE PROOF ASSERTS IS THE RECORDED STATE, NOT AN IDEAL ONE. This file is that",
@@ -51,6 +86,16 @@
     "[ADR 090] with the run id. The proof then goes green with no banner, and that green does",
     "mean symbolication works. If instead the sink matches while this file still says",
     "\"mismatch\", the verdict exits 1 and says exactly that — good news is still a change, and",
-    "a change still has to be recorded before the check calls it normal."
+    "a change still has to be recorded before the check calls it normal.",
+    "",
+    "⏱ 2026-10-01 · ONE RECORD PER TARGET (full review AA-06, row O-SYMBOLICATION-PROOF-ANDROID-ONLY).",
+    "Everything above is the android-x64 record, unchanged and now under `targets.android-x64`. The proof",
+    "ran android-x64 only, while iOS, macOS, Windows and Linux ship .symbols through the same debug-file",
+    "path, so nothing said which targets had ever had a Dart frame read back. Each target a graded",
+    "Flutter channel ships is now listed: a `leg` is a matrix leg of symbolication-proof.yml, held",
+    "against its record, or `unmeasured` until its first run is written here (that run exits 1 and says",
+    "what to write); a `none` says why no hosted runner proves it, and its `row` owns closing it.",
+    "tooling/ci/test/symbolication-proof.test.mjs holds the matrix to exactly the `leg` targets and every",
+    "graded Flutter channel's platform to an entry here, so neither can drift from the other."
   ]
 }

@@ -37,10 +37,21 @@ void main() {
 
   // 🔴 THE DISTINCTION THAT MATTERS. Collapsing "Dart errors" and "native
   // crashes" is how a portfolio believes it has crash reporting and does not:
-  // on desktop Windows/Linux the exact failure a user calls "it just closed"
-  // produces NO report at all.
-  test('desktop Windows and Linux catch NO native crashes', () {
+  // the exact failure a user calls "it just closed" is a native one.
+  //
+  // ⏱ 2026-10-01 · full review AA-08. Until today this file said Android, iOS
+  // and macOS DO catch native crashes. They would have — the pinned SDK's
+  // handler is on by default — but nothing uploads the symbols that make such
+  // a report readable (no dSYM, PDB, NDK or R8 mapping), and a native event
+  // never passes the Dart-side PII scrub. TelemetryBootstrap now turns the
+  // handler off (`enableNativeCrashHandling = false`, plus the Android NDK's
+  // manifest switch), so NO target reports a native crash, and each says why.
+  test('no target reports native crashes: the native layer is off by decision',
+      () {
     for (final TargetPlatform p in <TargetPlatform>[
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+      TargetPlatform.macOS,
       TargetPlatform.windows,
       TargetPlatform.linux,
     ]) {
@@ -52,28 +63,16 @@ void main() {
       expect(
         c.nativeCrashes,
         isFalse,
-        reason: 'sentry_flutter ships no native crash handler for desktop '
-            '$p — claiming otherwise hides the failure users actually hit',
+        reason: 'TelemetryBootstrap sets enableNativeCrashHandling = false, '
+            'so claiming $p reports native crashes hides the failure users '
+            'actually hit',
       );
-      expect(c.note, isNotEmpty);
+      expect(c.note, contains('enableNativeCrashHandling'),
+          reason: '$p must name the switch that decides it');
     }
   });
 
-  test('mobile and macOS DO catch native crashes', () {
-    for (final TargetPlatform p in <TargetPlatform>[
-      TargetPlatform.android,
-      TargetPlatform.iOS,
-      TargetPlatform.macOS,
-    ]) {
-      expect(
-        TelemetryCapabilities.forPlatform(p, isWeb: false).nativeCrashes,
-        isTrue,
-        reason: '$p should have a native handler',
-      );
-    }
-  });
-
-  test('web reports Dart/JS errors but has no native crash concept', () {
+  test('web reports Dart errors but has no native crash concept', () {
     final TelemetryCapabilities web = TelemetryCapabilities.forPlatform(
       TargetPlatform.android,
       isWeb: true,

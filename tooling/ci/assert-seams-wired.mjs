@@ -1460,6 +1460,8 @@ try {
   // said so.
   const BOOTSTRAP = 'packages/telemetry/lib/src/telemetry_bootstrap.dart';
   const bootstrapPath = join(repo, ...BOOTSTRAP.split('/'));
+  /** The bootstrap with comments stripped, or null when it is gone (refused here). */
+  let bootstrapSrc = null;
   if (!existsSync(bootstrapPath)) {
     coverageLost(`${BOOTSTRAP} is gone, so the session-tracking check is watching a file that no longer exists.`);
   } else {
@@ -1468,6 +1470,7 @@ try {
     const src = readFileSync(bootstrapPath, 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, ' ')
       .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    bootstrapSrc = src;
     if (!/enableAutoSessionTracking\s*=\s*false/.test(src)) {
       fail(
         `${BOOTSTRAP} does not set \`options.enableAutoSessionTracking = false\`. The SDK default is ON and ` +
@@ -1478,6 +1481,138 @@ try {
       ok('crash health — session tracking is OFF, so no metric implies a denominator GlitchTip cannot supply');
     }
   }
+
+  // ── …and every graded Flutter channel DECLARES what its sink carries ──────
+  // ⏱ 2026-10-01 · O-CRASHSINK-DECLARATION-UNGRADED (full review AA-09). The
+  // register's `crashSink {layers, native, note}` was read for extension rows
+  // only (the NO DART note above). ios-appstore, macos-appstore and
+  // linux-appimage were graded release builds with no crashSink at all, so the
+  // one place a reader learns WHAT reaches GlitchTip from a target — the Dart
+  // layer, the native layer, or nothing — was optional prose that nothing read,
+  // against the rule that a register field earns JSON only when a guard reads it.
+  // The subject is the census's graded channels: every channel with a release
+  // build this limb holds to GLITCHTIP_DSN owes the declaration of what it sends.
+  const sinkRows = new Map();
+  for (const b of graded) sinkRows.set(b.row.id, b.row);
+  const sinkDefect = (cs) => {
+    if (cs === null || typeof cs !== 'object' || Array.isArray(cs)) return 'declares no `crashSink`';
+    if (!Array.isArray(cs.layers) || cs.layers.some((l) => typeof l !== 'string')) return '`crashSink.layers` is not an array of layer names';
+    // The limb above just proved the build supplies GLITCHTIP_DSN, so a graded
+    // Flutter row that does not name the Dart layer contradicts its own lane.
+    if (!cs.layers.includes('dart')) return '`crashSink.layers` does not name "dart", yet its release build supplies GLITCHTIP_DSN';
+    if (typeof cs.native !== 'boolean') return '`crashSink.native` is not true or false';
+    if (typeof cs.note !== 'string' || cs.note.trim() === '') return '`crashSink.note` is empty';
+    return null;
+  };
+  let sinksDeclared = 0;
+  for (const row of sinkRows.values()) {
+    const why = sinkDefect(row.crashSink);
+    if (why === null) {
+      sinksDeclared++;
+      continue;
+    }
+    fail(
+      `channel \`${row.id}\` has a census-graded release build and ${why}. Each graded Flutter channel says in ` +
+        'tooling/channel-register.json `crashSink {layers, native, note}` which layers reach GlitchTip from that target ' +
+        'and, in the note, why the native layer is what it is — the per-target decision a reader cannot recover from the code.',
+    );
+  }
+  if (sinkRows.size > 0 && sinksDeclared === sinkRows.size) {
+    ok(`crash sink declared — ${sinkRows.size} graded Flutter channel(s) each carry crashSink {layers, native, note}: ${[...sinkRows.keys()].sort().join(', ')}`);
+  }
+
+  // ── …and `native` is TRUE OF THE SDK, not a hope ────────────────────────
+  // ⏱ 2026-10-01 · full review AA-08. Every Flutter row said `native: false`
+  // while the pinned sentry_flutter (9.26.0, sentry_flutter_options.dart:53)
+  // defaults `enableNativeCrashHandling = true` and nothing turned it off — so
+  // native crashes were probably SENT: unsymbolicated (no dSYM, PDB, NDK or R8
+  // upload exists) and outside the Dart-side PII scrub, which is a `beforeSend`
+  // in Dart that a native event never passes through. The decision is OFF on
+  // every target (packages/telemetry/lib/src/telemetry_bootstrap.dart says why),
+  // and this limb holds the register and the code to the same answer:
+  //  · a row saying native:false needs the bootstrap to set the flag false;
+  //  · a row saying native:true contradicts a bootstrap that does;
+  //  · an ANDROID row saying native:false also needs the NDK handler off. The
+  //    Dart flag reaches sentry-android's JVM handler and ANR watchdog only
+  //    (sentry_native_java_init.dart); the NDK signal handler — where a crash in
+  //    libflutter.so or a plugin's .so lands — is switched by the
+  //    `io.sentry.ndk.enable` meta-data, which SentryAndroid.init reads from the
+  //    app's manifest before the Dart options are applied.
+  const nativeOff = [...sinkRows.values()].filter((r) => r.crashSink?.native === false);
+  const nativeOn = [...sinkRows.values()].filter((r) => r.crashSink?.native === true);
+  if (bootstrapSrc !== null && sinkRows.size > 0) {
+    const handlerOff = /enableNativeCrashHandling\s*=\s*false/.test(bootstrapSrc);
+    let nativeOk = true;
+    if (nativeOff.length && !handlerOff) {
+      nativeOk = false;
+      fail(
+        `${BOOTSTRAP} does not set \`options.enableNativeCrashHandling = false\`, and ${nativeOff.length} graded channel(s) declare ` +
+          `crashSink.native=false: ${nativeOff.map((r) => r.id).sort().join(', ')}. The SDK default is ON, so those rows ` +
+          'claim the absence of a native layer the app is actually shipping — unsymbolicated and past the Dart PII scrub.',
+      );
+    }
+    for (const r of handlerOff ? nativeOn : []) {
+      nativeOk = false;
+      fail(
+        `channel \`${r.id}\` declares crashSink.native=true, and ${BOOTSTRAP} turns native crash handling OFF ` +
+          '(`enableNativeCrashHandling = false`). Either the row or the bootstrap is wrong; a native layer needs its symbol upload and its own scrub before it is turned back on.',
+      );
+    }
+    const androidOff = nativeOff.filter((r) => Array.isArray(r.platforms) && r.platforms.includes('android'));
+    const MANIFEST = 'android/app/src/main/AndroidManifest.xml';
+    const manifestsRead = [];
+    if (androidOff.length) {
+      for (const app of APP_SET) {
+        const rel = `${app.dir}/${MANIFEST}`;
+        const abs = join(repo, ...rel.split('/'));
+        if (!existsSync(abs)) {
+          console.log(`note ⬜ ${app.dir} has no ${MANIFEST}, so it builds no Android artifact for an NDK handler to run in.`);
+          continue;
+        }
+        manifestsRead.push(rel);
+        if (!ndkSwitchedOff(readFileSync(abs, 'utf8'))) {
+          nativeOk = false;
+          fail(
+            `${rel} does not carry \`<meta-data android:name="io.sentry.ndk.enable" android:value="false"/>\` inside <application>, ` +
+              `and ${androidOff.map((r) => r.id).sort().join(', ')} declare crashSink.native=false. enableNativeCrashHandling does not reach ` +
+              "sentry-android's NDK signal handler; only that manifest switch does. Copy it from apps/subscriptiontracker's manifest.",
+          );
+        }
+      }
+      if (manifestsRead.length === 0) {
+        nativeOk = false;
+        coverageLost(
+          `no app in the workspace set has an ${MANIFEST}, so whether the NDK crash handler is off — which ` +
+            `${androidOff.map((r) => r.id).sort().join(', ')} declare — was checked against nothing.`,
+        );
+      }
+    }
+    if (nativeOk && nativeOff.length) {
+      ok(
+        `native layer decided OFF — ${nativeOff.length} graded channel(s) declare native=false and ${BOOTSTRAP} sets enableNativeCrashHandling = false` +
+          (manifestsRead.length ? `; io.sentry.ndk.enable=false in ${manifestsRead.join(', ')}` : ''),
+      );
+    } else if (nativeOk) {
+      ok(`native layer — every graded channel declares native=true and ${BOOTSTRAP} leaves the native handler on`);
+    }
+  }
+}
+
+/** Whether an AndroidManifest switches sentry-android's NDK handler off: a
+ *  `<meta-data android:name="io.sentry.ndk.enable" android:value="false">` that
+ *  sits inside `<application>` (the only place Android reads application
+ *  meta-data from), with XML comments stripped so prose about it does not count. */
+function ndkSwitchedOff(xml) {
+  const src = xml.replace(/<!--[\s\S]*?-->/g, ' ');
+  const open = src.search(/<application[\s>]/);
+  const close = src.indexOf('</application>');
+  if (open < 0 || close < open) return false;
+  for (const m of src.slice(open, close).matchAll(/<meta-data\b[^>]*>/g)) {
+    const name = /android:name\s*=\s*"([^"]*)"/.exec(m[0])?.[1];
+    const value = /android:value\s*=\s*"([^"]*)"/.exec(m[0])?.[1];
+    if (name === 'io.sentry.ndk.enable' && value === 'false') return true;
+  }
+  return false;
 }
 
 if (problems.length) {
