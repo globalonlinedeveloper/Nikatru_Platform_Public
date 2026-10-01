@@ -126,9 +126,9 @@ app.use('*', corsMiddleware);
 // ── WHY THESE FOUR DEPENDENCIES AND NOT OTHERS ───────────────────────────────
 //   PLATFORM_DB    the shared entitlements DB. Every authenticated read and the
 //                  whole analytics rail land here.
-//   CONFIG_KV      GET /config/:app reads it UNGUARDED (routes/config.ts:67 —
-//                  no try/catch), so a KV that refuses turns the FIRST request
-//                  every launching app makes into a 500.
+//   CONFIG_KV      GET /config/:app reads it (routes/config.ts:77), so a KV that
+//                  refuses turns the FIRST request every launching app makes
+//                  into a 503 config_unavailable (a 500 before rv2-services-013).
 //   SUPABASE_JWKS  the document every ES256 verification rests on. When it
 //                  fails, DELETE /v1/account 401s for everybody while the Worker
 //                  itself is perfectly well — invisible to any status check.

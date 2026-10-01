@@ -599,7 +599,7 @@
       },
       "d1_databases": [
         {
-          // why: src/types.ts:13 and the /v1/health probe (src/index.ts:164).
+          // why: src/types.ts:13 and the /v1/health probe (src/index.ts:167).
           // `platform_db_sandbox`, created 2026-09-23 and EMPTY. This Worker is
           // its sole migration applier, as at the top level.
           "binding": "PLATFORM_DB",
@@ -609,22 +609,23 @@
         }
       ],
       "kv_namespaces": [
-        // why: REQUIRED — src/types.ts:18; src/routes/config.ts:52 reads it
-        // unguarded and /v1/health probes it (src/index.ts:172), so an absent
-        // binding 500s config and reports the Worker unhealthy.
+        // why: REQUIRED — src/types.ts:18; src/routes/config.ts:77 reads it
+        // and /v1/health probes it (src/index.ts:178), so an absent binding
+        // 503s config and reports the Worker unhealthy.
         // `platform-config-sandbox`, created 2026-09-24.
         { "binding": "CONFIG_KV", "id": "7ba3a916f8a5429091dec4a39284bffb" }
       ],
       "ratelimits": [
         {
-          // why: src/routes/money.ts:93 and src/routes/receipts.ts:260. The
+          // why: src/routes/money.ts:115 and src/routes/receipts.ts:303. The
           // top level's MONEY_CEILING_LIMITER (1004), same limit.
           "name": "MONEY_CEILING_LIMITER",
           "namespace_id": "1006",
           "simple": { "limit": 120, "period": 60 }
         },
         {
-          // why: src/routes/events.ts:257 and :369, src/routes/report.ts:127.
+          // why: src/routes/events.ts:257 and :369, src/routes/report.ts:127,
+          // src/routes/reminders.ts:100 and src/routes/calendar.ts:86.
           // The top level's EVENTS_LIMITER (1001), same limit.
           "name": "EVENTS_LIMITER",
           "namespace_id": "1007",
@@ -638,14 +639,14 @@
           "simple": { "limit": 600, "period": 60 }
         },
         {
-          // why: src/routes/config.ts:48. The top level's
+          // why: src/routes/config.ts:71. The top level's
           // CONFIG_CEILING_LIMITER (1003), same limit.
           "name": "CONFIG_CEILING_LIMITER",
           "namespace_id": "1009",
           "simple": { "limit": 1200, "period": 60 }
         },
         {
-          // why: src/routes/fx.ts:31. The top level's FX_CEILING_LIMITER
+          // why: src/routes/fx.ts:35. The top level's FX_CEILING_LIMITER
           // (1015), same limit.
           "name": "FX_CEILING_LIMITER",
           "namespace_id": "1016",

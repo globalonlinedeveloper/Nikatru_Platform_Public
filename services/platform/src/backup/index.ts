@@ -48,13 +48,20 @@ import { APP_KV, APP_TARGETS } from '../generated/app-targets';
  *
  * ⏱ 2026-10-01 · THE SPEND NO LONGER GROWS WITH THE TABLE COUNT. It was one
  * query per table and reached 37 of 42 (ops-watch run 36810231743: platform_db
- * 29, subscriptiontracker_db 8). A database now costs four statements — the
+ * 29, subscriptiontracker_db 8). A database then cost four statements — the
  * catalogue, one column read, one size read and one read of every table at
  * once (dump.ts) — up to TABLES_PER_READ tables, plus a round only when one
  * table's volume passes a page. MEASURED that day against both production
  * databases through dumpD1Database itself: 4 + 4 = 8 of 42 (19%), 30 and 8
  * tables, 1,775 and 45 rows, nothing truncated. The nightly number is the
  * `d1-budget` heartbeat row.
+ *
+ * ⏱ 2026-10-01 · review of #1108: the size read is gone (pages are keyset and
+ * capped in bytes, dump.ts), so a database costs THREE statements plus a round
+ * per page of volume — 3 + 3 = 6 of 42, MEASURED 2026-10-01 (review of #1118)
+ * against both production databases with every page at LIMIT 0. That counts
+ * statements: a LIMIT 0 page finishes every table in one round, and today's
+ * 1,775 and 45 rows fit one page a table.
  */
 export const MAX_D1_QUERIES_PER_RUN = 42;
 
@@ -66,8 +73,8 @@ export const MAX_D1_QUERIES_PER_RUN = 42;
  *   Its job is to go red while the export is still COMPLETE, so the pool is
  *   raised, or the REST export built (dump.ts header), before a night truncates.
  *   8 of 42 is 19%, under it; what can now cross it is row VOLUME (a table past
- *   a page), not a migration adding a table, and that is a warning with room
- *   left, not a partial backup.
+ *   a page — D1_PAGE_ROWS rows or D1_PAGE_BYTES bytes), not a migration adding
+ *   a table, and that is a warning with room left, not a partial backup.
  */
 export const D1_BUDGET_WARN_PERCENT = 80;
 
