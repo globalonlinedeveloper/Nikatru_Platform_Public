@@ -17,6 +17,8 @@
 // with the field.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,6 +31,7 @@ import '../../data/models/budget_info.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
+import '../../state/subscriptions_controller.dart';
 
 /// The stored budget, read through the repository. Invalidated by a save, so
 /// the card on Insights re-reads what was written rather than what was typed.
@@ -160,6 +163,15 @@ class _BudgetEditorState extends ConsumerState<BudgetEditor> {
     }
     if (!mounted) return;
     ref.invalidate(budgetProvider);
+    // ST-I2 (audit C14): a new budget can put the SAME subscriptions over it,
+    // so the reminders are re-synced, which re-reads the budget and arms or
+    // cancels the over-budget alert. Only when the list is already alive:
+    // reading `.notifier` otherwise would start a fetch for a save.
+    if (ref.exists(subscriptionsControllerProvider)) {
+      unawaited(
+        ref.read(subscriptionsControllerProvider.notifier).resyncReminders(),
+      );
+    }
     Navigator.of(context).pop();
   }
 

@@ -486,6 +486,8 @@
   "rateAppUnavailable": "இந்தப் பதிப்பிலிருந்து ஸ்டோரைத் திறக்க முடியவில்லை.",
   "sendFeedback": "கருத்தை அனுப்பு",
   "feedbackMailSubject": "{appName} கருத்து",
+  "overBudgetTitle": "மாத பட்ஜெட்டைத் தாண்டிவிட்டீர்கள்",
+  "overBudgetBody": "உங்கள் சந்தாக்கள் இப்போது மாதம் சராசரியாக {spent} — உங்கள் {budget} பட்ஜெட்டை விட அதிகம்.",
   "categoryStreaming": "ஸ்ட்ரீமிங்",
   "categoryMusic": "இசை",
   "categoryAiTools": "AI கருவிகள்",

@@ -2423,6 +2423,24 @@
       }
     }
   },
+  "overBudgetTitle": "Over your monthly budget",
+  "@overBudgetTitle": {
+    "description": "ST-I2 (audit C14): the title of the notification posted when the monthly subscription average passes the budget the user set on Insights."
+  },
+  "overBudgetBody": "Your subscriptions now average {spent} a month, over your {budget} budget.",
+  "@overBudgetBody": {
+    "description": "ST-I2 (audit C14): the over-budget notification body. {spent} is the monthly average in the budget’s currency, {budget} the budget, both already formatted.",
+    "placeholders": {
+      "spent": {
+        "type": "String",
+        "example": "₹5,400"
+      },
+      "budget": {
+        "type": "String",
+        "example": "₹5,000"
+      }
+    }
+  },
   "categoryStreaming": "Streaming",
   "@categoryStreaming": {
     "description": "ST-X8 (audit C6): the display name of the category whose id is \"Streaming\"."
