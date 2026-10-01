@@ -54,6 +54,14 @@ class _Network implements ApiClient {
   Future<void> deleteSubscription(String id) async => _down();
   @override
   Future<List<PaymentRecord>> getPaymentHistory(String id) async => _down();
+  // NO-10 · "Mark as paid": not exercised by this suite.
+  @override
+  Future<void> recordPayment(
+    String id, {
+    required core.Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async => _down();
   @override
   Future<BudgetInfo> getBudget() async => _down();
   @override

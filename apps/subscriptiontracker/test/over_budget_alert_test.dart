@@ -59,6 +59,7 @@ const MoneyFormatter _money = MoneyFormatter('en', emptyCurrencyCode: 'USD');
 
 ({RecordingSeam seam, RenewalReminders svc}) _build({
   TargetPlatform platform = TargetPlatform.android,
+  bool isWeb = false,
   DateTime? now,
 }) {
   final RecordingSeam seam = RecordingSeam();
@@ -66,7 +67,7 @@ const MoneyFormatter _money = MoneyFormatter('en', emptyCurrencyCode: 'USD');
     seam: seam,
     svc: RenewalReminders.forTesting(
       platform: platform,
-      isWeb: false,
+      isWeb: isWeb,
       service: seam,
       now: () => now ?? _morning,
     ),
@@ -228,9 +229,11 @@ void main() {
       },
     );
 
-    test('where nothing can be scheduled (Linux) it does nothing', () async {
+    // ⏱ 2026-10-01 · NO-04: this read Linux, which schedules now; web is the
+    // target that cannot.
+    test('where nothing can be scheduled (web) it does nothing', () async {
       final ({RecordingSeam seam, RenewalReminders svc}) b = _build(
-        platform: TargetPlatform.linux,
+        isWeb: true,
       );
       await b.svc.syncOverBudget(
         budget: _budget(5000),

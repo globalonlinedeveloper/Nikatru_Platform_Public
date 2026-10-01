@@ -65,8 +65,12 @@ import 'package:subscriptiontracker/features/settings/settings_screen.dart';
 // derives its expectation from the same source the widget reads.
 import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
+import 'package:subscriptiontracker/services/notifications/notification_service.dart'
+    show RenewalReminders;
 import 'package:subscriptiontracker/state/money_providers.dart';
 import 'package:subscriptiontracker/state/providers.dart';
+import 'package:subscriptiontracker/state/settings_controller.dart'
+    show settingsControllerProvider;
 
 import 'support/mock_auth_repository.dart';
 
@@ -192,8 +196,10 @@ ProviderContainer _container(
   _MemStore store, {
   core.AuthRepository? auth,
   core.NotificationService? notifications,
+  List<Override> overrides = const <Override>[],
 }) => ProviderContainer(
   overrides: <Override>[
+    ...overrides,
     keyValueStoreProvider.overrideWith((_) async => store),
     // This user has accepted the current terms. Stated, not defaulted: a
     // signed-in user with no acceptance on record is sent to /reaccept-terms by
@@ -212,6 +218,15 @@ ProviderContainer _container(
       notificationServiceProvider.overrideWithValue(notifications),
   ],
 );
+
+/// The web row's capabilities (no notifications, no schedule) — the target
+/// the catch-up nudge exists for, which `kIsWeb` keeps out of a platform
+/// override's reach (HO-09).
+List<Override> _webCaps() => <Override>[
+  renewalRemindersProvider.overrideWithValue(
+    RenewalReminders.forTesting(isWeb: true),
+  ),
+];
 
 /// A container that has already seen onboarding.
 ///
@@ -3065,10 +3080,16 @@ void main() {
     testWidgets('a platform that cannot schedule still respects the opt-out', (
       WidgetTester tester,
     ) async {
-      // ⏱ 2026-09-28 (ST-R4): Linux, not Windows — Windows schedules now.
-      await onPlatform(TargetPlatform.linux, () async {
-        final ProviderContainer c = _container(_MemStore());
+      // ⏱ 2026-10-01 (NO-04): a WEB-capability fake, not Linux — Linux
+      // schedules now (this package's ledger), as Windows does since ST-R4.
+      await onPlatform(TargetPlatform.android, () async {
+        // HO-09: the opt-out is "Renewal alerts", not the retired daily
+        // switch launch forces off.
+        final _MemStore store = _MemStore();
+        store.data['nikatru.settings'] = '{"prefs":{"alerts":false}}';
+        final ProviderContainer c = _container(store, overrides: _webCaps());
         addTearDown(c.dispose);
+        await c.read(settingsControllerProvider.notifier).hydration;
 
         await pumpBanner(
           tester,
@@ -3089,13 +3110,12 @@ void main() {
     testWidgets('dismissing it persists, and it does not come back today', (
       WidgetTester tester,
     ) async {
-      // ⏱ 2026-09-28 (ST-R4): Linux, not Windows — Windows schedules now.
-      await onPlatform(TargetPlatform.linux, () async {
+      // ⏱ 2026-10-01 (NO-04): a WEB-capability fake, not Linux — Linux
+      // schedules now (this package's ledger), as Windows does since ST-R4.
+      await onPlatform(TargetPlatform.android, () async {
         final _MemStore store = _MemStore();
-        store.data['nikatru.reminders_enabled'] = 'true';
-        final ProviderContainer c = _container(store);
+        final ProviderContainer c = _container(store, overrides: _webCaps());
         addTearDown(c.dispose);
-        c.read(remindersEnabledProvider);
         await tester.pump();
 
         final DateTime now = DateTime(2026, 8, 3, AppConfig.reminderHour, 30);
@@ -3120,10 +3140,10 @@ void main() {
     testWidgets('it comes back for TOMORROW\'s reminder', (
       WidgetTester tester,
     ) async {
-      // ⏱ 2026-09-28 (ST-R4): Linux, not Windows — Windows schedules now.
-      await onPlatform(TargetPlatform.linux, () async {
+      // ⏱ 2026-10-01 (NO-04): a WEB-capability fake, not Linux — Linux
+      // schedules now (this package's ledger), as Windows does since ST-R4.
+      await onPlatform(TargetPlatform.android, () async {
         final _MemStore store = _MemStore();
-        store.data['nikatru.reminders_enabled'] = 'true';
         store.data['nikatru.last_nudge_shown_at'] = DateTime(
           2026,
           8,
@@ -3131,9 +3151,8 @@ void main() {
           AppConfig.reminderHour,
           30,
         ).toUtc().toIso8601String();
-        final ProviderContainer c = _container(store);
+        final ProviderContainer c = _container(store, overrides: _webCaps());
         addTearDown(c.dispose);
-        c.read(remindersEnabledProvider);
         c.read(catchUpNudgeProvider);
         await tester.pump();
 
