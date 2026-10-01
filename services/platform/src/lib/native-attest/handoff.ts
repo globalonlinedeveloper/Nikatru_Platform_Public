@@ -39,10 +39,14 @@
 //     the redirect_uri must equal the minted one BYTE FOR BYTE.
 //   · SINGLE-USE: its nonce is redeemed into native_attest_redeemed (the table
 //     challenges already use, pruned by expiry) — AFTER the PKCE check, so only a
-//     holder of the verifier can spend it, and exactly once.
+//     holder of the verifier can spend it, and exactly once. A GoTrue fault AFTER
+//     that gives the nonce back (releaseNonce), so a retry is not "used".
+//   · REVOCABLE: "sign out everywhere", or a revoke of the session that minted it,
+//     refuses a code minted before it (⏱ 2026-10-02, review of #1133, finding 2).
 //   · Every exchange failure answers the SAME body, so nothing tells expired from
 //     reused from mismatched (routes/native-auth.ts).
 // ─────────────────────────────────────────────────────────────────────────────
+import { revocationKey, revocationRefusal } from '../../../../_shared/src/auth';
 import type { Env } from '../../types';
 import { b64url, fromB64url, sha256 } from './bytes';
 import { redeemNonce } from './index';
@@ -127,12 +131,13 @@ interface Payload {
   n: string; // nonce, 16 bytes base64url
   c: string; // S256 code_challenge
   r: string; // base64url SHA-256(redirect_uri)
+  s?: string; // the minting token's GoTrue `session_id`, when it carried one
 }
 
 /** Mints a code for `user` on `app`. STATELESS: nothing is written. */
 export async function mintHandoffCode(
   env: Env,
-  o: { app: string; user: string; redirectUri: string; codeChallenge: string; now: number },
+  o: { app: string; user: string; sessionId?: string; redirectUri: string; codeChallenge: string; now: number },
 ): Promise<string> {
   const secret = secretOf(env);
   if (!secret) throw new Error('NATIVE_ATTEST_CHALLENGE_KEY is not set');
@@ -143,6 +148,7 @@ export async function mintHandoffCode(
     n: b64url(crypto.getRandomValues(new Uint8Array(16))),
     c: o.codeChallenge,
     r: b64url(await sha256(o.redirectUri)),
+    ...(typeof o.sessionId === 'string' && o.sessionId !== '' ? { s: o.sessionId } : {}),
   };
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const sealed = new Uint8Array(
@@ -169,6 +175,7 @@ async function openCode(env: Env, code: string): Promise<Payload | null> {
     const p = JSON.parse(new TextDecoder().decode(plain)) as Partial<Payload>;
     if (typeof p.a !== 'string' || typeof p.u !== 'string' || typeof p.e !== 'number' || typeof p.n !== 'string') return null;
     if (typeof p.c !== 'string' || typeof p.r !== 'string') return null;
+    if (p.s !== undefined && typeof p.s !== 'string') return null;
     return p as Payload;
   } catch {
     return null;
@@ -176,17 +183,42 @@ async function openCode(env: Env, code: string): Promise<Payload | null> {
 }
 
 /** Why an exchange was refused — for the log line only; the caller always answers one body. */
-export type HandoffRefusal = 'shape' | 'not-ours' | 'other-client' | 'expired' | 'redirect' | 'pkce' | 'used';
+export type HandoffRefusal = 'shape' | 'not-ours' | 'other-client' | 'expired' | 'redirect' | 'pkce' | 'revoked' | 'used';
+
+/**
+ * ⏱ 2026-10-02 — WAS THE CODE'S USER SIGNED OUT AFTER IT WAS MINTED? (review of
+ * #1133, finding 2: a code minted before "sign out everywhere" redeemed for up to
+ * NATIVE_HANDOFF_CODE_TTL_SECONDS, into a session that sign-out never covered.)
+ * It reads `rev:<user>` and asks the ONE decision every carrier asks
+ * (_shared/src/auth.ts revocationRefusal), with the code's MINT time standing in
+ * for `iat` and the minting session for `session_id`: a `before` later than the
+ * mint, or the minting session listed in `sids`, refuses it.
+ * Fails OPEN, as the carriers do (middleware/auth.ts sessionRevoked): an unbound
+ * namespace or a failed read admits, and the worst case is the behaviour before.
+ */
+async function revokedSinceMint(env: Env, p: Payload): Promise<boolean> {
+  const kv = env.SESSION_REVOKED;
+  if (!kv) return false;
+  let record: unknown;
+  try {
+    record = await kv.get(revocationKey(p.u), 'json');
+  } catch {
+    return false;
+  }
+  return revocationRefusal({ iat: p.e - NATIVE_HANDOFF_CODE_TTL_SECONDS, session_id: p.s }, record) !== null;
+}
 
 /**
  * Redeems a code, IN THIS ORDER: the shape, the seal, the app, the expiry, the
- * redirect (byte for byte), the PKCE verifier — all pure — and only then the
- * nonce, which a second presentation finds. Answers the user id, or the refusal.
+ * redirect (byte for byte), the PKCE verifier — all pure — then the revocation
+ * record, and only then the nonce, which a second presentation finds. Answers the
+ * user id and the spent nonce (the caller gives it back after a GoTrue fault, with
+ * releaseNonce), or the refusal.
  */
 export async function redeemHandoffCode(
   env: Env,
   o: { app: string; code: unknown; verifier: unknown; redirectUri: unknown; now: number },
-): Promise<{ ok: true; user: string } | { ok: false; why: HandoffRefusal }> {
+): Promise<{ ok: true; user: string; nonce: string } | { ok: false; why: HandoffRefusal }> {
   if (typeof o.code !== 'string' || !isVerifier(o.verifier) || typeof o.redirectUri !== 'string') return { ok: false, why: 'shape' };
   const p = await openCode(env, o.code);
   if (!p) return { ok: false, why: 'not-ours' };
@@ -195,6 +227,7 @@ export async function redeemHandoffCode(
   if (exp <= o.now || exp > o.now + (NATIVE_HANDOFF_CODE_TTL_SECONDS + 60) * 1000) return { ok: false, why: 'expired' };
   if (p.r !== b64url(await sha256(o.redirectUri))) return { ok: false, why: 'redirect' };
   if ((await s256(o.verifier)) !== p.c) return { ok: false, why: 'pkce' };
+  if (await revokedSinceMint(env, p)) return { ok: false, why: 'revoked' };
   if (!(await redeemNonce(env, o.app, p.n, exp, o.now))) return { ok: false, why: 'used' };
-  return { ok: true, user: p.u };
+  return { ok: true, user: p.u, nonce: p.n };
 }

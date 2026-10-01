@@ -104,6 +104,8 @@ export function createNativeHandoff(apps: readonly string[]): Hono<AppEnv> {
     const code = await mintHandoffCode(c.env, {
       app,
       user: c.get('userId') as string,
+      // sealed in, so a revoke of THIS session refuses the code (handoff.ts revokedSinceMint)
+      sessionId: c.get('sessionId'),
       redirectUri: body.redirect_uri,
       codeChallenge: body.code_challenge,
       now: Date.now(),
