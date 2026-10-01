@@ -241,7 +241,13 @@ describe('scan-dependencies — the REAL tree', () => {
   test('every lockfile format the real tree tracks has a canary, and the set is not empty', () => {
     const real = trackedLockfiles(REPO);
     assert.ok(real.length > 0, 'git ls-files found no lockfile in the real tree — this case reads nothing');
-    assert.ok(real.includes('pnpm-lock.yaml') && real.includes('pubspec.lock') && real.includes('sites/_shared/package-lock.json'), real.join(', '));
+    // ⏱ 2026-10-01 · DERIVED, NEVER NAMED. This line used to require `pnpm-lock.yaml` by name, and
+    // #1102 retired pnpm the same morning #1095 landed: each PR was green alone and main went red
+    // together. The expected set is now a SECOND, independent `git ls-files` read — one pathspec
+    // per LOCKFILE_NAMES entry — so a package-manager switch moves both sides at once.
+    const byPathspec = spawnSync('git', ['ls-files', '-z', '--', ...[...LOCKFILE_NAMES].flatMap((n) => [n, `**/${n}`])], { cwd: REPO, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    assert.equal(byPathspec.status, 0, byPathspec.stderr);
+    assert.deepEqual(real, [...new Set(byPathspec.stdout.split('\0').filter(Boolean))].sort());
     for (const f of new Set(real.map((p) => p.split('/').pop()))) assert.ok(CANARIES.has(f), `the real tree tracks ${f} with no canary`);
   });
 

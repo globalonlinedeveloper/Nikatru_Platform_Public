@@ -22,6 +22,15 @@ import {
   REFUSAL_STEPS,
   gradeRefusal,
   runRefusalLeg,
+  REFUSAL_LIMITS,
+  REFUSAL_RETRIES,
+  REFUSAL_SLOT_MS,
+  TARGETS,
+  legCost,
+  legsPerSlot,
+  refusalSchedule,
+  refusalSlot,
+  retryAfterMs,
 } from '../../e2e/native_auth_proof.mjs';
 import { PROOF_LOG_END as END, resolveProofLogConsent } from '../../e2e/consent_anon_id.mjs';
 import { jobEnv, parseWorkflow, workflowSteps } from '../workflow-scan.mjs';
@@ -280,6 +289,173 @@ describe('native_auth_proof --expect-refusal — the leg proves the gate', () =>
       writeFileSync(join(root, rel), text);
     }
     assert.deepEqual(ungatedDeviceSteps(root).found, ['.github/workflows/native-auth-proof.yml android: "Boot an emulator" runs in refusal mode']);
+  });
+});
+
+// ⏱ 2026-10-01 (fourth review of #1070): the Sunday refusal legs of every app
+// fire at one cron minute from runners that share networks, and the platform
+// Worker's per-network limiters count them as ONE caller. These cases hold the
+// stagger that keeps a third app's legs under those budgets, and the 429 wait.
+describe('native_auth_proof --expect-refusal — the legs share the per-network budget', () => {
+  /** The `"simple": { "limit": N, "period": P }` of [binding] in the platform Worker's top-level config. */
+  const wranglerLimit = (binding) => {
+    const text = readFileSync(join(REPO, 'services', 'platform', 'wrangler.jsonc'), 'utf8');
+    const at = text.indexOf(`"name": "${binding}"`);
+    assert.notEqual(at, -1, `services/platform/wrangler.jsonc declares no ${binding}`);
+    const m = /"simple":\s*\{\s*"limit":\s*(\d+),\s*"period":\s*(\d+)\s*\}/.exec(text.slice(at, at + 400));
+    assert.ok(m, `${binding}: no "simple" limit within its entry`);
+    return { limit: Number(m[1]), period: Number(m[2]) };
+  };
+
+  test('the budgets are the platform Worker\'s own, read from services/platform/wrangler.jsonc', () => {
+    for (const l of REFUSAL_LIMITS) {
+      assert.deepEqual(wranglerLimit(l.binding), { limit: l.limit, period: l.period }, `${l.binding} drifted from the Worker's config`);
+      assert.equal(l.period * 1000, REFUSAL_SLOT_MS, `${l.binding}: a slot is one limiter period`);
+    }
+    // One leg: a challenge + an op per attested step, an op per bare one.
+    assert.equal(legCost(REFUSAL_LIMITS[0]), REFUSAL_STEPS.length + REFUSAL_STEPS.filter((x) => x.kind).length);
+    assert.equal(legsPerSlot(), 2);
+  });
+
+  test('the schedule: apps in order, targets in TARGETS order, at most legsPerSlot() legs a slot', () => {
+    const apps = ['alpha', 'bravo', 'charlie'];
+    const schedule = refusalSchedule(apps);
+    assert.equal(schedule.length, apps.length * TARGETS.length);
+    const perSlot = new Map();
+    for (const l of schedule) perSlot.set(l.slot, (perSlot.get(l.slot) ?? 0) + 1);
+    assert.ok([...perSlot.values()].every((n) => n <= legsPerSlot()));
+    assert.deepEqual(refusalSlot(apps, 'alpha', 'android'), { slot: 0, slots: 8 });
+    assert.deepEqual(refusalSlot(apps, 'charlie', 'linux'), { slot: 7, slots: 8 });
+    assert.equal(refusalSlot(apps, 'delta', 'linux'), null);
+  });
+
+  /**
+   * Three simulated apps, five targets each, every leg through the REAL runRefusalLeg
+   * and probeRefusals on a virtual clock. Each runner starts somewhere in the two
+   * minutes before the anchor; each call takes 400 ms. Every call is stamped with its
+   * limiters, then each limiter's busiest sliding period is counted.
+   */
+  async function simulate(apps, { stagger }) {
+    const anchor = 1_800_000_000_000;
+    const calls = [];
+    const quiet = { log() {}, error() {} };
+    let leg = 0;
+    for (const app of apps) {
+      for (const target of TARGETS) {
+        let clock = anchor - 120_000 + ((leg++ * 7919) % 100_000);
+        const doFetch = async (url, init) => {
+          clock += 400;
+          const kind = init.headers['X-NK-Attest-Kind'] ?? null;
+          const challenge = url.endsWith('/attest/challenge');
+          const spent = ['NATIVE_AUTH_EDGE_LIMITER'];
+          if (!challenge && kind === 'install-key') spent.push('NATIVE_AUTH_UNATTESTED_LIMITER');
+          if (!challenge && kind === 'play-integrity') spent.push('NATIVE_AUTH_PLAY_VERIFY_LIMITER');
+          calls.push({ t: clock, spent, app });
+          if (challenge) return new Response(JSON.stringify({ challenge: `c1.${app}.1.x.y`, expires_in: 120 }), { status: 200 });
+          return new Response(JSON.stringify({ code: 401, error_code: 'attestation_invalid', msg: 'x' }), { status: 401 });
+        };
+        const o = { app, target, ...(stagger ? { staggerAnchor: String(anchor), staggerApps: JSON.stringify(apps) } : {}) };
+        const code = await runRefusalLeg(o, {
+          env: { E2E_EMAIL: 'e', E2E_PASSWORD: 'p' },
+          probe: (a, opts) => probeRefusals(a, { ...opts, doFetch, origin: 'https://platform.test', sleep: async (ms) => { clock += ms; }, out: quiet }),
+          egress: async () => {},
+          out: quiet,
+          now: () => clock,
+          sleep: async (ms) => { clock += ms; },
+        });
+        assert.equal(code, 0, `${app}/${target} did not grade clean`);
+      }
+    }
+    const busiest = {};
+    for (const l of REFUSAL_LIMITS) {
+      const ts = calls.filter((c) => c.spent.includes(l.binding)).map((c) => c.t).sort((a, b) => a - b);
+      let max = 0;
+      for (let i = 0, j = 0; i < ts.length; i++) {
+        while (ts[i] - ts[j] >= l.period * 1000) j++;
+        max = Math.max(max, i - j + 1);
+      }
+      busiest[l.binding] = max;
+    }
+    return { busiest, calls };
+  }
+
+  test('🔴 PROOF: three simulated apps, staggered, never exceed any per-network budget in any sliding minute', async () => {
+    const { busiest, calls } = await simulate(['alpha', 'bravo', 'charlie'], { stagger: true });
+    assert.equal(calls.length, 3 * TARGETS.length * legCost(REFUSAL_LIMITS[0]));
+    for (const l of REFUSAL_LIMITS) {
+      assert.ok(busiest[l.binding] <= l.limit, `${l.binding}: ${busiest[l.binding]} calls in one sliding minute, over its ${l.limit}`);
+    }
+    // The third app is not squeezed out: its legs run, and run after the other two's.
+    const charlie = calls.filter((c) => c.app === 'charlie').map((c) => c.t);
+    const alpha = calls.filter((c) => c.app === 'alpha').map((c) => c.t);
+    assert.ok(Math.min(...charlie) > Math.max(...alpha));
+  });
+
+  test('🔴 RED CONTROL: the same three apps UNSTAGGERED overrun the budgets — the 429 the stagger exists for', async () => {
+    const { busiest } = await simulate(['alpha', 'bravo', 'charlie'], { stagger: false });
+    assert.ok(busiest.NATIVE_AUTH_EDGE_LIMITER > 60, `edge: ${busiest.NATIVE_AUTH_EDGE_LIMITER}`);
+    assert.ok(busiest.NATIVE_AUTH_UNATTESTED_LIMITER > 10, `unattested: ${busiest.NATIVE_AUTH_UNATTESTED_LIMITER}`);
+  });
+
+  test('a 429 over_request_rate_limit is waited out (Retry-After) and the step re-asked; its final answer is graded', async () => {
+    let first = true;
+    const waits = [];
+    const doFetch = async (url) => {
+      if (url.endsWith('/attest/challenge')) return new Response(JSON.stringify({ challenge: 'c1.demoapp.1.x.y' }), { status: 200 });
+      if (first) {
+        first = false;
+        return new Response(JSON.stringify({ code: 429, error_code: 'over_request_rate_limit', msg: 'x' }), { status: 429, headers: { 'Retry-After': '30' } });
+      }
+      return new Response(JSON.stringify({ code: 401, error_code: 'attestation_required', msg: 'x' }), { status: 401 });
+    };
+    const answers = await probeRefusals('demoapp', { email: 'e', password: 'p', doFetch, origin: 'https://platform.test', sleep: async (ms) => waits.push(ms), out: { log() {} } });
+    assert.deepEqual(gradeRefusal(answers), []);
+    assert.deepEqual(waits, [30_000]);
+  });
+
+  test('🔴 RED: a 429 that outlasts the retries is graded — it is not an attestation refusal', async () => {
+    const waits = [];
+    const doFetch = async () =>
+      new Response(JSON.stringify({ code: 429, error_code: 'over_request_rate_limit', msg: 'x' }), { status: 429 });
+    const answers = await probeRefusals('demoapp', { email: 'e', password: 'p', doFetch, origin: 'https://platform.test', sleep: async (ms) => waits.push(ms), out: { log() {} } });
+    assert.match(gradeRefusal(answers).join('\n'), /answered HTTP 429 with error_code "over_request_rate_limit", not an attestation refusal/);
+    assert.equal(waits.length, REFUSAL_STEPS.length * REFUSAL_RETRIES);
+    assert.equal(retryAfterMs(null), 60_000);
+    assert.equal(retryAfterMs('9999'), 120_000);
+  });
+
+  test('a stagger that cannot place the leg refuses (exit 2, log finished) — it never probes early', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'nk-refusal-stagger-'));
+    const log = join(dir, 'p.log');
+    writeFileSync(log, 'native_auth_proof: demoapp/android — flutter test output follows\n');
+    let probed = false;
+    const code = await runRefusalLeg(
+      { app: 'demoapp', target: 'android', staggerAnchor: '1800000000000', staggerApps: '["other"]' },
+      { log, env: { E2E_EMAIL: 'e', E2E_PASSWORD: 'p' }, probe: async () => { probed = true; return []; }, egress: async () => {}, out: { log() {}, error() {} } },
+    );
+    assert.equal(code, 2);
+    assert.equal(probed, false);
+    assert.match(readFileSync(log, 'utf8'), new RegExp(`${END} flutter_exit=none mode=expect-refusal exit=2 refused=stagger`));
+  });
+
+  test('WORKFLOW-SCAN: every e2e.yml refusal leg passes the stagger, from prepare\'s one anchor', () => {
+    const wf = parseWorkflow(REPO, '.github/workflows/e2e.yml');
+    let legs = 0;
+    for (const job of wf.jobs.values()) {
+      for (const line of job.logical) {
+        const text = typeof line === 'string' ? line : line.text;
+        if (!/tooling\/e2e\/native_auth_proof\.mjs[^\n]*--expect-refusal/.test(text)) continue;
+        legs++;
+        assert.match(text, /--stagger-anchor "\$REFUSAL_ANCHOR" --stagger-apps "\$REFUSAL_APPS"/, `e2e.yml job ${job.name}: ${text.trim()}`);
+        const env = jobEnv(job);
+        assert.equal(env.get('REFUSAL_ANCHOR')?.value, '${{ needs.prepare.outputs.refusal_anchor }}');
+        assert.equal(env.get('REFUSAL_APPS')?.value, '${{ needs.prepare.outputs.apps }}');
+      }
+    }
+    // Two run blocks: the non-Linux step, and the Linux step whose one block holds both of its invocations.
+    assert.ok(legs >= 2, `the scan found ${legs} refusal run block(s) in e2e.yml — fewer than two means it stopped reaching them`);
+    assert.equal((readFileSync(join(REPO, '.github/workflows/e2e.yml'), 'utf8').match(/--expect-refusal --stagger-anchor "\$REFUSAL_ANCHOR" --stagger-apps "\$REFUSAL_APPS"/g) ?? []).length, 3);
+    assert.match(readFileSync(join(REPO, '.github/workflows/e2e.yml'), 'utf8'), /refusal_anchor: \$\{\{ steps\.workspace\.outputs\.refusal_anchor \}\}/);
   });
 });
 

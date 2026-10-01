@@ -41,7 +41,12 @@ import {
   verifyEntries,
   assetFiles,
   nativeAuthRefusals,
+  manualUploadStore,
+  withheldFormats,
+  releaseOwed,
+  SHA256_PIN,
 } from '../release-manifest.mjs';
+import { PIN_SHAPE } from '../assert-apps-gov-in-apk.mjs';
 import { parseWorkflow, workflowSteps, shellSegments } from '../workflow-scan.mjs';
 // ⚠️ NOTHING IS IMPORTED FROM assert-release-durable.mjs, deliberately. That file
 // runs its whole scan at module scope (it has no `import.meta.url` direct-invocation
@@ -885,7 +890,7 @@ describe('release-manifest.mjs — the derivations', () => {
 //        this bullet too, so a plain count of it returns 7 and not 6:
 //        `grep -cE "assert.*omitted \{2\}"` = 6, and `grep -nE` names all six.)
 //        ⚠️ ONE member of this family
-//        is NOT loose-able: `/all 2 matching direct channel\(s\)/` relaxed to
+//        is NOT loose-able: `/all 2 matching origin channel\(s\)/` ("direct" until 2026-10-01) relaxed to
 //        `all \d matching` unpins `all ${omitted.length}` in release-manifest.mjs
 //        — measured, that pair goes GREEN. The digit is the assertion.
 //      · the `\.` escapes in `/The release holds: README\.md, notes\.txt, …/`.
@@ -1392,7 +1397,9 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     // the filter `[1]` is the empty string between the two lines.
     assert.equal(
       r.stderr.trim().split(/\r?\n/).filter(Boolean)[1],
-      'no [10]D-9 record for this release: all 1 matching direct channel(s) were omitted above.'
+      // ⏱ 2026-10-01 — "origin", not "direct": apps-gov-in is a store, and it is omitted here
+      // while its pin is null (O-APPS-GOV-IN-APK-HAS-NO-ORIGIN-ROW).
+      'no [10]D-9 record for this release: all 1 matching origin channel(s) were omitted above.'
       + ' The assets are published; nothing is recorded as deployed through an identity that does not exist.',
       r.stderr,
     );
@@ -1545,7 +1552,7 @@ describe('release-manifest.mjs — origin channels are gated on signing posture'
     // count to a literal `1` alone is red at 85/1. This is the only case in the
     // file that withholds more than one row, so it is the only place the count
     // can be read at all.
-    assert.match(h.stderr, /all 2 matching direct channel\(s\) were omitted above/, h.stderr);
+    assert.match(h.stderr, /all 2 matching origin channel\(s\) were omitted above/, h.stderr);
   });
 
   test('MATCHED-AND-WITHHELD and MATCHED-NOTHING are different empties, and only one fails', () => {
@@ -1820,6 +1827,8 @@ describe('release-manifest.mjs — the expected-format set is DERIVED, not typed
     // set below grows with this one rather than staying behind it.
     // ⏱ 2026-09-24 — `.apk` left with the declared extra; the `apps-gov-in` row that
     // accepts it has no lane (O-RELEASE-RECORD-GUESSES-CHANNEL-FROM-EXTENSION).
+    // ⏱ 2026-10-01 — it has one now (linux_web_android), and the `.apk` stays out of this
+    // set while its pin is null: WITHHELD, not owed (O-APPS-GOV-IN-APK-HAS-NO-ORIGIN-ROW).
     // ⏱ 2026-09-24 — and every app-store format left with `storeOnlyFormats`: .aab,
     // .ipa, .pkg and .snap are taken only by submittable stores, .msix only by
     // windows-store once windows-direct is ruled out. `.zip` stays: the extension
@@ -2555,15 +2564,25 @@ describe('release-manifest.mjs — the CLI refuses rather than producing a hollo
     assert.match(r.stderr, /Every format a lane on surface "app" emits is store-only: \.aab, \.ipa, \.msix, \.pkg, \.snap/);
   });
 
-  test('--emit-environments still refuses a release carrying an installer no origin row takes — the apps.gov.in .apk today', () => {
+  // ⏱ INVERTED 2026-10-01 (O-APPS-GOV-IN-APK-HAS-NO-ORIGIN-ROW). This case was "still refuses a
+  // release carrying an installer no origin row takes — the apps.gov.in .apk today": exit 1. The
+  // apps-gov-in row is an origin now, so on the LIVE register (pin null) the .apk MATCHES and is
+  // withheld for its posture — exit 0, the reason on stderr, nothing recorded. The refusal itself
+  // is still held: by "…with the row NOT declared `submittable: false`, is the undeclared gap
+  // again: exit 1" in the apps.gov.in describe below, on the same Release with the pin set.
+  test('--emit-environments: the apps.gov.in .apk on the LIVE register (pin null) is matched and withheld as UNPINNED — exit 0, nothing recorded', () => {
     const d = join(TMP, `d${seq++}`);
     mkdirSync(d, { recursive: true });
     writeFileSync(join(d, 'release.json'), 'x');
     writeFileSync(join(d, 'subscriptiontracker-v1.0.0-subscriptiontracker.apk'), 'x');
     const r = cli(['--emit-environments', d, '--app', 'subscriptiontracker']);
-    assert.equal(r.code, 1, r.out);
-    assert.equal(r.stdout, '');
-    assert.match(r.out, /no `kind: "direct"` and no `surface: "extension"` channel/);
+    assert.equal(r.code, 0, r.out);
+    assert.equal(r.stdout, '', 'an unminted key may not reach the record step\'s word list');
+    assert.equal(
+      r.stderr.trim().split(/\r?\n/).filter(Boolean)[0],
+      'omitted  subscriptiontracker-apps-gov-in — channel "apps-gov-in" signing posture is UNPINNED: signing.signingCertificate.sha256 is null: no key is pinned yet.',
+      r.stderr,
+    );
   });
 
   test('--emit-environments refuses the empty a lane OWES — a lane-backed format a Release carries, and none is here', () => {
@@ -2908,6 +2927,23 @@ describe('the record step fails when --emit-environments refuses', () => {
     namesAreRecorded('.github/workflows/build-platforms.yml');
   });
 
+  // ⏱ 2026-10-01 — O-APPS-GOV-IN-APK-HAS-NO-ORIGIN-ROW. record-deployment.mjs refuses a store
+  // record with no --state, and refuses `pending_manual_publish` on any row that is not
+  // `submittable: false`. So the apps.gov.in origin record carries that state and a direct
+  // row's carries none. The stub prints EVERY argument, so the state is read, not assumed.
+  test('build-platforms.yml: <app>-apps-gov-in is recorded `--state pending_manual_publish`, and any other name with no state', () => {
+    const script = recordScript('.github/workflows/build-platforms.yml');
+    const r = spawnSync('bash', ['--noprofile', '--norc', '-e', '-c', `${STUB.replace('echo "RECORDED $2"', 'echo "RECORDED $*"')}\n${script}`], {
+      encoding: 'utf8',
+      env: { ...process.env, EMIT_EXIT: '0', EMIT_OUT: 'subscriptiontracker-apps-gov-in subscriptiontracker-linux-appimage', APP: 'subscriptiontracker', RELEASE_URL: 'https://example.invalid/r' },
+    });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.deepEqual(r.stdout.split('\n').filter((l) => l.startsWith('RECORDED ')), [
+      'RECORDED tooling/ci/record-deployment.mjs subscriptiontracker-apps-gov-in https://example.invalid/r --state pending_manual_publish',
+      'RECORDED tooling/ci/record-deployment.mjs subscriptiontracker-linux-appimage https://example.invalid/r',
+    ]);
+  });
+
   test('extensions.yml: the producer exits 1, so the step exits non-zero and records nothing', () => {
     refusalFailsTheStep('.github/workflows/extensions.yml');
   });
@@ -2992,6 +3028,161 @@ describe('release-manifest.mjs — the extension surface is an origin too', () =
     assert.deepEqual(r.environments, []);
     assert.equal(r.omitted.length, 1);
     assert.equal(r.omitted[0].state, 'undeclared');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · O-APPS-GOV-IN-APK-HAS-NO-ORIGIN-ROW — THE apps.gov.in .apk HAS AN
+// ORIGIN ENVIRONMENT, AND ITS ROW A LANE, BEFORE THE OWNER SETS THE PIN. The owner
+// mints the key and the lead pastes its fingerprint into
+// `apps-gov-in.signing.signingCertificate.sha256`; from that run on, the release job
+// downloads the uploadable .apk and stages it. Before this, no row took an .apk as an
+// origin, so the pre-publish `--emit-environments` refused that Release (exit 1).
+// Every case below reads the LIVE register, with only the pin changed, so the day
+// the pin drops in is the day these fixtures describe.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('release-manifest.mjs — the apps.gov.in .apk is a manual-upload origin', () => {
+  const BP = '.github/workflows/build-platforms.yml';
+  const PIN = Array(32).fill('AB').join(':');
+  const live = () => JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8'));
+  const agiOf = (register) => register.channels.find((c) => c.id === 'apps-gov-in');
+  const withPin = (pin) => {
+    const r = live();
+    agiOf(r).signing.signingCertificate.sha256 = pin;
+    return r;
+  };
+  const APK = 'subscriptiontracker-v1.0.0-subscriptiontracker-apps-gov-in-1.0.7.apk';
+  const releaseDir = () => {
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'release.json'), 'x');
+    writeFileSync(join(d, APK), 'apk bytes');
+    return d;
+  };
+  const emit = (register) => cli(['--emit-environments', releaseDir(), '--app', 'subscriptiontracker', '--repo-root', fixture({ register, apps: ['subscriptiontracker'] })]);
+
+  test('the LIVE row: a store declared `submittable: false`, its lane the job that emits the .apk, its environment `{app}-apps-gov-in`', () => {
+    const row = agiOf(live());
+    assert.equal(manualUploadStore(row), true);
+    assert.deepEqual({ workflow: row.lane?.workflow, job: row.lane?.job }, { workflow: BP, job: 'linux_web_android' });
+    assert.equal(row.deploymentEnvironment, '{app}-apps-gov-in');
+    assert.deepEqual(row.artifactFormats, ['.apk']);
+  });
+
+  test('PIN SET: a Release carrying the apps.gov.in .apk exits 0 from --emit-environments and names <app>-apps-gov-in, alone, on stdout', () => {
+    const r = emit(withPin(PIN));
+    assert.equal(r.code, 0, r.out);
+    assert.equal(r.stdout, 'subscriptiontracker-apps-gov-in\n', 'stdout is the record step\'s word list');
+    assert.equal(r.stderr, '', 'nothing was withheld, so nothing is explained');
+  });
+
+  test('…the same Release and pin, with the row NOT declared `submittable: false`, is the undeclared gap again: exit 1', () => {
+    // The discriminating half of the case above: only the declaration changed. A row
+    // that forgot the field is never an origin, because record-deployment.mjs would
+    // refuse its `pending_manual_publish` (`cannotSubmit` reads `=== false` too).
+    for (const [label, mutate] of [
+      ['submittable: true', (row) => { row.submittable = true; }],
+      ['submittable absent', (row) => { delete row.submittable; }],
+    ]) {
+      const reg = withPin(PIN);
+      mutate(agiOf(reg));
+      const r = emit(reg);
+      assert.equal(r.code, 1, `${label}\n${r.out}`);
+      assert.equal(r.stdout, '', label);
+      assert.match(r.stderr, /no `kind: "direct"` and no `surface: "extension"` channel, and no store a person uploads to by hand, in tooling\/channel-register\.json declares a format this release carries\./, label);
+    }
+  });
+
+  test('PIN NULL (the live register): the .apk is matched and WITHHELD as UNPINNED — exit 0, nothing recorded, the reason whole', () => {
+    const r = emit(live());
+    assert.equal(r.code, 0, r.out);
+    assert.equal(r.stdout, '');
+    assert.deepEqual(r.stderr.trim().split(/\r?\n/).filter(Boolean), [
+      'omitted  subscriptiontracker-apps-gov-in — channel "apps-gov-in" signing posture is UNPINNED: signing.signingCertificate.sha256 is null: no key is pinned yet.',
+      'no [10]D-9 record for this release: all 1 matching origin channel(s) were omitted above. The assets are published; nothing is recorded as deployed through an identity that does not exist.',
+    ]);
+  });
+
+  test('manualUploadStore reads `submittable === false` and nothing looser', () => {
+    assert.equal(manualUploadStore({ kind: 'store', submittable: false }), true);
+    for (const row of [{ kind: 'store', submittable: true }, { kind: 'store' }, { kind: 'store', submittable: null }, { kind: 'store', submittable: 0 }, { kind: 'direct', submittable: false }, null, undefined]) {
+      assert.equal(manualUploadStore(row), false, JSON.stringify(row));
+    }
+  });
+
+  test('the pin is read in the FINGERPRINT vocabulary: a colon-form SHA-256 is pinned, null is UNPINNED, anything else is no pin block', () => {
+    assert.deepEqual(signingPosture(agiOf(withPin(PIN))), { state: 'pinned', detail: '1 pinned signing-material block(s), none on a sentinel' });
+    assert.deepEqual(signingPosture(agiOf(live())), { state: 'unpinned', detail: 'signing.signingCertificate.sha256 is null: no key is pinned yet' });
+    // A value assert-apps-gov-in-apk.mjs would refuse as COVERAGE LOST is never a pin here either.
+    for (const bad of [PIN.toLowerCase(), PIN.replace(/:/g, ''), `${PIN}:AB`, 'APPS-GOV-IN-KEY-NOT-MINTED', ['AB'], 42]) {
+      assert.equal(signingPosture(agiOf(withPin(bad))).state, 'undeclared', JSON.stringify(bad));
+    }
+    // A key that is not there is not a null: an ABSENT `sha256` is no pin block.
+    const absent = live();
+    delete agiOf(absent).signing.signingCertificate.sha256;
+    assert.equal(signingPosture(agiOf(absent)).state, 'undeclared');
+    // A sentinel still on its placeholder outranks an unpinned null: both withhold, the sentinel names the field to fill.
+    const both = { signing: { keyKind: 'k', a: { ...CONFIGURED_PIN, sha256: SENTINEL }, b: { sha256: null } } };
+    assert.equal(signingPosture(both).state, 'sentinel');
+    // The two readers of the pin agree on its shape: this one decides the record, that one compares the signer.
+    assert.equal(SHA256_PIN.source, PIN_SHAPE.source);
+  });
+
+  test('PIN NULL: the lane emits the .apk and no Release is owed it — build-platforms.yml expects nothing, and the .apk is named WITHHELD', () => {
+    const reg = live();
+    assert.deepEqual([...expectedReleaseFormats(reg, BP)], []);
+    const withheld = withheldFormats(reg, { forWorkflow: BP });
+    assert.deepEqual([...withheld.keys()], ['.apk']);
+    assert.deepEqual(withheld.get('.apk'), ['"apps-gov-in" signing posture is UNPINNED: signing.signingCertificate.sha256 is null: no key is pinned yet']);
+    const owed = releaseOwed(reg, 'app');
+    assert.deepEqual(owed.owed, []);
+    assert.equal(owed.noneOwed, true);
+    assert.ok(owed.laneBacked.has('.apk'), 'the lane DOES emit the .apk; it is owed nothing, which is a different fact');
+    assert.ok(!storeOnlyFormats(reg, 'app').has('.apk'), 'and it is never store-only: --stage takes it the day the pin is set');
+  });
+
+  test('PIN SET: the same lane OWES the .apk — build-platforms.yml expects it, and nothing is withheld', () => {
+    const reg = withPin(PIN);
+    assert.deepEqual([...expectedReleaseFormats(reg, BP)], ['.apk']);
+    assert.equal(withheldFormats(reg, { forWorkflow: BP }).size, 0);
+    assert.deepEqual(releaseOwed(reg, 'app').owed, ['.apk']);
+    assert.equal(releaseOwed(reg, 'app').noneOwed, false);
+  });
+
+  test('a format another lane row is owed NOW is never withheld', () => {
+    const reg = live();
+    reg.channels.push({ id: 'apk-direct', kind: 'direct', surface: 'app', artifactFormats: ['.apk'], lane: { workflow: BP, job: 'linux_web_android' }, deploymentEnvironment: '{app}-apk-direct' });
+    assert.equal(withheldFormats(reg, { forWorkflow: BP }).size, 0);
+    assert.deepEqual([...expectedReleaseFormats(reg, BP)], ['.apk']);
+  });
+
+  test('CLI, PIN NULL: --verify --expect-formats --for-workflow build-platforms.yml over a dist with no .apk is the declared empty, and names the withheld .apk', () => {
+    const root = fixture({ register: live(), apps: ['subscriptiontracker'] });
+    const d = join(TMP, `d${seq++}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'subscriptiontracker-v1-linux.tar.gz'), 'tgz');
+    assert.equal(cli(['--write', d, '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1', '--sha', '93aee1d']).code, 0);
+    const r = cli(['--verify', d, '--expect-formats', '--for-workflow', BP, '--repo-root', root]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /the register expects no release format of \.github\/workflows\/build-platforms\.yml: every format its lanes emit is store-only \(\.aab, \.ipa, \.msix, \.pkg\)/);
+    assert.match(r.out, /^--  withheld until its channel's signing identity exists, so not expected yet: \.apk \("apps-gov-in" signing posture is UNPINNED: signing\.signingCertificate\.sha256 is null: no key is pinned yet\)\.$/m);
+    // …and PIN SET, the same dist is a release SHORT the .apk.
+    const pinnedRoot = fixture({ register: withPin(PIN), apps: ['subscriptiontracker'] });
+    const p = cli(['--verify', d, '--expect-formats', '--for-workflow', BP, '--repo-root', pinnedRoot]);
+    assert.equal(p.code, 1, p.out);
+    assert.match(p.out, /is missing 1 expected release format\(s\): \.apk\./);
+  });
+
+  test('CLI, PIN NULL: --stage over a download tree with no installer says none is owed, and names the withheld .apk on its own line', () => {
+    const root = fixture({ register: live(), apps: ['subscriptiontracker'] });
+    const from = join(TMP, `s${seq++}`);
+    mkdirSync(join(from, 'subscriptiontracker-linux'), { recursive: true });
+    writeFileSync(join(from, 'subscriptiontracker-linux', 'subscriptiontracker'), 'elf');
+    const r = cli(['--stage', from, '--out', join(TMP, `o${seq++}`), '--stamps', join(TMP, `t${seq++}`), '--app', 'subscriptiontracker', '--tag', 'subscriptiontracker-v1', '--ref-type', 'tag', '--repo-root', root]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.stdout, /^ {2}Every format a lane on surface "app" emits is store-only: \.aab, \.ipa, \.msix, \.pkg, \.snap \(derived from tooling\/channel-register\.json\)\.$/m);
+    assert.match(r.stdout, /^ {2}Withheld until its channel's signing identity exists, so no Release is owed it yet: \.apk \("apps-gov-in" signing posture is UNPINNED: signing\.signingCertificate\.sha256 is null: no key is pinned yet\)\.$/m);
+    assert.match(r.stdout, /^ {2}A Release on this surface may carry \.AppImage, \.apk; no lane owes one today\.$/m);
   });
 });
 
