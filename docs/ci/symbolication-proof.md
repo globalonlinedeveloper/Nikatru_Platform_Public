@@ -1,7 +1,7 @@
-# `symbolication-proof.yml` — does GlitchTip put an obfuscated Flutter Android crash on the right line?
+# `symbolication-proof.yml` — does GlitchTip put an obfuscated Flutter crash on the right line, per target?
 
 Rows `O-GLITCHTIP-FLUTTER-SYMBOLICATION-UNPROVEN` (answered) and `O-GLITCHTIP-UPGRADE-SYMBOLICATION`
-(open). Dispatch-only. Script: `tooling/ops/symbolication-proof.mjs`; recorded state:
+(open), and `O-SYMBOLICATION-PROOF-ANDROID-ONLY` (open: the targets with no leg). Dispatch-only. Script: `tooling/ops/symbolication-proof.mjs`; recorded state:
 `tooling/ops/symbolication-expectation.json`; test: `tooling/ci/test/symbolication-proof.test.mjs`;
 probe: `apps/subscriptiontracker/live_probe/symbolication_crash_probe.dart`.
 
@@ -12,9 +12,32 @@ does not compare the two readings against an ideal; it compares them against
 `tooling/ops/symbolication-expectation.json`, which holds what [ADR 090] recorded:
 
 ```json
-{ "groundTruth": "match", "sink": "mismatch", "recordedBy": "ADR 090",
-  "row": "O-GLITCHTIP-UPGRADE-SYMBOLICATION", "evidence": { "glitchtipVersion": "6.2.6", … } }
+{ "targets": { "android-x64": { "proof": "leg", "groundTruth": "match", "sink": "mismatch",
+  "recordedBy": "ADR 090", "row": "O-GLITCHTIP-UPGRADE-SYMBOLICATION",
+  "evidence": { "glitchtipVersion": "6.2.6", … } }, "linux-x64": { "proof": "leg", … }, … } }
 ```
+
+## ⏱ 2026-10-01 · One leg per target (full review AA-06)
+
+Until this date the proof ran `android-x64` only, so no other target had ever had a Dart frame read
+back from GlitchTip, and nothing said so. The `prove` job is now a matrix over `target`, each leg held
+against **its own** record, `targets.<target>`, picked by the verdict's required `--target` (there is
+no default record). The register lists every target a graded Flutter channel ships:
+
+| target | proof | state |
+|---|---|---|
+| `android-x64` | leg — obfuscated apk on an emulator | recorded: ground truth MATCH, sink MISMATCH ([ADR 090]) |
+| `linux-x64` | leg — obfuscated release bundle under `xvfb-run` | **unmeasured**: its first dispatch exits **1** "FIRST MEASUREMENT" and says what to record |
+| `macos-arm64` | none | unwritten, not impossible: a hosted macOS runner can run the release `.app`; not added untested |
+| `windows-x64` | none | the release runner's printed output has no measured capture path yet |
+| `ios-arm64` | none | not provable on a hosted runner: a release (AOT) build does not run on the simulator, and no device is reachable |
+| `web` | none | a different mechanism — source maps, not `.symbols`; belongs with the built-artifact smoke |
+
+`tooling/ci/test/symbolication-proof.test.mjs` holds the matrix to exactly the `leg` targets, every
+Flutter channel's platform to an entry, and every `targets.<t>` a channel's `crashSink.note` cites to
+one that exists. Each leg uploads `symbols-symbolication-probe-<target>` and
+`symbolication-proof-evidence-<target>`, and `fail-fast: false` keeps one target's finding from
+cancelling another's reading. The app axis stays the dispatch input (B-12): one app per dispatch.
 
 While `"sink"` reads `"mismatch"`, **a green run of this lane does NOT mean GlitchTip symbolicates
 Flutter Android frames** — it means GlitchTip is still getting them wrong in exactly the recorded way.
@@ -34,6 +57,7 @@ moved from an ideal to the record.
 | ground truth MATCH, sink MISMATCH | as recorded | **0** + banner | nothing; triage native crashes from the kept symbols |
 | sink now MATCH | sink changed, good direction | **1** | close `O-GLITCHTIP-UPGRADE-SYMBOLICATION`, amend [ADR 090] with the run id, set `"sink": "match"` |
 | ground truth now MISMATCH | our side changed | **1** | a real regression in **our** symbols/decoder — the triage path itself is broken |
+| any reading of an `unmeasured` leg | first measurement | **1** | write both readings and this run into `targets.<target>` |
 | either reading UNAVAILABLE | nothing compared | **2** | read the evidence artifact; never a pass by absence |
 | instance is not the recorded GlitchTip version | the record is stale | **2** | re-measure, update `evidence` (+ `sink` if it moved), dispatch again |
 | register missing or malformed | nothing to hold the run against | **2** | restore the register |
@@ -44,16 +68,18 @@ in the evidence artifact carries the register, the live version, both readings a
 
 ## What one run does
 
-1. Builds the probe with the release lanes' flags (`--obfuscate --split-debug-info`), for
-   `android-x64` only, debug-signed. The probe is an alternate entrypoint in `live_probe/`; no store
+1. Builds the probe with the release lanes' flags (`--obfuscate --split-debug-info`), for the leg's
+   target: a debug-signed `android-x64` apk, or a `linux-x64` release bundle. The probe is an alternate entrypoint in `live_probe/`; no store
    build compiles it.
-2. Keeps the probe's symbols as `symbols-symbolication-probe-android-x64`, then uploads them to
+2. Keeps the probe's symbols as `symbols-symbolication-probe-<target>`, then uploads them to
    GlitchTip through `tooling/ops/upload-native-symbols.mjs` (symbolication happens at ingest, so
    the debug file must be stored before the event arrives).
-3. Boots an emulator from the runner's preinstalled SDK (no third-party action: the repository
+3. Android: boots an emulator from the runner's preinstalled SDK (no third-party action: the repository
    allows `selected` actions only), runs the probe, and captures logcat. The probe initialises the
    real `TelemetryBootstrap`, throws at the line marked `SYMBOLICATION-PROBE-THROW-SITE`, reports it,
-   and prints the raw non-symbolic trace between `SYMPROBE|` sentinels.
+   and prints the raw non-symbolic trace between `SYMPROBE|` sentinels. Linux: runs the bundle
+   under `xvfb-run` and writes its stdout to the same file, with the same three phases asserted, so
+   one extract step serves both legs. On Linux the Dart SDK sends the event over HTTP itself.
 4. **Ground truth:** `native_stack_traces`' `decode translate` over that raw trace against the
    build's own `.symbols` file (version: `tooling/versions.json` `native_stack_traces`). NOT
    `flutter symbolize`: Flutter 3.47.4's tool pins native_stack_traces 0.6.1, which cannot read the
@@ -83,7 +109,8 @@ so its first live run of the retry is the next dispatch. A step-2 upload that ne
 | 35467695649 | ground truth OK (line 36); verdict exit 2, "no event carries the marker" | The event DID arrive (issue 38, environment `symbolication-probe`, org stats: 1 accepted error that hour, none during the three earlier runs). Its value read `symbolication-probe symprobe-[REDACTED]`: the chassis's `PiiScrubber` rule `\d{10,}` redacted the 16-digit timestamp marker. The probe now mints a letters-only marker, tested against the real scrubber patterns. **Read by hand, that event is the sink's answer:** the throw-site frame (`0x7eb7fbb06c3e`, the trace's first app frame) is UNSYMBOLICATED, and its caller resolved to `new Uint32List` in `typed_data_patch.dart` line 0 (expected `main`, line 65) — a wrong frame, the GitLab issue 491 shape. |
 | 35470727346 | verdict exit 1 — **the real finding, not a defect in the proof** | Everything worked: marker `symprobe-bhijifebdibjccbe` survived the scrubber, event `ce8754f619d1408c93e01a371a4938ea` (issue 39) arrived, both readings were taken. GROUND TRUTH **MATCH** — `symbolication_crash_probe.dart:36` (`probeThrowSite`). SINK **MISMATCH** — the frame at the throw address `0x735b1e693c3e` came back `function=null, file=null, line=null`, and its caller again resolved to `new Uint32List`, `typed_data_patch.dart:0`. Recorded as [ADR 090] + row `O-GLITCHTIP-UPGRADE-SYMBOLICATION`, and **turned into `tooling/ops/symbolication-expectation.json`**: from here the lane is red only when a reading CHANGES. The kept evidence of this run is the fixture set in `tooling/ci/test/symbolication-proof.test.mjs`. |
 
-Evidence is uploaded as `symbolication-proof-evidence` on every run, whatever the exit.
+Evidence is uploaded as `symbolication-proof-evidence-<target>` on every run, whatever the exit
+(`symbolication-proof-evidence` before 2026-10-01).
 
 ## Why the sink is RECORDED as a mismatch on GlitchTip 6.2.6 (source read 2026-09-19, confirmed by run 35470727346)
 

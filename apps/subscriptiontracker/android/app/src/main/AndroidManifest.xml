@@ -172,6 +172,21 @@
              protect it by other means. tooling/ci/test/android-vapt-manifest.test.mjs
              C1 goes red the day such a rail sits beside this line. -->
         <receiver android:name="com.amazon.device.iap.ResponseReceiver" tools:node="remove" />
+
+        <!-- ⏱ 2026-10-01 · THE NDK CRASH HANDLER IS OFF, full review AA-08.
+             The native crash layer is off on every target by decision, and
+             packages/telemetry/lib/src/telemetry_bootstrap.dart says why: no
+             native symbols are uploaded, and a native event never passes the
+             Dart-side PII scrub. Its `enableNativeCrashHandling = false` turns
+             off sentry-android's JVM handler and ANR watchdog, but NOT the NDK
+             signal handler, where a crash in libflutter.so or a plugin's .so
+             lands: sentry_flutter 9.26.0 exposes no Dart option for it, and
+             SentryAndroid.init reads this switch from the manifest before the
+             Dart options apply. tooling/ci/assert-seams-wired.mjs fails while an
+             Android row declares crashSink.native=false and this line is gone. -->
+        <meta-data
+            android:name="io.sentry.ndk.enable"
+            android:value="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

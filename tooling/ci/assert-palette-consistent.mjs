@@ -1001,7 +1001,9 @@ const BRAND_FONT_DEBT = {
   // adopted the chassis OnboardingView; its one remaining face reads BrandTokens.
   'apps/subscriptiontracker/lib/features/settings/settings_screen.dart': 1,
   'apps/subscriptiontracker/lib/features/shared/widgets.dart': 4,
-  'apps/subscriptiontracker/lib/features/shell/app_shell.dart': 1,
+  // ⏱ 2026-10-01 · ST truth pass (SH-01): `features/shell/app_shell.dart`
+  // 1 → 0 and OUT — the tab label's 9 px `fontFamily: 'Manrope'` literal is
+  // the type ramp's `labelSmall` now.
   'apps/subscriptiontracker/test/brand_footer_parity_test.dart': 8,
   'apps/subscriptiontracker/test/shared_primitives_test.dart': 4,
 };

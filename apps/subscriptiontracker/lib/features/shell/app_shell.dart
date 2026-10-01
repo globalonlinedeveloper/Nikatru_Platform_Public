@@ -413,7 +413,9 @@ class AppShell extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
           child: Container(
             key: navPillKey,
-            height: 66,
+            // A FLOOR, not a height (ST truth pass, SH-01): at 200 % text a
+            // tab label takes two lines, and a fixed 66 clipped them.
+            constraints: const BoxConstraints(minHeight: 66),
             padding: const EdgeInsets.symmetric(horizontal: 6),
             decoration: BoxDecoration(
               color: isLight
@@ -515,14 +517,19 @@ class AppShell extends StatelessWidget {
                 children: <Widget>[
                   Icon(icon, color: color, size: 22),
                   const SizedBox(height: 3),
+                  // ⏱ ST truth pass (SH-01): the ramp's `labelSmall` — the
+                  // design system's 12 px floor — not a 9 px literal, the
+                  // smallest text in the app on its only navigation. TWO
+                  // lines: a fifth of a 360 px pill holds "Insights" at
+                  // 100 %, and a longer word, a longer language or 200 %
+                  // text wraps (the pill's floor grows) instead of "Insi…".
                   Text(
                     label,
-                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: 'Manrope',
+                    style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w700,
-                      fontSize: 9,
                       color: color,
                     ),
                   ),
