@@ -56,7 +56,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/auth/verify_email_screen.dart",
           "linesAtSince": 182,
-          "ceiling": 162,
+          "ceiling": 80,
           "template": 47
         },
         {
@@ -68,7 +68,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/auth/reset_password_screen.dart",
           "linesAtSince": 314,
-          "ceiling": 305,
+          "ceiling": 82,
           "template": 77
         },
         {
@@ -187,6 +187,20 @@
           "on": "2026-09-29",
           "callSiteDelta": -79,
           "measured": "Train ST-D9. apps/subscriptiontracker/lib/features/monetization/paywall_screen.dart 373 -> 294 lines, `wc -l` against `git show origin/main:<path>` at 600cc6dc, both after `dart format` (Flutter 3.47.5). The whole `_body` phase switch and the layout moved into the chassis PaywallView, which ST-D9 redrew on the ST-D0 foundation (AppCard plans, DecisionStrip pending / unlocked / refused, a config-driven features card, two columns from 840 up). The private `_PaywallPhase` and `_RefusedView` enums became the chassis PaywallPhase (a typedef, as in the brick) and PaywallRefusalView. ST-T2's `PlansLoadGate` still asks the rail once and feeds the view's loading flag (the chassis skeleton carries PlansLoading's key), so `_asking` never landed. What stayed: the phase machine, the four funnel emissions, `startCheckout` + `awaitUnlock`, the price under the reader's locale (`MoneyFormatter(l10n.localeName).format(o.price)`, handed to the view as its formatted price), and the D-11 pitch codes resolved through this app's catalogue. Every paywall string the view draws was already byte-identical between the app and chassis arb files in both shipped locales."
+        },
+        {
+          "file": "features/auth/reset_password_screen.dart",
+          "piece": "ResetPasswordView",
+          "on": "2026-10-01",
+          "callSiteDelta": -223,
+          "measured": "Train st-entry (EN-06) after its parity STOP: the reset form's Show / Hide, rules checklist and live-region done line were drafted INTO the private copy (305 -> 387, +82 over its ceiling), so they went into packages/chassis_screens/lib/auth/reset_password_screen.dart instead — `AuthField` with `AuthRevealLabels` on both boxes, `AuthPasswordChecklist` (length + breached), the breached flag forgotten on the next keystroke, a `Semantics(liveRegion: true)` done line, and an optional `panel` slot as `ReacceptTermsView` has — and the app adopted the view. apps/subscriptiontracker/lib/features/auth/reset_password_screen.dart 305 -> 82 lines, `wc -l` against `git show origin/main:<path>`, both after `dart format` (Flutter 3.47.5). What stays is what a package without Riverpod and go_router cannot hold: the provider reads, `updatePassword`, `_leave` (arrival cleared before the await, the sign-out through the spine) and `AuthPanel`. Every string the view renders is byte-identical between app_*.arb and chassis_*.arb in en and ta (checked key by key), and every key constant is an alias of the view's, so password_reset_test.dart drives the adapter unchanged. The 2026-09-20 note's blocker for reset_password — the error mapper — had already moved to the chassis (authErrorText, 2026-09-24)."
+        },
+        {
+          "file": "features/auth/verify_email_screen.dart",
+          "piece": "VerifyEmailView",
+          "on": "2026-10-01",
+          "callSiteDelta": -82,
+          "measured": "Train st-entry (EN-14) after its parity STOP: the resend rest that survives leave/return and 'Use a different email' were drafted INTO the private copy (162 -> 239, +77 over its ceiling), so they went into packages/chassis_screens/lib/auth/verify_email_screen.dart as three OPTIONAL parameters — `secondsUntilResend` (the adapter keeps the deadline; the view seeds and runs the countdown, read on arrival and after each send), `onUseDifferent`, and `panel` — so the brick adapter is untouched, and the app adopted the view. apps/subscriptiontracker/lib/features/auth/verify_email_screen.dart 162 -> 80 lines, `wc -l` against `git show origin/main:<path>`, both after `dart format` (Flutter 3.47.5). The 2026-09-20 note's blocker (no captcha slot, no error mapper on the view) is gone: `captcha` / `captchaController` landed with ST-A1 and the view maps through authErrorText. The adapter keeps `CaptchaHost` (the app's token holder IS the chassis `CaptchaTokenController`), passes `TurnstileGate`, and spends the token with `consume()` inside a CALL, not a tear-off, for assert-captcha-gated-call-sites. Two strings moved to the chassis arb (verifyEmailResendIn, verifyEmailUseDifferent, en + ta); every other string the view renders is byte-identical between app_*.arb and chassis_*.arb in both locales."
         }
       ],
       "_adoptedWhy": "⏱ 2026-09-15 · [ADR 086] ONE PIECE AT A TIME: the app now imports the package in the files listed here; tooling/ci/assert-chassis-parity.mjs holds that list equal to the scan and every callSiteDelta negative ([ADR 066]). The row is deleted when the last template file is adopted.",

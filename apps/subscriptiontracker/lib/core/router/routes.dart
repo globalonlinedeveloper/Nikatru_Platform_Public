@@ -121,7 +121,10 @@ List<RouteBase> appRoutes() => <RouteBase>[
   // arm, so the path the stamp declares still resolves.
   GoRoute(
     path: '/sign-up',
-    builder: (_, __) => const LoginScreen(startInSignUp: true),
+    // ⏱ 2026-10-01 · EN-13 / EN-14 — an address handed back by "Wrong
+    // address?" or "Use a different e-mail" arrives in `extra` and fills the box.
+    builder: (_, GoRouterState state) =>
+        LoginScreen(startInSignUp: true, initialEmail: _pendingAddress(state)),
     caseSensitive: false,
   ),
 

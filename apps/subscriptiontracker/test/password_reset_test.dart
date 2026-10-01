@@ -53,7 +53,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ChassisLocalizations;
+    show AuthField, AuthPasswordChecklist, AuthRuleState, ChassisLocalizations;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
@@ -346,6 +346,88 @@ void main() {
     expect(auth.passwordsSet, isEmpty);
     expect(find.text('Use at least 8 characters.'), findsOneWidget);
     expect('sevench'.length, core.kMinPasswordLength - 1);
+  });
+
+  // ⏱ 2026-10-01 · EN-06 — THE FORM IS USABLE: Show / Hide on both boxes, the
+  // rules readable before a refusal, and the result announced. MUTATION PROOF:
+  // put back the two `TextField(... obscureText: true,` boxes and every case
+  // below goes red (no reveal control, no checklist).
+  testWidgets('both boxes reveal what was typed, and hide it again', (
+    WidgetTester tester,
+  ) async {
+    final ProviderContainer c = _container(auth);
+    addTearDown(c.dispose);
+    await _pump(tester, c);
+    auth.deliverPasswordRecovery('a@b.test');
+    await tester.pumpAndSettle();
+
+    bool obscured(Key k) => tester.widget<TextField>(find.byKey(k)).obscureText;
+    expect(find.byKey(AuthField.revealKey), findsNWidgets(2));
+    expect(obscured(ResetPasswordScreen.passwordField), isTrue);
+    expect(obscured(ResetPasswordScreen.confirmField), isTrue);
+
+    await tester.tap(find.byKey(AuthField.revealKey).first);
+    await tester.pumpAndSettle();
+    expect(obscured(ResetPasswordScreen.passwordField), isFalse);
+    expect(obscured(ResetPasswordScreen.confirmField), isTrue);
+
+    await tester.tap(find.byKey(AuthField.revealKey).last);
+    await tester.pumpAndSettle();
+    expect(obscured(ResetPasswordScreen.confirmField), isFalse);
+
+    await tester.tap(find.byKey(AuthField.revealKey).first);
+    await tester.pumpAndSettle();
+    expect(obscured(ResetPasswordScreen.passwordField), isTrue);
+  });
+
+  testWidgets('a short password shows the unmet rule; a long one meets it', (
+    WidgetTester tester,
+  ) async {
+    final ProviderContainer c = _container(auth);
+    addTearDown(c.dispose);
+    await _pump(tester, c);
+    auth.deliverPasswordRecovery('a@b.test');
+    await tester.pumpAndSettle();
+
+    AuthRuleState lengthRule() => tester
+        .widget<AuthPasswordChecklist>(
+          find.byKey(ResetPasswordScreen.checklist),
+        )
+        .rules
+        .first
+        .state;
+    final AppLocalizations l10n = lookupAppLocalizations(const Locale('en'));
+    expect(
+      find.text(l10n.authPasswordRuleLength(core.kMinPasswordLength)),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      find.byKey(ResetPasswordScreen.passwordField),
+      'sevench',
+    );
+    await tester.pump();
+    expect(lengthRule(), AuthRuleState.pending);
+    await tester.enterText(
+      find.byKey(ResetPasswordScreen.passwordField),
+      'correct-horse',
+    );
+    await tester.pump();
+    expect(lengthRule(), AuthRuleState.met);
+  });
+
+  testWidgets('the done line is a live region', (WidgetTester tester) async {
+    final ProviderContainer c = _container(auth);
+    addTearDown(c.dispose);
+    await _pump(tester, c);
+    auth.deliverPasswordRecovery('a@b.test');
+    await tester.pumpAndSettle();
+    await _submit(tester, 'correct-horse', 'correct-horse');
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    expect(
+      tester.getSemantics(find.byKey(ResetPasswordScreen.doneLine)),
+      matchesSemantics(isLiveRegion: true, label: _doneLabel(tester)),
+    );
+    semantics.dispose();
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -673,4 +755,46 @@ void main() {
       '/home',
     );
   });
+
+  // ⏱ 2026-10-01 · EN-03 — THE SIGNED-OUT GATE BANKS THE DEEP LINK. A
+  // signed-out visitor opening a link went to a bare `/sign-in`, so the sign-in
+  // above had no `next` to return to and every deep link ended on `/home`.
+  // MUTATION PROOF: put back `GateVerdict('/sign-in')` in `signedOutGate` and
+  // the first three cases go red (the fourth already fell back to /home).
+  testWidgets('a signed-out deep link to /insights is banked on the way in', (
+    WidgetTester t,
+  ) async {
+    final ProviderContainer c = _container(auth);
+    addTearDown(c.dispose);
+    expect(await _pump(t, c, '/insights'), '/sign-in?next=%2Finsights');
+  });
+
+  testWidgets('signed-out /insights → sign in through the form → /insights', (
+    WidgetTester t,
+  ) async {
+    expect(await signInFrom(t, '/insights'), '/insights');
+  });
+
+  testWidgets('signed-out /paywall → sign in through the form → /paywall', (
+    WidgetTester t,
+  ) async {
+    expect(await signInFrom(t, '/paywall'), '/paywall');
+  });
+
+  testWidgets('a protocol-relative ?next= is refused and lands on /home', (
+    WidgetTester t,
+  ) async {
+    expect(await signInFrom(t, '/sign-in?next=%2F%2Fevil.test'), '/home');
+  });
+
+  testWidgets('a signed-out cold start does not bank /home', (
+    WidgetTester t,
+  ) async {
+    final ProviderContainer c = _container(auth);
+    addTearDown(c.dispose);
+    expect(await _pump(t, c, '/'), '/sign-in');
+  });
 }
+
+String _doneLabel(WidgetTester tester) =>
+    tester.widget<Text>(find.byKey(ResetPasswordScreen.doneLine)).data!;

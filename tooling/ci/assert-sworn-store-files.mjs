@@ -1542,7 +1542,7 @@ for (const app of apps) {
     // ── limb 8 · line citations still point at what they describe ───────────
     // The document is flattened to text ONCE, and every row addresses ONE
     // sentence in it. See the table's header for why a basename is not enough:
-    // a basename ANY-match let `analytics_providers.dart:534` vouch for a stale
+    // a basename ANY-match let `analytics_providers.dart:546` vouch for a stale
     // `:56` in the same file, in both sworn Play filings, at exit 0.
     const docText = strings(j)
       .map(([, v]) => v)

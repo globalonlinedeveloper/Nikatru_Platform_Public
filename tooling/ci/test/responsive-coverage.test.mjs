@@ -71,6 +71,13 @@ const FEATURES = `${APP}/lib/features`;
 const TESTS = `${APP}/test`;
 const HARNESS = `${TESTS}/support/width_harness.dart`;
 const RESET_PW = `${TESTS}/width_reset_password_test.dart`;
+// ⏱ 2026-10-01 · train st-entry — THE UNCOVERED-SURFACE SUBJECT MOVED OFF
+// `ResetPasswordScreen`, which now DELEGATES to the chassis `ResetPasswordView`
+// and is measured THERE: emptying its app width test no longer uncovers it, so
+// R1 and R12 would have stopped measuring what they claim. `ImportScreen` (the
+// hub that replaced `/scan`, #1124) is app-owned and constructed by exactly one
+// width file (4 × `const ImportScreen()`).
+const IMPORT = `${TESTS}/width_import_test.dart`;
 
 // 🔴 THE MANIFESTS ARE PART OF THE SUBJECT. The guard's domain used to be
 // `const APP = 'apps/subscriptiontracker'`; it is now DERIVED from `tooling/bricks/app/
@@ -236,7 +243,8 @@ describe('the guard says YES on the tree as it is', () => {
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 31 → 27 of 35.
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 30 of 38 → 36 of 43 — the auth frame's five parts and AuthField, pumped at 375 / 768 / 1280 / 1440 by auth_frame_test.dart.
     // ⏱ 2026-10-01 · ST truth pass (EN-17): 36 of 43 → 37 of 43 — ForceUpdateGate, pumped at 375 / 768 / 1280 by system_screens_text_scale_test.dart.
-    assert.match(out, /packages\/design_system: 37 of 43 surface\(s\) measured — 6 PRINTED and not failed/);
+    // ⏱ 2026-10-01 · train st-entry: 37 of 43 → 37 of 44 — SwallowSystemBack (paints nothing) is printed unmeasured.
+    assert.match(out, /packages\/design_system: 37 of 44 surface\(s\) measured — 7 PRINTED and not failed/);
   });
 
   test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
@@ -294,10 +302,10 @@ describe('set equality, both directions, in apps/subscriptiontracker', () => {
     const root = tree();
     // The import stays, so provenance survives and the ONLY thing that changed
     // is whether any case pumps the screen. That is the axis under test.
-    edit(root, RESET_PW, 'const ResetPasswordScreen()', 'const SizedBox()', { count: 4 });
+    edit(root, IMPORT, 'const ImportScreen()', 'const SizedBox()', { count: 4 });
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /FAIL UNCOVERED SURFACE — `ResetPasswordScreen`/);
+    assert.match(out, /FAIL UNCOVERED SURFACE — `ImportScreen`/);
     // ⚠️ THE COVERED FLOOR CO-FIRES, AND IT IS PINNED RATHER THAN LEFT
     // UNSTATED. subscriptiontracker's `coveredSurfaces` floor is its WHOLE domain, so any
     // surface losing its measurement trips both limbs. The measured reading is
@@ -347,10 +355,10 @@ describe('set equality, both directions, in apps/subscriptiontracker', () => {
     // Report mode is per root, dated and opt-in — never a default a new root
     // falls into. One tree, one run, both behaviours side by side.
     const root = treeWithNewRoots();
-    edit(root, RESET_PW, 'const ResetPasswordScreen()', 'const SizedBox()', { count: 4 });
+    edit(root, IMPORT, 'const ImportScreen()', 'const SizedBox()', { count: 4 });
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /FAIL UNCOVERED SURFACE — `ResetPasswordScreen`/);
+    assert.match(out, /FAIL UNCOVERED SURFACE — `ImportScreen`/);
     // The design system's unmeasured widgets are in the SAME run and NOT failures.
     // ⏱ 2026-09-23 (chassis home): this read the brick's `HomeScreen` until the
     // brick's printed list reached ZERO — HomeScreen and ExploreScreen now count
@@ -585,7 +593,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 23 of 25 → 29 of 31 (floor re-based to 31).
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 29 of 31 → 33 of 35 (floor re-based to 35).
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 36 of 38 → 41 of 43 — the auth frame raised the surfaces floor.
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 41 responsive surface\(s\).*floor is 43/s);
+    // ⏱ 2026-10-01 · train st-entry: 41 of 43 → 42 of 44 — SwallowSystemBack raised the floor.
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 42 responsive surface\(s\).*floor is 44/s);
   });
 
   test("R11c · a NEW unmeasured surface in EACH new root reaches that root's printed list", () => {
@@ -619,7 +628,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 32 → 27 of 36 (measured arrivals).
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 30 of 39 → 36 of 44 — six more measured; the probe is the one new unmeasured surface.
     // ⏱ 2026-10-01 · ST truth pass (EN-17): 36 of 44 → 37 of 44 — ForceUpdateGate measured; the probe is still the one new unmeasured surface.
-    assert.match(out, /packages\/design_system: 37 of 44 surface\(s\) measured — 7 PRINTED/);
+    // ⏱ 2026-10-01 · train st-entry: 37 of 44 → 37 of 45 — SwallowSystemBack is printed beside the probe.
+    assert.match(out, /packages\/design_system: 37 of 45 surface\(s\) measured — 8 PRINTED/);
   });
 });
 
@@ -783,7 +793,7 @@ describe('a screen that DELEGATES into the chassis is measured where it now live
 // the two report-mode roots — the half this ENFORCED root has never had.
 //
 // ⚠️ MEASURED, NOT PREDICTED: both mutations exit **1**, not 2. This guard has a
-// single `process.exit(1)` (`assert-responsive-coverage.mjs:1529`) and expresses
+// single `process.exit(1)` (`assert-responsive-coverage.mjs:1535`) and expresses
 // COVERAGE LOST as a message prefix rather than a distinct code, exactly as
 // R10/R10b/R11a/R11b already record. That is a property of the guard, not of
 // this floor raise, and it is written down here rather than asserted away.

@@ -58,6 +58,8 @@ export 'src/widgets/paywall_gate.dart';
 export 'src/widgets/promo_card.dart';
 export 'src/widgets/promo_objection_control.dart';
 export 'src/widgets/promo_surface.dart';
+export 'src/widgets/swallow_system_back.dart';
+export 'src/platform/document_language.dart' show resolveAndLabelPage;
 
 // ── THE CHASSIS STRINGS ([ADR 067] decision 2, unit `chassis-l10n`) ──────────
 // `ChassisLocalizations` is gen-l10n output over `src/l10n/chassis_*.arb`, and

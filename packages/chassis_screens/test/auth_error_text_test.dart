@@ -372,6 +372,83 @@ void main() {
     });
   });
 
+  // ⏱ 2026-10-01 · EN-02 — the platform Worker's native route refuses with
+  // three codes of its own (`native-auth.ts`). MUTATION PROOF: delete any one
+  // arm in `_codeSentence` and its case reads `authUnknownError` here.
+  group('🔴 the native route\'s refusals have words', () {
+    for (final (String code, String Function(ChassisLocalizations) said) in
+        <(String, String Function(ChassisLocalizations))>[
+      ('attestation_required', (ChassisLocalizations l) => l.authAttestationRequired),
+      ('attestation_kind_refused', (ChassisLocalizations l) => l.authAttestationRefused),
+      ('native_auth_unavailable', (ChassisLocalizations l) => l.authNativeUnavailable),
+    ]) {
+      test('$code → its own sentence, never authUnknownError', () {
+        expect(authErrorText(en, coded(code)), said(en));
+        expect(authErrorText(en, coded(code)), isNot(en.authUnknownError));
+        expect(authErrorText(ta, coded(code)), said(ta));
+        expect(said(ta), isNot(said(en)));
+      });
+    }
+
+    test('a Retry-After the server sent is said, rounded up', () {
+      core.AuthFailure limited(int seconds) => core.AuthFailure(
+            'Request rate limit reached',
+            code: 'over_request_rate_limit',
+            retryAfter: Duration(seconds: seconds),
+          );
+      expect(
+        authErrorText(en, limited(60)),
+        '${en.authRateLimited} ${en.authRetryAfterMinutes(1)}',
+      );
+      expect(
+        authErrorText(en, limited(61)),
+        '${en.authRateLimited} ${en.authRetryAfterMinutes(2)}',
+      );
+      expect(
+        authErrorText(en, limited(86400)),
+        '${en.authRateLimited} ${en.authRetryAfterHours(24)}',
+      );
+      expect(
+        authErrorText(
+          en,
+          core.AuthFailure(
+            'unavailable',
+            code: 'native_auth_unavailable',
+            retryAfter: const Duration(seconds: 30),
+          ),
+        ),
+        '${en.authNativeUnavailable} ${en.authRetryAfterMinutes(1)}',
+      );
+    });
+
+    test('no Retry-After, or a refusal that is not a wait, adds nothing', () {
+      expect(
+        authErrorText(en, coded('over_request_rate_limit')),
+        en.authRateLimited,
+      );
+      expect(
+        authErrorText(
+          en,
+          core.AuthFailure(
+            'Invalid login credentials',
+            code: 'invalid_credentials',
+            retryAfter: const Duration(seconds: 60),
+          ),
+        ),
+        en.authIncorrect,
+      );
+    });
+  });
+
+  // ⏱ 2026-10-01 · EN-05 — MUTATION PROOF: delete the `notRecorded` arm in
+  // `_codeSentence` and this reads `authUnknownError`.
+  test('a terms acceptance that was not recorded says so', () {
+    final core.AuthFailure e = core.LegalAcceptanceNotRecorded();
+    expect(authErrorText(en, e), en.reacceptTermsNotRecorded);
+    expect(authErrorText(en, e), isNot(en.authUnknownError));
+    expect(authErrorText(ta, e), ta.reacceptTermsNotRecorded);
+  });
+
   test('it is localized, not hardcoded English', () {
     expect(authErrorText(ta, fail('captcha_failed')), ta.authCaptchaFailed);
     expect(

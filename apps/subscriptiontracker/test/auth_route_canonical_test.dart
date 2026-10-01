@@ -264,6 +264,9 @@ void main() {
 
     final String settled = await _settleAt(tester, c, '/budget');
 
+    // ⏱ 2026-10-01 · EN-03 — the guard now BANKS the route it refused, so the
+    // settled location carries `?next=`. The path is asserted exactly as it
+    // was, and the banked destination beside it.
     expect(
       Uri.parse(settled).path,
       '/sign-in',
