@@ -256,14 +256,27 @@ void main() {
       classifyForOutbox(ApiException(401, 'x')),
       OutboxFailure.unauthorized,
     );
-    // 409: the server is still processing the key — wait, never count it.
-    expect(classifyForOutbox(ApiException(409, 'x')), OutboxFailure.busy);
+    // 409 idempotency_in_progress: the server is still processing the key —
+    // wait, never count it.
+    expect(
+      classifyForOutbox(ApiException(409, kIdempotencyInProgress)),
+      OutboxFailure.busy,
+    );
     expect(
       retryAfterFor(
-        ApiException(409, 'x', retryAfter: const Duration(seconds: 7)),
+        ApiException(
+          409,
+          kIdempotencyInProgress,
+          retryAfter: const Duration(seconds: 7),
+        ),
       ),
       const Duration(seconds: 7),
     );
+    // Review #1075 round 4, minor 1: ANY other 409 is permanent — a refusal,
+    // never a wait that holds the entry (and the queue behind it) forever.
+    for (final String code in <String>['x', 'conflict', 'idempotency']) {
+      expect(classifyForOutbox(ApiException(409, code)), OutboxFailure.refused);
+    }
     for (final int c in <int>[408, 429, 500, 503]) {
       expect(classifyForOutbox(ApiException(c, 'x')), OutboxFailure.transient);
     }

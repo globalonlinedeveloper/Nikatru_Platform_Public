@@ -28,7 +28,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { nowIso } from '../lib/d1';
+import { firstRow, nowIso, run } from '../lib/d1';
 import { isKnownApp } from '../config';
 import { readBoundedBody } from '../lib/body';
 import { withinRateLimit } from '../lib/edge-ceiling';
@@ -136,14 +136,23 @@ report.post('/report', async (c) => {
   // time, so a conditional INSERT … SELECT … WHERE count < cap cannot be
   // overtaken: the row lands only if the count it saw was under the cap, and
   // `changes = 0` is the 429.
+  //
+  // ⏱ 2026-10-01 · rv2-services-003. Through `run()` (lib/d1), so a transient D1
+  // reset is retried rather than answered 500. The id is minted HERE, before the
+  // statement, which is the contract `run` rests on. That leaves one case to
+  // read with care: the first attempt COMMITTED and only its acknowledgement was
+  // lost. The retry then changes nothing — its own id collides, or (if that row
+  // was the cap-th) the cap check now says full — and `changes = 0` would be a
+  // false 429 for a report that is stored. So a zero is a 429 only when no row
+  // carries this request's id.
   const id = crypto.randomUUID();
-  const inserted = await c.env.PLATFORM_DB.prepare(
-    `INSERT INTO content_reports
-       (id, user_id, app_id, reason, content_ref, content_excerpt, note, status, created_at, notified_at)
-     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, 'open', ?8, NULL
-     WHERE (SELECT COUNT(*) FROM content_reports WHERE user_id = ?2 AND created_at >= ?9) < ?10`,
-  )
-    .bind(
+  const inserted = await run(
+    c.env.PLATFORM_DB.prepare(
+      `INSERT INTO content_reports
+         (id, user_id, app_id, reason, content_ref, content_excerpt, note, status, created_at, notified_at)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, 'open', ?8, NULL
+       WHERE (SELECT COUNT(*) FROM content_reports WHERE user_id = ?2 AND created_at >= ?9) < ?10`,
+    ).bind(
       id,
       userId,
       parsed.appId,
@@ -154,9 +163,12 @@ report.post('/report', async (c) => {
       now,
       hourAgo,
       MAX_REPORTS_PER_USER_PER_HOUR,
-    )
-    .run();
-  if (Number(inserted.meta?.changes ?? 0) === 0) return c.json({ error: 'rate_limited' }, 429);
+    ),
+  );
+  if (Number(inserted.meta?.changes ?? 0) === 0) {
+    const stored = await firstRow(c.env.PLATFORM_DB.prepare('SELECT 1 AS stored FROM content_reports WHERE id = ?').bind(id));
+    if (stored === null) return c.json({ error: 'rate_limited' }, 429);
+  }
 
   c.executionCtx.waitUntil(
     notifyReport(c.env.PLATFORM_DB, c.env.RESEND_API_KEY, { id, appId: parsed.appId, reason: parsed.reason, createdAt: now }),
