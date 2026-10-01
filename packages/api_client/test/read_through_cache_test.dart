@@ -256,8 +256,19 @@ void main() {
       classifyForOutbox(ApiException(401, 'x')),
       OutboxFailure.unauthorized,
     );
-    // 409: the server is still processing the key — wait, never count it.
-    expect(classifyForOutbox(ApiException(409, 'x')), OutboxFailure.busy);
+    // 409 idempotency_in_progress: the server is still processing the key —
+    // wait, never count it.
+    expect(
+      classifyForOutbox(ApiException(409, 'idempotency_in_progress')),
+      OutboxFailure.busy,
+    );
+    // 🔴 ANY OTHER 409 is final (review 4 of #1080): a name clash does not
+    // clear up by waiting, so it must not be retried for ever as "busy".
+    expect(
+      classifyForOutbox(ApiException(409, 'name_taken')),
+      OutboxFailure.refused,
+    );
+    expect(classifyForOutbox(ApiException(409, 'x')), OutboxFailure.refused);
     expect(
       retryAfterFor(
         ApiException(409, 'x', retryAfter: const Duration(seconds: 7)),

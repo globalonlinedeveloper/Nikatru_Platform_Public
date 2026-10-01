@@ -65,6 +65,10 @@ const Duration kMinRevalidateInterval = Duration(seconds: 30);
 /// An answer that could not be decoded is a REFUSAL of that entry — a visible
 /// dead letter — never "offline": the request arrived, and counting it as
 /// offline stopped every replay behind it forever (review round 2, minor d).
+/// The 409 error code of a key the server is still processing
+/// (services/subscriptiontracker-api/src/lib/idempotency.ts).
+const String kIdempotencyInProgress = 'idempotency_in_progress';
+
 OutboxFailure classifyForOutbox(Object error) {
   if (error is! ApiException) return OutboxFailure.transient;
   if (error.malformed) return OutboxFailure.refused;
@@ -72,8 +76,14 @@ OutboxFailure classifyForOutbox(Object error) {
   if (s == 0) return OutboxFailure.offline;
   if (s == 401) return OutboxFailure.unauthorized;
   // The server is still processing this very key: wait, never count it
-  // (review #1075 round 3, minor d).
-  if (s == 409) return OutboxFailure.busy;
+  // (review #1075 round 3, minor d). ONLY that 409 (review 4 of #1080): any
+  // other — `name_taken` and the like — is the server's final answer, and
+  // waiting on it would retry a write that can never succeed.
+  if (s == 409) {
+    return error.message == kIdempotencyInProgress
+        ? OutboxFailure.busy
+        : OutboxFailure.refused;
+  }
   if (s == 408 || s == 429 || s >= 500) {
     return OutboxFailure.transient;
   }
