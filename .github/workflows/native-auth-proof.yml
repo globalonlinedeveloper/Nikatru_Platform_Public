@@ -34,12 +34,20 @@ jobs:
     name: The app input names one app of the workspace
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # why: actions: read lists this workflow's own successful runs, to find the commit
+    # of this app's last green proof (darwin-inputs.mjs --since-green).
+    permissions:
+      contents: read
+      actions: read
     outputs:
       app: ${{ steps.app.outputs.app }}
+      darwin: ${{ steps.darwin.outputs.darwin }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # why: the whole history, so the last green proof's commit can be diffed against this one.
+          fetch-depth: 0
       - name: The app input names one app of the workspace
         id: app
         env:
@@ -48,6 +56,20 @@ jobs:
           set -euo pipefail
           node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
           echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
+      # why: the Darwin legs (ios, macos) bill macOS minutes at ×10 and were ~282 of
+      # 2026-09's 873 (tooling/ci/assert-runner-budget.mjs MACOS_CEILING_EXCEPTIONS).
+      # They run only when a Darwin input — judged by each changed file's kind and
+      # text — changed since this app's last green proof; not knowing runs them.
+      - name: Did a Darwin input change since this app's last green proof
+        id: darwin
+        env:
+          APP_INPUT: ${{ inputs.app }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node tooling/ci/darwin-inputs.mjs --since-green native-auth-proof.yml --app "$APP_INPUT" > "$RUNNER_TEMP/darwin.txt"
+          cat "$RUNNER_TEMP/darwin.txt"
+          tail -n 1 "$RUNNER_TEMP/darwin.txt" >> "$GITHUB_OUTPUT"
 
   # ── ANDROID: an emulator, the app's APK, the callback through adb ──────────
   android:
@@ -184,6 +206,8 @@ jobs:
   ios:
     name: iOS — simulator, form to Home, the app opens its own callback
     needs: gate
+    # why: a Darwin leg runs only when the gate saw a Darwin input change (or could not tell).
+    if: needs.gate.outputs.darwin == 'true'
     runs-on: macos-26
     timeout-minutes: 60
     permissions:
@@ -272,6 +296,8 @@ jobs:
   macos:
     name: macOS — the .app, form to Home, LaunchServices opens the callback
     needs: gate
+    # why: a Darwin leg runs only when the gate saw a Darwin input change (or could not tell).
+    if: needs.gate.outputs.darwin == 'true'
     runs-on: macos-26
     timeout-minutes: 45
     permissions:

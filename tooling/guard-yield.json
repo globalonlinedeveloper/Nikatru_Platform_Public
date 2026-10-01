@@ -3210,6 +3210,11 @@
       "firstSeen": "2026-09-09",
       "evidence": []
     },
+    "tooling/ci/darwin-inputs.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ci/deploy-globs.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-27",
