@@ -372,6 +372,15 @@ class _FakeNetwork implements ApiClient {
   @override
   Future<void> deleteSubscription(String id) async => _gate();
 
+  // NO-10 · "Mark as paid": not exercised by this suite.
+  @override
+  Future<void> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {}
+
   @override
   Future<List<PaymentRecord>> getPaymentHistory(String id) async {
     _gate();

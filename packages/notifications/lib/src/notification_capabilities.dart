@@ -34,8 +34,12 @@ typedef DeviceUtcOffset = Duration Function();
 /// The matrix is tied to the **pinned `flutter_local_notifications` 22.x** (shared
 /// with apps/subscriptiontracker); re-review it on any version bump:
 /// - **Android / iOS / macOS** — immediate display + repeating daily schedule.
-/// - **Linux** — shows immediately, but `zonedSchedule` is unimplemented (the
-///   Linux backend can't schedule, in 17.x–22.x alike) → show yes, schedule no.
+/// - **Linux** — the plugin shows immediately but has no `zonedSchedule` (in
+///   17.x–22.x alike), so THIS PACKAGE schedules (NO-04): an in-process timer
+///   while the app runs, a catch-up of anything missed at launch, and an XDG
+///   autostart entry that runs the app's headless `--remind` at login
+///   ([LinuxReminderScheduler], [LinuxAutostart]). Schedule yes, but
+///   [exactTime] no: nothing fires while the user is logged out.
 /// - **Windows** — shows and schedules ONE-OFF notifications (the 22.x Windows
 ///   plugin, since 19.0.0; it cannot repeat, so a daily schedule is the next
 ///   instance only and the boot-path resync re-arms it). It needs the app's
@@ -49,14 +53,36 @@ class NotificationCapabilities {
   const NotificationCapabilities({
     required this.canNotify,
     required this.canSchedule,
+    this.exactTime = true,
+    this.canAct = false,
+    this.pendingLimit,
   });
 
   /// Whether immediate notifications (`showNow`) work on this platform.
   final bool canNotify;
 
-  /// Whether OS-brokered schedules (`scheduleAt`, `scheduleDaily`) work on
-  /// this platform.
+  /// Whether schedules (`scheduleAt`, `scheduleDaily`) work on this platform —
+  /// OS-brokered everywhere but Linux, where this package brokers them.
   final bool canSchedule;
+
+  /// Whether a scheduled reminder fires AT its instant whatever the app is
+  /// doing. False on Linux: a reminder due while the user is logged out shows
+  /// at the next login or launch. (Android's exact-alarm permission is asked
+  /// at run time, not declared here.)
+  final bool exactTime;
+
+  /// Whether a posted notification can carry [NotificationAction] buttons
+  /// whose press reaches the app (NO-10): Android, iOS, macOS, Windows.
+  final bool canAct;
+
+  /// How many notifications the OS keeps pending before it DISCARDS the rest,
+  /// or null for no cap. Apple's `UNUserNotificationCenter` keeps the 64
+  /// soonest (iOS and macOS alike); AlarmManager, the Windows scheduler and
+  /// this package's Linux ledger have no pool.
+  final int? pendingLimit;
+
+  /// Apple's pending-request pool, per app.
+  static const int darwinPendingLimit = 64;
 
   /// The capabilities for [platform] (with [isWeb] taking precedence — a web
   /// build reports its host [TargetPlatform] but has no notification plugin).
@@ -72,20 +98,33 @@ class NotificationCapabilities {
     }
     switch (platform) {
       case TargetPlatform.android:
-      case TargetPlatform.iOS:
-      case TargetPlatform.macOS:
         // Full support: immediate display + repeating daily zonedSchedule.
         return const NotificationCapabilities(
           canNotify: true,
           canSchedule: true,
+          canAct: true,
+        );
+      case TargetPlatform.iOS:
+      case TargetPlatform.macOS:
+        // Full support, inside Apple's 64-request pending pool.
+        return const NotificationCapabilities(
+          canNotify: true,
+          canSchedule: true,
+          canAct: true,
+          pendingLimit: darwinPendingLimit,
         );
       case TargetPlatform.linux:
         // flutter_local_notifications shows immediately on Linux but has NO
         // zonedSchedule implementation (throws UnimplementedError) — true in
-        // 17.x through 22.x. Show yes, repeat-schedule no.
+        // 17.x through 22.x. This package schedules instead (NO-04): in
+        // process while the app runs, and at login through XDG autostart —
+        // never at an instant the user is logged out for, hence not exact.
+        // No actions: a login-time `--remind` process exits after showing, so
+        // a button pressed later would reach nothing.
         return const NotificationCapabilities(
           canNotify: true,
-          canSchedule: false,
+          canSchedule: true,
+          exactTime: false,
         );
       case TargetPlatform.windows:
         // flutter_local_notifications 22.x's Windows plugin shows and
@@ -94,6 +133,7 @@ class NotificationCapabilities {
         return const NotificationCapabilities(
           canNotify: true,
           canSchedule: true,
+          canAct: true,
         );
       case TargetPlatform.fuchsia:
         return const NotificationCapabilities(
@@ -123,5 +163,20 @@ class NotificationCapabilities {
 
   @override
   String toString() =>
-      'NotificationCapabilities(canNotify: $canNotify, canSchedule: $canSchedule)';
+      'NotificationCapabilities(canNotify: $canNotify, canSchedule: '
+      '$canSchedule, exactTime: $exactTime, canAct: $canAct, '
+      'pendingLimit: $pendingLimit)';
+}
+
+/// Android's "Alarms & reminders" access (SCHEDULE_EXACT_ALARM) — NO-12. A
+/// separate interface from the core seam because only the plugin-backed
+/// service has an answer; a caller asks `service is ExactAlarmAccess`.
+abstract interface class ExactAlarmAccess {
+  /// Whether exact alarms are allowed right now (asked fresh: the user can
+  /// revoke it at any moment). True where the OS has no such permission.
+  Future<bool> canScheduleExact();
+
+  /// Opens the system "Alarms & reminders" page for this app, from a user
+  /// gesture only, and returns the answer read afterwards.
+  Future<bool> requestExactAlarms();
 }

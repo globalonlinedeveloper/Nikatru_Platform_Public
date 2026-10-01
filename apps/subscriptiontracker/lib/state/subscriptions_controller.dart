@@ -12,6 +12,9 @@ import '../data/api/api_client.dart' show ApiException;
 import '../data/models/budget_info.dart';
 import '../data/models/subscription.dart';
 import '../l10n/app_localizations.dart';
+import 'package:nikatru_notifications/nikatru_notifications.dart'
+    show LinuxAutostartControl;
+
 import '../services/notifications/notification_service.dart';
 import 'analytics_funnel.dart';
 import 'providers.dart';
@@ -106,6 +109,11 @@ ReminderCopy reminderCopyFor(Locale? chosen) {
     // ST-I2 (audit C14): the over-budget alert, in the same language.
     overBudgetTitle: l10n.overBudgetTitle,
     overBudgetBody: l10n.overBudgetBody,
+    // NO-10 / NO-13: the buttons on a renewal reminder, and the test one.
+    markPaidAction: l10n.reminderActionMarkPaid,
+    snoozeAction: l10n.reminderActionSnooze,
+    testTitle: l10n.testReminderTitle,
+    testBody: l10n.testReminderBody,
   );
 }
 
@@ -339,6 +347,49 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
         'cancelled_on': Subscription.dateOnly(on ?? DateTime.now()),
       });
 
+  /// NO-10: "Mark as paid" — one payment of the plan's price, dated today,
+  /// from a notification button or a /notifications row.
+  ///
+  /// The idempotency key is DERIVED (`paid_<id>_<day>`, in the server's key
+  /// alphabet), not random: a notification action the OS delivers twice, or a
+  /// row pressed after the notification was, is the same payment and must be
+  /// recorded once. `POST /:id/payments` does not read the key yet (lane
+  /// fix-payments-idempotency); a server ignores an unknown query parameter,
+  /// and the key is sent regardless. Throws on a failed write so the caller
+  /// can say so; the list is not touched.
+  Future<void> markPaid(String id) async {
+    final List<Subscription> list = state.value ?? await future;
+    final Subscription sub = list.firstWhere((Subscription s) => s.id == id);
+    final DateTime now = ref.read(nowProvider)();
+    await ref
+        .read(apiClientProvider)
+        .recordPayment(
+          id,
+          amount: sub.price,
+          paidOn: now,
+          idempotencyKey: 'paid_${id}_${Subscription.dateOnly(now)}',
+        );
+  }
+
+  /// NO-10: "Snooze 1 day" — a reminder about [id] again in 24 hours (quiet
+  /// hours still apply), and the shown one [notificationId] dismissed. From
+  /// an in-app row there is none to dismiss. No network.
+  Future<void> snoozeReminder(String id, {int? notificationId}) async {
+    final List<Subscription> list = state.value ?? await future;
+    final Subscription? sub = list
+        .where((Subscription s) => s.id == id)
+        .firstOrNull;
+    if (sub == null) return;
+    await ref
+        .read(renewalRemindersProvider)
+        .snooze(
+          sub,
+          copy: reminderCopyFor(ref.read(localeProvider)),
+          quiet: ref.read(settingsControllerProvider).quietHours,
+          dismissId: notificationId,
+        );
+  }
+
   /// Stop counting it for now; the row and its history stay (ST-E3).
   Future<void> pauseSubscription(String id) => updateSubscription(
     id,
@@ -459,13 +510,20 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     final ReminderCopy copy = reminderCopyFor(chosenLocale);
 
     // AWAITED (see [_syncReminders]); RenewalReminders is a no-op wherever
-    // the capability matrix says it cannot schedule (web, Windows, Linux).
+    // the capability matrix says it cannot schedule (web; Windows unidentified).
     //
     // ORDER: renewals first, digest second. This ordering USED to be
     // load-bearing — syncAll() began with cancelAll(), which took the weekly
     // digest with it — and it is kept although syncAll() now cancels only
     // the renewal namespace, so a future widening of that namespace cannot
     // silently swallow the digest again.
+    // NO-04: the Linux login entry follows the plan too — "Renewal alerts"
+    // defaults ON, so an install that never touched the switch is opted in.
+    final LinuxAutostartControl? autostart = ref.read(linuxAutostartProvider);
+    if (autostart != null && await autostart.isEnabled() != plan.syncRenewals) {
+      await (plan.syncRenewals ? autostart.enable() : autostart.disable());
+    }
+
     if (plan.syncRenewals) {
       // ONLY CHARGING ROWS (ST-E3): a paused or cancelled row keeps its place
       // on the list and loses its reminders, because `syncAll` cancels every

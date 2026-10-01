@@ -136,6 +136,28 @@ class DioApiClient implements ApiClient, IdempotentCreates {
   }
 
   @override
+  Future<void> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {
+    final String ymd =
+        '${paidOn.year.toString().padLeft(4, '0')}-'
+        '${paidOn.month.toString().padLeft(2, '0')}-'
+        '${paidOn.day.toString().padLeft(2, '0')}';
+    await _rest.post(
+      '/subscriptions/$id/payments',
+      body: <String, Object?>{
+        'amount': amount.toMajorUnits(),
+        'paid_on': ymd,
+        'currency': amount.currencyCode,
+      },
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
+  @override
   Future<BudgetInfo> getBudget() async {
     final Object? data = await _rest.get('/budget');
     return _rest.decode(
