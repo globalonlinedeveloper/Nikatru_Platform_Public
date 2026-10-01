@@ -134,6 +134,9 @@
   "popupLinkBatch": {
     "message": "ব্যাচ"
   },
+  "popupUpgrade": {
+    "message": "Upgrade to FullShot Pro"
+  },
   "popupLinkOptions": {
     "message": "বিকল্প"
   },

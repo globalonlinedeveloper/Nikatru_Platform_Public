@@ -83,6 +83,9 @@ Capture the FULL page (not just the visible screen), the VISIBLE area, a REGION 
 (Region and element capture shortcuts can be assigned at chrome://extensions/shortcuts.)
 
 Free, private, and pixel-perfect.
+
+Optional FullShot Pro: sign in with a Nikatru account for watermarks and logos, brand kits, and saved annotation and redaction presets. Capturing, annotating, redacting and exporting stay free and need no account.
+FullShot Pro is sold through Paddle, our merchant of record (in India, by Rajasekar Selvam, trading as NIKATRU via Razorpay), not by Google.
 ```
 
 ---
@@ -166,10 +169,10 @@ was read out of.
 | Category | Dashboard answer | Why |
 |---|---|---|
 | Website content | **YES — handled locally only** | The screenshot IS website content. It is composed, edited and exported entirely on the device and no request of any kind leaves the browser, but Google's User Data FAQ counts handling rather than transmission, so the box is ticked and the local-only explanation travels with it. |
-| Personally identifiable information | **NO** | No account, no sign-in and no identity of any kind is read, derived or stored. A capture may depict a name; FullShot never extracts, parses, indexes or retains one, and the opt-in redaction feature exists to remove such text from the image rather than to gather it. |
+| Personally identifiable information | **NO** | Capturing reads, derives and stores no identity of any kind; the one identifier FullShot ever holds is Pro's device credential (Authentication information, below), and only after a Pro sign-in. A capture may depict a name; FullShot never extracts, parses, indexes or retains one, and the opt-in redaction feature exists to remove such text from the image rather than to gather it. |
 | Health information | **NO** | Never touched. There is no code path that reads, classifies or stores anything of this kind, and no network layer that could carry it anywhere if there were. |
 | Financial and payment information | **NO** | Card-number patterns are detected only in order to paint an opaque block over them, and the matched value is never stored, indexed or transmitted. Detecting in order to hide is the opposite of collecting. |
-| Authentication information | **NO** | Never read. No credential, password, security answer or PIN is requested, observed or stored anywhere in the extension, which has no account system of its own to need one. |
+| Authentication information | **YES — collected** | Only for a person who signs in to FullShot Pro: the extension stores one device credential for its link to a Nikatru account and sends it to Nikatru's server to confirm Pro. No password, security answer or PIN is ever requested or observed; sign-in happens on nikatru.com. Capturing and every free feature need no account. |
 | Personal communications | **NO** | FullShot does not read messages as messages. Capturing a page that happens to be an inbox produces an image, exactly as any other page does, and nothing parses it back into correspondence. |
 | Location | **NO** | No geolocation API is called and there is no network layer at all, so there is nothing that could infer where the user is — not from the device and not from a connection that is never opened. |
 | Web history | **NO** | Neither the history nor the tabs permission is declared, and a page is touched only at the instant the user starts a capture on it. The local capture history holds the captures the user chose to keep, on their own device, which is their saved work rather than a record of browsing. |

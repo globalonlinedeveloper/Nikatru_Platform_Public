@@ -134,6 +134,9 @@
   "popupLinkBatch": {
     "message": "دفعة"
   },
+  "popupUpgrade": {
+    "message": "Upgrade to FullShot Pro"
+  },
   "popupLinkOptions": {
     "message": "الخيارات"
   },

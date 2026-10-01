@@ -24,8 +24,11 @@
    non-empty) or SELLS (services/platform/src/app-config-data.json holds a
    recurring offering for its id); a line marked `"when": "sells"` renders only
    when it SELLS; a line marked `"when": "free"` renders only when it does
-   neither. The seller is read from LICENSE's Required Notice (lib/licence.mjs),
-   and the price range from the RECURRING offerings only — a `one_time` offering
+   neither. The seller is derived per store from that store's channel row in
+   tooling/channel-register.json (RAIL_SELLER below, business-010, 2026-10-01):
+   the licensor, read from LICENSE's Required Notice (lib/licence.mjs), is named
+   only where the licensor is the seller of record. The price range comes from
+   the RECURRING offerings only — a `one_time` offering
    is never read (ADR 093) — as one range per currency, joined with "; ". The
    range goes to the Edge listing only (ADR 069); the Chrome and Firefox
    listings carry the seller line. A tool that sells with an empty allowlist is
@@ -70,6 +73,49 @@ function readTextOrNull(abs) {
 export const LISTING_REL = 'store/listing.json';
 /* Resolved from the extensions root, which is what repoRoot() returns. */
 export const APP_CONFIG_REL = '../services/platform/src/app-config-data.json';
+export const CHANNEL_REGISTER_REL = '../tooling/channel-register.json';
+
+/* ⏱ 2026-10-01 (business-010, O-EXTENSION-LISTING-SELLER-FROM-LICENCE). WHO
+   SELLS ON EACH RAIL. The Chrome and Firefox listings said "sold by" the
+   licensor, read from LICENSE — while outside India the seller of record is
+   Paddle. The seller is now derived from the store's channel row in
+   tooling/channel-register.json (`purchaseRail.rail` and its `regionRails`),
+   and this table says who is the seller of record on each rail, as that
+   register's `purchaseRails.rails` text states it: on `paddle` "Paddle is
+   MERCHANT OF RECORD", on `razorpay` "NIKATRU IS THE SELLER OF RECORD". A rail
+   absent here cannot be worded, so a store that sells on it renders nothing. */
+export const RAIL_SELLER = Object.freeze({
+  paddle: { name: 'Paddle', merchantOfRecord: true },
+  razorpay: { name: 'Razorpay', merchantOfRecord: false },
+});
+const REGION_NAME = { IN: 'India' };
+
+/** The channel row whose storeMetadataDir is this tool store's directory, or null. */
+export function channelForStore(register, storeDir) {
+  const rows = Array.isArray(register?.channels) ? register.channels : [];
+  return rows.find((r) => typeof r?.storeMetadataDir === 'string' &&
+    r.storeMetadataDir.startsWith('extensions/Extension/{tool}/') && r.storeMetadataDir.endsWith('/' + storeDir)) ?? null;
+}
+
+/** "Paddle, our merchant of record (in India, by <licensor> via Razorpay)" from a channel row, or {ok:false}. */
+export function sellerSentence(channel, licensor) {
+  const pr = channel?.purchaseRail;
+  const words = (rail) => {
+    const r = RAIL_SELLER[rail];
+    if (!r) return null;
+    return r.merchantOfRecord ? r.name + ', our merchant of record' : licensor;
+  };
+  const base = words(pr?.rail);
+  if (base === null) return { ok: false, why: 'its channel ' + (channel?.id ?? '(none)') + ' sells on rail ' + JSON.stringify(pr?.rail) + ', which RAIL_SELLER cannot word' };
+  const regions = [];
+  for (const rr of Array.isArray(pr.regionRails) ? pr.regionRails : []) {
+    const r = RAIL_SELLER[rr?.rail];
+    if (!r) return { ok: false, why: 'its channel ' + channel.id + ' sells in ' + rr?.region + ' on rail ' + JSON.stringify(rr?.rail) + ', which RAIL_SELLER cannot word' };
+    const where = REGION_NAME[rr.region] ?? rr.region;
+    regions.push('in ' + where + ', ' + (r.merchantOfRecord ? 'through ' + r.name + ', its merchant of record' : 'by ' + licensor + ' via ' + r.name));
+  }
+  return { ok: true, text: base + (regions.length ? ' (' + regions.join('; ') + ')' : ''), merchantOfRecord: RAIL_SELLER[pr.rail].merchantOfRecord };
+}
 const RECURRING = new Set(['month', 'year']);
 
 /* transmits() and recurringOfferings() have ONE definition, in
@@ -112,7 +158,7 @@ const lines = (v) => (Array.isArray(v) ? v : [v]);
  * @returns {{ files: Map<string,string>, problems: string[], lost: string[], pro: boolean, source: boolean, src?: object }}
  *   `files` maps a tool-relative path to its full content; `src` is the parsed store/listing.json.
  */
-export function planListing(root, tool, { appConfigPath } = {}) {
+export function planListing(root, tool, { appConfigPath, channelRegisterPath } = {}) {
   const files = new Map();
   const problems = [];
   const lost = [];
@@ -147,19 +193,39 @@ export function planListing(root, tool, { appConfigPath } = {}) {
       '", but tool.json policy.networkAllowlist is empty. Selling Pro needs the account check, which is a network call; ' +
       'the allowlist and the offerings describe two different tools.');
   }
+  let licensor = null;
   if (pro) {
     const licAbs = path.join(tool.dirAbs, 'LICENSE');
     const s = fs.existsSync(licAbs) ? sellerName(readText(licAbs)) : { ok: false, why: 'LICENSE does not exist' };
-    if (s.ok) vars.seller = s.name;
-    else lost.push(tool.rel + ': the Pro text names its seller from LICENSE, and ' + s.why);
+    if (s.ok) licensor = s.name;
+    else lost.push(tool.rel + ': the Pro text names the licensor from LICENSE, and ' + s.why);
   }
+  /* {{seller}} is per STORE: the store's channel row says which rail sells there (business-010). */
+  const sellers = {};
+  if (sells) {
+    const regAbs = path.resolve(channelRegisterPath || path.join(root, CHANNEL_REGISTER_REL));
+    let register = null;
+    try { register = JSON.parse(fs.readFileSync(regAbs, 'utf8')); } catch (e) {
+      lost.push(regAbs + ' could not be read (' + e.message + '), so who sells ' + raw.id + ' Pro on each store cannot be decided.');
+    }
+    if (register && licensor) {
+      for (const [id, row] of Object.entries(rows)) {
+        if (!row || typeof row.dir !== 'string') continue;
+        const ch = channelForStore(register, row.dir);
+        const s = ch ? sellerSentence(ch, licensor) : { ok: false, why: 'no channel row in ' + regAbs + ' has storeMetadataDir extensions/Extension/{tool}/' + row.dir };
+        if (s.ok) sellers[id] = s;
+        else lost.push(tool.rel + ': the ' + id + ' listing names who sells Pro there, and ' + s.why + '.');
+      }
+    }
+  }
+  vars.seller = Object.keys(sellers).length ? Object.fromEntries(Object.entries(sellers).map(([k, v]) => [k, v.text])) : null;
   if (lost.length) return { files, problems, lost, pro, sells, source: true };
 
   const when = (l) => (typeof l === 'string' ? true
     : l.when === 'pro' ? pro : l.when === 'sells' ? sells : l.when === 'free' ? !pro : true);
   const text = (l) => (typeof l === 'string' ? l : String(l.text ?? ''));
   const fill = (t, store) => t.replace(/\{\{(\w+)\}\}/g, (m, k) => {
-    const v = k in vars ? vars[k] : store[k];
+    const v = k === 'seller' ? (sellers[store.id]?.text ?? null) : k in vars ? vars[k] : store[k];
     if (v === null || v === undefined) {
       problems.push(tool.rel + '/' + LISTING_REL + ': "' + t.slice(0, 60) + '" uses {{' + k + '}}, which has no value here.');
       return m;
@@ -208,7 +274,18 @@ export function planListing(root, tool, { appConfigPath } = {}) {
     const put = (f, body) => files.set(row.dir + '/' + f, body);
     put('title.txt', fill(String(src.title), store) + '\n');
     put('short-description.txt', block(lines(src.short), store));
-    put('long-description.txt', block(lines(src.long), store));
+    const long = block(lines(src.long), store);
+    /* business-010: on a merchant-of-record rail the licensor is not the seller, so a listing that
+       says it is — typed by hand, or rendered by a renderer that read LICENSE — is a finding. */
+    if (sells && licensor && sellers[id]?.merchantOfRecord) {
+      const said = new RegExp('sold by ' + licensor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      if (said.test(long)) {
+        problems.push(tool.rel + '/' + row.dir + '/long-description.txt says FullShot Pro is "sold by ' + licensor +
+          '", and the ' + id + ' channel sells on a merchant-of-record rail (' + sellers[id].text + '). Use {{seller}}, ' +
+          'which the channel register words.');
+      }
+    }
+    put('long-description.txt', long);
     put('category.txt', lines(st.category).join('\n') + '\n');
     if (st.searchTerms) put('search-terms.txt', lines(st.searchTerms).join('\n') + '\n');
     if (st.tags) put('tags.txt', lines(st.tags).join('\n') + '\n');
@@ -251,7 +328,7 @@ function main() {
   const BOOLEAN_FLAGS = ['all', 'check'];
   const args = parseArgs(process.argv.slice(2)
     .map((a) => (a.startsWith('--') && BOOLEAN_FLAGS.includes(a.slice(2)) ? a + '=true' : a)));
-  args.rejectUnknown(['all', 'check', 'repo-root', 'app-config']);
+  args.rejectUnknown(['all', 'check', 'repo-root', 'app-config', 'channel-register']);
   const root = repoRoot(args);
   const check = args.bool('check');
   let tools;
@@ -265,7 +342,7 @@ function main() {
   const r = new Report('render-listing · ' + tools.map((t) => t.id).join(', ') + (check ? ' (--check)' : ''));
   let rendered = 0;
   for (const tool of tools) {
-    const plan = planListing(root, tool, { appConfigPath: args.get('app-config') });
+    const plan = planListing(root, tool, { appConfigPath: args.get('app-config'), channelRegisterPath: args.get('channel-register') });
     if (plan.lost.length) die(plan.lost.join('\n'));
     for (const p of plan.problems) r.fail(tool.rel + ' listing renders', p);
     if (!plan.source) { r.note(tool.rel + ': no ' + LISTING_REL + ' — nothing to render.'); continue; }
@@ -289,7 +366,7 @@ function main() {
       (lang && typeof lang.englishOnly === 'string' && lang.englishOnly.trim() ? ', declared English-only for every other store locale' : ''));
     r.note(tool.rel + ': Pro text ' + (plan.pro
       ? 'RENDERS (the tool transmits or sells) · sells: ' + (plan.sells ? 'yes' : 'no — the "sells" lines stay dark') +
-        ' · seller: ' + plan.vars.seller + ' · price range: ' + (plan.vars.priceRange ?? 'none (no recurring offering)')
+        ' · seller: ' + (plan.vars.seller ? Object.entries(plan.vars.seller).map(([k, v]) => k + ' = ' + v).join(' | ') : 'none (it does not sell)') + ' · price range: ' + (plan.vars.priceRange ?? 'none (no recurring offering)')
       : 'does not render (the tool neither transmits nor sells)'));
   }
   if (!rendered && !r.fails.length) die('no listing file was rendered across ' + tools.length + ' tool(s); a pass here would mean nothing.');
