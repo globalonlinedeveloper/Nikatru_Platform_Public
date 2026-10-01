@@ -863,7 +863,7 @@
         "services/subscriptiontracker-api/src/routes/subscriptions.ts",
         "services/subscriptiontracker-api/migrations/0003_subscription_model.sql",
         "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
-        "services/subscriptiontracker-api/migrations/0007_tags.sql"
+        "services/subscriptiontracker-api/migrations/0008_tags.sql"
       ],
       "disclosure": {
         "page": "privacy.html",

@@ -1,5 +1,4 @@
-import 'package:nikatru_core/nikatru_core.dart'
-    show Money, MoneyBag, RecurrenceSchedule;
+import 'package:nikatru_core/nikatru_core.dart' show Money, MoneyBag;
 
 import '../../data/models/subscription.dart';
 import 'monthly_share.dart';
@@ -60,16 +59,17 @@ class SubMath {
       MoneyBag.sum(charging(s).map((Subscription x) => x.yearlyCharge));
 
   /// The money that leaves the account in [month] of [year]: the whole
-  /// [Subscription.price] of every row whose one renewal falls in it.
+  /// [Subscription.price] of EVERY charge in it ([chargesInMonth]).
   ///
   /// 🔴 `price`, NOT THE SHARE, for the reason [dueWithin] gives: a yearly
   /// renewal in March takes the whole yearly price in March. The calendar
   /// summed the twelfth and read 12x short in the month the money went.
+  ///
+  /// ⏱ ST truth pass (CA-01): and every charge, not the one stored date — a
+  /// weekly plan takes its price four or five times in a month.
   static MoneyBag chargedInMonth(List<Subscription> s, int year, int month) =>
       MoneyBag.sum(
-        charging(s)
-            .where((Subscription x) => x.renewsIn(year, month))
-            .map((Subscription x) => x.price),
+        chargesInMonth(s, year, month).map((ProjectedCharge c) => c.sub.price),
       );
 
   /// Every charge the CHARGING rows will take from [from] to [to] (both
@@ -78,36 +78,19 @@ class SubMath {
   /// plan shows in every month a calendar pages to, not only in the one its
   /// stored date falls in. A row with no cadence is its one stored date.
   ///
-  /// ⏱ T12 (CA-04). [chargedInMonth] above still reads the ONE stored date;
-  /// the calendar pages, so it reads this.
+  /// ⏱ T12 (CA-04), on the ST truth pass (CA-01): the per-row walk is the
+  /// model's [Subscription.chargesBetween]; the calendar pages through this,
+  /// and [chargedInMonth] sums the same list.
   static List<ProjectedCharge> chargesBetween(
     List<Subscription> s,
     DateTime from,
     DateTime to,
   ) {
-    final DateTime a = DateTime(from.year, from.month, from.day);
-    final DateTime b = DateTime(to.year, to.month, to.day);
-    final List<ProjectedCharge> out = <ProjectedCharge>[];
-    for (final Subscription x in charging(s)) {
-      final Cadence? c = x.cycle;
-      if (c == null || !c.isValid) {
-        final DateTime d = DateTime(
-          x.nextRenewal.year,
-          x.nextRenewal.month,
-          x.nextRenewal.day,
-        );
-        if (!d.isBefore(a) && !d.isAfter(b)) out.add(ProjectedCharge(x, d));
-        continue;
-      }
-      for (final DateTime d in RecurrenceSchedule.occurrencesBetween(
-        x.nextRenewal,
-        c,
-        a,
-        b,
-      )) {
-        out.add(ProjectedCharge(x, d));
-      }
-    }
+    final List<ProjectedCharge> out = <ProjectedCharge>[
+      for (final Subscription x in charging(s))
+        for (final DateTime d in x.chargesBetween(from, to))
+          ProjectedCharge(x, d),
+    ];
     out.sort((ProjectedCharge p, ProjectedCharge q) {
       final int byDate = p.on.compareTo(q.on);
       return byDate != 0 ? byDate : _tieBreak(p.sub, q.sub);

@@ -23,6 +23,7 @@ import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
+import '../shared/cadence_label.dart';
 
 /// The width from which the four tiles sit in ONE row rather than two.
 ///
@@ -33,14 +34,24 @@ import '../../l10n/app_localizations.dart';
 const double kSummaryOneRowFrom =
     AppBreakpoints.medium - AppSpacing.xxl - AppSpacing.sm;
 
-/// A plan's real charge with its cycle — "US$20.00/mo", "₹4,899/yr".
+/// A plan's real charge with its OWN cycle — "US$20.00/mo", "₹4,899/yr",
+/// "₹900 every 3 months".
+///
+/// ⏱ ST truth pass (IN-01): every cadence that was not yearly printed as
+/// "/mo", so a quarterly ₹900 plan read "₹900/mo" — three times what it
+/// costs a month. Monthly and yearly keep their short forms; any other cadence
+/// is the price beside [cadenceCaption], the caption every row already wears.
 String chargeWithCycle(
   AppLocalizations l10n,
   MoneyFormatter money,
   Subscription s,
-) => s.cycle == BillingCycle.yearly
-    ? l10n.perYearAmount(money.format(s.price))
-    : l10n.perMonthAmount(money.format(s.price));
+) {
+  final Cadence c = s.billingCadence;
+  final String amount = money.format(s.price);
+  if (c == Cadence.yearly) return l10n.perYearAmount(amount);
+  if (c == Cadence.monthly) return l10n.perMonthAmount(amount);
+  return l10n.priceWithCadence(amount, cadenceCaption(l10n, c));
+}
 
 /// The four summary tiles, laid out for the width they are handed.
 class SummaryTiles extends StatelessWidget {
@@ -65,11 +76,13 @@ class SummaryTiles extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final List<Subscription> ranked = SubMath.byMonthlyDesc(subs);
-    final int dueCount = subs.where((Subscription s) {
-      final int d = s.daysUntil(now);
-      return d >= 0 && d <= 30;
-    }).length;
+    // ⏱ ST truth pass (IN-01): CHARGING rows for every tile. The count under
+    // "Next 30 days" is the SAME row set its amount is summed over
+    // (`dueWithinRows`), so a paused plan inside the window moves neither;
+    // the biggest plan is the biggest one still charging.
+    final List<Subscription> charging = SubMath.charging(subs);
+    final List<Subscription> ranked = SubMath.byMonthlyDesc(charging);
+    final int dueCount = SubMath.dueWithinRows(subs, now, 30).length;
     final List<Widget> tiles = <Widget>[
       SummaryTile(
         key: const Key('insights.tile.month'),
@@ -81,7 +94,7 @@ class SummaryTiles extends StatelessWidget {
         key: const Key('insights.tile.year'),
         label: l10n.insightsPerYearLabel,
         figure: money.formatBagRounded(totals.of(SubMath.totalYearly(subs))),
-        caption: l10n.insightsActiveCount(subs.length),
+        caption: l10n.insightsActiveCount(charging.length),
       ),
       SummaryTile(
         key: const Key('insights.tile.next30'),

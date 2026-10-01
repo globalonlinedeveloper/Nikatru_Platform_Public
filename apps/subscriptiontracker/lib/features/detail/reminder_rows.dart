@@ -5,9 +5,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
+import '../../state/providers.dart' show renewalRemindersProvider;
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 import '../settings/reminder_settings.dart' show chooseLeadDays;
@@ -114,6 +116,18 @@ class SubscriptionReminderRows extends ConsumerWidget {
                       'notice_days': d < 0 ? null : d,
                     });
                   },
+                ),
+              // ⏱ ST truth pass (DE-03): on a target that cannot schedule a
+              // notification (web, Linux, Windows without its identity) the
+              // two rows above set days for a reminder THIS DEVICE never
+              // posts. Said here, with the way to the channels that do.
+              if (!ref.watch(renewalRemindersProvider).capabilities.canSchedule)
+                ListTile(
+                  key: const Key('detail.reminders.noDeviceNotifications'),
+                  leading: const Icon(Icons.info_outline),
+                  title: Text(l10n.detailRemindersNoDeviceNotifications),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.go('/settings'),
                 ),
             ],
           ),

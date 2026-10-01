@@ -576,7 +576,6 @@
   "detailWebsite": "वेबसाइट",
   "detailNotes": "नोट्स",
   "detailFirstCharge": "पहला शुल्क",
-  "detailCancelledOn": "रद्द करने की तारीख़",
   "markAsPaid": "भुगतान हुआ चिह्नित करें",
   "markAsPaidTitle": "{name} को भुगतान हुआ चिह्नित करें",
   "markAsPaidBody": "यह उस भुगतान को दर्ज करता है जो आप पहले ही कर चुके हैं। कोई पैसा नहीं जाता।",
@@ -697,5 +696,16 @@
   "duplicateName": "{name} (2)",
   "shareMonth": "इस महीने को साझा करें",
   "shareSummaryImage": "सारांश एक चित्र के रूप में",
-  "shareMonthCsv": "इस महीने के शुल्क (CSV)"
+  "shareMonthCsv": "इस महीने के शुल्क (CSV)",
+  "nameErrorRequired": "नाम दर्ज करें",
+  "priceWithCadence": "{amount} {cadence}",
+  "calendarDayToday": "आज",
+  "calendarDayRenewals": "{count, plural, =1{1 नवीनीकरण} other{{count} नवीनीकरण}}",
+  "calendarCharged": "शुल्क लिया गया",
+  "nextChargeNone": "कोई नहीं",
+  "detailPausedNoCharge": "रोकी गई — कोई शुल्क नहीं",
+  "detailCancelledOnLabel": "रद्द करने की तारीख़",
+  "detailWebsiteNotOpened": "वह वेबसाइट नहीं खुल सकी।",
+  "detailRemindersNoDeviceNotifications": "यह डिवाइस सूचनाएँ नहीं भेजता — ई-मेल रिमाइंडर और कैलेंडर फ़ीड सेटिंग्स में हैं",
+  "detailCancelledOn": "{date} को रद्द किया गया"
 }

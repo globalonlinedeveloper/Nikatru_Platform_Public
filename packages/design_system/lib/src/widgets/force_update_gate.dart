@@ -71,7 +71,10 @@ class ForceUpdateGate extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: AppBreakpoints.form),
-            child: Padding(
+            // ⏱ ST truth pass (EN-17): it SCROLLS. At 200 % text on a
+            // 360×640 phone the centred column outgrew the screen, and this
+            // wall cannot be dismissed — the button fell off the bottom.
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -79,9 +82,12 @@ class ForceUpdateGate extends StatelessWidget {
                   Icon(Icons.system_update_outlined,
                       size: 56, color: theme.colorScheme.primary),
                   const SizedBox(height: 20),
-                  Text(title,
-                      style: theme.textTheme.headlineSmall,
-                      textAlign: TextAlign.center),
+                  Semantics(
+                    header: true,
+                    child: Text(title,
+                        style: theme.textTheme.headlineSmall,
+                        textAlign: TextAlign.center),
+                  ),
                   const SizedBox(height: 10),
                   Text(message,
                       style: theme.textTheme.bodyMedium,

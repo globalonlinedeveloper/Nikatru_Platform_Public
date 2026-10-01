@@ -233,6 +233,42 @@ describe('the CLI', () => {
     assert.equal(r.status, 1);
     assert.match(r.stderr, /^FAIL the environment does not set RELEASE_LINE, GITHUB_RUN_NUMBER, SUPABASE_URL, SUPABASE_ANON_KEY, GITHUB_SHA, REVENUECAT_PUBLIC_KEY, GLITCHTIP_DSN;/);
   });
+
+  // ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST — "pin not yet set" is a
+  // build-time error ONLY for a release-signed build of a channel whose
+  // runtimeSignerCheck entry is `refused`. The fixture register is the real one,
+  // where apps-gov-in's pin is null. Both cases run with NO flutter on PATH: the
+  // refusal must come first, and the allowed case must get past it to the next
+  // check (the unset build variables), which proves it was not refused.
+  const signing = { ANDROID_KEYSTORE_PATH: '/k', ANDROID_KEYSTORE_PASSWORD: 'p', ANDROID_KEY_ALIAS: 'a', ANDROID_KEY_PASSWORD: 'p' };
+  const bare = () => Object.fromEntries(
+    Object.entries({ PATH: process.env.PATH, SystemRoot: process.env.SystemRoot }).filter(([, v]) => v !== undefined),
+  );
+
+  test('a RELEASE-SIGNED apps-gov-in build with no pin is refused before flutter starts', () => {
+    const r = run(['fixture', 'apk', 'apps-gov-in'], { ...bare(), ...signing });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /^FAIL channel "apps-gov-in" is being RELEASE-SIGNED and its runtime signature pin signing\.signingCertificate\.sha256 is not set/);
+  });
+
+  test('a debug-signed apps-gov-in build (the NOT-FOR-UPLOAD proof) is not refused', () => {
+    const r = run(['fixture', 'apk', 'apps-gov-in'], bare());
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /^FAIL the environment does not set /);
+  });
+
+  test('a release-signed android-play build is not refused while its app signing pin is unset', () => {
+    const r = run(['fixture', 'apk', 'android-play'], { ...bare(), ...signing });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /^FAIL the environment does not set /);
+  });
+
+  test('--print composes a refused channel all the same: the census is unaffected', () => {
+    const r = spawnSync(process.execPath, [SCRIPT, 'fixture', 'apk', 'apps-gov-in', '--print', '--root', TMP], {
+      encoding: 'utf8', env: { ...bare(), ...signing },
+    });
+    assert.equal(r.status, 0, r.stderr);
+  });
 });
 
 // ── THE CENSUS FOLLOWS THE CALL ──────────────────────────────────────────────

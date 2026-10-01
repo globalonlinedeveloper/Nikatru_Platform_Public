@@ -4,8 +4,9 @@
 // and `reminder_days` (JSON text) to the list it holds.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// The Idempotency-Key half of POST / (AB-O2-02); see lib/idempotency.ts.
-import { idempotentCreate, reservedCreateId } from '../lib/idempotency';
+// The Idempotency-Key half of POST / (AB-O2-02) and of POST /:id/payments; see
+// lib/idempotency.ts.
+import { PAYMENT_SCOPE, idempotentCreate, reservedCreateId } from '../lib/idempotency';
 import { Hono, type Context } from 'hono';
 import type { AppEnv, Payment, PriceChange, Subscription } from '../types';
 import { allRows, firstRow, nowIso, run, todayYmd, uuid } from '../lib/d1';
@@ -83,7 +84,7 @@ export function serializeSubscription(row: Subscription) {
     // 0004_notice_days.sql (ST-R8). `?? null`: a DB 0004 has not reached yields
     // no such key on the row, and the wire says null ("no notice period").
     notice_days: row.notice_days ?? null,
-    // 0007_tags.sql (AD-12). Stored as the JSON text `validate` wrote, served as
+    // 0008_tags.sql (AD-12). Stored as the JSON text `validate` wrote, served as
     // the list; NULL, a DB 0007 has not reached, or text edited outside this
     // Worker is served as [] ("no tags"), never a 500.
     tags: parseTags(row.tags),
@@ -185,8 +186,11 @@ const MAX_CATEGORY_ID = 64;
  *
  * @ceiling none — a VALUE bound on one numeric column, not a resource bound. Its
  * real right-hand side is Number.MAX_SAFE_INTEGER, a language limit.
+ *
+ * Exported because routes/budget.ts bounds `monthly_budget` and each cap by the
+ * same figure: a budget is an amount of the same money a price is.
  */
-const MAX_PRICE = 1_000_000_000;
+export const MAX_PRICE = 1_000_000_000;
 /**
  * Upper bound on `price_minor`: MAX_PRICE in a currency with four minor-unit
  * digits, the most ISO 4217 assigns. 10^13, well inside exact-integer range.
@@ -278,8 +282,9 @@ const RAILS = [
 ] as const;
 const CYCLE_UNITS = ['day', 'week', 'month', 'year'] as const;
 
-/** ISO 4217 is three letters; stored upper case, as the client reads it. */
-const CURRENCY = /^[A-Za-z]{3}$/;
+/** ISO 4217 is three letters; stored upper case, as the client reads it.
+ *  Exported so routes/budget.ts checks a budget's currency by the same rule. */
+export const CURRENCY = /^[A-Za-z]{3}$/;
 /** A catalogue key: lower-case, no spaces, nothing a URL or a file path would
  *  need to escape. */
 const SERVICE_ID = /^[a-z0-9][a-z0-9._-]*$/;
@@ -1035,6 +1040,11 @@ app.get('/:id', async (c) => {
 // subscription's, for the reason GET /:id serves a NULL one in it. Stored with
 // `source` = 'manual' and `paid_at` at midnight UTC, the same shape the fan-out
 // writes (`${date}T00:00:00Z`), so one ORDER BY paid_at sorts both.
+//
+// 🔴 IT TAKES AN Idempotency-Key, AS POST / DOES (D-PAYMENTS-IDEMPOTENCY). A
+// payment is money: without a key, a "mark as paid" that committed and lost its
+// response was recorded again by the retry, and the spend counted it twice. The
+// key, the ledger and every answer are lib/idempotency.ts's, in PAYMENT_SCOPE.
 // ─────────────────────────────────────────────────────────────────────────────
 const MANUAL_SOURCE = 'manual';
 
@@ -1052,6 +1062,41 @@ const MANUAL_SOURCE = 'manual';
 const EARLIEST_PAID_ON = '2000-01-01';
 // @ceiling none — clock-skew tolerance on a user-entered date, not a platform resource
 const PAID_ON_SKEW_DAYS = 1;
+
+// A repeat of a keyed payment is answered with the payment as stored — the
+// amount, currency and date the first attempt recorded, never recomputed — or
+// 410 once its subscription is removed: a removed row takes no history, and a
+// late replay must not report a payment under it as freshly recorded. Undo
+// (PATCH {deleted_at: null}) brings the 200 back, as it does for POST /.
+app.post(
+  '/:id/payments',
+  idempotentCreate(async (c, id) => {
+    const row = await firstRow<Payment & { parent_id: string | null; parent_deleted_at: string | null }>(
+      c.env.APP_DB.prepare(
+        `SELECT p.id, p.subscription_id, p.user_id, p.amount, p.paid_at, p.updated_at,
+                p.currency, p.source, s.id AS parent_id, s.deleted_at AS parent_deleted_at
+           FROM payment_history p
+           LEFT JOIN subscriptions s ON s.id = p.subscription_id AND s.user_id = p.user_id
+           WHERE p.id = ? AND p.user_id = ?`,
+      ).bind(id, c.get('userId')),
+    );
+    if (!row) return null;
+    if (row.parent_id == null || row.parent_deleted_at != null) {
+      return c.json({ error: 'idempotent_create_gone' }, 410);
+    }
+    const payment: Payment = {
+      id: row.id,
+      subscription_id: row.subscription_id,
+      user_id: row.user_id,
+      amount: row.amount,
+      paid_at: row.paid_at,
+      updated_at: row.updated_at,
+      currency: row.currency,
+      source: row.source,
+    };
+    return c.json(payment, 200);
+  }, PAYMENT_SCOPE),
+);
 
 app.post('/:id/payments', async (c) => {
   const userId = c.get('userId');
@@ -1099,7 +1144,7 @@ app.post('/:id/payments', async (c) => {
   if (!sub) return c.json({ error: 'not_found' }, 404);
 
   const payment: Payment = {
-    id: uuid(),
+    id: reservedCreateId(c) ?? uuid(),
     subscription_id: id,
     user_id: userId,
     amount,

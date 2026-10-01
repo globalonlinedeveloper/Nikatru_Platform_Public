@@ -241,8 +241,16 @@ void main() {
       expect(_grid(tester).deadlines[14], 'trial ends');
       expect(_grid(tester).deadlines[21], 'cancel by');
       expect(_grid(tester).deadlines.containsKey(13), isFalse);
-      expect(find.bySemanticsLabel('14, trial ends'), findsOneWidget);
-      expect(find.bySemanticsLabel('21, cancel by'), findsOneWidget);
+      // The cell names its day (ST truth pass, CA-03) and then what ends on
+      // it: "Monday, September 14, trial ends".
+      expect(
+        find.bySemanticsLabel(RegExp(r'September 14\b.*, trial ends$')),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(RegExp(r'September 21\b.*, cancel by$')),
+        findsOneWidget,
+      );
       // The legend explains the square, and the rows say what ends.
       expect(find.text('Trial ends or cancel by'), findsOneWidget);
       await tester.scrollUntilVisible(

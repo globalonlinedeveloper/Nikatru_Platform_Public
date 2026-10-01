@@ -189,11 +189,15 @@ abstract final class RecurrenceSchedule {
     int? anchorDay,
   }) => rollForward(next, cadence, today, anchorDay: anchorDay).next;
 
-  /// Every charge date from [from] to [to] (both inclusive, date fields only)
-  /// for a row whose stored next charge is [next] — the PROJECTION a calendar
-  /// pages through. Dates before [next] are never invented: the chain starts
-  /// at [next] and only walks forward. Bounded by [maxCrossings] dates, so a
-  /// daily plan over a decade costs the same bound as the roll.
+  /// Every charge date from [from] to [to] (both inclusive) for a row whose
+  /// stored next charge is [next] — a weekly plan's four or five in a month, a
+  /// quarterly plan's one in three.
+  ///
+  /// The chain is [nextOnOrAfter]'s: [next] rolled to [from], then [advance]d
+  /// with ONE anchor (read from [next] once), so a Jan 31 monthly plan lands
+  /// on Feb 28 and Mar 31 here exactly as it does in [rollForward]. A charge
+  /// BEFORE [next] is never invented: the stored date is the newest thing the
+  /// row knows, and what came before it is the payment history's to say.
   static List<DateTime> occurrencesBetween(
     DateTime next,
     Cadence cadence,
@@ -202,15 +206,12 @@ abstract final class RecurrenceSchedule {
     int? anchorDay,
   }) {
     final int anchor = anchorDay ?? next.day;
-    final int fromKey = _key(from);
     final int toKey = _key(to);
     final List<DateTime> out = <DateTime>[];
-    DateTime cur = DateTime(next.year, next.month, next.day);
-    int steps = 0;
-    while (_key(cur) <= toKey && steps < maxCrossings) {
-      if (_key(cur) >= fromKey) out.add(cur);
+    DateTime cur = nextOnOrAfter(next, cadence, from, anchorDay: anchor);
+    while (_key(cur) <= toKey && out.length < maxCrossings) {
+      out.add(cur);
       cur = advance(cur, cadence, anchorDay: anchor);
-      steps++;
     }
     return out;
   }

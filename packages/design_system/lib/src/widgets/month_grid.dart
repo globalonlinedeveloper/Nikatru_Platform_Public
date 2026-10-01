@@ -60,7 +60,20 @@ class MonthGrid extends StatelessWidget {
     this.onDayTap,
     this.firstDayOfWeek,
     this.deadlines = const <int, String>{},
+    this.dayLabel,
   });
+
+  /// What a reader hears for [day] — e.g. "Wednesday, October 14, today,
+  /// 2 renewals, ₹1,148" — in place of the bare numeral. The grid carries no
+  /// copy, so the words and the domain ("renewals", the amount) are the
+  /// app's; [isToday] says whether this is the cell drawn as today, so the
+  /// app's word for it is not a second guess at the date.
+  ///
+  /// ⏱ ST truth pass (CA-03): the mark is a decorative dot and the today fill
+  /// is a colour, so without this a cell said "14" and nothing else — no day
+  /// of the week, no "today", and no cell named what it carried. Null keeps
+  /// the numeral, for a grid with nothing to say about its days.
+  final String Function(int day, {required bool isToday})? dayLabel;
 
   /// Any moment inside the month to draw; only its year and month are read.
   final DateTime month;
@@ -198,6 +211,7 @@ class MonthGrid extends StatelessWidget {
       final String? deadline = deadlines[day];
       final String numeral = dayFmt.format(DateTime(y, m, day));
 
+      final String? label = dayLabel?.call(day, isToday: isToday);
       final Widget column = Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
@@ -237,11 +251,17 @@ class MonthGrid extends StatelessWidget {
             const SizedBox(height: dotSize),
         ],
       );
-      // The deadline is SAID, after the date: "14, trial ends".
-      final Widget content = deadline == null
+      // The app's sentence REPLACES the numeral (CA-03), and the cell is its own
+      // node (`container`), or neighbouring label-only cells merge into one
+      // stop. A deadline is SAID after it: "14, trial ends" (CA-05).
+      final String? spoken = label == null
+          ? (deadline == null ? null : '$numeral, $deadline')
+          : (deadline == null ? label : '$label, $deadline');
+      final Widget content = spoken == null
           ? column
           : Semantics(
-              label: '$numeral, $deadline',
+              container: true,
+              label: spoken,
               excludeSemantics: true,
               child: column,
             );

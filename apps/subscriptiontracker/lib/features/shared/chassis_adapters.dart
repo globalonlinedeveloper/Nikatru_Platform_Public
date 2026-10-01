@@ -10,6 +10,14 @@ import '../../l10n/app_localizations.dart';
 // recorded import of the chassis (tooling/chassis-parity.json `adopted`).
 export 'package:nikatru_chassis_screens/firstrun/setup_steps_view.dart'
     show SetupStep, SetupStepsView;
+// ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST — the device-integrity pieces
+// lib/core/device_integrity.dart calls, re-exported like the others here.
+export 'package:nikatru_chassis_screens/integrity/device_integrity_gate.dart'
+    show
+        DeviceIntegrityScope,
+        integrityRecorder,
+        modifiedCopyBlocked,
+        reauthenticateUser;
 export 'package:nikatru_chassis_screens/settings/help_section.dart'
     show HelpKeys, SettingsHeading, helpCard;
 export 'package:nikatru_chassis_screens/settings/settings_screen.dart'

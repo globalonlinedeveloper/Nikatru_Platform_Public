@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:nikatru_api_client/nikatru_api_client.dart';
+import 'package:nikatru_core/nikatru_core.dart' show OutboxFailure;
 import 'package:test/test.dart';
 
 /// A dio adapter that returns a fixed body/status and records the last request.
@@ -127,7 +128,11 @@ void main() {
               (ApiException e) => e.retryAfter,
               'retryAfter',
               const Duration(seconds: 30),
-            ),
+            )
+            // Review #1075 round 4, minor 1: the outbox waits on THIS 409 —
+            // the server's `error` code as it arrives on the wire — and no
+            // other.
+            .having(classifyForOutbox, 'classified', OutboxFailure.busy),
       ),
     );
   });

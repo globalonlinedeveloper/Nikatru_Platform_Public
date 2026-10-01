@@ -15,13 +15,13 @@
     62,
 
   "affected-guards.test.mjs":
-    11,
+    12,
 
   "agent-docs.test.mjs":
     21,
 
   "alert-disposition.test.mjs":
-    56,
+    58,
 
   "analytics-contract.test.mjs":
     82,
@@ -141,7 +141,7 @@
     5,
 
   "built-artifact-pr-lane.test.mjs":
-    26,
+    27,
 
   "built-info-plist.test.mjs":
     15,
@@ -348,7 +348,7 @@
     23,
 
   "enforcement-index.test.mjs":
-    31,
+    33,
 
   "ensure-monitors.test.mjs":
     24,
@@ -393,7 +393,7 @@
     30,
 
   "flutter-release-build.test.mjs":
-    33,
+    37,
 
   "flutter-stock-assets-injection.test.mjs":
     1,
@@ -443,6 +443,9 @@
   "guard-sweep-invocations.test.mjs":
     12,
 
+  "guard-test-shards.test.mjs":
+    24,
+
   "guard-yield.test.mjs":
     56,
 
@@ -450,7 +453,7 @@
     18,
 
   "guards.test.mjs":
-    491,
+    501,
 
   "heartbeats.test.mjs":
     87,
@@ -695,6 +698,12 @@
   "policy-claims.test.mjs":
     62,
 
+  "port-switch.test.mjs":
+    21,
+
+  "ports.test.mjs":
+    40,
+
   "post-deploy-smoke.test.mjs":
     157,
 
@@ -844,6 +853,9 @@
 
   "runner-budget.test.mjs":
     33,
+
+  "runtime-signer-check.test.mjs":
+    37,
 
   "safe-rerun.test.mjs":
     77,
@@ -1014,7 +1026,7 @@
     108,
 
   "symbolication-proof.test.mjs":
-    75,
+    91,
 
   "tech-currency.test.mjs":
     44,

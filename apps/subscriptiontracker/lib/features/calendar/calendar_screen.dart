@@ -179,10 +179,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final DateTime month = DateTime(now.year, now.month + _offset);
     final int y = month.year, m = month.month;
 
+    // ⏱ ST truth pass (CA-01, CA-02) and T12 (CA-04): EVERY charge in the
+    // month, CHARGING rows only, projected by the date engine — one list
+    // feeds the dots, the rows, the day labels and the total.
     final List<ProjectedCharge> charges = SubMath.chargesInMonth(subs, y, m);
     final Map<int, int> byDay = <int, int>{};
+    final Map<int, List<Money>> spentByDay = <int, List<Money>>{};
     for (final ProjectedCharge c in charges) {
       byDay[c.on.day] = (byDay[c.on.day] ?? 0) + 1;
+      (spentByDay[c.on.day] ??= <Money>[]).add(c.sub.price);
     }
     final List<_Deadline> deadlines = _deadlinesIn(subs, y, m);
     // What LEAVES THE ACCOUNT this month: each projected charge's whole price.
@@ -262,6 +267,19 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                   : l10n.calendarCancelBy,
                         }.join(', '),
                     },
+                    // ST truth pass (CA-03): a cell NAMES its renewals — the
+                    // dot is decorative, so without this no reader heard which
+                    // days charge or what.
+                    dayLabel: (int day, {required bool isToday}) => <String>[
+                      DateFormat.MMMMEEEEd(
+                        l10n.localeName,
+                      ).format(DateTime(y, m, day)),
+                      if (isToday) l10n.calendarDayToday,
+                      if ((byDay[day] ?? 0) > 0) ...<String>[
+                        l10n.calendarDayRenewals(byDay[day]!),
+                        money.formatBag(MoneyBag.sum(spentByDay[day]!)),
+                      ],
+                    ].join(', '),
                     // 🔴 SELECTION EXISTS ONLY IN TWO-PANE MODE. Below 840
                     // there is no detail column for a selection to point at.
                     selectedDay: split ? selectedDay : null,
@@ -736,9 +754,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   }
 
   /// One charge: its date, its name, when it is due (in words, toned by
-  /// urgency) or — for a later charge than the next — its category, and the
-  /// price with its cycle. The row is one merged node, announced as a button,
-  /// because `AppListRow` makes it so.
+  /// urgency), and the price with its cycle. The row is one merged node,
+  /// announced as a button, because `AppListRow` makes it so.
+  ///
+  /// ⏱ ST truth pass (CA-02): the badge and the words are THIS charge's date,
+  /// not the stored one — a weekly plan's third charge says "In 15 days", and
+  /// a charge earlier this month says it was charged. The urgent tone is the
+  /// same today-or-tomorrow threshold [DueInfo] keeps; a trial says so.
   Widget _row(
     BuildContext context,
     AppLocalizations l10n,
@@ -747,19 +769,29 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     DateTime now,
   ) {
     final Subscription s = c.sub;
-    final DateTime next = s.nextCharge(now);
-    final bool isNext =
-        next.year == c.on.year &&
-        next.month == c.on.month &&
-        next.day == c.on.day;
-    // `DueInfo.localized` for the WORDS (arb-backed, plural-correct);
-    // `DueInfo.statusOf` for the tone, with the same threshold. Only the NEXT
-    // charge is "due"; a projected one further out is just a date.
+    final int d = DateTime.utc(
+      c.on.year,
+      c.on.month,
+      c.on.day,
+    ).difference(DateTime.utc(now.year, now.month, now.day)).inDays;
+    // A row with NO cadence is never rolled, so a past date on it is OVERDUE
+    // (DueInfo's rule), not a charge the app can say happened.
+    final bool overdue = d < 0 && s.cycle == null;
+    final String when = overdue
+        ? l10n.dueOverdue
+        : (d < 0
+              ? l10n.calendarCharged
+              : (d == 0
+                    ? l10n.dueToday
+                    : (d == 1 ? l10n.renewsTomorrow : l10n.dueInDays(d))));
+    final LifeStatus? life = LifeStatus.of(l10n, s);
     return AppListRow(
       leading: DateBadge(date: c.on, locale: l10n.localeName),
       title: s.name,
-      subtitle: isNext ? DueInfo.localized(l10n, s, now).label : s.category,
-      status: isNext ? DueInfo.statusOf(s, now) : null,
+      subtitle: life == null ? when : '$when · ${life.label}',
+      status:
+          life?.kind ??
+          (overdue || (d >= 0 && d <= 1) ? StatusKind.warn : null),
       figure: money.format(s.price),
       caption: cadenceCaption(l10n, s.cycle),
       onTap: () => context.push('/sub/${s.id}'),

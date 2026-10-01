@@ -5,7 +5,7 @@
 // Register row: O-COVERAGE-MANIFEST-LOOP-CASES, option (1).
 //
 // The executed floor is a LINUX measurement: per suite, how many cases the
-// guard-meta job (ubuntu-24.04) REPORTED running. It is read by
+// guard-tests shards (ubuntu-24.04) REPORTED running, merged by guard-tests-floor. It is read by
 // tooling/ci/assert-case-count-honest.mjs --executed-floor, which reds when a
 // suite runs fewer cases than its floor — the loop-generated case the declared
 // floor (coverage-manifest.json) cannot see.
@@ -194,7 +194,7 @@ function main() {
   } catch (e) {
     failure = [
       `run ${args.runId} has no downloadable ${ARTIFACT_NAME} artifact (${String(e.message).split('\n')[0]}).`,
-      'Runs before the guard-meta upload step carry no junit, and artifacts expire.',
+      'Runs before the junit upload existed carry none (guard-meta uploaded it until #1111, guard-tests-floor since), and artifacts expire.',
     ];
   }
   rmSync(tmp, { recursive: true, force: true });

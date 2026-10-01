@@ -82,6 +82,24 @@ class TelemetryBootstrap {
       // has to be defined against a denominator we actually hold (`app_open`
       // rows in `events`), not against a session count nobody records.
       options.enableAutoSessionTracking = false;
+      // 🔴 THE NATIVE LAYER IS OFF ON EVERY TARGET, AND THAT IS A DECISION.
+      // ⏱ 2026-10-01 · full review AA-08. The pinned sentry_flutter (9.26.0)
+      // defaults this ON, and the channel register said `native: false` on
+      // every row while nothing here turned it off — so native crashes were
+      // probably being SENT. Two things make such an event worse than none:
+      // nothing uploads the symbols that would make it readable (no dSYM, PDB,
+      // NDK or R8 mapping upload exists), and it never passes `beforeSend`
+      // below, because the native SDK sends it itself — so it reaches
+      // GlitchTip outside the PII scrub the privacy policy promises. Off, the
+      // register's `native: false` is true: the JVM handler and ANR watchdog
+      // on Android, KSCrash on iOS/macOS (which also drops the native device
+      // context from Dart events there), and sentry-native on Windows/Linux
+      // are never installed. The Android NDK signal handler is NOT reached by
+      // this flag; each app's AndroidManifest switches it off with
+      // `io.sentry.ndk.enable`. tooling/ci/assert-seams-wired.mjs holds the
+      // register, this line and the manifest to one answer. Turning it back on
+      // needs the native symbol uploads AND a native-side scrub first.
+      options.enableNativeCrashHandling = false;
       options.beforeSend = (event, hint) => scrubEvent(event);
       // LAST, because the transport reads `options.dsn` when it is built.
       if (isWeb) {
@@ -199,4 +217,12 @@ class TelemetryBootstrap {
 
     return event;
   }
+
+  /// The client [init] returns for [config], without initialising anything:
+  /// for a caller that runs INSIDE `appRunner` and so cannot await [init]'s
+  /// result — today the device-integrity record (O-APPS-GOV-IN-VAPT-CHECKLIST).
+  /// Both clients are const and stateless, so this is the same client.
+  static TelemetryClient clientFor(TelemetryConfig config) => config.enabled
+      ? const SentryTelemetryClient()
+      : const NoOpTelemetryClient();
 }

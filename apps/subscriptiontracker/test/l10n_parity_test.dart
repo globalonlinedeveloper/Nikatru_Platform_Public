@@ -281,6 +281,9 @@ void main() {
       'duplicateName':
           'a placeholder and "(2)": a copy\'s name is its original\'s with a '
           'number, which reads the same in every language (T20, AD-10)',
+      // ⏱ ST truth pass (2026-10-01, IN-01): a price beside its own cadence
+      // caption; both halves arrive translated.
+      'priceWithCadence': 'two placeholders and a space: no word to translate',
     };
     const List<String> unrecoverable = <String>[
       'updateRequiredTitle',

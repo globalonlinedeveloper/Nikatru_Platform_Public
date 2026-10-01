@@ -13,6 +13,8 @@ import 'package:nikatru_telemetry/nikatru_telemetry.dart';
 import 'app.dart';
 import 'package:nikatru_chassis_screens/shell/web_semantics.dart';
 import 'core/app_config.dart';
+import 'core/device_integrity.dart';
+import 'core/router.dart' show installAppErrorScreen;
 import 'core/windows_notification_identity.g.dart';
 import 'state/providers.dart';
 
@@ -38,7 +40,6 @@ Future<void> main() async {
   // package. Measured: the shipped NOTICES had ZERO hits for its licence, so the
   // font was being distributed with its attribution condition unmet, and an
   // unmet CC BY condition means the licence does not apply.
-  //
   // Registered BEFORE `runApp` because `LicenseRegistry` is read lazily by
   // `LicensePage` — the surface Settings offers — and a registration that lands
   // after a user has already opened that page shows them an incomplete list.
@@ -87,17 +88,16 @@ Future<void> main() async {
       // screen in debug; shipping either to a user looks like a broken app and
       // leaks widget internals. One line at startup, impossible to retrofit
       // across fifty shipped apps.
-      //
-      // The copy is the design system's own last-resort fallback: this runs
-      // before any BuildContext exists, so there is no Localizations to read,
-      // and an error during the FIRST build is exactly what this covers.
+      // The copy is localized where the error widget is BUILT, with English for
+      // an error in the very first build (router_provider.dart says why).
       //
       // 🔴 IT MUST STAY FIRST INSIDE `appRunner`. Everything below can throw —
       // a plugin channel, a timezone database, a Supabase handshake — and the
       // error widget is what the user sees if one of them does during the first
       // build. Installing it after the thing it protects is installing it too
       // late.
-      AppErrorScreen.install();
+      installAppErrorScreen();
+      if (await integrityBootBlocks(telemetry)) return; // core/device_integrity
 
       // ⏱ 2026-09-28 (ST-R4): ONE notification adapter, and it is the chassis
       // one. Subly's own fork used to initialise the SAME process-singleton

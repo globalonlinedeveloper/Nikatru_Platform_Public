@@ -73,8 +73,12 @@ List<InsightSignal> signalsFor(
   DateTime now, {
   Set<String> answered = const <String>{},
 }) {
+  // ⏱ ST truth pass (IN-02): CHARGING rows only. A paused plan is not about
+  // to renew, a cancelled one is not a duplicate the user pays for twice, and
+  // neither is worth asking "still using?" about.
+  final List<Subscription> charging = SubMath.charging(subs);
   final List<AnnualSoonSignal> annual = <AnnualSoonSignal>[
-    for (final Subscription s in subs)
+    for (final Subscription s in charging)
       if (s.cycle == BillingCycle.yearly &&
           s.daysUntil(now) >= 0 &&
           s.daysUntil(now) <= kAnnualSoonDays)
@@ -83,7 +87,7 @@ List<InsightSignal> signalsFor(
 
   final Map<String, List<Subscription>> byCategory =
       <String, List<Subscription>>{};
-  for (final Subscription s in SubMath.byMonthlyDesc(subs)) {
+  for (final Subscription s in SubMath.byMonthlyDesc(charging)) {
     (byCategory[s.category] ??= <Subscription>[]).add(s);
   }
   final List<SameCategorySignal> same = <SameCategorySignal>[
@@ -92,7 +96,7 @@ List<InsightSignal> signalsFor(
   ];
 
   Subscription? ask;
-  for (final Subscription s in SubMath.byMonthlyDesc(subs)) {
+  for (final Subscription s in SubMath.byMonthlyDesc(charging)) {
     if (!answered.contains(s.id)) {
       ask = s;
       break;
@@ -152,14 +156,17 @@ class SignalsSection extends ConsumerWidget {
     final TextTheme text = theme.textTheme;
     final Set<String> answered =
         ref.watch(stillUsingProvider).value ?? <String>{};
+    // `nowProvider`, never `DateTime.now()` (ST truth pass, IN-02): the day
+    // counts are a function of today, and a test must be able to pin it.
+    final DateTime now = ref.watch(nowProvider)();
     final List<InsightSignal> signals = signalsFor(
       subs,
-      DateTime.now(),
+      now,
       answered: answered,
     );
 
     final List<Widget> rows = <Widget>[
-      for (final InsightSignal s in signals) _row(context, ref, l10n, s),
+      for (final InsightSignal s in signals) _row(context, ref, l10n, s, now),
     ];
     return Column(
       key: const Key('insights.signals'),
@@ -202,6 +209,7 @@ class SignalsSection extends ConsumerWidget {
     WidgetRef ref,
     AppLocalizations l10n,
     InsightSignal signal,
+    DateTime now,
   ) {
     switch (signal) {
       case SameCategorySignal(
@@ -228,7 +236,9 @@ class SignalsSection extends ConsumerWidget {
           subtitle: l10n.signalAnnualBody(
             sub.name,
             money.format(sub.price),
-            DateFormat.MMMEd(l10n.localeName).format(sub.nextRenewal),
+            // The ROLLED date — the one `days` is measured to. The stored
+            // date can be a year stale and printed a day already gone.
+            DateFormat.MMMEd(l10n.localeName).format(sub.nextCharge(now)),
           ),
           onTap: () => context.push('/sub/${sub.id}'),
         );

@@ -13,6 +13,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_chassis_screens/integrity/device_integrity_gate.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/data/api/seed_api_client.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
@@ -22,6 +23,7 @@ import 'package:subscriptiontracker/features/settings/settings_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
+import 'support/mock_auth_repository.dart';
 import 'support/width_harness.dart';
 
 class _KeepingExporter implements core.FileExporter {
@@ -218,4 +220,83 @@ void main() {
     expect(kSubscriptionCsvHeader.toSet(), fields);
     expect(kSubscriptionCsvHeader, hasLength(fields.length));
   });
+
+  // ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST — ON A ROOTED DEVICE THE EXPORT
+  // ASKS THE SIGNED-IN USER TO RE-AUTHENTICATE FIRST, and a cancel exports
+  // nothing. The clean-device path is every case above: no prompt at all.
+  group('a rooted device', () {
+    late core.IntegritySession before;
+    setUp(() {
+      before = DeviceIntegrityScope.session;
+      DeviceIntegrityScope.session = core.IntegritySession(
+        const core.DeviceIntegrity(
+          root: core.RootReport(core.RootStatus.rooted, <core.RootSignal>{
+            core.RootSignal.suBinary,
+          }),
+          signer: core.SignerVerdict.verified,
+        ),
+      );
+    });
+    tearDown(() => DeviceIntegrityScope.session = before);
+
+    Future<(_KeepingExporter, _CountingAuth)> tapSignedIn(
+      WidgetTester tester,
+    ) async {
+      final _CountingAuth auth = _CountingAuth();
+      await auth.signInWithEmail(email: 'a@example.test', password: 'pw');
+      auth.attempts = 0;
+      final _KeepingExporter exporter = await _pumpAndTap(
+        tester,
+        overrides: <Override>[authRepositoryProvider.overrideWithValue(auth)],
+      );
+      await tester.pumpAndSettle();
+      return (exporter, auth);
+    }
+
+    testWidgets('cancelling the re-auth exports nothing', (
+      WidgetTester tester,
+    ) async {
+      final (_KeepingExporter exporter, _CountingAuth auth) = await tapSignedIn(
+        tester,
+      );
+      expect(find.byKey(ReauthDialog.passwordField), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(exporter.files, isEmpty);
+      expect(auth.attempts, 0);
+    });
+
+    testWidgets('re-authenticating exports the file', (
+      WidgetTester tester,
+    ) async {
+      final (_KeepingExporter exporter, _CountingAuth auth) = await tapSignedIn(
+        tester,
+      );
+      expect(find.byKey(ReauthDialog.passwordField), findsOneWidget);
+      await tester.enterText(find.byKey(ReauthDialog.passwordField), 'pw');
+      await tester.tap(find.byKey(ReauthDialog.confirmButton));
+      await tester.pumpAndSettle();
+      expect(auth.attempts, 1);
+      expect(exporter.files, hasLength(1));
+    });
+  });
+}
+
+/// The mock, counting re-authentications.
+class _CountingAuth extends MockAuthRepository {
+  int attempts = 0;
+
+  @override
+  Future<core.AuthUser> signInWithEmail({
+    required String email,
+    required String password,
+    String? captchaToken,
+  }) {
+    attempts++;
+    return super.signInWithEmail(
+      email: email,
+      password: password,
+      captchaToken: captchaToken,
+    );
+  }
 }

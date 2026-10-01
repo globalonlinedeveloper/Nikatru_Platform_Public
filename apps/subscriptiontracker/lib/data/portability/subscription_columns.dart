@@ -30,7 +30,7 @@ const List<String> kSubscriptionCsvHeader = <String>[
   // ⏱ 2026-09-29 · ST-T3b: the ADR no.077 §5 fields, each written as
   // `Subscription.toJson()` writes it (see [_modelCells]).
   ..._kModelColumns,
-  // ST-AD12 (0007_tags.sql): the row's labels in ONE cell, `; `-separated —
+  // ST-AD12 (0008_tags.sql): the row's labels in ONE cell, `; `-separated —
   // a spreadsheet filters on a cell, and a JSON array is not one a person
   // reads.
   'tags',

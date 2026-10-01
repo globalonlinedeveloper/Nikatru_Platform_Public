@@ -387,6 +387,9 @@ export async function buildEnforcementIndex(root, opts = {}) {
           }
         }
         if (/\bnode\b[^\n]*--test\b[^\n]*tooling\/ci\/test\//.test(text)) testRunnerJobs.push(edge);
+        // A guard-tests shard names no test path: its `node --test` reads the list
+        // guard-test-shards.mjs --plan wrote, and the matrix runs the suite whole.
+        if (/guard-test-shards\.mjs\s+--plan\b/.test(text)) testRunnerJobs.push(edge);
       }
     }
   }

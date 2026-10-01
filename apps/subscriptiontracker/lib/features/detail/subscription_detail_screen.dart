@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_core/nikatru_core.dart'
+    show ExternalLinkLauncherUrl, LinkOutcome;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/e2e_keys.dart';
@@ -181,6 +183,22 @@ class SubscriptionDetailScreen extends ConsumerWidget {
     // moment a cancellation still saves this cycle. Further out the words
     // alone say it, in the neutral caption ink.
     final StatusKind? dueKind = s.daysUntil(now) <= 1 ? StatusKind.warn : null;
+    // ⏱ ST truth pass (DE-02): a paused or cancelled row has NO next charge,
+    // and the tile used to roll its date forward and say "Due today" over a
+    // plan that will never charge again. It says what stopped it instead, in
+    // the row's status tone.
+    final LifeStatus? life = LifeStatus.of(l10n, s);
+    final DateTime? cancelledOn = s.cancelledOn;
+    final String? stoppedCaption = switch (s.status) {
+      SubscriptionStatus.paused => l10n.detailPausedNoCharge,
+      SubscriptionStatus.cancelled =>
+        cancelledOn == null
+            ? l10n.statusCancelled
+            : l10n.detailCancelledOn(
+                DateFormat.yMMMd(l10n.localeName).format(cancelledOn),
+              ),
+      _ => null,
+    };
 
     return Scaffold(
       body: Column(
@@ -255,18 +273,26 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                       ),
                       const SizedBox(width: AppSpacing.md),
                       Expanded(
-                        child: AppFigureTile(
-                          label: l10n.nextChargeLabel,
-                          // `MMMd`, never a month table: Tamil does not put
-                          // the month first, and a table bakes the ORDER.
-                          // The ROLLED next charge (ST-M3), the date
-                          // `due.label` beside it is measured to.
-                          figure: DateFormat.MMMd(
-                            l10n.localeName,
-                          ).format(s.nextCharge(now)),
-                          caption: due.label,
-                          status: dueKind,
-                        ),
+                        child: stoppedCaption != null
+                            ? AppFigureTile(
+                                key: const Key('detail.nextCharge.stopped'),
+                                label: l10n.nextChargeLabel,
+                                figure: l10n.nextChargeNone,
+                                caption: stoppedCaption,
+                                status: life?.kind,
+                              )
+                            : AppFigureTile(
+                                label: l10n.nextChargeLabel,
+                                // `MMMd`, never a month table: Tamil does not
+                                // put the month first, and a table bakes the
+                                // ORDER. The ROLLED next charge (ST-M3), the
+                                // date `due.label` beside it is measured to.
+                                figure: DateFormat.MMMd(
+                                  l10n.localeName,
+                                ).format(s.nextCharge(now)),
+                                caption: due.label,
+                                status: dueKind,
+                              ),
                       ),
                     ],
                   ),
@@ -658,51 +684,53 @@ class DetailsList extends ConsumerWidget {
       if (s.railHolder?.trim().isNotEmpty ?? false) s.railHolder!.trim(),
     ].join(' · ');
     final String? website = s.cancelUrl?.trim();
-    final List<({Key key, String label, String value})> rows =
-        <({Key key, String label, String value})>[
-          if (nextReminder != null)
-            (
-              key: const Key('details-next-reminder'),
-              label: l10n.detailNextReminder,
-              value: date.format(nextReminder),
-            ),
-          if (paidWith.isNotEmpty)
-            (
-              key: const Key('details-paid-with'),
-              label: l10n.detailPaidWith,
-              value: paidWith,
-            ),
-          if (s.category.trim().isNotEmpty)
-            (
-              key: const Key('details-category'),
-              label: l10n.detailCategory,
-              value: s.category.trim(),
-            ),
-          if (website != null && website.isNotEmpty)
-            (
-              key: const Key('details-website'),
-              label: l10n.detailWebsite,
-              value: website,
-            ),
-          if (s.notes.trim().isNotEmpty)
-            (
-              key: const Key('details-notes'),
-              label: l10n.detailNotes,
-              value: s.notes.trim(),
-            ),
-          if (s.firstChargeOn != null)
-            (
-              key: const Key('details-first-charge'),
-              label: l10n.detailFirstCharge,
-              value: date.format(s.firstChargeOn!),
-            ),
-          if (s.cancelledOn != null)
-            (
-              key: const Key('details-cancelled-on'),
-              label: l10n.detailCancelledOn,
-              value: date.format(s.cancelledOn!),
-            ),
-        ];
+    final List<({Key key, String label, String value})>
+    rows = <({Key key, String label, String value})>[
+      if (nextReminder != null)
+        (
+          key: const Key('details-next-reminder'),
+          label: l10n.detailNextReminder,
+          value: date.format(nextReminder),
+        ),
+      if (paidWith.isNotEmpty)
+        (
+          key: const Key('details-paid-with'),
+          label: l10n.detailPaidWith,
+          value: paidWith,
+        ),
+      if (s.category.trim().isNotEmpty)
+        (
+          key: const Key('details-category'),
+          label: l10n.detailCategory,
+          value: s.category.trim(),
+        ),
+      if (website != null && website.isNotEmpty)
+        (
+          // ST truth pass (DE-01): the website to cancel at OPENS, through
+          // the app's ExternalLinkLauncher seam ([websiteLinkLauncherProvider]).
+          key: const Key('detail.details.website'),
+          label: l10n.detailWebsite,
+          value: website,
+        ),
+      if (s.notes.trim().isNotEmpty)
+        (
+          key: const Key('details-notes'),
+          label: l10n.detailNotes,
+          value: s.notes.trim(),
+        ),
+      if (s.firstChargeOn != null)
+        (
+          key: const Key('details-first-charge'),
+          label: l10n.detailFirstCharge,
+          value: date.format(s.firstChargeOn!),
+        ),
+      if (s.cancelledOn != null)
+        (
+          key: const Key('details-cancelled-on'),
+          label: l10n.detailCancelledOnLabel,
+          value: date.format(s.cancelledOn!),
+        ),
+    ];
     if (rows.isEmpty) return const SizedBox.shrink();
     return AppCard(
       key: const Key('detail-details-card'),
@@ -715,12 +743,37 @@ class DetailsList extends ConsumerWidget {
               key: rows[i].key,
               title: rows[i].label,
               subtitle: rows[i].value,
-              subtitleMaxLines: 4,
+              // Free text the user wrote may wrap, as a sentence does.
+              subtitleMaxLines: rows[i].key == const Key('details-notes')
+                  ? 8
+                  : 4,
               showChevron: false,
+              onTap: rows[i].key == const Key('detail.details.website')
+                  ? () => _openWebsite(context, ref, l10n, rows[i].value)
+                  : null,
             ),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Opens the row's website to cancel at (ST truth pass, DE-01): the policy,
+/// then the plugin; a refusal says so rather than failing silently.
+Future<void> _openWebsite(
+  BuildContext context,
+  WidgetRef ref,
+  AppLocalizations l10n,
+  String url,
+) async {
+  final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(context);
+  final LinkOutcome outcome = await ref
+      .read(websiteLinkLauncherProvider)(url)
+      .openUrl(url);
+  if (outcome != LinkOutcome.opened) {
+    messenger?.showSnackBar(
+      SnackBar(content: Text(l10n.detailWebsiteNotOpened)),
     );
   }
 }

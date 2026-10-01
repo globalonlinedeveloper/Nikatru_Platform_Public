@@ -148,6 +148,26 @@ class _StopFlowState extends ConsumerState<StopFlow> {
   String? _failure;
   late DateTime _cancelledOn = DateUtils.dateOnly(ref.read(nowProvider)());
 
+  /// The step heading's focus (ST truth pass, DE-12, carried over from the
+  /// retired cancel sheet). A step change REPLACES the control the keyboard
+  /// and the reader were on, so focus went nowhere and nothing was said; it
+  /// lands on the new step's heading, which is a live region.
+  final FocusNode _stepHeading = FocusNode(debugLabel: 'stop-step');
+
+  @override
+  void dispose() {
+    _stepHeading.dispose();
+    super.dispose();
+  }
+
+  /// Moves to [next] and puts focus on its heading once it is built.
+  void _go(_Step next) {
+    setState(() => _step = next);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _stepHeading.requestFocus();
+    });
+  }
+
   SubscriptionsController get _ctl =>
       ref.read(subscriptionsControllerProvider.notifier);
 
@@ -200,7 +220,7 @@ class _StopFlowState extends ConsumerState<StopFlow> {
     final SubscriptionsController ctl = _ctl;
     final DateTime on = _cancelledOn;
     if (!await _run(() => ctl.markCancelled(s.id, on: on))) return;
-    if (mounted) setState(() => _step = _Step.done);
+    if (mounted) _go(_Step.done);
   }
 
   Future<void> _remove() async {
@@ -305,11 +325,18 @@ class _StopFlowState extends ConsumerState<StopFlow> {
   Widget _title(BuildContext context, String text) {
     final ThemeData theme = Theme.of(context);
     return Semantics(
+      key: const Key('stop.step.heading'),
       header: true,
-      child: Text(
-        text,
-        style: theme.textTheme.headlineSmall?.copyWith(
-          color: theme.colorScheme.onSurface,
+      // The first step is the sheet opening, which the route announces; every
+      // later one is a change the reader must hear (DE-12).
+      liveRegion: _step != _Step.choose,
+      child: Focus(
+        focusNode: _stepHeading,
+        child: Text(
+          text,
+          style: theme.textTheme.headlineSmall?.copyWith(
+            color: theme.colorScheme.onSurface,
+          ),
         ),
       ),
     );
@@ -357,7 +384,7 @@ class _StopFlowState extends ConsumerState<StopFlow> {
                 Icons.block,
                 l10n.stopChoiceStop,
                 l10n.stopChoiceStopDetail,
-                () => setState(() => _step = _Step.walkthrough),
+                () => _go(_Step.walkthrough),
               ),
               const Divider(height: 1),
             ],
@@ -377,7 +404,7 @@ class _StopFlowState extends ConsumerState<StopFlow> {
                 Icons.event_busy,
                 l10n.stopChoiceAlreadyCancelled,
                 l10n.stopChoiceAlreadyCancelledDetail,
-                () => setState(() => _step = _Step.didItWork),
+                () => _go(_Step.didItWork),
               ),
               const Divider(height: 1),
             ],
@@ -421,7 +448,7 @@ class _StopFlowState extends ConsumerState<StopFlow> {
         FilledButton(
           key: E2EKeys.stopNext,
           style: _buttonShape,
-          onPressed: () => setState(() => _step = _Step.didItWork),
+          onPressed: () => _go(_Step.didItWork),
           child: Text(l10n.stopDidItWork),
         ),
       ],
@@ -440,7 +467,7 @@ class _StopFlowState extends ConsumerState<StopFlow> {
           padding: EdgeInsets.zero,
           child: AppListRow(
             key: E2EKeys.stopCancelledOn,
-            title: l10n.detailCancelledOn,
+            title: l10n.detailCancelledOnLabel,
             figure: DateFormat.yMMMd(l10n.localeName).format(_cancelledOn),
             onTap: _busy ? null : _pickDate,
           ),

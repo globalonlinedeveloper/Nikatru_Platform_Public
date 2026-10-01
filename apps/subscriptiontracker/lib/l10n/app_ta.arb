@@ -576,7 +576,6 @@
   "detailWebsite": "இணையதளம்",
   "detailNotes": "குறிப்புகள்",
   "detailFirstCharge": "முதல் கட்டணம்",
-  "detailCancelledOn": "ரத்து செய்த நாள்",
   "markAsPaid": "செலுத்தியதாகக் குறி",
   "markAsPaidTitle": "{name} செலுத்தப்பட்டதாகக் குறி",
   "markAsPaidBody": "நீங்கள் ஏற்கனவே செய்த கட்டணத்தை இது பதிவு செய்கிறது. பணம் எதுவும் நகராது.",
@@ -697,5 +696,16 @@
   "duplicateName": "{name} (2)",
   "shareMonth": "இந்த மாதத்தைப் பகிர்",
   "shareSummaryImage": "சுருக்கம் படமாக",
-  "shareMonthCsv": "இந்த மாதக் கட்டணங்கள் (CSV)"
+  "shareMonthCsv": "இந்த மாதக் கட்டணங்கள் (CSV)",
+  "nameErrorRequired": "பெயரை உள்ளிடவும்",
+  "priceWithCadence": "{amount} {cadence}",
+  "calendarDayToday": "இன்று",
+  "calendarDayRenewals": "{count, plural, =1{1 புதுப்பித்தல்} other{{count} புதுப்பித்தல்கள்}}",
+  "calendarCharged": "வசூலிக்கப்பட்டது",
+  "nextChargeNone": "இல்லை",
+  "detailPausedNoCharge": "இடைநிறுத்தப்பட்டது — கட்டணம் இல்லை",
+  "detailCancelledOnLabel": "ரத்து செய்த நாள்",
+  "detailWebsiteNotOpened": "அந்த இணையதளத்தைத் திறக்க முடியவில்லை.",
+  "detailRemindersNoDeviceNotifications": "இந்தச் சாதனம் அறிவிப்புகளை அனுப்பாது — மின்னஞ்சல் நினைவூட்டல்களும் நாட்காட்டி ஊட்டமும் அமைப்புகளில் உள்ளன",
+  "detailCancelledOn": "{date} அன்று ரத்து செய்யப்பட்டது"
 }

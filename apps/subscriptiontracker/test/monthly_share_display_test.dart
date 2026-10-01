@@ -178,11 +178,19 @@ void main() {
         SubMath.chargedInMonth(s, 2026, 3).single,
         const Money(13553, 'USD'),
       );
+      // ⏱ ST truth pass (2026-10-01, CA-01): EVERY charge in the month, not
+      // the one stored date. April holds the March-20 monthly plan's April
+      // charge beside the April-1 one, and March 2027 the yearly plan's next
+      // charge and both monthly plans'. This read 1500 and "empty", which is
+      // the calendar total that left out a monthly plan every other month.
       expect(
         SubMath.chargedInMonth(s, 2026, 4).single,
-        const Money(1500, 'USD'),
+        const Money(1500 * 2, 'USD'),
       );
-      expect(SubMath.chargedInMonth(s, 2027, 3).isEmpty, isTrue);
+      expect(
+        SubMath.chargedInMonth(s, 2027, 3).single,
+        const Money(13553 + 1500, 'USD'),
+      );
     });
 
     test('byMonthlyDesc still orders by share, currency groups first', () {

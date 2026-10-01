@@ -1,8 +1,15 @@
+import 'package:flutter/foundation.dart' show TargetPlatform, kDebugMode;
 import 'package:flutter/widgets.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import '../integrity/device_integrity_gate.dart';
 import 'web_semantics.dart';
+
+// The boot step's one app-side input, re-exported so a stamped `main()` keeps
+// ONE chassis import (the delegation resolvers refuse a file with two).
+export '../integrity/device_integrity_gate.dart'
+    show DeviceIntegrityRecorder, integrityRecorder;
 
 /// THE BOOT ORDER EVERY STAMPED APP INHERITS — [ADR 067] decision 2.
 ///
@@ -70,6 +77,18 @@ import 'web_semantics.dart';
 ///    `Localizations` to read, and an error during the FIRST build is exactly
 ///    what it covers.
 ///
+/// 3½. **Check the device and the artefact** — ⏱ 2026-10-01 (row
+///    O-APPS-GOV-IN-VAPT-CHECKLIST) [checkDeviceIntegrity]: root detection and
+///    the runtime signature check. 🔴 BEFORE THE NOTIFICATION ADAPTER AND
+///    IDENTITY, because a copy someone re-signed must reach NO data: when the
+///    signer is not one of [releaseChannel]'s complete pins,
+///    [modifiedCopyBlocked] runs `TamperedBuildApp` and this function returns —
+///    no adapter, no identity, no app. A rooted device is recorded and runs on (the notice and the
+///    re-auth gate live in the app, `RootedDeviceNoticeHost` and
+///    `confirmSensitiveAction`). [integrityProbe] is the app's
+///    `platformDeviceIntegrityProbe()` — this package declares no plugin.
+///    `tooling/ci/assert-runtime-signer-check.mjs` holds the order.
+///
 /// 4. **Initialise the ONE notification adapter** — 🔴 [13]T-9 THE INBOUND
 ///    HALF, AND THE ORDER IS LOAD-BEARING. One adapter, constructed once by the
 ///    caller and `init()`ed once HERE, before the first frame, and then handed
@@ -134,6 +153,11 @@ Future<void> bootstrapNikatru({
   required TelemetryZoneRunner runGuarded,
   required IdentityInitialiser initialiseIdentity,
   required VoidCallback run,
+  required String releaseChannel,
+  required core.DeviceIntegrityProbe? integrityProbe,
+  DeviceIntegrityRecorder? recordIntegrity,
+  bool isDebugBuild = kDebugMode,
+  TargetPlatform? platform,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
   enableWebSemantics();
@@ -141,6 +165,15 @@ Future<void> bootstrapNikatru({
 
   await runGuarded(() async {
     AppErrorScreen.install();
+    if (await modifiedCopyBlocked(
+      releaseChannel: releaseChannel,
+      integrityProbe: integrityProbe,
+      record: recordIntegrity,
+      isDebugBuild: isDebugBuild,
+      platform: platform,
+    )) {
+      return;
+    }
     await notifications.init();
     await initialiseIdentity();
     run();

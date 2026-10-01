@@ -235,7 +235,7 @@ void main() {
       for (final String k in <String>[
         'details-paid-with',
         'details-category',
-        'details-website',
+        'detail.details.website',
         'details-notes',
         'details-first-charge',
         'details-cancelled-on',

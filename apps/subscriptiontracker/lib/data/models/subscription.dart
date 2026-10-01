@@ -214,7 +214,7 @@ class Subscription {
   final String? cancelUrl;
 
   /// The user's own free-text labels ("family", "work") — the API's `tags`
-  /// (0007_tags.sql, ST-AD12). Normalised by [normaliseTags]: trimmed, never
+  /// (0008_tags.sql, ST-AD12). Normalised by [normaliseTags]: trimmed, never
   /// blank, one spelling per tag whatever its case, at most [maxTags] of at
   /// most [maxTagLength] characters each — the bounds the route enforces, so
   /// a list this model holds is a list the server accepts.
@@ -335,10 +335,38 @@ class Subscription {
         : price.times(r.numerator).dividedBy(r.denominator);
   }
 
-  /// Whether this row's one renewal falls in [month] of [year]. The calendar's
-  /// list and its month total both ask this, so they cannot disagree.
-  bool renewsIn(int year, int month) =>
-      nextRenewal.year == year && nextRenewal.month == month;
+  /// Every charge this row makes from [from] to [to], both inclusive: the
+  /// [RecurrenceSchedule] chain [nextCharge] reads its first link from, so a
+  /// weekly plan charges four or five times in a month and a stored date three
+  /// months stale lands on its rolled day. A row with no cadence charges once,
+  /// on its stored date, when that falls inside.
+  ///
+  /// ⏱ ST truth pass (CA-01, IN-03). The calendar and the forecast used to
+  /// read the STORED date once — one dot for a weekly plan, a forecast month
+  /// for a quarterly plan only when its stored month came round.
+  List<DateTime> chargesBetween(DateTime from, DateTime to) {
+    final Cadence? c = cycle;
+    if (c != null && c.isValid) {
+      return RecurrenceSchedule.occurrencesBetween(nextRenewal, c, from, to);
+    }
+    final DateTime d = DateTime(
+      nextRenewal.year,
+      nextRenewal.month,
+      nextRenewal.day,
+    );
+    final bool inside =
+        !d.isBefore(DateTime(from.year, from.month, from.day)) &&
+        !d.isAfter(DateTime(to.year, to.month, to.day));
+    return inside ? <DateTime>[d] : const <DateTime>[];
+  }
+
+  /// The charges that fall in [month] of [year] ([chargesBetween]). The
+  /// calendar's dots, its list and its month total all read this.
+  List<DateTime> chargesIn(int year, int month) =>
+      chargesBetween(DateTime(year, month), DateTime(year, month + 1, 0));
+
+  /// Whether this row charges at all in [month] of [year].
+  bool renewsIn(int year, int month) => chargesIn(year, month).isNotEmpty;
 
   bool get isActive => !unused && usedPct > 60;
 
@@ -549,7 +577,7 @@ class Subscription {
     // Train T11's column, behind its capability exactly like `notice_days`.
     if (priceAfterTrialSupported)
       'price_after_trial_minor': priceAfterTrial?.minorUnits,
-    // ST-AD12 (0007_tags.sql). Always sent: an API before 0007 ignores a key
+    // ST-AD12 (0008_tags.sql). Always sent: an API before 0008 ignores a key
     // its validator does not name, and `[]` is how a PATCH clears them.
     'tags': tags,
   };
