@@ -15,7 +15,7 @@
     62,
 
   "affected-guards.test.mjs":
-    11,
+    12,
 
   "agent-docs.test.mjs":
     21,
@@ -141,7 +141,7 @@
     5,
 
   "built-artifact-pr-lane.test.mjs":
-    26,
+    27,
 
   "built-info-plist.test.mjs":
     15,
@@ -348,7 +348,7 @@
     23,
 
   "enforcement-index.test.mjs":
-    31,
+    33,
 
   "ensure-monitors.test.mjs":
     24,
@@ -442,6 +442,9 @@
 
   "guard-sweep-invocations.test.mjs":
     12,
+
+  "guard-test-shards.test.mjs":
+    24,
 
   "guard-yield.test.mjs":
     56,
