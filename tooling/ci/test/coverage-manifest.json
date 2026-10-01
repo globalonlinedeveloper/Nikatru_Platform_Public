@@ -198,7 +198,7 @@
     50,
 
   "channel-register.test.mjs":
-    341,
+    356,
 
   "channel-surface.test.mjs":
     7,
@@ -318,7 +318,7 @@
     46,
 
   "e2e-proof-fresh.test.mjs":
-    61,
+    67,
 
   "e2e-purge-retry.test.mjs":
     15,
@@ -480,7 +480,7 @@
     8,
 
   "install-pinned-tool.test.mjs":
-    22,
+    27,
 
   "land-rules.test.mjs":
     22,
@@ -523,6 +523,9 @@
 
   "local-chromedriver.test.mjs":
     12,
+
+  "lockfile-discipline.test.mjs":
+    9,
 
   "mail-auth-dns.test.mjs":
     35,
@@ -606,7 +609,7 @@
     14,
 
   "no-tls-pinning.test.mjs":
-    13,
+    26,
 
   "obfuscation-coupled.test.mjs":
     40,
@@ -633,7 +636,7 @@
     13,
 
   "package-boundaries.test.mjs":
-    28,
+    33,
 
   "package-earned.test.mjs":
     25,
@@ -708,7 +711,7 @@
     31,
 
   "price-literals.test.mjs":
-    28,
+    37,
 
   "privacy-manifest.test.mjs":
     20,
@@ -833,8 +836,11 @@
   "sandbox-service-role.test.mjs":
     5,
 
+  "scan-dependencies.test.mjs":
+    25,
+
   "scan-secrets.test.mjs":
-    12,
+    22,
 
   "scan-workflows.test.mjs":
     12,
@@ -856,6 +862,9 @@
 
   "setup-flutter-env.test.mjs":
     4,
+
+  "signing-inputs-pinned.test.mjs":
+    14,
 
   "signing-seam-census.test.mjs":
     9,
@@ -935,6 +944,9 @@
   "start-here.test.mjs":
     9,
 
+  "store-audience.test.mjs":
+    18,
+
   "store-bijection.test.mjs":
     26,
 
@@ -948,7 +960,7 @@
     17,
 
   "store-identity.test.mjs":
-    70,
+    77,
 
   "store-key-secret.test.mjs":
     8,
@@ -981,7 +993,7 @@
     48,
 
   "sworn-store-files.test.mjs":
-    102,
+    108,
 
   "symbolication-proof.test.mjs":
     75,
@@ -1023,7 +1035,7 @@
     42,
 
   "web-cache-policy.test.mjs":
-    46,
+    73,
 
   "web-drive-stages-fonts.test.mjs":
     5,

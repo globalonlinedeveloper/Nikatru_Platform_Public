@@ -56,13 +56,16 @@ const RULES = [];
 let cur = null, inAllow = false;
 for (const raw of cfg.split(/\r?\n/)) {
   const line = raw.trim();
-  if (line === '[[rules]]') { cur = { id: null, re: null, group: 0, allow: [] }; RULES.push(cur); inAllow = false; continue; }
+  if (line === '[[rules]]') { cur = { id: null, re: null, path: null, group: 0, allow: [] }; RULES.push(cur); inAllow = false; continue; }
   if (line === '[rules.allowlist]') { inAllow = true; continue; }
   if (!cur) continue;
   let m;
   if ((m = line.match(/^id = "(.+)"$/))) { cur.id = m[1]; continue; }
   if ((m = line.match(/^secretGroup = (\d+)$/))) { cur.group = Number(m[1]); continue; }
   if ((m = line.match(/^regex = '''(.*)'''$/))) { if (!inAllow) cur.re = m[1]; continue; }
+  // A PATH-ONLY rule (no regex) fires on the file NAME alone, as gitleaks' does.
+  // Go's leading (?i) is not JS syntax, so it becomes the i flag.
+  if ((m = line.match(/^path = '''(.*)'''$/))) { if (!inAllow) cur.path = m[1]; continue; }
   if ((m = line.match(/^regexes = \[(.*)\]$/))) {
     if (inAllow) for (const r of m[1].split(/''',\s*'''/)) cur.allow.push(r.replace(/'''/g, ''));
     continue;
@@ -70,6 +73,15 @@ for (const raw of cfg.split(/\r?\n/)) {
 }
 if (/useDefault\s*=\s*true/.test(cfg)) RULES.unshift({ id: 'private-key', re: 'BEGIN RSA PRIVATE KEY', group: 0, allow: [] });
 const findings = [];
+const pathHit = (file, commit) => {
+  for (const r of RULES) {
+    if (r.re || !r.path || !r.id) continue;
+    const ci = r.path.startsWith('(?i)');
+    if (new RegExp(ci ? r.path.slice(4) : r.path, ci ? 'i' : '').test(file)) {
+      findings.push({ RuleID: r.id, File: file, StartLine: 0, Commit: commit, Description: r.id });
+    }
+  }
+};
 const match = (text, file, commit) => {
   for (const r of RULES) {
     if (!r.re || !r.id) continue;
@@ -92,7 +104,7 @@ if (!a.includes('--no-git') && !process.env.STUB_TREE_ONLY) {
   let commit = null, file = null, commits = 0;
   for (const line of log.stdout.split('\n')) {
     if (line.startsWith('\u0000commit ')) { commit = line.slice(8); commits++; continue; }
-    if (line.startsWith('+++ ')) { file = line.slice(6); continue; }
+    if (line.startsWith('+++ ')) { file = line.slice(6); pathHit(file, commit); continue; }
     if (line.startsWith('+')) match(line.slice(1), file, commit);
   }
   if (reportPath) writeFileSync(reportPath, JSON.stringify(findings));
@@ -107,6 +119,7 @@ if (!a.includes('--no-git') && !process.env.STUB_TREE_ONLY) {
   for (const f of walk(src)) {
     const t = readFileSync(f, 'utf8');
     bytes += Buffer.byteLength(t);
+    pathHit(f, '');
     match(t, f, '');
   }
   if (reportPath) writeFileSync(reportPath, JSON.stringify(findings));
@@ -310,5 +323,84 @@ describe('scan-secrets — the range limb', () => {
     );
     assert.equal(out.status, 0, `${out.stdout}${out.stderr}`);
     assert.match(out.stdout, new RegExp(`under ${r.dir.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')};`));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// rv2-security-019 · the signing-key PATH rule and the Resend prefix rule. Both
+// are read from the REAL .gitleaks.toml by the stub above, like every other rule.
+//
+// 🔴 REAL-TREE RUN FIRST, 2026-09-30, with the real gitleaks 8.30.1 over this
+// checkout, green control first (12 planted shapes detected, 0 findings):
+//   · a BINARY keystore (JKS magic + random bytes) dropped at
+//     apps/subscriptiontracker/android/upload.jks ⇒ EXIT 1,
+//     `upload.jks:0  rule=nikatru-signing-key-file`; removed ⇒ green;
+//   · the rule's `jks|keystore` spelled `jksXX|keystoreXX` ⇒ EXIT 1, "SELF-TEST
+//     FAILED — rule "nikatru-signing-key-file" did not fire on its own planted
+//     canary";
+//   · the Resend rule's second group widened to {40} ⇒ EXIT 1, the same self-test
+//     failure for "nikatru-resend-api-key";
+//   · the key-file rule's `id =` line deleted ⇒ EXIT 2, "declares 10 rule(s) but
+//     11 canary/canaries are planted".
+// ⚠️ Measured the same day: in git modes (the pre-commit hook, the --range limb)
+// gitleaks skips a BINARY diff before any rule runs, so there only a TEXT key file
+// (key.properties, a PEM .p8) is caught. The last case below is that one.
+describe('scan-secrets — signing-key files and Resend keys (rv2-security-019)', () => {
+  const RESEND = `RESEND_API_KEY=${'re'}_${'Ab3d'.repeat(2)}_${'Zx9y'.repeat(6)}\n`;
+
+  test('RED CONTROL: a force-added keystore in the tree FAILS, named by the path rule', () => {
+    const r = repo('keystore');
+    r.commit('apps/x/android/app/upload-keystore.jks', 'not really a keystore\n', 'force-add a keystore');
+    const { code, out } = scan(r);
+    assert.equal(code, 1, out);
+    assert.match(out, /upload-keystore\.jks:0 {2}rule=nikatru-signing-key-file/);
+  });
+
+  // One explicit test() per file name, never a loop (assert-no-loop-cases).
+  const pathRuleNames = (name) => () => {
+    const r = repo(`kf-${name.replace(/[^A-Za-z0-9]/g, '-')}`);
+    r.commit(`signing/${name}`, 'x\n', `add ${name}`);
+    const { code, out } = scan(r);
+    assert.equal(code, 1, out);
+    assert.match(out, /rule=nikatru-signing-key-file/);
+  };
+  test('the path rule names release.keystore', pathRuleNames('release.keystore'));
+  test('the path rule names cert.p12', pathRuleNames('cert.p12'));
+  test('the path rule names AuthKey_ABC123.p8', pathRuleNames('AuthKey_ABC123.p8'));
+  test('the path rule names App_Store.mobileprovision', pathRuleNames('App_Store.mobileprovision'));
+  test('the path rule names android/key.properties', pathRuleNames('android/key.properties'));
+
+  test('key.properties.example and a .properties file of another name stay quiet', () => {
+    const r = repo('kf-quiet');
+    r.commit('android/key.properties.example', 'storeFile=<path>\n', 'example');
+    r.commit('android/gradle.properties', 'org.gradle.jvmargs=-Xmx4g\n', 'gradle');
+    const { code, out } = scan(r);
+    assert.equal(code, 0, out);
+  });
+
+  test('RED CONTROL: a Resend key in the tree FAILS, named by its own rule', () => {
+    const r = repo('resend');
+    r.commit('services/mail/.dev.vars.txt', RESEND, 'a resend key');
+    const { code, out } = scan(r);
+    assert.equal(code, 1, out);
+    assert.match(out, /rule=nikatru-resend-api-key/);
+  });
+
+  test('a snake_case identifier beginning re_ is not a Resend key', () => {
+    const r = repo('resend-quiet');
+    r.commit('src/x.ts', 'const re_validate_session_and_refresh_the_token_now = 1;\n', 'identifier');
+    const { code, out } = scan(r);
+    assert.equal(code, 0, out);
+  });
+
+  test('a TEXT key file added then removed inside a range is caught by the history scan', () => {
+    const r = repo('kf-history');
+    const base = r.head();
+    r.commit('android/key.properties', 'storePassword=hunter2\n', 'add signing props');
+    const head = r.commit('android/key.properties', null, 'remove them');
+    assert.equal(scan(r).code, 0, 'the tree no longer holds the file');
+    const hist = scan(r, ['--range', `${base}..${head}`, '--range-kind', 'pr']);
+    assert.equal(hist.code, 1, hist.out);
+    assert.match(hist.out, /android\/key\.properties:0 {2}rule=nikatru-signing-key-file/);
   });
 });

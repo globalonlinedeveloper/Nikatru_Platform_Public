@@ -486,6 +486,33 @@ export interface Env {
   APPLE_REVOKE_PRIVATE_KEY?: string;
 
   /**
+   * ⏱ 2026-09-30 · review round 2 (security): the provider refresh tokens are
+   * ENCRYPTED AT REST. The AES-256-GCM key `provider_tokens.token_ct` is sealed
+   * with, key id `v1` (src/lib/token-crypto.ts): 32 random bytes, standard
+   * base64 (`openssl rand -base64 32`), OWNER-PROVISIONED with
+   * `wrangler secret put TOKEN_ENC_KEY_V1`. Ours, not a vendor's.
+   *
+   * 🔴 ABSENT OR MALFORMED FAILS CLOSED, NEVER PLAIN TEXT: a token store is
+   * refused (503), a revoke is `blocked` (the deletion stays pending), the
+   * nightly backfill is red, and `/v1/health` reports `token_encryption_key`
+   * not ok, so the post-deploy smoke fails the deploy. Losing it makes every
+   * stored token unreadable — the deletions they exist for then stay pending.
+   */
+  TOKEN_ENC_KEY_V1?: string;
+
+  /**
+   * ⏱ 2026-09-30 · THE PLAIN-TEXT READ WINDOW, a committed var (wrangler.jsonc):
+   * a `YYYY-MM-DD` date. Before 00:00 UTC that day — and only when that is at
+   * most PLAINTEXT_WINDOW_MAX_DAYS away — the nightly backfill may read the
+   * legacy `refresh_token` column to encrypt it, and a revoke may read a row the
+   * backfill has not reached yet (src/lib/provider-revoke.ts
+   * `plaintextReadsOpen`). ABSENT, MALFORMED, TOO FAR AHEAD OR PAST ⇒ CLOSED:
+   * nothing reads that column, so the flag DEFAULTS OFF once the date passes,
+   * with no deploy needed to close it.
+   */
+  PROVIDER_TOKEN_PLAINTEXT_READS_UNTIL?: string;
+
+  /**
    * WHERE EACH APP'S OWN ERASURE ROUTE LIVES — `"<appId>=<https origin>"`,
    * comma-separated. Today: `"subscriptiontracker=https://subscriptiontracker-api.nikatru.com"`.
    *

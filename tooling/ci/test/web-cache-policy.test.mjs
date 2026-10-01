@@ -213,9 +213,13 @@ ${SEC}/
 
 /** A static deploy root's policy: entry points plus the two asset CLASSES a
  *  hand-written site inevitably grows, declared at any depth. */
+const SITE_CSP_OK =
+  "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; " +
+  "style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-AAAA'; connect-src 'self'; form-action 'self'";
 const GOOD_SITE = `# security headers carry no Cache-Control, so nothing overlaps
 /*
   X-Frame-Options: DENY
+  Content-Security-Policy: ${SITE_CSP_OK}
 /
   Cache-Control: public, max-age=0, must-revalidate
 /*.html
@@ -239,7 +243,10 @@ const GOOD_SITE = `# security headers carry no Cache-Control, so nothing overlap
 // any bundle headers that do not already carry a policy, so a cache case stays
 // about caching; the cases that test the policy itself pass `sec: false` and hand
 // in exactly the bytes they mean.
-function fixture({ app = GOOD, brick = GOOD, brickIndex = '<html></html>', sec = true, sites = null, appFiles = {}, siteFiles = {} } = {}) {
+// `siteCsp` is tooling/ci/site-csp.json for the fixture: by default every fixture
+// site is declared OUT of scope (a cache case says nothing about the site CSP);
+// the site-CSP cases hand in exactly the declaration they mean, or `false` for none.
+function fixture({ app = GOOD, brick = GOOD, brickIndex = '<html></html>', sec = true, sites = null, appFiles = {}, siteFiles = {}, siteCsp = undefined } = {}) {
   const withSec = (h) => (h === null || !sec || h.includes('Content-Security-Policy') ? h : SEC + h);
   app = withSec(app);
   brick = withSec(brick);
@@ -256,6 +263,21 @@ function fixture({ app = GOOD, brick = GOOD, brickIndex = '<html></html>', sec =
     writeFileSync(abs, body);
   }
   if (sites !== null) {
+    const decl = siteCsp === undefined
+      ? {
+          inScope: Object.entries(sites)
+            .filter(([name, h]) => h !== null && name !== 'rajasekarselvam')
+            .map(([name]) => ({ site: `sites/${name}`, why: 'fixture: served on the nikatru.com origin' })),
+          outOfScope: Object.entries(sites)
+            .filter(([name, h]) => h !== null && name === 'rajasekarselvam')
+            .map(([name]) => ({ site: `sites/${name}`, why: 'fixture: its own origin, carries unsafe-inline' })),
+          overrides: [],
+        }
+      : siteCsp;
+    if (decl !== false) {
+      mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
+      writeFileSync(join(root, 'tooling', 'ci', 'site-csp.json'), JSON.stringify(decl));
+    }
     for (const [name, headers] of Object.entries(sites)) {
       const dir = join(root, 'sites', name);
       mkdirSync(dir, { recursive: true });
@@ -996,5 +1018,203 @@ describe('assert-web-cache-policy · Pages Function security headers', () => {
     );
     assert.equal(code, 2);
     assert.match(out, /director\(ies\) exist and the Pages-Function limb evaluated ZERO files/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The nikatru.com static-site CSP limb (rv2-security-005). The flutter-web limb
+// never read sites/*, so the /ext/connect override could detach the global policy,
+// lose its own line, and serve the signed-in link-code page with NO policy — green.
+//
+// 🔴 REAL-TREE RUN FIRST, 2026-09-30, on sites/nikatru/_headers in place, each
+// mutation restored byte-identically (cmp) before the next:
+//   A. the /ext/connect restated CSP line deleted, `! Content-Security-Policy` kept
+//      ⇒ EXIT 1, "declared CSP override whose block no longer sets a
+//      Content-Security-Policy while it still DETACHES the global one" and
+//      "a request for "/ext/connect" is served with NO Content-Security-Policy".
+//   B. an undeclared `/pricing` block detaching and re-setting the CSP ⇒ EXIT 1.
+//   C. the override losing object-src and gaining 'unsafe-inline' and a CDN host in
+//      script-src ⇒ EXIT 1, three findings.
+//   D. the whole /ext/connect block deleted, its declaration kept ⇒ EXIT 2 (stale).
+//   E. the global line losing frame-ancestors ⇒ EXIT 1.
+//   Green control before and after: EXIT 0, "2 policy line(s) floored, 1 declared
+//   per-path override(s)".
+describe('assert-web-cache-policy · the nikatru.com site CSP and its per-path overrides', () => {
+  const OVERRIDE_CSP = SITE_CSP_OK.replace("connect-src 'self'", "connect-src 'self' https://auth-api.example");
+  const WITH_OVERRIDE = `${GOOD_SITE}/ext/connect\n  ! Content-Security-Policy\n  Content-Security-Policy: ${OVERRIDE_CSP}\n  Cache-Control: no-store\n`;
+  const DECL = {
+    inScope: [{ site: 'sites/nikatru', why: 'fixture: served on the nikatru.com origin' }],
+    outOfScope: [],
+    overrides: [{ site: 'sites/nikatru', path: '/ext/connect', why: 'fixture: the extension link page talks to auth' }],
+  };
+  const site = (headers, siteCsp = DECL, extra = {}) => run(fixture({ sites: { nikatru: headers, ...extra }, siteCsp }));
+
+  test('a declared override that detaches and restates a floored policy PASSES, and is counted', () => {
+    const { code, out } = site(WITH_OVERRIDE);
+    assert.equal(code, 0, out);
+    assert.match(out, /1 in-scope site\(s\), 2 policy line\(s\) floored, 1 declared per-path override/);
+  });
+
+  test('🔴 FAILS on an UNDECLARED override — a block that detaches the global CSP', () => {
+    const { code, out } = site(WITH_OVERRIDE, { ...DECL, overrides: [] });
+    assert.equal(code, 1, out);
+    assert.match(out, /"\/ext\/connect" detaches a Content-Security-Policy and is not declared/);
+  });
+
+  test('FAILS on an undeclared block that merely SETS a second CSP', () => {
+    const { code, out } = site(`${GOOD_SITE}/about\n  Content-Security-Policy: ${SITE_CSP_OK}\n`, { ...DECL, overrides: [] });
+    assert.equal(code, 1, out);
+    assert.match(out, /"\/about" sets a Content-Security-Policy and is not declared/);
+  });
+
+  test('🔴 FAILS when the override DROPS its CSP and keeps the detach — the page ships with no policy', () => {
+    const dropped = WITH_OVERRIDE.replace(`  Content-Security-Policy: ${OVERRIDE_CSP}\n`, '');
+    const { code, out } = site(dropped);
+    assert.equal(code, 1, out);
+    assert.match(out, /no longer sets a Content-Security-Policy while it still DETACHES the global one/);
+    assert.match(out, /"\/ext\/connect" is served with NO Content-Security-Policy/);
+  });
+
+  test('FAILS when a declared override block no longer carries any CSP at all', () => {
+    const { code, out } = site(`${GOOD_SITE}/ext/connect\n  Cache-Control: no-store\n`);
+    assert.equal(code, 1, out);
+    assert.match(out, /declared CSP override whose block no longer sets a Content-Security-Policy\./);
+  });
+
+  // One explicit test() per floor directive, never a loop: assert-no-loop-cases
+  // counts a looped case as ONE declaration, so a row deleted from a table would
+  // vanish from coverage-manifest.json without a trace.
+  const breaksFloor = (from, to, msg) => () => {
+    const mutated = OVERRIDE_CSP.replace(from, to);
+    assert.notEqual(mutated, OVERRIDE_CSP, 'the mutation did not apply; re-read this case');
+    const { code, out } = site(WITH_OVERRIDE.replace(OVERRIDE_CSP, mutated));
+    assert.equal(code, 1, out);
+    assert.match(out, msg);
+  };
+  test("FAILS when the override's policy breaks the floor: object-src",
+    breaksFloor("object-src 'none'; ", '', /override\) does not hold object-src 'none'/));
+  test("FAILS when the override's policy breaks the floor: base-uri",
+    breaksFloor("base-uri 'self'; ", '', /override\) does not hold base-uri/));
+  test("FAILS when the override's policy breaks the floor: frame-ancestors",
+    breaksFloor("frame-ancestors 'none'; ", 'frame-ancestors *; ', /override\) does not hold frame-ancestors 'none'/));
+  test("FAILS when the override's policy breaks the floor: default-src",
+    breaksFloor("default-src 'self'", 'default-src *', /override\) does not hold default-src/));
+  test("FAILS when the override's policy breaks the floor: form-action",
+    breaksFloor("; form-action 'self'", '', /override\) does not hold form-action/));
+  test("FAILS when the override's policy breaks the floor: script-src unsafe-inline",
+    breaksFloor("script-src 'self'", "script-src 'self' 'unsafe-inline'", /override\) script-src admits 'unsafe-inline'/));
+  test("FAILS when the override's policy breaks the floor: script-src unsafe-eval",
+    breaksFloor("script-src 'self'", "script-src 'self' 'unsafe-eval'", /override\) script-src admits 'unsafe-eval'/));
+  test("FAILS when the override's policy breaks the floor: script-src a scheme source",
+    breaksFloor("script-src 'self'", "script-src 'self' https:", /override\) script-src admits https:/));
+  test("FAILS when the override's policy breaks the floor: script-src a host the global line lacks",
+    breaksFloor("script-src 'self'", "script-src 'self' https://cdn.example", /admits https:\/\/cdn\.example, which the global \/\* policy does not/));
+
+  test('🔴 FAILS when two DECLARED overrides detach EACH OTHER — only the resolved view sees it', () => {
+    // Each block carries a floored CSP, so the per-block limbs are all green; but a
+    // request for /ext/connect matches both, and each detaches the other's value.
+    const both = `${WITH_OVERRIDE}/ext/*\n  ! Content-Security-Policy\n  Content-Security-Policy: ${OVERRIDE_CSP}\n`;
+    const decl = { ...DECL, overrides: [...DECL.overrides, { site: 'sites/nikatru', path: '/ext/*', why: 'fixture: a second overlapping override' }] };
+    const { code, out } = site(both, decl);
+    assert.equal(code, 1, out);
+    assert.match(out, /"\/ext\/connect" is served with NO Content-Security-Policy/);
+    assert.equal(/does not hold|admits|no longer sets|not declared/.test(out), false, out);
+  });
+
+  test('an override may carry DIFFERENT hashes than the global line — a hash is not graded as a source', () => {
+    const { code, out } = site(WITH_OVERRIDE.replace(OVERRIDE_CSP, OVERRIDE_CSP.replace("'sha256-AAAA'", "'sha256-BBBB'")));
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS when the GLOBAL /* policy breaks the floor', () => {
+    const { code, out } = site(
+      WITH_OVERRIDE.replace(`Content-Security-Policy: ${SITE_CSP_OK}`, `Content-Security-Policy: ${SITE_CSP_OK.replace("frame-ancestors 'none'; ", '')}`),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /\(the \/\* policy\) does not hold frame-ancestors 'none'/);
+  });
+
+  test('FAILS when the /* rule carries no CSP at all', () => {
+    const { code, out } = site(GOOD_SITE.replace(`  Content-Security-Policy: ${SITE_CSP_OK}\n`, ''), { ...DECL, overrides: [] });
+    assert.equal(code, 1, out);
+    assert.match(out, /has no Content-Security-Policy on its \/\* rule/);
+  });
+
+  test('COVERAGE LOST when a declared override has no block in _headers (stale)', () => {
+    const { code, out } = site(GOOD_SITE);
+    assert.equal(code, 2, out);
+    assert.match(out, /declares CSP override\(s\) \/ext\/connect on sites\/nikatru, and sites\/nikatru\/_headers has no such block/);
+  });
+
+  test('COVERAGE LOST when the declaration names a site the scan never found (stale)', () => {
+    const { code, out } = site(WITH_OVERRIDE, { ...DECL, outOfScope: [{ site: 'sites/gone', why: 'fixture: a site that left the tree' }] });
+    assert.equal(code, 2, out);
+    assert.match(out, /declares sites\/gone, and the scan found no such static deploy root/);
+  });
+
+  test('FAILS when a scanned static root is declared neither in nor out of scope', () => {
+    const { code, out } = site(WITH_OVERRIDE, DECL, { mirror: GOOD_SITE });
+    assert.equal(code, 1, out);
+    assert.match(out, /sites\/mirror is a static deploy root that .* neither puts in scope nor out of scope/);
+  });
+
+  test('COVERAGE LOST when the declaration file is absent and static roots exist', () => {
+    const { code, out } = site(WITH_OVERRIDE, false);
+    assert.equal(code, 2, out);
+    assert.match(out, /site-csp\.json is absent/);
+  });
+
+  test('🔴 COVERAGE LOST when sites/nikatru is declared OUT of scope — the anchor', () => {
+    const { code, out } = site(WITH_OVERRIDE, {
+      inScope: [],
+      overrides: [],
+      outOfScope: [{ site: 'sites/nikatru', why: 'fixture: a plausible-sounding reason' }],
+    });
+    assert.equal(code, 2, out);
+    assert.match(out, /sites\/nikatru is scanned and .* does not put it in scope/);
+  });
+
+  test('FAILS when a declaration carries no reason of at least 20 characters', () => {
+    const { code, out } = site(WITH_OVERRIDE, { ...DECL, overrides: [{ ...DECL.overrides[0], why: 'needed' }] });
+    assert.equal(code, 1, out);
+    assert.match(out, /needs a "site" and a "why" of at least 20/);
+  });
+
+  test('an out-of-scope site carrying script-src unsafe-inline is not graded', () => {
+    const raj = GOOD_SITE.replace(SITE_CSP_OK, SITE_CSP_OK.replace("script-src 'self'", "script-src 'self' 'unsafe-inline'"));
+    const { code, out } = run(
+      fixture({
+        sites: { nikatru: WITH_OVERRIDE, rajasekarselvam: raj },
+        siteCsp: { ...DECL, outOfScope: [{ site: 'sites/rajasekarselvam', why: 'fixture: its own origin, carries unsafe-inline' }] },
+      }),
+    );
+    assert.equal(code, 0, out);
+  });
+
+  // THE REAL FILE AND THE REAL DECLARATION, copied into a fixture, so the suite
+  // notices the real policy drifting — and a mutation of the real bytes goes red.
+  const realHeaders = () => readFileSync(join(REPO, 'sites', 'nikatru', '_headers'), 'utf8');
+  const realDecl = () => {
+    const d = JSON.parse(readFileSync(join(REPO, 'tooling', 'ci', 'site-csp.json'), 'utf8'));
+    // the fixture carries only sites/nikatru, so the out-of-scope root is dropped
+    return { ...d, outOfScope: [] };
+  };
+
+  test('🔴 the REAL sites/nikatru/_headers and site-csp.json PASS, with the /ext/connect override graded', () => {
+    const { code, out } = site(realHeaders(), realDecl());
+    assert.equal(code, 0, out);
+    assert.match(out, /1 in-scope site\(s\), 2 policy line\(s\) floored, 1 declared per-path override/);
+  });
+
+  test('🔴 …and deleting the REAL /ext/connect CSP line while its detach stays goes RED', () => {
+    const lines = realHeaders().split('\n');
+    const at = lines.findIndex(
+      (l, i) => i > 0 && /^\s*Content-Security-Policy:/.test(l) && lines[i - 1].trim() === '! Content-Security-Policy',
+    );
+    assert.ok(at > 0, 'the real file no longer has a detach followed by a restated CSP; re-read this test');
+    lines.splice(at, 1);
+    const { code, out } = site(lines.join('\n'), realDecl());
+    assert.equal(code, 1, out);
+    assert.match(out, /"\/ext\/connect" is served with NO Content-Security-Policy/);
   });
 });

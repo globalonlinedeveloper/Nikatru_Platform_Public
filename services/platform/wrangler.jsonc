@@ -60,6 +60,18 @@
     // app-signing digest are put, `app-attest` until APP_ATTEST_TEAM_ID is, and
     // both until NATIVE_ATTEST_CHALLENGE_KEY is (the PR lists each step).
     "NATIVE_AUTH_ATTEST_KINDS": "app-attest,play-integrity",
+    // ⏱ 2026-09-30 · review round 2 (security) — THE PLAIN-TEXT READ WINDOW for
+    // the provider refresh tokens, now stored ENCRYPTED under the Worker secret
+    // TOKEN_ENC_KEY_V1 (src/lib/token-crypto.ts, migration 0023). Before 00:00
+    // UTC on this date the nightly `provider_token_backfill` may read the legacy
+    // `refresh_token` column to encrypt the rows stored before 0023, and a revoke
+    // may read a row it has not reached yet. From that instant it is CLOSED with
+    // no deploy — as it is when this key is absent, malformed, or more than 45
+    // days ahead (PLAINTEXT_WINDOW_MAX_DAYS, src/lib/provider-revoke.ts) — and no
+    // code reads that column again. The `provider_token_backfill` heartbeat must
+    // read `plaintext_left=0` before it closes; the line then leaves in its own
+    // change. The sandbox block declares none: its database never held plain text.
+    "PROVIDER_TOKEN_PLAINTEXT_READS_UNTIL": "2026-11-01",
     // ⚠️ EXACT allowlist — no pattern matching, and an EMPTY value now DENIES
     // every browser origin rather than falling back to '*'. This Worker is no
     // longer config-read-only: it serves /v1/events and /v1/consent, and will
@@ -563,7 +575,7 @@
         "APP_ID": "platform",
         // why: the SAME identity project as production (D1 identity option
         // (a)). ES256 verification reads its JWKS, and /v1/health probes it
-        // (src/index.ts:168).
+        // (src/index.ts:183).
         "SUPABASE_URL": "https://auth-api.nikatru.com",
         // why: src/types.ts:413.
         "API_VERSION": "v1",
@@ -587,7 +599,7 @@
       },
       "d1_databases": [
         {
-          // why: src/types.ts:13 and the /v1/health probe (src/index.ts:154).
+          // why: src/types.ts:13 and the /v1/health probe (src/index.ts:164).
           // `platform_db_sandbox`, created 2026-09-23 and EMPTY. This Worker is
           // its sole migration applier, as at the top level.
           "binding": "PLATFORM_DB",
@@ -598,7 +610,7 @@
       ],
       "kv_namespaces": [
         // why: REQUIRED — src/types.ts:18; src/routes/config.ts:52 reads it
-        // unguarded and /v1/health probes it (src/index.ts:165), so an absent
+        // unguarded and /v1/health probes it (src/index.ts:172), so an absent
         // binding 500s config and reports the Worker unhealthy.
         // `platform-config-sandbox`, created 2026-09-24.
         { "binding": "CONFIG_KV", "id": "7ba3a916f8a5429091dec4a39284bffb" }

@@ -1,8 +1,15 @@
 # OSV-Scanner findings that are ACKNOWLEDGED AND DATED, never waived.
 #
-# Read by `osv-scanner scan source -r .` in ci.yml's security-scan lane; the
-# file name and location are OSV-Scanner's own default, so nothing passes it a
-# flag and nothing can silently point at the wrong config.
+# Read by tooling/ci/scan-dependencies.mjs, which runs `osv-scanner scan source
+# -r --config <this file>` in ci.yml's security-scan lane (every pull request and
+# push) and in ops-watch.yml's heartbeats job (main, daily at 07:30 UTC).
+#
+# ⚠️ [rv2-security-018] THE CANARY RUNS WITH THIS FILE TOO. Before the tree is
+# scanned, the script hands OSV a canary lockfile per tracked format (lodash
+# 4.17.4; Dart http 0.13.0) and refuses (exit 2) unless each is flagged. An entry
+# here that ignores a canary's advisory, or a [[PackageOverrides]] that ignores a
+# whole ecosystem, fails that canary ON PURPOSE: it would blind the tree the same
+# way. Acknowledge the ONE advisory you mean, by id, with an ignoreUntil.
 #
 # Every entry carries an `ignoreUntil`. When that date passes the finding
 # reddens the lane again, so an entry left here by accident becomes loud
@@ -23,7 +30,7 @@
 # to remember, and the ranges already permit the fixed versions.
 #
 # ⚠️ AN EMPTY FILE IS NOT A DEAD FILE. OSV-Scanner resolves this by its own
-# default name and ci.yml passes it explicitly with `--config osv-scanner.toml`
+# default name and scan-dependencies.mjs passes it explicitly with `--config`
 # (without which v2 resolves a config per lockfile DIRECTORY, loads the root
 # file, prints "unused ignores" and ignores nothing for
 # packages/tokens/package-lock.json — measured, run 33960900452). Deleting this

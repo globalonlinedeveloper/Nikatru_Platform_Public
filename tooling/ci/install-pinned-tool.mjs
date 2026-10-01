@@ -132,6 +132,23 @@ export const TOOLS = new Map([
     },
   ],
   [
+    'trufflehog',
+    {
+      // ⏱ ADDED 2026-09-30 [rv2-security-017] — the verified-secret sweep of trufflehog.yml.
+      // It ran as ghcr.io/trufflesecurity/trufflehog:<version> through the vendor's composite
+      // action, a MUTABLE registry tag nothing verified; the release tarball is pinned here by
+      // sha256 like the four above. `reports` also holds the version: a Renovate bump of
+      // `trufflehog` alone lands red on the digest, and a digest written for another release
+      // lands red on the version.
+      versionKey: 'trufflehog',
+      digestKey: 'trufflehog_sha256',
+      url: (v) => `https://github.com/trufflesecurity/trufflehog/releases/download/v${v}/trufflehog_${v}_linux_amd64.tar.gz`,
+      archive: 'tar.gz',
+      member: 'trufflehog',
+      reports: (v) => `trufflehog ${v}`,
+    },
+  ],
+  [
     'glitchtip-cli',
     {
       // ⏱ ADDED 2026-09-25 (O-GLITCHTIP-CLI-INSTALLED-BY-HAND) — the crash-sink client, and

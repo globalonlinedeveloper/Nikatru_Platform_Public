@@ -893,6 +893,45 @@ async function main() {
     return;
   }
 
+  // ⏱ 2026-09-30 · rv2-security-001. A DATED, DECLARED DEFERRAL OF THE TIMER LIMB, AND NOTHING
+  // ELSE. ci.yml no longer hands this pull_request-reachable step the production deploy token; it
+  // hands it CLOUDFLARE_READ_TOKEN, which the owner mints after the change merges. Until then the
+  // step runs with no Cloudflare credential, and the rule above (a token absent in some context is
+  // 2, never 0) would red every pull request on an owner step. `--cloudflare-read-pending-until
+  // <YYYY-MM-DD>` is the one exception, and it is narrow on purpose:
+  //   · it applies ONLY when CLOUDFLARE_API_TOKEN is empty and no fixture is in use;
+  //   · it defers the TIMER limb alone — the GitHub run history is graded exactly as before;
+  //   · it is loud (a ::warning:: annotation and a banner) and never prints "BOTH records";
+  //   · the day after the date it is COVERAGE LOST again, naming the secret, so a token nobody
+  //     minted becomes a red gate rather than a permanent blind spot;
+  //   · once a token is present the flag does nothing but say it can be deleted.
+  // Meanwhile the same cron_heartbeat row is still graded by ops-watch.yml's `heartbeats` job.
+  const pendingFlag = flag('--cloudflare-read-pending-until');
+  let timerDeferred = null;
+  if (pendingFlag !== null) {
+    const endOfDay = Date.parse(`${pendingFlag}T23:59:59Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(pendingFlag) || Number.isNaN(endOfDay)) {
+      coverageLost(`--cloudflare-read-pending-until is "${pendingFlag}", not a YYYY-MM-DD date, so the deferral it declares cannot be bounded.`);
+      return;
+    }
+    const tokenPresent = typeof process.env.CLOUDFLARE_API_TOKEN === 'string' && process.env.CLOUDFLARE_API_TOKEN.trim() !== '';
+    if (runsFile || tokenPresent) {
+      console.log(
+        `note  --cloudflare-read-pending-until ${pendingFlag} is set and ${runsFile ? 'fixture mode is on' : 'a Cloudflare token IS present'}, ` +
+          'so it defers nothing. Once CLOUDFLARE_READ_TOKEN is minted, delete the flag from ci.yml.',
+      );
+    } else if (nowMs > endOfDay) {
+      coverageLost(
+        `the TIMER limb's deferral expired on ${pendingFlag} and there is still no Cloudflare token here. ci.yml maps ` +
+          'CLOUDFLARE_READ_TOKEN (a read-only token, rv2-security-001) into this step, and it is not set: the owner mints it, ' +
+          'or the deferral is re-dated in a reviewed change that says why. Nothing about the timer record was read.',
+      );
+      return;
+    } else {
+      timerDeferred = pendingFlag;
+    }
+  }
+
   let read = null;
   let timerRows;
   let runsError = null;
@@ -925,15 +964,20 @@ async function main() {
     } catch (e) {
       runsError = e.message;
     }
-    try {
-      timerRows = await fetchTimerRows(timerDecl.databaseId);
-    } catch (e) {
-      timerError = e.message;
+    if (timerDeferred === null) {
+      try {
+        timerRows = await fetchTimerRows(timerDecl.databaseId);
+      } catch (e) {
+        timerError = e.message;
+      }
     }
   }
 
   const runVerdict = runsError ? { ok: false, coverageLost: true, reason: runsError } : gradeRunHistory(read, nowMs);
-  const timerVerdict = timerError ? { ok: false, coverageLost: true, reason: timerError } : evaluateTimer(timerRows, nowMs);
+  let timerVerdict;
+  if (timerDeferred !== null) timerVerdict = { ok: true, deferred: true };
+  else if (timerError) timerVerdict = { ok: false, coverageLost: true, reason: timerError };
+  else timerVerdict = evaluateTimer(timerRows, nowMs);
 
   // ── BOTH LIMBS, SIDE BY SIDE, ON EVERY RUN ────────────────────────────────
   // Printed pass or fail. A guard that prints only what went wrong leaves the
@@ -952,8 +996,17 @@ async function main() {
   // printed none of it, so a stale page could not be told from a real gap.
   say(read ? describeRead(read, newestGreenOnBranch) : 'nothing was read — see the line above', 'READ    (GitHub run history) :', runVerdict.ok);
   if (runVerdict.stalePageCarried) console.log(runVerdict.stalePageCarried);
+  if (timerVerdict.deferred) {
+    console.log(
+      `::warning title=Nightly-proof TIMER limb NOT READ (deferred until ${timerDeferred})::CLOUDFLARE_READ_TOKEN is not set, ` +
+        'so the D1 cron_heartbeat row was not read on this run and only the GitHub run history was graded. The owner mints ' +
+        "the read-only token (rv2-security-001); ops-watch.yml's heartbeats job still grades the row.",
+    );
+  }
   say(
-    timerVerdict.ok
+    timerVerdict.deferred
+      ? `NOT READ — deferred until ${timerDeferred} by --cloudflare-read-pending-until (no Cloudflare token in this step)`
+      : timerVerdict.ok
       ? `${TIMER_TABLE} row for ${TIMER_JOB} -> ${TIMER_TARGET} at ${timerVerdict.ranAt}, ${timerVerdict.ageDays.toFixed(1)} day(s) old (ceiling ${MAX_AGE_DAYS})`
       : String(timerVerdict.reason),
     'TIMER   (D1 cron_heartbeat) :',
@@ -1013,6 +1066,14 @@ async function main() {
     return;
   }
 
+  if (timerVerdict.deferred) {
+    console.log(
+      `ok  nightly golden-path proof: the OUTCOME record is fresh — green ${WORKFLOW} run ${runVerdict.runId} on ${BRANCH} is ` +
+        `${runVerdict.ageDays.toFixed(1)} day(s) old (ceiling ${MAX_AGE_DAYS}). The TIMER record was NOT READ (deferred until ` +
+        `${timerDeferred}), so this is ONE record, not the proof.`,
+    );
+    return;
+  }
   console.log(
     `ok  nightly golden-path proof fresh on BOTH records — green ${WORKFLOW} run ${runVerdict.runId} on ${BRANCH} is ` +
       `${runVerdict.ageDays.toFixed(1)} day(s) old, and the Worker's ${TIMER_JOB} dispatch of ${TIMER_TARGET} is ` +

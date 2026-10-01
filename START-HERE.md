@@ -24,8 +24,8 @@ are `tooling/ci/test/*.test.mjs` — counted on every run, deliberately not writ
 
 🔴 **`sites/` is the live deploy source and the only copy.** Cloudflare Pages builds both
 domains from this repo through a binding that lives in the Cloudflare dashboard, in no file in
-any repo. Do not delete, move or de-duplicate anything under `sites/`, `pnpm-workspace.yaml`
-or `pnpm-lock.yaml`.
+any repo. Do not delete, move or de-duplicate anything under `sites/`, or `pnpm-workspace.yaml`
+(a root anchor; its header names its readers).
 
 ## What the merge gate enforces
 

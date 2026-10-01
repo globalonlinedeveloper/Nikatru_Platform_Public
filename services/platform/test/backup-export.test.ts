@@ -18,7 +18,7 @@ import { RealDb, realPlatformDb } from './harness';
 import appInit0001 from '../../subscriptiontracker-api/migrations/0001_init.sql?raw';
 import appSchemaDebt0002 from '../../subscriptiontracker-api/migrations/0002_schema_debt.sql?raw';
 import { runBackup, isExpired, backupDate, BACKUP_RETENTION_DAYS, MAX_D1_QUERIES_PER_RUN } from '../src/backup';
-import { dumpD1Database, EPHEMERAL_TABLES } from '../src/backup/dump';
+import { dumpD1Database, EPHEMERAL_TABLES, D1_PAGE_ROWS, TABLES_PER_READ, SQL_FUNCTION_ARGS } from '../src/backup/dump';
 import { scheduled, BACKUP_CRON } from '../src/scheduled';
 import type { BackupEnv } from '../src/backup';
 import type { Env } from '../src/types';
@@ -97,9 +97,105 @@ function linesOf(text: string): Record<string, unknown>[] {
     .map((l) => JSON.parse(l) as Record<string, unknown>);
 }
 
-/** `n` one-column tables. Each is one page, so a full dump spends n + 1 queries. */
+/** `n` one-column tables, one row each. They cost NO query of their own: up to
+ *  TABLES_PER_READ tables share one read statement. */
 function padTables(n: number): string[] {
-  return Array.from({ length: n }, (_, i) => `CREATE TABLE pad_${i} (id INTEGER PRIMARY KEY)`);
+  return Array.from(
+    { length: n },
+    (_, i) => `CREATE TABLE pad_${i} (id INTEGER PRIMARY KEY); INSERT INTO pad_${i} (id) VALUES (${i})`,
+  );
+}
+
+/**
+ * One table holding `n` rows. ⏱ 2026-10-01 · ROW VOLUME IS NOW THE ONLY THING THAT
+ * SPENDS THE POOL, so it is what these fixtures turn: a database costs its
+ * catalogue, its column read, its size read and one read per round, and a round
+ * ends when no table returned a full page — floor(n / D1_PAGE_ROWS) + 1 rounds
+ * for a table whose rows are a few bytes wide.
+ */
+function padRows(n: number): string[] {
+  return [
+    'CREATE TABLE pad_rows (id INTEGER PRIMARY KEY)',
+    `WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < ${n}) INSERT INTO pad_rows (id) SELECT x FROM c`,
+  ];
+}
+
+/** What one database of at most TABLES_PER_READ tables, the largest holding `n` rows, spends. */
+const spendFor = (n: number): number => 3 + Math.floor(n / D1_PAGE_ROWS) + 1;
+
+/** D1's "Maximum string, BLOB or table row size", which node:sqlite does not impose. */
+const D1_MAX_VALUE_BYTES = 2_000_000;
+
+/**
+ * The real engine behind D1's value cap: a read that answers a string past
+ * D1_MAX_VALUE_BYTES throws, as D1 does (SQLITE_TOOBIG), instead of handing the
+ * export a value production would never have returned.
+ */
+function withD1ValueCap(real: RealDb): D1Database {
+  const check = <T>(rows: T[]): T[] => {
+    for (const row of rows) {
+      for (const value of Object.values(row as Record<string, unknown>)) {
+        if (typeof value === 'string' && value.length > D1_MAX_VALUE_BYTES) {
+          throw new Error(`string or blob too big: SQLITE_TOOBIG (${value.length} bytes)`);
+        }
+      }
+    }
+    return rows;
+  };
+  return {
+    prepare(sql: string) {
+      const statement = real.prepare(sql);
+      return {
+        all: async () => ({ results: check((await statement.all()).results) }),
+        first: async () => check([await statement.first()])[0],
+      };
+    },
+  } as unknown as D1Database;
+}
+
+/** The most arguments any one function call in `sql` takes. Quoted runs are skipped. */
+function widestCall(sql: string): number {
+  let widest = 0;
+  for (const m of sql.matchAll(/\b[A-Za-z_]+\s*\(/g)) {
+    let depth = 0;
+    let commas = 0;
+    let empty = true;
+    for (let i = m.index + m[0].length - 1; i < sql.length; i++) {
+      const c = sql[i];
+      if (c === "'" || c === '"') {
+        i = sql.indexOf(c, i + 1);
+        empty = false;
+        continue;
+      }
+      if (c === '(') depth++;
+      else if (c === ')' && --depth === 0) break;
+      else if (depth === 1 && c === ',') commas++;
+      else if (depth >= 1 && !/\s/.test(c)) empty = false;
+    }
+    widest = Math.max(widest, empty ? 0 : commas + 1);
+  }
+  return widest;
+}
+
+/**
+ * A D1 whose catalogue names one table more than the database holds — a table
+ * dropped between the two reads, or a catalogue that lies. Every other
+ * statement goes to the real engine.
+ */
+function withGhostTable(real: RealDb, ghost: string): D1Database {
+  return {
+    prepare(sql: string) {
+      const statement = real.prepare(sql);
+      if (!sql.includes('sqlite_master')) return statement;
+      return {
+        all: async () => {
+          const listed = await statement.all();
+          const entry = { type: 'table', name: ghost, tbl_name: ghost, sql: `CREATE TABLE ${ghost} (id INTEGER)` };
+          return { results: [...listed.results, entry] };
+        },
+      };
+    },
+  } as unknown as D1Database;
 }
 
 function latestManifest(bucket: FakeBucket): { complete: boolean; objects: { key: string; queries?: number }[] } {
@@ -265,9 +361,9 @@ describe('the D1 query budget is ONE pool, spent honestly and measured every nig
     const ceiling = ceilings.ceilings.find((c) => c.id === 'd1.queriesPerInvocation')?.value;
     expect(typeof ceiling).toBe('number');
 
-    // More tables than the pool has queries, so the pool is spent to its last
+    // More rows than the pool has rounds, so the pool is spent to its last
     // query: the worst night this firing can have, through the REAL handler.
-    const platform = realPlatformDb(padTables(MAX_D1_QUERIES_PER_RUN));
+    const platform = realPlatformDb(padRows(MAX_D1_QUERIES_PER_RUN * D1_PAGE_ROWS));
     const tracker = realPlatformDb();
     const { env } = envWith(new FakeBucket(), platform, tracker);
     const pending: Promise<unknown>[] = [];
@@ -283,11 +379,11 @@ describe('the D1 query budget is ONE pool, spent honestly and measured every nig
     // The export spent exactly the pool, and the heartbeat one statement per row.
     expect(platform.sql).toHaveLength(MAX_D1_QUERIES_PER_RUN + rows.length);
     expect(platform.sql.length + tracker.sql.length).toBeLessThanOrEqual(ceiling as number);
-  });
+  }, 30_000);
 
   it('spend under the warn line: d1-budget ok=true, and it names the measured spend of the pool', async () => {
     const platform = realPlatformDb();
-    const tracker = new RealDb(padTables(4));
+    const tracker = new RealDb(padRows(4 * D1_PAGE_ROWS));
     const bucket = new FakeBucket();
     const { env } = envWith(bucket, platform, tracker);
     const out = await runBackup(env, NOW);
@@ -309,8 +405,10 @@ describe('the D1 query budget is ONE pool, spent honestly and measured every nig
     // Sized from the pool: ~86% of it, past the 80% line this case pins and
     // short of truncation, so every object is whole and only the budget is red.
     const perDb = Math.floor((MAX_D1_QUERIES_PER_RUN * 0.9) / 2) - 1;
-    const platform = new RealDb(padTables(perDb));
-    const tracker = new RealDb(padTables(perDb));
+    const rows = (perDb - spendFor(0)) * D1_PAGE_ROWS;
+    expect(spendFor(rows)).toBe(perDb);
+    const platform = new RealDb(padRows(rows));
+    const tracker = new RealDb(padRows(rows));
     const bucket = new FakeBucket();
     const { env } = envWith(bucket, platform, tracker);
     const out = await runBackup(env, NOW);
@@ -324,6 +422,117 @@ describe('the D1 query budget is ONE pool, spent honestly and measured every nig
     expect(budget?.detail).toContain('OVER THE WARN LINE');
     // Box B refuses a manifest that is not complete; a warm pool must not cost the night's copy.
     expect(latestManifest(bucket).complete).toBe(true);
+  }, 30_000);
+});
+
+// ⏱ 2026-10-01 · ops-watch run 36810231743: `d1-budget` RED at 37 of 42, one query
+// a table. The cost is now FLAT in the table count; these are the cases that hold it there.
+describe('the export costs the same whatever the table count', () => {
+  const tableCount = (db: RealDb): number =>
+    db.rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'")
+      .length;
+
+  it('🔴 a SIXTY-table schema spends under HALF the pool, and every pad table still lands', async () => {
+    const platform = realPlatformDb(padTables(60));
+    const tracker = appDb();
+    const bucket = new FakeBucket();
+    const { env } = envWith(bucket, platform, tracker);
+    const out = await runBackup(env, NOW);
+
+    const spent = platform.sql.length + tracker.sql.length;
+    expect(spent * 100).toBeLessThan(MAX_D1_QUERIES_PER_RUN * 50);
+    // Exactly: catalogue, columns, then a size read and one round of reads, each one
+    // statement per TABLES_PER_READ tables (nothing here is past a page).
+    expect(platform.sql).toHaveLength(2 + 2 * Math.ceil(tableCount(platform) / TABLES_PER_READ));
+    expect(out.find((o) => o.target === 'd1-budget')?.ok).toBe(true);
+    expect(out.find((o) => o.target === 'd1:platform_db')?.ok).toBe(true);
+    // D1 refuses a statement past 100,000 bytes; node:sqlite does not, so it is asserted here.
+    for (const sql of [...platform.sql, ...tracker.sql]) expect(sql.length).toBeLessThan(100_000);
+
+    const lines = linesOf(await gunzip(bucket.objects.get(`d1/platform_db/${backupDate(NOW)}.jsonl.gz`)!.body));
+    for (const i of [0, 59]) {
+      expect(lines.filter((l) => l.kind === 'row' && l.table === `pad_${i}`).map((l) => l.data)).toEqual([{ id: i }]);
+    }
+  });
+
+  it('🔴 a table added inside a read adds ZERO queries', async () => {
+    const before = realPlatformDb();
+    await runBackup(envWith(new FakeBucket(), before, appDb()).env, NOW);
+    const grown = realPlatformDb(padTables(10));
+    // Precondition: the ten still fit the read the schema already makes.
+    expect(Math.ceil(tableCount(grown) / TABLES_PER_READ)).toBe(Math.ceil(tableCount(before) / TABLES_PER_READ));
+    await runBackup(envWith(new FakeBucket(), grown, appDb()).env, NOW);
+    // Counted on the export's statements only: the heartbeat is not written by runBackup.
+    expect(grown.sql).toHaveLength(before.sql.length);
+  });
+
+  it('🔴 a table the catalogue names and the database does not hold fails LOUDLY: red row, no object, incomplete manifest', async () => {
+    const bucket = new FakeBucket();
+    const { env } = envWith(bucket);
+    env.PLATFORM_DB = withGhostTable(realPlatformDb(), 'ghost_table');
+    const out = await runBackup(env, NOW);
+    const row = out.find((o) => o.target === 'd1:platform_db');
+    expect(row?.ok).toBe(false);
+    expect(row?.detail).toContain('ghost_table');
+    expect(bucket.objects.has(`d1/platform_db/${backupDate(NOW)}.jsonl.gz`)).toBe(false);
+    // The other database is untouched by it, and the night is not "complete".
+    expect(out.find((o) => o.target === 'd1:subscriptiontracker_db')?.ok).toBe(true);
+    expect(latestManifest(bucket).complete).toBe(false);
+  });
+
+  it('🔴 rows as wide as production\'s widest page by BYTES: every row lands and no value passes D1\'s 2 MB cap', async () => {
+    // Rows run to 4,749 bytes in production (provider_notifications, 2026-10-01), and
+    // a page sized in ROWS cannot know that. 45 rows of 50 KB is 2.25 MB: a page of
+    // D1_PAGE_ROWS rows would be one value past the cap — refused.
+    const count = 45;
+    const platform = realPlatformDb([
+      'CREATE TABLE wide_rows (id INTEGER PRIMARY KEY, body TEXT NOT NULL)',
+      `WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < ${count}) INSERT INTO wide_rows SELECT x, printf('%.50000c', 'x') FROM c`,
+    ]);
+    expect(count * 50_000).toBeGreaterThan(D1_MAX_VALUE_BYTES);
+    expect(count).toBeLessThan(D1_PAGE_ROWS);
+    const bucket = new FakeBucket();
+    const { env } = envWith(bucket, platform);
+    env.PLATFORM_DB = withD1ValueCap(platform);
+    const out = await runBackup(env, NOW);
+
+    expect(out.find((o) => o.target === 'd1:platform_db')).toMatchObject({ ok: true });
+    const lines = linesOf(await gunzip(bucket.objects.get(`d1/platform_db/${backupDate(NOW)}.jsonl.gz`)!.body));
+    const ids = lines.filter((l) => l.kind === 'row' && l.table === 'wide_rows').map((l) => (l.data as { id: number }).id);
+    expect(ids).toEqual(Array.from({ length: count }, (_, i) => i + 1));
+    expect(lines.find((l) => l.kind === 'table-end' && l.table === 'wide_rows')).toMatchObject({ rows: count, truncated: false });
+  }, 30_000);
+
+  it('🔴 a 100-column table round-trips value for value — past the 32-argument groups D1 imposes', async () => {
+    const width = 100;
+    const names = Array.from({ length: width }, (_, i) => `c${i}`);
+    const platform = realPlatformDb([
+      `CREATE TABLE wide (${names.map((n) => `${n} ANY`).join(', ')}) STRICT`,
+    ]);
+    const values: (string | number | null)[] = names.map((_, i) => i);
+    values[0] = null;
+    values[31] = 'it\'s "quoted", ünïcode, and {"looks":"like json"}';
+    values[32] = 1.5;
+    values[63] = 9_007_199_254_740_991;
+    values[64] = '';
+    values[99] = -0.25;
+    const stmt = platform.db.prepare(`INSERT INTO wide VALUES (${names.map(() => '?').join(', ')})`);
+    stmt.run(...values);
+    stmt.run(...values.map((v) => (typeof v === 'number' ? v + 1 : v)));
+    const bucket = new FakeBucket();
+    const { env } = envWith(bucket, platform);
+    await runBackup(env, NOW);
+
+    const lines = linesOf(await gunzip(bucket.objects.get(`d1/platform_db/${backupDate(NOW)}.jsonl.gz`)!.body));
+    const dumped = lines.filter((l) => l.kind === 'row' && l.table === 'wide').map((l) => l.data);
+    expect(dumped).toEqual(JSON.parse(JSON.stringify(platform.rows('SELECT * FROM wide'))));
+    expect(Object.keys(dumped[0] as object)).toEqual(names);
+    // node:sqlite takes far more than D1's 32 arguments a function, so the engine
+    // above cannot see a call D1 would refuse — the statements are read for it.
+    // 32 is the vendor's number, written here rather than read from the constant it checks.
+    expect(SQL_FUNCTION_ARGS).toBeLessThanOrEqual(32);
+    expect(Math.max(...platform.sql.map(widestCall))).toBeLessThanOrEqual(32);
+    expect(Math.max(...platform.sql.map(widestCall))).toBeGreaterThan(1);
   });
 });
 

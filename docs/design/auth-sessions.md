@@ -51,13 +51,13 @@ them is the session:
   `sub`, `email` and `authRecencyOf(payload)`.
 
 Nothing anywhere reads `payload.session_id` or `payload.iat`. The `session_id` that does appear in
-`services/` (`services/platform/src/routes/events.ts:269`, `services/platform/src/types.ts:725`) is the
+`services/` (`services/platform/src/routes/events.ts:269`, `services/platform/src/types.ts:985`) is the
 analytics envelope's own field and is unrelated.
 
 **No Worker can reach Postgres.** The bindings are D1, KV, R2, a service binding and rate limits. A grep for
 `hyperdrive` over every `wrangler.jsonc` in `services/` and the brick exits 1 (no match). The Workers
 `platform` and `subscriptiontracker-api` share the `JWKS_CACHE` namespace
-(`services/platform/wrangler.jsonc:173`, `services/subscriptiontracker-api/wrangler.jsonc:83`).
+(`services/platform/wrangler.jsonc:217`, `services/subscriptiontracker-api/wrangler.jsonc:83`).
 
 ---
 

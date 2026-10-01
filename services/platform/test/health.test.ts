@@ -28,6 +28,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { judge, judgeOk } from '../../../tooling/ops/post-deploy-smoke.mjs';
+import { TEST_TOKEN_ENC_KEY } from './harness';
 
 /** The SHA the deploy threads as `--var RELEASE`, and the value the smoke joins
  *  a deploy to with `--field build --expect <sha>`. */
@@ -107,6 +108,8 @@ function env(over: Record<string, unknown> = {}) {
     ALLOWED_ORIGINS: 'https://subly.nikatru.com',
     PLATFORM_DB: okDb(),
     CONFIG_KV: okKv(),
+    // ⏱ 2026-09-30 · the provider-token key is a reading like any dependency.
+    TOKEN_ENC_KEY_V1: TEST_TOKEN_ENC_KEY,
     ...over,
   };
 }
@@ -190,6 +193,7 @@ describe('/v1/health — the healthy answer is still the OLD shape', () => {
       'config_kv',
       'platform_db',
       'supabase_jwks',
+      'token_encryption_key',
     ]);
     for (const c of body.checks) {
       expect(c.status).toBe('ok');
@@ -460,5 +464,45 @@ describe('the cache carries its AGE — a cached ok with no age is the same defe
     const { READING_TTL_MS } = await import('../src/lib/health');
     expect(READING_TTL_MS).toBeLessThan(10_000);
     expect(READING_TTL_MS).toBeLessThan(60_000);
+  });
+});
+
+// ── ⏱ 2026-09-30 · review round 2 (security): THE DEPLOY FAILS CLOSED WITHOUT
+// TOKEN_ENC_KEY_V1. The provider refresh tokens are stored encrypted under it
+// (src/lib/token-crypto.ts); without it every token store is refused and every
+// revoke is blocked while each request still looks fine. So it is a reading, and
+// the post-deploy smoke's `--require-ok` (the SHIPPED judge, imported above)
+// must fail on it — naming the check, so the red deploy says what to put.
+describe('🔴 the token encryption key — a deploy without it is RED', () => {
+  it('absent: ok:false, the smoke fails, and the reading is token_encryption_key unknown/not_configured', async () => {
+    vi.stubGlobal('fetch', jwksOk());
+    const { res, text, body } = await health({ TOKEN_ENC_KEY_V1: undefined });
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(false);
+    expect(reading(body, 'token_encryption_key')).toMatchObject({ status: 'unknown', reason: 'not_configured' });
+    expect(judgeOk(text)).toBe(false);
+    // Every OTHER dependency is healthy: the key alone decides this red.
+    for (const c of body.checks.filter((c) => c.name !== 'token_encryption_key')) expect(c.status).toBe('ok');
+  });
+
+  it('malformed (not 32 bytes of standard base64): degraded/key_malformed, and the smoke fails', async () => {
+    vi.stubGlobal('fetch', jwksOk());
+    for (const bad of ['   ', 'not base64 at all', btoa('only-16-bytes!!!'), TEST_TOKEN_ENC_KEY.slice(0, -4)]) {
+      const { text, body } = await health({ TOKEN_ENC_KEY_V1: bad });
+      const r = reading(body, 'token_encryption_key');
+      expect(r.status, `key ${JSON.stringify(bad)}`).not.toBe('ok');
+      expect(judgeOk(text), `key ${JSON.stringify(bad)}`).toBe(false);
+    }
+    const { body } = await health({ TOKEN_ENC_KEY_V1: btoa('only-16-bytes!!!') });
+    expect(reading(body, 'token_encryption_key')).toMatchObject({ status: 'degraded', reason: 'key_malformed' });
+  });
+
+  it('the public body never carries the secret, nor its name', async () => {
+    vi.stubGlobal('fetch', jwksOk());
+    for (const k of [TEST_TOKEN_ENC_KEY, undefined, 'bad']) {
+      const { text } = await health({ TOKEN_ENC_KEY_V1: k });
+      expect(text).not.toContain(TEST_TOKEN_ENC_KEY);
+      expect(text).not.toContain('TOKEN_ENC_KEY_V1');
+    }
   });
 });

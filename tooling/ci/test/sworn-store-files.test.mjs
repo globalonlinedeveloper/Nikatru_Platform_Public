@@ -43,6 +43,13 @@ const PM_TMPL = `${BRICK_IOS}/privacy-manifest.json`;
  *  both whole directories, which is why the FOURTH was written that way. */
 const AR = `${SUBLY_IOS}/age-rating.json`;
 const AR_TMPL = `${BRICK_IOS}/age-rating.json`;
+/** The SIXTH sworn declaration (2026-10-01) — Partner Center's IARC answers,
+ *  derived from the Play content rating. A third store directory, so it is
+ *  copied whole like the second. */
+const BRICK_WIN = 'tooling/bricks/app/__brick__/apps/{{app_id}}/store/windows-store';
+const SUBLY_WIN = 'apps/subscriptiontracker/store/windows-store';
+const WAR = `${SUBLY_WIN}/age-rating.json`;
+const WAR_TMPL = `${BRICK_WIN}/age-rating.json`;
 const DS = `${SUBLY_STORE}/data-safety.json`;
 const CR = `${SUBLY_STORE}/content-rating.json`;
 /** The third sworn declaration (2026-08-09) — Play "App content → Ads". It is
@@ -91,7 +98,7 @@ function citedPaths() {
   // reporting that the harness had starved it, in exactly the shape this
   // function's header already records. A new sworn file belongs here in the same
   // change that declares it.
-  for (const rel of [DS, CR, ADS, README, PM, AR, `${SUBLY_IOS}/README.md`]) {
+  for (const rel of [DS, CR, ADS, README, PM, AR, `${SUBLY_IOS}/README.md`, WAR, `${SUBLY_WIN}/README.md`]) {
     for (const m of readFileSync(join(REPO, rel), 'utf8').matchAll(CITED_RE)) set.add(m[0]);
   }
   return [...set];
@@ -137,6 +144,8 @@ function realTree() {
   put(BRICK_STORE);
   put(SUBLY_IOS);
   put(BRICK_IOS);
+  put(SUBLY_WIN);
+  put(BRICK_WIN);
   for (const rel of citedPaths()) put(rel);
   // ⚠️ THE REGISTER ENTRY THAT MAKES privacy-manifest.json SWORN, seeded here
   // and ONLY if it is absent. The sworn set is DERIVED from
@@ -486,6 +495,87 @@ describe('the FOURTH declaration — the Apple privacy manifest audit [G-49]', (
     assert.ok(j._readme.length >= 20, 'the template must still instruct the person stamping app #2');
     assert.ok(j.unresolved.length >= 5, 'and still name the work they owe');
     assert.ok(j._structuralFacts.facts.length >= 4, 'and still carry the facts true of every app in the factory');
+  });
+});
+
+describe('the SIXTH declaration — Windows IARC age-rating answers', () => {
+  // O-WINDOWS-AGE-RATING-ANSWERS-UNRECORDED (C-23). Until 2026-10-01 only the
+  // declaration DATE was gated for Windows; the answers existed nowhere.
+  test('🔴 THE REAL REGISTER DECLARES IT SWORN — without this the spec guards nothing', () => {
+    const reg = JSON.parse(readFileSync(join(REPO, REGISTER), 'utf8'));
+    const win = reg.storeMetadataContract?.perChannel?.['windows-store']?.additionalFiles ?? [];
+    assert.ok(
+      win.includes('age-rating.json'),
+      'tooling/channel-register.json -> storeMetadataContract.perChannel["windows-store"].additionalFiles does not ' +
+        'list age-rating.json, so the spec in assert-sworn-store-files.mjs is an orphan and the Windows answers have no floor.',
+    );
+  });
+
+  test('the copy the cases mutate really is the answered declaration', () => {
+    const w = JSON.parse(readFileSync(join(REPO, WAR), 'utf8'));
+    assert.equal(w.sworn, true);
+    assert.ok(w.claims.length >= 10, 'one row per Play content-rating claim');
+    assert.ok(w.claims.every((c) => typeof c.fromPlayClaim === 'string'), 'every row names the Play claim it derives from');
+    assert.equal(w.audienceFloor.value, 18);
+    assert.equal(w.assignedRating, null, 'the rating authorities assign the rating; a value here would be one nobody assigned');
+  });
+
+  test('🔴 WA1 — REPLACING THE ANSWERS WITH THE BRICK TEMPLATE FAILS', () => {
+    withTree(
+      // The stamp written over the answers WITH "sworn" flipped to true: left at the
+      // template's false, the channel's only sworn file is a preview and the run is
+      // COVERAGE LOST (the spec was never exercised), which is the guard working.
+      (root) => {
+        cpSync(join(root, WAR_TMPL), join(root, WAR));
+        editDoc(root, WAR, (j) => { j.sworn = true; });
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /windows-store\/age-rating\.json is \d+ lines; the floor is/);
+      },
+    );
+  });
+
+  test('🔴 WA2 — `fromPlayClaim` dropped from one row: an answer nobody can compare to Play\'s', () => {
+    withTree(
+      (root) => {
+        const w = readDoc(root, WAR);
+        delete w.claims[0].fromPlayClaim;
+        writeDoc(root, WAR, w);
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /windows-store\/age-rating\.json `claims\[0\]` has no `fromPlayClaim`/);
+      },
+    );
+  });
+
+  test('🔴 WA3 — `derivedFrom` deleted: the file would read as a second, independent measurement', () => {
+    withTree(
+      (root) => {
+        const w = readDoc(root, WAR);
+        delete w.derivedFrom;
+        writeDoc(root, WAR, w);
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /windows-store\/age-rating\.json `derivedFrom` carries 0 key\(s\)/);
+      },
+    );
+  });
+
+  test('🔴 WA4 — `claims` emptied, the record itself', () => {
+    withTree(
+      (root) => {
+        const w = readDoc(root, WAR);
+        w.claims = [];
+        writeDoc(root, WAR, w);
+      },
+      (r) => {
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /windows-store\/age-rating\.json `claims` is EMPTY/);
+      },
+    );
   });
 });
 
@@ -852,6 +942,7 @@ describe('limb 9 — the channel README may not cite code that is gone either', 
       (root) => {
         rmSync(join(root, README));
         rmSync(join(root, `${SUBLY_IOS}/README.md`));
+        rmSync(join(root, `${SUBLY_WIN}/README.md`));
       },
       (r) => {
         assert.equal(r.status, 2);
@@ -867,7 +958,7 @@ describe('limb 9 — the channel README may not cite code that is gone either', 
     // path check that matches nothing passes forever.
     withTree(
       (root) => {
-        for (const rel of [README, `${SUBLY_IOS}/README.md`]) {
+        for (const rel of [README, `${SUBLY_IOS}/README.md`, `${SUBLY_WIN}/README.md`]) {
           writeFileSync(join(root, rel), '# Store listing metadata\n\nThe derivation map used to be here.\n');
         }
       },
@@ -1278,6 +1369,7 @@ function stampProbe(root) {
   for (const [from, channel] of [
     [BRICK_STORE, 'android-play'],
     [BRICK_IOS, 'ios-appstore'],
+    [BRICK_WIN, 'windows-store'],
   ]) {
     mkdirSync(join(root, PROBE, 'store', channel), { recursive: true });
     for (const f of ['data-safety.json', 'content-rating.json', 'ads-declaration.json', 'privacy-manifest.json', 'age-rating.json', 'README.md']) {
@@ -1456,11 +1548,11 @@ describe('⏱ 2026-09-26 — the declared state: "sworn" true, false, or a findi
     withTree(
       (root) => {
         stampProbe(root);
-        for (const rel of [DS, CR, ADS, PM, AR]) editDoc(root, rel, (j) => { j.sworn = false; });
+        for (const rel of [DS, CR, ADS, PM, AR, WAR]) editDoc(root, rel, (j) => { j.sworn = false; });
       },
       (r) => {
         assert.equal(r.status, 2, r.stdout);
-        assert.match(r.stderr, /every sworn declaration read is a preview \("sworn": false\): 10 across (probe, subscriptiontracker|subscriptiontracker, probe)./);
+        assert.match(r.stderr, /every sworn declaration read is a preview \("sworn": false\): 12 across (probe, subscriptiontracker|subscriptiontracker, probe)./);
       },
     );
   });
@@ -1616,7 +1708,7 @@ describe('⏱ 2026-09-26 — --for-submission --real-submission: declaredOn gate
       [],
       (r) => {
         assert.equal(r.status, 0, r.stderr);
-        assert.match(r.stdout, /\(5 sworn, 0 preview\)/);
+        assert.match(r.stdout, /\(6 sworn, 0 preview\)/);
       },
     );
   });
@@ -1634,9 +1726,12 @@ describe('⏱ 2026-09-26 — --for-submission --real-submission: declaredOn gate
 });
 
 // ── ⏱ 9b (rv-c22) · LEAD RULING 2026-09-26 22:00Z: Windows real submissions are gated on declaredOn ──
-// windows-store has no sworn file in this repository; Partner Center's Properties and age
-// ratings live in its console. So the date alone is graded (DECLARATION_ONLY_CHANNELS), with
+// windows-store had no sworn file in this repository; Partner Center's Properties and age
+// ratings lived in its console only. So the date is graded (DECLARATION_ONLY_CHANNELS), with
 // the same two outcomes as a sworn channel. linux-snap is exempt by ruling: nothing to swear.
+// ⏱ 2026-10-01 (O-WINDOWS-AGE-RATING-ANSWERS-UNRECORDED): the age-rating answers are now a sworn
+// file (windows-store/age-rating.json), so a Windows submission reads 1 declaration; the
+// Properties form still has none, and the refusal names both.
 describe('⏱ 9b — --for-submission=windows-store: the declaration date alone gates a REAL submission', () => {
   const YAML = 'apps/subscriptiontracker/app.yaml';
   const winDated = (root) =>
@@ -1665,7 +1760,7 @@ describe('⏱ 9b — --for-submission=windows-store: the declaration date alone 
       (r) => {
         assert.equal(r.status, 0, r.stderr);
         assert.match(r.stdout, /NOT YET DECLARED \(a dry run/);
-        assert.match(r.stdout, /--for-submission=windows-store --app subscriptiontracker: 0 declaration\(s\) read/);
+        assert.match(r.stdout, /--for-submission=windows-store --app subscriptiontracker: 1 declaration\(s\) read/);
       },
     );
   });

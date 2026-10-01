@@ -62,6 +62,7 @@ const REGISTER = () => ({
       id: 'android-play',
       kind: 'store',
       platforms: ['android'],
+      storeMetadataDir: 'apps/{app}/store/android-play',
       identity: { kind: 'gradle-application-id', declaredIn: 'apps/{app}/android/app/build.gradle.kts' },
     },
     {
@@ -72,6 +73,16 @@ const REGISTER = () => ({
       snapName: { declaredIn: 'apps/{app}/store/linux-snap/snap-name.txt', derivation: 'param-case(apps/{app}/app.yaml name)' },
     },
   ],
+  // ⏱ 2026-10-01 (O-PUBLIC-TEXT-NAMES-WHAT-IS-NOT-SO): the sworn declarations are the
+  // `.json` additionalFiles of each store channel, and the retired token is refused in them.
+  storeMetadataContract: { perChannel: { 'android-play': { additionalFiles: ['content-rating.json'] } } },
+});
+
+/** A sworn declaration, as the real ones are shaped: prose, claims, nested answers. */
+const DECLARATION = () => ({
+  sworn: true,
+  _readme: ['THE CONTENT RATING ANSWERS — Nikatru Subscription Tracker, channel `android-play`.'],
+  claims: [{ id: 'not-a-game', claim: 'The app is an application, not a game.', answer: false }],
 });
 
 /** ⏱ 2026-09-26 (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, 9a): every app declares a
@@ -100,6 +111,7 @@ function fixture({ register = REGISTER(), apps = [{ slug: 'subscriptiontracker',
     'apps/subscriptiontracker/linux/CMakeLists.txt': 'cmake_minimum_required(VERSION 3.13)\nset(APPLICATION_ID "com.nikatru.subscriptiontracker")\n',
     'apps/subscriptiontracker/app.yaml': `id: subscriptiontracker\nname: Nikatru Subscription Tracker # the store title\n${storesBlock()}`,
     'apps/subscriptiontracker/store/linux-snap/snap-name.txt': 'nikatru-subscription-tracker\n',
+    'apps/subscriptiontracker/store/android-play/content-rating.json': JSON.stringify(DECLARATION(), null, 2),
   };
   for (const [rel, body] of Object.entries({ ...defaults, ...files })) {
     if (body === null) continue;
@@ -297,6 +309,60 @@ describe('assert-store-identity — the snap name is DERIVED, and a retired toke
     assert.match(out, /declares no top-level `name`, so the snap name cannot be derived/);
   });
 
+  // ⏱ 2026-10-01 — O-PUBLIC-TEXT-NAMES-WHAT-IS-NOT-SO (C-24). The sworn declarations
+  // called the app by its retired name ("— Subly, channel `android-play`", "Subly is an
+  // application") and every guard was green: the token was refused in identifiers only.
+  test('the OK line counts the declaration strings the retired token was refused in', () => {
+    const { code, out } = run(fixture());
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {2}store declarations — retired token\(s\) "subly" refused across 3 string\(s\) in 1 sworn declaration file\(s\) on 1 channel\(s\)/);
+  });
+
+  test('🔴 SD1 — a sworn declaration naming the app by its retired name FAILS, by file and JSON path', () => {
+    const d = DECLARATION();
+    d._readme[0] = 'THE CONTENT RATING ANSWERS — Subly, channel `android-play`.';
+    const { code, out } = run(fixture({ files: { 'apps/subscriptiontracker/store/android-play/content-rating.json': JSON.stringify(d) } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subscriptiontracker\/store\/android-play\/content-rating\.json `_readme\[0\]` carries the RETIRED token "subly"/);
+  });
+
+  test('🔴 SD2 — a separator form inside a nested answer is the same refusal', () => {
+    const d = DECLARATION();
+    d.claims[0].claim = "Sub-ly's screens are a list, a calendar and settings.";
+    const { code, out } = run(fixture({ files: { 'apps/subscriptiontracker/store/android-play/content-rating.json': JSON.stringify(d) } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /content-rating\.json `claims\[0\]\.claim` carries the RETIRED token "subly"/);
+  });
+
+  test('🔴 SD3 — the brick\'s declaration template is read too: every stamped app inherits it', () => {
+    const d = DECLARATION();
+    d._readme[0] = 'THE CONTENT RATING ANSWERS — com.nikatru.subly';
+    const { code, out } = run(
+      fixture({ files: { 'tooling/bricks/app/__brick__/apps/{{app_id}}/store/android-play/content-rating.json': JSON.stringify(d) } }),
+    );
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/store\/android-play\/content-rating\.json `_readme\[0\]` carries the RETIRED token/);
+  });
+
+  test('SD4 — a word that merely CONTAINS the letters across a space is not the token', () => {
+    const d = DECLARATION();
+    d.claims[0].claim = 'A club lying idle is not a sub; lyrics are not either.';
+    const { code, out } = run(fixture({ files: { 'apps/subscriptiontracker/store/android-play/content-rating.json': JSON.stringify(d) } }));
+    assert.equal(code, 0, out);
+  });
+
+  test('COVERAGE LOST when no sworn declaration file is read — "no retired name" would be about nothing', () => {
+    const { code, out } = run(fixture({ files: { 'apps/subscriptiontracker/store/android-play/content-rating.json': null } }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — the register names 1 sworn declaration file\(s\) .* and ZERO were read/);
+  });
+
+  test('COVERAGE LOST when a sworn declaration does not parse', () => {
+    const { code, out } = run(fixture({ files: { 'apps/subscriptiontracker/store/android-play/content-rating.json': '{ "sworn": true, }' } }));
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — apps\/subscriptiontracker\/store\/android-play\/content-rating\.json is not valid JSON/);
+  });
+
   test('COVERAGE LOST when the register declares no retired tokens', () => {
     const register = REGISTER();
     delete register.retiredIdentityTokens;
@@ -465,7 +531,7 @@ function windowsFixture({
   register.storeMetadataContract = {
     requiredFiles: ['README.md', 'title.txt', 'short-description.txt', 'long-description.txt', 'category.txt', 'privacy-policy-url.txt', 'support-url.txt', 'screenshots/README.md'],
     urlFiles: ['privacy-policy-url.txt', 'support-url.txt'],
-    perChannel: { 'windows-store': { additionalFiles: ['search-terms.txt'], maxLines: { 'search-terms.txt': { max: 7, source: 'MS Store Policies v7.19 §10.1.3' } } } },
+    perChannel: { ...register.storeMetadataContract.perChannel, 'windows-store': { additionalFiles: ['search-terms.txt'], maxLines: { 'search-terms.txt': { max: 7, source: 'MS Store Policies v7.19 §10.1.3' } } } },
   };
   register.channels.push({
     id: 'windows-store',

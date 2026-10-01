@@ -193,7 +193,13 @@ procedure is `Private/runbooks/store-submission-apple.md`.
   deferred, and that pairing was recorded as a tripwire precisely so registering
   the account could not quietly break it. It is now a repo artefact —
   `privacy-manifest.json` above — and no longer a submission-time fact.
-- **Age rating** is an App Store Connect questionnaire, not a repo file.
+- ✅ **Age rating** — the questionnaire's ANSWERS are a repo file, `age-rating.json`
+  above (Apple computes the rating; the file never records one). It answers for
+  BOTH Apple channels, because one App Store Connect record covers iOS and macOS
+  (`apps/subscriptiontracker/app.yaml` `stores`), and its `channels` field says so.
+  `tooling/ci/assert-store-audience.mjs` pins the adult posture in it per channel
+  ([ADR 068]: no Kids Age Band, audience floor 18) and
+  `tooling/ci/assert-sworn-store-files.mjs` keeps it answered.
 - **Notarization does NOT apply to this channel.** It is the Developer ID
   direct-distribution path; an App Store submission is signed and reviewed, not
   notarized. See the `macos-appstore` tree's README for the same distinction.
