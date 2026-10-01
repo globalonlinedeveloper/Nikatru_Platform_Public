@@ -635,6 +635,11 @@ jobs:
       - name: The sworn store declarations have not regressed toward the stamp
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-sworn-store-files.mjs
+      # why: O-STORE-AUDIENCE-GUARDED-BY-CONSISTENCY-ONLY — [ADR 068]'s adult posture is
+      # pinned per store channel, and the Windows IARC answers equal the Play ones.
+      - name: Every store channel declares the adult audience, and Windows answers IARC as Play does
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-store-audience.mjs
       - name: The advertising declarations still describe the shipped tree
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-ads-declarations.mjs

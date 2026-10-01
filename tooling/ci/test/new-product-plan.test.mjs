@@ -420,7 +420,8 @@ describe('step 8 · sworn files', () => {
   test('sworn but never declared in the console (app #1 today) → OWNER; the real-submission check is red', () => {
     const a = stepOf('sworn files');
     assert.equal(a.state, 'OWNER');
-    assert.match(a.detail, /^declaredOn null on android-play, ios-appstore$/);
+    // ⏱ 2026-10-01: windows-store carries a sworn file too (its IARC age-rating answers).
+    assert.match(a.detail, /^declaredOn null on android-play, ios-appstore, windows-store$/);
     assert.equal(guard('tooling/ci/assert-sworn-store-files.mjs', '--for-submission=android-play', '--app', APP, '--real-submission', FX).status, 1);
   });
 

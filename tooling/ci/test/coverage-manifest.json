@@ -708,7 +708,7 @@
     31,
 
   "price-literals.test.mjs":
-    28,
+    37,
 
   "privacy-manifest.test.mjs":
     20,
@@ -935,6 +935,9 @@
   "start-here.test.mjs":
     9,
 
+  "store-audience.test.mjs":
+    18,
+
   "store-bijection.test.mjs":
     26,
 
@@ -948,7 +951,7 @@
     17,
 
   "store-identity.test.mjs":
-    70,
+    77,
 
   "store-key-secret.test.mjs":
     8,
@@ -981,7 +984,7 @@
     48,
 
   "sworn-store-files.test.mjs":
-    102,
+    108,
 
   "symbolication-proof.test.mjs":
     75,
