@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import 'package:nikatru_core/nikatru_core.dart' show MoneyParser;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/e2e_keys.dart';
+import '../../core/format/category_label.dart';
 import '../../data/api/api_client.dart' show ApiException;
 import '../../data/models/budget_info.dart';
 import '../../data/models/subscription.dart';
@@ -65,9 +67,10 @@ final List<String> _categories = <String>[
   _uncategorised,
 ];
 
-// The category VALUES are data, not copy, and are correctly untranslated —
-// every other screen paints them raw for that reason (`scan_screen.dart`
-// records it). The field LABELS are arb keys in both locales.
+// The category VALUES are IDS, not copy: the row stores the id and every
+// match is on it. Only the PAINT is translated, through `categoryLabel`
+// (ST-X8, audit C6) — the dropdown shows the name and saves the id. The field
+// LABELS are arb keys in both locales.
 
 /// Opens the add sheet — or, with [initial], the EDIT sheet (ST-E1):
 /// prefilled from the row, and saving sends one PATCH of only what changed.
@@ -192,6 +195,15 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
   /// has just opened does not greet the user with one.
   bool _priceEmptied = false;
 
+  /// The name was typed in and then emptied (ST truth pass, AD-01): blank is
+  /// then an error the field names, as for [_priceEmptied].
+  bool _nameEmptied = false;
+
+  /// The category the edited row ARRIVED with, when this sheet's vocabulary
+  /// does not know it (ST truth pass, AD-02) — offered in the dropdown for
+  /// this row only, so an edit that does not touch it sends it back unchanged.
+  String? _ownCategory;
+
   /// Field errors the API named in a 400 (ST-E2), by field. Cleared when the
   /// field is edited.
   final Map<String, String> _serverErrors = <String, String>{};
@@ -218,9 +230,12 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
       _trial = s.status == SubscriptionStatus.trialing && s.trialEndsOn != null;
       _renewal = _dateOnly(_trial ? s.trialEndsOn! : s.nextRenewal);
       _renewalChosen = true;
-      _category = _categories.contains(s.category)
-          ? s.category
-          : _uncategorised;
+      // ⏱ ST truth pass (AD-02): a category this sheet does not know (one
+      // the API or an import wrote, e.g. "entertainment") is KEPT and offered
+      // for this row. Replacing it with 'Other' made every edit of such a row
+      // PATCH a category the user never touched.
+      _category = s.category;
+      if (!_categories.contains(s.category)) _ownCategory = s.category;
     }
     for (final (TextEditingController c, String key)
         in <(TextEditingController, String)>[
@@ -234,6 +249,7 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
       c.addListener(() {
         _serverErrors.remove(key);
         if (identical(c, _price)) _priceEmptied = _price.text.trim().isEmpty;
+        if (identical(c, _name)) _nameEmptied = _name.text.trim().isEmpty;
         if (mounted) setState(() {});
       });
     }
@@ -313,8 +329,13 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
         u.host.isNotEmpty;
   }
 
+  /// A row needs a name (ST truth pass, AD-01): a blank one saved a nameless
+  /// row whose list entry, detail header and reminders all read "".
+  bool get _nameOk => _name.text.trim().isNotEmpty;
+
   bool _canSave(String localeName) =>
       !_saving &&
+      _nameOk &&
       _parsedPrice(localeName) != null &&
       _cadence != null &&
       _websiteOk;
@@ -405,7 +426,13 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     // 🔴 THE 9.99 FALLBACK IS GONE (ST-E2). A price that did not parse used
     // to be saved as 9.99 without a word; now the button is disabled and the
     // field says why, so this is only reached with a real amount.
-    if (_saving || price == null || cadence == null || !_websiteOk) return;
+    if (_saving ||
+        !_nameOk ||
+        price == null ||
+        cadence == null ||
+        !_websiteOk) {
+      return;
+    }
     setState(() {
       _saving = true;
       _failure = null;
@@ -492,6 +519,17 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
       children: <Widget>[
         if (!_editing)
           AppFormField(label: l10n.addPopularHeading, child: _popular()),
+        // IM-01 — a list kept somewhere else is imported, not typed: the sheet
+        // closes and the import hub opens over the same root navigator.
+        if (!_editing)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton(
+              key: E2EKeys.addImportInstead,
+              onPressed: _importInstead,
+              child: Text(l10n.importInstead),
+            ),
+          ),
         _input(_name, l10n.addNameHint, fieldKey: E2EKeys.addName),
         // ⚠️ THE PRICE AND ITS CURRENCY SHARE A ROW; the date and category do
         // not, and the reason is text scaling rather than taste: a formatted
@@ -540,6 +578,14 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
         _input(_notes, null, keyboard: TextInputType.multiline),
       ],
     );
+  }
+
+  void _importInstead() {
+    // The router is read BEFORE the pop: the sheet's context leaves the tree
+    // with it.
+    final GoRouter? router = GoRouter.maybeOf(context);
+    Navigator.of(context).pop();
+    router?.push('/import');
   }
 
   /// The one banner the form is in, most urgent first: a failed save outranks
@@ -731,7 +777,10 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     key: E2EKeys.addCategory,
     label: l10n.fieldLabelCategory,
     value: _category,
-    items: <(String, String)>[for (final String c in _categories) (c, c)],
+    items: <(String, String)>[
+      for (final String c in <String>[..._categories, ?_ownCategory])
+        (c, categoryLabel(l10n, c)),
+    ],
     onChanged: (String? v) => setState(() => _category = v ?? _uncategorised),
   );
 
@@ -899,6 +948,14 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     if (identical(c, _notes)) {
       return (l10n.fieldLabelNotes, _serverErrors['notes']);
     }
-    return (l10n.fieldLabelName, _serverErrors['name']);
+    // ST truth pass (AD-01): blank says so — once the name was typed and
+    // emptied, or once a price is in and the name is the one thing missing,
+    // so a sheet that has just opened does not greet the user with an error.
+    final bool nameMissing =
+        !_nameOk && (_nameEmptied || _price.text.trim().isNotEmpty);
+    return (
+      l10n.fieldLabelName,
+      _serverErrors['name'] ?? (nameMissing ? l10n.nameErrorRequired : null),
+    );
   }
 }

@@ -363,17 +363,10 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
     try {
       const rel = 'extensions/Extension/Full_Screen_Shot/publish/privacy.yaml';
       const text = get(root, rel);
-      assert.ok(text.includes('\nprocessors: []\n'), 'the extension declaration must still carry `processors: []` for this mutation to mean anything');
-      put(root, rel, text.replace('\nprocessors: []\n', [
-        '',
-        'processors:',
-        '  - id: cloudflre',
-        '    role: infrastructure',
-        '    purpose: A misspelt party, schema-valid in every other respect.',
-        '    source: tooling/legal/provider-register.json',
-        '    asOf: "2026-09-25"',
-        '',
-      ].join('\n')));
+      // ⏱ 2026-10-01 (EXM-01): FullShot names its processors now (it sells Pro and
+      // transmits for it), so the misspelling is made in its real cloudflare row.
+      assert.ok(text.includes('\n  - id: cloudflare\n'), 'the extension declaration must still name cloudflare for this mutation to mean anything');
+      put(root, rel, text.replace('\n  - id: cloudflare\n', '\n  - id: cloudflre\n'));
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, out);
       assert.match(out, /processor "cloudflre" is not a row in tooling\/legal\/provider-register\.json/);
@@ -381,13 +374,23 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
   });
 
   test('MUTATION: an extension that allowlists a host while declaring `processors: []` is refused (S2-claims-01)', () => {
+    // ⏱ 2026-10-01 (EXM-01): the real FullShot allowlists platform.nikatru.com and
+    // declares what it sends; the mutation is now the declaration reverting to
+    // "nothing leaves the device" while the allowlist stands.
     const root = tree();
     try {
       const rel = 'extensions/Extension/Full_Screen_Shot/tool.json';
       const t = readJson(root, rel);
-      assert.deepEqual(t.policy.networkAllowlist, [], 'FullShot must still allowlist nothing for this mutation to mean anything');
-      t.policy.networkAllowlist = ['api.example.test'];
-      putJson(root, rel, t);
+      assert.equal(t.policy.networkAllowlist.length, 1, 'FullShot must still allowlist its one host for this mutation to mean anything');
+      const decl = 'extensions/Extension/Full_Screen_Shot/publish/privacy.yaml';
+      const text = get(root, decl);
+      const collects = text.indexOf('\ncollects:\n');
+      const disclosures = text.indexOf('\nstoreDisclosures:\n');
+      assert.ok(collects > 0 && disclosures > collects, 'the declaration must still carry collects, processors and storeDisclosures in that order');
+      const auth = /(  - category: Authentication information\n    disposition: )collected\n/;
+      assert.match(text, auth);
+      put(root, decl, (text.slice(0, collects) + '\ncollects: []\n\nprocessors: []\n' + text.slice(disclosures))
+        .replace(auth, '$1not-collected\n'));
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, out);
       assert.match(out, /declares `processors: \[\]` — nothing leaves the device — but .*tool\.json allowlists 1 network destination/);
@@ -452,13 +455,15 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
     } finally { kill(root); }
   });
 
-  test('POSITIVE CONTROL: the real extension transmits nothing and says so — 0 transmitting tools', () => {
+  test('POSITIVE CONTROL: the real extension transmits for Pro and says so — 1 transmitting tool', () => {
+    // ⏱ 2026-10-01 (EXM-01): until this day the control read "0 transmitting
+    // tools"; FullShot now sells Pro and its account check is a network call.
     const root = tree();
     try {
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 0, out);
-      assert.match(out, /limb 3b — 0 transmitting tools among 1 extension declaration/);
-      assert.match(out, /limb 8 — 0 transmitting tools/);
+      assert.match(out, /limb 3b — 1 transmitting tools among 1 extension declaration/);
+      assert.match(out, /limb 8 — 1 transmitting tools/);
     } finally { kill(root); }
   });
 

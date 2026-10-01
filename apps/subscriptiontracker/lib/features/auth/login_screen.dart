@@ -45,11 +45,15 @@ import 'auth_error_sentence.dart';
 // copy of any of it, which is the reason the move was worth making.
 
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key, this.startInSignUp = false});
+  const LoginScreen({super.key, this.startInSignUp = false, this.initialEmail});
 
   /// Opens on the sign-up arm — what `/sign-up` renders. ⏱ 2026-09-28 ·
   /// ST-T1b (audit A-5): this screen is the ONE sign-up surface.
   final bool startInSignUp;
+
+  /// ⏱ 2026-10-01 · EN-13 / EN-14 — the address to correct, when the user came
+  /// back from "check your inbox" or "verify your e-mail" to change it.
+  final String? initialEmail;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -57,7 +61,9 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen>
     with CaptchaHost<LoginScreen> {
-  final TextEditingController _email = TextEditingController();
+  late final TextEditingController _email = TextEditingController(
+    text: widget.initialEmail,
+  );
   final TextEditingController _password = TextEditingController();
   bool _loading = false;
   late bool _signUp = widget.startInSignUp;
@@ -197,9 +203,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         // by an account deletion — and because `accept()` sets the device stamp
         // synchronously, it also opened the re-acceptance gate for whatever
         // account this person signed into next.
-        await ref
-            .read(legalAcceptanceProvider.notifier)
-            .accept(marketingEmail: _marketingEmail);
+        // ⏱ 2026-10-01 · EN-05 — an acceptance the server did not receive is
+        // not recorded (see `LegalAcceptanceController.accept`): the stamp
+        // stays owed and `/reaccept-terms` asks again, with the reason and a
+        // Retry, once this person is signed in. The account the server has
+        // ALREADY created is not held back for it.
+        try {
+          await ref
+              .read(legalAcceptanceProvider.notifier)
+              .accept(marketingEmail: _marketingEmail);
+        } on core.LegalAcceptanceNotRecorded {
+          // Owed, and retried where it can be: `/reaccept-terms`.
+        }
         // 🔴 A SIGN-UP DOES NOT ALWAYS HAND BACK A SESSION, AND THE LINE BELOW
         // USED TO ASSUME IT DOES. With "Confirm email" ON, gotrue returns a
         // user and NO session, so `currentUser` stays null — and `/scan` is on
@@ -275,6 +290,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       // still does not. The cost, stated: accepting and then cancelling Apple's
       // sheet leaves an acceptance on this device for a sign-in that did not
       // happen — an extra record of a real, affirmative act, never a missing one.
+      // ⏱ 2026-10-01 · EN-05 — an acceptance the server did not receive now
+      // THROWS here, and the provider is NOT called: the record has to exist
+      // before an account can. It carries `consent_not_recorded`, which
+      // `authErrorText` maps to its own sentence (reacceptTermsNotRecorded).
       if (termsOwed) {
         await ref
             .read(legalAcceptanceProvider.notifier)
@@ -288,6 +307,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       if (mounted && auth.currentUser != null) {
         context.go(afterSignInDestination(GoRouterState.of(context)));
       }
+    } catch (e) {
+      _snack(e);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// ⏱ 2026-10-01 · EN-04 — "Resend confirmation", from the notice a failed
+  /// confirmation link lands on. The address is the one in the e-mail box (the
+  /// failed link carried none we may read), and the call is the one the
+  /// check-inbox screen makes: captcha-gated, the server sends only to an
+  /// existing unconfirmed account, and its answer never says which.
+  Future<void> _resendConfirmation() async {
+    if (_loading) return;
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    _hush();
+    final String email = _email.text.trim();
+    if (core.passwordResetProblem(email: email) != null) {
+      _snack(l10n.emailRequired);
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await captcha.untilReady();
+      await ref
+          .read(authRepositoryProvider)
+          .resendSignUpConfirmation(email, captchaToken: captcha.consume());
+      _snack(l10n.verifyEmailResent, kind: StatusKind.positive);
     } catch (e) {
       _snack(e);
     } finally {
@@ -440,7 +487,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       // 🔴 WHAT HAPPENED TO THE ACCOUNT THEY JUST ASKED US TO DELETE — the
       // deletion redirect lands here and takes every SnackBar with it, so this
       // is the one surface the outcome is readable on. [ADR 027]
-      notices: const <Widget>[_AccountDeletionNotice(), _AuthArrivalNotice()],
+      notices: <Widget>[
+        const _AccountDeletionNotice(),
+        _AuthArrivalNotice(
+          onResendConfirmation: _loading ? null : _resendConfirmation,
+        ),
+      ],
       // ST-T1b (audit A-7): "Welcome back" only where a session has been seen
       // on this device. The key is the anchor every suite reads, never words.
       title: _signUp
@@ -762,7 +814,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 /// return used to land on the RESET screen ("This reset link cannot be used
 /// here"); the router now leaves it here, and this says what happened.
 class _AuthArrivalNotice extends ConsumerWidget {
-  const _AuthArrivalNotice();
+  const _AuthArrivalNotice({required this.onResendConfirmation});
+
+  /// ⏱ 2026-10-01 · EN-04 — offered under a failed SIGN-UP confirmation only;
+  /// null while a request is in flight.
+  final VoidCallback? onResendConfirmation;
+
+  static const Key resendConfirmationButton = Key('authArrivalResend');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -788,16 +846,27 @@ class _AuthArrivalNotice extends ConsumerWidget {
       child: Row(
         children: <Widget>[
           Expanded(
-            child: Semantics(
-              liveRegion: true,
-              child: Text(
-                provider
-                    ? l10n.authProviderSignInCancelled
-                    : l10n.authLinkFailedSignIn,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    provider
+                        ? l10n.authProviderSignInCancelled
+                        : l10n.authLinkFailedSignIn,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
                 ),
-              ),
+                if (flow == AuthFlow.signUpConfirm)
+                  TextButton(
+                    key: resendConfirmationButton,
+                    onPressed: onResendConfirmation,
+                    child: Text(l10n.authResendConfirmation),
+                  ),
+              ],
             ),
           ),
           IconButton(
@@ -824,16 +893,34 @@ class _AccountDeletionNotice extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme scheme = theme.colorScheme;
-    final TextStyle? small = theme.textTheme.bodySmall?.copyWith(
-      color: scheme.onSurfaceVariant,
-    );
     final core.AccountDeletionOutcome? outcome = ref.watch(
       lastAccountDeletionOutcomeProvider,
     );
     final String? detail = ref.watch(lastAccountDeletionDetailProvider);
     if (outcome == null) return const SizedBox.shrink();
+    // ⏱ ST truth pass (EN-16): a LIVE REGION. This notice appears on the
+    // sign-in screen the deletion lands on, and is the only place the outcome
+    // is said — a reader on the heading never heard it arrive.
+    return Semantics(
+      key: const Key('accountDeletionNoticeLive'),
+      container: true,
+      liveRegion: true,
+      child: _card(context, l10n, outcome, detail, ref),
+    );
+  }
+
+  Widget _card(
+    BuildContext context,
+    AppLocalizations l10n,
+    core.AccountDeletionOutcome outcome,
+    String? detail,
+    WidgetRef ref,
+  ) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final TextStyle? small = theme.textTheme.bodySmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
     return Container(
       key: E2EKeys.accountDeletionNotice,
       margin: const EdgeInsets.only(bottom: AppSpacing.lg),

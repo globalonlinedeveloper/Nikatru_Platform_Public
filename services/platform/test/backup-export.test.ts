@@ -12,14 +12,25 @@
 // rows out, with the count compared. The live drill against a scratch D1 is
 // recorded in runbooks/backup-restore.md; this is the half that runs on every PR.
 // ─────────────────────────────────────────────────────────────────────────────
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import CEILINGS_RAW from '../../../tooling/ceilings.json?raw';
 import { RealDb, realPlatformDb } from './harness';
 import appInit0001 from '../../subscriptiontracker-api/migrations/0001_init.sql?raw';
 import appSchemaDebt0002 from '../../subscriptiontracker-api/migrations/0002_schema_debt.sql?raw';
 import { runBackup, isExpired, backupDate, BACKUP_RETENTION_DAYS, MAX_D1_QUERIES_PER_RUN } from '../src/backup';
-import { dumpD1Database, EPHEMERAL_TABLES, D1_PAGE_ROWS, TABLES_PER_READ, SQL_FUNCTION_ARGS } from '../src/backup/dump';
-import { scheduled, BACKUP_CRON } from '../src/scheduled';
+import {
+  dumpD1Database,
+  d1RestoreStatements,
+  decodeD1DumpValue,
+  EPHEMERAL_TABLES,
+  D1_DUMP_GENERATOR,
+  D1_PAGE_BYTES,
+  D1_PAGE_ROWS,
+  PAGE_RETRY_SHRINK,
+  TABLES_PER_READ,
+  SQL_FUNCTION_ARGS,
+} from '../src/backup/dump';
+import { scheduled, BACKUP_CRON, BACKUP_RERUN_KEY, OPS_HOURLY_CRON } from '../src/scheduled';
 import type { BackupEnv } from '../src/backup';
 import type { Env } from '../src/types';
 
@@ -57,6 +68,9 @@ class FakeKv {
   }
   async get(name: string): Promise<string | null> {
     return this.data[name] ?? null;
+  }
+  async delete(name: string): Promise<void> {
+    delete this.data[name];
   }
 }
 
@@ -109,9 +123,9 @@ function padTables(n: number): string[] {
 /**
  * One table holding `n` rows. ⏱ 2026-10-01 · ROW VOLUME IS NOW THE ONLY THING THAT
  * SPENDS THE POOL, so it is what these fixtures turn: a database costs its
- * catalogue, its column read, its size read and one read per round, and a round
- * ends when no table returned a full page — floor(n / D1_PAGE_ROWS) + 1 rounds
- * for a table whose rows are a few bytes wide.
+ * catalogue, its column read and one read per round, and a round ends when no
+ * table returned a full page — floor(n / D1_PAGE_ROWS) + 1 rounds for a table
+ * whose rows are a few bytes wide (a page of them is far under D1_PAGE_BYTES).
  */
 function padRows(n: number): string[] {
   return [
@@ -121,28 +135,44 @@ function padRows(n: number): string[] {
 }
 
 /** What one database of at most TABLES_PER_READ tables, the largest holding `n` rows, spends. */
-const spendFor = (n: number): number => 3 + Math.floor(n / D1_PAGE_ROWS) + 1;
+const spendFor = (n: number): number => 2 + Math.floor(n / D1_PAGE_ROWS) + 1;
 
 /** D1's "Maximum string, BLOB or table row size", which node:sqlite does not impose. */
 const D1_MAX_VALUE_BYTES = 2_000_000;
 
+/** The real engine behind D1's value cap, and what it saw. */
+interface CappedD1 {
+  db: D1Database;
+  /** Reads refused for a value past D1_MAX_VALUE_BYTES. Zero on a healthy night. */
+  refused: number;
+  /** The widest value any read answered, in UTF-8 bytes. */
+  widest: number;
+}
+
 /**
  * The real engine behind D1's value cap: a read that answers a string past
  * D1_MAX_VALUE_BYTES throws, as D1 does (SQLITE_TOOBIG), instead of handing the
- * export a value production would never have returned.
+ * export a value production would never have returned. Counted in UTF-8 BYTES,
+ * as D1 counts it — a JS string's `.length` is UTF-16 code units, and a cap
+ * measured that way passes a page of three-byte characters at three times the size.
  */
-function withD1ValueCap(real: RealDb): D1Database {
+function withD1ValueCap(real: RealDb): CappedD1 {
+  const capped: CappedD1 = { db: undefined as unknown as D1Database, refused: 0, widest: 0 };
   const check = <T>(rows: T[]): T[] => {
     for (const row of rows) {
       for (const value of Object.values(row as Record<string, unknown>)) {
-        if (typeof value === 'string' && value.length > D1_MAX_VALUE_BYTES) {
-          throw new Error(`string or blob too big: SQLITE_TOOBIG (${value.length} bytes)`);
+        if (typeof value !== 'string') continue;
+        const bytes = new TextEncoder().encode(value).byteLength;
+        if (bytes > D1_MAX_VALUE_BYTES) {
+          capped.refused += 1;
+          throw new Error(`string or blob too big: SQLITE_TOOBIG (${bytes} bytes)`);
         }
+        capped.widest = Math.max(capped.widest, bytes);
       }
     }
     return rows;
   };
-  return {
+  capped.db = {
     prepare(sql: string) {
       const statement = real.prepare(sql);
       return {
@@ -151,6 +181,7 @@ function withD1ValueCap(real: RealDb): D1Database {
       };
     },
   } as unknown as D1Database;
+  return capped;
 }
 
 /** The most arguments any one function call in `sql` takes. Quoted runs are skipped. */
@@ -198,6 +229,82 @@ function withGhostTable(real: RealDb, ghost: string): D1Database {
   } as unknown as D1Database;
 }
 
+/**
+ * A D1 that runs `write` against the real engine the moment the first PAGE of
+ * `table` has been answered — a webhook landing between two rounds of the 02:30
+ * export. A page is the one read that aggregates rows (`json_group_array`).
+ */
+function writingAfterFirstPage(real: RealDb, table: string, write: string): D1Database {
+  let fired = false;
+  return {
+    prepare(sql: string) {
+      const statement = real.prepare(sql);
+      if (fired || !sql.includes('json_group_array') || !sql.includes(`"${table}"`)) return statement;
+      return {
+        all: () => statement.all(),
+        first: async () => {
+          const answer = await statement.first();
+          fired = true;
+          real.db.exec(write);
+          return answer;
+        },
+      };
+    },
+  } as unknown as D1Database;
+}
+
+/**
+ * A D1 that refuses its first `times` page reads with SQLITE_TOOBIG, as D1
+ * refuses a value past its cap — or with `message`, as D1 refuses a read it
+ * dropped (a reset, a timeout). Each refused read is still a statement the real
+ * engine recorded — a query spent, as on D1.
+ */
+function refusingPages(real: RealDb, times: number, message = 'string or blob too big: SQLITE_TOOBIG'): D1Database {
+  let left = times;
+  return {
+    prepare(sql: string) {
+      const statement = real.prepare(sql);
+      if (left === 0 || !sql.includes('json_group_array')) return statement;
+      return {
+        first: async () => {
+          left -= 1;
+          throw new Error(message);
+        },
+      };
+    },
+  } as unknown as D1Database;
+}
+
+/** The byte targets every page read in `sql` asked for, in order. */
+const pageTargets = (sql: readonly string[]): number[][] =>
+  sql.filter((q) => q.includes('json_group_array')).map((q) => [...q.matchAll(/run <= (\d+)/g)].map((m) => Number(m[1])));
+
+/**
+ * THE RESTORE, IN MINIATURE: a dump replayed through d1RestoreStatements into an
+ * EMPTY engine. Foreign keys are off while rows load table by table and checked
+ * after, as a restore into D1 has to do it.
+ */
+function restored(jsonl: string): RealDb {
+  const target = new RealDb([]);
+  target.db.exec('PRAGMA foreign_keys = OFF');
+  for (const { sql, params } of d1RestoreStatements(jsonl)) target.db.prepare(sql).run(...params);
+  target.db.exec('PRAGMA foreign_keys = ON');
+  expect(target.rows('PRAGMA foreign_key_check'), 'the restored rows satisfy every foreign key').toEqual([]);
+  return target;
+}
+
+/** Every user table of `db` and its rows in rowid order — BLOBs as their bytes. */
+function contentsOf(db: RealDb): Record<string, unknown[]> {
+  const out: Record<string, unknown[]> = {};
+  const tables = db.rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name");
+  for (const { name } of tables) out[String(name)] = db.rows(`SELECT * FROM "${String(name)}" ORDER BY rowid`);
+  return out;
+}
+
+/** The catalogue a restore must rebuild: every table and index, by its own SQL. */
+const catalogueOf = (db: RealDb): unknown[] =>
+  db.rows("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type, name");
+
 function latestManifest(bucket: FakeBucket): { complete: boolean; objects: { key: string; queries?: number }[] } {
   return JSON.parse(new TextDecoder().decode(bucket.objects.get('manifests/latest.json')!.body)) as {
     complete: boolean;
@@ -240,6 +347,75 @@ describe('the nightly export writes something a restore can actually use', () =>
     expect(ddl).toContain('cron_heartbeat');
 
     expect(out.find((o) => o.target === 'd1:platform_db')?.ok).toBe(true);
+  });
+
+  // ⏱ 2026-10-01 · review of #1108: "port the round-trip into CI". The test above
+  // reads rows back out of the object; this one RESTORES it — every statement the
+  // restore runs, into an empty engine — and compares the two databases whole.
+  it('🔴 RESTORES: both databases rebuilt from their objects equal their sources, table for table, BLOBs byte for byte', async () => {
+    const platform = realPlatformDb(['CREATE TABLE blob_vault (id INTEGER PRIMARY KEY, payload BLOB, note TEXT)']);
+    const every = new Uint8Array(256).map((_, i) => i);
+    const vault = platform.db.prepare('INSERT INTO blob_vault (payload, note) VALUES (?, ?)');
+    vault.run(every, 'every byte value, 0x00 first');
+    vault.run(new Uint8Array(0), 'an EMPTY blob is not NULL');
+    vault.run(null, '{"$blob":"AAAA"}'); // TEXT shaped like the marker stays TEXT
+    vault.run(new Uint8Array([0xe2, 0x82, 0xac]), '€ — the bytes of this very sign, as a BLOB');
+    platform.db.exec(
+      "INSERT INTO cron_heartbeat (job, target, ok, detail, ran_at) VALUES ('renewals','a',1,'ünïcode ✓','2026-09-05T06:00:00Z');" +
+        "INSERT INTO native_attest_counters (day, scope, calls) VALUES ('2026-09-05','play-integrity:decode',3)",
+    );
+    const tracker = appDb();
+    const bucket = new FakeBucket();
+    const { env } = envWith(bucket, platform, tracker);
+    const out = await runBackup(env, NOW);
+    expect(out.filter((o) => o.target.startsWith('d1:')).map((o) => o.ok)).toEqual([true, true]);
+
+    for (const [name, source] of [['platform_db', platform], ['subscriptiontracker_db', tracker]] as const) {
+      const jsonl = await gunzip(bucket.objects.get(`d1/${name}/${backupDate(NOW)}.jsonl.gz`)!.body);
+      expect(linesOf(jsonl)[0]).toMatchObject({ kind: 'meta', generator: D1_DUMP_GENERATOR });
+      const copy = restored(jsonl);
+      expect(catalogueOf(copy), name).toEqual(catalogueOf(source));
+      const want = contentsOf(source);
+      // Ephemeral tables come back EMPTY by design (EPHEMERAL_TABLES).
+      for (const t of EPHEMERAL_TABLES) if (t in want) want[t] = [];
+      expect(contentsOf(copy), name).toEqual(want);
+    }
+    // Preconditions, so the comparison above compared something: the BLOBs went through.
+    const vaultRows = contentsOf(platform).blob_vault as { payload: unknown }[];
+    expect(vaultRows[0].payload).toBeInstanceOf(Uint8Array);
+    expect((vaultRows[0].payload as Uint8Array).byteLength).toBe(256);
+  });
+
+  it('a BLOB travels as base64 under a type marker — never coerced to text, never dropped', async () => {
+    const platform = realPlatformDb(['CREATE TABLE blob_vault (id INTEGER PRIMARY KEY, payload BLOB)']);
+    platform.db.prepare('INSERT INTO blob_vault (payload) VALUES (?)').run(new Uint8Array([0, 1, 254, 255]));
+    const dump = await dumpD1Database(platform as unknown as D1Database, 'platform_db', 1000, '2026-10-01T02:30:00Z');
+    const row = linesOf(dump.jsonl).find((l) => l.kind === 'row' && l.table === 'blob_vault');
+    expect(row?.data).toEqual({ id: 1, payload: { $blob: 'AAH+/w==' } });
+    expect(decodeD1DumpValue({ $blob: 'AAH+/w==' })).toEqual(new Uint8Array([0, 1, 254, 255]));
+    // Red control: an object that is not exactly the marker is not guessed at.
+    expect(() => decodeD1DumpValue({ $blob: 'AA==', extra: 1 })).toThrow(/neither/);
+    expect(() => decodeD1DumpValue(true)).toThrow(/neither/);
+  });
+
+  it('🔴 the restore REFUSES a dump that is not whole: cut off, short a row, truncated, or of a format it does not read', async () => {
+    const { env } = envWith(new FakeBucket());
+    const whole = (await dumpD1Database(env.PLATFORM_DB, 'platform_db', 1000, '2026-10-01T02:30:00Z')).jsonl;
+    expect(d1RestoreStatements(whole).length).toBeGreaterThan(0);
+    const lines = whole.trimEnd().split('\n');
+
+    expect(() => d1RestoreStatements(lines.slice(0, -1).join('\n'))).toThrow(/no end line/);
+    const heartbeat = realPlatformDb();
+    heartbeat.db.exec("INSERT INTO cron_heartbeat (job, target, ok, detail, ran_at) VALUES ('j','t',1,'d','2026-09-05T06:00:00Z')");
+    const one = (await dumpD1Database(heartbeat as unknown as D1Database, 'platform_db', 1000, '2026-10-01T02:30:00Z')).jsonl;
+    const short = one.split('\n').filter((l) => !(l.includes('"kind":"row"') && l.includes('"table":"cron_heartbeat"'))).join('\n');
+    expect(() => d1RestoreStatements(short)).toThrow(/cron_heartbeat ends at 1 rows and the dump holds 0/);
+    const partial = (await dumpD1Database(realPlatformDb() as unknown as D1Database, 'platform_db', 2, '2026-10-01T02:30:00Z')).jsonl;
+    expect(() => d1RestoreStatements(partial)).toThrow(/TRUNCATED/);
+    expect(() => d1RestoreStatements(partial, { allowPartial: true })).not.toThrow();
+    expect(() => d1RestoreStatements(whole.replace(D1_DUMP_GENERATOR, 'platform-worker-backup/9'))).toThrow(/not a D1 dump this restore reads/);
+    // A /1 dump — the 30 nights already in R2 when this lands — still restores.
+    expect(d1RestoreStatements(whole.replace(D1_DUMP_GENERATOR, 'platform-worker-backup/1'))).toEqual(d1RestoreStatements(whole));
   });
 
   // ⏱ 2026-09-30 · ADR no.NNN — EPHEMERAL_TABLES (src/backup/dump.ts).
@@ -311,8 +487,8 @@ describe('the nightly export writes something a restore can actually use', () =>
 describe('a backup that did not fully happen must never look like one that did', () => {
   it('🔴 a TRUNCATED dump is RED, and says so in the row', async () => {
     const db = realPlatformDb();
-    // A budget of 2 buys the catalogue query and exactly one table page, so the
-    // remaining tables cannot be read.
+    // A budget of 2 buys the catalogue and the column read, and not one page, so
+    // no table's rows can be read.
     const dump = await dumpD1Database(db as unknown as D1Database, 'platform_db', 2, '2026-09-06T02:30:00Z');
     expect(dump.truncated).toBe(true);
     const end = linesOf(dump.jsonl).find((l) => l.kind === 'end');
@@ -441,9 +617,9 @@ describe('the export costs the same whatever the table count', () => {
 
     const spent = platform.sql.length + tracker.sql.length;
     expect(spent * 100).toBeLessThan(MAX_D1_QUERIES_PER_RUN * 50);
-    // Exactly: catalogue, columns, then a size read and one round of reads, each one
-    // statement per TABLES_PER_READ tables (nothing here is past a page).
-    expect(platform.sql).toHaveLength(2 + 2 * Math.ceil(tableCount(platform) / TABLES_PER_READ));
+    // Exactly: catalogue, columns, then one round of reads, one statement per
+    // TABLES_PER_READ tables (nothing here is past a page).
+    expect(platform.sql).toHaveLength(2 + Math.ceil(tableCount(platform) / TABLES_PER_READ));
     expect(out.find((o) => o.target === 'd1-budget')?.ok).toBe(true);
     expect(out.find((o) => o.target === 'd1:platform_db')?.ok).toBe(true);
     // D1 refuses a statement past 100,000 bytes; node:sqlite does not, so it is asserted here.
@@ -469,11 +645,17 @@ describe('the export costs the same whatever the table count', () => {
   it('🔴 a table the catalogue names and the database does not hold fails LOUDLY: red row, no object, incomplete manifest', async () => {
     const bucket = new FakeBucket();
     const { env } = envWith(bucket);
-    env.PLATFORM_DB = withGhostTable(realPlatformDb(), 'ghost_table');
+    const real = realPlatformDb();
+    env.PLATFORM_DB = withGhostTable(real, 'ghost_table');
     const out = await runBackup(env, NOW);
     const row = out.find((o) => o.target === 'd1:platform_db');
     expect(row?.ok).toBe(false);
-    expect(row?.detail).toContain('ghost_table');
+    // 🔴 THE GUARD'S OWN WORDS, AND NOT MERELY THE TABLE'S NAME. Without the guard
+    // the ghost is paged, the engine answers "no such table: ghost_table", and a
+    // test that only looked for the name stayed green with the guard deleted.
+    expect(row?.detail).toContain('"ghost_table" is in the catalogue and has no columns');
+    // It refused BEFORE reading a page — the ghost was never named in a read.
+    expect(real.sql.some((q) => q.includes('"ghost_table"'))).toBe(false);
     expect(bucket.objects.has(`d1/platform_db/${backupDate(NOW)}.jsonl.gz`)).toBe(false);
     // The other database is untouched by it, and the night is not "complete".
     expect(out.find((o) => o.target === 'd1:subscriptiontracker_db')?.ok).toBe(true);
@@ -493,10 +675,13 @@ describe('the export costs the same whatever the table count', () => {
     expect(count).toBeLessThan(D1_PAGE_ROWS);
     const bucket = new FakeBucket();
     const { env } = envWith(bucket, platform);
-    env.PLATFORM_DB = withD1ValueCap(platform);
+    const capped = withD1ValueCap(platform);
+    env.PLATFORM_DB = capped.db;
     const out = await runBackup(env, NOW);
 
     expect(out.find((o) => o.target === 'd1:platform_db')).toMatchObject({ ok: true });
+    expect(capped.refused).toBe(0);
+    expect(capped.widest).toBeLessThanOrEqual(D1_PAGE_BYTES);
     const lines = linesOf(await gunzip(bucket.objects.get(`d1/platform_db/${backupDate(NOW)}.jsonl.gz`)!.body));
     const ids = lines.filter((l) => l.kind === 'row' && l.table === 'wide_rows').map((l) => (l.data as { id: number }).id);
     expect(ids).toEqual(Array.from({ length: count }, (_, i) => i + 1));
@@ -536,6 +721,228 @@ describe('the export costs the same whatever the table count', () => {
   });
 });
 
+// ⏱ 2026-10-01 · review of #1108 (fix-backup-d1-budget): OFFSET paging lost a row
+// to a delete between rounds, and widest-row sizing made one wide table cost a
+// round per ~210 rows. These are the cases that hold the keyset and the byte cap.
+describe('paging never skips a row, and a page is sized by its rows\' BYTES', () => {
+  it('🔴 a row DELETED between two rounds costs no OTHER row: every row that existed all night lands (the reviewer\'s row 5001)', async () => {
+    const count = 2 * D1_PAGE_ROWS;
+    const platform = realPlatformDb(padRows(count));
+    const dump = await dumpD1Database(
+      writingAfterFirstPage(platform, 'pad_rows', 'DELETE FROM pad_rows WHERE id = 1'),
+      'platform_db',
+      1000,
+      '2026-10-01T02:30:00Z',
+    );
+    // Precondition: the write landed between rounds — row 1 is gone from the database.
+    expect(platform.count('pad_rows')).toBe(count - 1);
+    const ids = linesOf(dump.jsonl)
+      .filter((l) => l.kind === 'row' && l.table === 'pad_rows')
+      .map((l) => (l.data as { id: number }).id);
+    // Row 1 was read before it was deleted; row D1_PAGE_ROWS + 1 is the one an
+    // OFFSET page skipped, while the dump said complete.
+    expect(ids).toEqual(Array.from({ length: count }, (_, i) => i + 1));
+    expect(linesOf(dump.jsonl).find((l) => l.kind === 'table-end' && l.table === 'pad_rows')).toMatchObject({ rows: count, truncated: false });
+    expect(dump.truncated).toBe(false);
+  }, 30_000);
+
+  it('a row INSERTED between rounds, past the cursor, is picked up; nothing that was there is lost', async () => {
+    const count = D1_PAGE_ROWS + 10;
+    const platform = realPlatformDb(padRows(count));
+    const dump = await dumpD1Database(
+      writingAfterFirstPage(platform, 'pad_rows', `INSERT INTO pad_rows (id) VALUES (${count + 1})`),
+      'platform_db',
+      1000,
+      '2026-10-01T02:30:00Z',
+    );
+    const ids = linesOf(dump.jsonl)
+      .filter((l) => l.kind === 'row' && l.table === 'pad_rows')
+      .map((l) => (l.data as { id: number }).id);
+    expect(ids).toEqual(Array.from({ length: count + 1 }, (_, i) => i + 1));
+  }, 30_000);
+
+  // ⏱ 2026-10-01 · review of #1118, finding 1 — the reviewer's probe, ported.
+  it('🔴 a row DELETED AND RE-INSERTED under the same key between rounds is dumped twice, and the restore keeps ONE row, the newer', async () => {
+    const count = D1_PAGE_ROWS + 10;
+    const fill = (table: string): string =>
+      `WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < ${count}) INSERT INTO ${table} (k, v) SELECT 'k' || x, 'old' FROM c`;
+    const platform = realPlatformDb([
+      'CREATE TABLE probe_kv (k TEXT PRIMARY KEY, v TEXT)',
+      fill('probe_kv'),
+      // The same key declared by a UNIQUE INDEX instead of the table.
+      'CREATE TABLE probe_ux (k TEXT, v TEXT)',
+      'CREATE UNIQUE INDEX probe_ux_k ON probe_ux (k)',
+      fill('probe_ux'),
+    ]);
+    const move =
+      "DELETE FROM probe_kv WHERE k = 'k1'; INSERT INTO probe_kv (k, v) VALUES ('k1', 'new');" +
+      "DELETE FROM probe_ux WHERE k = 'k1'; INSERT INTO probe_ux (k, v) VALUES ('k1', 'new')";
+    const dump = await dumpD1Database(writingAfterFirstPage(platform, 'probe_kv', move), 'platform_db', 1000, '2026-10-01T02:30:00Z');
+    expect(dump.truncated).toBe(false);
+    for (const table of ['probe_kv', 'probe_ux']) {
+      // Precondition: the move landed between rounds, so the dump holds k1 twice, old then new.
+      const k1 = linesOf(dump.jsonl)
+        .filter((l) => l.kind === 'row' && l.table === table && (l.data as { k: string }).k === 'k1')
+        .map((l) => (l.data as { v: string }).v);
+      expect(k1, table).toEqual(['old', 'new']);
+    }
+    const copy = restored(dump.jsonl);
+    for (const table of ['probe_kv', 'probe_ux']) {
+      expect(copy.count(table), table).toBe(count);
+      expect(copy.rows(`SELECT v FROM ${table} WHERE k = 'k1'`), table).toEqual([{ v: 'new' }]);
+      expect(copy.rows(`SELECT k, v FROM ${table} ORDER BY k`), table).toEqual(platform.rows(`SELECT k, v FROM ${table} ORDER BY k`));
+    }
+  }, 30_000);
+
+  it('🔴 a 10,000-row provider_notifications, its widest body production\'s 4,749 bytes, spends under HALF the pool and lands whole', async () => {
+    // ⏱ 2026-10-01: sized by its WIDEST row, every page of this table was ~210 rows,
+    // so 10,000 rows cost ~48 rounds — past the whole pool of 42, a truncated night.
+    // Sized by bytes, it costs what its rows weigh: a few rounds.
+    const count = 10_000;
+    const platform = realPlatformDb([
+      `WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < ${count}) ` +
+        'INSERT INTO provider_notifications (provider, provider_event_id, received_at, payload) ' +
+        "SELECT 'paddle', 'evt_' || x, '2026-09-30T02:00:00Z', printf('%.*c', CASE WHEN x % 50 = 0 THEN 4670 ELSE 400 END, 'x') FROM c",
+    ]);
+    // Precondition: the fixture's widest row is production's widest, as the old sizing read it.
+    const widest = platform.rows(
+      "SELECT max(length(json_array(provider, provider_event_id, provider_notification_id, event_type, occurred_at, environment, received_at, payload, derived_at, derive_error))) AS w FROM provider_notifications",
+    )[0].w as number;
+    expect(widest).toBeGreaterThanOrEqual(4_700);
+    expect(Math.floor(D1_PAGE_BYTES / widest) * 40).toBeLessThan(count); // the old page: 40 rounds would not cover it
+    const tracker = appDb();
+    const bucket = new FakeBucket();
+    const { env } = envWith(bucket, platform, tracker);
+    const capped = withD1ValueCap(platform);
+    env.PLATFORM_DB = capped.db;
+    const out = await runBackup(env, NOW);
+
+    const spent = platform.sql.length + tracker.sql.length;
+    expect(spent * 100).toBeLessThan(MAX_D1_QUERIES_PER_RUN * 50);
+    expect(out.find((o) => o.target === 'd1:platform_db')).toMatchObject({ ok: true });
+    expect(out.find((o) => o.target === 'd1-budget')?.ok).toBe(true);
+    expect(capped.refused).toBe(0);
+    expect(capped.widest).toBeLessThanOrEqual(D1_PAGE_BYTES);
+    const lines = linesOf(await gunzip(bucket.objects.get(`d1/platform_db/${backupDate(NOW)}.jsonl.gz`)!.body));
+    const events = lines.filter((l) => l.kind === 'row' && l.table === 'provider_notifications').map((l) => (l.data as { provider_event_id: string }).provider_event_id);
+    expect(events).toHaveLength(count);
+    expect(new Set(events).size).toBe(count);
+    expect(lines.find((l) => l.kind === 'table-end' && l.table === 'provider_notifications')).toMatchObject({ rows: count, truncated: false });
+  }, 60_000);
+
+  it('🔴 a page is capped in UTF-8 BYTES, not characters: three-byte rows never pass D1_PAGE_BYTES nor draw a refusal', async () => {
+    // 45 rows of 50,000 '€' are 2.25M characters and 6.75 MB. Counted in characters
+    // (SQLite's length() of TEXT), a page holds ~19 of them — 2.85 MB, past D1's cap.
+    const count = 45;
+    const platform = realPlatformDb([
+      'CREATE TABLE utf8_rows (id INTEGER PRIMARY KEY, body TEXT NOT NULL)',
+      `WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < ${count}) INSERT INTO utf8_rows SELECT x, replace(printf('%.50000c', 'x'), 'x', '€') FROM c`,
+    ]);
+    expect(Math.floor(D1_PAGE_BYTES / 50_000) * 150_000).toBeGreaterThan(D1_MAX_VALUE_BYTES);
+    const capped = withD1ValueCap(platform);
+    const dump = await dumpD1Database(capped.db, 'platform_db', 1000, '2026-10-01T02:30:00Z');
+    expect(capped.refused).toBe(0);
+    expect(capped.widest).toBeLessThanOrEqual(D1_PAGE_BYTES);
+    const bodies = linesOf(dump.jsonl).filter((l) => l.kind === 'row' && l.table === 'utf8_rows').map((l) => (l.data as { body: string }).body);
+    expect(bodies).toHaveLength(count);
+    expect(bodies.every((b) => b === '€'.repeat(50_000))).toBe(true);
+  }, 30_000);
+
+  it('🔴 a page D1 refuses is retried ONCE, a quarter the size, and every row still lands — one query more, counted', async () => {
+    const control = realPlatformDb(padRows(10));
+    await dumpD1Database(control as unknown as D1Database, 'platform_db', 1000, '2026-10-01T02:30:00Z');
+    const platform = realPlatformDb(padRows(10));
+    const dump = await dumpD1Database(refusingPages(platform, 1), 'platform_db', 1000, '2026-10-01T02:30:00Z');
+    expect(dump.truncated).toBe(false);
+    expect(linesOf(dump.jsonl).filter((l) => l.kind === 'row' && l.table === 'pad_rows')).toHaveLength(10);
+    expect(platform.sql).toHaveLength(control.sql.length + 1);
+    expect(dump.queries).toBe(platform.sql.length);
+    // The retry asked for a quarter of every target the refused read asked for.
+    const [first, retry] = pageTargets(platform.sql);
+    expect(retry).toEqual(first.map((t) => Math.floor(t / PAGE_RETRY_SHRINK)));
+  });
+
+  it('🔴 refused AGAIN after the retry: the night is RED, names the table, and writes no object', async () => {
+    const bucket = new FakeBucket();
+    const { env } = envWith(bucket);
+    const real = realPlatformDb();
+    env.PLATFORM_DB = refusingPages(real, 2);
+    const out = await runBackup(env, NOW);
+    const row = out.find((o) => o.target === 'd1:platform_db');
+    expect(row?.ok).toBe(false);
+    expect(row?.detail).toContain('failed again after every page in it was cut');
+    expect(row?.detail).toContain('SQLITE_TOOBIG');
+    expect(bucket.objects.has(`d1/platform_db/${backupDate(NOW)}.jsonl.gz`)).toBe(false);
+    expect(pageTargets(real.sql)).toHaveLength(2); // the read and its ONE retry, no third
+    expect(latestManifest(bucket).complete).toBe(false);
+  });
+
+  // ⏱ 2026-10-01 · review of #1118, finding 5.
+  it('🔴 once a cut page LANDS, the next page asks for the full target again — one refusal never quarters the rest of the night', async () => {
+    const platform = realPlatformDb(padRows(D1_PAGE_ROWS + 10));
+    const dump = await dumpD1Database(refusingPages(platform, 1), 'platform_db', 1000, '2026-10-01T02:30:00Z');
+    expect(dump.truncated).toBe(false);
+    expect(linesOf(dump.jsonl).filter((l) => l.kind === 'row' && l.table === 'pad_rows')).toHaveLength(D1_PAGE_ROWS + 10);
+    const [first, cut, next] = pageTargets(platform.sql);
+    // Every table's first page asks for the same full target, just under D1_PAGE_BYTES.
+    const full = first[0];
+    expect(first.every((t) => t === full) && full > D1_PAGE_BYTES / 2 && full <= D1_PAGE_BYTES).toBe(true);
+    expect(cut).toEqual(first.map((t) => Math.floor(t / PAGE_RETRY_SHRINK)));
+    // Round two reads only pad_rows' second page, at the FULL target.
+    expect(next).toEqual([full]);
+  }, 30_000);
+
+  it('🔴 a refusal that is NOT about size is retried ONCE at the SAME size; refused again, the night is RED', async () => {
+    const platform = realPlatformDb(padRows(10));
+    const dump = await dumpD1Database(refusingPages(platform, 1, 'D1_ERROR: Network connection lost.'), 'platform_db', 1000, '2026-10-01T02:30:00Z');
+    expect(dump.truncated).toBe(false);
+    expect(linesOf(dump.jsonl).filter((l) => l.kind === 'row' && l.table === 'pad_rows')).toHaveLength(10);
+    const [first, retry] = pageTargets(platform.sql);
+    expect(retry).toEqual(first);
+
+    const twice = realPlatformDb(padRows(10));
+    await expect(
+      dumpD1Database(refusingPages(twice, 2, 'D1_ERROR: Network connection lost.'), 'platform_db', 1000, '2026-10-01T02:30:00Z'),
+    ).rejects.toThrow(/failed again at the same size — .*Network connection lost/);
+    expect(pageTargets(twice.sql)).toHaveLength(2); // the read and its ONE retry, no third
+  });
+
+  it('🔴 ONE row wider than D1_PAGE_BYTES is retried once and then fails LOUDLY — never skipped, never a quiet partial', async () => {
+    const platform = realPlatformDb([
+      'CREATE TABLE one_wide (id INTEGER PRIMARY KEY, body TEXT NOT NULL)',
+      `INSERT INTO one_wide VALUES (1, printf('%.${D1_PAGE_BYTES + 200_000}c', 'x'))`,
+    ]);
+    const bucket = new FakeBucket();
+    const { env } = envWith(bucket, platform);
+    const out = await runBackup(env, NOW);
+    const row = out.find((o) => o.target === 'd1:platform_db');
+    expect(row?.ok).toBe(false);
+    expect(row?.detail).toContain('one_wide');
+    expect(row?.detail).toContain(`past D1_PAGE_BYTES (${D1_PAGE_BYTES})`);
+    expect(bucket.objects.has(`d1/platform_db/${backupDate(NOW)}.jsonl.gz`)).toBe(false);
+  }, 30_000);
+
+  it('a column NAMED rowid does not hide the keyset: the table pages by _rowid_ and every row lands, in order', async () => {
+    const count = D1_PAGE_ROWS + 5;
+    const platform = realPlatformDb([
+      'CREATE TABLE shadowed (rowid TEXT, v INTEGER)',
+      `WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < ${count}) INSERT INTO shadowed SELECT 'r' || (${count} - x), x FROM c`,
+    ]);
+    const dump = await dumpD1Database(platform as unknown as D1Database, 'platform_db', 1000, '2026-10-01T02:30:00Z');
+    expect(platform.sql.some((q) => q.includes('"shadowed"') && q.includes('CAST(_rowid_ AS TEXT)'))).toBe(true);
+    const vs = linesOf(dump.jsonl).filter((l) => l.kind === 'row' && l.table === 'shadowed').map((l) => (l.data as { v: number }).v);
+    expect(vs).toEqual(Array.from({ length: count }, (_, i) => i + 1));
+  }, 30_000);
+
+  it('🔴 a WITHOUT ROWID table is refused LOUDLY before any page is read — it has no rowid to page after', async () => {
+    const platform = realPlatformDb(['CREATE TABLE no_rowid (k TEXT PRIMARY KEY, v TEXT) WITHOUT ROWID', "INSERT INTO no_rowid VALUES ('a', 'b')"]);
+    await expect(dumpD1Database(platform as unknown as D1Database, 'platform_db', 1000, '2026-10-01T02:30:00Z')).rejects.toThrow(
+      /no_rowid is WITHOUT ROWID/,
+    );
+    expect(platform.sql.some((q) => q.includes('json_group_array'))).toBe(false);
+  });
+});
+
 describe('retention deletes old exports and nothing else', () => {
   it('deletes past the window, keeps inside it, and NEVER deletes an undated key', () => {
     const day = 86_400_000;
@@ -558,4 +965,78 @@ describe('retention deletes old exports and nothing else', () => {
     expect(bucket.deleted).not.toContain('manifests/latest.json');
     expect(out.find((o) => o.target === 'retention')?.ok).toBe(true);
   });
+});
+
+// ⏱ 2026-10-01 · the lead's one-shot re-run (scheduled.ts BACKUP_RERUN_KEY) is
+// EXPORT ONLY. It lands after the 06:00 sweep, so it must not replace the night's
+// pre-sweep objects, must not move Box B's latest.json, and must not sweep.
+describe('a one-shot re-run exports, and deletes or replaces nothing', () => {
+  const LATER = Date.parse('2026-09-06T13:15:00Z');
+
+  it('🔴 writes only under reruns/<stamp>/: the night\'s objects and latest.json stay byte-identical, and nothing is deleted', async () => {
+    const bucket = new FakeBucket();
+    const { env } = envWith(bucket);
+    await runBackup(env, NOW);
+    await bucket.put('d1/platform_db/2026-07-01.jsonl.gz', 'stale, and past the window');
+    const night = new Map([...bucket.objects].map(([k, v]) => [k, Buffer.from(v.body).toString('base64')]));
+
+    const out = await runBackup(env, LATER, { rerun: true });
+
+    expect(bucket.deleted).toEqual([]);
+    for (const [k, b64] of night) {
+      expect(Buffer.from(bucket.objects.get(k)!.body).toString('base64'), k).toBe(b64);
+    }
+    const added = [...bucket.objects.keys()].filter((k) => !night.has(k));
+    expect(added.length).toBeGreaterThan(0);
+    for (const k of added) expect(k.startsWith('reruns/2026-09-06T131500Z/'), k).toBe(true);
+    expect(added).toContain('reruns/2026-09-06T131500Z/manifest.json');
+    // No retention row: the night's verdict on the sweep stays the newest one.
+    expect(out.map((o) => o.target)).not.toContain('retention');
+    expect(out.every((o) => o.ok)).toBe(true);
+    // And its objects are dated, so the nightly sweep ages them out like the rest.
+    for (const k of added) expect(isExpired(k, LATER + 31 * 86_400_000, BACKUP_RETENTION_DAYS), k).toBe(true);
+  });
+
+  it('the nightly sweep is age-based: a second run the same UTC day deletes nothing', async () => {
+    const bucket = new FakeBucket();
+    for (const d of ['2026-08-06', '2026-08-07', '2026-08-08']) await bucket.put(`d1/platform_db/${d}.jsonl.gz`, 'x');
+    const { env } = envWith(bucket);
+    // On day T everything dated T-30 or earlier is expired from 00:00 to 23:59, and T-29 is not.
+    const doomed = ['d1/platform_db/2026-08-06.jsonl.gz', 'd1/platform_db/2026-08-07.jsonl.gz'];
+    await runBackup(env, NOW);
+    expect(bucket.deleted).toEqual(doomed);
+    await runBackup(env, Date.parse('2026-09-06T23:59:59Z'));
+    expect(bucket.deleted).toEqual(doomed);
+    expect(bucket.objects.has('d1/platform_db/2026-08-08.jsonl.gz')).toBe(true);
+  });
+
+  it('🔴 the WHOLE hourly invocation with a re-run flag, stuck-run row + export pool + heartbeat batch, fits d1.queriesPerInvocation', async () => {
+    const ceilings = JSON.parse(CEILINGS_RAW) as { ceilings: { id: string; value: number | null }[] };
+    const ceiling = ceilings.ceilings.find((c) => c.id === 'd1.queriesPerInvocation')?.value;
+    expect(typeof ceiling).toBe('number');
+
+    const platform = realPlatformDb(padRows(MAX_D1_QUERIES_PER_RUN * D1_PAGE_ROWS));
+    const tracker = realPlatformDb();
+    const { env } = envWith(new FakeBucket(), platform, tracker);
+    (env as unknown as { CONFIG_KV: KVNamespace }).CONFIG_KV = new FakeKv({
+      [BACKUP_RERUN_KEY]: JSON.stringify({ requestedAt: '2026-10-01T12:20:00Z', by: 'lead', reason: 'test', expiresAt: '2999-01-01T00:00:00Z' }),
+    }) as unknown as KVNamespace;
+    const pending: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => pending.push(p), passThroughOnException: () => {} };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await scheduled({ cron: OPS_HOURLY_CRON } as never, env as unknown as Env, ctx as never);
+      await Promise.all(pending);
+    } finally {
+      log.mockRestore();
+    }
+
+    const rows = platform.rows('SELECT job, target FROM cron_heartbeat');
+    // Preconditions: both jobs wrote, and the pool really ran out.
+    expect(rows.filter((r) => r.job === 'ops_stuck_runs')).toHaveLength(1);
+    expect(rows.filter((r) => r.job === 'backup_export')).toHaveLength(7);
+    expect(tracker.sql).toEqual([]);
+    expect(platform.sql).toHaveLength(MAX_D1_QUERIES_PER_RUN + rows.length);
+    expect(platform.sql.length + tracker.sql.length).toBeLessThanOrEqual(ceiling as number);
+  }, 30_000);
 });

@@ -1,6 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/checkout — the Paddle CREATE-TRANSACTION server half. [ADR 044].
 //
+// ⏱ 2026-10-01 · port-pay-core: THIS ROUTE NO LONGER NAMES A VENDOR IN CODE. It
+// dispatches through the payments port (services/_shared/src/ports/payments.ts
+// `checkoutThrough`) to the rail src/ports.ts `railFor` binds for the rendered
+// CHECKOUT_RAIL_ID (today Paddle, the one real adapter declaring `checkout`). The
+// create body, its `?: never` guard, the call and every refusal below moved VERBATIM
+// to src/lib/mor/paddle-rail.ts; the record that follows is the measured Paddle
+// contract that adapter keeps, left here because it is why this route answers as it does.
+//
 // ═════════════════════════════════════════════════════════════════════════════
 // ⚠️ WHAT THIS ENDPOINT BUYS TODAY: **NOTHING YET.** It is rung 2, and the ADR
 // that governs it says so in its own one-sentence summary.
@@ -85,13 +93,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv, RateLimiterBinding } from '../types';
-import { isKnownApp, resolveConfig } from '../config';
+import { isKnownApp, isSellableExtension, resolvePaywall } from '../config';
 import { readBoundedBody } from '../lib/body';
 import { withinEdgeCeiling } from '../lib/edge-ceiling';
 import { isMoneyEnvironment, type MoneyEnvironment } from '../lib/mor/contract';
-import { PADDLE_CUSTOM_DATA_APP_ID, PADDLE_CUSTOM_DATA_USER_ID } from '../lib/mor/paddle';
-import { PADDLE_API_BASE, PADDLE_API_KEY_PREFIX } from '../lib/mor/paddle-cancel';
-import { PADDLE_PRICE_IDS, RAIL_PRICE_AMOUNTS_MINOR, RAIL_PRICE_PENDING } from './rail-price-ids';
+import { checkoutThrough, railCan } from '../../../_shared/src/ports/payments';
+import { railFor } from '../ports';
+import { CHECKOUT_RAIL_ID } from '../generated/ports';
+import { RAIL_PRICE_AMOUNTS_MINOR, RAIL_PRICE_IDS, RAIL_PRICE_PENDING } from './rail-price-ids';
 
 const checkout = new Hono<AppEnv>();
 
@@ -103,36 +112,16 @@ const checkout = new Hono<AppEnv>();
  */
 export const MAX_CHECKOUT_BODY_BYTES = 1024;
 
-/**
- * How long we wait for `POST /transactions`.
- *
- * @ceiling none — a CLIENT-SIDE PATIENCE BUDGET, not a platform resource. There
- * is no Cloudflare limit on the other side of it for the arithmetic to check:
- * Workers bill CPU time, and this is wall-clock spent awaiting a subrequest. The
- * value is chosen against the consequence instead — a timeout may leave an
- * orphan draft nobody can name (see the header), so it is long enough that a
- * healthy call never trips it, and short enough that a hung upstream does not
- * hold a user's tap open indefinitely.
- */
-export const PADDLE_CREATE_TIMEOUT_MS = 10_000;
-
-/**
- * The widest `checkout.url` we will hand back.
- *
- * @ceiling none — an input SHAPE cap on a value we return rather than store, so
- * no platform budget moves with it. The measured URL is ~70 characters; 2048 is
- * the conventional URL ceiling and is generous by a factor of thirty.
- */
-export const MAX_CHECKOUT_URL_LEN = 2048;
-
-/** Bounds the vendor error CODE we copy into a log line. Never returned. */
-/** @ceiling none — an input SHAPE cap on a log field. */
-export const MAX_VENDOR_CODE_LEN = 64;
-
 // PADDLE_API_BASE and PADDLE_API_KEY_PREFIX moved to src/lib/mor/paddle-cancel.ts on 2026-09-29
 // (AB-M4-03): the cancel executor calls the same host with the same key, and one table has one home.
 
 /**
+ * ⏱ 2026-10-01 · port-pay-core: the key is now read BY NAME by the composition root
+ * (src/ports.ts `railFor`) and handed to the rail; the name lives in lib/mor/paddle-rail.ts
+ * `PADDLE_API_KEY_VAR`. The record below is kept as it was written, EXCEPT its "the read
+ * below" paragraph, which the move made false and which is corrected in place (#1127
+ * money review, finding 4).
+ *
  * The env var holding the seller API key — the NAME, kept as a const because
  * every refusal below names it in a log line so an operator can act on it.
  *
@@ -150,10 +139,14 @@ export const MAX_VENDOR_CODE_LEN = 64;
  * them this — so a developer following the file verbatim got a Worker whose
  * POST /v1/checkout refuses with no hint the value existed anywhere.
  *
- * The read below is therefore `c.env[PADDLE_API_KEY_VAR]`, which is a TYPED
- * index, not a cast: delete or rename `Env.PADDLE_API_KEY` in `src/types.ts` and
- * `npx tsc --noEmit` fails on this file. That compile-time tie is the check —
- * this paragraph does not carry it.
+ * The read was therefore `c.env[PADDLE_API_KEY_VAR]`, a TYPED index. Since
+ * port-pay-core there is no read in this file: the composition root's SecretReader reads
+ * by name (the name is DATA there, as in money.ts). The compile-time tie moved with the
+ * name: lib/mor/paddle-rail.ts declares `PADDLE_API_KEY_VAR = 'PADDLE_API_KEY' satisfies
+ * keyof Env`, so deleting or renaming `Env.PADDLE_API_KEY` in `src/types.ts` makes
+ * `npx tsc --noEmit` fail THERE, and test/payments-port.test.ts holds the name in
+ * tooling/ports/payments.json's paddle `secrets`. Those are the checks; this paragraph
+ * carries neither.
  *
  * 🔴 SET IT WITH `wrangler secret put PADDLE_API_KEY`, NEVER AS A COMMITTED VAR.
  * This repository is public and `.gitleaks.toml` carries rules for both key
@@ -162,8 +155,6 @@ export const MAX_VENDOR_CODE_LEN = 64;
  * as `Bearer "…"` and Cloudflare/Paddle answer with something that reads exactly
  * like a revoked token.
  */
-const PADDLE_API_KEY_VAR = 'PADDLE_API_KEY';
-
 /**
  * The OPTIONAL server-derived ceiling for this route, read by name for the same
  * reason as the key above.
@@ -188,28 +179,37 @@ const OFFERING_ID_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
 // refuses a rail id or one of those maps declared anywhere else under src/ (O-RAIL-PRICE-IDS-HAND-KEPT).
 // Why each map exists, and why its amounts are a second copy on purpose, moved into that
 // renderer's header verbatim. They are re-exported here for the tests and the grant path.
-export { PADDLE_PRICE_IDS, RAIL_PRICE_AMOUNTS_MINOR, RAIL_PRICE_PENDING };
+// ⏱ 2026-10-01 · port-pay-core: PADDLE_PRICE_IDS is no longer re-exported — a route names no rail's map.
+// The payments port reads RAIL_PRICE_IDS[railId][appId][offeringId], rendered by the same tool.
+export { RAIL_PRICE_AMOUNTS_MINOR, RAIL_PRICE_PENDING };
 
 /**
  * ⏱ 2026-09-27 · The `one_time` offering a rail's price sells, or null — the map
  * src/lib/mor/grant.ts is handed (it may not import this route or config.ts).
  *
- * A price sells an offering when PADDLE_PRICE_IDS maps that offering to it AND
+ * A price sells an offering when RAIL_PRICE_IDS[provider] maps that offering to it AND
  * the committed served config declares the offering with `term: "one_time"`. A
  * price that maps to a recurring offering, or to nothing, sells no one-time
  * offering, so a completed transaction for it grants nothing. The committed
  * config is read (no KV override): a webhook's meaning does not move with an
  * operator's display override.
+ *
+ * ⏱ 2026-10-01 · port-pay-core — A BEHAVIOUR CHANGE, NAMED (#1127 money review, nit 6).
+ * This was Paddle-only (`provider !== 'paddle'` → null). It now consults
+ * RAIL_PRICE_IDS[provider], so Razorpay's plan ids are in scope too. Effect today: none.
+ * Razorpay's `parse` refuses every event, and its map holds plans, which are recurring,
+ * so no Razorpay price resolves to a `one_time` offering.
  */
 export function oneTimeOfferingFor(
   provider: string,
   priceId: string,
 ): { appId: string; offeringId: string } | null {
-  if (provider !== 'paddle') return null;
-  for (const [appId, prices] of Object.entries(PADDLE_PRICE_IDS)) {
+  const byApp = RAIL_PRICE_IDS[provider];
+  if (byApp === undefined) return null;
+  for (const [appId, prices] of Object.entries(byApp)) {
     for (const [offeringId, id] of Object.entries(prices)) {
       if (id !== priceId) continue;
-      const offerings = resolveConfig(appId, null)?.paywall?.offerings;
+      const offerings = resolvePaywall(appId, null)?.offerings;
       const served = Array.isArray(offerings)
         ? offerings.find((o) => isPlainObject(o) && o.product_id === offeringId)
         : undefined;
@@ -219,120 +219,11 @@ export function oneTimeOfferingFor(
   return null;
 }
 
-/**
- * The statuses a CREATE is allowed to come back as.
- *
- * `draft` and nothing else, because that is what the request shape below
- * produces: *"Transactions are created as `ready` if they have an `address_id`,
- * `customer_id`, and `items`, otherwise they are created as `draft`"*
- * (developer.paddle.com/api-reference/transactions/create-transaction, quoted by
- * [ADR 044] §4). We send none of those two, so anything else means the request
- * that left this Worker was not the request this file describes — and the one
- * value that would be catastrophic, `billed`, is in exactly that set. Widening
- * this set is only correct alongside the request-shape change that produces the
- * new value.
- */
-const ACCEPTED_CREATE_STATUSES: ReadonlySet<string> = new Set(['draft']);
-
-/** The keys that must never appear on a create body. See the header. */
-export const FORBIDDEN_CREATE_KEYS: readonly string[] = [
-  'status',
-  'customer_id',
-  'address_id',
-  'collection_mode',
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// THE REQUEST BODY TYPE — the deliverable. `status` is unsettable BY CONSTRUCTION.
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** One line of the transaction. `price_id` is always server-resolved. */
-export interface PaddleCreateItem {
-  readonly price_id: string;
-  readonly quantity: number;
-}
-
-/**
- * The metadata that travels back to us on every later subscription event, and
- * the whole reason rung 2 exists ([ADR 044] §6).
- *
- * 🔴 THE TWO KEYS COME FROM `lib/mor/paddle.ts`, IMPORTED, NOT RETYPED. That
- * adapter reads `custom_data[PADDLE_CUSTOM_DATA_USER_ID]` off an incoming
- * notification to resolve the account; if the writer and the reader spelled the
- * keys separately, the drift would show up as every payment landing in
- * `unclaimed_payments` with every test still green — which is precisely the
- * failure already sitting in the database. One constant, two ends.
- */
-export type PaddleCheckoutCustomData = Readonly<
-  Record<typeof PADDLE_CUSTOM_DATA_USER_ID | typeof PADDLE_CUSTOM_DATA_APP_ID, string>
->;
-
-/**
- * The body of `POST /transactions`, in the ONLY shape this repo may send.
- *
- * 🔴 THE FOUR `?: never` FIELDS ARE THE POINT OF THIS FILE. `never` in an
- * optional position admits exactly one value — `undefined` — so every one of
- * these is a compile error rather than a review catch:
- *
- *     { items, custom_data, status: 'billed' }        ← mints an invoice
- *     { items, custom_data, customer_id: 'ctm_…' }    ← creates it `ready`
- *
- * `status` is the catastrophic one and the reason the technique is used at all.
- * The other three are here because they are the inputs that CHANGE the created
- * status away from `draft`, and a create whose status we do not control is a
- * create whose consequences we cannot state. Adding one later is a deliberate
- * edit to this type — and it must move [ACCEPTED_CREATE_STATUSES] with it, or
- * the route will (correctly) refuse its own new request shape.
- */
-export interface PaddleCreateTransactionBody {
-  readonly items: readonly PaddleCreateItem[];
-  readonly custom_data: PaddleCheckoutCustomData;
-  readonly status?: never;
-  readonly customer_id?: never;
-  readonly address_id?: never;
-  readonly collection_mode?: never;
-}
-
-/**
- * The ONLY constructor of a create body. Takes our own vocabulary — a resolved
- * price id and the account this checkout is for — and nothing a caller sent.
- */
-export function buildCreateTransactionBody(input: {
-  priceId: string;
-  userId: string;
-  appId: string;
-}): PaddleCreateTransactionBody {
-  return Object.freeze({
-    items: Object.freeze([Object.freeze({ price_id: input.priceId, quantity: 1 })]),
-    custom_data: Object.freeze({
-      [PADDLE_CUSTOM_DATA_USER_ID]: input.userId,
-      [PADDLE_CUSTOM_DATA_APP_ID]: input.appId,
-    }),
-  });
-}
-
-/**
- * Serialise a create body, refusing one that carries a forbidden key.
- *
- * ⚠️ THIS IS NOT BELT-AND-BRACES ON THE TYPE, IT COVERS THE CASE THE TYPE CANNOT.
- * TypeScript is erased: an object built by `JSON.parse`, by a spread of caller
- * input, or through any `as` cast satisfies the compiler and still carries
- * `status` at runtime. That is the mistake a future edit actually makes, and it
- * is the input the negative test constructs. Throwing rather than deleting the
- * key: silently dropping it would hide the defect from the person who wrote it.
- */
-export function serializeCreateTransactionBody(body: PaddleCreateTransactionBody): string {
-  for (const key of FORBIDDEN_CREATE_KEYS) {
-    if (Object.hasOwn(body, key)) {
-      throw new Error(
-        `paddle create-transaction body carries '${key}', which this repo never sends. ` +
-          "status:'billed' mints an invoice number and an immutable tax record, and on a cardless " +
-          'trial Paddle completes the transaction and creates a subscription. [ADR 044] §4',
-      );
-    }
-  }
-  return JSON.stringify(body);
-}
+// ⏱ 2026-10-01 · port-pay-core: ACCEPTED_CREATE_STATUSES, FORBIDDEN_CREATE_KEYS, the create-body
+// TYPE (its four `?: never` keys), buildCreateTransactionBody and serializeCreateTransactionBody
+// moved VERBATIM to src/lib/mor/paddle-rail.ts, behind `paddleRail`; so did the create call and
+// PADDLE_CREATE_TIMEOUT_MS, MAX_CHECKOUT_URL_LEN and MAX_VENDOR_CODE_LEN. This route reaches the
+// rail only through src/ports.ts `railFor`; test/paddle-rail-body.test.ts holds the bytes it sends.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The route.
@@ -356,22 +247,6 @@ function servedOfferingIds(offerings: unknown): string[] {
     if (typeof id === 'string' && OFFERING_ID_PATTERN.test(id)) out.push(id);
   }
   return out;
-}
-
-/** A bounded, enumerable vendor error code for the log. Never returned. */
-function vendorErrorCode(text: string): string {
-  try {
-    const body: unknown = JSON.parse(text);
-    if (!isPlainObject(body)) return '-';
-    const err = body.error;
-    if (!isPlainObject(err)) return '-';
-    const code = err.code;
-    return typeof code === 'string' && code.length > 0 && code.length <= MAX_VENDOR_CODE_LEN
-      ? code
-      : '-';
-  } catch {
-    return '-';
-  }
 }
 
 checkout.post('/checkout', async (c) => {
@@ -399,8 +274,10 @@ checkout.post('/checkout', async (c) => {
   }
   if (!isPlainObject(body)) return c.json({ error: 'invalid_json' }, 400);
 
+  // ⏱ 2026-10-01 · EXM-01: an app, or an extension with a committed paywall
+  // (config.ts `resolvePaywall`). FullShot Pro is sold here and nowhere else.
   const appId = body.app_id;
-  if (typeof appId !== 'string' || !isKnownApp(appId)) {
+  if (typeof appId !== 'string' || !(isKnownApp(appId) || isSellableExtension(appId))) {
     return c.json({ error: 'unknown_app' }, 404);
   }
   c.set('appId', appId); // [pipeline B-16] attribution, post-validation.
@@ -436,162 +313,42 @@ checkout.post('/checkout', async (c) => {
   // bounds the read is the ceiling above, which has no binding yet. Stated, not
   // hidden: see CHECKOUT_LIMITER_VAR.
   const kvValue = await c.env.CONFIG_KV.get(`config:${appId}`);
-  const cfg = resolveConfig(appId, kvValue);
-  if (cfg === null) return c.json({ error: 'unknown_app' }, 404);
-  if (cfg.paywall?.enabled !== true) {
+  const paywall = resolvePaywall(appId, kvValue);
+  if (paywall === null) return c.json({ error: 'unknown_app' }, 404);
+  if (paywall?.enabled !== true) {
     return c.json({ error: 'paywall_disabled' }, 403);
   }
 
   // The offering has to be one this app actually sells…
-  if (!servedOfferingIds(cfg.paywall.offerings).includes(offeringId)) {
+  if (!servedOfferingIds(paywall.offerings).includes(offeringId)) {
     return c.json({ error: 'unknown_offering' }, 404);
   }
-  // …and one the rail has a price for. A served offering with no price id is OUR
-  // misconfiguration, not the caller's request being wrong, so it is a 503 with
-  // a loud log rather than a 404 that blames them.
-  const priceId = PADDLE_PRICE_IDS[appId]?.[offeringId];
-  if (priceId === undefined) {
-    console.error(
-      `[checkout] rid=${rid} app=${appId} offering=${offeringId} is served by the config but has no ` +
-        'Paddle price id in PADDLE_PRICE_IDS. The served offerings and the rail mapping have drifted.',
-    );
-    return c.json({ error: 'offering_not_available' }, 503);
-  }
-
-  const apiKey = c.env[PADDLE_API_KEY_VAR] ?? '';
-  if (apiKey.length === 0) {
-    console.error(
-      `[checkout] rid=${rid} ${PADDLE_API_KEY_VAR} is not set — refusing. ` +
-        `Set it with \`wrangler secret put ${PADDLE_API_KEY_VAR}\`.`,
-    );
+  // …and one the rail has a price for — the rail resolves its own price
+  // (RAIL_PRICE_IDS[railId][appId][offeringId]) and refuses an unsellable offering. Which
+  // rail sells is the rendered selection (CHECKOUT_RAIL_ID), never a vendor named here.
+  const rail = railFor(CHECKOUT_RAIL_ID, c.env);
+  if (rail === null || !railCan(rail, 'checkout')) {
+    console.error(`[checkout] rid=${rid} no payments adapter declares checkout for this deploy (CHECKOUT_RAIL_ID=${String(CHECKOUT_RAIL_ID)}).`);
     return c.json({ error: 'checkout_not_configured' }, 503);
   }
-  if (!apiKey.startsWith(PADDLE_API_KEY_PREFIX[environment])) {
-    // Deliberately does NOT print the key or its actual prefix: the point is
-    // that the credential does not belong to the declared world, and naming the
-    // expected prefix is enough to fix it.
-    console.error(
-      `[checkout] rid=${rid} ${PADDLE_API_KEY_VAR} does not carry the ` +
-        `'${PADDLE_API_KEY_PREFIX[environment]}' prefix this deploy's MONEY_ENVIRONMENT='${environment}' ` +
-        'requires. Refusing rather than creating a transaction in the other money world. [5]M-12',
-    );
-    return c.json({ error: 'checkout_not_configured' }, 503);
-  }
-
-  const requestBody = buildCreateTransactionBody({ priceId, userId, appId });
-
-  let res: Response;
-  try {
-    res = await fetch(`${PADDLE_API_BASE[environment]}/transactions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        // PINNED. [ADR 044] §3 measured 200 with and without, so this is not
-        // required — but an unpinned vendor API is one whose response shape can
-        // change under a deploy that changed nothing.
-        'Paddle-Version': '1',
-      },
-      body: serializeCreateTransactionBody(requestBody),
-      signal: AbortSignal.timeout(PADDLE_CREATE_TIMEOUT_MS),
-    });
-  } catch (err) {
-    // Includes the timeout. ⚠️ THE TRANSACTION MAY EXIST ANYWAY and we will never
-    // learn its id — a draft bills nobody, but it is an orphan row at Paddle.
-    console.error(
-      `[checkout] rid=${rid} app=${appId} offering=${offeringId} — POST /transactions did not complete. ` +
-        'If it reached Paddle, a DRAFT transaction may exist that this request never saw.',
-      err,
-    );
-    return c.json({ error: 'checkout_unavailable' }, 502);
-  }
-
-  const text = await res.text().catch(() => '');
-  if (!res.ok) {
-    console.error(
-      `[checkout] rid=${rid} app=${appId} offering=${offeringId} — Paddle answered ${res.status}, ` +
-        `code=${vendorErrorCode(text)}. Refusing; no partial success is reported to the caller.`,
-    );
-    return c.json({ error: 'checkout_unavailable' }, 502);
-  }
-
-  let envelope: unknown;
-  try {
-    envelope = JSON.parse(text);
-  } catch {
-    console.error(`[checkout] rid=${rid} — Paddle answered ${res.status} with a body that is not JSON.`);
-    return c.json({ error: 'checkout_unavailable' }, 502);
-  }
-  const data = isPlainObject(envelope) ? envelope.data : undefined;
-  if (!isPlainObject(data)) {
-    console.error(`[checkout] rid=${rid} — Paddle's 2xx body carries no \`data\` object.`);
-    return c.json({ error: 'checkout_unavailable' }, 502);
-  }
-
-  const transactionId = typeof data.id === 'string' && /^txn_[A-Za-z0-9]+$/.test(data.id) ? data.id : null;
-
-  // 🔴 THE STATUS CHECK IS THE LOUD ONE. Reaching here with anything but `draft`
-  // means the request that left this Worker was not the request above — and the
-  // value that would matter most, `billed`, is a live invoice and a tax record.
-  // Refusing does not undo it; the log is what surfaces it to a human.
-  const status = typeof data.status === 'string' ? data.status : '';
-  if (!ACCEPTED_CREATE_STATUSES.has(status)) {
-    console.error(
-      `[checkout] rid=${rid} app=${appId} — Paddle created transaction ${transactionId ?? '(unnamed)'} ` +
-        `with status '${status}', not 'draft'. The create shape sends no customer_id, address_id or ` +
-        'status, so this must not happen. CANCEL IT: PATCH /transactions/<id> {"status":"canceled"}.',
-    );
-    return c.json({ error: 'checkout_unavailable' }, 502);
-  }
-
-  // 🔴 THE ATTRIBUTION ECHO. This is the entire justification for rung 2 ([ADR
-  // 044] §6): if `custom_data` did not come back, the subscription events that
-  // follow will carry no account id either, and every one of them will land in
-  // `unclaimed_payments` exactly as the one row already in the database did.
-  // Returning a checkout URL anyway would ship that defect again while looking
-  // like a success, so an un-echoed metadata block is a REFUSAL.
-  const echoed = isPlainObject(data.custom_data) ? data.custom_data : {};
-  if (
-    echoed[PADDLE_CUSTOM_DATA_USER_ID] !== userId ||
-    echoed[PADDLE_CUSTOM_DATA_APP_ID] !== appId
-  ) {
-    console.error(
-      `[checkout] rid=${rid} app=${appId} — transaction ${transactionId ?? '(unnamed)'} came back without ` +
-        'our custom_data. Every subscription event for it would be unattributable ([ADR 044] §6), so the ' +
-        'checkout is refused. CANCEL IT: PATCH /transactions/<id> {"status":"canceled"}.',
-    );
-    return c.json({ error: 'checkout_unavailable' }, 502);
-  }
-
-  const rawUrl = isPlainObject(data.checkout) ? data.checkout.url : undefined;
-  const checkoutUrl =
-    typeof rawUrl === 'string' &&
-    rawUrl.length > 0 &&
-    rawUrl.length <= MAX_CHECKOUT_URL_LEN &&
-    rawUrl.startsWith('https://')
-      ? rawUrl
-      : null;
-
-  if (transactionId === null || checkoutUrl === null) {
-    // `checkout.url` is documented nullable — present for automatically-collected
-    // transactions, and for manual ones only when `billing_details.enable_checkout`
-    // is true ([ADR 044] §3). It is DERIVED from the account's default payment
-    // link, which no API exposes, so a null here is a dashboard fact this Worker
-    // cannot read and must not paper over.
-    console.error(
-      `[checkout] rid=${rid} app=${appId} — created transaction ${transactionId ?? '(unnamed)'} carries no ` +
-        'usable checkout url. It is UNUSED and should be canceled: PATCH /transactions/<id> ' +
-        '{"status":"canceled"}. Check the account default payment link.',
-    );
+  const out = await checkoutThrough(rail, { appId, offeringId, userId, market: null, environment });
+  if (!out.ok) {
+    console.error(`[checkout] rid=${rid} app=${appId} offering=${offeringId} rail=${rail.id} ${out.kind}: ${out.detail}`);
+    // Nothing sent: OUR misconfiguration — no price for a served offering (503
+    // offering_not_available) or no usable credential (503 checkout_not_configured).
+    // Sent: the rail's answer was not a usable checkout (502, no upstream detail).
+    if (!out.sent) {
+      return c.json({ error: out.kind === 'invalid' ? 'offering_not_available' : 'checkout_not_configured' }, 503);
+    }
     return c.json({ error: 'checkout_unavailable' }, 502);
   }
 
   return c.json({
-    provider: 'paddle',
+    provider: rail.id,
     app_id: appId,
     offering_id: offeringId,
-    transaction_id: transactionId,
-    checkout_url: checkoutUrl,
+    transaction_id: out.reference,
+    checkout_url: out.url,
   });
 });
 

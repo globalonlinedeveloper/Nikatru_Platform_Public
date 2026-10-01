@@ -454,10 +454,10 @@ final Map<String, List<Override>> kSweptAs = <String, List<Override>>{
 /// this file quietly measuring a shrinking share of a growing app.
 const Map<String, ({int controls, int reachable})>
 kExpected = <String, ({int controls, int reachable})>{
-  // ⏱ 2026-09-28 · ST-U8 (B49): 1 -> 13. The swept results phase lists the
-  // seed's 12 rows, and each now opens its detail (an InkWell, on the Tab
-  // orbit) beside the one CTA.
-  '/scan': (controls: 13, reachable: 13),
+  // ⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): `/scan` (13 of 13) is retired to a
+  // redirect, and `/import` is swept in its place — the hub phase: close, the
+  // paste field, and "Read it", which is disabled until there is text.
+  '/import': (controls: 2, reachable: 2),
   // 5 -> 7 on 2026-08-26: the two `_LegalLink`s joined the orbit. The
   // control count did NOT move — `FocusableTap` still builds a
   // `GestureDetector` with an `onTap`, so the rig counts the same nine.
@@ -471,7 +471,9 @@ kExpected = <String, ({int controls, int reachable})>{
   '/sign-up': (controls: 13, reachable: 11),
   // ⏱ 2026-09-27 · ST-A5 (audit A-6): + resend and "wrong address?".
   '/check-inbox': (controls: 3, reachable: 3),
-  '/verify-email': (controls: 3, reachable: 3),
+  // ⏱ 2026-10-01 · EN-14: 3 -> 4, "Use a different email" — a TextButton on
+  // the Tab orbit, so both halves move together.
+  '/verify-email': (controls: 4, reachable: 4),
   // 2 -> 4, and it is the SAME TWO LINKS: this screen renders
   // `LegalConsentFields` too, so one widget fix moved two routes.
   '/reaccept-terms': (controls: 5, reachable: 4),
@@ -480,7 +482,9 @@ kExpected = <String, ({int controls, int reachable})>{
   // due within seven days of the pinned 2026-08-21 (see [kSweptAs]); each
   // opens its plan (ST-U8, C16). On stored dates every seed row was in the
   // past, so no card was ever built and this read 1.
-  '/notifications': (controls: 5, reachable: 5),
+  // ⏱ 2026-10-01 · NO-10: 5 -> 21. Each of the four cards gains its row
+  // actions — Mark as paid, Snooze, Keep it, How to stop — all on the orbit.
+  '/notifications': (controls: 21, reachable: 21),
   // 2 -> 4, i.e. NOTHING on this route is off the orbit any more. `Back`
   // and `More options` were the app bar; `_iconButton` now builds on
   // `FocusableTap`. ⏱ 2026-09-28 · ST-U5 (B14): 4 -> 3, because "More
@@ -499,7 +503,12 @@ kExpected = <String, ({int controls, int reachable})>{
   // app-bar back button, the restore row and the cancel row, each named by
   // its own icon in `/manage-plan · a keyboard reaches the cancel-plan row`.
   '/manage-plan': (controls: 3, reachable: 3),
-  '/calendar': (controls: 7, reachable: 7),
+  // ⏱ ST truth pass (2026-10-01, CA-01): 7 -> 21, and NO control was added.
+  // Each renewal row is a control, and the calendar now draws EVERY charge in
+  // the month from the date engine instead of each row's one stored date: on
+  // the pinned 2026-08-21 every demo plan that charges in August is a row, not
+  // only the seven whose stored date happened to be in August.
+  '/calendar': (controls: 21, reachable: 21),
   // ⏱ ST-D3: 3 -> 6, measured by this suite on the rebuilt Insights.
   '/insights': (controls: 6, reachable: 6),
 };
@@ -751,12 +760,14 @@ void main() {
       .toSet();
 
   group('the router is the only declaration of the route set', () {
-    test('19 routes, 16 of them build a screen, 3 are redirect-only', () {
+    // ⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): 19 → 20 routes, 3 → 4 redirects —
+    // `/scan` is a redirect onto `/import`, and `/import` builds the hub.
+    test('20 routes, 16 of them build a screen, 4 are redirect-only', () {
       expect(
         declared.length,
-        19,
+        20,
         reason:
-            'the router declares ${declared.length} GoRoutes, not 19. That is '
+            'the router declares ${declared.length} GoRoutes, not 20. That is '
             'not a failure by itself — an app may gain a route — but this '
             "file's coverage claim is about a set of that size, and the new "
             'route needs a kExpected entry before any number here can be read. '

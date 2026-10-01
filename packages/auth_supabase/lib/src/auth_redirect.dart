@@ -438,3 +438,28 @@ bool isResetLinkFailure(Uri launchUri) {
 /// with a sentence for this flow instead of the reset screen.
 AuthFlow? failedArrivalFlowOf(Uri launchUri) =>
     isResetLinkFailure(launchUri) ? null : authArrivalOf(launchUri).flow;
+
+/// The [AuthFlow] whose [AuthFlow.marker] is [marker], or null.
+AuthFlow? authFlowOfMarker(String? marker) {
+  for (final AuthFlow f in AuthFlow.values) {
+    if (f.marker == marker) return f;
+  }
+  return null;
+}
+
+/// 🔴 ⏱ 2026-10-01 · EN-04 / EN-15 — [failedArrivalFlowOf], for a failure the
+/// ADAPTER has already classified.
+///
+/// [failedArrivalFlowOf] reads the LAUNCH URL, which off web never carries the
+/// callback: the OS hands `com.nikatru.<app>://auth-callback?nk_auth=…` to
+/// `supabase_flutter`'s `app_links` listener, and `Uri.base` stays `file:///`.
+/// So on all six native targets every failed confirmation and every failed
+/// provider return read as a reset — "This reset link cannot be used here".
+/// The adapter now reads the deep link the SDK received and puts its marker on
+/// the event ([core.AuthEvent.linkFlow]); this prefers that, and falls back to
+/// the launch URL (web, or an adapter that could not read the link).
+AuthFlow? failedEventFlowOf(core.AuthEvent event, {required Uri launchUri}) {
+  final AuthFlow? carried = authFlowOfMarker(event.linkFlow);
+  if (carried != null) return carried == AuthFlow.reset ? null : carried;
+  return failedArrivalFlowOf(launchUri);
+}

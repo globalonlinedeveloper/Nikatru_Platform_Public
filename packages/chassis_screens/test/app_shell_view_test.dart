@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_chassis_screens/shell/app_shell.dart';
+import 'package:nikatru_chassis_screens/integrity/device_integrity_gate.dart';
 import 'package:nikatru_chassis_screens/shell/bootstrap.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
@@ -39,6 +40,8 @@ void main() {
     VoidCallback? onRetry,
     void Function({required bool granted})? onAnswer,
     ThemeMode themeMode = ThemeMode.light,
+    Future<void> Function()? onReturn,
+    Duration Function()? elapsed,
   }) {
     return NikatruApp(
       title: 'Probe',
@@ -56,18 +59,22 @@ void main() {
       ),
       mustUpdate: mustUpdate,
       onUpdate: () {},
-      shell: (Widget routed) => AppLifecycleFlush(
-        onBackground: onBackground ?? () {},
-        child: ConsentScrim(
-          asking: asking,
-          prompt: ConsentPromptCard(
-            appName: 'Probe',
-            onAnswer: onAnswer ?? ({required bool granted}) {},
-          ),
-          child: OfflineBannerHost(
-            unreachable: unreachable,
-            onRetry: onRetry ?? () {},
-            child: routed,
+      shell: (Widget routed) => RefreshOnResume(
+        onRefresh: onReturn ?? () async {},
+        elapsed: elapsed,
+        child: AppLifecycleFlush(
+          onBackground: onBackground ?? () {},
+          child: ConsentScrim(
+            asking: asking,
+            prompt: ConsentPromptCard(
+              appName: 'Probe',
+              onAnswer: onAnswer ?? ({required bool granted}) {},
+            ),
+            child: OfflineBannerHost(
+              unreachable: unreachable,
+              onRetry: onRetry ?? () {},
+              child: routed,
+            ),
           ),
         ),
       ),
@@ -84,6 +91,8 @@ void main() {
     VoidCallback? onRetry,
     void Function({required bool granted})? onAnswer,
     TextScaler? incomingScale,
+    Future<void> Function()? onReturn,
+    Duration Function()? elapsed,
   }) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -94,6 +103,8 @@ void main() {
       onBackground: onBackground,
       onRetry: onRetry,
       onAnswer: onAnswer,
+      onReturn: onReturn,
+      elapsed: elapsed,
     );
     await tester.pumpWidget(
       incomingScale == null
@@ -304,6 +315,73 @@ void main() {
     });
   });
 
+  // ── ⏱ 2026-09-30 · ST-N6 · A RETURN TO THE FRONT RE-READS ────────────────
+  //
+  // `RefreshOnResume` is a pass-through: nothing to lay out, so the width
+  // question is only whether the routed body still fills every window class
+  // with it in the chain. The lifecycle cases are the behaviour.
+  group('property: return-to-the-front-re-reads', () {
+    for (final Size size in kAllWindows) {
+      testWidgets('the routed body renders under it at ${size.width}', (
+        WidgetTester tester,
+      ) async {
+        await pumpShell(tester, size);
+        expect(find.text('routed body'), findsOneWidget);
+        expect(find.byType(RefreshOnResume), findsOneWidget);
+      });
+    }
+
+    testWidgets('paused -> resumed re-reads; a flick inside the floor does not', (
+      WidgetTester tester,
+    ) async {
+      DateTime now = DateTime.utc(2026, 9, 30, 12);
+      int runs = 0;
+      await pumpShell(
+        tester,
+        kPhone,
+        onReturn: () async => runs++,
+        elapsed: () => now.difference(DateTime.utc(2026)),
+      );
+      now = now.add(const Duration(minutes: 5));
+      for (final AppLifecycleState state in <AppLifecycleState>[
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+      await tester.pump();
+      expect(runs, 1);
+
+      // Alt-tab straight back (desktop, web): inactive -> resumed.
+      now = now.add(const Duration(seconds: 2));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(runs, 1);
+    });
+
+    testWidgets('unmounted, it stops listening', (WidgetTester tester) async {
+      DateTime now = DateTime.utc(2026, 9, 30, 12);
+      int runs = 0;
+      await pumpShell(
+        tester,
+        kPhone,
+        onReturn: () async => runs++,
+        elapsed: () => now.difference(DateTime.utc(2026)),
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      now = now.add(const Duration(minutes: 5));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(runs, 0);
+    });
+  });
+
   // ── (7) THE FORCE-UPDATE WALL REPLACES THE WHOLE APP ──────────────────────
   //
   // It is the emergency exit, and it is the one screen that cannot be dismissed
@@ -326,11 +404,24 @@ void main() {
     // ...and it is restored INSIDE the body, not in a tearDown: the framework
     // makes that assertion at the end of `_runTestBody`, which runs BEFORE any
     // tearDown, so an `addTearDown` restore is measurably too late.
-    Future<List<String>> boot({bool backendLive = true}) async {
+    Future<List<String>> boot({
+      bool backendLive = true,
+      core.DeviceIntegrityProbe? probe,
+      String releaseChannel = '',
+    }) async {
       final ErrorWidgetBuilder originalErrorWidget = ErrorWidget.builder;
       final _OrderRecorder notifications = _OrderRecorder();
       final List<String> steps = notifications.steps;
       await bootstrapNikatru(
+        releaseChannel: releaseChannel,
+        integrityProbe: probe,
+        recordIntegrity: probe == null
+            ? null
+            : (core.DeviceIntegrity i) =>
+                  steps.add('integrity.record ${i.signer.name}'),
+        // A release build on android, so the signer check is not exempt.
+        isDebugBuild: false,
+        platform: TargetPlatform.android,
         notifications: notifications,
         runGuarded: (Future<void> Function() appRunner) async {
           steps.add('telemetry.zone.enter');
@@ -363,6 +454,8 @@ void main() {
       Future<bool>? emptyAtRun;
       final _OrderRecorder notifications = _OrderRecorder();
       await bootstrapNikatru(
+        releaseChannel: '',
+        integrityProbe: null,
         notifications: notifications,
         runGuarded: (Future<void> Function() appRunner) => appRunner(),
         initialiseIdentity: () async {},
@@ -378,6 +471,58 @@ void main() {
     ) async {
       expect(await boot(), <String>[
         'telemetry.zone.enter',
+        'notifications.init',
+        'identity.init',
+        'runApp',
+        'telemetry.zone.exit',
+      ]);
+    });
+
+    // ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST — step 3½. A copy signed by
+    // a key that is not one of the channel's COMPLETE pins reaches no data:
+    // no notification adapter, no identity, no app. android-play's pins are
+    // incomplete today (the app signing pin is not set), so a hand-built
+    // complete set stands in through a channel the generated table has, and
+    // the incomplete real one must NOT block.
+    testWidgets('a re-signed copy stops before notifications, identity and the app', (
+      WidgetTester tester,
+    ) async {
+      final core.IntegritySession before = DeviceIntegrityScope.session;
+      addTearDown(() => DeviceIntegrityScope.session = before);
+      final List<String> steps = await boot(
+        releaseChannel: 'android-play',
+        probe: core.FixedDeviceIntegrityProbe(
+          certificates: core.SigningCertificates(sha256: <String>['00' * 32]),
+        ),
+      );
+      // android-play is INCOMPLETE, so this is reported and the app runs.
+      expect(steps, <String>[
+        'telemetry.zone.enter',
+        'integrity.record mismatchReported',
+        'notifications.init',
+        'identity.init',
+        'runApp',
+        'telemetry.zone.exit',
+      ]);
+      expect(DeviceIntegrityScope.session.integrity.blocksDataAccess, isFalse);
+    });
+
+    testWidgets('the genuine signer boots exactly as before', (
+      WidgetTester tester,
+    ) async {
+      final core.IntegritySession before = DeviceIntegrityScope.session;
+      addTearDown(() => DeviceIntegrityScope.session = before);
+      final List<String> steps = await boot(
+        releaseChannel: 'android-play',
+        probe: core.FixedDeviceIntegrityProbe(
+          certificates: core.SigningCertificates(
+            sha256: core.signerPinsFor('android-play')!.digests,
+          ),
+        ),
+      );
+      expect(steps, <String>[
+        'telemetry.zone.enter',
+        'integrity.record verified',
         'notifications.init',
         'identity.init',
         'runApp',

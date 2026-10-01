@@ -191,9 +191,13 @@ void main() {
                 appName: 'Probe',
                 onAnswer: ({required bool granted}) {},
               ),
-              child: AppLifecycleFlush(
-                onBackground: () {},
-                child: const Center(child: Text('the app behind the scrim')),
+              // ST-N6: the chain every stamped app mounts, pass-through included.
+              child: RefreshOnResume(
+                onRefresh: () async {},
+                child: AppLifecycleFlush(
+                  onBackground: () {},
+                  child: const Center(child: Text('the app behind the scrim')),
+                ),
               ),
             ),
           ),
@@ -225,9 +229,13 @@ void main() {
                 appName: 'Probe',
                 onAnswer: ({required bool granted}) {},
               ),
-              child: AppLifecycleFlush(
-                onBackground: () {},
-                child: const Center(child: Text('the app behind the scrim')),
+              // ST-N6: the chain every stamped app mounts, pass-through included.
+              child: RefreshOnResume(
+                onRefresh: () async {},
+                child: AppLifecycleFlush(
+                  onBackground: () {},
+                  child: const Center(child: Text('the app behind the scrim')),
+                ),
               ),
             ),
           ),

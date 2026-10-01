@@ -122,7 +122,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           // No session: sign in, then come back here. A session the rail has
           // not been told about (it missed the auth event): tell it once and
           // offer Try again — `/sign-in` bounces a signed-in user to `/home`
-          // (`router/gates.dart:393`).
+          // (`router/gates.dart:418`).
           final String? signedInAs = ref
               .read(authRepositoryProvider)
               .currentUser

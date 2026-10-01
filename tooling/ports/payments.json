@@ -1,0 +1,115 @@
+{
+  "$schema": "./port.schema.json",
+  "port": "payments",
+  "level": { "claimed": 3, "target": 3 },
+  "interface": {
+    "ts": { "file": "services/_shared/src/ports/payments.ts", "symbols": ["RailOutbound", "RailWith", "Outcome"] }
+  },
+  "adapters": [
+    {
+      "id": "paddle",
+      "vendor": "paddle",
+      "status": "live",
+      "impl": { "file": "services/platform/src/lib/mor/paddle.ts", "symbol": "paddleVerifier" },
+      "outbound": { "file": "services/platform/src/lib/mor/paddle-rail.ts", "symbol": "paddleRail", "modules": ["services/platform/src/lib/mor/paddle-cancel.ts"] },
+      "capabilities": ["verify", "parse", "checkout", "cancel"],
+      "secrets": ["PADDLE_NOTIFICATION_SECRET", "PADDLE_API_KEY"],
+      "identity": ["ownerDomain", "supportEmail", "sellerOfRecord.paddle"],
+      "environments": ["sandbox", "live"],
+      "cost": { "feeCells": ["paddle-checkout", "paddle-under-10"], "unit": null },
+      "conformance": { "file": "services/platform/test/money-rail.paddle.conformance.test.ts" },
+      "exportDuty": "Leaves with us: every subscription row and webhook body (our entitlements table stores the verbatim notification). Export: the customer and subscription lists (Paddle API, CSV) for the run-off. Cannot move: the card mandates Paddle holds as merchant of record — a switch is a RUN-OFF, existing subscribers renew on Paddle until they lapse.",
+      "readAt": { "url": "https://developer.paddle.com/webhooks/signature-verification", "on": "2026-08-01" }
+    },
+    {
+      "id": "razorpay",
+      "vendor": "razorpay",
+      "status": "built",
+      "impl": { "file": "services/platform/src/lib/mor/razorpay.ts", "symbol": "razorpayVerifier" },
+      "capabilities": ["verify"],
+      "secrets": ["RAZORPAY_WEBHOOK_SECRET", "RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET"],
+      "identity": ["ownerDomain", "supportEmail", "sellerOfRecord.razorpay"],
+      "environments": ["sandbox", "live"],
+      "cost": { "feeCells": ["razorpay-platform", "razorpay-subscription-add-on"], "unit": null },
+      "conformance": { "file": "services/platform/test/money-rail.razorpay.conformance.test.ts" },
+      "exportDuty": "Leaves with us: the verified webhook bodies and our own GST invoices (Nikatru is seller of record on this rail). Export: payments and subscriptions (Razorpay dashboard reports). Cannot move: UPI AutoPay and e-mandates are bound to Razorpay — a switch is a RUN-OFF.",
+      "readAt": { "url": "https://razorpay.com/docs/webhooks/validate-test/", "on": "2026-09-12" }
+    },
+    {
+      "id": "revenuecat",
+      "vendor": "revenuecat",
+      "status": "built",
+      "impl": { "file": "services/platform/src/lib/mor/revenuecat.ts", "symbol": "revenuecatVerifier" },
+      "capabilities": ["verify", "cancel-store"],
+      "secrets": ["REVENUECAT_WEBHOOK_SIGNING_SECRET"],
+      "identity": ["sellerOfRecord.revenuecat"],
+      "environments": ["sandbox", "live"],
+      "cost": { "feeCells": ["apple-iap-standard", "play-billing-subscription"], "unit": null },
+      "conformance": { "file": "services/platform/test/money-rail.revenuecat.conformance.test.ts" },
+      "exportDuty": "Leaves with us: the verified webhook bodies and our entitlement rows. Export: the customer list and the app user id mapping (RevenueCat dashboard export). Cannot move: the store subscriptions themselves — Apple and Google bill them, so only the aggregator in front of the stores can change, never the mandate.",
+      "readAt": { "url": "https://www.revenuecat.com/docs/integrations/webhooks", "on": "2026-09-15" },
+      "c8Seam": {
+        "file": "packages/core/lib/src/entitlement_cache.dart",
+        "why": "tooling/capability-register.json records RevenueCat's C-8 seam on the CLIENT (REVENUECAT_KEY, the purchases SDK half). This port is inbound only, so the server verifier sits behind MoRWebhookVerifier while the client half is not ported yet.",
+        "until": "port-pay"
+      }
+    },
+    {
+      "id": "fake",
+      "vendor": null,
+      "status": "fake",
+      "impl": { "file": "services/_shared/src/ports/fakes/payments.ts", "symbol": "fakeVerifier" },
+      "outbound": { "file": "services/_shared/src/ports/fakes/payments.ts", "symbol": "makeFakeRail", "modules": [] },
+      "capabilities": ["verify", "parse", "checkout", "cancel", "refund", "reconcile"],
+      "secrets": ["FAKE_RAIL_WEBHOOK_SECRET"],
+      "identity": [],
+      "environments": ["test"],
+      "cost": { "feeCells": [], "unit": { "usd": 0, "per": "sale", "asOf": "2026-10-01", "verify": "services/_shared/src/ports/fakes/payments.ts — no network call, no vendor, no fee" } },
+      "conformance": { "file": "services/platform/test/money-rail.fake.conformance.test.ts" },
+      "exportDuty": "Nothing leaves: the fake holds in-memory state only, per process, and takes no money. Cannot move: nothing — it serves test only: never sandbox or live (assert-ports limb 7; the door 404s it on every deploy).",
+      "readAt": null
+    }
+  ],
+  "selection": {
+    "by": "channel-market",
+    "source": "tooling/channel-register.json#purchaseRails",
+    "default": { "live": null, "sandbox": null, "test": null },
+    "canary": null
+  },
+  "generated": true,
+  "handTables": [],
+  "conformance": {
+    "suite": { "file": "services/_shared/test/conformance/payments.ts", "runner": "runPaymentsConformance" },
+    "pending": [
+      { "adapter": "razorpay", "case": "purchase grants", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "renewal extends", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "trial grants as trialing", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "cancel ends at the period end", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "refund revokes", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "dispute holds", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "refund reversed or dispute won restores", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "an older event after a newer one cannot re-grant", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "a duplicate event id is stored once and acked", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "an unknown event type is refused, not crashed", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "an unlinked account is stored and not granted", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "sandbox and live never cross", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "checkout returns a URL on an allowed host plus a reference", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "an unsellable offering is refused", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "razorpay", "case": "cancel at the period end is idempotent", "row": "O-RAZORPAY-CHECKOUT-ADAPTER" },
+      { "adapter": "revenuecat", "case": "dispute holds", "row": "O-REVENUECAT-VERIFIER" },
+      { "adapter": "revenuecat", "case": "refund reversed or dispute won restores", "row": "O-REVENUECAT-VERIFIER" }
+    ]
+  },
+  "switch": {
+    "runbook": "Private/runbooks/switch-vendor.md#payments",
+    "dryRun": "node tooling/ops/port-switch.mjs payments --to <adapter> --dry-run"
+  },
+  "_why": [
+    "BOTH HALVES: inbound is the webhook door (POST /v1/money/<provider>) behind [ADR 004]'s MoRWebhookVerifier, re-exported as RailInbound; outbound is RailOutbound (checkout, cancel, refund, reconcile) in services/_shared/src/ports/payments.ts. Routes reach a rail only through services/platform/src/ports.ts (railFor / inboundFor), which reads the rendered table services/platform/src/generated/ports.ts (tooling/ports/render.mjs).",
+    "L3: paddle and the fake call runPaymentsConformance with nothing pending; razorpay and revenuecat call it too and print their pending cases (O-RAZORPAY-CHECKOUT-ADAPTER, O-REVENUECAT-VERIFIER) until those rows close.",
+    "generated: true — no hand table remains. The adapter SET (MOR_VERIFIER_IDS), the environments each adapter may serve, every rail's cancel path (derived from its declared capabilities) and the web checkout rail are RENDERED into services/platform/src/generated/ports.ts by tooling/ports/render.mjs (assert-ports limb 3 runs its --check), and the rail price map RAIL_PRICE_IDS[railId][appId][offeringId] by tooling/catalog/render-rail-prices.mjs. The four guards that parsed lib/mor/registry.ts's former literal read the rendered table.",
+    "selection.default is null in every environment on purpose: no single rail is THE payments adapter — the channel row decides, and the register cited in `source` is the one place that answer lives.",
+    "cost.feeCells are applied by tooling/ops/port-switch.mjs's margin check. revenuecat carries the Apple STANDARD cell, not the Small Business one, because the enrolment cell (apple-small-business-enrolment) has no owner-attested date; india-gst is a tax, not a fee, so no adapter carries it.",
+    "identity names sellerOfRecord.<railId> as a tooling/house-identity.json PATH for lane fix-business-facts-reader to source; no seller name is typed here, and port-switch C4 FAILs until the path resolves."
+  ]
+}

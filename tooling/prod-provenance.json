@@ -281,11 +281,15 @@
         },
         "budgets": {
           "resolver": "exempt",
-          "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `user_id`, `monthly_budget` and `updated_at` — a per-user singleton written by PUT /v1/budget (services/subscriptiontracker-api/src/routes/budget.ts) from the authenticated session. None of the three names a build, an app, a money world or a closed set a resolver could check, and `user_id` is a Supabase subject this database cannot resolve. So it is exempt; a marker column added later re-opens this rule."
+          "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `user_id`, `monthly_budget` and `updated_at` — a per-user singleton written by PUT /v1/budget (services/subscriptiontracker-api/src/routes/budget.ts) from the authenticated session. None of the three names a build, an app, a money world or a closed set a resolver could check, and `user_id` is a Supabase subject this database cannot resolve. So it is exempt; a marker column added later re-opens this rule. ⏱ 2026-10-01 · 0007_budget_currency.sql (rv2-services 032) adds `currency`, the ISO 4217 code the budget and its caps are in (NULL = the user's own currency), written by the same PUT /v1/budget. It is the unit of the user's own number, not a build, app or money world — a currency is what the user counts in, never a money-rail environment. The exemption stands."
         },
         "budget_categories": {
           "resolver": "exempt",
           "reason": "⏱ 2026-09-26 · O-PROVENANCE-WALKS-ONE-DATABASE. NO app_version COLUMN AND NO OTHER MARKER: 0001_init.sql gives this table `user_id`, `name` and `cap`, and 0002_schema_debt.sql adds the surrogate `id` (a client-generated UUIDv7, or a random backfill). Rows are written by PUT /v1/budget (services/subscriptiontracker-api/src/routes/budget.ts) from the authenticated session; `name` is the user's own category text, and none of the four names a build, an app, a money world or a closed set a resolver could check. So it is exempt; a marker column added later re-opens this rule. ⏱ 2026-09-29 · 0005_lifecycle_history_categories.sql (ST-X8) adds `category_id`, the id of the `categories` row the cap belongs to, written by PUT /v1/budget. It names the user's category, not a build, app or money world. The exemption stands."
+        },
+        "preferences": {
+          "resolver": "exempt",
+          "reason": "⏱ 2026-09-30 · ST-N6 (D11). NO app_version COLUMN AND NO OTHER MARKER: 0008_preferences.sql gives this table `user_id`, `key`, `value`, `version` and `updated_at` — one row per preference key, written by PATCH /v1/preferences (services/subscriptiontracker-api/src/routes/preferences.ts) from the authenticated session. `value` is the user's own setting (currency, theme, language, a reminder choice), `version` is the server's per-key counter, and none of the five names a build, an app, a money world or a closed set a resolver could check. Exempt on the same ground as `budgets`; a marker column added later re-opens this rule."
         },
         "payment_history": {
           "resolver": "exempt",

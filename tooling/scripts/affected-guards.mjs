@@ -104,9 +104,12 @@ import { dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseAllWorkflows, shellSegments, workflowSteps } from '../ci/workflow-scan.mjs';
 import { globToRegExp, readMap } from '../ci/lane-detect.mjs';
+import { TEST_DIR_REL as SHARD_TEST_DIR } from '../ci/guard-test-shards.mjs';
 import { classifyRed, detachedCheckout, removeCheckout } from './preflight.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+/** The guard-tests shard planner, as a workflow names it. */
+const SHARD_SCRIPT = 'tooling/ci/guard-test-shards.mjs';
 const CI_WORKFLOW = 'ci.yml';
 /** The lane's target is under five minutes for a typical change on the 4-core laptop. */
 export const DEFAULT_BUDGET_S = 240;
@@ -537,14 +540,27 @@ export function workflowCalls(root, parsed = parseAllWorkflows(root)) {
         const wd = workingDir(wf, job, step);
         if (wd.includes('${{')) continue;
         const pr = [...step.env.values()].some((v) => /\$\{\{\s*github\.event\./.test(v.value ?? ''));
-        for (const seg of shellSegments(step.run.text)) {
+        const segs = shellSegments(step.run.text);
+        // A guard-tests shard runs `node --test $(cat <plan>)`: its files come from
+        // guard-test-shards.mjs --plan in the same step, and are the whole suite
+        // across the matrix. Without this the `$` below drops every guard suite.
+        const sharded = segs.some((seg) => {
+          const c = parseNodeCall(seg);
+          return c?.script && posix.normalize(posix.join(wd, c.script)) === SHARD_SCRIPT && c.args.includes('--plan');
+        });
+        for (const seg of segs) {
           const call = parseNodeCall(seg);
           if (!call) continue;
           if (call.test) {
+            let literal = 0;
             for (const g of call.test) {
               const glob = posix.normalize(posix.join(wd, g));
-              if (/\.(m?js|cjs)$/.test(glob) && !glob.includes('$')) tests.push({ wf: wfName, job: job.name, glob, wd, flags: call.flags });
+              if (/\.(m?js|cjs)$/.test(glob) && !glob.includes('$')) {
+                tests.push({ wf: wfName, job: job.name, glob, wd, flags: call.flags });
+                literal++;
+              }
             }
+            if (sharded && literal === 0) tests.push({ wf: wfName, job: job.name, glob: `${SHARD_TEST_DIR}/*.test.mjs`, wd, flags: call.flags });
             continue;
           }
           const rel = posix.normalize(posix.join(wd, call.script));
@@ -659,6 +675,37 @@ export const CONTENT_SUBJECTS = Object.freeze([
       return (path, text) => named.has(path) || shapes.some((re) => re.test(text));
     },
   },
+  {
+    // ⏱ 2026-10-01 (O-NO-PORT-SELECTS-AN-ADAPTER-BY-CONFIG). A port's subject is
+    // every file its REGISTRY names — adapter impl files, interface files, conformance
+    // files, hand tables — and those paths live only in tooling/ports/*.json, which
+    // the guard reads as data (the static extraction's blind spot, header above). So
+    // the rule reads the same registries, by CONTENT, never a path list kept here.
+    guard: 'tooling/ci/assert-ports.mjs',
+    what: 'tooling/ports/**, services/_shared/src/ports/**, services/*/src/ports.ts and src/generated/ports.ts, and every file a tooling/ports/*.json registry names',
+    build(readSource, tree) {
+      const regs = (tree?.list ?? []).filter((f) => /^tooling\/ports\/[^/]+\.json$/.test(f) && !f.endsWith('/port.schema.json'));
+      if (!regs.length) throw new Error('tooling/ports/ holds no registry — the port guard\'s subjects cannot be read');
+      const named = new Set();
+      const walk = (v, key) => {
+        // `modules`: an adapter's outbound private modules (port-pay-core), protected by limb 4 like its file.
+        if (typeof v === 'string') { if (key === 'file' || key === 'modules') named.add(v); return; }
+        if (Array.isArray(v)) { for (const x of v) walk(x, key); return; }
+        if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, k);
+      };
+      for (const rel of regs) {
+        const doc = registerOf(readSource, rel, this.guard);
+        walk(doc);
+        const src = doc?.selection?.source;
+        if (typeof src === 'string') named.add(src.split('#')[0]);
+      }
+      if (!named.size) throw new Error('no tooling/ports/*.json registry names a file — the port guard\'s subjects cannot be read');
+      // A Worker's composition root and its rendered port table are subjects by CONVENTION
+      // (tooling/ports/README.md §3; limbs 4 and 3), so they are matched by shape, not listed.
+      return (path) => named.has(path) || path.startsWith('tooling/ports/') || path.startsWith('services/_shared/src/ports/') ||
+        /^services\/[^/]+\/src\/(?:generated\/)?ports\.ts$/.test(path);
+    },
+  },
 ]);
 
 /** The changed file's text for a content subject: '' when it is gone or too big to be prose. */
@@ -757,7 +804,7 @@ export function buildChecks(root, tree, { parsed, readSource = (rel) => readFile
     if (!targets.length) continue; // not a CI guard of this tree: nothing to attach the rule to
     let test;
     try {
-      test = rule.build(readSource);
+      test = rule.build(readSource, tree);
     } catch (e) {
       contentLost.push(e.message);
       continue;

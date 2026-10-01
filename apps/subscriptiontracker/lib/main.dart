@@ -13,11 +13,15 @@ import 'package:nikatru_telemetry/nikatru_telemetry.dart';
 import 'app.dart';
 import 'package:nikatru_chassis_screens/shell/web_semantics.dart';
 import 'core/app_config.dart';
-import 'core/windows_notification_identity.g.dart';
+import 'core/device_integrity.dart';
+import 'core/router.dart' show installAppErrorScreen;
 import 'state/providers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // NO-04 · the XDG autostart entry runs this binary with `--remind` at login:
+  // it shows the reminders that fell due while the app was closed, and exits.
+  if (await runRemindLaunch(linuxAppId: AppConfig.appId)) return;
 
   // 🔴 WEB HAD NO ACCESSIBILITY TREE UNTIL THIS LINE. Flutter web compiles the
   // semantics DOM only once a client asks for it; until then a screen reader
@@ -38,7 +42,6 @@ Future<void> main() async {
   // package. Measured: the shipped NOTICES had ZERO hits for its licence, so the
   // font was being distributed with its attribution condition unmet, and an
   // unmet CC BY condition means the licence does not apply.
-  //
   // Registered BEFORE `runApp` because `LicenseRegistry` is read lazily by
   // `LicensePage` — the surface Settings offers — and a registration that lands
   // after a user has already opened that page shows them an incomplete list.
@@ -87,17 +90,16 @@ Future<void> main() async {
       // screen in debug; shipping either to a user looks like a broken app and
       // leaks widget internals. One line at startup, impossible to retrofit
       // across fifty shipped apps.
-      //
-      // The copy is the design system's own last-resort fallback: this runs
-      // before any BuildContext exists, so there is no Localizations to read,
-      // and an error during the FIRST build is exactly what this covers.
+      // The copy is localized where the error widget is BUILT, with English for
+      // an error in the very first build (router_provider.dart says why).
       //
       // 🔴 IT MUST STAY FIRST INSIDE `appRunner`. Everything below can throw —
       // a plugin channel, a timezone database, a Supabase handshake — and the
       // error widget is what the user sees if one of them does during the first
       // build. Installing it after the thing it protects is installing it too
       // late.
-      AppErrorScreen.install();
+      installAppErrorScreen();
+      if (await integrityBootBlocks(telemetry)) return; // core/device_integrity
 
       // ⏱ 2026-09-28 (ST-R4): ONE notification adapter, and it is the chassis
       // one. Subly's own fork used to initialise the SAME process-singleton
@@ -105,11 +107,9 @@ Future<void> main() async {
       // survived. The fork is gone: renewal reminders schedule through this
       // instance (renewalRemindersProvider), so there is one registration and
       // every notification the app posts is tappable by construction.
-      // [windows] is this app's toast identity, rendered from app.yaml; without
-      // it Windows would have no notifications at all.
-      final core.NotificationService taps = createLocalNotificationService(
-        windows: kWindowsNotificationIdentity,
-      );
+      // [createLaunchNotificationService] adds the Windows toast identity, the
+      // Linux ledger's id (NO-04) and Apple's reminder buttons (NO-10).
+      final core.NotificationService taps = createLaunchNotificationService();
       await taps.init();
 
       // 🔴 [pipeline C-15 / G-43] (absent from origins.lock.json by construction — G-43 is a MASTER_PLAN §3 chassis-gap id, a different register from the pipeline ids; see Private/pre-minimal-2026-09-08:MASTER_PLAN.md) IDENTITY, BEFORE THE FIRST FRAME — and this

@@ -47,13 +47,28 @@ class NotificationChannel {
   final bool important;
 }
 
+/// A BUTTON on a posted notification — "Mark as paid", "Snooze 1 day" (NO-10).
+///
+/// Pure data like [NotificationChannel]: `core` names the button, the adapter
+/// maps it onto each platform's own action type, and a press comes back as a
+/// [NotificationTap] whose [NotificationTap.actionId] is [id]. Already rendered
+/// in the user's language, because the adapter has no `BuildContext` either.
+class NotificationAction {
+  const NotificationAction({required this.id, required this.title});
+
+  /// A short `[a-z0-9_]` token, stable forever: it is what a press hands back.
+  final String id;
+  final String title;
+}
+
 /// A ONE-OFF notification at a local wall-clock time — a renewal due in two
 /// days, a cancel-by date — as opposed to [DailyReminder]'s repeat.
 ///
 /// [at] is read as a WALL CLOCK in the device's own zone: only its year,
-/// month, day, hour and minute are used, and the adapter resolves them in the
-/// device's IANA zone (DST-correct), so `DateTime(2026, 10, 3, 9, 30)` means
-/// 09:30 where the user is on that day.
+/// month, day, hour, minute and second are used, and the adapter resolves them
+/// in the device's IANA zone (DST-correct), so `DateTime(2026, 10, 3, 9, 30)`
+/// means 09:30 where the user is on that day. The second is honoured so a
+/// "test reminder in ten seconds" (NO-13) is not truncated into the past.
 class ScheduledNotification {
   const ScheduledNotification({
     required this.id,
@@ -62,6 +77,7 @@ class ScheduledNotification {
     required this.at,
     this.payload,
     this.channel,
+    this.actions = const <NotificationAction>[],
   });
 
   final int id;
@@ -76,6 +92,10 @@ class ScheduledNotification {
   /// Null = the adapter's default channel.
   final NotificationChannel? channel;
 
+  /// The buttons on the notification, in order. Empty = none. Ignored where
+  /// the impl reports it cannot carry actions (Linux, web).
+  final List<NotificationAction> actions;
+
   @override
   String toString() => 'ScheduledNotification(id: $id, at: $at)';
 }
@@ -87,7 +107,7 @@ class ScheduledNotification {
 /// [NotificationService]. The `flutter_local_notifications` types stay inside
 /// `packages/notifications`'s `_io` adapter, which maps them to this.
 class NotificationTap {
-  const NotificationTap({required this.id, this.payload});
+  const NotificationTap({required this.id, this.payload, this.actionId});
 
   /// The id the notification was posted/scheduled under — the same [DailyReminder.id]
   /// the caller chose, so a tap can be traced back to the reminder that caused it.
@@ -96,6 +116,10 @@ class NotificationTap {
   /// Whatever the poster attached, or null. Free-form and UNTRUSTED: it comes
   /// back through the OS, so treat it as input rather than as state.
   final String? payload;
+
+  /// The [NotificationAction.id] of the BUTTON pressed, or null when the body
+  /// was tapped. UNTRUSTED like [payload]: compare it, never route by it.
+  final String? actionId;
 
   /// The ENUMERABLE code an analytics funnel may log.
   ///
@@ -137,7 +161,7 @@ abstract interface class NotificationService {
 
   /// Schedule a ONE-OFF [notification] at its local wall-clock time. Replaces
   /// a pending one with the same id; an instant already past posts nothing.
-  /// No-op where the impl cannot schedule (web, Linux).
+  /// No-op where the impl cannot schedule (web).
   Future<void> scheduleAt(ScheduledNotification notification);
 
   /// Make the pending set of ids [owns] claims EXACTLY [wanted]: every owned

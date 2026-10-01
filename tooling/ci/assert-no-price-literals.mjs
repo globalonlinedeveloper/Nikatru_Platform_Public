@@ -73,6 +73,8 @@ import { listDir } from './tree-walk.mjs';
 import { delegationOfAbs as delegationOf } from './chassis-delegation.mjs';
 import { PRICE, LIFETIME } from './price-figure.mjs';
 import { LISTING_FIELDS } from '../../contracts/store/vocabulary.js';
+import { disclosedOfferings } from '../../contracts/legal/pro-gate.mjs';
+import { priceRange } from '../../extensions/scripts/render-listing.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const problems = [];
@@ -442,7 +444,8 @@ for (const a of ALLOW) {
 // On every store channel, not the apps-gov-in tree alone; see the header. A
 // finding names `file:line`, because a listing is edited by hand and the line
 // is where the edit goes. There is no allowlist: a listing has no legitimate
-// price in it.
+// price in it — except the ONE range Edge policy 1.8.2 requires, on that channel
+// only, and only as render-listing.mjs derives it (DISCLOSURE_CHANNELS below).
 {
   const REGISTER = 'tooling/channel-register.json';
   const APPS = 'catalog/apps.json';
@@ -510,8 +513,27 @@ for (const a of ALLOW) {
   const LIFETIME_ALL = new RegExp(LIFETIME.source, `${LIFETIME.flags}g`);
   const lineOf = (text, index) => text.slice(0, index).split('\n').length;
   const listingHits = [];
-  const scanListing = (rel, text) => {
+  /* ⏱ 2026-10-01 (EXM-04, train P47). ONE CHANNEL MUST STATE A PRICE RANGE. Microsoft
+     Edge Add-ons policy 1.8.2, as the register's own edge-addons row quotes it: "Your
+     extension and associated metadata must clearly provide information about the types
+     of in-product purchases offered and the range of prices" — "So the PRICE RANGE belongs
+     in the listing". On that channel, and only there, a price is allowed INSIDE the one
+     range extensions/scripts/render-listing.mjs priceRange() derives from the register's
+     recurring offerings for that tool, plus their India web price (webInrMinor) in INR
+     (contracts/legal/pro-gate.mjs disclosedOfferings, #1117 review 1) — the same
+     functions that render the line, read
+     from the same register on every run, so the figure cannot go stale. Any other
+     figure, a lifetime plan, or a range the register no longer derives is still a
+     finding. The exemption stands on the register's quote: if the row stops citing
+     1.8.2, limb C is COVERAGE LOST rather than silently exempt. */
+  const DISCLOSURE_CHANNELS = new Map([['edge-addons', '1.8.2']]);
+  const scanListing = (rel, text, allowedRange = null) => {
+    const spans = [];
+    if (typeof allowedRange === 'string' && allowedRange !== '') {
+      for (let i = text.indexOf(allowedRange); i >= 0; i = text.indexOf(allowedRange, i + 1)) spans.push([i, i + allowedRange.length]);
+    }
     for (const m of text.matchAll(PRICE_ALL)) {
+      if (spans.some(([a, b]) => m.index >= a && m.index + m[0].length <= b)) continue;
       listingHits.push(
         `\`${rel}:${lineOf(text, m.index)}\` names a price (${JSON.stringify(m[0].trim())}). A store listing states no price: the buyer is charged by the rail, the rail's figure moves ([ADR 093] set today's), and a listing nobody re-reads is the copy that keeps the old one.`,
       );
@@ -536,9 +558,22 @@ for (const a of ALLOW) {
   let tools = null;
   const counted = [];
 
+  let appConfig;
+  /** The price range a disclosure channel's listing may carry for the tool whose store tree `dir` is. */
+  const disclosedRange = (dir) => {
+    const m = /^(extensions\/Extension\/[^/]+)\/store\/[^/]+$/.exec(dir);
+    if (!m) return null;
+    const tool = readJson(`${m[1]}/tool.json`).value;
+    appConfig ??= readJson('services/platform/src/app-config-data.json').value;
+    return tool && typeof tool.id === 'string' ? priceRange(disclosedOfferings(appConfig, tool.id)) : null;
+  };
   for (const row of rows) {
     const id = String(row.id);
     const col = row.surface;
+    const disclosure = DISCLOSURE_CHANNELS.get(id);
+    if (disclosure && !String(row.purchaseRail?.forbidsWhy ?? '').includes('policy ' + disclosure)) {
+      coverageLost(`${REGISTER} channel "${id}" no longer cites policy ${disclosure}, the ground limb C's price-range allowance stands on. Re-read the store's policy and update DISCLOSURE_CHANNELS.`);
+    }
     if (typeof col !== 'string' || NOT_A_COLUMN.has(col) || !LISTING_FIELDS.some((f) => Object.hasOwn(f, col))) {
       coverageLost(
         `channel "${id}" is on surface ${JSON.stringify(col ?? null)}, which has no column in contracts/store/vocabulary.js LISTING_FIELDS, so which of its files are listing text is undecidable. Its listing was not read.`,
@@ -591,7 +626,7 @@ for (const a of ALLOW) {
           throw e;
         }
         inTree += 1;
-        scanListing(`${dir}/${name}`, text);
+        scanListing(`${dir}/${name}`, text, disclosure ? disclosedRange(dir) : null);
       }
       if (inTree === 0) {
         coverageLost(

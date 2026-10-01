@@ -1099,6 +1099,43 @@ describe('assert-play-declarations — data security', () => {
     assert.equal(r.status, 0, out(r));
   });
 
+  // ⏱ 2026-10-01 · the desktop system-browser hand-off listens on an RFC 8252
+  // §7.3 loopback redirect, which never leaves the device. That one shape is set
+  // aside; every near miss of it is still a plaintext endpoint.
+  test('a loopback redirect `http://127.0.0.1:<port>` is not an off-device endpoint', () => {
+    const r = run(makeRoot({ files: (f) => {
+      f['apps/subscriptiontracker/lib/login.dart'] =
+        "String a(int port) => 'http://127.0.0.1:$port$kPath';\nconst b = 'http://127.0.0.1:8080/cb';\nString c(int p) => 'http://127.0.0.1:${p}/cb';\n";
+    } }));
+    assert.equal(r.status, 0, out(r));
+  });
+
+  const plaintextRefused = (src) => {
+    const r = run(makeRoot({ files: (f) => { f['apps/subscriptiontracker/lib/login.dart'] = src; } }));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /contains a `http:\/\/` URL in shipped client code/);
+  };
+
+  test('🔴 FAILS on `localhost` (a hosts file can point it anywhere)', () => {
+    plaintextRefused("String a(int port) => 'http://localhost:$port/cb';\n");
+  });
+
+  test('🔴 FAILS on a loopback with no port', () => {
+    plaintextRefused("const a = 'http://127.0.0.1/cb';\n");
+  });
+
+  test('🔴 FAILS on a host that only STARTS with 127.0.0.1', () => {
+    plaintextRefused("const a = 'http://127.0.0.1.example.test/cb';\n");
+  });
+
+  test('🔴 FAILS on userinfo that looks like the loopback', () => {
+    plaintextRefused("const a = 'http://127.0.0.1:80@example.test/cb';\n");
+  });
+
+  test('🔴 FAILS on a real endpoint beside a loopback', () => {
+    plaintextRefused("const a = 'http://127.0.0.1:8080/cb';\nconst b = 'http://example.test';\n");
+  });
+
   test('FAILS when the web deletion page named on the form does not exist', () => {
     const r = run(makeRoot({ files: (f) => { f['sites/nikatru/delete-account.html'] = null; } }));
     assert.equal(r.status, 1);

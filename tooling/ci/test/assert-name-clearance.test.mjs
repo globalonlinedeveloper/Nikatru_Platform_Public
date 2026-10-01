@@ -554,7 +554,7 @@ describe('assert-name-clearance --for-submission — limb 10', () => {
     };
     const whole = run(fixture(({ editJson }) => editJson(RECORD, noId)), ['--for-submission=android-play']);
     assert.equal(whole.code, 1, whole.out);
-    assert.match(whole.out, /channels\/android-play: matches none of the 2 permitted shapes/);
+    assert.match(whole.out, /channels\/android-play: matches none of the 3 permitted shapes/);
 
     const limb10 = run(
       fixture(({ editJson }) => {
@@ -567,6 +567,61 @@ describe('assert-name-clearance --for-submission — limb 10', () => {
     );
     assert.equal(limb10.code, 1, limb10.out);
     assert.match(limb10.out, /android-play is HELD and lacks a `storeRecordId`/);
+  });
+
+  // ⏱ 2026-10-01 (#1099 review, finding 3): a hold the LEAD recorded says so, and passes only with the
+  // owner delegation it cites and the store-API proof it rests on.
+  const leadHeld = (doc) => {
+    heldOnPlay(doc);
+    Object.assign(doc.channels['android-play'], {
+      heldBy: 'lead',
+      delegation: "the owner's 2026-10-01 delegation, relayed by the lead",
+      proof: { call: 'androidpublisher edits.tracks.list', result: '200; internal carries versionCode 1', observedOn: '2026-10-01' },
+    });
+  };
+
+  test('M23b a HELD the LEAD recorded, with its delegation and proof, passes and says who recorded it', () => {
+    const r = run(fixture(({ editJson }) => editJson(RECORD, leadHeld)), ['--for-submission=android-play']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /HELD \(store record com\.nikatru\.subscriptiontracker, 2026-09-24, recorded by the lead under a cited delegation\)/);
+  });
+
+  test('M23c a lead-recorded HELD with no proof is a finding — from the schema, and from limb 10 where the schema admits it', () => {
+    const noProof = (doc) => {
+      leadHeld(doc);
+      delete doc.channels['android-play'].proof;
+    };
+    const whole = run(fixture(({ editJson }) => editJson(RECORD, noProof)), ['--for-submission=android-play']);
+    assert.equal(whole.code, 1, whole.out);
+    assert.match(whole.out, /channels\/android-play: matches none of the 3 permitted shapes/);
+    const limb10 = run(
+      fixture(({ editJson }) => {
+        editJson(RECORD, noProof);
+        editJson('contracts/name-clearance.schema.json', (s) => {
+          delete s.properties.channels.additionalProperties.anyOf;
+        });
+      }),
+      ['--for-submission=android-play'],
+    );
+    assert.equal(limb10.code, 1, limb10.out);
+    assert.match(limb10.out, /lacks the store-API .proof. {call, result, observedOn}/);
+  });
+
+  test('M23d a lead-recorded HELD with no delegation is refused by limb 10 too', () => {
+    const limb10 = run(
+      fixture(({ editJson }) => {
+        editJson(RECORD, (doc) => {
+          leadHeld(doc);
+          delete doc.channels['android-play'].delegation;
+        });
+        editJson('contracts/name-clearance.schema.json', (s) => {
+          delete s.properties.channels.additionalProperties.anyOf;
+        });
+      }),
+      ['--for-submission=android-play'],
+    );
+    assert.equal(limb10.code, 1, limb10.out);
+    assert.match(limb10.out, /lacks the cited owner .delegation. a lead-recorded hold acts under/);
   });
 
   test('M25 (A7-RC4) a bare --for-submission is COVERAGE LOST, and so is a channel the register does not declare', () => {

@@ -342,7 +342,7 @@ class SettingsScreen extends ConsumerWidget {
               ],
               selected: <ThemeMode>{mode},
               onSelectionChanged: (Set<ThemeMode> s) =>
-                  ref.read(themeModeProvider.notifier).set(s.first),
+                  setThemeModeByUser(ref, s.first),
             ),
 
             // ── LANGUAGE ─────────────────────────────────────────────────────
@@ -356,11 +356,10 @@ class SettingsScreen extends ConsumerWidget {
                 color: Colors.transparent,
                 child: RadioGroup<String>(
                   groupValue: ref.watch(localeProvider)?.languageCode ?? '',
-                  onChanged: (String? code) => ref
-                      .read(localeProvider.notifier)
-                      .set(
-                        (code == null || code.isEmpty) ? null : Locale(code),
-                      ),
+                  onChanged: (String? code) => setLocaleByUser(
+                    ref,
+                    (code == null || code.isEmpty) ? null : Locale(code),
+                  ),
                   child: Column(
                     children: <Widget>[
                       RadioListTile<String>(
@@ -436,7 +435,7 @@ class SettingsScreen extends ConsumerWidget {
                         // 🔴 THE OFF CHIP WAS A PINNED WHITE BLOCK, AND IN
                         // DARK IT WAS THE BRIGHTEST THING ON THE SCREEN.
                         // Measured against `buildAppTheme(seed: 0xFF6459F5,
-                        // brightness: dark)` — what `app.dart:84` supplies —
+                        // brightness: dark)` — what `app.dart:85` supplies —
                         // on 2026-08-21: #FFFFFF on the scaffold #131318 is
                         // **18.52:1**, i.e. three white slabs glaring out of
                         // a dark screen, with an #ECECF2 hairline round each
@@ -802,45 +801,36 @@ class SettingsScreen extends ConsumerWidget {
             ],
 
             // ── ACCOUNT & DATA (live-only rows) ──────────────────────────────
-            const SizedBox(height: 22),
-            Container(
+            _sectionLabel(context, l10n.settingsAccountSection),
+            // IM-01/IM-03: Export, Import, Back up and Restore are the chassis
+            // Your data card (dataCard); Restore opens the same import hub.
+            dataCard(
+              context,
               decoration: cardDecoration(context),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: <Widget>[
-                  // Not yet wired — see the OPEN QUESTION in MANIFEST.md. Kept
-                  // because deleting it is a product decision, not a merge one.
-                  _LinkRow(
-                    icon: '⇄',
-                    label: l10n.connectedAccounts,
-                    last: false,
-                  ),
-                  // 🔴 DO NOT DELETE IN A MERGE: data-safety.json declares this
-                  // export. test/settings_export_test.dart parses its file back.
-                  _LinkRow(
-                    icon: '⇩',
-                    label: l10n.exportDataCsv,
-                    last: false,
-                    onTap: exportDataTap(ref),
-                  ),
-                  // The published contact PAGE — a form, reachable without a
-                  // mail client, which is the route most web users take. The
-                  // chassis-mandated mailto (E1) is the separate row in the
-                  // legal card below; both exist because they fail in different
-                  // conditions.
-                  _LinkRow(
-                    icon: '?',
-                    label: l10n.helpAndSupport,
-                    last: true,
-                    onTap: () => openExternalUrl(AppConfig.contactUrl),
-                  ),
-                ],
-              ),
+              row: _LinkRow.new,
+              leading: <Widget>[
+                // Not yet wired — see the OPEN QUESTION in MANIFEST.md. Kept
+                // because deleting it is a product decision, not a merge one.
+                _LinkRow(icon: '⇄', label: l10n.connectedAccounts, last: false),
+              ],
+              // 🔴 DO NOT DELETE IN A MERGE: data-safety.json declares this
+              // export. test/settings_export_test.dart parses its file back.
+              exportLabel: l10n.exportDataCsv,
+              onExport: exportDataTap(ref, context),
+              importLabel: l10n.importTitle,
+              onImport: () => context.push('/import'),
+              backupLabel: l10n.backupDataJson,
+              onBackup: backupDataTap(ref, context),
+              restoreLabel: l10n.restoreTitle,
+              onRestore: () => context.push('/import'),
             ),
+
+            _sectionLabel(context, l10n.settingsHelpSection),
+            _helpCard(context, ref, l10n),
 
             // ── LEGAL (chassis). Both stores require these to be reachable
             //    IN-APP, not only from a store listing. [pipeline C-13]
-            const SizedBox(height: 12),
+            _sectionLabel(context, l10n.legal),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
@@ -867,17 +857,8 @@ class SettingsScreen extends ConsumerWidget {
                   _LinkRow(
                     icon: '₹',
                     label: l10n.refundPolicy,
-                    last: false,
-                    onTap: () => openExternalUrl(AppConfig.refundUrl),
-                  ),
-                  // The chassis support route (E1). A `mailto:` with the subject
-                  // pre-filled, so a bug report arrives already labelled.
-                  _LinkRow(
-                    icon: '✉',
-                    label: l10n.contactSupport,
-                    subtitle: AppConfig.supportEmail,
                     last: true,
-                    onTap: _contactSupport,
+                    onTap: () => openExternalUrl(AppConfig.refundUrl),
                   ),
                 ],
               ),
@@ -900,7 +881,7 @@ class SettingsScreen extends ConsumerWidget {
             // `LicensePage` reads `LicenseRegistry`, which every package
             // registers into automatically, so both stay correct as dependencies
             // change instead of being a list somebody must remember to update.
-            const SizedBox(height: 12),
+            _sectionLabel(context, l10n.settingsAboutSection),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
@@ -1044,6 +1025,7 @@ class SettingsScreen extends ConsumerWidget {
                   AppConfig.appName,
                   runningVersion,
                   AppConfig.companyName,
+                  ref.watch(nowProvider)().year.toString(),
                 ),
                 style: AppText.of(context).muted.copyWith(fontSize: 11),
               ),
@@ -1061,10 +1043,14 @@ class SettingsScreen extends ConsumerWidget {
   /// (#6F6F7B), which scored **3.74:1 on the dark scaffold** — under SC 1.4.3's
   /// 4.5:1 for this 11px text — on all seven headings this screen draws. Light
   /// is byte-identical (`AppText.of` returns the const objects themselves), so
-  /// this repaints nothing.
+  /// this repaints nothing. ST-Y3 (audit D8): a chassis [SettingsHeading].
   static Widget _sectionLabel(BuildContext context, String text) => Padding(
     padding: const EdgeInsets.fromLTRB(2, 22, 2, 8),
-    child: Text(text.toUpperCase(), style: AppText.of(context).label),
+    child: SettingsHeading(
+      text,
+      paint: text.toUpperCase(),
+      style: AppText.of(context).label,
+    ),
   );
 
   /// 🔴 AWAITED, AND ITS FAILURE IS SAID OUT LOUD. This was
@@ -1145,16 +1131,27 @@ class SettingsScreen extends ConsumerWidget {
     await _signOut(context, ref, l10n, scope: core.SignOutScope.global);
   }
 
-  Future<void> _contactSupport() async {
-    final Uri uri = Uri.parse(
-      'mailto:${AppConfig.supportEmail}'
-      '?subject=${Uri.encodeComponent('${AppConfig.appName} support')}',
-    );
-    // Through the app's ONE launcher: its policy admits a mailto to the
-    // configured support address and nothing else. No mail client / launch
-    // failed reads as not opened, never as a throw — settings cannot crash here.
-    await externalLinks.open(uri);
-  }
+  Widget _helpCard(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations l10n,
+  ) => helpCard(
+    context,
+    decoration: cardDecoration(context),
+    row: _LinkRow.new,
+    contactPageLabel: l10n.helpAndSupport,
+    openContactPage: () => openExternalUrl(AppConfig.contactUrl),
+    contactSupportLabel: l10n.contactSupport,
+    supportEmail: AppConfig.supportEmail,
+    supportSubject: '${AppConfig.appName} support',
+    feedbackLabel: l10n.sendFeedback,
+    feedbackSubject: l10n.feedbackMailSubject(AppConfig.appName),
+    openMail: externalLinks.open,
+    canRate: ref.watch(storeListingAvailableProvider),
+    rateLabel: l10n.rateApp(AppConfig.appName),
+    openStoreListing: () => ref.read(reviewPrompterProvider).openStoreListing(),
+    rateUnavailable: l10n.rateAppUnavailable,
+  );
 
   /// [pipeline C-13] EDIT DISPLAY NAME.
   ///
@@ -1305,7 +1302,7 @@ class SettingsScreen extends ConsumerWidget {
     // `return outcome` ever ran — into `_DeleteAccountDialog._run`, which does
     // not catch: the dialog stays `_busy` (so `PopScope` refuses to close) and
     // the login screen is handed no outcome at all. That is the live E2E flake.
-    final List<UserStateDrop> drops = userStateDrops(ref);
+    final List<UserStateDrop> drops = userStateDrops(ref, accountDeleted: true);
     final StateController<core.AccountDeletionOutcome?> outcomeSink = ref.read(
       lastAccountDeletionOutcomeProvider.notifier,
     );
@@ -1578,7 +1575,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
   /// in a dark app — and every descendant that takes its colour from the THEME
   /// rather than from an `AppColors` literal then followed the DARK scheme onto
   /// that white. Measured against `buildAppTheme(seed: 0xFF6459F5, brightness:
-  /// dark)` — what `app.dart:84` actually supplies — on 2026-08-21:
+  /// dark)` — what `app.dart:85` actually supplies — on 2026-08-21:
   ///
   ///   · the TITLE. Neither `AlertDialog` sets `titleTextStyle`, and there is
   ///     no `dialogTheme` anywhere in `build_app_theme.dart`, so M3 resolves

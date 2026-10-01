@@ -612,3 +612,35 @@ describe('assert-enforcement-index — section 8, the yield file keys every inde
     assert.match(out, /COVERAGE LOST — tooling\/guard-yield\.json is not valid JSON/);
   });
 });
+
+describe('build-enforcement-index — a sharded guard-tests step still runs the suite', () => {
+  // ci.yml's guard-tests step names no tooling/ci/test/ path: its `node --test` reads
+  // the list guard-test-shards.mjs --plan wrote. Without the plan rule every guard
+  // reachable only through its test would lose the TEST state, with only a note.
+  const sharded = (plan) => WORKFLOW.replace(
+    '      - run: node --test "tooling/ci/test/*.test.mjs"\n',
+    [
+      '      - name: The guards must be able to fail',
+      '        run: |',
+      ...(plan ? ['          node tooling/ci/guard-test-shards.mjs --plan --shards 2 --shard 1 --out files.txt > /dev/null'] : []),
+      '          node --test $(cat files.txt)',
+      '',
+    ].join('\n'),
+  );
+  const generate = (workflow) => {
+    const root = fixture({ workflow, index: null, yieldDoc: null });
+    return spawnSync(process.execPath, [GENERATOR, root], { encoding: 'utf8' });
+  };
+
+  test('the plan call makes its job a test runner, so no "no workflow job runs node --test" note', () => {
+    assert.ok(sharded(true).includes('guard-test-shards.mjs --plan'), 'the fixture rewrite did not land');
+    const r = generate(sharded(true));
+    assert.equal(r.status, 0, r.stderr);
+    assert.doesNotMatch(r.stderr, /no workflow job runs node --test over tooling\/ci\/test/, r.stderr);
+  });
+
+  test('RED control: the same step without the plan call is blind, and the generator says so', () => {
+    const r = generate(sharded(false));
+    assert.match(r.stderr, /no workflow job runs node --test over tooling\/ci\/test/, r.stderr);
+  });
+});

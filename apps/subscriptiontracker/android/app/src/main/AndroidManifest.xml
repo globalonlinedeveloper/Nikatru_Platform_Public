@@ -80,6 +80,23 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- ⏱ 2026-10-01 · IM-06 · SHARE INTO IMPORT. Another app's Share
+                 sheet can hand this activity a CSV, a backup (.json) or the text
+                 of a receipt; MainActivity.kt reads it ON THE DEVICE and passes
+                 the text over the com.nikatru.subscriptiontracker/share channel,
+                 and the router opens /import with it (lib/state/share_inbox.dart).
+                 ACTION_SEND only — not VIEW, not BROWSABLE — so no URL can reach
+                 it, and the payload is the user's own file, read once and never
+                 uploaded: the import hub writes rows only through the add route,
+                 after the user reviews them. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+                <data android:mimeType="text/csv"/>
+                <data android:mimeType="text/comma-separated-values"/>
+                <data android:mimeType="application/json"/>
+            </intent-filter>
             <!-- ⏱ 2026-09-23 · THE AUTH CALLBACK. Sign-up confirmation, OAuth,
                  identity linking and password reset end with gotrue sending the
                  browser to com.nikatru.subscriptiontracker://auth-callback?nk_auth=<flow>&code=…;
@@ -172,6 +189,21 @@
              protect it by other means. tooling/ci/test/android-vapt-manifest.test.mjs
              C1 goes red the day such a rail sits beside this line. -->
         <receiver android:name="com.amazon.device.iap.ResponseReceiver" tools:node="remove" />
+
+        <!-- ⏱ 2026-10-01 · THE NDK CRASH HANDLER IS OFF, full review AA-08.
+             The native crash layer is off on every target by decision, and
+             packages/telemetry/lib/src/telemetry_bootstrap.dart says why: no
+             native symbols are uploaded, and a native event never passes the
+             Dart-side PII scrub. Its `enableNativeCrashHandling = false` turns
+             off sentry-android's JVM handler and ANR watchdog, but NOT the NDK
+             signal handler, where a crash in libflutter.so or a plugin's .so
+             lands: sentry_flutter 9.26.0 exposes no Dart option for it, and
+             SentryAndroid.init reads this switch from the manifest before the
+             Dart options apply. tooling/ci/assert-seams-wired.mjs fails while an
+             Android row declares crashSink.native=false and this line is gone. -->
+        <meta-data
+            android:name="io.sentry.ndk.enable"
+            android:value="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

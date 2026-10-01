@@ -221,15 +221,17 @@
       "testFile": "test/budget_editor_test.dart"
     },
     {
-      "name": "scan",
-      "primaryAction": "first-run setup finishes its steps and hands the user the list of what it actually found",
-      "test": "at 1280 the RESULTS hero is capped too",
-      "effect": "lib/features/scan/scan_screen.dart:_done",
+      "name": "import",
+      "primaryAction": "a pasted or dropped CSV becomes rows in the list through the add route, with rows already in the list and rows that do not parse shown and not added",
+      "test": "RED CONTROL · 3 rows, one already in the list, imports 2",
+      "effect": "lib/features/import/import_screen.dart:addAll",
+      "note": "⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): replaces the `scan` row — `/scan` was a timed loader over the list fetch that imported nothing, and is a redirect onto `/import` now. Mutation run on this tree: the review plan built with `existingKeys: const <String>[]` adds the duplicate and the case counts 3 adds, not 2; restored, it passes.",
       "mutation": {
-        "symbol": "lib/features/scan/scan_screen.dart:setState(() => _done = true)",
-        "observedRed": "at 1280 the RESULTS hero is capped too",
-        "date": "2026-08-08"
-      }
+        "symbol": "lib/features/import/import_screen.dart:existingKeys: existing.map(subscriptionExistingKey)",
+        "observedRed": "RED CONTROL · 3 rows, one already in the list, imports 2",
+        "date": "2026-10-01"
+      },
+      "testFile": "test/import_hub_test.dart"
     },
     {
       "name": "detail",
@@ -251,12 +253,12 @@
       "mutation": {
         "symbol": "lib/features/add/add_subscription_sheet.dart:_save catch → setState(() { _saving = false; … })",
         "observedRed": "add sheet: a failed save re-arms the button and says so",
-        "date": "2026-09-29",
+        "date": "2026-10-01",
         "edit": {
           "find": "      setState(() {\n        _saving = false;",
           "replace": "      setState(() {\n        _saving = true;"
         },
-        "codeHash": "63f901ff713d88c58bc235849786df7ab02083f650fbed91d5826f051888e6bb"
+        "codeHash": "9b7ca17e1d5da188c9a9c94ff4e59531ac3d74e7d40b90679b5146f898724b3b"
       }
     },
     {
@@ -267,12 +269,12 @@
       "mutation": {
         "symbol": "lib/features/cancel/cancel_sheet.dart:_confirm catch → _step stays 0",
         "observedRed": "cancel sheet: a failed cancel never claims success",
-        "date": "2026-09-29",
+        "date": "2026-10-01",
         "edit": {
           "find": "_failure = ApiException.isOfflineError(e)",
           "replace": "_step = 1; _failure = ApiException.isOfflineError(e)"
         },
-        "codeHash": "a5558f91b2646200811f253ebb1d6d50c8497b1f41bcc2f68bcdcc5787ecc1f8"
+        "codeHash": "82f87d58165d8edef37c786a7ebe4875852b9e5544c554883bc90d75149d04b1"
       }
     }
   ],

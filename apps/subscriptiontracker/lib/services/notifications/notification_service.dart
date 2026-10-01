@@ -7,9 +7,10 @@ import 'package:flutter/foundation.dart'
         visibleForTesting;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_notifications/nikatru_notifications.dart'
-    show NotificationCapabilities;
+    show NotificationCapabilities, QuietHours;
 
 import '../../core/windows_notification_identity.g.dart';
+import '../../data/models/budget_info.dart';
 import '../../data/models/subscription.dart';
 
 /// Every user-visible string this service hands to the OS, already rendered in
@@ -35,6 +36,12 @@ class ReminderCopy {
     required this.channelDescription,
     this.trialTitle,
     this.trialBody,
+    this.overBudgetTitle,
+    this.overBudgetBody,
+    this.markPaidAction,
+    this.snoozeAction,
+    this.testTitle,
+    this.testBody,
   });
 
   /// The Android notification CHANNEL name — visible in the OS settings app,
@@ -63,6 +70,20 @@ class ReminderCopy {
   /// renewal copy, which still names the right day.
   final String? trialTitle;
   final String Function(String name, DateTime trialEnds)? trialBody;
+
+  /// ST-I2 (audit C14): the over-budget alert. `(spent, budget) → body`, both
+  /// already formatted. Null posts no over-budget alert at all — there is no
+  /// English fallback for a sentence the caller did not render.
+  final String? overBudgetTitle;
+  final String Function(String spent, String budget)? overBudgetBody;
+
+  /// NO-10: the two buttons on a renewal reminder. Null = no buttons.
+  final String? markPaidAction;
+  final String? snoozeAction;
+
+  /// NO-13: the "Send a test reminder" notification. Null = the reminder title.
+  final String? testTitle;
+  final String? testBody;
 }
 
 /// WHEN renewal reminders fire — the user's rules (ST-R3, audit C23/C26).
@@ -76,11 +97,20 @@ class ReminderRules {
     this.leadDays = const <int>[2],
     this.hour = 9,
     this.minute = 0,
+    this.quiet,
+    this.cycles = RenewalReminders.cyclesPerPlan,
   });
 
   final List<int> leadDays;
   final int hour;
   final int minute;
+
+  /// NO-11: how many charges ahead each plan is armed for, this one first.
+  final int cycles;
+
+  /// NO-13: a window no local reminder fires in; one planned inside it fires
+  /// at its end. Null = none.
+  final QuietHours? quiet;
 }
 
 /// Why this platform cannot schedule a renewal reminder — the key a settings
@@ -91,7 +121,7 @@ enum ReminderUnavailability {
   /// app's identity).
   noNotifications,
 
-  /// Immediate notifications work but nothing can be scheduled (Linux).
+  /// Immediate notifications work but nothing can be scheduled.
   noScheduling,
 }
 
@@ -183,6 +213,32 @@ class RenewalReminders {
   /// (state/notification_tap_observer.dart, ST-R5).
   static String payloadFor(String subscriptionId) => 'sub:$subscriptionId';
 
+  /// NO-10: the action ids a renewal reminder's buttons hand back.
+  static const String markPaidActionId = 'paid';
+  static const String snoozeActionId = 'snooze';
+
+  /// How far "Snooze 1 day" moves a reminder.
+  static const Duration snoozeFor = Duration(days: 1);
+
+  /// The buttons on a RENEWAL reminder (not a cancel-by: "mark as paid" there
+  /// would answer a question it does not ask). Empty when [copy] names none.
+  static List<core.NotificationAction> actionsFor(ReminderCopy copy) {
+    final String? paid = copy.markPaidAction;
+    final String? snooze = copy.snoozeAction;
+    if (paid == null || snooze == null) {
+      return const <core.NotificationAction>[];
+    }
+    return <core.NotificationAction>[
+      core.NotificationAction(id: markPaidActionId, title: paid),
+      core.NotificationAction(id: snoozeActionId, title: snooze),
+    ];
+  }
+
+  /// NO-11: how many charges ahead each plan is armed for where the OS has no
+  /// pending pool — this cycle and the next two, so a user who does not open
+  /// the app for a quarter is still reminded.
+  static const int cyclesPerPlan = 3;
+
   /// The reminders [sub] is owed this cycle, nearest first — ST-R3.
   ///
   /// One per lead day in the row's `reminder_days` (else [rules]' default),
@@ -196,8 +252,11 @@ class RenewalReminders {
   /// cadence (ST-T3b's RecurrenceSchedule), so a row whose stored date has
   /// passed is reminded of its real next charge, never of a day gone by.
   ///
-  /// ⚠️ ONE CYCLE, re-armed on every sync. Arming the next N cycles is now
-  /// possible (RecurrenceSchedule landed with ST-T3b) and is a follow-up.
+  /// NO-11: [cyclesPerPlan] CHARGES are armed, nearest first — the next one
+  /// and the ones after it, by the row's cadence — so a reminder still comes
+  /// when the app is not opened between charges. A row with no cadence has
+  /// one. Ids for the first cycle are what they always were, so an update
+  /// re-arms rather than duplicates.
   ///
   /// A TRIALING row is also reminded before its trial ends (ST-T3b, ST-E5),
   /// at the same leads and time of day.
@@ -215,6 +274,7 @@ class RenewalReminders {
         DateTime(day.year, day.month, day.day, rules.hour, rules.minute);
 
     final String body = copy.reminderBody(sub.name, renewal);
+    final List<core.NotificationAction> actions = actionsFor(copy);
     final List<int> leads = <int>{...days}.toList()
       ..sort((int a, int b) => a - b);
     for (final int d in leads) {
@@ -230,6 +290,7 @@ class RenewalReminders {
           at: when,
           payload: payloadFor(sub.id),
           channel: _channel(copy),
+          actions: actions,
         ),
       );
     }
@@ -248,8 +309,43 @@ class RenewalReminders {
             at: fallback,
             payload: payloadFor(sub.id),
             channel: _channel(copy),
+            actions: actions,
           ),
         );
+      }
+    }
+
+    // NO-11: the charges after this one, by the row's own cadence — AFTER
+    // the fallback above, which is about THIS charge only: a row renewing
+    // tomorrow still gets its same-day reminder although next month's lead
+    // is ahead.
+    final Cadence? cadence = sub.cycle;
+    if (cadence != null && cadence.isValid) {
+      DateTime charge = renewal;
+      for (int c = 1; c < rules.cycles; c++) {
+        // The STORED day is the anchor, so a 31st plan returns to the 31st
+        // after a short month rather than drifting to the 28th for good.
+        charge = RecurrenceSchedule.advance(
+          charge,
+          cadence,
+          anchorDay: sub.nextRenewal.day,
+        );
+        final DateTime day = DateTime(charge.year, charge.month, charge.day);
+        for (final int d in leads) {
+          final DateTime when = at(DateTime(day.year, day.month, day.day - d));
+          if (!when.isAfter(now)) continue;
+          out.add(
+            core.ScheduledNotification(
+              id: renewalIdFor('${sub.id}|$d|c$c'),
+              title: copy.reminderTitle,
+              body: copy.reminderBody(sub.name, day),
+              at: when,
+              payload: payloadFor(sub.id),
+              channel: _channel(copy),
+              actions: actions,
+            ),
+          );
+        }
       }
     }
 
@@ -290,18 +386,42 @@ class RenewalReminders {
         );
       }
     }
-    out.sort(
+    final QuietHours? quiet = rules.quiet;
+    final List<core.ScheduledNotification> placed = quiet == null
+        ? out
+        : <core.ScheduledNotification>[
+            for (final core.ScheduledNotification n in out)
+              _at(n, quiet.defer(n.at)),
+          ];
+    placed.sort(
       (core.ScheduledNotification a, core.ScheduledNotification b) =>
           a.at.compareTo(b.at),
     );
-    return out;
+    return placed;
   }
+
+  static core.ScheduledNotification _at(
+    core.ScheduledNotification n,
+    DateTime at,
+  ) => identical(at, n.at)
+      ? n
+      : core.ScheduledNotification(
+          id: n.id,
+          title: n.title,
+          body: n.body,
+          at: at,
+          payload: n.payload,
+          channel: n.channel,
+          actions: n.actions,
+        );
 
   /// 🔴 APPLE'S PENDING-NOTIFICATION POOL — 64 PER APP, ENFORCED BY DISCARDING.
   /// `UNUserNotificationCenter` keeps only the 64 soonest pending requests and
   /// silently drops the rest (macOS too). The digest lives in the same pool, so
-  /// the budget stops four short of it.
-  static const int _darwinPendingLimit = 64;
+  /// the budget stops four short of it. The capability matrix carries the
+  /// number (`NotificationCapabilities.pendingLimit`); this is its Darwin row.
+  static const int _darwinPendingLimit =
+      NotificationCapabilities.darwinPendingLimit;
 
   /// The most renewal reminders [syncAll] will schedule on a platform that caps
   /// them — every lead, fallback and cancel-by reminder counts, one slot each.
@@ -337,9 +457,10 @@ class RenewalReminders {
         );
     final TargetPlatform target =
         platform ?? _platform ?? defaultTargetPlatform;
-    if (kIsWeb ||
-        !platformCapsPendingNotifications(target) ||
-        all.length <= renewalReminderBudget) {
+    final bool capped = platform != null || _platform != null
+        ? platformCapsPendingNotifications(target)
+        : capabilities.pendingLimit != null;
+    if (kIsWeb || !capped || all.length <= renewalReminderBudget) {
       return List<core.ScheduledNotification>.unmodifiable(all);
     }
     return List<core.ScheduledNotification>.unmodifiable(
@@ -385,6 +506,71 @@ class RenewalReminders {
     );
   }
 
+  /// NO-10: "Snooze 1 day" — a reminder about [sub] again in [snoozeFor],
+  /// under [snoozeIdFor] (so a second snooze replaces, never doubles), and the
+  /// shown one [dismissId] taken down. Quiet hours still apply.
+  ///
+  /// 🔴 NOT UNDER THE TAPPED ID. That id is in the renewal namespace, and the
+  /// sync that runs when the press opens the app reconciles the namespace to
+  /// the planned set — which no longer holds a reminder whose moment passed —
+  /// so a snooze armed under it would be cancelled within the second.
+  Future<void> snooze(
+    Subscription sub, {
+    required ReminderCopy copy,
+    QuietHours? quiet,
+    int? dismissId,
+  }) async {
+    if (dismissId != null && capabilities.canNotify) {
+      await _service.cancel(dismissId);
+    }
+    if (!capabilities.canSchedule) return;
+    final DateTime raw = _now().add(snoozeFor);
+    await _service.scheduleAt(
+      core.ScheduledNotification(
+        id: snoozeIdFor(sub.id),
+        title: copy.reminderTitle,
+        body: copy.reminderBody(sub.name, sub.nextCharge(_now())),
+        at: quiet?.defer(raw) ?? raw,
+        payload: payloadFor(sub.id),
+        channel: _channel(copy),
+        actions: actionsFor(copy),
+      ),
+    );
+  }
+
+  /// The id of the test reminder — inside the renewal namespace's range is
+  /// NOT safe ([syncAll] would cancel it), so it sits beside the digest and
+  /// the over-budget alert, and is neither: a test must never replace a real
+  /// alert that is showing.
+  static const int testReminderId = 0x7ffffffc;
+
+  /// How long after the tap a test reminder arrives.
+  static const Duration testDelay = Duration(seconds: 10);
+
+  /// NO-13: "Send a test reminder" — a local notification in [testDelay] where
+  /// this target schedules; true when one was armed. Quiet hours do not apply:
+  /// the user asked for it now.
+  ///
+  /// ⚠️ Where nothing schedules (web) there is no test: the e-mail leg needs a
+  /// host route that spends the portfolio's shared daily reminder-mail share
+  /// (platform `MAX_REMINDER_MAILS_PER_DAY`), which is the owner's to grant,
+  /// so Settings does not offer the row there and this answers false.
+  Future<bool> sendTest({required ReminderCopy copy}) async {
+    if (capabilities.canSchedule) {
+      await _service.scheduleAt(
+        core.ScheduledNotification(
+          id: testReminderId,
+          title: copy.testTitle ?? copy.reminderTitle,
+          body: copy.testBody ?? copy.reminderTitle,
+          at: _now().add(testDelay),
+          channel: _channel(copy),
+        ),
+      );
+      return true;
+    }
+    return false;
+  }
+
   /// The weekly digest, behind the `weekly` setting — ST-R7 (audit C24).
   ///
   /// ONE-OFF at the next Sunday 18:00, re-armed on every sync. It used to be a
@@ -424,6 +610,83 @@ class RenewalReminders {
     await _service.cancel(digestId);
   }
 
+  /// The over-budget alert [budget] and [spent] call for — ST-I2 (audit C14)
+  /// — or null when none is owed.
+  ///
+  /// Owed only when a budget is SET (a zero budget is "none", not "every
+  /// charge is over it" — `BudgetInfo.usageOf` alone would call any spend
+  /// over zero) and the monthly average in the budget's currency passes it:
+  /// the same `usageOf` reading the Insights budget card paints as
+  /// "… over budget", so the notification and the card never disagree.
+  ///
+  /// ⏱ AT THE REMINDER TIME OF DAY, the next one ahead — the user's own
+  /// "when to bother me" rule — not the instant the budget was crossed: the
+  /// person crossing it is looking at the card that already says so. One
+  /// pending alert at most, re-armed on each sync, so while spending stays
+  /// over it recurs at most once a day, and only after the app has run.
+  @visibleForTesting
+  core.ScheduledNotification? plannedOverBudget({
+    required BudgetInfo budget,
+    required core.MoneyBag spent,
+    required ReminderCopy copy,
+    required ReminderRules rules,
+    required core.MoneyFormatter money,
+  }) {
+    final String? title = copy.overBudgetTitle;
+    final String Function(String, String)? body = copy.overBudgetBody;
+    if (title == null || body == null) return null;
+    if (budget.monthlyBudget.minorUnits <= 0) return null;
+    final BudgetUsage usage = budget.usageOf(spent);
+    if (!usage.over) return null;
+    final DateTime now = _now();
+    DateTime at = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      rules.hour,
+      rules.minute,
+    );
+    if (!at.isAfter(now)) {
+      at = DateTime(now.year, now.month, now.day + 1, rules.hour, rules.minute);
+    }
+    return core.ScheduledNotification(
+      id: overBudgetId,
+      title: title,
+      body: body(
+        money.format(usage.spentHere),
+        money.formatRounded(budget.monthlyBudget),
+      ),
+      at: at,
+      payload: overBudgetPayload,
+      channel: _channel(copy),
+    );
+  }
+
+  /// Arm the over-budget alert [plannedOverBudget] calls for, or cancel it
+  /// when none is owed ([budget] null: the alert is off). OWNED ID ONLY —
+  /// [overBudgetId] — so the renewals and the digest are never touched.
+  Future<void> syncOverBudget({
+    required BudgetInfo? budget,
+    required core.MoneyBag spent,
+    required ReminderCopy copy,
+    required ReminderRules rules,
+    required core.MoneyFormatter money,
+  }) async {
+    if (!capabilities.canSchedule) return;
+    final core.ScheduledNotification? planned = budget == null
+        ? null
+        : plannedOverBudget(
+            budget: budget,
+            spent: spent,
+            copy: copy,
+            rules: rules,
+            money: money,
+          );
+    await _service.reconcile(<core.ScheduledNotification>[
+      if (planned != null) planned,
+    ], owns: (int id) => id == overBudgetId);
+  }
+
   /// Cancel every reminder [subscriptionId] can hold, now — belt and braces
   /// for a delete (ST-T3b), where the next [syncAll] also drops them. The ids
   /// are the ones [plannedFor] mints: one per lead the app offers, the
@@ -437,9 +700,12 @@ class RenewalReminders {
       '$subscriptionId|cancel',
       for (final int d in leadChoices) '$subscriptionId|$d',
       for (final int d in leadChoices) '$subscriptionId|trial|$d',
+      for (int c = 1; c < cyclesPerPlan; c++)
+        for (final int d in leadChoices) '$subscriptionId|$d|c$c',
     ]) {
       await _service.cancel(renewalIdFor(key));
     }
+    await _service.cancel(snoozeIdFor(subscriptionId));
   }
 
   /// The lead days a reminder can be armed at — Settings' and the detail
@@ -456,16 +722,35 @@ class RenewalReminders {
   /// Fixed id for the digest, outside the renewal namespace below.
   static const int digestId = 0x7ffffffe;
 
+  /// Fixed id for the over-budget alert (ST-I2), beside the digest and
+  /// outside the renewal namespace for the same reason.
+  static const int overBudgetId = 0x7ffffffd;
+
+  /// The over-budget alert's payload: a tap opens Insights, where the budget
+  /// card is (`routeForNotificationPayload`).
+  static const String overBudgetPayload = 'budget';
+
   /// The RENEWAL id namespace: [renewalIdBase, renewalIdBase + renewalIdRange).
   ///
   /// 🔴 DISJOINT BY CONSTRUCTION from every other id on the shared plugin:
   /// the chassis daily reminder is `kDailyReminderId` (1), the chassis
-  /// immediate bucket is 0x7f000000, the digest is 0x7ffffffe — which is what
+  /// immediate bucket is 0x7f000000, the digest is 0x7ffffffe, the
+  /// over-budget alert 0x7ffffffd and the test reminder 0x7ffffffc — which is what
   /// lets [syncAll] reconcile by membership rather than by `cancelAll()`.
   /// Ids scheduled by builds before ST-R3 (one per subscription) are in the
   /// same namespace, so the first sync after an update cancels them.
   static const int renewalIdBase = 0x10000000;
   static const int renewalIdRange = 0x40000000;
+
+  /// The SNOOZE namespace, directly above the renewal one and disjoint from it
+  /// and from every fixed id: [syncAll] never reconciles it away.
+  static const int snoozeIdBase = renewalIdBase + renewalIdRange;
+  static const int snoozeIdRange = 0x10000000;
+
+  /// The one snooze id [subscriptionId] can hold.
+  static int snoozeIdFor(String subscriptionId) =>
+      snoozeIdBase +
+      (renewalIdFor('$subscriptionId|snooze') - renewalIdBase) % snoozeIdRange;
 
   /// Whether [id] is a renewal reminder this service owns.
   static bool isRenewalReminderId(int id) =>

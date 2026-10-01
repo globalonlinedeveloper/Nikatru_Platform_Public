@@ -9,6 +9,7 @@ import 'core/router.dart';
 import 'l10n/app_localizations.dart';
 import 'state/notification_tap_observer.dart';
 import 'state/providers.dart';
+import 'state/refresh_on_return.dart';
 
 /// Root widget for {{{display_name}}} — the COMPOSITION ROOT half.
 ///
@@ -84,7 +85,11 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
       // builder. Every one of the three is a ConsumerWidget, which is why the
       // chain is written here and not in the package.
       shell: (Widget routed) => AnalyticsGate(
-        child: _NotificationTapGate(child: _OfflineBanner(child: routed)),
+        // ST-N6: a return to the front re-reads what refreshOnReturn names.
+        child: RefreshOnResume(
+          onRefresh: () => refreshOnReturn(ref),
+          child: _NotificationTapGate(child: _OfflineBanner(child: routed)),
+        ),
       ),
     );
   }
@@ -114,7 +119,7 @@ class _OfflineBanner extends ConsumerWidget {
     return OfflineBannerHost(
       unreachable: ref.watch(networkUnreachableProvider),
       onRetry: () => ref.invalidate(appConfigProvider),
-      child: child,
+      child: RootedDeviceNoticeHost(child: child),
     );
   }
 }

@@ -46,6 +46,10 @@
 //       it, so a limb for it could never fail on its own. "The nearest valid
 //       store point" is a vendor list the ADR records as unread; nothing here
 //       encodes one, which is why a read-back may sit above `store`.
+//       ⏱ 2026-10-01 (EXM-04): a product in extensions/catalog/extensions.json has no
+//       `store` either, and carrying one is exit 1. A browser store sells no
+//       in-extension product; FullShot Pro is sold on the nikatru.com checkout only
+//       (decisions/ext/015), at [ADR 093]'s single-app web tier.
 //   E · ONE HOME — no TypeScript file under services/platform/src but the
 //       rendered one carries a `pri_…` or `plan_…` rail id or declares one of
 //       the rendered map names. A hand map re-added to checkout.ts is red here,
@@ -235,6 +239,23 @@ export const RENDERED = 'services/platform/src/routes/rail-price-ids.ts';
 export const SOURCE_DIR = 'services/platform/src';
 /** The rails an entry must declare, each a read-back or pending. */
 export const RAILS = ['paddle', 'razorpay'];
+
+/**
+ * Each rail's rendered sellable-id map, BY NAME. One explicit row per rail (#1127 money
+ * review, nit 5): before, every rail but Paddle was bound to Razorpay's plan ids, so a third
+ * rail added to RAILS (Cashfree, say) would have sold Razorpay's plans. A rail with no row
+ * here throws, so the render fails instead of guessing.
+ */
+export const RAIL_PRICE_MAP = Object.freeze({ paddle: 'PADDLE_PRICE_IDS', razorpay: 'RAZORPAY_PLAN_IDS' });
+
+/** The map name RAIL_PRICE_IDS binds `rail` to; throws on a rail with no explicit row. */
+export function railPriceMapFor(rail) {
+  if (!Object.hasOwn(RAIL_PRICE_MAP, rail)) {
+    throw new Error(`render-rail-prices: rail ${JSON.stringify(rail)} has no row in RAIL_PRICE_MAP; add its own sellable-id map, never another rail's`);
+  }
+  return RAIL_PRICE_MAP[rail];
+}
+
 /** The served `term` → the plan an app offering is. */
 export const APP_PLANS = Object.freeze({ month: 'single-monthly', year: 'single-yearly', one_time: 'single-lifetime' });
 /** The served `term` → the plan a bundle offering is. A bundle has no lifetime plan. */
@@ -249,6 +270,8 @@ export const MARKUP_PERCENT = 120;
 export const FEE_REGISTER = 'tooling/catalog/fee-register.json';
 /** Limb G's channels: every `surface: app` row and its `purchaseRail`. */
 export const CHANNEL_REGISTER = 'tooling/channel-register.json';
+/** The extension register: a product named there is sold on the web checkout only, so it has no store column. */
+export const EXTENSION_REGISTER = 'extensions/catalog/extensions.json';
 /** The row every other channel's net is compared to. */
 export const WEB_CHANNEL = 'web';
 /** The fee cells limb G applies, by what they price. */
@@ -281,6 +304,7 @@ export const MAP_NAMES = [
   'RAIL_PRICE_PENDING',
   'RAZORPAY_PLAN_IDS',
   'RAZORPAY_PRICE_PENDING',
+  'RAIL_PRICE_IDS',
 ];
 
 const MIN_REASON = 20;
@@ -308,7 +332,17 @@ export function readRegister(root) {
 }
 
 /** Limb D for one entry. `web` is { USD, INR } in minor units. */
-function gradeStore(where, entry, web, lifetime, problems) {
+function gradeStore(where, entry, web, lifetime, problems, extension = false) {
+  if (extension) {
+    if (entry.store !== undefined) {
+      problems.push(
+        `${where} prices an extension (${EXTENSION_REGISTER}) and carries a \`store\` price. A browser store sells ` +
+          'no in-extension product: FullShot Pro is bought on the nikatru.com checkout only (decisions/ext/015), so ' +
+          '[ADR 093] §2\'s store column has nothing to price; delete `store`.',
+      );
+    }
+    return;
+  }
   if (lifetime) {
     if (entry.store !== undefined) {
       problems.push(
@@ -454,6 +488,7 @@ export function plan(root, data) {
   const servedApps = isObj(data.apps) ? data.apps : {};
   const bookApps = isObj(prices.apps) ? prices.apps : {};
   const seenIds = new Map();
+  const extensions = extensionSlugs(root, servedApps, bookApps, lost);
 
   // A · the join, from the served side.
   for (const app of dataKeys(servedApps).sort()) {
@@ -494,10 +529,10 @@ export function plan(root, data) {
       counts.razorpayTotal++;
       if (isObj(rz) && 'pending' in rz) counts.razorpayPending++;
       // D · the store column.
-      gradeStore(where, entry, web, o.term === 'one_time', problems);
+      gradeStore(where, entry, web, o.term === 'one_time', problems, extensions.has(app));
       rows.push({ id, entry, webUsd: o.amount_minor, term: o.term });
     }
-    book.push({ app, offerings: rows });
+    book.push({ app, offerings: rows, extension: extensions.has(app) });
   }
   // A · the join, from the book side.
   for (const app of dataKeys(bookApps)) {
@@ -572,6 +607,25 @@ export function plan(root, data) {
   return { lost, problems, book, counts };
 }
 
+/**
+ * ⏱ 2026-10-01 (EXM-04). The ids in the extension register, read only when the register prices one: the
+ * store column is an app-store fact, and an extension is sold on the web checkout alone (limb D). An
+ * unreadable register while an extension may be priced is COVERAGE LOST, never "no extension".
+ */
+function extensionSlugs(root, servedApps, bookApps, lost) {
+  const out = new Set();
+  const reg = readCatalogFile(root, EXTENSION_REGISTER);
+  if (!reg.ok) {
+    const named = [...dataKeys(servedApps), ...dataKeys(bookApps)];
+    if (named.length) lost.push(`${reg.why}, so limb D cannot tell an extension (web only) from an app (store column).`);
+    return out;
+  }
+  for (const row of Array.isArray(reg.value) ? reg.value : []) {
+    if (isObj(row) && typeof row.slug === 'string') out.add(row.slug);
+  }
+  return out;
+}
+
 function walkTs(dir) {
   const out = [];
   for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -589,7 +643,8 @@ function walkTs(dir) {
  */
 function gradeReadBacks(root, book, problems, lost) {
   let required = 0;
-  for (const { app, offerings } of book) {
+  for (const { app, offerings, extension } of book) {
+    if (extension) continue; // no app.yaml and no store: limb D refuses a store column on an extension
     if (!offerings.some(({ entry }) => isObj(entry.store))) continue;
     let decl;
     try {
@@ -933,6 +988,16 @@ export function renderRailPriceIds(book) {
       return p === null ? null : `${id}: ${q(p)},`;
     },
     'string',
+  );
+  // ⏱ 2026-10-01 · port-pay-core: the payments port's ONE price map, keyed by the registry's adapter id
+  // (tooling/ports/payments.json), so an adapter resolves its own id and no route names a rail's map.
+  L.push(
+    '// RAIL → OUR offering id → that rail\'s sellable id, per app: the map the payments port reads',
+    '// (RAIL_PRICE_IDS[railId][appId][offeringId]). Keyed by tooling/ports/payments.json adapter ids.',
+    'export const RAIL_PRICE_IDS: Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, string>>>>>> = {',
+    ...RAILS.map((r) => `  ${r}: ${railPriceMapFor(r)},`),
+    '};',
+    '',
   );
   return `${L.join('\n').trimEnd()}\n`;
 }

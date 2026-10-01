@@ -241,7 +241,10 @@ const MUST_COMPARE = [
 /*  22 -> 23 on 2026-09-24: sites/nikatru/ext/connect.html, the browser
  *  extension's account-link page (O-EXTENSION-ACCOUNT-CHECK-UNBUILT). Measured
  *  off this tree by the guard's own ok line: 23 page(s) (22 at 42acef7c). */
-const MIN_PAGES = 23;
+/*  23 -> 24 on 2026-10-01: sites/nikatru/app/connect.html, the desktop app's
+ *  system-browser sign-in page (O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH).
+ *  Measured off this tree by the guard's own ok line: 24 page(s) (23 at 7bb11a54). */
+const MIN_PAGES = 24;
 /** What the exclusion must still match. */
 const MIN_SNAPSHOTS = 3;
 /** `:root` blocks across every source. Today 33. EXACT: a block is a page's
@@ -277,7 +280,11 @@ const MIN_SNAPSHOTS = 3;
  *  a dark override — three blocks. Measured by the guard's own ok line: 59
  *  `:root` block(s) (56 at 42acef7c). Re-verified after the raise:
  *  palette-consistent.test.mjs's page-floor and block-floor controls exit 2. */
-const MIN_ROOT_BLOCKS = 59;
+/*  59 -> 62 on 2026-10-01, with MIN_PAGES above: app/connect.html, like
+ *  ext/connect.html, receives shared chrome (the `scale-css` `:root`) and declares
+ *  a light `:root` and a dark override — three blocks. Measured by the guard's own
+ *  ok line: 62 `:root` block(s) (59 at 7bb11a54). */
+const MIN_ROOT_BLOCKS = 62;
 /** Declarations inside those blocks. Today 358 (265 until 2026-09-09), floored SLACK on purpose. The
  *  three exact floors already fence the subject; this one exists for the single
  *  failure they cannot see — a reducer that blanks one character too many and
@@ -1001,7 +1008,9 @@ const BRAND_FONT_DEBT = {
   // adopted the chassis OnboardingView; its one remaining face reads BrandTokens.
   'apps/subscriptiontracker/lib/features/settings/settings_screen.dart': 1,
   'apps/subscriptiontracker/lib/features/shared/widgets.dart': 4,
-  'apps/subscriptiontracker/lib/features/shell/app_shell.dart': 1,
+  // ⏱ 2026-10-01 · ST truth pass (SH-01): `features/shell/app_shell.dart`
+  // 1 → 0 and OUT — the tab label's 9 px `fontFamily: 'Manrope'` literal is
+  // the type ramp's `labelSmall` now.
   'apps/subscriptiontracker/test/brand_footer_parity_test.dart': 8,
   'apps/subscriptiontracker/test/shared_primitives_test.dart': 4,
 };

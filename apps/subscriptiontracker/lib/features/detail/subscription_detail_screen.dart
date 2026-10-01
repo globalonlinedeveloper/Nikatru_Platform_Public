@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:nikatru_core/nikatru_core.dart'
+    show ExternalLinkLauncherUrl, LinkOutcome;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/e2e_keys.dart';
+import '../../core/format/category_label.dart';
 import '../../core/format/money_format.dart';
 import '../../data/models/payment_record.dart';
 import '../../data/models/subscription.dart';
@@ -169,6 +172,22 @@ class SubscriptionDetailScreen extends ConsumerWidget {
     // moment a cancellation still saves this cycle. Further out the words
     // alone say it, in the neutral caption ink.
     final StatusKind? dueKind = s.daysUntil(now) <= 1 ? StatusKind.warn : null;
+    // ⏱ ST truth pass (DE-02): a paused or cancelled row has NO next charge,
+    // and the tile used to roll its date forward and say "Due today" over a
+    // plan that will never charge again. It says what stopped it instead, in
+    // the row's status tone.
+    final LifeStatus? life = LifeStatus.of(l10n, s);
+    final DateTime? cancelledOn = s.cancelledOn;
+    final String? stoppedCaption = switch (s.status) {
+      SubscriptionStatus.paused => l10n.detailPausedNoCharge,
+      SubscriptionStatus.cancelled =>
+        cancelledOn == null
+            ? l10n.statusCancelled
+            : l10n.detailCancelledOn(
+                DateFormat.yMMMd(l10n.localeName).format(cancelledOn),
+              ),
+      _ => null,
+    };
 
     return Scaffold(
       body: Column(
@@ -243,18 +262,26 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                       ),
                       const SizedBox(width: AppSpacing.md),
                       Expanded(
-                        child: AppFigureTile(
-                          label: l10n.nextChargeLabel,
-                          // `MMMd`, never a month table: Tamil does not put
-                          // the month first, and a table bakes the ORDER.
-                          // The ROLLED next charge (ST-M3), the date
-                          // `due.label` beside it is measured to.
-                          figure: DateFormat.MMMd(
-                            l10n.localeName,
-                          ).format(s.nextCharge(now)),
-                          caption: due.label,
-                          status: dueKind,
-                        ),
+                        child: stoppedCaption != null
+                            ? AppFigureTile(
+                                key: const Key('detail.nextCharge.stopped'),
+                                label: l10n.nextChargeLabel,
+                                figure: l10n.nextChargeNone,
+                                caption: stoppedCaption,
+                                status: life?.kind,
+                              )
+                            : AppFigureTile(
+                                label: l10n.nextChargeLabel,
+                                // `MMMd`, never a month table: Tamil does not
+                                // put the month first, and a table bakes the
+                                // ORDER. The ROLLED next charge (ST-M3), the
+                                // date `due.label` beside it is measured to.
+                                figure: DateFormat.MMMd(
+                                  l10n.localeName,
+                                ).format(s.nextCharge(now)),
+                                caption: due.label,
+                                status: dueKind,
+                              ),
                       ),
                     ],
                   ),
@@ -358,6 +385,15 @@ class SubscriptionDetailScreen extends ConsumerWidget {
                   // ST-R3 / ST-R8: when this one reminds, and its notice.
                   // Last, below the actions, so nothing above it moves.
                   SubscriptionReminderRows(sub: s),
+                  // ST truth pass (DE-01): what the user SAVED — notes, the
+                  // website to cancel at, the first charge, the cancel date.
+                  // The add sheet has always written them; nothing read them.
+                  // After the reminder rows, for their reason: nothing above
+                  // it moves.
+                  if (_SavedDetails.hasAny(s)) ...<Widget>[
+                    const SizedBox(height: AppSpacing.md),
+                    _SavedDetails(sub: s),
+                  ],
                 ],
               ),
             ),
@@ -442,6 +478,92 @@ class _UsageCard extends StatelessWidget {
   }
 }
 
+/// The fields the user saved on this row, as one card of [AppListRow]s:
+/// notes, the website to cancel at (a control that opens it), the first
+/// charge and the day it was marked cancelled. A field with no value has no
+/// row, and a row with none of them has no card.
+///
+/// ⏱ ST truth pass (DE-01). The add sheet collects `notes` and `cancel_url`
+/// and the API stores them; until this card no screen read either back, so a
+/// user who saved where to cancel could not find it on the one page about
+/// cancelling. The website opens through the app's `ExternalLinkLauncher`
+/// seam ([cancelLinkLauncherProvider]): the policy, then the plugin.
+class _SavedDetails extends ConsumerWidget {
+  const _SavedDetails({required this.sub});
+
+  final Subscription sub;
+
+  static bool hasAny(Subscription s) =>
+      s.notes.trim().isNotEmpty ||
+      (s.cancelUrl ?? '').trim().isNotEmpty ||
+      s.firstChargeOn != null ||
+      s.cancelledOn != null;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final DateFormat date = DateFormat.yMMMd(l10n.localeName);
+    final String notes = sub.notes.trim();
+    final String url = (sub.cancelUrl ?? '').trim();
+    final DateTime? first = sub.firstChargeOn;
+    final DateTime? cancelled = sub.cancelledOn;
+    final List<Widget> rows = <Widget>[
+      if (url.isNotEmpty)
+        AppListRow(
+          key: const Key('detail.details.website'),
+          title: l10n.fieldLabelWebsite,
+          subtitle: url,
+          subtitleMaxLines: 2,
+          onTap: () async {
+            final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(
+              context,
+            );
+            final LinkOutcome outcome = await ref
+                .read(cancelLinkLauncherProvider)(url)
+                .openUrl(url);
+            if (outcome != LinkOutcome.opened) {
+              messenger?.showSnackBar(
+                SnackBar(content: Text(l10n.detailWebsiteNotOpened)),
+              );
+            }
+          },
+        ),
+      if (notes.isNotEmpty)
+        AppListRow(
+          key: const Key('detail.details.notes'),
+          title: l10n.fieldLabelNotes,
+          subtitle: notes,
+          // Free text the user wrote: it may wrap, as a sentence does.
+          subtitleMaxLines: 8,
+        ),
+      if (first != null)
+        AppListRow(
+          key: const Key('detail.details.firstCharge'),
+          title: l10n.detailFirstCharge,
+          subtitle: date.format(first),
+        ),
+      if (cancelled != null)
+        AppListRow(
+          key: const Key('detail.details.cancelledOn'),
+          title: l10n.detailCancelledOnLabel,
+          subtitle: date.format(cancelled),
+        ),
+    ];
+    return AppCard(
+      key: const Key('detail-details-card'),
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: <Widget>[
+          for (int i = 0; i < rows.length; i++) ...<Widget>[
+            if (i > 0) const Divider(height: 1),
+            rows[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// The payment-history card: three outcomes told apart, then the rows.
 ///
 /// 🔴 LOADING, FAILED AND EMPTY ARE THREE BRANCHES. The `FutureBuilder` this
@@ -519,7 +641,7 @@ class _PaymentHistory extends ConsumerWidget {
 /// simply active — its status, joined by " · " with no empty part (ST-E1).
 @visibleForTesting
 String detailSubtitle(AppLocalizations l10n, Subscription s) => <String>[
-  s.category,
+  categoryLabel(l10n, s.category),
   if (s.plan.trim().isNotEmpty) s.plan.trim(),
   if (s.status == SubscriptionStatus.paused) l10n.statusPaused,
   if (s.status == SubscriptionStatus.cancelled) l10n.statusCancelled,

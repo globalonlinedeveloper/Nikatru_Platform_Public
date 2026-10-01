@@ -13,6 +13,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Hono } from 'hono';
 import appInit0001 from '../../subscriptiontracker-api/migrations/0001_init.sql?raw';
 import appSchemaDebt0002 from '../../subscriptiontracker-api/migrations/0002_schema_debt.sql?raw';
+import appModel0003 from '../../subscriptiontracker-api/migrations/0003_subscription_model.sql?raw';
 import REGISTER_RAW from '../../../tooling/ops/register.json?raw';
 import INVENTORY_RAW from '../../../tooling/legal/data-inventory.json?raw';
 import { REMINDER_MAIL_JOB, reminderMail } from '../src/scheduled';
@@ -27,8 +28,8 @@ import {
   runReminderMail,
   ymdOf,
 } from '../src/lib/reminders';
-import { RESEND_EMAILS_URL } from '../src/lib/report-notify';
-import reminders, { parsePrefs } from '../src/routes/reminders';
+import { RESEND_EMAILS_URL } from '../src/adapters/mail/resend';
+import reminders, { MAX_PREFS_BODY_BYTES, parsePrefs } from '../src/routes/reminders';
 import { app as realApp } from '../src/index';
 import type { AppEnv, Env } from '../src/types';
 import { RealDb, realPlatformDb } from './harness';
@@ -481,5 +482,96 @@ describe('R1 — the preference and the one-click unsubscribe', () => {
     // A token nobody minted is a 404, on both methods.
     const bogus = `/v1/reminders/unsubscribe?t=${'B'.repeat(43)}`;
     expect((await realApp.request(`http://x${bogus}`, { method: 'POST' }, env)).status).toBe(404);
+  });
+});
+
+// ⏱ 2026-10-01 · rv2-services-020. RED before: the digest line printed `9.99`
+// for every currency alike, under a comment saying the currency was not stored —
+// stale since subscriptiontracker_db's migration 0003 added `currency` and
+// `price_minor`.
+describe('R1 — the digest prints each amount with its currency', () => {
+  function modelDb(): RealDb {
+    return new RealDb([appInit0001, appSchemaDebt0002, appModel0003]);
+  }
+
+  it('🔴 a USD plan’s digest line carries USD, from the exact minor amount', async () => {
+    const platform = realPlatformDb();
+    const app = modelDb();
+    const people: Person[] = [{ id: 'u-usd', optIn: true }];
+    seedPerson(platform, people[0]);
+    app.db
+      .prepare('INSERT INTO subscriptions (id, user_id, name, price, cycle, next_renewal, currency, price_minor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run('s-usd', 'u-usd', 'Netflix', 15.49, 'monthly', '2026-10-03', 'USD', 1549);
+    const net = network(people);
+    await runReminderMail(envOf(platform, app), target(app), NOW, net.fetchImpl);
+    expect(net.sends()).toHaveLength(1);
+    const body = net.sends()[0].body!;
+    expect(String(body.text)).toContain('- Netflix — Sat, 3 Oct 2026 (monthly, USD 15.49)');
+    expect(String(body.html)).toContain('<li>Netflix — Sat, 3 Oct 2026 (monthly, USD 15.49)</li>');
+  });
+
+  it('a yen plan has no decimals; a row with no currency keeps the bare amount, never a guessed code', async () => {
+    const platform = realPlatformDb();
+    const app = modelDb();
+    const people: Person[] = [{ id: 'u-mix', optIn: true }];
+    seedPerson(platform, people[0]);
+    const ins = app.db.prepare(
+      'INSERT INTO subscriptions (id, user_id, name, price, cycle, next_renewal, currency, price_minor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    );
+    ins.run('s-jpy', 'u-mix', 'Anime', 1200, 'monthly', '2026-10-02', 'JPY', 1200);
+    ins.run('s-old', 'u-mix', 'Legacy', 9.99, 'monthly', '2026-10-03', null, null);
+    const net = network(people);
+    await runReminderMail(envOf(platform, app), target(app), NOW, net.fetchImpl);
+    const text = String(net.sends()[0].body!.text);
+    expect(text).toContain('- Anime — Fri, 2 Oct 2026 (monthly, JPY 1200)');
+    expect(text).toContain('- Legacy — Sat, 3 Oct 2026 (monthly, 9.99)');
+  });
+});
+
+// ⏱ 2026-10-01 · rv2-services-017. The preference's refusals, each asserted to
+// write nothing — the 401 through the REAL app, where platformAuth lives.
+describe('R1 — PUT /v1/reminders/prefs refuses, and writes nothing', () => {
+  function appFor(userId: string) {
+    const a = new Hono<AppEnv>();
+    a.use('*', async (c, next) => {
+      c.set('userId', userId);
+      c.set('requestId', 'test-reminders');
+      await next();
+    });
+    a.route('/v1', reminders);
+    return a;
+  }
+  const put = (body: string) => ({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
+  const GOOD = JSON.stringify({ app_id: APP, email_opt_in: true, lead_days: 5 });
+
+  it('🔴 no Authorization on the REAL app is a 401, and no reminder_prefs row', async () => {
+    const platform = realPlatformDb();
+    const res = await realApp.request('http://x/v1/reminders/prefs', put(GOOD), { PLATFORM_DB: platform, SUPABASE_URL: AUTH } as never);
+    expect(res.status).toBe(401);
+    expect(platform.count('reminder_prefs')).toBe(0);
+    expect(platform.sql.filter((q) => q.includes('reminder_prefs'))).toEqual([]);
+  });
+
+  it('🔴 a body over MAX_PREFS_BODY_BYTES is a 413 before it is parsed, and no row', async () => {
+    const platform = realPlatformDb();
+    const big = JSON.stringify({ app_id: APP, email_opt_in: true, pad: 'x'.repeat(MAX_PREFS_BODY_BYTES) });
+    const res = await appFor('u-big').request('http://x/v1/reminders/prefs', put(big), { PLATFORM_DB: platform } as never);
+    expect(res.status).toBe(413);
+    expect(platform.count('reminder_prefs')).toBe(0);
+  });
+
+  it('🔴 a limiter that says no is a 429 on the caller’s key, and no row', async () => {
+    const platform = realPlatformDb();
+    const keys: string[] = [];
+    const EVENTS_LIMITER = {
+      limit: async ({ key }: { key: string }) => {
+        keys.push(key);
+        return { success: false };
+      },
+    };
+    const res = await appFor('u-burst').request('http://x/v1/reminders/prefs', put(GOOD), { PLATFORM_DB: platform, EVENTS_LIMITER } as never);
+    expect(res.status).toBe(429);
+    expect(keys).toEqual(['reminders:u-burst']);
+    expect(platform.count('reminder_prefs')).toBe(0);
   });
 });

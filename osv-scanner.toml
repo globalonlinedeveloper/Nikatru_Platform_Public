@@ -36,3 +36,15 @@
 # packages/tokens/package-lock.json — measured, run 33960900452). Deleting this
 # file would make that flag point at nothing, so it stays, and the next
 # acknowledged finding is appended below with its own `ignoreUntil`.
+
+# ⏱ 2026-10-01 21:35Z (lead db0cc7): main went red on the day GHSA-86w9-cpqp-85rv was published (CI run 36929041146).
+# node-forge <= 1.4.0, RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements (high).
+# NO PATCHED RELEASE EXISTS (1.4.0 is the newest on npm; the advisory names no fixed version), so it cannot be moved today.
+# Exposure: a TRANSITIVE devDependency of web-ext 10.7.0 in tooling/web-ext ONLY (the Firefox lint and the AMO signer,
+# run in CI). It is in no app, Worker, site or extension package and verifies no user-supplied signature.
+# Fix when node-forge publishes one: `npm update node-forge --prefix tooling/web-ext` (or a web-ext bump), and delete
+# this entry in the same commit. The expiry re-reddens the lane if that has not happened.
+[[IgnoredVulns]]
+id = "GHSA-86w9-cpqp-85rv"
+ignoreUntil = 2026-10-15T00:00:00Z
+reason = "node-forge <=1.4.0 has no patched release (2026-10-01); transitive devDependency of web-ext in tooling/web-ext (CI-only Firefox lint and AMO signer); in no shipped package"

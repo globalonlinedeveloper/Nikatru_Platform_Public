@@ -152,6 +152,29 @@ describe('check-migrations', () => {
       ...extra,
     });
 
+  // ⏱ 2026-09-30 · review #1080 finding 8 — one number, one migration.
+  test('FAILS when two migrations in one directory share a number', () => {
+    const { code, out } = run('check-migrations.mjs', {
+      cwd: build('mig-dup', ADDITIVE, ADDITIVE, {
+        'services/subscriptiontracker-api/migrations/0002_a.sql': ADDITIVE,
+        'services/subscriptiontracker-api/migrations/0002_b.sql': ADDITIVE,
+      }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /share one number/);
+    assert.match(out, /0002_a\.sql/);
+  });
+
+  test('the same number in two DIFFERENT directories is not a clash (green control)', () => {
+    const { code, out } = run('check-migrations.mjs', {
+      cwd: build('mig-dup-ok', ADDITIVE, ADDITIVE, {
+        'services/subscriptiontracker-api/migrations/0002_a.sql': ADDITIVE,
+        'services/platform/migrations/0002_b.sql': ADDITIVE,
+      }),
+    });
+    assert.equal(code, 0, out);
+  });
+
   test('PASSES on additive-only migrations', () => {
     const { code } = run('check-migrations.mjs', { cwd: build('mig-ok', ADDITIVE) });
     assert.equal(code, 0);
@@ -3798,19 +3821,33 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
    *  ⏱ 2026-09-25 — sixteen: MIN_GRADED re-based 18 → 16 when C2 removed the two
    *  submit-job rebuilds, so CENSUS_FILL is twelve. */
   // ⏱ 2026-09-15 — lanes are scoped by the surface's DECLARED `flutterApp` (O-EXT-SURFACE-AXIS).
+  // ⏱ 2026-10-01 — every row carries a `crashSink` (O-CRASHSINK-DECLARATION-UNGRADED):
+  // the guard now fails a graded Flutter row that declares none, so a fixture row
+  // without one would fail every case below for a reason none of them is about.
+  const SINK = { layers: ['dart'], native: false, note: 'fixture: the Dart layer only; native crash handling is off.' };
   const CHANNEL_REGISTER = JSON.stringify(
     {
       surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
       channels: [
-        { id: 'web', surface: 'app', platforms: ['web'], lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
-        { id: 'android-play', surface: 'app', platforms: ['android'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
-        { id: 'windows-store', surface: 'app', platforms: ['windows'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
-        { id: 'linux-snap', surface: 'app', platforms: ['linux'], lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
+        { id: 'web', surface: 'app', platforms: ['web'], lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' }, crashSink: SINK },
+        { id: 'android-play', surface: 'app', platforms: ['android'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' }, crashSink: SINK },
+        { id: 'windows-store', surface: 'app', platforms: ['windows'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' }, crashSink: SINK },
+        { id: 'linux-snap', surface: 'app', platforms: ['linux'], lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' }, crashSink: SINK },
       ],
     },
     null,
     2,
   );
+  /** ⏱ 2026-10-01 (AA-08) — the Android half of `native: false`. The Dart switch
+   *  (`enableNativeCrashHandling = false`) turns off sentry-android's JVM handler
+   *  and ANR watchdog but NOT its NDK signal handler, which only the manifest's
+   *  `io.sentry.ndk.enable` reaches. The XML comment is prose about the setting,
+   *  so the passing case exercises the comment stripping. */
+  const NDK_OFF_MANIFEST =
+    '<manifest>\n  <!-- io.sentry.ndk.enable is the switch below -->\n  <application>\n' +
+    '    <meta-data\n        android:name="io.sentry.ndk.enable"\n        android:value="false" />\n' +
+    '  </application>\n</manifest>\n';
+  const APP1_MANIFEST = 'apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml';
   /** The graded builds beyond the four lanes that bring the fixture's census to
    *  the guard's MIN_GRADED (16 since 2026-09-25; 18 before): the real tree's census
    *  grades 16, most of them in jobs no row names, which is the point of grading a census. */
@@ -3866,7 +3903,9 @@ Future<void> main() async {
       // setting in prose, so the passing case exercises the comment stripping
       // rather than assuming it — the whole file this models is prose about
       // exactly this line.
-      bootstrap = '// enableAutoSessionTracking is left at its default here.\noptions.enableAutoSessionTracking = false;\n',
+      bootstrap = '// enableAutoSessionTracking is left at its default here.\noptions.enableAutoSessionTracking = false;\n' +
+        '// enableNativeCrashHandling defaults to true in the SDK.\noptions.enableNativeCrashHandling = false;\n',
+      manifest = NDK_OFF_MANIFEST,
       mainDart = MAIN_READS_DSN,
       brickMain = BRICK_MAIN_INITS_AUTH,
       reminders = BRICK_SCHEDULES,
@@ -3919,6 +3958,7 @@ Future<void> main() async {
       '.github/workflows/census-fill.yml': censusFill(fill),
       'apps/subscriptiontracker/lib/main.dart': mainDart,
       'packages/telemetry/lib/src/telemetry_bootstrap.dart': bootstrap,
+      [APP1_MANIFEST]: manifest,
       'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/main.dart': brickMain,
     });
 
@@ -4349,6 +4389,103 @@ Future<void> main() async {
     });
     assert.equal(code, 1, 'a setting behind a comment marker is prose, not a setting');
     assert.match(out, /does not set `options\.enableAutoSessionTracking = false`/);
+  });
+
+  // ── ⏱ 2026-10-01 · O-CRASHSINK-DECLARATION-UNGRADED (AA-09) — every graded
+  //    Flutter channel DECLARES what its crash sink carries. ios-appstore,
+  //    macos-appstore and linux-appimage were graded release builds with no
+  //    `crashSink` at all, and nothing read the field for a Flutter row, so the
+  //    per-target native decision was prose nothing checked.
+  const withSink = (mutate) => {
+    const reg = JSON.parse(CHANNEL_REGISTER);
+    mutate(reg.channels);
+    return JSON.stringify(reg, null, 2);
+  };
+  test('passes, naming every graded channel, when each declares its crash sink', () => {
+    const { code, out } = run('assert-seams-wired.mjs', { cwd: build('seams-sink-declared') });
+    assert.equal(code, 0, out);
+    assert.match(out, /ok\s+crash sink declared — 4 graded Flutter channel\(s\)/);
+    assert.match(out, /ok\s+native layer decided OFF — .*enableNativeCrashHandling = false.*io\.sentry\.ndk\.enable/);
+  });
+
+  test('FAILS when a graded Flutter channel declares no crashSink', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-sink-missing', { register: withSink((rows) => { delete rows[1].crashSink; }) }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /channel `android-play` .*declares no `crashSink`/);
+  });
+
+  test('FAILS when a graded Flutter channel\'s crashSink note is empty', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-sink-note-empty', { register: withSink((rows) => { rows[2].crashSink = { ...SINK, note: '  ' }; }) }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /channel `windows-store` .*`crashSink\.note` is empty/);
+  });
+
+  test('FAILS when a graded Flutter channel\'s crashSink does not name the dart layer', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-sink-no-dart', { register: withSink((rows) => { rows[0].crashSink = { ...SINK, layers: [] }; }) }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /channel `web` .*`crashSink\.layers` does not name "dart"/);
+  });
+
+  test('FAILS when a graded Flutter channel\'s crashSink.native is not a boolean', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-sink-native-unset', { register: withSink((rows) => { delete rows[3].crashSink.native; }) }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /channel `linux-snap` .*`crashSink\.native` is not true or false/);
+  });
+
+  // ── ⏱ 2026-10-01 (AA-08) — `native: false` is a CLAIM about the SDK, and the
+  //    pinned sentry_flutter (9.26.0) defaults enableNativeCrashHandling ON. A
+  //    row may only say false when the bootstrap turns the handler off, and an
+  //    Android row only when the NDK handler is off in the manifest as well.
+  test('FAILS when rows declare native:false and the bootstrap leaves native crash handling at the SDK default', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-native-default', {
+        bootstrap: 'options.enableAutoSessionTracking = false;\n// options.enableNativeCrashHandling = false;\n',
+      }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /does not set `options\.enableNativeCrashHandling = false`.*android-play, linux-snap, web, windows-store/s);
+  });
+
+  test('FAILS when a row declares native:true and the bootstrap turns native crash handling off', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-native-contradiction', { register: withSink((rows) => { rows[2].crashSink = { ...SINK, native: true }; }) }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /`windows-store` declares crashSink\.native=true, and .* turns native crash handling OFF/);
+  });
+
+  test('FAILS when an app\'s AndroidManifest leaves the NDK handler on while an android row declares native:false', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-ndk-on', {
+        manifest: '<manifest>\n  <application>\n    <!-- <meta-data android:name="io.sentry.ndk.enable" android:value="false" /> -->\n  </application>\n</manifest>\n',
+      }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subscriptiontracker\/android\/app\/src\/main\/AndroidManifest\.xml does not carry .*io\.sentry\.ndk\.enable.*android-play/s);
+  });
+
+  test('FAILS when the NDK switch sits outside <application>, where Android never reads it', () => {
+    const { code, out } = run('assert-seams-wired.mjs', {
+      cwd: build('seams-ndk-outside', {
+        manifest: '<manifest>\n  <meta-data android:name="io.sentry.ndk.enable" android:value="false" />\n  <application>\n  </application>\n</manifest>\n',
+      }),
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /AndroidManifest\.xml does not carry/);
+  });
+
+  test('COVERAGE LOST when no app in the set has an AndroidManifest to hold the NDK switch', () => {
+    const { code, out } = run('assert-seams-wired.mjs', { cwd: build('seams-ndk-no-manifest', { manifest: null }) });
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — no app in the workspace set has an android\/app\/src\/main\/AndroidManifest\.xml/);
   });
 
   test('COVERAGE LOST when the telemetry bootstrap is gone', () => {
@@ -4819,15 +4956,15 @@ class Ed25519PackVerifier implements PackVerifier {
     'tooling/channel-register.json': JSON.stringify({
       surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
       channels: [
-        { id: 'web', surface: 'app', platforms: ['web'], lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
-        { id: 'android-play', surface: 'app', platforms: ['android'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
-        { id: 'windows-store', surface: 'app', platforms: ['windows'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
+        { id: 'web', surface: 'app', platforms: ['web'], lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' }, crashSink: { layers: ['dart'], native: false, note: 'fixture' } },
+        { id: 'android-play', surface: 'app', platforms: ['android'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' }, crashSink: { layers: ['dart'], native: false, note: 'fixture' } },
+        { id: 'windows-store', surface: 'app', platforms: ['windows'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' }, crashSink: { layers: ['dart'], native: false, note: 'fixture' } },
         // The fourth lane, from 2026-08-09: submit-snap.yml's `dry-run` job packs
         // a .snap and therefore carries the crash-sink obligation. The guard
         // floors its subject set at what the real tree carries, so a fixture
         // one build short fails on coverage rather than on the verifier these
         // tests are about.
-        { id: 'linux-snap', surface: 'app', platforms: ['linux'], lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
+        { id: 'linux-snap', surface: 'app', platforms: ['linux'], lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' }, crashSink: { layers: ['dart'], native: false, note: 'fixture' } },
       ],
     }),
     '.github/workflows/deploy-web.yml': `name: f\njobs:\n${laneJob('deploy-web')}`,
@@ -4840,7 +4977,11 @@ class Ed25519PackVerifier implements PackVerifier {
     // [pipeline 11]E-10 — another seam that must stay satisfied so these tests
     // isolate the verifier rather than failing for an unrelated reason.
     'packages/telemetry/lib/src/telemetry_bootstrap.dart':
-      'options.enableAutoSessionTracking = false;\n',
+      'options.enableAutoSessionTracking = false;\noptions.enableNativeCrashHandling = false;\n',
+    // ⏱ 2026-10-01 (AA-08) — the Android half of `native: false`, for the same
+    // "isolate the verifier" reason.
+    'apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml':
+      '<manifest><application><meta-data android:name="io.sentry.ndk.enable" android:value="false"/></application></manifest>\n',
     // 🔴 CARRIES THE PURPOSE-DEFAULT LINE SINCE 2026-08-10, and it is not
     // padding. research/44 rung 4 made the purpose a PARAMETER of
     // `applyConsentDecision` so the Art 21 objection reuses one decision path

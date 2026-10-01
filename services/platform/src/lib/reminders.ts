@@ -34,18 +34,22 @@ import type { AppTarget, Env } from '../types';
 import { rollForward } from '../renewals';
 import { allRows, firstRow } from './d1';
 import { readAccount } from './platform-erasure';
-import { sendResendMail } from './report-notify';
 import { sha256Hex } from '../middleware/ext-device-auth';
 import { catalogueApp } from './catalog';
 import { parseReminderDays } from '../../../_shared/src/reminder-days';
+import type { MailOutcome, MailTransport } from '../../../_shared/src/ports/mail';
+import { MAIL_FROM } from '../generated/entity';
+import { mailFor } from '../ports';
 
 /**
- * [ADR 029] §2 — everything a machine sends leaves Resend from mail.nikatru.com,
- * typed by local-part. Owner alerts are `alerts@`; a reminder to a USER is a
- * different type of mail, so it has its own local-part and its own display name,
- * and a recipient can filter or trust the two separately.
+ * [ADR 029] §2 — everything a machine sends leaves from mail.nikatru.com, typed
+ * by local-part. Owner alerts are `alerts@`; a reminder to a USER is a different
+ * type of mail, so it has its own local-part and its own display name, and a
+ * recipient can filter or trust the two separately. The value is the entity
+ * source's (tooling/house-identity.json `mail.from.reminders`); the mail port
+ * sets it from the `reminders` stream, so this export only names it.
  */
-export const REMINDER_FROM = 'Nikatru reminders <reminders@mail.nikatru.com>';
+export const REMINDER_FROM: string = MAIL_FROM.reminders;
 
 /**
  * The `kind` column of `reminder_sent`. A closed set, enforced here (0020 has
@@ -187,6 +191,11 @@ export interface LiveSubscription {
   user_id: string;
   name: string | null;
   price: number | null;
+  /** ISO 4217, where subscriptiontracker_db's 0003 column exists and the row
+   *  carries one; null on a legacy row, whose currency only the client knows. */
+  currency: string | null;
+  /** The exact charge in the currency's minor unit (0003), or null. */
+  price_minor: number | null;
   cycle: string | null;
   next_renewal: string;
   /** subscriptiontracker_db's own leads, where that column exists (ST-T3a):
@@ -230,6 +239,8 @@ export async function readLiveSubscriptions(db: D1Database, userIds: readonly st
         user_id: String(r.user_id),
         name: typeof r.name === 'string' ? r.name : null,
         price: typeof r.price === 'number' ? r.price : null,
+        currency: typeof r.currency === 'string' ? r.currency : null,
+        price_minor: typeof r.price_minor === 'number' ? r.price_minor : null,
         cycle: typeof r.cycle === 'string' ? r.cycle : null,
         next_renewal: String(r.next_renewal),
         // JSON TEXT, not a number: the one reading both Workers share.
@@ -292,9 +303,55 @@ export function dueReminder(
   return { lead, kind: reminderKind(lead, sub.reminder_days !== null) };
 }
 
-/** "649.00" for a number, nothing for anything else. The currency is not stored. */
-export function priceLabel(price: unknown): string | null {
-  return typeof price === 'number' && Number.isFinite(price) ? price.toFixed(2) : null;
+/**
+ * ISO 4217 minor-unit digits for the currencies whose exponent is NOT two — the
+ * yen has none and the Kuwaiti dinar has three, so a fixed two decimals misprints
+ * both. Every code not listed is two, ISO's own majority.
+ *
+ * TODO(lane fix-st-api-bounds): that lane adds the shared ISO 4217 table under
+ * contracts/; once it lands, read it here and delete this map.
+ */
+const MINOR_DIGITS_NOT_TWO: Readonly<Record<string, number>> = {
+  BIF: 0, CLP: 0, DJF: 0, GNF: 0, ISK: 0, JPY: 0, KMF: 0, KRW: 0, PYG: 0, RWF: 0,
+  UGX: 0, UYI: 0, VND: 0, VUV: 0, XAF: 0, XOF: 0, XPF: 0,
+  BHD: 3, IQD: 3, JOD: 3, KWD: 3, LYD: 3, OMR: 3, TND: 3,
+  CLF: 4, UYW: 4,
+};
+
+/** The minor-unit digits of an ISO 4217 code (upper case). */
+export function minorDigits(code: string): number {
+  return Object.hasOwn(MINOR_DIGITS_NOT_TWO, code) ? MINOR_DIGITS_NOT_TWO[code] : 2;
+}
+
+/** An exact minor-unit count as its decimal string: (1999, 2) → "19.99", (500, 0) → "500". */
+function fromMinor(minor: number, digits: number): string {
+  const s = String(minor).padStart(digits + 1, '0');
+  return digits === 0 ? s : `${s.slice(0, -digits)}.${s.slice(-digits)}`;
+}
+
+/**
+ * The amount as a person reads it: "USD 9.99", "JPY 1200", "KWD 3.500".
+ *
+ * ⏱ 2026-10-01 · rv2-services-020. This printed `price.toFixed(2)` and nothing
+ * else, under a comment saying the currency was not stored — true until
+ * subscriptiontracker_db's migration 0003 added `currency` and `price_minor`, so
+ * a USD plan and an INR plan read the same in the mail and the calendar. Now the
+ * stored code is printed with that currency's own minor digits, from the exact
+ * `price_minor` where the row has it, else from `price`.
+ *
+ * A row with no currency (every row written before 0003, until the client
+ * stamps it) still prints the bare amount: its currency is the user's own,
+ * which only the device knows, and a guessed code would be a wrong one.
+ * Nothing for a missing or non-finite amount.
+ */
+export function priceLabel(price: unknown, currency: unknown = null, priceMinor: unknown = null): string | null {
+  const code = typeof currency === 'string' && /^[A-Za-z]{3}$/.test(currency) ? currency.toUpperCase() : null;
+  if (code === null) return typeof price === 'number' && Number.isFinite(price) ? price.toFixed(2) : null;
+  const digits = minorDigits(code);
+  if (typeof priceMinor === 'number' && Number.isSafeInteger(priceMinor) && priceMinor >= 0) {
+    return `${code} ${fromMinor(priceMinor, digits)}`;
+  }
+  return typeof price === 'number' && Number.isFinite(price) ? `${code} ${price.toFixed(digits)}` : null;
 }
 
 // ── the digest ──────────────────────────────────────────────────────────────
@@ -304,6 +361,9 @@ export interface DueItem {
   dueOn: string;
   cycle: string | null;
   price: number | null;
+  /** The subscription's ISO 4217 code and exact minor amount, where stored. */
+  currency: string | null;
+  priceMinor: number | null;
   lead: number;
   /** The claim's `reminder_sent.kind`: reminderKind(lead, …). */
   kind: string;
@@ -341,7 +401,7 @@ export function buildDigest(
       ? `${first.name} renews on ${dateLabel(first.dueOn)}`
       : `${items.length} subscriptions renew by ${dateLabel(items[items.length - 1].dueOn)}`;
   const line = (i: DueItem): string => {
-    const p = priceLabel(i.price);
+    const p = priceLabel(i.price, i.currency, i.priceMinor);
     return `${i.name} — ${dateLabel(i.dueOn)}${i.cycle ? ` (${i.cycle}${p ? `, ${p}` : ''})` : p ? ` (${p})` : ''}`;
   };
   const text =
@@ -474,6 +534,8 @@ async function pendingFor(env: Env, target: AppTarget, db: D1Database, today: st
       dueOn: due,
       cycle: sub.cycle,
       price: sub.price,
+      currency: sub.currency,
+      priceMinor: sub.price_minor,
       lead,
       kind,
     };
@@ -536,7 +598,7 @@ async function remindApp(
   env: Env,
   target: AppTarget,
   state: RunState,
-  apiKey: string,
+  mail: MailTransport,
   serviceKey: string,
   fetchImpl: typeof fetch,
 ): Promise<ReminderRow> {
@@ -582,28 +644,28 @@ async function remindApp(
       let delivered = false;
       let refused = false;
       let why = '';
+      let res: MailOutcome;
       try {
-        const res = await sendResendMail(
-          apiKey,
-          {
-            from: REMINDER_FROM,
-            to: [account.email],
-            subject: digest.subject,
-            text: digest.text,
-            html: digest.html,
-            headers: {
-              'List-Unsubscribe': `<${unsubscribeUrl}>`,
-              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-            },
+        res = await mail.send({
+          stream: 'reminders',
+          to: [account.email],
+          subject: digest.subject,
+          text: digest.text,
+          html: digest.html,
+          headers: {
+            'List-Unsubscribe': `<${unsubscribeUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
           },
-          fetchImpl,
-        );
-        delivered = res.ok;
-        refused = !res.ok;
-        if (!res.ok) why = `Resend answered ${res.status}`;
+        });
       } catch (err) {
-        why = `Resend not reached: ${String(err).slice(0, 80)}`;
+        // The port resolves every outcome; a throw is a defect, and it may have sent.
+        res = { ok: false, kind: 'timeout', retryable: false, detail: `mail transport threw ${err instanceof Error ? err.name : 'a non-error'}` };
       }
+      delivered = res.ok;
+      // `timeout` got no answer and may have been delivered; every other failure
+      // is a definite answer that delivered nothing.
+      refused = !res.ok && res.kind !== 'timeout';
+      if (!res.ok) why = res.detail;
       if (delivered) {
         sent++;
         state.sentToday++;
@@ -651,6 +713,12 @@ export async function runReminderMail(
       detail: `not configured: ${missing.join(' and ')} not set on this Worker, so no reminder can be sent`,
     }));
   }
+  // The `reminders` stream (src/ports.ts): its own key when one is set, else the
+  // reports key above — so with RESEND_API_KEY present this is never null.
+  const mail = mailFor('reminders', env, fetchImpl);
+  if (!mail) {
+    return targets.map((t) => ({ target: t.appId, ok: false, detail: 'not configured: no key for the reminders mail stream' }));
+  }
   const today = ymdOf(nowMs);
   const state: RunState = {
     today,
@@ -667,7 +735,7 @@ export async function runReminderMail(
   }
   const rows: ReminderRow[] = [];
   for (const t of targets) {
-    rows.push(await remindApp(env, t, state, env.RESEND_API_KEY as string, env.SUPABASE_SERVICE_ROLE_KEY as string, fetchImpl));
+    rows.push(await remindApp(env, t, state, mail, env.SUPABASE_SERVICE_ROLE_KEY as string, fetchImpl));
   }
   return rows;
 }

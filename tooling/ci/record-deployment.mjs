@@ -53,7 +53,7 @@
 // Usage:
 //   node tooling/ci/record-deployment.mjs <environment> [environment-url]
 //   node tooling/ci/record-deployment.mjs <environment> [url] \
-//        --state <in_review|live|rejected|pulled> --listing-url <url>
+//        --state <in_review|draft_staged|live|rejected|pulled> --listing-url <url>
 //   node tooling/ci/record-deployment.mjs <environment> [url] \
 //        --state pending_manual_publish            # submittable:false store rows
 //   node tooling/ci/record-deployment.mjs <environment> [url] --state in_review \
@@ -117,7 +117,8 @@ import {
   STATES,
   STATE_MEANING,
   SUBMIT_TIME_STATES,
-  NOT_SUBMITTED_STATES,
+  MANUAL_PUBLISH_STATES,
+  STAGED_STATES,
   MODES,
   dryRunEnvironment,
   encodeDryRunDescription,
@@ -786,8 +787,17 @@ async function main() {
     // register's `versionCodeHighWater` block, never from the environment's name.
     const hw = resolved.channel.versionCodeHighWater;
     recordsVersionCode = hw !== null && typeof hw === 'object' && !Array.isArray(hw);
-    const NOT_SUBMITTED = NOT_SUBMITTED_STATES[0];
-    if (state !== null && NOT_SUBMITTED_STATES.includes(state) && !cannotSubmit) {
+    const NOT_SUBMITTED = MANUAL_PUBLISH_STATES[0];
+    // ⏱ 2026-10-01: `draft_staged` is the mirror of the manual-publish state — it may be written ONLY
+    // where a lane submits (a staged draft is an upload by THIS factory), never on a row nobody uploads to.
+    if (state !== null && STAGED_STATES.includes(state) && !(isStore && submittable)) {
+      return fail(
+        `--state ${state} was given for "${environment}", and the ${resolved.channel.id} row is not a store channel a lane here ` +
+          `submits through (kind: "${resolved.channel.kind}", submittable: ${JSON.stringify(resolved.channel.submittable ?? null)}). ` +
+          `${STATE_MEANING[state]} Only an upload by this factory can have staged one.`,
+      );
+    }
+    if (state !== null && MANUAL_PUBLISH_STATES.includes(state) && !cannotSubmit) {
       return fail(
         `--state ${state} was given for "${environment}", and ${
           isStore
@@ -808,7 +818,7 @@ async function main() {
     // listing: the listing does not exist until the manual publish happens, so
     // demanding it would be demanding a fiction. The state below is still
     // mandatory, which is where the honesty is enforced.
-    if (cannotSubmit && state !== null && !NOT_SUBMITTED_STATES.includes(state)) {
+    if (cannotSubmit && state !== null && !MANUAL_PUBLISH_STATES.includes(state)) {
       return fail(
         `--state ${state} was given for "${environment}", and the ${resolved.channel.id} row is ` +
           '`submittable: false` — no lane in this factory can submit through it, so no run here can have ' +
@@ -830,7 +840,7 @@ async function main() {
         `"${environment}" is the ${resolved.channel.id} channel (kind: store) and no --state was given. ` +
           `A store submission is NOT live when the upload succeeds — it is "${SUBMIT_TIME_STATES[0]}" until the ` +
           `store decides, which happens after this run has ended. There is no default here on purpose: pass ` +
-          `--state ${(cannotSubmit ? NOT_SUBMITTED_STATES : STATES.filter((s) => !NOT_SUBMITTED_STATES.includes(s))).join('|')} explicitly. ` +
+          `--state ${(cannotSubmit ? MANUAL_PUBLISH_STATES : STATES.filter((s) => !MANUAL_PUBLISH_STATES.includes(s))).join('|')} explicitly. ` +
           `${cannotSubmit ? STATE_MEANING[NOT_SUBMITTED] : STATE_MEANING.in_review}`,
       );
     }

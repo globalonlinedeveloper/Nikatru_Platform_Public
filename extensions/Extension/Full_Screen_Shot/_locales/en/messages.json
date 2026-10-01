@@ -169,6 +169,10 @@
     "message": "Batch",
     "description": "Link in the popup footer. Opens the page where several page addresses are captured one after another."
   },
+  "popupUpgrade": {
+    "message": "Upgrade to FullShot Pro",
+    "description": "AWAITING-TRANSLATION. Popup button, shown only while this browser is not FullShot Pro. Opens the FullShot Pro checkout on nikatru.com. 'FullShot Pro' is a product name and stays untranslated."
+  },
   "popupLinkOptions": {
     "message": "Options",
     "description": "Link in the popup footer, and the tooltip on the gear button on other pages. Opens the settings page."

@@ -9,8 +9,12 @@ import 'package:intl/intl.dart' show DateFormat;
 import '../core/format/money_format.dart';
 import '../core/format/sub_math.dart';
 import '../data/api/api_client.dart' show ApiException;
+import '../data/models/budget_info.dart';
 import '../data/models/subscription.dart';
 import '../l10n/app_localizations.dart';
+import 'package:nikatru_notifications/nikatru_notifications.dart'
+    show LinuxAutostartControl;
+
 import '../services/notifications/notification_service.dart';
 import 'analytics_funnel.dart';
 import 'providers.dart';
@@ -102,6 +106,14 @@ ReminderCopy reminderCopyFor(Locale? chosen) {
     cancelByTitle: (DateTime d) => l10n.cancelByTitle(monthDay.format(d)),
     cancelByBody: (String name, DateTime d) =>
         l10n.cancelByBody(name, monthDay.format(d)),
+    // ST-I2 (audit C14): the over-budget alert, in the same language.
+    overBudgetTitle: l10n.overBudgetTitle,
+    overBudgetBody: l10n.overBudgetBody,
+    // NO-10 / NO-13: the buttons on a renewal reminder, and the test one.
+    markPaidAction: l10n.reminderActionMarkPaid,
+    snoozeAction: l10n.reminderActionSnooze,
+    testTitle: l10n.testReminderTitle,
+    testBody: l10n.testReminderBody,
   );
 }
 
@@ -211,6 +223,40 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     return s.hasValue && !s.hasError ? s.requireValue : null;
   }
 
+  /// Re-read the list from the server and keep the list on screen if that
+  /// fails — ST-N6 (D23, F37): a return to the app and the pull-to-refresh
+  /// gesture both land here, through `refreshOnReturn`.
+  ///
+  /// 🔴 NOT `invalidateSelf()`, which is what a naive refresh would be. A
+  /// failed rebuild puts the provider in an ERROR state, [observedList] reads
+  /// that as "not observed", and the next add would then write a list of ONE
+  /// row — the rest of the user's subscriptions gone from the screen because a
+  /// phone came back to the front on a flat network. A resume happens many
+  /// times a day, offline more often than a first launch is.
+  ///
+  /// - still loading: nothing to do, the fetch in flight IS the refresh;
+  /// - failed with nothing observed: this is the Retry, so rebuild;
+  /// - observed: fetch, and replace the list only if nothing wrote it while
+  ///   the fetch was out (an add that landed meanwhile is newer than this).
+  Future<void> refresh() async {
+    final List<Subscription>? before = observedList;
+    if (before == null) {
+      if (state.hasError) ref.invalidateSelf();
+      return;
+    }
+    final List<Subscription> fetched;
+    try {
+      fetched = _visible(
+        await ref.read(subscriptionRepositoryProvider).fetchAll(),
+      );
+    } on Object {
+      return; // A flat network is not an empty account; the offline banner says so.
+    }
+    if (!ref.mounted || !identical(observedList, before)) return;
+    state = AsyncData<List<Subscription>>(fetched);
+    await _syncReminders(fetched);
+  }
+
   /// [primeReminders] is the PRIMING step (train ST-D8): the add sheet shows
   /// the design system's `showPermissionPriming` and answers whether the user
   /// chose to proceed. It is asked ONLY on the empty→first transition below,
@@ -280,6 +326,29 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     }
   }
 
+  /// IM-02/IM-03/IM-04 — an import's reviewed rows, each through
+  /// [addSubscription]: the add route and nothing else, so an imported row is
+  /// written, cached and reminded exactly as a typed one is. No primer is
+  /// passed, so an import never spends the OS notification ask.
+  ///
+  /// Stops at the FIRST failure rather than skipping it, so "added 3 of 5" is
+  /// always the first three and a retry knows where to start. Answers how many
+  /// landed and the error that stopped it, or null.
+  Future<({int added, Object? error})> addAll(
+    Iterable<Subscription> drafts,
+  ) async {
+    int added = 0;
+    for (final Subscription draft in drafts) {
+      try {
+        await addSubscription(draft);
+      } catch (e) {
+        return (added: added, error: e);
+      }
+      added++;
+    }
+    return (added: added, error: null);
+  }
+
   /// The currency a NEW row is created in — the user's own choice.
   ///
   /// Read here rather than in the add sheet because this is what WRITES rows:
@@ -334,6 +403,49 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
         'status': SubscriptionStatus.cancelled.name,
         'cancelled_on': Subscription.dateOnly(on ?? DateTime.now()),
       });
+
+  /// NO-10: "Mark as paid" — one payment of the plan's price, dated today,
+  /// from a notification button or a /notifications row.
+  ///
+  /// The idempotency key is DERIVED (`paid_<id>_<day>`, in the server's key
+  /// alphabet), not random: a notification action the OS delivers twice, or a
+  /// row pressed after the notification was, is the same payment and must be
+  /// recorded once. `POST /:id/payments` does not read the key yet (lane
+  /// fix-payments-idempotency); a server ignores an unknown query parameter,
+  /// and the key is sent regardless. Throws on a failed write so the caller
+  /// can say so; the list is not touched.
+  Future<void> markPaid(String id) async {
+    final List<Subscription> list = state.value ?? await future;
+    final Subscription sub = list.firstWhere((Subscription s) => s.id == id);
+    final DateTime now = ref.read(nowProvider)();
+    await ref
+        .read(apiClientProvider)
+        .recordPayment(
+          id,
+          amount: sub.price,
+          paidOn: now,
+          idempotencyKey: 'paid_${id}_${Subscription.dateOnly(now)}',
+        );
+  }
+
+  /// NO-10: "Snooze 1 day" — a reminder about [id] again in 24 hours (quiet
+  /// hours still apply), and the shown one [notificationId] dismissed. From
+  /// an in-app row there is none to dismiss. No network.
+  Future<void> snoozeReminder(String id, {int? notificationId}) async {
+    final List<Subscription> list = state.value ?? await future;
+    final Subscription? sub = list
+        .where((Subscription s) => s.id == id)
+        .firstOrNull;
+    if (sub == null) return;
+    await ref
+        .read(renewalRemindersProvider)
+        .snooze(
+          sub,
+          copy: reminderCopyFor(ref.read(localeProvider)),
+          quiet: ref.read(settingsControllerProvider).quietHours,
+          dismissId: notificationId,
+        );
+  }
 
   /// Stop counting it for now; the row and its history stay (ST-E3).
   Future<void> pauseSubscription(String id) => updateSubscription(
@@ -411,6 +523,16 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     _undoable.remove(id);
   }
 
+  /// Re-run the reminder sync against the list already observed — for a
+  /// write that changes what a reminder says without changing the list. The
+  /// budget editor's save is the one caller (ST-I2): a new budget can put the
+  /// same subscriptions over it. Nothing observed yet: nothing to do, and
+  /// `build()` syncs the moment the list arrives.
+  Future<void> resyncReminders() async {
+    final List<Subscription>? observed = observedList;
+    if (observed != null) await _syncReminders(observed);
+  }
+
   /// Keep the OS reminder set in step with [subs] — AWAITED, and never a
   /// throw.
   ///
@@ -445,13 +567,20 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     final ReminderCopy copy = reminderCopyFor(chosenLocale);
 
     // AWAITED (see [_syncReminders]); RenewalReminders is a no-op wherever
-    // the capability matrix says it cannot schedule (web, Windows, Linux).
+    // the capability matrix says it cannot schedule (web; Windows unidentified).
     //
     // ORDER: renewals first, digest second. This ordering USED to be
     // load-bearing — syncAll() began with cancelAll(), which took the weekly
     // digest with it — and it is kept although syncAll() now cancels only
     // the renewal namespace, so a future widening of that namespace cannot
     // silently swallow the digest again.
+    // NO-04: the Linux login entry follows the plan too — "Renewal alerts"
+    // defaults ON, so an install that never touched the switch is opted in.
+    final LinuxAutostartControl? autostart = ref.read(linuxAutostartProvider);
+    if (autostart != null && await autostart.isEnabled() != plan.syncRenewals) {
+      await (plan.syncRenewals ? autostart.enable() : autostart.disable());
+    }
+
     if (plan.syncRenewals) {
       // ONLY CHARGING ROWS (ST-E3): a paused or cancelled row keeps its place
       // on the list and loses its reminders, because `syncAll` cancels every
@@ -494,6 +623,64 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     } else {
       await notifier.cancelWeeklyDigest();
     }
+
+    await _syncOverBudget(notifier, copy, settings, chosenLocale, subs, plan);
+  }
+
+  /// ST-I2 (audit C14) — THE OVER-BUDGET ALERT, through the same seam as the
+  /// renewals. Until this, a budget could be set (ST-D3) and nothing anywhere
+  /// in the app ever told anyone they had passed it outside the Insights tab.
+  ///
+  /// Behind `alerts` ("Renewal alerts"), the app's one switch for "may we
+  /// notify you about money": a user who turned that off gets no alert from
+  /// here either, and the armed one is cancelled.
+  ///
+  /// 🔴 AN UNREAD BUDGET IS NOT "NO BUDGET". A failed read leaves whatever is
+  /// armed exactly as it is — the same rule as `observedList` for the list:
+  /// cancelling on a transport failure would silence a real alert because
+  /// the network blinked. The read is skipped where nothing can be scheduled
+  /// (web), so the build that can never post one never pays for it.
+  Future<void> _syncOverBudget(
+    RenewalReminders notifier,
+    ReminderCopy copy,
+    SettingsState settings,
+    Locale? chosenLocale,
+    List<Subscription> subs,
+    ReminderPlan plan,
+  ) async {
+    if (!notifier.capabilities.canSchedule) return;
+    final String currencyCode = newRowCurrencyCode;
+    final MoneyFormatter money = MoneyFormatter(
+      resolvedLocaleName(chosenLocale),
+      emptyCurrencyCode: currencyCode,
+    );
+    final MoneyBag spent = SubMath.totalMonthly(subs);
+    if (!plan.syncRenewals) {
+      await notifier.syncOverBudget(
+        budget: null,
+        spent: spent,
+        copy: copy,
+        rules: settings.reminderRules,
+        money: money,
+      );
+      return;
+    }
+    final BudgetInfo budget;
+    try {
+      budget = await ref.read(subscriptionRepositoryProvider).budget();
+    } on Object {
+      return;
+    }
+    if (!ref.mounted) return; // Riverpod 3: the provider may be gone by now.
+    await notifier.syncOverBudget(
+      // Read in the display currency exactly as the budget card reads it
+      // (`BudgetInfo.inCurrency`), so the two cannot disagree about "over".
+      budget: budget.inCurrency(currencyCode),
+      spent: spent,
+      copy: copy,
+      rules: settings.reminderRules,
+      money: money,
+    );
   }
 }
 

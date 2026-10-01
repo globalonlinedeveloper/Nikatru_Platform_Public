@@ -498,6 +498,10 @@ const REQUIRED_COVERAGE = [
     // ⏱ LOWERED 19 → 18 the same day by ST-D3 D3-3, deliberately: `BudgetScreen`
     // is RETIRED (ADR 077 §A) and `width_budget_test.dart` went with it; the
     // file count stays above its floor (17 files, floor 16).
+    // ⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): UNCHANGED AT 18, one for one —
+    // `ScanScreen` left with `width_scan_test.dart` and `ImportScreen` arrived
+    // with `width_import_test.dart` at kPhone, kTablet and kDesktop. Measured by
+    // this guard's own run: "18 surface(s) reachable, 18 measured", 18 files.
     surfaces: 18,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
@@ -669,9 +673,30 @@ const REQUIRED_COVERAGE = [
     // surfaces unchanged: `test/auth_frame_adoption_test.dart` (every chassis
     // auth view on the shared AuthFrame, pumped at kPhone and 1440) joined the
     // corpus. Read off the per-root line, `— 29 file(s)`.
-    surfaces: 26,
-    widthTestFiles: 29,
-    coveredSurfaces: 26,
+    // ⏱ RAISED 26 → 27 surfaces / 29 → 30 files / 26 → 27 covered ON 2026-10-01
+    // (audit D8, D12/F53, lane fix-rv2-st-after-dw): `SettingsHeading`
+    // (lib/settings/help_section.dart) joined, and `test/help_section_test.dart`
+    // pumps it with the Help card at all three classes. Read off this guard's
+    // per-root lines — `27 surface(s) reachable, 27 measured` and `— 30 file(s)`.
+    // ⏱ RAISED 2026-10-01 (O-APPS-GOV-IN-VAPT-CHECKLIST), on top of the line
+    // above: surfaces 27 → 31, coveredSurfaces 27 → 31 and `widthTestFiles` 30 → 32,
+    // IN THE CHANGE THAT EARNED THEM: TamperedBuildScreen, TamperedBuildApp,
+    // ReauthDialog and RootedDeviceNoticeHost arrived with
+    // test/device_integrity_gate_test.dart (all three classes) and
+    // test/a11y_integrity_test.dart. Read off the per-root lines,
+    // `31 surface(s) reachable, 31 measured` and `— 32 file(s)`.
+    // ⏱ RAISED `widthTestFiles` 32 → 33 ON 2026-10-01 (train ST import hub),
+    // surfaces unchanged: `test/data_section_test.dart` joined the corpus with
+    // the Your data card (`dataCard`, a function, not a surface). Read off the
+    // per-root line, `— 33 file(s)`.
+    // ⏱ RAISED 31 → 32 surfaces / 31 → 32 covered ON 2026-10-01 · ST-N6
+    // (D23/F37, #1080), merged with the above: the chassis `RefreshOnResume`,
+    // pumped at all three classes by test/app_shell_view_test.dart (files
+    // unchanged). Read off the merged tree: `32 surface(s) reachable, 32
+    // measured` and `— 33 file(s)`.
+    surfaces: 32,
+    widthTestFiles: 33,
+    coveredSurfaces: 32,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',
@@ -750,10 +775,22 @@ const REQUIRED_COVERAGE = [
     // measured — 7 PRINTED".
     //   surfaces        38 → 43
     //   coveredSurfaces 30 → 36
+    //
+    // ⏱ 2026-10-01 · ST truth pass (EN-17) — ForceUpdateGate, printed as
+    // unmeasured until now, pumped at 375 / 768 / 1280 by
+    // system_screens_text_scale_test.dart (and at 360 × 640 / 200 % text).
+    // Read off the run's own line: "37 of 43 surface(s) measured — 6 PRINTED".
+    //   coveredSurfaces 36 → 37
+    //
+    // ⏱ 2026-10-01 · train st-entry (EN-11), on top of the truth pass —
+    // `SwallowSystemBack` joined the root and is PRINTED unmeasured on purpose:
+    // it paints nothing (a `SizedBox.shrink`), so it has no width to decide.
+    // Read off the run's own line: "37 of 44 surface(s) measured — 7 PRINTED".
+    //   surfaces        43 → 44
     enforce: false,
-    surfaces: 43,
+    surfaces: 44,
     widthTestFiles: 19,
-    coveredSurfaces: 36,
+    coveredSurfaces: 37,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, content_pane, two_pane and fifteen ' +
       'more, whose width decisions every stamped app inherits',

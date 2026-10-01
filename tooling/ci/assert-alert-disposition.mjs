@@ -508,8 +508,18 @@ async function fetchOpenIssues(repo) {
   throw new Error(`more than ${ISSUE_PAGE_CAP * ISSUE_PAGE_SIZE} open issues — this enumeration is truncated and cannot claim to have seen every firing`);
 }
 
+// ⏱ 2026-10-01 — `event=schedule` IN THE QUERY. Limb A grades only scheduled runs (`sourceHealth`), but the page was
+// the newest RUN_SAMPLE runs of ANY event. On 2026-10-01 the landers' E2E-on-the-PR-head dispatches (v16) filled
+// e2e.yml's newest 30 with workflow_dispatch runs, the nightly scheduled run fell off the page, and every PR read
+// "COVERAGE LOST — no scheduled run in the sampled history" (#1107, run 36839022640). The more a workflow is
+// dispatched by hand, the sooner that happens; filtering on the server makes the page hold ONLY what is graded.
+// run-page-anchor.mjs applies `event=` to its cross-read and second source (`runQueryPredicate`).
+/** PURE. The firing-history query of one source: SCHEDULED runs only (see above). Exported for its red test. */
+export function firingHistoryUrl(repo, workflowFile) {
+  return `${GH_API}/repos/${repo}/actions/workflows/${workflowFile}/runs?event=schedule&per_page=${RUN_SAMPLE}`;
+}
 async function fetchRuns(repo, workflowFile) {
-  const read = await anchoredRunRead({ workflow: workflowFile, url: `${GH_API}/repos/${repo}/actions/workflows/${workflowFile}/runs?per_page=${RUN_SAMPLE}`, token: ghToken(), label: `${workflowFile} runs`, userAgent: 'nikatru-alert-disposition' });
+  const read = await anchoredRunRead({ workflow: workflowFile, url: firingHistoryUrl(repo, workflowFile), token: ghToken(), label: `${workflowFile} runs`, userAgent: 'nikatru-alert-disposition' });
   console.log(`   ·  ${workflowFile}: ${describeRead(read, newestScheduled)}`);
   return read.union; // ⏱ 2026-09-28 — anchored like every freshness reader; see the file end
 }

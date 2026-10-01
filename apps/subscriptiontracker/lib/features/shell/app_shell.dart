@@ -6,6 +6,7 @@ import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../l10n/app_localizations.dart';
 import '../add/add_subscription_sheet.dart';
+import '../settings/preference_refused_notice.dart';
 import '../shared/widgets.dart';
 import 'sync_problems_strip.dart';
 
@@ -179,12 +180,16 @@ class AppShell extends StatelessWidget {
     // Not `MediaQuery`: a window is not always the size of the screen, and
     // the width harness pins layout without moving `MediaQuery` at all.
     // The offline outbox's dead letters sit under the shell (review #1075
-    // finding 9); the bare shell while there are none.
-    return SyncProblemsStrip(
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) => _build(
-          context,
-          compact: windowClassFor(constraints.maxWidth) == WindowClass.compact,
+    // finding 9); the bare shell while there are none. D11: an account
+    // refusal of a preference change is said here, once.
+    return PreferenceRefusedNotice(
+      child: SyncProblemsStrip(
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) => _build(
+            context,
+            compact:
+                windowClassFor(constraints.maxWidth) == WindowClass.compact,
+          ),
         ),
       ),
     );
@@ -408,7 +413,9 @@ class AppShell extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
           child: Container(
             key: navPillKey,
-            height: 66,
+            // A FLOOR, not a height (ST truth pass, SH-01): at 200 % text a
+            // tab label takes two lines, and a fixed 66 clipped them.
+            constraints: const BoxConstraints(minHeight: 66),
             padding: const EdgeInsets.symmetric(horizontal: 6),
             decoration: BoxDecoration(
               color: isLight
@@ -510,14 +517,19 @@ class AppShell extends StatelessWidget {
                 children: <Widget>[
                   Icon(icon, color: color, size: 22),
                   const SizedBox(height: 3),
+                  // ⏱ ST truth pass (SH-01): the ramp's `labelSmall` — the
+                  // design system's 12 px floor — not a 9 px literal, the
+                  // smallest text in the app on its only navigation. TWO
+                  // lines: a fifth of a 360 px pill holds "Insights" at
+                  // 100 %, and a longer word, a longer language or 200 %
+                  // text wraps (the pill's floor grows) instead of "Insi…".
                   Text(
                     label,
-                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: 'Manrope',
+                    style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w700,
-                      fontSize: 9,
                       color: color,
                     ),
                   ),

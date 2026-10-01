@@ -16,8 +16,8 @@
 // a scheduling platform cannot pass merely because the row was never built.
 //
 // MUTATION PROOF (run and recorded in the PR): make `remindersDeliverable`
-// in settings_screen.dart the constant `true` and the Windows, Linux and web
-// cases go red.
+// in settings_screen.dart the constant `true` and the web case goes red
+// (Windows and Linux schedule now).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -71,7 +71,8 @@ void main() {
       <String, RenewalReminders Function()>{
         // ⏱ 2026-09-28 (ST-R4): Windows LEFT this map — it schedules now,
         // with the app identity rendered from app.yaml. See the other map.
-        'Linux': () => _PinnedNotifications(TargetPlatform.linux),
+        // ⏱ 2026-10-01 (NO-04): and so did Linux — packages/notifications
+        // schedules there now (in process, at launch, at login).
         'web': () => _PinnedNotifications(TargetPlatform.android, isWeb: true),
       };
 
@@ -108,6 +109,8 @@ void main() {
     'macOS': TargetPlatform.macOS,
     // ⏱ 2026-09-28 (ST-R4, O-RENEWAL-REMINDERS-OFF-ON-DESKTOP).
     'Windows': TargetPlatform.windows,
+    // ⏱ 2026-10-01 (NO-04, the Linux limb of the same row).
+    'Linux': TargetPlatform.linux,
   };
 
   canSchedule.forEach((String name, TargetPlatform p) {

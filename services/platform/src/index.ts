@@ -31,6 +31,10 @@
 //                                  to GoTrue with the service-role bearer (ST-N1).
 //                                  No browser: an `Origin` is a 403. Fail-closed
 //                                  limits per account and per network.
+//   AUTHED  POST   /v1/auth/handoff/:app/code — the signed-in nikatru.com/app/connect
+//                                  page mints a desktop app's PKCE-bound sign-in code;
+//   NATIVE  POST   /v1/auth/native/:app/handoff/token — the app exchanges it for
+//                                  a session of its own (the system-browser hand-off).
 //   AUTHED  GET/PUT /v1/reminders/prefs — the renewal reminder email preference.
 //   PUBLIC  GET/POST /v1/reminders/unsubscribe — one-click unsubscribe; the token
 //                                  is the capability. Edge-ceilinged.
@@ -70,6 +74,7 @@ import money from './routes/money';
 import receipts from './routes/receipts';
 import sessions from './routes/sessions';
 import nativeAuth from './routes/native-auth';
+import nativeHandoff from './routes/native-handoff';
 import reminders from './routes/reminders';
 import calendar from './routes/calendar';
 import { scheduled } from './scheduled';
@@ -126,9 +131,9 @@ app.use('*', corsMiddleware);
 // ── WHY THESE FOUR DEPENDENCIES AND NOT OTHERS ───────────────────────────────
 //   PLATFORM_DB    the shared entitlements DB. Every authenticated read and the
 //                  whole analytics rail land here.
-//   CONFIG_KV      GET /config/:app reads it UNGUARDED (routes/config.ts:67 —
-//                  no try/catch), so a KV that refuses turns the FIRST request
-//                  every launching app makes into a 500.
+//   CONFIG_KV      GET /config/:app reads it (routes/config.ts:77), so a KV that
+//                  refuses turns the FIRST request every launching app makes
+//                  into a 503 config_unavailable (a 500 before rv2-services-013).
 //   SUPABASE_JWKS  the document every ES256 verification rests on. When it
 //                  fails, DELETE /v1/account 401s for everybody while the Worker
 //                  itself is perfectly well — invisible to any status check.
@@ -359,6 +364,12 @@ app.route('/v1', receipts);
 // native app id from generated/app-targets.ts) and its own FAIL-CLOSED
 // limiters; middleware/cors.ts refuses `Origin` on its prefix and grants no CORS.
 app.route('/v1', nativeAuth);
+// ⏱ 2026-10-01 · THE SYSTEM-BROWSER HAND-OFF, browser half: a desktop build
+// cannot attest, so the user signs in on nikatru.com and THIS route, behind
+// `platformAuth` at the handler (routes/native-handoff.ts), mints the code the
+// app exchanges on the native route above. Browser-callable on purpose: it is
+// not under the `refuseBrowsersOn` prefix.
+app.route('/v1', nativeHandoff);
 // ⏱ 2026-09-28 · ST-R1/ST-R2 — RENEWAL REMINDERS: the email preference and the
 // private calendar feed. AUTHENTICATED on EXACT paths only, and that is the whole
 // point of spelling them: `/v1/reminders/unsubscribe` and

@@ -412,9 +412,9 @@
       "providers": ["paddle"],
       "assert": {
         "kind": "present",
-        "files": ["services/platform/src/lib/mor/registry.ts"],
-        "pattern": "MOR_VERIFIERS[^=]*=\\s*\\[[^\\]]*paddleVerifier",
-        "why": "REPLACED THE `Razorpay` known-gap ROW. §4 previously told a buyer their website purchase was 'processed securely by Razorpay' — a company no code in this repository reaches, for a purchase the same site said does not happen, in a legal relationship a gateway is not ([ADR 004] locked a merchant of record; [ADR 039] D6 then confirmed Paddle serves Indian buyers too and that Razorpay is NOT the app rail). The page now names Paddle, so the pairing can be a real one: `MOR_VERIFIERS` is the merchant-of-record webhook registry, it is DATA rather than a URL shape (see the `_money` note in provider-register.json), and `paddleVerifier` is the only rail in it. Remove Paddle from that array and the page names a seller no money route can verify a webhook from — which is exactly when this row should go red. ⚠️ THIS ASSERTS THE RAIL IS REGISTERED, NOT THAT A SELLER ACCOUNT EXISTS: account state is private-SSoT material (OWNER_QUEUE A-1) and no in-tree guard can or should observe it."
+        "files": ["services/platform/src/generated/ports.ts"],
+        "pattern": "MOR_VERIFIER_IDS[^=]*=\\s*\\[[^\\]]*'paddle'",
+        "why": "REPLACED THE `Razorpay` known-gap ROW. §4 previously told a buyer their website purchase was 'processed securely by Razorpay' — a company no code in this repository reaches, for a purchase the same site said does not happen, in a legal relationship a gateway is not ([ADR 004] locked a merchant of record; [ADR 039] D6 then confirmed Paddle serves Indian buyers too and that Razorpay is NOT the app rail). The page now names Paddle, so the pairing can be a real one: `MOR_VERIFIERS` is the merchant-of-record webhook registry (⏱ 2026-10-01 port-pay-core: its set is now RENDERED as `MOR_VERIFIER_IDS` in services/platform/src/generated/ports.ts from tooling/ports/payments.json, which is what this row reads), it is DATA rather than a URL shape (see the `_money` note in provider-register.json), and `paddleVerifier` is the only rail in it. Remove Paddle from that array and the page names a seller no money route can verify a webhook from — which is exactly when this row should go red. ⚠️ THIS ASSERTS THE RAIL IS REGISTERED, NOT THAT A SELLER ACCOUNT EXISTS: account state is private-SSoT material (OWNER_QUEUE A-1) and no in-tree guard can or should observe it."
       }
     },
     {

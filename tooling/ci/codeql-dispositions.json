@@ -571,6 +571,29 @@
       "disposition": "by-design",
       "host": "api.github.com",
       "reason": "Reads the pull_request event payload Actions writes (GITHUB_EVENT_PATH) for the PR number and head SHA, and asks the GitHub API — the constant GITHUB_API origin, https://api.github.com — for that PR's CodeQL analysis and alerts with the job's own token. The number and SHA are shape-checked (integer, 40 hex) before they reach a URL path."
+    },
+    {
+      "alert": 543,
+      "rule": "js/http-to-file-access",
+      "path": "tooling/release/submit-play.mjs",
+      "disposition": "by-design",
+      "host": "lh3.googleusercontent.com",
+      "reason": "--sync-listing backs up each Play listing image it is about to replace, by design (#1099 review finding 4). The url is pinned by playImageUrlOrRefuse to https://lh3.googleusercontent.com, the host edits.images.list returned for every slot of the live record (measured 2026-10-01), or the loopback test seam; a redirect is refused (redirect: manual); the file name is fixed by the script and the response cannot choose the path, which sits under --backup-dir (default build/, gitignored). Added 2026-10-01."
+    },
+    {
+      "alert": 544,
+      "rule": "js/http-to-file-access",
+      "path": "tooling/release/submit-play.mjs",
+      "disposition": "by-design",
+      "host": "androidpublisher.googleapis.com",
+      "reason": "--sync-listing writes the listing and contact details Play held, as a backup, before it replaces them (#1099 review finding 4). The origin is the pinned Play API origin (loopbackOr: the real origin or the loopback test seam only); the file is the fixed listing.json under --backup-dir (default build/, gitignored), so the response cannot choose the path. Added 2026-10-01."
+    },
+    {
+      "alert": 551,
+      "rule": "js/unused-local-variable",
+      "path": "tooling/ci/assert-mor-adapters.mjs",
+      "disposition": "fixed-in-tree",
+      "reason": "The unread REGISTRY constant (line 82) became a comment in this PR; since #1127 limb 2 derives the provider set from RENDERED_RAILS. Goes stale once main analysis marks #551 fixed; delete it then."
     }
   ]
 }

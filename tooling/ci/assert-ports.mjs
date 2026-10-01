@@ -1,0 +1,694 @@
+#!/usr/bin/env node
+// ─────────────────────────────────────────────────────────────────────────────
+// assert-ports.mjs — EVERY EXTERNAL CAPABILITY IS A PORT WHOSE LEVEL IS EARNED,
+// not claimed. The standard is tooling/ports/README.md; the shape is
+// tooling/ports/port.schema.json; the subjects are tooling/ports/<capability>.json.
+//
+// Extends [pipeline C-8], the portability checklist; payments' interface is the
+// [ADR 004] seam, MoRWebhookVerifier.
+//
+// Row O-NO-PORT-SELECTS-AN-ADAPTER-BY-CONFIG. Measured at origin/main 630dcce4
+// (2026-10-01): of 53 external dependencies and identity facts none was at L3,
+// and nothing selected an adapter by configuration. C-8
+// (assert-vendor-portability.mjs) asks whether each vendor is BEHIND a seam;
+// this asks what the seam is worth — L0 hard-coded, L1 centralised, L2 one
+// adapter chosen by config that no caller imports, L3 conformance-tested with a
+// second adapter and a dry-run switch — and refuses a level the tree does not
+// earn. It EXTENDS the registers that already exist and restates none of them:
+// vendors from tooling/capability-register.json and
+// tooling/legal/provider-register.json, secrets by NAME from the Worker Env (or
+// tooling/worker-secrets.json once it exists), fees as tooling/catalog/
+// fee-register.json cell ids, identity as tooling/house-identity.json paths.
+//
+// THE LIMBS, each with its recorded mutation in test/ports.test.mjs (vacuous-03):
+//   1 schema    every registry validates against port.schema.json, through the
+//               small validator below that READS the schema (no second copy of
+//               the shape lives here); no secret-shaped value and no e-mail
+//               literal; the file name equals `port`. An adapter with NO
+//               environment is `draft` or `retired`; a `stream` selection has
+//               `streams`, each naming an adapter of the port and only secrets
+//               that adapter declares. An empty or unreadable
+//               tooling/ports/ is COVERAGE LOST (exit 2) — a floor of zero ports
+//               is met by an empty directory (vacuous-02).
+//   2 symbols   every interface and impl symbol is DECLARED in its file, in
+//               comment-stripped source — a mention, an import or a comment is
+//               not a declaration.
+//   3 waivers   every handTables anchor still exists, and is PRINTED on every run.
+//               `generated: true` needs the render tool (tooling/ports/render.mjs),
+//               and the rendered table must be CURRENT (its renderCheck, run here
+//               on every build: a hand edit of the generated file is a finding).
+//   4 imports   no TS module imports an adapter's impl.file (or its outbound file
+//               and modules) except its Worker's
+//               composition root (services/<w>/src/ports.ts) or, while
+//               `generated: false`, a file the port's handTables names. A walk
+//               of the import graph of services/*/src (tests are not modules of
+//               a Worker bundle). Dart is C-5's (assert-package-boundaries.mjs).
+//   5 secrets   every `secrets` NAME is a tooling/worker-secrets.json row when
+//               that file exists, else an `interface Env` member of some
+//               services/*/src/types.ts — printed `manifest absent, read
+//               interface Env`. A name in neither, but a row of
+//               tooling/channel-register.json ciSecretRegister, is PRINTED as a
+//               waiver (a secret read dynamically, declared by name elsewhere).
+//   6 level     the level is EARNED: L1 interface declared; L2 + a selection and
+//               limb 4 clean for the port, with a non-fake adapter that is built;
+//               L3 + a conformance suite whose runner each of >= 2 adapters'
+//               conformance files CALLS, zero pending for them, a runbook and the
+//               dry-run command. A draft or retired adapter is never one of the
+//               two: it may pass the suite, but nothing can select it. A claim
+//               above the earned level is exit 1. The table port · claimed ·
+//               earned · target prints on every run.
+//   7 fakes     a `fake` never lists `live`, and selection.default.live is never one.
+//   8 cross     every capability-register vendor key (minus `_`-keys) and every
+//               provider-register provider id is EXACTLY ONE adapter's `vendor`
+//               or one tooling/ports/_non-port.json row; and a ported vendor's
+//               C-8 seam.file equals its port's interface file, unless the
+//               adapter declares that exact file as a `c8Seam` divergence
+//               (printed). A vendor behind two adapters of ONE port (mail's
+//               HTTP API and its SMTP relay) is placed once, in that port.
+//   9 literals  no owner-domain address is a literal in services/*/src outside
+//               src/generated/ (comment-stripped, so a citation in prose is not
+//               one): an address is an entity-source FIELD, rendered. Every
+//               stream's `from`/`to` path resolves in tooling/house-identity.json,
+//               and when a stream names one, services/platform/src/generated/
+//               entity.ts is what tooling/ports/render-entity.mjs renders.
+//               No house identity, or no module scanned, is COVERAGE LOST.
+//
+// Exit 0 green, 1 a finding, 2 COVERAGE LOST (every problem is one). The FIRST
+// line names the deciding limb.
+//
+// `evaluate(root)` is exported: assert-vendor-portability.mjs imports it to print
+// each vendor's port and earned level (C-8's one-line link, never a re-derivation).
+// ─────────────────────────────────────────────────────────────────────────────
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { extname, join, posix, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { stripSourceComments } from './text-reductions.mjs';
+import { listDir } from './tree-walk.mjs';
+import { renderCheck } from '../ports/render.mjs';
+import { renderEntityAt, ENTITY_SOURCE } from '../ports/render-entity.mjs';
+
+export const PORTS_DIR = 'tooling/ports';
+export const SCHEMA_REL = 'tooling/ports/port.schema.json';
+export const NON_PORT_REL = 'tooling/ports/_non-port.json';
+export const CAPABILITY_REGISTER = 'tooling/capability-register.json';
+export const PROVIDER_REGISTER = 'tooling/legal/provider-register.json';
+export const SECRETS_MANIFEST = 'tooling/worker-secrets.json';
+export const CHANNEL_REGISTER = 'tooling/channel-register.json';
+/** The renderer `generated: true` needs (port-pay-core); limb 3 runs its check on every build. */
+export const RENDER_TOOL = 'tooling/ports/render.mjs';
+/** A Worker's one composition root, relative to services/<w>/. */
+export const COMPOSITION_ROOT = 'src/ports.ts';
+export const LIMB_NAMES = Object.freeze({
+  1: 'schema',
+  2: 'symbols',
+  3: 'waivers',
+  4: 'imports',
+  5: 'secrets',
+  6: 'level',
+  7: 'fakes',
+  8: 'cross-register',
+  9: 'literals',
+});
+
+// ── values a registry may never carry (rule: no secret value, no business-fact literal) ──
+// Each shape is one a real credential or a PII literal takes; a registry names
+// secrets and identity by NAME and by PATH, so none of these has a legitimate use.
+export const FORBIDDEN_VALUES = Object.freeze([
+  { what: 'a secret-shaped token (vendor key prefix)', re: /\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{8,}|\bwhsec_[A-Za-z0-9]{8,}|\bpdl_(?:live|sdbx)_[A-Za-z0-9_]{8,}|\brzp_(?:live|test)_[A-Za-z0-9]{8,}/ },
+  { what: 'a JWT', re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/ },
+  { what: 'a private key block', re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/ },
+  { what: 'a long high-entropy token', re: /(?<![A-Za-z0-9/._-])(?=[A-Za-z0-9+_=-]*\d)(?=[A-Za-z0-9+_=-]*[a-z])(?=[A-Za-z0-9+_=-]*[A-Z])[A-Za-z0-9+_=-]{32,}(?![A-Za-z0-9/._-])/ },
+  { what: 'an e-mail address (identity is a house-identity.json PATH, never the value)', re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/ },
+]);
+
+const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
+const typeOf = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : Number.isInteger(v) ? 'integer' : typeof v);
+
+// ── the validator: the subset of JSON Schema port.schema.json uses, and nothing silently ──
+const KNOWN_KEYWORDS = new Set([
+  '$schema', '$id', '$defs', '$ref', 'title', 'description', 'type', 'const', 'enum', 'pattern', 'minLength',
+  'minimum', 'maximum', 'minItems', 'minProperties', 'required', 'properties', 'additionalProperties', 'items',
+]);
+
+/** Validate `value` against `schema` (resolving `#/$defs/…` in `rootSchema`); returns error strings. */
+export function validate(value, schema, rootSchema = schema, at = '$') {
+  const errors = [];
+  if (schema.$ref) {
+    const m = /^#\/\$defs\/([A-Za-z0-9_]+)$/.exec(schema.$ref);
+    const target = m ? rootSchema.$defs?.[m[1]] : null;
+    if (!target) return [`${at}: the schema's $ref ${schema.$ref} does not resolve`];
+    return validate(value, target, rootSchema, at);
+  }
+  for (const k of Object.keys(schema)) {
+    if (!KNOWN_KEYWORDS.has(k)) errors.push(`${at}: the schema uses keyword \`${k}\`, which this validator does not implement — refused rather than ignored`);
+  }
+  if (schema.type !== undefined) {
+    const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+    const t = typeOf(value);
+    const ok = types.some((x) => x === t || (x === 'number' && (t === 'number' || t === 'integer')));
+    if (!ok) return [...errors, `${at}: is ${t}, expected ${types.join(' | ')}`];
+  }
+  if ('const' in schema && JSON.stringify(value) !== JSON.stringify(schema.const)) errors.push(`${at}: must be ${JSON.stringify(schema.const)}`);
+  if (schema.enum && !schema.enum.some((e) => JSON.stringify(e) === JSON.stringify(value))) errors.push(`${at}: ${JSON.stringify(value)} is not one of ${schema.enum.map((e) => JSON.stringify(e)).join(', ')}`);
+  if (typeof value === 'string') {
+    if (schema.pattern && !new RegExp(schema.pattern, 'u').test(value)) errors.push(`${at}: ${JSON.stringify(value)} does not match ${schema.pattern}`);
+    if (schema.minLength !== undefined && value.length < schema.minLength) errors.push(`${at}: shorter than ${schema.minLength}`);
+  }
+  if (typeof value === 'number') {
+    if (schema.minimum !== undefined && value < schema.minimum) errors.push(`${at}: below ${schema.minimum}`);
+    if (schema.maximum !== undefined && value > schema.maximum) errors.push(`${at}: above ${schema.maximum}`);
+  }
+  if (Array.isArray(value)) {
+    if (schema.minItems !== undefined && value.length < schema.minItems) errors.push(`${at}: fewer than ${schema.minItems} item(s)`);
+    if (schema.items) value.forEach((v, i) => errors.push(...validate(v, schema.items, rootSchema, `${at}[${i}]`)));
+  }
+  if (isObj(value)) {
+    const props = schema.properties ?? {};
+    if (schema.minProperties !== undefined && Object.keys(value).length < schema.minProperties) errors.push(`${at}: fewer than ${schema.minProperties} key(s)`);
+    for (const r of schema.required ?? []) if (!(r in value)) errors.push(`${at}: missing required \`${r}\``);
+    for (const [k, v] of Object.entries(value)) {
+      if (props[k]) errors.push(...validate(v, props[k], rootSchema, `${at}.${k}`));
+      else if (schema.additionalProperties === false) errors.push(`${at}: unknown key \`${k}\` (additionalProperties: false)`);
+      else if (isObj(schema.additionalProperties)) errors.push(...validate(v, schema.additionalProperties, rootSchema, `${at}.${k}`));
+    }
+  }
+  return errors;
+}
+
+/** Every string inside `value`, with its JSON path. */
+function* strings(value, at = '$') {
+  if (typeof value === 'string') yield [at, value];
+  else if (Array.isArray(value)) for (let i = 0; i < value.length; i++) yield* strings(value[i], `${at}[${i}]`);
+  else if (isObj(value)) for (const [k, v] of Object.entries(value)) yield* strings(v, `${at}.${k}`);
+}
+
+/** Forbidden literals in a registry: [{at, what}]. */
+export function forbiddenValues(doc) {
+  const out = [];
+  for (const [at, s] of strings(doc)) {
+    for (const f of FORBIDDEN_VALUES) if (f.re.test(s)) out.push({ at, what: f.what });
+  }
+  return out;
+}
+
+// ── declarations ───────────────────────────────────────────────────────────────
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** True when `symbol` is DECLARED in comment-stripped `src` of extension `ext`. */
+export function declares(src, symbol, ext) {
+  const s = esc(symbol);
+  if (ext === '.dart') {
+    return new RegExp(`\\b(?:(?:abstract|base|final|sealed|interface|mixin)\\s+)*(?:class|mixin|enum|extension\\s+type|typedef)\\s+${s}\\b`).test(src) ||
+      new RegExp(`^[ \\t]*(?:const|final|var|[A-Za-z_][\\w<>?, ]*)\\s+${s}\\s*(?:=|\\()`, 'm').test(src);
+  }
+  return new RegExp(`\\b(?:export\\s+)?(?:declare\\s+)?(?:abstract\\s+)?(?:interface|type|class|enum|function\\*?|const|let|var)\\s+${s}\\b`).test(src);
+}
+
+/** The comment-stripped source of a repo file, or null. */
+function readStripped(root, rel) {
+  const abs = join(root, rel);
+  if (!existsSync(abs)) return null;
+  try { return stripSourceComments(readFileSync(abs, 'utf8'), extname(rel).toLowerCase()); } catch { return null; }
+}
+
+/** A runner CALL, in comment-stripped source that does not declare it (vacuous-10/11). */
+export function callsRunner(src, runner, ext) {
+  if (declares(src, runner, ext)) return false;
+  return new RegExp(`(?<![\\w.])${esc(runner)}\\s*(?:<[^>()]*>)?\\s*\\(`).test(src);
+}
+
+// ── the TS import graph (limb 4) ───────────────────────────────────────────────
+const IMPORT_RES = [
+  /\bimport\s+(?:type\s+)?[^'"]*?\bfrom\s*['"]([^'"]+)['"]/g,
+  /\bimport\s*['"]([^'"]+)['"]/g,
+  /\bexport\s+(?:type\s+)?(?:\*|\{[^}]*\})\s*(?:as\s+\w+\s*)?from\s*['"]([^'"]+)['"]/g,
+  /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+];
+
+function walkTs(root, relDir, out) {
+  const abs = join(root, relDir);
+  let entries;
+  try { entries = listDir(abs, { withFileTypes: true }); } catch { return; }
+  for (const e of entries) {
+    const rel = posix.join(relDir, e.name);
+    if (e.isDirectory()) { if (e.name !== 'node_modules') walkTs(root, rel, out); }
+    else if (/\.(?:ts|mts)$/.test(e.name) && !/\.d\.ts$/.test(e.name) && !/\.test\.ts$/.test(e.name)) out.push(rel);
+  }
+}
+
+/** Every module specifier a TS file imports, resolved to a repo-relative path when relative. */
+export function importsOf(root, rel, src) {
+  const code = stripSourceComments(src, '.ts');
+  const out = new Set();
+  for (const re of IMPORT_RES) {
+    for (const m of code.matchAll(re)) {
+      const spec = m[1];
+      if (!spec.startsWith('.')) continue;
+      const base = posix.normalize(posix.join(posix.dirname(rel), spec));
+      const candidates = [base, `${base}.ts`, base.replace(/\.js$/, '.ts'), posix.join(base, 'index.ts')];
+      const hit = candidates.find((c) => existsSync(join(root, c)) && statSync(join(root, c)).isFile());
+      if (hit) out.add(hit);
+    }
+  }
+  return out;
+}
+
+// ── secrets (limb 5) ──────────────────────────────────────────────────────────
+export function readSecretSources(root) {
+  if (existsSync(join(root, SECRETS_MANIFEST))) {
+    try {
+      const doc = JSON.parse(readFileSync(join(root, SECRETS_MANIFEST), 'utf8'));
+      const rows = Array.isArray(doc) ? doc : Array.isArray(doc?.rows) ? doc.rows : Array.isArray(doc?.secrets) ? doc.secrets : null;
+      const names = new Set((rows ?? []).map((r) => (typeof r === 'string' ? r : r?.name)).filter((n) => typeof n === 'string'));
+      if (!names.size) return { lost: `${SECRETS_MANIFEST} exists but yields no secret names`, source: 'manifest', names, declaredElsewhere: new Set() };
+      return { lost: null, source: 'manifest', names, declaredElsewhere: new Set() };
+    } catch (e) {
+      return { lost: `${SECRETS_MANIFEST} exists but could not be parsed (${e.message})`, source: 'manifest', names: new Set(), declaredElsewhere: new Set() };
+    }
+  }
+  const names = new Set();
+  const svc = join(root, 'services');
+  let dirs = [];
+  try { dirs = listDir(svc, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name); } catch { /* lost below */ }
+  for (const d of dirs) {
+    const src = readStripped(root, `services/${d}/src/types.ts`);
+    const block = src?.match(/interface\s+Env\s*\{([\s\S]*?)\n\}/);
+    if (!block) continue;
+    for (const m of block[1].matchAll(/^\s*([A-Z][A-Z0-9_]*)\s*[?:]/gm)) names.add(m[1]);
+  }
+  const declaredElsewhere = new Set();
+  try {
+    const ch = JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8'));
+    for (const r of ch?.ciSecretRegister?.nonSigning ?? []) if (typeof r?.name === 'string') declaredElsewhere.add(r.name);
+  } catch { /* the waiver source is optional; absent, a non-Env name is a finding */ }
+  if (!names.size) return { lost: 'no `interface Env` member was read from any services/*/src/types.ts, and tooling/worker-secrets.json does not exist', source: 'env', names, declaredElsewhere };
+  return { lost: null, source: 'env', names, declaredElsewhere };
+}
+
+// ── the evaluation ────────────────────────────────────────────────────────────
+/**
+ * Evaluate every limb over the tree at `root`.
+ * @returns {{ findings: {limb:number,msg:string,lost:boolean}[], waivers: string[], notes: string[],
+ *   table: {port:string,claimed:number,earned:number,target:number}[], ports: object[],
+ *   vendorPort: Map<string,{port:string,adapter:string,earned:number}>, nonPort: Map<string,object> }}
+ */
+export function evaluate(root) {
+  const findings = [];
+  const waivers = [];
+  const notes = [];
+  const find = (limb, msg) => findings.push({ limb, msg, lost: false });
+  const lost = (limb, msg) => findings.push({ limb, msg: `COVERAGE LOST — ${msg}`, lost: true });
+  const result = { findings, waivers, notes, table: [], ports: [], vendorPort: new Map(), nonPort: new Map() };
+
+  // ── limb 1 · schema and the set ──
+  let schema;
+  try { schema = JSON.parse(readFileSync(join(root, SCHEMA_REL), 'utf8')); } catch (e) {
+    lost(1, `${SCHEMA_REL} could not be read or parsed (${e.message}); no registry can be graded.`);
+    return result;
+  }
+  let files = [];
+  try { files = listDir(join(root, PORTS_DIR)).filter((f) => f.endsWith('.json') && f !== 'port.schema.json' && f !== '_non-port.json').sort(); } catch (e) {
+    lost(1, `${PORTS_DIR}/ could not be listed (${e.message}).`);
+    return result;
+  }
+  if (!files.length) {
+    lost(1, `${PORTS_DIR}/ holds no port registry. A port set of zero is met by an empty directory, which is not evidence of anything.`);
+    return result;
+  }
+  const ports = [];
+  for (const f of files) {
+    const rel = `${PORTS_DIR}/${f}`;
+    let doc;
+    try { doc = JSON.parse(readFileSync(join(root, rel), 'utf8')); } catch (e) {
+      lost(1, `${rel} could not be parsed (${e.message}).`);
+      continue;
+    }
+    const errs = validate(doc, schema, schema);
+    for (const e of errs) find(1, `${rel} ${e}`);
+    for (const v of forbiddenValues(doc)) find(1, `${rel} ${v.at} carries ${v.what}. A registry names secrets and identity; it never holds one.`);
+    if (doc?.port !== f.replace(/\.json$/, '')) find(1, `${rel} declares port ${JSON.stringify(doc?.port)}; the port is the file name.`);
+    const ids = new Set();
+    for (const a of doc?.adapters ?? []) {
+      if (ids.has(a?.id)) find(1, `${rel} lists adapter \`${a?.id}\` twice.`);
+      ids.add(a?.id);
+      if (a?.status === 'fake' && a?.vendor !== null) find(1, `${rel} adapter \`${a.id}\` is a fake with vendor ${JSON.stringify(a.vendor)}; a fake has none.`);
+      if (a?.status !== 'fake' && a?.vendor === null) find(1, `${rel} adapter \`${a.id}\` has vendor null but is not a fake.`);
+      const impl = a?.impl ?? {};
+      if (a?.status === 'external' ? !(impl.configAt && impl.verify) : !(impl.file && impl.symbol)) {
+        find(1, `${rel} adapter \`${a?.id}\` impl must be ${a?.status === 'external' ? '{configAt, verify}' : '{file, symbol}'} for status ${a?.status}.`);
+      }
+    }
+    for (const a of doc?.adapters ?? []) {
+      if (Array.isArray(a?.environments) && a.environments.length === 0 && a.status !== 'draft' && a.status !== 'retired') {
+        find(1, `${rel} adapter \`${a.id}\` lists no environment but is ${a.status}; only a draft or retired adapter may be selectable nowhere.`);
+      }
+    }
+    if (doc?.selection?.by === 'stream' && !isObj(doc?.streams)) find(1, `${rel} is selected by stream but declares no \`streams\`.`);
+    for (const [name, st] of Object.entries(isObj(doc?.streams) ? doc.streams : {})) {
+      const a = (doc?.adapters ?? []).find((x) => x?.id === st?.adapter);
+      if (!a) { find(1, `${rel} stream \`${name}\` names adapter \`${st?.adapter}\`, which is no adapter of this port.`); continue; }
+      for (const n of st.secrets ?? []) if (!(a.secrets ?? []).includes(n)) find(1, `${rel} stream \`${name}\` takes secret \`${n}\`, which its adapter \`${a.id}\` does not declare.`);
+    }
+    for (const env of ['live', 'sandbox', 'test']) {
+      const sel = doc?.selection?.default?.[env];
+      if (sel !== null && sel !== undefined && !ids.has(sel)) find(1, `${rel} selection.default.${env} names \`${sel}\`, which is no adapter of this port.`);
+    }
+    for (const p of doc?.conformance?.pending ?? []) if (!ids.has(p.adapter)) find(1, `${rel} conformance.pending names adapter \`${p.adapter}\`, which is not one of this port's.`);
+    ports.push({ rel, doc, schemaOk: errs.length === 0 });
+  }
+  let nonPortDoc = null;
+  try {
+    nonPortDoc = JSON.parse(readFileSync(join(root, NON_PORT_REL), 'utf8'));
+    for (const e of validate(nonPortDoc, { $ref: '#/$defs/nonPortRegister' }, schema)) find(1, `${NON_PORT_REL} ${e}`);
+    for (const v of forbiddenValues(nonPortDoc)) find(1, `${NON_PORT_REL} ${v.at} carries ${v.what}.`);
+    for (const r of nonPortDoc?.rows ?? []) {
+      if (('until' in r) === ('nonPort' in r)) find(1, `${NON_PORT_REL} row \`${r.vendor}\` must carry exactly one of \`until\` and \`nonPort\`.`);
+    }
+  } catch (e) {
+    lost(8, `${NON_PORT_REL} could not be read or parsed (${e.message}); the cross-register limb has no non-port side.`);
+  }
+  result.ports = ports;
+
+  // ── limb 2 · declarations ──
+  const symOk = new Map(); // port -> interface declared
+  for (const { rel, doc } of ports) {
+    let interfaceOk = Object.keys(doc?.interface ?? {}).length > 0;
+    for (const [lang, it] of Object.entries(doc?.interface ?? {})) {
+      const src = readStripped(root, it.file);
+      if (src === null) { find(2, `${rel} interface.${lang}.file \`${it.file}\` does not exist.`); interfaceOk = false; continue; }
+      for (const s of it.symbols ?? []) {
+        if (!declares(src, s, extname(it.file))) { find(2, `${rel} interface.${lang} symbol \`${s}\` is not declared in \`${it.file}\`.`); interfaceOk = false; }
+      }
+    }
+    symOk.set(doc.port, interfaceOk);
+    for (const a of doc?.adapters ?? []) {
+      if (a?.status === 'external' || !a?.impl?.file) continue;
+      const src = readStripped(root, a.impl.file);
+      if (src === null) { find(2, `${rel} adapter \`${a.id}\` impl.file \`${a.impl.file}\` does not exist.`); continue; }
+      if (!declares(src, a.impl.symbol, extname(a.impl.file))) find(2, `${rel} adapter \`${a.id}\` symbol \`${a.impl.symbol}\` is not declared in \`${a.impl.file}\`.`);
+    }
+    for (const a of doc?.adapters ?? []) {
+      if (!a?.outbound) continue;
+      const src = readStripped(root, a.outbound.file);
+      if (src === null) { find(2, `${rel} adapter \`${a.id}\` outbound.file \`${a.outbound.file}\` does not exist.`); continue; }
+      if (!declares(src, a.outbound.symbol, extname(a.outbound.file))) find(2, `${rel} adapter \`${a.id}\` outbound symbol \`${a.outbound.symbol}\` is not declared in \`${a.outbound.file}\`.`);
+      for (const m of a.outbound.modules ?? []) if (!existsSync(join(root, m))) find(2, `${rel} adapter \`${a.id}\` outbound module \`${m}\` does not exist.`);
+    }
+    const src = doc?.selection?.source;
+    if (typeof src === 'string') {
+      const [file, pointer] = src.split('#');
+      if (!existsSync(join(root, file))) find(2, `${rel} selection.source names \`${file}\`, which does not exist.`);
+      else if (file.endsWith('.json')) {
+        let node;
+        try { node = JSON.parse(readFileSync(join(root, file), 'utf8')); } catch { node = undefined; }
+        for (const k of pointer.split('.')) node = isObj(node) ? node[k] : undefined;
+        if (node === undefined) find(2, `${rel} selection.source pointer \`${src}\` resolves to nothing.`);
+      } else if (!readFileSync(join(root, file), 'utf8').includes(pointer)) {
+        find(2, `${rel} selection.source anchor \`${pointer}\` is not in \`${file}\`.`);
+      }
+    }
+  }
+
+  // ── limb 3 · waivers ──
+  for (const { rel, doc } of ports) {
+    for (const h of doc?.handTables ?? []) {
+      const abs = join(root, h.file);
+      if (!existsSync(abs) || !readFileSync(abs, 'utf8').includes(h.anchor)) {
+        find(3, `${rel} handTables anchor \`${h.anchor}\` is no longer in \`${h.file}\`. Remove the waiver, or re-anchor it on the hand table that replaced it.`);
+      } else {
+        waivers.push(`${doc.port}: hand table \`${h.anchor}\` in ${h.file} — until ${h.until}`);
+      }
+    }
+    if (doc?.generated === true && !existsSync(join(root, RENDER_TOOL))) {
+      find(3, `${rel} claims \`generated: true\`, but ${RENDER_TOOL} (the renderer) does not exist; no rendered table can be current.`);
+    }
+  }
+  // The rendered table is current, whether or not a port claims `generated` yet: a hand
+  // edit of services/platform/src/generated/ports.ts is a finding on every build.
+  if (existsSync(join(root, RENDER_TOOL)) && ports.some(({ doc }) => doc?.port === 'payments')) {
+    const r = renderCheck(root);
+    if (r.lost) lost(3, `render --check: ${r.detail}`);
+    else if (!r.ok) find(3, `render --check: ${r.detail}`);
+    else notes.push(`limb 3: ${r.detail}`);
+  }
+
+  // ── limb 4 · imports ──
+  const tsFiles = [];
+  let workers = [];
+  try { workers = listDir(join(root, 'services'), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name); } catch { /* lost below */ }
+  for (const w of workers) walkTs(root, `services/${w}/src`, tsFiles);
+  const tsPorts = ports.filter(({ doc }) => doc?.interface?.ts);
+  const limb4Clean = new Map(ports.map(({ doc }) => [doc.port, true]));
+  if (tsPorts.length && !tsFiles.length) {
+    lost(4, 'the import walk read no TypeScript module under services/*/src, so "no caller imports an adapter" would hold of nothing.');
+    for (const { doc } of tsPorts) limb4Clean.set(doc.port, false);
+  } else {
+    const graph = new Map(tsFiles.map((f) => [f, importsOf(root, f, readFileSync(join(root, f), 'utf8'))]));
+    let edges = 0;
+    for (const set of graph.values()) edges += set.size;
+    if (tsFiles.length && edges === 0) {
+      lost(4, `the import walk read ${tsFiles.length} module(s) and resolved ZERO relative imports; the specifier parse has broken.`);
+      for (const { doc } of tsPorts) limb4Clean.set(doc.port, false);
+    }
+    for (const { rel, doc } of tsPorts) {
+      // An adapter's files: its inbound impl, its outbound half and that half's private modules (port-pay-core).
+      const implFiles = new Set((doc.adapters ?? []).flatMap((a) => [a?.impl?.file, a?.outbound?.file, ...(a?.outbound?.modules ?? [])]).filter((f) => typeof f === 'string' && /\.ts$/.test(f)));
+      const allowed = new Set(doc.generated === false ? (doc.handTables ?? []).map((h) => h.file) : []);
+      for (const [from, targets] of graph) {
+        const worker = from.split('/')[1];
+        if (from === `services/${worker}/${COMPOSITION_ROOT}` || allowed.has(from) || implFiles.has(from)) continue;
+        for (const t of targets) {
+          if (implFiles.has(t)) {
+            find(4, `${rel}: \`${from}\` imports the adapter \`${t}\`. Only services/${worker}/${COMPOSITION_ROOT} (the composition root) may, or — while generated: false — a file the port's handTables names.`);
+            limb4Clean.set(doc.port, false);
+          }
+        }
+      }
+    }
+    notes.push(`limb 4 walked ${tsFiles.length} TS module(s), ${edges} relative import(s)`);
+  }
+
+  // ── limb 5 · secrets ──
+  const sec = readSecretSources(root);
+  if (sec.lost) lost(5, sec.lost);
+  else {
+    notes.push(sec.source === 'env' ? `limb 5: manifest absent, read interface Env (${sec.names.size} name(s))` : `limb 5: read ${SECRETS_MANIFEST} (${sec.names.size} name(s))`);
+    for (const { rel, doc } of ports) {
+      for (const a of doc?.adapters ?? []) {
+        for (const n of a?.secrets ?? []) {
+          if (sec.names.has(n)) continue;
+          if (sec.source === 'env' && sec.declaredElsewhere.has(n)) {
+            waivers.push(`${doc.port}/${a.id}: secret ${n} is not an interface Env member; declared by name in ${CHANNEL_REGISTER} ciSecretRegister (read dynamically)`);
+            continue;
+          }
+          find(5, `${rel} adapter \`${a.id}\` names secret \`${n}\`, which is ${sec.source === 'env' ? 'no `interface Env` member of any services/*/src/types.ts' : `no row of ${SECRETS_MANIFEST}`}.`);
+        }
+      }
+    }
+  }
+
+  // ── limb 7 · fakes (before 6: a fake in live un-earns L2) ──
+  const fakeLive = new Map();
+  for (const { rel, doc } of ports) {
+    const fakes = new Set((doc?.adapters ?? []).filter((a) => a?.status === 'fake').map((a) => a.id));
+    for (const a of doc?.adapters ?? []) {
+      if (a?.status === 'fake' && (a.environments ?? []).includes('live')) { find(7, `${rel} fake \`${a.id}\` lists the \`live\` environment. A fake is never selectable in live.`); fakeLive.set(doc.port, true); }
+    }
+    const live = doc?.selection?.default?.live;
+    if (live && fakes.has(live)) { find(7, `${rel} selection.default.live is the fake \`${live}\`.`); fakeLive.set(doc.port, true); }
+  }
+
+  // ── limb 6 · the earned level ──
+  for (const { rel, doc, schemaOk } of ports) {
+    const claimed = doc?.level?.claimed ?? 0;
+    const target = doc?.level?.target ?? 0;
+    let earned = 0;
+    const why = [];
+    if (schemaOk && symOk.get(doc.port)) earned = 1;
+    else why.push('the interface is not declared where the registry says');
+    const real = (doc.adapters ?? []).filter((a) => a?.status !== 'fake' && a?.status !== 'retired' && a?.status !== 'draft');
+    const selected = doc?.selection && (doc.selection.source !== null || doc.selection.default?.live || doc.selection.default?.sandbox);
+    if (earned === 1) {
+      if (!selected) why.push('no selection: neither a source nor a default names how an adapter is chosen');
+      else if (!limb4Clean.get(doc.port)) why.push('a caller imports an adapter (limb 4)');
+      else if (!real.length) why.push('no built, non-fake adapter');
+      else if (fakeLive.get(doc.port)) why.push('a fake is selectable in live (limb 7)');
+      else earned = 2;
+    }
+    if (earned === 2) {
+      const suite = doc?.conformance?.suite;
+      const pending = new Set((doc?.conformance?.pending ?? []).map((p) => p.adapter));
+      for (const p of doc?.conformance?.pending ?? []) notes.push(`PENDING ${doc.port}/${p.adapter}: ${p.case} (${p.row}) — blocks L3 for that adapter`);
+      let conformant = 0;
+      if (!suite) why.push('no conformance suite');
+      else {
+        const suiteSrc = readStripped(root, suite.file);
+        if (suiteSrc === null || !declares(suiteSrc, suite.runner, extname(suite.file))) why.push(`the suite ${suite.file} does not declare ${suite.runner}`);
+        else {
+          for (const a of doc.adapters ?? []) {
+            // A draft or retired adapter may pass the suite (mail's SES draft
+            // does), but no environment can select it, so it earns nothing.
+            if (!a?.conformance?.file || pending.has(a.id) || a.status === 'draft' || a.status === 'retired') continue;
+            const s = readStripped(root, a.conformance.file);
+            if (s !== null && callsRunner(s, suite.runner, extname(a.conformance.file))) conformant++;
+          }
+          if (conformant < 2) why.push(`${conformant} conformant adapter(s); L3 needs two with zero pending`);
+        }
+      }
+      const sw = doc?.switch;
+      if (!sw?.runbook) why.push('no switch runbook');
+      if (!existsSync(join(root, 'tooling/ops/port-switch.mjs'))) why.push('no dry-run tool');
+      if (suite && conformant >= 2 && sw?.runbook && existsSync(join(root, 'tooling/ops/port-switch.mjs'))) earned = 3;
+    }
+    result.table.push({ port: doc.port, claimed, earned, target, why: earned < target ? why[0] ?? '' : '' });
+    if (claimed > earned) find(6, `${rel} claims L${claimed} and earns L${earned}: ${why[0] ?? 'see above'}.`);
+    if (claimed > target) find(6, `${rel} claims L${claimed} above its target L${target}.`);
+  }
+  const earnedOf = new Map(result.table.map((r) => [r.port, r.earned]));
+
+  // ── limb 8 · cross-register ──
+  let cap; let prov;
+  try { cap = JSON.parse(readFileSync(join(root, CAPABILITY_REGISTER), 'utf8')); } catch (e) { lost(8, `${CAPABILITY_REGISTER} could not be read (${e.message}).`); }
+  try { prov = JSON.parse(readFileSync(join(root, PROVIDER_REGISTER), 'utf8')); } catch (e) { lost(8, `${PROVIDER_REGISTER} could not be read (${e.message}).`); }
+  if (cap && prov && nonPortDoc) {
+    const capIds = Object.keys(cap.vendors ?? {}).filter((k) => !k.startsWith('_'));
+    const provIds = (Array.isArray(prov.providers) ? prov.providers : []).map((p) => p?.id).filter((x) => typeof x === 'string');
+    if (!capIds.length || !provIds.length) lost(8, `read ${capIds.length} capability-register vendor(s) and ${provIds.length} provider(s); a side of zero is a cross-check of nothing.`);
+    const all = new Map();
+    for (const id of capIds) all.set(id, new Set(['capability-register']));
+    for (const id of provIds) all.set(id, new Set([...(all.get(id) ?? []), 'provider-register']));
+    const placed = new Map(); // vendor -> [where]
+    const place = (v, where) => placed.set(v, [...(placed.get(v) ?? []), where]);
+    for (const { doc } of ports) {
+      const inPort = new Set();
+      for (const a of doc?.adapters ?? []) {
+        if (typeof a?.vendor !== 'string') continue;
+        // One placement per port: a vendor behind two adapters of the same port
+        // (an HTTP API and an SMTP relay) is still one vendor in one port.
+        if (inPort.has(a.vendor)) continue;
+        inPort.add(a.vendor);
+        place(a.vendor, `${doc.port}/${a.id}`);
+        result.vendorPort.set(a.vendor, { port: doc.port, adapter: a.id, earned: earnedOf.get(doc.port) ?? 0 });
+      }
+    }
+    for (const r of nonPortDoc.rows ?? []) {
+      place(r.vendor, `_non-port`);
+      result.nonPort.set(r.vendor, r);
+    }
+    for (const [id, regs] of all) {
+      const at = placed.get(id) ?? [];
+      if (at.length === 0) find(8, `vendor \`${id}\` (${[...regs].join(', ')}) is no adapter's \`vendor\` and no ${NON_PORT_REL} row. Port it, or say in _non-port.json why not.`);
+      else if (at.length > 1) find(8, `vendor \`${id}\` is placed ${at.length} times (${at.join(', ')}); exactly one adapter or one non-port row.`);
+    }
+    for (const v of placed.keys()) {
+      if (!all.has(v)) find(8, `\`${v}\` is placed in tooling/ports/ but is in neither ${CAPABILITY_REGISTER} vendors nor ${PROVIDER_REGISTER} providers.`);
+    }
+    for (const r of nonPortDoc.rows ?? []) {
+      const regs = all.get(r.vendor);
+      if (regs) for (const g of r.registers ?? []) if (!regs.has(g)) find(8, `${NON_PORT_REL} row \`${r.vendor}\` says it is in the ${g}, and it is not.`);
+    }
+    // a ported vendor's C-8 seam.file is its port's interface file
+    for (const { rel, doc } of ports) {
+      const ifaceFiles = new Set(Object.values(doc?.interface ?? {}).map((i) => i.file));
+      for (const a of doc?.adapters ?? []) {
+        const seam = typeof a?.vendor === 'string' ? cap.vendors?.[a.vendor]?.seam?.file : undefined;
+        if (!seam) continue;
+        if (ifaceFiles.has(seam)) {
+          if (a.c8Seam) find(8, `${rel} adapter \`${a.id}\` declares a c8Seam divergence, but C-8's seam.file already IS this port's interface. Remove the stale waiver.`);
+          continue;
+        }
+        if (a.c8Seam?.file === seam) {
+          waivers.push(`${doc.port}/${a.id}: C-8 seam is ${seam}, not this port's interface — until ${a.c8Seam.until}`);
+          continue;
+        }
+        find(8, `${rel} adapter \`${a.id}\`: vendor \`${a.vendor}\`'s C-8 seam.file is \`${seam}\` (${CAPABILITY_REGISTER}), but this port's interface is ${[...ifaceFiles].map((f) => `\`${f}\``).join(' / ')}. One seam per vendor; or declare the exact divergence as \`c8Seam\`.`);
+      }
+    }
+  }
+
+  // ── limb 9 · literals ──
+  let house = null;
+  try { house = JSON.parse(readFileSync(join(root, ENTITY_SOURCE), 'utf8')); } catch (e) {
+    lost(9, `${ENTITY_SOURCE} could not be read (${e.message}); without the owner domain no address literal can be recognised.`);
+  }
+  const ownerDomain = house?.ownerDomain?.value;
+  if (house && (typeof ownerDomain !== 'string' || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(ownerDomain))) {
+    lost(9, `${ENTITY_SOURCE} \`ownerDomain.value\` is not a domain; the literal scan has nothing to match.`);
+  } else if (house) {
+    const scanned = tsFiles.filter((f) => !/\/src\/generated\//.test(f));
+    if (!scanned.length) lost(9, 'the literal scan read no TypeScript module under services/*/src.');
+    const re = new RegExp(`[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\\.)*${esc(ownerDomain)}(?![A-Za-z0-9.-])`, 'gi');
+    for (const f of scanned) {
+      const code = stripSourceComments(readFileSync(join(root, f), 'utf8'), '.ts');
+      for (const m of code.matchAll(re)) {
+        const line = code.slice(0, m.index).split('\n').length;
+        find(9, `${f}:${line} carries an address on ${ownerDomain} as a literal. An address is an entity-source field (${ENTITY_SOURCE}), read from the Worker's src/generated/entity.ts.`);
+      }
+    }
+    notes.push(`limb 9 scanned ${scanned.length} TS module(s) for an address on ${ownerDomain}`);
+    const resolves = (path) => {
+      let node = house;
+      for (const k of path.split('.')) node = isObj(node) ? node[k] : undefined;
+      const v = isObj(node) ? node.value : node;
+      return typeof v === 'string' && v !== '';
+    };
+    let namesSender = false;
+    for (const { rel, doc } of ports) {
+      for (const [name, st] of Object.entries(isObj(doc?.streams) ? doc.streams : {})) {
+        for (const k of ['from', 'to']) {
+          if (typeof st?.[k] !== 'string') continue;
+          namesSender = true;
+          if (!resolves(st[k])) find(9, `${rel} stream \`${name}\` ${k} path \`${st[k]}\` resolves to no value in ${ENTITY_SOURCE}.`);
+        }
+      }
+    }
+    if (namesSender) {
+      const r = renderEntityAt(root, { check: true });
+      if (r.code === 1) find(9, r.msg);
+      else if (r.code !== 0) lost(9, r.msg);
+    }
+  }
+  return result;
+}
+
+/** One printable line per vendor for C-8: its port and earned level, or why it has none. */
+export function portLineFor(result, vendor) {
+  const p = result.vendorPort.get(vendor);
+  if (p) return `port: ${p.port} (adapter ${p.adapter}, earned L${p.earned})`;
+  const n = result.nonPort.get(vendor);
+  if (n) return n.nonPort ? 'port: none — deliberately not ported' : `port: none yet — until ${n.until}`;
+  return 'port: UNPLACED (assert-ports limb 8)';
+}
+
+function main() {
+  const root = resolve(process.argv[2] ?? process.cwd());
+  const r = evaluate(root);
+  const findings = r.findings;
+  const allLost = findings.length > 0 && findings.every((f) => f.lost);
+  const deciding = findings.find((f) => (allLost ? f.lost : !f.lost));
+  if (deciding) {
+    console.error(`assert-ports: ${allLost ? 'COVERAGE LOST' : 'FAILED'} — limb ${deciding.limb} (${LIMB_NAMES[deciding.limb]}): ${deciding.msg.replace(/^COVERAGE LOST — /, '')}`);
+  } else {
+    console.log(`assert-ports: ok — all ${Object.keys(LIMB_NAMES).length} limbs green over ${r.table.length} port(s)`);
+  }
+  if (r.table.length) {
+    console.log('\nport         claimed  earned  target');
+    for (const t of r.table) console.log(`${t.port.padEnd(12)} L${t.claimed}       L${t.earned}      L${t.target}${t.why ? `   (below target: ${t.why})` : ''}`);
+  }
+  if (r.waivers.length) {
+    console.log(`\n⬜ ${r.waivers.length} declared waiver(s), printed on every run:`);
+    for (const w of r.waivers) console.log(`  ${w}`);
+  }
+  for (const n of r.notes) console.log(`  ${n}`);
+  if (findings.length) {
+    console.error('');
+    for (const f of findings) console.error(`FAIL limb ${f.limb} (${LIMB_NAMES[f.limb]}) ${f.msg}`);
+    console.error('\nassert-ports: FAILED');
+    const problems = findings.map((f) => f.msg); // a COVERAGE LOST message starts with the marker
+    process.exit(problems.every((p) => p.startsWith('COVERAGE LOST')) ? 2 : 1); // 2 = could not look; 1 = a finding
+  }
+}
+
+const IS_MAIN = (() => {
+  try { return resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url); } catch { return false; }
+})();
+if (IS_MAIN) main();

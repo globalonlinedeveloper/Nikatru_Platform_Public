@@ -18,12 +18,17 @@
 // ⚠️ A SHARE IS A SHARE OF THE DISPLAY CURRENCY. With no FX rates (ST-T5 I3),
 // a category billed only in another currency has no share to claim, so its
 // row prints its amount and no percentage — never a 0 %.
+//
+// ⏱ ST-X8 (audit C6): a category's NAME — in the bars, the table and every
+// row's semantics label — is painted through `categoryLabel`, never printed as
+// the stored id, which is an English word. The id still keys everything else.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import '../../core/format/category_label.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../l10n/app_localizations.dart';
@@ -141,11 +146,11 @@ class _CategoryCardState extends State<CategoryCard> {
                   container: true,
                   label: shareOf(i) == null
                       ? l10n.a11yCategoryRowNoShare(
-                          cats[i].name,
+                          categoryLabel(l10n, cats[i].name),
                           figures.parts[i],
                         )
                       : l10n.a11yCategoryRow(
-                          cats[i].name,
+                          categoryLabel(l10n, cats[i].name),
                           figures.parts[i],
                           shareOf(i)!,
                         ),
@@ -157,7 +162,7 @@ class _CategoryCardState extends State<CategoryCard> {
                         children: <Widget>[
                           Expanded(
                             child: Text(
-                              cats[i].name,
+                              categoryLabel(l10n, cats[i].name),
                               style: text.titleSmall?.copyWith(
                                 color: scheme.onSurface,
                               ),
@@ -246,7 +251,7 @@ class _CategoryCardState extends State<CategoryCard> {
         for (int i = 0; i < cats.length; i++)
           TableRow(
             children: <Widget>[
-              pad(Text(cats[i].name, style: cell)),
+              pad(Text(categoryLabel(l10n, cats[i].name), style: cell)),
               pad(Text(parts[i], style: cell), end: true),
               Padding(
                 padding: const EdgeInsets.only(left: AppSpacing.lg),

@@ -39,6 +39,15 @@
 // On a dispatch that asked for the store, the workflow turns `skip` red with
 // "NOT PUBLISHED" — a skip is an answer about the tool, not a publish.
 //
+// ⏱ 2026-10-01 (#1117 review 1, finding 3) — THE SIGN-IN AXIS, `refuse` before
+// credentials. A tool whose package carries the Pro account check (it TRANSMITS:
+// tool.json policy.networkAllowlist is non-empty, contracts/legal/pro-gate.mjs
+// `transmits`; render-listing refuses a tool that sells without one) is REFUSED on
+// a channel where no buyer can sign in (the register row's `extensionRedirectUri`
+// is null, pro-gate `canSignIn`): its listing and its Upgrade button would sell a
+// Pro the extension can never show. Armed or not — a manual first publish is a
+// submission too, and --plan says so first.
+//
 // ⚠️ NOTHING HERE READS OR PRINTS A SECRET VALUE. It reads `process.env[name]`
 // only to ask whether it is a non-empty string, and reports NAMES.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,6 +57,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { armingOf, armingOfTool } from '../../tooling/ci/channel-arming.mjs';
 import { CWS_SA_ENV, CWS_SA_DOC } from './publish-cws-token.mjs';
 import { derivedListingId } from './lib/tool-identity.mjs';
+import { transmits, canSignIn } from '../../contracts/legal/pro-gate.mjs';
 
 /** The repository root, resolved from THIS file rather than from the working
  *  directory: `extensions.yml` runs its steps with `working-directory: extensions`
@@ -343,6 +353,34 @@ export function toolSurfaceOn({ toolId, storeKey, target, root = REPO_ROOT }) {
 }
 
 /**
+ * ⏱ 2026-10-01 (#1117 review 1). The sign-in axis for one tool on one channel:
+ * `refuse` when the tool's package carries the Pro account check and the
+ * channel's register row cannot sign in. A tool.json that is not exactly one
+ * readable file is left to toolListingId, which already refuses it.
+ * @returns {{ refuse: boolean, lines: string[] }}
+ */
+export function signInAxis({ toolId, row, root = REPO_ROOT }) {
+  const surfaces = declaringToolJson(root, toolId);
+  if (surfaces.length !== 1) return { refuse: false, lines: [] };
+  let tool;
+  try {
+    tool = JSON.parse(readFileSync(join(root, surfaces[0].where), 'utf8'));
+  } catch {
+    return { refuse: false, lines: [] };
+  }
+  if (!transmits(tool) || canSignIn(row)) return { refuse: false, lines: [] };
+  return {
+    refuse: true,
+    lines: [
+      `🔴 REFUSED — tool "${toolId}" carries the Pro account check (${surfaces[0].where} policy.networkAllowlist), and channel "${row.id}" has a null extensionRedirectUri in ${REGISTER}.`,
+      '   No buyer can sign in on this channel, so Pro can never be true there: the listing and the Upgrade button would sell',
+      '   something nobody can unlock. Submit once sign-in lands for this channel (O-EXTENSION-ACCOUNT-CHECK-UNBUILT): measure',
+      '   the redirect URI and record it on the register row; then this axis passes.',
+    ],
+  };
+}
+
+/**
  * The verdict.
  *
  * @param {object} o
@@ -375,6 +413,14 @@ export function publishVerdict({ channelId, secrets, ownerStep, toolId = null, t
         '   for this store the workflow turns this red as NOT PUBLISHED: a skip is an answer about the tool, not a publish.',
       ];
       return { verdict: 'skip', row, arming: armingOf(row), identity: null, missing: [], reason: surface.reason, lines };
+    }
+  }
+
+  // ── THE SIGN-IN AXIS (⏱ 2026-10-01, #1117 review 1) ──────────────────────────
+  if (toolId !== null) {
+    const signIn = signInAxis({ toolId, row, root });
+    if (signIn.refuse) {
+      return { verdict: 'refuse', row, arming: armingOf(row), identity: null, missing: [], reason: signIn.lines[0], lines: signIn.lines };
     }
   }
 
@@ -597,6 +643,7 @@ export function planVerdict(laneId, { toolId, root = REPO_ROOT } = {}) {
     }
     lines.push(`   surface axis: the tool builds the ${lane.target} target and declares the ${row.extensionStoreKey} store`);
   }
+
   let identity;
   try {
     identity = toolListingId({ toolId, storeKey: row.extensionStoreKey, root });
@@ -611,6 +658,14 @@ export function planVerdict(laneId, { toolId, root = REPO_ROOT } = {}) {
   lines.push(`   identity axis: ${identity.listingId === null ? 'null' : JSON.stringify(identity.listingId)} — ${identity.source}, from ${identity.field}`);
   if (channel.armed && identity.listingId === null) {
     lines.push(`   🔴 the channel is ARMED and the listing id is null: a release run REFUSES here, and this lane will not guess one`);
+    lines.push('SKIPPED: not a release run');
+    return { verdict: 'refuse', exitCode: 1, lines };
+  }
+  // ⏱ 2026-10-01 (#1117 review 1): last, so the plan has printed every other axis first.
+  const signIn = signInAxis({ toolId, row, root });
+  if (signIn.refuse) {
+    lines.push(`   sign-in axis: ${signIn.lines[0]}`);
+    for (const l of signIn.lines.slice(1)) lines.push(`   ${l}`);
     lines.push('SKIPPED: not a release run');
     return { verdict: 'refuse', exitCode: 1, lines };
   }

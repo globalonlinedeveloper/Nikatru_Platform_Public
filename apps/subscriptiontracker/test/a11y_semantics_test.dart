@@ -70,6 +70,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
+import 'package:subscriptiontracker/core/format/category_label.dart';
 import 'package:subscriptiontracker/core/format/money_format.dart';
 import 'package:subscriptiontracker/core/format/sub_math.dart';
 import 'package:subscriptiontracker/core/router.dart';
@@ -87,13 +88,13 @@ import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
+import 'package:subscriptiontracker/features/import/import_screen.dart';
 import 'package:subscriptiontracker/features/insights/budget_editor.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/features/monetization/manage_plan_screen.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
 import 'package:subscriptiontracker/features/notifications/notifications_screen.dart';
 import 'package:subscriptiontracker/features/onboarding/onboarding_screen.dart';
-import 'package:subscriptiontracker/features/scan/scan_screen.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
 import 'package:subscriptiontracker/features/shared/due.dart';
 import 'package:subscriptiontracker/features/shared/widgets.dart';
@@ -1041,7 +1042,7 @@ Future<void> semantically(
   }
 }
 
-/// The seed `app.dart:83` stamps this app with, spelled the way seven other
+/// The seed `app.dart:84` stamps this app with, spelled the way seven other
 /// files under `apps/subscriptiontracker/test` already spell it.
 ///
 /// ⚠️ IT IS A COPY, AND THE COPY IS ALREADY GUARDED SOMEWHERE ELSE —
@@ -1284,12 +1285,18 @@ String expectedDonutLabel(ProviderContainer c, AppLocalizations l10n) {
   ];
   final double sum = w.fold(0, (double x, double y) => x + y);
   final NumberFormat pct = NumberFormat.percentPattern(l10n.localeName);
+  // ⏱ ST-X8 (audit C6): the row NAMES its category in the reader's language
+  // — the stored id is an English word. The id → name table is graded on its
+  // own in `category_names_by_id_test.dart`; here it only names the row.
   return <String>[
     for (int i = 0; i < cats.length; i++)
       sum <= 0 || w[i] <= 0
-          ? l10n.a11yCategoryRowNoShare(cats[i].name, figures.parts[i])
+          ? l10n.a11yCategoryRowNoShare(
+              categoryLabel(l10n, cats[i].name),
+              figures.parts[i],
+            )
           : l10n.a11yCategoryRow(
-              cats[i].name,
+              categoryLabel(l10n, cats[i].name),
               figures.parts[i],
               pct.format(w[i] / sum),
             ),
@@ -1760,56 +1767,50 @@ void main() {
     });
   });
 
-  // ═══ TIER 1 · SCAN ═════════════════════════════════════════════════════════
-  group('scan · the ring says the percentage', () {
-    testWidgets('[en] it announces 0% and then TRACKS the value', (
+  // ═══ TIER 1 · IMPORT (`/import`, IM-01 — was SCAN, ADR 077 §2.2) ═══════════
+  group('import · every control is named', () {
+    testWidgets('nothing on the import hub is naked', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const ScanScreen());
+        await pumpScreen(tester, const ImportScreen());
         final AppLocalizations l10n = await _load('en');
-        expect(announced(tester), contains(l10n.a11yScanRing('0%')));
-
-        // 🔴 THE SECOND HALF IS WHAT MAKES THE FIRST MEAN ANYTHING. A label
-        // hardcoded to "0%" passes the assertion above. `_pct` advances on a
-        // 560 ms `Timer.periodic` in steps of 100/5, so one tick is 20%.
-        await tester.pump(const Duration(milliseconds: 560));
-        expect(announced(tester), contains(l10n.a11yScanRing('20%')));
-        expect(announced(tester), isNot(contains(l10n.a11yScanRing('0%'))));
+        expect(
+          find.text(l10n.importSubtitle),
+          findsOneWidget,
+          reason: 'the hub phase is on screen, so the sweep is about it',
+        );
+        expectNothingNaked(tester, 'import (hub)');
       });
     });
 
-    testWidgets('nothing on scan is naked — measured in the DONE phase', (
+    // The review list is a different subtree — the selectable rows and an
+    // error strip — reached only after a paste and the mapping step.
+    // 🔴 RED ON ITS FIRST RUN, AND THAT WAS THE POINT: the rows were
+    // `CheckboxListTile`s, whose inner `Checkbox` is a second, unnamed tap
+    // target merged up under the row. The rows now carry the checked state
+    // themselves and the visual box is excluded from semantics.
+    testWidgets('nothing on the import review list is naked', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const ScanScreen());
+        await pumpScreen(tester, const ImportScreen());
         final AppLocalizations l10n = await _load('en');
-
-        // 🔴 THE CLOCK IS WALKED FORWARD, AND THE FIRST ATTEMPT AT THIS CASE
-        // WENT RED FOR A GOOD REASON. During the SCANNING phase the screen's
-        // only control is the CTA, and it is genuinely disabled
-        // (`onPressed: null`) — a disabled InkWell contributes no tap action at
-        // all, so the sweep found ZERO activatable nodes and the coverage floor
-        // said so rather than passing over nothing. The phase worth sweeping is
-        // the one with controls in it.
-        //
-        // Six ticks: `_stepCount` is 5 and the sixth flips `_done`. The
-        // sentinel is positive proof the phase arrived rather than an
-        // assumption that six pumps were enough — `pumpAndSettle` is not an
-        // option against a periodic timer, for the reason
-        // `width_scan_test.dart`'s header records.
-        for (int i = 0; i < 6; i++) {
-          await tester.pump(const Duration(milliseconds: 560));
-        }
-        expect(
-          find.text(l10n.goToDashboard),
-          findsOneWidget,
-          reason:
-              'the scan never reached its results phase, so the sweep below is '
-              'about the scanning screen again',
+        await tester.enterText(
+          find.byKey(E2EKeys.importPaste),
+          'name,price,currency\nNetflix,649,INR\nBroken,abc,INR\n',
         );
-        expectNothingNaked(tester, 'scan (results)');
+        await tester.pump();
+        await tester.tap(find.byKey(E2EKeys.importRead));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(E2EKeys.importContinue));
+        await tester.pumpAndSettle();
+        expect(
+          find.text(l10n.importReviewTitle),
+          findsOneWidget,
+          reason: 'the review phase is on screen, so the sweep is about it',
+        );
+        expectNothingNaked(tester, 'import (review)');
       });
     });
   });
@@ -2680,11 +2681,31 @@ void main() {
               .map((SemanticsData d) => d.label)
               .toList();
           expect(buttons, contains(l10n.close));
+          // ⏱ 2026-10-01 · NO-10: a due card carries its four answers —
+          // Mark as paid, Snooze, Keep it, How to stop — each a named button
+          // about THAT plan. Nothing else may be one.
+          final Set<String> rowActions = <String>{
+            l10n.reminderActionMarkPaid,
+            l10n.reminderActionSnooze,
+            l10n.reminderActionKeep,
+            l10n.reminderActionHowToStop,
+          };
+          final List<String> cards = buttons
+              .where((String l) => l != l10n.close && !rowActions.contains(l))
+              .toList();
           expect(
-            buttons.where((String l) => l != l10n.close),
+            cards,
             everyElement(contains(' renews ')),
             reason: 'only a card about one plan may announce itself a button',
           );
+          // Every card that is a control carries its four answers.
+          for (final String a in rowActions) {
+            expect(
+              buttons.where((String l) => l == a).length,
+              cards.length,
+              reason: '"$a" on every due card, and nowhere else',
+            );
+          }
           // COVERAGE: the aggregate card is there on every day of the year
           // (three demo rows carry `unused: true`), and it is NOT a button.
           final List<String> inert = data
@@ -3532,27 +3553,14 @@ void main() {
       });
     }, variant: kTapTargetPlatforms);
 
-    testWidgets('every tap target on scan (results) is at least 48×48', (
+    testWidgets('every tap target on the import hub is at least 48×48', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const ScanScreen(), theme: appTheme());
-        final AppLocalizations l10n = await _load('en');
-        // Six ticks to the DONE phase, for the naked sweep's reason: during
-        // SCANNING the only control is genuinely disabled and contributes no
-        // tap action, so the guideline would inspect nothing and pass.
-        for (int i = 0; i < 6; i++) {
-          await tester.pump(const Duration(milliseconds: 560));
-        }
-        expect(
-          find.text(l10n.goToDashboard),
-          findsOneWidget,
-          reason:
-              'the scan never reached its results phase, so the sweep below is '
-              'about the scanning screen again',
-        );
-        // 1 subject — the dashboard CTA is the whole activatable surface here.
-        await expectGuidelineHadSubjects(tester, 'scan (results)');
+        await pumpScreen(tester, const ImportScreen(), theme: appTheme());
+        // The close action and the paste field: "Read it" is genuinely
+        // disabled until there is text, and contributes no tap action.
+        await expectGuidelineHadSubjects(tester, 'import (hub)');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
     }, variant: kTapTargetPlatforms);
@@ -4437,50 +4445,17 @@ void main() {
       });
     });
 
-    testWidgets('every string on scan (results) meets WCAG AA contrast', (
+    testWidgets('every string on the import hub meets WCAG AA contrast', (
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpScreen(tester, const ScanScreen(), theme: appTheme());
+        await pumpScreen(tester, const ImportScreen(), theme: appTheme());
         final AppLocalizations l10n = await _load('en');
-        for (int i = 0; i < 6; i++) {
-          await tester.pump(const Duration(milliseconds: 560));
-        }
-        // ⏱ 2026-09-28 · train ST-D7: the primary action is now a theme
-        // `FilledButton`, which ANIMATES from its disabled to its enabled
-        // colours over Material's 200 ms theme-change duration (the old
-        // `GradientButton` swapped instantly). Swept on the flip frame it
-        // measured 1.49:1 — a colour halfway between the two states, never
-        // at rest on screen. One pump past the transition sweeps what the user
-        // actually reads.
-        await tester.pump(const Duration(milliseconds: 300));
-        expect(
-          find.text(l10n.goToDashboard),
-          findsOneWidget,
-          reason:
-              'the scan never reached its results phase, so the sweep below is '
-              'about the scanning screen again',
-        );
-        // ⏱ train ST-D7: the gradient hero this history describes is gone —
-        // the summary is an opaque `AppCard` in the scheme's ink.
-        // 6 subjects. ✅ THIS CASE WAS RED ON 2026-08-13 AND IS GREEN SINCE.
-        // MEASURED THEN: `YOUR SUBSCRIPTIONS` (11px) was 3.97:1 — #6C57F7 on
-        // #EAE6FE — against a 4.5 target.
-        // 🔴 AND THE DIAGNOSIS IN THIS COMMENT WAS WRONG, which is why it is
-        // corrected rather than deleted. It read the pair as `AppColors.accent`
-        // used as TEXT. It is the other way round: #6C57F7 is the GRADIENT and
-        // #EAE6FE is the INK — white at **0.85 alpha** blended over
-        // `brandGradient`. The defect was the ALPHA, not the accent. Opaque
-        // white is 4.90:1 at the accent end and 4.51:1 at the #8950FF end.
-        // 📌 The guideline reports two MODES, not foreground and background;
-        // reading the darker one as "the text" is how a blended white became an
-        // accent-as-text finding and got filed to the palette lane it did not
-        // belong to.
-        await expectOpaqueGround(tester, 'scan (results)');
+        await expectOpaqueGround(tester, 'import (hub)');
         await expectContrastHadSubjects(
           tester,
-          'scan (results)',
-          covers: const <String>['All set', 'Go to dashboard'],
+          'import (hub)',
+          covers: <String>[l10n.importSubtitle],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
@@ -5214,7 +5189,7 @@ void main() {
         // ✅ THIS CASE WAS RED ON 2026-08-13 AND IS GREEN SINCE.
         // MEASURED THEN: the `Calendar →` jump was 3.78:1 — #6459F5 on #131318.
         // That was `AppColors.accent` painted UNCONDITIONALLY, i.e. the light
-        // palette on the dark surface — the cost app.dart:70-77 names in prose
+        // palette on the dark surface — the cost app.dart:71-78 names in prose
         // (`126 AppColors.* references paint the LIGHT palette
         // unconditionally`) with a number attached for the first time.
         // FIXED by forking to `scheme.primary` in dark, which is the same seed
@@ -5249,7 +5224,7 @@ void main() {
         // MEASURED THEN: the `Settings` heading was 1.01:1 — #141420 on
         // #131318. `AppColors.ink` on the dark surface: the text was INVISIBLE,
         // not merely low. `themeMode` defaults to `ThemeMode.system`
-        // (app.dart:88), so that is what every dark-OS user was handed.
+        // (app.dart:89), so that is what every dark-OS user was handed.
         // FIXED by adopting `AppText.of(context)` — the resolver already built
         // for this, which had ONE caller in the app against 114 static uses.
         // ⚠️ It was NOT the "scheduled theme fork" this comment assigned it to.

@@ -134,6 +134,9 @@
   "popupLinkBatch": {
     "message": "Toplu"
   },
+  "popupUpgrade": {
+    "message": "Upgrade to FullShot Pro"
+  },
   "popupLinkOptions": {
     "message": "Seçenekler"
   },

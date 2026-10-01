@@ -11,7 +11,9 @@
 //
 // All fixtures are obviously synthetic (`example.invalid`, sequential digits).
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_telemetry/src/noop_telemetry_client.dart';
 import 'package:nikatru_telemetry/src/pii_scrubber.dart';
+import 'package:nikatru_telemetry/src/sentry_telemetry_client.dart';
 import 'package:nikatru_telemetry/src/telemetry_bootstrap.dart';
 import 'package:nikatru_telemetry/src/telemetry_config.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -23,6 +25,23 @@ const TelemetryConfig _config = TelemetryConfig(
 );
 
 void main() {
+  // ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST — the client a caller inside
+  // `appRunner` records to: the one `init` would have returned for the config.
+  group('TelemetryBootstrap.clientFor', () {
+    test('a DSN is the Sentry client', () {
+      expect(TelemetryBootstrap.clientFor(_config), isA<SentryTelemetryClient>());
+    });
+
+    test('no DSN is the no-op client, so nothing is sent', () {
+      expect(
+        TelemetryBootstrap.clientFor(
+          const TelemetryConfig(dsn: '', release: 'probe@1.0.0', environment: 'test'),
+        ),
+        isA<NoOpTelemetryClient>(),
+      );
+    });
+  });
+
   // ── THE OPTIONS THEMSELVES, NOT THE LINE THAT SPELLS THEM ────────────────
   //
   // 🔴 O-CRASH-EVENT-IP-DROP, owner ruling 2026-09-15: a crash report carries
@@ -73,6 +92,23 @@ void main() {
       await TelemetryBootstrap.optionsCallback(_config, isWeb: false)(options);
 
       expect(options.enableAutoSessionTracking, isFalse);
+    });
+
+    // ⏱ 2026-10-01 · full review AA-08. The SDK default is ON (measured in the
+    // pinned 9.26.0: sentry_flutter_options.dart `enableNativeCrashHandling =
+    // true`), so the pre-set is belt and braces, as above. Every channel row in
+    // tooling/channel-register.json declares `crashSink.native: false`, and
+    // assert-seams-wired.mjs holds that claim to this assignment; this case
+    // holds the assignment to the SDK.
+    test('turns native crash handling off', () async {
+      final options = SentryFlutterOptions()..enableNativeCrashHandling = true;
+      expect(options.enableNativeCrashHandling, isTrue);
+
+      await TelemetryBootstrap.optionsCallback(_config, isWeb: false)(options);
+
+      expect(options.enableNativeCrashHandling, isFalse,
+          reason: 'a native crash event never passes the Dart beforeSend, so '
+              'it would reach GlitchTip unscrubbed and unsymbolicated');
     });
 
     test('wires beforeSend, and it routes through scrubEvent', () async {

@@ -55,10 +55,32 @@
 # on this path; the line after it restates the WHOLE policy — the same six
 # `script-src` hashes and `form-action 'self'` — with only `connect-src` widened.
 # The page carries no inline script, so it adds no hash.
+# ⏱ 2026-10-01 · rv2-security-021 — that restated `script-src` is SPLICED by
+# tooling/sites/generate-discovery.mjs exactly like the `/*` one (every CSP line
+# of this file, not the first), so its hash list is computed, never a hand copy.
+# Every OTHER directive on it is hand-written and floored by
+# assert-web-cache-policy.mjs, which reads tooling/ci/site-csp.json.
 # `Referrer-Policy` is detached the same way (the `/*` rule sets it globally): the
 # URL of this page carries the extension's PKCE challenge and state, and it must
 # not leave in a Referer. `no-store`, because it is a signed-in page.
 /ext/connect
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-/F5Ry+1cCHURQ7c2PIC+pv90DaJ01rRWBejMCVN4Dm4=' 'sha256-I0qLQpwW2LoqBwFwve24dDecmVHlbmOOtB0YoqJru6w=' 'sha256-MgqFFGLQqvfHTjM1wDUjdvXwSAKg/tr5sx4ydu3DVNY=' 'sha256-SdQiYmfng5RFNXxQywQLylCcSrYBeQ+MfoGO578s0XY=' 'sha256-W6m5iDhIwK8RKiz10LnfxTMC9ykoe+hCZTXsNom5tWM=' 'sha256-se6nVksVFvJGiLATTxTxshBOCrCLLqEM7cJ2CJk5WYE='; connect-src 'self' https://auth-api.nikatru.com https://platform.nikatru.com; form-action 'self'; upgrade-insecure-requests
+  ! Referrer-Policy
+  Referrer-Policy: no-referrer
+  Cache-Control: no-store
+
+# ── /app/connect: THE DESKTOP APP'S SYSTEM-BROWSER SIGN-IN ──────────────────
+# ⏱ 2026-10-01 · O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH. A desktop build
+# cannot attest, so it opens this page (app/connect.html), the user signs in
+# here, and the page hands a one-time, PKCE-bound code back to the app. The same
+# detach-and-restate as /ext/connect above, for the same reasons and with the
+# same two `connect-src` origins only — an override never widens where script
+# may come from (assert-web-cache-policy.mjs), which is why this page carries no
+# Turnstile and so offers Sign in with Apple only (GoTrue gates the password
+# grant with Turnstile). `Referrer-Policy: no-referrer` because this page's URL
+# carries the app's PKCE challenge, state and return address.
+/app/connect
   ! Content-Security-Policy
   Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-/F5Ry+1cCHURQ7c2PIC+pv90DaJ01rRWBejMCVN4Dm4=' 'sha256-I0qLQpwW2LoqBwFwve24dDecmVHlbmOOtB0YoqJru6w=' 'sha256-MgqFFGLQqvfHTjM1wDUjdvXwSAKg/tr5sx4ydu3DVNY=' 'sha256-SdQiYmfng5RFNXxQywQLylCcSrYBeQ+MfoGO578s0XY=' 'sha256-W6m5iDhIwK8RKiz10LnfxTMC9ykoe+hCZTXsNom5tWM=' 'sha256-se6nVksVFvJGiLATTxTxshBOCrCLLqEM7cJ2CJk5WYE='; connect-src 'self' https://auth-api.nikatru.com https://platform.nikatru.com; form-action 'self'; upgrade-insecure-requests
   ! Referrer-Policy

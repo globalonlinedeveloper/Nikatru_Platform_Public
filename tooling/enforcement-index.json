@@ -554,7 +554,7 @@
       "F-10"
     ],
     "invokedBy": [
-      ".github/workflows/ci.yml#guard-meta"
+      ".github/workflows/ci.yml#guard-tests-floor"
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-case-count-honest.mjs",
@@ -1903,6 +1903,19 @@
     "state": "WIRED"
   },
   {
+    "claims": [
+      "ADR 004",
+      "C-8"
+    ],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-chassis"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-ports.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [],
     "invokedBy": [
       ".github/workflows/ci.yml#guard-meta"
@@ -2262,6 +2275,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-runner-budget.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-runtime-signer-check.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -3032,6 +3055,17 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/gen-issue-forms.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-tests",
+      ".github/workflows/ci.yml#guard-tests-floor"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/guard-test-shards.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -4121,6 +4155,7 @@
   },
   {
     "claims": [
+      "ADR 031",
       "D-10",
       "D-3",
       "D-6",
@@ -4245,7 +4280,7 @@
     "claims": [],
     "invokedBy": [
       ".github/workflows/ci.yml#content-gate",
-      ".github/workflows/ci.yml#guard-meta",
+      ".github/workflows/ci.yml#guard-tests",
       ".github/workflows/extensions-ci.yml#core",
       ".github/workflows/extensions-ci.yml#selftest"
     ],

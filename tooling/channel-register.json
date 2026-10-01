@@ -1022,7 +1022,8 @@
           "content-rating.json",
           "ads-declaration.json",
           "feature-graphic.png",
-          "store-icon-512.png"
+          "store-icon-512.png",
+          "release-notes.txt"
         ],
         "maxChars": {
           "title.txt": {
@@ -1036,6 +1037,10 @@
           "long-description.txt": {
             "max": 4000,
             "source": "support.google.com/googleplay/android-developer/answer/9859152 (fetched 2026-07-29) — full description, 4000 characters"
+          },
+          "release-notes.txt": {
+            "max": 500,
+            "source": "support.google.com/googleplay/android-developer/answer/9859348 (fetched 2026-10-01) — release notes, verbatim: \"You can enter release notes using up to 500 Unicode characters per language.\""
           }
         },
         "graphicAssets": {
@@ -1867,6 +1872,13 @@
         "target": "apk",
         "why": "[ADR 090] the symbolication fixture — an apk built to be crashed on purpose so the uploaded debug symbols can be proved to resolve a real stack. Nothing installs it.",
         "handTyped": "C6-3 (O-FLUTTER-BUILD-TYPED-PER-LINE): [ADR 090] the fixture is built with the exact flags its proof is about, typed where the proof can be read; nothing installs it, and routing it through the composer would put the thing under test behind the thing that makes release builds."
+      },
+      {
+        "workflow": ".github/workflows/symbolication-proof.yml",
+        "job": "prove",
+        "target": "linux",
+        "why": "[ADR 090] the symbolication fixture's linux-x64 leg (full review AA-06) — a Linux bundle built to be crashed on purpose under xvfb so the uploaded debug symbols can be proved to resolve a real stack. Nothing installs it.",
+        "handTyped": "C6-3 (O-FLUTTER-BUILD-TYPED-PER-LINE): [ADR 090] as the apk leg above — the fixture is built with the exact flags its proof is about, typed where the proof can be read; nothing installs it, and routing it through the composer would put the thing under test behind the thing that makes release builds."
       }
     ]
   },
@@ -2021,7 +2033,7 @@
           "dart"
         ],
         "native": false,
-        "note": "sentry_flutter on web captures Dart exceptions and unhandled JS errors. VERIFIED LIVE: GlitchTip issue SUBLY-2, release subly@1.0.75+e509a26, environment production, from https://subly.nikatru.com/. [pipeline 11]E-7"
+        "note": "DART EXCEPTIONS ONLY. sentry_flutter sends them through WebEnvelopeTransport. ⚠️ CORRECTED 2026-10-01 (full review AA-06): this note said \"and unhandled JS errors\", which stopped being true on 2026-09-12 (W5) when TelemetryBootstrap.useHttpTransportOnWeb stopped loading the browser SDK and with it the window-level JS error handlers, so a JS error that never becomes a Dart exception reaches nobody. VERIFIED LIVE before W5: GlitchTip issue SUBLY-2, release subly@1.0.75+e509a26, environment production, from https://subly.nikatru.com/. NATIVE: there is no native layer on web, so native=false is a fact of the target, not a decision. Dart-frame symbolication on this target: tooling/ops/symbolication-expectation.json `targets.web`. [pipeline 11]E-7"
       },
       "deploymentEnvironment": "{app}-web",
       "storeMetadataDir": null,
@@ -2107,6 +2119,27 @@
           "asOf": "2026-08-04",
           "_aliasNote": "Renamed from `subscriptiontracker` on 2026-08-04 by [ADR 030] — ONE SHARED UPLOAD KEY FOR THE WHOLE FACTORY, so a per-app alias was the wrong name. This field kept saying `subscriptiontracker` afterwards and NOTHING NOTICED, because `keytool -changealias` leaves the SHA-256 byte-identical (that identity is the proof it was a rename and not a regeneration) and no guard reads this field — assert-artifact-signed.mjs consumes only `.sha256`. A value with no reader drifts silently and its `asOf` date goes on looking fresh. The repo secret ANDROID_KEY_ALIAS is the authority.",
           "source": "owner-supplied, from the keystore generated 2026-08-04 (RSA 4096, PKCS12, CN=Nikatru, valid to 2053)"
+        },
+        "appSigningCertificate": {
+          "_why": [
+            "🔴 THE KEY A PLAY INSTALL IS ACTUALLY SIGNED WITH, AND IT IS NOT `uploadCertificate`. Play App",
+            "Signing strips our upload signature and re-signs every delivered .apk with the app signing key",
+            "Google holds, so the certificate the runtime signature check reads on a Play-installed device is",
+            "THIS one. A check pinned to the upload key alone would call every genuine Play install a",
+            "modified copy and lock every paying user out of their own data.",
+            "",
+            "THAT IS WHY IT IS A SECOND PIN, read by tooling/ci/assert-runtime-signer-check.mjs into",
+            "packages/core/lib/src/integrity/signer_pins.g.dart beside the upload pin (which still signs the",
+            "CI .apk and an internal-sharing install). While it is null the android-play set is INCOMPLETE",
+            "and the runtime check REPORTS a mismatch and never blocks (`runtimeSignerCheck`).",
+            "",
+            "⏭ FILLED FROM THE PLAY CONSOLE, NOT FROM ANY KEYSTORE WE HOLD: Test and release > App integrity",
+            "> App signing > App signing key certificate > SHA-256. It is public — the console shows it and",
+            "App Links' assetlinks.json requires it in plaintext. Paste it with the date."
+          ],
+          "sha256": null,
+          "asOf": "2026-10-01",
+          "source": "not yet read: Play Console > App integrity > App signing key certificate (exists once the app is created with Play App Signing)"
         },
         "ciSecrets": {
           "_why": [
@@ -2245,7 +2278,7 @@
           "dart"
         ],
         "native": false,
-        "note": "The lane supplies --dart-define=GLITCHTIP_DSN since 2026-08-02, so Dart errors from this artifact reach GlitchTip. sentry_flutter vendors sentry-android, but NOTHING HAS EXERCISED THE NATIVE PATH FROM THIS FACTORY — no Android artifact has ever run on a handset. Native coverage is UNVERIFIED and is not claimed. ⚠️ The reason given here used to be 'Android cannot be built on the owner's box at all', which is false: it builds in WSL (see the lane note). The gap is that nobody has INSTALLED a build on a device, which is a different and still-open thing — correcting the reason does not close it. [pipeline 11]E-7"
+        "note": "THE DART LAYER ONLY. The lane supplies --dart-define=GLITCHTIP_DSN since 2026-08-02, so Dart errors from this artifact reach GlitchTip; no Android artifact has ever run on a handset, only the symbolication probe on an emulator. NATIVE LAYER: OFF BY DECISION (⏱ 2026-10-01, full review AA-08). packages/telemetry/lib/src/telemetry_bootstrap.dart sets `enableNativeCrashHandling = false`, because the pinned sentry_flutter 9.26.0 turns its native handler ON by default and two things made what it sent worse than nothing: no native symbols are uploaded anywhere in this factory, and a native event is sent by the native SDK itself, never passing the Dart `beforeSend` that applies the PII scrub the privacy policy promises. Turning it back on for this target needs its native symbol upload AND a native-side scrub first; assert-seams-wired.mjs fails while this row says false and the bootstrap disagrees. ON ANDROID THE FLAG IS NOT ENOUGH: it reaches sentry-android's JVM handler and ANR watchdog, not the NDK signal handler where a crash in libflutter.so or a plugin's .so lands, so each app's AndroidManifest also carries `io.sentry.ndk.enable=false`. A native crash, ANR or OOM kill on Android produces NO report. Dart-frame symbolication on this target: tooling/ops/symbolication-expectation.json `targets.android-x64`. [pipeline 11]E-7"
       },
       "deploymentEnvironment": "{app}-android-play",
       "storeMetadataDir": "apps/{app}/store/android-play",
@@ -2506,6 +2539,13 @@
         "workflow": ".github/workflows/build-platforms.yml",
         "job": "apple"
       },
+      "crashSink": {
+        "layers": [
+          "dart"
+        ],
+        "native": false,
+        "note": "THE DART LAYER ONLY, CLAIMED AS WIRING, NOT COVERAGE. ⏱ 2026-10-01 (full review AA-09): this row had no crashSink at all while build-platforms.yml's `apple` job built its .ipa with --dart-define=GLITCHTIP_DSN, so a Dart exception from it reaches GlitchTip. NATIVE LAYER: OFF BY DECISION (⏱ 2026-10-01, full review AA-08). packages/telemetry/lib/src/telemetry_bootstrap.dart sets `enableNativeCrashHandling = false`, because the pinned sentry_flutter 9.26.0 turns its native handler ON by default and two things made what it sent worse than nothing: no native symbols are uploaded anywhere in this factory, and a native event is sent by the native SDK itself, never passing the Dart `beforeSend` that applies the PII scrub the privacy policy promises. Turning it back on for this target needs its native symbol upload AND a native-side scrub first; assert-seams-wired.mjs fails while this row says false and the bootstrap disagrees. On iOS that means KSCrash is never installed; the SDK documents the side effect that Dart events then carry no native App/Device/OS context. A native crash, watchdog kill or OOM on iOS produces NO report. ⚠️ No iOS frame has ever been read back from GlitchTip: a release (AOT) Flutter build does not run on the iOS simulator and no device is reachable from a hosted runner, so tooling/ops/symbolication-expectation.json `targets.ios-arm64` records Dart-frame symbolication on this target UNPROVEN, with that reason."
+      },
       "deploymentEnvironment": "{app}-ios-appstore",
       "storeMetadataDir": "apps/{app}/store/ios-appstore",
       "ownerQueue": null,
@@ -2658,6 +2698,13 @@
         "workflow": ".github/workflows/build-platforms.yml",
         "job": "apple"
       },
+      "crashSink": {
+        "layers": [
+          "dart"
+        ],
+        "native": false,
+        "note": "THE DART LAYER ONLY, CLAIMED AS WIRING, NOT COVERAGE. ⏱ 2026-10-01 (full review AA-09): this row had no crashSink at all while build-platforms.yml's `apple` job built its .app with --dart-define=GLITCHTIP_DSN, so a Dart exception from it reaches GlitchTip. NATIVE LAYER: OFF BY DECISION (⏱ 2026-10-01, full review AA-08). packages/telemetry/lib/src/telemetry_bootstrap.dart sets `enableNativeCrashHandling = false`, because the pinned sentry_flutter 9.26.0 turns its native handler ON by default and two things made what it sent worse than nothing: no native symbols are uploaded anywhere in this factory, and a native event is sent by the native SDK itself, never passing the Dart `beforeSend` that applies the PII scrub the privacy policy promises. Turning it back on for this target needs its native symbol upload AND a native-side scrub first; assert-seams-wired.mjs fails while this row says false and the bootstrap disagrees. On macOS that means KSCrash is never installed, and Dart events carry no native App/Device/OS context. A native crash in the runner or a plugin's native half produces NO report. Dart-frame symbolication on this target: tooling/ops/symbolication-expectation.json `targets.macos-arm64`."
+      },
       "deploymentEnvironment": "{app}-macos-appstore",
       "storeMetadataDir": "apps/{app}/store/macos-appstore",
       "ownerQueue": null,
@@ -2773,7 +2820,7 @@
           "dart"
         ],
         "native": false,
-        "note": "THE DART LAYER ONLY, and this row is where that is written down. The lane supplies --dart-define=GLITCHTIP_DSN since 2026-08-02, so a Dart exception reaches GlitchTip; a native crash in the C++ runner or in a plugin's native half does NOT. 'Windows crashes reach GlitchTip' is therefore true of Dart exceptions and false of access violations, and six green build ticks must never be read as six covered platforms. [pipeline 11]E-7"
+        "note": "THE DART LAYER ONLY, and this row is where that is written down. The lane supplies --dart-define=GLITCHTIP_DSN since 2026-08-02, so a Dart exception reaches GlitchTip; a native crash in the C++ runner or in a plugin's native half does NOT. 'Windows crashes reach GlitchTip' is therefore true of Dart exceptions and false of access violations, and six green build ticks must never be read as six covered platforms. NATIVE LAYER: OFF BY DECISION (⏱ 2026-10-01, full review AA-08). packages/telemetry/lib/src/telemetry_bootstrap.dart sets `enableNativeCrashHandling = false`, because the pinned sentry_flutter 9.26.0 turns its native handler ON by default and two things made what it sent worse than nothing: no native symbols are uploaded anywhere in this factory, and a native event is sent by the native SDK itself, never passing the Dart `beforeSend` that applies the PII scrub the privacy policy promises. Turning it back on for this target needs its native symbol upload AND a native-side scrub first; assert-seams-wired.mjs fails while this row says false and the bootstrap disagrees. On Windows the SDK's sentry-native (crashpad) is never initialised. Dart-frame symbolication on this target: tooling/ops/symbolication-expectation.json `targets.windows-x64`. [pipeline 11]E-7"
       },
       "deploymentEnvironment": "{app}-windows-store",
       "storeMetadataDir": "apps/{app}/store/windows-store",
@@ -3162,7 +3209,7 @@
           "dart"
         ],
         "native": false,
-        "note": "THE DART LAYER ONLY. The lane has supplied --dart-define=GLITCHTIP_DSN since 2026-08-09, when it started compiling a Linux bundle at all, so a Dart exception from a packed .snap reaches GlitchTip; a native crash in the GTK runner or a plugin's native half does NOT. ⚠️ NOTHING HAS EVER RUN A .snap — the artifact is packed and uploaded, never installed — so even the Dart layer is UNVERIFIED on this channel and is claimed as wiring, not as coverage. [pipeline 11]E-7"
+        "note": "THE DART LAYER ONLY. The lane has supplied --dart-define=GLITCHTIP_DSN since 2026-08-09, when it started compiling a Linux bundle at all, so a Dart exception from a packed .snap reaches GlitchTip; a native crash in the GTK runner or a plugin's native half does NOT. ⚠️ NOTHING HAS EVER RUN A .snap — the artifact is packed and uploaded, never installed — so even the Dart layer is UNVERIFIED on this channel and is claimed as wiring, not as coverage. NATIVE LAYER: OFF BY DECISION (⏱ 2026-10-01, full review AA-08). packages/telemetry/lib/src/telemetry_bootstrap.dart sets `enableNativeCrashHandling = false`, because the pinned sentry_flutter 9.26.0 turns its native handler ON by default and two things made what it sent worse than nothing: no native symbols are uploaded anywhere in this factory, and a native event is sent by the native SDK itself, never passing the Dart `beforeSend` that applies the PII scrub the privacy policy promises. Turning it back on for this target needs its native symbol upload AND a native-side scrub first; assert-seams-wired.mjs fails while this row says false and the bootstrap disagrees. On Linux the SDK's sentry-native (crashpad) is never initialised. Dart-frame symbolication on this target: tooling/ops/symbolication-expectation.json `targets.linux-x64`. [pipeline 11]E-7"
       },
       "identity": {
         "_why": [
@@ -3387,6 +3434,13 @@
         "flutter"
       ],
       "lane": null,
+      "crashSink": {
+        "layers": [
+          "dart"
+        ],
+        "native": false,
+        "note": "THE DART LAYER ONLY. ⏱ 2026-10-01 (full review AA-09): this row had no crashSink at all while build-platforms.yml's `linux_web_android` job built its Linux bundle with --dart-define=GLITCHTIP_DSN (flutter-release-build.mjs, channel linux-appimage), so a Dart exception from it reaches GlitchTip; a native crash in the GTK runner or a plugin's native half does NOT. NATIVE LAYER: OFF BY DECISION (⏱ 2026-10-01, full review AA-08). packages/telemetry/lib/src/telemetry_bootstrap.dart sets `enableNativeCrashHandling = false`, because the pinned sentry_flutter 9.26.0 turns its native handler ON by default and two things made what it sent worse than nothing: no native symbols are uploaded anywhere in this factory, and a native event is sent by the native SDK itself, never passing the Dart `beforeSend` that applies the PII scrub the privacy policy promises. Turning it back on for this target needs its native symbol upload AND a native-side scrub first; assert-seams-wired.mjs fails while this row says false and the bootstrap disagrees. On Linux the SDK's sentry-native (crashpad) is never initialised. Dart-frame symbolication on this target: tooling/ops/symbolication-expectation.json `targets.linux-x64`."
+      },
       "deploymentEnvironment": "{app}-linux-appimage",
       "storeMetadataDir": null,
       "ownerQueue": null,
@@ -3614,7 +3668,7 @@
           "dart"
         ],
         "native": false,
-        "note": "THE DART LAYER ONLY. ⏱ CORRECTED 2026-10-01 (O-APPS-GOV-IN-ROW-SAYS-NO-LANE-EMITS-IT): this said the row NAMES NO LANE and that its .apk was the one the `linux_web_android` job emits for android-play. Both were false since 2026-09-22: the row's lane is that job, and the .apk is this channel's OWN build there (`build_apk_agi`, signed with the APPSGOVIN_* key, RELEASE_CHANNEL=apps-gov-in), whose command supplies --dart-define=GLITCHTIP_DSN; assert-seams-wired.mjs grades it as a declared lane. Native (NDK) frames are not captured on any Android channel here; that is the same gap the android-play row records, not a new one. ⏱ 2026-09-24: until then this said assert-seams-wired graded only a row's declared lane job; since O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY (patch B) it grades every census-graded Flutter build, so the apk stamped RELEASE_CHANNEL=apps-gov-in in build-platforms.yml's `linux_web_android` job is graded with no lane named here."
+        "note": "THE DART LAYER ONLY. ⏱ CORRECTED 2026-10-01 (O-APPS-GOV-IN-ROW-SAYS-NO-LANE-EMITS-IT): this said the row NAMES NO LANE and that its .apk was the one the `linux_web_android` job emits for android-play. Both were false since 2026-09-22: the row's lane is that job, and the .apk is this channel's OWN build there (`build_apk_agi`, signed with the APPSGOVIN_* key, RELEASE_CHANNEL=apps-gov-in), whose command supplies --dart-define=GLITCHTIP_DSN; assert-seams-wired.mjs grades it as a declared lane. NATIVE LAYER: OFF BY DECISION (⏱ 2026-10-01, full review AA-08). packages/telemetry/lib/src/telemetry_bootstrap.dart sets `enableNativeCrashHandling = false`, because the pinned sentry_flutter 9.26.0 turns its native handler ON by default and two things made what it sent worse than nothing: no native symbols are uploaded anywhere in this factory, and a native event is sent by the native SDK itself, never passing the Dart `beforeSend` that applies the PII scrub the privacy policy promises. Turning it back on for this target needs its native symbol upload AND a native-side scrub first; assert-seams-wired.mjs fails while this row says false and the bootstrap disagrees. The NDK handler is off by the same manifest switch as android-play (`io.sentry.ndk.enable=false`); this is that row's decision, not a new one. Dart-frame symbolication on this target: tooling/ops/symbolication-expectation.json `targets.android-x64`. ⏱ 2026-09-24: until then this said assert-seams-wired graded only a row's declared lane job; since O-SEAMS-WIRED-GRADES-DECLARED-LANES-ONLY (patch B) it grades every census-graded Flutter build, so the apk stamped RELEASE_CHANNEL=apps-gov-in in build-platforms.yml's `linux_web_android` job is graded with no lane named here."
       },
       "deploymentEnvironment": "{app}-apps-gov-in",
       "storeMetadataDir": "apps/{app}/store/apps-gov-in",
@@ -3660,6 +3714,47 @@
       "deferral": {
         "reason": "⬜ THE FIRST PUBLISH IS MANUAL AND OWNER-GATED, and on this channel it is manual FOREVER, not until somebody writes a script: apps.gov.in publishes no submission API at all (research 09 §1.9 — the \"APIs\" the portal advertises are open-data APIs for apps to consume). C-MANUAL-FIRST-PUBLISH is satisfied by construction here.",
         "alsoBlockedBy": "The listing assets every channel needs — O-STORE-SCREENSHOTS, which programme.json P3-4 names as the real blocker under every store — plus one unread surface: the AUTHENTICATED upload form's field list (O-APPS-GOV-IN-SBOM). Every public surface says the portal asks for no SBOM; that form is the one place nobody has looked, and the runbook leaves a section for it rather than guessing."
+      },
+      "storeReview": {
+        "_why": [
+          "THE ANSWER LINES FOR THE apps.gov.in REVIEW, kept on the row so the sitting sheet cites ONE place.",
+          "The Developer Manual §11 says an app without root detection, code obfuscation and a runtime",
+          "signature check 'may be rejected'. Each answer below names the files that make it true, and",
+          "tooling/ci/assert-runtime-signer-check.mjs fails when a cited file stops existing — an answer",
+          "whose evidence moved is an answer nobody can show the reviewer."
+        ],
+        "row": "O-APPS-GOV-IN-VAPT-CHECKLIST",
+        "asOf": "2026-10-01",
+        "answers": [
+          {
+            "item": "Root detection",
+            "answer": "Yes. At startup the app checks for su binaries, test-keys builds, Magisk paths and a writable /system (Android; Cydia/apt/sshd artefacts and a sandbox write on iOS). A rooted device sees one non-blocking notice per session, the finding is recorded, and exporting data or deleting the account requires the user to re-authenticate first. The app never blocks a user from their own data on this signal.",
+            "evidence": [
+              "packages/core/lib/src/integrity/device_integrity.dart",
+              "packages/platform_storage/android/src/main/kotlin/com/nikatru/platform_storage/DeviceIntegrityHandler.kt",
+              "packages/chassis_screens/lib/integrity/device_integrity_gate.dart",
+              "packages/chassis_screens/lib/shell/app_shell.dart"
+            ]
+          },
+          {
+            "item": "Code obfuscation",
+            "answer": "Yes. Every Android release build is compiled with Dart obfuscation (--obfuscate --split-debug-info) and R8 minification; the symbol files are kept privately and never published.",
+            "evidence": [
+              "tooling/ci/flutter-release-build.mjs",
+              "tooling/ci/assert-obfuscation-coupled.mjs"
+            ]
+          },
+          {
+            "item": "Runtime signature check",
+            "answer": "Yes. At startup the app reads its own signing certificate (PackageManager GET_SIGNING_CERTIFICATES on Android 9+, GET_SIGNATURES below) and compares its SHA-256 with the digests pinned for the store channel it was built for. A copy signed by any other key shows a non-dismissable screen telling the user to install from the official store, with no access to app data. Debug builds alone are exempt.",
+            "evidence": [
+              "packages/core/lib/src/integrity/signer_pins.g.dart",
+              "packages/platform_storage/android/src/main/kotlin/com/nikatru/platform_storage/DeviceIntegrityHandler.kt",
+              "packages/chassis_screens/lib/integrity/tampered_build_screen.dart",
+              "tooling/ci/assert-runtime-signer-check.mjs"
+            ]
+          }
+        ]
       },
       "notes": [
         "🔴 THIS ROW EXISTS BECAUSE THE STATE FILE ALREADY CLAIMED IT DID. Private/platform-state/",
@@ -4238,6 +4333,50 @@
       ".AppImage": {
         "flutterTarget": "linux",
         "packagedBy": "AppImage packaging — tooling/ci/appimage-signing.mjs and its lane. 🔴 CORRECTED 2026-08-25 — that named a packager that does not exist. NOT IMPLEMENTED ANYWHERE IN THIS REPOSITORY: `grep -rn -E 'appimagetool|linuxdeploy|AppImageKit' --include=*.mjs --include=*.yml --include=*.sh`, excluding node_modules/ and .bundles/, returns zero lines, and appimage-signing.mjs materialises the SIGNING KEY (its own line 3) — it signs, it does not package. docs/ci/build-platforms.md, job linux_web_android (§before step **Build linux**), already said so in prose (it was in build-platforms.yml's own prose, at line 342 of that file AS IT STOOD BEFORE 2026-09-06, where no guard could read it), where no guard could read it. Held by assert-channel-register.mjs §10 limb (iii). 🔴 SWEEP RESTATED 2026-08-25, APPENDED NOT REWRITTEN — the sentence above is left exactly as written. As literally scoped it no longer returns zero: limb (iii) of assert-channel-register.mjs now quotes that same pattern in its own comment, so the rule as written returns exactly 1 line — measured 2026-08-25, COUNT=1, and it is tooling/ci/assert-channel-register.mjs itself. The domain that reproduces ZERO today is that same sweep excluding node_modules/, .bundles/ AND tooling/ci/assert-channel-register.mjs — measured 2026-08-25: 0 lines. The one hit is a comment quoting the pattern, not a packaging invocation, so the finding this entry rests on is unchanged: nothing in this repository packages an AppImage."
+      }
+    }
+  },
+  "runtimeSignerCheck": {
+    "_why": [
+      "🔴 THE RUNTIME SIGNATURE CHECK'S EXPECTED DIGESTS — which pins each Android channel's build",
+      "compiles in. At startup the app reads its own signing certificate and compares it with these; a",
+      "copy re-signed by anyone else shows 'this copy of the app was modified; install from the official",
+      "store' and nothing else (packages/core/lib/src/integrity/device_integrity.dart).",
+      "",
+      "THE DIGESTS ARE BUILD-TIME CONSTANTS, NEVER A COPY. `pins` names FIELDS of the channel's row; the",
+      "values are read from there by tooling/ci/assert-runtime-signer-check.mjs --write into `generated`,",
+      "and the same guard fails CI when the generated file and this register disagree, when an Android",
+      "row with a pinned fingerprint has no entry here, or when the check is not wired into the boot.",
+      "",
+      "COMPLETE OR NOT. A channel's set is COMPLETE when every pin it names is set. Only a complete set",
+      "may block: a null pin is a key the check cannot recognise yet, and a genuine install it would flag",
+      "is a paying user locked out. An incomplete set compiles in REPORT mode — the mismatch is recorded,",
+      "nothing is blocked.",
+      "",
+      "`unpinnedReleaseBuild` is what a RELEASE-SIGNED build of the channel does while a pin is null:",
+      "  · refused — tooling/ci/flutter-release-build.mjs FAILS the build. apps-gov-in: the key is the",
+      "    one end users' installs are bound to, so a release-signed .apk whose binary cannot recognise",
+      "    its own signer must never exist. A debug-signed NOT-FOR-UPLOAD build is still allowed.",
+      "  · allowed — android-play: the upload pin is set and signs the CI .apk, and the app signing pin",
+      "    can only be read off the Play Console. Refusing would stop every Play build until then."
+    ],
+    "generated": "packages/core/lib/src/integrity/signer_pins.g.dart",
+    "guard": "tooling/ci/assert-runtime-signer-check.mjs",
+    "channels": {
+      "android-play": {
+        "pins": [
+          "signing.uploadCertificate.sha256",
+          "signing.appSigningCertificate.sha256"
+        ],
+        "unpinnedReleaseBuild": "allowed",
+        "why": "A Play install carries the app signing key Google holds; the CI .apk and an internal-sharing install carry the upload key. Both are ours, and either may be what the device reports."
+      },
+      "apps-gov-in": {
+        "pins": [
+          "signing.signingCertificate.sha256"
+        ],
+        "unpinnedReleaseBuild": "refused",
+        "why": "A self-signed .apk with no store re-signing: the one key is the key every install is bound to."
       }
     }
   }

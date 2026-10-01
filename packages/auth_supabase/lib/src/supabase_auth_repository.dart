@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:app_links/app_links.dart' show AppLinks;
 import 'package:flutter/foundation.dart'
     show debugPrint, kIsWeb, visibleForTesting;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import 'auth_redirect.dart';
+import 'browser_handoff_client.dart' show HandoffTokens;
+import 'native_attestation_client.dart' show RetryAfterLatch;
 
 /// Supabase (GoTrue) implementation of core's [core.AuthRepository].
 ///
@@ -26,8 +29,13 @@ class SupabaseAuthRepository implements core.AuthRepository {
     this.redirects = AuthRedirects.none,
     this.refreshSkew = const Duration(seconds: 30),
     Uri Function()? launchUri,
+    Future<Uri?> Function()? deepLink,
+    this.deepLinkTimeout = const Duration(seconds: 2),
+    RetryAfterLatch? retryAfter,
   })  : _injected = client,
+        _retryAfter = retryAfter,
         _launchUri = launchUri ?? (() => Uri.base),
+        _deepLink = deepLink ?? (kIsWeb ? null : _latestAppLink),
         _native = nativeCredentials,
         _requestServerDeletion = requestServerDeletion,
         _now = clock ?? (() => DateTime.now().toUtc());
@@ -108,6 +116,16 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// strips `gotrue_meta_security` anyway. A token minted for the web site key
   /// has no business leaving a native build.
   String? _captcha(String? token) => _native == null ? token : null;
+
+  /// ⏱ 2026-10-01 · ADOPTS A SESSION THE SYSTEM-BROWSER HAND-OFF MINTED
+  /// (`signInThroughBrowser`, browser_handoff_client.dart) — the desktop
+  /// sign-in, where no attestation exists and no password reaches the app. The
+  /// main client takes it the way [_handOver] gives it a native-route session,
+  /// and for the same reason: `setSession` emits `signedIn`.
+  Future<void> adoptHandoffSession(HandoffTokens tokens) async {
+    if (tokens.refreshToken.isEmpty) throw core.AuthFailure('Sign-in failed');
+    await _auth.setSession(tokens.refreshToken, accessToken: tokens.accessToken);
+  }
 
   /// Hands a session the native client minted to the MAIN client, which owns
   /// persistence, refresh and the auth stream.
@@ -197,21 +215,73 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// Whether the launch URL's own arrival has been reported ok already.
   bool _launchArrivalLogged = false;
 
+  /// ⏱ 2026-10-01 · EN-04 / EN-15 — the latest deep link the OS handed this
+  /// process, or null on web (where the callback IS the launch URL).
+  ///
+  /// 🔴 THE NATIVE HALF OF THE CLASSIFIER, AND WHY IT IS NOT `Uri.base`. Off
+  /// web the marked callback `com.nikatru.<app>://auth-callback?nk_auth=…`
+  /// reaches only `supabase_flutter`'s `app_links` listener; `Uri.base` stays
+  /// `file:///`, so `failedArrivalFlowOf(Uri.base) ?? AuthFlow.reset` filed
+  /// every native failure — a stale confirmation, a cancelled Apple or Google
+  /// return — as a dead RESET link. `getLatestLink()` is what that listener
+  /// was handed, cold start included (a late `uriLinkStream` subscriber misses
+  /// the initial link; the latest-link read does not). Injectable so a widget
+  /// test can be the OS.
+  final Future<Uri?> Function()? _deepLink;
+
+  static Future<Uri?> _latestAppLink() => AppLinks().getLatestLink();
+
+  /// How long [_failedArrivalUri] waits for the deep-link read before it
+  /// answers "no deep link".
+  ///
+  /// 🔴 BOUNDED BECAUSE THE READ SITS IN AN IN-ORDER `asyncMap`
+  /// ([_authEvents]). `getLatestLink()` is a platform-channel call with no
+  /// timeout of its own; a native side that never answers would pause the
+  /// whole event stream behind one failed link — `signedIn`, `signedOut`,
+  /// `tokenRefreshed` and `passwordRecovery` included. A `try` covers a
+  /// throw, not a hang. Injectable for the test that proves it.
+  final Duration deepLinkTimeout;
+
+  /// Where the link whose exchange just FAILED came from: the latest deep link
+  /// when it carries our marker, else the launch URL. Never throws — a
+  /// platform that cannot answer reads as "no deep link".
+  Future<Uri> _failedArrivalUri() async {
+    final Future<Uri?> Function()? read = _deepLink;
+    if (read != null) {
+      try {
+        final Uri? link = await read().timeout(
+          deepLinkTimeout,
+          onTimeout: () => null,
+        );
+        if (link != null && authArrivalOf(link).flow != null) return link;
+      } catch (_) {
+        // No plugin (a test), or the platform refused: the launch URL decides.
+      }
+    }
+    return _launchUri();
+  }
+
+  /// The flow a failed exchange belonged to — reset when nothing says
+  /// otherwise (ST-A2's rule, unchanged for an unmarked link).
+  Future<AuthFlow> _failedFlow() async =>
+      authArrivalOf(await _failedArrivalUri()).flow ?? AuthFlow.reset;
+
   /// Starts [_callbackLog]. Writes ONE line per outcome:
   /// `nk_auth_callback flow=<marker> outcome=<ok|failed>` — never a code, a
   /// token or an address, so a device log or a CI artefact can carry it.
   ///
   ///   · failed — the SDK re-emits every failed link exchange as a stream
   ///     ERROR (see [authEvents]); the flow is the one the router shows it as
-  ///     ([failedArrivalFlowOf], else reset — ST-A2's rule).
+  ///     ([_failedFlow]: the deep link's marker off web, the launch URL's on
+  ///     web, else reset — ST-A2's rule).
   ///   · ok — `passwordRecovery` is only ever a reset link's exchange; a web
   ///     arrival's `signedIn` is the launch URL's marked flow, once.
   ///
-  /// ⚠️ A NATIVE confirm / OAuth / link SUCCESS IS NOT LOGGED, and a native
-  /// failure is classed by that same rule, because off web the marked URL
-  /// reaches only `supabase_flutter`'s own `app_links` listener: Flutter's deep
-  /// linking is off on every target (the router must not see the callback),
-  /// and reading the URL here would add `app_links` as a dependency.
+  /// ⚠️ A NATIVE confirm / OAuth / link SUCCESS IS NOT LOGGED: off web the
+  /// marked URL reaches only `supabase_flutter`'s own `app_links` listener, and
+  /// Flutter's deep linking is off on every target (the router must not see
+  /// the callback). A native FAILURE is classed by the deep link since
+  /// 2026-10-01 (EN-04) — see [_deepLink].
   void _watchCallbacks() {
     _callbackLog ??= _auth.onAuthStateChange.listen(
       (sb.AuthState s) {
@@ -226,8 +296,8 @@ class SupabaseAuthRepository implements core.AuthRepository {
           }
         }
       },
-      onError: (Object _) => _logCallback(
-        failedArrivalFlowOf(_launchUri()) ?? AuthFlow.reset,
+      onError: (Object _) async => _logCallback(
+        await _failedFlow(),
         ok: false,
       ),
     );
@@ -290,25 +360,33 @@ class SupabaseAuthRepository implements core.AuthRepository {
     return _authEvents();
   }
 
-  Stream<core.AuthEvent> _authEvents() =>
-      _auth.onAuthStateChange.map(_event).transform(
-            StreamTransformer<core.AuthEvent, core.AuthEvent>.fromHandlers(
-              handleData: (core.AuthEvent e, EventSink<core.AuthEvent> sink) =>
-                  sink.add(e),
-              handleError: (
-                Object error,
-                StackTrace stack,
-                EventSink<core.AuthEvent> sink,
-              ) =>
-                  sink.add(
-                core.AuthEvent(
-                  core.AuthEventKind.recoveryLinkFailed,
-                  null,
-                  problem: core.authLinkProblemOf(error),
-                ),
-              ),
-            ),
-          );
+  ///
+  /// ⏱ 2026-10-01 · EN-04 / EN-15 — the failure now also says WHICH flow's
+  /// link failed ([core.AuthEvent.linkFlow]), read from the deep link the SDK
+  /// was handed ([_failedArrivalUri]). That read is async, so the error is
+  /// carried through the stream as a [_FailedExchange] and resolved by an
+  /// in-order `asyncMap`: a state that follows a failure is never delivered
+  /// ahead of it, and every ordinary state passes straight through.
+  Stream<core.AuthEvent> _authEvents() => _auth.onAuthStateChange
+      .map<Object>((sb.AuthState s) => s)
+      .transform(
+        StreamTransformer<Object, Object>.fromHandlers(
+          handleError: (Object error, StackTrace _, EventSink<Object> sink) =>
+              sink.add(_FailedExchange(error)),
+        ),
+      )
+      .asyncMap<core.AuthEvent>(
+        (Object o) => o is _FailedExchange
+            ? _failedEvent(o.error)
+            : _event(o as sb.AuthState),
+      );
+
+  Future<core.AuthEvent> _failedEvent(Object error) async => core.AuthEvent(
+        core.AuthEventKind.recoveryLinkFailed,
+        null,
+        problem: core.authLinkProblemOf(error),
+        linkFlow: (await _failedFlow()).marker,
+      );
 
   /// Maps one SDK `AuthState` onto the seam's [core.AuthEvent].
   ///
@@ -371,14 +449,22 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// arrives as `AuthRetryableFetchException` with NO code (on web its message
   /// is "ClientException: Failed to fetch", which no sentence arm matched), so
   /// it is stamped [core.AuthFailure.network] here.
-  static core.AuthFailure _failureOf(sb.AuthException e) => core.AuthFailure(
+  ///
+  /// ⏱ 2026-10-01 · EN-02: and the wait the native route asked for, which the
+  /// vendor exception cannot carry (see [RetryAfterLatch]).
+  core.AuthFailure _failureOf(sb.AuthException e) => core.AuthFailure(
         e.message,
         code: e is sb.AuthRetryableFetchException
             ? core.AuthFailure.network
             : e.code,
         reasons:
             e is sb.AuthWeakPasswordException ? e.reasons : const <String>[],
+        retryAfter: _retryAfter?.take(),
       );
+
+  /// The latch the native route's transport writes `Retry-After` into; null on
+  /// web and wherever no native route is wired.
+  final RetryAfterLatch? _retryAfter;
 
   /// 🔴 WRAPS THE VENDOR EXCEPTION, which it did not until 2026-09-24:
   /// `sb.AuthException` escaped this method as itself, so a sign-up screen had
@@ -950,4 +1036,11 @@ class SupabaseAuthRepository implements core.AuthRepository {
             );
     }
   }
+}
+
+/// A failed link exchange, carried through [SupabaseAuthRepository.authEvents]
+/// until its flow is known.
+final class _FailedExchange {
+  const _FailedExchange(this.error);
+  final Object error;
 }

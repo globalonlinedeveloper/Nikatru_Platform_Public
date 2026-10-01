@@ -125,6 +125,12 @@ void main() {
       // The Android CHANNEL name — the string that outlives the notification in
       // the OS settings app.
       expect(ta.channelNames, contains('புதுப்பித்தல் நினைவூட்டல்கள்'));
+      // ST-Y4 (audit C28): and the channel's DESCRIPTION, the line under the
+      // name in the same OS screen — an arb key, never an English literal.
+      expect(ta.channelDescriptions, isNotEmpty);
+      expect(ta.channelDescriptions.toSet(), <String>{
+        'சந்தா உங்களிடம் கட்டணம் வசூலிக்கும் முன் எச்சரிக்கைகள்',
+      });
     });
 
     test(
@@ -200,6 +206,7 @@ class _RenderingNotifications extends RenewalReminders {
   _RenderingNotifications() : super.forTesting();
 
   final List<String> channelNames = <String>[];
+  final List<String> channelDescriptions = <String>[];
   final List<String> reminderBodies = <String>[];
   final List<String> digestTitles = <String>[];
   final List<String> digestBodies = <String>[];
@@ -211,6 +218,7 @@ class _RenderingNotifications extends RenewalReminders {
     ReminderRules rules = const ReminderRules(),
   }) async {
     channelNames.add(copy.channelName);
+    channelDescriptions.add(copy.channelDescription);
     for (final Subscription s in subs) {
       reminderBodies.add(copy.reminderBody(s.name, s.nextRenewal));
     }
@@ -226,6 +234,7 @@ class _RenderingNotifications extends RenewalReminders {
     required String formattedTotal,
   }) async {
     channelNames.add(copy.channelName);
+    channelDescriptions.add(copy.channelDescription);
     digestTitles.add(copy.digestTitle);
     digestBodies.add(copy.digestBody(count, formattedTotal));
   }
