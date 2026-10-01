@@ -772,7 +772,7 @@
     },
     {
       "path": "web/_headers",
-      "lines": 177,
+      "lines": 203,
       "verdict": "STAYS",
       "why": "Per-app web shell: headers, manifest and entry point are app-specific by construction."
     },

@@ -55,6 +55,11 @@
 # on this path; the line after it restates the WHOLE policy — the same six
 # `script-src` hashes and `form-action 'self'` — with only `connect-src` widened.
 # The page carries no inline script, so it adds no hash.
+# ⏱ 2026-10-01 · rv2-security-021 — that restated `script-src` is SPLICED by
+# tooling/sites/generate-discovery.mjs exactly like the `/*` one (every CSP line
+# of this file, not the first), so its hash list is computed, never a hand copy.
+# Every OTHER directive on it is hand-written and floored by
+# assert-web-cache-policy.mjs, which reads tooling/ci/site-csp.json.
 # `Referrer-Policy` is detached the same way (the `/*` rule sets it globally): the
 # URL of this page carries the extension's PKCE challenge and state, and it must
 # not leave in a Referer. `no-store`, because it is a signed-in page.
