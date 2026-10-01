@@ -664,7 +664,7 @@ describe('EXA-04 — the channel is bound at mint: a redirect_uri of another cha
 // ⏱ 2026-09-30 · EXA-11 — A LINK ENDS FROM THE ACCOUNT SIDE, AND ON ITS OWN.
 // ⏱ 2026-09-30 · EXA-11 (re-review findings 1, 2, 4, 6; lead ruling) — THE LINK
 // FLOOR. A reset or "sign out everywhere" raises the account's floor; every link,
-// every code at exchange and every mint whose session AUTHENTICATED before it is
+// every code at exchange and every mint whose session STARTED before it is
 // refused, whenever it was minted. Red on the first cut: it compared `created_at`
 // once, so a pre-reset session could re-link after the reset.
 const T0 = Date.parse('2026-09-30T12:00:00.000Z');
