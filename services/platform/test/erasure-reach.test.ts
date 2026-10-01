@@ -42,7 +42,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
 import account from '../src/routes/account';
 import type { AppEnv } from '../src/types';
@@ -77,7 +77,7 @@ const declared = new Map<string, StoreRow>(
     .map((s) => [s.name, s]),
 );
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 
 beforeAll(async () => {

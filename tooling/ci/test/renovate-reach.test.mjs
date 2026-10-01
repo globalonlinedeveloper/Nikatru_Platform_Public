@@ -313,10 +313,18 @@ test('T18 (RC3) the brick lockfile loses a dependency its package.json keeps: ex
 
 test('T19 the brick package.json moves a range the lockfile does not: exit 1 naming both values', () => {
   const root = scratch();
-  replaceIn(root, BRICK_PKG, /"jose": "[^"]+"/, '"jose": "^6.0.0"');
+  // ⏱ 2026-09-27 (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS, M2; rv-c27 F4): the moved range is DERIVED,
+  // one major above the committed one. It was the literal "^6.0.0", which jose 6 made the committed
+  // range: the mutation became a no-op and replaceIn refused the case as testing nothing.
+  let moved = '';
+  replaceIn(root, BRICK_PKG, /"jose": "\^(\d+)\.[^"]*"/, (_, major) => {
+    moved = `^${Number(major) + 1}.0.0`;
+    return `"jose": "${moved}"`;
+  });
   const r = reach(root);
   assert.equal(r.code, 1, r.out + r.err);
-  assert.match(r.err, /^ {4}dependencies\.jose: package\.json asks for "\^6\.0\.0"; packages\[""\] records "[^"]+"\.$/m);
+  const want = moved.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  assert.match(r.err, new RegExp(`^ {4}dependencies\\.jose: package\\.json asks for "${want}"; packages\\[""\\] records "[^"]+"\\.$`, 'm'));
 });
 
 test('T20 the brick lockfile deleted: exit 1, it is missing', () => {

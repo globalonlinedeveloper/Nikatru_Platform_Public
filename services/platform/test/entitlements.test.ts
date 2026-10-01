@@ -16,7 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
 import entitlements from '../src/routes/entitlements';
 import type { AppEnv } from '../src/types';
@@ -25,9 +25,9 @@ import { realPlatformDb, type RealDb } from './harness';
 const SUPABASE_URL = 'https://project-a.supabase.co';
 const ISSUER = `${SUPABASE_URL}/auth/v1`;
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
-let foreignKey: KeyLike;
+let foreignKey: CryptoKey;
 const HS256_SECRET = new TextEncoder().encode('legacy-shared-secret-for-tests-only');
 
 beforeAll(async () => {
@@ -53,7 +53,7 @@ const KV = { get: async () => null, put: async () => undefined } as unknown as K
 
 async function token(
   claims: Record<string, unknown>,
-  { key = null as KeyLike | null, alg = 'ES256' } = {},
+  { key = null as CryptoKey | null, alg = 'ES256' } = {},
 ) {
   return new SignJWT(claims)
     .setProtectedHeader({ alg, kid: alg === 'ES256' ? 'test-key-1' : undefined })

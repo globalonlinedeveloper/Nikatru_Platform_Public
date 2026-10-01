@@ -14,7 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { entitlementsAuth } from '../src/middleware/ext-device-auth';
 import entitlements from '../src/routes/entitlements';
 import type { AppEnv } from '../src/types';
@@ -25,7 +25,7 @@ const ISSUER = `${SUPABASE_URL}/auth/v1`;
 const APP = 'subscriptiontracker';
 const EXT = 'fullshot';
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 
 beforeAll(async () => {

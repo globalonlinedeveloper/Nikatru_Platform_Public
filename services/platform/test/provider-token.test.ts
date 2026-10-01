@@ -15,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
 import providerToken from '../src/routes/provider-token';
 import type { AppEnv } from '../src/types';
@@ -24,7 +24,7 @@ import { realPlatformDb, type RealDb } from './harness';
 const SUPABASE_URL = 'https://provider-token-test.supabase.co';
 const ISSUER = `${SUPABASE_URL}/auth/v1`;
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 
 beforeAll(async () => {

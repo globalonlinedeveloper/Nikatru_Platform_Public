@@ -31,7 +31,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
 import checkout, {
   FORBIDDEN_CREATE_KEYS,
@@ -62,7 +62,7 @@ const USER = '11111111-1111-4111-8111-111111111111';
 const LIVE_KEY = `pdl_live_apikey_${'t'.repeat(24)}`;
 const SANDBOX_KEY = `pdl_sdbx_apikey_${'t'.repeat(24)}`;
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 
 /** Every request the route made to Paddle, in order. */

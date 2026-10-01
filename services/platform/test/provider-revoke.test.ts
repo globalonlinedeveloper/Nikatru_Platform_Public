@@ -29,7 +29,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, exportPKCS8, generateKeyPair, importJWK, jwtVerify, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, exportPKCS8, generateKeyPair, importJWK, jwtVerify, type JWK, type CryptoKey } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
 import account from '../src/routes/account';
 import providerToken from '../src/routes/provider-token';
@@ -51,7 +51,7 @@ const SUPABASE_URL = 'https://apple-revoke-test.supabase.co';
 const ISSUER = `${SUPABASE_URL}/auth/v1`;
 const APP_ORIGIN = 'https://api.test';
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 /** The owner's Sign in with Apple key, as a PKCS#8 PEM — the `.p8` shape. */
 let applePrivatePem: string;

@@ -27,7 +27,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { authRecencyOf, platformAuth } from '../src/middleware/auth';
 import account, { RECENT_AUTH_SECONDS, parseErasureEndpoints } from '../src/routes/account';
 import type { AppEnv } from '../src/types';
@@ -37,10 +37,10 @@ const SUPABASE_URL = 'https://project-a.supabase.co';
 const OTHER_URL = 'https://project-b.supabase.co';
 const ISSUER = `${SUPABASE_URL}/auth/v1`;
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 /** A second, unrelated ES256 pair — a well-formed token from the wrong key. */
-let foreignKey: KeyLike;
+let foreignKey: CryptoKey;
 const HS256_SECRET = new TextEncoder().encode('legacy-shared-secret-for-tests-only');
 
 /** base64url without `Buffer`. The workerd build has no Node globals, and
@@ -195,7 +195,7 @@ function revocationKv(records: Record<string, unknown> = {}, { throws = false } 
 
 async function token(
   claims: Record<string, unknown>,
-  { issuer = ISSUER, audience = 'authenticated', key = null as KeyLike | null, alg = 'ES256' } = {},
+  { issuer = ISSUER, audience = 'authenticated', key = null as CryptoKey | null, alg = 'ES256' } = {},
 ) {
   let t = new SignJWT(claims)
     .setProtectedHeader({ alg, kid: alg === 'ES256' ? 'test-key-1' : undefined })
@@ -409,6 +409,34 @@ describe('platformAuth SURVIVES a JWKS outage without widening what it accepts',
       `Bearer ${await token({ sub: 'user-a' }, { issuer: `${ROT}/auth/v1` })}`,
     );
     expect(res.status).toBe(401);
+  });
+
+  it('🔴 A STALE KEY SET IS NOT SERVED WHEN THE REFETCH FAILS — jose fails CLOSED (ADR no.062 §4)', async () => {
+    // ⏱ 2026-09-27 · jose 6 (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS, M2; rv-c27 F2).
+    // The KV fallback above exists BECAUSE `createRemoteJWKSet` does not fall back
+    // to the key set it fetched before. Until now that precondition was read from
+    // jose's source on every major and pinned by no test: a jose that served its
+    // stale set on a failed refetch left both Workers' suites green (measured
+    // 2026-09-27). This case is the pin. Warm jose's per-URL set, step past its
+    // own cache window (cacheMaxAge, 10 minutes), make the endpoint unreachable,
+    // and give the Worker NO KV copy: the only thing left that could admit the
+    // token is jose's old set.
+    //
+    // ⚠️ ITS OWN SUPABASE_URL, for the reason the rotated-key case gives: the
+    // memo is per URL for the life of the module.
+    const STALE = 'https://stale-set.test';
+    const tok = () => token({ sub: 'user-a' }, { issuer: `${STALE}/auth/v1` });
+    const warm = harness({ supabaseUrl: STALE });
+    expect((await warm.get('/v1/whoami', `Bearer ${await tok()}`)).status).toBe(200);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 11 * 60 * 1000 });
+    try {
+      const h = harness({ supabaseUrl: STALE }); // the default KV holds no copy
+      jwksThrows = true;
+      const res = await h.get('/v1/whoami', `Bearer ${await tok()}`);
+      expect(res.status).toBe(401);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('the happy path is unchanged — a reachable JWKS never consults the cache', async () => {
