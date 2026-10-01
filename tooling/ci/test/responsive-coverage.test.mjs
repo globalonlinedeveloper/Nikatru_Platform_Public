@@ -549,7 +549,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
       // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 15 of 17 → 21 of 23 (floor re-based to 23).
       // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 21 of 23 → 25 of 27 (floor re-based to 27).
       // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): the measured floor rose 30 → 36, so the same deletion reads 34 against 36.
-      /COVERAGE LOST — `packages\/design_system` has 34 measured surface\(s\) and its measured floor is 36/s,
+      // ⏱ 2026-10-01 · ST truth pass (EN-17): the floor rose 36 → 37 with ForceUpdateGate's width case, so the same deletion reads 35 against 37.
+      /COVERAGE LOST — `packages\/design_system` has 35 measured surface\(s\) and its measured floor is 37/s,
     );
   });
 
