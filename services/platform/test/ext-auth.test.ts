@@ -24,7 +24,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { app } from '../src/index';
 import { platformAuth, sessionStartedAtOf } from '../src/middleware/auth';
 import { entitlementsAuth, extDeviceAuth, sha256Hex } from '../src/middleware/ext-device-auth';
@@ -58,7 +58,7 @@ const CHROME = FIXTURE['chrome-webstore'] as string;
 const SUPABASE_URL = 'https://project-a.supabase.co';
 const ISSUER = `${SUPABASE_URL}/auth/v1`;
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 
 beforeAll(async () => {

@@ -18,7 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
 import receipts, { creditDays, extendExpiry } from '../src/routes/receipts';
 import { mintGrantId } from '../src/lib/mor/bundle-store';
@@ -59,7 +59,7 @@ function productMap(entries: Array<[string, string]>): ProductMap {
   return m;
 }
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 
 beforeAll(async () => {

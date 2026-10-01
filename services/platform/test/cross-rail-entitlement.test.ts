@@ -22,7 +22,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
 import { platformAuth } from '../src/middleware/auth';
 import entitlements from '../src/routes/entitlements';
 import money from '../src/routes/money';
@@ -50,7 +50,7 @@ const RAZORPAY_SECRET = 'cross_rail_razorpay_webhook_secret';
 /** A RevenueCat app id apps/subscriptiontracker/app.yaml declares (revenuecat-app-ids.ts). */
 const RC_APP_ID = 'app805d73cd44';
 
-let signingKey: KeyLike;
+let signingKey: CryptoKey;
 let publicJwk: JWK;
 
 beforeAll(async () => {
