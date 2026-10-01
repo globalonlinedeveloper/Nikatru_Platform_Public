@@ -115,7 +115,7 @@ describe('the real tree', () => {
         assert.equal(r.status, 0, r.stderr);
         assert.match(r.stdout, /ok {3}apps\/subscriptiontracker\/lib — adopted TurnstileGate/);
         // ⏱ 2026-09-27 · ST-A1 (audit D29): the brick adopted the chassis gate.
-        assert.match(r.stdout, /ok {3}tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/lib — adopted TurnstileGate; all 5 captcha-gated call site\(s\)/);
+        assert.match(r.stdout, /ok {3}tooling\/bricks\/app\/__brick__\/apps\/\{\{app_id\}\}\/lib — adopted TurnstileGate; all 6 captcha-gated call site\(s\)/); // ⏱ 2026-10-01: +1, the rooted-device re-auth (chassis integrity/device_integrity_gate.dart)
       },
     );
   });

@@ -963,5 +963,33 @@
   "verifyEmailUseDifferent": "Use a different email",
   "@verifyEmailUseDifferent": {
     "description": "EN-14. On the verify-email waiting room: signs out of the unverified account and opens sign-up with its address already filled, to be corrected. The way out for somebody who registered with a typo."
+  },
+  "tamperedBuildTitle": "This copy of the app was modified",
+  "@tamperedBuildTitle": {
+    "description": "O-APPS-GOV-IN-VAPT-CHECKLIST · Title of the non-dismissable screen shown when the app's signing certificate is not one of the store's pinned keys."
+  },
+  "tamperedBuildMessage": "This copy of the app was modified, so it cannot open your data. Install the app from the official store.",
+  "@tamperedBuildMessage": {
+    "description": "O-APPS-GOV-IN-VAPT-CHECKLIST · Body of the modified-copy screen. It must tell the user what to do: install from the official store."
+  },
+  "tamperedBuildExit": "Close app",
+  "@tamperedBuildExit": {
+    "description": "The one action on the modified-copy screen: leave the app."
+  },
+  "rootedDeviceNotice": "This device appears to be rooted or jailbroken. Your data stays available, but exporting it or deleting your account will ask you to confirm it's you.",
+  "@rootedDeviceNotice": {
+    "description": "O-APPS-GOV-IN-VAPT-CHECKLIST · The once-per-session, non-blocking notice on a rooted or jailbroken device."
+  },
+  "rootedDeviceNoticeDismiss": "Got it",
+  "@rootedDeviceNoticeDismiss": {
+    "description": "Dismisses the rooted-device notice."
+  },
+  "reauthTitle": "Confirm it's you",
+  "@reauthTitle": {
+    "description": "Title of the dialog asking a user on a rooted device to re-enter their password before a sensitive action."
+  },
+  "reauthMessage": "This device appears to be rooted, so enter your password to continue.",
+  "@reauthMessage": {
+    "description": "Body of the re-authentication dialog on a rooted device."
   }
 }
