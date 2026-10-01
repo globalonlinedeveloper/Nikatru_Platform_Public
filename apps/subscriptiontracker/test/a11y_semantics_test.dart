@@ -1029,6 +1029,14 @@ Future<void> sizeSurface(WidgetTester tester, Size size) async {
   });
 }
 
+/// A phone's width at a height that lays out ALL of settings, Log out
+/// included — a `ListView` builds only what fits, and the contrast cases'
+/// `covers: ['Settings', 'Log out']` fails the moment the bottom is culled.
+/// ⏱ 2026-10-01 · ST-SETTINGS (SE-09) on T13: 3000 -> 3400. The one Reminders
+/// card, its own Preferences card and T13's Import/Back up/Restore rows put
+/// Log out below 3000 (CI run 36902673128).
+const Size _kSettingsSweep = Size(375, 3400);
+
 /// [tester.ensureSemantics] with the release in a `finally` — see the header.
 Future<void> semantically(
   WidgetTester tester,
@@ -2584,7 +2592,7 @@ void main() {
         await pumpScreen(
           tester,
           const SettingsScreen(),
-          size: const Size(375, 3000),
+          size: _kSettingsSweep,
         );
 
         // 🔴 MERGED-INTO-PARENT NODES ARE EXCLUDED, AND THAT IS NOT A WEAKENING
@@ -3525,45 +3533,51 @@ void main() {
   // per-screen count. The measurements are recorded per case so a reader has the
   // number without a brittle equality standing in for it.
   group('48×48 · flutter_test\'s own tap-target sweep', () {
-    testWidgets('every tap target on insights is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpScreen(tester, const InsightsScreen(), theme: appTheme());
-        // 3 subjects. All three are the unused-plan "Cancel" buttons, and all
-        // three were 73.5×36.0 until this increment.
-        await expectGuidelineHadSubjects(tester, 'insights');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+    testWidgets(
+      'every tap target on insights is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpScreen(tester, const InsightsScreen(), theme: appTheme());
+          // 3 subjects. All three are the unused-plan "Cancel" buttons, and all
+          // three were 73.5×36.0 until this increment.
+          await expectGuidelineHadSubjects(tester, 'insights');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
-    testWidgets('every tap target on calendar is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpScreen(
-          tester,
-          CalendarScreen(clock: _pinnedNow),
-          theme: appTheme(),
-        );
-        // 3 subjects — the renewal rows, the hand-rolled RowCard twin whose
-        // semantics the naked sweep found on this same pump.
-        await expectGuidelineHadSubjects(tester, 'calendar');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+    testWidgets(
+      'every tap target on calendar is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpScreen(
+            tester,
+            CalendarScreen(clock: _pinnedNow),
+            theme: appTheme(),
+          );
+          // 3 subjects — the renewal rows, the hand-rolled RowCard twin whose
+          // semantics the naked sweep found on this same pump.
+          await expectGuidelineHadSubjects(tester, 'calendar');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
-    testWidgets('every tap target on the import hub is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpScreen(tester, const ImportScreen(), theme: appTheme());
-        // The close action and the paste field: "Read it" is genuinely
-        // disabled until there is text, and contributes no tap action.
-        await expectGuidelineHadSubjects(tester, 'import (hub)');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+    testWidgets(
+      'every tap target on the import hub is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpScreen(tester, const ImportScreen(), theme: appTheme());
+          // The close action and the paste field: "Read it" is genuinely
+          // disabled until there is text, and contributes no tap action.
+          await expectGuidelineHadSubjects(tester, 'import (hub)');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
     testWidgets('every tap target on detail is at least 48×48', (
       WidgetTester tester,
@@ -3580,166 +3594,187 @@ void main() {
       });
     }, variant: kTapTargetPlatforms);
 
-    testWidgets('every tap target on the shell is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpShell(tester, theme: appTheme());
-        // 11 subjects, the largest domain outside settings: five pill tabs, the
-        // FAB and home's own header and rows underneath them. This case is also
-        // the one that pumps the REAL router, so it attributes to no single
-        // domain surface — the same shape `assert-a11y-coverage.mjs` already
-        // reports for the shell's naked sweep.
-        await expectGuidelineHadSubjects(tester, 'the shell (landed on /home)');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+    testWidgets(
+      'every tap target on the shell is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpShell(tester, theme: appTheme());
+          // 11 subjects, the largest domain outside settings: five pill tabs, the
+          // FAB and home's own header and rows underneath them. This case is also
+          // the one that pumps the REAL router, so it attributes to no single
+          // domain surface — the same shape `assert-a11y-coverage.mjs` already
+          // reports for the shell's naked sweep.
+          await expectGuidelineHadSubjects(
+            tester,
+            'the shell (landed on /home)',
+          );
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
-    testWidgets('every tap target on verify-email is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpScreen(tester, const VerifyEmailScreen(), theme: appTheme());
-        // 2 of the three stacked controls; the third sits under this screen's
-        // scroll boundary, which the guideline steps around.
-        await expectGuidelineHadSubjects(tester, 'verify-email');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+    testWidgets(
+      'every tap target on verify-email is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpScreen(
+            tester,
+            const VerifyEmailScreen(),
+            theme: appTheme(),
+          );
+          // 2 of the three stacked controls; the third sits under this screen's
+          // scroll boundary, which the guideline steps around.
+          await expectGuidelineHadSubjects(tester, 'verify-email');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
-    testWidgets('every tap target on re-accept terms is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpScreen(
-          tester,
-          const ReacceptTermsScreen(),
-          theme: appTheme(),
-        );
-        // 1 subject.
-        //
-        // ⚠️ AND THE CLICKWRAP TICK IS NOT THE DEFECT IT WAS EXPECTED TO BE.
-        // `legal_consent_fields.dart` paints a 20 px box, and the brief for this
-        // increment named it as the Equivalent-exception case to argue. It is
-        // not: that box is a Material `Checkbox`, whose default
-        // `materialTapTargetSize` is `padded`, so the node it contributes is
-        // 48×48 and the 20 px is the PAINTED square inside it. Measured, not
-        // assumed — the guideline inspects this screen and passes. No exception
-        // is needed and none is claimed.
-        await expectGuidelineHadSubjects(tester, 're-accept terms');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+    testWidgets(
+      'every tap target on re-accept terms is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpScreen(
+            tester,
+            const ReacceptTermsScreen(),
+            theme: appTheme(),
+          );
+          // 1 subject.
+          //
+          // ⚠️ AND THE CLICKWRAP TICK IS NOT THE DEFECT IT WAS EXPECTED TO BE.
+          // `legal_consent_fields.dart` paints a 20 px box, and the brief for this
+          // increment named it as the Equivalent-exception case to argue. It is
+          // not: that box is a Material `Checkbox`, whose default
+          // `materialTapTargetSize` is `padded`, so the node it contributes is
+          // 48×48 and the 20 px is the PAINTED square inside it. Measured, not
+          // assumed — the guideline inspects this screen and passes. No exception
+          // is needed and none is claimed.
+          await expectGuidelineHadSubjects(tester, 're-accept terms');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
-    testWidgets('every tap target on sign-in is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpScreen(tester, const LoginScreen(), theme: appTheme());
-        // 5 subjects. One of them — "New here? Create account" — was 319.0×40.0
-        // until this increment, and it is the only route to registration from
-        // the screen the router hands every signed-out visitor.
-        await expectGuidelineHadSubjects(tester, 'sign-in');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+    testWidgets(
+      'every tap target on sign-in is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpScreen(tester, const LoginScreen(), theme: appTheme());
+          // 5 subjects. One of them — "New here? Create account" — was 319.0×40.0
+          // until this increment, and it is the only route to registration from
+          // the screen the router hands every signed-out visitor.
+          await expectGuidelineHadSubjects(tester, 'sign-in');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
-    testWidgets('every tap target on the SIGN-UP ARM is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpScreen(tester, const LoginScreen(), theme: appTheme());
-        final AppLocalizations l10n = await _load('en');
-        // The second door, and a DIFFERENT TREE — the naked sweep's reason,
-        // unchanged here: this arm is where the two consent boxes and their
-        // document links live, and no other pump of this screen has them.
-        // ⏱ 2026-09-16 — scroll it in first: with `apple: true` the OAuth limb
-        // renders above this toggle and pushes it off the test surface, so the tap
-        // lands on nothing and the failure shows up later as a missing form.
-        await tester.ensureVisible(find.text(l10n.newHerePrompt));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text(l10n.newHerePrompt));
-        await tester.pump();
-        expect(
-          find.text(l10n.legalAcceptTerms),
-          findsOneWidget,
-          reason:
-              'the toggle did not flip, so the sweep below is about the '
-              'sign-in arm again and the two consent boxes are not in the tree',
-        );
-        // 4 subjects.
-        await expectGuidelineHadSubjects(tester, 'sign-in (sign-up arm)');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
-
-    testWidgets('every tap target on sign-up is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpScreen(
-          tester,
-          const LoginScreen(startInSignUp: true),
-          theme: appTheme(),
-        );
-        // 4 subjects.
-        await expectGuidelineHadSubjects(tester, 'sign-up');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
-
-    testWidgets('every tap target on the reset FORM is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        // 🔴 THE FORM, NOT THE DEAD-LINK STATE, AND THE CHOICE IS MEASURED.
-        // Both states are swept for naked controls. Only this one gives the
-        // guideline anything: the dead-link state's single way out sits under a
-        // scroll boundary (see the non-sweeps at the bottom of this group), so a
-        // case pumped there would pass over zero nodes. The host is built by
-        // hand for the same reason the naked case builds it — unoverridden,
-        // `authRepositoryProvider` resolves with nobody signed in, and no
-        // session IS the dead-link state.
-        final InMemoryAuthRepository auth = InMemoryAuthRepository();
-        addTearDown(auth.dispose);
-        await auth.signInWithEmail(email: 'a@b.test', password: 'pw');
-        await sizeSurface(tester, kPhone);
-        final ProviderContainer c = ProviderContainer(
-          overrides: <Override>[
-            ...defaultWidthOverrides(),
-            authRepositoryProvider.overrideWithValue(auth),
-          ],
-        );
-        addTearDown(c.dispose);
-        await tester.pumpWidget(
-          UncontrolledProviderScope(
-            container: c,
-            child: MaterialApp(
-              theme: appTheme(),
-              localizationsDelegates: <LocalizationsDelegate<dynamic>>[
-                ...AppLocalizations.localizationsDelegates,
-                ChassisLocalizations.delegate,
-              ],
-              supportedLocales: AppLocalizations.supportedLocales,
-              home: const ResetPasswordScreen(),
-            ),
-          ),
-        );
-        for (int i = 0; i < 12; i++) {
+    testWidgets(
+      'every tap target on the SIGN-UP ARM is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpScreen(tester, const LoginScreen(), theme: appTheme());
+          final AppLocalizations l10n = await _load('en');
+          // The second door, and a DIFFERENT TREE — the naked sweep's reason,
+          // unchanged here: this arm is where the two consent boxes and their
+          // document links live, and no other pump of this screen has them.
+          // ⏱ 2026-09-16 — scroll it in first: with `apple: true` the OAuth limb
+          // renders above this toggle and pushes it off the test surface, so the tap
+          // lands on nothing and the failure shows up later as a missing form.
+          await tester.ensureVisible(find.text(l10n.newHerePrompt));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text(l10n.newHerePrompt));
           await tester.pump();
-        }
-        expect(
-          find.byKey(ResetPasswordScreen.passwordField),
-          findsOneWidget,
-          reason:
-              'the SUBJECT check — without it this sweeps the dead-link state '
-              'and reports the form as clean without ever rendering it',
-        );
-        // 3 subjects — both password boxes and one of the two buttons.
-        await expectGuidelineHadSubjects(tester, 'reset-password (the form)');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+          expect(
+            find.text(l10n.legalAcceptTerms),
+            findsOneWidget,
+            reason:
+                'the toggle did not flip, so the sweep below is about the '
+                'sign-in arm again and the two consent boxes are not in the tree',
+          );
+          // 4 subjects.
+          await expectGuidelineHadSubjects(tester, 'sign-in (sign-up arm)');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
+
+    testWidgets(
+      'every tap target on sign-up is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpScreen(
+            tester,
+            const LoginScreen(startInSignUp: true),
+            theme: appTheme(),
+          );
+          // 4 subjects.
+          await expectGuidelineHadSubjects(tester, 'sign-up');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
+
+    testWidgets(
+      'every tap target on the reset FORM is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          // 🔴 THE FORM, NOT THE DEAD-LINK STATE, AND THE CHOICE IS MEASURED.
+          // Both states are swept for naked controls. Only this one gives the
+          // guideline anything: the dead-link state's single way out sits under a
+          // scroll boundary (see the non-sweeps at the bottom of this group), so a
+          // case pumped there would pass over zero nodes. The host is built by
+          // hand for the same reason the naked case builds it — unoverridden,
+          // `authRepositoryProvider` resolves with nobody signed in, and no
+          // session IS the dead-link state.
+          final InMemoryAuthRepository auth = InMemoryAuthRepository();
+          addTearDown(auth.dispose);
+          await auth.signInWithEmail(email: 'a@b.test', password: 'pw');
+          await sizeSurface(tester, kPhone);
+          final ProviderContainer c = ProviderContainer(
+            overrides: <Override>[
+              ...defaultWidthOverrides(),
+              authRepositoryProvider.overrideWithValue(auth),
+            ],
+          );
+          addTearDown(c.dispose);
+          await tester.pumpWidget(
+            UncontrolledProviderScope(
+              container: c,
+              child: MaterialApp(
+                theme: appTheme(),
+                localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+                  ...AppLocalizations.localizationsDelegates,
+                  ChassisLocalizations.delegate,
+                ],
+                supportedLocales: AppLocalizations.supportedLocales,
+                home: const ResetPasswordScreen(),
+              ),
+            ),
+          );
+          for (int i = 0; i < 12; i++) {
+            await tester.pump();
+          }
+          expect(
+            find.byKey(ResetPasswordScreen.passwordField),
+            findsOneWidget,
+            reason:
+                'the SUBJECT check — without it this sweeps the dead-link state '
+                'and reports the form as clean without ever rendering it',
+          );
+          // 3 subjects — both password boxes and one of the two buttons.
+          await expectGuidelineHadSubjects(tester, 'reset-password (the form)');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
     testWidgets('every tap target on home is at least 48×48', (
       WidgetTester tester,
@@ -3755,174 +3790,186 @@ void main() {
       });
     }, variant: kTapTargetPlatforms);
 
-    testWidgets('every tap target on settings is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        // The tall viewport, for the naked sweep's reason: settings is the
-        // longest ListView in the app and a ListView lays out only what fits.
-        await pumpScreen(
-          tester,
-          const SettingsScreen(),
-          size: const Size(375, 3000),
-          theme: appTheme(),
-        );
-        // 24 subjects — by some way the largest domain in the app, and the one
-        // that most needed the `sizeSurface` fix: at the stale 800×600 view rect
-        // the guideline inspected 10 of them and passed on the other fourteen.
-        await expectGuidelineHadSubjects(tester, 'settings');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+    testWidgets(
+      'every tap target on settings is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          // The tall viewport, for the naked sweep's reason: settings is the
+          // longest ListView in the app and a ListView lays out only what fits.
+          await pumpScreen(
+            tester,
+            const SettingsScreen(),
+            size: _kSettingsSweep,
+            theme: appTheme(),
+          );
+          // 24 subjects — by some way the largest domain in the app, and the one
+          // that most needed the `sizeSurface` fix: at the stale 800×600 view rect
+          // the guideline inspected 10 of them and passed on the other fourteen.
+          await expectGuidelineHadSubjects(tester, 'settings');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
-    testWidgets('every tap target on notifications is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpScreen(
-          tester,
-          const NotificationsScreen(),
-          theme: appTheme(),
-        );
-        // 1 subject — the close button is the only control on a screen of
-        // cards, stated rather than defaulted (the naked case measures the
-        // same 1).
-        await expectGuidelineHadSubjects(tester, 'notifications');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+    testWidgets(
+      'every tap target on notifications is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpScreen(
+            tester,
+            const NotificationsScreen(),
+            theme: appTheme(),
+          );
+          // 1 subject — the close button is the only control on a screen of
+          // cards, stated rather than defaulted (the naked case measures the
+          // same 1).
+          await expectGuidelineHadSubjects(tester, 'notifications');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
-    testWidgets('every tap target on the paywall is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        // The rail override is the limb that refuses the empty screen: without
-        // it the choosing phase never renders and there is nothing to buy, so
-        // the guideline would inspect zero plan rows and pass.
-        await pumpScreen(
-          tester,
-          ProviderScope(
-            overrides: <Override>[
-              sellingEnabledProvider.overrideWithValue(true),
-              purchaseRailProvider.overrideWithValue(
-                HostedCheckoutRail(
-                  config: const RailConfig(
-                    offerings: <Offering>[
-                      Offering(
-                        productId: 'pro_monthly',
-                        amountMinor: 499,
-                        currencyCode: 'USD',
-                        term: OfferingTerm.month,
-                        trial: TrialPeriod.days(30),
-                      ),
-                      Offering(
-                        productId: 'pro_yearly',
-                        amountMinor: 4999,
-                        currencyCode: 'USD',
-                        term: OfferingTerm.year,
-                      ),
-                    ],
-                    checkoutUrlTemplate: 'https://example.test/{price_id}',
-                    manageUrlTemplate: null,
-                  ),
-                  appId: AppConfig.appId,
-                  returnUrl: kCheckoutReturnUrl,
-                  accountId: () async => 'a11y',
-                  accessToken: () async => null,
-                  cancellationTransport:
-                      const core.UnavailableCancellationTransport(),
-                  capabilities: const PurchaseCapabilities(
-                    technicallySupported: true,
-                    channelPermitted: true,
-                    why: 'a11y sweep needs the populated choosing phase',
+    testWidgets(
+      'every tap target on the paywall is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          // The rail override is the limb that refuses the empty screen: without
+          // it the choosing phase never renders and there is nothing to buy, so
+          // the guideline would inspect zero plan rows and pass.
+          await pumpScreen(
+            tester,
+            ProviderScope(
+              overrides: <Override>[
+                sellingEnabledProvider.overrideWithValue(true),
+                purchaseRailProvider.overrideWithValue(
+                  HostedCheckoutRail(
+                    config: const RailConfig(
+                      offerings: <Offering>[
+                        Offering(
+                          productId: 'pro_monthly',
+                          amountMinor: 499,
+                          currencyCode: 'USD',
+                          term: OfferingTerm.month,
+                          trial: TrialPeriod.days(30),
+                        ),
+                        Offering(
+                          productId: 'pro_yearly',
+                          amountMinor: 4999,
+                          currencyCode: 'USD',
+                          term: OfferingTerm.year,
+                        ),
+                      ],
+                      checkoutUrlTemplate: 'https://example.test/{price_id}',
+                      manageUrlTemplate: null,
+                    ),
+                    appId: AppConfig.appId,
+                    returnUrl: kCheckoutReturnUrl,
+                    accountId: () async => 'a11y',
+                    accessToken: () async => null,
+                    cancellationTransport:
+                        const core.UnavailableCancellationTransport(),
+                    capabilities: const PurchaseCapabilities(
+                      technicallySupported: true,
+                      channelPermitted: true,
+                      why: 'a11y sweep needs the populated choosing phase',
+                    ),
                   ),
                 ),
-              ),
-            ],
-            child: const PaywallScreen(),
-          ),
-          theme: appTheme(),
-        );
-        // 2 subjects — one Upgrade per offering.
-        await expectGuidelineHadSubjects(tester, 'paywall (choosing)');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+              ],
+              child: const PaywallScreen(),
+            ),
+            theme: appTheme(),
+          );
+          // 2 subjects — one Upgrade per offering.
+          await expectGuidelineHadSubjects(tester, 'paywall (choosing)');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
-    testWidgets('every tap target on manage-plan is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        // PRO, and stated: the cancel row is `if (isPro)`, so the default state
-        // drops the control this screen exists for — the ROSCA requirement.
-        await pumpScreen(
-          tester,
-          ProviderScope(
-            overrides: <Override>[
-              entitlementsProvider.overrideWith(
-                (_) async => core.Entitlements(
-                  appId: AppConfig.appId,
-                  isPro: true,
-                  items: const <core.Entitlement>[],
+    testWidgets(
+      'every tap target on manage-plan is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          // PRO, and stated: the cancel row is `if (isPro)`, so the default state
+          // drops the control this screen exists for — the ROSCA requirement.
+          await pumpScreen(
+            tester,
+            ProviderScope(
+              overrides: <Override>[
+                entitlementsProvider.overrideWith(
+                  (_) async => core.Entitlements(
+                    appId: AppConfig.appId,
+                    isPro: true,
+                    items: const <core.Entitlement>[],
+                  ),
                 ),
-              ),
-            ],
-            child: const ManagePlanScreen(),
-          ),
-          theme: appTheme(),
-        );
-        // 2 subjects — restore and cancel.
-        await expectGuidelineHadSubjects(tester, 'manage-plan (pro)');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+              ],
+              child: const ManagePlanScreen(),
+            ),
+            theme: appTheme(),
+          );
+          // 2 subjects — restore and cancel.
+          await expectGuidelineHadSubjects(tester, 'manage-plan (pro)');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
-    testWidgets('every tap target on onboarding is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpScreen(tester, const OnboardingScreen(), theme: appTheme());
-        // 2 subjects — Skip and Next. Both were invisible to the guideline
-        // before `sizeSurface`: they sit at the bottom of an 812-tall phone,
-        // i.e. below the 600 logical pixels the stale view rect stopped at.
-        await expectGuidelineHadSubjects(tester, 'onboarding');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+    testWidgets(
+      'every tap target on onboarding is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpScreen(tester, const OnboardingScreen(), theme: appTheme());
+          // 2 subjects — Skip and Next. Both were invisible to the guideline
+          // before `sizeSurface`: they sit at the bottom of an 812-tall phone,
+          // i.e. below the 600 logical pixels the stale view rect stopped at.
+          await expectGuidelineHadSubjects(tester, 'onboarding');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
-    testWidgets('every tap target on the add sheet is at least 48×48', (
-      WidgetTester tester,
-    ) async {
-      await semantically(tester, () async {
-        await pumpScreen(
-          tester,
-          Scaffold(
-            body: Builder(
-              builder: (BuildContext context) => Center(
-                child: TextButton(
-                  onPressed: () => showAddSubscriptionSheet(context),
-                  child: const Text('open'),
+    testWidgets(
+      'every tap target on the add sheet is at least 48×48',
+      (WidgetTester tester) async {
+        await semantically(tester, () async {
+          await pumpScreen(
+            tester,
+            Scaffold(
+              body: Builder(
+                builder: (BuildContext context) => Center(
+                  child: TextButton(
+                    onPressed: () => showAddSubscriptionSheet(context),
+                    child: const Text('open'),
+                  ),
                 ),
               ),
             ),
-          ),
-          theme: appTheme(),
-        );
-        await tester.tap(find.text('open'));
-        await tester.pumpAndSettle();
-        // 6 subjects.
-        //
-        // ⚠️ AND THE MODAL SCRIM NEEDS NO EXCLUSION HERE, WHICH IS THE ONE PLACE
-        // THIS FAMILY IS SIMPLER THAN THE NAKED ONE. The naked sweep has to step
-        // around `showModalBottomSheet`'s `ModalBarrier` by hand — it carries a
-        // tap action and no role flag, so it is naked in every Flutter app. The
-        // guideline never sees it: the barrier fills the view, so it is at the
-        // view boundary and skipped before any size is compared. Nothing is
-        // being excluded; the framework's own rule already covers it.
-        await expectGuidelineHadSubjects(tester, 'the add sheet');
-        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-      });
-    }, variant: kTapTargetPlatforms);
+            theme: appTheme(),
+          );
+          await tester.tap(find.text('open'));
+          await tester.pumpAndSettle();
+          // 6 subjects.
+          //
+          // ⚠️ AND THE MODAL SCRIM NEEDS NO EXCLUSION HERE, WHICH IS THE ONE PLACE
+          // THIS FAMILY IS SIMPLER THAN THE NAKED ONE. The naked sweep has to step
+          // around `showModalBottomSheet`'s `ModalBarrier` by hand — it carries a
+          // tap action and no role flag, so it is naked in every Flutter app. The
+          // guideline never sees it: the barrier fills the view, so it is at the
+          // view boundary and skipped before any size is compared. Nothing is
+          // being excluded; the framework's own rule already covers it.
+          await expectGuidelineHadSubjects(tester, 'the add sheet');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        });
+      },
+      variant: kTapTargetPlatforms,
+    );
 
     testWidgets('every tap target on the cancel sheet is at least 48×48 — in '
         'EITHER step', (WidgetTester tester) async {
@@ -4863,7 +4910,7 @@ void main() {
         await pumpScreen(
           tester,
           const SettingsScreen(),
-          size: const Size(375, 3000),
+          size: _kSettingsSweep,
           theme: appTheme(),
           paintBackground: true,
         );
@@ -5215,7 +5262,7 @@ void main() {
         await pumpScreen(
           tester,
           const SettingsScreen(),
-          size: const Size(375, 3000),
+          size: _kSettingsSweep,
           theme: appTheme(brightness: Brightness.dark),
           paintBackground: true,
         );
