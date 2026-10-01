@@ -18,7 +18,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Hono } from 'hono';
 import report, { MAX_REPORTS_PER_USER_PER_HOUR, MAX_EXCERPT_CHARS, parseReport } from '../src/routes/report';
-import { MAX_REPORT_NOTICES_PER_DAY, REPORT_NOTICE_TO, RESEND_EMAILS_URL } from '../src/lib/report-notify';
+import { MAX_REPORT_NOTICES_PER_DAY, REPORT_NOTICE_TO } from '../src/lib/report-notify';
+import { RESEND_EMAILS_URL } from '../src/adapters/mail/resend';
 import { retentionSweep, CONTENT_REPORTS_RETENTION_DAYS, type RetentionPeriods } from '../src/scheduled';
 import { app as realApp } from '../src/index';
 import type { AppEnv } from '../src/types';
