@@ -1,0 +1,11 @@
+{
+  "$comment": "Read by tooling/ci/assert-lockfile-discipline.mjs limb 2b (rv2-security-020 / O-BRICK-PROBE-INSTALLS-WITHOUT-ITS-LOCK). A workflow install whose working directory does not exist in the tree is COVERAGE LOST (exit 2) unless it is declared here with the template it is stamped from; the install is then graded against that template's package-lock.json (present, tracked, in step with its package.json) and must be reproducible (npm ci). A declaration no install uses is stale, and COVERAGE LOST too.",
+  "dirs": [
+    {
+      "dir": "services/probeapi-api",
+      "template": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+      "stampedBy": "ci.yml app-brick: node tooling/kit/stamp-app.mjs --vars tooling/bricks/app/_probe_backend_vars.json",
+      "why": "The backend probe's Worker, stamped from the app brick seconds before its install and thrown away with the runner; mason substitutes only the package name in the lockfile, so the brick's lock is the one npm ci reads."
+    }
+  ]
+}

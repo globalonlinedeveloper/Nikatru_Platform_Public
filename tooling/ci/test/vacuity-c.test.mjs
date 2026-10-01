@@ -116,6 +116,9 @@ const PATHSPECS = [
   'tooling/bricks/app/__brick__/apps/*/web/*',
   'sites/*/index.html',
   'sites/*/_headers',
+  // ⏱ 2026-09-30 · rv2-security-005: the site CSP limb reads its declaration from here, and a
+  // mirror without it is COVERAGE LOST (exit 2) — not the faithful copy test 1 asserts.
+  'tooling/ci/site-csp.json',
   '*pubspec.yaml',
 ];
 

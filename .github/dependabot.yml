@@ -1,0 +1,44 @@
+# Dependabot — ECOSYSTEM DECLARATIONS ONLY, NO VERSION-UPDATE PULL REQUESTS.
+#
+# [rv2-security-004] Renovate (renovate.json) is the one bot that raises version-update pull
+# requests, and requirements NB-11 (2026-07-28) keeps Dependabot's automatic security UPDATES
+# off on purpose: two bots opening dependency PRs is noise. So every entry below carries
+# `open-pull-requests-limit: 0`, which turns Dependabot version updates off for it; what this
+# file adds is an explicit, tree-checked declaration of the npm and pub directories, which is
+# what Dependabot security updates would act on if NB-11 is ever reversed.
+#
+# ⚠️ WHAT THIS FILE DOES NOT DO. Dependabot ALERTS come from GitHub's dependency graph, which
+# parses manifests whether or not this file exists; measured 2026-09-30, it had raised no alert
+# on pnpm-lock.yaml or pubspec.lock, ever. The advisory coverage that is ENFORCED is
+# tooling/ci/scan-dependencies.mjs (OSV-Scanner, a canary per lockfile format, and a floor of
+# every `git ls-files` lockfile), on every pull request and daily on main in ops-watch.yml.
+#
+# The directory lists are held against the tree by tooling/ci/test/scan-dependencies.test.mjs:
+# every directory holding a tracked package-lock.json / pnpm-lock.yaml is under `npm`, every
+# directory holding a tracked pubspec.lock is under `pub`, and nothing is listed that holds none.
+# One tracked lockfile is deliberately absent: the brick TEMPLATE under
+# tooling/bricks/app/__brick__/, whose directory name is mustache (`{{#needs_backend}}…`), not a
+# package anybody installs; OSV still reads it.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directories:
+      - "/"
+      - "/_playwright"
+      - "/extensions/Extension/Full_Screen_Shot/test/e2e"
+      - "/packages/tokens"
+      - "/services/edge-shield"
+      - "/services/platform"
+      - "/services/subscriptiontracker-api"
+      - "/sites/_shared"
+      - "/tooling/web-ext"
+      - "/tooling/wrangler"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+  - package-ecosystem: pub
+    directories:
+      - "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0

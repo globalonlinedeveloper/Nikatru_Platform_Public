@@ -2614,6 +2614,11 @@
         "reason": "exposed 0 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-26); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-signing-inputs-pinned.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-30",
+      "evidence": []
+    },
     "tooling/ci/assert-signup-consent-shape.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-10",
@@ -3388,6 +3393,11 @@
     "tooling/ci/run-page-anchor.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-19",
+      "evidence": []
+    },
+    "tooling/ci/scan-dependencies.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-09-30",
       "evidence": []
     },
     "tooling/ci/scan-secrets.mjs": {

@@ -1373,15 +1373,29 @@
         "name": "CLOUDFLARE_API_TOKEN",
         "kind": "publishing-credential",
         "why": "Deploys the web channel and the Workers. The web row's keyKind is `none` for exactly this reason: Cloudflare serves our bytes under Cloudflare's certificate, so there is no identity of ours in the path — losing this token costs a rotation, not a channel.",
-        "environment": null,
-        "repositoryWhy": "Read by env-less jobs on every merge: deploy-web.yml `deploy-web` and deploy-workers.yml `platform` / `subscriptiontracker-api` deploy production with the merge as their approval, and ci.yml (`guard-meta`, `guards-platform`), e2e.yml `e2e`, ops-watch.yml (`heartbeats`, `prod-provenance`, `pages-deployments`, `glitchtip`, `digest`) and store-screenshots.yml's capture jobs read Cloudflare state. An environment scope would put a reviewer pause in front of every deploy."
+        "environment": ["production", "sandbox"],
+        "storedAt": "repository",
+        "moveStep": "OWNER, after rv2-security-001's PR merges: mint CLOUDFLARE_READ_TOKEN and CLOUDFLARE_D1_TOKEN, copy this token into the `production` environment (and into `sandbox` only once sandbox has a protection rule), then delete the repository copy and flip `storedAt` to \"environment\" (O-ACTIONS-SECRETS-ALL-REPOSITORY-SCOPED).",
+        "repositoryFallback": {
+          "via": ["CLOUDFLARE_READ_TOKEN", "CLOUDFLARE_D1_TOKEN"],
+          "until": "2026-11-30",
+          "why": "Corrected 2026-09-30 (rv2-security-001): the old repositoryWhy named deploy jobs as env-less, but every deploy job reading this token is bound to `production` (deploy-web.yml, deploy-workers.yml, rollback.yml) or `sandbox` (deploy-sandbox.yml). The env-less readers left are ops-watch.yml's Cloudflare readers (read-only: they take CLOUDFLARE_READ_TOKEN, except the D1 statement-acceptance reader, which writes) and the e2e.yml / native-auth-proof.yml / store-screenshots.yml purges (D1 writes: they take CLOUDFLARE_D1_TOKEN). Each reads `secrets.<narrow> || secrets.CLOUDFLARE_API_TOKEN`, so it works before the owner mints the narrow token (the repository copy answers) and after the owner moves this one into its environments (the narrow token answers). No pull_request-reachable job may read it at all (limb 8d). The fallback expires on `until`; after that the `|| secrets.CLOUDFLARE_API_TOKEN` half must be deleted."
+        }
       },
       {
         "name": "CLOUDFLARE_ACCOUNT_ID",
-        "kind": "publishing-credential",
-        "why": "Account identifier that scopes the token above. Not itself an authenticator; kept as a secret to avoid publishing the account id.",
-        "environment": null,
-        "repositoryWhy": "Read beside CLOUDFLARE_API_TOKEN by the same env-less jobs (deploy-web.yml `deploy-web`, deploy-workers.yml `platform` / `subscriptiontracker-api`, ci.yml, e2e.yml, ops-watch.yml, store-screenshots.yml). It names the account the token acts on and authenticates nothing by itself."
+        "kind": "build-config",
+        "why": "Account identifier that scopes the Cloudflare tokens. Not itself an authenticator; kept as a secret to avoid publishing the account id. ⏱ RE-KINDED 2026-09-30 from publishing-credential to build-config (rv2-security-001), on the ground SNAPCRAFT_STORE_CREDENTIALS_EXPIRES was re-kinded on: an identifier authenticates nothing, and the pull_request-reachable guards that read D1 with CLOUDFLARE_READ_TOKEN need it beside the token."
+      },
+      {
+        "name": "CLOUDFLARE_READ_TOKEN",
+        "kind": "service-credential",
+        "why": "A READ-ONLY Cloudflare token (rv2-security-001): D1 read, Pages read, Workers scripts read, zone DNS / rulesets read, Turnstile read, analytics read — no edit scope of any kind. It is the only Cloudflare token a pull_request-reachable job may hold (ci.yml `guards-platform`: the ops register's D1 heartbeat probe and the nightly-proof freshness guard), and ops-watch.yml's readers prefer it over CLOUDFLARE_API_TOKEN. It deploys nothing and signs nothing; a PR author who exfiltrates it can read what the guards read."
+      },
+      {
+        "name": "CLOUDFLARE_D1_TOKEN",
+        "kind": "service-credential",
+        "why": "A D1-EDIT-ONLY Cloudflare token (rv2-security-001) for the jobs that seed, verify and purge live e2e rows (e2e.yml, native-auth-proof.yml, store-screenshots.yml) and for ops-watch.yml's D1 statement-acceptance reader, which executes guarded writes. No Workers, Pages or DNS scope, so it cannot deploy. Read only by scheduled or dispatched jobs, never by a pull_request-reachable one."
       },
       {
         "name": "SUBSCRIBE_RATE_LIMIT_SALT",
@@ -1427,7 +1441,9 @@
         "name": "MS_STORE_CLIENT_SECRET",
         "kind": "publishing-credential",
         "why": "The credential half of the Partner Center application above. Authorises submission; the Store still re-signs.",
-        "environment": "store-publish"
+        "environment": "store-publish",
+        "storedAt": "repository",
+        "moveStep": "OWNER: `gh secret set MS_STORE_CLIENT_SECRET --env store-publish` from the vault, confirm with `gh secret list --env store-publish` (names only), delete the repository copy, then flip `storedAt` to \"environment\". Measured 2026-09-30 (rv2-security-001): it is a repository secret live, and store-publish holds 0 secrets."
       },
       {
         "name": "MS_STORE_TENANT_ID",
@@ -1447,7 +1463,9 @@
         "name": "SNAPCRAFT_STORE_CREDENTIALS",
         "kind": "publishing-credential",
         "why": "Exported `snapcraft` store credentials. The linux-snap row's keyKind is `none` because Canonical signs the binary — this authorises the upload and nothing else.",
-        "environment": "store-publish"
+        "environment": "store-publish",
+        "storedAt": "repository",
+        "moveStep": "OWNER: `gh secret set SNAPCRAFT_STORE_CREDENTIALS --env store-publish` from the vault, confirm with `gh secret list --env store-publish` (names only), delete the repository copy, then flip `storedAt` to \"environment\". Measured 2026-09-30 (rv2-security-001): every Actions secret is repository-level."
       },
       {
         "name": "SNAPCRAFT_STORE_CREDENTIALS_EXPIRES",

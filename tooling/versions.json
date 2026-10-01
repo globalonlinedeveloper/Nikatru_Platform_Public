@@ -145,6 +145,25 @@
     "pub get is ever added to the `platform` job, that job goes red and this paragraph is why."
   ],
   "flutter": "3.47.5",
+  "$flutter_archive_digests_comment": [
+    "⏱ ADDED 2026-09-30 (finding rv2-security-003). THE SHA256 OF EACH FLUTTER SDK ARCHIVE a runner of this",
+    "tree installs, copied from Google's release manifests — the `sha256` field of the stable `3.47.5`",
+    "entry in https://storage.googleapis.com/flutter_infra_release/releases/releases_<os>.json:",
+    "  linux x64    stable/linux/flutter_linux_3.47.5-stable.tar.xz       (releases_linux.json)",
+    "  macOS arm64  stable/macos/flutter_macos_arm64_3.47.5-stable.zip    (releases_macos.json, dart_sdk_arch arm64)",
+    "  Windows x64  stable/windows/flutter_windows_3.47.5-stable.zip      (releases_windows.json)",
+    ".github/actions/setup-flutter downloads the archive for its runner, checks it against the value here with",
+    "`sha256sum --check`, and only then extracts it where subosito/flutter-action looks — so the SDK that",
+    "compiles every signed artifact is no longer an unchecked download. macOS x64 is NOT pinned: no job runs",
+    "on an Intel Mac, and the composite refuses a runner that has no digest here rather than installing one.",
+    "`flutter_sha256_version` names the release these digests belong to. A Renovate bump of `flutter` moves",
+    "only `flutter`, and tooling/ci/assert-signing-inputs-pinned.mjs is then RED at the pull request until",
+    "a human copies the three new digests and moves `flutter_sha256_version`. That red is the mechanism."
+  ],
+  "flutter_sha256_version": "3.47.5",
+  "flutter_linux_x64_sha256": "2132e990f236f8d22e7c6314b29a191a95b10d7cbcfec9b4e2e303d996652cbb",
+  "flutter_macos_arm64_sha256": "d4dd908b5f8f65515831b6d68ae33307a813f2b68947dded7a1994ee5ea7cead",
+  "flutter_windows_x64_sha256": "0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8",
   "node": "24",
   "$java_comment": [
     "THE JDK THAT RUNS GRADLE AND CI, AND THE ANDROID BYTECODE TARGET — ONE KEY DRIVES BOTH, and that is why it is 17.",
@@ -511,7 +530,7 @@
     "from a third-party registry on every run, outside F-2's single declaration and outside",
     "[pipeline 14]O-9's update coverage. That was the state the first version of this lane shipped in,",
     "and it was the exact defect the four keys above were moved out of ci.yml to fix, reintroduced one",
-    "workflow over by the same commit. The workflow now reads this key with `node -p` and passes it as",
+    "workflow over by the same commit. Until 2026-09-30 the workflow read this key with `node -p` and passed it as",
     "`version:`.",
     "",
     "⚠️ THE TAG CARRIES NO LEADING `v` AND THE GIT TAG DOES. Measured against the registry on",
@@ -520,19 +539,19 @@
     "extractVersionTemplate, exactly as the gitleaks and glitchtip_cli managers do, and the value",
     "written here is what goes after the colon.",
     "",
-    "⚠️ NO `trufflehog_sha256`, AND THAT IS DELIBERATE RATHER THAN AN OVERSIGHT. The other four",
-    "scanners are downloaded as release assets and `sha256sum -c`'d, so a digest beside the version is",
-    "a check something actually runs. Here the only two inputs the action exposes are `image` and",
-    "`version`, joined with a colon — `image@sha256:...` cannot be expressed through them, so a digest",
-    "written here would be a pin NOTHING VERIFIES, which this repository treats as worse than no pin.",
-    "What is recorded instead is the measurement: on 2026-09-06 the tag `3.97.4` and the tag `latest`",
-    "resolved to the SAME manifest, sha256:562bc231afa9de3d04de44cfe624252b08207de1fc3cebc5e7ed92bed7f279e4,",
-    "so pinning the version changes nothing today and freezes it from tomorrow. ⬜ The residual is",
-    "stated and not dressed as coverage: a registry tag is mutable, and nothing in this repository",
-    "would see it move. Closing that needs the action to accept a digest, or this lane to stop using",
-    "the wrapper and run the container itself."
+    "⏱ REPLACED 2026-09-30 [rv2-security-017]: the paragraph that stood here said `NO trufflehog_sha256`",
+    "because the wrapper action accepts only `image` and `version`, so a digest would be a pin nothing",
+    "verifies, and it named the close: stop using the wrapper. That is done. trufflehog.yml now installs the",
+    "RELEASE TARBALL `trufflehog_<ver>_linux_amd64.tar.gz` through tooling/ci/install-pinned-tool.mjs, which",
+    "refuses bytes whose sha256 is not `trufflehog_sha256` and a binary whose `--version` is not",
+    "`trufflehog <ver>`, and runs it directly (no docker, no registry tag, no third-party wrapper step).",
+    "The digest was read three ways on 2026-09-30 and they agree: the GitHub release API asset digest,",
+    "the release's own trufflehog_3.97.9_checksums.txt, and sha256sum of the downloaded asset. A Renovate",
+    "bump of `trufflehog` therefore lands RED at the install step until a human writes the new digest,",
+    "the mechanism the four scanners above already use."
   ],
   "trufflehog": "3.97.9",
+  "trufflehog_sha256": "40377e6572495412fb9ba0bc21c9401f73b72f1d2afd11b9931bc4a5ed622866",
 
   "$store_publishing_comment": [
     "THE TWO STORE-SUBMISSION TOOLCHAINS, ADDED 2026-09-07 ([ADR 067] decision 8, phase 3 unit store-lanes).",
@@ -621,6 +640,22 @@
       "why": "A DIGEST, NOT A VERSION — the sha256 of the macOS (aarch64-apple-darwin) artifact of the release `glitchtip_cli` names, and exempt for the same already-verified reason as `glitchtip_cli_sha256` above: no datasource on https://docs.renovatebot.com/modules/datasource/ resolves a file checksum, because a checksum is computed from a download rather than published as a version series. Restated in full rather than pointing at its neighbour, because assert-update-coverage.mjs reads each `why` on its own. ⚠️ ONE THING IS SHARPER HERE: this asset's filename carries no version and no extension (`glitchtip-cli-macos-arm64`), so the URL differs between releases only in its `/v<ver>/` path segment and the bytes are the only thing that distinguishes them — the digest is doing more work on this lane than on the linux one. It advances with `glitchtip_cli` and only with it, and a bump lands RED at the apple lane's `shasum -a 256 --check` until a human writes the new digest here. ⛔ That red is the mechanism; do not delete the checksum step. Declared 2026-09-07. ⏱ 2026-09-25 (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): that check is now tooling/ci/install-pinned-tool.mjs, one code path on every lane, so the bump lands red there; the ⛔ stands."
     },
     {
+      "key": "flutter_sha256_version",
+      "why": "NOT A VERSION PIN OF ITS OWN — it names the Flutter release the three `flutter_*_sha256` digests were copied for, so a bump of `flutter` that did not also move the digests is caught as a mismatch at the pull request (tooling/ci/assert-signing-inputs-pinned.mjs limb P) instead of at the next signing dispatch. Renovate must NOT move it: moving it without the digests would turn that refusal off. It advances by hand, with the digests, and only then. Declared 2026-09-30 (rv2-security-003)."
+    },
+    {
+      "key": "flutter_linux_x64_sha256",
+      "why": "A DIGEST, NOT A VERSION — the sha256 of the linux x64 (.tar.xz) Flutter SDK archive of the release `flutter` names, copied from Google's releases_<os>.json (see $flutter_archive_digests_comment). Exempt because no datasource on https://docs.renovatebot.com/modules/datasource/ resolves a file checksum: a checksum is computed from a download, not published as a version series. It advances with `flutter` and only with it: a Renovate bump of `flutter` is RED at tooling/ci/assert-signing-inputs-pinned.mjs (flutter_sha256_version no longer equals flutter) and at .github/actions/setup-flutter's `sha256sum --check` until a human writes the new digest here. ⛔ That red is the mechanism; do not delete the check. Declared 2026-09-30 (rv2-security-003)."
+    },
+    {
+      "key": "flutter_macos_arm64_sha256",
+      "why": "A DIGEST, NOT A VERSION — the sha256 of the macOS arm64 (.zip) Flutter SDK archive of the release `flutter` names, copied from Google's releases_<os>.json (see $flutter_archive_digests_comment). Exempt because no datasource on https://docs.renovatebot.com/modules/datasource/ resolves a file checksum: a checksum is computed from a download, not published as a version series. It advances with `flutter` and only with it: a Renovate bump of `flutter` is RED at tooling/ci/assert-signing-inputs-pinned.mjs (flutter_sha256_version no longer equals flutter) and at .github/actions/setup-flutter's `sha256sum --check` until a human writes the new digest here. ⛔ That red is the mechanism; do not delete the check. Declared 2026-09-30 (rv2-security-003)."
+    },
+    {
+      "key": "flutter_windows_x64_sha256",
+      "why": "A DIGEST, NOT A VERSION — the sha256 of the Windows x64 (.zip) Flutter SDK archive of the release `flutter` names, copied from Google's releases_<os>.json (see $flutter_archive_digests_comment). Exempt because no datasource on https://docs.renovatebot.com/modules/datasource/ resolves a file checksum: a checksum is computed from a download, not published as a version series. It advances with `flutter` and only with it: a Renovate bump of `flutter` is RED at tooling/ci/assert-signing-inputs-pinned.mjs (flutter_sha256_version no longer equals flutter) and at .github/actions/setup-flutter's `sha256sum --check` until a human writes the new digest here. ⛔ That red is the mechanism; do not delete the check. Declared 2026-09-30 (rv2-security-003)."
+    },
+    {
       "key": "gitleaks_sha256",
       "why": "A DIGEST, NOT A VERSION — same class as `glitchtip_cli_sha256` above and exempt for the identical, already-verified reason: no datasource on https://docs.renovatebot.com/modules/datasource/ resolves a file checksum, because a checksum is computed from a download rather than published as a version series. It advances with `gitleaks` and only with it, and a Renovate bump of that key lands RED at ci.yml's `sha256sum -c` step until a human downloads the new release asset and writes the digest here. ⛔ That red is the mechanism; do NOT 'fix' it by deleting the checksum step. Declared 2026-09-06 with the pin it belongs to."
     },
@@ -635,6 +670,10 @@
     {
       "key": "trivy_sha256",
       "why": "A DIGEST, NOT A VERSION — see `gitleaks_sha256`; no Renovate datasource resolves a checksum. It advances with `trivy` and only with it, and a bump arrives RED at ci.yml's `sha256sum -c` until the new digest is written here. Declared 2026-09-06."
+    },
+    {
+      "key": "trufflehog_sha256",
+      "why": "A DIGEST, NOT A VERSION — the sha256 of the linux release tarball `trufflehog` names, and exempt for the reason `gitleaks_sha256` states: no datasource on https://docs.renovatebot.com/modules/datasource/ resolves a file checksum, because a checksum is computed from a download rather than published as a version series. It advances with `trufflehog` and only with it: a Renovate bump of that key lands RED at the install step of .github/workflows/trufflehog.yml (tooling/ci/install-pinned-tool.mjs) until a human downloads the new asset and writes its digest here. ⛔ That red is the mechanism; do not remove the digest to clear it. Declared 2026-09-30 [rv2-security-017], replacing a mutable registry tag."
     },
     {
       "key": "xcode",
