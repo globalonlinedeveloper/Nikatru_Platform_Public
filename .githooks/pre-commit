@@ -14,6 +14,32 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
+# ── THIS checkout's hook, never another tree's (⏱ 2026-10-01, #1097 review minor 6) ──
+# git runs the hook it finds through core.hooksPath. When that value is ABSOLUTE,
+# or a lane worktree under .worktrees/ otherwise resolves it to the MAIN
+# checkout's .githooks/, every path below that is derived from `$0` lands in the
+# main checkout: its OLD guards judged this branch, and "hooks green" meant main.
+# So the hook first asks git which tree it was invoked in
+# (`git rev-parse --show-toplevel`) and, when that tree is a checkout of this
+# repo carrying its own copy of this hook, hands over to that copy once. From
+# then on `$0` is the invoking tree's, and so is every guard it runs.
+# A tree with no tooling/scripts/spec-guards.mjs (the private corpus, which
+# shares these hooks through the pinned runner) is not this repo and keeps the
+# hook it was given. NIKATRU_HOOK_OWN_TREE makes the hand-over happen at most once.
+if [ -z "${NIKATRU_HOOK_OWN_TREE:-}" ]; then
+  OWN_TOP=$(git rev-parse --show-toplevel 2>/dev/null) || OWN_TOP=''
+  if [ -n "$OWN_TOP" ] && [ -f "$OWN_TOP/tooling/scripts/spec-guards.mjs" ] && [ -f "$OWN_TOP/.githooks/pre-commit" ]; then
+    RUNNING_DIR=$(cd -P "$(dirname "$0")" 2>/dev/null && pwd)
+    OWN_DIR=$(cd -P "$OWN_TOP/.githooks" 2>/dev/null && pwd)
+    if [ -n "$OWN_DIR" ] && [ "$RUNNING_DIR" != "$OWN_DIR" ]; then
+      echo "pre-commit: this hook is $0, outside the tree git invoked it in; running $OWN_DIR/pre-commit instead, so this branch's own guards judge it." >&2
+      NIKATRU_HOOK_OWN_TREE=1
+      export NIKATRU_HOOK_OWN_TREE
+      exec sh "$OWN_DIR/pre-commit" "$@"
+    fi
+  fi
+fi
+
 # ── Self-advance: the pinned runner moves to origin/main BEFORE it runs ─────────
 # ⏱ 2026-09-24 (O-PRIVATE-HOOK-RUNNER-FOLLOWS-A-LIVE-BRANCH). The private corpus's
 # core.hooksPath points at ONE detached worktree of this repo pinned to origin/main
