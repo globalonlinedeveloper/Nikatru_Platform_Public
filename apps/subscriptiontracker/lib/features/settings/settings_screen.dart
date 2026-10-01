@@ -595,6 +595,7 @@ class SettingsScreen extends ConsumerWidget {
                             ),
                     ),
                   const ReminderRuleRows(),
+                  const ReminderToolsRows(),
                 ],
               ),
             ),

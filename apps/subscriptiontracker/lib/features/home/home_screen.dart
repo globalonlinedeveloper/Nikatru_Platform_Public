@@ -27,7 +27,6 @@
 // `showUnused` below reads `prefs['unused']`, which only the settings toggles
 // write. Changing one screen without the other severs a coupling nothing tests.
 // ─────────────────────────────────────────────────────────────────────────────
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -40,7 +39,6 @@ import '../../core/app_config.dart';
 import '../../core/format/category_label.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
-import '../../core/windows_notification_identity.g.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
@@ -697,10 +695,13 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
 /// [core.CatchUpNudge] refuses when reminders are off — routing around the
 /// switch is precisely what the switch exists to prevent.
 ///
-/// ⚠️ P2.5 DEPENDENCY: `AppConfig.reminderHour` / `reminderMinute` exist ONLY in
-/// the STAMPED `lib/core/app_config.dart`. The live `lib/core/config/
-/// app_config.dart` has neither, so the de-duplication must keep the stamp's
-/// constants or this widget stops compiling. See MANIFEST.md · FINDING 3.
+/// 🔴 HO-09 · THE OPT-OUT IT READS IS "RENEWAL ALERTS", NOT THE RETIRED DAILY
+/// SWITCH. It read `remindersEnabledProvider`, which launch forces OFF
+/// (ST-U1: the chassis daily reminder is not this app's) — so on web, the one
+/// target this banner exists for, it could never show. It now reads the
+/// capability (`renewalRemindersProvider`, `!canSchedule`) and the
+/// alerts preference, at the reminder time the user chose in Settings.
+///
 class CatchUpNudgeBanner extends ConsumerWidget {
   const CatchUpNudgeBanner({this.clock, super.key});
 
@@ -713,19 +714,20 @@ class CatchUpNudgeBanner extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final NotificationCapabilities caps = NotificationCapabilities.resolve(
-      defaultTargetPlatform,
-      isWeb: kIsWeb,
-      windows: kWindowsNotificationIdentity,
-    );
+    // The same object the scheduler was built from, so the nudge and the
+    // scheduler cannot disagree about whether this target schedules.
+    final NotificationCapabilities caps = ref
+        .watch(renewalRemindersProvider)
+        .capabilities;
+    final SettingsState settings = ref.watch(settingsControllerProvider);
     final AppLocalizations l10n = AppLocalizations.of(context);
     final DateTime now = (clock ?? DateTime.now)();
     final core.CatchUpNudgeVerdict verdict = const core.CatchUpNudge().decide(
       now: now,
       lastShownAt: ref.watch(catchUpNudgeProvider),
-      reminderHour: AppConfig.reminderHour,
-      reminderMinute: AppConfig.reminderMinute,
-      remindersEnabled: ref.watch(remindersEnabledProvider),
+      reminderHour: settings.reminderMinuteOfDay ~/ 60,
+      reminderMinute: settings.reminderMinuteOfDay % 60,
+      remindersEnabled: settings.prefs['alerts'] ?? true,
       platformCanSchedule: caps.canSchedule,
     );
     if (verdict != core.CatchUpNudgeVerdict.show) {

@@ -169,12 +169,16 @@ import 'support/width_harness.dart';
 
 /// The desktop shell width (see the header) at a viewport tall enough that no
 /// screen in the sweep scrolls. Both halves are asserted, not assumed:
-/// [_everythingIsLaidOut] fails if 2600 ever stops being enough.
+/// [_everythingIsLaidOut] fails if 2800 ever stops being enough.
 ///
 /// ⏱ 2026-09-30 · ST-Y3/ST-Y4: 2400 -> 2600. Settings gained three card
 /// headings and the Help section's Rate and Feedback rows and scrolled by
 /// 142 px at 2400 — measured by [_everythingIsLaidOut], which is what it is for.
-const Size kKeyboardSurface = Size(1079, 2600);
+// ⏱ 2026-10-01 · NO-12/NO-13: 2600 -> 2800. Settings grew again by quiet
+// hours and "Send a test reminder" — [_everythingIsLaidOut] measures it. The
+// width, and so every count, is as it was; the height only has to hold the
+// whole screen.
+const Size kKeyboardSurface = Size(1079, 2800);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
 ///
@@ -668,8 +672,10 @@ void main() {
         // ⏱ 2026-09-30 · ST-Y4 (audit D12/F53): 26 -> 28 and 24 -> 26 — the
         // Help section's "Rate" and "Send feedback" _LinkRows, both wired.
         // (Contact support MOVED into Help; it is not a new control.)
-        controls: 28 + core.Money.symbols.length,
-        reachable: 26 + core.Money.symbols.length,
+        // ⏱ 2026-10-01 · NO-13: 28 -> 30 and 26 -> 28 — the "Quiet hours"
+        // switch and "Send a test reminder", both in the Tab orbit.
+        controls: 30 + core.Money.symbols.length,
+        reachable: 28 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,

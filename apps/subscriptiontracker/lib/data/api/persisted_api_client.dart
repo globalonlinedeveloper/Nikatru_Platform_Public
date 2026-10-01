@@ -157,6 +157,22 @@ class PersistedApiClient implements ApiClient {
   }
 
   @override
+  Future<void> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {
+    await _ready();
+    await _seed.recordPayment(
+      id,
+      amount: amount,
+      paidOn: paidOn,
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
+  @override
   Future<BudgetInfo> getBudget() async {
     await _ready();
     return _seed.getBudget();

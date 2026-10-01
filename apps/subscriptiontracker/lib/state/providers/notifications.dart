@@ -5,7 +5,8 @@
 // [notificationTapSourceProvider] stood at the tail of SECTION F (identity) and
 // is carried here, with the rest of the notification wiring it belongs to.
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
@@ -346,3 +347,84 @@ final NotifierProvider<CatchUpNudgeController, DateTime?> catchUpNudgeProvider =
     NotifierProvider<CatchUpNudgeController, DateTime?>(
       CatchUpNudgeController.new,
     );
+
+// ── NO-04 · NO-12 ────────────────────────────────────────────────────────────
+
+/// NO-04: the XDG autostart entry that shows due reminders at login — Linux
+/// only, null everywhere else (web included). "Renewal alerts" ON creates it
+/// and OFF removes it (SettingsController.toggle). A provider so a test can
+/// hand in one over a temp directory.
+final Provider<LinuxAutostartControl?> linuxAutostartProvider =
+    Provider<LinuxAutostartControl?>(
+      (ref) => createLinuxAutostart(
+        appId: AppConfig.appId,
+        appName: AppConfig.appName,
+      ),
+    );
+
+/// NO-12: Android's "Alarms & reminders" access, or null where the service
+/// has none (the no-op seam, web).
+final Provider<ExactAlarmAccess?> exactAlarmAccessProvider =
+    Provider<ExactAlarmAccess?>((ref) {
+      final core.NotificationService svc = ref.watch(
+        notificationServiceProvider,
+      );
+      return svc is ExactAlarmAccess ? svc as ExactAlarmAccess : null;
+    });
+
+/// Whether this target has an exact-alarm permission to offer: Android only.
+/// A provider so a widget test can stand on Android.
+final Provider<bool> offersExactAlarmsProvider = Provider<bool>(
+  (ref) => !kIsWeb && defaultTargetPlatform == TargetPlatform.android,
+);
+
+const String _exactAlarmOfferKey = 'nikatru.exact_alarm_offer';
+
+/// NO-12: the answer to the ONE "Alarms & reminders" offer — null = never
+/// offered, else `granted` or `refused`. Persisted, because "once" is per
+/// install, not per launch; a refusal is what Settings says "reminders may
+/// arrive a little late" about.
+class ExactAlarmOfferController extends Notifier<String?> {
+  static const String granted = 'granted';
+  static const String refused = 'refused';
+
+  late final PersistedValue<core.KeyValueStore, String?> _stored =
+      PersistedValue<core.KeyValueStore, String?>(
+        open: () => ref.read(keyValueStoreProvider.future),
+        read: (kv) => kv.read(_exactAlarmOfferKey),
+        write: (kv, raw) => kv.write(_exactAlarmOfferKey, raw),
+        decode: (raw) => raw,
+        encode: (answer) => answer ?? '',
+        apply: (answer) => state = answer,
+        mounted: () => ref.mounted,
+      );
+
+  @override
+  String? build() {
+    _stored.hydrate();
+    return null;
+  }
+
+  /// Whether the offer was ever answered — read from the store, so a launch
+  /// whose hydration is still in flight cannot offer it twice.
+  Future<bool> wasOffered() async {
+    if (state != null) return true;
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      final String? raw = await kv.read(_exactAlarmOfferKey);
+      return raw != null && raw.isNotEmpty;
+    } catch (_) {
+      // An unreadable store: do not nag; offering is a nicety.
+      return true;
+    }
+  }
+
+  Future<void> record(String answer) => _stored.set(answer);
+}
+
+final NotifierProvider<ExactAlarmOfferController, String?>
+exactAlarmOfferProvider = NotifierProvider<ExactAlarmOfferController, String?>(
+  ExactAlarmOfferController.new,
+);

@@ -2,6 +2,7 @@
 // tap-observer registration kept intact. The ORDER of everything inside
 // `appRunner` is load-bearing — each step below says why.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter_riverpod/misc.dart';
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -14,10 +15,33 @@ import 'app.dart';
 import 'package:nikatru_chassis_screens/shell/web_semantics.dart';
 import 'core/app_config.dart';
 import 'core/windows_notification_identity.g.dart';
+import 'services/notifications/notification_service.dart'
+    show ReminderCopy, RenewalReminders;
 import 'state/providers.dart';
+import 'state/subscriptions_controller.dart' show reminderCopyFor;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // NO-04 · THE LOGIN-TIME ENTRY. The XDG autostart file
+  // (`linuxAutostartProvider`) runs this binary with `--remind`; the Linux
+  // runner draws no window for it and says so in the environment
+  // (`isRemindLaunch`, never true off Linux). `init()` shows every reminder
+  // the ledger holds that fell due while the app was closed, and the process
+  // leaves — no telemetry, no daemon. Read from the environment rather than
+  // from `main`'s arguments, so `main()` keeps the one shape the seam guards
+  // grade it by.
+  if (isRemindLaunch()) {
+    final core.NotificationService remind = createLocalNotificationService(
+      linuxAppId: AppConfig.appId,
+    );
+    try {
+      await remind.init();
+    } finally {
+      await SystemNavigator.pop();
+    }
+    return;
+  }
 
   // 🔴 WEB HAD NO ACCESSIBILITY TREE UNTIL THIS LINE. Flutter web compiles the
   // semantics DOM only once a client asks for it; until then a screen reader
@@ -107,8 +131,16 @@ Future<void> main() async {
       // every notification the app posts is tappable by construction.
       // [windows] is this app's toast identity, rendered from app.yaml; without
       // it Windows would have no notifications at all.
+      // NO-10: Apple registers a notification's buttons by category, once,
+      // at initialize — so their words are rendered here, in the language
+      // the app opens in (a later in-app language change takes effect at
+      // the next launch on iOS/macOS; Android and Windows carry them per
+      // notification).
+      final ReminderCopy launchCopy = reminderCopyFor(null);
       final core.NotificationService taps = createLocalNotificationService(
         windows: kWindowsNotificationIdentity,
+        linuxAppId: AppConfig.appId,
+        darwinActions: RenewalReminders.actionsFor(launchCopy),
       );
       await taps.init();
 

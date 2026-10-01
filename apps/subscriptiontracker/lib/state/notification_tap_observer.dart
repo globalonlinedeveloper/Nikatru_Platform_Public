@@ -87,15 +87,24 @@ class NotificationTapRouter {
   NotificationTapRouter({
     required core.NotificationService service,
     required void Function(String route) open,
+    void Function(core.NotificationTap tap)? onLaunchAction,
   }) : _service = service,
-       _open = open;
+       _open = open,
+       _onLaunchAction = onLaunchAction;
 
   final core.NotificationService _service;
   final void Function(String route) _open;
+
+  /// NO-10: a BUTTON press that cold-started the app arrives only as the
+  /// launch tap, which this router reads first — so it hands that one on
+  /// ([ReminderActionHandler.handle]) instead of dropping it.
+  final void Function(core.NotificationTap tap)? _onLaunchAction;
   StreamSubscription<core.NotificationTap>? _sub;
 
   void _route(core.NotificationTap? tap) {
-    final String? route = routeForNotificationPayload(tap?.payload);
+    // A BUTTON press is [ReminderActionHandler]'s; only a body tap opens.
+    if (tap == null || tap.actionId != null) return;
+    final String? route = routeForNotificationPayload(tap.payload);
     if (route != null) _open(route);
   }
 
@@ -108,10 +117,93 @@ class NotificationTapRouter {
       cancelOnError: false,
     );
     try {
-      _route(await _service.takeLaunchTap());
+      final core.NotificationTap? launch = await _service.takeLaunchTap();
+      if (launch?.actionId != null) {
+        _onLaunchAction?.call(launch!);
+      } else {
+        _route(launch);
+      }
     } on Object {
       // A launch that cannot be read opens where the app opens anyway.
     }
+  }
+
+  Future<void> stop() async {
+    final StreamSubscription<core.NotificationTap>? s = _sub;
+    _sub = null;
+    await s?.cancel();
+  }
+}
+
+/// The subscription id a reminder payload names, or null — the same untrusted
+/// token rule [routeForNotificationPayload] applies.
+String? subscriptionIdOfPayload(String? payload) {
+  final String? route = routeForNotificationPayload(payload);
+  return route?.substring('/sub/'.length);
+}
+
+/// NO-10: the BUTTONS on a renewal reminder — "Mark as paid" and "Snooze 1
+/// day" — and what each one does.
+///
+/// Beside [NotificationTapRouter] on the same broadcast stream: the router
+/// takes body taps, this takes button presses, and neither sees the other's.
+/// The two actions are injected rather than reached through providers so a
+/// test drives the handler with fakes, and so it holds no `Ref`.
+///
+/// - `paid` → [markPaid] (one payment; the key is derived, so a press the OS
+///   delivers twice is one payment), then the notification is dismissed.
+///   A failed write leaves the notification up: the reminder is still true.
+/// - `snooze` → [snooze] re-arms the same id at +24 h.
+class ReminderActionHandler {
+  ReminderActionHandler({
+    required core.NotificationService service,
+    required Future<void> Function(String subscriptionId) markPaid,
+    required Future<void> Function(String subscriptionId, int notificationId)
+    snooze,
+    void Function(Object error)? onError,
+  }) : _service = service,
+       _markPaid = markPaid,
+       _snooze = snooze,
+       _onError = onError;
+
+  final core.NotificationService _service;
+  final Future<void> Function(String) _markPaid;
+  final Future<void> Function(String, int) _snooze;
+  final void Function(Object error)? _onError;
+  StreamSubscription<core.NotificationTap>? _sub;
+
+  /// The action ids, as `RenewalReminders` posts them.
+  static const String paid = 'paid';
+  static const String snoozeId = 'snooze';
+
+  /// Handles one press. Awaitable, so a test can assert what it did.
+  Future<void> handle(core.NotificationTap tap) async {
+    final String? action = tap.actionId;
+    final String? id = subscriptionIdOfPayload(tap.payload);
+    if (action == null || id == null) return;
+    try {
+      switch (action) {
+        case paid:
+          await _markPaid(id);
+          await _service.cancel(tap.id);
+        case snoozeId:
+          await _snooze(id, tap.id);
+      }
+    } on Object catch (e) {
+      _onError?.call(e);
+    }
+  }
+
+  /// Idempotent, like [NotificationTapRouter.start]. A press that COLD-starts
+  /// the app arrives as the launch tap, which the router reads first and
+  /// hands to [handle] through its `onLaunchAction`.
+  void start() {
+    if (_sub != null) return;
+    _sub = _service.notificationTaps().listen(
+      (core.NotificationTap t) => unawaited(handle(t)),
+      onError: (Object _) {},
+      cancelOnError: false,
+    );
   }
 
   Future<void> stop() async {

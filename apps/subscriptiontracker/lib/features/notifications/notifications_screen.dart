@@ -11,7 +11,9 @@ import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart' show nowProvider, renewalRemindersProvider;
-import '../../state/subscriptions_controller.dart' show monthDayFormat;
+import '../../state/settings_controller.dart';
+import '../../state/subscriptions_controller.dart'
+    show monthDayFormat, subscriptionsControllerProvider;
 import '../shared/async_gate.dart';
 
 /// What is coming up, derived from the subscriptions the user holds.
@@ -35,7 +37,15 @@ import '../shared/async_gate.dart';
 ///   · LOADING is a [SkeletonList] in the card the rows will arrive in, and
 ///     "nothing due" is the shared empty treatment, not a bare line of text.
 ///
-/// ⚠️ THE NOTICES ARE STILL INERT, ON PURPOSE. Making a due-soon row open its
+/// ⏱ 2026-10-01 · NO-09/NO-10 — THE LIST ACTS, AND SAYS WHERE REMINDERS GO.
+/// Each due row carries Mark as paid (one payment), Snooze (the OS reminder
+/// in 24 h; no network), Keep it (the notice goes; no network) and How to
+/// stop (the plan's detail, where the stop flow lives — train T10). Above the
+/// list, ONE status line by capability: where this device posts reminders,
+/// what and when; where it cannot (web), the e-mail and calendar channels,
+/// with a link to Settings.
+///
+/// ⚠️ THE AGGREGATE STRIP IS STILL INERT, ON PURPOSE. Making a due-soon row open its
 /// plan is the obvious next affordance, but those rows are built from
 /// `daysUntil(now)`, so every control count the a11y and keyboard sweeps pin
 /// for this route would become a function of the wall clock. That wants the
@@ -151,31 +161,9 @@ class NotificationsScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  // ST-U1 (audit C20): this list is DERIVED, not an inbox, and on a
-                  // target that cannot schedule (web — the live one — Windows and
-                  // Linux) it is the only reminder there is. Said once, here.
-                  if (!ref
-                      .watch(renewalRemindersProvider)
-                      .capabilities
-                      .canSchedule)
-                    Padding(
-                      key: const Key('notificationsNoRemindersHere'),
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.gutterCompact,
-                        0,
-                        AppSpacing.gutterCompact,
-                        AppSpacing.md,
-                      ),
-                      child: Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: Text(
-                          l10n.notificationsNoRemindersHere,
-                          style: text.bodyMedium?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ),
+                  // NO-09 (was ST-U1, audit C20): this list is DERIVED, not
+                  // an inbox. One honest line says where reminders go.
+                  const _ReminderStatusLine(),
                   const Divider(height: 1),
                   Expanded(
                     // 🔴 THE GATE IS INSIDE THE CHROME, NOT AROUND IT. The title
@@ -237,10 +225,13 @@ class NotificationsScreen extends ConsumerWidget {
     final DateTime now = ref.watch(nowProvider)();
     final MoneyBag savings = SubMath.savings(subs);
 
+    // NO-10: a notice the user answered (paid, snoozed, kept) leaves the list
+    // for this session.
+    final Set<String> answered = ref.watch(answeredNoticesProvider);
     final List<Subscription> dueSoon =
         subs.where((Subscription x) {
           final int d = x.daysUntil(now);
-          return d >= 0 && d <= 7;
+          return d >= 0 && d <= 7 && !answered.contains(x.id);
         }).toList()..sort(
           (Subscription a, Subscription b) =>
               a.daysUntil(now).compareTo(b.daysUntil(now)),
@@ -311,6 +302,7 @@ class NotificationsScreen extends ConsumerWidget {
                 for (int i = 0; i < dueSoon.length; i++) ...<Widget>[
                   if (i > 0) const Divider(height: 1),
                   _dueRow(context, dueSoon[i], now, l10n, money, renewalDate),
+                  _RowActions(sub: dueSoon[i]),
                 ],
               ],
             ),
@@ -385,6 +377,158 @@ class NotificationsScreen extends ConsumerWidget {
       subtitle: l10n.notificationsRenewedOn(renewalDate.format(x.nextRenewal)),
       subtitleMaxLines: 3,
       onTap: () => context.push('/sub/${x.id}'),
+    );
+  }
+}
+
+/// NO-10: the notices answered this session — paid, snoozed or kept. Session
+/// state on purpose: the next renewal is a new notice, and a payment is on
+/// the server, not here.
+class AnsweredNotices extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => const <String>{};
+
+  void answer(String subscriptionId) =>
+      state = <String>{...state, subscriptionId};
+}
+
+final NotifierProvider<AnsweredNotices, Set<String>> answeredNoticesProvider =
+    NotifierProvider<AnsweredNotices, Set<String>>(AnsweredNotices.new);
+
+/// NO-09: the one line that says where reminders go, by capability.
+///
+/// - No notifications here (web; Windows without the app's identity): the
+///   e-mail reminders and the calendar feed, which reach every target, and a
+///   link to Settings where both live.
+/// - Notifications here: "Reminders: on, {lead} before at {time}", or off.
+class _ReminderStatusLine extends ConsumerWidget {
+  const _ReminderStatusLine();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final ThemeData theme = Theme.of(context);
+    final TextStyle? style = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final bool push = ref
+        .watch(renewalRemindersProvider)
+        .capabilities
+        .canNotify;
+    final SettingsState s = ref.watch(settingsControllerProvider);
+    final Widget line;
+    if (!push) {
+      line = Column(
+        key: const Key('notificationsNoRemindersHere'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(l10n.notificationsStatusNoPush, style: style),
+          TextButton(
+            key: const Key('notificationsOpenSettings'),
+            onPressed: () => context.go('/settings'),
+            child: Text(l10n.notificationsOpenSettings),
+          ),
+        ],
+      );
+    } else {
+      final bool on = s.prefs['alerts'] ?? true;
+      final String time = MaterialLocalizations.of(context).formatTimeOfDay(
+        TimeOfDay(
+          hour: s.reminderMinuteOfDay ~/ 60,
+          minute: s.reminderMinuteOfDay % 60,
+        ),
+        alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+      );
+      line = Text(
+        on
+            ? l10n.notificationsStatusOn(s.reminderLeadDays, time)
+            : l10n.notificationsStatusOff,
+        key: const Key('notificationsStatusLine'),
+        style: style,
+      );
+    }
+    // Its OWN semantics node: without the container the sentence merges into
+    // the title's node, which then reads "Notifications Reminders: on, …" as
+    // one label — and the title stops being a heading a reader can find.
+    return Semantics(
+      container: true,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.gutterCompact,
+          0,
+          AppSpacing.gutterCompact,
+          AppSpacing.md,
+        ),
+        child: Align(alignment: AlignmentDirectional.centerStart, child: line),
+      ),
+    );
+  }
+}
+
+/// NO-10: what a due row can do — each button does ONE thing.
+class _RowActions extends ConsumerWidget {
+  const _RowActions({required this.sub});
+
+  final Subscription sub;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AnsweredNotices answered = ref.read(answeredNoticesProvider.notifier);
+    void say(String text) => ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(text)));
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        AppSpacing.md,
+        0,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
+      child: Wrap(
+        spacing: AppSpacing.sm,
+        children: <Widget>[
+          TextButton(
+            key: Key('notifications.paid.${sub.id}'),
+            onPressed: () async {
+              try {
+                await ref
+                    .read(subscriptionsControllerProvider.notifier)
+                    .markPaid(sub.id);
+              } on Object {
+                say(l10n.reminderMarkPaidFailed);
+                return;
+              }
+              answered.answer(sub.id);
+              say(l10n.reminderMarkedPaid(sub.name));
+            },
+            child: Text(l10n.reminderActionMarkPaid),
+          ),
+          TextButton(
+            key: Key('notifications.snooze.${sub.id}'),
+            onPressed: () async {
+              answered.answer(sub.id);
+              await ref
+                  .read(subscriptionsControllerProvider.notifier)
+                  .snoozeReminder(sub.id);
+              say(l10n.reminderSnoozed);
+            },
+            child: Text(l10n.reminderActionSnooze),
+          ),
+          TextButton(
+            key: Key('notifications.keep.${sub.id}'),
+            onPressed: () => answered.answer(sub.id),
+            child: Text(l10n.reminderActionKeep),
+          ),
+          TextButton(
+            key: Key('notifications.stop.${sub.id}'),
+            // The plan's detail carries the stop entry; `stop=1` is the
+            // anchor train T10's stop flow opens on (ignored until then).
+            onPressed: () => context.push('/sub/${sub.id}?stop=1'),
+            child: Text(l10n.reminderActionHowToStop),
+          ),
+        ],
+      ),
     );
   }
 }

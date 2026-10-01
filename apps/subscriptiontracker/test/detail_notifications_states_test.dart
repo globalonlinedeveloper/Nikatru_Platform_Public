@@ -447,7 +447,16 @@ void main() {
 
     testWidgets('populated: renewals soonest first, tomorrow warned, and the '
         'unused nudge', (WidgetTester tester) async {
-      await _pump(tester, screen, _ListApi(DemoData.subscriptions()));
+      // ⏱ 2026-10-01 · NO-10: each due row now carries its four answers, so
+      // the renewed card sits below a phone's first screen, and a `ListView`
+      // does not build what it has not scrolled to. Tall enough to hold all
+      // three cards: this case is about what they SAY, not where they fall.
+      await _pump(
+        tester,
+        screen,
+        _ListApi(DemoData.subscriptions()),
+        size: const Size(375, 2000),
+      );
       _expectNoPageState();
 
       final List<AppListRow> rows = tester
