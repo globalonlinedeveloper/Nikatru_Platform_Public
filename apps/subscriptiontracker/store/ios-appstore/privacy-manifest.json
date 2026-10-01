@@ -1,7 +1,7 @@
 {
   "sworn": true,
   "_readme": [
-    "THE APPLE PRIVACY MANIFEST AUDIT — Subly, channels `ios-appstore` AND `macos-appstore`.",
+    "THE APPLE PRIVACY MANIFEST AUDIT — Nikatru Subscription Tracker, channels `ios-appstore` AND `macos-appstore`.",
     "",
     "This is the repo-native source of truth for both `PrivacyInfo.xcprivacy` files:",
     "  apps/subscriptiontracker/ios/Runner/PrivacyInfo.xcprivacy",
