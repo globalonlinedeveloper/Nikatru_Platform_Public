@@ -239,6 +239,23 @@ export const RENDERED = 'services/platform/src/routes/rail-price-ids.ts';
 export const SOURCE_DIR = 'services/platform/src';
 /** The rails an entry must declare, each a read-back or pending. */
 export const RAILS = ['paddle', 'razorpay'];
+
+/**
+ * Each rail's rendered sellable-id map, BY NAME. One explicit row per rail (#1127 money
+ * review, nit 5): before, every rail but Paddle was bound to Razorpay's plan ids, so a third
+ * rail added to RAILS (Cashfree, say) would have sold Razorpay's plans. A rail with no row
+ * here throws, so the render fails instead of guessing.
+ */
+export const RAIL_PRICE_MAP = Object.freeze({ paddle: 'PADDLE_PRICE_IDS', razorpay: 'RAZORPAY_PLAN_IDS' });
+
+/** The map name RAIL_PRICE_IDS binds `rail` to; throws on a rail with no explicit row. */
+export function railPriceMapFor(rail) {
+  if (!Object.hasOwn(RAIL_PRICE_MAP, rail)) {
+    throw new Error(`render-rail-prices: rail ${JSON.stringify(rail)} has no row in RAIL_PRICE_MAP; add its own sellable-id map, never another rail's`);
+  }
+  return RAIL_PRICE_MAP[rail];
+}
+
 /** The served `term` → the plan an app offering is. */
 export const APP_PLANS = Object.freeze({ month: 'single-monthly', year: 'single-yearly', one_time: 'single-lifetime' });
 /** The served `term` → the plan a bundle offering is. A bundle has no lifetime plan. */
@@ -978,7 +995,7 @@ export function renderRailPriceIds(book) {
     '// RAIL → OUR offering id → that rail\'s sellable id, per app: the map the payments port reads',
     '// (RAIL_PRICE_IDS[railId][appId][offeringId]). Keyed by tooling/ports/payments.json adapter ids.',
     'export const RAIL_PRICE_IDS: Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, string>>>>>> = {',
-    ...RAILS.map((r) => `  ${r}: ${r === 'paddle' ? 'PADDLE_PRICE_IDS' : 'RAZORPAY_PLAN_IDS'},`),
+    ...RAILS.map((r) => `  ${r}: ${railPriceMapFor(r)},`),
     '};',
     '',
   );
