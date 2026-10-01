@@ -69,6 +69,7 @@ import { extname, join } from 'node:path';
 import { execSync } from 'node:child_process';
 import { listDir } from './tree-walk.mjs';
 import { stripSourceComments } from './text-reductions.mjs';
+import { evaluate as evaluatePorts, portLineFor } from './assert-ports.mjs';
 
 // ── PROSE IS NOT CODE, AND THIS FILE USED TO DISAGREE WITH ITSELF ────────────
 // 🔴 FIXED 2026-08-21. Of the reads below, source (c)/(d) stripped comments and
@@ -554,10 +555,18 @@ for (const [token, entry] of Object.entries(nonVendor)) {
   );
 }
 
+// ⏱ 2026-10-01 · O-NO-PORT-SELECTS-AN-ADAPTER-BY-CONFIG — C-8's ONE LINK to the
+// port standard (tooling/ports/README.md). Each vendor's port and EARNED level is
+// read from assert-ports.mjs's exported evaluation, never re-derived here; that
+// guard owns the verdict (its limb 8 reds a vendor placed nowhere, or a ported
+// vendor whose seam.file is not its port's interface). Printed, not graded.
+let portsRead = null;
+try { portsRead = evaluatePorts(ROOT); } catch (e) { portsRead = { error: e.message }; }
 for (const [id, v] of Object.entries(vendors)) {
   if (id.startsWith('_')) continue;
   notes.push(`· ${id} — protocol: ${String(v.openProtocol ?? '?').split(' —')[0]}`);
   notes.push(`    own the record: ${String(v.ownTheRecord ?? '?').split(' —')[0]}`);
+  notes.push(`    ${portsRead?.error ? `port: unknown — assert-ports.mjs could not evaluate (${portsRead.error})` : portLineFor(portsRead, id)}`);
 }
 if (notes.length) {
   console.log('\n⬜ The two judgement parts, printed rather than pretended-checked:');

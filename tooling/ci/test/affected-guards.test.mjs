@@ -267,6 +267,40 @@ test('AG7 the workflow read: value-taking node flags, the script, and a --test c
   assert.deepEqual(chains.map((c) => c.parts), [['apps', '\u0000', 'pubspec.yaml'], ['..', 'x.json']]);
 });
 
+test('AG10 a sharded guard-tests step (node --test $(cat <plan>)) still selects the guard suites; without its --plan call the parse is blind', async () => {
+  const sharded = (plan) => [
+    'name: CI',
+    'on: pull_request',
+    'jobs:',
+    '  guard-tests:',
+    '    runs-on: ubuntu-24.04',
+    '    strategy:',
+    '      matrix:',
+    '        shard: [1, 2]',
+    '    steps:',
+    '      - name: the x data is good',
+    '        run: node tooling/ci/assert-x.mjs',
+    '      - name: The guards must be able to fail',
+    '        run: |',
+    ...(plan ? ['          node tooling/ci/guard-test-shards.mjs --plan --shards 2 --shard ${{ matrix.shard }} --out "${{ runner.temp }}/files.txt"'] : []),
+    '          node --test-timeout=60000 --test $(cat "${{ runner.temp }}/files.txt")',
+    '',
+  ].join('\n');
+  const root = fixture();
+  try {
+    put(root, '.github/workflows/ci.yml', sharded(true));
+    const r = await run(root, ['--list', '--paths', 'tooling/ci/assert-x.mjs']);
+    assert.deepEqual(selectedIds(r.out).sort(), ['guard:assert-x', 'test:x'], r.out);
+    // RED control: the same step without the plan call is a `$(…)` nobody can read.
+    // Here it is the only test call, so the parse is blind and says so; on the real
+    // tree, where other test calls exist, the guard suites would silently drop out.
+    put(root, '.github/workflows/ci.yml', sharded(false));
+    const blind = await run(root, ['--list', '--paths', 'tooling/ci/assert-x.mjs']);
+    assert.equal(blind.code, 2, blind.out);
+    assert.match(blind.out, /no guard or no test call/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('AG8 a two-file top-level directory a test reads in a loop selects the test; a wide one would not', async () => {
   const root = fixture();
   try {

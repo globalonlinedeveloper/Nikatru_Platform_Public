@@ -41,13 +41,128 @@ jobs:
       contents: read
       actions: write
 
+  guard-tests:
+    # why: the guards' own mutation suite, ONE step of guard-meta until 2026-10-01
+    # and the longest thing on every run: 737 s median over 32 runs, 2,072
+    # test-case-seconds 3 wide (Private research/session-2026-10-01/ci-speed).
+    # Split across the matrix by measured duration; every shard plans ALL shards
+    # and refuses a plan that is not a partition, and guard-tests-floor proves
+    # from the junits that the shards ran the suite exactly once. NOT
+    # change-filtered: several suites read the real tree (safe-rerun against
+    # .github/workflows, ops-register against tooling/ops), so "only prose changed"
+    # does not imply "this cannot go red".
+    name: Guards — the guards can still fail (shard ${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      issues: read
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+      # why: the file list is written beside the junit, so guard-tests-floor grades
+      # what each shard was GIVEN against what its junit says it RAN.
+      # why: NO CLOUDFLARE TOKEN HERE (rv2-security-001). This step runs every test file the PR
+      # carries, so it is PR-controlled code; the suites read Cloudflare only through fixtures.
+      # assert-channel-register limb 8d refuses a deploy or publish secret in any job a PR can run.
+      - name: The guards must be able to fail
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ runner.temp }}/guard-tests"
+          node tooling/ci/guard-test-shards.mjs --plan --shards 4 --shard ${{ matrix.shard }} --out "${{ runner.temp }}/guard-tests/files.txt" > /dev/null
+          node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test --test-reporter=spec  --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="${{ runner.temp }}/guard-tests/guard-tests.junit.xml" $(cat "${{ runner.temp }}/guard-tests/files.txt")
+      - name: Keep this shard's file list and junit for guard-tests-floor
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: guard-tests-junit-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/guard-tests/
+          if-no-files-found: error
+          retention-days: 7
+
+  ff-guard-tests:
+    # why: FF-2 — starts only once `guard-tests` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · guard-tests
+    needs: guard-tests
+    if: failure() && needs.guard-tests.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: guard-tests is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: guard-tests
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+
+  guard-tests-floor:
+    # why: the one place that sees every shard. It needs guard-tests (a true data
+    # dependency: the junits), so guard-meta's own checks no longer wait on the suite.
+    name: Guards — every shard ran, and ran at least the floor
+    needs: guard-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: guard-tests-junit-shard-*
+          path: ${{ runner.temp }}/guard-tests-shards
+      - name: The shards ran the whole suite exactly once (guard-test-shards --merge)
+        run: node tooling/ci/guard-test-shards.mjs --merge --shards 4 --dir "${{ runner.temp }}/guard-tests-shards" --out "${{ runner.temp }}/guard-tests.junit.xml"
+      # The per-suite EXECUTED counts are the only Linux measurement of what ran.
+      # tooling/scripts/refresh-executed-floor.mjs reads this artifact from a green
+      # main run to raise tooling/ci/test/executed-floor.json; nothing local writes it.
+      - name: Keep the executed counts for the executed-floor refresh
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: guard-tests-junit
+          path: ${{ runner.temp }}/guard-tests.junit.xml
+          if-no-files-found: error
+          retention-days: 30
+      - name: The recorded floor must not exceed what actually ran
+        run: node tooling/ci/assert-case-count-honest.mjs --junit "${{ runner.temp }}/guard-tests.junit.xml" --executed-floor tooling/ci/test/executed-floor.json
+
+  ff-guard-tests-floor:
+    # why: FF-2 — starts only once `guard-tests-floor` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · guard-tests-floor
+    needs: guard-tests-floor
+    if: failure() && needs.guard-tests-floor.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: guard-tests-floor is red, so the rest of this run is cancelled (FF-2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: guard-tests-floor
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+
   guard-meta:
-    # why: the guards' own mutation suite measured 199s of the old job's 263s —
-    # three times longer than running the 108 guards it tests. On its own job it
-    # no longer sits in front of them. It is NOT change-filtered: several suites
-    # here read the real tree (safe-rerun against .github/workflows, ops-register
-    # against tooling/ops), so "only prose changed" does not imply "this cannot
-    # go red", and a filter that is wrong about that is a green tick over nothing.
+    # why: the checks ABOUT the guards — coverage, the ratchet, the enforcement
+    # index, the lane map, the PR's rows. The suite that proves each guard can fail
+    # is guard-tests, sharded beside this job rather than in front of it.
     name: Guards — the guards can still fail
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -60,25 +175,6 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
-      # why: NO CLOUDFLARE TOKEN HERE (rv2-security-001). This step runs every test file the PR
-      # carries, so it is PR-controlled code; the suites read Cloudflare only through fixtures.
-      # assert-channel-register limb 8d refuses a deploy or publish secret in any job a PR can run.
-      - name: The guards must be able to fail
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
-        run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test --test-reporter=spec  --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="${{ runner.temp }}/guard-tests.junit.xml" "tooling/ci/test/*.test.mjs"
-      # The per-suite EXECUTED counts are the only Linux measurement of what ran.
-      # tooling/scripts/refresh-executed-floor.mjs reads this artifact from a green
-      # main run to raise tooling/ci/test/executed-floor.json; nothing local writes it.
-      - name: Keep the executed counts for the executed-floor refresh
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: guard-tests-junit
-          path: ${{ runner.temp }}/guard-tests.junit.xml
-          if-no-files-found: error
-          retention-days: 30
       - name: Every guard is tested and self-checking
         run: node tooling/ci/assert-guard-coverage.mjs
       # 🔴 THE RATCHET IS STATE, AND UNTIL TODAY NOTHING IN CI READ IT BACK.
@@ -104,8 +200,6 @@ jobs:
             exit 1
           fi
           echo "ok  coverage-manifest.json is byte-identical to what this run derived"
-      - name: The recorded floor must not exceed what actually ran
-        run: node tooling/ci/assert-case-count-honest.mjs --junit "${{ runner.temp }}/guard-tests.junit.xml" --executed-floor tooling/ci/test/executed-floor.json
       - name: Guard tree walks cannot leave the tree
         run: node tooling/ci/assert-walks-bounded.mjs
       - name: A local script reads a workflow through workflow-scan, or refuses when blind
@@ -805,6 +899,9 @@ jobs:
       - name: Every vendor satisfies the portability checklist
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-vendor-portability.mjs
+      - name: Every port earns the level it claims, and every vendor is placed
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-ports.mjs
       - name: One convention set reaches every app, and can fail a build
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-lint-inheritance.mjs
@@ -1658,11 +1755,23 @@ jobs:
           gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
   workspace-gate:
-    name: Workspace gate (melos analyze + test)
+    # why: three legs, one job id (ci-gate's need is unchanged). One job measured
+    # 10.0 min: melos run test 393 s, inside which the app's own flutter test ran
+    # 273 s and started at second 111 behind four packages; dart test -p chrome
+    # 101 s; analyze 61 s (Private research/session-2026-10-01/ci-speed). Every leg
+    # resolves and runs the cheap drift and format checks below, so no check
+    # carries a step-level if:. The two flutter legs filter by ONE glob, scoped
+    # in one and ignored in the other, so between them they test every member by
+    # construction, and each refuses to run over zero members.
+    name: Workspace gate (melos analyze + test) · ${{ matrix.part }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        part: [analyze, packages, apps]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1761,14 +1870,35 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: node tooling/ci/assert-artifact-signed-apple.mjs --static
       - name: melos run analyze
+        if: matrix.part == 'analyze'
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
           melos run analyze
-      - name: melos run test
+      # why: melos run test is `melos exec --no-flutter -- dart test && melos exec
+      # --flutter -- flutter test` (pubspec.yaml melos.scripts.test). The legs run
+      # those two halves with the same flags; only the flutter half is split, by
+      # MEMBERS_GLOB scoped (packages) and ignored (apps).
+      # --parsable, because plain `melos list` prints a warning to STDOUT on an empty
+      # set, so the zero-member refusal could never fire (#1111 review 1, finding 2).
+      - name: melos run test (this leg's half)
+        env:
+          PART: ${{ matrix.part }}
+          MEMBERS_GLOB: 'nikatru_*'
         run: |
+          set -euo pipefail
           export PATH="$PATH:$HOME/.pub-cache/bin"
-          melos run test
+          case "$PART" in
+            analyze)  melos exec --fail-fast --dir-exists=test --no-flutter -- dart test; exit 0 ;;
+            packages) filter="--scope=$MEMBERS_GLOB" ;;
+            apps)     filter="--ignore=$MEMBERS_GLOB" ;;
+            *) echo "::error::unknown workspace-gate leg '$PART'"; exit 1 ;;
+          esac
+          members="$(melos list --parsable --flutter --dir-exists=test "$filter")"
+          echo "$members"
+          if [ -z "$members" ]; then echo "::error::leg '$PART' ($filter) matched no Flutter member with tests, so it would test nothing"; exit 1; fi
+          melos exec --fail-fast --dir-exists=test --flutter "$filter" -- flutter test
       - name: Web arm in a real browser (dart test -p chrome)
+        if: matrix.part == 'analyze'
         working-directory: packages/core
         run: |
           set -euo pipefail
@@ -1907,6 +2037,30 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      # why: O-PR-LANE-GRADLE-CACHE. The first assembleRelease measured 404.8 s cold
+      # (run 36808572305) and the next two 57 s and 102.5 s: the Gradle distribution,
+      # every dependency and every plugin compile. HERE ONLY, never in setup-flutter,
+      # which build-platforms.yml's release builds also run (built-artifact-pr-lane
+      # pins that). RESTORE on every event, SAVE only on a push to main (the last
+      # step of this job): a 2.68 GB entry per PR ref evicted the Flutter SDK and pub
+      # caches every Flutter job restores (#1111 review 1). The primary key hashes the
+      # Gradle files alone; anything else, pubspec.lock included, restores by prefix,
+      # and Gradle's local build cache reuses a task's output only for byte-identical
+      # inputs, so the artifacts the guards below read are the ones a cold build makes.
+      - name: Restore the Gradle caches (dependencies, wrapper, task outputs)
+        id: gradle-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-android-artifacts-${{ runner.os }}-${{ hashFiles('apps/*/android/**/*.gradle*', 'apps/*/android/gradle/wrapper/gradle-wrapper.properties', 'apps/*/android/gradle.properties') }}
+          restore-keys: |
+            gradle-android-artifacts-${{ runner.os }}-
+      - name: Turn on Gradle's local build cache for this runner only
+        run: |
+          mkdir -p ~/.gradle
+          echo 'org.gradle.caching=true' >> ~/.gradle/gradle.properties
       - uses: ./.github/actions/setup-flutter
       - name: Resolve the workspace
         run: flutter pub get --enforce-lockfile
@@ -2036,6 +2190,15 @@ jobs:
           --apk ${{ steps.agi_apk.outputs.apk }}
           --app ${{ matrix.app }}
           --posture debug
+      # why: main writes the one entry every PR restores; a PR never writes one.
+      - name: Save the Gradle caches (push to main only, on a key miss)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-android-artifacts-${{ runner.os }}-${{ hashFiles('apps/*/android/**/*.gradle*', 'apps/*/android/gradle/wrapper/gradle-wrapper.properties', 'apps/*/android/gradle.properties') }}
       # why: nothing here leaves the runner — no upload-artifact, no symbols, no GlitchTip.
       # A debug-signed PR build is discarded, and release-provenance gives a gate
       # constituent no credit for publishing (assert-release-provenance.mjs:769-805).
@@ -2258,6 +2421,8 @@ jobs:
     needs:
       - lane-workers
       - guard-meta
+      - guard-tests
+      - guard-tests-floor
       - guards-platform
       - guards-legal
       - guards-store
@@ -2281,6 +2446,8 @@ jobs:
         run: |
           echo "lane-workers=${{ needs.lane-workers.result }}"
           echo "guard-meta=${{ needs.guard-meta.result }}"
+          echo "guard-tests=${{ needs.guard-tests.result }}"
+          echo "guard-tests-floor=${{ needs.guard-tests-floor.result }}"
           echo "guards-platform=${{ needs.guards-platform.result }}"
           echo "guards-legal=${{ needs.guards-legal.result }}"
           echo "guards-store=${{ needs.guards-store.result }}"
