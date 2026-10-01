@@ -906,6 +906,9 @@ jobs:
       - name: Every port earns the level it claims, and every vendor is placed
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-ports.mjs
+      - name: Every secret a Worker reads is a row of tooling/worker-secrets.json
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-worker-secrets-declared.mjs
       - name: One convention set reaches every app, and can fail a build
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-lint-inheritance.mjs
