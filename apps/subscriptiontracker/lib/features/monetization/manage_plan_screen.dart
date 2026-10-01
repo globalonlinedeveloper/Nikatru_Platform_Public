@@ -183,6 +183,8 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
     final bool offerPlans =
         ref.watch(sellingEnabledProvider) &&
         ref.watch(purchaseRailProvider).canStartCheckout;
+    // MO-05, AB-M4-03-client: where the user PAID (chassis_adapters.dart).
+    final PaidAt paid = paidAtOf(isPro ? ent.value : null);
 
     return ManagePlanView(
       title: l10n.managePlanTitle,
@@ -201,7 +203,11 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
       offline: ref.watch(networkUnreachableProvider),
       onReconnect: () => ref.invalidate(appConfigProvider),
       outcomeMessage: switch ((_outcome, _restored)) {
-        (final CancellationOutcome o, _) => _outcomeMessage(l10n, o),
+        (final CancellationOutcome o, _) => cancelOutcomeMessage(
+          context,
+          l10n,
+          o,
+        ),
         (null, final _Restored r) => _restoreMessage(l10n, r),
         (null, null) => null,
       },
@@ -227,6 +233,9 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
       onBack: () => context.canPop() ? context.pop() : context.go('/settings'),
       onRestore: _restore,
       onCancel: _cancel,
+      source: paid.source,
+      periodEnds: paid.periodEnds,
+      onManageInStore: paid.onManageInStore,
     );
   }
 
@@ -235,19 +244,6 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
   /// strength of our having written down that they asked — while the merchant of
   /// record goes on billing them. That is the single most expensive sentence
   /// this screen could say.
-  String _outcomeMessage(AppLocalizations l10n, CancellationOutcome o) {
-    switch (o) {
-      case CancellationOutcome.executed:
-        return l10n.cancelExecuted;
-      case CancellationOutcome.recorded:
-        return l10n.cancelRecorded;
-      case CancellationOutcome.noActivePlan:
-        return l10n.cancelNoPlan;
-      case CancellationOutcome.failed:
-        return l10n.cancelFailed;
-    }
-  }
-
   /// 🔒 THE SENTENCE FOLLOWS THE SERVER, NOT THE STORE. A plan the re-read
   /// shows is "found" whatever the store answered, because the plan row above
   /// is that same read and the two must agree. With no plan, a store that

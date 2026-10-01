@@ -15,6 +15,7 @@ import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/state/money_providers.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
 // Relocated 2026-08-12 out of `lib/data/auth/` — a test double under `lib/`
@@ -146,6 +147,40 @@ class _FakeAuth extends core.AuthRepository {
 /// same account when [appleCompletes], and nothing when the person closed the
 /// sheet. [reauthRequired] is the server's 403 `reauth_required`, which the real
 /// seam reports WITHOUT signing out.
+/// ⏱ 2026-10-01 · AB-A5-02-client. The server refusing a deletion that would
+/// leave a plan billing: 503 `subscription_still_billing` with its own sentence,
+/// as `requestAccountDeletion` turns it into a failure.
+class _StillBillingAuth extends _FakeAuth {
+  static const String sentence =
+      'Your subscription is still active. Cancel it first, then delete your account.';
+
+  @override
+  Future<void> deleteAccount() async {
+    deleteCalls++;
+    await signOut();
+    throw core.AccountDeletionFailure(
+      core.AccountDeletionOutcome.nothingDeleted,
+      detail: 'DELETE /account -> HTTP 503: subscription_still_billing',
+      serverSentence: sentence,
+    );
+  }
+}
+
+/// A Pro entitlement bought in [store] (RevenueCat's `store`, verbatim).
+core.Entitlements _proFrom(String store) => core.Entitlements(
+  appId: 'subscriptiontracker',
+  isPro: true,
+  items: <core.Entitlement>[
+    core.Entitlement(
+      entitlement: 'pro',
+      productId: 'pro_monthly',
+      store: store,
+      isActive: true,
+      expiresAt: DateTime.now().add(const Duration(days: 20)),
+    ),
+  ],
+);
+
 class _AppleOnlyAuth extends _FakeAuth {
   _AppleOnlyAuth({
     this.lastSignInAt,
@@ -237,7 +272,11 @@ class _GoogleOnlyAuth extends _FakeAuth {
   }
 }
 
-Future<void> _pumpSettings(WidgetTester tester, _FakeAuth auth) async {
+Future<void> _pumpSettings(
+  WidgetTester tester,
+  _FakeAuth auth, {
+  List<Override> extra = const <Override>[],
+}) async {
   // A TALL SURFACE, deliberately. Settings is a ListView, so an off-screen row
   // has no element and `findsNothing` would pass for a control that exists and
   // is merely below the fold — which would make the signed-out assertion below
@@ -268,6 +307,7 @@ Future<void> _pumpSettings(WidgetTester tester, _FakeAuth auth) async {
         renewalRemindersProvider.overrideWithValue(
           RecordingSublyNotifications(),
         ),
+        ...extra,
       ],
       // P2.6b: the merged screen reads l10n and l10n.yaml sets
       // nullable-getter:false — a host without delegates throws on first pump.
@@ -1028,5 +1068,72 @@ void main() {
         expect(_resultText(tester), isNot(contains('Apple')));
       },
     );
+  });
+
+  // ── ⏱ 2026-10-01 · MO-06, AB-A5-02-client: DELETE TELLS THE TRUTH ABOUT BILLING
+  group('delete account and an active plan', () {
+    // RED CONTROL: the server's 503 sentence is what the user reads.
+    testWidgets('503 subscription_still_billing shows the SERVER sentence', (
+      WidgetTester tester,
+    ) async {
+      final _StillBillingAuth auth = _StillBillingAuth();
+      await _pumpSettings(tester, auth);
+      await _openDialog(tester, 'correct-horse');
+      await tester.tap(find.byKey(const Key('deleteAccountConfirm')));
+      await tester.pumpAndSettle();
+
+      expect(auth.deleteCalls, 1);
+      expect(find.text('Not deleted'), findsOneWidget);
+      expect(find.text(_StillBillingAuth.sentence), findsOneWidget);
+      expect(_resultText(tester), isNot(contains('has been deleted')));
+    });
+
+    testWidgets('a plain 503 shows no server sentence', (
+      WidgetTester tester,
+    ) async {
+      await _pumpSettings(tester, _FakeAuth(deleteStatus: 503));
+      await _openDialog(tester, 'correct-horse');
+      await tester.tap(find.byKey(const Key('deleteAccountConfirm')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('deleteAccount.billingSentence')),
+        findsNothing,
+      );
+    });
+
+    // RED CONTROL: a Pro store user sees the store line BEFORE confirming.
+    for (final (String store, String Function(AppLocalizations) line)
+        in <(String, String Function(AppLocalizations))>[
+          ('PLAY_STORE', (AppLocalizations l) => l.deleteAccountPlanGooglePlay),
+          ('APP_STORE', (AppLocalizations l) => l.deleteAccountPlanAppStore),
+          ('', (AppLocalizations l) => l.deleteAccountPlanWeb),
+        ]) {
+      testWidgets('Pro from "$store": the plan line is in the confirm dialog', (
+        WidgetTester tester,
+      ) async {
+        final _FakeAuth auth = _FakeAuth();
+        await _pumpSettings(
+          tester,
+          auth,
+          extra: <Override>[
+            entitlementsProvider.overrideWith((_) async => _proFrom(store)),
+          ],
+        );
+        await tester.tap(find.text('Delete account'));
+        await tester.pumpAndSettle();
+        final AppLocalizations l10n = AppLocalizations.of(
+          tester.element(find.byType(SettingsScreen)),
+        );
+        expect(find.text(line(l10n)), findsOneWidget);
+        expect(auth.deleteCalls, 0, reason: 'shown BEFORE anything is sent');
+      });
+    }
+
+    testWidgets('a free user sees no plan line', (WidgetTester tester) async {
+      await _pumpSettings(tester, _FakeAuth());
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('deleteAccount.planLine')), findsNothing);
+    });
   });
 }

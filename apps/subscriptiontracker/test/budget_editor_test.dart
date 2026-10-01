@@ -16,6 +16,7 @@ import 'package:subscriptiontracker/data/subscriptions/subscription_repository.d
 import 'package:subscriptiontracker/features/insights/budget_card.dart';
 import 'package:subscriptiontracker/features/insights/budget_editor.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
+import 'package:subscriptiontracker/state/money_providers.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/state/settings_controller.dart';
 
@@ -69,7 +70,11 @@ const BudgetInfo _none = BudgetInfo(
   categories: <BudgetCap>[],
 );
 
-Future<_Repo> _pump(WidgetTester tester, _Repo repo) async {
+Future<_Repo> _pump(
+  WidgetTester tester,
+  _Repo repo, {
+  List<Override> extra = const <Override>[],
+}) async {
   await pumpAt(
     tester,
     const Size(420, 2400),
@@ -77,6 +82,7 @@ Future<_Repo> _pump(WidgetTester tester, _Repo repo) async {
     overrides: <Override>[
       subscriptionRepositoryProvider.overrideWithValue(repo),
       currencyCodeProvider.overrideWithValue('USD'),
+      ...extra,
     ],
   );
   expect(find.byKey(const Key('insights.budget')), findsOneWidget);
@@ -207,4 +213,40 @@ void main() {
       lessThanOrEqualTo(AppBreakpoints.medium),
     );
   });
+
+  // ⏱ 2026-10-01 · MO-07 — RED CONTROL: the caps' Pro chip is a BUTTON to the
+  // paywall where this build sells, and a plain label where it does not.
+  for (final bool selling in <bool>[true, false]) {
+    testWidgets('caps locked, selling=$selling: the Pro chip '
+        '${selling ? 'is' : 'is not'} a button', (WidgetTester tester) async {
+      await _pump(
+        tester,
+        _Repo(_none),
+        extra: <Override>[
+          paywallLockedProvider.overrideWithValue(true),
+          sellingEnabledProvider.overrideWithValue(selling),
+        ],
+      );
+      await _openEditor(tester);
+      final Finder chip = find.byKey(BudgetEditor.proChip);
+      expect(chip, findsOneWidget);
+      expect(
+        find.descendant(of: chip, matching: find.byType(InkWell)),
+        selling ? findsOneWidget : findsNothing,
+      );
+      expect(
+        tester.getSemantics(chip),
+        selling
+            ? isSemantics(isButton: true, hasTapAction: true)
+            : isNot(isSemantics(isButton: true)),
+      );
+      if (selling) {
+        await tester.tap(chip);
+        await tester.pumpAndSettle();
+        // No router in this harness: the sheet closes, and that is the half a
+        // test without a GoRouter can see.
+        expect(find.byType(BudgetEditor), findsNothing);
+      }
+    });
+  }
 }

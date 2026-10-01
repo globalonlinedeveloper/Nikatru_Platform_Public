@@ -36,13 +36,13 @@ void main() {
     WidgetTester tester,
   ) async {
     await _pump(tester, selling: false);
-    expect(find.text('Manage subscription'), findsNothing);
+    expect(find.text('Manage plan'), findsNothing);
   });
 
   testWidgets('selling: the row is there, beside the upgrade path', (
     WidgetTester tester,
   ) async {
     await _pump(tester, selling: true);
-    expect(find.text('Manage subscription'), findsOneWidget);
+    expect(find.text('Manage plan'), findsOneWidget);
   });
 }
