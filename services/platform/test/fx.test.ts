@@ -128,6 +128,7 @@ const envWith = (kv: FakeKv | undefined, db: unknown = undefined) =>
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('parseEcbDaily — the ECB document, read without a DOM', () => {
@@ -313,6 +314,11 @@ describe('fxRates — the nightly limb writes ITS row, under its own job', () =>
   });
 
   it('a good night writes ok=1 and the table', async () => {
+    // Read at the vector's own fetch time. On the wall clock this test was a time
+    // bomb: green until FX_MAX_FIX_GAP_DAYS after the fixture's asOf, red from
+    // 2026-10-01 on every branch whose CI runs the platform suite.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(FETCHED_AT_MS);
     const db = realPlatformDb();
     const kv = new FakeKv();
     vi.stubGlobal('fetch', (input: RequestInfo | URL) =>
