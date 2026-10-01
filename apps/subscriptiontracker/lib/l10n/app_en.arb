@@ -1017,77 +1017,6 @@
       }
     }
   },
-  "scanResultsHeading": "YOUR SUBSCRIPTIONS",
-  "@scanResultsHeading": {
-    "description": "Consumed by scan_screen.dart:222. Pinned by test/width_scan_test.dart:124 — the value must not change without moving those."
-  },
-  "subscriptionCount": "{count, plural, =1{1 subscription} other{{count} subscriptions}}",
-  "@subscriptionCount": {
-    "description": "Consumed by scan_screen.dart:229. PLURAL. The live line read `${subs.length} subscriptions`, which says \"1 subscriptions\" for a single plan.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "perMonthTotal": "{amount} / month",
-  "@perMonthTotal": {
-    "description": "Consumed by scan_screen.dart:233.",
-    "placeholders": {
-      "amount": {
-        "type": "String",
-        "example": "₹2,340"
-      }
-    }
-  },
-  "scanStep1": "Preparing your board",
-  "@scanStep1": {
-    "description": "Consumed by scan_screen.dart:40. One of the five progress captions the scan cycles through."
-  },
-  "scanStep2": "Loading your subscriptions",
-  "@scanStep2": {
-    "description": "Consumed by scan_screen.dart:41. See scanStep1."
-  },
-  "scanStep3": "Building your renewal calendar",
-  "@scanStep3": {
-    "description": "Consumed by scan_screen.dart:42. See scanStep1."
-  },
-  "scanStep4": "Working out your totals",
-  "@scanStep4": {
-    "description": "Consumed by scan_screen.dart:43. See scanStep1."
-  },
-  "scanStep5": "Finalising",
-  "@scanStep5": {
-    "description": "Consumed by scan_screen.dart:44. See scanStep1. British spelling, matching the live literal."
-  },
-  "scanStatusInitial": "Setting things up",
-  "@scanStatusInitial": {
-    "description": "Consumed by scan_screen.dart:50. The status before the first timer tick, so it is on screen for 560 ms of every first run."
-  },
-  "scanDoneTitle": "All set",
-  "@scanDoneTitle": {
-    "description": "Consumed by scan_screen.dart:123. Pinned by test/width_scan_test.dart:27 — the value must not change without moving those."
-  },
-  "scanBusyTitle": "Setting up your board",
-  "@scanBusyTitle": {
-    "description": "Consumed by scan_screen.dart:123."
-  },
-  "scanDoneSubtitle": "Your subscriptions. Add or edit any time.",
-  "@scanDoneSubtitle": {
-    "description": "Consumed by scan_screen.dart:129."
-  },
-  "scanBusySubtitle": "This only takes a moment.",
-  "@scanBusySubtitle": {
-    "description": "Consumed by scan_screen.dart:130."
-  },
-  "goToDashboard": "Go to dashboard",
-  "@goToDashboard": {
-    "description": "Consumed by scan_screen.dart:139. Pinned by integration_test/app_test.dart:370, integration_test/store_screenshots_test.dart:206 — the value must not change without moving those."
-  },
-  "scanningEllipsis": "Loading…",
-  "@scanningEllipsis": {
-    "description": "Consumed by scan_screen.dart. The busy CTA while the first list loads. ST-U3 (B44): it read 'Scanning…', and nothing is scanned."
-  },
   "demoDataBanner": "Demo data - sample subscriptions, not your account",
   "@demoDataBanner": {
     "description": "Consumed by app_shell.dart:75. Shown ONLY when no API is configured. Seed data wearing real data's clothes is the defect this line exists to prevent, so it must stay plainly readable. Hyphen-minus, matching the live literal. Pinned by integration_test/store_screenshots_test.dart:17 — the value must not change without moving those."
@@ -1442,16 +1371,6 @@
   "notificationActionOpen": "Open",
   "@notificationActionOpen": {
     "description": "Consumed by services/notifications/notification_service.dart:47. The Linux notification's default action label — a button the desktop shell renders, so it is user-facing."
-  },
-  "a11yScanRing": "Setting up, {percent}.",
-  "@a11yScanRing": {
-    "description": "Consumed by scan_screen.dart. The Semantics label of the setup ring (a CustomPaint). ST-U3 (B44): it read 'Scan progress', and nothing is scanned.",
-    "placeholders": {
-      "percent": {
-        "type": "String",
-        "example": "45%"
-      }
-    }
   },
   "a11yAccountSettings": "Account and settings",
   "@a11yAccountSettings": {
@@ -2521,6 +2440,209 @@
   "categoryOther": "Other",
   "@categoryOther": {
     "description": "ST-X8 (audit C6): the display name of the fallback category whose id is \"Other\" — a row with no category."
+  },
+  "importTitle": "Import subscriptions",
+  "@importTitle": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). The hub title, the Settings › Your data row, the Home empty-state link."
+  },
+  "importSubtitle": "Bring in a CSV, a backup file or the text of a receipt. Everything is read on this device; nothing is uploaded until you add the rows.",
+  "@importSubtitle": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). 🔴 TRUE OF THE BUILD: the readers are core/portability, on the device; the only network call is the ordinary add route, after the review."
+  },
+  "importChooseFile": "Choose a file",
+  "@importChooseFile": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). Shown only where a file picker is linked (FileImporter.canPick)."
+  },
+  "importPasteLabel": "Or paste a CSV, a backup or a receipt",
+  "@importPasteLabel": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importRead": "Read it",
+  "@importRead": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). Reads the pasted text on the device."
+  },
+  "importNothingFound": "Nothing to import was found there.",
+  "@importNothingFound": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importFileUnreadable": "That file could not be read. Try a .csv, .json or .txt file under 4 MB.",
+  "@importFileUnreadable": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importListFailed": "Your list did not load, so duplicates cannot be checked yet. Try again.",
+  "@importListFailed": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importMapTitle": "Which column is which?",
+  "@importMapTitle": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). The ColumnMapping step."
+  },
+  "importMapRecognised": "Recognised an export from {app}. Check the columns, then continue.",
+  "@importMapRecognised": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). {app} is another tracker's name (a ColumnPreset).",
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "importMapRows": "{count, plural, =1{1 row in this file} other{{count} rows in this file}}",
+  "@importMapRows": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "importMapNone": "Not in this file",
+  "@importMapNone": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). The \"no column\" choice of a mapping dropdown."
+  },
+  "importMapColumn": "Column {number}",
+  "@importMapColumn": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). A column whose header cell is blank.",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "importReviewTitle": "Review before adding",
+  "@importReviewTitle": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). The ImportPlan review list."
+  },
+  "importReviewDuplicate": "Already in your list",
+  "@importReviewDuplicate": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). A duplicate (subscriptionExistingKey) — shown, never added."
+  },
+  "importReviewProblem": "Row {row} is not imported: {reason}",
+  "@importReviewProblem": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). {reason} is the import engine's own sentence naming the cell.",
+    "placeholders": {
+      "row": {
+        "type": "int"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "importDateOrderQuestion": "Dates such as {sample}: which comes first?",
+  "@importDateOrderQuestion": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). A DateOrderQuestion.",
+    "placeholders": {
+      "sample": {
+        "type": "String"
+      }
+    }
+  },
+  "importDayFirst": "Day first",
+  "@importDayFirst": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importMonthFirst": "Month first",
+  "@importMonthFirst": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importAddSelected": "{count, plural, =0{Nothing selected} =1{Add 1 subscription} other{Add {count} subscriptions}}",
+  "@importAddSelected": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). PLURAL. The review step's primary action.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "importAdded": "{count, plural, =1{Added 1 subscription.} other{Added {count} subscriptions.}}",
+  "@importAdded": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). PLURAL. The snackbar after an import.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "importAddFailed": "Added {added} of {total}. The rest were not added; check your connection and try again.",
+  "@importAddFailed": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub).",
+    "placeholders": {
+      "added": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "importStartOver": "Start over",
+  "@importStartOver": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importInstead": "Import instead",
+  "@importInstead": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). The add sheet's link to /import."
+  },
+  "restoreTitle": "Restore from backup",
+  "@restoreTitle": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). The restore preview, and the Settings › Your data row."
+  },
+  "restorePreview": "{add} to add, {update} to update, {same} unchanged. Nothing in your list is deleted.",
+  "@restorePreview": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). BackupRestore merges, never deletes.",
+    "placeholders": {
+      "add": {
+        "type": "int"
+      },
+      "update": {
+        "type": "int"
+      },
+      "same": {
+        "type": "int"
+      }
+    }
+  },
+  "restoreConfirm": "Restore",
+  "@restoreConfirm": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "restoreDone": "{count, plural, =0{Restored. Your list already matched the backup.} =1{Restored 1 subscription.} other{Restored {count} subscriptions.}}",
+  "@restoreDone": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "restoreRefused": "This backup cannot be restored: {reason}",
+  "@restoreRefused": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). {reason} is BackupRestore's own sentence.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "backupDataJson": "Back up (JSON)",
+  "@backupDataJson": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). Consumed by settings_screen.dart (Settings › Your data). Writes a BackupEnvelope."
+  },
+  "exportDone": "Exported.",
+  "@exportDone": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). Consumed by state/providers/persistence.dart: ExportOutcome.exported."
+  },
+  "exportDismissed": "Export cancelled. Nothing was saved.",
+  "@exportDismissed": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). ExportOutcome.dismissed."
+  },
+  "exportFailed": "Could not export on this device. Nothing was saved.",
+  "@exportFailed": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). ExportOutcome.failed."
+  },
+  "exportListFailed": "Your list did not load, so there is nothing to export yet. Try again.",
+  "@exportListFailed": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). A list-load failure, said instead of returning silently (IM-08)."
   },
   "nameErrorRequired": "Enter a name",
   "@nameErrorRequired": {
