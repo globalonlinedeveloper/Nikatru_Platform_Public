@@ -3,9 +3,9 @@
     "GENERATED — whyLines() in tooling/store/name-clearance-why.mjs computes these lines from this record's own fields, and limb 11 of tooling/ci/assert-name-clearance.mjs refuses any other text. Change a field, then regenerate offline: node tooling/store/name-clearance.mjs --why --app subscriptiontracker",
     "\"Nikatru Subscription Tracker\", probed 2026-09-28; overall UNDETERMINED. Re-probe (networked, ~20 external calls): node tooling/store/name-clearance.mjs 'Nikatru Subscription Tracker' --app subscriptiontracker --execute",
     "Clear (PROVEN-FREE) — an authority answered \"no such name\" with its red control green: web, amo.",
-    "Held (HELD) — the owner reserved the name in that store's console and recorded its id: none.",
+    "Held (HELD) — the name is reserved in that store's console under a recorded id, attested by the owner, or by the lead under a cited owner delegation with the store-API proof: android-play (store record com.nikatru.subscriptiontracker, 2026-10-01; recorded by the lead under the owner's 2026-10-01 delegation ('Always You Do': every step but the final rollout), relayed and ruled by lead db0cc7 in Private/research/session-2026-09-23/lead-1m/reviews/prep-play-first-release.review-2026-10-01.md).",
     "Blocked for a submission (PROVEN-TAKEN) — a live record holds the name: none.",
-    "Blocked for a submission (UNDETERMINED) — could not check, which is never a pass: android-play, ios-appstore (global), macos-appstore (global), windows-store, linux-snap (global), chrome-webstore, edge-addons.",
+    "Blocked for a submission (UNDETERMINED) — could not check, which is never a pass: ios-appstore (global), macos-appstore (global), windows-store, linux-snap (global), chrome-webstore, edge-addons.",
     "Not applicable (NOT-APPLICABLE) — no third party holds a name there, and no submission passes on it: windows-direct, linux-appimage, apps-gov-in.",
     "Trademark: PROCEED, ruled by owner on 2026-09-09, basis ADR 074 (owner, 2026-09-09: store name chosen; section 6 defers the NIKATRU mark), read and applied by the parent on 2026-09-24 under the owner's 2026-09-23 delegation. No software can clear a trademark; the ruling is the owner's.",
     "A submit lane runs node tooling/ci/assert-name-clearance.mjs --for-submission=<channel>, which passes only PROVEN-FREE, or HELD with its store record id, on that channel. The owner records a hold with: node tooling/store/name-clearance.mjs --hold <channel> --record <store record id> --app subscriptiontracker",
@@ -31,9 +31,9 @@
       "control": null
     },
     "android-play": {
-      "verdict": "UNDETERMINED",
+      "verdict": "HELD",
       "uniqueness": "tolerated",
-      "why": "Play TOLERATES duplicate titles, so a title hit would be advisory rather than blocking — but the store search surface is JS-rendered with no unauthenticated API, so NO TITLE VERDICT can be proven here. The permanent applicationId is free of any PUBLISHED listing (control green, HTTP 404); a draft in somebody's console would not show. MANUAL/AUTHENTICATED STEP: a logged-in Play Console title check.",
+      "why": "HELD, recorded by the lead on 2026-10-01 under the owner's 2026-10-01 delegation ('Always You Do': every step but the final rollout), relayed and ruled by lead db0cc7 in Private/research/session-2026-09-23/lead-1m/reviews/prep-play-first-release.review-2026-10-01.md: the store's own API shows record com.nikatru.subscriptiontracker is ours (androidpublisher v3, authenticated as this factory's Play service account: edits.insert, then edits.tracks.list and edits.bundles.list on applications/com.nikatru.subscriptiontracker (edit discarded, nothing committed) → 200 on all three; track internal carries release '1 (2026-09-22)', versionCode 1, status completed; bundles lists versionCode 1 (sha256 d6d69b9ab0b44932f37115de17fe9214458ce38fb3f604a1e65f12e66d52b22a), observed 2026-10-01). No unauthenticated probe can see a console reservation, so --execute carries this verdict forward rather than re-probing over it. Before the hold the probe read UNDETERMINED: Play TOLERATES duplicate titles, so a title hit would be advisory rather than blocking — but the store search surface is JS-rendered with no unauthenticated API, so NO TITLE VERDICT can be proven here. The permanent applicationId is free of any PUBLISHED listing (control green, HTTP 404); a draft in somebody's console would not show. MANUAL/AUTHENTICATED STEP: a logged-in Play Console title check.",
       "evidence": [
         "apps/subscriptiontracker/android/app/build.gradle.kts declares com.nikatru.subscriptiontracker",
         "applicationId com.nikatru.subscriptiontracker — HTTP 404, no published listing holds it (control green)."
@@ -42,6 +42,15 @@
         "what": "play.google.com details?id=com.spotify.music (known present)",
         "green": true,
         "detail": "HTTP 200"
+      },
+      "storeRecordId": "com.nikatru.subscriptiontracker",
+      "heldBy": "lead",
+      "heldOn": "2026-10-01",
+      "delegation": "the owner's 2026-10-01 delegation ('Always You Do': every step but the final rollout), relayed and ruled by lead db0cc7 in Private/research/session-2026-09-23/lead-1m/reviews/prep-play-first-release.review-2026-10-01.md",
+      "proof": {
+        "call": "androidpublisher v3, authenticated as this factory's Play service account: edits.insert, then edits.tracks.list and edits.bundles.list on applications/com.nikatru.subscriptiontracker (edit discarded, nothing committed)",
+        "result": "200 on all three; track internal carries release '1 (2026-09-22)', versionCode 1, status completed; bundles lists versionCode 1 (sha256 d6d69b9ab0b44932f37115de17fe9214458ce38fb3f604a1e65f12e66d52b22a)",
+        "observedOn": "2026-10-01"
       }
     },
     "ios-appstore": {
