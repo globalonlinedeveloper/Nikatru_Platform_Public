@@ -1,6 +1,0 @@
-{
-  "name": "nikatru-workspace-js",
-  "private": true,
-  "description": "JS/TS side of the Nikatru monorepo (pnpm workspace). Dart is separate (pubspec.yaml + Melos).",
-  "packageManager": "pnpm@9.15.9"
-}

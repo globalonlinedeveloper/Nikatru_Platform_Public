@@ -302,6 +302,77 @@ final FutureProvider<core.KeyValueStore> keyValueStoreProvider =
       (ref) => PrefsKeyValueStore.create(appId: AppConfig.appId),
     );
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ⏱ 2026-09-30 · THE OFFLINE COPY, STAMPED (audit D28, ST-N5; ruling on #1075).
+// [readThroughCacheProvider] (packages/api_client) answers a read from the last
+// server answer on status 0 or 5xx, marked in [staleReadProvider], without the
+// 15 s connect wait. [outboxProvider] is packages/core's DurableOutbox; the
+// brick stamps the QUEUE, and an app that queues a write adds its sender
+// (`replay(owner:, currentOwner:, send:, classify: classifyForOutbox)`). Both are
+// account state, dropped by [userStateDrops]. Proof: test/offline_cache_test.dart.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// The device store the offline copy and the outbox share.
+final Provider<KeyValueJsonStore> offlineStoreProvider =
+    Provider<KeyValueJsonStore>(
+      (ref) => KeyValueJsonStore(ref.watch(keyValueStoreProvider.future)),
+    );
+
+/// Whether the rows on screen are the device's copy rather than the server's
+/// answer — true only after a read was served from the cache.
+class StaleReadController extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  /// Reported by the cache on every change, in both directions.
+  void report({required bool stale}) {
+    if (state != stale) state = stale;
+  }
+}
+
+/// See [StaleReadController]; the stale banner draws from this.
+final NotifierProvider<StaleReadController, bool> staleReadProvider =
+    NotifierProvider<StaleReadController, bool>(StaleReadController.new);
+
+/// A failed cache write reaches the crash sink, never only `debugPrint`
+/// (AB-O2-03). The store key and the store's own error, never row content.
+void reportCacheWriteFailure(Object error) {
+  FlutterError.reportError(
+    FlutterErrorDetails(
+      exception: StateError('offline cache write failed: $error'),
+      library: 'offline_cache',
+    ),
+  );
+}
+
+/// The read-through cache of what the server last said. See the block above.
+final Provider<ReadThroughCache> readThroughCacheProvider =
+    Provider<ReadThroughCache>(
+      (ref) => ReadThroughCache(
+        ref.watch(offlineStoreProvider),
+        onWriteFailed: reportCacheWriteFailure,
+        owner: () => ref.read(authRepositoryProvider).currentUser?.id,
+        onStaleChanged: (bool stale) =>
+            ref.read(staleReadProvider.notifier).report(stale: stale),
+      ),
+    );
+
+/// Writes made offline, waiting for the server. See the block above.
+final Provider<core.DurableOutbox> outboxProvider =
+    Provider<core.DurableOutbox>(
+      (ref) => core.DurableOutbox(ref.watch(keyValueStoreProvider.future)),
+    );
+
+/// The sign-out drop for the signed-in user's queued writes, resolved NOW. A
+/// forced 401 runs no drops and keeps them; no other user's replay sends them.
+UserStateDrop discardQueuedWritesOf(WidgetRef ref) {
+  final String? owner = ref.read(authRepositoryProvider).currentUser?.id;
+  final core.DurableOutbox outbox = ref.read(outboxProvider);
+  return () async {
+    if (owner != null) await outbox.discardOwner(owner);
+  };
+}
+
 /// Secure store (auth tokens, the entitlement cache).
 ///
 /// ⚠️ DELIBERATELY *NOT* NAMESPACED, unlike the key-value store above. The
@@ -1419,8 +1490,10 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
   (ref) => RestClient(
     baseUrl: AppConfig.apiBaseUrl,
     tokenProvider: ref.watch(authTokenProvider),
-    onUnauthorized: () =>
-        signOutOnlyIfSessionIsGone(ref.read(authRepositoryProvider)),
+    onUnauthorized: () => signOutOnlyIfSessionIsGone(
+      ref.read(authRepositoryProvider),
+      onSignedOut: ref.read(readThroughCacheProvider).forget,
+    ),
   ),
 );
 
@@ -1443,9 +1516,13 @@ final Provider<RestClient> restClientProvider = Provider<RestClient>(
 /// It is the narrowest of the leaks — nobody hands the device over on a 401 —
 /// and it is the only one left. Named here, and in [signOutAndForgetUser]'s doc,
 /// so the count in that doc stays honest.
-Future<void> signOutOnlyIfSessionIsGone(core.AuthRepository auth) async {
+Future<void> signOutOnlyIfSessionIsGone(
+  core.AuthRepository auth, {
+  UserStateDrop? onSignedOut,
+}) async {
   if (await auth.sessionIsGone()) {
     await auth.signOut();
+    await onSignedOut?.call(); // e.g. the offline copy: every sign-out drops it
   }
 }
 
@@ -1485,6 +1562,11 @@ typedef UserStateDrop = Future<void> Function();
 List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
   ref.read(entitlementCacheProvider).clear,
   ref.read(notificationServiceProvider).cancelAll,
+  // The offline copy and the queued writes are ACCOUNT state: left behind, the
+  // next person to sign in offline is shown the last one's rows, and a queued
+  // write replays under their session.
+  ref.read(readThroughCacheProvider).forget,
+  discardQueuedWritesOf(ref),
 ];
 
 /// Run the resolved drops — the half that is allowed to take as long as it likes.

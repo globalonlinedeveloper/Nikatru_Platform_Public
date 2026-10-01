@@ -43,6 +43,15 @@ import { defineConfig } from 'vitest/config';
 // That is the negative test for the block below — deleting `ssr` reproduces the
 // 44 failures on vite 7. `resolve` is kept for the client-side/optimizer path
 // and so a downgrade to vite 5 is not silently unprotected.
+//
+// ⏱ 2026-09-27 · jose 6 (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS, M2): jose now
+// publishes ONE build — its export map is `types` + `default` → dist/webapi,
+// which fetches the JWKS with `fetch` in every runtime — so the conditions
+// below no longer choose jose's transport, and the negative test above no
+// longer reproduces: with both blocks deleted, test/auth.test.ts ran 65/65
+// green on jose 6.2.12. The ES256 path is now the edge's code by construction.
+// The blocks stay: harmless, and the protection returns if jose is pinned back
+// to 5.
 // ─────────────────────────────────────────────────────────────────────────────
 // ⏱ 2026-09-22 · O-WORKER-TEST-REACHES-LIVE-HOSTS: `setupFiles` makes the
 // network unreachable from every test file here — global `fetch` REJECTS any

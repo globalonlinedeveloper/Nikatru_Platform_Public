@@ -64,7 +64,10 @@ export const REAL_SUBMISSION_FLAG = '--real-submission';
 /** ⏱ LEAD RULING 2026-09-26 22:00Z (9b, rv-c22) — channels whose store takes a console
  *  declaration that has NO sworn file in this repository, so the declaration DATE alone
  *  (apps/<id>/app.yaml stores.<channel>.declaredOn) gates a real submission. Each names
- *  the console form, which the refusal tells the owner to submit. */
+ *  the console form, which the refusal tells the owner to submit.
+ *  ⏱ 2026-10-01 (O-WINDOWS-AGE-RATING-ANSWERS-UNRECORDED): windows-store's age ratings are now
+ *  a sworn file (store/windows-store/age-rating.json); its Properties (privacy) answers still
+ *  have none, so the entry stays and the refusal names the form AND the file. */
 export const DECLARATION_ONLY_CHANNELS = Object.freeze({
   'windows-store': "Partner Center's Properties (the privacy answers) and its age ratings questionnaire",
 });

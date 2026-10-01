@@ -236,3 +236,32 @@ months, so nothing long-lived is stored anywhere. Rotating the key is one
 no client credential, so there is no `GOOGLE_*` value to set. A token Google already
 considers revoked or expired (`400 invalid_token`) settles; an unreachable Google
 keeps the deletion pending under `platform:google-revoke`, exactly as Apple does.
+
+## The provider-token encryption key (OWNER ACTION, before the deploy)
+
+⏱ 2026-09-30 · review round 2 (security): the Apple and Google refresh tokens
+above are stored ENCRYPTED — AES-256-GCM through WebCrypto, a random IV per row,
+the row as authenticated data (`src/lib/token-crypto.ts`, migration 0023) — so a
+D1 export or a nightly R2 backup holds ciphertext only. The key is a Worker
+secret, by name, and no file, var or backup holds it:
+
+```
+openssl rand -base64 32 | wrangler secret put TOKEN_ENC_KEY_V1
+```
+
+**It must exist before the deploy that ships 0023.** Without it the Worker FAILS
+CLOSED and never stores plain text: a token store answers 503, a revoke is
+`blocked` (the deletion stays pending), the nightly `provider_token_backfill`
+heartbeat is red, and `/v1/health` reports `token_encryption_key` not ok — so the
+post-deploy smoke fails the deploy with that check named. The sandbox Worker
+(`platform-sandbox`) needs its OWN, different key before its next deploy.
+
+⚠️ **Losing the key makes every stored token unreadable**, and the deletions they
+exist for then stay pending. Keep a copy where the owner keeps the other
+irreplaceable secrets. Rotation is a second key id (`TOKEN_ENC_KEY_V2`), described
+in `src/lib/token-crypto.ts`.
+
+The rows stored before 0023 are encrypted by the nightly backfill while
+`PROVIDER_TOKEN_PLAINTEXT_READS_UNTIL` (wrangler.jsonc) is in the future; its
+heartbeat reads `plaintext_left=0` once done, and the window closes itself on
+that date.

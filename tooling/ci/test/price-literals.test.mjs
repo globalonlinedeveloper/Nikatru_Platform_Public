@@ -144,12 +144,36 @@ function listingFixture(root, o) {
   }
 }
 
+// ── the in-app copy fixture (limb D) ────────────────────────────────────────
+// The app the listing belongs to and the brick each carry an ARB file, because
+// an app with no ARB is limb D's COVERAGE LOST. The `@greeting` metadata names
+// the commission on purpose: a translator note is not copy, and limb D must not
+// read it.
+const ARB = () => ({
+  '@@locale': 'en',
+  greeting: 'Every renewal, on time',
+  '@greeting': { description: 'Never mention the store commission here (ADR 078).' },
+  upgrade: 'Upgrade to Pro',
+});
+const ARB_TREES = ['apps/demo/lib/l10n/app_en.arb', `${BRICK}/lib/l10n/app_en.arb`];
+
+function arbFixture(root, o) {
+  for (const rel of ARB_TREES) {
+    if (o.arb && rel in o.arb) {
+      if (o.arb[rel] !== null) write(root, rel, typeof o.arb[rel] === 'string' ? o.arb[rel] : `${JSON.stringify(o.arb[rel], null, 2)}\n`);
+    } else {
+      write(root, rel, `${JSON.stringify(ARB(), null, 2)}\n`);
+    }
+  }
+}
+
 function run(o = {}) {
   const root = join(TMP, `case-${(seq += 1)}`);
   filler(root, o.fillerCount ?? 45);
   write(root, PAYWALL_REL, o.paywall ?? PAYWALL);
   write(root, 'packages/purchases/lib/src/offering.dart', o.offering ?? OFFERING);
   listingFixture(root, o);
+  arbFixture(root, o);
   if (o.extra) for (const [rel, body] of Object.entries(o.extra)) write(root, rel, body);
   const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
@@ -429,5 +453,82 @@ describe('limb C — no price and no lifetime plan in any listing text field', (
     const r = run({ apps: [] });
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — catalog\/apps\.json names no app, so limb C could name no app's listing tree/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIMB D — IN-APP COPY NEVER NAMES THE STORE COMMISSION OR A CHEAPER WEB PRICE
+// (O-COMMISSION-WORDING-UNGUARDED-IN-APP, [ADR 078])
+//
+// [ADR 078] sells in-app on Android and iOS and carries two halves: the price
+// comes from the rail (limbs A and B) and the copy never mentions the store's
+// commission or points the buyer at a cheaper web price. Until this limb the
+// second half was graded by nothing: `Skip the store commission` in app_en.arb
+// exited 0 on the real tree. Each failing case names the file it plants.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('limb D — no commission and no cheaper-on-web wording in in-app copy', () => {
+  test('LD1 · the matcher is proven on every run, and the OK line counts the ARB values it read', () => {
+    const r = run();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {3}commission matcher verified: \d+ known wording\(s\) matched, \d+ innocent phrase\(s\) ignored/);
+    assert.match(r.out, /ok {3}in-app copy reaches 4 ARB value\(s\) in 2 file\(s\) and \d+ non-test dart file\(s\); none names the store commission or a cheaper web price/);
+  });
+
+  test('RD1 · 🔴 an ARB value naming the store commission is refused, by file and key', () => {
+    const rel = 'apps/demo/lib/l10n/app_en.arb';
+    const r = run({ arb: { [rel]: { ...ARB(), upgrade: 'Upgrade on the web and skip the 30% store commission' } } });
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes(`\`${rel}\` key "upgrade"`), r.out);
+    assert.match(r.out, /names the store commission or a cheaper web price \("commission"\)/);
+  });
+
+  test('RD2 · 🔴 the BRICK ARB — the copy every stamped app inherits — is read', () => {
+    const rel = `${BRICK}/lib/l10n/app_en.arb`;
+    const r = run({ arb: { [rel]: { ...ARB(), upgrade: 'Pro is cheaper on the web' } } });
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes(`\`${rel}\` key "upgrade"`), r.out);
+  });
+
+  test('RD3 · 🔴 a dart literal in a package pointing at a cheaper web price is refused', () => {
+    const rel = 'packages/purchases/lib/src/nudge.dart';
+    const r = run({ extra: { [rel]: "const String nudge = 'Subscribe via our website, it is cheaper on the web.';\n" } });
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.out.includes(`\`${rel}\``), r.out);
+    assert.match(r.out, /\("cheaper on the web"\)/);
+  });
+
+  test('RD4 · 🔴 adjacent dart literals are read as the ONE string the compiler makes of them', () => {
+    const rel = 'packages/purchases/lib/src/nudge.dart';
+    const r = run({ extra: { [rel]: "const String nudge = 'Pro is cheaper '\n    'on the web.';\n" } });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /\("cheaper on the web"\)/);
+  });
+
+  test('LD2 · a translator note, a comment and an innocent "cheaper than" are not in-app copy', () => {
+    const r = run({
+      extra: {
+        'packages/purchases/lib/src/notes.dart':
+          "// the store commission is never named in copy (ADR 078)\nconst String a = 'Saying which line is load-bearing is cheaper than a test.';\n",
+      },
+    });
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('LD3 · a price-shaped test literal stays evidence: test/ is not shipping copy here either', () => {
+    const r = run({ extra: { 'packages/purchases/test/nudge_test.dart': "expect(x, 'no commission');\n" } });
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('LD4 · COVERAGE LOST when an app ships no ARB — "no commission in any copy" would be a claim about copy never read', () => {
+    const r = run({ arb: { 'apps/demo/lib/l10n/app_en.arb': null } });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — apps\/demo\/lib holds no \.arb file, so limb D read none of app "demo"'s in-app copy/);
+  });
+
+  test('LD5 · COVERAGE LOST when an ARB file does not parse — its values were not read', () => {
+    const rel = `${BRICK}/lib/l10n/app_en.arb`;
+    const r = run({ arb: { [rel]: '{ "upgrade": "Upgrade", }\n' } });
+    assert.equal(r.code, 2, r.out);
+    assert.ok(r.out.includes(`COVERAGE LOST — ${rel} is not valid JSON`), r.out);
   });
 });

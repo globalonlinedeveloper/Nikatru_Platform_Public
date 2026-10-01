@@ -10,8 +10,9 @@ copy of it, not the other way round.
 ## 🔴 Why this is a SECOND tree and not a variant of the iOS one
 
 The register carries `ios-appstore` and `macos-appstore` as **separate rows**, and
-this is a separate directory for the same reason: **one App Store Connect record
-per platform, one metadata tree, one review outcome.** They share an Apple
+this is a separate directory for the same reason: **one metadata tree and one review
+outcome per platform.** (⏱ Corrected 2026-10-01: this said "one App Store Connect record
+per platform". It is ONE record for both — `apps/subscriptiontracker/app.yaml` `stores`.) They share an Apple
 Developer account (ACTIVE since 2026-08-31; `OWNER_QUEUE A-4` closed with it) and
 one App Store Connect API key that exists and works — which
 is why one script, `tooling/release/submit-appstore.mjs`, serves both with
@@ -139,7 +140,12 @@ is what submits this channel.
   declarations — G-49. It left stage 8's cut list on **2026-08-31**, the day Apple
   Developer enrolment completed, and is now a repo artefact generated from
   `apps/subscriptiontracker/store/ios-appstore/privacy-manifest.json` — see the section above.
-- **Age rating** is an App Store Connect questionnaire, not a repo file.
+- ✅ **Age rating** answers are NOT copied into this tree: they are
+  `apps/subscriptiontracker/store/ios-appstore/age-rating.json`, whose `channels` names
+  `macos-appstore`. The age rating belongs to the App Store Connect record, and ONE
+  record covers iOS and macOS (`apps/subscriptiontracker/app.yaml` `stores`).
+  `tooling/ci/assert-store-audience.mjs` pins the adult posture for this channel
+  through that file.
 - **App Sandbox** is required for Mac App Store distribution; the entitlements
   that grants are per-app and unbuilt. ⚠️ The exact required entitlement set is
   **UNVERIFIED** — not fetched.

@@ -1,10 +1,20 @@
-# JS/TS workspace (pnpm) — Dart lives in the separate pub/Melos workspace (pubspec.yaml).
-# Members grow as services/ and more sites join; packages/tokens is hermetic npm (not here).
+# ⏱ 2026-09-27 · pnpm IS RETIRED HERE (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS, M4): nothing ran it.
+# No workflow, no script and no local install; the two Git-connected Pages projects build from
+# sites/nikatru and sites/rajasekarselvam with no build command. Every JavaScript unit installs
+# with `npm ci` from its own committed package-lock.json, which is what CI always ran. The root
+# package.json (its one job was the `packageManager` pin) and pnpm-lock.yaml went with it.
+#
+# THIS FILE STAYS, and no longer for pnpm. Three readers open it by name:
+#   · tooling/ci/assert-lane-coverage.mjs holds the units it enumerates to the member list below,
+#     so dropping a scan root fails naming the member it lost (mutation-proven 2026-08-02);
+#   · the private corpus's assert-spec counts it among the four top-level anchors that identify
+#     this repository;
+#   · the offsite backup probes for it before it copies this repository.
+# Retiring it means moving those three first, the private two first.
 packages:
   - 'sites/_shared'
   # The content-pack producer ([pipeline 7], ADR 007). Zero runtime dependencies
-  # — pure Node stdlib — so it adds nothing to the lockfile but a workspace
-  # importer. It is a member so that `assert-lane-coverage.mjs` sees a claimable
-  # unit rather than a directory of loose scripts, and so a future dependency
-  # here resolves under the same pinned pnpm as everything else.
+  # — pure Node stdlib — so it has no lockfile to keep. Listed so the lane-coverage
+  # cross-check above holds the `tooling/` scan root to it. A dependency added here
+  # needs its own package-lock.json and an island entry in assert-lockfile-discipline.mjs.
   - 'tooling/content_pipeline'

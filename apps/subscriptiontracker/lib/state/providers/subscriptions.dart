@@ -5,11 +5,13 @@
 // The two account-deletion outcome holders that stood here are in `auth.dart`,
 // with the erasure flow they report on.
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show FlutterError, FlutterErrorDetails, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 // FutureProviderFamily moved to misc.dart in Riverpod 3.0.
 import 'package:flutter_riverpod/misc.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_core/nikatru_core.dart' show OutboxEntry;
 
 import '../../core/app_config.dart';
 import '../../data/api/api_client.dart';
@@ -21,6 +23,7 @@ import '../../data/local/subscription_store.dart';
 import '../../data/models/payment_record.dart';
 import '../../data/subscriptions/subscription_repository.dart';
 import '../settings_controller.dart' show currencyCodeProvider;
+import '../subscriptions_controller.dart' show subscriptionsControllerProvider;
 import 'auth.dart';
 import 'config.dart';
 import 'persistence.dart';
@@ -50,7 +53,8 @@ import 'persistence.dart';
 /// the system of record and every write still goes to it first, but what it
 /// last answered is mirrored into the same [LocalSubscriptionStore], and served
 /// — only on a transport or 5xx failure — when it cannot be asked. It is a
-/// read-through cache and NOT a write queue: an offline add fails honestly.
+/// read-through cache, and since 2026-09-30 (audit D22) an add made offline is
+/// queued in its outbox and replayed idempotently instead of failing.
 /// The decision is [apiClientFor], a pure function, so the configured branch
 /// is provable under `flutter test` (which carries no `--dart-define`).
 ///
@@ -89,7 +93,10 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
     configured: cfg?.apiBaseUrl,
     define: AppConfig.apiBaseUrl,
   );
-  return cachedApiClientOver(
+  // The client itself is needed inside its own 401 handler (to drop its copy
+  // on that sign-out path); `late` because the handler runs only after it exists.
+  late final ApiClient client;
+  return client = cachedApiClientOver(
     DioApiClient(
       baseUrl: baseUrl,
       tokenProvider: ref.watch(authTokenProvider),
@@ -100,16 +107,83 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
       // "Check your connection" forever. The SAME decision the chassis client
       // makes (`restClientProvider`): a token that merely expired while offline
       // is not a signed-out user. `read` inside the closure, never `watch`.
-      onUnauthorized: () =>
-          signOutOnlyIfSessionIsGone(ref.read(authRepositoryProvider)),
+      onUnauthorized: () => signOutOnlyIfSessionIsGone(
+        ref.read(authRepositoryProvider),
+        // The same ordered helper every sign-out runs; the queue is KEPT on a
+        // forced 401, for this user's return.
+        onSignedOut: () => forgetSignedInUser(
+          offlineStateDrops(
+            api: client,
+            store: store,
+            owner: null,
+            discardQueue: false,
+          ),
+        ),
+      ),
       // ST-C1: a currency-less row is read in the user's currency, asked at
       // decode time. `read` inside the closure, not `watch` here: a currency
       // change must not rebuild the client and drop its cache.
       currencyCode: () => ref.read(currencyCodeProvider),
     ),
     store,
+    // D19: a list answered from the copy is STATE a surface can mark ("showing
+    // your last synced copy"); the stale banner itself is ST-D1 D1-5.
+    onStaleChanged: (bool stale) =>
+        ref.read(staleReadProvider.notifier).report(stale: stale),
+    // D24: the copy was answered without waiting on the connect timeout and the
+    // request carried on; when it lands, the list reads again. `read` and
+    // `invalidate` inside closures, never `watch`: no edge back to this client.
+    onRevalidated: () => ref.invalidate(subscriptionsControllerProvider),
+    // Review #1075 finding 1: every queued write belongs to the user signed in
+    // when it was made, and only that user's session ever sends it. Read at
+    // call time (inside the closure), so an account switch is seen at once.
+    currentUser: () => ref.read(authRepositoryProvider).currentUser?.id,
+    onOutboxChanged: () => ref.invalidate(syncProblemsProvider),
   );
 });
+
+/// The signed-in user's writes that could not sync — refused by the server,
+/// or failed too often (review #1075 finding 9; the ruling's dead-letter
+/// state). The shell shows them with Retry and Discard.
+final FutureProvider<List<OutboxEntry>> syncProblemsProvider =
+    FutureProvider<List<OutboxEntry>>((ref) async {
+      final ApiClient api = ref.watch(apiClientProvider);
+      return api is CachedApiClient
+          ? await api.syncProblems()
+          : const <OutboxEntry>[];
+    });
+
+/// Whether the list on screen is the device's copy rather than the server's
+/// answer — true only after a read was served from the cache (audit D19).
+class StaleReadController extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  /// Reported by the cache on every change, in both directions.
+  void report({required bool stale}) {
+    if (state != stale) state = stale;
+  }
+}
+
+/// See [StaleReadController]. ST-D1 D1-5 draws the banner from this.
+final NotifierProvider<StaleReadController, bool> staleReadProvider =
+    NotifierProvider<StaleReadController, bool>(StaleReadController.new);
+
+/// Where a failed cache write goes in production: the crash sink.
+///
+/// 🔴 AB-O2-03. The production wiring passed no `onCacheWriteFailed`, so a
+/// failed mirror reached only `debugPrint` — which a release build discards —
+/// and "my list did not survive restart" had no cause anyone could read. It is
+/// reported now, with the store key and the store's own error: no row content
+/// is ever part of either. NAMED so a test can drive exactly this function.
+void reportCacheWriteFailure(Object error) {
+  FlutterError.reportError(
+    FlutterErrorDetails(
+      exception: StateError('subscriptions cache write failed: $error'),
+      library: 'subscriptions_cache',
+    ),
+  );
+}
 
 /// The API base URL [apiClientProvider] builds its client on.
 ///
@@ -142,8 +216,21 @@ String apiBaseFor({
 @visibleForTesting
 ApiClient cachedApiClientOver(
   ApiClient network,
-  LocalSubscriptionStore store,
-) => CachedApiClient(network, store);
+  LocalSubscriptionStore store, {
+  void Function(bool stale)? onStaleChanged,
+  void Function()? onRevalidated,
+  void Function(Object error) onCacheWriteFailed = reportCacheWriteFailure,
+  String? Function()? currentUser,
+  void Function()? onOutboxChanged,
+}) => CachedApiClient(
+  network,
+  store,
+  onCacheWriteFailed: onCacheWriteFailed,
+  onStaleChanged: onStaleChanged,
+  onRevalidated: onRevalidated,
+  currentUser: currentUser,
+  onOutboxChanged: onOutboxChanged,
+);
 
 final Provider<SubscriptionRepository> subscriptionRepositoryProvider =
     Provider<SubscriptionRepository>(

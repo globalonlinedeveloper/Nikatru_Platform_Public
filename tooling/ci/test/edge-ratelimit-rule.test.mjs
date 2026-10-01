@@ -212,10 +212,13 @@ describe('the workflows run it', () => {
     assert.match(step, /if: steps\.plan\.outputs\.deploy == 'true'/);
   });
 
-  test('ops-watch’s edge-shield job compares it weekly (no --apply), with the token', () => {
+  // ⏱ 2026-09-30 · rv2-security-001: the weekly compare only READS the ruleset, so it takes the
+  // read-only token first; the deploy token is its fallback only until the owner moves it into
+  // `production` (assert-channel-register §8c `repositoryFallback`).
+  test('ops-watch’s edge-shield job compares it weekly (no --apply), with the read-only token', () => {
     const job = jobOf(ops, 'edge-shield');
     assert.match(job, /node tooling\/ops\/edge-ratelimit-rule\.mjs\n/);
     assert.doesNotMatch(job, /edge-ratelimit-rule\.mjs --apply/);
-    assert.match(job, /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/);
+    assert.match(job, /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_READ_TOKEN \|\| secrets\.CLOUDFLARE_API_TOKEN \}\}/);
   });
 });

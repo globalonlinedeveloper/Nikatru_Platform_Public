@@ -63,7 +63,7 @@ async function deletedTablesFor(db: SqliteD1, userId = 'u-derive') {
 }
 
 describe('the delete set is derived from the real schema', () => {
-  it('🔴 names EXACTLY subscriptiontracker_db’s six user-owned tables', async () => {
+  it('🔴 names EXACTLY subscriptiontracker_db’s seven user-owned tables', async () => {
     // The number production has. If a migration adds a user-owned table this
     // goes red — which is the point: the new table must be a deliberate addition
     // to what erasure sweeps, not a silent one.
@@ -74,6 +74,8 @@ describe('the delete set is derived from the real schema', () => {
       'budget_categories',
       'budgets',
       'categories',
+      // 0006 (AB-O2-02): a person's Idempotency-Key claims are theirs to erase.
+      'idempotency_keys',
       'payment_history',
       'price_change',
       'subscriptions',

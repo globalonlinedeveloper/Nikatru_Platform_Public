@@ -1,13 +1,29 @@
 name: Set up Flutter
-description: Install the Flutter SDK pinned in tooling/versions.json, with the pub cache restored.
+description: Install the Flutter SDK pinned in tooling/versions.json from a sha256-verified archive, with the pub cache restored.
 
 # why: the SDK version is read from tooling/versions.json at run time rather than
 # written here, so the pin has exactly one home and Renovate's customManager over
 # that file is the only thing that has to move to advance it.
+#
+# why (rv2-security-003, 2026-09-30): the archive is VERIFIED BEFORE USE. The
+# pinned subosito/flutter-action curls the archive and uses the release
+# manifest's sha256 only in its cache key, never against the bytes, and this
+# composite runs in the jobs that hold the Android keystore and the Apple
+# certificate. So step `sdk` downloads the archive for this runner, checks it
+# against the digest pinned in tooling/versions.json
+# (`flutter_<os>_<arch>_sha256`, copied from Google's releases_<os>.json), and
+# extracts it where subosito looks. subosito's setup.sh (at the pinned sha,
+# :225) downloads NOTHING when `<cache-path>/flutter/bin/flutter` already
+# exists, so it only sets FLUTTER_ROOT, PUB_CACHE and PATH, as before.
+# subosito's own cache stays OFF: a restored SDK TREE cannot be checked against
+# an archive digest. What is cached here is the ARCHIVE, and a restored archive
+# is checked exactly like a downloaded one. tooling/ci/assert-signing-inputs-pinned.mjs
+# refuses this file if the check stops preceding the extraction, if the check
+# can be skipped, or if subosito is handed a path the check did not produce.
 
 inputs:
   cache:
-    description: Restore the Flutter SDK and pub cache. Off for jobs that must resolve cold.
+    description: Restore the verified Flutter archive and the pub cache. Off for jobs that must resolve cold.
     required: false
     # why: back ON. Turning it off did NOT make `sha_pinning_required: true`
     # workable - GitHub validates every `uses:` in a composite action whether or
@@ -16,6 +32,8 @@ inputs:
     # run 33961320034 attempt 2, same error, cache already off. The setting is
     # therefore OFF and the cache is worth ~130 runner-seconds a run.
     # docs/ci/README.md section 7.1 carries the whole measurement.
+    # ⏱ 2026-09-30 (rv2-security-003): what it caches moved from subosito's SDK
+    # tree to the archive, which is verified on every run, hit or miss.
     default: 'true'
 
 outputs:
@@ -35,8 +53,88 @@ runs:
         v="$(node -p "require(process.env.GITHUB_WORKSPACE + '/tooling/versions.json').flutter")"
         test -n "$v"
         echo "flutter=$v" >> "$GITHUB_OUTPUT"
+    - id: archive
+      shell: bash
+      # why: which archive this runner needs and the digest it must have. The
+      # version is interpolated into a URL, so it is read as digits and dots or
+      # not at all; the digest is 64 lowercase hex or nothing is verified.
+      # The SDK path is subosito's own default (setup.sh:129), and on Windows it
+      # gets subosito's transform_path (setup.sh:35-41), so both name one directory.
+      # The pinned runners are the three this tree uses (linux x64, macOS arm64,
+      # Windows x64); any other refuses rather than installing unchecked.
+      env:
+        FLUTTER_VERSION: ${{ steps.pin.outputs.flutter }}
+      run: |
+        set -euo pipefail
+        [[ "$FLUTTER_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::tooling/versions.json flutter is '$FLUTTER_VERSION', not a dotted numeric version"; exit 1; }
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64) key=flutter_linux_x64_sha256; file="flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"; os=linux; arch=x64 ;;
+          macOS-ARM64) key=flutter_macos_arm64_sha256; file="flutter_macos_arm64_${FLUTTER_VERSION}-stable.zip"; os=macos; arch=arm64 ;;
+          Windows-X64) key=flutter_windows_x64_sha256; file="flutter_windows_${FLUTTER_VERSION}-stable.zip"; os=windows; arch=x64 ;;
+          *) echo "::error::no Flutter archive digest is pinned for $RUNNER_OS/$RUNNER_ARCH; pin it in tooling/versions.json from releases_<os>.json"; exit 1 ;;
+        esac
+        pinned_for="$(node -p "require(process.env.GITHUB_WORKSPACE + '/tooling/versions.json').flutter_sha256_version")"
+        [ "$pinned_for" = "$FLUTTER_VERSION" ] || { echo "::error::the Flutter archive digests in tooling/versions.json are for $pinned_for, not $FLUTTER_VERSION; copy the new ones from https://storage.googleapis.com/flutter_infra_release/releases/releases_<os>.json"; exit 1; }
+        digest="$(node -p "require(process.env.GITHUB_WORKSPACE + '/tooling/versions.json')['$key']")"
+        [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::tooling/versions.json $key is not 64 lowercase hex"; exit 1; }
+        dir="$RUNNER_TOOL_CACHE/flutter-archive"
+        root="$RUNNER_TOOL_CACHE/flutter/stable-$FLUTTER_VERSION-$arch"
+        if [ "$RUNNER_OS" = Windows ]; then
+          dir="$(printf '%s' "$dir" | sed -e 's/^\///' -e 's/\//\\/g')"
+          root="$(printf '%s' "$root" | sed -e 's/^\///' -e 's/\//\\/g')"
+        fi
+        {
+          echo "file=$file"
+          echo "sha256=$digest"
+          echo "url=https://storage.googleapis.com/flutter_infra_release/releases/stable/$os/$file"
+          echo "dir=$dir"
+          echo "root=$root"
+          echo "os=$os"
+          echo "arch=$arch"
+        } >> "$GITHUB_OUTPUT"
+        # why: the same default subosito's setup.sh (:141-149) gives PUB_CACHE.
+        if [ -n "${PUB_CACHE:-}" ]; then echo "pub-cache=$PUB_CACHE" >> "$GITHUB_OUTPUT"
+        elif [ "$RUNNER_OS" = Windows ]; then echo "pub-cache=$LOCALAPPDATA\\Pub\\Cache" >> "$GITHUB_OUTPUT"
+        else echo "pub-cache=$HOME/.pub-cache" >> "$GITHUB_OUTPUT"; fi
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: ${{ inputs.cache == 'true' }}
+      with:
+        path: ${{ steps.archive.outputs.dir }}
+        key: flutter-archive-${{ steps.archive.outputs.os }}-${{ steps.archive.outputs.arch }}-${{ steps.archive.outputs.sha256 }}
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: ${{ inputs.cache == 'true' }}
+      with:
+        path: ${{ steps.archive.outputs.pub-cache }}
+        key: flutter-pub-${{ steps.archive.outputs.os }}-stable-${{ steps.pin.outputs.flutter }}-${{ steps.archive.outputs.arch }}-${{ hashFiles('**/pubspec.lock') }}
+    - id: sdk
+      shell: bash
+      # why: download (or take the cached archive), CHECK, then extract, in that
+      # order and with no way past the check: a mismatch ends the job before a
+      # single byte is unpacked. A cached archive is checked like a download.
+      env:
+        ARCHIVE_DIR: ${{ steps.archive.outputs.dir }}
+        ARCHIVE_FILE: ${{ steps.archive.outputs.file }}
+        ARCHIVE_URL: ${{ steps.archive.outputs.url }}
+        ARCHIVE_SHA256: ${{ steps.archive.outputs.sha256 }}
+        SDK_ROOT: ${{ steps.archive.outputs.root }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$ARCHIVE_DIR"
+        cd "$ARCHIVE_DIR"
+        if [ ! -f "$ARCHIVE_FILE" ]; then curl --fail --silent --show-error --location --retry 3 --retry-all-errors --connect-timeout 15 --output "$ARCHIVE_FILE.part" "$ARCHIVE_URL"; mv "$ARCHIVE_FILE.part" "$ARCHIVE_FILE"; fi
+        if command -v sha256sum >/dev/null 2>&1; then printf '%s  %s\n' "$ARCHIVE_SHA256" "$ARCHIVE_FILE" | sha256sum --check; else printf '%s  %s\n' "$ARCHIVE_SHA256" "$ARCHIVE_FILE" | shasum -a 256 --check; fi
+        rm -rf "$SDK_ROOT"
+        mkdir -p "$SDK_ROOT"
+        case "$ARCHIVE_FILE" in *.zip) unzip -q -o "$ARCHIVE_FILE" -d "$SDK_ROOT" ;; *) tar -xJf "$ARCHIVE_FILE" -C "$SDK_ROOT" ;; esac
+        test -x "$SDK_ROOT/flutter/bin/flutter"
+        echo "root=$SDK_ROOT" >> "$GITHUB_OUTPUT"
     - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
       with:
         channel: stable
         flutter-version: ${{ steps.pin.outputs.flutter }}
-        cache: ${{ inputs.cache }}
+        # why: OFF, always. subosito's cache restores an SDK tree over the path
+        # below, and a tree cannot be checked against the archive digest.
+        cache: 'false'
+        # why: the path step `sdk` verified and extracted; setup.sh finds
+        # flutter/bin/flutter there and downloads nothing.
+        cache-path: ${{ steps.sdk.outputs.root }}

@@ -1,7 +1,7 @@
 {
   "sworn": true,
   "_readme": [
-    "THE CONTENT RATING (IARC) QUESTIONNAIRE ANSWERS — Subly, channel `android-play`.",
+    "THE CONTENT RATING (IARC) QUESTIONNAIRE ANSWERS — Nikatru Subscription Tracker, channel `android-play`.",
     "",
     "🔴 THIS FILE RECORDS ANSWERS. IT DOES NOT RECORD A RATING, AND IT MUST NOT.",
     "Google is explicit that the developer does not decide the rating: 'Your app's content ratings are",
@@ -55,6 +55,13 @@
     "list": ["ESRB", "PEGI", "USK", "ACB", "ClassInd", "GRAC", "IARC Generic", "Google Play Rating"]
   },
 
+  "targetAudience": {
+    "_why": "Play Console → App content → Target audience and content asks which age groups the app targets. It is a separate form from the IARC questionnaire above and, until 2026-10-01, its answer had no record in this repository (O-STORE-AUDIENCE-GUARDED-BY-CONSISTENCY-ONLY): the owner would have typed it from memory. tooling/ci/assert-store-audience.mjs pins `ageGroups` to the adult posture, beside the `target-audience-children` claim and the Data safety Families Policy badge, so the three Play answers about children are each held to [ADR 068] rather than only to each other.",
+    "ageGroups": ["18 and over"],
+    "source": "[ADR 068] — no NIKATRU app, extension or site targets children; the audience floor is 18",
+    "consoleWording": "UNVERIFIED — the label `18 and over` is the age group as Play's help pages name it; the form itself is only rendered inside the Play Console and was not opened. If the console's label differs, the console's is right and this value is renamed, never re-chosen."
+  },
+
   "questionnaireWording": {
     "status": "UNVERIFIED",
     "why": "The IARC questionnaire is rendered inside the Play Console after the developer starts it and is not published on any page that could be fetched and cited. No verbatim question text is reproduced here, because inventing plausible question wording would make this file look like a filled-in form while being a guess about someone else's UI.",
@@ -64,7 +71,7 @@
   "claims": [
     {
       "id": "not-a-game",
-      "claim": "Subly is an application, not a game. The questionnaire branches on this at the first question and the whole downstream question set differs.",
+      "claim": "The app is an application, not a game. The questionnaire branches on this at the first question and the whole downstream question set differs.",
       "answer": false,
       "derivation": "listing-category",
       "categoryFile": "apps/subscriptiontracker/store/android-play/category.txt",
@@ -134,7 +141,7 @@
         "androidPermissions": []
       },
       "evidence": ["services/subscriptiontracker-api/src/routes/subscriptions.ts", "services/subscriptiontracker-api/src/routes/budget.ts"],
-      "basis": "Subly is single-user by construction. Every data route on services/subscriptiontracker-api is scoped to the caller's own user_id — there is no route that returns another user's rows, no profile surface, no comment, share or invite. The dependency tells cover the mechanism by which a chat or realtime surface would arrive. ⚠️ PARTIALLY HUMAN-OWNED: 'no route reads another user's rows' is a property of the route handlers that this guard does not re-derive; it is asserted by services/subscriptiontracker-api's own tests and by assert-platform-register.mjs, and a reviewer adding a shared surface must update this claim. Recorded in `humanOwned.noSharedSurface`."
+      "basis": "The app is single-user by construction. Every data route on services/subscriptiontracker-api is scoped to the caller's own user_id — there is no route that returns another user's rows, no profile surface, no comment, share or invite. The dependency tells cover the mechanism by which a chat or realtime surface would arrive. ⚠️ PARTIALLY HUMAN-OWNED: 'no route reads another user's rows' is a property of the route handlers that this guard does not re-derive; it is asserted by services/subscriptiontracker-api's own tests and by assert-platform-register.mjs, and a reviewer adding a shared surface must update this claim. Recorded in `humanOwned.noSharedSurface`."
     },
     {
       "id": "shares-location-with-other-users",
@@ -162,7 +169,7 @@
     },
     {
       "id": "target-audience-children",
-      "claim": "Subly is not designed for or targeted at children.",
+      "claim": "Nikatru Subscription Tracker is not designed for or targeted at children.",
       "answer": false,
       "derivation": "cross-check",
       "crossCheck": {

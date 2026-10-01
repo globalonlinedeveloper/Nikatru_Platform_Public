@@ -52,6 +52,7 @@ import {
   READING_TTL_MS,
 } from './lib/health';
 import { reportWorkerError } from './lib/error-sink';
+import { probeTokenKey } from './lib/token-crypto';
 import { corsMiddleware } from './middleware/cors';
 import { platformAuth } from './middleware/auth';
 import { entitlementsAuth } from './middleware/ext-device-auth';
@@ -122,7 +123,7 @@ app.use('*', corsMiddleware);
 // good one." A 200 carrying `ok:false` keeps "which build is live" answerable at
 // the moment it matters most.
 //
-// ── WHY THESE THREE DEPENDENCIES AND NOT OTHERS ──────────────────────────────
+// ── WHY THESE FOUR DEPENDENCIES AND NOT OTHERS ───────────────────────────────
 //   PLATFORM_DB    the shared entitlements DB. Every authenticated read and the
 //                  whole analytics rail land here.
 //   CONFIG_KV      GET /config/:app reads it UNGUARDED (routes/config.ts:67 —
@@ -131,6 +132,13 @@ app.use('*', corsMiddleware);
 //   SUPABASE_JWKS  the document every ES256 verification rests on. When it
 //                  fails, DELETE /v1/account 401s for everybody while the Worker
 //                  itself is perfectly well — invisible to any status check.
+//   TOKEN_ENCRYPTION_KEY  ⏱ 2026-09-30 · the Worker secret TOKEN_ENC_KEY_V1 the
+//                  provider refresh tokens are sealed with. Absent or malformed,
+//                  every token store is refused and every revoke is blocked
+//                  while each request still looks fine — so it is a reading,
+//                  and a deploy without it FAILS its `--require-ok` smoke with
+//                  this check named (`unknown not_configured` / `degraded
+//                  key_malformed`). The reading costs no I/O at all.
 //
 // SUBSCRIPTIONTRACKER_DB is deliberately NOT probed: nothing on the request path touches it,
 // only the nightly renewals fan-out does, and the cron's liveness is already
@@ -173,6 +181,13 @@ app.get('/v1/health', async (c) => {
         name: 'supabase_jwks',
         ttlMs: JWKS_READING_TTL_MS,
         run: () => probeJwks(c.env.SUPABASE_URL),
+      },
+      {
+        // ⏱ 2026-09-30 · the provider-token key (src/lib/token-crypto.ts). No
+        // I/O: the secret is present, 32 bytes, and round-trips through AES-GCM.
+        name: 'token_encryption_key',
+        ttlMs: READING_TTL_MS,
+        run: () => probeTokenKey(c.env),
       },
     ],
     now,
