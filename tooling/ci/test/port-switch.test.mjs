@@ -233,7 +233,7 @@ describe('port-switch — the payments additions over a copy of the REAL registe
     root = mkdtempSync(join(tmpdir(), 'port-switch-pay-'));
     for (const rel of ['tooling/ports', 'tooling/catalog/fee-register.json', 'tooling/channel-register.json', 'tooling/house-identity.json',
       'services/platform/src/app-config-data.json', 'services/platform/src/types.ts', 'services/subscriptiontracker-api/src/types.ts',
-      'services/platform/wrangler.jsonc', 'services/platform/test', 'apps/subscriptiontracker/app.yaml', 'catalog']) {
+      'services/platform/wrangler.jsonc', 'services/platform/test', 'apps/subscriptiontracker/app.yaml', 'catalog', 'extensions/catalog/extensions.json']) {
       cpSync(join(REPO, rel), join(root, rel), { recursive: true });
     }
   });
@@ -242,7 +242,8 @@ describe('port-switch — the payments additions over a copy of the REAL registe
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /^FAIL  C5 conformance: \d+ pending case\(s\)/m);
     assert.match(r.out, /^FAIL  C5 pending: purchase grants \(O-RAZORPAY-CHECKOUT-ADAPTER\)$/m);
-    assert.match(r.out, /^FAIL  C10 prices: 3 of 3 offering\(s\) have no razorpay price id yet/m);
+    // Counted off the real tree: subscriptiontracker's 3 offerings and, since #1117, FullShot Pro's 2.
+    assert.match(r.out, /^FAIL  C10 prices: 5 of 5 offering\(s\) have no razorpay price id yet/m);
     assert.match(r.out, /to create on razorpay: subscriptiontracker pro_monthly/);
   });
   it('red: --to fake for live is a FAIL (C1), whatever else passes', () => {
@@ -253,7 +254,10 @@ describe('port-switch — the payments additions over a copy of the REAL registe
   it('--to paddle prints the webhook URL, the secrets by name, the prices, the channels and the run-off', () => {
     const r = run(['payments', '--to', 'paddle', '--from', 'revenuecat', '--dry-run', '--root', root]);
     assert.match(r.out, /^PASS  C9 webhook: register https:\/\/platform\.nikatru\.com\/v1\/money\/paddle at paddle; secrets by name: PADDLE_NOTIFICATION_SECRET, PADDLE_API_KEY$/m);
-    assert.match(r.out, /^PASS  C10 prices: all 3 offering\(s\) carry a paddle price id$/m);
+    // FullShot Pro (#1117) is served with no Paddle price yet (RAIL_PRICE_PENDING), so C10 names it.
+    assert.match(r.out, /^FAIL  C10 prices: 2 of 5 offering\(s\) have no paddle price id yet/m);
+    assert.match(r.out, /to create on paddle: fullshot pro_monthly/);
+    assert.doesNotMatch(r.out, /to create on paddle: subscriptiontracker/);
     assert.match(r.out, /^PASS  C11 channels: 3 channel\(s\) would change purchaseRail: android-play \(play-billing → paddle\)/m);
     assert.match(r.out, /^PASS  C12 run-off: a RUN-OFF, not a cutover: card and UPI mandates do not move/m);
     assert.match(r.out, /^ {4}run-off revenuecat: Leaves with us/m);
