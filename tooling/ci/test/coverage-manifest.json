@@ -212,6 +212,9 @@
   "chassis-parity.test.mjs":
     37,
 
+  "check-jwks-error-rate.test.mjs":
+    23,
+
   "chrome-raster.test.mjs":
     1,
 
