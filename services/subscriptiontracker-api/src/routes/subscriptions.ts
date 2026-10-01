@@ -4,6 +4,8 @@
 // and `reminder_days` (JSON text) to the list it holds.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// The Idempotency-Key half of POST / (AB-O2-02); see lib/idempotency.ts.
+import { idempotentCreate, reservedCreateId } from '../lib/idempotency';
 import { Hono, type Context } from 'hono';
 import type { AppEnv, Payment, PriceChange, Subscription } from '../types';
 import { allRows, firstRow, nowIso, run, todayYmd, uuid } from '../lib/d1';
@@ -798,6 +800,26 @@ app.get('/', async (c) => {
   return c.json(rows.map(serializeSubscription));
 });
 
+// POST / with an Idempotency-Key: a repeat is answered with the row the first
+// attempt made (AB-O2-02). See lib/idempotency.ts.
+app.post(
+  '/',
+  idempotentCreate(async (c, id) => {
+    const row = await firstRow<Subscription>(
+      c.env.APP_DB.prepare('SELECT * FROM subscriptions WHERE id = ? AND user_id = ?').bind(
+        id,
+        c.get('userId'),
+      ),
+    );
+    if (!row) return null;
+    // A soft-deleted row is GONE to a replay (review #1075 round 2, minor b):
+    // 410, so a late replay never answers a row the user removed. Undo clears
+    // `deleted_at`, and a restored row answers 200 again.
+    if (row.deleted_at != null) return c.json({ error: 'idempotent_create_gone' }, 410);
+    return c.json(serializeSubscription(row), 200);
+  }),
+);
+
 // POST / — create.
 app.post('/', async (c) => {
   const userId = c.get('userId');
@@ -823,7 +845,7 @@ app.post('/', async (c) => {
   // says "Cancelled on …", and a cancelled row with no date has nothing to say.
   if (f.status === 'cancelled' && f.cancelled_on == null) f.cancelled_on = todayYmd();
 
-  const id = uuid();
+  const id = reservedCreateId(c) ?? uuid();
   const ts = nowIso();
 
   // `status` and the share pair are NOT NULL DEFAULT in 0003; they are bound
