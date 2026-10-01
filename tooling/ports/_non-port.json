@@ -1,0 +1,26 @@
+{
+  "$schema": "./port.schema.json#/$defs/nonPortRegister",
+  "_why": [
+    "Every vendor of tooling/capability-register.json `vendors` and every provider of tooling/legal/provider-register.json `providers` that is NOT an adapter of some tooling/ports/<capability>.json. tooling/ci/assert-ports.mjs limb 8 requires each id to be exactly one adapter's `vendor` or exactly one row here, so a vendor nobody placed fails the build.",
+    "`until` names the train that will port it; `nonPort: true` marks one deliberately never ported (a platform authority, a store, a retired rail). A row carries exactly one of the two."
+  ],
+  "rows": [
+    { "vendor": "cloudflare", "registers": ["capability-register", "provider-register"], "reason": "Config transport (KV), D1, R2 and the Worker bindings sit behind ConfigTransport and the shared D1 helpers, not yet behind a storage or SQL port.", "until": "port-storage" },
+    { "vendor": "cloudflare-turnstile", "registers": ["capability-register"], "reason": "The captcha is the platform's abuse authority for sign-up; a gate, not a replaceable service.", "nonPort": true },
+    { "vendor": "resend", "registers": ["capability-register", "provider-register"], "reason": "Every Resend fact lives in sendResendMail; the mail port and its suppression-list export arrive with port-mail.", "until": "port-mail" },
+    { "vendor": "github", "registers": ["capability-register"], "reason": "The workflow-dispatch call from the Worker cron (dispatchGithubWorkflows); the code host is ported by port-codehost.", "until": "port-codehost" },
+    { "vendor": "apple", "registers": ["capability-register"], "reason": "Sign in with Apple token revocation: Apple is the platform authority for its own identities.", "nonPort": true },
+    { "vendor": "apple-app-attest", "registers": ["capability-register"], "reason": "Device attestation is answered only by the platform that made the device.", "nonPort": true },
+    { "vendor": "google-play-integrity", "registers": ["capability-register"], "reason": "Device attestation is answered only by the platform that made the device.", "nonPort": true },
+    { "vendor": "apple-app-store", "registers": ["provider-register"], "reason": "A store is a distribution channel and the billing authority for its own buyers (tooling/channel-register.json), not a vendor to swap.", "nonPort": true },
+    { "vendor": "google-play", "registers": ["provider-register"], "reason": "A store is a distribution channel and the billing authority for its own buyers (tooling/channel-register.json), not a vendor to swap.", "nonPort": true },
+    { "vendor": "microsoft-store", "registers": ["provider-register"], "reason": "A store is a distribution channel and the billing authority for its own buyers (tooling/channel-register.json), not a vendor to swap.", "nonPort": true },
+    { "vendor": "lemon-squeezy", "registers": ["provider-register"], "reason": "A retired rail ([ADR 039] D4): no adapter exists and none will be built; kept in the provider register for disclosure history.", "nonPort": true },
+    { "vendor": "sign-in-with-apple", "registers": ["provider-register"], "reason": "A federated identity provider reached THROUGH the auth adapter; the platform authority for its own accounts.", "nonPort": true },
+    { "vendor": "sign-in-with-google", "registers": ["provider-register"], "reason": "A federated identity provider reached THROUGH the auth adapter; the platform authority for its own accounts.", "nonPort": true },
+    { "vendor": "hostinger", "registers": ["provider-register"], "reason": "Hosts the self-hosted GlitchTip box; the boxes are ported by port-boxes.", "until": "port-boxes" },
+    { "vendor": "oracle-cloud", "registers": ["provider-register"], "reason": "Box A, the always-free VM; the boxes are ported by port-boxes.", "until": "port-boxes" },
+    { "vendor": "sentry-cdn", "registers": ["provider-register"], "reason": "The CDN the Sentry browser SDK would load from; a delivery path of the telemetry adapter, placed by port-telemetry.", "until": "port-telemetry" },
+    { "vendor": "google-gstatic", "registers": ["provider-register"], "reason": "Static content delivery (fonts, platform scripts) the web build references; content delivery, not a capability with an adapter.", "nonPort": true }
+  ]
+}
