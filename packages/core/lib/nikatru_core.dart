@@ -8,6 +8,7 @@ export 'src/auth/age_signal.dart';
 export 'src/auth/auth_event.dart';
 export 'src/auth/auth_models.dart';
 export 'src/auth/auth_repository.dart';
+export 'src/auth/browser_handoff.dart';
 export 'src/auth/credentials_preflight.dart';
 export 'src/auth/identity_assurance.dart';
 export 'src/integrity/device_integrity.dart';

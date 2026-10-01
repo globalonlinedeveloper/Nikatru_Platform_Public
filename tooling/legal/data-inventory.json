@@ -398,7 +398,7 @@
       "kind": "d1-table",
       "name": "native_attest_redeemed",
       "personalData": false,
-      "holds": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs), reshaped on the independent review of #1070. A native sign-in challenge is a STATELESS HMAC-signed token and is never stored; one row here is the random nonce of a challenge a request has presented, the app id, and the challenge's own expiry (issued + 120 s). It is what makes a challenge single-use. Every redemption deletes the expired rows first. No account, no email, no address, no device identifier.",
+      "holds": "⏱ 2026-09-30 · ADR no.NNN (native sign-in serves only attested app installs), reshaped on the independent review of #1070. A native sign-in challenge is a STATELESS HMAC-signed token and is never stored; one row here is the random nonce of a challenge a request has presented, the app id, and the challenge's own expiry (issued + 120 s). It is what makes a challenge single-use. ⏱ 2026-10-01: the desktop system-browser hand-off's codes (services/platform/src/lib/native-attest/handoff.ts) are spent here the same way — one row is the code's own random 16-byte nonce, the app id and the code's expiry (minted + 120 s); the user id travels only inside the encrypted code and is never written. Every redemption deletes the expired rows first. No account, no email, no address, no device identifier.",
       "retention": {
         "kind": "swept",
         "periodDays": 1,

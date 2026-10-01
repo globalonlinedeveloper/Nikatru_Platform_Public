@@ -1203,10 +1203,12 @@ describe('assert-web-cache-policy · the nikatru.com site CSP and its per-path o
     return { ...d, outOfScope: [] };
   };
 
-  test('🔴 the REAL sites/nikatru/_headers and site-csp.json PASS, with the /ext/connect override graded', () => {
+  // ⏱ 2026-10-01: 2 -> 3 policy lines floored and 1 -> 2 declared overrides — the desktop
+  // hand-off's /app/connect restates the whole policy as /ext/connect does.
+  test('🔴 the REAL sites/nikatru/_headers and site-csp.json PASS, with the /ext/connect and /app/connect overrides graded', () => {
     const { code, out } = site(realHeaders(), realDecl());
     assert.equal(code, 0, out);
-    assert.match(out, /1 in-scope site\(s\), 2 policy line\(s\) floored, 1 declared per-path override/);
+    assert.match(out, /1 in-scope site\(s\), 3 policy line\(s\) floored, 2 declared per-path override/);
   });
 
   test('🔴 …and deleting the REAL /ext/connect CSP line while its detach stays goes RED', () => {

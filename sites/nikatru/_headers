@@ -70,6 +70,23 @@
   Referrer-Policy: no-referrer
   Cache-Control: no-store
 
+# ── /app/connect: THE DESKTOP APP'S SYSTEM-BROWSER SIGN-IN ──────────────────
+# ⏱ 2026-10-01 · O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH. A desktop build
+# cannot attest, so it opens this page (app/connect.html), the user signs in
+# here, and the page hands a one-time, PKCE-bound code back to the app. The same
+# detach-and-restate as /ext/connect above, for the same reasons and with the
+# same two `connect-src` origins only — an override never widens where script
+# may come from (assert-web-cache-policy.mjs), which is why this page carries no
+# Turnstile and so offers Sign in with Apple only (GoTrue gates the password
+# grant with Turnstile). `Referrer-Policy: no-referrer` because this page's URL
+# carries the app's PKCE challenge, state and return address.
+/app/connect
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-/F5Ry+1cCHURQ7c2PIC+pv90DaJ01rRWBejMCVN4Dm4=' 'sha256-I0qLQpwW2LoqBwFwve24dDecmVHlbmOOtB0YoqJru6w=' 'sha256-MgqFFGLQqvfHTjM1wDUjdvXwSAKg/tr5sx4ydu3DVNY=' 'sha256-SdQiYmfng5RFNXxQywQLylCcSrYBeQ+MfoGO578s0XY=' 'sha256-W6m5iDhIwK8RKiz10LnfxTMC9ykoe+hCZTXsNom5tWM=' 'sha256-se6nVksVFvJGiLATTxTxshBOCrCLLqEM7cJ2CJk5WYE='; connect-src 'self' https://auth-api.nikatru.com https://platform.nikatru.com; form-action 'self'; upgrade-insecure-requests
+  ! Referrer-Policy
+  Referrer-Policy: no-referrer
+  Cache-Control: no-store
+
 # ── CSS and JS: DECLARED, not inherited ─────────────────────────────────────
 # 🔴 2026-08-04. Until today these two classes had no rule here at all, and
 # that was not a decision — it was a gap the Cloudflare zone happened to be
