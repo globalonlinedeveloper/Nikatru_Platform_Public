@@ -91,7 +91,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { allRows, nowIso } from '../lib/d1';
-import { isKnownApp } from '../config';
+import { isKnownApp, isSellableExtension } from '../config';
 import { isMoneyEnvironment } from '../lib/mor/contract';
 import { readBoundedBody } from '../lib/body';
 import { cancelPathFor, storeCancelPage } from '../lib/mor/registry';
@@ -137,7 +137,10 @@ cancellation.post('/plan/cancel', async (c) => {
     typeof body === 'object' && body !== null
       ? (body as Record<string, unknown>).app_id
       : undefined;
-  if (typeof appId !== 'string' || !isKnownApp(appId)) {
+  // ⏱ 2026-10-01 · #1117 review 1: what /v1/checkout sells, this route
+  // cancels — an app, or an extension with a committed paywall. Held by
+  // test/sell-cancel-parity.test.ts, which reads both routes' answers.
+  if (typeof appId !== 'string' || !(isKnownApp(appId) || isSellableExtension(appId))) {
     return c.json({ error: 'unknown_app' }, 404);
   }
   c.set('appId', appId); // [pipeline B-16] attribution, post-validation.
