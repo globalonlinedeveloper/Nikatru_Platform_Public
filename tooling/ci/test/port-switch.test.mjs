@@ -178,7 +178,9 @@ describe('port-switch — margin over a copy of the REAL registers', () => {
     root = mkdtempSync(join(tmpdir(), 'port-switch-real-'));
     for (const rel of ['tooling/ports', 'tooling/catalog/fee-register.json', 'tooling/channel-register.json', 'tooling/house-identity.json',
       'services/platform/src/app-config-data.json', 'services/platform/src/types.ts', 'services/subscriptiontracker-api/src/types.ts',
-      'apps/subscriptiontracker/app.yaml', 'catalog']) {
+      // extensions/catalog/extensions.json: render-rail-prices limb D reads it to tell an extension
+      // (web only) from an app (store column) since FullShot became a priced product (#1117).
+      'apps/subscriptiontracker/app.yaml', 'catalog', 'extensions/catalog/extensions.json']) {
       cpSync(join(REPO, rel), join(root, rel), { recursive: true });
     }
   });
