@@ -470,6 +470,10 @@ if (isMain) {
       results.push({ slug: e.slug ?? '<no slug>', verdict: { status: 0 }, missingUrl: true });
       continue;
     }
+    if (!isProbeableUrl(e.url)) {
+      results.push({ slug: e.slug ?? '<no slug>', url: e.url, verdict: { status: 0 }, foreignHost: true });
+      continue;
+    }
     results.push({ slug: e.slug ?? '<no slug>', url: e.url, verdict: await probeWithRetries(e.url) });
   }
 
@@ -497,7 +501,7 @@ if (isMain) {
     // `missingUrl` rows carry a synthesised `{status: 0}` and are NOT evidence
     // that anything answered — counting them would let a catalogue full of
     // url-less entries turn a genuine offline run into a confident DNS verdict.
-    const catalogueAnswers = results.filter((r) => !r.missingUrl).map((r) => r.verdict);
+    const catalogueAnswers = results.filter((r) => !r.missingUrl && !r.foreignHost).map((r) => r.verdict);
     const gotAnswer = (v) => v !== undefined && v.status !== undefined;
     surface.push(
       wildcardVerdict({
@@ -557,6 +561,10 @@ if (isMain) {
   const problems = [];
   if (!softFailed) {
   for (const r of httpFailures) {
+    if (r.foreignHost) {
+      problems.push(`${r.slug} — marked \`live\` with a url outside our zones (https on ${WILDCARD_APEX}, *.${WILDCARD_APEX} or *.pages.dev), so it was NOT requested. A catalogue url is register data; it is fetched only when it is ours.`);
+      continue;
+    }
     if (r.missingUrl) {
       problems.push(`${r.slug} — marked \`live\` with no \`url\`. An advertised app nobody can open.`);
       continue;
@@ -620,4 +628,34 @@ if (isMain) {
     console.error(trailer);
     done(1);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-09-30 · ONLY OUR ZONES ARE PROBED (review of #1087, finding 5; CodeQL
+// #99). A catalogue url is register data: an edit to catalog/apps.json changed
+// where this guard sends a request, and nothing noticed. The request carries no
+// credential, but the rule for a disposition is a VERIFIED host, so the host is
+// pinned here, in code: https on nikatru.com or one of its subdomains, or on
+// pages.dev (a Cloudflare Pages host the catalogue names), or http on loopback
+// for the tests' local servers. Anything else is a finding, never a request.
+// Kept at the end so no line above moves.
+// ─────────────────────────────────────────────────────────────────────────────
+// Functions, not consts: they hoist, and this module runs its check with a
+// top-level await ABOVE this block, where a const would still be unset.
+function probeZones() {
+  return [WILDCARD_APEX, 'pages.dev'];
+}
+
+/** PURE. May this catalogue url be requested? */
+export function isProbeableUrl(url) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.username || u.password) return false;
+  if (u.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname)) return true;
+  if (u.protocol !== 'https:') return false;
+  return probeZones().some((z) => u.hostname === z || u.hostname.endsWith(`.${z}`));
 }

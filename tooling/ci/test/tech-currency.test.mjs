@@ -52,6 +52,7 @@ import {
   NODE_SCHEDULE,
   RAW,
   DAY_MS,
+  isDutySourceHost,
 } from '../../ops/check-tech-currency.mjs';
 import { READ_ATTEMPTS } from '../../ops/bounded-retry.mjs';
 
@@ -273,6 +274,17 @@ describe('B11 - the duty matrix sources are re-read, and their EOL dates are rea
     const v = await run(tree({ duties: [d] }), routes);
     assert.equal(v.code, 1, v.lines.join('\n'));
     assert.match(v.lines.join('\n'), /⚑ SOURCE CHANGED - duty play-target-api-level: its vendor dated \S+ 2026-09-16, after it was read on 2026-08-04/);
+  });
+  test('B11 RED - a duty source on a host this reader does not pin is NOT requested: COVERAGE LOST (CodeQL #524)', async () => {
+    const url = 'https://developer.android.com.evil.example/google/play/requirements/target-sdk';
+    const d = duty({ source: { url, fetched: '2026-08-04', quote: 'q' }, enforced: {} });
+    let asked = false;
+    const routes = { ...baseRoutes('node24'), [url]: () => { asked = true; return [200, androidPage('2026-09-16')]; } };
+    const v = await run(tree({ duties: [d] }), routes);
+    assert.equal(v.code, 2, v.lines.join('\n'));
+    assert.match(v.lines.join('\n'), /not on a vendor host this reader pins \(developer\.android\.com, developer\.apple\.com, learn\.microsoft\.com, support\.google\.com\) — it was not requested/);
+    assert.equal(asked, false, 'the foreign host was requested');
+    assert.equal(isDutySourceHost('https://developer.android.com/x'), true, 'GREEN control: a pinned host is allowed');
   });
   test('B11 control: a vendor page dated before the row was fetched is unchanged', () => {
     const v = judgeDuty(duty({ enforced: {} }), { status: 200, html: androidPage('2026-09-16') }, NOW);

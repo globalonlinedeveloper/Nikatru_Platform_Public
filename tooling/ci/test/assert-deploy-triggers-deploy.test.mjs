@@ -170,9 +170,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, cpSync, writeFileSync as writeFixture } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join as joinPath, dirname as dirOf } from 'node:path';
-import { fileURLToPath as toPath } from 'node:url';
 
-const CI_SRC = resolve(dirOf(toPath(import.meta.url)), '..');
 /** The guard and every module it imports, transitively — read off the files with the
  *  guard's own specifier reader, so a new import is copied without an edit here. */
 const guardClosure = () => {

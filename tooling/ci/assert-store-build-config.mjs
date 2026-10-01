@@ -166,19 +166,9 @@ const WEB_ONLY_GETTER = 'isTurnstileConfigured';
  *  WEB_ONLY_GETTER — otherwise W1/W2 would grade an empty set and say ok. */
 const CAPTCHA_IMPORT = /import\s+['"]package:cloudflare_turnstile\//;
 
-/** `flutter build <target>` → the platform it produces for. Same vocabulary as
- *  assert-channel-register.mjs's BUILD_TARGETS, restricted to the question this
- *  guard asks (which platform), because the format comparison is that guard's. */
-const TARGET_PLATFORM = new Map([
-  ['web', 'web'],
-  ['apk', 'android'],
-  ['appbundle', 'android'],
-  ['ios', 'ios'],
-  ['ipa', 'ios'],
-  ['macos', 'macos'],
-  ['windows', 'windows'],
-  ['linux', 'linux'],
-]);
+// `flutter build <target>` → platform is workflow-scan.mjs's BUILD_TARGET_PLATFORM,
+// read here through `flutterReleaseBuilds`. It was lifted from a copy that sat here
+// (unused since — CodeQL js/unused-local-variable), so the question has one answer.
 
 const problems = [];
 const prints = [];

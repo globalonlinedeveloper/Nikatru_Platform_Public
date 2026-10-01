@@ -186,10 +186,14 @@ export function nextLink(header) {
  * adoption sweep in ops-bounded-retry.test.mjs matches `doFetch(` for exactly
  * that reason. No timer of its own: the per-request ceiling is armed by the
  * shared plan and handed in as `signal`.
+ *
+ * `state` and `ref` exist for tooling/ci/assert-alert-disposition.mjs limb C
+ * (which also reads `dismissed`) and tooling/ci/assert-codeql-pr-no-new-high.mjs
+ * (which reads a pull request's merge ref). The defaults are this file's own read.
  */
-export async function readAlerts({ repository, token, sleep, note, doFetch = fetch, maxPages = MAX_PAGES }) {
+export async function readAlerts({ repository, token, sleep, note, doFetch = fetch, maxPages = MAX_PAGES, state = 'open', ref = null }) {
   const headers = { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' };
-  let url = `${GITHUB_API}/repos/${repository}/code-scanning/alerts?state=open&per_page=${PER_PAGE}`;
+  let url = `${GITHUB_API}/repos/${repository}/code-scanning/alerts?state=${state}&per_page=${PER_PAGE}${ref ? `&ref=${encodeURIComponent(ref)}` : ''}`;
   const all = [];
   for (let page = 1; url; page += 1) {
     if (page > maxPages) {

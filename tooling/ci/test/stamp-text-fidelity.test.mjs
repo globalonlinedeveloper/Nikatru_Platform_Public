@@ -395,7 +395,10 @@ describe('assert-stamp-text-fidelity', () => {
     );
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /ALLOWED_ORIGINS is "https:\/\/probeapi\.nikatru\.com"/);
-    assert.match(r.out, /https:\/\/nikatru\.com/);
+    // The apex as the EXPECTED value, closed by its quote: an unanchored
+    // `https://nikatru.com` also matches `https://nikatru.com.evil`
+    // (CodeQL js/regex/missing-regexp-anchor).
+    assert.match(r.out, /expected the derived "https:\/\/nikatru\.com"/);
   });
 
   test('a bare "https://" in the stamped Worker ALLOWED_ORIGINS fails', () => {

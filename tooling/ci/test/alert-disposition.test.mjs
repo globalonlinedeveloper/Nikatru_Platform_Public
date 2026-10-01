@@ -58,7 +58,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { reconcile, declaredSources, issueFilingJobs, sourceHealth, classify } from '../assert-alert-disposition.mjs';
+import { reconcile, declaredSources, issueFilingJobs, sourceHealth, classify, parseDispositions, judgeCodeql, CODEQL_DISPOSITIONS_REL } from '../assert-alert-disposition.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -291,6 +291,8 @@ describe('[14]O-5 · LIMB A — the firing history must be READABLE (fail-closed
     for (const f of ['anchored-run-read.mjs', 'run-page-anchor.mjs']) cpSync(join(CI_DIR, f), join(root, 'tooling/ci', f));
     mkdirSync(join(root, 'tooling/ops'), { recursive: true });
     cpSync(join(CI_DIR, '..', 'ops', 'bounded-retry.mjs'), join(root, 'tooling/ops', 'bounded-retry.mjs'));
+    // ⏱ 2026-09-30: limb C reads the alerts through the ops reader.
+    cpSync(join(CI_DIR, '..', 'ops', 'check-code-scanning-age.mjs'), join(root, 'tooling/ops', 'check-code-scanning-age.mjs'));
     rmSync(join(root, '.github/workflows'), { recursive: true });
     const r = spawnSync(process.execPath, [join(root, 'tooling/ci/assert-alert-disposition.mjs')], { cwd: root, encoding: 'utf8' });
     assert.match(r.stderr, /COVERAGE LOST — \.github\/workflows does not exist/);
@@ -302,9 +304,11 @@ describe('[14]O-5 · LIMB A — the firing history must be READABLE (fail-closed
 describe('[14]O-5 · LIMB B — prints the gap, and must NOT fail the build', () => {
   const scheduled = (id, conclusion) => ({ id, event: 'schedule', conclusion, created_at: '2026-08-07T06:00:00Z' });
   const issue = (number, title, created_at) => ({ number, title, created_at, state: 'open' });
+  // ⏱ 2026-09-30: limb C runs after limb B and refuses a probe with no `codeql`
+  // answer, so these limb B probes carry an empty one (every entry prints STALE).
   const runGuard = (probe) => {
     const file = join(TMP, `probe${seq++}.json`);
-    writeFileSync(file, JSON.stringify(probe));
+    writeFileSync(file, JSON.stringify({ codeql: { open: [], dismissed: [] }, ...probe }));
     return spawnSync(process.execPath, [GUARD, '--probe-file', file, '--now', NOW], { cwd: REPO, encoding: 'utf8' });
   };
 
@@ -396,5 +400,153 @@ describe('[14]O-5 · the verdict functions, in isolation', () => {
     const bare = { number: 24, title: E2E_TITLE, created_at: '2026-07-27T06:47:16Z', comments: 0 };
     assert.equal(classify(i, { state: 'green' }, NOW_MS).verdict, classify(bare, { state: 'green' }, NOW_MS).verdict);
     assert.ok(!readFileSync(GUARD, 'utf8').match(/\.comments\b(?!\s*—)/), 'the guard must not read a comment count');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIMB C — CodeQL is a declared source (2026-09-30). The RED controls are the
+// point: an undispositioned open alert FAILS, a disposition that names a
+// different alert FAILS, a fixed-in-tree claim main's analysis already
+// disproved FAILS, an unreadable alert list is COVERAGE LOST — and a stale
+// entry PRINTS and does not fail, for the reason in the guard's limb C header.
+// The spawned cases run the REAL guard against the REAL dispositions file.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('LIMB C — every open CodeQL alert is fixed in code or carries a disposition', () => {
+  const REAL = parseDispositions(readFileSync(join(REPO, CODEQL_DISPOSITIONS_REL), 'utf8'));
+  const green = { issues: [], runs: { 'e2e.yml': [{ id: 1, event: 'schedule', conclusion: 'success', created_at: NOW }], 'ops-watch.yml': [{ id: 2, event: 'schedule', conclusion: 'success', created_at: NOW }] } };
+  const SHA = 'a'.repeat(40);
+  const alert = (number, rule, path, extra = {}) => ({
+    number,
+    state: 'open',
+    created_at: '2026-09-01T00:00:00Z',
+    rule: { id: rule, severity: 'error', security_severity_level: 'high' },
+    most_recent_instance: { commit_sha: SHA, location: { path, start_line: 1 } },
+    ...extra,
+  });
+  const fromEntry = (e, extra) => alert(e.alert, e.rule, e.path, extra);
+  const runGuard = (probe) => {
+    const file = join(TMP, `probe${seq++}.json`);
+    writeFileSync(file, JSON.stringify({ ...green, ...probe }));
+    return spawnSync(process.execPath, [GUARD, '--probe-file', file, '--now', NOW], { cwd: REPO, encoding: 'utf8' });
+  };
+
+  test('the committed dispositions file parses clean and is not empty', () => {
+    assert.deepEqual(REAL.problems, []);
+    assert.ok(REAL.entries.length > 0, 'an empty file would make every spawned case below vacuous');
+  });
+
+  test('GREEN control: every open alert matches an entry → exit 0', () => {
+    const r = runGuard({ codeql: { open: REAL.entries.map((e) => fromEntry(e)), dismissed: [] } });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /✓ limb C — every open code-scanning alert is fixed in code or carries a disposition/);
+  });
+
+  test('RED C1: one undispositioned open alert fails the build (exit 1) and is named', () => {
+    const r = runGuard({ codeql: { open: [...REAL.entries.map((e) => fromEntry(e)), alert(999999, 'js/bad-tag-filter', 'tooling/ci/x.mjs')], dismissed: [] } });
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /✗ limb C — 1 code-scanning alert\(s\) with NO disposition/);
+    assert.match(r.stderr, /#999999 {2}js\/bad-tag-filter/);
+  });
+
+  test('RED C2: a dismissed alert with NO reason and no entry is graded like an open one', () => {
+    const r = runGuard({ codeql: { open: [], dismissed: [alert(999998, 'js/log-injection', 'a.mjs', { state: 'dismissed', dismissed_reason: null })] } });
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /#999998 .*\(dismissed WITHOUT a reason\)/);
+  });
+
+  test('a dismissed alert WITH a reason needs no entry', () => {
+    const r = runGuard({ codeql: { open: [], dismissed: [alert(999997, 'js/log-injection', 'a.mjs', { state: 'dismissed', dismissed_reason: 'false positive' })] } });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+  });
+
+  test('RED C3: an entry whose alert number now names a different path fails (exit 1)', () => {
+    const [first, ...rest] = REAL.entries;
+    const r = runGuard({ codeql: { open: [alert(first.alert, first.rule, `${first.path}.moved`), ...rest.map((e) => fromEntry(e))], dismissed: [] } });
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, new RegExp(`entry #${first.alert} says .* It dispositions a different alert`));
+  });
+
+  test('STALE: an entry naming a closed alert is REPORTED, and does not fail (exit 0)', () => {
+    const r = runGuard({ codeql: { open: [], dismissed: [] } });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    const stale = r.stdout.match(/⬜ STALE — #\d+/g) ?? [];
+    assert.equal(stale.length, REAL.entries.length, 'every entry names an alert that is neither open nor dismissed here');
+  });
+
+  test('COVERAGE LOST: the alert read failed → exit 2, never a pass', () => {
+    const r = runGuard({ codeqlError: 'GET .../code-scanning/alerts answered HTTP 403 (the token needs security-events: read)' });
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /COVERAGE LOST \(exit 2\)[\s\S]*security-events: read/);
+  });
+
+  test('COVERAGE LOST: a probe with no codeql answer → exit 2', () => {
+    const r = runGuard({});
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /no `codeql` answer/);
+  });
+
+  test('COVERAGE LOST: an alert with no location path → exit 2', () => {
+    const r = runGuard({ codeql: { open: [{ ...alert(999996, 'js/x', 'a'), most_recent_instance: {} }], dismissed: [] } });
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /no most_recent_instance\.location\.path/);
+  });
+
+  test('judgeCodeql: a fixed-in-tree claim the analysed commit already carried is DISPROVED', () => {
+    const entries = [{ alert: 7, rule: 'js/x', path: 'a.mjs', disposition: 'fixed-in-tree', reason: 'fixed' }];
+    const open = [alert(7, 'js/x', 'a.mjs')];
+    const disproved = judgeCodeql({ open, dismissed: [], entries, claimAt: (sha, n) => sha === SHA && n === 7 });
+    assert.equal(disproved.failed, true);
+    assert.equal(disproved.disproved.length, 1);
+    const pending = judgeCodeql({ open, dismissed: [], entries, claimAt: () => false });
+    assert.equal(pending.failed, false);
+    assert.equal(pending.pending.length, 1);
+    const unreadableCommit = judgeCodeql({ open, dismissed: [], entries, claimAt: () => null });
+    assert.equal(unreadableCommit.failed, false, 'a commit this clone cannot read is pending, never disproved');
+  });
+
+  test('RED C4 (spawned, in a copied tree): a disproved fixed-in-tree claim fails the build', () => {
+    // The guard resolves ROOT from import.meta.url, so it is COPIED into a tree
+    // whose dispositions file carries a fixed-in-tree claim (the M15 pattern).
+    const root = tree();
+    mkdirSync(join(root, 'tooling/ci'), { recursive: true });
+    for (const f of ['assert-alert-disposition.mjs', 'workflow-scan.mjs', 'tree-walk.mjs', 'flutter-release-build.mjs', 'app-set.mjs', 'anchored-run-read.mjs', 'run-page-anchor.mjs']) {
+      cpSync(join(CI_DIR, f), join(root, 'tooling/ci', f));
+    }
+    mkdirSync(join(root, 'tooling/app-yaml'), { recursive: true });
+    cpSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), join(root, 'tooling/app-yaml', 'yaml.mjs'));
+    for (const f of ['bounded-retry.mjs', 'check-code-scanning-age.mjs']) cpSync(join(CI_DIR, '..', 'ops', f), join(root, 'tooling/ops', f));
+    write(root, CODEQL_DISPOSITIONS_REL, JSON.stringify({ dispositions: [{ alert: 7, rule: 'js/x', path: 'a.mjs', disposition: 'fixed-in-tree', reason: 'fixed by this change' }] }));
+    const file = join(TMP, `probe${seq++}.json`);
+    const spawnIn = (claims) => {
+      writeFileSync(file, JSON.stringify({ ...green, codeql: { open: [alert(7, 'js/x', 'a.mjs')], dismissed: [] }, codeqlClaims: claims }));
+      return spawnSync(process.execPath, [join(root, 'tooling/ci/assert-alert-disposition.mjs'), '--probe-file', file, '--now', NOW], { cwd: root, encoding: 'utf8' });
+    };
+    const pending = spawnIn({ [SHA]: [] });
+    assert.equal(pending.status, 0, `GREEN control — the analysed commit predates the claim:\n${pending.stdout}${pending.stderr}`);
+    assert.match(pending.stdout, /1 fixed in tree, awaiting main's analysis/);
+    const r = spawnIn({ [SHA]: [7] });
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /#7 js\/x a\.mjs:1 is claimed `fixed-in-tree`[\s\S]*still finds it/);
+  });
+
+  test('parseDispositions refuses a flow-rule entry with no host, a repeat, and an unknown kind', () => {
+    const doc = {
+      dispositions: [
+        { alert: 1, rule: 'js/file-access-to-http', path: 'a.mjs', disposition: 'by-design', reason: 'sends its own token' },
+        { alert: 2, rule: 'js/file-access-to-http', path: 'a.mjs', disposition: 'by-design', reason: 'r', host: 'https://api.github.com/x' },
+        { alert: 3, rule: 'js/x', path: 'a.mjs', disposition: 'ignored', reason: 'r' },
+        { alert: 3, rule: 'js/x', path: 'a.mjs', disposition: 'by-design', reason: 'r' },
+        { alert: 4, rule: 'js/x', path: 'a.mjs', disposition: 'by-design', reason: '' },
+      ],
+    };
+    const p = parseDispositions(JSON.stringify(doc)).problems.join('\n');
+    assert.match(p, /alert #1\) is a by-design js\/file-access-to-http with no bare `host`/);
+    assert.match(p, /alert #2\) is a by-design js\/file-access-to-http with no bare `host`/, 'a URL is not a host');
+    assert.match(p, /alert #3\) has disposition "ignored"/);
+    assert.match(p, /alert #3\) repeats an alert number/);
+    assert.match(p, /alert #4\) has no `reason`/);
+    assert.match(p, /alert #4\) is a by-design js\/x\. Only js\/file-access-to-http and js\/http-to-file-access may be kept by design/);
+    assert.deepEqual(parseDispositions(JSON.stringify({ dispositions: [{ alert: 5, rule: 'js/file-access-to-http', path: 'a', disposition: 'by-design', reason: 'r', host: ['api.github.com', 'uploads.github.com'] }] })).problems, []);
+    assert.match(parseDispositions('{').problems[0], /is not JSON/);
   });
 });

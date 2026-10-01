@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import VECTOR_RAW from '../../../contracts/fx/latest.v1.example.json?raw';
 import {
   ECB_DAILY_URL,
@@ -294,6 +294,19 @@ describe('refreshFxRates — a good table is cached, and on ANY failure the last
 });
 
 describe('fxRates — the nightly limb writes ITS row, under its own job', () => {
+  // 🔴 fxRates passes no `nowMs`, so refreshFxRates reads Date.now(), and the
+  // vector's asOf is a FIXED day: unpinned, "a good night" went red the morning
+  // the wall clock passed asOf + FX_MAX_FIX_GAP_DAYS (2026-10-01, CI run
+  // 36797237259). Pin the wall clock to the vector's own fetchedAt; fake Date
+  // only, so the fetch timeout's real timers still fire.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(FETCHED_AT_MS);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('🔴 a timeout on the nightly run writes a FAILED heartbeat and keeps the last good table', async () => {
     const db = realPlatformDb();
     const { kv, lastGood } = kvWithLastGood();
