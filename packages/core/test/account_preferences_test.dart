@@ -22,6 +22,10 @@ class _Server implements AccountPreferencesTransport {
   /// The `Retry-After` a failed PATCH carries.
   Duration? patchRetryAfter;
 
+  /// Per-PATCH outcomes, consumed in order once a held PATCH resumes: null
+  /// answers normally, a status throws it. Empty = no script.
+  final List<int?> patchScript = <int?>[];
+
   /// When set, the next read/patch waits for it — a slow server.
   Completer<void>? holdRead;
   Completer<void>? holdPatch;
@@ -47,6 +51,10 @@ class _Server implements AccountPreferencesTransport {
     holdPatch = null;
     if (hold != null) await hold.future;
     if (failWith != null) throw AccountPreferencesFailure(failWith!);
+    if (patchScript.isNotEmpty) {
+      final int? scripted = patchScript.removeAt(0);
+      if (scripted != null) throw AccountPreferencesFailure(scripted);
+    }
     if (patchFailWith != null) {
       throw AccountPreferencesFailure(patchFailWith!, null, patchRetryAfter);
     }
@@ -732,6 +740,78 @@ void main() {
         expect(a.shown['currencyCode'], 'EUR');
         expect((await a.queued('currencyCode')).single.body['value'], 'EUR');
         expect(server.values['themeMode'], 'light');
+      },
+    );
+  });
+
+  group('review 4 of #1080', () {
+    test(
+      '🔴 the read pickup follows the version this device\'s OWN last write produced',
+      () async {
+        // A double toggle on a flaky server: e1 is accepted while e2 — queued
+        // behind it on the same base — fails into backoff. e2 really follows
+        // the version e1 produced, so the read must leave it pending; judged
+        // by its queued base instead, it looks overtaken and is thrown away.
+        final DateTime t = DateTime.utc(2026, 10, 1);
+        final _Server server = _Server()..elsewhere('themeMode', 'light');
+        final _Device a = _Device(
+          server,
+          backoff: const Duration(minutes: 1),
+          maxBackoff: const Duration(minutes: 5),
+          now: () => t,
+          random: () => 0.5,
+        );
+        await a.sync.sync(); // this device holds version 1
+        final Completer<void> e1 = Completer<void>();
+        server.holdPatch = e1;
+        server.patchScript.addAll(<int?>[null, 503]);
+        a.shown['themeMode'] = 'dark';
+        unawaited(a.sync.changed('themeMode', 'dark'));
+        await a.settle(); // e1 is out, based on 1
+        a.shown['themeMode'] = 'system';
+        await a.sync.changed('themeMode', 'system'); // e2, also based on 1
+        e1.complete();
+        await a.settle(); // e1 accepted -> version 2; e2 -> 503, backoff
+        expect(server.values['themeMode'], 'dark');
+        expect((await a.queued('themeMode')).single.attempts, 1);
+
+        await a.sync.sync(); // the read sees version 2: this device's own
+        await a.settle();
+        expect(a.shown['themeMode'], 'system', reason: 'the newest choice');
+        expect(a.conflicts, isEmpty, reason: 'nothing changed elsewhere');
+        expect((await a.queued('themeMode')).single.body['value'], 'system');
+      },
+    );
+
+    test(
+      '🔴 a new change does not skip a wait the SERVER asked for (Retry-After)',
+      () async {
+        final DateTime t = DateTime.utc(2026, 10, 1);
+        final _Server server = _Server()
+          ..patchFailWith = 503
+          ..patchRetryAfter = const Duration(minutes: 10);
+        final _Device a = _Device(
+          server,
+          backoff: const Duration(seconds: 2),
+          maxBackoff: const Duration(minutes: 5),
+          now: () => t,
+          random: () => 0.5,
+        );
+        await a.set('themeMode', 'dark');
+        server
+          ..patchFailWith = null
+          ..patchRetryAfter = null;
+        final int before = server.patches;
+        await a.set('themeMode', 'light'); // a tap during the rate limit
+        expect(
+          server.patches,
+          before,
+          reason: 'not sent before the server said',
+        );
+        final OutboxEntry e = (await a.queued('themeMode')).single;
+        expect(e.body['value'], 'light');
+        expect(e.attempts, 0, reason: 'the client\'s own backoff IS reset');
+        expect(e.nextAttemptAt, t.add(const Duration(minutes: 10)));
       },
     );
   });

@@ -279,7 +279,7 @@
           "client": {
             "file": "packages/api_client/lib/src/rest_account_preferences_transport.dart",
             "expression": "_rest.get('/preferences')",
-            "note": "The real call inside `RestAccountPreferencesTransport.read()`, driven by packages/core AccountPreferencesSync.sync() from apps/subscriptiontracker/lib/state/providers/account_preferences.dart at every settled sign-in and every return to the app. A key still waiting to be sent is never overwritten by it."
+            "note": "The real call inside `RestAccountPreferencesTransport.read()`, driven by packages/core AccountPreferencesSync.sync() from apps/subscriptiontracker/lib/state/providers/account_preferences.dart at every settled sign-in and every return to the app. A key still waiting to be sent is never overwritten by it, unless the account already holds a newer version than that change follows: then the account's value is applied, announced as a conflict, and the change dropped."
           }
         },
         {

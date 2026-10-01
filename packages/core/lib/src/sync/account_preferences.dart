@@ -15,9 +15,12 @@
 //  3. Only dirty keys are ever sent. Nothing is seeded and no default is sent:
 //     a key leaves the device only because the user set it here.
 //  4. One PATCH is in flight at a time (the outbox's single replay); changes to
-//     one key coalesce and land in order. A read never overwrites a dirty key,
-//     nor one changed since the read began, nor with a version older than one
-//     this device already holds.
+//     one key coalesce and land in order. A read never overwrites a key changed
+//     since the read began, nor with a version older than one this device
+//     already holds, nor a dirty key — UNLESS the account already holds a
+//     version newer than the one that change follows: its send could only be a
+//     conflict the server wins, so the account's value is applied and announced
+//     and the change dropped (review 3 of #1080).
 //  5. Every request is bound to the user id it started under; its answer is
 //     dropped if the user changed. Sign-out forgets that user's versions; their
 //     pending changes stay queued, bound to them, for their next sign-in. A
@@ -329,7 +332,9 @@ class AccountPreferencesSync {
   }
 
   /// Sign-in, a return to the app, a pull: send what is dirty, then read the
-  /// account and apply every key that is not dirty here. Never throws.
+  /// account and apply every key that is not dirty here — and every dirty key
+  /// the account has already moved past (announced as a conflict; see the
+  /// header, point 4). Never throws.
   Future<void> sync() {
     final String? owner = _currentUser();
     if (owner == null || _disposed) return Future<void>.value();
@@ -466,8 +471,17 @@ class AccountPreferencesSync {
   /// decision). Each is bound to [owner] in the shared queue, so no other
   /// account's replay ever sends it, and [owner]'s next sign-in delivers it.
   /// Dropping it would lose a change the user made while signed in.
-  Future<void> forget(String owner) async {
+  ///
+  /// [erase]: the account was DELETED (review 4 of #1080, finding 1). Its
+  /// pending sends can never be delivered, and neither the owner id nor the
+  /// values may outlive the account on this device: they are discarded.
+  Future<void> forget(String owner, {bool erase = false}) async {
     _changedAt.clear();
+    if (erase) {
+      try {
+        await _outbox.discardOwner(owner);
+      } catch (_) {}
+    }
     try {
       await _locked(() async => (await _store).remove(versionsKey(owner)));
     } catch (_) {}
