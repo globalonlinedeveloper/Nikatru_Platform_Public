@@ -69,12 +69,27 @@ class E2EKeys {
   /// NOT happen, which is the state the unit suite asserts.
   static const Key cancelFailure = Key('e2e_cancel_failure');
 
-  // ── Import (`/scan`, first-run setup) — train ST-D7 ───────────────────────
+  // ── Import (`/import`, the import hub — IM-01..05) ────────────────────────
   //
-  // The screen's ONE primary action, in all of its arms: disabled while the
-  // list loads, "Go to dashboard" once it has. (A failed load hands the way out
-  // to the failed state's own retry, keyed `DataStateView.retryKey`.)
-  static const Key scanPrimary = Key('e2e_scan_primary');
+  // `/scan` and its one key went with ADR 077 §2.2. Keyed rather than found by
+  // words: every label here is translated, and "Restore" is a substring of the
+  // Settings row that opens the same screen.
+  static const Key importChooseFile = Key('e2e_import_choose_file');
+  static const Key importPaste = Key('e2e_import_paste');
+  static const Key importRead = Key('e2e_import_read');
+  static const Key importContinue = Key('e2e_import_continue');
+  static const Key importAdd = Key('e2e_import_add');
+  static const Key importStartOver = Key('e2e_import_start_over');
+  static const Key restoreConfirm = Key('e2e_restore_confirm');
+
+  /// The three ways in: Home's empty state, Settings › Your data, and the add
+  /// sheet's "Import instead".
+  static const Key homeImport = Key('e2e_home_import');
+  // The Settings rows are the chassis dataCard's: these equal its DataKeys.
+  static const Key settingsImport = Key('settings.data.import');
+  static const Key settingsBackup = Key('settings.data.backup');
+  static const Key settingsRestore = Key('settings.data.restore');
+  static const Key addImportInstead = Key('e2e_add_import_instead');
 
   // ── Settings → delete account (golden-path leg 6) ─────────────────────────
   //

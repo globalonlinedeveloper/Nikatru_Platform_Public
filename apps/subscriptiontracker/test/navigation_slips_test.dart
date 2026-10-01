@@ -7,11 +7,11 @@
 //     detail screen underneath, because `showCancelSheet` returned `void` and
 //     the caller dismissed after EVERY close.
 //   · B49 — /scan's result rows could not be opened, unlike every other list
-//     of the same rows.
+//     of the same rows. (/scan is retired, ADR 077 §2.2, and its case with it.)
 //   · C16 — a "Netflix renews in 2 days" notification card was a dead end.
 //
 // RED CONTROLS: make `showCancelSheet` report true unconditionally; drop the
-// scan row's `onTap`; drop the card's `FocusableTap` — each case is red.
+// card's `FocusableTap` — each case is red.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,7 +22,6 @@ import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
 import 'package:subscriptiontracker/features/notifications/notifications_screen.dart';
-import 'package:subscriptiontracker/features/scan/scan_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
@@ -142,27 +141,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(results, <bool>[true]);
     });
-  });
-
-  testWidgets('B49 · a scan result row opens its detail', (
-    WidgetTester tester,
-  ) async {
-    await _pumpRouted(
-      tester,
-      const ScanScreen(),
-      overrides: <Override>[
-        subscriptionRepositoryProvider.overrideWithValue(
-          _Fixed(<Subscription>[_sub('42', DateTime.utc(2026, 11, 1))]),
-        ),
-      ],
-    );
-    // Past the 560 ms dwell of every step; see width_scan_test.dart.
-    for (int i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 560));
-    }
-    await tester.tap(find.text('Renews Soon 42'));
-    await tester.pumpAndSettle();
-    expect(find.text('detail:42'), findsOneWidget);
   });
 
   testWidgets('C16 · a renewal card opens the subscription it is about', (

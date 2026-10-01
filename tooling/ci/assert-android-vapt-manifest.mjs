@@ -50,6 +50,8 @@
 //                      MAIN + LAUNCHER (the one entry point an app must expose),
 //                      or — the ONE recorded deep link — VIEW + BROWSABLE on
 //                      exactly `com.nikatru.<--app>://auth-callback` (see V5)
+//                      or — the ONE recorded share target — SEND + DEFAULT
+//                      with only <data android:mimeType> (see V5, IM-06)
 //                      ⏱ 2026-09-23 · AND a protecting permission counts only
 //                      if no stranger can hold it: `android.permission.*`, or
 //                      one THIS merged manifest declares at protectionLevel
@@ -352,6 +354,29 @@ const isAuthCallbackFilter = (f) => {
     datas.some((d) => d.attrs.get('android:host') === AUTH_CALLBACK_HOST)
   );
 };
+// ⏱ 2026-10-01 · THE ONE RECORDED SHARE TARGET — IM-06, "share into import".
+// Another app's Share sheet hands the launcher activity a CSV, a backup or a
+// receipt's text; MainActivity.kt reads it on the device and the import hub
+// shows it for review before anything is written. What another app on the
+// device gains by starting it: it can offer the user a file to look at —
+// nothing is added until the user reviews and taps Add, through the ordinary
+// add route. So the exemption is EXACT: action SEND only, category DEFAULT
+// only, and <data> carrying ONLY android:mimeType, each one of SHARE_MIME_TYPES
+// — no scheme, no host, no VIEW, no BROWSABLE, so no URL can reach it.
+const SHARE_MIME_TYPES = new Set(['text/plain', 'text/csv', 'text/comma-separated-values', 'application/json']);
+const isShareFilter = (f) => {
+  const actions = namesOf(f, 'action');
+  const cats = namesOf(f, 'category');
+  const datas = kidsOf(f, 'data');
+  const others = f.children.filter((x) => !['action', 'category', 'data'].includes(x.tag));
+  return (
+    actions.length === 1 && actions[0] === 'android.intent.action.SEND' &&
+    cats.length > 0 && cats.every((c) => c === 'android.intent.category.DEFAULT') &&
+    others.length === 0 && datas.length > 0 &&
+    datas.every((d) =>
+      [...d.attrs.keys()].every((k) => k === 'android:mimeType') && SHARE_MIME_TYPES.has(d.attrs.get('android:mimeType')))
+  );
+};
 const exportedSeen = [];
 let componentCount = 0;
 for (const c of application.children.filter((n) => COMPONENTS.has(n.tag))) {
@@ -389,13 +414,15 @@ for (const c of application.children.filter((n) => COMPONENTS.has(n.tag))) {
       : `read + write permissions — read ${judged[0].p} (${judged[0].label}), write ${judged[1].p} (${judged[1].label})`;
   const isActivity = c.tag === 'activity' || c.tag === 'activity-alias';
   const takesAuthCallback = isActivity && filters.some(isAuthCallbackFilter);
+  const takesShares = isActivity && filters.some(isShareFilter);
   const isLauncher =
     isActivity &&
     filters.some(isLauncherFilter) &&
-    filters.every((f) => isLauncherFilter(f) || isAuthCallbackFilter(f));
-  const launcherLabel = takesAuthCallback
-    ? `launcher entry point + auth callback ${AUTH_CALLBACK_SCHEME}://${AUTH_CALLBACK_HOST}`
-    : 'launcher entry point';
+    filters.every((f) => isLauncherFilter(f) || isAuthCallbackFilter(f) || isShareFilter(f));
+  const launcherLabel =
+    'launcher entry point' +
+    (takesAuthCallback ? ` + auth callback ${AUTH_CALLBACK_SCHEME}://${AUTH_CALLBACK_HOST}` : '') +
+    (takesShares ? ' + share target (SEND, mime types only)' : '');
   exportedSeen.push(`${c.tag} ${name} — ${protectedBy ?? (isLauncher ? launcherLabel : 'UNPROTECTED')}`);
   if (!protectedBy && !isLauncher) {
     problems.push(

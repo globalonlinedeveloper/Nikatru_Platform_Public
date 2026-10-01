@@ -39,7 +39,7 @@
     34,
 
   "android-vapt-manifest.test.mjs":
-    49,
+    55,
 
   "app-address-shape.test.mjs":
     32,
@@ -306,7 +306,7 @@
     16,
 
   "discovery-surface.test.mjs":
-    163,
+    168,
 
   "dod-sync.test.mjs":
     20,
@@ -822,7 +822,7 @@
     25,
 
   "repo-posture.test.mjs":
-    19,
+    23,
 
   "required-providers.test.mjs":
     27,
@@ -1062,7 +1062,7 @@
     42,
 
   "web-cache-policy.test.mjs":
-    73,
+    86,
 
   "web-drive-stages-fonts.test.mjs":
     5,
@@ -1071,7 +1071,7 @@
     24,
 
   "well-known-shape.test.mjs":
-    31,
+    45,
 
   "wildcard-dns.test.mjs":
     13,

@@ -169,7 +169,7 @@ import 'support/width_harness.dart';
 
 /// The desktop shell width (see the header) at a viewport tall enough that no
 /// screen in the sweep scrolls. Both halves are asserted, not assumed:
-/// [_everythingIsLaidOut] fails if 2800 ever stops being enough.
+/// [_everythingIsLaidOut] fails if 2960 ever stops being enough.
 ///
 /// ⏱ 2026-09-30 · ST-Y3/ST-Y4: 2400 -> 2600. Settings gained three card
 /// headings and the Help section's Rate and Feedback rows and scrolled by
@@ -178,7 +178,13 @@ import 'support/width_harness.dart';
 // hours and "Send a test reminder" — [_everythingIsLaidOut] measures it. The
 // width, and so every count, is as it was; the height only has to hold the
 // whole screen.
-const Size kKeyboardSurface = Size(1079, 2800);
+// ⏱ 2026-10-01 · IM-01/IM-03: 2800 -> 2880. Settings › Your data's Import, Back
+// up and Restore rows on top of NO-12/NO-13 scrolled by 73 px at 2800 —
+// measured by [_everythingIsLaidOut].
+// ⏱ 2026-10-01 · ST-SETTINGS (SE-09): 2880 -> 2960. The one Reminders card
+// plus its own Preferences card and heading scrolled settings by 39 px at
+// 2880 — measured by [_everythingIsLaidOut].
+const Size kKeyboardSurface = Size(1079, 2960);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
 ///
@@ -674,8 +680,10 @@ void main() {
         // (Contact support MOVED into Help; it is not a new control.)
         // ⏱ 2026-10-01 · NO-13: 28 -> 30 and 26 -> 28 — the "Quiet hours"
         // switch and "Send a test reminder", both in the Tab orbit.
-        controls: 30 + core.Money.symbols.length,
-        reachable: 28 + core.Money.symbols.length,
+        // ⏱ 2026-10-01 · IM-01/IM-03: 30 -> 33 and 28 -> 31 — Your data's
+        // Import, Back up (JSON) and Restore rows, each wired and in the orbit.
+        controls: 33 + core.Money.symbols.length,
+        reachable: 31 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,

@@ -292,6 +292,29 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
     }
   }
 
+  /// IM-02/IM-03/IM-04 — an import's reviewed rows, each through
+  /// [addSubscription]: the add route and nothing else, so an imported row is
+  /// written, cached and reminded exactly as a typed one is. No primer is
+  /// passed, so an import never spends the OS notification ask.
+  ///
+  /// Stops at the FIRST failure rather than skipping it, so "added 3 of 5" is
+  /// always the first three and a retry knows where to start. Answers how many
+  /// landed and the error that stopped it, or null.
+  Future<({int added, Object? error})> addAll(
+    Iterable<Subscription> drafts,
+  ) async {
+    int added = 0;
+    for (final Subscription draft in drafts) {
+      try {
+        await addSubscription(draft);
+      } catch (e) {
+        return (added: added, error: e);
+      }
+      added++;
+    }
+    return (added: added, error: null);
+  }
+
   /// The currency a NEW row is created in — the user's own choice.
   ///
   /// Read here rather than in the add sheet because this is what WRITES rows:

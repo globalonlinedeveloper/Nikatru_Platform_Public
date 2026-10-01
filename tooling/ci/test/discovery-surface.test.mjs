@@ -3492,3 +3492,72 @@ describe('the support and about pages list every live app from the catalogue', (
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · rv2-security-021 — THE script-src SPLICE REACHES EVERY CSP LINE.
+// Until today `CSP_LINE_RE` carried no `g`, so the generator rewrote the `/*` line
+// of sites/nikatru/_headers and left the `/ext/connect` override's restated policy
+// as a hand copy. RED CONTROL, measured on this tree: with the `g` removed, the
+// first case below fails on the override line ("sha256-stale" survives), and the
+// real-tree case fails the moment the override's hash list is edited by hand.
+describe('the CSP splice reaches every Content-Security-Policy line (rv2-security-021)', () => {
+  const OVERRIDE_HEADERS =
+    "/*\n  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-old='; connect-src 'self'\n" +
+    '# a comment that QUOTES the directive is not a line: Content-Security-Policy: script-src *\n' +
+    "/ext/connect\n  ! Content-Security-Policy\n  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-stale='; connect-src 'self' https://auth.example.test\n";
+  const scriptSrcOf = (line) => /script-src [^;]*/.exec(line)?.[0];
+  const cspLines = (text) => text.split('\n').filter((l) => /^ *Content-Security-Policy:/.test(l));
+
+  test('🔴 the /* line AND the /ext/connect override both carry the computed hash list', () => {
+    const root = tree([SUBLY]);
+    writeFileSync(p(root, '_headers'), OVERRIDE_HEADERS);
+    const { files, problems } = planDiscovery(root);
+    assert.deepEqual(problems, []);
+    const lines = cspLines(files.get('sites/nikatru/_headers'));
+    assert.equal(lines.length, 2, 'both CSP lines must survive the splice');
+    const [global, override] = lines.map(scriptSrcOf);
+    assert.match(global, /^script-src 'self' 'sha256-/, 'the global line carries no computed hash');
+    assert.equal(override, global, 'the override line was not spliced from the same computed list');
+    assert.doesNotMatch(files.get('sites/nikatru/_headers'), /sha256-stale=|sha256-old=/);
+    // Everything else on the override line — its widened connect-src — is untouched.
+    assert.match(lines[1], /connect-src 'self' https:\/\/auth\.example\.test$/);
+    // ...and the comment that quotes a directive is left alone, byte for byte.
+    assert.match(files.get('sites/nikatru/_headers'), /# a comment that QUOTES the directive is not a line: Content-Security-Policy: script-src \*\n/);
+  });
+
+  test('🔴 a CSP line with NO script-src is a problem, not a silent skip', () => {
+    const root = tree([SUBLY]);
+    writeFileSync(
+      p(root, '_headers'),
+      OVERRIDE_HEADERS.replace("script-src 'self' 'sha256-stale='; ", ''),
+    );
+    const { problems } = planDiscovery(root);
+    assert.equal(problems.length, 1, problems.join('\n'));
+    assert.match(problems[0], /carries no script-src directive/);
+  });
+
+  test('a regenerated override is idempotent: a second run changes nothing', () => {
+    const root = tree([SUBLY]);
+    writeFileSync(p(root, '_headers'), OVERRIDE_HEADERS);
+    assert.equal(generate(root).code, 0);
+    const first = readFileSync(p(root, '_headers'), 'utf8');
+    const second = generate(root);
+    assert.equal(second.code, 0, second.out);
+    assert.equal(readFileSync(p(root, '_headers'), 'utf8'), first);
+  });
+
+  test('🔴 THE REAL sites/nikatru/_headers: every CSP line is what the generator writes', () => {
+    const onDisk = readFileSync(join(REPO, 'sites', 'nikatru', '_headers'), 'utf8');
+    const lines = cspLines(onDisk);
+    assert.ok(lines.length >= 2, `expected the /* line and the /ext/connect override, found ${lines.length} CSP line(s)`);
+    const { files } = planDiscovery(REPO);
+    const planned = files.get('sites/nikatru/_headers');
+    assert.equal(planned, onDisk, 'sites/nikatru/_headers is not what the generator writes — run generate-discovery.mjs');
+    assert.equal(new Set(lines.map(scriptSrcOf)).size, 1, 'the CSP lines carry different script-src lists');
+  });
+
+  test('the mirror root is never spliced: sites/rajasekarselvam/_headers is not in the plan', () => {
+    const { files } = planDiscovery(REPO);
+    assert.equal(files.has('sites/rajasekarselvam/_headers'), false);
+  });
+});
