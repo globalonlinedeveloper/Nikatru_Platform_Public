@@ -51,10 +51,10 @@
 import { readFileSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { APPS_REGISTER, readCatalogFile } from '../catalog/read.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const REGISTER_REL = 'tooling/channel-register.json';
-const APPS_REL = 'catalog/apps.json';
 const ADR = '[ADR 068]: no NIKATRU app targets children; the audience floor is 18 and no Families or Kids declaration is made.';
 
 /** The Apple age-rating file answers for every channel its `channels` names: ONE
@@ -169,9 +169,10 @@ for (const id of [...Object.keys(POSTURE), ...Object.keys(UNRECORDED)]) {
   }
 }
 
-const apps = readJson(APPS_REL);
-const slugs = Array.isArray(apps.json) ? apps.json.map((a) => a?.slug).filter((s) => typeof s === 'string' && s !== '') : [];
-if (slugs.length === 0) coverageLost([`${apps.lost ?? `${APPS_REL} names no app`}, so no app's store tree could be graded.`]);
+// The catalogue is read through the one Node reader (tooling/catalog/read.mjs), never by path.
+const apps = readCatalogFile(ROOT, APPS_REGISTER);
+const slugs = apps.ok && Array.isArray(apps.value) ? apps.value.map((a) => a?.slug).filter((s) => typeof s === 'string' && s !== '') : [];
+if (slugs.length === 0) coverageLost([`${apps.ok ? `${APPS_REGISTER} names no app` : apps.why}, so no app's store tree could be graded.`]);
 
 // ── A · the posture, per (app, channel) ──────────────────────────────────────
 const dirOf = (row, slug) => (typeof row.storeMetadataDir === 'string' ? row.storeMetadataDir.replace('{app}', slug) : null);

@@ -20,6 +20,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, cpSync, re
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { APPS_REGISTER } from '../../catalog/read.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const GUARD = join(REPO, 'tooling', 'ci', 'assert-store-audience.mjs');
@@ -46,7 +47,7 @@ function realTree() {
     mkdirSync(dirname(join(root, rel)), { recursive: true });
     cpSync(join(REPO, rel), join(root, rel));
   };
-  for (const rel of [REGISTER, 'catalog/apps.json', CR, DS, AR, WAR, GOV]) put(rel);
+  for (const rel of [REGISTER, APPS_REGISTER, CR, DS, AR, WAR, GOV]) put(rel);
   // Every store tree the real app ships, so "the app does not ship here" is never
   // what a case is measuring.
   for (const d of readdirSync(join(REPO, STORE))) {
@@ -146,8 +147,8 @@ describe('assert-store-audience — limb A, the adult posture pinned per channel
     assert.match(r.out, /ok {2}adult posture — 10 pinned answer\(s\) hold across 4 channel\(s\)/);
   });
 
-  test('COVERAGE LOST when catalog/apps.json names no app', () => {
-    const r = run((root) => writeFileSync(join(root, 'catalog/apps.json'), '[]\n'));
+  test('COVERAGE LOST when the product register (APPS_REGISTER) names no app', () => {
+    const r = run((root) => writeFileSync(join(root, APPS_REGISTER), '[]\n'));
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — catalog\/apps\.json names no app/);
   });
