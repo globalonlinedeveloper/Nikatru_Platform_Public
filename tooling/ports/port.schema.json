@@ -48,6 +48,11 @@
         "canary": { "type": "null", "description": "Reserved for a percentage cutover; null until a port carries one." }
       }
     },
+    "streams": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/stream" },
+      "description": "Optional, for a port selected by `stream` (selection.by: stream): each stream's adapter, its secret NAMES in preference order (the first one set on the Worker wins), and its From as an entity-source PATH. Read by assert-ports limbs 1, 5 and 9 and by port-switch's stream checks."
+    },
     "generated": { "type": "boolean", "description": "true once code reads a rendered table instead of a hand array. No port may claim it before the render tool exists." },
     "handTables": {
       "type": "array",
@@ -137,7 +142,7 @@
         "capabilities": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" } },
         "secrets": { "type": "array", "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }, "description": "NAMES only." },
         "identity": { "type": "array", "items": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)*$" }, "description": "Field paths into tooling/house-identity.json, never the values." },
-        "environments": { "type": "array", "minItems": 1, "items": { "enum": ["test", "sandbox", "live"] } },
+        "environments": { "type": "array", "items": { "enum": ["test", "sandbox", "live"] }, "description": "Empty only for a `draft` or `retired` adapter, which no environment may select (assert-ports limb 1)." },
         "cost": {
           "type": "object",
           "additionalProperties": false,
@@ -173,6 +178,7 @@
             "on": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
           }
         },
+        "delivery": { "$ref": "#/$defs/mailDelivery" },
         "c8Seam": {
           "type": "object",
           "additionalProperties": false,
@@ -182,6 +188,52 @@
             "file": { "$ref": "#/$defs/path" },
             "why": { "type": "string", "minLength": 20 },
             "until": { "$ref": "#/$defs/train" }
+          }
+        }
+      }
+    },
+    "stream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter", "secrets", "from", "why"],
+      "properties": {
+        "adapter": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "description": "An adapter id of this port." },
+        "secrets": { "type": "array", "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }, "description": "Secret NAMES in preference order; the first one set on the Worker is the stream's key." },
+        "from": { "type": ["string", "null"], "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)*$", "description": "The From as a tooling/house-identity.json field PATH; null when the sender is configured outside this tree (an external adapter)." },
+        "to": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)*$", "description": "A fixed recipient as an entity-source PATH, when the stream has one." },
+        "why": { "type": "string", "minLength": 20 }
+      }
+    },
+    "mailDelivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rail", "dnsNeeded", "domainVerification", "warming", "suppression"],
+      "description": "What a mail switch must move besides code (tooling/ports/README.md §5): read by port-switch's mail checks.",
+      "properties": {
+        "rail": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9-]*$", "description": "A tooling/mail-transport.json rails[].id whose authRecords this adapter sends under; null until its records are declared there." },
+        "dnsNeeded": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "name", "expect"],
+            "properties": {
+              "kind": { "enum": ["spf", "dkim", "mx", "dmarc"] },
+              "name": { "type": "string", "minLength": 4 },
+              "expect": { "type": "string", "minLength": 4 }
+            }
+          },
+          "description": "For an adapter with no rail yet: the records to publish before cutover (SPF include, DKIM, return-path MX, DMARC alignment)."
+        },
+        "domainVerification": { "type": "string", "minLength": 20 },
+        "warming": { "type": "string", "minLength": 20 },
+        "suppression": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["export", "import"],
+          "properties": {
+            "export": { "type": ["string", "null"], "minLength": 10, "description": "How the suppression list (bounces, complaints, unsubscribes) leaves this adapter; null until Private/runbooks/switch-vendor.md#mail names the method." },
+            "import": { "type": ["string", "null"], "minLength": 10, "description": "How it enters this adapter; null until the runbook names the method." }
           }
         }
       }

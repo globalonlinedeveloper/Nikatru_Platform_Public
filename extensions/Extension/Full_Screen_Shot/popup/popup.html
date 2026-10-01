@@ -109,6 +109,11 @@
 
 <div id="err" class="err" role="alert" aria-live="assertive" aria-atomic="true" hidden><span id="errText"></span><button id="errDismiss" class="icon-btn" title="Dismiss" aria-label="Dismiss" data-i18n-attr="title:popupDismiss; aria-label:popupDismiss">✕</button></div>
 
+<!-- FullShot Pro (EXM-01, 2026-10-01). Hidden until the worker answers that
+     this browser is NOT Pro; a Pro browser, a worker that does not answer and a
+     page opened outside the extension all leave it hidden. -->
+<button id="upgradeBtn" class="upgrade" hidden data-i18n="popupUpgrade">Upgrade to FullShot Pro</button>
+
 <div class="footer">
   <a href="#" id="historyLink" data-i18n="popupLinkHistory">History</a>
   <span class="dot" aria-hidden="true">·</span>

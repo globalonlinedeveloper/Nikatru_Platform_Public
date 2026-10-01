@@ -496,3 +496,65 @@ export function resolveConfig(
   return forChannel(mergeConfig(stored, override), channel, stored);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · EXM-01. AN EXTENSION IS SOLD, NOT SERVED.
+//
+// FullShot Pro is bought on the nikatru.com checkout (decisions/ext/015), and
+// POST /v1/checkout asked `isKnownApp` — whose domain is catalog/apps.json — so
+// an extension had no purchase path at all. An extension is not served a
+// config (no `GET /config/fullshot`: the extension reads none), so it does not
+// join DEFAULT_CONFIGS. What it has is a PAYWALL: app-config-data.json
+// `apps.<id>.paywall` for an id the EXTENSION register names, merged over
+// `defaults.paywall` exactly as an app's is, and switched by the same KV key
+// (`config:<id>`, its `paywall` member only). An `apps.<id>` entry for an id in
+// neither register is still dead data, and tooling/ci/assert-config-registry.mjs
+// limb 3 still fails it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The committed paywall of every extension that has one, keyed by product id. */
+export function buildExtensionPaywalls(
+  data: ConfigData,
+  known: ReadonlyMap<string, string>,
+): Readonly<Record<string, AppConfig['paywall']>> {
+  const out: Record<string, AppConfig['paywall']> = {};
+  const perApp = isPlainObject(data.apps) ? data.apps : {};
+  const defaults = isPlainObject(data.defaults) && isPlainObject(data.defaults.paywall) ? data.defaults.paywall : {};
+  for (const [id, kind] of known) {
+    if (kind !== 'extension' || !Object.prototype.hasOwnProperty.call(perApp, id)) continue;
+    const entry = perApp[id];
+    if (!isPlainObject(entry) || !isPlainObject(entry.paywall)) continue;
+    out[id] = deepMerge(defaults, entry.paywall) as unknown as AppConfig['paywall'];
+  }
+  return out;
+}
+
+/** Every extension paywall, resolved once at module load. */
+export const EXTENSION_PAYWALLS = buildExtensionPaywalls(configDataJson as ConfigData, KNOWN_PRODUCTS);
+
+/** Is `id` an extension with a committed paywall — a product the checkout may sell? */
+export function isSellableExtension(id: unknown): id is string {
+  return typeof id === 'string' && Object.prototype.hasOwnProperty.call(EXTENSION_PAYWALLS, id);
+}
+
+/**
+ * The paywall the checkout sells under for an app OR an extension, or null for
+ * neither. An app's is its resolved config's; an extension's is its committed
+ * paywall with the KV override's `paywall` member merged over it. Malformed KV
+ * JSON is ignored, as resolveConfig ignores it.
+ */
+export function resolvePaywall(id: string, kvValue: string | null): AppConfig['paywall'] | null {
+  if (isKnownApp(id)) return resolveConfig(id, kvValue)?.paywall ?? null;
+  if (!isSellableExtension(id)) return null;
+  const stored = structuredCloneSafe(EXTENSION_PAYWALLS[id]);
+  if (!kvValue) return stored;
+  let override: unknown;
+  try {
+    override = JSON.parse(kvValue);
+  } catch {
+    return stored;
+  }
+  const paywall = isPlainObject(override) ? override.paywall : undefined;
+  return isPlainObject(paywall)
+    ? (deepMerge(stored as unknown as Record<string, unknown>, paywall) as unknown as AppConfig['paywall'])
+    : stored;
+}
