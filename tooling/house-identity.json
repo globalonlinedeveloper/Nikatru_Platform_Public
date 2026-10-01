@@ -32,5 +32,260 @@
         "why": "[ADR 029] §2: a reminder to a USER is a different type of mail from an owner alert, so it has its own local-part and display name (services/platform/src/lib/reminders.ts); was REMINDER_FROM."
       }
     }
+  },
+  "entity": {
+    "_readme": [
+      "THE ENTITY SOURCE: every business fact a product prints, written once. A change of legal entity (a sole proprietorship becoming a Pvt Ltd, a new legal name, a new proprietor) is an edit HERE, then `node tooling/entity/render.mjs`, and nothing else in the tree is typed by hand. Owner lock, 2026-10-01: \"Everything whichever applicable it should come from pipeline - always lock.\"",
+      "WHERE THE VALUES COME FROM. The business source of record is the brain (nikatru/business/public-facts.json). Every leaf here carrying a `brain` path is a COPY of that field, compared on every commit by tooling/scripts/assert-business-facts.mjs (hook-run: CI cannot read the brain) and refreshed by `node tooling/scripts/assert-business-facts.mjs --sync`. A leaf with no `brain` path is a pipeline decision recorded here and nowhere else; its `why` says so.",
+      "WHAT READS IT. tooling/entity/facts.mjs is the one loader. The FACT regions, the anchored fields and the generated files it renders are declared in tooling/entity/surfaces.json; tooling/sites/chrome.mjs renders the site footer from it; tooling/ports/render-entity.mjs renders the Worker module. assert-business-facts.mjs refuses a literal of any guarded fact anywhere else in the tree.",
+      "NEVER HERE: a PAN, a GSTIN, a residential address, or an officer's personal details. The slots exist (`registrations.gstin`, `officers`) so a future entity has somewhere to point; their values stay in Private platform-state/identity.json and the brain (ADR 034), and nothing renders them."
+    ],
+    "form": {
+      "value": "sole-proprietorship",
+      "label": "Sole proprietorship",
+      "brain": {
+        "label": "form.value"
+      },
+      "allowed": [
+        "sole-proprietorship",
+        "llp",
+        "private-limited",
+        "public-limited"
+      ],
+      "wording": {
+        "noun": "proprietorship",
+        "longNoun": "sole proprietorship",
+        "roleNoun": "sole proprietor",
+        "roleTitle": "Proprietor",
+        "_why": "The words a page uses for the form, so no page types them. A different form re-words all four here, and `node tooling/kit/entity-change.mjs --dry-run` lists every FACT region and field that prints one."
+      }
+    },
+    "legalName": {
+      "value": "Rajasekar Selvam",
+      "brain": "legalName.value",
+      "why": "For a sole proprietorship the legal name IS the proprietor's name; a company's is its registered name."
+    },
+    "tradeName": {
+      "value": "NIKATRU",
+      "brain": "tradeName.value",
+      "why": "The registered trade name. The brand survives an entity change."
+    },
+    "registrations": {
+      "udyam": {
+        "value": "UDYAM-TN-02-0487004",
+        "brain": "udyam.value",
+        "public": true
+      },
+      "gstin": {
+        "value": null,
+        "public": false,
+        "heldIn": "Private platform-state/identity.json; the brain company-master",
+        "why": "ADR 034: never on a public surface. The slot exists so a second state registration has a place to be listed by the dry run; the value is never written here."
+      },
+      "cin": {
+        "value": null,
+        "public": true,
+        "why": "A private or public limited company's Corporate Identity Number. None today."
+      },
+      "llpin": {
+        "value": null,
+        "public": true,
+        "why": "An LLP's identification number. None today."
+      },
+      "tan": {
+        "value": null,
+        "public": false,
+        "heldIn": "Private platform-state/identity.json",
+        "why": "Never rendered."
+      },
+      "pan": {
+        "value": null,
+        "public": false,
+        "heldIn": "Private platform-state/identity.json",
+        "why": "Never rendered."
+      }
+    },
+    "registeredOffice": {
+      "floor": {
+        "value": "7",
+        "brain": "publicAddress.floor.value"
+      },
+      "building": {
+        "value": "RR Tower 4",
+        "brain": "publicAddress.building.value"
+      },
+      "street": {
+        "value": "Thiru Vi Ka Industrial Estate",
+        "brain": "publicAddress.street.value"
+      },
+      "area": {
+        "value": "SIDCO Industrial Estate",
+        "brain": "publicAddress.area.value"
+      },
+      "locality": {
+        "value": "Guindy",
+        "brain": "publicAddress.locality.value"
+      },
+      "city": {
+        "value": "Chennai",
+        "brain": "publicAddress.city.value"
+      },
+      "state": {
+        "value": "Tamil Nadu",
+        "brain": "publicAddress.state.value"
+      },
+      "postalCode": {
+        "value": "600032",
+        "brain": "publicAddress.postalCode.value"
+      },
+      "country": {
+        "value": "India",
+        "brain": "publicAddress.country.value"
+      },
+      "_why": "The registered office (brain public-facts `publicAddress`), published by owner ruling 2026-09-09. Read the field-rendering trap in the brain's vendors/awfis.md before changing how it renders."
+    },
+    "phone": {
+      "value": "9498498011",
+      "countryCode": "+91",
+      "brain": {
+        "value": "phone.value",
+        "countryCode": "phone.countryCode"
+      }
+    },
+    "contacts": {
+      "_why": "The support inbox is `supportEmail` at the top of this file: a DOMAIN fact (it moves only with the domain, which an entity change leaves alone), held by assert-house-identity and assert-repo-posture, and compared with the brain by assert-business-facts.",
+      "grievanceOfficer": {
+        "title": "Proprietor",
+        "nameFrom": "people.founder.name",
+        "why": "The grievance officer the contact and support pages name. A company names an officer instead; until the owner records one, `title` and the person stay the proprietor."
+      },
+      "legal": {
+        "value": null,
+        "ownerGated": true,
+        "why": "Unset: support@ answers legal mail today."
+      },
+      "privacy": {
+        "value": null,
+        "ownerGated": true,
+        "why": "Unset: support@ answers privacy mail today."
+      }
+    },
+    "jurisdiction": {
+      "law": {
+        "value": "India",
+        "why": "terms.html §10, the governing law. No brain field records it."
+      },
+      "courts": {
+        "value": "Chennai, Tamil Nadu, India",
+        "why": "terms.html §10, the courts named. Follows the registered office's city today; recorded separately because a company may choose otherwise."
+      }
+    },
+    "sellerOfRecord": {
+      "_why": "Who sells, per payment rail (brain public-facts `sellerByRail`). Port rows cite these paths instead of typing a seller.",
+      "paddle": {
+        "value": "Paddle, merchant of record",
+        "brain": "sellerByRail.paddle.value",
+        "appliesTo": "every non-India web sale, desktop, Microsoft Store, Snap, APK sideload, and browser-extension buyers outside India"
+      },
+      "razorpay": {
+        "value": "NIKATRU (Rajasekar Selvam, sole proprietor); Razorpay is only the payment gateway, and NIKATRU issues the GST invoice",
+        "brain": "sellerByRail.razorpay.value",
+        "appliesTo": "India purchases on nikatru.com, the apps.gov.in build, and India buyers of the three browser extensions"
+      },
+      "appleIap": {
+        "value": "the store (Apple)",
+        "brain": "sellerByRail.appleIap.value",
+        "appliesTo": "in-app purchases on iPhone and Mac"
+      },
+      "playBilling": {
+        "value": "the store (Google)",
+        "brain": "sellerByRail.playBilling.value",
+        "appliesTo": "in-app purchases on Android through Google Play"
+      }
+    },
+    "storeSellerName": {
+      "value": "Nikatru",
+      "why": "The developer or seller name a store prints (apps.gov.in \"Developed By\"). Today the brand; an Organization account on Apple prints the legal entity name instead, which the dry run lists."
+    },
+    "storeAccounts": {
+      "_why": "The account type each store holds (brain public-facts `accountTypeByStore`). Rendered into tooling/channel-register.json `accountStatus.accountType` for each channel named here.",
+      "appleAppStore": {
+        "type": "Individual",
+        "brain": "accountTypeByStore.appleAppStore.value",
+        "channels": [
+          "ios-appstore",
+          "macos-appstore"
+        ]
+      },
+      "googlePlay": {
+        "type": "Organization",
+        "brain": "accountTypeByStore.googlePlay.value",
+        "channels": [
+          "android-play"
+        ]
+      },
+      "microsoftStore": {
+        "type": "Company",
+        "brain": "accountTypeByStore.microsoftStore.value",
+        "channels": [
+          "windows-store",
+          "edge-addons"
+        ]
+      },
+      "appsGovIn": {
+        "type": "Individual",
+        "brain": "accountTypeByStore.appsGovIn.value",
+        "channels": [
+          "apps-gov-in"
+        ]
+      },
+      "chromeWebStore": {
+        "type": "NOT RECORDED",
+        "brain": "accountTypeByStore.chromeWebStore.value",
+        "channels": [
+          "chrome-webstore"
+        ]
+      },
+      "firefoxAddons": {
+        "type": "NOT RECORDED",
+        "brain": "accountTypeByStore.firefoxAddons.value",
+        "channels": [
+          "amo"
+        ]
+      }
+    },
+    "officers": {
+      "value": null,
+      "ownerOnly": true,
+      "heldIn": "Private platform-state/identity.json",
+      "why": "Directors, partners or the proprietor as signatories. Never rendered; the dry run lists them as who signs."
+    },
+    "copyright": {
+      "holder": {
+        "value": "Nikatru",
+        "why": "The holder the site and app copyright lines name today."
+      },
+      "firstYear": {
+        "value": 2026,
+        "why": "The first year is fixed; the last is the build year (tooling/entity/facts.mjs `copyrightYears`)."
+      }
+    },
+    "gstStatus": {
+      "value": "Registered under GST since 15 July 2026; the GSTIN is deliberately not in this file",
+      "brain": "gstStatus.value",
+      "public": false,
+      "why": "Read by the dry run only; not rendered."
+    }
+  },
+  "people": {
+    "_why": "The PERSON behind the products, distinct from the entity: an entity change leaves the founder standing. For a sole proprietorship the two names are equal, and assert-business-facts holds that equality while the form is sole-proprietorship.",
+    "founder": {
+      "name": {
+        "value": "Rajasekar Selvam"
+      },
+      "url": {
+        "value": "https://rajasekarselvam.com"
+      }
+    }
   }
 }
