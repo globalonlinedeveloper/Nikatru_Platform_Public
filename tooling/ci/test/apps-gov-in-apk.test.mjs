@@ -416,19 +416,26 @@ function fixture({
   // declaration cannot be read. `forbids: null` omits `purchaseRail`.
   appId = 'com.nikatru.demo',
   forbids = ['paddle', 'play-billing', 'apple-iap'],
+  // ⏱ 2026-10-01 — `live: true` writes the REAL tooling/channel-register.json with
+  // only the apps-gov-in pin replaced: the register the lead's one-line PR produces.
+  live = false,
 } = {}) {
   const root = join(TMP, `r${++seq}`);
   mkdirSync(join(root, 'tooling'), { recursive: true });
-  writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify({
-    channels: [
-      { id: 'android-play', signing: { uploadCertificate: { sha256: PLAY_PIN } } },
-      {
-        id: 'apps-gov-in',
-        signing: { signingCertificate: { sha256: pin } },
-        ...(forbids === null ? {} : { purchaseRail: { rail: 'none', forbids, forbidsWhy: 'the fixture says so' } }),
-      },
-    ],
-  }));
+  const register = live
+    ? JSON.parse(readFileSync(join(CI_DIR, '..', 'channel-register.json'), 'utf8'))
+    : {
+        channels: [
+          { id: 'android-play', signing: { uploadCertificate: { sha256: PLAY_PIN } } },
+          {
+            id: 'apps-gov-in',
+            signing: { signingCertificate: { sha256: pin } },
+            ...(forbids === null ? {} : { purchaseRail: { rail: 'none', forbids, forbidsWhy: 'the fixture says so' } }),
+          },
+        ],
+      };
+  if (live) register.channels.find((c) => c.id === 'apps-gov-in').signing.signingCertificate.sha256 = pin;
+  writeFileSync(join(root, 'tooling', 'channel-register.json'), JSON.stringify(register));
   if (appId !== null) {
     mkdirSync(join(root, 'apps', 'demo', 'android', 'app'), { recursive: true });
     writeFileSync(join(root, 'apps', 'demo', 'android', 'app', 'build.gradle.kts'), `android {\n    defaultConfig {\n        applicationId = "${appId}"\n    }\n}\n`);
@@ -631,5 +638,60 @@ describe('the CLI', () => {
     const { code, out, output } = run(fixture({ pin: OWN_PIN, apksigner: apksignerText(OWN_SIGNER.dn, OWN_HEX) }), [], 'release');
     assert.equal(code, 0, out);
     assert.match(output, /^artifact_name=apps-gov-in-demo-apk$/m);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · O-APPS-GOV-IN-APK-HAS-NO-ORIGIN-ROW — THE PIN IS READY TO DROP IN.
+// The lead's follow-up is ONE line: `apps-gov-in.signing.signingCertificate.sha256`
+// in tooling/channel-register.json, set to the SHA-256 `keytool -list -v -alias
+// nikatru-appsgovin` prints — 32 colon-separated UPPERCASE hex bytes. These cases
+// run the guard over the LIVE register with only that field changed, so they
+// describe exactly the tree that PR produces: the release-signed .apk is named
+// `apps-gov-in-<app>-apk` (the one name the release job downloads), and a pin equal
+// to android-play's upload pin can never reach that name.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the pin drops in: the LIVE register with only signingCertificate.sha256 set', () => {
+  test('a well-formed pin, matched by the release signer, names the artifact apps-gov-in-<app>-apk — UPLOADABLE', () => {
+    const { code, out, output } = run(fixture({ live: true, pin: OWN_PIN, apksigner: apksignerText(OWN_SIGNER.dn, OWN_HEX) }), [], 'release');
+    assert.equal(code, 0, out);
+    assert.match(output, new RegExp(`^artifact_name=${uploadableArtifactName('demo')}$`, 'm'));
+    assert.match(output, /^verdict=UPLOADABLE$/m);
+  });
+
+  test('the same pin with the build still debug-signed FAILS: the pin is set and the APPSGOVIN_* secrets did not arrive', () => {
+    const { code, out, output } = run(fixture({ live: true, pin: OWN_PIN }), [], 'debug');
+    assert.equal(code, 1, out);
+    assert.match(out, /does NOT match the pinned apps-gov-in certificate/);
+    assert.doesNotMatch(output, /artifact_name=/);
+  });
+
+  test('a pin EQUAL TO THE PLAY UPLOAD PIN FAILS, whichever key signed the .apk', () => {
+    // The register's own android-play pin, so this is the drift the guard exists for:
+    // the Play upload key pasted where the apps.gov.in key belongs.
+    const live = JSON.parse(readFileSync(join(CI_DIR, '..', 'channel-register.json'), 'utf8'));
+    assert.equal(live.channels.find((c) => c.id === 'android-play').signing.uploadCertificate.sha256, PLAY_PIN, 'the fixture constant is the live Play pin');
+    for (const [label, signer, posture] of [
+      ['signed by the Play upload key', apksignerText(PLAY_SIGNER.dn, PLAY_PIN.replace(/:/g, '').toLowerCase()), 'release'],
+      ['signed by the apps.gov.in key', apksignerText(OWN_SIGNER.dn, OWN_HEX), 'release'],
+      ['debug-signed', apksignerText(DEBUG_SIGNER.dn, DEBUG_HEX), 'debug'],
+    ]) {
+      const { code, out, output } = run(fixture({ live: true, pin: PLAY_PIN, apksigner: signer }), [], posture);
+      assert.equal(code, 1, `${label}\n${out}`);
+      assert.doesNotMatch(output, /artifact_name=/, label);
+    }
+    // …and the pure decision says WHY for the one signer that matches that pin.
+    const d = decideArtifact({ app: 'demo', posture: 'release', signer: PLAY_SIGNER, pin: PLAY_PIN, playPin: PLAY_PIN });
+    assert.equal(d.artifactName, null);
+    assert.match(d.problems.join('\n'), /signed by the ANDROID-PLAY UPLOAD KEY/);
+  });
+
+  test('a pin that is not 32 colon-separated UPPERCASE hex bytes is COVERAGE LOST, never a pin and never a mismatch', () => {
+    for (const bad of [OWN_PIN.toLowerCase(), OWN_PIN.replace(/:/g, ''), OWN_HEX]) {
+      const { code, out, output } = run(fixture({ live: true, pin: bad, apksigner: apksignerText(OWN_SIGNER.dn, OWN_HEX) }), [], 'release');
+      assert.equal(code, 2, `${bad}\n${out}`);
+      assert.match(out, /apps-gov-in\.signing\.signingCertificate\.sha256 is ".+", which is not 32 colon-separated uppercase hex bytes\./);
+      assert.doesNotMatch(output, /artifact_name=/);
+    }
   });
 });

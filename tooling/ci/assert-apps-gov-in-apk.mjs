@@ -99,7 +99,7 @@ const NAME = 'assert-apps-gov-in-apk';
 const CHANNEL = 'apps-gov-in';
 const PLAY = 'android-play';
 const TOOL_TIMEOUT_MS = 120_000;
-const PIN_SHAPE = /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/;
+export const PIN_SHAPE = /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/;
 const DEBUG_DN = /CN=Android Debug\b/;
 export const POSTURES = ['release', 'debug'];
 

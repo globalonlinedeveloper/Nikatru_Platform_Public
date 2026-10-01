@@ -4621,7 +4621,8 @@ describe('assert-channel-register — a stamped channel belongs to the job that 
   test('PRINTS, never fails, for a row that declares no lane when the census places the build on its platform', () => {
     // build-platforms.yml's six-platform proof stamps `linux-appimage` and
     // `apps-gov-in`, and neither row names a lane — nothing has claimed those
-    // artifacts yet. There is no wrong job to name, so the register, not the
+    // artifacts yet. (⏱ 2026-10-01: apps-gov-in names its lane now — see the
+    // REAL-TREE case below; linux-appimage still does not.) There is no wrong job to name, so the register, not the
     // workflow, is what has to change; failing here would demand an exemption
     // for a fact the ROW should carry.
     const { code, out } = run(
@@ -4630,6 +4631,27 @@ describe('assert-channel-register — a stamped channel belongs to the job that 
     assert.equal(code, 0, out);
     assert.match(out, /UNANCHORED STAMP: .*stamps "windows-store", whose row declares no lane and no submission/);
     assert.match(out, /The census has placed the build on that row's platform/);
+  });
+
+  // ⏱ 2026-10-01 · O-APPS-GOV-IN-ROW-SAYS-NO-LANE-EMITS-IT (AA-24). The apps-gov-in row said
+  // `lane: null` while build-platforms.yml's `linux_web_android` job built, signed, stamped and
+  // uploaded its .apk, so every lane-derived reader saw a channel nothing builds: this guard
+  // printed its three stamp sites UNANCHORED (measured at 2cb56ac3). Read off the REAL tree:
+  // with the lane declared, each is paired with the row's own lane. Red control: `"lane": null`
+  // on the row brings all three UNANCHORED lines back.
+  test('THE REAL TREE: every apps-gov-in stamp is paired with the row\'s own lane, linux_web_android — none prints UNANCHORED', () => {
+    const REPO = resolve(CI_DIR, '..', '..');
+    // The guard's own reading FIRST, so the red control reddens on what the guard reports.
+    const { code, out } = run(REPO);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /UNANCHORED STAMP: [^\n]*"apps-gov-in"/);
+    assert.doesNotMatch(out, /UNANCHORED STAMP: [^\n]*--channel apps-gov-in/);
+    // The domain is not empty: the job that owns the lane really does stamp the channel.
+    const bp = readFileSync(join(REPO, '.github/workflows/build-platforms.yml'), 'utf8');
+    assert.match(bp, /stamp-channel\.mjs --channel apps-gov-in --build-step build_apk_agi/);
+    const reg = JSON.parse(readFileSync(join(REPO, 'tooling/channel-register.json'), 'utf8'));
+    const row = reg.channels.find((c) => c.id === 'apps-gov-in');
+    assert.deepEqual({ workflow: row.lane?.workflow, job: row.lane?.job }, { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' });
   });
 
   test('a platform mismatch is 6b-ii\'s failure ALONE — pairing does not report it a second time', () => {
