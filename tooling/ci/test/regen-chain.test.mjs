@@ -50,6 +50,11 @@ const INPUT_ROOTS = [
   'tooling/legal',
   'extensions/Extension/Full_Screen_Shot/publish',
   'extensions/templates/tool/publish',
+  // ⏱ 2026-10-01 · rv2-security-021 — generate-well-known.mjs now writes the origin's
+  // security.txt: its Contact is the brick's AppConfig.supportEmail and its Policy a
+  // copy of SECURITY.md.
+  'SECURITY.md',
+  'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/core/app_config.dart',
 ];
 const PRIVACY_DECLARATIONS = ['apps/subscriptiontracker/privacy.yaml', 'extensions/Extension/Full_Screen_Shot/publish/privacy.yaml'];
 

@@ -713,6 +713,22 @@
       "proves": "The generator and assert-well-known-shape both import SURFACES and mobilePresence from this file. The green control requires the generator's output to pass the guard over a populated tree, so two different definitions of \"has a mobile presence\" fail it."
     },
     {
+      "file": "tooling/sites/generate-well-known.mjs",
+      "anchor": "EVERY FIELD BUT EXPIRES IS DERIVED, NOT TYPED:",
+      "status": "proven",
+      "test": "tooling/ci/test/well-known-shape.test.mjs",
+      "case": "GREEN CONTROL: the generated pair passes, with the fixture address as its Contact",
+      "proves": "The fixture tree's AppConfig.supportEmail is security@example.test, not the real address, and the case requires that Contact plus a Canonical and Policy built from the apex. MUTATION-VERIFIED 2026-10-01: the Contact line hardcoded to mailto:support@nikatru.com turned this case red; restored byte-exact."
+    },
+    {
+      "file": "tooling/sites/generate-well-known.mjs",
+      "anchor": "and the copy cannot drift: limb B diffs it;",
+      "status": "proven",
+      "test": "tooling/ci/test/well-known-shape.test.mjs",
+      "case": "a Policy copy that drifted from SECURITY.md is limb B drift",
+      "proves": "The case edits SECURITY.md and requires limb B to name security-policy.txt as drift. MUTATION-VERIFIED 2026-10-01: the generator made to plan the policy from the already-published copy (read(SECURITY_POLICY_REL) ?? policy) instead of SECURITY.md turned this case red while the green control stayed green; restored byte-exact."
+    },
+    {
       "file": "tooling/store/render-play-graphics.mjs",
       "anchor": "graphic and the app's icon cannot drift apart:",
       "status": "demoted",
