@@ -347,6 +347,14 @@ describe('the hand-off: a fresh web sign-in mints, the app exchanges', () => {
     }
   });
 
+  it('a fault AFTER /verify minted a session is no fault to retry: the code stays spent', async () => {
+    gotrue.verify = () => new Response('not json', { status: 200 });
+    const m = await minted();
+    expect((await exchange({ code: m.code, verifier: m.verifier })).status).toBe(503);
+    gotrue.verify = () => json(200, SESSION);
+    expect((await exchange({ code: m.code, verifier: m.verifier })).status).toBe(400);
+  });
+
   it('🔴 ANOTHER CLIENT: a code minted for one app is refused at another app', async () => {
     const m = await minted();
     const res = await exchange({ app: OTHER, code: m.code, verifier: m.verifier });

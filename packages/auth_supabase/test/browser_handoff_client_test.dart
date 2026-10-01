@@ -105,7 +105,41 @@ void main() {
       );
     });
 
-    test('a callback with another state is refused and nothing is exchanged', () async {
+    // ⏱ 2026-10-02 (review of #1133, finding 6): another state is 404 and the wait
+    // goes on, so whatever hits the port first cannot end THIS sign-in.
+    test('a callback with another state is 404, and the real one still completes', () async {
+      final HandoffReturn ret = await openHandoffLoopback();
+      final List<String> exchangedCodes = <String>[];
+      final HandoffTokens t = await signInThroughBrowser(
+        appId: 'subscriptiontracker',
+        nativeBaseUrl: base,
+        ret: ret,
+        client: MockClient((http.Request r) async {
+          exchangedCodes.add((jsonDecode(r.body) as Map<String, dynamic>)['code'] as String);
+          return http.Response('{"access_token":"a","refresh_token":"r"}', 200);
+        }),
+        open: (Uri url) async {
+          final Uri back = Uri.parse(ret.redirectUri);
+          final HttpClient browser = HttpClient();
+          final HttpClientResponse probe = await (await browser.getUrl(back.replace(
+            queryParameters: <String, String>{'nk_code': 'h1.planted', 'state': 'not-this-one'},
+          ))).close();
+          expect(probe.statusCode, 404);
+          final HttpClientResponse none = await (await browser.getUrl(back)).close();
+          expect(none.statusCode, 404);
+          final HttpClientResponse ok = await (await browser.getUrl(back.replace(
+            queryParameters: <String, String>{'nk_code': 'h1.code', 'state': url.queryParameters['state']!},
+          ))).close();
+          expect(ok.statusCode, 200);
+          browser.close();
+          return true;
+        },
+      );
+      expect(t.accessToken, 'a');
+      expect(exchangedCodes, <String>['h1.code']);
+    });
+
+    test('only another state ever arrives: the wait times out and nothing is exchanged', () async {
       final HandoffReturn ret = await openHandoffLoopback();
       bool exchanged = false;
       await expectLater(
@@ -113,6 +147,7 @@ void main() {
           appId: 'subscriptiontracker',
           nativeBaseUrl: base,
           ret: ret,
+          waitLimit: const Duration(milliseconds: 500),
           client: MockClient((_) async {
             exchanged = true;
             return http.Response('{}', 200);
@@ -122,7 +157,8 @@ void main() {
               queryParameters: <String, String>{'nk_code': 'h1.code', 'state': 'not-this-one'},
             );
             final HttpClient browser = HttpClient();
-            await (await browser.getUrl(back)).close();
+            final HttpClientResponse res = await (await browser.getUrl(back)).close();
+            expect(res.statusCode, 404);
             browser.close();
             return true;
           },

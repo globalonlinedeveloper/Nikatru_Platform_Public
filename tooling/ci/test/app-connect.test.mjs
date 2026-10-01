@@ -75,6 +75,10 @@ describe('returnUrl — the one navigation that carries a code', () => {
     assert.equal(isReturnAddress(APP, DEEP), true);
     assert.equal(isReturnAddress(APP, 'http://127.0.0.1:65536/nk-auth-callback'), false);
     assert.equal(isReturnAddress(APP, 'http://127.0.0.1:053111/nk-auth-callback'), false);
+    // ⏱ 2026-10-02 (review of #1133, finding 5): 1000-1023 are the only ports the
+    // 4-5 digit pattern lets through to the `port >= 1024` limb.
+    assert.equal(isReturnAddress(APP, 'http://127.0.0.1:1023/nk-auth-callback'), false);
+    assert.equal(isReturnAddress(APP, 'http://127.0.0.1:1024/nk-auth-callback'), true);
   });
 });
 
