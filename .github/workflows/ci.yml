@@ -2035,18 +2035,21 @@ jobs:
       # why: O-PR-LANE-GRADLE-CACHE. The first assembleRelease measured 404.8 s cold
       # (run 36808572305) and the next two 57 s and 102.5 s: the Gradle distribution,
       # every dependency and every plugin compile. HERE ONLY, never in setup-flutter,
-      # which build-platforms.yml's release builds also run. A PR's save is scoped
-      # to refs/pull/<n>/merge by actions/cache, so nothing a PR writes is restored
-      # on main, and this key is restored by no release job. The local build cache
-      # reuses a task's output only for byte-identical inputs, so the artifacts the
-      # guards below read are the ones a cold build makes.
+      # which build-platforms.yml's release builds also run (built-artifact-pr-lane
+      # pins that). RESTORE on every event, SAVE only on a push to main (the last
+      # step of this job): a 2.68 GB entry per PR ref evicted the Flutter SDK and pub
+      # caches every Flutter job restores (#1111 review 1). The primary key hashes the
+      # Gradle files alone; anything else, pubspec.lock included, restores by prefix,
+      # and Gradle's local build cache reuses a task's output only for byte-identical
+      # inputs, so the artifacts the guards below read are the ones a cold build makes.
       - name: Restore the Gradle caches (dependencies, wrapper, task outputs)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: gradle-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-android-artifacts-${{ runner.os }}-${{ hashFiles('apps/*/android/**/*.gradle*', 'apps/*/android/gradle/wrapper/gradle-wrapper.properties', 'apps/*/android/gradle.properties', 'tooling/versions.json', 'pubspec.lock') }}
+          key: gradle-android-artifacts-${{ runner.os }}-${{ hashFiles('apps/*/android/**/*.gradle*', 'apps/*/android/gradle/wrapper/gradle-wrapper.properties', 'apps/*/android/gradle.properties') }}
           restore-keys: |
             gradle-android-artifacts-${{ runner.os }}-
       - name: Turn on Gradle's local build cache for this runner only
@@ -2182,6 +2185,15 @@ jobs:
           --apk ${{ steps.agi_apk.outputs.apk }}
           --app ${{ matrix.app }}
           --posture debug
+      # why: main writes the one entry every PR restores; a PR never writes one.
+      - name: Save the Gradle caches (push to main only, on a key miss)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-android-artifacts-${{ runner.os }}-${{ hashFiles('apps/*/android/**/*.gradle*', 'apps/*/android/gradle/wrapper/gradle-wrapper.properties', 'apps/*/android/gradle.properties') }}
       # why: nothing here leaves the runner — no upload-artifact, no symbols, no GlitchTip.
       # A debug-signed PR build is discarded, and release-provenance gives a gate
       # constituent no credit for publishing (assert-release-provenance.mjs:769-805).
