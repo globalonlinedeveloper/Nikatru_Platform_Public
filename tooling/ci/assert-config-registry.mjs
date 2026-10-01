@@ -24,7 +24,9 @@
 //      the catalogue no longer reaches the builder).
 //   2. an app id reappears as a LITERAL in config.ts — the registry, re-typed.
 //   3. the value document names an app the catalogue does not have: dead data
-//      that reads as configuration and serves nobody.
+//      that reads as configuration and serves nobody. (An extension in
+//      extensions/catalog/extensions.json may carry `paywall` and nothing else:
+//      POST /v1/checkout sells under it, 2026-10-01, EXM-01.)
 //   4. a catalogue slug is not a well-formed app id, so it is DROPPED from the
 //      served set — an app that vanished with nothing said.
 //   5. the catalogue lists a slug twice: two rows, one silently wins.
@@ -135,6 +137,10 @@ const ROOT = resolve(process.argv[2] ?? process.cwd());
 const CATALOGUE = 'catalog/apps.json';
 const CONFIG_TS = 'services/platform/src/config.ts';
 const DATA = 'services/platform/src/app-config-data.json';
+// ⏱ 2026-10-01 · EXM-01. An `apps.<id>` entry for an EXTENSION is sold, not served: config.ts
+// `buildExtensionPaywalls` reads its `paywall` for POST /v1/checkout. Read only when limb 3 meets
+// a key the app catalogue does not name.
+const EXTENSIONS = 'extensions/catalog/extensions.json';
 const TYPES_TS = 'services/platform/src/types.ts';
 const PRE_GEN = 'tooling/bricks/app/hooks/pre_gen.dart';
 const DISCOVERY = 'tooling/sites/generate-discovery.mjs';
@@ -311,7 +317,40 @@ const slugSet = new Set(slugs.filter(Boolean));
   if (perApp === null) {
     coverageLost(`${DATA} has no \`apps\` object, so the orphan check ranged over nothing.`);
   } else {
+    // null until first asked; then the register's slugs, or `false` when it cannot be read.
+    let extSlugs = null;
+    const extensionSlugs = () => {
+      if (extSlugs !== null) return extSlugs;
+      const text = read(EXTENSIONS);
+      if (text === null) {
+        coverageLost(`${EXTENSIONS} does not exist, so limb 3 cannot tell an extension's paywall from dead data.`);
+        return (extSlugs = false);
+      }
+      try {
+        const rows = JSON.parse(text);
+        extSlugs = new Set((Array.isArray(rows) ? rows : []).filter((r) => r && typeof r.slug === 'string').map((r) => r.slug));
+      } catch (e) {
+        coverageLost(`${EXTENSIONS} does not parse (${e.message}); limb 3 reads it for an extension's paywall.`);
+        extSlugs = false;
+      }
+      return extSlugs;
+    };
     for (const key of Object.keys(perApp)) {
+      if (!slugSet.has(key) && extensionSlugs() === false) continue; // COVERAGE LOST, said once above
+      if (!slugSet.has(key) && extensionSlugs().has(key)) {
+        // An extension is SOLD (its paywall reaches POST /v1/checkout), never SERVED: no client
+        // reads GET /config/<extension>, so any key beside `paywall` would be dead data.
+        const entry = perApp[key];
+        const extra = entry && typeof entry === 'object' ? Object.keys(entry).filter((k) => k !== 'paywall') : ['(not an object)'];
+        if (extra.length || !entry.paywall || typeof entry.paywall !== 'object') {
+          fail(
+            `${DATA} apps.${key} names an extension (${EXTENSIONS}), which is sold through its \`paywall\` and ` +
+              `served nothing else, and it carries ${extra.length ? extra.join(', ') : 'no `paywall` object'}. ` +
+              'config.ts buildExtensionPaywalls reads `paywall` alone; everything else here would be dead data.',
+          );
+        }
+        continue;
+      }
       if (!slugSet.has(key)) {
         fail(
           `${DATA} carries values for "${key}", which is not a slug in ${CATALOGUE}. Nothing serves ` +

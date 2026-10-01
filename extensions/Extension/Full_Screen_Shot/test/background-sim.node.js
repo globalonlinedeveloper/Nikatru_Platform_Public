@@ -641,7 +641,8 @@ function makeEnv(opts) {
       },
       local: {
         async get() { return Object.assign({}, env.local); },
-        async set(obj) { Object.assign(env.local, obj); }
+        async set(obj) { Object.assign(env.local, obj); },
+        async remove(keys) { [].concat(keys).forEach(k => { delete env.local[k]; }); }
       }
     },
     action: {
@@ -787,6 +788,9 @@ function boot(env) {
        there, persist() is not, because the platform only exposes that to a
        Window. A worker that reached for it would find undefined. */
     navigator: { userAgent: env.userAgent, storage: env.storageManager(false) },
+    /* WHATWG URL parsing, which every service worker has; pro/account.js builds
+       the Upgrade URL with it (EXM-01, 2026-10-01). Node's are the same spec. */
+    URL, URLSearchParams,
     /* Real importScripts: the shipped files must parse and must not touch
        IndexedDB at load time. FSDB's storage layer is swapped out below.
        CHROMIUM ONLY. Firefox runs this file as one of background.scripts, a
@@ -1256,8 +1260,8 @@ const quotaError = (message) => {
       check('...with no importScripts in scope, as in Firefox',
         typeof env.sandbox.importScripts === 'undefined' && env.imports.length === 0, typeof env.sandbox.importScripts);
     } else {
-      check('imports the two shipped worker libraries, db first',
-        env.imports.join(',') === 'pages/db.js,pages/batch.js', env.imports.join(','));
+      check('imports the shipped worker libraries, db first, then the entitlement client and pro/account.js',
+        env.imports.join(',') === 'pages/db.js,pages/batch.js,vendor/core/entitlement-client.js,pro/account.js', env.imports.join(','));
     }
     check('real FSBatch pure core is live in the worker',
       !!(env.sandbox.FSBatch && env.sandbox.FSBatch.fsNextJob), typeof env.sandbox.FSBatch);
@@ -5058,6 +5062,80 @@ const quotaError = (message) => {
     await fire(env.onInstalled, { reason: 'chrome_update' });
     await pump(env);
     check('a browser update writes nothing', Object.keys(env.sync).join() === 'theme', JSON.stringify(env.sync));
+  }
+
+  /* 🔴 FULLSHOT PRO — THE UPGRADE PATH (EXM-01, 2026-10-01). The worker answers
+     the popup from the shared entitlement client (vendor/core/entitlement-client.js
+     isPro over OUR API's cached answer), never from a store. Upgrade appears only
+     when NOT Pro, and its URL carries the product and, once linked, the account
+     binding (link id) — never the credential. A content script is refused. */
+  {
+    const CACHE_KEY = 'skEntitlement';
+    const linked = (env, isPro) => {
+      env.local[CACHE_KEY] = { v: 1, token: 'nkx1_' + 'a'.repeat(40), linkId: 'lnk_0123456789abcdef', isPro,
+        paidThrough: isPro ? null : '', checkedAt: env.clock.now(), failedAt: null };
+    };
+    const popup = env => env.fromPage('popup/popup.html');
+    {
+      const env = await awake(newEnv());
+      const st = await env.send({ type: 'PRO_STATE' }, popup(env));
+      check('PRO: a browser with no credential is NOT Pro, and is offered Upgrade',
+        st && st.pro === false && st.signedIn === false && typeof st.upgradeUrl === 'string', JSON.stringify(st));
+      const u = st && st.upgradeUrl ? new URL(st.upgradeUrl) : null;
+      check('PRO: the Upgrade URL is the nikatru.com checkout and carries the product',
+        u && u.origin === 'https://nikatru.com' && u.pathname === '/pricing' && u.searchParams.get('app') === 'fullshot' &&
+        !u.searchParams.has('link'), st && st.upgradeUrl);
+      const before = env.trace ? env.trace.length : 0;
+      const up = await env.send({ type: 'PRO_UPGRADE' }, popup(env));
+      await pump(env);
+      check('PRO: Upgrade opens that checkout in a tab',
+        up && up.ok === true && (env.trace || []).slice(before).some(x => x === 'tab.create:' + st.upgradeUrl), JSON.stringify(up));
+      check('PRO: deciding Pro with no credential makes no network call', env.network.length === 0, JSON.stringify(env.network));
+    }
+    {
+      const env = await awake(newEnv());
+      linked(env, false);
+      const st = await env.send({ type: 'PRO_STATE' }, popup(env));
+      const u = st && st.upgradeUrl ? new URL(st.upgradeUrl) : null;
+      check('PRO: a linked browser that is not Pro gets Upgrade with its link id (which nothing reads yet: paywall-flip EXT-LINK-BINDING), never its credential',
+        st && st.pro === false && st.signedIn === true && u && u.searchParams.get('app') === 'fullshot' &&
+        u.searchParams.get('link') === 'lnk_0123456789abcdef' && !st.upgradeUrl.includes('nkx1_'), JSON.stringify(st));
+      check('PRO: the answer to the popup carries no credential', !JSON.stringify(st).includes('nkx1_'), JSON.stringify(st));
+    }
+    {
+      const env = await awake(newEnv());
+      linked(env, true);
+      const st = await env.send({ type: 'PRO_STATE' }, popup(env));
+      check('PRO: a browser OUR API answered Pro for is Pro, so the popup hides Upgrade', st && st.pro === true, JSON.stringify(st));
+      const before = env.trace ? env.trace.length : 0;
+      const up = await env.send({ type: 'PRO_UPGRADE' }, popup(env));
+      await pump(env);
+      check('PRO: ...and PRO_UPGRADE opens no checkout for it',
+        up && up.ok === false && up.pro === true && !(env.trace || []).slice(before).some(x => /^tab\.create:https:\/\/nikatru\.com/.test(x)),
+        JSON.stringify(up));
+    }
+    {
+      /* The popup half: the control ships hidden and appears ONLY on a not-Pro answer. */
+      const free = await awake(newEnv());
+      const pop = await bootPopup(free);
+      const btn = pop.doc._get('upgradeBtn');
+      check('PRO popup: Upgrade is shown to a browser that is not Pro', btn && btn.hidden === false, btn && String(btn.hidden));
+      const before = free.trace.length;
+      await pop.click('upgradeBtn');
+      check('PRO popup: clicking it opens the checkout with the product, and closes the popup',
+        free.trace.slice(before).some(x => x === 'tab.create:https://nikatru.com/pricing?app=fullshot') && pop.closed(),
+        JSON.stringify(free.trace.slice(before)));
+      const paid = await awake(newEnv());
+      linked(paid, true);
+      const pop2 = await bootPopup(paid);
+      const btn2 = pop2.doc._get('upgradeBtn');
+      check('PRO popup: Upgrade stays hidden for a Pro browser', btn2 && btn2.hidden === true, btn2 && String(btn2.hidden));
+    }
+    {
+      const env = await awake(newEnv());
+      const st = await env.send({ type: 'PRO_STATE' }, { id: EXT_ID, url: 'https://example.com/page', tab: { id: 1 } });
+      check('PRO: a content script (a page sender) is refused', st && typeof st.error === 'string' && st.pro === undefined, JSON.stringify(st));
+    }
   }
 
   clearTimeout(HANG);
