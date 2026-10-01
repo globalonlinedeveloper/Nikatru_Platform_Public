@@ -777,6 +777,24 @@ let pricedSections = 0;
   if (!bundles.ok && existsSync(abs(BUNDLES_REGISTER))) {
     problems.push(`limb P cannot read the bundle register (${bundles.why}), so a sellable bundle's section could not be required.`);
   }
+  /* ⏱ 2026-10-01 · EXM-01: every extension in extensions/catalog/extensions.json whose rail
+     config declares a web offering is priced too, and its cards carry no bullet. */
+  const extensionSlugs = new Set();
+  {
+    const extAbs = abs('extensions/catalog/extensions.json');
+    if (existsSync(extAbs)) {
+      try {
+        for (const row of JSON.parse(readFileSync(extAbs, 'utf8'))) {
+          if (typeof row?.slug === 'string' && declared(row.slug).length > 0) {
+            expected.add(row.slug);
+            extensionSlugs.add(row.slug);
+          }
+        }
+      } catch (e) {
+        problems.push(`limb P cannot read extensions/catalog/extensions.json (${e.message}), so a priced extension's section could not be required.`);
+      }
+    }
+  }
   /** featureSet → the tagline of its highest sellable version (the generator's rule). */
   const sellableTagline = new Map();
   const sellableVersion = new Map();
@@ -792,6 +810,7 @@ let pricedSections = 0;
   }
   /** The bullet lines a product's own register gives it; nothing else may sit in its section. */
   const ownBullets = (slug) => {
+    if (extensionSlugs.has(slug)) return new Set();
     if (sellableTagline.has(slug)) return new Set([sellableTagline.get(slug)].filter((t) => t !== ''));
     const flags = rail?.apps?.[slug]?.features ?? rail?.defaults?.features ?? {};
     const own = new Set();
@@ -856,7 +875,7 @@ let pricedSections = 0;
       if (!expected.has(m[1])) {
         problems.push(
           `${PRICING_PAGE} carries a section for "${m[1]}", which no record prices (not a live app with an offering, ` +
-            `not a \`sellable\` row of ${BUNDLES_REGISTER}). The page would sell what the records do not.`,
+            `not an extension with an offering, not a \`sellable\` row of ${BUNDLES_REGISTER}). The page would sell what the records do not.`,
         );
       }
     }

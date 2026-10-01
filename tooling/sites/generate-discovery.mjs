@@ -1471,12 +1471,26 @@ export const pricingClose = (region) => `<!-- /PRICING:${region} -->`;
  *            features?: {flag: string, title: string, blurb: string}[],
  *            offerings: object[], paywallEnabled: boolean}[]}
  */
-export function pricedProducts(ctx, liveApps, bundles, problems) {
+export function pricedProducts(ctx, liveApps, bundles, problems, extensions = []) {
   const priced = [];
   for (const app of liveApps) {
     const { features, offerings, paywallEnabled } = commerceFor(ctx.rail, app.slug, problems);
     if (offerings.length > 0) {
       priced.push({ slug: app.slug, name: app.name, kind: 'app', tagline: app.tagline ?? '', features, offerings, paywallEnabled });
+    }
+  }
+  /* ⏱ 2026-10-01 · EXM-01. AN EXTENSION WITH A WEB OFFERING IS PRICED HERE: FullShot
+     Pro is sold on the nikatru.com checkout only (decisions/ext/015), so this page
+     is the one place its price is published, and the page Paddle verifies. Any
+     register status: the offering, not the store listing, is what is priced. Its
+     cards carry NO bullet — an extension is served no `features` (config.ts sells
+     its `paywall` alone), and the defaults' flags are app #1's words. */
+  for (const ext of extensions) {
+    if (typeof ext?.slug !== 'string' || ext.slug === '') continue;
+    const { offerings, paywallEnabled } = commerceFor(ctx.rail, ext.slug, problems);
+    if (offerings.length > 0) {
+      const name = typeof ext.name === 'string' && ext.name.trim() !== '' ? ext.name : ext.slug;
+      priced.push({ slug: ext.slug, name, kind: 'extension', tagline: ext.tagline ?? '', features: [], offerings, paywallEnabled });
     }
   }
   const sellable = new Map();
@@ -1517,6 +1531,22 @@ function readBundleRows(repoRoot, problems) {
   if (r.ok) return r.rows;
   if (existsSync(join(repoRoot, ...BUNDLES_REGISTER.split('/')))) {
     problems.push(`${r.why}. ${PRICING_PAGE} prices every sellable bundle, so an unreadable register is a price list that may be missing one.`);
+  }
+  return [];
+}
+
+/** The extension register's rows (extensions/catalog/extensions.json). Absent in a
+ *  fixture tree, which has no extension; present and unreadable is a problem. */
+export const EXTENSION_REGISTER = 'extensions/catalog/extensions.json';
+function readExtensionRows(repoRoot, problems) {
+  const p = join(repoRoot, ...EXTENSION_REGISTER.split('/'));
+  if (!existsSync(p)) return [];
+  try {
+    const rows = JSON.parse(readFileSync(p, 'utf8'));
+    if (Array.isArray(rows)) return rows;
+    problems.push(`${EXTENSION_REGISTER} is not a list. ${PRICING_PAGE} prices every extension with a web offering.`);
+  } catch (e) {
+    problems.push(`${EXTENSION_REGISTER} is not valid JSON (${e.message}). ${PRICING_PAGE} prices every extension with a web offering.`);
   }
   return [];
 }
@@ -1963,6 +1993,8 @@ export function planDiscovery(repoRoot) {
     channels: readChannelRegister(repoRoot, problems),
     // The bundle register, for the price list's `sellable` bundles.
     bundles: readBundleRows(repoRoot, problems),
+    // The extension register, for the price list's priced extensions (EXM-01, 2026-10-01).
+    extensions: readExtensionRows(repoRoot, problems),
   };
 
   const live = usable.filter((a) => a.status === 'live');
@@ -2050,7 +2082,7 @@ export function planDiscovery(repoRoot) {
       // above for why a hand-written page is spliced rather than generated, and
       // why leaving those numbers hand-maintained was a defect no guard in this
       // repository could see.
-      if (rel === PRICING_PAGE) out = applyPricing(out, pricedProducts(ctx, live, ctx.bundles, problems));
+      if (rel === PRICING_PAGE) out = applyPricing(out, pricedProducts(ctx, live, ctx.bundles, problems, ctx.extensions));
       // ... and the support and about pages take one each, for the apps they
       // name. See `supportAppsBlock` above for why the list is `live`.
       if (rel === SUPPORT_PAGE) {

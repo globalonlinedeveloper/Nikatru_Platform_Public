@@ -234,7 +234,7 @@
     22,
 
   "config-registry.test.mjs":
-    61,
+    65,
 
   "connect-origins.test.mjs":
     38,
@@ -513,7 +513,7 @@
     62,
 
   "legal-text-parity.test.mjs":
-    29,
+    30,
 
   "legal-tripwires.test.mjs":
     26,
@@ -774,7 +774,7 @@
     133,
 
   "rail-prices.test.mjs":
-    54,
+    59,
 
   "redeploy-stranded.test.mjs":
     50,
