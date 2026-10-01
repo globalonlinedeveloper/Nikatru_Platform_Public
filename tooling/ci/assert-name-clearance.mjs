@@ -452,7 +452,16 @@ for (const app of expectedApps) {
       // checks RULINGS, so a widened schema cannot turn an empty hold into a pass.
       const owed = [];
       if (typeof ch.storeRecordId !== 'string' || ch.storeRecordId.trim() === '') owed.push('a `storeRecordId`');
-      if (ch.heldBy !== 'owner') owed.push('`heldBy: "owner"`');
+      // ⏱ 2026-10-01 (#1099 review, finding 3): `lead` is a hold the lead recorded, and passes only with the
+      // owner delegation it cites and the store-API proof it rests on — never as an anonymous `owner`.
+      if (ch.heldBy === 'lead') {
+        if (typeof ch.delegation !== 'string' || ch.delegation.trim() === '') owed.push('the cited owner `delegation` a lead-recorded hold acts under');
+        if (!ch.proof || ['call', 'result'].some((k) => typeof ch.proof[k] !== 'string' || ch.proof[k].trim() === '') || !isIsoDate(ch.proof.observedOn)) {
+          owed.push('the store-API `proof` {call, result, observedOn} a lead-recorded hold rests on');
+        }
+      } else if (ch.heldBy !== 'owner') {
+        owed.push('`heldBy: "owner"` (or `"lead"` with its delegation and proof)');
+      }
       if (!isIsoDate(ch.heldOn)) owed.push('a dated `heldOn`');
       if (owed.length) {
         problems.push(
@@ -460,7 +469,7 @@ for (const app of expectedApps) {
             `with the store's own record id and a date; missing any of them nobody can look it up, so it does not pass. Record it: ${holdCmd}`,
         );
       } else {
-        submittable.push(`${app} HELD (store record ${ch.storeRecordId}, ${ch.heldOn})`);
+        submittable.push(`${app} HELD (store record ${ch.storeRecordId}, ${ch.heldOn}${ch.heldBy === 'lead' ? ', recorded by the lead under a cited delegation' : ''})`);
       }
     } else {
       problems.push(
