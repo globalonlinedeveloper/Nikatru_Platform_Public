@@ -170,6 +170,13 @@
       "rendered": false
     },
     {
+      "name": "release-notes.txt",
+      "kind": "text",
+      "app": "additional",
+      "extension": null,
+      "rendered": false
+    },
+    {
       "name": "snap-name.txt",
       "kind": "text",
       "app": "additional",

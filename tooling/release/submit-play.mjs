@@ -669,7 +669,10 @@ if (!problems.length) {
   ok(`metadata tree ${metaDir} — ${filesChecked} field(s) present and non-empty, ${limitsChecked} within a SOURCED Play limit`);
 }
 
-// ── 1b. the release notes ("What's new") — OPTIONAL, and the one changelog source ──
+// ── 1b. the release notes ("What's new") — the one changelog source ──
+// The register names release-notes.txt in android-play's additionalFiles (with the same 500 cap),
+// so assert-store-metadata requires it in every Play tree, the brick included. This block stays
+// for the release path itself: it is what puts the text ON the release.
 // ⏱ 2026-10-01 (lane prep-play-first-release). Until then no release carried notes: the track
 // update sent none and nothing in the tree held any. `release-notes.txt` in the listing tree is
 // now that source, sent with the release as its default-language notes. Optional because Play
