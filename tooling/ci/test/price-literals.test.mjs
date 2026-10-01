@@ -96,7 +96,15 @@ const LISTING_REGISTER = () => ({
     { id: 'web', kind: 'web', surface: 'app', storeMetadataDir: null },
     { id: 'android-play', kind: 'store', surface: 'app', storeMetadataDir: 'apps/{app}/store/android-play' },
     { id: 'ios-appstore', kind: 'store', surface: 'app', storeMetadataDir: 'apps/{app}/store/ios-appstore' },
-    { id: 'edge-addons', kind: 'store', surface: 'extension', storeMetadataDir: 'extensions/Extension/{tool}/store/edge' },
+    // The real register's edge-addons row quotes policy 1.8.2, the ground limb C's
+    // one price-range allowance stands on; a row without it is COVERAGE LOST (LC6).
+    {
+      id: 'edge-addons',
+      kind: 'store',
+      surface: 'extension',
+      storeMetadataDir: 'extensions/Extension/{tool}/store/edge',
+      purchaseRail: { rail: 'paddle', forbidsWhy: 'policy 1.8.2 requires the price range in the listing' },
+    },
   ],
   storeMetadataContract: {
     perChannel: { 'ios-appstore': { additionalFiles: ['subtitle.txt', 'promotional-text.txt', 'privacy-manifest.json'] } },
@@ -415,6 +423,12 @@ describe('limb C — no price and no lifetime plan in any listing text field', (
     const r = run({ noRegister: true });
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — tooling\/channel-register\.json does not exist, so limb C cannot say which channels carry a listing/);
+  });
+
+  test('LC6 · COVERAGE LOST when the edge-addons row stops citing policy 1.8.2 — the price-range allowance has no ground', () => {
+    const r = run({ mutateRegister: (reg) => { delete reg.channels.find((c) => c.id === 'edge-addons').purchaseRail; } });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — tooling\/channel-register\.json channel "edge-addons" no longer cites policy 1\.8\.2/);
   });
 
   test('LC5 · COVERAGE LOST when a tree exists and holds none of its listing text fields', () => {
