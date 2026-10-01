@@ -96,6 +96,12 @@ AppErrorCopy? appErrorCopy(BuildContext context) {
         );
 }
 
+/// Subly's [AppErrorScreen.install]: localized copy and a "Go home" way out
+/// (ST truth pass, EN-17). Here, not inline in main.dart, because main.dart is
+/// a private copy of the chassis file and may not grow (chassis parity).
+void installAppErrorScreen() =>
+    AppErrorScreen.install(localized: appErrorCopy, onGoHome: goHomeAfterError);
+
 /// The error screen's recovery: `/home`, through the root navigator — the
 /// error widget replaces a subtree, so the router above it is still there.
 void goHomeAfterError() => rootNavigatorKey.currentContext?.go('/home');
