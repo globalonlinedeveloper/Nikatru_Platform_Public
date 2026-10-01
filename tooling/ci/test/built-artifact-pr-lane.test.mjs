@@ -530,3 +530,29 @@ test('T14w: web-artifacts places the fallback fonts with deploy-web\'s own step,
   assert.deepEqual(late.map((b) => b.runLine), [], `${PR_WORKFLOW}:${fonts[0].n} places the fonts before the build it places them into`);
   assert.ok(fonts[0].n < smoke[0].n, `${PR_WORKFLOW}:${fonts[0].n} places the fonts after the smoke at :${smoke[0].n}, so the smoke boots a bundle without them`);
 });
+
+// O-PR-LANE-GRADLE-CACHE's safety argument (design-pr-lane-artifacts.md Q4, and
+// #1111 review 1, finding 3): the Gradle cache lives in ci.yml `android-artifacts`
+// and NOWHERE else — never in a composite the release builds share
+// (setup-flutter), never in build-platforms.yml — so no release build restores a
+// cache a pull request could have written. Read through workflow-scan, which
+// blanks comments, so a `# why:` naming the cache does not count as touching it.
+test('T15: only ci.yml android-artifacts touches the Gradle cache (~/.gradle/caches, a gradle-android-artifacts- key, org.gradle.caching)', () => {
+  const touches = (text) => /\.gradle\/caches|gradle-android-artifacts-|org\.gradle\.caching/.test(text);
+  const found = [];
+  const wfDir = join(REPO, '.github', 'workflows');
+  const workflows = readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f));
+  assert.ok(workflows.length >= 10, `only ${workflows.length} workflow file(s) under .github/workflows`);
+  for (const f of workflows) {
+    const wf = parseWorkflow(REPO, `.github/workflows/${f}`);
+    for (const job of wf.jobs.values()) if (job.logical.some((l) => touches(l.text ?? ''))) found.push(`.github/workflows/${f}#${job.name}`);
+  }
+  const actionsDir = join(REPO, '.github', 'actions');
+  const actions = readdirSync(actionsDir).filter((d) => existsSync(join(actionsDir, d, 'action.yml')));
+  assert.ok(actions.includes('setup-flutter'), 'the scan no longer sees .github/actions/setup-flutter');
+  for (const d of actions) {
+    const code = readFileSync(join(actionsDir, d, 'action.yml'), 'utf8').split('\n').map((l) => (/^\s*#/.test(l) ? '' : l.replace(/\s#.*$/, ''))).join('\n');
+    if (touches(code)) found.push(`.github/actions/${d}/action.yml`);
+  }
+  assert.deepEqual(found, [`${PR_WORKFLOW}#${PR_JOB}`], 'the Gradle cache must be touched by ci.yml android-artifacts and nothing else');
+});
