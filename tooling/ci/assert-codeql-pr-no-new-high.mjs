@@ -56,13 +56,14 @@
 // CAN reach main without a disposition, and so can one a CodeQL upgrade opens.
 // That residue is NOT allowed to surface as red on unrelated PRs. Two readers hold
 // it instead:
-//   · MAIN turns red. codeql.yml's `dispositions` job runs limb C of
+//   · MAIN turns red. The last step of codeql.yml's `analyze` job runs limb C of
 //     assert-alert-disposition.mjs after every analysis of main (push, schedule),
 //     so the commit that let the alert in carries the red, within minutes.
 //   · A PULL REQUEST sees it as MAIN DEBT. On a pull_request event limb C fails
-//     only on alerts in paths the PR changes (it can add the disposition in the
-//     same change); every other undispositioned main alert prints, and blocks
-//     nothing. The push to main, and the dispositions job, still fail on it.
+//     only on alerts in paths the PR changes, or whose entry the PR adds,
+//     removes or edits (it can fix that in the same change); every other
+//     undispositioned main alert prints, and blocks nothing. The push to main, and
+//     that limb C step, still fail on it.
 // Why not grade the full alert set of the merge ref instead: the PR analysis
 // would have to stop being diff-informed, and a full analysis per PR still cannot
 // see a CodeQL upgrade or a query change landing on main — a main-side check is

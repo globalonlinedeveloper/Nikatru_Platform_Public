@@ -21,7 +21,7 @@
     21,
 
   "alert-disposition.test.mjs":
-    48,
+    55,
 
   "analytics-contract.test.mjs":
     79,
@@ -255,7 +255,7 @@
     33,
 
   "credential-origin-guard.test.mjs":
-    14,
+    18,
 
   "credential-origin.test.mjs":
     33,
@@ -852,7 +852,7 @@
     12,
 
   "self-host-fallback-fonts.test.mjs":
-    23,
+    25,
 
   "session-revocation.test.mjs":
     15,

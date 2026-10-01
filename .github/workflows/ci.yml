@@ -1017,7 +1017,7 @@ jobs:
       # that is high or critical, or that the PR's own tooling/ci/codeql-dispositions.json
       # does not answer (every severity since 2026-09-30). It sees only alerts on the
       # PR's changed lines (the analysis is diff-informed); the rest is caught on main
-      # by codeql.yml's `dispositions` job. LAST, so the scanners above have run while
+      # by the limb C step at the end of codeql.yml's `analyze` job. LAST, so the scanners above have run while
       # CodeQL (136-212 s over 8 PR runs, 2026-09-30) finishes; it polls for up to 10
       # minutes, and an analysis that never appears is COVERAGE LOST (exit 2), never a pass.
       - name: This pull request adds no CodeQL alert its own dispositions do not answer

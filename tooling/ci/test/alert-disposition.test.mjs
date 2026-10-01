@@ -58,7 +58,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { reconcile, declaredSources, issueFilingJobs, sourceHealth, classify, parseDispositions, judgeCodeql, scopeToPr, CODEQL_DISPOSITIONS_REL, PINNED_SUPABASE_HOST } from '../assert-alert-disposition.mjs';
+import { reconcile, declaredSources, issueFilingJobs, sourceHealth, classify, parseDispositions, judgeCodeql, scopeToPr, changedEntries, CODEQL_DISPOSITIONS_REL, PINNED_SUPABASE_HOST } from '../assert-alert-disposition.mjs';
 import { SUPABASE_HOSTED_HOST_SHA256 } from '../../ops/credential-origin.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -307,10 +307,11 @@ describe('[14]O-5 · LIMB B — prints the gap, and must NOT fail the build', ()
   const scheduled = (id, conclusion) => ({ id, event: 'schedule', conclusion, created_at: '2026-08-07T06:00:00Z' });
   const issue = (number, title, created_at) => ({ number, title, created_at, state: 'open' });
   // ⏱ 2026-09-30: limb C runs after limb B and refuses a probe with no `codeql`
-  // answer, so these limb B probes carry an empty one (every entry prints STALE).
+  // answer, so these limb B probes carry one. ⏱ 2026-10-01: an all-empty read is
+  // COVERAGE LOST now (review of #1097, finding 4), so it holds one fixed alert.
   const runGuard = (probe) => {
     const file = join(TMP, `probe${seq++}.json`);
-    writeFileSync(file, JSON.stringify({ codeql: { open: [], dismissed: [] }, ...probe }));
+    writeFileSync(file, JSON.stringify({ codeql: { open: [], dismissed: [], fixed: [{ number: 1, state: 'fixed' }] }, ...probe }));
     return spawnSync(process.execPath, [GUARD, '--probe-file', file, '--now', NOW], { cwd: REPO, encoding: 'utf8' });
   };
 
@@ -469,7 +470,7 @@ describe('LIMB C — every open CodeQL alert is fixed in code or carries a dispo
   });
 
   test('STALE: an entry naming a closed alert is REPORTED, and does not fail (exit 0)', () => {
-    const r = runGuard({ codeql: { open: [], dismissed: [] } });
+    const r = runGuard({ codeql: { open: [], dismissed: [], fixed: REAL.entries.map((e) => fromEntry(e, { state: 'fixed' })) } });
     assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
     const stale = r.stdout.match(/⬜ STALE — #\d+/g) ?? [];
     assert.equal(stale.length, REAL.entries.length, 'every entry names an alert that is neither open nor dismissed here');
@@ -506,6 +507,94 @@ describe('LIMB C — every open CodeQL alert is fixed in code or carries a dispo
     assert.doesNotMatch(r.stdout, /MAIN DEBT/);
   });
 
+  // ⏱ 2026-10-01 (review of #1097, finding 1, MAJOR): a PR's own change to a LIVE
+  // disposition is the PR's, wherever the alert's file is. Before, each of these
+  // printed MAIN DEBT and passed, and main went red on the merge.
+  const live = () => REAL.entries.map((e) => fromEntry(e));
+  const withFile = (entries, probe) => {
+    // The guard reads the dispositions file from ITS tree, so these run the real
+    // guard in a copy whose file is the PR's edited version.
+    const root = tree();
+    mkdirSync(join(root, 'tooling/ci'), { recursive: true });
+    for (const f of ['assert-alert-disposition.mjs', 'workflow-scan.mjs', 'tree-walk.mjs', 'flutter-release-build.mjs', 'app-set.mjs', 'anchored-run-read.mjs', 'run-page-anchor.mjs']) {
+      cpSync(join(CI_DIR, f), join(root, 'tooling/ci', f));
+    }
+    mkdirSync(join(root, 'tooling/app-yaml'), { recursive: true });
+    cpSync(join(CI_DIR, '..', 'app-yaml', 'yaml.mjs'), join(root, 'tooling/app-yaml', 'yaml.mjs'));
+    for (const f of ['bounded-retry.mjs', 'check-code-scanning-age.mjs', 'credential-origin.mjs']) cpSync(join(CI_DIR, '..', 'ops', f), join(root, 'tooling/ops', f));
+    write(root, CODEQL_DISPOSITIONS_REL, JSON.stringify({ dispositions: entries }));
+    const file = join(TMP, `probe${seq++}.json`);
+    writeFileSync(file, JSON.stringify(probe));
+    return spawnSync(process.execPath, [join(root, 'tooling/ci/assert-alert-disposition.mjs'), '--limb', 'C', '--probe-file', file], { cwd: root, encoding: 'utf8' });
+  };
+  const DISP = [CODEQL_DISPOSITIONS_REL];
+
+  test('🔴 PULL REQUEST: deleting a LIVE entry fails the PR (exit 1), even with the base file given', () => {
+    const [gone, ...kept] = REAL.entries;
+    const r = withFile(kept, { prTouched: DISP, prBaseDispositions: REAL.entries, codeql: { open: live(), dismissed: [] } });
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, new RegExp(`#${gone.alert} {2}`));
+    assert.doesNotMatch(r.stdout, /MAIN DEBT/);
+  });
+
+  test('🔴 PULL REQUEST: deleting a LIVE entry with NO readable base fails too (strict)', () => {
+    const [, ...kept] = REAL.entries;
+    const r = withFile(kept, { prTouched: DISP, codeql: { open: live(), dismissed: [] } });
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /STRICTLY \(it changes the dispositions file and its base could not be read\)/);
+  });
+
+  test('🔴 PULL REQUEST: editing a LIVE entry so it no longer matches its alert fails (exit 1)', () => {
+    const [first, ...rest] = REAL.entries;
+    const edited = [{ ...first, path: `${first.path}.moved`, reason: `${first.reason} (edited)` }, ...rest];
+    const r = withFile(edited, { prTouched: DISP, prBaseDispositions: REAL.entries, codeql: { open: live(), dismissed: [] } });
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, new RegExp(`entry #${first.alert} says .* It dispositions a different alert`));
+  });
+
+  test('PULL REQUEST GREEN CONTROL: an untouched undispositioned alert elsewhere is MAIN DEBT (exit 0) while the PR edits another entry', () => {
+    const [first, ...rest] = REAL.entries;
+    const edited = [{ ...first, reason: `${first.reason} (reworded)` }, ...rest];
+    const extra = alert(999993, 'js/unused-local-variable', 'tooling/ci/untouched.mjs');
+    const r = withFile(edited, { prTouched: DISP, prBaseDispositions: REAL.entries, codeql: { open: [...live(), extra], dismissed: [] } });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /⬜ MAIN DEBT — #999993 /);
+    assert.match(r.stdout, /on the 1 entr\(ies\) it adds, removes or edits/);
+  });
+
+  test('changedEntries: added, removed and edited numbers; an identical entry with keys reordered is not a change', () => {
+    const a = { alert: 1, rule: 'r', path: 'p', disposition: 'by-design', reason: 'x' };
+    const b = { alert: 2, rule: 'r', path: 'p', disposition: 'by-design', reason: 'x' };
+    const reordered = { reason: 'x', disposition: 'by-design', path: 'p', rule: 'r', alert: 1 };
+    assert.deepEqual([...changedEntries([a, b], [reordered, { ...b, reason: 'y' }, { ...b, alert: 3 }])].sort(), [2, 3]);
+    assert.deepEqual([...changedEntries([a, b], [a])], [2]);
+  });
+
+  // ⏱ 2026-10-01 (review of #1097, finding 4): an empty read graded nothing and said ✓.
+  test('🔴 COVERAGE LOST: an all-empty alert read (open, dismissed, fixed) is exit 2, never a pass', () => {
+    const r = runGuard({ codeql: { open: [], dismissed: [], fixed: [] } });
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /EMPTY READ: the API returned no alert in any state/);
+  });
+
+  test('🔴 COVERAGE LOST: --analysis-of a commit with no listed analysis is exit 2, and an empty read beside a real analysis says so', () => {
+    const SHA_A = 'b'.repeat(40);
+    const file = join(TMP, `probe${seq++}.json`);
+    const spawnC = (codeql) => {
+      writeFileSync(file, JSON.stringify({ codeql }));
+      return spawnSync(process.execPath, [GUARD, '--limb', 'C', '--analysis-of', SHA_A, '--probe-file', file], { cwd: REPO, encoding: 'utf8' });
+    };
+    const none = spawnC({ open: live(), dismissed: [], analyses: [{ id: 7, commit_sha: 'c'.repeat(40), results_count: 63 }] });
+    assert.equal(none.status, 2, `${none.stdout}${none.stderr}`);
+    assert.match(none.stderr, /NO ANALYSIS FOUND: no CodeQL analysis of bbbbbbbbbbbb is listed/);
+    const empty = spawnC({ open: [], dismissed: [], fixed: [], analyses: [{ id: 8, commit_sha: SHA_A, results_count: 63 }] });
+    assert.equal(empty.status, 2, `${empty.stdout}${empty.stderr}`);
+    assert.match(empty.stderr, /ZERO ALERTS WHILE THE ANALYSIS EXISTS: analysis 8 of bbbbbbbbbbbb \(results 63\)/);
+    const green = spawnC({ open: live(), dismissed: [], analyses: [{ id: 9, commit_sha: SHA_A, results_count: 63 }] });
+    assert.equal(green.status, 0, `GREEN control:\n${green.stdout}${green.stderr}`);
+    assert.match(green.stdout, /graded after analysis 9 of bbbbbbbbbbbb/);
+  });
+
   test('scopeToPr: with no pull request (touched null) nothing is moved to debt', () => {
     const v = judgeCodeql({ open: [alert(5, 'js/x', 'a.mjs')], dismissed: [], entries: [] });
     const scoped = scopeToPr(v, null);
@@ -514,7 +603,7 @@ describe('LIMB C — every open CodeQL alert is fixed in code or carries a dispo
     assert.equal(scopeToPr(v, new Set(['b.mjs'])).failed, false);
   });
 
-  test('--limb C runs limb C alone (codeql.yml dispositions job): red and green, and no other limb is accepted', () => {
+  test('--limb C runs limb C alone (the last step of the codeql.yml analyze job): red and green, and no other limb is accepted', () => {
     const file = join(TMP, `probe${seq++}.json`);
     const spawnC = (codeql, limb = 'C') => {
       writeFileSync(file, JSON.stringify({ codeql }));

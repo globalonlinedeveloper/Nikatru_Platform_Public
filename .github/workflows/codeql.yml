@@ -146,8 +146,9 @@ jobs:
         # The history first: a fixed-in-tree claim is read at the commit main's
         # analysis last saw the alert at (`git show <sha>:…`). Spawns git
         # synchronously and exits, the shape that hung in ci.yml (2026-09-26), so
-        # --single-threaded.
+        # --single-threaded. `--analysis-of` refuses (exit 2) unless the analysis of THIS
+        # commit is listed, and an empty alert read is exit 2 too (review of #1097, finding 4).
         run: |
           set -euo pipefail
           git fetch --quiet --unshallow origin
-          node --single-threaded tooling/ci/assert-alert-disposition.mjs --limb C
+          node --single-threaded tooling/ci/assert-alert-disposition.mjs --limb C --analysis-of "$GITHUB_SHA"
