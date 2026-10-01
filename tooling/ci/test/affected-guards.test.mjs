@@ -267,7 +267,7 @@ test('AG7 the workflow read: value-taking node flags, the script, and a --test c
   assert.deepEqual(chains.map((c) => c.parts), [['apps', '\u0000', 'pubspec.yaml'], ['..', 'x.json']]);
 });
 
-test('AG9 a sharded guard-tests step (node --test $(cat <plan>)) still selects the guard suites; without its --plan call the parse is blind', async () => {
+test('AG10 a sharded guard-tests step (node --test $(cat <plan>)) still selects the guard suites; without its --plan call the parse is blind', async () => {
   const sharded = (plan) => [
     'name: CI',
     'on: pull_request',
