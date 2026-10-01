@@ -158,11 +158,23 @@ String? firstRunDestination(GoRouterState state) {
 // EXEMPT from the auth gate below: a first run happens before there is an
 // account, so falling through would hand '/onboarding' to the signed-out
 // rule, and the user never sees onboarding at all.
+//
+// ⏱ 2026-10-01 · EN-12 — A DEVICE HOLDING A SESSION HAS USED THE APP. A
+// reinstall over a session the platform kept (the iOS keychain outlives the
+// app) read `onboarded == false` off a fresh store and paged a returning user
+// through the pitch. The session is the stronger fact, so it skips the
+// carousel. This now reads the session on the first-run path, which the
+// `late final` note on [GateContext.loggedIn] says it once did not — the cost
+// is one read, and only when the flag says "not seen".
 GateVerdict? onboardingGate(GateContext ctx) {
   final bool? onboarded = ctx.ref.read(onboardingSeenProvider);
-  // Still reading the disk. Decline to decide rather than guessing.
+  // Still reading the disk. Decline to decide rather than guessing — and
+  // `OnboardingScreen` paints a neutral frame, not the carousel, meanwhile
+  // (EN-11), so a returning user is never flashed the first run.
   if (onboarded == null) return const GateVerdict(null);
-  if (!onboarded) return GateVerdict(firstRunDestination(ctx.state));
+  if (!onboarded && !ctx.loggedIn) {
+    return GateVerdict(firstRunDestination(ctx.state));
+  }
   // LIVE DIVERGENCE FROM THE STAMP: home is '/home' here, not '/'.
   if (ctx.loc == '/onboarding') return const GateVerdict('/home');
   return null;
@@ -241,9 +253,14 @@ GateVerdict? signedOutGate(GateContext ctx) {
   // is never banked — and `afterSignInDestination` already reads it. `/home`
   // is not banked either: it is where a sign-in lands with no `next` anyway,
   // so `?next=/home` would be a longer URL that says nothing.
+  // ⏱ 2026-10-01 · EN-03 (O-SIGN-IN-DROPS-THE-NEXT-ROUTE) landed the same
+  // banking for `/insights` and `/paywall`, and leaves `/` unbanked too: it
+  // redirects home. `nextOr` still refuses `?next=https://evil`.
   if (!loggedIn && !authFlow.contains(loc)) {
     return GateVerdict(
-      loc == '/home' ? '/sign-in' : _gateWithNext('/sign-in', ctx.state),
+      (loc == '/' || loc == '/home')
+          ? '/sign-in'
+          : _gateWithNext('/sign-in', ctx.state),
     );
   }
   return null;

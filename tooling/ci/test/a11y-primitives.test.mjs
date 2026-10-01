@@ -155,10 +155,14 @@ describe('the real tree', () => {
       assert.match(r.stdout, /ST-Y2: 3 gesture detector\(s\), 0 without a tap callback, 3 in scope, 3 exempt/);
       // 10 -> 11 on 2026-10-01 (O-APPS-GOV-IN-VAPT-CHECKLIST): the chassis
       // ReauthDialog's password field, which carries its hint (still 1 without).
-      // 11 -> 13 and 1 -> 0 on 2026-10-01 (ST-SETTINGS): SE-02's change-e-mail/
-      // password dialog adds two obscured fields, both hinted; SE-05 hinted the
-      // last one, the delete-account password.
-      assert.match(r.stdout, /ST-Y3: 13 obscured field\(s\), 0 without hints, all baselined/);
+      // 11 -> 9 on 2026-10-01 (train st-entry): the app's private reset-password
+      // copy and its two obscured boxes are gone — the app ADOPTS the chassis
+      // ResetPasswordView, whose two boxes (now AuthField, still hinted) were
+      // already counted. Read off the guard's own line.
+      // 9 -> 11 and 1 -> 0 on 2026-10-01 (ST-SETTINGS, on st-entry): SE-02's
+      // change-e-mail/password dialog adds two obscured fields, both hinted;
+      // SE-05 hinted the last one, the delete-account password.
+      assert.match(r.stdout, /ST-Y3: 11 obscured field\(s\), 0 without hints, all baselined/);
     });
   });
 });

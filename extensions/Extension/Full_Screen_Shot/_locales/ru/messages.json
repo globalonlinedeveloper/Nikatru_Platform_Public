@@ -134,6 +134,9 @@
   "popupLinkBatch": {
     "message": "Пакет"
   },
+  "popupUpgrade": {
+    "message": "Upgrade to FullShot Pro"
+  },
   "popupLinkOptions": {
     "message": "Настройки"
   },

@@ -124,10 +124,14 @@ class _Wire {
   /// What the challenge endpoint answers, when not a fresh challenge.
   (int, Map<String, Object?>)? challengeRefusal;
 
+  /// Extra headers on an op's answer (EN-02: `Retry-After`).
+  Map<String, String> opHeaders = const <String, String>{};
+
   late final MockClient client = MockClient((http.Request r) async {
     seen.add(r);
     final String path = r.url.path;
     final (int, Map<String, Object?>) answer;
+    bool isOp = false;
     if (path == '/v1/auth/native/$_app/attest/challenge') {
       answer =
           challengeRefusal ??
@@ -142,11 +146,15 @@ class _Wire {
       answer = (201, <String, Object?>{'key_id': 'KEY'});
     } else {
       answer = op(r);
+      isOp = true;
     }
     return http.Response(
       jsonEncode(answer.$2),
       answer.$1,
-      headers: <String, String>{'content-type': 'application/json'},
+      headers: <String, String>{
+        'content-type': 'application/json',
+        if (isOp) ...opHeaders,
+      },
     );
   });
 
@@ -486,6 +494,72 @@ void main() {
     expect(wire.seen.where(_hasAttestHeader), isEmpty);
     expect(wire.at('/attest/challenge'), isEmpty);
     expect(attestor.registers, 0);
+  });
+
+  // ⏱ 2026-10-01 · EN-02 — the Worker's `Retry-After` reaches the failure a
+  // screen maps. gotrue-dart's exception carries no header, so without the
+  // latch the wait was dropped here. MUTATION PROOF: drop the `observe` call in
+  // `NativeAttestationClient.send` and the first expectation goes red.
+  test('a 429 with Retry-After reaches AuthFailure.retryAfter, once', () async {
+    attestor.registered = true;
+    final RetryAfterLatch latch = RetryAfterLatch();
+    final SupabaseAuthRepository auth = SupabaseAuthRepository(
+      client: sb.GoTrueClient(
+        url: 'http://127.0.0.1:9/auth/v1',
+        autoRefreshToken: false,
+        asyncStorage: _MemoryPkce(),
+      ),
+      nativeCredentials: nativeCredentialClient(
+        platformBaseUrl: _origin,
+        appId: _app,
+        attestor: attestor,
+        isWeb: false,
+        platform: TargetPlatform.android,
+        transport: wire.client,
+        pkceStorage: _MemoryPkce(),
+        retryAfter: latch,
+      ),
+      retryAfter: latch,
+    );
+    wire.op = (_) => (
+      429,
+      <String, Object?>{
+        'code': 429,
+        'error_code': 'over_request_rate_limit',
+        'msg': 'Request rate limit reached',
+      },
+    );
+    wire.opHeaders = <String, String>{'retry-after': '60'};
+    await expectLater(
+      auth.signInWithEmail(email: 'a@example.test', password: 'pw'),
+      throwsA(
+        isA<core.AuthFailure>()
+            .having((core.AuthFailure e) => e.code, 'code',
+                'over_request_rate_limit')
+            .having((core.AuthFailure e) => e.retryAfter, 'retryAfter',
+                const Duration(seconds: 60)),
+      ),
+    );
+    wire.opHeaders = const <String, String>{};
+    wire.op = (_) => (
+      400,
+      <String, Object?>{
+        'code': 400,
+        'error_code': 'invalid_credentials',
+        'msg': 'Invalid login credentials',
+      },
+    );
+    await expectLater(
+      auth.signInWithEmail(email: 'a@example.test', password: 'pw'),
+      throwsA(
+        isA<core.AuthFailure>().having(
+          (core.AuthFailure e) => e.retryAfter,
+          'retryAfter',
+          isNull,
+        ),
+      ),
+      reason: 'an answer with no Retry-After never carries a stale wait',
+    );
   });
 
   group('nativeCredentialClient', () {

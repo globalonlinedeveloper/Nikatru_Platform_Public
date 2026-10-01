@@ -59,6 +59,7 @@ class SublyApp extends ConsumerWidget {
       // app never reads, which is the dead-control shape [pipeline C-6] exists
       // to catch.
       locale: ref.watch(localeProvider),
+      localeListResolutionCallback: resolveAndLabelPage,
       // 📌 P2.6a THEME FORK — POST-MERGE RECORD. THIS SHIPPED; NOTHING IS BLOCKED
       // ON IT, AND THE REPAINT IT PREDICTED DID NOT HAPPEN.
       //
@@ -250,13 +251,11 @@ class _OfflineBanner extends ConsumerWidget {
 
   // ⏱ 2026-09-15 · [ADR 086] adopted chassis OfflineBannerHost (PR #743).
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return OfflineBannerHost(
-      unreachable: ref.watch(networkUnreachableProvider),
-      onRetry: () => ref.invalidate(appConfigProvider),
-      child: RootedDeviceNoticeHost(child: child),
-    );
-  }
+  Widget build(BuildContext context, WidgetRef ref) => OfflineBannerHost(
+    unreachable: ref.watch(networkUnreachableProvider),
+    onRetry: () => ref.invalidate(appConfigProvider),
+    child: RootedDeviceNoticeHost(child: child),
+  );
 }
 
 /// 🔑 THE ON-SWITCH FOR THE ENTIRE ANALYTICS RAIL ([pipeline C-6] / stage 11).
@@ -470,6 +469,7 @@ class _AnalyticsGateState extends ConsumerState<AnalyticsGate>
           child: ExcludeSemantics(excluding: asking, child: widget.child),
         ),
         if (asking) const _ConsentPrompt(),
+        if (asking) SwallowSystemBack(of: ref.watch(routerProvider)),
       ],
     );
   }

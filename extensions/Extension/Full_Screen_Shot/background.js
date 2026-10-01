@@ -24,6 +24,10 @@
 if (typeof importScripts === 'function') {
   importScripts('pages/db.js');
   importScripts('pages/batch.js');   // v1.9.7: FSBatch pure core (queue/parse) in the worker
+  // 2026-10-01 (EXM-01): the shared entitlement client, then FullShot's one network file. Worker only:
+  // the credential lives in chrome.storage.local, and no page or content script ever reads it.
+  importScripts('vendor/core/entitlement-client.js');
+  importScripts('pro/account.js');
 }
 
 /* ---------------- the sentences, in the reader's language (v1.10.1) ---------------- */
@@ -1410,6 +1414,15 @@ async function deleteAllData() {
 
 /* ---------------- message router ---------------- */
 
+/* Is `sender` one of this extension's own pages (the popup, an options or
+   result page) — never a content script, whose sender.url is the web page's? */
+function fromOwnPage(sender) {
+  try {
+    return !!sender && sender.id === chrome.runtime.id && typeof sender.url === 'string' &&
+      sender.url.startsWith(chrome.runtime.getURL(''));
+  } catch (_) { return false; }
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, respond) => {
   /* The note is one surface, this is the other: whatever the router answers with
      goes on screen in the popup as it stands (popup/popup.js:72), and some of
@@ -1465,6 +1478,22 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
         /* The three data-lifecycle doors. All three are the worker's because it
            is the half that knows which captures are running; pages/options.js
            supplies the person, the sentence and the confirmation. */
+        /* FullShot Pro (EXM-01, 2026-10-01). Asked by the popup only: a content
+           script runs in a page, and nothing about Pro is a page's business, so a
+           sender that is not one of this extension's own pages is refused. The
+           answer carries no credential — {pro, signedIn, upgradeUrl} — and
+           PRO_UPGRADE opens the checkout only while this browser is NOT Pro. */
+        case 'PRO_STATE':
+        case 'PRO_UPGRADE': {
+          if (!fromOwnPage(sender)) { sendResponse({ error: 'not_allowed' }); break; }
+          const pro = await self.FSPRO.state(chrome.storage.local);
+          if (msg.type === 'PRO_STATE') { sendResponse(pro); break; }
+          if (pro.pro) { sendResponse({ ok: false, pro: true }); break; }
+          await chrome.tabs.create({ url: pro.upgradeUrl });
+          sendResponse({ ok: true });
+          break;
+        }
+
         case 'DATA_STATUS': {
           sendResponse(await dataStatus());
           break;

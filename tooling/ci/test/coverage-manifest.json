@@ -234,7 +234,7 @@
     22,
 
   "config-registry.test.mjs":
-    61,
+    65,
 
   "connect-origins.test.mjs":
     38,
@@ -372,7 +372,7 @@
     64,
 
   "extension-tool-identity.test.mjs":
-    79,
+    82,
 
   "extensions-build-free.test.mjs":
     14,
@@ -516,7 +516,7 @@
     62,
 
   "legal-text-parity.test.mjs":
-    29,
+    30,
 
   "legal-tripwires.test.mjs":
     26,
@@ -672,7 +672,7 @@
     16,
 
   "paywall-flip-ready.test.mjs":
-    9,
+    13,
 
   "plan-deploy.test.mjs":
     36,
@@ -699,10 +699,10 @@
     62,
 
   "port-switch.test.mjs":
-    21,
+    26,
 
   "ports.test.mjs":
-    40,
+    51,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -735,7 +735,7 @@
     31,
 
   "price-literals.test.mjs":
-    37,
+    39,
 
   "privacy-manifest.test.mjs":
     20,
@@ -783,7 +783,7 @@
     133,
 
   "rail-prices.test.mjs":
-    54,
+    59,
 
   "redeploy-stranded.test.mjs":
     50,

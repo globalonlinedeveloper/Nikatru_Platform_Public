@@ -66,6 +66,7 @@ function fixture({ ports = { widgets: port() }, nonPortRows = [{ vendor: 'other'
   w('tooling/ports/_non-port.json', JSON.stringify(nonPort(nonPortRows), null, 2));
   w('tooling/capability-register.json', JSON.stringify({ vendors: { _why: [], acme: { seam: { file: 'services/w/src/lib/contract.ts', symbol: 'WidgetPort' } } } }));
   w('tooling/legal/provider-register.json', JSON.stringify({ providers: [{ id: 'acme' }, { id: 'other' }] }));
+  w('tooling/house-identity.json', JSON.stringify({ ownerDomain: { value: 'acme.test', why: 'fixture' } }));
   w('services/w/src/types.ts', 'export interface Env {\n  ACME_SECRET?: string;\n  OTHER: string;\n}\n');
   w('services/w/src/lib/contract.ts', 'export interface WidgetPort {\n  verify(): boolean;\n}\n');
   w('services/w/src/lib/acme.ts', "import type { WidgetPort } from './contract';\nexport const acmeVerifier: WidgetPort = { verify: () => true };\n");
@@ -281,6 +282,56 @@ describe('assert-ports — every limb reddens', () => {
     assert.equal(portLineFor(r, 'other'), 'port: none — deliberately not ported');
     assert.equal(portLineFor(r, 'nobody'), 'port: UNPLACED (assert-ports limb 8)');
   });
+  it('limb 1: an adapter with no environment must be draft or retired', () => {
+    const doc = port({ adapters: [adapter(), adapter({ id: 'second', status: 'built', environments: [] }), port().adapters[1]] });
+    const r = run(fixture({ ports: { widgets: doc } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 1 .*adapter `second` lists no environment but is built/);
+    const draft = port({ adapters: [adapter(), adapter({ id: 'second', status: 'draft', environments: [] }), port().adapters[1]] });
+    assert.equal(run(fixture({ ports: { widgets: draft } })).code, 0);
+  });
+  it('limb 1: a stream names an adapter of the port, and only secrets that adapter declares', () => {
+    const streams = (st) => port({ selection: { by: 'stream', source: null, default: { live: 'acme', sandbox: 'acme', test: 'fake' }, canary: null }, streams: st });
+    assert.equal(run(fixture({ ports: { widgets: streams({ a: { adapter: 'acme', secrets: ['ACME_SECRET'], from: null, why: 'a fixture stream on acme' } }) } })).code, 0);
+    const noAdapter = run(fixture({ ports: { widgets: streams({ a: { adapter: 'nope', secrets: [], from: null, why: 'a fixture stream on nothing' } }) } }));
+    assert.match(noAdapter.first, /limb 1 .*stream `a` names adapter `nope`/);
+    const badSecret = run(fixture({ ports: { widgets: streams({ a: { adapter: 'acme', secrets: ['OTHER'], from: null, why: 'a fixture stream with a stray key' } }) } }));
+    assert.match(badSecret.first, /limb 1 .*stream `a` takes secret `OTHER`, which its adapter `acme` does not declare/);
+    const missing = run(fixture({ ports: { widgets: port({ selection: { by: 'stream', source: null, default: { live: 'acme', sandbox: 'acme', test: 'fake' }, canary: null } }) } }));
+    assert.match(missing.first, /limb 1 .*selected by stream but declares no `streams`/);
+  });
+  it('limb 8: one vendor behind two adapters of ONE port is placed once; in two ports, twice', () => {
+    const two = port({ adapters: [adapter(), adapter({ id: 'acme-smtp', status: 'external', impl: { configAt: 'box env ACME_*', verify: 'node verify.mjs' }, secrets: [] }), port().adapters[1]] });
+    assert.equal(run(fixture({ ports: { widgets: two } })).code, 0);
+    const other = port({ port: 'gadgets', handTables: [], switch: { runbook: null, dryRun: 'node tooling/ops/port-switch.mjs gadgets --to <adapter> --dry-run' }, level: { claimed: 0, target: 3 } });
+    const r = run(fixture({ ports: { widgets: port(), gadgets: other } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /vendor `acme` is placed 2 times \(gadgets\/acme, widgets\/acme\)/);
+  });
+  it('limb 9: an owner-domain address literal in Worker source exits 1 — a subdomain too; a comment or src/generated/ does not', () => {
+    const lit = run(fixture({ files: { 'services/w/src/index.ts': "import { ADAPTERS } from './registry';\nexport const TO = 'ops@acme.test';\nexport default ADAPTERS;\n" } }));
+    assert.equal(lit.code, 1, lit.out);
+    assert.match(lit.first, /limb 9 \(literals\): services\/w\/src\/index\.ts:2 carries an address on acme\.test/);
+    const sub = run(fixture({ files: { 'services/w/src/index.ts': "import { ADAPTERS } from './registry';\nexport const FROM = 'X <alerts@mail.acme.test>';\nexport default ADAPTERS;\n" } }));
+    assert.match(sub.first, /limb 9 .*index\.ts:2/);
+    const prose = run(fixture({ files: { 'services/w/src/index.ts': "import { ADAPTERS } from './registry';\n// mails ops@acme.test\nexport default ADAPTERS;\n" } }));
+    assert.equal(prose.code, 0, prose.out);
+    const gen = run(fixture({ files: { 'services/w/src/generated/entity.ts': "export const TO = 'ops@acme.test';\n" } }));
+    assert.equal(gen.code, 0, gen.out);
+    const otherDomain = run(fixture({ files: { 'services/w/src/index.ts': "import { ADAPTERS } from './registry';\nexport const TO = 'ops@example.test';\nexport default ADAPTERS;\n" } }));
+    assert.equal(otherDomain.code, 0, otherDomain.out);
+  });
+  it('limb 9: no entity source is COVERAGE LOST (exit 2), never a pass', () => {
+    const r = run(fixture({ files: { 'tooling/house-identity.json': null } }));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /COVERAGE LOST — limb 9/);
+  });
+  it('limb 9: a stream `from` path the entity source does not hold exits 1', () => {
+    const doc = port({ selection: { by: 'stream', source: null, default: { live: 'acme', sandbox: 'acme', test: 'fake' }, canary: null }, streams: { a: { adapter: 'acme', secrets: [], from: 'mail.from.a', why: 'a fixture stream with a sender' } } });
+    const r = run(fixture({ ports: { widgets: doc } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /limb 9 .*stream `a` from path `mail\.from\.a` resolves to no value/);
+  });
   it('callsRunner matches a CALL, never the declaring file or a bare name', () => {
     assert.equal(callsRunner('runX(adapter);', 'runX', '.ts'), true);
     assert.equal(callsRunner('import { runX } from "./s";', 'runX', '.ts'), false);
@@ -294,25 +345,67 @@ describe('assert-ports — on a copy of the REAL registries', () => {
   before(() => {
     root = mkdtempSync(join(tmpdir(), 'ports-real-'));
     const copy = (rel) => { if (existsSync(join(REPO, rel))) cpSync(join(REPO, rel), join(root, rel), { recursive: true }); };
-    for (const rel of ['tooling/ports', 'tooling/capability-register.json', 'tooling/legal/provider-register.json', 'tooling/channel-register.json',
+    for (const rel of ['tooling/ports', 'tooling/capability-register.json', 'tooling/legal/provider-register.json', 'tooling/channel-register.json', 'tooling/house-identity.json', 'tooling/ops/port-switch.mjs',
       'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart']) copy(rel);
     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
   });
-  it('green control: payments, auth and telemetry each claim and earn L2', () => {
+  it('green control: payments, auth and telemetry each claim and earn L2; mail claims and earns L3', () => {
     const r = run(root);
     assert.equal(r.code, 0, r.out);
     for (const p of ['auth', 'payments', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
+    assert.match(r.out, /mail\s+L3\s+L3\s+L3/);
+  });
+  const mutate = (rel, fn, check) => {
+    const abs = join(root, rel);
+    const before = readFileSync(abs, 'utf8');
+    try {
+      writeFileSync(abs, fn(before));
+      check(run(root));
+    } finally { writeFileSync(abs, before); }
+  };
+  it('red: lib/reminders.ts importing the Resend adapter reddens limb 4, and mail earns L1', () => {
+    mutate('services/platform/src/lib/reminders.ts', (s) => `import { createResendMail } from '../adapters/mail/resend';\nexport const _ADAPTER = createResendMail;\n${s}`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 4 \(imports\): tooling\/ports\/mail\.json: `services\/platform\/src\/lib\/reminders\.ts` imports the adapter `services\/platform\/src\/adapters\/mail\/resend\.ts`/);
+      assert.match(r.out, /mail\s+L3\s+L1/);
+    });
+  });
+  it('red: the mail fake selected for live reddens limb 7', () => {
+    mutate('tooling/ports/mail.json', (s) => { const d = JSON.parse(s); d.selection.default.live = 'fake'; return JSON.stringify(d); }, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /FAIL limb 7 \(fakes\) tooling\/ports\/mail\.json selection\.default\.live is the fake `fake`/);
+    });
+  });
+  it('red: a sender put back as a literal in lib/report-notify.ts reddens limb 9', () => {
+    mutate('services/platform/src/lib/report-notify.ts', (s) => `${s}\nexport const REPORT_NOTICE_FROM = 'Nikatru reports <alerts@mail.nikatru.com>';\n`, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 9 \(literals\): services\/platform\/src\/lib\/report-notify\.ts:\d+ carries an address on nikatru\.com/);
+    });
+  });
+  it('red: an entity-source sender edited without a re-render reddens limb 9 (the generated module is stale)', () => {
+    mutate('tooling/house-identity.json', (s) => { const d = JSON.parse(s); d.mail.from.reports.value = 'Nikatru alerts <alerts@mail.nikatru.com>'; return JSON.stringify(d); }, (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /limb 9 \(literals\) render-entity: STALE/);
+    });
+  });
+  it("red: the fake's test no longer CALLING runMailConformance drops mail to L2, under its L3 claim", () => {
+    mutate('services/_shared/test/mail-fake.conformance.test.ts', (s) => s.replace(/runMailConformance\(\{/, 'void ({'), (r) => {
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /mail\s+L3\s+L2/);
+      // resend alone: the SES draft passes the suite too, and is not counted.
+      assert.match(r.out, /mail\.json claims L3 and earns L2: 1 conformant adapter\(s\)/);
+    });
   });
   it('red: deleting one vendor from _non-port.json reddens limb 8', () => {
     const rel = join(root, 'tooling/ports/_non-port.json');
     const before = readFileSync(rel, 'utf8');
     try {
       const doc = JSON.parse(before);
-      doc.rows = doc.rows.filter((x) => x.vendor !== 'resend');
+      doc.rows = doc.rows.filter((x) => x.vendor !== 'github');
       writeFileSync(rel, JSON.stringify(doc));
       const r = run(root);
       assert.equal(r.code, 1, r.out);
-      assert.match(r.first, /limb 8 \(cross-register\): vendor `resend`/);
+      assert.match(r.first, /limb 8 \(cross-register\): vendor `github`/);
     } finally { writeFileSync(rel, before); }
   });
   it("red: paddle's C-8 seam moved off MoRWebhookVerifier's file reddens limb 8", () => {

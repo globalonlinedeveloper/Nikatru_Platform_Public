@@ -20,6 +20,10 @@
 //     closing it.
 //   3 REFUSES a checklist that has lost a precondition this guard knows of
 //     (REQUIRED_IDS): the list only grows; a row is closed, never deleted.
+//   4 ⏱ 2026-10-01 (#1117 review 1). REFUSES EXT-SIGN-IN CLOSED while no
+//     extension store row of tooling/channel-register.json can sign in
+//     (contracts/legal/pro-gate.mjs canSignIn): that row's truth is in the tree,
+//     so closing it is decided by the tree, not by the evidence list alone.
 //   COVERAGE LOST (exit 2) when the checklist or the config cannot be read, or
 //   either ranges over nothing.
 //
@@ -31,6 +35,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { canSignIn } from '../../contracts/legal/pro-gate.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const CHECKLIST = 'tooling/paywall-flip.json';
@@ -51,7 +56,11 @@ const REQUIRED_IDS = [
   'SANDBOX-PURCHASE-PROOF',
   'PRICES-READ-BACK',
   'PADDLE-CANCEL-SANDBOX',
+  'EXT-SIGN-IN',
+  'EXT-CANCEL',
+  'EXT-LINK-BINDING',
 ];
+const REGISTER = 'tooling/channel-register.json';
 
 const problems = [];
 const fail = (m) => problems.push(m);
@@ -113,6 +122,20 @@ if (rows !== null) {
     if (!seen.has(id)) {
       fail(`${CHECKLIST} has lost the precondition ${id}. A precondition is closed with evidence, never deleted.`);
     }
+  }
+}
+
+// ── a precondition the tree can answer (limb 4) ──────────────────────────────
+const signInRow = (rows ?? []).find((r) => r?.id === 'EXT-SIGN-IN');
+if (signInRow && signInRow.open === false) {
+  const register = readJson(REGISTER);
+  const extRows = Array.isArray(register?.channels) ? register.channels.filter((c) => c?.surface === 'extension') : [];
+  if (register !== null && extRows.length === 0) {
+    coverageLost(`${REGISTER} declares no extension channel, so whether EXT-SIGN-IN is true cannot be read.`);
+  } else if (extRows.length && !extRows.some(canSignIn)) {
+    fail(
+      `EXT-SIGN-IN is closed, but every extension channel in ${REGISTER} (${extRows.map((c) => c.id).join(', ')}) has a null extensionRedirectUri: no buyer can sign in, so Pro can never be true.`,
+    );
   }
 }
 

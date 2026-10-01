@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- EN-10 (2026-10-01). From Android 12 (API 31) the SYSTEM splash screen
+         replaces launch_background: it paints windowSplashScreenBackground and
+         centres windowSplashScreenAnimatedIcon, and without either it shows the
+         launcher icon on a colour the app never chose. The colour is the light
+         scaffold background the first Flutter frame paints, AppPalette.lightBg
+         (F4F4F8, the same value web/index.html paints), so the hand-off from
+         the system splash to the app is one continuous surface. The icon is
+         the adaptive launcher foreground, the art the launcher already shows.
+         values-night-v31 carries the dark half. -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">#F4F4F8</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+    </style>
+</resources>

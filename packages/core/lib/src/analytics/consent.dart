@@ -265,7 +265,8 @@ class ConsentController {
       _signalGovernedPurposes.contains(purpose.value) &&
       _privacySignal.optedOut;
 
-  String _key(ConsentPurpose p) => '$_keyPrefix${p.value}';
+  String _key(ConsentPurpose p) => _keyOf(p.value);
+  String _keyOf(String purpose) => '$_keyPrefix$purpose';
 
   /// Load the persisted decision for [purpose] into memory. Call once at start
   /// up before consulting [statusOf].
@@ -353,9 +354,20 @@ class ConsentController {
       appVersion: appVersion,
       platform: platform,
     );
-    _cache[purpose.value] = a;
+    return adopt(a);
+  }
+
+  /// ⏱ 2026-10-01 · EN-05 — makes an artifact built ELSEWHERE this device's
+  /// record of its purpose, exactly as [record] does with one it builds.
+  ///
+  /// For a record that must exist on the server BEFORE it exists here: the
+  /// legal acceptance sends its artifact first and adopts it only once the
+  /// append-only trail holds it, so an offline accept can no longer leave a
+  /// local "accepted" with no server record behind it.
+  Future<ConsentArtifact> adopt(ConsentArtifact a) async {
+    _cache[a.purpose] = a;
     try {
-      await _store.write(_key(purpose), jsonEncode(a.toJson()));
+      await _store.write(_keyOf(a.purpose), jsonEncode(a.toJson()));
     } catch (_) {
       // best-effort
     }

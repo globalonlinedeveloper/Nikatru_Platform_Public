@@ -92,6 +92,26 @@
       "what": "The Paddle cancel call (lib/mor/paddle-cancel.ts) is exercised once against a Paddle sandbox subscription and the terminal subscription.canceled is seen to end access.",
       "apps": ["*"],
       "open": true
+    },
+    {
+      "id": "EXT-SIGN-IN",
+      "what": "FullShot can link an account before it is sold: some extension store channel row in tooling/channel-register.json carries a non-null extensionRedirectUri, so POST /v1/ext/codes can mint a code and Pro can become true. Until then a buyer pays for a Pro the extension can never show. assert-paywall-flip-ready.mjs refuses this row CLOSED while every such row is null (contracts/legal/pro-gate.mjs canSignIn).",
+      "apps": ["fullshot"],
+      "open": true,
+      "blockedOn": "O-EXTENSION-ACCOUNT-CHECK-UNBUILT: every extension channel's extensionRedirectUri is null"
+    },
+    {
+      "id": "EXT-CANCEL",
+      "what": "POST /v1/plan/cancel accepts every product POST /v1/checkout sells, so an extension bought on the web is cancelled as easily as it was bought ([5]M-9). Held as a mechanism: the parity test reads both routes' answers over every registered product id.",
+      "apps": ["fullshot"],
+      "open": false,
+      "verify": ["services/platform/src/routes/cancellation.ts", "services/platform/test/sell-cancel-parity.test.ts"]
+    },
+    {
+      "id": "EXT-LINK-BINDING",
+      "what": "The checkout compares the account behind the Upgrade URL's link id with the signed-in web user before it charges. Today nothing reads link (sites/nikatru/pricing.html reads app only, and no route takes it), so a web session signed in as account A can pay while the extension is linked to account B, which never becomes Pro.",
+      "apps": ["fullshot"],
+      "open": true
     }
   ]
 }

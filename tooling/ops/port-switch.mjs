@@ -41,6 +41,24 @@
 //                 LOST when a cell is missing or unapplicable. A switch that
 //                 lowers the net is printed as such: its ADR must say why.
 //
+// A MAIL switch (a port with `streams`) adds six, because what moves with mail
+// is mostly not code (tooling/ports/README.md §5):
+//   C9  dns       the records the target sends under — SPF include, DKIM,
+//                 return-path MX, DMARC alignment — from tooling/mail-transport.json
+//                 authRecords for its rail (verified by check-mail-auth-dns.mjs);
+//                 an adapter with no rail yet lists what to publish, and FAILs
+//   C10 domain    the domain verification step is written
+//   C11 streams   each stream, the adapter it moves from and to, and the secret
+//                 NAMES it would take; an external stream (auth's SMTP) is named
+//                 as not moved by this switch
+//   C12 suppression  the suppression list's export from the current adapter and
+//                 import into the target are NAMED — FAIL until
+//                 Private/runbooks/switch-vendor.md#mail names the method:
+//                 mailing it from a new provider re-mails people who complained
+//   C13 warming   sending reputation does not move; the target's warm-up is written
+//   C14 cost      the per-stream monthly cost from tooling/ceilings.json's rows for
+//                 the vendors; LOST when it records none (never a guess)
+//
 // It reads registries and nothing else: no network, no vault, no credential.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
@@ -186,6 +204,7 @@ export function run(opts) {
   // C1
   if (!target) add(1, 'target', 'FAIL', `${rel} has no adapter \`${opts.to}\` (has: ${adapters.map((a) => a?.id).join(', ')})`);
   else if (target.status === 'fake' && env === 'live') add(1, 'target', 'FAIL', `\`${target.id}\` is a fake; a fake is never selectable in live`);
+  else if (!(target.environments ?? []).length) add(1, 'target', 'FAIL', `\`${target.id}\` is ${target.status} (status: ${target.status}) and lists no environment: no environment may select it`);
   else if (!(target.environments ?? []).includes(env)) add(1, 'target', 'FAIL', `\`${target.id}\` does not list the ${env} environment (${(target.environments ?? []).join(', ')})`);
   else add(1, 'target', 'PASS', `\`${target.id}\` (vendor ${target.vendor ?? 'none — a fake'}) is a row of ${rel} for ${env}`);
   if (!target) return finish(checks);
@@ -272,7 +291,79 @@ export function run(opts) {
   // C8
   const m = margin(root, doc, target, current);
   add(8, 'margin', m.verdict, m.detail);
+  if (isObj(doc.streams)) mailChecks(root, doc, target, current, add);
   return finish(checks, m.lines);
+}
+
+export const MAIL_TRANSPORT = 'tooling/mail-transport.json';
+export const CEILINGS = 'tooling/ceilings.json';
+const DNS_KINDS = ['spf', 'dkim', 'mx', 'dmarc'];
+const DNS_LABEL = { spf: 'SPF include', dkim: 'DKIM', mx: 'return-path MX', dmarc: 'DMARC alignment' };
+
+/** C9–C14 · what a mail switch moves besides code. */
+export function mailChecks(root, doc, target, current, add) {
+  const d = target.delivery;
+  if (target.status === 'fake') {
+    // A fake delivers nothing: no DNS, no domain, no list to import, no reputation.
+    for (const [n, name] of [[9, 'dns'], [10, 'domain'], [11, 'streams'], [12, 'suppression'], [13, 'warming'], [14, 'cost']]) add(n, name, 'PASS', `\`${target.id}\` is a fake: it sends nothing`);
+    return;
+  }
+  // C9
+  if (!isObj(d)) add(9, 'dns', 'FAIL', `\`${target.id}\` records no \`delivery\`: the DNS it needs is unwritten`);
+  else if (d.rail) {
+    let recs = null;
+    try { recs = JSON.parse(readFileSync(join(root, MAIL_TRANSPORT), 'utf8'))?.authRecords?.records; } catch (e) { add(9, 'dns', 'LOST', `${MAIL_TRANSPORT} could not be read (${e.message})`); }
+    if (Array.isArray(recs)) {
+      const rows = recs.filter((r) => r?.rail === d.rail || r?.kind === 'dmarc');
+      const have = new Set(rows.map((r) => r.kind));
+      const missing = DNS_KINDS.filter((k) => !have.has(k));
+      const list = rows.map((r) => `${DNS_LABEL[r.kind] ?? r.kind} ${r.name}`).join('; ');
+      if (missing.length) add(9, 'dns', 'FAIL', `rail \`${d.rail}\` in ${MAIL_TRANSPORT} lacks ${missing.map((k) => DNS_LABEL[k]).join(', ')} (has: ${list || 'nothing'})`);
+      else add(9, 'dns', 'PASS', `rail \`${d.rail}\`: ${list} — verify: node tooling/ops/check-mail-auth-dns.mjs`);
+    } else if (recs !== null) add(9, 'dns', 'LOST', `${MAIL_TRANSPORT} has no authRecords.records`);
+  } else {
+    const need = d.dnsNeeded ?? [];
+    const missing = DNS_KINDS.filter((k) => !need.some((r) => r.kind === k));
+    const list = need.map((r) => `${DNS_LABEL[r.kind]} ${r.name} → ${r.expect}`).join('; ');
+    add(9, 'dns', 'FAIL', `\`${target.id}\` has no rail in ${MAIL_TRANSPORT}: publish and declare ${missing.length ? `(and first write ${missing.map((k) => DNS_LABEL[k]).join(', ')}) ` : ''}${list || 'its records'}`);
+  }
+  // C10
+  if (isObj(d) && typeof d.domainVerification === 'string' && d.domainVerification.length >= 20) add(10, 'domain', 'PASS', d.domainVerification);
+  else add(10, 'domain', 'FAIL', `\`${target.id}\` records no domain verification step`);
+  // C11
+  const moving = new Set(current.map((a) => a.id));
+  const lines = [];
+  for (const [name, st] of Object.entries(doc.streams)) {
+    const a = (doc.adapters ?? []).find((x) => x?.id === st?.adapter);
+    if (a?.status === 'external') lines.push(`${name}: ${a.id} (external, ${a.impl?.configAt ?? 'configured elsewhere'}) — not moved by this switch; its own switch is that config plus DNS`);
+    else if (moving.has(st?.adapter)) lines.push(`${name}: ${st.adapter} → ${target.id}, secrets ${(target.secrets ?? []).join(', ') || 'none'} (today ${(st.secrets ?? []).join(' else ') || 'none'})`);
+    else lines.push(`${name}: stays on ${st?.adapter}`);
+  }
+  add(11, 'streams', 'PASS', lines.join('; '));
+  // C12
+  const unnamed = [];
+  for (const c of current) if (!(isObj(c.delivery?.suppression) && c.delivery.suppression.export)) unnamed.push(`export from \`${c.id}\``);
+  if (!(isObj(d?.suppression) && d.suppression.import)) unnamed.push(`import into \`${target.id}\``);
+  if (unnamed.length) add(12, 'suppression', 'FAIL', `the suppression list (bounces, complaints, unsubscribes) must move with the switch, and no method is named for: ${unnamed.join(', ')}. Private/runbooks/switch-vendor.md#mail names it; record it in \`delivery.suppression\``);
+  else add(12, 'suppression', 'PASS', `export: ${current.map((c) => c.delivery.suppression.export).join('; ')} → import: ${d.suppression.import}`);
+  // C13
+  if (isObj(d) && typeof d.warming === 'string' && d.warming.length >= 20) add(13, 'warming', 'PASS', `sending reputation does not move — ${d.warming}`);
+  else add(13, 'warming', 'FAIL', `\`${target.id}\` records no warm-up; sending reputation does not move`);
+  // C14
+  let ceilings;
+  try { ceilings = JSON.parse(readFileSync(join(root, CEILINGS), 'utf8')); } catch (e) { add(14, 'cost', 'LOST', `${CEILINGS} could not be read (${e.message})`); return; }
+  const vendors = [...new Set([...current, target].map((a) => a.vendor).filter(Boolean))];
+  const found = [];
+  const walk = (v, at) => {
+    if (Array.isArray(v)) v.forEach((x, i) => walk(x, `${at}[${i}]`));
+    else if (isObj(v)) {
+      if (vendors.some((vd) => v.vendor === vd || (typeof v.id === 'string' && v.id.toLowerCase().includes(vd)))) found.push(at);
+      for (const [k, x] of Object.entries(v)) walk(x, `${at}.${k}`);
+    }
+  };
+  walk(ceilings, '$');
+  if (!found.length) add(14, 'cost', 'LOST', `${CEILINGS} records no row for ${vendors.join(' or ')}; the per-stream monthly cost is not derived (never a guess)`);
+  else add(14, 'cost', 'PASS', `${CEILINGS} rows for ${vendors.join(', ')}: ${found.join(', ')} — read each stream's monthly volume against them`);
 }
 
 function finish(checks, extra = []) {

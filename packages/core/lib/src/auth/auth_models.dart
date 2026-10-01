@@ -248,6 +248,7 @@ class AuthFailure implements Exception {
     this.message, {
     this.code,
     List<String> reasons = const <String>[],
+    this.retryAfter,
   }) : reasons = List<String>.unmodifiable(reasons),
        localized = false;
 
@@ -259,6 +260,7 @@ class AuthFailure implements Exception {
   AuthFailure.localized(this.message)
     : code = null,
       reasons = const <String>[],
+      retryAfter = null,
       localized = true;
 
   final String message;
@@ -273,6 +275,12 @@ class AuthFailure implements Exception {
   /// heard of. Empty when the provider sent none.
   final List<String> reasons;
 
+  /// ⏱ 2026-10-01 · EN-02 — how long the server asked the client to wait,
+  /// from its `Retry-After` header, when it sent one. The platform Worker's
+  /// native route sends it on its 429s (60 s for a burst, seconds-to-midnight
+  /// for a daily cap). Null when the server sent none or it was unreadable.
+  final Duration? retryAfter;
+
   /// True only for [AuthFailure.localized].
   final bool localized;
 
@@ -283,6 +291,11 @@ class AuthFailure implements Exception {
   /// BUG-3). GoTrue sends none for it — the browser's fetch failed — so the
   /// adapter stamps this one, and the screen says "check your connection".
   static const String network = 'network';
+
+  /// ⏱ 2026-10-01 · EN-05 — OUR code for a terms acceptance the consent
+  /// endpoint did not receive ([LegalAcceptanceNotRecorded]). Nothing was
+  /// recorded, so the gate that asked stays shut and says why.
+  static const String notRecorded = 'consent_not_recorded';
 
   /// GoTrue's codes when a signed-in password change came without the current
   /// password, or with a wrong one (`security_update_password_require_current_
@@ -306,4 +319,16 @@ class AuthFailure implements Exception {
 
   @override
   String toString() => 'AuthFailure: $message';
+}
+
+/// ⏱ 2026-10-01 · EN-05 — a terms acceptance that did not reach the consent
+/// endpoint, so nothing was recorded and the re-acceptance gate stays shut.
+///
+/// An [AuthFailure] with its own [AuthFailure.notRecorded] code, so every auth
+/// view that maps failures through `authErrorText` already has the sentence
+/// for it. Here rather than in an app because every app's legal-acceptance
+/// controller raises it and every auth view reads it.
+class LegalAcceptanceNotRecorded extends AuthFailure {
+  LegalAcceptanceNotRecorded()
+    : super('consent record not sent', code: AuthFailure.notRecorded);
 }

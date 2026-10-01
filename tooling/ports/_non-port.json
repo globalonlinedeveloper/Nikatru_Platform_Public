@@ -7,7 +7,6 @@
   "rows": [
     { "vendor": "cloudflare", "registers": ["capability-register", "provider-register"], "reason": "Config transport (KV), D1, R2 and the Worker bindings sit behind ConfigTransport and the shared D1 helpers, not yet behind a storage or SQL port.", "until": "port-storage" },
     { "vendor": "cloudflare-turnstile", "registers": ["capability-register"], "reason": "The captcha is the platform's abuse authority for sign-up; a gate, not a replaceable service.", "nonPort": true },
-    { "vendor": "resend", "registers": ["capability-register", "provider-register"], "reason": "Every Resend fact lives in sendResendMail; the mail port and its suppression-list export arrive with port-mail.", "until": "port-mail" },
     { "vendor": "github", "registers": ["capability-register"], "reason": "The workflow-dispatch call from the Worker cron (dispatchGithubWorkflows); the code host is ported by port-codehost.", "until": "port-codehost" },
     { "vendor": "apple", "registers": ["capability-register"], "reason": "Sign in with Apple token revocation: Apple is the platform authority for its own identities.", "nonPort": true },
     { "vendor": "apple-app-attest", "registers": ["capability-register"], "reason": "Device attestation is answered only by the platform that made the device.", "nonPort": true },
