@@ -927,7 +927,7 @@
         "symbol": "TelemetryCapabilities",
         "test": "packages/telemetry/test/telemetry_capabilities_test.dart",
         "pinnedTo": "sentry_flutter 9.x",
-        "degradesOn": "Dart errors report everywhere, but NATIVE crashes only on Android/iOS/macOS. On desktop Windows and Linux a segfault or OOM kill produces NO report — which is exactly what a user means by \"it just closed\". Collapsing the two is how a portfolio believes it has crash reporting and does not."
+        "degradesOn": "Dart errors report everywhere; NATIVE crashes report NOWHERE, by decision. ⏱ 2026-10-01 (full review AA-08): this said native crashes reported on Android/iOS/macOS. The pinned SDK ships a native handler for every non-web target and defaults it on, and TelemetryBootstrap now turns it off (enableNativeCrashHandling = false, plus each app manifest's io.sentry.ndk.enable=false for the Android NDK), because no native symbols are uploaded and a native event bypasses the Dart PII scrub. So on every target a segfault or OOM kill produces NO report — which is exactly what a user means by \"it just closed\". Collapsing the two is how a portfolio believes it has crash reporting and does not."
       }
     },
     {
