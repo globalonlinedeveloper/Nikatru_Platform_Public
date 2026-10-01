@@ -576,7 +576,7 @@
     30,
 
   "mor-adapters.test.mjs":
-    43,
+    44,
 
   "msix-visual-name.test.mjs":
     14,
@@ -701,11 +701,14 @@
   "policy-claims.test.mjs":
     62,
 
+  "port-render.test.mjs":
+    10,
+
   "port-switch.test.mjs":
-    26,
+    35,
 
   "ports.test.mjs":
-    51,
+    56,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -786,7 +789,7 @@
     133,
 
   "rail-prices.test.mjs":
-    59,
+    61,
 
   "redeploy-stranded.test.mjs":
     50,

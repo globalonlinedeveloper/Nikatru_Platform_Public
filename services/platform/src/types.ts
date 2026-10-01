@@ -344,6 +344,14 @@ export interface Env {
   RAZORPAY_KEY_SECRET?: string;
   /** The webhook signing secret. `wrangler secret put`, NEVER a var. */
   RAZORPAY_WEBHOOK_SECRET?: string;
+  /**
+   * The fake rail's webhook HMAC key (services/_shared/src/ports/fakes/payments.ts).
+   * 🔴 SET ON NO DEPLOY. The fake is registered for `test` only, so the door answers
+   * 404 for `/v1/money/fake` on every deployed environment, and the fake's `verify`
+   * refuses (401) when this is unset. It is typed so a test harness can inject one, and
+   * so a verify under it is never a verify under the committed public test constant.
+   */
+  FAKE_RAIL_WEBHOOK_SECRET?: string;
   SUPABASE_URL: string;
   /**
    * OPTIONAL comma-separated list of Supabase project URLs the nightly cron keeps
