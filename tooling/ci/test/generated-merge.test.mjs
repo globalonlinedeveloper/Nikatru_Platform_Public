@@ -68,8 +68,11 @@ describe('coverage-manifest.json: entries are order-independent', () => {
   });
 
   test('#1050: two PRs raise NEIGHBOURING entries — the old format conflicts, the new one merges both', () => {
-    const [k1, k2] = keys.includes('post-deploy-smoke.test.mjs') ? ['policy-claims.test.mjs', 'post-deploy-smoke.test.mjs'] : keys.slice(0, 2);
-    assert.equal(keys.indexOf(k2) - keys.indexOf(k1), 1, 'the two entries must be neighbours for this case to mean anything');
+    // The neighbour is READ off the sorted keys, never named: a pinned pair broke the
+    // day two test files (port-switch, ports) sorted into the gap between them.
+    const i = Math.max(0, keys.indexOf('policy-claims.test.mjs'));
+    const [k1, k2] = [keys[i], keys[i + 1]];
+    assert.ok(k2, `the manifest must hold an entry after ${k1} for this case to mean anything`);
     const a = { ...real, [k1]: real[k1] + 4 };
     const b = { ...real, [k2]: real[k2] + 11 };
     assert.equal(mergeOf('m.json', oldManifest(real), oldManifest(a), oldManifest(b)).clean, false, 'red control: the pre-P-2 format must conflict here');

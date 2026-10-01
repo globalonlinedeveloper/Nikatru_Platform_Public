@@ -675,6 +675,33 @@ export const CONTENT_SUBJECTS = Object.freeze([
       return (path, text) => named.has(path) || shapes.some((re) => re.test(text));
     },
   },
+  {
+    // ⏱ 2026-10-01 (O-NO-PORT-SELECTS-AN-ADAPTER-BY-CONFIG). A port's subject is
+    // every file its REGISTRY names — adapter impl files, interface files, conformance
+    // files, hand tables — and those paths live only in tooling/ports/*.json, which
+    // the guard reads as data (the static extraction's blind spot, header above). So
+    // the rule reads the same registries, by CONTENT, never a path list kept here.
+    guard: 'tooling/ci/assert-ports.mjs',
+    what: 'tooling/ports/**, services/_shared/src/ports/**, and every file a tooling/ports/*.json registry names',
+    build(readSource, tree) {
+      const regs = (tree?.list ?? []).filter((f) => /^tooling\/ports\/[^/]+\.json$/.test(f) && !f.endsWith('/port.schema.json'));
+      if (!regs.length) throw new Error('tooling/ports/ holds no registry — the port guard\'s subjects cannot be read');
+      const named = new Set();
+      const walk = (v, key) => {
+        if (typeof v === 'string') { if (key === 'file') named.add(v); return; }
+        if (Array.isArray(v)) { for (const x of v) walk(x, key); return; }
+        if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, k);
+      };
+      for (const rel of regs) {
+        const doc = registerOf(readSource, rel, this.guard);
+        walk(doc);
+        const src = doc?.selection?.source;
+        if (typeof src === 'string') named.add(src.split('#')[0]);
+      }
+      if (!named.size) throw new Error('no tooling/ports/*.json registry names a file — the port guard\'s subjects cannot be read');
+      return (path) => named.has(path) || path.startsWith('tooling/ports/') || path.startsWith('services/_shared/src/ports/');
+    },
+  },
 ]);
 
 /** The changed file's text for a content subject: '' when it is gone or too big to be prose. */
@@ -773,7 +800,7 @@ export function buildChecks(root, tree, { parsed, readSource = (rel) => readFile
     if (!targets.length) continue; // not a CI guard of this tree: nothing to attach the rule to
     let test;
     try {
-      test = rule.build(readSource);
+      test = rule.build(readSource, tree);
     } catch (e) {
       contentLost.push(e.message);
       continue;
