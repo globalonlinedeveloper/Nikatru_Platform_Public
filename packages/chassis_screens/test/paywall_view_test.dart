@@ -44,6 +44,11 @@ void main() {
     bool loadingOffers = false,
     bool offline = false,
     VoidCallback? onReconnect,
+    PaywallCancelWhere cancelWhere = PaywallCancelWhere.here,
+    VoidCallback? onRestore,
+    VoidCallback? onOpenTerms,
+    VoidCallback? onOpenPrivacy,
+    VoidCallback? onOpenEula,
   }) => PaywallView(
     phase: phase,
     offers: plans,
@@ -61,6 +66,11 @@ void main() {
     loadingOffers: loadingOffers,
     offline: offline,
     onReconnect: onReconnect,
+    cancelWhere: cancelWhere,
+    onRestore: onRestore,
+    onOpenTerms: onOpenTerms,
+    onOpenPrivacy: onOpenPrivacy,
+    onOpenEula: onOpenEula,
   );
 
   ChassisLocalizations l10nOf(WidgetTester tester) =>
@@ -274,8 +284,8 @@ void main() {
     expect(find.textContaining('1-month free trial'), findsOneWidget);
     expect(find.textContaining('-day free trial'), findsNothing);
     final ChassisLocalizations l10n = l10nOf(tester);
-    expect(find.text(l10n.paywallTermsTrial), findsOneWidget);
-    expect(find.text(l10n.paywallTerms), findsNothing);
+    expect(find.textContaining(l10n.paywallTermsTrial), findsOneWidget);
+    expect(find.textContaining(l10n.paywallTerms), findsNothing);
   });
 
   // 🔴 D-25: NO TRIAL COPY UNTIL THE STORE SELLS ONE. The offering still
@@ -290,9 +300,9 @@ void main() {
     final ChassisLocalizations l10n = l10nOf(tester);
     expect(find.text(r'$7.19'), findsOneWidget);
     expect(find.textContaining('free trial'), findsNothing);
-    expect(find.text(l10n.paywallTerm('month')), findsOneWidget);
-    expect(find.text(l10n.paywallTerms), findsOneWidget);
-    expect(find.text(l10n.paywallTermsTrial), findsNothing);
+    expect(find.text(l10n.paywallTermMonthly), findsOneWidget);
+    expect(find.textContaining(l10n.paywallTerms), findsOneWidget);
+    expect(find.textContaining(l10n.paywallTermsTrial), findsNothing);
   });
 
   // ── (5) THE ST-D9 STATES: FEATURES, LOADING, OFFLINE, TWO COLUMNS ─────────
@@ -357,7 +367,8 @@ void main() {
               .dy,
         ),
       );
-      // The terms line closes the list: below the fold on a phone.
+      // ⏱ 2026-10-01 · MO-04: the terms line comes BEFORE the plans — the
+      // buyer reads how it renews and where it is cancelled before Upgrade.
       await tester.scrollUntilVisible(
         find.byKey(PaywallView.termsLine),
         200,
@@ -446,8 +457,12 @@ void main() {
       final Rect plan = tester.getRect(
         find.byKey(PaywallView.offerCard('pro_monthly')),
       );
-      expect(features.top, plan.top);
+      // ⏱ 2026-10-01 · MO-04: the plans column now OPENS with the terms line,
+      // so the two columns align at the terms line, not at the first plan.
+      final Rect terms = tester.getRect(find.byKey(PaywallView.termsLine));
+      expect(features.top, terms.top);
       expect(features.right, lessThan(plan.left));
+      expect(terms.bottom, lessThan(plan.top));
       expect(
         tester.getSize(find.byType(ListView)).width,
         PaywallView.wideMaxWidth,
@@ -486,6 +501,139 @@ void main() {
     ) async {
       await pumpChassis(tester, kPhone, view());
       expect(find.byType(BackButton), findsNothing);
+    });
+  });
+
+  // ── (6) ⏱ 2026-10-01 · MO-03 / MO-04 / MO-08: A STORE-COMPLIANT PAYWALL ────
+  group('store compliance', () {
+    testWidgets('the terms line sits ABOVE the first Upgrade', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(tester, kPhone, view());
+      expect(
+        tester.getTopLeft(find.byKey(PaywallView.termsLine)).dy,
+        lessThan(tester.getTopLeft(find.byKey(PaywallView.upgradeButton).first).dy),
+      );
+    });
+
+    for (final (PaywallCancelWhere where, String Function(ChassisLocalizations) line)
+        in <(PaywallCancelWhere, String Function(ChassisLocalizations))>[
+          (PaywallCancelWhere.here, (ChassisLocalizations l) => l.paywallCancelHere),
+          (PaywallCancelWhere.appStore, (ChassisLocalizations l) => l.paywallCancelInAppStore),
+          (PaywallCancelWhere.googlePlay, (ChassisLocalizations l) => l.paywallCancelInGooglePlay),
+        ]) {
+      testWidgets('${where.name}: the terms line says where to cancel', (
+        WidgetTester tester,
+      ) async {
+        await pumpChassis(tester, kPhone, view(cancelWhere: where));
+        final ChassisLocalizations l10n = l10nOf(tester);
+        final Text terms = tester.widget<Text>(find.byKey(PaywallView.termsLine));
+        expect(terms.data, endsWith(line(l10n)));
+        // A store build never says the plan is cancelled "here", and a
+        // hosted one never names a store.
+        for (final PaywallCancelWhere other in PaywallCancelWhere.values) {
+          if (other == where) continue;
+          expect(find.textContaining(switch (other) {
+            PaywallCancelWhere.here => l10n.paywallCancelHere,
+            PaywallCancelWhere.appStore => l10n.paywallCancelInAppStore,
+            PaywallCancelWhere.googlePlay => l10n.paywallCancelInGooglePlay,
+          }), findsNothing);
+        }
+      });
+    }
+
+    // RED CONTROL (MO-03): an Apple-rail paywall shows a Terms link (and the
+    // EULA); every rail shows Restore, Terms and Privacy when wired.
+    testWidgets('Apple rail: Restore, Terms, EULA and Privacy are links that work', (
+      WidgetTester tester,
+    ) async {
+      final List<String> tapped = <String>[];
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(
+          cancelWhere: PaywallCancelWhere.appStore,
+          checkoutStyle: PaywallCheckoutStyle.store,
+          onRestore: () => tapped.add('restore'),
+          onOpenTerms: () => tapped.add('terms'),
+          onOpenPrivacy: () => tapped.add('privacy'),
+          onOpenEula: () => tapped.add('eula'),
+        ),
+      );
+      for (final Key k in <Key>[
+        PaywallView.restoreLink,
+        PaywallView.termsLink,
+        PaywallView.eulaLink,
+        PaywallView.privacyLink,
+      ]) {
+        await tester.scrollUntilVisible(
+          find.byKey(k),
+          200,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.tap(find.byKey(k));
+        await tester.pump();
+      }
+      expect(tapped, <String>['restore', 'terms', 'eula', 'privacy']);
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.text(l10n.termsOfService), findsOneWidget);
+      expect(find.text(l10n.paywallAppleEula), findsOneWidget);
+    });
+
+    testWidgets('no EULA where none is passed (every non-Apple rail)', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(onOpenTerms: () {}, onOpenPrivacy: () {}, onRestore: () {}),
+      );
+      expect(find.byKey(PaywallView.eulaLink), findsNothing);
+      expect(find.byKey(PaywallView.termsLink), findsOneWidget);
+    });
+
+    // RED CONTROL (MO-04): Tamil never shows a wire token. The plan rows are
+    // `month` and `year` on the wire; neither English code may be painted.
+    testWidgets('Tamil shows a sentence per term, never the wire token', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(tester, kPhone, view(), locale: const Locale('ta'));
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(l10n.localeName, 'ta');
+      expect(find.text(l10n.paywallTermMonthly), findsOneWidget);
+      expect(find.text(l10n.paywallTermYearly), findsOneWidget);
+      for (final Element e in find.byType(Text).evaluate()) {
+        final String? data = (e.widget as Text).data;
+        if (data == null) continue;
+        expect(data, isNot(matches(RegExp(r'\b(month|year|one_time)\b'))), reason: data);
+      }
+    });
+
+    // MO-08: each phase change after choosing is announced.
+    for (final PaywallPhase phase in <PaywallPhase>[
+      PaywallPhase.opening,
+      PaywallPhase.pending,
+      PaywallPhase.unlocked,
+      PaywallPhase.refused,
+    ]) {
+      testWidgets('${phase.name} is a live region', (WidgetTester tester) async {
+        // `opening` spins until the rail answers, so it never settles.
+        await pumpChassis(
+          tester,
+          kPhone,
+          view(phase: phase),
+          settle: phase != PaywallPhase.opening,
+        );
+        final Semantics region = tester.widget<Semantics>(
+          find.byKey(PaywallView.phaseRegion),
+        );
+        expect(region.properties.liveRegion, isTrue);
+      });
+    }
+
+    testWidgets('choosing is not a live region', (WidgetTester tester) async {
+      await pumpChassis(tester, kPhone, view());
+      expect(find.byKey(PaywallView.phaseRegion), findsNothing);
     });
   });
 }

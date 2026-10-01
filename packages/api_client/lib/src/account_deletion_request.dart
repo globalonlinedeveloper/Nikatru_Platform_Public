@@ -47,6 +47,19 @@ Future<void> requestAccountDeletion(
     // `AccountDeletionOutcome.unknown` and nothing anywhere in the app can say
     // WHICH status it was, which is precisely the hole the 2026-08-09 delete-leg
     // investigation fell into.
+    // ⏱ 2026-10-01 · AB-A5-02-client. The server refuses a deletion while a
+    // plan is still billing, and its 503 SAYS WHY in `message` — the one 503
+    // that carries a sentence for the user. That sentence travels to the
+    // dialog instead of being folded into the generic "the server refused":
+    // the user's next step is in it. Keyed on the sentence, not the error code,
+    // so this shared seam names no app's vocabulary.
+    if (e.statusCode == 503 && e.serverSentence != null) {
+      throw core.AccountDeletionFailure(
+        core.AccountDeletionOutcome.nothingDeleted,
+        detail: 'DELETE $path -> HTTP 503: ${e.message}',
+        serverSentence: e.serverSentence,
+      );
+    }
     throw core.AccountDeletionFailure.forStatus(
       e.statusCode,
       detail: 'DELETE $path -> HTTP ${e.statusCode}: ${e.message}',

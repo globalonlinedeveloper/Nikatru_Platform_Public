@@ -80,6 +80,71 @@ Widget _managePlan() => ManagePlanView(
   onCancel: () {},
 );
 
+// ⏱ 2026-10-01 · MO-08 — THE PAYWALL PER RAIL, AND MANAGE PLAN FREE AND PRO.
+// The four-class set above is the layout record; these are the store-review
+// record: what a buyer on each rail is shown before they pay (the cancel
+// sentence and the links differ per rail — an Apple build adds the EULA, a
+// store build adds Restore) and what Manage plan shows a free user and a Pro
+// user whose plan was bought in a store. Compact and large, both themes.
+Widget _paywallFor(PaywallCancelWhere where) => PaywallView(
+  phase: PaywallPhase.choosing,
+  offers: _offers,
+  canStartCheckout: true,
+  checkoutStyle: where == PaywallCancelWhere.here
+      ? PaywallCheckoutStyle.hosted
+      : PaywallCheckoutStyle.store,
+  refusalView: PaywallRefusalView.retryable,
+  proFeatures: _pro,
+  freeFeatures: _free,
+  cancelWhere: where,
+  onRestore: where == PaywallCancelWhere.here ? null : () {},
+  onOpenTerms: () {},
+  onOpenPrivacy: () {},
+  onOpenEula: where == PaywallCancelWhere.appStore ? () {} : null,
+  onBuy: (PaywallOffer _) {},
+  onCheckAgain: () {},
+  onGoHome: () {},
+  onRetry: () {},
+  onBack: () {},
+);
+
+Widget _paywallWeb() => _paywallFor(PaywallCancelWhere.here);
+Widget _paywallPlay() => _paywallFor(PaywallCancelWhere.googlePlay);
+Widget _paywallAppStore() => _paywallFor(PaywallCancelWhere.appStore);
+
+Widget _managePlanFree() => ManagePlanView(
+  title: 'Manage plan',
+  isPro: false,
+  planStatusLabel: 'You are on the free plan',
+  planDetail: null,
+  restoreHint: 'Signed in on a new device? This re-checks your plan.',
+  cancelLabel: 'Cancel Pro',
+  busy: false,
+  outcomeMessage: null,
+  upgradeLabel: 'See plans',
+  onUpgrade: () {},
+  onBack: () {},
+  onRestore: () {},
+  onCancel: () {},
+);
+
+Widget _managePlanProInPlay() => ManagePlanView(
+  title: 'Manage plan',
+  isPro: true,
+  planStatusLabel: 'Pro is active',
+  planDetail: 'The 12-month forecast and category caps are on.',
+  restoreHint: 'Signed in on a new device? This re-checks your plan.',
+  cancelLabel: 'Cancel Pro',
+  busy: false,
+  outcomeMessage: null,
+  source: PlanSourceView.googlePlay,
+  periodEnds: DateTime.utc(2026, 11, 1),
+  onManageInStore: () {},
+  onBack: () {},
+  onRestore: () {},
+  onCancel: () {},
+);
+
 Future<void> _pump(
   WidgetTester tester,
   Size size,
@@ -123,6 +188,28 @@ void main() {
     'paywall': _paywall,
     'manage_plan': _managePlan,
   };
+
+  const Map<String, Widget Function()> perRail = <String, Widget Function()>{
+    'paywall_web': _paywallWeb,
+    'paywall_play': _paywallPlay,
+    'paywall_appstore': _paywallAppStore,
+    'manage_plan_free': _managePlanFree,
+    'manage_plan_pro_play': _managePlanProInPlay,
+  };
+
+  for (final MapEntry<String, Widget Function()> s in perRail.entries) {
+    for (final String c in const <String>['compact', 'large']) {
+      for (final Brightness b in Brightness.values) {
+        testWidgets('${s.key} · $c · ${b.name}', (WidgetTester tester) async {
+          await _pump(tester, classes[c]!, b, s.value());
+          await expectLater(
+            find.byType(MaterialApp),
+            matchesGoldenFile('goldens/${s.key}_${c}_${b.name}.png'),
+          );
+        }, skip: !Platform.isLinux);
+      }
+    }
+  }
 
   for (final MapEntry<String, Widget Function()> s in screens.entries) {
     for (final MapEntry<String, Size> c in classes.entries) {

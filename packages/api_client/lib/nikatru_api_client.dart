@@ -7,6 +7,7 @@ library;
 export 'src/account_deletion_request.dart';
 export 'src/http_capabilities.dart';
 export 'src/dio_cancellation_transport.dart';
+export 'src/dio_checkout_session_transport.dart';
 export 'src/dio_config_transport.dart';
 export 'src/dio_content_report_transport.dart';
 export 'src/dio_entitlement_transport.dart';

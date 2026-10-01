@@ -144,6 +144,12 @@ enum CancellationOutcome {
   /// There is nothing to cancel for this user and app.
   noActivePlan,
 
+  /// ⏱ 2026-10-01 · AB-M4-03-client. The plan was bought in a STORE (the
+  /// server's 409 with `cancel_at`), so only that store can cancel it — nothing
+  /// was recorded or executed here, and the screen says where to go instead of
+  /// reporting a failure.
+  inStore,
+
   /// We could not reach our own host. The user has NOT cancelled and must be
   /// told so — reporting success on a failed write is how a cancellation
   /// silently does not happen.

@@ -36,11 +36,17 @@ class RailConfig {
   );
 
   /// Plans in the order the rail listed them. Unreadable entries are dropped by
-  /// [Offering.tryFromJson], so this list holds only sellable plans.
+  /// [Offering.tryFromJson], so this list holds only sellable plans — and never
+  /// a one-time plan (see [fromPaywallExtra]).
   final List<Offering> offerings;
 
   /// The hosted checkout, with `{price_id}`, `{account_id}`, `{app_id}` and
   /// `{return_url}` placeholders. Null until the owner supplies it.
+  ///
+  /// ⏱ 2026-10-01 · NO LONGER READ BY `HostedCheckoutRail`, which asks the
+  /// platform host's `POST /v1/checkout` for the page instead
+  /// (O-ST-HOSTED-CHECKOUT-CANNOT-START). Still parsed, and still refused unless
+  /// absolute https, so a served value can never reach a launcher unchecked.
   final String? checkoutUrlTemplate;
 
   /// The merchant of record's own subscription-management page, with the same
@@ -73,13 +79,20 @@ class RailConfig {
   /// Every field is optional and every failure is silent-and-closed: a rail we
   /// cannot read is a rail that sells nothing, which is the same state as a rail
   /// nobody has configured, and both are honestly representable in the UI.
+  ///
+  /// 🔴 A ONE-TIME PLAN NEVER REACHES THE APP ([ADR 093] §11.2, MO-02). The
+  /// served config lists `pro_lifetime` (`"term": "one_time"`) because the web
+  /// apex pricing page sells it; no in-app surface may. Dropped HERE, at the one
+  /// parse every rail reads — a store rail's plans are matched against these
+  /// (`offeringsFromStore`), so a store-side lifetime product finds no row
+  /// either — rather than at each screen, where the next surface would forget.
   static RailConfig fromPaywallExtra(Map<String, Object?> extra) {
     final Object? raw = extra['offerings'];
     final List<Offering> offerings = <Offering>[];
     if (raw is List) {
       for (final Object? e in raw) {
         final Offering? o = Offering.tryFromJson(e);
-        if (o != null) offerings.add(o);
+        if (o != null && o.term != OfferingTerm.oneTime) offerings.add(o);
       }
     }
     return RailConfig(

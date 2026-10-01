@@ -25,6 +25,9 @@ void main() {
     VoidCallback? onReload,
     bool offline = false,
     VoidCallback? onReconnect,
+    PlanSourceView? source,
+    DateTime? periodEnds,
+    VoidCallback? onManageInStore,
   }) => ManagePlanView(
     title: 'Manage plan',
     isPro: isPro,
@@ -44,6 +47,9 @@ void main() {
     onReload: onReload,
     offline: offline,
     onReconnect: onReconnect,
+    source: source,
+    periodEnds: periodEnds,
+    onManageInStore: onManageInStore,
   );
 
   // ── (1) THE WIDTH DECISION, AT ALL THREE WINDOW CLASSES ───────────────────
@@ -279,5 +285,89 @@ void main() {
     await pumpChassis(tester, kPhone, view(onBack: () => back = true));
     await tester.tap(find.byType(BackButton));
     expect(back, isTrue);
+  });
+
+  // ── ⏱ 2026-10-01 · MO-05, AB-M4-03-client: WHERE THE USER PAID ───────────
+  group('manage plan follows where the plan was bought', () {
+    ChassisLocalizations l10nOf(WidgetTester tester) =>
+        ChassisLocalizations.of(tester.element(find.byType(ManagePlanView)));
+
+    // RED CONTROL: a Play-sourced plan (on any build — the source is the
+    // entitlement's, the view has no build channel) shows "Manage in Google
+    // Play" and NO Cancel, so nothing can post /v1/plan/cancel for it.
+    testWidgets('Google Play: Manage in Google Play, and no Cancel', (
+      WidgetTester tester,
+    ) async {
+      int cancels = 0;
+      int opened = 0;
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(
+          source: PlanSourceView.googlePlay,
+          periodEnds: DateTime(2026, 11, 1),
+          onCancel: () => cancels++,
+          onManageInStore: () => opened++,
+        ),
+      );
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.text(l10n.manageInGooglePlay), findsOneWidget);
+      expect(find.byKey(ManagePlanView.cancelTile), findsNothing);
+      expect(find.text('Cancel plan'), findsNothing);
+      expect(find.text(l10n.planBoughtInGooglePlay), findsOneWidget);
+      expect(find.text(l10n.planPeriodEnds(DateTime(2026, 11, 1))), findsOneWidget);
+      await tester.tap(find.byKey(ManagePlanView.manageInStoreTile));
+      await tester.pump();
+      expect(opened, 1);
+      expect(cancels, 0);
+    });
+
+    testWidgets('App Store: Manage in the App Store, and no Cancel', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(source: PlanSourceView.appStore, onManageInStore: () {}),
+      );
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.text(l10n.manageInAppStore), findsOneWidget);
+      expect(find.byKey(ManagePlanView.cancelTile), findsNothing);
+    });
+
+    testWidgets('a store plan with no page to open still shows no Cancel', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(tester, kPhone, view(source: PlanSourceView.googlePlay));
+      expect(find.byKey(ManagePlanView.cancelTile), findsNothing);
+      expect(find.byKey(ManagePlanView.manageInStoreTile), findsNothing);
+    });
+
+    testWidgets('web: our own Cancel, and no store row', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(source: PlanSourceView.web, onManageInStore: () {}),
+      );
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.byKey(ManagePlanView.cancelTile), findsOneWidget);
+      expect(find.byKey(ManagePlanView.manageInStoreTile), findsNothing);
+      expect(find.text(l10n.planBoughtOnWeb), findsOneWidget);
+    });
+
+    testWidgets('free: no source line, no period line', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(
+        tester,
+        kPhone,
+        view(isPro: false, source: PlanSourceView.web, periodEnds: DateTime(2026)),
+      );
+      final ChassisLocalizations l10n = l10nOf(tester);
+      expect(find.text(l10n.planBoughtOnWeb), findsNothing);
+      expect(find.textContaining('2026'), findsNothing);
+    });
   });
 }
