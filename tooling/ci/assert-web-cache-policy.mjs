@@ -666,6 +666,45 @@ const BUNDLE_SECURITY_HEADERS = [
   { name: 'Strict-Transport-Security', why: 'Without it the first request of a session can still be made over http and stripped.' },
 ];
 
+// ⏱ 2026-10-01 · rv2-security-021 — A PERMISSIONS-POLICY, FLOORED. The static site
+// has carried one since it was first written; the app bundle, served on the SAME
+// origin, carried none, so a script injected into an app could ask for the camera,
+// the microphone or the location from a page whose user had never been asked for
+// any of them by this product. Each bundle's own `_headers` is the only place it
+// can be set (the apex router proxies the app, and sites/nikatru/_headers does not
+// reach a proxied response — see the CSP limb's message above).
+// THE FLOOR IS THE THREE FEATURES NO APP HERE USES AND EVERY BROWSER PROMPTS FOR.
+// The rest of each bundle's list is chosen in its `_headers`, from what the app
+// does: `payment=()` there was checked against the checkout, which opens the
+// hosted page in a NEW browsing context (packages/purchases UrlCheckoutLauncher,
+// LaunchMode.externalApplication), never in a frame of this document.
+const PERMISSIONS_FLOOR = ['camera', 'microphone', 'geolocation'];
+/** `feature=(allowlist), …` → Map(feature → allowlist text). */
+function parsePermissionsPolicy(value) {
+  const out = new Map();
+  for (const item of value.split(',')) {
+    const m = item.trim().match(/^([a-z0-9-]+)\s*=\s*(.*)$/i);
+    if (m) out.set(m[1].toLowerCase(), m[2].trim());
+  }
+  return out;
+}
+
+// ⏱ 2026-10-01 · rv2-security-021 — EVERY THIRD-PARTY SCRIPT HOST CARRIES ITS REASON.
+// A host in `script-src` is code this origin runs that this repository does not
+// hold, and the usual control for that — Subresource Integrity — is not always
+// available: Turnstile's api.js is served unversioned and changed by Cloudflare
+// without notice, so a pinned integrity hash would break the sign-up gate on
+// Cloudflare's next push. The CSP host-pin is the control instead, and THAT is a
+// decision, so it is written down where the host is: a comment line in the same
+// `_headers`, of the shape
+//     # script-src-host: <source exactly as in script-src> — <reason naming SRI>
+// Both ways: a host with no such line ⇒ finding; a line for a host the policy no
+// longer names ⇒ finding (a reason outliving its host reads as a live exception).
+const SCRIPT_HOST_REASON = /^#\s*script-src-host:\s*(\S+)\s+—\s+(.*)$/;
+const SCRIPT_HOST_MIN_REASON = 30;
+let scriptHostsGraded = 0;
+let permissionsPoliciesGraded = 0;
+
 let cspBundlesChecked = 0;
 let cspHashesChecked = 0;
 let cspBundlesWithInline = 0;
@@ -733,6 +772,58 @@ for (const b of bundles.filter((x) => x.kind === 'flutter-web')) {
       problems.push(`${b.dir}/_headers declares no ${h.name}. ${h.why}`);
     }
   }
+  const ppMatch = declared.match(/^\s*Permissions-Policy:\s*(.+)$/im);
+  if (!ppMatch) {
+    problems.push(
+      `${b.dir}/_headers declares no Permissions-Policy. The app is served on the nikatru.com origin, where the ` +
+        'static site already denies the device features; a bundle without one leaves a script injected into the app ' +
+        `free to ask for ${PERMISSIONS_FLOOR.join(', ')}. Choose the list from the features the app uses.`,
+    );
+  } else {
+    permissionsPoliciesGraded++;
+    const pp = parsePermissionsPolicy(ppMatch[1]);
+    const open = PERMISSIONS_FLOOR.filter((f) => pp.get(f) !== '()');
+    if (open.length) {
+      problems.push(
+        `${b.dir}/_headers Permissions-Policy does not deny ${open.map((f) => `${f}=()`).join(', ')}. No app on this ` +
+          'origin uses them, and each is a prompt an injected script could put in front of a user in this product\'s name.',
+      );
+    }
+  }
+  // Every host source in script-src carries a recorded reason (see SCRIPT_HOST_REASON).
+  {
+    const scriptSrc = csp.match(/(?:^|;)\s*script-src\s+([^;]*)/i)?.[1] ?? '';
+    const hosts = scriptSrc.split(/\s+/).filter((s) => s !== '' && !s.startsWith("'"));
+    const reasons = new Map();
+    for (const l of headersSrc.split('\n')) {
+      const m = l.trim().match(SCRIPT_HOST_REASON);
+      if (m) reasons.set(m[1], m[2].trim());
+    }
+    for (const h of hosts) {
+      scriptHostsGraded++;
+      const why = reasons.get(h);
+      if (why === undefined) {
+        problems.push(
+          `${b.dir}/_headers script-src admits ${h} and records no reason for it. A third-party script host is code ` +
+            'this origin runs and this repository does not hold; write `# script-src-host: ' + h + ' — <reason>` beside ' +
+            'the policy, saying why it carries no Subresource Integrity hash and what pins it instead.',
+        );
+      } else if (why.length < SCRIPT_HOST_MIN_REASON || !/\bSRI\b/.test(why)) {
+        problems.push(
+          `${b.dir}/_headers records a reason for script-src host ${h} that does not say why it carries no SRI ` +
+            `(at least ${SCRIPT_HOST_MIN_REASON} characters, naming SRI): ${JSON.stringify(why)}.`,
+        );
+      }
+    }
+    for (const h of reasons.keys()) {
+      if (!hosts.includes(h)) {
+        problems.push(
+          `${b.dir}/_headers records a script-src-host reason for ${h}, and script-src no longer admits it. Remove the ` +
+            'reason with the host; one that outlives it reads as a live exception nobody is taking.',
+        );
+      }
+    }
+  }
   if (/script-src[^;]*'unsafe-inline'/i.test(csp)) {
     problems.push(
       `${b.dir}/_headers declares script-src 'unsafe-inline'. On one shared origin that lets an injected ` +
@@ -788,6 +879,11 @@ if (cspBundlesWithInline > 0 && cspHashesChecked === 0) {
 //     NO policy at all, and CI stayed green;
 //   · the non-script floor (default-src, object-src, base-uri, frame-ancestors,
 //     form-action) was held by nothing on either line.
+// 🔄 2026-10-01 · rv2-security-021 — APPENDED: the generator now splices the
+// script-src of EVERY CSP line of that file, the /ext/connect override included
+// (`CSP_LINE_RE` is global), so an override's hash list is computed, not copied.
+// What it splices is script-src only; every other directive of an override is
+// still a hand-written line, and this limb is still the one reader of it.
 //
 // WHAT IS ASSERTED, over the static sites tooling/ci/site-csp.json puts IN SCOPE
 // (the nikatru.com origin; every static deploy root must be declared in scope or
@@ -1004,6 +1100,17 @@ let siteCspOverrides = 0;
           globalScript ??= parseCsp(s.value).get('script-src') ?? parseCsp(s.value).get('default-src') ?? [];
         }
       }
+      // ⏱ 2026-10-01 · rv2-security-021 — the site's /* rule holds the same
+      // Permissions-Policy floor the app bundles are held to (PERMISSIONS_FLOOR).
+      const pps = blocks.filter((b) => b.pattern === '/*').flatMap((b) => b.sets.filter((s) => s.name === 'permissions-policy'));
+      if (pps.length === 0) {
+        problems.push(`${rel} has no Permissions-Policy on its /* rule; every page of the site would let a script ask for ${PERMISSIONS_FLOOR.join(', ')}.`);
+      }
+      for (const s of pps) {
+        permissionsPoliciesGraded++;
+        const open = PERMISSIONS_FLOOR.filter((f) => parsePermissionsPolicy(s.value).get(f) !== '()');
+        if (open.length) problems.push(`${rel}:${s.line} the /* Permissions-Policy does not deny ${open.map((f) => `${f}=()`).join(', ')}.`);
+      }
       for (const g of blocks.filter((b) => b.pattern === '/*' && detachesCsp(b))) {
         problems.push(`${rel}:${g.line} the /* rule detaches Content-Security-Policy, which leaves every page of the site with none.`);
       }
@@ -1016,8 +1123,8 @@ let siteCspOverrides = 0;
           problems.push(
             `${rel}:${b.line} "${b.pattern}" ${detachesCsp(b) ? 'detaches' : 'sets'} a Content-Security-Policy and is not ` +
               `declared in ${SITE_CSP_DECLARATION}. A per-path policy on the origin every app's session lives on must be ` +
-              'declared with its reason — the discovery generator regenerates only the FIRST CSP line, so nothing ' +
-              'else keeps an override honest.',
+              'declared with its reason — the discovery generator splices only the script-src of each CSP line, so ' +
+              'nothing else keeps the rest of an override honest.',
           );
         }
       }
@@ -1165,6 +1272,10 @@ console.log(
 console.log(
   `    site CSP (nikatru.com origin, ${SITE_CSP_DECLARATION}) — ${siteCspSites} in-scope site(s), ${siteCspLines} ` +
     `policy line(s) floored, ${siteCspOverrides} declared per-path override(s) resolved through the \`!\` detach`,
+);
+console.log(
+  `    Permissions-Policy — ${permissionsPoliciesGraded} policy(ies) deny ${PERMISSIONS_FLOOR.join(', ')}; ` +
+    `${scriptHostsGraded} third-party script-src host(s), each with a recorded no-SRI reason`,
 );
 console.log(`    scanned: ${bundles.map((b) => b.dir).join(', ')}`);
 console.log(
