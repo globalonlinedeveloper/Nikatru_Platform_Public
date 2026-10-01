@@ -4,13 +4,21 @@
 import 'package:flutter/widgets.dart' show BuildContext;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:flutter/material.dart'
+    show
+        BuildContext,
+        ScaffoldMessenger,
+        ScaffoldMessengerState,
+        SnackBar,
+        Text;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart'
-    show FlutterSecureStore, ShareFileExporter;
+    show FlutterSecureStore, SelectorFileImporter, ShareFileExporter;
 
 import '../../core/device_integrity.dart' show exportAllowedOnThisDevice;
 import '../../data/local/subscription_store.dart';
 import '../../data/models/subscription.dart' show Subscription;
 import '../../data/portability/subscription_columns.dart';
+import '../../l10n/app_localizations.dart';
 import '../analytics_providers.dart';
 import '../subscriptions_controller.dart' show subscriptionsControllerProvider;
 import 'auth.dart' show authRepositoryProvider;
@@ -39,6 +47,35 @@ final Provider<core.SecureStore> secureStoreProvider =
 final Provider<core.FileExporter> fileExporterProvider =
     Provider<core.FileExporter>((ref) => ShareFileExporter());
 
+/// IM-01 — the file picker the import hub asks (`SelectorFileImporter`), a
+/// seam so a test hands back the file a user would have chosen. Where no
+/// picker is linked, `canPick` is false and the hub offers paste instead.
+final Provider<core.FileImporter> fileImporterProvider =
+    Provider<core.FileImporter>((ref) => SelectorFileImporter());
+
+/// IM-06 — a file or text handed to the app from OUTSIDE the import screen: an
+/// Android share, a drop onto the window. Whoever receives it puts it here and
+/// opens `/import`; the import screen takes it (and clears it) on arrival and
+/// whenever a new one lands while it is open. A provider rather than route
+/// state so it survives the sign-in hop a signed-out share takes.
+class ImportInbox extends Notifier<core.ImportedFile?> {
+  @override
+  core.ImportedFile? build() => null;
+
+  /// Hands [file] to the import screen.
+  void deliver(core.ImportedFile file) => state = file;
+
+  /// The waiting file, once. Null when nothing is waiting.
+  core.ImportedFile? take() {
+    final core.ImportedFile? f = state;
+    if (f != null) state = null;
+    return f;
+  }
+}
+
+final NotifierProvider<ImportInbox, core.ImportedFile?> importInboxProvider =
+    NotifierProvider<ImportInbox, core.ImportedFile?>(ImportInbox.new);
+
 /// ST-X1 (audit D2/D31) — what the Settings "Export data (CSV)" row does: the
 /// loaded list, as a CSV file (`subscription_columns.dart`), handed to
 /// [fileExporterProvider].
@@ -56,11 +93,42 @@ final Provider<core.FileExporter> fileExporterProvider =
 /// ASKS THE USER TO RE-AUTHENTICATE FIRST (`core.SensitiveAction.exportData`),
 /// and a cancel or a failed re-auth exports nothing. Every other device goes
 /// straight through, exactly as before. [context] hosts the password prompt.
-void Function()? exportDataTap(WidgetRef ref, BuildContext context) {
+///
+/// IM-08 — AND IT SAYS WHAT HAPPENED. The `core.ExportOutcome` was discarded
+/// and a list-load failure returned silently, so a failed export and a
+/// successful one looked the same: nothing on screen. Each outcome is now a
+/// snackbar sentence ([exportOutcomeSentence]).
+void Function()? exportDataTap(WidgetRef ref, BuildContext context) =>
+    _exportTap(ref, context, subscriptionsCsvFile);
+
+/// IM-03 — "Back up (JSON)": the same path as [exportDataTap], re-auth gate
+/// included, with the list as a `core.BackupEnvelope` that "Restore from
+/// backup" reads back.
+void Function()? backupDataTap(WidgetRef ref, BuildContext context) =>
+    _exportTap(
+      ref,
+      context,
+      (List<Subscription> subs) =>
+          subscriptionsBackupFile(subs, now: DateTime.now()),
+    );
+
+void Function()? _exportTap(
+  WidgetRef ref,
+  BuildContext context,
+  core.ExportFile Function(List<Subscription> subs) fileOf,
+) {
   final core.AppConfig cfg =
       ref.watch(appConfigProvider).value ?? kAppDefaultConfig;
   if (!cfg.feature('exports')) return null;
   return () async {
+    // Both reads on THIS side of the first await: the row can leave the tree
+    // while the list loads or the share sheet is up.
+    final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(
+      context,
+    );
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    void say(String sentence) =>
+        messenger?.showSnackBar(SnackBar(content: Text(sentence)));
     final bool allowed = await exportAllowedOnThisDevice(
       context,
       () => ref.read(authRepositoryProvider),
@@ -71,11 +139,20 @@ void Function()? exportDataTap(WidgetRef ref, BuildContext context) {
     try {
       subs = await ref.read(subscriptionsControllerProvider.future);
     } catch (_) {
+      say(l10n.exportListFailed);
       return;
     }
-    await exporter.export(subscriptionsCsvFile(subs));
+    say(exportOutcomeSentence(l10n, await exporter.export(fileOf(subs))));
   };
 }
+
+/// The sentence for each `core.ExportOutcome` (IM-08).
+String exportOutcomeSentence(AppLocalizations l10n, core.ExportOutcome o) =>
+    switch (o) {
+      core.ExportOutcome.exported => l10n.exportDone,
+      core.ExportOutcome.dismissed => l10n.exportDismissed,
+      core.ExportOutcome.failed => l10n.exportFailed,
+    };
 
 /// Where the subscriptions and the budget live when no backend is configured —
 /// which is the DEFAULT posture and what every unconfigured build ships as.

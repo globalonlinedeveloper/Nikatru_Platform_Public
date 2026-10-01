@@ -13,7 +13,7 @@
 // a GoRouter host: with no session it routes to `/sign-in?next=%2Fpaywall`;
 // with a session the rail missed, the buyer is identified to the rail ONCE and
 // Try again is offered — `/sign-in` bounces a signed-in user to `/home`
-// (`lib/core/router/gates.dart:419`), so routing there would lose the paywall.
+// (`lib/core/router/gates.dart:418`), so routing there would lose the paywall.
 //
 // The in-flight sentence follows the rail kind. The store channels
 // (android-play, ios-appstore, macos-appstore) say `paywallOpeningStore` and

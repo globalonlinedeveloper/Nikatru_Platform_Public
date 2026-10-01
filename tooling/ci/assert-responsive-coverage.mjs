@@ -498,6 +498,10 @@ const REQUIRED_COVERAGE = [
     // ⏱ LOWERED 19 → 18 the same day by ST-D3 D3-3, deliberately: `BudgetScreen`
     // is RETIRED (ADR 077 §A) and `width_budget_test.dart` went with it; the
     // file count stays above its floor (17 files, floor 16).
+    // ⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): UNCHANGED AT 18, one for one —
+    // `ScanScreen` left with `width_scan_test.dart` and `ImportScreen` arrived
+    // with `width_import_test.dart` at kPhone, kTablet and kDesktop. Measured by
+    // this guard's own run: "18 surface(s) reachable, 18 measured", 18 files.
     surfaces: 18,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
@@ -681,8 +685,12 @@ const REQUIRED_COVERAGE = [
     // test/device_integrity_gate_test.dart (all three classes) and
     // test/a11y_integrity_test.dart. Read off the per-root lines,
     // `31 surface(s) reachable, 31 measured` and `— 32 file(s)`.
+    // ⏱ RAISED `widthTestFiles` 32 → 33 ON 2026-10-01 (train ST import hub),
+    // surfaces unchanged: `test/data_section_test.dart` joined the corpus with
+    // the Your data card (`dataCard`, a function, not a surface). Read off the
+    // per-root line, `— 33 file(s)`.
     surfaces: 31,
-    widthTestFiles: 32,
+    widthTestFiles: 33,
     coveredSurfaces: 31,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +

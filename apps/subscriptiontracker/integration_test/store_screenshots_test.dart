@@ -66,6 +66,8 @@ import 'package:intl/intl.dart' show DateFormat, Intl;
 
 import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
     show releaseWebSemantics;
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show DataStateView;
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/format/sub_math.dart';
@@ -438,7 +440,7 @@ void main() {
   /// device and passes nowhere else. Empty on web, android and iOS.
   const String storeView = String.fromEnvironment('STORE_CAPTURE_VIEW');
 
-  // The app animates forever in places (the scan progress ring), so
+  // The app animates forever in places (progress indicators), so
   // pumpAndSettle() hangs. Advance a fixed wall-clock slice instead — this still
   // lets real network futures resolve on the live binding.
   Future<void> pumpFor(WidgetTester tester, Duration total) async {
@@ -693,7 +695,7 @@ void main() {
       publishConsent(binding, prompt: 'absent');
     }
 
-    // ── onboarding → login → scan → dashboard ────────────────────────────────
+    // ── onboarding → login → dashboard ───────────────────────────────────────
     expect(
       find.text('Skip'),
       findsOneWidget,
@@ -840,29 +842,33 @@ void main() {
     }
 
     // 🔴 THIS REASON USED TO SAY "sign-in likely failed" AND THAT WAS FALSE.
-    // Root-caused 2026-09-02: the scan timed out because the subscriptiontracker-api Worker
-    // returned a 500 from a TRANSIENT Cloudflare D1 fault (`D1_ERROR: D1 DB
-    // storage operation exceeded timeout which caused object to be reset`,
-    // mapped to `internal_error` at services/subscriptiontracker-api/src/index.ts), while
-    // Supabase `POST /auth/v1/token` returned 200 about 25 s earlier — every
-    // time. The guess sent three separate investigations at auth, which was
-    // healthy throughout. The twin of this line in app_test.dart was corrected
-    // in the same change. ⛔ Do NOT restore a causal claim here: state what was
+    // Root-caused 2026-09-02: the wait timed out because the subscriptiontracker-api
+    // Worker returned a 500 from a TRANSIENT Cloudflare D1 fault (`D1_ERROR: D1
+    // DB storage operation exceeded timeout which caused object to be reset`,
+    // mapped to `internal_error` at services/subscriptiontracker-api/src/index.ts),
+    // while Supabase `POST /auth/v1/token` returned 200 about 25 s earlier —
+    // every time. ⛔ Do NOT restore a causal claim here: state what was
     // OBSERVED and let the reader diagnose from the screen text.
+    //
+    // ⏱ 2026-10-01 · IM-07 (ADR 077 §2.2): the drive no longer passes through
+    // `/scan` (a timed loader, retired) and its "Go to dashboard" button. A
+    // signed-in session lands on Home, and what is asserted is what that button
+    // used to stand in for: the list LOADED — neither the skeleton nor the
+    // failed state.
     expect(
-      find.text('Go to dashboard'),
-      findsOneWidget,
+      find.byType(HomeScreen).evaluate().isNotEmpty &&
+          find.byKey(DataStateView.failedKey).evaluate().isEmpty &&
+          find.byKey(DataStateView.loadingKey).evaluate().isEmpty,
+      isTrue,
       reason:
-          'Timed out waiting for the scan screen to render "Go to dashboard". '
-          'This is a TIMEOUT, not a diagnosis: read the cause off the screen '
-          'text rather than assuming one. "Could not load: ApiException(5xx)" '
-          'is the backend answering 5xx (look for `service=subscriptiontracker-api` in '
-          'GlitchTip and join on the request id); "Setting up your board" on '
-          'its own means the scan was still running when the window expired. '
+          'Timed out waiting for Home to show the loaded list. This is a '
+          'TIMEOUT, not a diagnosis: read the cause off the screen text rather '
+          'than assuming one. "Could not load: ApiException(5xx)" is the '
+          'backend answering 5xx (look for `service=subscriptiontracker-api` in '
+          'GlitchTip and join on the request id); the loading skeleton on its '
+          'own means the list was still loading when the window expired. '
           'On screen: ${onScreen(tester)}',
     );
-    await tester.tap(find.text('Go to dashboard'));
-    await pumpFor(tester, const Duration(seconds: 4));
     expect(find.byType(AppShell), findsOneWidget);
 
     // ── who is on screen, asked of the app rather than of the harness ────────

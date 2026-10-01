@@ -454,10 +454,10 @@ final Map<String, List<Override>> kSweptAs = <String, List<Override>>{
 /// this file quietly measuring a shrinking share of a growing app.
 const Map<String, ({int controls, int reachable})>
 kExpected = <String, ({int controls, int reachable})>{
-  // ⏱ 2026-09-28 · ST-U8 (B49): 1 -> 13. The swept results phase lists the
-  // seed's 12 rows, and each now opens its detail (an InkWell, on the Tab
-  // orbit) beside the one CTA.
-  '/scan': (controls: 13, reachable: 13),
+  // ⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): `/scan` (13 of 13) is retired to a
+  // redirect, and `/import` is swept in its place — the hub phase: close, the
+  // paste field, and "Read it", which is disabled until there is text.
+  '/import': (controls: 2, reachable: 2),
   // 5 -> 7 on 2026-08-26: the two `_LegalLink`s joined the orbit. The
   // control count did NOT move — `FocusableTap` still builds a
   // `GestureDetector` with an `onTap`, so the rig counts the same nine.
@@ -760,12 +760,14 @@ void main() {
       .toSet();
 
   group('the router is the only declaration of the route set', () {
-    test('19 routes, 16 of them build a screen, 3 are redirect-only', () {
+    // ⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): 19 → 20 routes, 3 → 4 redirects —
+    // `/scan` is a redirect onto `/import`, and `/import` builds the hub.
+    test('20 routes, 16 of them build a screen, 4 are redirect-only', () {
       expect(
         declared.length,
-        19,
+        20,
         reason:
-            'the router declares ${declared.length} GoRoutes, not 19. That is '
+            'the router declares ${declared.length} GoRoutes, not 20. That is '
             'not a failure by itself — an app may gain a route — but this '
             "file's coverage claim is about a set of that size, and the new "
             'route needs a kExpected entry before any number here can be read. '

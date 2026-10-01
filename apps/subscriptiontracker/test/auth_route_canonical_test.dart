@@ -268,11 +268,6 @@ void main() {
     // settled location carries `?next=`. The path is asserted exactly as it
     // was, and the banked destination beside it.
     expect(
-      Uri.parse(settled).queryParameters['next'],
-      '/budget',
-      reason: 'the deep link is kept for after sign-in (EN-03)',
-    );
-    expect(
       Uri.parse(settled).path,
       '/sign-in',
       reason:
@@ -284,6 +279,11 @@ void main() {
           'something that is not an auth path at all (M3b: "/onboarding" → '
           'settles on /home, RED)',
     );
+    // ⏱ 2026-10-01 · IM-01: and the surface they reached for is BANKED, so
+    // signing in brings them back to it instead of to /home.
+    expect(Uri.parse(settled).queryParameters, <String, String>{
+      'next': '/budget',
+    });
     expect(find.byType(LoginScreen), findsOneWidget);
   });
 

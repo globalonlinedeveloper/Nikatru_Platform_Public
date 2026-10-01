@@ -1096,10 +1096,11 @@ void main() {
       final ProviderContainer c = _container(auth: _Auth(verified: true));
       addTearDown(c.dispose);
       expect(
-        await _settleAt(tester, c, '/reaccept-terms?next=%2Fscan'),
-        '/scan',
+        await _settleAt(tester, c, '/reaccept-terms?next=%2Fimport'),
+        '/import',
         reason:
-            'the regression verbatim: a user sent to the gate from /scan and '
+            'the regression verbatim (then on /scan, a redirect onto /import '
+            'since ADR 077 §2.2): a user sent to the gate from /import and '
             'handed back to /home has lost the journey they were on, and the '
             'nightly proves it end to end',
       );
@@ -1136,7 +1137,7 @@ void main() {
         '/reaccept-terms?next=%FF',
         '/reaccept-terms?next=%E0%A4%A',
         // The nastiest shape: the poison is not even in `next`.
-        '/reaccept-terms?a=%ED%A0%80&next=%2Fscan',
+        '/reaccept-terms?a=%ED%A0%80&next=%2Fimport',
       ]) {
         expect(
           await _settleAt(tester, c, poison),
