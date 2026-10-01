@@ -176,7 +176,7 @@
   "deleteAccountResultNotDeleted": "நீக்கப்படவில்லை",
   "deleteAccountEmailRoute": "{email} முகவரிக்கு மின்னஞ்சல் அனுப்புங்கள், நாங்கள் அதை முடிப்போம்.",
   "close": "மூடு",
-  "versionFooter": "{appName} v{version} · © 2026 {company}",
+  "versionFooter": "{appName} v{version} · © {year} {company}",
   "addSubscriptionFailed": "அந்தச் சந்தாவைச் சேர்க்க முடியவில்லை — உங்கள் இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
   "addSubscriptionTitle": "சந்தாவைச் சேர்",
   "addPopularHeading": "பிரபலமானவை",
@@ -478,5 +478,12 @@
   "authHidePassword": "கடவுச்சொல்லை மறை",
   "authPasswordRuleLength": "குறைந்தது {count} எழுத்துகள்",
   "authPasswordRuleBreach": "அறியப்பட்ட தரவுக் கசிவுகளில் இல்லை",
-  "checkInboxResendIn": "{time} இல் மீண்டும் அனுப்பலாம்"
+  "checkInboxResendIn": "{time} இல் மீண்டும் அனுப்பலாம்",
+  "settingsAccountSection": "கணக்கு & தரவு",
+  "settingsHelpSection": "உதவி",
+  "settingsAboutSection": "இந்த ஆப் பற்றி",
+  "rateApp": "{appName} ஐ மதிப்பிடுங்கள்",
+  "rateAppUnavailable": "இந்தப் பதிப்பிலிருந்து ஸ்டோரைத் திறக்க முடியவில்லை.",
+  "sendFeedback": "கருத்தை அனுப்பு",
+  "feedbackMailSubject": "{appName} கருத்து"
 }

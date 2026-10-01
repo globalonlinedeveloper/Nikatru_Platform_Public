@@ -68,6 +68,12 @@ import 'reminder_settings.dart';
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
+  /// The Help section's rows (ST-Y4) — keyed so a test finds a ROW and not a
+  /// string two rows could share.
+  static const Key contactSupportRow = Key('settings.help.contactSupport');
+  static const Key rateAppRow = Key('settings.help.rate');
+  static const Key feedbackRow = Key('settings.help.feedback');
+
   /// The three product preferences, as `[key, l10nLabel, l10nDescription]`
   /// resolved at build time — a `const` list cannot hold `l10n` lookups, so the
   /// tuple is built inside [build] instead of here.
@@ -802,7 +808,11 @@ class SettingsScreen extends ConsumerWidget {
             ],
 
             // ── ACCOUNT & DATA (live-only rows) ──────────────────────────────
-            const SizedBox(height: 22),
+            // ⏱ ST-Y3 (audit D8): this card, the legal card and the about card
+            // had no heading at all, drawn or announced — a gap and a card.
+            // Each now has one, from the same helper as every other card here,
+            // so a reader's heading list names every group on the screen.
+            _sectionLabel(context, l10n.settingsAccountSection),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
@@ -820,19 +830,69 @@ class SettingsScreen extends ConsumerWidget {
                   _LinkRow(
                     icon: '⇩',
                     label: l10n.exportDataCsv,
-                    last: false,
+                    last: true,
                     onTap: exportDataTap(ref),
                   ),
+                ],
+              ),
+            ),
+
+            // ── HELP — ONE SECTION (ST-Y4, audit D12/F53) ────────────────────
+            //
+            // 🔴 THE TWO SUPPORT ROUTES USED TO SIT IN TWO DIFFERENT CARDS —
+            // the contact page at the foot of the account card, the mailto at
+            // the foot of the legal one — and there was no way to rate the app
+            // or send a suggestion at all. Everything a user reaches for when
+            // they want to TALK to us is now one group under one heading.
+            //
+            // App-only because this screen is: ST-D4 kept Subly's merged
+            // settings screen rather than moving it onto the chassis
+            // `SettingsView`, so there is no shared screen for it to live in.
+            _sectionLabel(context, l10n.settingsHelpSection),
+            Container(
+              decoration: cardDecoration(context),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: <Widget>[
                   // The published contact PAGE — a form, reachable without a
                   // mail client, which is the route most web users take. The
-                  // chassis-mandated mailto (E1) is the separate row in the
-                  // legal card below; both exist because they fail in different
-                  // conditions.
+                  // chassis-mandated mailto (E1) is the next row; both exist
+                  // because they fail in different conditions.
                   _LinkRow(
                     icon: '?',
                     label: l10n.helpAndSupport,
-                    last: true,
+                    last: false,
                     onTap: () => openExternalUrl(AppConfig.contactUrl),
+                  ),
+                  // The chassis support route (E1). A `mailto:` with the subject
+                  // pre-filled, so a bug report arrives already labelled.
+                  _LinkRow(
+                    key: contactSupportRow,
+                    icon: '✉',
+                    label: l10n.contactSupport,
+                    subtitle: AppConfig.supportEmail,
+                    last: false,
+                    onTap: _contactSupport,
+                  ),
+                  // RATE — only where the platform HAS a store listing to open
+                  // (not web, not Linux). A row that can never do anything on
+                  // the build it is drawn in is the dead-control defect; the
+                  // one outcome left, a store build with no id for its store,
+                  // says so out loud rather than looking like it worked.
+                  if (ref.watch(storeListingAvailableProvider))
+                    _LinkRow(
+                      key: rateAppRow,
+                      icon: '☆',
+                      label: l10n.rateApp(AppConfig.appName),
+                      last: false,
+                      onTap: () => _rateApp(context, ref, l10n),
+                    ),
+                  _LinkRow(
+                    key: feedbackRow,
+                    icon: '✎',
+                    label: l10n.sendFeedback,
+                    last: true,
+                    onTap: () => _sendFeedback(l10n),
                   ),
                 ],
               ),
@@ -840,7 +900,7 @@ class SettingsScreen extends ConsumerWidget {
 
             // ── LEGAL (chassis). Both stores require these to be reachable
             //    IN-APP, not only from a store listing. [pipeline C-13]
-            const SizedBox(height: 12),
+            _sectionLabel(context, l10n.legal),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
@@ -867,17 +927,8 @@ class SettingsScreen extends ConsumerWidget {
                   _LinkRow(
                     icon: '₹',
                     label: l10n.refundPolicy,
-                    last: false,
-                    onTap: () => openExternalUrl(AppConfig.refundUrl),
-                  ),
-                  // The chassis support route (E1). A `mailto:` with the subject
-                  // pre-filled, so a bug report arrives already labelled.
-                  _LinkRow(
-                    icon: '✉',
-                    label: l10n.contactSupport,
-                    subtitle: AppConfig.supportEmail,
                     last: true,
-                    onTap: _contactSupport,
+                    onTap: () => openExternalUrl(AppConfig.refundUrl),
                   ),
                 ],
               ),
@@ -900,7 +951,7 @@ class SettingsScreen extends ConsumerWidget {
             // `LicensePage` reads `LicenseRegistry`, which every package
             // registers into automatically, so both stay correct as dependencies
             // change instead of being a list somebody must remember to update.
-            const SizedBox(height: 12),
+            _sectionLabel(context, l10n.settingsAboutSection),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
@@ -1040,10 +1091,16 @@ class SettingsScreen extends ConsumerWidget {
                 // The RUNNING version here too. This line used to read a
                 // hardcoded 'v1.0' while the pubspec said 1.0.0+1 — a version
                 // string that is wrong the first time anybody ships a patch.
+                //
+                // ⏱ ST-Y4 (audit D14): and the YEAR is the clock's, for the
+                // same reason. It was "© 2026" in both arb files, a literal
+                // that goes stale every January with nothing red to say so.
+                // `nowProvider` is the app's one injectable wall clock.
                 l10n.versionFooter(
                   AppConfig.appName,
                   runningVersion,
                   AppConfig.companyName,
+                  ref.watch(nowProvider)().year.toString(),
                 ),
                 style: AppText.of(context).muted.copyWith(fontSize: 11),
               ),
@@ -1062,9 +1119,23 @@ class SettingsScreen extends ConsumerWidget {
   /// 4.5:1 for this 11px text — on all seven headings this screen draws. Light
   /// is byte-identical (`AppText.of` returns the const objects themselves), so
   /// this repaints nothing.
+  ///
+  /// ⏱ ST-Y3 (audit D8): and it is a HEADER NODE. It was styled text, so a
+  /// screen reader's heading navigation found not one of the groups on this
+  /// screen. `container: true` beside `header:` for the reason the chassis
+  /// `SettingsSection` records: a bare `header:` bubbles up to the nearest
+  /// node and the heading merges into whatever sits around it. The label
+  /// keeps the words as written — the upper-casing is paint only.
   static Widget _sectionLabel(BuildContext context, String text) => Padding(
     padding: const EdgeInsets.fromLTRB(2, 22, 2, 8),
-    child: Text(text.toUpperCase(), style: AppText.of(context).label),
+    child: Semantics(
+      container: true,
+      header: true,
+      label: text,
+      child: ExcludeSemantics(
+        child: Text(text.toUpperCase(), style: AppText.of(context).label),
+      ),
+    ),
   );
 
   /// 🔴 AWAITED, AND ITS FAILURE IS SAID OUT LOUD. This was
@@ -1154,6 +1225,40 @@ class SettingsScreen extends ConsumerWidget {
     // configured support address and nothing else. No mail client / launch
     // failed reads as not opened, never as a throw — settings cannot crash here.
     await externalLinks.open(uri);
+  }
+
+  /// Help → Send feedback (ST-Y4): the support mail with a FEEDBACK subject,
+  /// so a suggestion is told apart from a bug report before it is opened.
+  /// Through the same one launcher and the same address as [_contactSupport].
+  Future<void> _sendFeedback(AppLocalizations l10n) async {
+    await externalLinks.open(feedbackMailUri(l10n));
+  }
+
+  /// The mail [_sendFeedback] opens — its own function so a test can read the
+  /// address and the translated subject without a mail client.
+  @visibleForTesting
+  static Uri feedbackMailUri(AppLocalizations l10n) => Uri.parse(
+    'mailto:${AppConfig.supportEmail}'
+    '?subject=${Uri.encodeComponent(l10n.feedbackMailSubject(AppConfig.appName))}',
+  );
+
+  /// Help → Rate (ST-Y4): the store LISTING, not the in-app prompt. The
+  /// prompt is quota-limited and may draw nothing (see `ReviewPrompter`); a
+  /// deliberate tap deserves the page that always opens. Anything but
+  /// `opened` is said out loud — a rate tap that silently did nothing is the
+  /// defect `StoreListingOutcome` exists to end.
+  Future<void> _rateApp(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations l10n,
+  ) async {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final core.StoreListingOutcome outcome = await ref
+        .read(reviewPrompterProvider)
+        .openStoreListing();
+    if (outcome != core.StoreListingOutcome.opened) {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.rateAppUnavailable)));
+    }
   }
 
   /// [pipeline C-13] EDIT DISPLAY NAME.

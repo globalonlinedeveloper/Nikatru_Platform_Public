@@ -736,9 +736,9 @@
   "@close": {
     "description": "Dismisses the deletion-result dialog."
   },
-  "versionFooter": "{appName} v{version} · © 2026 {company}",
+  "versionFooter": "{appName} v{version} · © {year} {company}",
   "@versionFooter": {
-    "description": "The footer under the Nikatru lockup. The version is the RUNNING version from package_info_plus, not the compiled-in constant — the live line read a hardcoded 'v1.0'.",
+    "description": "The footer under the Nikatru lockup. The version is the RUNNING version from package_info_plus, not the compiled-in constant — the live line read a hardcoded 'v1.0'. ST-Y4 (audit D14): {year} is the current year from the clock, never a literal — a literal went stale every January.",
     "placeholders": {
       "appName": {
         "type": "String",
@@ -751,6 +751,10 @@
       "company": {
         "type": "String",
         "example": "Nikatru"
+      },
+      "year": {
+        "type": "String",
+        "example": "2026"
       }
     }
   },
@@ -2376,6 +2380,46 @@
       "time": {
         "type": "String",
         "example": "0:24"
+      }
+    }
+  },
+  "settingsAccountSection": "Account & data",
+  "@settingsAccountSection": {
+    "description": "ST-Y3 (audit D8): the heading over the Settings card holding connected accounts and the CSV export. A header node for screen readers; drawn upper-case in English by the screen."
+  },
+  "settingsHelpSection": "Help",
+  "@settingsHelpSection": {
+    "description": "ST-Y4 (audit D12/F53): the heading over Settings’ ONE Help section — the contact page, the support mail, rating the app and sending feedback."
+  },
+  "settingsAboutSection": "About this app",
+  "@settingsAboutSection": {
+    "description": "ST-Y3 (audit D8): the heading over the Settings card holding the open-source licences and the About tile."
+  },
+  "rateApp": "Rate {appName}",
+  "@rateApp": {
+    "description": "ST-Y4 (audit D12/F53): the Help row that opens the app’s store listing so the user can rate it. Shown only where the platform has a store listing to open.",
+    "placeholders": {
+      "appName": {
+        "type": "String",
+        "example": "Subscriptions"
+      }
+    }
+  },
+  "rateAppUnavailable": "The store could not be opened from this build.",
+  "@rateAppUnavailable": {
+    "description": "ST-Y4: the SnackBar after a Rate tap the store did not answer (no store id in this build, or the store threw). Never shown as success."
+  },
+  "sendFeedback": "Send feedback",
+  "@sendFeedback": {
+    "description": "ST-Y4 (audit D12/F53): the Help row that opens a mail to the support address with a feedback subject."
+  },
+  "feedbackMailSubject": "{appName} feedback",
+  "@feedbackMailSubject": {
+    "description": "The subject line pre-filled in the feedback mail, so a suggestion arrives already labelled.",
+    "placeholders": {
+      "appName": {
+        "type": "String",
+        "example": "Subscriptions"
       }
     }
   }
