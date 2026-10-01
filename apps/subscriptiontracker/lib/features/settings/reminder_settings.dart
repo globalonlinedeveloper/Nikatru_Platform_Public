@@ -141,9 +141,16 @@ String _time(BuildContext context, int minuteOfDay) =>
 /// answered — written by [ReminderChannelsCard] after a read or a write,
 /// read by [ReminderRuleRows] so the ONE "Remind me" row is offered whenever
 /// any channel uses it (SE-09). False until the platform has answered.
-final StateProvider<bool> emailRemindersOnProvider = StateProvider<bool>(
-  (ref) => false,
-);
+///
+/// It belongs to the ACCOUNT, so it starts over whenever the signed-in account
+/// changes: a sign-out must not leave the last account's e-mail answer
+/// offering the "Remind me" row to nobody.
+final StateProvider<bool> emailRemindersOnProvider = StateProvider<bool>((ref) {
+  ref.watch(
+    authUserProvider.select((AsyncValue<core.AuthUser?> u) => u.value?.id),
+  );
+  return false;
+});
 
 /// ST-R3 (audit C26): the default lead and the time of day, under "Renewal
 /// alerts" while it is ON on a target that can schedule.
@@ -536,7 +543,9 @@ class _ReminderChannelsCardState extends ConsumerState<ReminderChannelsCard> {
     // SE-09: the ONE "Remind me" row is the account's lead; when it changes
     // and e-mail reminders are on, the platform is told the same number.
     ref.listen<int>(
-      settingsControllerProvider.select((SettingsState s) => s.reminderLeadDays),
+      settingsControllerProvider.select(
+        (SettingsState s) => s.reminderLeadDays,
+      ),
       (int? before, int now) {
         final core.ReminderPrefs? p = _prefs;
         final int? lead = _accountLead();
@@ -548,41 +557,41 @@ class _ReminderChannelsCardState extends ConsumerState<ReminderChannelsCard> {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final core.ReminderPrefs p = _prefs ?? core.ReminderPrefs.defaults;
     final Widget rows = Material(
-          type: MaterialType.transparency,
-          child: Column(
-            children: <Widget>[
-              SwitchListTile.adaptive(
-                key: const Key('settings.reminder.email'),
-                title: Text(l10n.emailRemindersTitle),
-                subtitle: Text(
-                  l10n.emailRemindersDesc(l10n.reminderLeadValue(p.leadDays)),
-                ),
-                value: p.emailOptIn,
-                // Switching e-mail ON sends the account's lead with it, so
-                // the two channels start on the one schedule.
-                onChanged: _prefs == null || _busy
-                    ? null
-                    : (bool on) => _write(
-                        emailOptIn: on,
-                        leadDays: on ? _accountLead() : null,
-                      ),
-              ),
-              ListTile(
-                key: const Key('settings.reminder.calendar'),
-                leading: const Icon(Icons.event_available_outlined),
-                title: Text(l10n.calendarAddTitle),
-                subtitle: Text(l10n.calendarAddDesc),
-                onTap: _busy ? null : _addToCalendar,
-              ),
-              ListTile(
-                key: const Key('settings.reminder.calendar.reset'),
-                leading: const Icon(Icons.link_off),
-                title: Text(l10n.calendarResetTitle),
-                onTap: _busy ? null : _reset,
-              ),
-            ],
+      type: MaterialType.transparency,
+      child: Column(
+        children: <Widget>[
+          SwitchListTile.adaptive(
+            key: const Key('settings.reminder.email'),
+            title: Text(l10n.emailRemindersTitle),
+            subtitle: Text(
+              l10n.emailRemindersDesc(l10n.reminderLeadValue(p.leadDays)),
+            ),
+            value: p.emailOptIn,
+            // Switching e-mail ON sends the account's lead with it, so
+            // the two channels start on the one schedule.
+            onChanged: _prefs == null || _busy
+                ? null
+                : (bool on) => _write(
+                    emailOptIn: on,
+                    leadDays: on ? _accountLead() : null,
+                  ),
           ),
-        );
+          ListTile(
+            key: const Key('settings.reminder.calendar'),
+            leading: const Icon(Icons.event_available_outlined),
+            title: Text(l10n.calendarAddTitle),
+            subtitle: Text(l10n.calendarAddDesc),
+            onTap: _busy ? null : _addToCalendar,
+          ),
+          ListTile(
+            key: const Key('settings.reminder.calendar.reset'),
+            leading: const Icon(Icons.link_off),
+            title: Text(l10n.calendarResetTitle),
+            onTap: _busy ? null : _reset,
+          ),
+        ],
+      ),
+    );
     if (widget.embedded) return rows;
     return Padding(
       padding: const EdgeInsets.only(top: 12),

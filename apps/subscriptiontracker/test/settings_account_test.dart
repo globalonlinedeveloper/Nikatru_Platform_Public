@@ -24,6 +24,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/features/account/account_security.dart';
+import 'package:subscriptiontracker/features/settings/reminder_settings.dart'
+    show emailRemindersOnProvider;
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
 import 'package:subscriptiontracker/features/shared/chassis_adapters.dart'
     show DevicesSection, EditProfileDialog;
@@ -62,7 +64,9 @@ class _Auth extends core.AuthRepository {
           emailVerified: true,
           displayName: displayName,
           hasPasswordIdentity: hasPassword,
-          oauthProviders: hasPassword ? const <String>[] : const <String>['apple'],
+          oauthProviders: hasPassword
+              ? const <String>[]
+              : const <String>['apple'],
           lastSignInAt: lastSignInAt,
         )
       : null;
@@ -125,12 +129,15 @@ class _Sessions implements core.SessionsTransport {
   @override
   Future<core.Result<List<core.DeviceSession>>> list({
     required String? accessToken,
-  }) async => core.Result<List<core.DeviceSession>>.ok(
-    const <core.DeviceSession>[
-      core.DeviceSession(id: 'here', current: true, device: 'Chrome on Linux'),
-      core.DeviceSession(id: 'phone', current: false, device: 'Android'),
-    ],
-  );
+  }) async =>
+      core.Result<List<core.DeviceSession>>.ok(const <core.DeviceSession>[
+        core.DeviceSession(
+          id: 'here',
+          current: true,
+          device: 'Chrome on Linux',
+        ),
+        core.DeviceSession(id: 'phone', current: false, device: 'Android'),
+      ]);
 
   @override
   Future<core.Result<void>> revoke({
@@ -332,6 +339,21 @@ void main() {
         );
       }
     });
+
+    testWidgets("🔴 signing out forgets the account's e-mail answer", (
+      WidgetTester tester,
+    ) async {
+      final _Auth auth = _Auth();
+      final ProviderContainer c = await _pump(tester, auth, emailOn: true);
+      expect(c.read(emailRemindersOnProvider), isTrue);
+      await auth.signOut();
+      await tester.pumpAndSettle();
+      expect(
+        c.read(emailRemindersOnProvider),
+        isFalse,
+        reason: 'the signed-out app still believes e-mail reminders are on',
+      );
+    });
   });
 
   group('SE-03 · your devices', () {
@@ -385,9 +407,8 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    String message(WidgetTester tester) => tester
-        .widget<Text>(find.byKey(AccountChangeDialog.message))
-        .data!;
+    String message(WidgetTester tester) =>
+        tester.widget<Text>(find.byKey(AccountChangeDialog.message)).data!;
 
     testWidgets('🔴 a WRONG current password changes NOTHING', (
       WidgetTester tester,
@@ -398,7 +419,10 @@ void main() {
       await fill(tester, newValue: 'new@test.dev', current: 'wrong');
       expect(auth.reauths, <String>['ada@test.dev']);
       expect(auth.emailChanges, isEmpty, reason: 'changed without the owner');
-      expect(message(tester), 'That password is not right. Nothing was changed.');
+      expect(
+        message(tester),
+        'That password is not right. Nothing was changed.',
+      );
 
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
@@ -413,7 +437,11 @@ void main() {
       final _Auth auth = _Auth();
       await _pump(tester, auth);
       await openChange(tester, SettingsScreen.changeEmailRow);
-      await fill(tester, newValue: ' new@test.dev ', current: _Auth.rightPassword);
+      await fill(
+        tester,
+        newValue: ' new@test.dev ',
+        current: _Auth.rightPassword,
+      );
       expect(auth.emailChanges, <String>['new@test.dev']);
       expect(message(tester), contains('Check both inboxes'));
       expect(message(tester), contains('ada@test.dev'));
@@ -428,7 +456,10 @@ void main() {
       await _pump(tester, auth);
       await openChange(tester, SettingsScreen.changeEmailRow);
       for (final String bad in <String>['ada@test.dev', 'not-an-address']) {
-        await tester.enterText(find.byKey(AccountChangeDialog.newValueField), bad);
+        await tester.enterText(
+          find.byKey(AccountChangeDialog.newValueField),
+          bad,
+        );
         await tester.enterText(
           find.byKey(AccountChangeDialog.currentPasswordField),
           _Auth.rightPassword,
@@ -464,21 +495,29 @@ void main() {
       expect(message(tester), 'Your password was changed.');
     });
 
-    testWidgets('an Apple account: no password to type, no password to change', (
-      WidgetTester tester,
-    ) async {
-      final _Auth auth = _Auth()
-        ..hasPassword = false
-        // Just signed in with Apple: inside the freshness window, so the
-        // provider sheet is not shown again.
-        ..lastSignInAt = DateTime.now().toUtc();
-      await _pump(tester, auth);
-      expect(find.byKey(SettingsScreen.changePasswordRow), findsNothing);
-      await openChange(tester, SettingsScreen.changeEmailRow);
-      expect(find.byKey(AccountChangeDialog.currentPasswordField), findsNothing);
-      await fill(tester, newValue: 'new@test.dev');
-      expect(auth.reauths, isEmpty, reason: 'a password sign-in was attempted');
-      expect(auth.emailChanges, <String>['new@test.dev']);
-    });
+    testWidgets(
+      'an Apple account: no password to type, no password to change',
+      (WidgetTester tester) async {
+        final _Auth auth = _Auth()
+          ..hasPassword = false
+          // Just signed in with Apple: inside the freshness window, so the
+          // provider sheet is not shown again.
+          ..lastSignInAt = DateTime.now().toUtc();
+        await _pump(tester, auth);
+        expect(find.byKey(SettingsScreen.changePasswordRow), findsNothing);
+        await openChange(tester, SettingsScreen.changeEmailRow);
+        expect(
+          find.byKey(AccountChangeDialog.currentPasswordField),
+          findsNothing,
+        );
+        await fill(tester, newValue: 'new@test.dev');
+        expect(
+          auth.reauths,
+          isEmpty,
+          reason: 'a password sign-in was attempted',
+        );
+        expect(auth.emailChanges, <String>['new@test.dev']);
+      },
+    );
   });
 }
