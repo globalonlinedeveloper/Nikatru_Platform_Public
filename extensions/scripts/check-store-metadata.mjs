@@ -127,7 +127,7 @@ const ADDITIONAL_PER_STORE = extensionAdditionalListingFiles();
 const KIND_OF = new Map(LISTING_FIELDS.map((f) => [f.name, f.kind]));
 
 const args = parseArgs(process.argv.slice(2));
-args.rejectUnknown(['all', 'repo-root', 'app-config']);
+args.rejectUnknown(['all', 'repo-root', 'app-config', 'channel-register']);
 const root = repoRoot(args);
 
 /* 🔴 `--all` HAD NEVER RUN, AND IT IS IN THIS FILE'S OWN USAGE LINE.
@@ -769,7 +769,7 @@ for (const tool of tools) {
      with store directories and no listing.json at all WARNS: its copy is
      hand-kept, which is how every tool started. */
   {
-    const plan = planListing(root, tool, { appConfigPath: args.get('app-config') });
+    const plan = planListing(root, tool, { appConfigPath: args.get('app-config'), channelRegisterPath: args.get('channel-register') });
     if (plan.lost.length) die(plan.lost.join('\n'));
     for (const p of plan.problems) r.fail(tool.rel + ' store/listing.json renders', p);
     const dirs = Object.values(rows).filter((x) => x && typeof x.dir === 'string' && fs.existsSync(path.join(tool.dirAbs, x.dir)));

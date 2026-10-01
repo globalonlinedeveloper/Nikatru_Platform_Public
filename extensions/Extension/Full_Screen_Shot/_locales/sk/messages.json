@@ -134,6 +134,9 @@
   "popupLinkBatch": {
     "message": "Dávka"
   },
+  "popupUpgrade": {
+    "message": "Upgrade to FullShot Pro"
+  },
   "popupLinkOptions": {
     "message": "Možnosti"
   },
