@@ -252,10 +252,11 @@ function writingAfterFirstPage(real: RealDb, table: string, write: string): D1Da
 
 /**
  * A D1 that refuses its first `times` page reads with SQLITE_TOOBIG, as D1
- * refuses a value past its cap. Each refused read is still a statement the real
+ * refuses a value past its cap — or with `message`, as D1 refuses a read it
+ * dropped (a reset, a timeout). Each refused read is still a statement the real
  * engine recorded — a query spent, as on D1.
  */
-function refusingPages(real: RealDb, times: number): D1Database {
+function refusingPages(real: RealDb, times: number, message = 'string or blob too big: SQLITE_TOOBIG'): D1Database {
   let left = times;
   return {
     prepare(sql: string) {
@@ -264,7 +265,7 @@ function refusingPages(real: RealDb, times: number): D1Database {
       return {
         first: async () => {
           left -= 1;
-          throw new Error('string or blob too big: SQLITE_TOOBIG');
+          throw new Error(message);
         },
       };
     },
@@ -757,6 +758,39 @@ describe('paging never skips a row, and a page is sized by its rows\' BYTES', ()
     expect(ids).toEqual(Array.from({ length: count + 1 }, (_, i) => i + 1));
   }, 30_000);
 
+  // ⏱ 2026-10-01 · review of #1118, finding 1 — the reviewer's probe, ported.
+  it('🔴 a row DELETED AND RE-INSERTED under the same key between rounds is dumped twice, and the restore keeps ONE row, the newer', async () => {
+    const count = D1_PAGE_ROWS + 10;
+    const fill = (table: string): string =>
+      `WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < ${count}) INSERT INTO ${table} (k, v) SELECT 'k' || x, 'old' FROM c`;
+    const platform = realPlatformDb([
+      'CREATE TABLE probe_kv (k TEXT PRIMARY KEY, v TEXT)',
+      fill('probe_kv'),
+      // The same key declared by a UNIQUE INDEX instead of the table.
+      'CREATE TABLE probe_ux (k TEXT, v TEXT)',
+      'CREATE UNIQUE INDEX probe_ux_k ON probe_ux (k)',
+      fill('probe_ux'),
+    ]);
+    const move =
+      "DELETE FROM probe_kv WHERE k = 'k1'; INSERT INTO probe_kv (k, v) VALUES ('k1', 'new');" +
+      "DELETE FROM probe_ux WHERE k = 'k1'; INSERT INTO probe_ux (k, v) VALUES ('k1', 'new')";
+    const dump = await dumpD1Database(writingAfterFirstPage(platform, 'probe_kv', move), 'platform_db', 1000, '2026-10-01T02:30:00Z');
+    expect(dump.truncated).toBe(false);
+    for (const table of ['probe_kv', 'probe_ux']) {
+      // Precondition: the move landed between rounds, so the dump holds k1 twice, old then new.
+      const k1 = linesOf(dump.jsonl)
+        .filter((l) => l.kind === 'row' && l.table === table && (l.data as { k: string }).k === 'k1')
+        .map((l) => (l.data as { v: string }).v);
+      expect(k1, table).toEqual(['old', 'new']);
+    }
+    const copy = restored(dump.jsonl);
+    for (const table of ['probe_kv', 'probe_ux']) {
+      expect(copy.count(table), table).toBe(count);
+      expect(copy.rows(`SELECT v FROM ${table} WHERE k = 'k1'`), table).toEqual([{ v: 'new' }]);
+      expect(copy.rows(`SELECT k, v FROM ${table} ORDER BY k`), table).toEqual(platform.rows(`SELECT k, v FROM ${table} ORDER BY k`));
+    }
+  }, 30_000);
+
   it('🔴 a 10,000-row provider_notifications, its widest body production\'s 4,749 bytes, spends under HALF the pool and lands whole', async () => {
     // ⏱ 2026-10-01: sized by its WIDEST row, every page of this table was ~210 rows,
     // so 10,000 rows cost ~48 rounds — past the whole pool of 42, a truncated night.
@@ -838,6 +872,36 @@ describe('paging never skips a row, and a page is sized by its rows\' BYTES', ()
     expect(bucket.objects.has(`d1/platform_db/${backupDate(NOW)}.jsonl.gz`)).toBe(false);
     expect(pageTargets(real.sql)).toHaveLength(2); // the read and its ONE retry, no third
     expect(latestManifest(bucket).complete).toBe(false);
+  });
+
+  // ⏱ 2026-10-01 · review of #1118, finding 5.
+  it('🔴 once a cut page LANDS, the next page asks for the full target again — one refusal never quarters the rest of the night', async () => {
+    const platform = realPlatformDb(padRows(D1_PAGE_ROWS + 10));
+    const dump = await dumpD1Database(refusingPages(platform, 1), 'platform_db', 1000, '2026-10-01T02:30:00Z');
+    expect(dump.truncated).toBe(false);
+    expect(linesOf(dump.jsonl).filter((l) => l.kind === 'row' && l.table === 'pad_rows')).toHaveLength(D1_PAGE_ROWS + 10);
+    const [first, cut, next] = pageTargets(platform.sql);
+    // Every table's first page asks for the same full target, just under D1_PAGE_BYTES.
+    const full = first[0];
+    expect(first.every((t) => t === full) && full > D1_PAGE_BYTES / 2 && full <= D1_PAGE_BYTES).toBe(true);
+    expect(cut).toEqual(first.map((t) => Math.floor(t / PAGE_RETRY_SHRINK)));
+    // Round two reads only pad_rows' second page, at the FULL target.
+    expect(next).toEqual([full]);
+  }, 30_000);
+
+  it('🔴 a refusal that is NOT about size is retried ONCE at the SAME size; refused again, the night is RED', async () => {
+    const platform = realPlatformDb(padRows(10));
+    const dump = await dumpD1Database(refusingPages(platform, 1, 'D1_ERROR: Network connection lost.'), 'platform_db', 1000, '2026-10-01T02:30:00Z');
+    expect(dump.truncated).toBe(false);
+    expect(linesOf(dump.jsonl).filter((l) => l.kind === 'row' && l.table === 'pad_rows')).toHaveLength(10);
+    const [first, retry] = pageTargets(platform.sql);
+    expect(retry).toEqual(first);
+
+    const twice = realPlatformDb(padRows(10));
+    await expect(
+      dumpD1Database(refusingPages(twice, 2, 'D1_ERROR: Network connection lost.'), 'platform_db', 1000, '2026-10-01T02:30:00Z'),
+    ).rejects.toThrow(/failed again at the same size — .*Network connection lost/);
+    expect(pageTargets(twice.sql)).toHaveLength(2); // the read and its ONE retry, no third
   });
 
   it('🔴 ONE row wider than D1_PAGE_BYTES is retried once and then fails LOUDLY — never skipped, never a quiet partial', async () => {

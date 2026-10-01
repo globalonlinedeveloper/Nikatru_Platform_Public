@@ -48,10 +48,16 @@
 // rows: a round per 210 rows, the 80% line near 5.7k rows and a truncated night
 // near 8k. A page now accumulates rows, in rowid order, until D1_PAGE_BYTES of
 // UTF-8 — sized by what the rows ARE, not by the worst one — and the size
-// statement is gone. ⚠️ THE NEW PAGE SHAPE (window functions over a keyset
-// subquery, CAST … AS BLOB, hex(), typeof()) WAS NOT IN THAT DAY'S MEASUREMENT:
-// it runs in test/harness.ts's real sqlite, and needs the same read-only
-// production run before it is trusted at 02:30.
+// statement is gone.
+// MEASURED 2026-10-01 (review of #1118, finding 4) against both production
+// databases, read-only, through this function, every page rewritten to LIMIT 0
+// and asserted so before it was sent: the known-refused statement refused
+// (SQLITE_AUTH) on the same connection first; then hex()/typeof(), the
+// CAST … AS BLOB byte length, the nullif + `||` mask, count/row_number/sum
+// OVER, the catalogue, the column read, the first page (28 tables of
+// platform_db, 8 of subscriptiontracker_db, one statement each) and the keyset
+// page (`WHERE rowid > n`, same tables) all ACCEPTED, every page answering the
+// empty page. 3 + 3 queries.
 //
 // 🔴 NOT `db.batch()`, AND THIS IS WHY. tooling/ceilings.json records that the
 // vendor does not say whether a batch of N statements spends one query or N, and
@@ -521,7 +527,10 @@ export async function dumpD1Database(
         /** The last rowid read, as TEXT: the next page starts after it. */
         after: null as string | null,
         target: D1_PAGE_BYTES - PAGE_ENVELOPE_BYTES,
+        /** Cut to a quarter, and no page has landed since. */
         shrunk: false,
+        /** Refused for a reason other than size, and no page has landed since. */
+        retried: false,
       },
     ]),
   );
@@ -552,14 +561,25 @@ export async function dumpD1Database(
       try {
         answer = await db.prepare(`SELECT ${columnsOf(run.map(page))}`).first<Record<string, unknown>>();
       } catch (err) {
-        // 🔴 D1 REFUSED THE READ — SQLITE_TOOBIG is the one this file expects. Every
+        // 🔴 D1 REFUSED THE READ. SQLITE_TOOBIG is the one this file expects: every
         // table in it that has not been cut is cut, and the run is read again
         // next round; a run with nothing left to cut throws, naming the error.
-        const fresh = run.filter((t) => !read.get(t)!.shrunk);
-        if (fresh.length === 0) {
-          throw new Error(`dump of ${databaseName}: the read of ${run.join(', ')} failed again after every page in it was cut — ${String(err)}`);
+        // ⏱ 2026-10-01 · review of #1118, finding 5: ANY OTHER refusal (a D1
+        // reset, a timeout) says nothing about size, and cutting on it quartered
+        // every page of those tables for the rest of the night. It is retried
+        // ONCE at the same size; refused again, the night throws.
+        if (/SQLITE_TOOBIG|too big/i.test(String(err))) {
+          const fresh = run.filter((t) => !read.get(t)!.shrunk);
+          if (fresh.length === 0) {
+            throw new Error(`dump of ${databaseName}: the read of ${run.join(', ')} failed again after every page in it was cut — ${String(err)}`);
+          }
+          for (const table of fresh) shrink(table, String(err));
+        } else {
+          if (run.every((t) => read.get(t)!.retried)) {
+            throw new Error(`dump of ${databaseName}: the read of ${run.join(', ')} failed again at the same size — ${String(err)}`);
+          }
+          for (const table of run) read.get(table)!.retried = true;
         }
-        for (const table of fresh) shrink(table, String(err));
         more.push(...run);
         continue;
       }
@@ -619,6 +639,13 @@ export async function dumpD1Database(
           state.rows.push(data);
         }
         if (last !== null) state.after = String(last);
+        // A page landed: a cut page goes back to the full target (finding 5),
+        // and the table's one retry is its own again.
+        if (state.shrunk) {
+          state.shrunk = false;
+          state.target = D1_PAGE_BYTES - PAGE_ENVELOPE_BYTES;
+        }
+        state.retried = false;
         if (keyed.length === fetched && fetched < D1_PAGE_ROWS) {
           state.done = true;
         } else if (keyed.length === 0) {
@@ -700,9 +727,21 @@ export function decodeD1DumpValue(value: unknown): D1RestoreValue {
  * it was truncated. A restore from any of those looks like a database and is
  * missing rows. `allowPartial` is the one deliberate way past the last.
  *
+ * ⏱ 2026-10-01 · review of #1118, finding 1. A ROW CAN BE DUMPED TWICE, and the
+ * restore keeps the NEWER copy. Keyset paging never skips a row that exists all
+ * night, but a row deleted and re-inserted under the same TEXT key between two
+ * rounds gets a new, higher rowid: its old copy was read before the cursor and
+ * its new copy after it. Both are in the dump and in the counts. So every row
+ * loads as INSERT OR REPLACE, and rows go out in rowid order, so the later copy
+ * (the newer value) replaces the earlier. A UNIQUE index is created BEFORE the
+ * rows, with the tables, so a key it declares resolves the same way; every
+ * other index is still created last, so the rows load once.
+ *
  * Foreign keys are the caller's: rows load table by table in catalogue order,
- * so a restore runs these with enforcement deferred or off and checks after
- * (test/backup-export.test.ts does, with `PRAGMA foreign_key_check`).
+ * so a restore runs these with enforcement OFF and checks after
+ * (test/backup-export.test.ts does, with `PRAGMA foreign_key_check`). OFF, not
+ * deferred: a REPLACE deletes the older copy, and with enforcement on that
+ * delete would fire the ON DELETE action of every child row already loaded.
  */
 export function d1RestoreStatements(jsonl: string, opts: { allowPartial?: boolean } = {}): D1RestoreStatement[] {
   const lines = jsonl
@@ -727,7 +766,7 @@ export function d1RestoreStatements(jsonl: string, opts: { allowPartial?: boolea
       tables.push({ sql: line.sql, params: [] });
       counted.set(line.table, 0);
     } else if (line.kind === 'index') {
-      indexes.push({ sql: line.sql, params: [] });
+      (/^\s*CREATE\s+UNIQUE\s+INDEX\b/i.test(line.sql) ? tables : indexes).push({ sql: line.sql, params: [] });
     } else if (line.kind === 'row') {
       if (!counted.has(line.table)) throw new Error(`${meta.database}: a row of ${line.table} comes before, or without, its schema`);
       const names = Object.keys(line.data);
@@ -735,7 +774,7 @@ export function d1RestoreStatements(jsonl: string, opts: { allowPartial?: boolea
         if (!SAFE_IDENTIFIER.test(name)) throw new Error(`${meta.database}: ${JSON.stringify(name)} is not a plain identifier`);
       }
       rows.push({
-        sql: `INSERT INTO "${line.table}" (${names.map((n) => `"${n}"`).join(', ')}) VALUES (${names.map(() => '?').join(', ')})`,
+        sql: `INSERT OR REPLACE INTO "${line.table}" (${names.map((n) => `"${n}"`).join(', ')}) VALUES (${names.map(() => '?').join(', ')})`,
         params: names.map((n) => decodeD1DumpValue(line.data[n])),
       });
       counted.set(line.table, counted.get(line.table)! + 1);

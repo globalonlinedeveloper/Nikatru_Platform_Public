@@ -58,7 +58,10 @@ import { APP_KV, APP_TARGETS } from '../generated/app-targets';
  *
  * ⏱ 2026-10-01 · review of #1108: the size read is gone (pages are keyset and
  * capped in bytes, dump.ts), so a database costs THREE statements plus a round
- * per page of volume — by arithmetic 3 + 3 = 6 of 42, not yet re-measured.
+ * per page of volume — 3 + 3 = 6 of 42, MEASURED 2026-10-01 (review of #1118)
+ * against both production databases with every page at LIMIT 0. That counts
+ * statements: a LIMIT 0 page finishes every table in one round, and today's
+ * 1,775 and 45 rows fit one page a table.
  */
 export const MAX_D1_QUERIES_PER_RUN = 42;
 
