@@ -813,9 +813,14 @@ const REQUIRED_COVERAGE = [
     // ⏱ 2026-09-29 · ST-D4: 25 -> 26 surfaces, 61 -> 62 cases — the chassis
     // SettingsSection arrived swept (`a11y: settings-section`, light + dark
     // kPhone). Read off the per-root line: `26 of 26 … across 62 case(s)`.
-    surfaces: 26,
-    a11yFiles: 4,
-    cases: 62,
+    // ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST: 26 -> 30 surfaces, 4 -> 5
+    // files, 62 -> 70 cases — TamperedBuildScreen, TamperedBuildApp,
+    // RootedDeviceNoticeHost and ReauthDialog arrived swept in
+    // a11y_integrity_test.dart (light kPhone + dark kDesktop each). Read off the
+    // per-root line: `30 of 30 … from 5 a11y test file(s) across 70 case(s)`.
+    surfaces: 30,
+    a11yFiles: 5,
+    cases: 70,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -1074,6 +1079,11 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         // 2026-09-23: the two home bodies, swept in a11y_home_test.dart.
         'home/home_screen.dart#CatchUpBannerView',
         'home/home_screen.dart#WelcomeView',
+        // 2026-10-01 (O-APPS-GOV-IN-VAPT-CHECKLIST): device integrity, swept in
+        // a11y_integrity_test.dart in the same change.
+        'integrity/device_integrity_gate.dart#ReauthDialog',
+        'integrity/tampered_build_screen.dart#TamperedBuildApp',
+        'integrity/tampered_build_screen.dart#TamperedBuildScreen',
         'monetization/manage_plan_screen.dart#ManagePlanView',
         'monetization/paywall_screen.dart#PaywallView',
         'settings/report_content_dialog.dart#ReportContentDialog',
@@ -1086,6 +1096,7 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'shell/app_shell.dart#ConsentScrim',
         'shell/app_shell.dart#NikatruApp',
         'shell/app_shell.dart#OfflineBannerHost',
+        'shell/app_shell.dart#RootedDeviceNoticeHost',
       ].map((k) => `packages/chassis_screens/lib/${k}`),
     ),
   ],

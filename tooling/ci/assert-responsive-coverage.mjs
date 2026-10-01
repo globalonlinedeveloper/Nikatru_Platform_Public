@@ -669,9 +669,15 @@ const REQUIRED_COVERAGE = [
     // surfaces unchanged: `test/auth_frame_adoption_test.dart` (every chassis
     // auth view on the shared AuthFrame, pumped at kPhone and 1440) joined the
     // corpus. Read off the per-root line, `— 29 file(s)`.
-    surfaces: 26,
-    widthTestFiles: 29,
-    coveredSurfaces: 26,
+    // ⏱ RAISED 2026-10-01 (O-APPS-GOV-IN-VAPT-CHECKLIST): surfaces 26 → 30,
+    // coveredSurfaces 26 → 30 and `widthTestFiles` 29 → 31, IN THE CHANGE THAT
+    // EARNED THEM: TamperedBuildScreen, TamperedBuildApp, ReauthDialog and
+    // RootedDeviceNoticeHost arrived with test/device_integrity_gate_test.dart
+    // (all three classes) and test/a11y_integrity_test.dart. Read off the
+    // per-root lines, `30 surface(s) reachable, 30 measured` and `— 31 file(s)`.
+    surfaces: 30,
+    widthTestFiles: 31,
+    coveredSurfaces: 30,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',
