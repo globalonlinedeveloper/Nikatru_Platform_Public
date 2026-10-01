@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
@@ -31,6 +33,9 @@ class VerifyEmailView extends StatefulWidget {
     required this.onSignOut,
     this.captcha,
     this.captchaController,
+    this.secondsUntilResend,
+    this.onUseDifferent,
+    this.panel,
     super.key,
   });
 
@@ -38,6 +43,9 @@ class VerifyEmailView extends StatefulWidget {
   static const Key continueButton = Key('verifyEmailContinue');
   static const Key signOutButton = Key('verifyEmailSignOut');
   static const Key statusLine = Key('verifyEmailStatus');
+
+  /// ⏱ 2026-10-01 · EN-14 — signs out to sign-up with the address filled.
+  static const Key useDifferentButton = Key('verifyEmailUseDifferent');
 
   /// The address the mail went to. Naming it is how a mistyped one is seen.
   final String email;
@@ -69,6 +77,22 @@ class VerifyEmailView extends StatefulWidget {
   /// what was missing (E2E live run 36379673890, the #1022 regression).
   final CaptchaTokenController? captchaController;
 
+  /// ⏱ 2026-10-01 · EN-14 — whole seconds until Resend may send again, read
+  /// on arrival and after each send. The adapter keeps the deadline, so leaving
+  /// and coming back does not reset it: a rest held in this view's state ended
+  /// with the view, and the second tap is what manufactures GoTrue's
+  /// `over_email_send_rate_limit`. Null: Resend never rests.
+  final int Function()? secondsUntilResend;
+
+  /// ⏱ 2026-10-01 · EN-14 — "Use a different email": out of the unverified
+  /// account and onto sign-up with the address to correct. The way out for
+  /// somebody who registered with a typo. Null: no such control.
+  final Future<void> Function()? onUseDifferent;
+
+  /// The leading half of the wide split (`AuthFrame.panel`), as on
+  /// `ReacceptTermsView`. Null renders the single column.
+  final Widget? panel;
+
   @override
   State<VerifyEmailView> createState() => _VerifyEmailViewState();
 }
@@ -76,6 +100,34 @@ class VerifyEmailView extends StatefulWidget {
 class _VerifyEmailViewState extends State<VerifyEmailView> {
   bool _busy = false;
   String? _notice;
+
+  /// Seconds until Resend is offered again; 0 is "now".
+  int _wait = 0;
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _rest();
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  /// Seeds the countdown from the adapter's deadline and runs it down.
+  void _rest() {
+    _tick?.cancel();
+    _wait = widget.secondsUntilResend?.call() ?? 0;
+    if (_wait <= 0) return;
+    _tick = Timer.periodic(const Duration(seconds: 1), (Timer t) {
+      if (!mounted) return t.cancel();
+      setState(() => _wait -= 1);
+      if (_wait <= 0) t.cancel();
+    });
+  }
 
   /// Runs [action] with the busy flag held and the outcome shown INLINE.
   ///
@@ -108,6 +160,7 @@ class _VerifyEmailViewState extends State<VerifyEmailView> {
     final ChassisLocalizations l10n = context.chassisL10n;
 
     return AuthFrame(
+      panel: widget.panel,
       title: l10n.verifyEmailTitle,
       // A gate: the router re-asserts it, so a back arrow would lead nowhere.
       showBack: false,
@@ -148,15 +201,36 @@ class _VerifyEmailViewState extends State<VerifyEmailView> {
         ?widget.captcha,
         OutlinedButton(
           key: VerifyEmailView.resendButton,
-          onPressed: _busy
+          onPressed: (_busy || _wait > 0)
               ? null
               : () => _run(() async {
                   await widget.captchaController?.untilReady();
                   await widget.onResend();
+                  if (mounted) setState(_rest);
                   return l10n.verifyEmailResent;
                 }),
-          child: Text(l10n.verifyEmailResend),
+          child: Text(
+            _wait > 0
+                ? l10n.verifyEmailResendIn(
+                    '${_wait ~/ 60}:${(_wait % 60).toString().padLeft(2, '0')}',
+                  )
+                : l10n.verifyEmailResend,
+          ),
         ),
+        if (widget.onUseDifferent
+            case final Future<void> Function() go) ...<Widget>[
+          const SizedBox(height: 12),
+          TextButton(
+            key: VerifyEmailView.useDifferentButton,
+            onPressed: _busy
+                ? null
+                : () => _run(() async {
+                    await go();
+                    return null;
+                  }),
+            child: Text(l10n.verifyEmailUseDifferent),
+          ),
+        ],
         const SizedBox(height: 12),
         // The only way OUT of the gate. A user who mistyped their address
         // has no other move — the account exists, they cannot reach the

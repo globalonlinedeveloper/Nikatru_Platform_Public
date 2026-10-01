@@ -110,6 +110,7 @@ sb.GoTrueClient? nativeCredentialClient({
   TargetPlatform? platform,
   sb.GotrueAsyncStorage? pkceStorage,
   http.Client? transport,
+  RetryAfterLatch? retryAfter,
 }) {
   final String? url = nativeCredentialBaseUrl(
     platformBaseUrl,
@@ -128,6 +129,7 @@ sb.GoTrueClient? nativeCredentialClient({
       appId: appId,
       attestor: attestor,
       inner: transport,
+      retryAfter: retryAfter,
     ),
   );
 }
