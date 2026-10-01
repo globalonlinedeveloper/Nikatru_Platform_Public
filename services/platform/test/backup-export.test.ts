@@ -12,7 +12,7 @@
 // rows out, with the count compared. The live drill against a scratch D1 is
 // recorded in runbooks/backup-restore.md; this is the half that runs on every PR.
 // ─────────────────────────────────────────────────────────────────────────────
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import CEILINGS_RAW from '../../../tooling/ceilings.json?raw';
 import { RealDb, realPlatformDb } from './harness';
 import appInit0001 from '../../subscriptiontracker-api/migrations/0001_init.sql?raw';
@@ -30,7 +30,7 @@ import {
   TABLES_PER_READ,
   SQL_FUNCTION_ARGS,
 } from '../src/backup/dump';
-import { scheduled, BACKUP_CRON } from '../src/scheduled';
+import { scheduled, BACKUP_CRON, BACKUP_RERUN_KEY, OPS_HOURLY_CRON } from '../src/scheduled';
 import type { BackupEnv } from '../src/backup';
 import type { Env } from '../src/types';
 
@@ -68,6 +68,9 @@ class FakeKv {
   }
   async get(name: string): Promise<string | null> {
     return this.data[name] ?? null;
+  }
+  async delete(name: string): Promise<void> {
+    delete this.data[name];
   }
 }
 
@@ -962,4 +965,78 @@ describe('retention deletes old exports and nothing else', () => {
     expect(bucket.deleted).not.toContain('manifests/latest.json');
     expect(out.find((o) => o.target === 'retention')?.ok).toBe(true);
   });
+});
+
+// ⏱ 2026-10-01 · the lead's one-shot re-run (scheduled.ts BACKUP_RERUN_KEY) is
+// EXPORT ONLY. It lands after the 06:00 sweep, so it must not replace the night's
+// pre-sweep objects, must not move Box B's latest.json, and must not sweep.
+describe('a one-shot re-run exports, and deletes or replaces nothing', () => {
+  const LATER = Date.parse('2026-09-06T13:15:00Z');
+
+  it('🔴 writes only under reruns/<stamp>/: the night\'s objects and latest.json stay byte-identical, and nothing is deleted', async () => {
+    const bucket = new FakeBucket();
+    const { env } = envWith(bucket);
+    await runBackup(env, NOW);
+    await bucket.put('d1/platform_db/2026-07-01.jsonl.gz', 'stale, and past the window');
+    const night = new Map([...bucket.objects].map(([k, v]) => [k, Buffer.from(v.body).toString('base64')]));
+
+    const out = await runBackup(env, LATER, { rerun: true });
+
+    expect(bucket.deleted).toEqual([]);
+    for (const [k, b64] of night) {
+      expect(Buffer.from(bucket.objects.get(k)!.body).toString('base64'), k).toBe(b64);
+    }
+    const added = [...bucket.objects.keys()].filter((k) => !night.has(k));
+    expect(added.length).toBeGreaterThan(0);
+    for (const k of added) expect(k.startsWith('reruns/2026-09-06T131500Z/'), k).toBe(true);
+    expect(added).toContain('reruns/2026-09-06T131500Z/manifest.json');
+    // No retention row: the night's verdict on the sweep stays the newest one.
+    expect(out.map((o) => o.target)).not.toContain('retention');
+    expect(out.every((o) => o.ok)).toBe(true);
+    // And its objects are dated, so the nightly sweep ages them out like the rest.
+    for (const k of added) expect(isExpired(k, LATER + 31 * 86_400_000, BACKUP_RETENTION_DAYS), k).toBe(true);
+  });
+
+  it('the nightly sweep is age-based: a second run the same UTC day deletes nothing', async () => {
+    const bucket = new FakeBucket();
+    for (const d of ['2026-08-06', '2026-08-07', '2026-08-08']) await bucket.put(`d1/platform_db/${d}.jsonl.gz`, 'x');
+    const { env } = envWith(bucket);
+    // On day T everything dated T-30 or earlier is expired from 00:00 to 23:59, and T-29 is not.
+    const doomed = ['d1/platform_db/2026-08-06.jsonl.gz', 'd1/platform_db/2026-08-07.jsonl.gz'];
+    await runBackup(env, NOW);
+    expect(bucket.deleted).toEqual(doomed);
+    await runBackup(env, Date.parse('2026-09-06T23:59:59Z'));
+    expect(bucket.deleted).toEqual(doomed);
+    expect(bucket.objects.has('d1/platform_db/2026-08-08.jsonl.gz')).toBe(true);
+  });
+
+  it('🔴 the WHOLE hourly invocation with a re-run flag, stuck-run row + export pool + heartbeat batch, fits d1.queriesPerInvocation', async () => {
+    const ceilings = JSON.parse(CEILINGS_RAW) as { ceilings: { id: string; value: number | null }[] };
+    const ceiling = ceilings.ceilings.find((c) => c.id === 'd1.queriesPerInvocation')?.value;
+    expect(typeof ceiling).toBe('number');
+
+    const platform = realPlatformDb(padRows(MAX_D1_QUERIES_PER_RUN * D1_PAGE_ROWS));
+    const tracker = realPlatformDb();
+    const { env } = envWith(new FakeBucket(), platform, tracker);
+    (env as unknown as { CONFIG_KV: KVNamespace }).CONFIG_KV = new FakeKv({
+      [BACKUP_RERUN_KEY]: JSON.stringify({ requestedAt: '2026-10-01T12:20:00Z', by: 'lead', reason: 'test', expiresAt: '2999-01-01T00:00:00Z' }),
+    }) as unknown as KVNamespace;
+    const pending: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => pending.push(p), passThroughOnException: () => {} };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await scheduled({ cron: OPS_HOURLY_CRON } as never, env as unknown as Env, ctx as never);
+      await Promise.all(pending);
+    } finally {
+      log.mockRestore();
+    }
+
+    const rows = platform.rows('SELECT job, target FROM cron_heartbeat');
+    // Preconditions: both jobs wrote, and the pool really ran out.
+    expect(rows.filter((r) => r.job === 'ops_stuck_runs')).toHaveLength(1);
+    expect(rows.filter((r) => r.job === 'backup_export')).toHaveLength(7);
+    expect(tracker.sql).toEqual([]);
+    expect(platform.sql).toHaveLength(MAX_D1_QUERIES_PER_RUN + rows.length);
+    expect(platform.sql.length + tracker.sql.length).toBeLessThanOrEqual(ceiling as number);
+  }, 30_000);
 });
