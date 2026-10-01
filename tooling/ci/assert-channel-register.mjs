@@ -4061,6 +4061,70 @@ if (storageLags.length > 0) {
   );
 }
 
+// ── 8c rule (e): the SIGNING reads (train P17, security-001 part 6) ─────────
+// ⏱ 2026-10-02 · lane fix-secrets-scope-readback. Rules (a)-(d) grade the nonSigning rows; nothing
+// graded where an ANDROID_* upload key, an APPLE_*_P12* certificate or a provisioning profile was
+// read. `ciSecretRegister.signingScope` declares it: every reference whose NAME matches one of its
+// `match` patterns must sit in a job bound to its `environment`, or in a job one of its
+// `repositoryFallback` entries licenses by `<workflow>#<job>` until a YYYY-MM-DD date. An expired
+// licence FAILS, a licence naming a job that no longer reads a matching secret FAILS (a stale
+// licence is a permanent one in waiting), and a matching read with no `signingScope` at all FAILS.
+{
+  const sc = register?.ciSecretRegister?.signingScope;
+  const patterns = Array.isArray(sc?.match) ? sc.match.filter((p) => typeof p === 'string' && p) : [];
+  let rx = [];
+  try {
+    rx = patterns.map((p) => new RegExp(p));
+  } catch (e) {
+    problems.push(`8c rule (e): \`ciSecretRegister.signingScope.match\` holds a pattern that is not a regular expression (${e.message}).`);
+  }
+  const DEFAULT_SIGNING = [/^ANDROID_/, /^APPLE_[A-Z0-9_]*P12/, /PROVISIONING/];
+  const isSigningRead = (name) => (rx.length ? rx : DEFAULT_SIGNING).some((r) => r.test(name));
+  const signingRefs = scopeRefs.filter((r) => isSigningRead(r.name));
+  if (signingRefs.length && !sc) {
+    problems.push(
+      `8c rule (e): ${signingRefs.length} signing secret read(s) (${[...new Set(signingRefs.map((r) => r.name))].join(', ')}) and no \`ciSecretRegister.signingScope\` saying which environment holds them. A signing key read by any job with no environment is readable by every job.`,
+    );
+  } else if (sc) {
+    const env = typeof sc.environment === 'string' && sc.environment.trim() ? sc.environment.trim() : null;
+    if (!env) problems.push('8c rule (e): `ciSecretRegister.signingScope.environment` is not a GitHub environment name.');
+    if (!rx.length) problems.push('8c rule (e): `ciSecretRegister.signingScope.match` names no pattern, so no signing read would be graded.');
+    const licences = new Map();
+    for (const f of Array.isArray(sc.repositoryFallback) ? sc.repositoryFallback : []) {
+      const okShape = typeof f?.job === 'string' && /^\.github\/workflows\/[^#]+\.ya?ml#[A-Za-z0-9_-]+$/.test(f.job) && /^\d{4}-\d{2}-\d{2}$/.test(String(f?.until ?? '')) && typeof f?.why === 'string' && f.why.trim().length >= 20;
+      if (!okShape) {
+        problems.push(`8c rule (e): \`signingScope.repositoryFallback\` entry ${JSON.stringify(f)} needs a \`job\` (<workflow path>#<job id>), an \`until\` (YYYY-MM-DD) and a \`why\` (20+ characters).`);
+        continue;
+      }
+      licences.set(f.job, f);
+    }
+    const used = new Set();
+    for (const r of signingRefs) {
+      if (env && r.env !== null && r.env.name === env) continue;
+      const key = `${r.rel}#${r.job}`;
+      const lic = licences.get(key);
+      if (lic && lic.until >= SCOPE_TODAY) {
+        used.add(key);
+        continue;
+      }
+      problems.push(
+        lic
+          ? `8c rule (e): ${scopeAt(r)} reads signing secret \`secrets.${r.name}\` under a \`signingScope.repositoryFallback\` that expired on ${lic.until} (today ${SCOPE_TODAY}). Bind the job to environment "${env}" (the owner's move: ${sc.moveStep ?? 'no moveStep written'}) and delete the fallback.`
+          : `8c rule (e): ${scopeAt(r)} reads signing secret \`secrets.${r.name}\` in a job not bound to environment "${env}", and no \`signingScope.repositoryFallback\` names ${key}. A signing key outside its environment is readable by every job; bind the job, or license it by name with a date and a reason.`,
+      );
+    }
+    for (const [key, f] of licences) {
+      if (!used.has(key) && !signingRefs.some((r) => `${r.rel}#${r.job}` === key)) {
+        problems.push(`8c rule (e): \`signingScope.repositoryFallback\` licenses ${key} until ${f.until}, and that job reads no signing secret. Delete the stale licence: one with no subject waits to license the next read nobody reviewed.`);
+      }
+    }
+    if (licences.size) {
+      prints.push(`8c (e) SIGNING TRANSITION: ${[...licences.values()].map((f) => `${f.job} until ${f.until}`).join(' · ')} — env-less signing reads licensed by name; after each date the read FAILS unless the job is bound to "${env}".`);
+    }
+    ok(`${signingRefs.length} signing secret reference(s) graded against environment "${env}" [8c (e)]`);
+  }
+}
+
 // 8d grading.
 // ⏱ 2026-10-02 · #1095 review findings 1 and 2. 8d graded only publishing and signing rows, so
 // CLOUDFLARE_D1_TOKEN (D1 edit on every production database) in guards-platform passed with every

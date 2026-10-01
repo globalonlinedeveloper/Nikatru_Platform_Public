@@ -3009,6 +3009,49 @@ describe('assert-channel-register — §8c storage/fallback/call-pass and §8d: 
     assert.match(out, /8d: \.github\/workflows\/a-leaf\.yml:10 \(job "inner", no environment\) reads `secrets\.FIXTURE_REPO_DEPLOY`/);
   });
 
+  // ⏱ 2026-10-02 · 8c rule (e), train P17 (lane fix-secrets-scope-readback): a SIGNING read sits in
+  // the signingScope environment, or in a job licensed by name until a date.
+  const SIGN_WORKFLOW = '.github/workflows/sign-fixture.yml';
+  const signWorkflow = (buildEnv = null) =>
+    ['name: sign fixture', 'on:', '  workflow_dispatch:', 'jobs:', '  build:', '    runs-on: ubuntu-24.04', ...(buildEnv ? [`    environment: ${buildEnv}`] : []), '    steps:', '      - name: Sign', '        env:', '          K: ${{ secrets.ANDROID_FIXTURE_KEY }}', '        run: echo sign', ''].join(NL);
+  const signRow = { name: 'ANDROID_FIXTURE_KEY', kind: 'service-credential', productionData: 'none', why: 'a fixture upload key the build signs with' };
+  const scope = (fallback = []) => ({ match: ['^ANDROID_'], environment: 'store-publish', storedAt: 'repository', moveStep: 'the owner binds the job to store-publish', repositoryFallback: fallback });
+  const licence = (until = '2099-01-01', job = `${SIGN_WORKFLOW}#build`) => ({ job, until, why: 'the fixture build signs on every push, by decision' });
+  const signTree = ({ signingScope, buildEnv = null } = {}) =>
+    tree({
+      extraFiles: { [DEPLOY_WORKFLOW]: deployWorkflow(), [PR_WORKFLOW]: prWorkflow(), [SIGN_WORKFLOW]: signWorkflow(buildEnv) },
+      mutate: (r) => { r.ciSecretRegister = { ...register8([deployRow(), readRow, signRow]), ...(signingScope === undefined ? {} : { signingScope }) }; },
+    });
+
+  test('🔴 RED CONTROL (8c e): a signing read in an env-less job with no licence FAILS', () => {
+    const { code, out } = run(signTree({ signingScope: scope() }));
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(e\): \.github\/workflows\/sign-fixture\.yml:10 \(job "build", no environment\) reads signing secret `secrets\.ANDROID_FIXTURE_KEY` in a job not bound to environment "store-publish"/);
+  });
+
+  test('8c (e): the same read in a store-publish job passes; a dated licence passes and PRINTS the transition', () => {
+    const bound = run(signTree({ signingScope: scope(), buildEnv: 'store-publish' }));
+    assert.equal(bound.code, 0, bound.out);
+    const licensed = run(signTree({ signingScope: scope([licence()]) }));
+    assert.equal(licensed.code, 0, licensed.out);
+    assert.match(licensed.out, /8c \(e\) SIGNING TRANSITION: \.github\/workflows\/sign-fixture\.yml#build until 2099-01-01/);
+  });
+
+  test('🔴 8c (e): an EXPIRED licence FAILS, naming the date; a licence for a job that reads no signing secret is stale and FAILS', () => {
+    const expired = runAt(signTree({ signingScope: scope([licence('2026-11-30')]) }), '2026-12-01');
+    assert.equal(expired.code, 1, expired.out);
+    assert.match(expired.out, /expired on 2026-11-30 \(today 2026-12-01\)/);
+    const stale = run(signTree({ signingScope: scope([licence(), licence('2099-01-01', `${PR_WORKFLOW}#check`)]) }));
+    assert.equal(stale.code, 1, stale.out);
+    assert.match(stale.out, /licenses \.github\/workflows\/pr-fixture\.yml#check until 2099-01-01, and that job reads no signing secret/);
+  });
+
+  test('🔴 8c (e): a signing read with no signingScope at all FAILS', () => {
+    const { code, out } = run(signTree());
+    assert.equal(code, 1, out);
+    assert.match(out, /8c rule \(e\): 1 signing secret read\(s\) \(ANDROID_FIXTURE_KEY\) and no `ciSecretRegister\.signingScope`/);
+  });
+
   test('8d: COVERAGE LOST when ci.yml is triggered by pull_request and not one of its jobs reads as reachable', () => {
     const ci = ['name: CI', 'on:', '  pull_request:', 'jobs:', '  guards-store:', '    runs-on: ubuntu-24.04', "    if: github.event_name == 'push'", '    steps:', '      - run: node tooling/ci/assert-store-metadata.mjs', '  ci-gate:', '    runs-on: ubuntu-24.04', '    needs: [guards-store]', "    if: github.event.schedule == '0 1 * * *'", '    steps:', '      - run: echo gate', ''].join(NL);
     const { code, out } = run(fixture({ files: { [GATE_CI]: ci } }));
