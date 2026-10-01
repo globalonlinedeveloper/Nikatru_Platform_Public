@@ -41,7 +41,7 @@
 //
 // Route inventory (the union — nothing live was lost, every stamped route is
 // reachable):
-//   FROM LIVE : /onboarding /scan /notifications /sub/:id
+//   FROM LIVE : /onboarding /import /notifications /sub/:id
 //               /home /calendar /insights /budget /settings   (shell)
 //   FROM STAMP: / /sign-in /sign-up /paywall /manage-plan  + errorBuilder
 //   COLLISIONS: /onboarding (live screen wins) · /settings (live shell

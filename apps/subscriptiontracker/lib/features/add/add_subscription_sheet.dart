@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import 'package:nikatru_core/nikatru_core.dart' show MoneyParser;
@@ -518,6 +519,17 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
       children: <Widget>[
         if (!_editing)
           AppFormField(label: l10n.addPopularHeading, child: _popular()),
+        // IM-01 — a list kept somewhere else is imported, not typed: the sheet
+        // closes and the import hub opens over the same root navigator.
+        if (!_editing)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton(
+              key: E2EKeys.addImportInstead,
+              onPressed: _importInstead,
+              child: Text(l10n.importInstead),
+            ),
+          ),
         _input(_name, l10n.addNameHint, fieldKey: E2EKeys.addName),
         // ⚠️ THE PRICE AND ITS CURRENCY SHARE A ROW; the date and category do
         // not, and the reason is text scaling rather than taste: a formatted
@@ -566,6 +578,14 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
         _input(_notes, null, keyboard: TextInputType.multiline),
       ],
     );
+  }
+
+  void _importInstead() {
+    // The router is read BEFORE the pop: the sheet's context leaves the tree
+    // with it.
+    final GoRouter? router = GoRouter.maybeOf(context);
+    Navigator.of(context).pop();
+    router?.push('/import');
   }
 
   /// The one banner the form is in, most urgent first: a failed save outranks

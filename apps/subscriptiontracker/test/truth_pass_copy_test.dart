@@ -4,7 +4,9 @@
 // Two surfaces the audit measured making claims the product cannot keep
 // (Private/research/session-2026-09-23/full-review-r2/product-audit-st.md):
 //   · B44 — /scan's busy CTA read "Scanning…" and its ring announced "Scan
-//     progress", and nothing is scanned: the screen loads the list.
+//     progress", and nothing is scanned: the screen loads the list. (ADR 077
+//     §2.2 retired /scan; its successor, the import hub, is held to the same
+//     sentence: nothing on it claims a scan.)
 //   · C30 — onboarding slide 2 promised "A reminder arrives before each
 //     renewal" on web, Windows and Linux, where NotificationCapabilities says
 //     canSchedule: false; slide 3 promised a "mark unused" control that exists
@@ -12,16 +14,16 @@
 // The remove sheet (B32) is asserted in dark_group_sheets_test.dart and
 // monthly_share_display_test.dart, beside the cases it replaced.
 //
-// RED CONTROLS: restore `scanningEllipsis` to "Scanning…" (or `a11yScanRing` to
-// "Scan progress {percent}.") and the first group is red; make `_slides` ignore
+// RED CONTROLS: put "scan" into any `import*` string the hub renders and the
+// first group is red; make `_slides` ignore
 // `canSchedule` and the linux/windows cases are red; restore the old slide-3
 // body and the last case is red.
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:subscriptiontracker/features/import/import_screen.dart';
 import 'package:subscriptiontracker/features/onboarding/onboarding_screen.dart';
-import 'package:subscriptiontracker/features/scan/scan_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 
 import 'support/width_harness.dart';
@@ -44,16 +46,16 @@ Future<void> _toSlide(WidgetTester tester, int index) async {
 }
 
 void main() {
-  group('scan · nothing claims a scan (B44)', () {
-    testWidgets('the busy phase says what it does, in text and in speech', (
+  group('import · nothing claims a scan (B44)', () {
+    testWidgets('the hub says what it does, in text and in speech', (
       WidgetTester tester,
     ) async {
       final SemanticsHandle semantics = tester.ensureSemantics();
-      await pumpAt(tester, kPhone, const ScanScreen());
+      await pumpAt(tester, kPhone, const ImportScreen());
       final AppLocalizations l10n = await _en();
 
-      // The busy phase is on screen: its CTA is the key under test.
-      expect(find.text(l10n.scanningEllipsis), findsOneWidget);
+      // The hub is on screen: its own sentence is the key under test.
+      expect(find.text(l10n.importSubtitle), findsOneWidget);
       for (final String s in _visible(tester)) {
         expect(s.toLowerCase(), isNot(contains('scan')), reason: s);
       }
