@@ -315,6 +315,22 @@ export function planListing(root, tool, { appConfigPath, channelRegisterPath } =
           '", and the ' + id + ' channel sells on a merchant-of-record rail (' + sellers[id].text + '). Use {{seller}}, ' +
           'which the channel register words.');
       }
+      /* ⏱ 2026-10-01 (#1117 review 1, finding 4). "sold by" is one phrasing of many: "Offered by <licensor>"
+         and "Seller: <licensor>" said the same thing and passed. On a merchant-of-record rail the licensor
+         may appear in a `sells` line ONLY inside the rendered {{seller}} sentence. Every `sells` line of this
+         store is graded — dark or not, since a store that cannot sign in yet will render it the day it can. */
+      const lic = licensor.toLowerCase();
+      for (const l of lines(src.long)) {
+        if (!l || typeof l !== 'object' || l.when !== 'sells') continue;
+        if (l.stores && !l.stores.includes(id)) continue;
+        if (l.requires && (vars[l.requires] === null || vars[l.requires] === undefined)) continue;
+        const rendered = fill(text(l), store);
+        if (rendered.split(sellers[id].text).join('').toLowerCase().includes(lic)) {
+          problems.push(tool.rel + '/' + LISTING_REL + ': the ' + id + ' "sells" line names the licensor (' + licensor +
+            ') outside the merchant-of-record sentence: "' + rendered + '". The ' + id + ' channel sells on a merchant-of-record rail (' +
+            sellers[id].text + '), so the licensor is not the seller there. Use {{seller}}, which the channel register words.');
+        }
+      }
     }
     put('long-description.txt', long);
     put('category.txt', lines(st.category).join('\n') + '\n');

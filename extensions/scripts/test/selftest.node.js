@@ -2326,6 +2326,30 @@ const SELLER = 'Paddle, our merchant of record (in India, by Example Licensor vi
     script: 'render-listing.mjs', argv: ['goodtool', '--check', ...cfg(root)], code: 1, contains: 'sells on a merchant-of-record rail', root
   });
 }
+/* #1117 review 1, finding 4: "sold by" was the only phrasing caught. On a
+   merchant-of-record rail the licensor may appear in a `sells` line only inside
+   the rendered {{seller}} sentence, however the rest of the line is worded. */
+for (const [phrase, text] of [['"Offered by"', 'Offered by Example Licensor.'], ['"Seller:"', 'Seller: Example Licensor.']]) {
+  const root = withListing([OFFER('month', 599)], (t, r) => {
+    t.policy.networkAllowlist = ['api.example.test'];
+    edit(r, TOOL + '/store/listing.json', x => {
+      const o = JSON.parse(x);
+      o.long = o.long.map(l => (l && l.stores && l.stores[0] === 'chrome' ? { ...l, text } : l));
+      return JSON.stringify(o, null, 2) + '\n';
+    });
+  });
+  expect('a "sells" line that names the licensor as ' + phrase + ' on a merchant-of-record channel is a finding (1)', {
+    script: 'render-listing.mjs', argv: ['goodtool', '--check', ...cfg(root)], code: 1, contains: 'outside the merchant-of-record sentence', root
+  });
+}
+{
+  /* ...while the licensor INSIDE the rendered sentence ("in India, by <licensor>
+     via Razorpay") is the sentence itself, and passes. */
+  const root = withListing([OFFER('month', 599)], t => { t.policy.networkAllowlist = ['api.example.test']; });
+  expect('the licensor inside the rendered merchant-of-record sentence is not a finding', {
+    script: 'render-listing.mjs', argv: ['goodtool', ...cfg(root)], code: 0, contains: 'Pro text RENDERS', root
+  });
+}
 {
   /* Where the licensor IS the seller of record (a Razorpay-only channel), the
      licensor is what {{seller}} says. */
