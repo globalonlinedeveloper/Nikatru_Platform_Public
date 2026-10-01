@@ -25,12 +25,22 @@
 // rethrows the transport failure. Make `CachedApiClient` stop falling back and
 // the same happens.
 //
+// 🔴 THE COPY IS THE SIGNED-IN USER'S (review #1075 round 2, major 2). The
+// app keeps one copy PER USER (`nikatru.subscriptions.u.<uid>`), so a relaunch
+// reads as the user the app is signed in as — the same `currentUser` the
+// app's `apiClientProvider` passes, read here from the running app's own
+// provider container. A client built with no user reads the unscoped key no
+// signed-in write fills, and failed the pre-merge E2E (run 36802735438) with
+// "nothing was kept on this device" while the device held the row.
+//
 // ⚠️ STATED LIMIT: the relaunch is in-process. The new store handle shares the
 // shared_preferences instance cache with the running app, so what is proven is
 // that the write went through the platform backend without refusal (a refused
 // write raises LocalStoreWriteFailure and is counted, never silent) and that a
 // fresh client with no network answers from it — not a cold process start.
 // ─────────────────────────────────────────────────────────────────────────────
+import 'package:flutter/widgets.dart' show Element;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart'
@@ -40,8 +50,9 @@ import 'package:subscriptiontracker/data/api/api_client.dart';
 import 'package:subscriptiontracker/data/api/dio_api_client.dart';
 import 'package:subscriptiontracker/data/local/subscription_store.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
+import 'package:subscriptiontracker/features/home/home_screen.dart';
 import 'package:subscriptiontracker/state/providers.dart'
-    show cachedApiClientOver;
+    show authRepositoryProvider, cachedApiClientOver;
 
 /// A base no request can reach: port 9 (discard) on loopback, which nothing on
 /// a runner or a device listens on. Every call fails at connect — status 0,
@@ -52,26 +63,46 @@ const String kDeadApiBase = 'http://127.0.0.1:9/v1';
 /// requires it of every run whose proof suite prints it (`offlineReadDeclared`).
 const String kOfflineReadOkLine = 'NK_PROOF step=offline-read outcome=ok';
 
-/// "Relaunches" the list with the network dropped and returns what it read.
+/// The user the running app is signed in as, from its own provider container
+/// (any mounted [HomeScreen] — both suites call this from Home).
+String signedInUserOfRunningApp() {
+  final Iterable<Element> home = find.byType(HomeScreen).evaluate();
+  if (home.isEmpty) {
+    fail('the offline read runs from Home; no HomeScreen is mounted');
+  }
+  final String? id = ProviderScope.containerOf(
+    home.first,
+    listen: false,
+  ).read(authRepositoryProvider).currentUser?.id;
+  if (id == null) fail('the offline read needs a signed-in user; none is');
+  return id;
+}
+
+/// "Relaunches" the list with the network dropped, as [owner], and returns
+/// what it read.
 ///
 /// Throws the transport's [ApiException] when the device kept no list — the
 /// red this step exists to show.
-Future<List<Subscription>> readListWithNetworkOff() async {
+Future<List<Subscription>> readListWithNetworkOff({
+  required String owner,
+}) async {
   final core.KeyValueStore kv = await PrefsKeyValueStore.create(
     appId: AppConfig.appId,
   );
   final ApiClient offline = cachedApiClientOver(
     DioApiClient(baseUrl: kDeadApiBase, tokenProvider: () async => null),
     LocalSubscriptionStore(Future<core.KeyValueStore>.value(kv)),
+    currentUser: () => owner,
   );
   return offline.getSubscriptions();
 }
 
 /// Asserts [seededName] is read back with the network off.
 Future<void> expectListSurvivesOffline(String seededName) async {
+  final String owner = signedInUserOfRunningApp();
   final List<Subscription> read;
   try {
-    read = await readListWithNetworkOff();
+    read = await readListWithNetworkOff(owner: owner);
   } on ApiException catch (e) {
     fail(
       'with the network off the list could not be read at all '
