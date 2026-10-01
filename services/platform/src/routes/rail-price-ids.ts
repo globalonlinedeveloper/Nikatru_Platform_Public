@@ -5,6 +5,7 @@
 
 // OUR offering id → PADDLE's price id, per app. A caller never names a price; checkout.ts resolves it here.
 export const PADDLE_PRICE_IDS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  fullshot: {},
   subscriptiontracker: {
     pro_monthly: 'pri_01m346p0fjtaffk6waj5x5vz1c',
     pro_yearly: 'pri_01m346p0v8103kqy1zb8zmmj7y',
@@ -14,6 +15,7 @@ export const PADDLE_PRICE_IDS: Readonly<Record<string, Readonly<Record<string, s
 
 // What each mapped Paddle price costs ON PADDLE, in minor units, as read back (the time is the register's `readAt`).
 export const RAIL_PRICE_AMOUNTS_MINOR: Readonly<Record<string, Readonly<Record<string, number>>>> = {
+  fullshot: {},
   subscriptiontracker: {
     pro_monthly: 599, // read back 2026-09-22T09:20:50Z
     pro_yearly: 3499, // read back 2026-09-22T09:20:50Z
@@ -23,16 +25,25 @@ export const RAIL_PRICE_AMOUNTS_MINOR: Readonly<Record<string, Readonly<Record<s
 
 // Served offerings Paddle cannot sell at that price today, each with its reason. Empty for an app whose paywall is on.
 export const RAIL_PRICE_PENDING: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  fullshot: {
+    pro_monthly: 'no Paddle price exists yet: the sandbox price is created through the Paddle API with the vault key and read back here, and the live price waits for the owner\'s word at the first FullShot store submission',
+    pro_yearly: 'no Paddle price exists yet: the sandbox price is created through the Paddle API with the vault key and read back here, and the live price waits for the owner\'s word at the first FullShot store submission',
+  },
   subscriptiontracker: {},
 };
 
 // OUR offering id → RAZORPAY's plan id, per app. Empty until Razorpay PR B and the owner's plans ([ADR 094]).
 export const RAZORPAY_PLAN_IDS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  fullshot: {},
   subscriptiontracker: {},
 };
 
 // Served offerings Razorpay cannot sell today, each with its reason. Razorpay PR B reads this map.
 export const RAZORPAY_PRICE_PENDING: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  fullshot: {
+    pro_monthly: 'no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here',
+    pro_yearly: 'no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here',
+  },
   subscriptiontracker: {
     pro_monthly: 'no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here',
     pro_yearly: 'no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here',

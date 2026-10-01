@@ -93,7 +93,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv, RateLimiterBinding } from '../types';
-import { isKnownApp, resolveConfig } from '../config';
+import { isKnownApp, isSellableExtension, resolvePaywall } from '../config';
 import { readBoundedBody } from '../lib/body';
 import { withinEdgeCeiling } from '../lib/edge-ceiling';
 import { isMoneyEnvironment, type MoneyEnvironment } from '../lib/mor/contract';
@@ -197,7 +197,7 @@ export function oneTimeOfferingFor(
   for (const [appId, prices] of Object.entries(byApp)) {
     for (const [offeringId, id] of Object.entries(prices)) {
       if (id !== priceId) continue;
-      const offerings = resolveConfig(appId, null)?.paywall?.offerings;
+      const offerings = resolvePaywall(appId, null)?.offerings;
       const served = Array.isArray(offerings)
         ? offerings.find((o) => isPlainObject(o) && o.product_id === offeringId)
         : undefined;
@@ -262,8 +262,10 @@ checkout.post('/checkout', async (c) => {
   }
   if (!isPlainObject(body)) return c.json({ error: 'invalid_json' }, 400);
 
+  // ⏱ 2026-10-01 · EXM-01: an app, or an extension with a committed paywall
+  // (config.ts `resolvePaywall`). FullShot Pro is sold here and nowhere else.
   const appId = body.app_id;
-  if (typeof appId !== 'string' || !isKnownApp(appId)) {
+  if (typeof appId !== 'string' || !(isKnownApp(appId) || isSellableExtension(appId))) {
     return c.json({ error: 'unknown_app' }, 404);
   }
   c.set('appId', appId); // [pipeline B-16] attribution, post-validation.
@@ -299,14 +301,14 @@ checkout.post('/checkout', async (c) => {
   // bounds the read is the ceiling above, which has no binding yet. Stated, not
   // hidden: see CHECKOUT_LIMITER_VAR.
   const kvValue = await c.env.CONFIG_KV.get(`config:${appId}`);
-  const cfg = resolveConfig(appId, kvValue);
-  if (cfg === null) return c.json({ error: 'unknown_app' }, 404);
-  if (cfg.paywall?.enabled !== true) {
+  const paywall = resolvePaywall(appId, kvValue);
+  if (paywall === null) return c.json({ error: 'unknown_app' }, 404);
+  if (paywall?.enabled !== true) {
     return c.json({ error: 'paywall_disabled' }, 403);
   }
 
   // The offering has to be one this app actually sells…
-  if (!servedOfferingIds(cfg.paywall.offerings).includes(offeringId)) {
+  if (!servedOfferingIds(paywall.offerings).includes(offeringId)) {
     return c.json({ error: 'unknown_offering' }, 404);
   }
   // …and one the rail has a price for — the rail resolves its own price

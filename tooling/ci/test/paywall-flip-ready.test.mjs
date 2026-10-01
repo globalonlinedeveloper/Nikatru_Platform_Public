@@ -49,9 +49,20 @@ function config(enabled) {
   };
 }
 
-function run({ list = checklist(), cfg = config(false), evidence = true } = {}) {
+/** The channel register limb 4 reads for EXT-SIGN-IN: one extension row, which can sign in unless `signIn` is false. */
+function register(signIn = true) {
+  return {
+    channels: [
+      { id: 'web', surface: 'app' },
+      { id: 'amo', surface: 'extension', extensionRedirectUri: signIn ? 'https://0123456789abcdef0123456789abcdef01234567.extensions.allizom.org/' : null },
+    ],
+  };
+}
+
+function run({ list = checklist(), cfg = config(false), evidence = true, reg = register() } = {}) {
   const root = join(TMP, `case-${(seq += 1)}`);
   if (list !== null) write(root, 'tooling/paywall-flip.json', JSON.stringify(list));
+  if (reg !== null) write(root, 'tooling/channel-register.json', JSON.stringify(reg));
   if (cfg !== null) write(root, 'services/platform/src/app-config-data.json', JSON.stringify(cfg));
   if (evidence) write(root, 'evidence.txt', 'proof');
   const r = spawnSync(process.execPath, [GUARD, root], { encoding: 'utf8' });
@@ -99,6 +110,34 @@ describe('assert-paywall-flip-ready', () => {
     const r = run({ list });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /has lost the precondition T-11/);
+  });
+
+  // ⏱ 2026-10-01 · #1117 review 1: what an extension needs before it is sold.
+  test('🔴 FAILS with the FullShot paywall on while EXT-SIGN-IN is open, and only for FullShot', () => {
+    const cfg = { defaults: { paywall: { enabled: false } }, apps: { subscriptiontracker: { paywall: { enabled: true } }, fullshot: { paywall: { enabled: true } } } };
+    const r = run({ list: checklist(['EXT-SIGN-IN']), cfg });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /turns the paywall ON for fullshot while the precondition EXT-SIGN-IN is OPEN/);
+    assert.doesNotMatch(r.out, /for subscriptiontracker while the precondition EXT-SIGN-IN/);
+  });
+
+  test('🔴 FAILS EXT-SIGN-IN closed while every extension channel has a null extensionRedirectUri', () => {
+    const r = run({ reg: register(false) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /EXT-SIGN-IN is closed, but every extension channel in tooling\/channel-register\.json \(amo\) has a null extensionRedirectUri/);
+  });
+
+  test('COVERAGE LOST (exit 2) when EXT-SIGN-IN is closed and the register names no extension channel', () => {
+    const r = run({ reg: { channels: [{ id: 'web', surface: 'app' }] } });
+    assert.equal(r.code, 2, r.out);
+  });
+
+  test('FAILS a checklist that DELETED EXT-CANCEL instead of closing it', () => {
+    const list = checklist();
+    list.preconditions = list.preconditions.filter((p) => p.id !== 'EXT-CANCEL');
+    const r = run({ list });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /has lost the precondition EXT-CANCEL/);
   });
 
   test('COVERAGE LOST (exit 2) when the checklist is absent', () => {

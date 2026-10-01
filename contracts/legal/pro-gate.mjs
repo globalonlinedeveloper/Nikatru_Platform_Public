@@ -41,6 +41,38 @@ export function recurringOfferings(appConfig, id) {
   return Array.isArray(offers) ? offers.filter((o) => o && RECURRING.has(o.term)) : [];
 }
 
+/** ⏱ 2026-10-01 · #1117 review 1, finding 5. THE OFFERINGS A PURCHASE DISCLOSURE
+ *  STATES: the recurring offerings, plus — for each one whose
+ *  `prices.apps.<id>.<product_id>.webInrMinor` is set — the same term in INR at
+ *  that amount, the web price an Indian buyer is charged (the edge-addons row's
+ *  regionRails[IN] reasoning: "the range an Indian buyer sees is the one they can
+ *  actually be charged"). The Edge listing (render-listing.mjs) and the one range
+ *  assert-no-price-literals.mjs allows there both call this one function
+ *  (tooling/ci/test/price-literals.test.mjs LC7 reds when the guard reads another). */
+export function disclosedOfferings(appConfig, id) {
+  const base = recurringOfferings(appConfig, id);
+  const rows = appConfig?.prices?.apps?.[id];
+  const inr = [];
+  for (const o of base) {
+    const m = rows && typeof rows === 'object' ? rows[o.product_id]?.webInrMinor : undefined;
+    if (o.currency_code !== 'INR' && Number.isInteger(m) && m > 0) inr.push({ ...o, currency_code: 'INR', amount_minor: m });
+  }
+  return [...base, ...inr];
+}
+
+/** ⏱ 2026-10-01 · #1117 review 1. CAN A BUYER SIGN IN ON THIS CHANNEL? An
+ *  extension store row of tooling/channel-register.json answers it: POST
+ *  /v1/ext/codes refuses a channel whose `extensionRedirectUri` is null
+ *  (services/platform/src/lib/ext-redirects.ts), so with a null no credential can
+ *  exist there and Pro can never be true. The ONE definition: the listing
+ *  renderer (a `sells` or `signin` line), the submission gate
+ *  (extensions/scripts/publish-arming.mjs) and the paywall-flip checklist
+ *  (tooling/ci/assert-paywall-flip-ready.mjs, EXT-SIGN-IN) all read it. */
+export function canSignIn(channelRow) {
+  const uri = channelRow?.extensionRedirectUri;
+  return typeof uri === 'string' && uri.trim() !== '';
+}
+
 /** { pro, transmits, sells } for FullShot, read from the tree (or the paths given). */
 export function fullshotPro(root, { toolJson, appConfig } = {}) {
   const toolAbs = toolJson || join(root, FULLSHOT_TOOL_REL);
