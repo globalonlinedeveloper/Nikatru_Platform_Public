@@ -5,7 +5,7 @@
 // Red control: on main 454dd415 there is no POST /:id/payments (404) and no
 // price_change table, so every "writes one row" assertion below fails there.
 // ─────────────────────────────────────────────────────────────────────────────
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import subscriptions from '../src/routes/subscriptions';
 import { todayYmd } from '../src/lib/d1';
 import { realAppDb, asUser, SqliteD1 } from './harness';
@@ -118,6 +118,42 @@ describe('review of #1089, finding 3 — paid_on is a date that has happened (on
       expect((await pay(id, { amount: 649, paid_on: paidOn })).status).toBe(201);
     });
   }
+});
+
+// ⏱ 2026-10-01 (#1091 review nit). The cases above name their dates when the FILE is
+// collected and run them later, against the server's clock read at request time; a
+// run that crosses 00:00 UTC in between moves "tomorrow" to "today" under them. These
+// pin the clock to each side of midnight, so the bound is graded AT the instant it
+// moves rather than by luck of when the suite ran.
+describe('paid_on\'s ceiling moves at 00:00 UTC, and only then (midnight-safe)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const at = (iso: string) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(iso));
+  };
+
+  // Red control: a ceiling read from LOCAL time, or no skew — 2026-10-01 is refused
+  // at 23:59:59.999Z, or 2026-10-02 is refused one millisecond after midnight.
+  it('at 23:59:59.999Z the ceiling is tomorrow: 2026-10-01 is 201, 2026-10-02 is 400', async () => {
+    at('2026-09-30T23:59:59.999Z');
+    const id = await create();
+    expect((await pay(id, { amount: 649, paid_on: '2026-10-01' })).status).toBe(201);
+    const late = await pay(id, { amount: 649, paid_on: '2026-10-02' });
+    expect(late.status).toBe(400);
+    expect(((await late.json()) as Row).detail).toMatch(/between 2000-01-01 and 2026-10-01/);
+  });
+
+  it('one millisecond after 00:00Z the ceiling has moved: 2026-10-02 is 201, 2026-10-03 is 400', async () => {
+    at('2026-10-01T00:00:00.001Z');
+    const id = await create();
+    expect((await pay(id, { amount: 649, paid_on: '2026-10-02' })).status).toBe(201);
+    const late = await pay(id, { amount: 649, paid_on: '2026-10-03' });
+    expect(late.status).toBe(400);
+    expect(((await late.json()) as Row).detail).toMatch(/between 2000-01-01 and 2026-10-02/);
+  });
 });
 
 describe('F14 — every price edit writes one price_change row', () => {
