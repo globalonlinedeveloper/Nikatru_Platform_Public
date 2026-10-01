@@ -1099,7 +1099,7 @@
   "@calendarLink": {
     "description": "Consumed by home_screen.dart:312. The trailing link on the Upcoming renewals header. The live literal baked a \"→\" into the string; the arrow is DIRECTIONAL and belongs to the layout, not to the text. Pinned by integration_test/app_test.dart:386, integration_test/store_screenshots_test.dart:292 — the value must not change without moving those."
   },
-  "monthlySpend": "MONTHLY SPEND",
+  "monthlySpend": "Monthly spend",
   "@monthlySpend": {
     "description": "Consumed by home_screen.dart:368."
   },
@@ -1130,11 +1130,11 @@
       }
     }
   },
-  "dueIn7Days": "DUE IN 7 DAYS",
+  "dueIn7Days": "Due in 7 days",
   "@dueIn7Days": {
     "description": "Consumed by home_screen.dart:405."
   },
-  "dueIn30Days": "DUE IN 30 DAYS",
+  "dueIn30Days": "Due in 30 days",
   "@dueIn30Days": {
     "description": "Consumed by home_screen.dart:413."
   },
@@ -2497,5 +2497,141 @@
   "categoryOther": "Other",
   "@categoryOther": {
     "description": "ST-X8 (audit C6): the display name of the fallback category whose id is \"Other\" — a row with no category."
+  },
+  "homeSearchLabel": "Search subscriptions",
+  "@homeSearchLabel": {
+    "description": "Consumed by features/home/home_screen.dart, the search field of ListControls (HO-03): its hint and accessible name. Matches name and notes."
+  },
+  "homeSearchClear": "Clear search",
+  "@homeSearchClear": {
+    "description": "Consumed by features/home/home_screen.dart, the clear button inside the search field (HO-03)."
+  },
+  "homeSortLabel": "Sort",
+  "@homeSortLabel": {
+    "description": "Consumed by features/home/home_screen.dart, the sort menu button name (HO-03); the order on is read after it."
+  },
+  "homeSortNextCharge": "Next charge",
+  "@homeSortNextCharge": {
+    "description": "Consumed by features/home/home_screen.dart, a sort order: soonest charge first (HO-03)."
+  },
+  "homeSortPrice": "Price",
+  "@homeSortPrice": {
+    "description": "Consumed by features/home/home_screen.dart, a sort order: highest charge first (HO-03)."
+  },
+  "homeSortMonthlyShare": "Monthly share",
+  "@homeSortMonthlyShare": {
+    "description": "Consumed by features/home/home_screen.dart, a sort order: biggest per-month share first (HO-03)."
+  },
+  "homeSortName": "Name",
+  "@homeSortName": {
+    "description": "Consumed by features/home/home_screen.dart, a sort order: A to Z (HO-03)."
+  },
+  "homeFilterActive": "Active",
+  "@homeFilterActive": {
+    "description": "Consumed by features/home/home_screen.dart, a status filter chip (HO-03)."
+  },
+  "homeFilterTrial": "Trial",
+  "@homeFilterTrial": {
+    "description": "Consumed by features/home/home_screen.dart, a status filter chip: free trials (HO-03)."
+  },
+  "homeNoMatches": "No subscriptions match",
+  "@homeNoMatches": {
+    "description": "Consumed by features/home/home_screen.dart, shown in place of the list when search and filters leave nothing (HO-03)."
+  },
+  "homeUpcomingMore": "{count, plural, =1{1 more} other{{count} more}}",
+  "@homeUpcomingMore": {
+    "description": "Consumed by features/home/home_screen.dart, the Upcoming header action when more than four charges fall in the next 30 days; it opens Calendar (HO-04). PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSelectSubscription": "Select a subscription",
+  "@homeSelectSubscription": {
+    "description": "Consumed by features/home/home_screen.dart, the empty detail pane of the two-pane layout (B8)."
+  },
+  "homeSignalTrialEnds": "{name}: trial ends in {days, plural, =0{less than a day} =1{1 day} other{{days} days}}",
+  "@homeSignalTrialEnds": {
+    "description": "Consumed by features/home/home_screen.dart, a decision strip: a free trial ending within 7 days (HO-05). PLURAL.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSignalYearlyDue": "{name} renews yearly in {days, plural, =0{less than a day} =1{1 day} other{{days} days}}",
+  "@homeSignalYearlyDue": {
+    "description": "Consumed by features/home/home_screen.dart, a decision strip: a yearly plan due within 60 days (HO-05). PLURAL.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSignalYearlyDueDetail": "{amount} will be charged at once",
+  "@homeSignalYearlyDueDetail": {
+    "description": "Consumed by features/home/home_screen.dart, the yearly decision strip detail: the whole yearly price (HO-05).",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSignalPriceRose": "{name} went up to {price}",
+  "@homeSignalPriceRose": {
+    "description": "Consumed by features/home/home_screen.dart, a decision strip: the price rose since the last charge (HO-05).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSignalPriceRoseDetail": "It was {price}",
+  "@homeSignalPriceRoseDetail": {
+    "description": "Consumed by features/home/home_screen.dart, the price-rise strip detail: the previous price (HO-05).",
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSignalStillUsing": "Still using {name}?",
+  "@homeSignalStillUsing": {
+    "description": "Consumed by features/home/home_screen.dart, a decision strip for a plan the user flagged rarely used (HO-05). Replaces the unused count.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSignalOpen": "Open",
+  "@homeSignalOpen": {
+    "description": "Consumed by features/home/home_screen.dart, the one action on a trial, yearly or price strip: opens the subscription (HO-05)."
+  },
+  "homeSignalStop": "Stop",
+  "@homeSignalStop": {
+    "description": "Consumed by features/home/home_screen.dart, the one action on the still-using strip: opens the cancel sheet (HO-05)."
+  },
+  "menuFile": "File",
+  "menuView": "View",
+  "@menuFile": {
+    "description": "Consumed by features/shell/app_shell.dart: the macOS menu bar File menu (SH-02)."
+  },
+  "@menuView": {
+    "description": "Consumed by features/shell/app_shell.dart: the macOS menu bar View menu, one item per destination (SH-02)."
+  },
+  "homeFilterLabel": "Filter",
+  "@homeFilterLabel": {
+    "description": "Consumed by features/home/home_screen.dart: the toggle that shows the filter chips (status, category, currency) under the search (HO-03)."
   }
 }

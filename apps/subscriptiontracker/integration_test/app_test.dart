@@ -23,6 +23,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -1377,6 +1378,59 @@ void main() {
           'read-back failed',
     );
     await shot('11-home-after-create');
+
+    // ── 11a Find (T8 · HO-03, SH-02): search for the plan just added, filter
+    // by status, and N opens the add sheet. Back to the top first: the search
+    // leads the list, and a lazy list does not build what it scrolled past.
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, 20000));
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    await tester.enterText(find.byKey(HomeScreen.searchFieldKey), subName);
+    await pumpFor(tester, const Duration(seconds: 1));
+    expect(
+      find.descendant(
+        of: find.byKey(HomeScreen.allKey),
+        matching: find.text(subName),
+      ),
+      findsOneWidget,
+      reason: 'searching for the plan just added did not list it',
+    );
+    await tester.enterText(find.byKey(HomeScreen.searchFieldKey), '');
+    // Esc leaves the field, so the shell's keys (N below) are live again —
+    // inside a field N types an n, by design.
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(HomeScreen.filterKey));
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    // A new plan is ACTIVE: filtered to Paused it is gone, to Active it is
+    // back.
+    await tester.tap(find.widgetWithText(FilterChip, 'Paused'));
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    expect(
+      find.descendant(
+        of: find.byKey(HomeScreen.allKey),
+        matching: find.text(subName),
+      ),
+      findsNothing,
+      reason: 'filtered to Paused, an active plan still listed',
+    );
+    await tester.tap(find.widgetWithText(FilterChip, 'Paused'));
+    await tester.tap(find.widgetWithText(FilterChip, 'Active'));
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    expect(find.text(subName), findsWidgets);
+    // Closing the chips clears them.
+    await tester.tap(find.byKey(HomeScreen.filterKey));
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    // N — the shell's primary action — opens the add sheet; Cancel closes it.
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyN);
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(
+      find.byKey(E2EKeys.addName),
+      findsOneWidget,
+      reason: 'pressing N did not open the add sheet',
+    );
+    await tester.tap(find.byKey(E2EKeys.addCancel));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(find.byKey(E2EKeys.addName), findsNothing);
 
     // ── 11b Budget: the editor on Insights (ST-D3: no Budget tab) ────────────
     // Only now does Insights render its card stack (one subscription exists).

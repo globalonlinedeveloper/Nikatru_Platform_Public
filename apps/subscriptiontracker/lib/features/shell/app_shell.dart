@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
@@ -6,6 +9,7 @@ import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../l10n/app_localizations.dart';
 import '../add/add_subscription_sheet.dart';
+import '../home/home_search.dart';
 import '../shared/widgets.dart';
 import 'sync_problems_strip.dart';
 
@@ -171,6 +175,59 @@ class AppShell extends StatelessWidget {
     _TabSpec(Icons.settings_rounded, l10n.navSettings),
   ];
 
+  /// Search lives on Home: go there, then ask Home to focus its field.
+  void _search(BuildContext context) {
+    if (navigationShell.currentIndex != 0) navigationShell.goBranch(0);
+    ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(homeSearchRequestProvider.notifier).request();
+  }
+
+  /// SH-02 · macOS: the system menu bar — File › New subscription (⌘N) and
+  /// View › one item per destination (⌘1-4). No other target has a system
+  /// menu bar; its keys are the scaffold's.
+  Widget _menus(BuildContext context, Widget child) {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.macOS) return child;
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final List<_TabSpec> tabs = _tabs(l10n);
+    const List<LogicalKeyboardKey> digits = <LogicalKeyboardKey>[
+      LogicalKeyboardKey.digit1,
+      LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit3,
+      LogicalKeyboardKey.digit4,
+    ];
+    return PlatformMenuBar(
+      menus: <PlatformMenuItem>[
+        PlatformMenu(
+          label: l10n.menuFile,
+          menus: <PlatformMenuItem>[
+            PlatformMenuItem(
+              label: l10n.addSubscriptionTitle,
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyN,
+                meta: true,
+              ),
+              onSelected: () => showAddSubscriptionSheet(context),
+            ),
+          ],
+        ),
+        PlatformMenu(
+          label: l10n.menuView,
+          menus: <PlatformMenuItem>[
+            for (int i = 0; i < tabs.length && i < digits.length; i++)
+              PlatformMenuItem(
+                label: tabs[i].label,
+                shortcut: SingleActivator(digits[i], meta: true),
+                onSelected: () => navigationShell.goBranch(i),
+              ),
+          ],
+        ),
+      ],
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // The window class is read the way the chassis reads it: `AppScaffold`
@@ -180,11 +237,15 @@ class AppShell extends StatelessWidget {
     // the width harness pins layout without moving `MediaQuery` at all.
     // The offline outbox's dead letters sit under the shell (review #1075
     // finding 9); the bare shell while there are none.
-    return SyncProblemsStrip(
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) => _build(
-          context,
-          compact: windowClassFor(constraints.maxWidth) == WindowClass.compact,
+    return _menus(
+      context,
+      SyncProblemsStrip(
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) => _build(
+            context,
+            compact:
+                windowClassFor(constraints.maxWidth) == WindowClass.compact,
+          ),
         ),
       ),
     );
@@ -206,6 +267,10 @@ class AppShell extends StatelessWidget {
         i,
         initialLocation: i == navigationShell.currentIndex,
       ),
+      // SH-02: N adds, / and Ctrl/⌘+F find. The chassis binds the keys (and
+      // stands them aside while the user types); this app names what they do.
+      onPrimaryAction: () => showAddSubscriptionSheet(context),
+      onSearch: () => _search(context),
       body: Stack(
         children: <Widget>[
           // 🔴 AT COMPACT THE BODY STOPS ABOVE THE "+". The FAB is laid out

@@ -67,6 +67,8 @@ class Subscription {
     this.reminderDays,
     this.noticeDays,
     this.noticeDaysSupported = false,
+    this.serviceId,
+    this.previousPrice,
   });
 
   final String id;
@@ -165,6 +167,16 @@ class Subscription {
   /// answer with a row that no longer has it. Deploy order is the API first.
   final bool noticeDaysSupported;
 
+  /// The catalogue key this row was added from (`service_id`, 0003), or null
+  /// for a row typed by hand. Home shows the catalogue's logo for it (HO-06).
+  final String? serviceId;
+
+  /// The price before the newest price change, when the row carries its
+  /// `price_history` (`GET /v1/subscriptions/:id` serves it, newest first;
+  /// ST-I4). Null when there is no history on this row. Home's price-rise
+  /// decision reads it (HO-05).
+  final Money? previousPrice;
+
   /// The last day to cancel before the charge on or after [now]
   /// ([nextCharge]), or null when the plan names no notice period.
   DateTime? cancelByFor(DateTime now) {
@@ -254,7 +266,35 @@ class Subscription {
     reminderDays: readReminderDays(j['reminder_days']),
     noticeDays: readNoticeDays(j['notice_days']),
     noticeDaysSupported: j.containsKey('notice_days'),
+    serviceId: switch (j['service_id']) {
+      final String id when id.isNotEmpty => id,
+      _ => null,
+    },
+    previousPrice: readPreviousPrice(
+      j['price_history'],
+      fallbackCurrencyCode: fallbackCurrencyCode,
+    ),
   );
+
+  /// The OLD price of the newest entry in a `price_history` list, or null for
+  /// no history or a shape this cannot read — never a guess.
+  static Money? readPreviousPrice(
+    Object? raw, {
+    String fallbackCurrencyCode = Money.fallbackCurrencyCode,
+  }) {
+    if (raw is! List || raw.isEmpty) return null;
+    final Object? newest = raw.first;
+    if (newest is! Map) return null;
+    final Object? code = newest['old_currency'];
+    final String currency = code is String && code.length == 3
+        ? code.toUpperCase()
+        : fallbackCurrencyCode;
+    final Object? minor = newest['old_price_minor'];
+    if (minor is int) return Money(minor, currency);
+    final Object? major = newest['old_price'];
+    if (major is num) return Money.fromMajorUnits(major, currency);
+    return null;
+  }
 
   /// `reminder_days` off the wire: a list of whole days, deduplicated and
   /// nearest-to-the-charge LAST (the order the reminders fire in), or null
@@ -364,6 +404,8 @@ class Subscription {
     // The cache round-trips this row through toJson, so the capability rides
     // with it: a cached row must not lose the field the API had emitted.
     if (noticeDaysSupported && noticeDays == null) 'notice_days': null,
+    // Sent only when set, so a hand-typed row's body is unchanged.
+    if (serviceId != null) 'service_id': serviceId,
   };
 
   /// ⚠️ [price] IS A `num` OF MAJOR UNITS, NOT A [Money], AND THE ODD ONE OUT
@@ -503,6 +545,8 @@ class Subscription {
     reminderDays: reminderDays,
     noticeDays: noticeDays,
     noticeDaysSupported: noticeDaysSupported,
+    serviceId: serviceId,
+    previousPrice: previousPrice,
   );
 
   /// The mark a row wears when nobody chose one: the first three letters of

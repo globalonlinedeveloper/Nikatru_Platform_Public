@@ -1180,8 +1180,12 @@ class _SignedInAuth extends core.AuthRepository {
 /// in the compact window class — flutter_test's 800×600 default resolves to
 /// `medium`, i.e. a RAIL, where the pill this file is about is not in the tree
 /// at all. Same rig and same reasons as `dark_group_home_test.dart`'s.
-Future<void> pumpShell(WidgetTester tester, {ThemeData? theme}) async {
-  await sizeSurface(tester, kPhone);
+Future<void> pumpShell(
+  WidgetTester tester, {
+  ThemeData? theme,
+  Size size = kPhone,
+}) async {
+  await sizeSurface(tester, size);
   final ProviderContainer c = ProviderContainer(
     overrides: <Override>[
       ...defaultWidthOverrides(),
@@ -4574,7 +4578,10 @@ void main() {
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpShell(tester, theme: appTheme());
+        // TALL, as settings' sweep is: Home's search and decision sit above
+        // the Upcoming section now (HO-03/05), so on a phone-height surface
+        // the section this sweep names is below the fold, never measured.
+        await pumpShell(tester, theme: appTheme(), size: const Size(375, 3000));
         // 8 subjects. This case pumps the REAL router, so it attributes to
         // no single domain surface — the shape assert-a11y-coverage.mjs
         // already reports for the shell's other two families.
@@ -4828,6 +4835,9 @@ void main() {
         await pumpScreen(
           tester,
           const HomeScreen(),
+          // TALL: see the shell's sweep — the Upcoming section is below a
+          // phone's fold now that search and the decision lead (HO-03/05).
+          size: const Size(375, 3000),
           theme: appTheme(),
           paintBackground: true,
         );
@@ -4840,7 +4850,10 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'home',
-          covers: const <String>['Calendar', 'Upcoming renewals'],
+          // HO-04: the section link reads "{n} more" whenever the 30-day
+          // horizon holds more than four charges, so the seed's link is not
+          // the word "Calendar" any more; the two section headers are.
+          covers: const <String>['Upcoming renewals', 'All subscriptions'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         // 🔴 ONE NAMED EXEMPTION, AND IT IS AN OPEN DEFECT RATHER THAN A
@@ -5205,6 +5218,9 @@ void main() {
         await pumpScreen(
           tester,
           const HomeScreen(),
+          // TALL: see the shell's sweep — the Upcoming section is below a
+          // phone's fold now that search and the decision lead (HO-03/05).
+          size: const Size(375, 3000),
           theme: appTheme(brightness: Brightness.dark),
           paintBackground: true,
         );
@@ -5230,7 +5246,10 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'home (dark)',
-          covers: const <String>['Calendar', 'Upcoming renewals'],
+          // HO-04: the section link reads "{n} more" whenever the 30-day
+          // horizon holds more than four charges, so the seed's link is not
+          // the word "Calendar" any more; the two section headers are.
+          covers: const <String>['Upcoming renewals', 'All subscriptions'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         // ⏱ 2026-09-28 · train ST-D1: Home's rows are `AppListRow`s now, so

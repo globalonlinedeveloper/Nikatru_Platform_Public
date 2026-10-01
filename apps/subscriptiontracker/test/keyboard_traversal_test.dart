@@ -100,7 +100,8 @@
 //
 //   login    8 of 8   (was 4 of 8)
 //   settings 25 of 27 (was 9 of 27)
-//   home     20 of 20 (was 17 of 20)
+//   home     20 of 20 (was 17 of 20); 23 of 23 since T8 (2026-10-01): the
+//            search field, sort menu and filter toggle (HO-03)
 //
 // 55 controls, 53 reachable by Tab, 2 not. Both remaining are the `en` and `ta`
 // members of the LANGUAGE `RadioGroup`.
@@ -795,7 +796,12 @@ void main() {
       );
     });
 
-    testWidgets('home · 20 of 20', (WidgetTester tester) async {
+    testWidgets('home · 23 of 23', (WidgetTester tester) async {
+      // ⏱ 2026-10-01 · T8 (HO-03): 20 -> 23, all three reachable — the search
+      // field, the sort menu and the filter toggle of the shared
+      // `ListControls`. The chips are folded away until the toggle opens them,
+      // so they are not in this inventory.
+      //
       // WAS 17 of 20. Home's subscription rows were always `InkWell`s, so they
       // traversed for free; the three that did not were the app-bar actions —
       // notifications, account/settings, calendar — i.e. every route OUT of
@@ -805,8 +811,8 @@ void main() {
         tester,
         'home',
         const HomeScreen(),
-        controls: 20,
-        reachable: 20,
+        controls: 23,
+        reachable: 23,
       );
       expect(
         s.deadLabels,

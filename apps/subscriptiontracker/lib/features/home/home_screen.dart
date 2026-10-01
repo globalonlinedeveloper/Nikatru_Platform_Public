@@ -7,9 +7,14 @@
 //   · `AppSummaryCard`  — the monthly total, what qualifies it, and the 7- and
 //                         30-day figures. Replaces the brand-gradient hero, whose
 //                         white-on-purple literals no theme could reach.
-//   · `DecisionStrip`   — "N marked unused · cancel to save X · Review": the
-//                         one decision this screen asks. Replaces the warn-bar
-//                         `RowCard` and its hand-measured `!` glyph tone.
+//   · `DecisionStrip`   — the ONE decision this screen asks, the most urgent
+//                         of `HomeSignals` (T8 · HO-05): a trial ending, a
+//                         yearly charge close, a price that rose, "Still using
+//                         {name}?" — each with one answer. It replaced the
+//                         "N marked unused" strip only demo data could fill.
+//   · `ListControls`    — search, sort and filter (T8 · HO-03), the design
+//                         system's, leading the list so / and Ctrl/⌘+F always
+//                         find the field built.
 //   · `AppSectionHeader` + `AppListGroup` of `AppListRow`s — upcoming renewals
 //                         and every subscription. Replace `SectionHeader` and
 //                         one `RowCard` per row.
@@ -18,15 +23,19 @@
 //                         raw exception string (`couldNotLoad('$e')` is gone
 //                         from here).
 //
-// What this file still decides is domain: which subscriptions are upcoming,
-// which one is urgent, what "unused" means, where a tap goes. Every colour,
+// What this file still decides is domain: which subscriptions are upcoming
+// (the next 30 days, HO-04), which one is urgent, what matches a search,
+// where a tap goes. Every colour,
 // size and type style comes from the theme through the components.
 //
 // 🔴 THE ORDERING RULE THIS FILE ENCODES, because it is the one that bites:
 // `overrides.md` §10-11 records that home and settings must merge AS A PAIR —
 // `showUnused` below reads `prefs['unused']`, which only the settings toggles
-// write. Changing one screen without the other severs a coupling nothing tests.
+// write — it now gates the "Still using {name}?" signal. Changing one screen
+// without the other severs a coupling nothing tests.
 // ─────────────────────────────────────────────────────────────────────────────
+import 'dart:async' show Timer;
+
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,6 +60,7 @@ import '../../state/subscriptions_controller.dart';
 // pane. It is still a route — a phone still pushes it — this import only gives
 // the wide layout a way to render the same widget without a navigation.
 import '../add/add_subscription_sheet.dart';
+import '../cancel/cancel_sheet.dart';
 import '../detail/subscription_detail_screen.dart';
 import '../shared/async_gate.dart';
 import '../shared/cadence_label.dart';
@@ -59,6 +69,11 @@ import '../shared/due.dart';
 // [AppShell.pageInsetOf]. The FAB that inset reserves room for belongs to the
 // shell, so the arithmetic does too.
 import '../shell/app_shell.dart';
+import 'home_search.dart';
+import 'home_signals.dart';
+
+/// Home's sort orders (HO-03).
+enum HomeSort { nextCharge, price, monthlyShare, name }
 
 /// Home — branch 0's BODY ([ADR 037] Variant B): `AppShell` owns the adaptive
 /// [AppScaffold], so this screen carries NO scaffold of its own — nesting one
@@ -92,11 +107,31 @@ class HomeScreen extends ConsumerWidget {
   /// The summary card, wherever it is laid out.
   static const Key summaryKey = Key('home-summary');
 
-  /// The unused-plans decision.
-  static const Key unusedStripKey = Key('home-unused-strip');
+  /// The decision strip for [s] of [kind] (HO-05).
+  static Key signalKey(HomeSignalKind kind, String id) =>
+      Key('home-signal-${kind.name}-$id');
 
-  /// The decision's one answer.
-  static const Key unusedReviewKey = Key('home-unused-review');
+  /// That strip's one answer.
+  static Key signalActionKey(HomeSignalKind kind, String id) =>
+      Key('home-signal-${kind.name}-$id-action');
+
+  /// The search field (HO-03).
+  static const Key searchFieldKey = Key('home-search');
+
+  /// The sort menu button (HO-03).
+  static const Key sortKey = Key('home-sort');
+
+  /// The filter toggle that shows the chips (HO-03).
+  static const Key filterKey = Key('home-filter');
+
+  /// Shown in place of the all-subscriptions group when nothing matches.
+  static const Key noMatchesKey = Key('home-no-matches');
+
+  /// How many upcoming charges are listed before "{n} more" (HO-04).
+  static const int upcomingShown = 4;
+
+  /// The upcoming horizon, in days (HO-04).
+  static const int upcomingDays = 30;
 
   /// The upcoming-renewals group.
   static const Key upcomingKey = Key('home-upcoming');
@@ -142,8 +177,68 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
   /// not BUILD its detail below the split, so keeping it costs nothing.
   String? _selectedId;
 
+  /// HO-03: what the user searched, sorted by and filtered to. Screen state:
+  /// a way of looking at the list, not a fact about the user's data.
+  String _query = '';
+  HomeSort _sort = HomeSort.monthlyShare;
+  final Set<String> _filters = <String>{};
+
+  /// Whether the filter chips are showing — and they stay showing while any
+  /// chip is on, so a filter in force is never folded away.
+  bool _filtersOpen = false;
+  final TextEditingController _search = TextEditingController();
+  final FocusNode _searchFocus = FocusNode(debugLabel: 'home search');
+
+  /// The list column's scroll, so a search request can bring the field back.
+  final ScrollController _scroll = ScrollController();
+
+  /// HO-04: lands at the next local midnight and re-reads [nowProvider], so a
+  /// screen left open overnight relabels "Renews tomorrow" as "Due today".
+  Timer? _midnight;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleMidnight();
+  }
+
+  void _scheduleMidnight() {
+    _midnight?.cancel();
+    _midnight = Timer(untilLocalMidnight(ref.read(nowProvider)()), () {
+      if (!mounted) return;
+      ref.invalidate(nowProvider);
+      setState(() {});
+      _scheduleMidnight();
+    });
+  }
+
+  @override
+  void dispose() {
+    _midnight?.cancel();
+    _search.dispose();
+    _searchFocus.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    // SH-02: the shell's / and Ctrl/⌘+F land here. Next frame, so a request
+    // that also switched to this branch finds the field mounted.
+    ref.listen<int>(homeSearchRequestProvider, (int? _, int _) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        // Scrolled past it, the field is not built: back to the top first.
+        if (_searchFocus.context == null && _scroll.hasClients) {
+          _scroll.jumpTo(0);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _searchFocus.requestFocus();
+          });
+          return;
+        }
+        _searchFocus.requestFocus();
+      });
+    });
     final AppLocalizations l10n = AppLocalizations.of(context);
     final MoneyFormatter money = MoneyFormatter(
       l10n.localeName,
@@ -196,7 +291,8 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
                   id: _selectedId!,
                   onClose: () => setState(() => _selectedId = null),
                 ),
-          placeholder: TwoPanePlaceholder(message: l10n.allSubscriptions),
+          // B8: the empty pane says what to do, not what the list is called.
+          placeholder: TwoPanePlaceholder(message: l10n.homeSelectSubscription),
         );
 
         if (!aside) return panes;
@@ -243,6 +339,7 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     return ContentPane.reading(
       key: HomeScreen.listPaneKey,
       child: ListView(
+        controller: _scroll,
         padding: AppShell.pageInsetOf(context),
         children: <Widget>[
           // THE HEADER IS OUTSIDE THE DATA STATES. It is the route to
@@ -481,10 +578,85 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     required bool summaryInList,
     required bool twoPane,
   }) {
-    final List<Subscription> unused = SubMath.unused(subs);
-    final List<Subscription> upcoming = SubMath.upcoming(subs, now);
-    final List<Subscription> all = SubMath.byMonthlyDesc(subs);
+    // HO-05: decisions a real row raises, each with one answer.
+    final List<HomeSignal> signals = HomeSignals.of(
+      subs,
+      now,
+      stillUsing: showUnused ? (Subscription s) => s.unused : null,
+    ).take(HomeSignals.maxShown).toList();
+    // HO-04: the next 30 days, four listed, the rest counted.
+    final List<Subscription> horizon = SubMath.upcoming(
+      subs,
+      now,
+      take: subs.length,
+      withinDays: HomeScreen.upcomingDays,
+    );
+    final List<Subscription> upcoming = horizon
+        .take(HomeScreen.upcomingShown)
+        .toList();
+    final int more = horizon.length - upcoming.length;
+    // HO-03: search, filter and sort apply to the every-subscription list.
+    final List<Subscription> all = _apply(subs, now);
 
+    // While the user is FINDING — a query or a filter on — the dashboard
+    // steps aside and the matches sit directly under the controls.
+    final bool finding = _query.trim().isNotEmpty || _filters.isNotEmpty;
+
+    return <Widget>[
+      // FIRST, so / and Ctrl/⌘+F always find the field built: a lazy list
+      // does not build what is below the fold, and an unbuilt field cannot
+      // take focus.
+      _controls(l10n, subs),
+      const SizedBox(height: AppSpacing.lg),
+      if (!finding)
+        ..._overview(
+          context,
+          l10n,
+          money,
+          subs,
+          now,
+          signals,
+          upcoming,
+          more,
+          summaryInList: summaryInList,
+          twoPane: twoPane,
+        ),
+      AppSectionHeader(title: l10n.allSubscriptions, count: '${all.length}'),
+      if (all.isEmpty)
+        Padding(
+          key: HomeScreen.noMatchesKey,
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+          child: Text(
+            l10n.homeNoMatches,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        )
+      else
+        AppListGroup(
+          key: HomeScreen.allKey,
+          children: <Widget>[
+            for (final Subscription s in all)
+              _row(context, l10n, money, s, now, due: false, twoPane: twoPane),
+          ],
+        ),
+    ];
+  }
+
+  /// The summary, the decisions and the upcoming charges — what Home shows
+  /// above the list while the user is not searching.
+  List<Widget> _overview(
+    BuildContext context,
+    AppLocalizations l10n,
+    MoneyFormatter money,
+    List<Subscription> subs,
+    DateTime now,
+    List<HomeSignal> signals,
+    List<Subscription> upcoming,
+    int more, {
+    required bool summaryInList,
+    required bool twoPane,
+  }) {
     return <Widget>[
       // In this column only while there is no column of its own: two summary
       // cards quoting one total read as a duplicated render.
@@ -492,34 +664,15 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
         _summary(l10n, money, subs, now),
         const SizedBox(height: AppSpacing.lg),
       ],
-      if (showUnused && unused.isNotEmpty)
-        // A DECISION, NOT A NOTICE: the user has plans they marked unused,
-        // and the answer is one tap away. The tone is the scheme's warn pair
-        // on an opaque tint — measured once per scheme by the component —
-        // which retires the `_warnGlyphOnWash` #956006 this file measured by
-        // hand for a 16 % wash.
-        DecisionStrip(
-          key: HomeScreen.unusedStripKey,
-          kind: StatusKind.warn,
-          // PLURAL: the whole clause is in each arm, so a language that
-          // inflects the noun translates a sentence.
-          message: l10n.markedUnusedCount(unused.length),
-          detail: l10n.cancelToSave(money.formatBag(SubMath.savings(subs))),
-          actions: <DecisionAction>[
-            DecisionAction(
-              key: HomeScreen.unusedReviewKey,
-              label: l10n.homeReviewUnused,
-              primary: true,
-              onPressed: () => context.go('/insights'),
-            ),
-          ],
-        ),
+      for (final HomeSignal sig in signals)
+        _signalStrip(context, l10n, money, sig),
       // The Calendar link is the section's action: a real, keyboard-reachable
       // 48 px control whose arrow mirrors in RTL (the word used to carry a
       // literal '→').
       AppSectionHeader(
         title: l10n.upcomingRenewals,
-        actionLabel: l10n.calendarLink,
+        // "{n} more →" when the horizon holds more than the four listed.
+        actionLabel: more > 0 ? l10n.homeUpcomingMore(more) : l10n.calendarLink,
         onAction: () => context.go('/calendar'),
       ),
       if (upcoming.isNotEmpty)
@@ -530,15 +683,173 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
               _row(context, l10n, money, s, now, due: true, twoPane: twoPane),
           ],
         ),
-      AppSectionHeader(title: l10n.allSubscriptions, count: '${subs.length}'),
-      AppListGroup(
-        key: HomeScreen.allKey,
-        children: <Widget>[
-          for (final Subscription s in all)
-            _row(context, l10n, money, s, now, due: false, twoPane: twoPane),
+    ];
+  }
+
+  /// The filter keys: `status:<name>`, `cat:<category>`, `cur:<code>`.
+  /// OR within a group, AND across groups.
+  static const String _status = 'status:';
+  static const String _cat = 'cat:';
+  static const String _cur = 'cur:';
+
+  /// [subs] searched (name and notes), filtered and sorted — through the
+  /// shared [ListControls.apply], so the fold is the design system's.
+  List<Subscription> _apply(List<Subscription> subs, DateTime now) {
+    Iterable<String> group(String prefix) => _filters
+        .where((String f) => f.startsWith(prefix))
+        .map((String f) => f.substring(prefix.length));
+    final Set<String> statuses = group(_status).toSet();
+    final Set<String> cats = group(_cat).toSet();
+    final Set<String> curs = group(_cur).toSet();
+    final List<Subscription> base = SubMath.byMonthlyDesc(subs);
+    return ListControls.apply<Subscription>(
+      base,
+      query: _query,
+      matches: (Subscription s, String q) =>
+          ListControls.anyFieldContains(<String>[s.name, s.notes], q),
+      filters: <bool Function(Subscription)>[
+        if (statuses.isNotEmpty)
+          (Subscription s) => statuses.contains(s.status.name),
+        if (cats.isNotEmpty) (Subscription s) => cats.contains(s.category),
+        if (curs.isNotEmpty) (Subscription s) => curs.contains(s.currencyCode),
+      ],
+      compare: switch (_sort) {
+        // byMonthlyDesc already ordered `base`; the stable fold keeps it.
+        HomeSort.monthlyShare => null,
+        HomeSort.nextCharge =>
+          (Subscription a, Subscription b) =>
+              a.daysUntil(now).compareTo(b.daysUntil(now)),
+        // Within one currency only: across currencies the input (grouped by
+        // currency) order stands, because the amounts do not compare.
+        HomeSort.price =>
+          (Subscription a, Subscription b) => a.currencyCode != b.currencyCode
+              ? 0
+              : b.price.minorUnits.compareTo(a.price.minorUnits),
+        HomeSort.name =>
+          (Subscription a, Subscription b) =>
+              a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      },
+    );
+  }
+
+  /// The shared [ListControls], fed this screen's words and filters.
+  Widget _controls(AppLocalizations l10n, List<Subscription> subs) {
+    final List<String> categories =
+        subs.map((Subscription s) => s.category).toSet().toList()..sort();
+    final List<String> currencies =
+        subs.map((Subscription s) => s.currencyCode).toSet().toList()..sort();
+    String statusLabel(SubscriptionStatus st) => switch (st) {
+      SubscriptionStatus.active => l10n.homeFilterActive,
+      SubscriptionStatus.trialing => l10n.homeFilterTrial,
+      SubscriptionStatus.paused => l10n.statusPaused,
+      SubscriptionStatus.cancelled => l10n.statusCancelled,
+    };
+    return ListControls<HomeSort, String>(
+      searchFieldKey: HomeScreen.searchFieldKey,
+      sortButtonKey: HomeScreen.sortKey,
+      searchLabel: l10n.homeSearchLabel,
+      clearSearchLabel: l10n.homeSearchClear,
+      searchController: _search,
+      searchFocusNode: _searchFocus,
+      query: _query,
+      onQueryChanged: (String q) => setState(() => _query = q),
+      sortLabel: l10n.homeSortLabel,
+      sortOptions: <ListSortOption<HomeSort>>[
+        ListSortOption<HomeSort>(
+          value: HomeSort.monthlyShare,
+          label: l10n.homeSortMonthlyShare,
+        ),
+        ListSortOption<HomeSort>(
+          value: HomeSort.nextCharge,
+          label: l10n.homeSortNextCharge,
+        ),
+        ListSortOption<HomeSort>(
+          value: HomeSort.price,
+          label: l10n.homeSortPrice,
+        ),
+        ListSortOption<HomeSort>(
+          value: HomeSort.name,
+          label: l10n.homeSortName,
+        ),
+      ],
+      sort: _sort,
+      onSortChanged: (HomeSort v) => setState(() => _sort = v),
+      // STATUS is a fixed four and always offered — filtering to one the
+      // list does not hold says "No subscriptions match", which is true. A
+      // category or currency group with one value filters nothing, so it
+      // draws no chips.
+      filters: <ListFilterOption<String>>[
+        for (final SubscriptionStatus st in SubscriptionStatus.values)
+          ListFilterOption<String>(
+            value: '$_status${st.name}',
+            label: statusLabel(st),
+          ),
+        if (categories.length > 1)
+          for (final String c in categories)
+            ListFilterOption<String>(value: '$_cat$c', label: c),
+        if (currencies.length > 1)
+          for (final String c in currencies)
+            ListFilterOption<String>(value: '$_cur$c', label: c),
+      ],
+      filterLabel: l10n.homeFilterLabel,
+      filterButtonKey: HomeScreen.filterKey,
+      filtersOpen: _filtersOpen || _filters.isNotEmpty,
+      onFiltersOpenChanged: (bool open) => setState(() {
+        _filtersOpen = open;
+        // Closing the chips clears them: a filter the user cannot see is a
+        // list that silently shows less than it says.
+        if (!open) _filters.clear();
+      }),
+      selectedFilters: _filters,
+      onFilterToggled: (String f) => setState(
+        () => _filters.contains(f) ? _filters.remove(f) : _filters.add(f),
+      ),
+    );
+  }
+
+  /// One [HomeSignal] as a [DecisionStrip] with its one answer (HO-05).
+  Widget _signalStrip(
+    BuildContext context,
+    AppLocalizations l10n,
+    MoneyFormatter money,
+    HomeSignal sig,
+  ) {
+    final Subscription s = sig.subscription;
+    final (String message, String? detail) = switch (sig.kind) {
+      HomeSignalKind.trialEnding => (
+        l10n.homeSignalTrialEnds(s.name, sig.days),
+        null,
+      ),
+      HomeSignalKind.yearlyDue => (
+        l10n.homeSignalYearlyDue(s.name, sig.days),
+        l10n.homeSignalYearlyDueDetail(money.format(s.price)),
+      ),
+      HomeSignalKind.priceRose => (
+        l10n.homeSignalPriceRose(s.name, money.format(s.price)),
+        l10n.homeSignalPriceRoseDetail(money.format(sig.was!)),
+      ),
+      HomeSignalKind.stillUsing => (l10n.homeSignalStillUsing(s.name), null),
+    };
+    final bool stop = sig.kind == HomeSignalKind.stillUsing;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: DecisionStrip(
+        key: HomeScreen.signalKey(sig.kind, s.id),
+        kind: StatusKind.warn,
+        message: message,
+        detail: detail,
+        actions: <DecisionAction>[
+          DecisionAction(
+            key: HomeScreen.signalActionKey(sig.kind, s.id),
+            label: stop ? l10n.homeSignalStop : l10n.homeSignalOpen,
+            primary: true,
+            onPressed: stop
+                ? () => showCancelSheet(context, s)
+                : () => context.push('/sub/${s.id}'),
+          ),
         ],
       ),
-    ];
+    );
   }
 
   /// The summary: the monthly total, its two qualifiers, and the 7- and
@@ -617,10 +928,29 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
                 : (s.usedPct > 60 ? StatusKind.positive : null));
     }
 
+    // HO-06: the catalogue's logo where the row came from the catalogue and
+    // the pack has one; else the monogram.
+    final String? logo = s.serviceId == null
+        ? null
+        : ref.watch(serviceLogoAssetsProvider)[s.serviceId];
     return AppListRow(
-      // The monogram is a visual shorthand; the title names the plan, so the
-      // letters are silent rather than read before the name.
-      leading: ExcludeSemantics(child: _monogram(context, s)),
+      // The mark is a visual shorthand; the title names the plan, so the
+      // logo or letters are silent rather than read before the name.
+      leading: ExcludeSemantics(
+        child: logo == null
+            ? _monogram(context, s)
+            : ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.control),
+                child: Image.asset(
+                  logo,
+                  width: AppListRow.leadingSize,
+                  height: AppListRow.leadingSize,
+                  fit: BoxFit.contain,
+                  errorBuilder: (BuildContext c, Object e, StackTrace? t) =>
+                      _monogram(c, s),
+                ),
+              ),
+      ),
       title: s.name,
       subtitle: subtitle,
       status: status,

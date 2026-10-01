@@ -188,12 +188,18 @@ class SubMath {
   /// The next [take] charges, soonest first — by the ROLLED date
   /// ([Subscription.daysUntil]), so a row whose stored date passed yesterday
   /// sorts by its next real charge, not to the top as "due".
+  ///
+  /// [withinDays] bounds the horizon (HO-04: Home's "Upcoming" is the next
+  /// 30 days, not the nearest four whenever they fall); null is no bound.
   static List<Subscription> upcoming(
     List<Subscription> s,
     DateTime now, {
     int take = 4,
+    int? withinDays,
   }) {
-    final List<Subscription> l = charging(s);
+    final List<Subscription> l = withinDays == null
+        ? charging(s)
+        : dueWithinRows(s, now, withinDays);
     l.sort((Subscription a, Subscription b) {
       final int byDate = a.daysUntil(now).compareTo(b.daysUntil(now));
       return byDate != 0 ? byDate : _tieBreak(a, b);

@@ -30,6 +30,13 @@ class DioApiClient implements ApiClient, IdempotentCreates {
 
   final RestClient _rest;
 
+  /// The base URL this client sends to; see [rebase].
+  String get baseUrl => _rest.baseUrl;
+
+  /// Moves every later request to [baseUrl] — [RestClient.rebase], so a
+  /// config resolve does not rebuild the client and re-read the list (HO-10).
+  void rebase(String baseUrl) => _rest.rebase(baseUrl);
+
   /// 🔴 THE UNIT A ROW WITH NO `currency` OF ITS OWN IS READ IN — THE USER'S
   /// CHOICE, ASKED AT DECODE TIME (ST-C1, audit B21/D5/D18).
   ///
