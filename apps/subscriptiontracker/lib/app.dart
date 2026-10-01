@@ -249,7 +249,7 @@ class _OfflineBanner extends ConsumerWidget {
     return OfflineBannerHost(
       unreachable: ref.watch(networkUnreachableProvider),
       onRetry: () => ref.invalidate(appConfigProvider),
-      child: RootedDeviceNoticeHost(child: refreshOnResume(ref, child: child)),
+      child: refreshOnResume(ref, child: RootedDeviceNoticeHost(child: child)),
     );
   }
 }
