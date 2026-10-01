@@ -153,10 +153,12 @@ describe('budget rows are scoped to the owner', () => {
   it('user B’s GET returns user B’s budget, not user A’s', async () => {
     await budgets(A, '/v1/budget', {
       method: 'PUT',
-      body: { monthly_budget: 500, categories: [{ name: 'Music', cap: 20 }] },
+      body: { monthly_budget: 500, currency: 'EUR', categories: [{ name: 'Music', cap: 20 }] },
     });
+    // `currency` (0007) is A's too: B, who never saved a budget, reads NULL.
     expect(await (await budgets(B, '/v1/budget')).json()).toEqual({
       monthly_budget: 0,
+      currency: null,
       categories: [],
     });
   });

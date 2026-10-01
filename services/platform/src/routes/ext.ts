@@ -58,6 +58,7 @@ import { platformAuth } from '../middleware/auth';
 import { EXT_TOKEN_PREFIX, deviceBearer, extDeviceAuth, sha256Hex } from '../middleware/ext-device-auth';
 import { withinEdgeCeiling, withinRateLimit } from '../lib/edge-ceiling';
 import { readBoundedBody } from '../lib/body';
+import { run } from '../lib/d1';
 import { extensionRedirectUri, isExtChannel } from '../lib/ext-redirects';
 import { EXT_LINK_IDLE_DAYS, EXT_LINK_MAX_AGE_DAYS, extLinkExpired, linkFloorOf, predatesFloor } from '../lib/ext-links';
 
@@ -199,11 +200,11 @@ ext.post('/ext/codes', platformAuth, async (c) => {
   const createdAt = new Date(createdMs).toISOString();
   const expiresAt = new Date(createdMs + EXT_CODE_TTL_MS).toISOString();
   try {
-    await c.env.PLATFORM_DB.prepare(
-      'INSERT INTO ext_codes (code_hash, user_id, product, channel, redirect_uri, code_challenge, created_at, expires_at, auth_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    )
-      .bind(await sha256Hex(code), c.get('userId'), b.product, b.channel, registered, b.code_challenge, createdAt, expiresAt, authAt)
-      .run();
+    await run(
+      c.env.PLATFORM_DB.prepare(
+        'INSERT INTO ext_codes (code_hash, user_id, product, channel, redirect_uri, code_challenge, created_at, expires_at, auth_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ).bind(await sha256Hex(code), c.get('userId'), b.product, b.channel, registered, b.code_challenge, createdAt, expiresAt, authAt),
+    );
   } catch {
     console.warn(`[ext] rid=${c.get('requestId') ?? '-'} code mint failed — 503`);
     return c.json({ error: 'service_unavailable' }, 503);
@@ -241,11 +242,14 @@ ext.post('/ext/token', async (c) => {
     // and only while the code is unexpired; everything after it compares a row
     // that can no longer be exchanged by anybody. A mismatched attempt therefore
     // BURNS the code — a stolen code without its verifier is worth one refusal.
-    const claimed = await c.env.PLATFORM_DB.prepare(
-      'UPDATE ext_codes SET used_at = ? WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?',
-    )
-      .bind(now, codeHash, now)
-      .run();
+    // Through `run()` (rv2-services-003): a reset BEFORE the claim commits is
+    // retried; one AFTER it leaves the code burned and the retry claims nothing,
+    // which is the same refusal a reused code gets — never a second exchange.
+    const claimed = await run(
+      c.env.PLATFORM_DB.prepare(
+        'UPDATE ext_codes SET used_at = ? WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?',
+      ).bind(now, codeHash, now),
+    );
     if (Number(claimed.meta?.changes ?? 0) !== 1) return c.json(INVALID_GRANT, 400);
 
     const row = await c.env.PLATFORM_DB.prepare(
@@ -272,11 +276,11 @@ ext.post('/ext/token', async (c) => {
 
     const token = EXT_TOKEN_PREFIX + randomToken(32);
     const linkId = crypto.randomUUID();
-    await c.env.PLATFORM_DB.prepare(
-      'INSERT INTO ext_devices (link_id, user_id, product, channel, token_hash, created_at, auth_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    )
-      .bind(linkId, row.user_id, row.product, row.channel, await sha256Hex(token), now, row.auth_at)
-      .run();
+    await run(
+      c.env.PLATFORM_DB.prepare(
+        'INSERT INTO ext_devices (link_id, user_id, product, channel, token_hash, created_at, auth_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ).bind(linkId, row.user_id, row.product, row.channel, await sha256Hex(token), now, row.auth_at),
+    );
     return c.json({ token, link_id: linkId });
   } catch {
     console.warn(`[ext] rid=${c.get('requestId') ?? '-'} code exchange failed — 503`);
@@ -294,11 +298,11 @@ ext.post('/ext/revoke', extDeviceAuth, async (c) => {
   const token = deviceBearer(c);
   if (token === null) return c.json({ error: 'unauthorized' }, 401);
   try {
-    await c.env.PLATFORM_DB.prepare(
-      'UPDATE ext_devices SET revoked_at = ? WHERE token_hash = ? AND user_id = ? AND revoked_at IS NULL',
-    )
-      .bind(new Date().toISOString(), await sha256Hex(token), c.get('userId'))
-      .run();
+    await run(
+      c.env.PLATFORM_DB.prepare(
+        'UPDATE ext_devices SET revoked_at = ? WHERE token_hash = ? AND user_id = ? AND revoked_at IS NULL',
+      ).bind(new Date().toISOString(), await sha256Hex(token), c.get('userId')),
+    );
   } catch {
     console.warn(`[ext] rid=${c.get('requestId') ?? '-'} revoke failed — 503`);
     return c.json({ error: 'service_unavailable' }, 503);
@@ -382,11 +386,11 @@ ext.delete('/ext/devices/:link_id', platformAuth, async (c) => {
       .bind(linkId.toLowerCase(), userId)
       .first<LinkRow>();
     if (row === null || !liveLink(row, Date.now())) return c.json({ error: 'not_found' }, 404);
-    const res = await c.env.PLATFORM_DB.prepare(
-      'UPDATE ext_devices SET revoked_at = ? WHERE link_id = ? AND user_id = ? AND revoked_at IS NULL',
-    )
-      .bind(new Date().toISOString(), linkId.toLowerCase(), userId)
-      .run();
+    const res = await run(
+      c.env.PLATFORM_DB.prepare(
+        'UPDATE ext_devices SET revoked_at = ? WHERE link_id = ? AND user_id = ? AND revoked_at IS NULL',
+      ).bind(new Date().toISOString(), linkId.toLowerCase(), userId),
+    );
     changes = Number(res.meta?.changes ?? 0);
   } catch {
     console.warn(`[ext] rid=${c.get('requestId') ?? '-'} device revoke failed — 503`);

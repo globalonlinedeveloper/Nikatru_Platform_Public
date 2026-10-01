@@ -35,14 +35,9 @@ import { Hono } from 'hono';
 import account from '../src/routes/account';
 import type { AppEnv } from '../src/types';
 import { realPlatformDb, type RealDb } from './harness';
-
-/** The production message, copied from the GlitchTip event named in lib/d1.ts.
- *  Deliberately the FULL wire text, not the substring the matcher looks for. */
-const TRANSIENT =
-  'D1_ERROR: D1 DB storage operation exceeded timeout which caused object to be reset.';
-
-/** A failure D1 will return identically every time. Retrying it is pure delay. */
-const DETERMINISTIC = 'D1_ERROR: no such column: definitely_not_a_column';
+// The injector lives in ./flaky-d1.ts since 2026-10-01, shared with the route
+// write tests; its cases here are unchanged.
+import { DETERMINISTIC, FlakyD1, TRANSIENT } from './flaky-d1';
 
 const SUBJECT = 'u-erasure-s72';
 const BYSTANDER = 'u-bystander-s72';
@@ -53,80 +48,6 @@ const ENV = {
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-test-key',
   APP_ERASURE_ENDPOINTS: 'subscriptiontracker=https://subscriptiontracker-api.nikatru.com',
 };
-
-/**
- * Wraps a real database and makes the FIRST `n` executions of any statement
- * matching `failWhen` throw. Everything else is the real engine.
- *
- * The counter lives on the WRAPPER, not on the statement, because that is the
- * shape the retry has to survive: `withD1Retry` re-invokes `.all()` on the SAME
- * prepared statement, so a per-statement counter would make the retry succeed
- * for the wrong reason.
- *
- * ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS. THE INJECTOR FOLLOWS THE STATEMENT
- * INTO `batch()`. The pragma reads now travel as ONE batch, and this class used
- * to pass a batch straight through — so the pragma case below went red on
- * `injected === 1`, which is this file doing its job: the fault had stopped
- * firing. A batch that carries any matching statement is now ONE execution, and
- * fails as one, because that is the unit D1 resets and the unit `withD1Retry`
- * re-sends. The cases themselves are unchanged.
- */
-const INNER = Symbol('flaky-inner');
-type Wrapped = { [INNER]: ReturnType<RealDb['prepare']> };
-
-class FlakyD1 {
-  /** Executions of a MATCHING statement (or of a batch carrying one), thrown or not. */
-  calls = 0;
-  /** Executions this injector actually failed. Zero means the test is vacuous. */
-  injected = 0;
-  private remaining: number;
-
-  constructor(
-    private readonly inner: RealDb,
-    private readonly failWhen: RegExp,
-    private readonly message: string,
-    times = 1,
-  ) {
-    this.remaining = times;
-  }
-
-  /** One execution of a matching statement: counted, and failed while `remaining` lasts. */
-  private strike(): void {
-    this.calls++;
-    if (this.remaining > 0) {
-      this.remaining--;
-      this.injected++;
-      throw new Error(this.message);
-    }
-  }
-
-  private wrap(stmt: ReturnType<RealDb['prepare']>) {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const self = this;
-    return {
-      [INNER]: stmt,
-      bind: (...args: unknown[]) => self.wrap(stmt.bind(...args) as ReturnType<RealDb['prepare']>),
-      async all<T = Record<string, unknown>>(): Promise<{ results: T[] }> {
-        self.strike();
-        return stmt.all<T>();
-      },
-      first: <T = Record<string, unknown>>() => stmt.first<T>(),
-      run: () => stmt.run(),
-    };
-  }
-
-  prepare(sql: string) {
-    const stmt = this.inner.prepare(sql);
-    return this.failWhen.test(sql) ? this.wrap(stmt) : stmt;
-  }
-
-  async batch(statements: unknown[]) {
-    const matching = statements.some((s) => typeof s === 'object' && s !== null && INNER in s);
-    if (matching) this.strike();
-    const real = statements.map((s) => (typeof s === 'object' && s !== null && INNER in s ? (s as Wrapped)[INNER] : s));
-    return this.inner.batch(real as never);
-  }
-}
 
 /** Drive the REAL route, exactly as erasure-derivation.test.ts does. */
 async function erase(db: unknown) {
