@@ -67,12 +67,17 @@ class SignUpScreen extends ConsumerWidget {
             // chassis takes.
             //
             // ⚠️ NO FRAME CAN BE PAINTED BETWEEN THESE TWO STATEMENTS, which is why
-            // the interstitial does not flash. `accept()` sets the in-memory stamp
-            // before its own first `await`, and Flutter drains the microtask queue
-            // — including this continuation — before it pumps a frame.
-            await ref
-                .read(legalAcceptanceProvider.notifier)
-                .accept(marketingEmail: marketingEmail);
+            // the interstitial does not flash. `accept()` sets the in-memory state
+            // ("not known yet") before its own first `await`, and Flutter drains
+            // the microtask queue — including this continuation — before a frame.
+            // EN-05: NOT RECORDED stays owed, and `/reaccept-terms` asks again.
+            try {
+              await ref
+                  .read(legalAcceptanceProvider.notifier)
+                  .accept(marketingEmail: marketingEmail);
+            } on core.LegalAcceptanceNotRecorded {
+              // The account the server ALREADY created is not held back.
+            }
             // 🔴 A SIGN-UP DOES NOT ALWAYS PRODUCE A SESSION, AND THE REDIRECT
             // GUARD CANNOT SEE THE CASE WHERE IT DOES NOT. With "Confirm email" ON,
             // gotrue returns a user and NO session, so `currentUser` stays null —

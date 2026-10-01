@@ -1,41 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:nikatru_chassis_screens/auth/verify_email_screen.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
-import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show AuthFrame, AuthMessage;
 
-import '../../l10n/app_localizations.dart';
 import 'auth_panel.dart';
 import '../../state/providers.dart';
 import 'turnstile_gate.dart';
-import 'auth_error_sentence.dart';
 
-/// "Check your inbox" — the only screen an UNVERIFIED session can reach.
+/// "Check your inbox" — the only screen an UNVERIFIED session can reach. The
+/// ADAPTER half.
 ///
-/// 🔴 IT IS A SCREEN, NOT A BANNER, AND THAT IS THE LOCK. Email verification is
-/// MANDATORY for email+password registration (owner, 2026-08-09 late), because
-/// email is the matching key the one-identity lock merges social identities on:
-/// an address nobody proved is a route into somebody else's Google/Apple
-/// account. A dismissible nudge over a working app is not that rule.
+/// ⏱ 2026-10-01 · [ADR 086] adopted chassis `VerifyEmailView` (EN-14). The
+/// body moved to the package with the reasoning for it in its header (the
+/// screen-not-banner lock, "I've confirmed", the inline notice), and gained
+/// there what this private copy was about to grow alone: a Resend that rests
+/// for [kResendCooldown] across leave and return, and "Use a different email".
+/// The blocker recorded on 2026-09-20 — no captcha slot on the view — is gone:
+/// `captcha` / `captchaController` landed with ST-A1. What stays here is what
+/// a package without Riverpod and go_router cannot hold: the seam calls, the
+/// cooldown's deadline, the navigation, and this app's side panel.
 ///
-/// ⚠️ THE SERVER HALF IS THE INTEGRATOR'S LIVE ACT — Supabase → Authentication →
-/// Sign In / Providers → **Confirm email ON**. Unchecked as of the lock being
-/// written. This screen is correct either way and neither half is redundant:
-/// with the switch OFF gotrue returns a full session on sign-up and this gate is
-/// the only refusal in the system; with it ON the honest screen for a session
-/// whose address is unconfirmed is this one rather than a home screen that
-/// half-works.
-///
-/// ⚠️ AND THE E2E SUITE PROVES NOTHING ABOUT ANY OF IT. It creates its users
-/// through the admin API, which bypasses confirmation entirely. The pin is
+/// ⚠️ THE E2E SUITE PROVES NOTHING ABOUT THE GATE. It creates its users through
+/// the admin API, which bypasses confirmation entirely. The pin is
 /// `test/legal_gates_test.dart`, group (a).
 class VerifyEmailScreen extends ConsumerStatefulWidget {
   const VerifyEmailScreen({super.key});
 
-  static const Key resendButton = Key('verifyEmailResend');
-  static const Key continueButton = Key('verifyEmailContinue');
-  static const Key signOutButton = Key('verifyEmailSignOut');
-  static const Key statusLine = Key('verifyEmailStatus');
+  static const Key resendButton = VerifyEmailView.resendButton;
+  static const Key continueButton = VerifyEmailView.continueButton;
+  static const Key signOutButton = VerifyEmailView.signOutButton;
+  static const Key statusLine = VerifyEmailView.statusLine;
+  static const Key useDifferentButton = VerifyEmailView.useDifferentButton;
 
   @override
   ConsumerState<VerifyEmailScreen> createState() => _VerifyEmailScreenState();
@@ -43,120 +39,42 @@ class VerifyEmailScreen extends ConsumerStatefulWidget {
 
 class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen>
     with CaptchaHost<VerifyEmailScreen> {
-  bool _busy = false;
-  String? _notice;
-
-  /// Runs [action] with the busy flag held and the outcome shown inline.
-  ///
-  /// Inline rather than a SnackBar for the same reason the account-deletion
-  /// notice is inline ([ADR 027]): pressing "I've confirmed" successfully
-  /// REPLACES this page via the router's gate, and a SnackBar riding on a page
-  /// that is being torn down is a message nobody reads.
-  Future<void> _run(Future<String?> Function() action) async {
-    if (_busy) return;
-    setState(() {
-      _busy = true;
-      _notice = null;
-    });
-    try {
-      final String? message = await action();
-      if (mounted) setState(() => _notice = message);
-    } catch (e) {
-      // Was `_notice = e.message`. `resendVerificationEmail` hits `resend`, which
-      // the self-hosted auth server (Box C) gates, so this is one of the two
-      // screens the captcha actually reaches. ⏱ 2026-09-24 — one arm: the
-      // shared mapper already answers anything unmodelled with
-      // `authUnknownError`, which the second arm here spelled out by hand.
-      if (mounted) setState(() => _notice = authErrorSentence(context, e));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final AppLocalizations l10n = AppLocalizations.of(context);
     final core.AuthRepository auth = ref.watch(authRepositoryProvider);
     final String email = auth.currentUser?.email ?? '';
-
-    return AuthFrame(
-      showBack: false,
+    final ResendCooldownController rest = ref.read(
+      resendCooldownProvider.notifier,
+    );
+    return VerifyEmailView(
       panel: const AuthPanel(),
-      title: l10n.verifyEmailTitle,
-      children: <Widget>[
-        Text(
-          l10n.verifyEmailBody(email),
-          style: Theme.of(context).textTheme.bodyLarge,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          l10n.verifyEmailSpamHint,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        if (_notice != null) ...<Widget>[
-          const SizedBox(height: 12),
-          AuthMessage(message: _notice!, textKey: VerifyEmailScreen.statusLine),
-        ],
-        const SizedBox(height: 20),
-        // 🔴 "I'VE CONFIRMED" EXISTS BECAUSE NOTHING PUSHES THE ANSWER AT
-        // A RUNNING APP. The link is opened in a MAIL CLIENT — often on
-        // another device — so the session in memory goes on saying
-        // unverified until something asks the server again. Without this
-        // control the only way out is to kill the app and relaunch it,
-        // which reads as the app being broken.
-        FilledButton(
-          key: VerifyEmailScreen.continueButton,
-          onPressed: _busy
-              ? null
-              : () => _run(() async {
-                  final core.AuthUser? fresh = await auth.reloadUser();
-                  // Still unverified is a real answer, not an error: the
-                  // router leaves them here and this says why.
-                  return core.sessionIsUnverified(fresh)
-                      ? l10n.verifyEmailStillUnverified
-                      : null;
-                }),
-          child: Text(l10n.verifyEmailContinue),
-        ),
-        const SizedBox(height: 12),
-        // The resend endpoint is captcha-gated too, so the button needs
-        // a token like every other door. Renders nothing without a key.
-        TurnstileGate(controller: captcha, render: renderTurnstile),
-        OutlinedButton(
-          key: VerifyEmailScreen.resendButton,
-          onPressed: _busy
-              ? null
-              : () => _run(() async {
-                  await auth.resendVerificationEmail(
-                    captchaToken: await captcha.consumeWhenReady(),
-                  );
-                  return l10n.verifyEmailResent;
-                }),
-          child: Text(l10n.verifyEmailResend),
-        ),
-        const SizedBox(height: 12),
-        // The only way OUT of the gate. A user who mistyped their address
-        // has no other move — the account exists, they cannot reach the
-        // app, and without this the app is a locked door with no handle.
-        //
-        // 🔴 THROUGH [signOutAndForgetUser], not `auth.signOut()`. It is a
-        // session-ending control like the one in settings, so it owes the
-        // device the same forget; it was left on the bare call and the
-        // previous user's cached Pro survived it. `_run` invokes this
-        // closure with nothing awaited before it, so the provider reads
-        // inside still happen while this element is mounted — the deadline
-        // [userStateDrops] exists for.
-        TextButton(
-          key: VerifyEmailScreen.signOutButton,
-          onPressed: _busy
-              ? null
-              : () => _run(() async {
-                  await signOutAndForgetUser(ref);
-                  return null;
-                }),
-          child: Text(l10n.signOut),
-        ),
-      ],
+      email: email,
+      // The resend endpoint is captcha-gated too. Renders nothing without a key.
+      captcha: TurnstileGate(controller: captcha, render: renderTurnstile),
+      captchaController: captcha,
+      onCheckConfirmed: () async {
+        final core.AuthUser? fresh = await auth.reloadUser();
+        // Still unverified is a real answer, not an error.
+        return core.sessionIsUnverified(fresh);
+      },
+      // A CALL, not a tear-off: `assert-captcha-gated-call-sites.mjs` finds a
+      // gated call by `<method>(` and reads its arguments for `captchaToken:`.
+      onResend: () async {
+        await auth.resendVerificationEmail(captchaToken: captcha.consume());
+        rest.start(email);
+      },
+      secondsUntilResend: () => rest.secondsLeft(email),
+      // The router is read BEFORE the sign-out, which moves the gate and tears
+      // this screen down before an `await` returns.
+      onUseDifferent: () async {
+        final GoRouter router = GoRouter.of(context);
+        await signOutAndForgetUser(ref);
+        router.go('/sign-up', extra: email);
+      },
+      // 🔴 THROUGH [signOutAndForgetUser], not `auth.signOut()`: a
+      // session-ending control owes the device the same forget as the one in
+      // settings; on the bare call the previous user's cached Pro survived.
+      onSignOut: () => signOutAndForgetUser(ref),
     );
   }
 }

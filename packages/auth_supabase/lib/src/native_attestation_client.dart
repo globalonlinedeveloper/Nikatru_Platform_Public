@@ -39,6 +39,32 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
+/// ⏱ 2026-10-01 · EN-02 — the `Retry-After` of the native route's LAST
+/// answer, handed from the transport to the adapter that wraps the refusal.
+///
+/// gotrue-dart's `AuthException` carries a status, a code and a message — never
+/// a header — so the wait the platform Worker states on its 429s
+/// (`native-auth.ts` `refusedBy`) was dropped before any screen could say it.
+/// The transport [observe]s every answer (one with no header clears the
+/// latch, so a stale wait can never ride on a later refusal) and the adapter
+/// [take]s it once, when it wraps the failure.
+final class RetryAfterLatch {
+  Duration? _last;
+
+  /// Records [header] from an answer; anything but whole seconds reads as none.
+  void observe(String? header) {
+    final int? seconds = int.tryParse(header?.trim() ?? '');
+    _last = seconds == null || seconds <= 0 ? null : Duration(seconds: seconds);
+  }
+
+  /// The last observed wait, once.
+  Duration? take() {
+    final Duration? wait = _last;
+    _last = null;
+    return wait;
+  }
+}
+
 /// The attesting transport for the native route at [baseUrl] (from
 /// `nativeCredentialBaseUrl`) and [appId].
 final class NativeAttestationClient extends http.BaseClient {
@@ -47,15 +73,18 @@ final class NativeAttestationClient extends http.BaseClient {
     required String appId,
     required core.NativeAttestor attestor,
     http.Client? inner,
+    RetryAfterLatch? retryAfter,
   }) : _base = Uri.parse(baseUrl.replaceFirst(RegExp(r'/+$'), '')),
        _app = appId,
        _attestor = attestor,
-       _inner = inner ?? http.Client();
+       _inner = inner ?? http.Client(),
+       _retryAfter = retryAfter;
 
   final Uri _base;
   final String _app;
   final core.NativeAttestor _attestor;
   final http.Client _inner;
+  final RetryAfterLatch? _retryAfter;
 
   Uri _at(String path) => _base.replace(path: '${_base.path}$path');
 
@@ -78,9 +107,11 @@ final class NativeAttestationClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final String? op = _opOf(request);
-    if (op == null) return _inner.send(request);
-    final List<int> body = await request.finalize().toBytes();
-    return _attested(request, op, body);
+    final http.StreamedResponse response = op == null
+        ? await _inner.send(request)
+        : await _attested(request, op, await request.finalize().toBytes());
+    _retryAfter?.observe(response.headers['retry-after']);
+    return response;
   }
 
   Future<http.StreamedResponse> _attested(

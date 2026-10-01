@@ -36,7 +36,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ChassisLocalizations;
+    show ChassisLocalizations, lookupChassisLocalizations;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
@@ -785,6 +785,97 @@ void main() {
   // test below uses no override at all, and the rest drive the arm the
   // production value actually takes.
   // ═══════════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ⏱ 2026-10-01 · EN-05 — A RE-ACCEPTANCE THE SERVER DID NOT RECEIVE IS
+  // NEVER SILENT. `accept()` stamped the version FIRST and swallowed the upload
+  // (`} catch (_) {`), and `ConsentTransport.send` never throws anyway — it
+  // answers `err`, which nothing read. So an offline tap released the gate with
+  // no legal record. MUTATION PROOF: restore the stamp-first order in
+  // `LegalAcceptanceController.accept`, or drop the `!sent.isOk` check in
+  // `applyLegalAcceptance`, and the first two cases go red.
+  // ═══════════════════════════════════════════════════════════════════════════
+  group('EN-05 an acceptance the server did not receive is never silent', () {
+    final ChassisLocalizations ch = lookupChassisLocalizations(
+      const Locale('en'),
+    );
+
+    Future<(ProviderContainer, _MemStore)> owed(
+      WidgetTester tester,
+      _FlakyTransport transport,
+    ) async {
+      final _MemStore store = _MemStore();
+      final ProviderContainer c = ProviderContainer(
+        overrides: <Override>[
+          onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+          authRepositoryProvider.overrideWithValue(_Auth(verified: true)),
+          keyValueStoreProvider.overrideWith((ref) async => store),
+          analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
+          consentTransportProvider.overrideWithValue(transport),
+        ],
+      );
+      addTearDown(c.dispose);
+      expect(await _settleAt(tester, c, '/home'), '/reaccept-terms');
+      await tester.tap(find.byKey(LegalConsentFields.termsCheckbox));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ReacceptTermsScreen.acceptButton));
+      await tester.pumpAndSettle();
+      return (c, store);
+    }
+
+    String where(ProviderContainer c) =>
+        c.read(routerProvider).routerDelegate.currentConfiguration.uri.path;
+
+    for (final bool throws in <bool>[false, true]) {
+      testWidgets(
+        'an upload that ${throws ? 'throws' : 'answers err'} keeps the user '
+        'on /reaccept-terms, says why, and offers Retry',
+        (WidgetTester tester) async {
+          final _FlakyTransport transport = _FlakyTransport()
+            ..failing = true
+            ..throws = throws;
+          final (ProviderContainer c, _MemStore store) = await owed(
+            tester,
+            transport,
+          );
+          expect(where(c), '/reaccept-terms');
+          expect(find.text(ch.reacceptTermsNotRecorded), findsOneWidget);
+          expect(
+            find.descendant(
+              of: find.byKey(ReacceptTermsScreen.acceptButton),
+              matching: find.text(ch.retry),
+            ),
+            findsOneWidget,
+          );
+          expect(
+            c.read(legalAcceptanceProvider),
+            isNot(kLegalVersions.stamp),
+            reason: 'the stamp is not written',
+          );
+          expect(c.read(legalReacceptanceNeededProvider), isTrue);
+          expect(
+            store.data.values.where((String v) => v.contains('"terms"')),
+            isEmpty,
+            reason: 'no local "accepted" without the server record behind it',
+          );
+        },
+      );
+    }
+
+    testWidgets('Retry, once the upload goes through, opens the gate', (
+      WidgetTester tester,
+    ) async {
+      final _FlakyTransport transport = _FlakyTransport()..failing = true;
+      final (ProviderContainer c, _) = await owed(tester, transport);
+      expect(where(c), '/reaccept-terms');
+      transport.failing = false;
+      await tester.tap(find.byKey(ReacceptTermsScreen.acceptButton));
+      await tester.pumpAndSettle();
+      expect(where(c), '/home');
+      expect(c.read(legalAcceptanceProvider), kLegalVersions.stamp);
+      expect(transport.sent.single.purpose, 'terms');
+    });
+  });
+
   group('an owed acceptance never blocks the way IN', () {
     testWidgets('THE FRESH-INSTALL SHAPE, real provider, nothing overridden', (
       WidgetTester tester,
@@ -1155,6 +1246,27 @@ class _RecordingTransport implements core.ConsentTransport {
     required String appId,
     required core.ConsentArtifact artifact,
   }) async {
+    sent.add(artifact);
+    return const core.Result<void>.ok(null);
+  }
+}
+
+/// ⏱ 2026-10-01 · EN-05 — an upload that fails the way the real one does
+/// (`DioConsentTransport` answers `err`, never throws) or throws outright.
+class _FlakyTransport implements core.ConsentTransport {
+  bool failing = false;
+  bool throws = false;
+  final List<core.ConsentArtifact> sent = <core.ConsentArtifact>[];
+
+  @override
+  Future<core.Result<void>> send({
+    required String appId,
+    required core.ConsentArtifact artifact,
+  }) async {
+    if (failing && throws) throw StateError('offline');
+    if (failing) {
+      return const core.Result<void>.err(core.Failure('consent send failed'));
+    }
     sent.add(artifact);
     return const core.Result<void>.ok(null);
   }
