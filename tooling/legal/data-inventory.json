@@ -317,7 +317,7 @@
       "kind": "d1-table",
       "name": "ext_codes",
       "personalData": true,
-      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per one-time code minted when a signed-in user connects the browser extension on https://nikatru.com/ext/connect: SHA-256 of the code (the code itself is never stored), WHO minted it (the Supabase `sub`, from the verified JWT), the product (`fullshot`), the store channel, the exact redirect_uri the code may be delivered to, the PKCE S256 challenge, and `created_at` / `expires_at` / `used_at`. A code lives 120 seconds and is single-use. It holds no name and no email address. ⏱ 2026-09-30 · EXA-11: plus `auth_at` (0021_ext_link_floor.sql), the minting session's last authentication, copied to the link at exchange.",
+      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per one-time code minted when a signed-in user connects the browser extension on https://nikatru.com/ext/connect: SHA-256 of the code (the code itself is never stored), WHO minted it (the Supabase `sub`, from the verified JWT), the product (`fullshot`), the store channel, the exact redirect_uri the code may be delivered to, the PKCE S256 challenge, and `created_at` / `expires_at` / `used_at`. A code lives 120 seconds and is single-use. It holds no name and no email address. ⏱ 2026-09-30 · EXA-11: plus `auth_at` (0021_ext_link_floor.sql), when the minting session started, copied to the link at exchange.",
       "retention": {
         "kind": "swept",
         "periodDays": 1,
@@ -344,7 +344,7 @@
       "kind": "d1-table",
       "name": "ext_devices",
       "personalData": true,
-      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the extension to an account: a random link id (`link_id`), the Supabase `sub`, the product (`fullshot`), the store channel, SHA-256 of the device credential (the credential is returned once to the extension and never stored), `created_at`, `last_seen_at` (at most once per UTC day) and `revoked_at`. The credential can read that one product's entitlement and revoke itself, nothing else. It holds no name and no email address. ⏱ 2026-09-30 · EXA-11: plus `auth_at` (0021_ext_link_floor.sql) — when the Supabase session that minted the link last authenticated, compared against the account's link floor.",
+      "holds": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. One row per browser that has linked the extension to an account: a random link id (`link_id`), the Supabase `sub`, the product (`fullshot`), the store channel, SHA-256 of the device credential (the credential is returned once to the extension and never stored), `created_at`, `last_seen_at` (at most once per UTC day) and `revoked_at`. The credential can read that one product's entitlement and revoke itself, nothing else. It holds no name and no email address. ⏱ 2026-09-30 · EXA-11: plus `auth_at` (0021_ext_link_floor.sql) — when the Supabase session that minted the link started, compared against the account's link floor.",
       "retention": {
         "kind": "swept",
         "periodDays": 30,
