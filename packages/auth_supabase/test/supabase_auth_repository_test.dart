@@ -1154,6 +1154,34 @@ void main() {
       ]);
     });
 
+    // ⏱ 2026-10-01 · review of #1122, finding 1 — MUTATION PROOF: drop the
+    // `.timeout(deepLinkTimeout, …)` on the deep-link read and the
+    // `signedIn` below never arrives: the in-order `asyncMap` waits forever
+    // on a platform channel that does not answer.
+    test('a deep-link read that never answers does not hold up later events',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: null);
+      final SupabaseAuthRepository repo = SupabaseAuthRepository(
+        client: g,
+        deepLink: () => Completer<Uri?>().future, // never completes
+        deepLinkTimeout: const Duration(milliseconds: 50),
+      );
+      final List<core.AuthEventKind> kinds = <core.AuthEventKind>[];
+      final StreamSubscription<core.AuthEvent> sub =
+          repo.authEvents().listen((core.AuthEvent e) => kinds.add(e.kind));
+
+      g.emitError(sb.AuthException('Code verifier could not be found'));
+      await Future<void>.delayed(Duration.zero);
+      g.emit(sb.AuthChangeEvent.signedIn, _session('live'));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await sub.cancel();
+
+      expect(kinds, <core.AuthEventKind>[
+        core.AuthEventKind.recoveryLinkFailed,
+        core.AuthEventKind.signedIn,
+      ]);
+    });
+
     test('authStateChanges does not crash either, and stays open', () async {
       // The other stream over the same source. It has nothing truthful to say
       // about a failed arrival — "who is signed in" is unchanged — so it drops

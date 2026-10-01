@@ -77,6 +77,10 @@ class _ReacceptTermsViewState extends State<ReacceptTermsView> {
   bool _busy = false;
   String? _notice;
 
+  /// ⏱ 2026-10-01 · EN-05 — the last accept failed, so the button offers the
+  /// same tap again as Retry beside the sentence that says why.
+  bool _failed = false;
+
   /// 🔴 THE DECLINE PATH IS AWAITED, HOLDS THE BUSY FLAG, AND SHOWS ITS OWN
   /// FAILURE — it was `onPressed: () => auth.signOut()` and none of the three.
   /// On a screen whose entire premise is that there is no other way out, a
@@ -122,7 +126,10 @@ class _ReacceptTermsViewState extends State<ReacceptTermsView> {
       // save (offline included). The same mapper and the same line the
       // sign-out failure already used.
       if (mounted) {
-        setState(() => _notice = authErrorText(context.chassisL10n, e));
+        setState(() {
+          _notice = authErrorText(context.chassisL10n, e);
+          _failed = true;
+        });
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -172,7 +179,7 @@ class _ReacceptTermsViewState extends State<ReacceptTermsView> {
         FilledButton(
           key: ReacceptTermsView.acceptButton,
           onPressed: (_busy || !_accepted) ? null : _accept,
-          child: Text(l10n.reacceptTermsAccept),
+          child: Text(_failed ? l10n.retry : l10n.reacceptTermsAccept),
         ),
         const SizedBox(height: 12),
         // Declining has to be possible, and it is signing out — not a

@@ -689,9 +689,14 @@ const REQUIRED_COVERAGE = [
     // surfaces unchanged: `test/data_section_test.dart` joined the corpus with
     // the Your data card (`dataCard`, a function, not a surface). Read off the
     // per-root line, `— 33 file(s)`.
-    surfaces: 31,
+    // ⏱ RAISED 31 → 32 surfaces / 31 → 32 covered ON 2026-10-01 · ST-N6
+    // (D23/F37, #1080), merged with the above: the chassis `RefreshOnResume`,
+    // pumped at all three classes by test/app_shell_view_test.dart (files
+    // unchanged). Read off the merged tree: `32 surface(s) reachable, 32
+    // measured` and `— 33 file(s)`.
+    surfaces: 32,
     widthTestFiles: 33,
-    coveredSurfaces: 31,
+    coveredSurfaces: 32,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',
@@ -776,8 +781,14 @@ const REQUIRED_COVERAGE = [
     // system_screens_text_scale_test.dart (and at 360 × 640 / 200 % text).
     // Read off the run's own line: "37 of 43 surface(s) measured — 6 PRINTED".
     //   coveredSurfaces 36 → 37
+    //
+    // ⏱ 2026-10-01 · train st-entry (EN-11), on top of the truth pass —
+    // `SwallowSystemBack` joined the root and is PRINTED unmeasured on purpose:
+    // it paints nothing (a `SizedBox.shrink`), so it has no width to decide.
+    // Read off the run's own line: "37 of 44 surface(s) measured — 7 PRINTED".
+    //   surfaces        43 → 44
     enforce: false,
-    surfaces: 43,
+    surfaces: 44,
     widthTestFiles: 19,
     coveredSurfaces: 37,
     label:

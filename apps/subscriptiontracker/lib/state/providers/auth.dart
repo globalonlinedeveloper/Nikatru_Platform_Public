@@ -31,8 +31,9 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
         AuthProviders,
         AuthRedirects,
         InMemoryAuthRepository,
+        RetryAfterLatch,
         SupabaseAuthRepository,
-        failedArrivalFlowOf,
+        failedEventFlowOf,
         nativeCredentialClient,
         passwordResetArrivalOf;
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -47,9 +48,10 @@ import '../../data/api/cached_api_client.dart' show CachedApiClient;
 import '../../data/auth/auth_repository.dart';
 import '../../data/local/subscription_store.dart' show LocalSubscriptionStore;
 import '../analytics_providers.dart';
+import 'account_preferences.dart' show forgetAccountPreferences;
 import 'notifications.dart';
 import 'persistence.dart';
-import 'subscriptions.dart' show apiClientProvider;
+import 'subscriptions.dart' show apiClientProvider, nowProvider;
 
 /// THE OUTER SWITCH, checked before consent is even considered.
 ///
@@ -116,6 +118,11 @@ import 'subscriptions.dart' show apiClientProvider;
 /// widget tests take no `--dart-define`s. Two predicates for one decision is the
 /// bug; there is now one, and `isBackendLive` is it
 /// (`isSupabaseConfigured && isApiConfigured`).
+/// ⏱ 2026-10-01 · EN-02 — one per process: the native transport writes the
+/// server's `Retry-After` into it and the adapter reads it back (see
+/// `RetryAfterLatch`).
+final RetryAfterLatch _nativeRetryAfter = RetryAfterLatch();
+
 final Provider<AuthRepository> authRepositoryProvider =
     Provider<AuthRepository>(
       (ref) => AppConfig.isBackendLive
@@ -150,7 +157,11 @@ final Provider<AuthRepository> authRepositoryProvider =
                 attestor: platformNativeAttestor(
                   secureStore: ref.watch(secureStoreProvider),
                 ),
+                retryAfter: _nativeRetryAfter,
               ),
+              // ⏱ 2026-10-01 · EN-02 — the SAME latch the transport writes, so
+              // a refusal can say how long the server asked the user to wait.
+              retryAfter: _nativeRetryAfter,
             )
           : InMemoryAuthRepository(),
     );
@@ -280,8 +291,14 @@ class PasswordResetArrivalController
         // ST-A2 (audit BUG-2): the stream types EVERY failed link this way;
         // only a reset arrival belongs on the reset screen. A confirmation or
         // an OAuth return lands on sign-in with a sentence for its flow.
-        final AuthFlow? other = failedArrivalFlowOf(
-          ref.read(launchUriProvider),
+        //
+        // ⏱ 2026-10-01 · EN-04 / EN-15: by the flow the ADAPTER read off the
+        // failed link (the native deep link), the launch URL only as fallback —
+        // off web the launch URL never carries the callback, so every native
+        // failure used to land here as a reset.
+        final AuthFlow? other = failedEventFlowOf(
+          event,
+          launchUri: ref.read(launchUriProvider),
         );
         if (other != null) {
           ref.read(failedAuthArrivalProvider.notifier).state = other;
@@ -315,6 +332,54 @@ passwordResetArrivalProvider =
       PasswordResetArrivalController,
       core.PasswordResetArrivalReport
     >(PasswordResetArrivalController.new);
+
+/// ⏱ 2026-10-01 · EN-13 / EN-14 — how long a confirmation resend rests.
+const Duration kResendCooldown = Duration(seconds: 30);
+
+/// ⏱ 2026-10-01 · EN-13 / EN-14 — when each address may be sent another
+/// confirmation, for the whole process.
+///
+/// 🔴 THE REST LIVED IN THE SCREEN'S STATE, SO LEAVING THE SCREEN ENDED IT.
+/// "Back to sign in" and straight back again, or the router passing through
+/// `/check-inbox` twice, rebuilt the countdown at zero and the button sent
+/// again — the second tap is what manufactures GoTrue's
+/// `over_email_send_rate_limit`, which nothing on screen could explain. The
+/// deadline is kept HERE, by address, and each screen seeds its own countdown
+/// from it on arrival. Both resends read it: `/check-inbox` by the address it
+/// names, `/verify-email` by the session's.
+///
+/// App-only rather than in a package: its two readers are this app's screens
+/// (the chassis check-inbox adoption is deferred — see
+/// `tooling/chassis-parity.json`), and the clock it reads is this app's.
+class ResendCooldownController extends Notifier<Map<String, DateTime>> {
+  @override
+  Map<String, DateTime> build() => const <String, DateTime>{};
+
+  static String _key(String address) => address.trim().toLowerCase();
+
+  /// A mail was just sent to [address]: it rests for [kResendCooldown].
+  void start(String address) {
+    final DateTime now = ref.read(nowProvider)();
+    state = <String, DateTime>{
+      ...state,
+      _key(address): now.add(kResendCooldown),
+    };
+  }
+
+  /// Whole seconds until [address] may be sent another mail; 0 is "now".
+  int secondsLeft(String address) {
+    final DateTime? until = state[_key(address)];
+    if (until == null) return 0;
+    final int ms = until.difference(ref.read(nowProvider)()).inMilliseconds;
+    return ms <= 0 ? 0 : (ms + 999) ~/ 1000;
+  }
+}
+
+final NotifierProvider<ResendCooldownController, Map<String, DateTime>>
+resendCooldownProvider =
+    NotifierProvider<ResendCooldownController, Map<String, DateTime>>(
+      ResendCooldownController.new,
+    );
 
 /// Whether the router should hold the user on `/reset-password`.
 ///
@@ -583,7 +648,10 @@ typedef UserStateDrop = Future<void> Function();
 /// and the user was told a successful sign-out had failed. Resolve the drops
 /// FIRST, then await. Callers cannot get this wrong by accident any more,
 /// because [forgetSignedInUser] takes the resolved list and never a `ref`.
-List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
+List<UserStateDrop> userStateDrops(
+  WidgetRef ref, {
+  bool accountDeleted = false,
+}) => <UserStateDrop>[
   ref.read(entitlementCacheProvider).clear,
   ref.read(notificationServiceProvider).cancelAll,
   ref.read(renewalRemindersProvider).cancelAll,
@@ -596,6 +664,12 @@ List<UserStateDrop> userStateDrops(WidgetRef ref) => <UserStateDrop>[
     owner: ref.read(authRepositoryProvider).currentUser?.id,
     discardQueue: true,
   ),
+  // ⏱ 2026-09-30 · ST-N6 (D11): the preferences the ACCOUNT holds or has a
+  // change pending for are reset on this device (they come back at the next
+  // sign-in, pending sends included); a device-only choice keeps its value.
+  // [accountDeleted] (review 4 of #1080): the account is gone, so its pending
+  // preference sends go with it instead of waiting for a sign-in.
+  forgetAccountPreferences(ref, erase: accountDeleted),
 ];
 
 /// 🔴 THE ONE ORDER IN WHICH THIS DEVICE FORGETS A USER'S OFFLINE STATE —

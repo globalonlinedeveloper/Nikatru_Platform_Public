@@ -157,7 +157,7 @@
           "client": {
             "file": "services/platform/src/routes/account.ts",
             "expression": "`${origin}/v1/account`",
-            "note": "The relay. THE CALLER IS THE SHARED HOST, NOT THE APP: the Dart seam calls platform’s /v1/account once, and platform checks the service-role precondition, empties platform_db, relays to each app’s own DELETE /v1/account, and deletes the identity LAST. That ordering is the safety property, which is why the client must not own it (apps/subscriptiontracker/lib/state/providers/auth.dart:64-102 records the same thing from the other side)."
+            "note": "The relay. THE CALLER IS THE SHARED HOST, NOT THE APP: the Dart seam calls platform’s /v1/account once, and platform checks the service-role precondition, empties platform_db, relays to each app’s own DELETE /v1/account, and deletes the identity LAST. That ordering is the safety property, which is why the client must not own it (apps/subscriptiontracker/lib/state/providers/auth.dart:65-102 records the same thing from the other side)."
           }
         },
         {
@@ -267,6 +267,32 @@
             "file": "apps/subscriptiontracker/lib/data/api/dio_api_client.dart",
             "expression": "_rest.put('/budget', body: budget.toJson())",
             "note": "The real call inside `updateBudget()`. ⚠️ MEASURED 2026-08-25 AND WORTH SAYING PLAINLY: the URL is built here, which is what limb 2 checks and it is genuinely the code that would issue this request — but the method that builds it has no live caller. `SubscriptionRepository.saveBudget` (subscription_repository.dart:19) wraps it and has no caller; `budget_screen.dart:20` reads the budget and nothing writes one back yet. The route is complete, tested and unreached."
+          }
+        },
+        {
+          "id": "subscriptiontracker-preferences-get",
+          "method": "GET",
+          "path": "/v1/preferences",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/preferences.ts",
+          "purpose": "⏱ 2026-09-30 · ST-N6 (D11), per key (lead ruling on #1080). Every preference the caller's account holds, one entry per key with the server's `version` and `updated_at`: `{preferences: {<key>: {value, version, updated_at}}}`. The account's copy that follows the user to every device; each device's store stays the cache.",
+          "client": {
+            "file": "packages/api_client/lib/src/rest_account_preferences_transport.dart",
+            "expression": "_rest.get('/preferences')",
+            "note": "The real call inside `RestAccountPreferencesTransport.read()`, driven by packages/core AccountPreferencesSync.sync() from apps/subscriptiontracker/lib/state/providers/account_preferences.dart at every settled sign-in and every return to the app. A key still waiting to be sent is never overwritten by it, unless the account already holds a newer version than that change follows: then the account's value is applied, announced as a conflict, and the change dropped."
+          }
+        },
+        {
+          "id": "subscriptiontracker-preferences-patch",
+          "method": "PATCH",
+          "path": "/v1/preferences",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/preferences.ts",
+          "purpose": "⏱ 2026-09-30 · ST-N6 (D11), per key (lead ruling on #1080). Only the keys the user changed, each with the `base_version` it was based on. The server bumps a key's version; a row NEWER than the base is a conflict the server wins, answered with the current value for the client to apply. Unknown keys and bad values are a 400 that writes nothing; a body over 16 KiB is a 413 `preferences_too_large`. There is no whole-document write.",
+          "client": {
+            "file": "packages/api_client/lib/src/rest_account_preferences_transport.dart",
+            "expression": "_rest.patch('/preferences', body: body)",
+            "note": "The real call inside `RestAccountPreferencesTransport.patch()`, sent by the DurableOutbox replay one key at a time (one PATCH in flight). Only a key the user set on this device is ever sent; defaults never are."
           }
         },
         {
@@ -501,7 +527,7 @@
       "auth": "required",
       "owningFile": "services/platform/src/routes/account.ts",
       "purpose": "G2 in-app account deletion ([4]B-5). THE FIRST `auth: required` ROUTE ON THIS WORKER, and the reason src/middleware/auth.ts is not a dead file. Three limbs: every user-owned table in platform_db (DERIVED from the schema — a `user_id` column is the selector — not from a literal array somebody must remember to extend), then the identity record itself. Refuses 501 while SUPABASE_SERVICE_ROLE_KEY is unset, so it ships honest rather than not at all.",
-      "unconsumedReason": "🔄 CORRECTED 2026-08-06 — THE CLIENT HALF EXISTS. `packages/core/lib/src/auth/account_deletion.dart` models the three refusals this route answers with, `packages/auth_supabase/lib/src/supabase_auth_repository.dart:43` calls `DELETE /v1/account`, and `packages/core/test/account_deletion_test.dart` covers the 501. The claim that it was \"blocked on stage 2\" was true when written and false at head. [4]B-14 pins the STATUS SET rather than a body, because this route's client reads no body key — `AccountDeletionFailure.forStatus` is the contract."
+      "unconsumedReason": "🔄 CORRECTED 2026-08-06 — THE CLIENT HALF EXISTS. `packages/core/lib/src/auth/account_deletion.dart` models the three refusals this route answers with, `packages/auth_supabase/lib/src/supabase_auth_repository.dart:49` calls `DELETE /v1/account`, and `packages/core/test/account_deletion_test.dart` covers the 501. The claim that it was \"blocked on stage 2\" was true when written and false at head. [4]B-14 pins the STATUS SET rather than a body, because this route's client reads no body key — `AccountDeletionFailure.forStatus` is the contract."
     },
     {
       "id": "account-apple-token",

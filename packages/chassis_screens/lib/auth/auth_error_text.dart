@@ -141,6 +141,31 @@ String authErrorText(ChassisLocalizations l10n, Object e) {
 /// failure unchanged. The captcha arm is the same `authCaptchaFailed` the
 /// sentence fallback reaches, for the same reason given there.
 String? _codeText(ChassisLocalizations l10n, core.AuthFailure e) =>
+    _withRetryAfter(l10n, e, _codeSentence(l10n, e));
+
+/// ⏱ 2026-10-01 · EN-02 — the server's `Retry-After`, said in words, after a
+/// refusal that asks the user to wait. Only those: a wait appended to "Incorrect
+/// email or password" would be a promise the server never made.
+String? _withRetryAfter(
+  ChassisLocalizations l10n,
+  core.AuthFailure e,
+  String? sentence,
+) {
+  final Duration? wait = e.retryAfter;
+  if (sentence == null || wait == null || wait <= Duration.zero) {
+    return sentence;
+  }
+  if (sentence != l10n.authRateLimited && sentence != l10n.authNativeUnavailable) {
+    return sentence;
+  }
+  final int minutes = (wait.inSeconds + 59) ~/ 60;
+  final String when = minutes < 90
+      ? l10n.authRetryAfterMinutes(minutes)
+      : l10n.authRetryAfterHours((minutes + 59) ~/ 60);
+  return '$sentence $when';
+}
+
+String? _codeSentence(ChassisLocalizations l10n, core.AuthFailure e) =>
     switch (e.code) {
       core.AuthFailure.weakPassword => _weakPasswordByReason(l10n, e.reasons),
       'captcha_failed' => l10n.authCaptchaFailed,
@@ -152,6 +177,16 @@ String? _codeText(ChassisLocalizations l10n, core.AuthFailure e) =>
       'over_email_send_rate_limit' ||
       'over_sms_send_rate_limit' =>
         l10n.authRateLimited,
+      // ⏱ 2026-10-01 · EN-02 — the platform Worker's native route
+      // (`services/platform/src/routes/native-auth.ts`) refuses in GoTrue's
+      // shape with three codes of its own. All three read "Something went
+      // wrong", which told a user with an outdated build nothing to do.
+      'attestation_required' => l10n.authAttestationRequired,
+      'attestation_kind_refused' => l10n.authAttestationRefused,
+      'native_auth_unavailable' => l10n.authNativeUnavailable,
+      // ⏱ 2026-10-01 · EN-05 — a terms acceptance the consent endpoint did not
+      // receive: nothing was recorded, so the gate that asked stays shut.
+      core.AuthFailure.notRecorded => l10n.reacceptTermsNotRecorded,
       _ => null,
     };
 

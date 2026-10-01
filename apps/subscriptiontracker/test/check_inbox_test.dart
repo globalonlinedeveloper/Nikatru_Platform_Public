@@ -442,7 +442,10 @@ void main() {
       expect(find.byKey(CheckInboxActions.noticeLine), findsOneWidget);
     });
 
-    testWidgets('a wrong address has a way back to the sign-up door', (
+    // ⏱ 2026-10-01 · EN-13 — and it is the SIGN-UP door, with the address in
+    // the box to correct. It was `/sign-in`, an empty form on the wrong arm.
+    // MUTATION PROOF: point the button back at '/sign-in' and this goes red.
+    testWidgets('a wrong address goes back to sign-up, the address filled', (
       WidgetTester tester,
     ) async {
       final (_, ProviderContainer c) = await reachInbox(tester);
@@ -451,7 +454,58 @@ void main() {
       );
       await tester.tap(find.byKey(CheckInboxActions.changeEmailButton));
       await tester.pumpAndSettle();
+      expect(_where(c), '/sign-up');
+      expect(
+        tester
+            .widget<TextField>(find.byKey(E2EKeys.loginEmail))
+            .controller!
+            .text,
+        _address,
+        reason: 'the address survives the trip, to be corrected not retyped',
+      );
+      expect(
+        c
+            .read(routerProvider)
+            .routerDelegate
+            .currentConfiguration
+            .uri
+            .toString(),
+        isNot(contains('@')),
+        reason: 'carried in `extra`, never written into the location',
+      );
+    });
+
+    // ⏱ 2026-10-01 · EN-13 — THE REST SURVIVES LEAVING. It lived in the
+    // widget's state, so "Back to sign in" and straight back reset it to zero
+    // and the button sent again. MUTATION PROOF: drop the seeding in
+    // `_CheckInboxActionsState.initState` and this goes red.
+    testWidgets('leave and return within 30 s keeps Resend resting', (
+      WidgetTester tester,
+    ) async {
+      final (_ConfirmationRequiredAuth auth, ProviderContainer c) =
+          await reachInbox(tester);
+      await tester.ensureVisible(find.byKey(CheckInboxActions.resendButton));
+      await tester.tap(find.byKey(CheckInboxActions.resendButton));
+      await tester.pumpAndSettle();
+      expect(auth.resends, <String>[_address]);
+
+      await tester.ensureVisible(
+        find.byKey(CheckInboxScreen.backToSignInButton),
+      );
+      await tester.tap(find.byKey(CheckInboxScreen.backToSignInButton));
+      await tester.pumpAndSettle();
       expect(_where(c), '/sign-in');
+
+      c.read(routerProvider).go('/check-inbox', extra: _address);
+      await tester.pumpAndSettle();
+      expect(_where(c), '/check-inbox');
+      expect(
+        tester
+            .widget<OutlinedButton>(find.byKey(CheckInboxActions.resendButton))
+            .onPressed,
+        isNull,
+        reason: 'the 30 s rest outlives the screen that started it',
+      );
     });
   });
 }

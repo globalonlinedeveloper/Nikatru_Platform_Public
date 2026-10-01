@@ -110,7 +110,7 @@ AuthLinkProblem authLinkProblemOf(Object error) {
 /// [user] is null exactly when the change left nobody signed in — which is
 /// [AuthEventKind.signedOut], and nothing else.
 class AuthEvent {
-  const AuthEvent(this.kind, this.user, {this.problem});
+  const AuthEvent(this.kind, this.user, {this.problem, this.linkFlow});
 
   final AuthEventKind kind;
   final AuthUser? user;
@@ -118,6 +118,17 @@ class AuthEvent {
   /// Set only on [AuthEventKind.recoveryLinkFailed], where it is the whole
   /// content of the event. Null everywhere else.
   final AuthLinkProblem? problem;
+
+  /// ⏱ 2026-10-01 · EN-04 / EN-15 — the flow marker (`nk_auth=<marker>`) the
+  /// FAILED link carried, when the adapter could read it, so a failed sign-up
+  /// confirmation or provider return is not filed as a dead reset link. Set
+  /// only on [AuthEventKind.recoveryLinkFailed]; null when nothing said which
+  /// flow it was.
+  ///
+  /// A string rather than the adapter's flow enum because this package names
+  /// no vendor flows: the markers are the adapter's vocabulary, and it maps
+  /// them back.
+  final String? linkFlow;
 
   /// Whether this event should put the app into the reset-password flow.
   ///
@@ -142,14 +153,16 @@ class AuthEvent {
       other is AuthEvent &&
       other.kind == kind &&
       other.user == user &&
-      other.problem == problem;
+      other.problem == problem &&
+      other.linkFlow == linkFlow;
 
   @override
-  int get hashCode => Object.hash(kind, user, problem);
+  int get hashCode => Object.hash(kind, user, problem, linkFlow);
 
   @override
   String toString() => 'AuthEvent(${kind.name}, ${user ?? 'none'}'
-      '${problem == null ? '' : ', ${problem!.name}'})';
+      '${problem == null ? '' : ', ${problem!.name}'}'
+      '${linkFlow == null ? '' : ', flow: $linkFlow'})';
 }
 
 /// What a reset link left in the URL the app was opened with.
