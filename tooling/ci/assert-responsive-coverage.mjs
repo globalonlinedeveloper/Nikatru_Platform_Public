@@ -681,9 +681,14 @@ const REQUIRED_COVERAGE = [
     // test/device_integrity_gate_test.dart (all three classes) and
     // test/a11y_integrity_test.dart. Read off the per-root lines,
     // `31 surface(s) reachable, 31 measured` and `— 32 file(s)`.
-    surfaces: 31,
-    widthTestFiles: 32,
-    coveredSurfaces: 31,
+    // ⏱ RAISED 2026-10-01 (train ST-SETTINGS, SE-03): surfaces 31 → 32,
+    // coveredSurfaces 31 → 32 and `widthTestFiles` 32 → 33, IN THE CHANGE THAT
+    // EARNED THEM: the chassis DevicesSection arrived measured at all three
+    // window classes and at 200 % text (`test/devices_section_test.dart`). Read
+    // off the per-root lines, `32 surface(s) reachable, 32 measured` and `— 33 file(s)`.
+    surfaces: 32,
+    widthTestFiles: 33,
+    coveredSurfaces: 32,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',

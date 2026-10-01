@@ -822,9 +822,12 @@ const REQUIRED_COVERAGE = [
     // RootedDeviceNoticeHost and ReauthDialog arrived swept in
     // a11y_integrity_test.dart (light kPhone + dark kDesktop each). Read off the
     // per-root line: `31 of 31 … from 5 a11y test file(s) across 71 case(s)`.
-    surfaces: 31,
+    // ⏱ 2026-10-01 · ST-SETTINGS (SE-03): 31 -> 32 surfaces, 71 -> 73 cases —
+    // the chassis DevicesSection arrived swept (`a11y: devices`, light + dark
+    // kPhone). Read off the per-root line: `32 of 32 … across 73 case(s)`.
+    surfaces: 32,
     a11yFiles: 5,
-    cases: 71,
+    cases: 73,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
