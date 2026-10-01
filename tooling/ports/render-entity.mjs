@@ -19,7 +19,7 @@
 // Exit 0 = written (or, with --check, already current). 1 = --check found a
 // difference, or the source lacks a field. 2 = the source could not be read.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -66,7 +66,12 @@ export function renderEntityAt(root, { check }) {
   const r = renderEntity(doc);
   if (r.error) return { code: 1, msg: `render-entity: REFUSED — ${r.error}` };
   const abs = join(root, ENTITY_TARGET);
-  const current = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+  // Read, never stat-then-read: a missing file is ENOENT here, so there is no
+  // check-then-use window before the write below (CodeQL js/file-system-race).
+  let current = null;
+  try { current = readFileSync(abs, 'utf8'); } catch (e) {
+    if (e?.code !== 'ENOENT') return { code: 2, msg: `render-entity: COVERAGE LOST — ${ENTITY_TARGET} could not be read (${e.message})` };
+  }
   if (check) {
     if (current === r.text) return { code: 0, msg: `render-entity: ok — ${ENTITY_TARGET} is what ${ENTITY_SOURCE} renders` };
     return { code: 1, msg: `render-entity: STALE — ${ENTITY_TARGET} ${current === null ? 'does not exist' : 'differs from'} what ${ENTITY_SOURCE} renders. Run: node tooling/ports/render-entity.mjs` };
