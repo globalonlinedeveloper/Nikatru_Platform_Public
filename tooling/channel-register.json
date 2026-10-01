@@ -1022,7 +1022,8 @@
           "content-rating.json",
           "ads-declaration.json",
           "feature-graphic.png",
-          "store-icon-512.png"
+          "store-icon-512.png",
+          "release-notes.txt"
         ],
         "maxChars": {
           "title.txt": {
@@ -1036,6 +1037,10 @@
           "long-description.txt": {
             "max": 4000,
             "source": "support.google.com/googleplay/android-developer/answer/9859152 (fetched 2026-07-29) — full description, 4000 characters"
+          },
+          "release-notes.txt": {
+            "max": 500,
+            "source": "support.google.com/googleplay/android-developer/answer/9859348 (fetched 2026-10-01) — release notes, verbatim: \"You can enter release notes using up to 500 Unicode characters per language.\""
           }
         },
         "graphicAssets": {
@@ -1390,7 +1395,7 @@
       {
         "name": "CLOUDFLARE_READ_TOKEN",
         "kind": "service-credential",
-        "why": "A READ-ONLY Cloudflare token (rv2-security-001): D1 read, Pages read, Workers scripts read, zone DNS / rulesets read, Turnstile read, analytics read — no edit scope of any kind. It is the only Cloudflare token a pull_request-reachable job may hold (ci.yml `guards-platform`: the ops register's D1 heartbeat probe and the nightly-proof freshness guard), and ops-watch.yml's readers prefer it over CLOUDFLARE_API_TOKEN. It deploys nothing and signs nothing; a PR author who exfiltrates it can read what the guards read."
+        "why": "A READ-ONLY Cloudflare token (rv2-security-001): D1 read, Pages read, Workers scripts read, zone DNS / rulesets read, Turnstile read, analytics read (including ZONE Analytics Read on nikatru.com, which ops-watch.yml's JWKS error-rate step needs for GraphQL httpRequestsAdaptiveGroups) — no edit scope of any kind. It is the only Cloudflare token a pull_request-reachable job may hold (ci.yml `guards-platform`: the ops register's D1 heartbeat probe and the nightly-proof freshness guard), and ops-watch.yml's readers prefer it over CLOUDFLARE_API_TOKEN. It deploys nothing and signs nothing; a PR author who exfiltrates it can read what the guards read."
       },
       {
         "name": "CLOUDFLARE_D1_TOKEN",

@@ -232,6 +232,19 @@ describe('assert-submission-safety — the cadence limb is OURS and says so', ()
     assert.match(out, /CADENCE 2026-08: 1\/2/);
   });
 
+  // ⏱ 2026-10-01 (#1099 review, finding 1): a staged Play DRAFT sent nothing for review.
+  test('a `draft_staged` row is PRINTED and does not count towards the cadence', () => {
+    const ledger = [1, 2, 3].map((d) => ({
+      environment: 'subscriptiontracker-windows-store',
+      createdAt: `2026-08-0${d}T00:00:00Z`,
+      description: `nk1 state=draft_staged sha=abc1234${d} listing=https://play.google.com/store/apps/details?id=com.nikatru.subscriptiontracker`,
+    }));
+    const { code, out } = run(fixture({ ledger }), ['--ledger', 'ledger.json']);
+    assert.equal(code, 0, out);
+    assert.match(out, /LEDGER ROW NOT A SUBMISSION: subscriptiontracker-windows-store — state=draft_staged/);
+    assert.match(out, /CADENCE: 0 store submission\(s\) on record/);
+  });
+
   test('an UNREADABLE ledger row is printed, never silently dropped', () => {
     const ledger = [{ environment: 'subscriptiontracker-windows-store', createdAt: '2026-08-03T00:00:00Z', description: 'live at abc12345' }];
     const { code, out } = run(fixture({ ledger }), ['--ledger', 'ledger.json']);

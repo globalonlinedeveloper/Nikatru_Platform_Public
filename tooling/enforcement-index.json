@@ -2932,6 +2932,16 @@
   },
   {
     "claims": [],
+    "invokedBy": [
+      ".github/workflows/native-auth-proof.yml#gate"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/darwin-inputs.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/deploy-globs.mjs",
@@ -3712,6 +3722,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ops-watch.yml#edge-shield"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-jwks-error-rate.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ops-watch.yml#supabase-drift"
     ],
     "kind": "script",
@@ -4109,6 +4129,7 @@
   },
   {
     "claims": [
+      "ADR 031",
       "D-10",
       "D-3",
       "D-6",

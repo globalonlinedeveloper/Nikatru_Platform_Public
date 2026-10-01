@@ -524,6 +524,45 @@ describe('the probe — HELD, the owner-recorded verdict', () => {
     }
   });
 
+  // ⏱ 2026-10-01 (#1099 review, finding 3): the lead records a hold AS the lead, never as the owner.
+  test('H1b --hold --held-by lead writes heldBy lead with its delegation and proof, and says so', () => {
+    const tmp = heldRoot();
+    try {
+      const r = hold(tmp, [
+        '--hold', 'ios-appstore', '--record', '6741234567', '--app', 'x',
+        '--held-by', 'lead',
+        '--delegation', "the owner's 2026-10-01 delegation",
+        '--proof-call', 'asc GET /v1/apps/6741234567',
+        '--proof-result', '200, bundleId com.nikatru.x',
+        '--proof-on', '2026-10-01',
+      ]);
+      assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+      const back = JSON.parse(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'));
+      const ch = back.channels['ios-appstore'];
+      assert.equal(ch.heldBy, 'lead');
+      assert.equal(ch.delegation, "the owner's 2026-10-01 delegation");
+      assert.deepEqual(ch.proof, { call: 'asc GET /v1/apps/6741234567', result: '200, bundleId com.nikatru.x', observedOn: '2026-10-01' });
+      assert.match(ch.why, /recorded by the lead on .* under the owner's 2026-10-01 delegation/);
+      assert.doesNotMatch(ch.why, /HELD by the owner/);
+      assert.deepEqual(back._why, whyLines(back));
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('H1c --held-by lead without its proof exits 2 and writes nothing', () => {
+    const tmp = heldRoot();
+    try {
+      const bytes = readFileSync(join(tmp, RECORD_REL('x')), 'utf8');
+      const r = hold(tmp, ['--hold', 'ios-appstore', '--record', '6741234567', '--app', 'x', '--held-by', 'lead', '--delegation', 'd']);
+      assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /--held-by lead needs --proof-call and --proof-result, --proof-on/);
+      assert.equal(readFileSync(join(tmp, RECORD_REL('x')), 'utf8'), bytes);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test('H2 --execute carries a prior HELD forward, and only a HELD', () => {
     const tmp = heldRoot();
     try {
