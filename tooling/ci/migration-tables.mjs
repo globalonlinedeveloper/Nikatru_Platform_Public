@@ -397,6 +397,12 @@ const NUMBER = /^(\d+)_/;
  * Every (directory, number) that more than one migration file claims, as
  * `[{ dir, number, files }]`, sorted. Paths may use either separator. A file
  * whose name carries no number is not this function's business.
+ *
+ * ⏱ 2026-10-01 (fourth review of #1070): the number is compared as a NUMBER,
+ * not as text. Wrangler orders and the citations read `0021_a.sql` and
+ * `21_b.sql` as the same migration 21, so the two collide here too; keyed on the
+ * digits as written, they were two numbers and both applied. `number` is the
+ * canonical four-digit spelling (`0021`), whatever the files wrote.
  */
 export function duplicateMigrationNumbers(paths) {
   const byKey = new Map();
@@ -407,12 +413,15 @@ export function duplicateMigrationNumbers(paths) {
     const name = p.slice(cut + 1);
     const m = NUMBER.exec(name);
     if (!m) continue;
-    const key = `${dir}\u0000${m[1]}`;
-    if (!byKey.has(key)) byKey.set(key, { dir, number: m[1], files: [] });
-    byKey.get(key).files.push(name);
+    const value = BigInt(m[1]);
+    const key = `${dir}\u0000${value}`;
+    if (!byKey.has(key)) byKey.set(key, { dir, value, number: String(value).padStart(4, '0'), files: [] });
+    const group = byKey.get(key);
+    if (!group.files.includes(name)) group.files.push(name);
   }
   return [...byKey.values()]
     .filter((g) => g.files.length > 1)
-    .map((g) => ({ ...g, files: g.files.sort() }))
-    .sort((a, b) => (a.dir === b.dir ? a.number.localeCompare(b.number) : a.dir.localeCompare(b.dir)));
+    .map(({ dir, number, value, files }) => ({ dir, number, value, files: files.sort() }))
+    .sort((a, b) => (a.dir === b.dir ? (a.value < b.value ? -1 : a.value > b.value ? 1 : 0) : a.dir.localeCompare(b.dir)))
+    .map(({ dir, number, files }) => ({ dir, number, files }));
 }

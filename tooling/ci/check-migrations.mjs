@@ -48,8 +48,9 @@
 // Usage:  node tooling/ci/check-migrations.mjs
 // Exit 0 = clean, 1 = violations (printed with file:line).
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync } from 'node:fs';
-import { boundedGlob } from './tree-walk.mjs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { posix } from 'node:path';
+import { boundedGlob, listDir } from './tree-walk.mjs';
 import { duplicateMigrationNumbers } from './migration-tables.mjs';
 
 /** Migration sets under guard. The brick's is included: it is the schema every
@@ -238,20 +239,6 @@ if (files.length === 0) {
   coverageLost();
 }
 
-// Coverage check BEFORE the content scan, so a moved directory fails loudly
-// instead of reporting "clean" over a set that no longer includes it.
-const normalised = files.map((f) => f.replaceAll('\\', '/'));
-let coverageMissing = 0;
-for (const { fragment, label } of REQUIRED_COVERAGE) {
-  if (!normalised.some((f) => f.includes(fragment))) {
-    console.error(
-      `check-migrations: COVERAGE LOST — no migration matched under "${fragment}" (${label}).\n` +
-        '    The files did not become safe; the guard stopped looking at them. Fix PATTERNS.',
-    );
-    coverageMissing++;
-  }
-}
-if (coverageMissing > 0) coverageLost();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // [pipeline B-8] THE OTHER HALF OF COVERAGE, AND IT SELF-EXTENDS.
@@ -302,15 +289,9 @@ const configs = [];
 for (const pattern of CONFIG_PATTERNS) {
   for await (const f of boundedGlob(pattern)) configs.push(f);
 }
-if (configs.length === 0) {
-  console.error(
-    'check-migrations: COVERAGE LOST — no wrangler config matched, so the "a new migration set arrived"\n' +
-      '    limb ranges over NOTHING and cannot fail. Fix CONFIG_PATTERNS.',
-  );
-  coverageLost();
-}
-
 const declaring = [];
+/** Every migrations directory a wrangler config DECLARES, as a repo-relative POSIX path. */
+const declaredDirs = [];
 for (const cfgPath of configs) {
   let cfg;
   try {
@@ -322,9 +303,72 @@ for (const cfgPath of configs) {
     console.error(`check-migrations: COVERAGE LOST — ${cfgPath} could not be parsed (${e.message}).`);
     coverageLost();
   }
-  const dirs = (cfg.d1_databases ?? []).filter((d) => d?.migrations_dir);
-  if (dirs.length > 0) declaring.push(cfgPath.replaceAll('\\', '/'));
+  // Top level AND every `env.<name>` block: an environment's d1_databases is a
+  // second declaration wrangler applies on its own (`--env sandbox`).
+  const blocks = [cfg, ...Object.values(cfg.env ?? {})];
+  const dirs = blocks.flatMap((b) => (b?.d1_databases ?? []).filter((d) => d?.migrations_dir));
+  const cfgRel = cfgPath.replaceAll('\\', '/');
+  if (dirs.length > 0) declaring.push(cfgRel);
+  for (const d of dirs) {
+    const rel = posix.normalize(posix.join(posix.dirname(cfgRel), String(d.migrations_dir).replaceAll('\\', '/')));
+    if (!declaredDirs.some((x) => x.dir === rel)) declaredDirs.push({ dir: rel, cfg: cfgRel });
+  }
 }
+
+// ⏱ 2026-10-01 (fourth review of #1070) · THE DECLARED DIRECTORIES ARE SCANNED,
+// whatever they are called. PATTERNS above reads only directories NAMED
+// `migrations`; a Worker whose config says `"migrations_dir": "schema"` would
+// have wrangler apply files this guard never opened — neither the additive-only
+// rules nor the one-number-per-directory limb below would see them. So every
+// declared directory is listed here and its .sql files join the scanned set. A
+// declared directory that does not exist is COVERAGE LOST: wrangler would refuse
+// the deploy, and this guard cannot tell an empty schema from a mistyped path.
+const seen = new Set(files.map((f) => f.replaceAll('\\', '/')));
+const missingDirs = [];
+for (const { dir, cfg } of declaredDirs) {
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+    missingDirs.push(`check-migrations: COVERAGE LOST — ${cfg} declares migrations_dir ${dir}, which is not a directory.`);
+    continue;
+  }
+  for (const name of listDir(dir)) {
+    if (!name.endsWith('.sql')) continue;
+    const rel = `${dir}/${name}`;
+    if (seen.has(rel)) continue;
+    seen.add(rel);
+    files.push(rel);
+  }
+}
+files.sort();
+
+// Coverage check BEFORE the content scan, so a moved directory fails loudly
+// instead of reporting "clean" over a set that no longer includes it.
+const normalised = files.map((f) => f.replaceAll('\\', '/'));
+let coverageMissing = 0;
+for (const { fragment, label } of REQUIRED_COVERAGE) {
+  if (!normalised.some((f) => f.includes(fragment))) {
+    console.error(
+      `check-migrations: COVERAGE LOST — no migration matched under "${fragment}" (${label}).\n` +
+        '    The files did not become safe; the guard stopped looking at them. Fix PATTERNS.',
+    );
+    coverageMissing++;
+  }
+}
+if (coverageMissing > 0) coverageLost();
+
+// The config-side stops, AFTER the written list: a set that vanished is named by
+// its REQUIRED_COVERAGE entry first, whatever else the tree has lost with it.
+if (configs.length === 0) {
+  console.error(
+    'check-migrations: COVERAGE LOST — no wrangler config matched, so the "a new migration set arrived"\n' +
+      '    limb ranges over NOTHING and cannot fail. Fix CONFIG_PATTERNS.',
+  );
+  coverageLost();
+}
+if (missingDirs.length > 0) {
+  for (const m of missingDirs) console.error(m);
+  coverageLost();
+}
+
 
 const unlisted = declaring.filter(
   (cfgPath) => !REQUIRED_COVERAGE.some(({ fragment }) => cfgPath.includes(fragment)),
