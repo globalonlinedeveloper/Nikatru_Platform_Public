@@ -1,0 +1,95 @@
+{
+  "$schema": "./port.schema.json",
+  "port": "payments",
+  "level": { "claimed": 2, "target": 3 },
+  "interface": {
+    "ts": { "file": "services/platform/src/lib/mor/contract.ts", "symbols": ["MoRWebhookVerifier"] }
+  },
+  "adapters": [
+    {
+      "id": "paddle",
+      "vendor": "paddle",
+      "status": "live",
+      "impl": { "file": "services/platform/src/lib/mor/paddle.ts", "symbol": "paddleVerifier" },
+      "capabilities": ["verify", "parse", "cancel-api"],
+      "secrets": ["PADDLE_NOTIFICATION_SECRET", "PADDLE_API_KEY"],
+      "identity": ["ownerDomain", "supportEmail"],
+      "environments": ["sandbox", "live"],
+      "cost": { "feeCells": ["paddle-checkout", "paddle-under-10"], "unit": null },
+      "conformance": null,
+      "exportDuty": "Leaves with us: every subscription row and webhook body (our entitlements table stores the verbatim notification). Export: the customer and subscription lists (Paddle API, CSV) for the run-off. Cannot move: the card mandates Paddle holds as merchant of record — a switch is a RUN-OFF, existing subscribers renew on Paddle until they lapse.",
+      "readAt": { "url": "https://developer.paddle.com/webhooks/signature-verification", "on": "2026-08-01" }
+    },
+    {
+      "id": "razorpay",
+      "vendor": "razorpay",
+      "status": "built",
+      "impl": { "file": "services/platform/src/lib/mor/razorpay.ts", "symbol": "razorpayVerifier" },
+      "capabilities": ["verify"],
+      "secrets": ["RAZORPAY_WEBHOOK_SECRET", "RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET"],
+      "identity": ["ownerDomain", "supportEmail"],
+      "environments": ["sandbox", "live"],
+      "cost": { "feeCells": ["razorpay-platform", "razorpay-subscription-add-on"], "unit": null },
+      "conformance": null,
+      "exportDuty": "Leaves with us: the verified webhook bodies and our own GST invoices (Nikatru is seller of record on this rail). Export: payments and subscriptions (Razorpay dashboard reports). Cannot move: UPI AutoPay and e-mandates are bound to Razorpay — a switch is a RUN-OFF.",
+      "readAt": { "url": "https://razorpay.com/docs/webhooks/validate-test/", "on": "2026-09-12" }
+    },
+    {
+      "id": "revenuecat",
+      "vendor": "revenuecat",
+      "status": "built",
+      "impl": { "file": "services/platform/src/lib/mor/revenuecat.ts", "symbol": "revenuecatVerifier" },
+      "capabilities": ["verify", "cancel-store"],
+      "secrets": ["REVENUECAT_WEBHOOK_SIGNING_SECRET"],
+      "identity": [],
+      "environments": ["sandbox", "live"],
+      "cost": { "feeCells": ["apple-iap-standard", "play-billing-subscription"], "unit": null },
+      "conformance": null,
+      "exportDuty": "Leaves with us: the verified webhook bodies and our entitlement rows. Export: the customer list and the app user id mapping (RevenueCat dashboard export). Cannot move: the store subscriptions themselves — Apple and Google bill them, so only the aggregator in front of the stores can change, never the mandate.",
+      "readAt": { "url": "https://www.revenuecat.com/docs/integrations/webhooks", "on": "2026-09-15" },
+      "c8Seam": {
+        "file": "packages/core/lib/src/entitlement_cache.dart",
+        "why": "tooling/capability-register.json records RevenueCat's C-8 seam on the CLIENT (REVENUECAT_KEY, the purchases SDK half). This port is inbound only, so the server verifier sits behind MoRWebhookVerifier while the client half is not ported yet.",
+        "until": "port-pay"
+      }
+    }
+  ],
+  "selection": {
+    "by": "channel-market",
+    "source": "tooling/channel-register.json#purchaseRails",
+    "default": { "live": null, "sandbox": null, "test": null },
+    "canary": null
+  },
+  "generated": false,
+  "handTables": [
+    {
+      "file": "services/platform/src/lib/mor/registry.ts",
+      "anchor": "export const MOR_VERIFIERS",
+      "until": "port-pay",
+      "why": "The adapter set is a hand-written array; the inbound door resolves a provider through verifierFor, which reads it."
+    },
+    {
+      "file": "services/platform/src/lib/mor/registry.ts",
+      "anchor": "RAIL_CANCEL_PATH",
+      "until": "port-pay",
+      "why": "How each rail cancels is a hand map keyed by the same provider names as MOR_VERIFIERS."
+    },
+    {
+      "file": "services/platform/src/routes/checkout.ts",
+      "anchor": "PADDLE_CUSTOM_DATA_APP_ID",
+      "until": "port-pay",
+      "why": "Outbound checkout is not behind this (inbound) port: the route imports Paddle's custom_data key names from the adapter so the webhook parse and the checkout agree on them."
+    }
+  ],
+  "conformance": { "suite": null, "pending": [] },
+  "switch": {
+    "runbook": "Private/runbooks/switch-vendor.md#payments",
+    "dryRun": "node tooling/ops/port-switch.mjs payments --to <adapter> --dry-run"
+  },
+  "_why": [
+    "INBOUND ONLY: the webhook door (POST /v1/money/<provider>) behind [ADR 004]'s MoRWebhookVerifier. Checkout creation and cancellation are rail capabilities this port names (`cancel-api`, `cancel-store`) but does not yet select; port-pay brings them behind the port.",
+    "L2, not L3: the adapters are chosen by configuration (the rail per channel in tooling/channel-register.json#purchaseRails, the provider segment of the webhook URL), and only verifierFor reaches them. There is no shared conformance suite, so no adapter is conformant.",
+    "selection.default is null in every environment on purpose: no single rail is THE payments adapter — the channel row decides, and the register cited in `source` is the one place that answer lives.",
+    "cost.feeCells are applied by tooling/ops/port-switch.mjs's margin check. revenuecat carries the Apple STANDARD cell, not the Small Business one, because the enrolment cell (apple-small-business-enrolment) has no owner-attested date; india-gst is a tax, not a fee, so no adapter carries it."
+  ]
+}
