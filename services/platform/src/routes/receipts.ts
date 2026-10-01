@@ -65,7 +65,7 @@ import {
 } from '../lib/mor/bundle-store';
 import { receiptVerifierFor } from '../lib/receipts/verifiers';
 import { type ProductMap, featureSetForProduct } from '../lib/receipts/products';
-import { nowIso } from '../lib/d1';
+import { nowIso, run } from '../lib/d1';
 import { BUNDLE_ROWS, BUNDLES_REGISTER, type BundleRegisterRow, bundleVersionStatus } from '../lib/catalog';
 import { BUNDLE_KIND } from '../../../../contracts/entitlement/bundle.js';
 import { isValidAppId, productKindOf } from '../config';
@@ -183,21 +183,19 @@ async function pinFeatureSet(
     kinds.set(slug, kind);
   }
   const now = nowIso();
-  await db
-    .prepare(
+  await run(
+    db.prepare(
       `INSERT INTO feature_sets (name, version, minted_at, minted_from, status)
        VALUES (?,?,?,?,?) ON CONFLICT (name, version) DO NOTHING`,
-    )
-    .bind(name, version, now, BUNDLES_REGISTER, status)
-    .run();
+    ).bind(name, version, now, BUNDLES_REGISTER, status),
+  );
   for (const [slug, kind] of kinds) {
-    await db
-      .prepare(
+    await run(
+      db.prepare(
         `INSERT INTO feature_set_members (name, version, product_slug, product_kind)
          VALUES (?,?,?,?) ON CONFLICT (name, version, product_slug) DO NOTHING`,
-      )
-      .bind(name, version, slug, kind)
-      .run();
+      ).bind(name, version, slug, kind),
+    );
   }
 }
 

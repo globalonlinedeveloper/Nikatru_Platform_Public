@@ -43,6 +43,23 @@
 // ⚠️ PATCH IS IDEMPOTENT BY CONSTRUCTION and takes no key here: it SETS the
 // fields it names, so a replay writes the same values again. The header is on
 // the shared CORS allow-list so a browser may send it on any write.
+//
+// 🔴 THE SECOND KEYED CREATE: POST /v1/subscriptions/:id/payments (deferred
+// item D-PAYMENTS-IDEMPOTENCY from the #1089 review). A manual payment is
+// MONEY: a "mark as paid" whose response was lost, retried, recorded the
+// amount twice and doubled the user's spend. It takes the same key, the same
+// ledger and every answer above, through a SCOPE (`PAYMENT_SCOPE` below):
+//   · ONE LEDGER, ONE KEY PER REQUEST. A key names one write of one user, on
+//     whichever route it was first sent: the same key on the other route, or on
+//     a payment for ANOTHER subscription, is 422 idempotency_key_reused — never
+//     a replay of a row the second request did not ask for. A scope's hash
+//     covers its name and its target (the path's subscription id) as well as
+//     the body; the create's hash stays the body's alone, so every claim
+//     already in the ledger answers exactly as it did. `row_id` then holds the
+//     PAYMENT the key made (0006's comment predates the scope).
+//   · ITS OWN ID NAMESPACE: the payment id is SHA-256("subscriptiontracker/
+//     payment", user id, key), so one key never maps to the same id in both
+//     tables.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { Context, MiddlewareHandler } from 'hono';
 import type { AppEnv } from '../types';
@@ -66,12 +83,35 @@ const KEY_RE = /^[A-Za-z0-9_-]{8,128}$/;
 /** The id a keyed create reserves, per request. */
 const reserved = new WeakMap<Request, string>();
 
+/**
+ * Which keyed create a claim belongs to (see the header). [name] namespaces the
+ * derived id; [target] is what the request names besides its body, so one key
+ * sent to two targets is a reuse, not a replay.
+ */
+export interface IdempotentScope {
+  name: string;
+  target?: (c: Context<AppEnv>) => string;
+}
+
+/** POST /v1/subscriptions: the scope every claim before the second one is in. */
+export const CREATE_SCOPE: IdempotentScope = { name: 'create' };
+
+/** POST /v1/subscriptions/:id/payments: a manual payment, for that subscription. */
+export const PAYMENT_SCOPE: IdempotentScope = {
+  name: 'payment',
+  target: (c) => c.req.param('id') ?? '',
+};
+
 /** The row id [key] maps to for [userId] — stable, and private to the user. */
-export async function idempotentRowId(userId: string, key: string): Promise<string> {
+export async function idempotentRowId(
+  userId: string,
+  key: string,
+  scope: IdempotentScope = CREATE_SCOPE,
+): Promise<string> {
   const bytes = new Uint8Array(
     await crypto.subtle.digest(
       'SHA-256',
-      new TextEncoder().encode(`subscriptiontracker/create\n${userId}\n${key}`),
+      new TextEncoder().encode(`subscriptiontracker/${scope.name}\n${userId}\n${key}`),
     ),
   ).slice(0, 16);
   bytes[6] = (bytes[6] & 0x0f) | 0x80; // version 8: a custom, name-derived UUID
@@ -103,6 +143,17 @@ async function sha256Hex(text: string): Promise<string> {
   return Array.from(d, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * What a claim's `body_hash` is for this request. The create's is the body's
+ * alone, unchanged, so a claim already in the ledger still matches its
+ * retries. Any other scope's is prefixed by its name and target: canonical JSON
+ * never starts with a bare name, so no body of one route hashes like another's.
+ */
+function requestHash(c: Context<AppEnv>, scope: IdempotentScope, body: unknown): Promise<string> {
+  if (scope === CREATE_SCOPE) return sha256Hex(canonical(body));
+  return sha256Hex(`${scope.name}\n${scope.target?.(c) ?? ''}\n${canonical(body)}`);
+}
+
 interface Claim {
   body_hash: string;
   row_id: string;
@@ -122,10 +173,11 @@ export const PENDING_CLAIM_TTL_MS = 10 * 60 * 1000;
 /**
  * Middleware in front of a create handler: claims the key, answers a repeat
  * from the claim and [existing], and reserves the derived id for the handler.
- * See the header for every answer.
+ * See the header for every answer, and for [scope].
  */
 export function idempotentCreate(
   existing: (c: Context<AppEnv>, id: string) => Promise<Response | null>,
+  scope: IdempotentScope = CREATE_SCOPE,
 ): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const key = c.req.header(IDEMPOTENCY_HEADER) ?? c.req.query(IDEMPOTENCY_PARAM);
@@ -144,8 +196,8 @@ export function idempotentCreate(
     }
     const userId = c.get('userId');
     const db = c.env.APP_DB;
-    const bodyHash = await sha256Hex(canonical(body));
-    const id = await idempotentRowId(userId, key);
+    const bodyHash = await requestHash(c, scope, body);
+    const id = await idempotentRowId(userId, key, scope);
 
     const answer = async (claim: Claim): Promise<Response> => {
       if (claim.body_hash !== bodyHash) {

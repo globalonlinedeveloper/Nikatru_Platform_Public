@@ -19,6 +19,10 @@
 // the key was ever lost) there is nothing honest to convert with, and a `{}` or
 // a zero rate would read as a table. `no-store`, so the refusal is not cached
 // past the run that fills the key.
+//
+// ⏱ 2026-10-01 · rv2-services-013. A KV READ THAT THROWS IS THE SAME 503, also
+// `no-store`. It was an unhandled 500; it is not a table either, and nothing
+// compiled in may stand in for one.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
@@ -31,7 +35,14 @@ app.get('/latest', async (c) => {
   if (!(await withinEdgeCeiling(c.env.FX_CEILING_LIMITER, c, 'FX_CEILING_LIMITER'))) {
     return c.json({ error: 'rate_limited' }, 429);
   }
-  const table = parseStoredFxTable(await c.env.CONFIG_KV.get(FX_KV_KEY));
+  let stored: string | null;
+  try {
+    stored = await c.env.CONFIG_KV.get(FX_KV_KEY);
+  } catch (err) {
+    console.warn(`[fx] rid=${c.get('requestId') ?? '-'} KV read failed — 503`, err);
+    stored = null;
+  }
+  const table = parseStoredFxTable(stored);
   if (!table) {
     c.header('Cache-Control', 'no-store');
     return c.json({ error: 'fx_unavailable' }, 503);

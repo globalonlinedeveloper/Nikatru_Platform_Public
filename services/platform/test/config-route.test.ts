@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Hono } from 'hono';
 import config from '../src/routes/config';
 import type { AppEnv } from '../src/types';
+
+afterEach(() => vi.restoreAllMocks());
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /config/:app — THE ROUTE, not just the resolver.
@@ -29,9 +31,13 @@ import type { AppEnv } from '../src/types';
 /** A KV stub that RECORDS its reads — the resource the defect was burning. */
 class FakeKv {
   reads: string[] = [];
-  constructor(private readonly value: string | null = null) {}
+  constructor(
+    private readonly value: string | null = null,
+    private readonly fails = false,
+  ) {}
   async get(key: string) {
     this.reads.push(key);
+    if (this.fails) throw new Error('KV GET failed: 503 Service Unavailable');
     return this.value;
   }
 }
@@ -45,14 +51,14 @@ class FakeLimiter {
   };
 }
 
-function harness(opts: { kvValue?: string | null; allowCeiling?: boolean; omit?: boolean } = {}) {
+function harness(opts: { kvValue?: string | null; allowCeiling?: boolean; omit?: boolean; kvFails?: boolean } = {}) {
   const app = new Hono<AppEnv>();
   app.route('/config', config);
   // The real Worker's onError, so a throw surfaces here exactly as it does in
   // production — a 500, not an unhandled rejection the test would swallow.
   app.onError((_err, c) => c.json({ error: 'internal_error' }, 500));
 
-  const kv = new FakeKv(opts.kvValue ?? null);
+  const kv = new FakeKv(opts.kvValue ?? null, opts.kvFails === true);
   const ceiling = new FakeLimiter(opts.allowCeiling !== false);
   const env = {
     CONFIG_KV: kv,
@@ -249,5 +255,25 @@ describe('GET /config/:app?channel= serves that channel’s floor and exit', () 
     expect(direct.update_url).toBe('https://dl.example.invalid/win');
     expect(web.update_url).toBeNull();
     expect(typeof direct.min_supported_version).toBe('string');
+  });
+});
+
+// ⏱ 2026-10-01 · rv2-services-013. RED before: the throw reached onError, a 500.
+describe('GET /config/:app — a KV fault is a 503, never the compiled-in defaults', () => {
+  it('🔴 a CONFIG_KV whose get rejects answers 503 config_unavailable, no-store', async () => {
+    const { kv, get } = harness({ kvFails: true });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await get('subscriptiontracker');
+    expect(kv.reads).toEqual(['config:subscriptiontracker']);
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    // The body is the refusal and nothing else: no default floor, no flag, that
+    // a client could take for the current config.
+    expect(await res.json()).toEqual({ error: 'config_unavailable' });
+  });
+
+  it('the same app with a working KV is the 200 it always was', async () => {
+    const { get } = harness();
+    expect((await get('subscriptiontracker')).status).toBe(200);
   });
 });

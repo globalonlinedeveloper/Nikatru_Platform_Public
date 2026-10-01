@@ -173,6 +173,33 @@ describe('wrangler.jsonc declares BOTH halves of the cost circuit breaker', () =
     for (const e of sbRl) expect(topIds.has(String(e.namespace_id)), `env.sandbox ${String(e.name)} reuses ${String(e.namespace_id)}`).toBe(false);
   });
 
+  // ⏱ 2026-10-01 · rv2-services-016. Two limiters the deployed config carries in
+  // BOTH places and no test held: deleting either entry from either block left
+  // this file green. Both fail OPEN (lib/edge-ceiling.ts), so a deleted entry is
+  // a silent open door — the unit tests inject the bindings themselves.
+  //   · REMINDERS_CEILING_LIMITER — the public calendar feed and the one-click
+  //     unsubscribe (routes/calendar.ts, routes/reminders.ts), a D1 read per
+  //     token guess with no other bound;
+  //   · MONEY_CEILING_LIMITER — POST /v1/money/:provider and the store-receipt
+  //     route, where a forged flood costs a signature check and a D1 read each.
+  for (const [name, [topId, sandboxId, limit]] of Object.entries({
+    REMINDERS_CEILING_LIMITER: ['1013', '1014', 300],
+    MONEY_CEILING_LIMITER: ['1004', '1006', 120],
+  } as const)) {
+    it(`declares ${name} at the top level (${topId}) AND in env.sandbox (${sandboxId})`, () => {
+      const sbByName = new Map(sandboxRl().map((e) => [String(e.name), e]));
+      for (const [where, e, id] of [
+        ['top level', byName.get(name), topId],
+        ['env.sandbox', sbByName.get(name), sandboxId],
+      ] as const) {
+        expect(e, `${name} missing from ${where} — that deploy's breaker silently fails OPEN`).toBeDefined();
+        expect(String(e!.namespace_id), `${where} ${name}`).toBe(id);
+        expect(e!.simple?.limit, `${where} ${name}`).toBe(limit);
+        expect(e!.simple?.period, `${where} ${name}`).toBe(60);
+      }
+    });
+  }
+
   it('the three limiters have DISTINCT namespace ids, so they do not share a budget', () => {
     const ids = rl.map((e) => String(e.namespace_id));
     expect(new Set(ids).size, `namespace_id collision among ${ids.join(', ')}`).toBe(ids.length);

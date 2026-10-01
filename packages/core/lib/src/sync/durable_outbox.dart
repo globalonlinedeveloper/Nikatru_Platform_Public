@@ -68,13 +68,14 @@ enum OutboxFailure {
   /// Worth retrying later (5xx, 408, 429). Costs an attempt.
   transient,
 
-  /// The server is still PROCESSING this very write (a 409 on its
-  /// Idempotency-Key). Costs NO attempt and never becomes a dead letter: the
-  /// entry waits — the server's `Retry-After` when it sent one, a backoff
-  /// capped at [DurableOutbox.maxBackoff] otherwise — for as long as the
-  /// server holds the claim (review #1075 round 3, minor d: 5 counted 409s
-  /// dead-lettered an add in ~30 s while the server abandons a claim only
-  /// after 10 minutes).
+  /// The server is still PROCESSING this very write (a 409
+  /// `idempotency_in_progress` on its Idempotency-Key; any other 409 is a
+  /// refusal — review #1075 round 4, minor 1). Costs NO attempt and never
+  /// becomes a dead letter: the entry waits — the server's `Retry-After` when
+  /// it sent one, a backoff capped at [DurableOutbox.maxBackoff] otherwise —
+  /// for as long as the server holds the claim (review #1075 round 3, minor
+  /// d: 5 counted 409s dead-lettered an add in ~30 s while the server abandons
+  /// a claim only after 10 minutes).
   busy,
 
   /// The server said no to this request, or answered what cannot be read. A

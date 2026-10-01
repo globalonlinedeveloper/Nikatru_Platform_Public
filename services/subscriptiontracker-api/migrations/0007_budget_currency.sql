@@ -1,0 +1,35 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0007_budget_currency.sql — the monthly budget says which currency it is in
+-- (round-2 review rv2-services 032, the migration half; SYN-S3).
+-- Applies to APP_DB (subscriptiontracker_db):
+--   wrangler d1 migrations apply APP_DB --local   (or --remote)
+--
+-- Follows 0006_idempotency_keys.sql (#1075). This file was written while 0006
+-- was still in flight and numbered 0007 to leave its slot free; neither file
+-- reads anything the other adds.
+--
+-- `budgets.monthly_budget` and `budget_categories.cap` are REAL with no unit
+-- (0001_init.sql), while every subscription has carried its own currency since
+-- 0003_subscription_model.sql. So a budget's unit was whatever the client
+-- assumed, and a user who changed their currency in Settings silently re-read
+-- the same number in a different money. The caps are in the budget's currency:
+-- one budget, one unit, so the column sits on `budgets` and not on each cap.
+--
+-- ISO 4217, upper case. NULL means "the user's currency" — the unit every row
+-- that exists today was typed in — and is deliberately NOT defaulted to 'USD',
+-- for 0003's reason: a stored code outranks the client's fallback to the
+-- user's own currency, which would turn a unitless number into a wrong one.
+--
+-- STRICTLY ADDITIVE, like 0002 to 0005: one ADD COLUMN, no DROP, no RENAME, no
+-- type change, no table rebuild (tooling/ci/check-migrations.mjs bans all four).
+-- NO CHECK, for 0003's reason: the route validates the code
+-- (src/routes/budget.ts `validate`), where a new rule is a code change and not
+-- a table rebuild.
+--
+-- DEPLOY: this file ALONE first, then the Worker that names the column. The
+-- Worker before this change selects `*` from `budgets` and serves only
+-- `monthly_budget`, so an extra column is invisible to it and the order is safe.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- The ISO 4217 code `monthly_budget` and every cap are in; NULL = the user's.
+ALTER TABLE budgets ADD COLUMN currency TEXT;
