@@ -102,7 +102,7 @@
       "additionalProperties": false,
       "required": ["runbook", "dryRun"],
       "properties": {
-        "runbook": { "type": ["string", "null"], "pattern": "^Private/runbooks/switch-vendor\\.md#[a-z][a-z0-9-]*$" },
+        "runbook": { "type": ["string", "null"], "pattern": "^(Private)/runbooks/switch-vendor\\.md#[a-z][a-z0-9-]*$" },
         "dryRun": { "type": "string", "pattern": "^node tooling/ops/port-switch\\.mjs [a-z][a-z0-9-]* --to <adapter> --dry-run$" }
       }
     },
