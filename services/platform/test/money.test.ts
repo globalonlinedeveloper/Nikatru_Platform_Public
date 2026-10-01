@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 import money, { MAX_MONEY_BODY_BYTES } from '../src/routes/money';
 import type { AppEnv } from '../src/types';
@@ -183,6 +183,21 @@ const FUTURE = '2027-01-01T00:00:00.000Z';
 const PAST = '2020-01-01T00:00:00.000Z';
 const USER = 'user-abc';
 const APP = 'subscriptiontracker';
+
+// 🔴 THE ROUTE READS THE WALL CLOCK (src/routes/money.ts: the signature window
+// and the grant deps both take `Date.now()`), and FUTURE is a FIXED day. Left
+// unpinned, every "FUTURE period end keeps access" case turns red at 00:00Z on
+// 2027-01-01 — the shape fx.test.ts hit on 2026-10-01. Pin the wall clock for
+// the whole file between PAST and FUTURE; signatures stamped with Date.now()
+// read the same pinned clock, so they stay fresh. Date only — real timers run.
+const PINNED_NOW_MS = Date.parse('2026-09-01T00:00:00.000Z');
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(PINNED_NOW_MS);
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const entRow = (db: RealDb) =>
   db.rows('SELECT * FROM entitlements WHERE user_id = ? AND app_id = ?', USER, APP)[0];
