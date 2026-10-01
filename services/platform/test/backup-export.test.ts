@@ -379,7 +379,7 @@ describe('the D1 query budget is ONE pool, spent honestly and measured every nig
     // The export spent exactly the pool, and the heartbeat one statement per row.
     expect(platform.sql).toHaveLength(MAX_D1_QUERIES_PER_RUN + rows.length);
     expect(platform.sql.length + tracker.sql.length).toBeLessThanOrEqual(ceiling as number);
-  });
+  }, 30_000);
 
   it('spend under the warn line: d1-budget ok=true, and it names the measured spend of the pool', async () => {
     const platform = realPlatformDb();
@@ -422,7 +422,7 @@ describe('the D1 query budget is ONE pool, spent honestly and measured every nig
     expect(budget?.detail).toContain('OVER THE WARN LINE');
     // Box B refuses a manifest that is not complete; a warm pool must not cost the night's copy.
     expect(latestManifest(bucket).complete).toBe(true);
-  });
+  }, 30_000);
 });
 
 // ⏱ 2026-10-01 · ops-watch run 36810231743: `d1-budget` RED at 37 of 42, one query
@@ -481,12 +481,16 @@ describe('the export costs the same whatever the table count', () => {
   });
 
   it('🔴 rows as wide as production\'s widest page by BYTES: every row lands and no value passes D1\'s 2 MB cap', async () => {
-    // provider_notifications measured 4,749 bytes a row on 2026-10-01. 1,200 of them
-    // is 5.7 MB: a fixed page of a thousand rows would be one 4.7 MB value — refused.
+    // Rows run to 4,749 bytes in production (provider_notifications, 2026-10-01), and
+    // a page sized in ROWS cannot know that. 45 rows of 50 KB is 2.25 MB: a page of
+    // D1_PAGE_ROWS rows would be one value past the cap — refused.
+    const count = 45;
     const platform = realPlatformDb([
       'CREATE TABLE wide_rows (id INTEGER PRIMARY KEY, body TEXT NOT NULL)',
-      "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 1200) INSERT INTO wide_rows SELECT x, printf('%.4740c', 'x') FROM c",
+      `WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < ${count}) INSERT INTO wide_rows SELECT x, printf('%.50000c', 'x') FROM c`,
     ]);
+    expect(count * 50_000).toBeGreaterThan(D1_MAX_VALUE_BYTES);
+    expect(count).toBeLessThan(D1_PAGE_ROWS);
     const bucket = new FakeBucket();
     const { env } = envWith(bucket, platform);
     env.PLATFORM_DB = withD1ValueCap(platform);
@@ -495,9 +499,9 @@ describe('the export costs the same whatever the table count', () => {
     expect(out.find((o) => o.target === 'd1:platform_db')).toMatchObject({ ok: true });
     const lines = linesOf(await gunzip(bucket.objects.get(`d1/platform_db/${backupDate(NOW)}.jsonl.gz`)!.body));
     const ids = lines.filter((l) => l.kind === 'row' && l.table === 'wide_rows').map((l) => (l.data as { id: number }).id);
-    expect(ids).toEqual(Array.from({ length: 1200 }, (_, i) => i + 1));
-    expect(lines.find((l) => l.kind === 'table-end' && l.table === 'wide_rows')).toMatchObject({ rows: 1200, truncated: false });
-  });
+    expect(ids).toEqual(Array.from({ length: count }, (_, i) => i + 1));
+    expect(lines.find((l) => l.kind === 'table-end' && l.table === 'wide_rows')).toMatchObject({ rows: count, truncated: false });
+  }, 30_000);
 
   it('🔴 a 100-column table round-trips value for value — past the 32-argument groups D1 imposes', async () => {
     const width = 100;

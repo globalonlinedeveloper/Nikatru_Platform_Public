@@ -30,7 +30,7 @@
 // NOW FLAT IN THE TABLE COUNT. A database costs four statements whatever its
 // table count: the catalogue, ONE column read for every table, ONE size read
 // (each table's row count and widest row), and ONE read that pages every table
-// at once (readTablesSql). That stays true up to TABLES_PER_READ tables a
+// at once (columnsOf). That stays true up to TABLES_PER_READ tables a
 // database; only a single table's volume past one page adds a round.
 // MEASURED 2026-10-01 against both production databases (read-only, through
 // this function, pages rewritten to LIMIT 0): all four shapes ACCEPTED, the
@@ -44,7 +44,7 @@
 // spend. Each read here is ONE statement, which is one query under either
 // reading. And not one `UNION ALL` either: D1 refuses a compound SELECT past a
 // handful of terms (measured, services/_shared/src/erasure.ts) — the scalar
-// subqueries of readTablesSql are not a compound SELECT.
+// subqueries of columnsOf are not a compound SELECT.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -78,7 +78,7 @@ export const D1_PAGE_BYTES = 1_000_000;
  * @ceiling none — D1 caps a table, and a result set, at 100 columns
  *   (https://developers.cloudflare.com/d1/platform/limits/ "Maximum columns per
  *   table"), and no row of tooling/ceilings.json records it. Each table is one
- *   result column of readTablesSql, so half that cap leaves the margin, and a
+ *   result column of one read (columnsOf), so half that cap leaves the margin, and a
  *   database past 50 tables costs one more statement per round, not one per table.
  */
 export const TABLES_PER_READ = 50;
@@ -219,16 +219,15 @@ function runsOf(items: readonly string[], max: number, bytes: (item: string) => 
 }
 
 /**
- * Every column of every table in `tables`, in ONE statement.
+ * The VALUES list that feeds the column read every table in a run at once.
  *
- * The pragma is fed a VALUES list, one of the shapes D1 was measured to accept
- * (tooling/ci/d1-sql-inventory.mjs); this statement does not name the schema
+ * A pragma fed a VALUES list is one of the shapes D1 was measured to accept
+ * (tooling/ci/d1-sql-inventory.mjs); the column read does not name the schema
  * table, which is the half of the refused shape it must never carry. The names
  * are SAFE_IDENTIFIER-checked before they reach here, so they quote as literals.
  */
-function columnsSql(tables: readonly string[]): string {
-  const list = tables.map((t) => `('${t}')`).join(', ');
-  return `SELECT v.column1 AS tbl, p.cid AS cid, p.name AS name FROM (VALUES ${list}) AS v JOIN pragma_table_info(v.column1) AS p`;
+function valuesOf(tables: readonly string[]): string {
+  return tables.map((t) => `('${t}')`).join(', ');
 }
 
 /**
@@ -254,9 +253,13 @@ function tableReadSql(table: string, columns: readonly string[], limit: number, 
   return `SELECT json_group_array(${rowJson(columns)}) FROM (SELECT * FROM "${table}" LIMIT ${limit} OFFSET ${offset})`;
 }
 
-/** Many tables' pages in ONE statement: one scalar subquery, one result column, a table. */
-function readTablesSql(pages: readonly string[]): string {
-  return `SELECT ${pages.map((page, i) => `(${page}) AS "t${i}"`).join(', ')}`;
+/**
+ * Many tables' reads as the result columns of ONE statement: one scalar
+ * subquery, one column `t<i>`, a table. Scalar subqueries are not a compound
+ * SELECT, so D1's cap on those does not apply.
+ */
+function columnsOf(reads: readonly string[]): string {
+  return reads.map((read, i) => `(${read}) AS "t${i}"`).join(', ');
 }
 
 /**
@@ -340,7 +343,9 @@ export async function dumpD1Database(
       truncated = true;
       break;
     }
-    const listed = await db.prepare(columnsSql(run)).all<{ tbl: string; cid: number; name: string }>();
+    const listed = await db
+      .prepare(`SELECT v.column1 AS tbl, p.cid AS cid, p.name AS name FROM (VALUES ${valuesOf(run)}) AS v JOIN pragma_table_info(v.column1) AS p`)
+      .all<{ tbl: string; cid: number; name: string }>();
     const byTable = new Map<string, { cid: number; name: string }[]>();
     for (const c of listed.results ?? []) byTable.set(c.tbl, [...(byTable.get(c.tbl) ?? []), c]);
     for (const table of run) {
@@ -377,7 +382,7 @@ export async function dumpD1Database(
         truncated = true;
         break;
       }
-      const answer = await db.prepare(readTablesSql(run.map(size))).first<Record<string, unknown>>();
+      const answer = await db.prepare(`SELECT ${columnsOf(run.map(size))}`).first<Record<string, unknown>>();
       run.forEach((table, i) => {
         const raw = answer?.[`t${i}`];
         if (typeof raw !== 'string') {
@@ -402,7 +407,7 @@ export async function dumpD1Database(
         truncated = true;
         break;
       }
-      const answer = await db.prepare(readTablesSql(run.map(page))).first<Record<string, unknown>>();
+      const answer = await db.prepare(`SELECT ${columnsOf(run.map(page))}`).first<Record<string, unknown>>();
       run.forEach((table, i) => {
         const raw = answer?.[`t${i}`];
         if (typeof raw !== 'string') {
