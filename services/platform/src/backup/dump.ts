@@ -110,6 +110,9 @@ export const PAGE_RETRY_SHRINK = 4;
  * Bytes the page's own wrapper adds around its rows — `[<count>,[` and `]]`.
  * The rows' byte target is D1_PAGE_BYTES less this, so a full page meets the cap
  * exactly rather than passing it by the brackets.
+ *
+ * @ceiling none — an allowance carved out of D1_PAGE_BYTES for the wrapper's
+ *   own brackets, not a platform resource; D1_PAGE_BYTES carries the bound.
  */
 const PAGE_ENVELOPE_BYTES = 64;
 
