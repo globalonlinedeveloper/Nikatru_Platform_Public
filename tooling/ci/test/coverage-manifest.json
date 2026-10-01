@@ -21,7 +21,7 @@
     21,
 
   "alert-disposition.test.mjs":
-    42,
+    56,
 
   "analytics-contract.test.mjs":
     79,
@@ -87,7 +87,7 @@
     125,
 
   "apps-gov-in-apk.test.mjs":
-    53,
+    57,
 
   "apps-gov-in-media.test.mjs":
     25,
@@ -198,7 +198,7 @@
     50,
 
   "channel-register.test.mjs":
-    356,
+    357,
 
   "channel-surface.test.mjs":
     7,
@@ -257,8 +257,11 @@
   "cors-allowlist.test.mjs":
     33,
 
+  "credential-origin-guard.test.mjs":
+    18,
+
   "credential-origin.test.mjs":
-    23,
+    33,
 
   "d1-bindings.test.mjs":
     9,
@@ -573,7 +576,7 @@
     34,
 
   "native-symbol-upload.test.mjs":
-    25,
+    26,
 
   "new-product-plan.test.mjs":
     41,
@@ -774,7 +777,7 @@
     6,
 
   "release-durable.test.mjs":
-    188,
+    200,
 
   "release-grades-legs.test.mjs":
     7,
@@ -858,7 +861,7 @@
     12,
 
   "self-host-fallback-fonts.test.mjs":
-    22,
+    25,
 
   "session-revocation.test.mjs":
     15,
@@ -1044,7 +1047,7 @@
     5,
 
   "web-sourcemaps.test.mjs":
-    22,
+    24,
 
   "well-known-shape.test.mjs":
     31,

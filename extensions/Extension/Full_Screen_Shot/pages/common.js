@@ -1782,11 +1782,13 @@ if (typeof module !== 'undefined' && module.exports) {
     fsAiTokenCount, fsAiTokens,
     fsAiPlanTiles, fsAiLegend, fsAiBundle, fsAiText, fsAiLegendLine,
     fsCopyBlobToClipboard,
-    // The page globals other page scripts call. A page never reaches this branch;
-    // listing them here is what tells CodeQL, which reads this file as a module
-    // because of this very guard, that they are used (js/unused-local-variable
-    // #140-#148, 2026-09-30).
+    // The page globals other page scripts call. A page never reaches this branch.
+    // Listed so test/editor-sim.node.js can hold the page-global contract (every
+    // fs* function another page calls is exported, so a rename is red there, not
+    // in a browser; 2026-10-01, which also found fsCanvasToBlob missing) — and so
+    // CodeQL, which reads this file as a module because of this very guard, sees
+    // them used (js/unused-local-variable #140-#148, 2026-09-30).
     fsMime, fsExt, fsGetSettings, fsToggleTheme, fsBuildFilename,
-    fsFormatBytes, fsDownloadBlob, fsLoadImage, fsToast
+    fsFormatBytes, fsDownloadBlob, fsLoadImage, fsToast, fsCanvasToBlob
   };
 }

@@ -728,7 +728,7 @@ if (exprSelfTestFailures.length) {
 // ref of every scheduled run, so a dispatch on main cancelled the scheduled run
 // its register row and the CWS keepalive depend on. A cancelled run concludes
 // `cancelled`, which no failure alarm sees — the cost is silence. ci.yml:22 and
-// codeql.yml:83 already write it the way docs/ci/README.md §2 says; nothing held
+// codeql.yml:87 already write it the way docs/ci/README.md §2 says; nothing held
 // the rest to it, and safe-rerun's parser collapses any `${{ … }}` to cancelling.
 //
 // A workflow REACHES the default branch unless every trigger is a pull request

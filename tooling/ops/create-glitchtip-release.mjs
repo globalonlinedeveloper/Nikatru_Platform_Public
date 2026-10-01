@@ -52,17 +52,7 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchWithBoundedRetry, CouldNotLook } from './bounded-retry.mjs';
-import { credentialOrigin } from './credential-origin.mjs';
-
-/** Why SENTRY_URL may not receive the GlitchTip token, or null when it may. */
-const issuerRefusal = (server) => {
-  try {
-    credentialOrigin(server, 'glitchtip');
-    return null;
-  } catch (e) {
-    return e.message;
-  }
-};
+import { CredentialOriginRefused, credentialOrigin } from './credential-origin.mjs';
 
 /** The request body, built ONCE per run. PURE: the stamp is an argument, so a
  *  test can hold the clock still and compare two attempts byte for byte. */
@@ -188,16 +178,27 @@ if (RUN_DIRECTLY) {
     args.set(a.slice(2), value);
     i += 1;
   }
-  const server = (process.env.SENTRY_URL ?? '').replace(/\/+$/, '');
+  const configured = (process.env.SENTRY_URL ?? '').replace(/\/+$/, '');
+  // ⏱ 2026-10-01 (review 2, finding 6): the origin the pin RETURNS is the one the
+  // release is created on; the raw value was checked and then used as given. Held
+  // by tooling/ci/assert-credential-origin.mjs limb R.
+  let server = null;
+  let refusal = null;
+  try {
+    server = credentialOrigin(configured, 'glitchtip');
+  } catch (e) {
+    if (!(e instanceof CredentialOriginRefused)) throw e;
+    refusal = e.message;
+  }
   const token = process.env.SENTRY_AUTH_TOKEN ?? '';
   const missing = ['release', 'org', 'project'].filter((k) => !args.get(k));
   if (bad) fail([bad]);
   else if (missing.length > 0) fail([`--${missing[0]} is required`]);
   // The origin is checked for SHAPE and never printed whole: only a host reaches the log.
-  else if (!/^https?:\/\/[A-Za-z0-9.-]+(:[0-9]+)?$/.test(server)) fail(['SENTRY_URL must be a bare server origin (https://<host>)']);
+  else if (!/^https?:\/\/[A-Za-z0-9.-]+(:[0-9]+)?$/.test(configured)) fail(['SENTRY_URL must be a bare server origin (https://<host>)']);
   else if (!token) fail(['SENTRY_AUTH_TOKEN is empty, so no release could be created']);
   // ⏱ 2026-09-30 · the token goes to its issuer only (review of #1086, finding 3).
-  else if (issuerRefusal(server)) fail([issuerRefusal(server)]);
+  else if (refusal) fail([refusal]);
   else {
     const host = new URL(server).host;
     const release = args.get('release');

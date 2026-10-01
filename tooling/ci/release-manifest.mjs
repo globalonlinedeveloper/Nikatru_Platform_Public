@@ -378,6 +378,71 @@ export function releaseCarriesFor(register, c) {
   return c?.kind === 'store' && c.submittable !== true;
 }
 
+/** ⏱ 2026-10-01 — a store a person uploads to by hand, DECLARED so: `kind: "store"`
+ *  and `submittable: false` (apps-gov-in on the app surface; chrome-webstore and
+ *  edge-addons on the extension one). `=== false`, exactly as record-deployment.mjs
+ *  reads `cannotSubmit`: `pending_manual_publish` is accepted on these rows and no
+ *  others, so a row that forgot the field is never made an origin whose record the
+ *  recorder would then refuse. The declared half of releaseCarriesFor's last clause. */
+export function manualUploadStore(c) {
+  return c?.kind === 'store' && c.submittable === false;
+}
+
+/**
+ * ⏱ 2026-10-01 — DOES A RELEASE CARRY THIS ROW'S FILE NOW, not "ever"
+ * (O-APPS-GOV-IN-APK-HAS-NO-ORIGIN-ROW). `releaseCarriesFor` answers whether a
+ * row takes its file from a Release at all. A store a person uploads to by hand
+ * takes it only under an identity that EXISTS: build-platforms.yml's release job
+ * downloads the apps.gov.in .apk only under the name assert-apps-gov-in-apk.mjs
+ * gives a build signed by the PINNED key, so while `signingCertificate.sha256` is
+ * null its lane emits the .apk and no Release is owed one. Read through
+ * `signingPosture`, the reading originEnvironments records under; the extension
+ * stores sign nothing of ours ('none') and are owed as before. A direct row is
+ * owed whatever its posture: an unsigned direct artifact is still published, and
+ * only its [10]D-9 row is withheld (see originEnvironments).
+ */
+export function releaseCarriesNow(register, c) {
+  if (!releaseCarriesFor(register, c)) return false;
+  if (!manualUploadStore(c)) return true;
+  return RECORDABLE_POSTURES.has(signingPosture(c).state);
+}
+
+/**
+ * The file formats a declared lane emits that a Release WILL carry and does not
+ * carry yet: each mapped to why, in the register's words. A format another
+ * narrowed lane row is owed now is never withheld. Narrowed exactly as
+ * `laneBackedFormats` is. Empty on a register whose every manual-upload store is
+ * owed — which is what the lane's own pin step reads as "the .apk must be here".
+ */
+export function withheldFormats(register, { forWorkflow = null, surface = null } = {}) {
+  const now = new Set();
+  const held = new Map();
+  for (const c of register?.channels ?? []) {
+    const lane = c?.lane;
+    if (!lane || typeof lane.workflow !== 'string' || typeof lane.job !== 'string') continue;
+    if (forWorkflow !== null && !laneIsWorkflow(lane.workflow, forWorkflow)) continue;
+    if (surface !== null && !channelIsOnSurface(c, surface)) continue;
+    const formats = (c?.artifactFormats ?? []).filter(isFileFormat);
+    if (releaseCarriesNow(register, c)) {
+      for (const f of formats) now.add(f);
+      continue;
+    }
+    if (!releaseCarriesFor(register, c)) continue;
+    const posture = signingPosture(c);
+    for (const f of formats) {
+      if (!held.has(f)) held.set(f, []);
+      held.get(f).push(`"${c.id ?? '(unnamed)'}" signing posture is ${posture.state.toUpperCase()}: ${posture.detail}`);
+    }
+  }
+  for (const f of now) held.delete(f);
+  return held;
+}
+
+/** `withheldFormats` as one printable clause per format, sorted. */
+function withheldWhy(withheld) {
+  return [...withheld.keys()].sort().map((f) => `${f} (${withheld.get(f).join('; ')})`).join(', ');
+}
+
 /**
  * 🔴 THE STORE-ONLY FORMATS: every file format some row accepts and NO row takes
  * from a Release (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER, C-WINDOWS-STORE-ONLY).
@@ -454,13 +519,28 @@ export function laneBackedFormats(register, { forWorkflow = null, surface = null
  *   · `owed`       — the lane-backed formats a Release carries. EMPTY while
  *                    `laneBacked` is not is the declared empty: every lane emits
  *                    only store-only files, so no lane owes this release anything.
+ *   · `withheld`   — ⏱ 2026-10-01: lane-backed formats a Release WILL carry and
+ *                    does not yet (`withheldFormats`): the apps.gov.in .apk while
+ *                    its pin is null. Never in `owed`, so its absence is the
+ *                    declared empty too, and every reader prints why.
  */
 export function releaseOwed(register, surface) {
   const storeOnly = storeOnlyFormats(register, surface);
   const carried = new Set([...installableExtensions(register, surface)].filter((x) => !BUNDLE_MEMBERS.has(x) && !storeOnly.has(x)));
   const laneBacked = laneBackedFormats(register, { surface });
-  const owed = [...laneBacked].filter((f) => carried.has(f));
-  return { storeOnly, carried, laneBacked, owed, noneOwed: laneBacked.size > 0 && owed.length === 0 };
+  const withheld = withheldFormats(register, { surface });
+  const owed = [...laneBacked].filter((f) => carried.has(f) && !withheld.has(f));
+  return { storeOnly, carried, laneBacked, withheld, owed, noneOwed: laneBacked.size > 0 && owed.length === 0 };
+}
+
+/** For the declared empty `--stage` and `--emit-environments` both print: the lane
+ *  formats that are store-only (the withheld ones are not), and the line naming the
+ *  withheld ones and why, or null. One copy, so the two readers cannot describe one
+ *  register two ways. */
+function declaredEmptyParts(owed) {
+  const storeOnlyEmitted = [...owed.laneBacked].filter((f) => !owed.withheld.has(f)).sort();
+  const withheldLine = owed.withheld.size > 0 ? `  Withheld until its channel's signing identity exists, so no Release is owed it yet: ${withheldWhy(owed.withheld)}.` : null;
+  return { storeOnlyEmitted, withheldLine };
 }
 
 /**
@@ -506,9 +586,13 @@ export function expectedReleaseFormats(register, forWorkflow = null) {
   const installable = installableExtensions(register);
   const storeOnly = storeOnlyFormats(register);
   const laneBacked = laneBackedFormats(register, { forWorkflow });
+  // ⏱ 2026-10-01 — and minus the WITHHELD formats (`withheldFormats`): the
+  // apps.gov.in .apk reaches the Release only once its pin is set, so demanding
+  // it before then would redden every release run on the owner's open pin.
+  const withheld = withheldFormats(register, { forWorkflow });
   for (const e of EXTRA_INSTALLABLE.keys()) laneBacked.add(e);
   const out = new Set();
-  for (const e of laneBacked) if (installable.has(e) && !BUNDLE_MEMBERS.has(e) && !storeOnly.has(e)) out.add(e);
+  for (const e of laneBacked) if (installable.has(e) && !BUNDLE_MEMBERS.has(e) && !storeOnly.has(e) && !withheld.has(e)) out.add(e);
   return out;
 }
 
@@ -609,6 +693,16 @@ export function missingReleaseFormats(expected, assetNames) {
  *                  register-wide carries one. The recorded mitigation is that
  *                  the suite goes RED in that state rather than passing quietly
  *                  — see the REAL REGISTER case in release-durable.test.mjs.
+ *   ⏱ 2026-10-01 — 'unpinned', AND THE SECOND VOCABULARY IT BELONGS TO
+ *   (O-APPS-GOV-IN-APK-HAS-NO-ORIGIN-ROW). A block with no usable sentinel whose
+ *   own `sha256` is `null` or a colon-form SHA-256 (`SHA256_PIN`) is a pin block
+ *   in the fingerprint vocabulary apps-gov-in's `signingCertificate` and
+ *   android-play's `uploadCertificate` are written in: null → 'unpinned' (checked
+ *   right after 'sentinel', never recorded), a fingerprint → counted as 'pinned'.
+ *   So android-play now classifies 'pinned', not 'undeclared' — it never reaches
+ *   this gate (a submittable store), and the paragraph above is kept as written.
+ *   Every OTHER sentinel-less value is still invisible, so the tidied-away
+ *   sentinel stays 'undeclared': the KEEP-THE-KEY advice above still holds.
  *
  * ⬜ NEITHER 'none' NOR 'undeclared' IS REACHED BY A DIRECT ROW TODAY, and that
  * is measured rather than assumed. Classifying all 8 rows of the real register
@@ -655,6 +749,7 @@ export function signingPosture(channel) {
     return { state: 'undeclared', detail: 'the row declares no readable `signing` block' };
   }
   const unfilled = [];
+  const unpinned = [];
   let pinBlocks = 0;
   for (const [name, block] of Object.entries(signing)) {
     // 🔴 `block === null` AND NOTHING ELSE. This line read
@@ -689,7 +784,20 @@ export function signingPosture(channel) {
     // clause today, BOTH now bite — neutering `typeof sentinel !== 'string'` alone
     // reddens this suite, and so does neutering `sentinel.trim() === ''` alone,
     // both at "a `signing.*` object with no USABLE sentinel is not a pin block".)
-    if (typeof sentinel !== 'string' || sentinel.trim() === '') continue;
+    if (typeof sentinel !== 'string' || sentinel.trim() === '') {
+      // ⏱ 2026-10-01 — THE REGISTER'S OTHER PIN VOCABULARY, read for the row that
+      // needs it (O-APPS-GOV-IN-APK-HAS-NO-ORIGIN-ROW). apps-gov-in's
+      // `signingCertificate` is written android-play's way, with no sentinel: its
+      // `sha256` IS the pin, colon-separated uppercase hex, and `null` is the
+      // answer "no key minted" — exactly how assert-apps-gov-in-apk.mjs reads it.
+      // Only those two values make a block a pin block here: a fingerprint pins
+      // it, null leaves it UNPINNED (never recorded). ANY OTHER value — a lowercase
+      // digest, a sentinel string whose key was tidied away — is still no pin
+      // block at all, so the deleted-sentinel hazard above stays UNDECLARED.
+      if (Object.hasOwn(block, 'sha256') && block.sha256 === null) unpinned.push(`signing.${name}.sha256 is null: no key is pinned yet`);
+      else if (Object.hasOwn(block, 'sha256') && typeof block.sha256 === 'string' && SHA256_PIN.test(block.sha256)) pinBlocks++;
+      continue;
+    }
     pinBlocks++;
     // `notYetConfiguredSentinel` is excluded because it IS the sentinel — it is
     // the declaration of the placeholder, never a field standing in for a value.
@@ -745,6 +853,7 @@ export function signingPosture(channel) {
     if (onSentinel.length) unfilled.push(`signing.${name} still reads ${JSON.stringify(sentinel)} at ${onSentinel.map((k) => `\`${k}\``).join(', ')}`);
   }
   if (unfilled.length) return { state: 'sentinel', detail: unfilled.join('; ') };
+  if (unpinned.length) return { state: 'unpinned', detail: unpinned.join('; ') };
   if (pinBlocks > 0) return { state: 'pinned', detail: `${pinBlocks} pinned signing-material block(s), none on a sentinel` };
   // 🔴 THE `===` ON THE NEXT LINE IS AN ATOM OF ITS OWN, exactly as the one in
   // `v === sentinel` above is — and it was the last unheld one in this function.
@@ -772,6 +881,11 @@ export function signingPosture(channel) {
 /** The two postures a release may record a deployment under. */
 const RECORDABLE_POSTURES = new Set(['pinned', 'none']);
 
+/** A certificate pin in the fingerprint vocabulary: 32 colon-separated uppercase
+ *  hex bytes. The SAME shape as assert-apps-gov-in-apk.mjs `PIN_SHAPE`, the reader
+ *  that compares it to a real signer; release-durable.test.mjs holds the two equal. */
+export const SHA256_PIN = /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/;
+
 /**
  * The deployment environments a GitHub Release is the ORIGIN for, given what it
  * actually carries. DERIVED from the register on all three axes so nothing here
@@ -785,6 +899,9 @@ const RECORDABLE_POSTURES = new Set(['pinned', 'none']);
  *     here would write a submission that never happened into [10]D-9's ledger,
  *     which record-deployment.mjs's own header calls worse than recording nothing
  *     (and it would refuse anyway: a store row demands --state and --listing-url).
+ *     ⏱ 2026-10-01 — PLUS a store a person uploads to by hand (`manualUploadStore`:
+ *     apps-gov-in). It records no submission either: its state is
+ *     `pending_manual_publish`, the extension stores' (see the loop).
  *   · and only when the release CARRIES one of that row's declared formats. A
  *     row whose artifact this release does not contain is not a channel this
  *     release served.
@@ -934,12 +1051,21 @@ export function originEnvironments(register, app, assetNames, surface) {
     // whose surface declares no answer THROWS, like a missing surface above: an
     // origin record for a channel nobody classified is not a guess to make
     // quietly (O-EXT-SURFACE-AXIS).
+    // ⏱ 2026-10-01 — AND A STORE A PERSON UPLOADS TO BY HAND, on any surface
+    // (O-APPS-GOV-IN-APK-HAS-NO-ORIGIN-ROW). apps.gov.in has no submission API, so
+    // the owner takes the Release's own .apk to the portal: the same bytes, the
+    // same "origin, nobody submitted it" the extension stores record, under the
+    // same `pending_manual_publish`, which record-deployment.mjs accepts on exactly
+    // these rows (`submittable: false`). Without it, the first pinned Release
+    // carried an .apk no row took and the pre-publish emitter refused the run.
+    // `manualUploadStore` reads `submittable === false`, record-deployment.mjs's own
+    // reading, so this emits no environment the record loop's state would be refused on.
     if (c?.kind !== 'direct') {
       const flutterApp = flutterAppChannel(register, c);
       if (flutterApp === null) {
         throw new TypeError(`originEnvironments: ${undeclaredSurfaceLine(c, 'whether it records an origin environment')}`);
       }
-      if (flutterApp) continue;
+      if (flutterApp && !manualUploadStore(c)) continue;
     }
     const tpl = c.deploymentEnvironment;
     if (typeof tpl !== 'string' || !tpl.includes('{app}')) continue;
@@ -1306,13 +1432,16 @@ async function main() {
       // release only once its pin is set. That empty is the register's own answer,
       // printed, exit 0. COVERAGE LOST stays for the other empty: a lane on this
       // surface DOES emit a format a Release carries, and none arrived.
-      const laneBacked = owedHere.laneBacked;
       if (owedHere.noneOwed) {
         const stampsDir = stampsDirFor(stageSurface, '--stage');
         if (stampsDir !== null) mkdirSync(stampsDir, { recursive: true });
+        // ⏱ 2026-10-01 — a WITHHELD format is lane-backed and not store-only (the
+        // apps.gov.in .apk while its pin is null), so it is named on a line of its own.
+        const { storeOnlyEmitted, withheldLine } = declaredEmptyParts(owedHere);
         console.log(`nothing staged: no installer under ${from}, and none is owed.`);
-        console.log(`  Every format a lane on surface "${stageSurface}" emits is store-only: ${[...laneBacked].sort().join(', ')} (derived from ${REGISTER_REL}).`);
-        console.log(`  A Release on this surface may carry ${[...exts].sort().join(', ') || 'no file format'}; no lane emits any of them.`);
+        console.log(`  Every format a lane on surface "${stageSurface}" emits is store-only: ${storeOnlyEmitted.join(', ') || '(none)'} (derived from ${REGISTER_REL}).`);
+        if (withheldLine !== null) console.log(withheldLine);
+        console.log(`  A Release on this surface may carry ${[...exts].sort().join(', ') || 'no file format'}; no lane owes one today.`);
         console.log(`\nok  0 installable artifact(s) staged into ${out}`);
         process.exit(0);
       }
@@ -1459,12 +1588,15 @@ async function main() {
       // and demanding one would be an assertion that cannot pass. That empty is
       // printed and the verify stands on its first half. It re-arms with no
       // edit the day a lane emits a format a Release carries.
+      // ⏱ 2026-10-01 — a WITHHELD format (`withheldFormats`: the apps.gov.in .apk
+      // while its pin is null) is that same declared empty, and is printed apart.
       let declaredEmpty = null;
+      const withheld = withheldFormats(verifyRegister, { forWorkflow });
       if (fromRegister.length === 0) {
         const installable = installableExtensions(verifyRegister);
         const storeOnly = storeOnlyFormats(verifyRegister);
         const laneInstallable = [...laneBackedFormats(verifyRegister, { forWorkflow })].filter((f) => installable.has(f) && !BUNDLE_MEMBERS.has(f)).sort();
-        if (laneInstallable.length > 0 && laneInstallable.every((f) => storeOnly.has(f))) declaredEmpty = laneInstallable;
+        if (laneInstallable.length > 0 && laneInstallable.every((f) => storeOnly.has(f) || withheld.has(f))) declaredEmpty = laneInstallable.filter((f) => !withheld.has(f));
       }
       if (fromRegister.length === 0 && declaredEmpty === null) {
         coverageLost(
@@ -1491,6 +1623,7 @@ async function main() {
           `--  the register expects no release format${forWorkflow === null ? '' : ` of ${forWorkflow}`}: every format its lanes emit is store-only ` +
             `(${declaredEmpty.join(', ')}), and a Release carries none of them (O-WINDOWS-RELEASE-SHIPS-LOOSE-RUNNER).`,
         );
+        if (withheld.size > 0) console.log(`--  withheld until its channel's signing identity exists, so not expected yet: ${withheldWhy(withheld)}.`);
       }
       if (expected.size > 0) console.log(`ok  all ${expected.size} expected format(s) present: ${[...expected].sort().join(', ')}`);
     }
@@ -1575,20 +1708,24 @@ async function main() {
       // on a surface whose lanes emit only store-only files, is the register's
       // declared empty: nothing here is the origin of a channel, and each store's
       // own submission writes its record. Exit 0, the reason on stderr. A release
-      // that carries an installer no origin row takes (the apps.gov.in .apk once
-      // its pin is set, a stray extension .zip), or that a lane owes an installer
-      // it lacks, is still the undeclared gap, and still exits 1.
+      // that carries an installer no origin row takes (a stray extension .zip), or
+      // that a lane owes an installer it lacks, is still the undeclared gap, and
+      // still exits 1. ⏱ 2026-10-01 — the apps.gov.in .apk is no longer that example:
+      // its row is an origin (originEnvironments), so it is RECORDED once pinned and
+      // omitted with its posture before (O-APPS-GOV-IN-APK-HAS-NO-ORIGIN-ROW).
       const owed = releaseOwed(emitRegister, emitSurface);
       const anyInstaller = [...installableExtensions(emitRegister, null)];
       const installers = names.filter((n) => anyInstaller.some((f) => n.toLowerCase().endsWith(f.toLowerCase())));
       if (installers.length === 0 && owed.noneOwed) {
         console.error(`no [10]D-9 origin record for this release, and none is owed: it carries no installer (${names.join(', ') || '(nothing)'}).`);
-        console.error(`  Every format a lane on surface "${emitSurface}" emits is store-only: ${[...owed.laneBacked].sort().join(', ')} (derived from ${REGISTER_REL}); each store's submission records its own.`);
+        const { storeOnlyEmitted, withheldLine } = declaredEmptyParts(owed);
+        console.error(`  Every format a lane on surface "${emitSurface}" emits is store-only: ${storeOnlyEmitted.join(', ') || '(none)'} (derived from ${REGISTER_REL}); each store's submission records its own.`);
+        if (withheldLine !== null) console.error(withheldLine);
         console.error(`  A Release on this surface may carry ${[...owed.carried].sort().join(', ') || 'no file format'} as an installer; this one carries none, as --stage said.`);
         process.exit(0);
       }
       die(
-        `no \`kind: "direct"\` and no \`surface: "extension"\` channel in ${REGISTER_REL} declares a format this release carries.`,
+        `no \`kind: "direct"\` and no \`surface: "extension"\` channel, and no store a person uploads to by hand, in ${REGISTER_REL} declares a format this release carries.`,
         `The release holds: ${names.join(', ') || '(nothing)'}, and \`--app ${app}\` is on the "${emitSurface}" surface — only that surface's channels were considered.`,
         'Publishing while recording nothing is [10]D-9\'s unrecorded deploy wearing a release badge —',
         'the artifacts would exist and nothing could say what shipped.',
@@ -1622,7 +1759,7 @@ async function main() {
       // after `.trim()` and `.filter(Boolean)`, which exist to be blind to blank
       // lines. It carries no verdict: no input exists on which its presence and its
       // absence disagree about an exit code or about a pass/fail line.
-      console.error(`\nno [10]D-9 record for this release: all ${omitted.length} matching direct channel(s) were omitted above. The assets are published; nothing is recorded as deployed through an identity that does not exist.`);
+      console.error(`\nno [10]D-9 record for this release: all ${omitted.length} matching origin channel(s) were omitted above. The assets are published; nothing is recorded as deployed through an identity that does not exist.`);
     }
     process.exit(0);
   }

@@ -19,11 +19,11 @@
 # One tracked lockfile is deliberately absent: the brick TEMPLATE under
 # tooling/bricks/app/__brick__/, whose directory name is mustache (`{{#needs_backend}}…`), not a
 # package anybody installs; OSV still reads it.
+# ⏱ 2026-10-01: the root `/` npm entry left with pnpm (#1102 retired the root pnpm-lock.yaml).
 version: 2
 updates:
   - package-ecosystem: npm
     directories:
-      - "/"
       - "/_playwright"
       - "/extensions/Extension/Full_Screen_Shot/test/e2e"
       - "/packages/tokens"
