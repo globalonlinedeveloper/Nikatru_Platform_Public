@@ -118,7 +118,9 @@ export const MAX_CHECKOUT_BODY_BYTES = 1024;
 /**
  * ⏱ 2026-10-01 · port-pay-core: the key is now read BY NAME by the composition root
  * (src/ports.ts `railFor`) and handed to the rail; the name lives in lib/mor/paddle-rail.ts
- * `PADDLE_API_KEY_VAR`. The record below is kept as it was written.
+ * `PADDLE_API_KEY_VAR`. The record below is kept as it was written, EXCEPT its "the read
+ * below" paragraph, which the move made false and which is corrected in place (#1127
+ * money review, finding 4).
  *
  * The env var holding the seller API key — the NAME, kept as a const because
  * every refusal below names it in a log line so an operator can act on it.
@@ -137,10 +139,14 @@ export const MAX_CHECKOUT_BODY_BYTES = 1024;
  * them this — so a developer following the file verbatim got a Worker whose
  * POST /v1/checkout refuses with no hint the value existed anywhere.
  *
- * The read below is therefore `c.env[PADDLE_API_KEY_VAR]`, which is a TYPED
- * index, not a cast: delete or rename `Env.PADDLE_API_KEY` in `src/types.ts` and
- * `npx tsc --noEmit` fails on this file. That compile-time tie is the check —
- * this paragraph does not carry it.
+ * The read was therefore `c.env[PADDLE_API_KEY_VAR]`, a TYPED index. Since
+ * port-pay-core there is no read in this file: the composition root's SecretReader reads
+ * by name (the name is DATA there, as in money.ts). The compile-time tie moved with the
+ * name: lib/mor/paddle-rail.ts declares `PADDLE_API_KEY_VAR = 'PADDLE_API_KEY' satisfies
+ * keyof Env`, so deleting or renaming `Env.PADDLE_API_KEY` in `src/types.ts` makes
+ * `npx tsc --noEmit` fail THERE, and test/payments-port.test.ts holds the name in
+ * tooling/ports/payments.json's paddle `secrets`. Those are the checks; this paragraph
+ * carries neither.
  *
  * 🔴 SET IT WITH `wrangler secret put PADDLE_API_KEY`, NEVER AS A COMMITTED VAR.
  * This repository is public and `.gitleaks.toml` carries rules for both key

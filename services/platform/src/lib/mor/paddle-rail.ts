@@ -24,6 +24,7 @@ import type {
   RailFactory,
 } from '../../../../_shared/src/ports/payments';
 import { notSent } from '../../../../_shared/src/ports/payments';
+import type { Env } from '../../types';
 import { PADDLE_CUSTOM_DATA_APP_ID, PADDLE_CUSTOM_DATA_USER_ID } from './paddle';
 import { PADDLE_API_BASE, PADDLE_API_KEY_PREFIX, cancelPaddleSubscription } from './paddle-cancel';
 import { RAIL_PRICE_IDS } from '../../routes/rail-price-ids';
@@ -35,8 +36,13 @@ export const PADDLE_RAIL_ID = 'paddle';
  * The env var holding the seller API key — the NAME. The composition root reads it by
  * name through the port's SecretReader; routes/checkout.ts's header records why it is
  * a declared `Env` binding and how it is set (`wrangler secret put PADDLE_API_KEY`).
+ *
+ * `satisfies keyof Env` IS the compile-time tie the by-name read would otherwise lose
+ * (#1127 money review, finding 4): delete or rename `Env.PADDLE_API_KEY` in src/types.ts
+ * and `tsc --noEmit` fails on THIS line. test/payments-port.test.ts holds the other side:
+ * the name is one of tooling/ports/payments.json's paddle `secrets`.
  */
-export const PADDLE_API_KEY_VAR = 'PADDLE_API_KEY';
+export const PADDLE_API_KEY_VAR = 'PADDLE_API_KEY' satisfies keyof Env;
 
 /**
  * How long we wait for `POST /transactions`.

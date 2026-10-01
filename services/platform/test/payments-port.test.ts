@@ -25,6 +25,8 @@ import { FAKE_RAIL_TEST_SECRET, FAKE_SIGNATURE_HEADER, fakeSignature, fakeVerifi
 import { inboundFor, portFor, railFor } from '../src/ports';
 import { CHECKOUT_RAIL_ID, PAYMENTS_ADAPTERS, RAIL_CANCEL_PATH } from '../src/generated/ports';
 import { RAIL_CANCEL_PATH as REGISTRY_CANCEL_PATH } from '../src/lib/mor/registry';
+import { PADDLE_API_KEY_VAR } from '../src/lib/mor/paddle-rail';
+import paymentsRegistry from '../../../tooling/ports/payments.json';
 
 const REQ: CheckoutRequest = { appId: 'subscriptiontracker', offeringId: 'pro_monthly', userId: 'u1', market: null, environment: 'sandbox' };
 
@@ -166,6 +168,13 @@ describe('the rendered table is the one the Worker reads', () => {
     expect(railFor('fake', on('staging'))).toBeNull();
     // green control: the real rail binds wherever the registry lists it.
     for (const e of ['sandbox', 'live', undefined]) expect(railFor('paddle', on(e))?.id).toBe('paddle');
+  });
+
+  // #1127 money review, finding 4: the key the rail READS is a secret the registry DECLARES
+  // (and, by `satisfies keyof Env` in lib/mor/paddle-rail.ts, a member of Env — a tsc fact).
+  it('🔴 the Paddle key name the rail reads is one of payments.json paddle `secrets`', () => {
+    const paddle = (paymentsRegistry as { adapters: { id: string; secrets: string[] }[] }).adapters.find((a) => a.id === 'paddle');
+    expect(paddle?.secrets).toContain(PADDLE_API_KEY_VAR);
   });
 
   it('a rail with no outbound half binds to null, never to a stand-in', () => {
