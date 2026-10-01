@@ -323,7 +323,7 @@ test('T19 the brick package.json moves a range the lockfile does not: exit 1 nam
   });
   const r = reach(root);
   assert.equal(r.code, 1, r.out + r.err);
-  const want = moved.replace(/[.^]/g, '\\$&');
+  const want = moved.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   assert.match(r.err, new RegExp(`^ {4}dependencies\\.jose: package\\.json asks for "${want}"; packages\\[""\\] records "[^"]+"\\.$`, 'm'));
 });
 
