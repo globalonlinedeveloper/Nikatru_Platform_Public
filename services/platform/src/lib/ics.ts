@@ -19,7 +19,8 @@
 //   · CRLF line endings (§3.1);
 //   · content lines folded at 75 OCTETS, not characters, never inside a UTF-8
 //     sequence, continuation lines starting with one space (§3.1);
-//   · TEXT escaped: backslash, semicolon, comma, newline (§3.3.11);
+//   · TEXT escaped: backslash, semicolon, comma, newline (§3.3.11), after the
+//     control characters §3.3.11 does not allow are removed;
 //   · a UID per event that is STABLE across fetches (§3.8.4.7), so a client that
 //     re-reads the feed updates the event it has instead of adding a second one;
 //   · all-day events: DTSTART;VALUE=DATE and an exclusive DTEND the day after
@@ -54,9 +55,21 @@ const CRLF = '\r\n';
  */
 export const ICS_MAX_LINE_OCTETS = 75;
 
-/** §3.3.11 TEXT escaping. Backslash first, or the other escapes are doubled. */
+/**
+ * The control characters TEXT may not carry: every C0 control except HTAB
+ * (U+0009, which §3.1's WSP allows) and the line breaks the escape below turns
+ * into `\n`, plus DEL. §3.3.11's TSAFE-CHAR excludes CONTROL (§3.1), so a name a
+ * person typed with a stray U+0007 made the whole feed malformed for a strict
+ * reader (rv2-services-019).
+ */
+// eslint-disable-next-line no-control-regex
+const ICS_FORBIDDEN_CONTROLS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+
+/** §3.3.11 TEXT escaping. Controls stripped FIRST, so nothing below sees one;
+ *  then backslash, or the other escapes are doubled. */
 export function escapeText(value: string): string {
   return value
+    .replace(ICS_FORBIDDEN_CONTROLS, '')
     .replace(/\\/g, '\\\\')
     .replace(/;/g, '\\;')
     .replace(/,/g, '\\,')
