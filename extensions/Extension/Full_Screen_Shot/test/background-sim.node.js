@@ -5097,7 +5097,7 @@ const quotaError = (message) => {
       linked(env, false);
       const st = await env.send({ type: 'PRO_STATE' }, popup(env));
       const u = st && st.upgradeUrl ? new URL(st.upgradeUrl) : null;
-      check('PRO: a linked browser that is not Pro gets Upgrade with the ACCOUNT BINDING (its link id), never its credential',
+      check('PRO: a linked browser that is not Pro gets Upgrade with its link id (which nothing reads yet: paywall-flip EXT-LINK-BINDING), never its credential',
         st && st.pro === false && st.signedIn === true && u && u.searchParams.get('app') === 'fullshot' &&
         u.searchParams.get('link') === 'lnk_0123456789abcdef' && !st.upgradeUrl.includes('nkx1_'), JSON.stringify(st));
       check('PRO: the answer to the popup carries no credential', !JSON.stringify(st).includes('nkx1_'), JSON.stringify(st));

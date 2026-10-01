@@ -18,16 +18,20 @@
    its own three paths and four keys, so this file cannot widen what is sent.
    Nothing about a page, a tab or a capture is ever a parameter.
 
-   THE UPGRADE URL carries the PRODUCT and the ACCOUNT BINDING: `app=fullshot` (the
-   parameter sites/nikatru/pricing.html already reads to know which product a
-   checkout is for, and the page's FullShot section, which generate-discovery.mjs
-   renders from app-config-data) and, when this browser is linked to a Nikatru
-   account, `link=<link_id>` — the
-   id POST /v1/ext/token returned for this browser's credential. The checkout page
-   is signed in; it sells to that account (POST /v1/checkout attributes by the
-   signed-in user, ADR 044 §6), and the link id lets it confirm the account it
-   charges is the one this browser checks. The CREDENTIAL never leaves the
-   service worker and never appears in a URL.
+   THE UPGRADE URL carries the PRODUCT, and the LINK ID for a binding nothing
+   checks yet: `app=fullshot` (the parameter sites/nikatru/pricing.html already
+   reads to know which product a checkout is for, and the page's FullShot
+   section, which generate-discovery.mjs renders from app-config-data) and, when
+   this browser is linked to a Nikatru account, `link=<link_id>`, the id
+   POST /v1/ext/token returned for this browser's credential. ⚠️ NOTHING READS
+   `link` TODAY: pricing.html reads `app` only and no route takes it. POST
+   /v1/checkout attributes the purchase to the signed-in web user (ADR 044 §6),
+   so a web session signed in as another account than the one this browser is
+   linked to would pay for a Pro this browser never sees. Comparing the two is
+   tooling/paywall-flip.json EXT-LINK-BINDING, which holds FullShot's paywall
+   off until it is built. The CREDENTIAL never leaves the service worker and
+   never appears in a URL; a link id is not a capability (DELETE
+   /v1/ext/devices/:link_id is scoped by user).
 
    ⬜ SIGN-IN IS NOT HERE YET. The connect flow (identity permission,
    launchWebAuthFlow, SKENT.newFlow/authUrl/codeFrom, client.exchange) waits on a
