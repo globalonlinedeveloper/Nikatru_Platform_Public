@@ -455,6 +455,9 @@ describe('JWKS at the edge', () => {
   });
 
   it('a HIT tells downstream caches only the REMAINING freshness, never a fresh 300 s', async () => {
+    // ONE instant for the stamp and the read: two wall-clock reads a millisecond
+    // apart floor the remainder to 199 (review 2, finding 1).
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
     heldFor(100);
     const res = await read();
     expect(originCalls).toHaveLength(0);
@@ -536,6 +539,37 @@ describe('JWKS at the edge', () => {
     expect(res.status).toBe(503);
     expect(res.headers.get(STALE_HEADER)).toBeNull();
     expect(JWKS_MAX_STALE_SECONDS).toBe(60 * MIN);
+  });
+
+  it('🔴 the 1 h bound holds DURING a back-off: a copy past it is never served stale, even with a live retry-at', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    heldFor(JWKS_TTL_SECONDS + JWKS_MAX_STALE_SECONDS + 1, undefined, { [RETRY_AT_HEADER]: String(1_700_000_000_000 + 30_000) });
+    reply = () => new Response('down', { status: 503 });
+    const res = await read();
+    expect(originCalls).toHaveLength(1);
+    expect(res.status).toBe(503);
+    expect(res.headers.get(STALE_HEADER)).toBeNull();
+  });
+
+  it('🔴 a failed read never puts the old copy back over a FRESHER one another request stored meanwhile', async () => {
+    const t0 = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(t0);
+    const { cache } = heldFor(JWKS_TTL_SECONDS + 60);
+    quietErrors();
+    // While this request waits on the origin, another one revalidates and stores.
+    reply = () => {
+      cache.store.set(
+        CANONICAL,
+        new Response(jwks, { status: 200, headers: { [STORED_AT_HEADER]: String(t0 + 1) } }),
+      );
+      return new Response('down', { status: 503 });
+    };
+    const res = await read();
+    expect(res.headers.get('x-nikatru-shield-cache')).toBe('STALE');
+    const kept = [...cache.store.values()][0];
+    expect(kept.headers.get(STORED_AT_HEADER)).toBe(String(t0 + 1));
+    expect(kept.headers.get(RETRY_AT_HEADER)).toBeNull();
+    expect(await kept.clone().text()).toBe(jwks);
   });
 
   it('🔴 an origin TIMEOUT with a stale copy held serves the copy — 200, never a 504', async () => {

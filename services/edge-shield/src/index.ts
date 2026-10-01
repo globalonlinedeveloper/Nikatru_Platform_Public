@@ -191,13 +191,36 @@ async function jwks(ctx: ExecutionContext): Promise<Response> {
     cache = null;
   }
 
-  /** Serve the held copy, and back off so the next reads do not ask the origin. */
+  /**
+   * Serve the held copy, and back off so the next reads do not ask the origin.
+   *
+   * The back-off write is a COMPARE-AND-SET on the stored stamp. While this
+   * request waited up to the deadline, another one may have revalidated and
+   * stored a fresh copy; putting the old copy back over it would serve that
+   * colo stale answers for a whole back-off while the origin is healthy (and
+   * keep a rotated-out key set that much longer). So the entry is re-read, and
+   * the write is skipped unless it still holds the copy this request read. The
+   * Cache API has no atomic swap, so this narrows the window to the gap between
+   * the re-read and the put; it does not close it.
+   */
   const serveStale = (held: Response, reason: string): Response => {
     console.error(JSON.stringify({ event: 'shield_jwks_stale', reason, ageS: Math.floor(staleAgeMs / 1000) }));
     if (cache) {
+      const store = cache;
+      const readStamp = held.headers.get(STORED_AT_HEADER);
       const backoff = new Response(held.clone().body, held);
       backoff.headers.set(RETRY_AT_HEADER, String(now + JWKS_RETRY_BACKOFF_SECONDS * 1000));
-      ctx.waitUntil(cache.put(key, backoff).catch(cacheFault));
+      ctx.waitUntil(
+        (async () => {
+          const current = await store.match(key);
+          const currentStamp = current?.headers.get(STORED_AT_HEADER) ?? null;
+          // Not awaited: cancelling one branch of a tee resolves only when the other
+          // branch is done too, so an await here can hang the whole back-off.
+          current?.body?.cancel().catch(() => {});
+          if (currentStamp !== readStamp) return;
+          await store.put(key, backoff);
+        })().catch(cacheFault),
+      );
     }
     return served(held, 'STALE', staleAgeMs);
   };
