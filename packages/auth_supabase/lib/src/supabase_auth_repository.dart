@@ -29,6 +29,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
     this.refreshSkew = const Duration(seconds: 30),
     Uri Function()? launchUri,
     Future<Uri?> Function()? deepLink,
+    this.deepLinkTimeout = const Duration(seconds: 2),
     RetryAfterLatch? retryAfter,
   })  : _injected = client,
         _retryAfter = retryAfter,
@@ -219,6 +220,17 @@ class SupabaseAuthRepository implements core.AuthRepository {
 
   static Future<Uri?> _latestAppLink() => AppLinks().getLatestLink();
 
+  /// How long [_failedArrivalUri] waits for the deep-link read before it
+  /// answers "no deep link".
+  ///
+  /// 🔴 BOUNDED BECAUSE THE READ SITS IN AN IN-ORDER `asyncMap`
+  /// ([_authEvents]). `getLatestLink()` is a platform-channel call with no
+  /// timeout of its own; a native side that never answers would pause the
+  /// whole event stream behind one failed link — `signedIn`, `signedOut`,
+  /// `tokenRefreshed` and `passwordRecovery` included. A `try` covers a
+  /// throw, not a hang. Injectable for the test that proves it.
+  final Duration deepLinkTimeout;
+
   /// Where the link whose exchange just FAILED came from: the latest deep link
   /// when it carries our marker, else the launch URL. Never throws — a
   /// platform that cannot answer reads as "no deep link".
@@ -226,7 +238,10 @@ class SupabaseAuthRepository implements core.AuthRepository {
     final Future<Uri?> Function()? read = _deepLink;
     if (read != null) {
       try {
-        final Uri? link = await read();
+        final Uri? link = await read().timeout(
+          deepLinkTimeout,
+          onTimeout: () => null,
+        );
         if (link != null && authArrivalOf(link).flow != null) return link;
       } catch (_) {
         // No plugin (a test), or the platform refused: the launch URL decides.
