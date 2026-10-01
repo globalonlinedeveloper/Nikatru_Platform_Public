@@ -14,7 +14,9 @@ The first subjects, at their honest levels: `tooling/ports/payments.json` (both 
 `AuthRepository`) and `tooling/ports/telemetry.json` (Dart `TelemetryClient`), each claiming L2 with target L3; every
 other vendor is placed in `tooling/ports/_non-port.json`. `tooling/ports/mail.json` (TS `MailTransport`, port-mail) is at
 L3 as well: Resend and a fake conformant, an Amazon SES draft passing the same suite to prove the port is not
-Resend-shaped.
+Resend-shaped. `tooling/ports/ai.json` (port-ai) is the first TWO-SIDED port, at L3: a server half (TS `AiProvider`:
+Anthropic on OUR key, behind T17's meter, plus a counting stub) and a client half (Dart `AiProvider`: three
+bring-your-own-key adapters on the USER's key, plus a fake), selected per call by FEATURE.
 
 ## 1. Levels
 
@@ -42,19 +44,21 @@ wherever the shape can hold it).
 | `adapters[].id` | The wire id: the value the selection names and the code keys on. |
 | `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. |
 | `adapters[].status` | `draft` · `built` · `live` · `standby` · `retired` · `fake` · `external`. |
+| `adapters[].half` | Optional, for a two-sided port: `server` (a Worker adapter on OUR credential) or `client` (an app adapter on the USER's own credential). |
 | `adapters[].impl` | `{file, symbol}`; for `external` (e.g. a self-hosted GoTrue configured by env) `{configAt, verify}`. |
 | `adapters[].outbound` | Optional `{file, symbol, modules}` — the adapter's outbound half (e.g. `RailOutbound`) and its further private modules. Limb 2 holds the symbol declared; limb 4 protects `file` and every `modules` path exactly as it protects `impl.file`. |
 | `adapters[].capabilities` | The port's own verbs (e.g. `verify`, `parse`, `cancel-api`). Capability verbs, never vendor nouns. |
 | `adapters[].secrets` | Secret **names** only — rows of `tooling/worker-secrets.json` once it exists, until then members of a Worker's `interface Env`. |
 | `adapters[].identity` | Field **paths** into `tooling/house-identity.json` (the entity source) that the vendor account carries. Never the values. |
 | `adapters[].environments` | Which of `test`, `sandbox`, `live` it may serve. A fake never lists `live`. Empty only for a `draft` or `retired` adapter: selectable nowhere. |
-| `adapters[].cost` | `feeCells` — `tooling/catalog/fee-register.json` cell ids applied per sale; `unit` — `{usd, per, asOf, verify}` or null. |
+| `adapters[].cost` | `feeCells` — `tooling/catalog/fee-register.json` cell ids applied per sale; `unit` — `{usd, per, asOf, verify}` or null; `models` — for a port billed per token, each model's price per million tokens (input, output, cache read, cache write) with `asOf`, `source` and `verify`. |
 | `adapters[].conformance` | `{file}` — the adapter's test that **calls** the suite's runner; null until it exists. |
 | `adapters[].exportDuty` | What leaves with us, what must be exported, what cannot move. |
 | `adapters[].readAt` | `{url, on}` — the vendor page the adapter's facts were read from, and when; null if none was read. |
 | `adapters[].delivery` | Mail only: `{rail, dnsNeeded, domainVerification, warming, suppression: {export, import}}` — the `tooling/mail-transport.json` rail whose `authRecords` it sends under (or, with none yet, the records to publish), the verification step, the warm-up, and how the suppression list leaves and enters it (null until the runbook names the method). Read by the mail dry run (C9–C14). |
 | `adapters[].c8Seam` | Optional, a **declared, printed** divergence: the vendor's C-8 `seam.file` is not this port's interface. Names the C-8 file exactly, with `why` and `until`. |
 | `streams` | For `selection.by: stream`: `{<stream>: {adapter, secrets, from, to?, why}}` — the adapter, its secret NAMES in preference order (the first one set wins), and the From (and a fixed recipient) as entity-source PATHS. Each adapter is one of the port's and each secret one that adapter declares (limb 1); each path resolves (limb 9). |
+| `features` | For `selection.by: per-call`: `{<feature>: {adapter, model, effort, candidates, tokensPerCall, why}}` — the adapter and the model a feature runs on (null until measured), the models it may be set to (each priced in its adapter's `cost.models`), and the tokens one call takes (`{input, output, basis: declared | measured, asOf, why}`, or null). Limb 1 holds each to its adapter and its candidates; the AI dry run (C15–C17) prices it. |
 | `selection.by` | `single` · `environment` · `stream` · `channel-market` · `per-call`. |
 | `selection.source` | `<file>#<pointer>` when another register (or one code site) holds the answer — e.g. `tooling/channel-register.json#purchaseRails`; null when `default` is the whole answer. |
 | `selection.default` | `{live, sandbox, test}` adapter ids or null. Null in every slot is honest for a port selected per channel. |
@@ -62,6 +66,7 @@ wherever the shape can hold it).
 | `generated` | `true` once code reads a **rendered** table instead of a hand array. The render tool is `tooling/ports/render.mjs [--check]` (port-pay-core); assert-ports limb 3 runs its check on every build, so a hand edit of a rendered table fails whether or not `generated` is claimed yet. |
 | `handTables[]` | `{file, anchor, until, why}` — a declared, printed waiver for a hand-written table (or a pre-port import) that the port will replace. The anchor must still exist. |
 | `conformance.suite` | `{file, runner}` or null. |
+| `conformance.clientSuite` | Optional `{file, runner}`: the suite a client (Dart) adapter of a two-sided port calls. Each adapter is graded against the suite in its own file's language. |
 | `conformance.pending[]` | `{adapter, case, row}` — a scenario an adapter cannot pass yet. Names its `O-` row, prints on every run, and blocks L3 for that adapter. |
 | `switch.runbook` | `Private/runbooks/switch-vendor.md#<port>`. |
 | `switch.dryRun` | `node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run`. |
@@ -136,6 +141,7 @@ Six phases, each with an exit test. `Private/runbooks/switch-vendor.md#<port>` c
 | Auth | `auth.users` (ids, emails, identities) — the ids are every row's foreign key and must move unchanged | Password hashes outside a compatible target; live sessions | A re-sign-in at cutover |
 | Mail | **The suppression list (bounces, complaints, unsubscribes) MUST move** — sending to it from a new provider is a deliverability and a legal failure | Sender reputation | Warm-up on the target |
 | Telemetry | Nothing required (short-retention, PII-scrubbed); the monitor configuration is already ours | — | Repoint the DSN |
+| AI | Nothing: no data of ours is held at the provider (the server adapter stores nothing there; the provider's own retention of API traffic is recorded in the registry). A bring-your-own-key account is the user's | The prompt cache; the measured quality bar per model | Server: a registry edit plus a deploy, after the quality bar is re-measured. Client: a new adapter ships in an app release |
 | Storage / SQL | Every object and row, by export | — | Copy, verify, cut over |
 
 ## 6. The margin rule
@@ -180,6 +186,11 @@ names the method**, C13 warming, and C14 the per-stream cost from `tooling/ceili
 For `payments` it adds C9 the
 webhook URL to register and the secrets by name, C10 the price ids still to create per offering, C11 the channels whose
 `purchaseRails` would change (a store-billed channel never moves to a web rail, and C8 nets only what moves), and C12 the run-off note; each pending conformance case prints as its own `FAIL` line.
+A port with `features` (ai) takes a MODEL as `--to` as well as an adapter, and adds C15 the target's model prices, C16
+each feature's tokens per call × price (LOST while a feature has no model or no tokens — never a guess), and C17 the
+MINIMUM credit-pack price per unit per selling channel: at least 4× the cost (owner lock, 2026-10-01) after the store
+commission (the rail's highest cell, 30% on the App Store), the GST and the rail fee, from `fee-register.json` — a
+subscription-only cell never prices a one-time pack.
 
 `node tooling/ports/render.mjs [--check]` renders the tables code reads (today
 `services/platform/src/generated/ports.ts` from `payments.json`); `--check` exits 1 on any difference, and limb 3

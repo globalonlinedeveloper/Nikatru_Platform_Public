@@ -12,6 +12,7 @@
     "db:migrate": "wrangler d1 migrations apply PLATFORM_DB --remote"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "hono": "^4.8.0",
     "jose": "^6.0.0"
   },

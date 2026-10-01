@@ -25,8 +25,26 @@
 // RENDERED table (src/generated/ports.ts, from payments.json by tooling/ports/render.mjs).
 // The two binding records below are typed by the rendered id union: a rendered adapter
 // with no binding, or a binding for an id the registry does not list, fails `tsc`.
+//
+// AI (tooling/ports/ai.json). `aiFor(feature, env, { beforeCall })` is the
+// provider and the model for one feature, or why there is none:
+//   · the model of each feature is AI_FEATURE_TABLE below — a hand table
+//     mirroring ai.json `features`, declared there as a `handTables` waiver until
+//     T17 renders it with tooling/ports/render.mjs (which renders payments
+//     today); test/ai-port.test.ts fails on any difference. Every
+//     model is NULL until train-st-ai-customer-pays (T17) measures the cheapest
+//     model that meets each feature's quality bar, so today every feature is
+//     "no model yet" and nothing can call a model;
+//   · 🔴 NO METER, NO PROVIDER: without T17's `beforeCall` (the reservation) no
+//     provider is built, and the adapter refuses on its own as well — two locks
+//     on the one rule that no call is made that the customer has not paid for;
+//   · AI_COST_MODEL is the price of every candidate model, mirroring ai.json
+//     `adapters[anthropic].cost.models`, for the meter to price `servedModel`.
+// The stub (services/_shared/src/ports/fakes/ai.ts) is never selected here.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { AiBeforeCall, AiCostModel, AiEffort, AiFeature, AiModelId, AiProvider } from '../../_shared/src/ports/ai';
 import type { MailSenders, MailStream, MailTransport } from '../../_shared/src/ports/mail';
+import { createAnthropicAi } from './adapters/ai/anthropic';
 import { createResendMail } from './adapters/mail/resend';
 import { MAIL_FROM } from './generated/entity';
 import type { Env } from './types';
@@ -141,4 +159,36 @@ export function railFor(provider: string | null, env: Env): RailOutbound | null 
 export function portFor(port: 'payments', environment: PortEnvironment): readonly PaymentsAdapterId[] {
   if (port !== 'payments') return [];
   return PAYMENTS_ADAPTERS.filter((a) => a.environments.includes(environment)).map((a) => a.id);
+}
+
+/** Per feature: the adapter, the model (null until T17 measures) and its effort. */
+export const AI_FEATURE_TABLE: Readonly<Record<AiFeature, { adapter: 'anthropic'; model: AiModelId | null; effort: AiEffort | null }>> = {
+  import: { adapter: 'anthropic', model: null, effort: null },
+  review: { adapter: 'anthropic', model: null, effort: null },
+};
+
+/** The price per million tokens of every candidate model (ai.json, `asOf` and `verify` there). */
+export const AI_COST_MODEL: AiCostModel = {
+  'claude-haiku-4-5': { inputUsdPerMTok: 1, outputUsdPerMTok: 5, cacheReadUsdPerMTok: 0.1, cacheWriteUsdPerMTok: 1.25, asOf: '2026-10-02', verify: 'tooling/ports/ai.json' },
+  'claude-sonnet-5-5': { inputUsdPerMTok: 2, outputUsdPerMTok: 10, cacheReadUsdPerMTok: 0.2, cacheWriteUsdPerMTok: 2.5, asOf: '2026-10-02', verify: 'tooling/ports/ai.json' },
+  'claude-opus-5-5': { inputUsdPerMTok: 4, outputUsdPerMTok: 20, cacheReadUsdPerMTok: 0.2, cacheWriteUsdPerMTok: 5, asOf: '2026-10-02', verify: 'tooling/ports/ai.json' },
+};
+
+export type AiSelection =
+  | { readonly ok: true; readonly feature: AiFeature; readonly model: AiModelId; readonly effort: AiEffort | null; readonly provider: AiProvider }
+  | { readonly ok: false; readonly detail: string };
+
+/** The provider and model for one feature — or why there is none. Never the key. */
+export function aiFor(
+  feature: AiFeature,
+  env: Pick<Env, 'NIKATRU_ANTHROPIC_API_KEY'>,
+  wiring: { readonly beforeCall?: AiBeforeCall; readonly fetchImpl?: typeof fetch } = {},
+): AiSelection {
+  const row = AI_FEATURE_TABLE[feature];
+  if (!row.model) return { ok: false, detail: `ai: feature ${feature} has no model yet (tooling/ports/ai.json features.${feature}.model)` };
+  if (!wiring.beforeCall) return { ok: false, detail: 'ai: no meter is wired (beforeCall), so no provider is built' };
+  const apiKey = env.NIKATRU_ANTHROPIC_API_KEY;
+  if (!apiKey) return { ok: false, detail: 'ai: NIKATRU_ANTHROPIC_API_KEY is not set on this Worker' };
+  const provider = createAnthropicAi({ apiKey, beforeCall: wiring.beforeCall, ...(wiring.fetchImpl ? { fetchImpl: wiring.fetchImpl } : {}) });
+  return { ok: true, feature, model: row.model, effort: row.effort, provider };
 }

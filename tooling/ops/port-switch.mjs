@@ -74,6 +74,32 @@
 //   C14 cost      the per-stream monthly cost from tooling/ceilings.json's rows for
 //                 the vendors; LOST when it records none (never a guess)
 //
+// An AI switch (a port with `features`, tooling/ports/ai.json) adds three, and
+// `--to` may name a MODEL instead of an adapter (`--to claude-opus-5-5`): the
+// adapter that prices it is the target, and every feature is priced at it.
+//   C15 models    the target's per-model prices (cost.models), each with asOf and
+//                 verify; a client (bring-your-own-key) adapter or a fake has
+//                 none of ours to price
+//   C16 features  per feature: the model, the tokens in and out of one call
+//                 (declared or measured) and their cost. A feature with no model
+//                 or no tokens is LOST — T17 measures both, never a guess
+//   C17 floor     per feature and per selling channel: the MINIMUM credit-pack
+//                 price per unit, so the money the channel leaves us is at least
+//                 AI_COST_MULTIPLE (4) times the cost (owner lock, 2026-10-01).
+//                 From tooling/catalog/fee-register.json, for a ONE-TIME pack:
+//                   store rail      4C × (1 + GST) / (1 − commission) — the
+//                                   highest commission cell of the rail (30%
+//                                   on the App Store where it applies), the
+//                                   store remitting the GST inside the price;
+//                   razorpay        4C / (1/(1 + GST) − fee) — we are the
+//                                   seller of record and remit the GST;
+//                   paddle          4C / (1 − fee) per unit, plus the fixed
+//                                   fee / (1 − fee) once per pack — Paddle,
+//                                   the merchant of record, handles the tax.
+//                 A subscription-only cell does not apply to a pack, so a rail
+//                 whose only cell is one (Play today) is LOST, never guessed.
+//                 Rounded UP at four decimals: a minimum never rounds down.
+//
 // It reads registries and nothing else: no network, no vault, no credential.
 // ─────────────────────────────────────────────────────────────────────────────
 import { existsSync, readFileSync } from 'node:fs';
@@ -238,14 +264,20 @@ export function run(opts) {
   }
   const env = opts.env;
   const adapters = Array.isArray(doc.adapters) ? doc.adapters : [];
-  const target = adapters.find((a) => a?.id === opts.to);
+  // An AI switch may name a MODEL: the adapter that prices it is the target.
+  let model = null;
+  let target = adapters.find((a) => a?.id === opts.to);
+  if (!target && isObj(doc.features)) {
+    target = adapters.find((a) => isObj(a?.cost?.models?.[opts.to]));
+    if (target) model = opts.to;
+  }
 
   // C1
   if (!target) add(1, 'target', 'FAIL', `${rel} has no adapter \`${opts.to}\` (has: ${adapters.map((a) => a?.id).join(', ')})`);
   else if (target.status === 'fake' && env === 'live') add(1, 'target', 'FAIL', `\`${target.id}\` is a fake; a fake is never selectable in live`);
   else if (!(target.environments ?? []).length) add(1, 'target', 'FAIL', `\`${target.id}\` is ${target.status} (status: ${target.status}) and lists no environment: no environment may select it`);
   else if (!(target.environments ?? []).includes(env)) add(1, 'target', 'FAIL', `\`${target.id}\` does not list the ${env} environment (${(target.environments ?? []).join(', ')})`);
-  else add(1, 'target', 'PASS', `\`${target.id}\` (vendor ${target.vendor ?? 'none — a fake'}) is a row of ${rel} for ${env}`);
+  else add(1, 'target', 'PASS', `\`${target.id}\` (vendor ${target.vendor ?? 'none — a fake'}) is a row of ${rel} for ${env}${model ? `; every feature priced at model \`${model}\`` : ''}`);
   if (!target) return finish(checks);
 
   // C2
@@ -289,8 +321,9 @@ export function run(opts) {
     }
   }
 
-  // C5
-  const suite = doc.conformance?.suite;
+  // C5 — the suite in the target's own language (a two-sided port carries a clientSuite).
+  const suites = [doc.conformance?.suite, doc.conformance?.clientSuite].filter(Boolean);
+  const suite = (target.conformance?.file && suites.find((s) => extname(s.file) === extname(target.conformance.file))) || doc.conformance?.suite;
   const pending = (doc.conformance?.pending ?? []).filter((p) => p.adapter === target.id);
   if (!suite) add(5, 'conformance', 'FAIL', `${rel} has no conformance suite; no adapter of this port can be shown conformant`);
   else if (!target.conformance?.file) add(5, 'conformance', 'FAIL', `\`${target.id}\` names no conformance file`);
@@ -311,6 +344,8 @@ export function run(opts) {
     if (def) current = adapters.filter((a) => a?.id === def);
     else current = adapters.filter((a) => a?.status !== 'fake' && a?.status !== 'retired' && a?.status !== 'draft' && (a?.environments ?? []).includes(env));
   }
+  // A MODEL switch keeps the adapter: the rollback is the previous model per feature.
+  const modelSwitch = model !== null && current.some((a) => a.id === target.id);
   current = current.filter((a) => a.id !== target.id);
 
   // C6
@@ -319,7 +354,10 @@ export function run(opts) {
   else add(6, 'export', 'PASS', `written for ${[...current, target].map((a) => a.id).join(', ')}`);
 
   // C7
-  if (opts.from && !current.length) add(7, 'standby', 'FAIL', `--from \`${opts.from}\` is not another adapter of ${rel}`);
+  if (modelSwitch && !opts.from) {
+    const was = Object.entries(doc.features).map(([f, ft]) => `${f}: ${ft?.model ?? 'unset'}`).join(', ');
+    add(7, 'standby', 'PASS', `a model switch keeps \`${target.id}\`; the rollback is each feature's previous model (${was}), one registry edit`);
+  } else if (opts.from && !current.length) add(7, 'standby', 'FAIL', `--from \`${opts.from}\` is not another adapter of ${rel}`);
   else if (!current.length) add(7, 'standby', 'FAIL', `no current adapter other than \`${target.id}\` in ${env}: nothing to fall back to`);
   else {
     const bad = current.filter((a) => a.status === 'retired' || (env === 'live' && a.status === 'fake'));
@@ -344,7 +382,8 @@ export function run(opts) {
     for (const a of current) extra.push(`    run-off ${a.id}: ${a.exportDuty}`);
   }
   if (isObj(doc.streams)) mailChecks(root, doc, target, current, add);
-  return finish(checks, extra);
+  const aiLines = isObj(doc.features) ? aiChecks(root, doc, target, model, add) : [];
+  return finish(checks, [...extra, ...aiLines]);
 }
 
 /** C9 · the webhook URL to register: the platform Worker's own custom domain for `env`. */
@@ -419,6 +458,125 @@ export function channelsChanging(root, target, current, adapters = [...current, 
     : '';
   if (!moving.length) return { verdict: 'PASS', detail: `no channel's purchaseRail changes${heldNote}` };
   return { verdict: 'PASS', detail: `${moving.length} channel(s) would change purchaseRail: ${moving.map((c) => `${c.id} (${c.purchaseRail.rail} → ${target.id})`).join(', ')}${heldNote}` };
+}
+
+/** The owner lock (2026-10-01): AI is priced at no less than this multiple of its measured cost. */
+export const AI_COST_MULTIPLE = 4;
+/** A fee cell that charges only a renewing subscription, never a one-time credit pack. */
+const SUBSCRIPTION_ONLY = /subscription/;
+const STORE_RAILS = new Set(['apple-iap', 'play-billing']);
+const ceil4 = (x) => Math.ceil(x * 1e4 - 1e-9) / 1e4;
+const usd4 = (x) => ceil4(x).toFixed(4);
+
+/** The USD one call costs at `price` (a cost.models row), for `tokens` in and out. */
+export function callCostUsd(price, tokens) {
+  return (tokens.input * price.inputUsdPerMTok + tokens.output * price.outputUsdPerMTok) / 1_000_000;
+}
+
+/**
+ * The minimum price per unit of a ONE-TIME credit pack on a rail, so that what
+ * the rail leaves us is at least AI_COST_MULTIPLE × `costUsd`; or {lost}.
+ * Returns {perUnit, perPack, how} — `perPack` is the fixed fee carried once per pack.
+ */
+export function creditFloor(rail, costUsd, cells) {
+  const all = Object.entries(cells).filter(([, c]) => isObj(c) && c.rail === rail);
+  const usable = all.filter(([id, c]) => !SUBSCRIPTION_ONLY.test(id) && isObj(c.value) && Number.isInteger(c.value.percentBps));
+  const gstCell = cells['india-gst'];
+  const gstBps = isObj(gstCell?.value) && Number.isInteger(gstCell.value.percentBps) ? gstCell.value.percentBps : null;
+  const gst = gstBps === null ? null : gstBps / 10_000;
+  const fees = usable.filter(([id]) => id !== 'india-gst');
+  if (!fees.length) {
+    const skipped = all.map(([id]) => id).filter((id) => id !== 'india-gst');
+    return { lost: `${FEE_REGISTER} carries no cell for a one-time pack on \`${rail}\`${skipped.length ? ` (${skipped.join(', ')} ${skipped.length === 1 ? 'is' : 'are'} subscription-only or valueless)` : ''}` };
+  }
+  const floor = AI_COST_MULTIPLE * costUsd;
+  const top = fees.reduce((a, b) => (b[1].value.percentBps > a[1].value.percentBps ? b : a));
+  const pct = top[1].value.percentBps / 10_000;
+  const pctText = `${top[1].value.percentBps / 100}%`;
+  const gstText = `${gstBps === null ? '?' : gstBps / 100}% GST`;
+  if (STORE_RAILS.has(rail)) {
+    if (gst === null) return { lost: `${FEE_REGISTER} has no india-gst value; the store remits GST from the price` };
+    return { perUnit: (floor * (1 + gst)) / (1 - pct), perPack: 0, how: `4C × (1 + ${gstText}) / (1 − ${pctText} ${top[0]})` };
+  }
+  if (rail === 'razorpay') {
+    if (gst === null) return { lost: `${FEE_REGISTER} has no india-gst value; on the India web book we remit it` };
+    const net = 1 / (1 + gst) - pct;
+    return { perUnit: floor / net, perPack: 0, how: `4C / (1/(1 + ${gstText}) − ${pctText} ${top[0]})` };
+  }
+  const fixedCells = fees.filter(([, c]) => Number.isInteger(c.value.fixedMinor) && c.value.fixedMinor > 0);
+  for (const [id, c] of fixedCells) {
+    const problem = feeCurrencyProblem(c.value, 'USD');
+    if (problem) return { lost: `${FEE_REGISTER} cell \`${id}\` ${problem}` };
+  }
+  const fixed = fixedCells.reduce((m, [, c]) => Math.max(m, c.value.fixedMinor), 0) / 100;
+  return { perUnit: floor / (1 - pct), perPack: fixed / (1 - pct), how: `4C / (1 − ${pctText} ${top[0]})${fixed ? ` + ${fixed.toFixed(2)} fixed / (1 − ${pctText}) per pack` : ''}` };
+}
+
+/** C15–C17 · what an AI switch costs, per feature and per channel. Returns the floor lines. */
+export function aiChecks(root, doc, target, model, add) {
+  const lines = [];
+  const priced = isObj(target.cost?.models) ? target.cost.models : null;
+  // C15
+  if (target.status === 'fake') {
+    for (const [n, name] of [[15, 'models'], [16, 'features'], [17, 'floor']]) add(n, name, 'PASS', `\`${target.id}\` is a fake: it calls no model`);
+    return lines;
+  }
+  if (target.half === 'client') {
+    for (const [n, name] of [[15, 'models'], [16, 'features'], [17, 'floor']]) add(n, name, 'PASS', `\`${target.id}\` runs on the USER's own key: we pay nothing, so nothing of ours is priced`);
+    return lines;
+  }
+  if (!priced || !Object.keys(priced).length) {
+    add(15, 'models', 'FAIL', `\`${target.id}\` prices no model (cost.models); a call on our key cannot be costed`);
+    add(16, 'features', 'LOST', 'no model prices to cost a feature with');
+    add(17, 'floor', 'LOST', 'no cost, so no floor');
+    return lines;
+  }
+  add(15, 'models', 'PASS', Object.entries(priced).map(([id, p]) => `${id} ${p.inputUsdPerMTok}/${p.outputUsdPerMTok} USD per MTok in/out (asOf ${p.asOf})`).join('; '));
+  // C16
+  const costs = [];
+  const lost16 = [];
+  for (const [f, ft] of Object.entries(doc.features)) {
+    const m = model ?? ft?.model;
+    if (!m) { lost16.push(`${f}: no model (features.${f}.model is unset until measured)`); continue; }
+    if (!isObj(priced[m])) { add(16, 'features', 'FAIL', `${f}: model \`${m}\` is not priced by \`${target.id}\``); return lines; }
+    if (!isObj(ft?.tokensPerCall)) { lost16.push(`${f}: no tokens per call (features.${f}.tokensPerCall is null until declared or measured)`); continue; }
+    const c = callCostUsd(priced[m], ft.tokensPerCall);
+    costs.push({ feature: f, model: m, tokens: ft.tokensPerCall, cost: c });
+  }
+  const costText = costs.map((c) => `${c.feature} on ${c.model}: ${c.tokens.input} in + ${c.tokens.output} out (${c.tokens.basis}) = USD ${c.cost.toFixed(6)} per call`).join('; ');
+  if (lost16.length) add(16, 'features', 'LOST', `${lost16.join('; ')}${costText ? ` — priced: ${costText}` : ''}`);
+  else add(16, 'features', 'PASS', costText);
+  // C17
+  let cells;
+  try { cells = JSON.parse(readFileSync(join(root, FEE_REGISTER), 'utf8'))?.cells; } catch (e) { add(17, 'floor', 'LOST', `${FEE_REGISTER} could not be read (${e.message})`); return lines; }
+  let channels;
+  try { channels = (JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8')).channels ?? []).filter((c) => c?.surface === 'app' && c?.purchaseRail?.rail && c.purchaseRail.rail !== 'none'); } catch (e) {
+    add(17, 'floor', 'LOST', `${CHANNEL_REGISTER} could not be read (${e.message})`);
+    return lines;
+  }
+  if (!costs.length) { add(17, 'floor', 'LOST', 'no feature is costed yet, so no floor'); return lines; }
+  if (!channels.length) { add(17, 'floor', 'LOST', `${CHANNEL_REGISTER} names no app channel that sells`); return lines; }
+  // A channel sells on its rail, and in a region with its own rail on that one
+  // too (the India web book takes razorpay: channel-register regionRails).
+  const rows = channels.flatMap((ch) => [
+    { id: ch.id, rail: ch.purchaseRail.rail },
+    ...(Array.isArray(ch.purchaseRail.regionRails) ? ch.purchaseRail.regionRails : [])
+      .filter((r) => typeof r?.rail === 'string' && r.rail !== 'none')
+      .map((r) => ({ id: `${ch.id}/${r.region}`, rail: r.rail })),
+  ]);
+  const lost17 = [];
+  lines.push(`    minimum credit-pack price per unit (≥ ${AI_COST_MULTIPLE}× cost after the channel's cut), USD:`);
+  for (const c of costs) {
+    lines.push(`      ${c.feature} — ${c.model}, cost USD ${c.cost.toFixed(6)} per call, ${AI_COST_MULTIPLE}× = ${(AI_COST_MULTIPLE * c.cost).toFixed(6)}`);
+    for (const row of rows) {
+      const fl = creditFloor(row.rail, c.cost, isObj(cells) ? cells : {});
+      if (fl.lost) { lost17.push(`${c.feature}/${row.id}: ${fl.lost}`); lines.push(`        ${row.id.padEnd(18)} ${row.rail.padEnd(13)} LOST — ${fl.lost}`); continue; }
+      lines.push(`        ${row.id.padEnd(18)} ${row.rail.padEnd(13)} ≥ ${usd4(fl.perUnit)} per unit${fl.perPack ? ` + ${usd4(fl.perPack)} per pack` : ''}   (${fl.how})`);
+    }
+  }
+  if (lost17.length) add(17, 'floor', 'LOST', `${lost17.length} floor(s) not derived — first: ${lost17[0]}`);
+  else add(17, 'floor', 'PASS', `${costs.length} feature(s) × ${rows.length} channel row(s) floored at ${AI_COST_MULTIPLE}× cost (table below)`);
+  return lines;
 }
 
 export const MAIL_TRANSPORT = 'tooling/mail-transport.json';

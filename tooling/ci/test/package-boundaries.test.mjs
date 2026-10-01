@@ -509,6 +509,27 @@ describe('assert-package-boundaries', () => {
       assert.equal(r.code, 0, r.out);
     });
 
+    // ⏱ 2026-10-02 · port-ai: a model provider is reached only through the AI port's client half.
+    test('RC9 · (c4) FAILS on an app importing an AI provider client, and on a provider host outside the BYOK adapters', () => {
+      let r = run(tree({ extra: { 'apps/subscriptiontracker/lib/ai.dart': "import 'package:openai_dart/openai_dart.dart';\n" } }));
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /apps\/subscriptiontracker\/lib imports `package:openai_dart` .*an AI provider's client/);
+      r = run(tree({ extra: { 'packages/core/lib/src/ai.dart': "final u = Uri.parse('https://api.anthropic.com/v1/messages');\n" } }));
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /packages\/core\/lib\/src\/ai\.dart calls the AI provider host `api\.anthropic\.com` outside the bring-your-own-key adapters/);
+    });
+
+    test('(c4) the bring-your-own-key adapters may name their host; a host in a comment is prose', () => {
+      const r = run(tree({
+        extra: {
+          'packages/api_client/lib/src/ai_byok/anthropic_byok.dart': "final u = Uri.parse('https://api.anthropic.com/v1/messages');\n",
+          'packages/core/lib/src/ai.dart': '/// Documented at https://api.openai.com/v1/responses — read, never called here.\nconst int x = 1;\n',
+        },
+      }));
+      assert.equal(r.code, 0, r.out);
+      assert.match(r.out, /limb \(c4\) read \d+ shipped \.dart file\(s\)/);
+    });
+
     test('(c2) COVERAGE LOST when fewer than 3 packages carry a lib/', () => {
       const root = tree();
       rmSync(join(root, 'packages/api_client/lib'), { recursive: true, force: true });

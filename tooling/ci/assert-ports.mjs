@@ -27,7 +27,10 @@
 //               literal; the file name equals `port`. An adapter with NO
 //               environment is `draft` or `retired`; a `stream` selection has
 //               `streams`, each naming an adapter of the port and only secrets
-//               that adapter declares. An empty or unreadable
+//               that adapter declares; a `per-call` selection has `features`,
+//               each naming an adapter of the port, candidates that adapter
+//               prices in `cost.models`, and a model (when set) among its
+//               candidates. An empty or unreadable
 //               tooling/ports/ is COVERAGE LOST (exit 2) — a floor of zero ports
 //               is met by an empty directory (vacuous-02).
 //   2 symbols   every interface and impl symbol is DECLARED in its file, in
@@ -54,7 +57,10 @@
 //               L3 + a conformance suite whose runner each of >= 2 adapters'
 //               conformance files CALLS, zero pending for them, a runbook and the
 //               dry-run command. A draft or retired adapter is never one of the
-//               two: it may pass the suite, but nothing can select it. A claim
+//               two: it may pass the suite, but nothing can select it. A port
+//               with a `clientSuite` (ai: TS Worker adapters and Dart
+//               bring-your-own-key adapters) grades each adapter against the
+//               suite in its own file's language. A claim
 //               above the earned level is exit 1. The table port · claimed ·
 //               earned · target prints on every run.
 //   7 fakes     a `fake` never lists `live`, and selection.default.live is never one.
@@ -348,6 +354,14 @@ export function evaluate(root) {
       if (!a) { find(1, `${rel} stream \`${name}\` names adapter \`${st?.adapter}\`, which is no adapter of this port.`); continue; }
       for (const n of st.secrets ?? []) if (!(a.secrets ?? []).includes(n)) find(1, `${rel} stream \`${name}\` takes secret \`${n}\`, which its adapter \`${a.id}\` does not declare.`);
     }
+    if (doc?.selection?.by === 'per-call' && !isObj(doc?.features)) find(1, `${rel} is selected per call but declares no \`features\`.`);
+    for (const [name, ft] of Object.entries(isObj(doc?.features) ? doc.features : {})) {
+      const a = (doc?.adapters ?? []).find((x) => x?.id === ft?.adapter);
+      if (!a) { find(1, `${rel} feature \`${name}\` names adapter \`${ft?.adapter}\`, which is no adapter of this port.`); continue; }
+      const priced = isObj(a.cost?.models) ? a.cost.models : {};
+      for (const m of ft.candidates ?? []) if (!isObj(priced[m])) find(1, `${rel} feature \`${name}\` lists candidate \`${m}\`, which adapter \`${a.id}\` does not price in cost.models.`);
+      if (typeof ft.model === 'string' && !(ft.candidates ?? []).includes(ft.model)) find(1, `${rel} feature \`${name}\` runs on \`${ft.model}\`, which is not one of its candidates.`);
+    }
     for (const env of ['live', 'sandbox', 'test']) {
       const sel = doc?.selection?.default?.[env];
       if (sel !== null && sel !== undefined && !ids.has(sel)) find(1, `${rel} selection.default.${env} names \`${sel}\`, which is no adapter of this port.`);
@@ -521,15 +535,24 @@ export function evaluate(root) {
       let conformant = 0;
       if (!suite) why.push('no conformance suite');
       else {
-        const suiteSrc = readStripped(root, suite.file);
-        if (suiteSrc === null || !declares(suiteSrc, suite.runner, extname(suite.file))) why.push(`the suite ${suite.file} does not declare ${suite.runner}`);
+        // A two-sided port (ai: Worker adapters and Dart bring-your-own-key
+        // adapters) carries a `clientSuite` too. Each adapter is graded against
+        // the suite in ITS OWN language — a Dart test cannot call a TS runner.
+        const suites = [suite, doc.conformance.clientSuite].filter(Boolean);
+        const undeclared = suites.find((st) => {
+          const src = readStripped(root, st.file);
+          return src === null || !declares(src, st.runner, extname(st.file));
+        });
+        if (undeclared) why.push(`the suite ${undeclared.file} does not declare ${undeclared.runner}`);
         else {
           for (const a of doc.adapters ?? []) {
             // A draft or retired adapter may pass the suite (mail's SES draft
             // does), but no environment can select it, so it earns nothing.
             if (!a?.conformance?.file || pending.has(a.id) || a.status === 'draft' || a.status === 'retired') continue;
+            const st = suites.find((x) => extname(x.file) === extname(a.conformance.file));
+            if (!st) continue;
             const s = readStripped(root, a.conformance.file);
-            if (s !== null && callsRunner(s, suite.runner, extname(a.conformance.file))) conformant++;
+            if (s !== null && callsRunner(s, st.runner, extname(a.conformance.file))) conformant++;
           }
           if (conformant < 2) why.push(`${conformant} conformant adapter(s); L3 needs two with zero pending`);
         }
