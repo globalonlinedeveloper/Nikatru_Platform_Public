@@ -47,7 +47,7 @@
 // control being counted twice when an `InkWell` builds a `GestureDetector`
 // inside itself.
 //
-// ── THE SURFACE IS 1079×2400, AND BOTH NUMBERS ARE LOAD-BEARING ─────────────
+// ── THE SURFACE IS 1079×2600, AND BOTH NUMBERS ARE LOAD-BEARING ─────────────
 // 1079 is the width `AppScaffold` hands a branch on a maximised 1440 px desktop
 // — `min(1440 - 361, 1280)`, measured 2026-08-21, and already named `kShell` in
 // `width_settings_test.dart`. A keyboard sweep belongs at a DESKTOP width
@@ -58,7 +58,8 @@
 // stays at 1079: it is still a desktop-range body width, and every count below
 // was measured on it.
 //
-// 2400 tall is what makes the sweep COMPLETE rather than merely long. A
+// 2600 tall (2400 until 2026-09-30, when Settings outgrew it) is what makes
+// the sweep COMPLETE rather than merely long. A
 // `ListView` culls what is off-screen, and a culled control is neither
 // reachable nor unreachable — it does not exist, so a sweep run in a short
 // viewport measures the viewport instead of the screen and silently
@@ -168,8 +169,12 @@ import 'support/width_harness.dart';
 
 /// The desktop shell width (see the header) at a viewport tall enough that no
 /// screen in the sweep scrolls. Both halves are asserted, not assumed:
-/// [_everythingIsLaidOut] fails if 2400 ever stops being enough.
-const Size kKeyboardSurface = Size(1079, 2400);
+/// [_everythingIsLaidOut] fails if 2600 ever stops being enough.
+///
+/// ⏱ 2026-09-30 · ST-Y3/ST-Y4: 2400 -> 2600. Settings gained three card
+/// headings and the Help section's Rate and Feedback rows and scrolled by
+/// 142 px at 2400 — measured by [_everythingIsLaidOut], which is what it is for.
+const Size kKeyboardSurface = Size(1079, 2600);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
 ///
@@ -660,8 +665,11 @@ void main() {
         // "At" rows under Renewal alerts, both ListTiles in the Tab orbit.
         // ⏱ 2026-09-29 · ST-D4 on ST-R3: 25 -> 26 and 23 -> 24 — the Privacy
         // card's "Privacy notice" _LinkRow, wired, a control AND in the orbit.
-        controls: 26 + core.Money.symbols.length,
-        reachable: 24 + core.Money.symbols.length,
+        // ⏱ 2026-09-30 · ST-Y4 (audit D12/F53): 26 -> 28 and 24 -> 26 — the
+        // Help section's "Rate" and "Send feedback" _LinkRows, both wired.
+        // (Contact support MOVED into Help; it is not a new control.)
+        controls: 28 + core.Money.symbols.length,
+        reachable: 26 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,
