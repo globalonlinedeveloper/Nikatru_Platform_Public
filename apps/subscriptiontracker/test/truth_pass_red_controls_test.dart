@@ -30,7 +30,7 @@ import 'package:subscriptiontracker/data/subscriptions/subscription_repository.d
 import 'package:subscriptiontracker/features/add/add_subscription_sheet.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
-import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
+import 'package:subscriptiontracker/features/stop/stop_flow.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
 import 'package:subscriptiontracker/features/insights/forecast_card.dart';
@@ -117,6 +117,11 @@ class _Repo implements SubscriptionRepository {
 
   @override
   Future<void> cancel(String id) async {}
+
+  // DE-04 (stop train): no payment writes behind this fake, so the detail
+  // screen offers no "Mark as paid".
+  @override
+  bool get canRecordPayments => false;
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
@@ -215,7 +220,14 @@ void main() {
     testWidgets('a paused and a cancelled row SAY so on the Home list', (
       WidgetTester tester,
     ) async {
-      await _pump(tester, const HomeScreen(), rows: _mixed());
+      // Tall enough that the whole list is built: HO-03's controls and HO-05's
+      // decisions sit above it now.
+      await _pump(
+        tester,
+        const HomeScreen(),
+        rows: _mixed(),
+        size: const Size(400, 2400),
+      );
       expect(
         find.descendant(
           of: find.byKey(HomeScreen.allKey),
@@ -298,29 +310,22 @@ void main() {
     test(
       'SubMath.chargesInMonth: 5 weekly, the stale row rolled, no pause',
       () {
-        final List<({Subscription sub, DateTime date})> c =
-            SubMath.chargesInMonth(rows(), 2026, 10);
+        final List<ProjectedCharge> c = SubMath.chargesInMonth(
+          rows(),
+          2026,
+          10,
+        );
         expect(
           c
-              .where(
-                (({Subscription sub, DateTime date}) x) => x.sub.id == 'wk',
-              )
-              .map((({Subscription sub, DateTime date}) x) => x.date.day),
+              .where((ProjectedCharge x) => x.sub.id == 'wk')
+              .map((ProjectedCharge x) => x.on.day),
           <int>[1, 8, 15, 22, 29],
         );
         expect(
-          c
-              .where(
-                (({Subscription sub, DateTime date}) x) => x.sub.id == 'st',
-              )
-              .single
-              .date,
+          c.where((ProjectedCharge x) => x.sub.id == 'st').single.on,
           DateTime(2026, 10, 14),
         );
-        expect(
-          c.where((({Subscription sub, DateTime date}) x) => x.sub.id == 'ps'),
-          isEmpty,
-        );
+        expect(c.where((ProjectedCharge x) => x.sub.id == 'ps'), isEmpty);
         expect(
           SubMath.chargedInMonth(rows(), 2026, 10).single,
           const Money(5 * 500 + 1000, 'USD'),
@@ -578,6 +583,12 @@ void main() {
       await c.read(subscriptionsControllerProvider.future);
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
+      // ST-T9 (AD-03): an ADD opens on the catalogue pick step; these cases
+      // are about the form, so they take "Add by hand".
+      if (editing == null) {
+        await tester.tap(find.byKey(E2EKeys.addByHand));
+        await tester.pumpAndSettle();
+      }
       return repo;
     }
 
@@ -649,7 +660,7 @@ void main() {
         // Tall enough that the card at the foot of the page is on screen.
         size: const Size(400, 2000),
         extra: <Override>[
-          cancelLinkLauncherProvider.overrideWithValue((_) => launcher),
+          websiteLinkLauncherProvider.overrideWithValue((_) => launcher),
         ],
       );
       expect(find.text('Shared with my sister'), findsOneWidget);
@@ -673,7 +684,12 @@ void main() {
       final Finder hint = find.byKey(
         const Key('detail.reminders.noDeviceNotifications'),
       );
-      await tester.ensureVisible(hint);
+      // Below a phone's fold of a lazy list (DE-11's details sit above it).
+      await tester.scrollUntilVisible(
+        hint,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(hint, findsOneWidget);
       expect(
         find.text(en.detailRemindersNoDeviceNotifications),
@@ -684,7 +700,10 @@ void main() {
 
   // ═══ 7 · ANNOUNCEMENTS ═════════════════════════════════════════════════════
   group('7 · announcements [DE-12 EN-16 CA-03]', () {
-    testWidgets('the cancel sheet moves focus to step 2 and announces it', (
+    // ⏱ 2026-10-01 · club apply-st: the cancel sheet is retired (DE-07); the
+    // stop flow that replaced it keeps DE-12 — a step change moves focus to
+    // the new step's heading, which is announced.
+    testWidgets('the stop flow moves focus to the next step and announces it', (
       WidgetTester tester,
     ) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -693,7 +712,7 @@ void main() {
         tester,
         Builder(
           builder: (BuildContext context) => TextButton(
-            onPressed: () => showCancelSheet(context, s),
+            onPressed: () => showStopSheet(context, s),
             child: const Text('open'),
           ),
         ),
@@ -701,19 +720,20 @@ void main() {
       );
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(E2EKeys.cancelConfirm));
+      await tester.tap(find.byKey(E2EKeys.stopChoiceStop));
       await tester.pumpAndSettle();
-      final Finder heading = find.byKey(const Key('cancel.outcome.heading'));
+      final Finder heading = find.byKey(const Key('stop.step.heading'));
       expect(heading, findsOneWidget);
-      final SemanticsNode node = tester.getSemantics(heading);
-      final SemanticsData data = node.getSemanticsData();
+      final SemanticsData data = tester
+          .getSemantics(heading)
+          .getSemanticsData();
       expect(data.hasFlag(SemanticsFlag.isLiveRegion), isTrue);
       expect(data.hasFlag(SemanticsFlag.isHeader), isTrue);
-      expect(data.label, contains(en.cancelledHeading));
+      expect(data.label, contains(en.stopWalkthroughTitle('Netflix')));
       expect(
         FocusManager.instance.primaryFocus?.debugLabel,
-        'cancel-outcome',
-        reason: 'the step change must move focus to the step-2 heading',
+        'stop-step',
+        reason: 'the step change must move focus to the new step heading',
       );
       handle.dispose();
     });

@@ -7,10 +7,12 @@ import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/features/add/add_subscription_sheet.dart';
-import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
+import 'package:subscriptiontracker/features/stop/stop_flow.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/services/notifications/notification_service.dart';
 import 'package:subscriptiontracker/state/providers.dart';
+
+import 'support/catalogue_fixture.dart';
 
 /// THE SHEETS HAD NO FAILURE PATH AT ALL.
 ///
@@ -84,6 +86,7 @@ Widget _app(void Function(BuildContext) open) {
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(_WriteFailsRepository()),
       renewalRemindersProvider.overrideWithValue(_SilentNotifications()),
+      ...catalogueOverrides(),
     ],
     // 🔴 THE DELEGATES ARE NOT DECORATION — WITHOUT THEM THIS HOST THROWS.
     // `l10n.yaml` sets `nullable-getter: false`, so the generated
@@ -128,6 +131,7 @@ Widget _appScaled(void Function(BuildContext) open, double scale) {
       keyValueStoreProvider.overrideWith((Ref ref) async => _MemStore()),
       subscriptionRepositoryProvider.overrideWithValue(_WriteFailsRepository()),
       renewalRemindersProvider.overrideWithValue(_SilentNotifications()),
+      ...catalogueOverrides(),
     ],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -208,6 +212,9 @@ void main() {
     );
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
+    // ST-T9: past the catalogue pick step, to the form by hand.
+    await tester.tap(find.byKey(E2EKeys.addByHand));
+    await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(E2EKeys.addName), 'Hulu');
     // ST-T3b (ST-E2): Add waits for a real price — a blank one used to save
@@ -218,6 +225,10 @@ void main() {
     final Finder submit = find.byKey(E2EKeys.addSubmit);
     await tester.ensureVisible(submit);
     await tester.pumpAndSettle();
+    // ST-T9: the focused field re-shows its caret once the scroll settles;
+    // on the longer form that can carry Save back below the fold.
+    await tester.ensureVisible(submit);
+    await tester.pump();
     await tester.tap(submit);
     await tester.pumpAndSettle();
 
@@ -244,7 +255,7 @@ void main() {
       find.descendant(of: submit, matching: find.text('Add subscription')),
       findsOneWidget,
     );
-    // Scoped to the field: 'Hulu' is also one of the POPULAR tiles.
+    // Scoped to the field, as it was when 'Hulu' was also a POPULAR tile.
     expect(
       find.descendant(
         of: find.byKey(E2EKeys.addName),
@@ -254,29 +265,25 @@ void main() {
     );
   });
 
-  testWidgets('cancel sheet: a failed cancel never claims success', (
+  testWidgets('stop flow: a failed remove never claims success', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(
-      _app((BuildContext c) => showCancelSheet(c, _sub())),
-    );
+    await tester.pumpWidget(_app((BuildContext c) => showStopSheet(c, _sub())));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Yes, remove'));
+    await tester.tap(find.byKey(E2EKeys.stopChoiceRemove));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    // ⏱ train ST-D7: said ON the sheet (its inline failure strip), no longer
-    // in a snack bar the root-mounted sheet's scrim drew over.
-    expect(find.byKey(E2EKeys.cancelFailure), findsOneWidget);
+    // ⏱ DE-07: said ON the sheet (its inline failure strip), never in a snack
+    // bar the root-mounted sheet's scrim draws over — the rule the retired
+    // cancel sheet set, kept.
+    expect(find.byKey(E2EKeys.stopFailure), findsOneWidget);
     expect(find.byType(SnackBar), findsNothing);
-    expect(find.textContaining('Could not remove it just now'), findsOneWidget);
-    // 🔴 The confirmation step congratulates the user on savings. Showing it
-    // after a failed cancel would be a lie the app tells about the user's money.
-    expect(find.text('Removed from your tracker'), findsNothing);
-    expect(find.text('Removing…'), findsNothing);
-    expect(find.text('Yes, remove'), findsOneWidget);
+    // The flow stays on its question, the choice still offered as the retry.
+    expect(find.byKey(E2EKeys.stopChoiceRemove), findsOneWidget);
+    expect(find.byKey(E2EKeys.stopDone), findsNothing);
   });
 
   // ── THE CONFIRMATION SURVIVES A SHORT VIEWPORT ────────────────────────────
@@ -312,23 +319,21 @@ void main() {
       await tester.binding.setSurfaceSize(kLandscapePhone);
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
-        _appScaled((BuildContext c) => showCancelSheet(c, _sub()), 1.3),
+        _appScaled((BuildContext c) => showStopSheet(c, _sub()), 1.3),
       );
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
+      // DE-07: the choose step's four answers live in ONE scroll view, so
+      // every one is reachable — scrolled to, then on screen.
+      await tester.ensureVisible(find.byKey(E2EKeys.stopChoiceRemove));
+      await tester.pumpAndSettle();
       _expectOnScreen(
         tester,
-        find.widgetWithText(OutlinedButton, 'Keep it'),
+        find.byKey(E2EKeys.stopChoiceRemove),
         kLandscapePhone,
-        "'Keep it'",
-      );
-      _expectOnScreen(
-        tester,
-        find.widgetWithText(FilledButton, 'Yes, remove'),
-        kLandscapePhone,
-        "'Yes, remove'",
+        "'Just remove it from the tracker'",
       );
       // 🔴 AND THE 9/16 CAP IS GONE, not merely worked around.
       // `isScrollControlled: false` caps the sheet at
@@ -351,20 +356,21 @@ void main() {
       await tester.binding.setSurfaceSize(kShortPhone);
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
-        _appScaled((BuildContext c) => showCancelSheet(c, _sub()), 2.0),
+        _appScaled((BuildContext c) => showStopSheet(c, _sub()), 2.0),
       );
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
-      // No `ensureVisible` — that is the point. At this scale the COPY is
-      // taller than the window and scrolls; the button row is outside the
-      // viewport and is still sitting on screen with nothing scrolled.
+      // DE-07: the answers scroll with the question; the last one is
+      // reachable at this scale.
+      await tester.ensureVisible(find.byKey(E2EKeys.stopChoiceRemove));
+      await tester.pumpAndSettle();
       _expectOnScreen(
         tester,
-        find.widgetWithText(FilledButton, 'Yes, remove'),
+        find.byKey(E2EKeys.stopChoiceRemove),
         kShortPhone,
-        "'Yes, remove'",
+        "'Just remove it from the tracker'",
       );
     },
   );
@@ -375,7 +381,7 @@ void main() {
     await tester.binding.setSurfaceSize(kPortraitPhone);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
-      _appScaled((BuildContext c) => showCancelSheet(c, _sub()), 1.3),
+      _appScaled((BuildContext c) => showStopSheet(c, _sub()), 1.3),
     );
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();

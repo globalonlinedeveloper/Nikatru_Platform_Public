@@ -102,15 +102,23 @@ class _FailingApi extends SeedApiClient {
       throw ApiException(401, 'Unauthorized');
 }
 
+/// A phone-WIDE window, tall enough that the whole detail page is built.
+///
+/// ⏱ 2026-10-01 · DE-11: the detail now holds every fact (details, rail
+/// panel, how to cancel), so the history card sits below a phone's first
+/// screen, and the body is a lazy `ListView` that does not build what is off
+/// it. These cases read that card; the width under test is still kPhone's.
+final Size _kTallPhone = Size(kPhone.width, kPhone.height * 3);
+
 Future<void> _pump(
   WidgetTester tester,
   Widget screen,
   ApiClient api, {
-  Size size = kPhone,
+  Size? size,
   double textScale = 1,
   Locale locale = const Locale('en'),
 }) async {
-  await setSurface(tester, size);
+  await setSurface(tester, size ?? _kTallPhone);
   final ProviderContainer c = ProviderContainer(
     // As the app's root ProviderScope: no automatic retry (Riverpod 3).
     retry: noProviderRetry,
@@ -313,7 +321,7 @@ void main() {
       expect(_inHistory(find.byType(AppListRow)), findsNWidgets(4));
       expect(find.byKey(E2EKeys.detailBack), findsOneWidget);
       expect(find.byKey(E2EKeys.detailCancelPlan), findsOneWidget);
-      expect(find.text(en.cancelPlanButton), findsOneWidget);
+      expect(find.text(en.stopOrRemove), findsOneWidget);
     });
 
     testWidgets('populated, three days out: the due caption is NOT a warning', (
