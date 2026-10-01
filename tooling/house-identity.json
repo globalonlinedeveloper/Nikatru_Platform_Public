@@ -2,7 +2,8 @@
   "_readme": [
     "THE HOUSE IDENTITY: the four facts every browser extension this repository ships shares, written once. A tool's publish/identity.json is these values with its own slug put in, and extensions/scripts/new-tool.mjs writes it that way at stamp time, together with the Firefox add-on id <slug>@<ownerDomain> in the stamped publish/manifest.firefox.json.",
     "Graded by tooling/ci/assert-house-identity.mjs, in extensions-ci.yml's catalogue job: (a) no value here is a placeholder, (b) every extensions/Extension/*/publish/identity.json equals these values with {slug} expanded and its slug equal to its tool.json id, (d) a run that read no tool's identity is COVERAGE LOST, exit 2. Limb (c), the support address against tooling/legal/policy-claims.json, is not implemented: that file declares no support-address key to compare against (its top-level keys, measured 2026-09-25: _readme, pages, siteRoot, claims).",
-    "Every value below was FullShot's (extensions/Extension/Full_Screen_Shot/publish/identity.json) on the day this file was written. No new value was chosen here; the file moved them to where the next tool reads them."
+    "Every value below was FullShot's (extensions/Extension/Full_Screen_Shot/publish/identity.json) on the day this file was written. No new value was chosen here; the file moved them to where the next tool reads them.",
+    "⏱ 2026-10-01: THIS FILE IS ALSO THE ENTITY SOURCE. `entity` and `people` hold every business fact a product prints (owner lock: one edit to one source, then `node tooling/entity/render.mjs`); their own `entity._readme` says where the values come from (the brain's business/public-facts.json, compared by tooling/scripts/assert-business-facts.mjs) and what reads them. The four extension facts above are unchanged by that."
   ],
   "ownerDomain": {
     "value": "nikatru.com",

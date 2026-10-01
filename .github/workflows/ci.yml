@@ -545,6 +545,9 @@ jobs:
       - name: The repository states its own legal posture
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-repo-posture.mjs
+      - name: Every printed business fact is rendered from the entity source, and none is typed elsewhere
+        if: ${{ !cancelled() }}
+        run: node tooling/scripts/assert-business-facts.mjs --ci
       - name: Every policy version a user consented to is still retrievable
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-policy-archive.mjs
