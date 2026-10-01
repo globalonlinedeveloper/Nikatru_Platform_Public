@@ -128,6 +128,7 @@ const envWith = (kv: FakeKv | undefined, db: unknown = undefined) =>
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('parseEcbDaily — the ECB document, read without a DOM', () => {
@@ -313,6 +314,10 @@ describe('fxRates — the nightly limb writes ITS row, under its own job', () =>
   });
 
   it('a good night writes ok=1 and the table', async () => {
+    // fxRates reads the wall clock (it has no nowMs seam), so pin Date to the
+    // fixture's fetch instant. Unpinned, this case went red the day the
+    // fixture's ECB fix (2026-09-25) grew older than FX_MAX_FIX_GAP_DAYS.
+    vi.useFakeTimers({ toFake: ['Date'], now: FETCHED_AT_MS });
     const db = realPlatformDb();
     const kv = new FakeKv();
     vi.stubGlobal('fetch', (input: RequestInfo | URL) =>
