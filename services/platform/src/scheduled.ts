@@ -18,7 +18,7 @@ import type { AppTarget, Env } from './types';
 import { recomputeRenewals } from './renewals';
 import { runBackup } from './backup';
 import { isMoneyEnvironment } from './lib/mor/contract';
-import { verifierFor } from './lib/mor/registry';
+import { inboundFor } from './ports';
 import { unconcludedNotifications } from './lib/mor/store';
 import { grantFromVerifiedEvent } from './lib/mor/grant';
 import { grantDepsFor } from './routes/money';
@@ -987,7 +987,9 @@ export async function moneyRederive(env: Env, nowMs: number = Date.now()): Promi
     // known product but a bundle; the checkout's one-time price map; the mint.
     const deps = grantDepsFor(env.PLATFORM_DB, environment, nowMs);
     for (const row of rows) {
-      const verifier = verifierFor(row.provider);
+      // ⏱ 2026-10-01 · port-pay-core: the SAME lookup the door makes (src/ports.ts), so a row
+      // is replayed only through an adapter this environment may serve.
+      const verifier = inboundFor(row.provider, environment);
       if (verifier === null) { bump('unknown_provider'); failed++; continue; }
       // The stored id goes back as the hint: a rail whose event id arrived as a
       // header (contract.ts `eventIdHeader`) has no other way to recover it here.

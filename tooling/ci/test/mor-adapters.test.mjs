@@ -9,7 +9,7 @@
 // ⚠️ REAL-TREE MUTATIONS FIRST, BEFORE THIS FILE EXISTED (2026-08-01, thirteen,
 // on a scratch COPY of the repo; every restore re-verified green by the harness).
 //
-//   MOR1  `verifierFor(` — the seam's only caller — deleted   -> caught: "CALLED BY
+//   MOR1  `inboundFor(` — the door's only lookup — deleted     -> caught: "CALLED BY
 //         from services/platform/src/routes/money.ts             NOTHING outside it"
 //   MOR2  `persistNotification(`'s only caller deleted        -> caught: same shape
 //   MOR3  `deriveAndApply(`'s only caller deleted             -> caught: same shape
@@ -20,7 +20,7 @@
 //         fail-closed branch neutered                           branch … could not be found"
 //   MOR6  the brick's erasure DELETE un-narrowed (the         -> caught: "a DELETE narrowed
 //         `WHERE user_id = ?` removed)                           to `WHERE user_id = ?`"
-//   MOR7  MOR_VERIFIERS emptied                               -> caught: "COVERAGE LOST …
+//   MOR7  MOR_VERIFIER_IDS (rendered) emptied                               -> caught: "COVERAGE LOST …
 //                                                                registers ZERO verifiers"
 //   MOR8  the tampered-body test's `.replace(` removed, so    -> caught: "NO SINGLE test
 //         the block expects 401 without altering the body       block both alters a signed
@@ -127,6 +127,15 @@ export const MOR_VERIFIERS: readonly MoRWebhookVerifier[] = [paddleVerifier];
 export function verifierFor(p: string) { return MOR_VERIFIERS.find((v) => v.provider === p) ?? null; }
 `;
 
+/** ⏱ 2026-10-01 · port-pay-core: the rail SET is the rendered table, no longer the registry's literal. */
+const RENDERED_TS = `export const MOR_VERIFIER_IDS = ['paddle'] as const;
+`;
+
+/** ⏱ 2026-10-01 · the composition root: the door resolves its provider through \`inboundFor\`. */
+const PORTS_TS = `
+export function inboundFor(p: string, env: string | null) { return null; }
+`;
+
 const STORE_TS = `
 export async function persistNotification(deps, n, raw) {
   await deps.db.prepare('INSERT INTO entitlements (user_id, provider_environment) VALUES (?, ?)').bind(1, 'live').run();
@@ -142,15 +151,15 @@ export async function grantFromVerifiedEvent(deps, n) { return deriveAndApply(de
 `;
 
 const ROUTE_TS = `
-import { verifierFor } from '../lib/mor/registry';
+import { inboundFor } from '../ports';
 import { persistNotification } from '../lib/mor/store';
 import { grantFromVerifiedEvent } from '../lib/mor/grant';
 export default {
   async handle(c) {
-    const v = verifierFor('paddle');
+    const door = inboundFor('paddle', 'live');
     await persistNotification({}, {}, '');
     await grantFromVerifiedEvent({}, {});
-    return v;
+    return door;
   },
 };
 `;
@@ -267,6 +276,8 @@ function run(o = {}) {
   write(root, 'services/platform/src/lib/mor/contract.ts', o.contract ?? CONTRACT_TS);
   write(root, 'services/platform/src/lib/mor/paddle.ts', o.paddle ?? PADDLE_TS);
   write(root, 'services/platform/src/lib/mor/registry.ts', o.registry ?? REGISTRY_TS);
+  write(root, 'services/platform/src/generated/ports.ts', o.rendered ?? RENDERED_TS);
+  write(root, 'services/platform/src/ports.ts', o.ports ?? PORTS_TS);
   write(root, 'services/platform/src/lib/mor/store.ts', o.store ?? STORE_TS);
   write(root, 'services/platform/src/lib/mor/grant.ts', o.grant ?? GRANT_TS);
   write(root, 'services/platform/src/routes/money.ts', o.route ?? ROUTE_TS);
@@ -442,10 +453,17 @@ export const entitlementsAuth = async (c, next) => {
     assert.match(r.out, /\{\{app_id\}\}-api\/src\/routes\/account\.ts WRITES the shared `entitlements` table and is NOT declared/);
   });
 
-  test('FAILS when the verifier registry is called by NOTHING outside the file that declares it', () => {
-    const r = run({ route: ROUTE_TS.replace('const v = verifierFor(\'paddle\');', 'const v = null;') });
+  test('FAILS when the verifier lookup is called by NOTHING outside the file that declares it', () => {
+    // ⏱ 2026-10-01 · port-pay-core: the door's lookup is src/ports.ts `inboundFor` now.
+    const r = run({ route: ROUTE_TS.replace("const door = inboundFor('paddle', 'live');", 'const door = null;') });
     assert.equal(r.code, 1);
-    assert.match(r.out, /`verifierFor` is declared in .* and CALLED BY NOTHING outside it/);
+    assert.match(r.out, /`inboundFor` is declared in .* and CALLED BY NOTHING outside it/);
+  });
+
+  test('a provider rendered into MOR_VERIFIER_IDS joins the floor — the registry literal is no longer read', () => {
+    // A registry.ts literal naming a second rail is NOT the set any more; the rendered table is.
+    const r = run({ registry: REGISTRY_TS.replace('[paddleVerifier]', '[paddleVerifier, lemonsqueezyVerifier]') });
+    assert.equal(r.code, 0, r.out);
   });
 
   test('FAILS when the verbatim store is present but uncalled', () => {
@@ -474,20 +492,20 @@ export const entitlementsAuth = async (c, next) => {
     // assert-seams-wired.mjs carries the scar: a check that matched its own
     // function's declaration kept passing after every real caller was deleted.
     const r = run({
-      route: ROUTE_TS.replace('const v = verifierFor(\'paddle\');', 'const v = null;'),
-      registry: `${REGISTRY_TS}\nconst self = verifierFor('paddle');\n`,
+      route: ROUTE_TS.replace("const door = inboundFor('paddle', 'live');", 'const door = null;'),
+      ports: `${PORTS_TS}\nconst self = inboundFor('paddle', null);\n`,
     });
     assert.equal(r.code, 1);
-    assert.match(r.out, /`verifierFor` is declared in .* and CALLED BY NOTHING outside it/);
+    assert.match(r.out, /`inboundFor` is declared in .* and CALLED BY NOTHING outside it/);
   });
 
   test('a caller in a TEST does not count — a seam whose only caller is a test is dead', () => {
     const r = run({
-      route: ROUTE_TS.replace('const v = verifierFor(\'paddle\');', 'const v = null;'),
-      extra: { 'services/platform/test/registry.test.ts': "verifierFor('paddle');\n" },
+      route: ROUTE_TS.replace("const door = inboundFor('paddle', 'live');", 'const door = null;'),
+      extra: { 'services/platform/test/ports.test.ts': "inboundFor('paddle', 'live');\n" },
     });
     assert.equal(r.code, 1);
-    assert.match(r.out, /`verifierFor` is declared in .* and CALLED BY NOTHING outside it/);
+    assert.match(r.out, /`inboundFor` is declared in .* and CALLED BY NOTHING outside it/);
   });
 
   test('FAILS when the money router is not mounted — a rail no provider can reach', () => {
@@ -504,7 +522,7 @@ export const entitlementsAuth = async (c, next) => {
 
   test('FAILS when a registered provider has no adapter file', () => {
     const r = run({
-      registry: REGISTRY_TS.replace('[paddleVerifier]', '[paddleVerifier, lemonsqueezyVerifier]'),
+      rendered: RENDERED_TS.replace("['paddle']", "['paddle', 'lemonsqueezy']"),
     });
     assert.equal(r.code, 1);
     assert.match(r.out, /registered provider `lemonsqueezy` has no adapter/);
@@ -550,7 +568,7 @@ export const entitlementsAuth = async (c, next) => {
     // set is data HERE, so the obligation moved here rather than being noted in
     // a comment.
     const r = run({
-      registry: REGISTRY_TS.replace('[paddleVerifier]', '[paddleVerifier, lemonsqueezyVerifier]'),
+      rendered: RENDERED_TS.replace("['paddle']", "['paddle', 'lemonsqueezy']"),
       extra: {
         'services/platform/src/lib/mor/lemonsqueezy.ts':
           "export const lemonsqueezyVerifier = { provider: 'lemonsqueezy', secretEnvVar: 'LS_SECRET', async verify() {}, parse() {} };\n",
@@ -583,7 +601,7 @@ export const entitlementsAuth = async (c, next) => {
   });
 
   test('COVERAGE LOST when the provider registry is empty', () => {
-    const r = run({ registry: REGISTRY_TS.replace('[paddleVerifier]', '[]') });
+    const r = run({ rendered: RENDERED_TS.replace("['paddle']", '[]') });
     assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST — .* registers ZERO verifiers/);
   });

@@ -294,6 +294,8 @@ const DUMP_APP = flags.has('--app') ? flags.get('--app') : null;
 const REGISTER_REL = 'tooling/channel-register.json';
 const INVENTORY_REL = 'tooling/legal/data-inventory.json';
 const CHANNEL = 'android-play';
+/** Limb 8a's one exception: an RFC 8252 §7.3 loopback redirect literal, port and all (see limb 8a). */
+const LOOPBACK_REDIRECT_LITERAL = /http:\/\/127\.0\.0\.1:(?:[0-9]{1,5}|\$[A-Za-z_]\w*|\$\{[^}]*\})(?=[/'"$])/g;
 
 /** Limb P's phrases: prose that DEFERS an answer rather than giving one.
  *
@@ -1938,6 +1940,15 @@ function checkApp(app) {
   // (a) Encrypted in transit — proven by there being no plaintext endpoint in the
   //     shipped client, not by asserting TLS. `https://` does not contain
   //     `http://`, so the match is exact without a lookahead.
+  //     ⏱ 2026-10-01 · ONE shape is set aside, and only that one: an RFC 8252
+  //     §7.3 LOOPBACK redirect, `http://127.0.0.1:<port>`, which the desktop
+  //     system-browser hand-off listens on (packages/core/lib/src/auth/
+  //     browser_handoff.dart). It is an address ON THE DEVICE — nothing is
+  //     transmitted off it over that hop — so it is not "in transit" in Play's
+  //     sense. The port is required and must be followed by a path, a quote or
+  //     another interpolation, so `http://127.0.0.1:80@host` (userinfo) and
+  //     `http://127.0.0.1.host` stay findings; `localhost` is NOT set aside (a
+  //     hosts file can point it anywhere, RFC 8252 §8.3).
   const enc = sec.encryptedInTransit ?? {};
   let dartScanned = 0;
   if (enc.answer === true) {
@@ -1951,7 +1962,7 @@ function checkApp(app) {
         if (!f.endsWith('.dart') || /\/test\//.test(f) || f.endsWith('_test.dart')) continue;
         dartScanned++;
         const src = stripSourceComments(read(f) ?? '', '.dart');
-        if (src.includes('http://')) offenders.push(f);
+        if (src.replace(LOOPBACK_REDIRECT_LITERAL, '').includes('http://')) offenders.push(f);
       }
     }
     if (dartScanned === 0) {

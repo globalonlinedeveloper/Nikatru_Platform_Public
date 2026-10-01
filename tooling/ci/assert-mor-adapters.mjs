@@ -34,7 +34,10 @@
 //   2 THE PROVIDER SET IS DERIVED FROM THE REGISTRY, NEVER FROM A LIST HERE.
 //     Registering a rail automatically puts it inside this floor. An EMPTY
 //     registry is COVERAGE LOST — "a test per registered provider" over zero
-//     providers is a check that cannot fail.
+//     providers is a check that cannot fail. ⏱ 2026-10-01 · port-pay-core: the
+//     set is read from the RENDERED table (src/generated/ports.ts
+//     `MOR_VERIFIER_IDS`, from tooling/ports/payments.json by
+//     tooling/ports/render.mjs), which replaced the hand array in registry.ts.
 //   3 [5]M-14's TWO HALVES, kept apart. FAIL when a piece of the rail is absent
 //     OR PRESENT-BUT-UNCALLED (matched as CALLS, never as bare identifiers, and
 //     never in the file that declares it — assert-seams-wired.mjs carries the
@@ -77,6 +80,10 @@ const REQUIRED_COVERAGE = [
 ];
 
 const REGISTRY = 'services/platform/src/lib/mor/registry.ts';
+/** ⏱ 2026-10-01 · the rendered rail set (tooling/ports/render.mjs); limb 2 reads the provider set here. */
+const RENDERED_RAILS = 'services/platform/src/generated/ports.ts';
+/** ⏱ 2026-10-01 · the Worker's composition root: the door resolves a provider through its `inboundFor`. */
+const COMPOSITION_ROOT = 'services/platform/src/ports.ts';
 const CONTRACT = 'services/platform/src/lib/mor/contract.ts';
 const STORE = 'services/platform/src/lib/mor/store.ts';
 /** ⏱ 2026-09-27 · the ONE entry from a verified money event to a grant; it calls `deriveAndApply`. */
@@ -375,18 +382,18 @@ for (const w of DECLARED_WRITERS) {
 }
 
 // ── LIMB 2 · the provider set comes from the registry ────────────────────────
-const registryPath = join(ROOT, REGISTRY);
+const registryPath = join(ROOT, RENDERED_RAILS);
 let providers = [];
 if (!existsSync(registryPath)) {
-  coverageLost(`${REGISTRY} does not exist, so the provider set is empty and limb 2 asserts nothing.`);
+  coverageLost(`${RENDERED_RAILS} does not exist, so the provider set is empty and limb 2 asserts nothing.`);
 } else {
   const registry = stripComments(readFileSync(registryPath, 'utf8'));
-  const arr = /MOR_VERIFIERS\s*:\s*readonly\s+MoRWebhookVerifier\[\]\s*=\s*\[([^\]]*)\]/.exec(registry);
-  const idents = arr ? [...arr[1].matchAll(/([A-Za-z_$][\w$]*)Verifier/g)].map((m) => m[1]) : [];
+  const arr = /MOR_VERIFIER_IDS\s*=\s*\[([^\]]*)\]/.exec(registry);
+  const idents = arr ? [...arr[1].matchAll(/'([a-z][a-z0-9-]*)'/g)].map((m) => m[1]) : [];
   providers = [...new Set(idents)];
   if (providers.length === 0) {
     coverageLost(
-      `${REGISTRY} registers ZERO verifiers. [5]M-1's "a test per registered provider" over an ` +
+      `${RENDERED_RAILS} registers ZERO verifiers (MOR_VERIFIER_IDS renders none). [5]M-1's "a test per registered provider" over an ` +
         'empty provider set is a check that cannot fail, which is how the original acceptance criterion passed on ' +
         'a repo with no rail at all.',
     );
@@ -544,9 +551,13 @@ function calledOutside(symbol, declaringFile, candidates) {
 
 const PIECES = [
   {
-    symbol: 'verifierFor',
-    declaredIn: REGISTRY,
-    what: 'the MoR verifier registry — [5]M-1, the one door between a provider and the entitlement table',
+    // ⏱ 2026-10-01 · port-pay-core: the DOOR and the nightly re-derivation resolve their
+    // provider here, gated by the environments the registry lists (the fake rail is a 404
+    // on a live deploy). It replaced lib/mor/registry.ts `verifierFor` as this piece;
+    // that function stays for tests and tooling/ops/money-dry-run.mjs, never a src caller.
+    symbol: 'inboundFor',
+    declaredIn: COMPOSITION_ROOT,
+    what: 'the composition root\'s inbound lookup — [5]M-1, the one door between a provider and the entitlement table',
   },
   {
     symbol: 'persistNotification',

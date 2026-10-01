@@ -24,7 +24,7 @@
     58,
 
   "analytics-contract.test.mjs":
-    79,
+    80,
 
   "analytics-liveness.test.mjs":
     28,
@@ -43,6 +43,9 @@
 
   "app-address-shape.test.mjs":
     32,
+
+  "app-connect.test.mjs":
+    10,
 
   "app-dod.test.mjs":
     38,
@@ -456,7 +459,7 @@
     18,
 
   "guards.test.mjs":
-    501,
+    503,
 
   "heartbeats.test.mjs":
     87,
@@ -576,7 +579,7 @@
     30,
 
   "mor-adapters.test.mjs":
-    43,
+    44,
 
   "msix-visual-name.test.mjs":
     14,
@@ -690,7 +693,7 @@
     107,
 
   "play-declarations.test.mjs":
-    180,
+    186,
 
   "play-device-coverage.test.mjs":
     61,
@@ -704,11 +707,14 @@
   "policy-claims.test.mjs":
     62,
 
+  "port-render.test.mjs":
+    10,
+
   "port-switch.test.mjs":
-    26,
+    35,
 
   "ports.test.mjs":
-    51,
+    56,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -789,7 +795,7 @@
     133,
 
   "rail-prices.test.mjs":
-    59,
+    61,
 
   "redeploy-stranded.test.mjs":
     50,

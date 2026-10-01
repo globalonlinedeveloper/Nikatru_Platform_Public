@@ -42,6 +42,21 @@
 //                 LOST when a cell is missing or unapplicable. A switch that
 //                 lowers the net is printed as such: its ADR must say why.
 //
+// ⏱ 2026-10-01 · port-pay-core · and, for `payments` only, four more:
+//   C9 webhook    the URL the owner registers at the target's dashboard —
+//                 https://<the platform Worker's own custom domain>/v1/money/<id>,
+//                 read from services/platform/wrangler.jsonc for --env — and the
+//                 target's secrets BY NAME. LOST when the env declares no route.
+//   C10 prices    the price ids still to create per offering on the target rail
+//                 (app-config-data.json `prices.*.rails.<id>`, via
+//                 render-rail-prices.mjs `plan`). FAIL while any is missing.
+//   C11 channels  the channels whose purchaseRails the switch would change. A STORE-billed
+//                 channel (a rail of a `cancel-store` adapter) moves only to another
+//                 store-billing adapter, never to a web rail; C8 nets the same set.
+//   C12 run-off   card and UPI mandates do not move: existing subscribers renew on
+//                 the current rail until they lapse (each current adapter's
+//                 export duty is printed). The reconcile during the dual run is
+//                 alert-only.
 // A MAIL switch (a port with `streams`) adds six, because what moves with mail
 // is mostly not code (tooling/ports/README.md §5):
 //   C9  dns       the records the target sends under — SPF include, DKIM,
@@ -68,7 +83,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readSecretSources, callsRunner, declares } from '../ci/assert-ports.mjs';
 import { stripSourceComments } from '../ci/text-reductions.mjs';
-import { readRegister, plan, netAfterFee, feeCurrencyProblem, FEE_REGISTER, CHANNEL_REGISTER } from '../catalog/render-rail-prices.mjs';
+import { readRegister, plan, netAfterFee, feeCurrencyProblem, FEE_REGISTER, CHANNEL_REGISTER, RAILS } from '../catalog/render-rail-prices.mjs';
 
 export const NO_VALUE_FLAGS = new Set(['--dry-run']);
 export const VALUE_FLAGS = new Set(['--to', '--env', '--from', '--root']);
@@ -107,6 +122,11 @@ export function parseArgs(argv) {
 /** The fee an adapter charges on one sale of `price` on a channel of `rail`, or {lost}. */
 export function feeFor(adapter, rail, price, cells) {
   const ids = adapter?.cost?.feeCells ?? [];
+  // A declared per-SALE unit cost (e.g. the fake rail's 0 USD) is a fee, not a guess.
+  const unit = adapter?.cost?.unit;
+  if (!ids.length && isObj(unit) && unit.per === 'sale' && Number.isFinite(unit.usd) && unit.usd >= 0) {
+    return { fee: { percentBps: 0, fixedMinor: Math.round(unit.usd * 100) }, cells: [`unit (${unit.usd} USD per sale, as of ${unit.asOf})`] };
+  }
   if (!ids.length) return { lost: `adapter \`${adapter?.id}\` carries no fee cells` };
   const all = [];
   for (const id of ids) {
@@ -134,6 +154,22 @@ export function feeFor(adapter, rail, price, cells) {
 /** The rails an adapter serves: the `rail` of each of its fee cells. */
 const railsOf = (adapter, cells) => new Set((adapter?.cost?.feeCells ?? []).map((id) => cells[id]?.rail).filter(Boolean));
 
+/** An adapter that fronts a STORE's own billing: only the store can bill or cancel (`cancel-store`). */
+export const billsThroughStore = (adapter) => (adapter?.capabilities ?? []).includes('cancel-store');
+
+/**
+ * The store-billed rails, DERIVED from the registry: every rail a `cancel-store` adapter serves
+ * (today RevenueCat's apple-iap and play-billing). A channel on one of these is billed by the
+ * store, so it can move only to another store-billing adapter, never to a web rail, and a
+ * switch to a web rail counts no margin for it (#1127 money review, finding 3).
+ */
+export function storeBilledRails(adapters, cells) {
+  return new Set((adapters ?? []).filter(billsThroughStore).flatMap((a) => [...railsOf(a, cells)]));
+}
+
+/** Can a channel billed on `rail` move to `target` at all? */
+const canMoveTo = (rail, target, stores) => !stores.has(rail) || billsThroughStore(target);
+
 /** C8 · margin. Returns {verdict, detail, lines}. */
 export function margin(root, doc, target, current) {
   const lines = [];
@@ -158,6 +194,7 @@ export function margin(root, doc, target, current) {
   for (const [k, b] of Object.entries(reg.data?.prices?.bundles ?? {})) if (!k.startsWith('_') && isObj(b)) plans.push({ label: `bundle ${k}`, webUsd: b.amount_minor, store: b.store });
   if (!plans.length) return { verdict: 'LOST', detail: 'the price register yields no plan to net', lines };
 
+  const stores = storeBilledRails(doc.adapters, cells);
   const lostWhy = [];
   let rows = 0;
   let lower = 0;
@@ -166,8 +203,10 @@ export function margin(root, doc, target, current) {
     const rail = ch.purchaseRail.rail;
     const cur = current.find((a) => railsOf(a, cells).has(rail));
     if (!cur || cur.id === target.id) continue;
+    // The same set C11 moves: a store-billed channel never moves to a web rail, so it nets nothing.
+    if (!canMoveTo(rail, target, stores)) continue;
     lines.push(`    ${ch.id} (${rail}): ${cur.id} → ${target.id}`);
-    const onStore = rail === 'play-billing' || rail === 'apple-iap';
+    const onStore = stores.has(rail);
     for (const p of plans) {
       const price = onStore ? (isObj(p.store) ? p.store.USD : null) : p.webUsd;
       if (!Number.isInteger(price)) continue;
@@ -292,8 +331,95 @@ export function run(opts) {
   // C8
   const m = margin(root, doc, target, current);
   add(8, 'margin', m.verdict, m.detail);
+  const extra = [...m.lines];
+  for (const p of pending) extra.push(`FAIL  C5 pending: ${p.case} (${p.row})`);
+  if (opts.port === 'payments') {
+    const w = webhook(root, env, target);
+    add(9, 'webhook', w.verdict, w.detail);
+    const pr = pricesToCreate(root, target);
+    add(10, 'prices', pr.verdict, pr.detail);
+    extra.push(...pr.lines);
+    const ch = channelsChanging(root, target, current, adapters);
+    add(11, 'channels', ch.verdict, ch.detail);
+    add(12, 'run-off', 'PASS', `a RUN-OFF, not a cutover: card and UPI mandates do not move, so subscribers on ${current.map((a) => a.id).join(', ') || 'the current rail'} renew there until they lapse; the dual run lasts the longest live term, and its reconcile is alert-only`);
+    for (const a of current) extra.push(`    run-off ${a.id}: ${a.exportDuty}`);
+  }
   if (isObj(doc.streams)) mailChecks(root, doc, target, current, add);
-  return finish(checks, m.lines);
+  return finish(checks, extra);
+}
+
+/** C9 · the webhook URL to register: the platform Worker's own custom domain for `env`. */
+export function webhook(root, env, target) {
+  const rel = 'services/platform/wrangler.jsonc';
+  // `env` arrives from the command line through an EXPORTED function, so it is
+  // allowlisted HERE (shape, then membership) and never becomes a RegExp: the env block
+  // is found by comparing each `"<key>": {` key to it as a string (#1127, CodeQL #546
+  // js/regex-injection).
+  if (typeof env !== 'string' || !/^[a-z0-9-]+$/.test(env) || !ENVS.has(env)) {
+    return { verdict: 'FAIL', detail: `--env ${JSON.stringify(env)} is not a declared environment (${[...ENVS].join(', ')})` };
+  }
+  let raw;
+  try { raw = stripSourceComments(readFileSync(join(root, rel), 'utf8'), '.jsonc'); } catch (e) { return { verdict: 'LOST', detail: `${rel} could not be read (${e.message})` }; }
+  const name = /"name"\s*:\s*"([^"]+)"/.exec(raw)?.[1];
+  const envAt = raw.search(/"env"\s*:\s*\{/);
+  let scope;
+  if (env === 'live') scope = envAt >= 0 ? raw.slice(0, envAt) : raw;
+  else {
+    const block = envAt >= 0 ? [...raw.slice(envAt).matchAll(/"([a-z0-9-]+)"\s*:\s*\{/g)].find((m) => m[1] === env) : undefined;
+    const at = block === undefined ? -1 : block.index;
+    scope = at >= 0 ? raw.slice(envAt + at) : '';
+  }
+  const domains = [...scope.matchAll(/"pattern"\s*:\s*"([^"]+)"\s*,\s*"custom_domain"\s*:\s*true/g)].map((x) => x[1]);
+  const host = domains.find((d) => name && d.split('.')[0] === name);
+  const secrets = (target.secrets ?? []).length ? `secrets by name: ${target.secrets.join(', ')}` : 'no secrets';
+  if (!host) return { verdict: 'LOST', detail: `${rel} declares no custom domain named for the Worker (\`${name ?? '?'}\`) in ${env === 'live' ? 'its top-level routes' : `env.${env}`}; ${secrets}` };
+  return { verdict: 'PASS', detail: `register https://${host}/v1/money/${target.id} at ${target.vendor ?? 'no vendor (a fake)'}; ${secrets}` };
+}
+
+/** C10 · the rail price ids still to create for the target, per served offering. */
+export function pricesToCreate(root, target) {
+  const lines = [];
+  const reg = readRegister(root);
+  if (!reg.ok) return { verdict: 'LOST', detail: reg.why, lines };
+  const { book, lost } = plan(root, reg.data);
+  if (lost.length) return { verdict: 'LOST', detail: lost[0], lines };
+  const priced = book.some(({ offerings }) => offerings.some((o) => isObj(o.entry?.rails) && target.id in o.entry.rails));
+  if (target.status === 'fake') return { verdict: 'PASS', detail: `\`${target.id}\` is a fake: it creates no price at any vendor`, lines };
+  if (!priced && !RAILS.includes(target.id)) return { verdict: 'PASS', detail: `\`${target.id}\` keeps no rail price map in ${FEE_REGISTER.replace(/fee-register\.json$/, '')}… (its prices live with the store it fronts)`, lines };
+  let missing = 0;
+  let total = 0;
+  for (const { app, offerings } of book) {
+    for (const o of offerings) {
+      total++;
+      const r = isObj(o.entry?.rails) ? o.entry.rails[target.id] : undefined;
+      if (isObj(r) && !('pending' in r)) continue;
+      missing++;
+      lines.push(`    to create on ${target.id}: ${app} ${o.id}${isObj(r) && typeof r.pending === 'string' ? ` — ${r.pending}` : ' — no price id recorded'}`);
+    }
+  }
+  if (!total) return { verdict: 'LOST', detail: 'the price register yields no served offering', lines };
+  return missing
+    ? { verdict: 'FAIL', detail: `${missing} of ${total} offering(s) have no ${target.id} price id yet (the owner creates them; never this tool)`, lines }
+    : { verdict: 'PASS', detail: `all ${total} offering(s) carry a ${target.id} price id`, lines };
+}
+
+/** C11 · the channels whose purchaseRails the switch would change. */
+export function channelsChanging(root, target, current, adapters = [...current, target]) {
+  let feeDoc;
+  let channels;
+  try { feeDoc = JSON.parse(readFileSync(join(root, FEE_REGISTER), 'utf8')); } catch (e) { return { verdict: 'LOST', detail: `${FEE_REGISTER} could not be read (${e.message})` }; }
+  try { channels = JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8')).channels ?? []; } catch (e) { return { verdict: 'LOST', detail: `${CHANNEL_REGISTER} could not be read (${e.message})` }; }
+  const cells = isObj(feeDoc?.cells) ? feeDoc.cells : {};
+  const served = new Set(current.flatMap((a) => [...railsOf(a, cells)]));
+  const stores = storeBilledRails(adapters, cells);
+  const leaving = channels.filter((c) => typeof c?.purchaseRail?.rail === 'string' && served.has(c.purchaseRail.rail) && !railsOf(target, cells).has(c.purchaseRail.rail));
+  const moving = leaving.filter((c) => canMoveTo(c.purchaseRail.rail, target, stores));
+  const held = leaving.filter((c) => !canMoveTo(c.purchaseRail.rail, target, stores));
+  const heldNote = held.length
+    ? `; ${held.length} store-billed channel(s) stay on their store's billing, which \`${target.id}\` cannot take: ${held.map((c) => `${c.id} (${c.purchaseRail.rail})`).join(', ')}`
+    : '';
+  if (!moving.length) return { verdict: 'PASS', detail: `no channel's purchaseRail changes${heldNote}` };
+  return { verdict: 'PASS', detail: `${moving.length} channel(s) would change purchaseRail: ${moving.map((c) => `${c.id} (${c.purchaseRail.rail} → ${target.id})`).join(', ')}${heldNote}` };
 }
 
 export const MAIL_TRANSPORT = 'tooling/mail-transport.json';

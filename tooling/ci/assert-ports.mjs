@@ -34,9 +34,11 @@
 //               comment-stripped source — a mention, an import or a comment is
 //               not a declaration.
 //   3 waivers   every handTables anchor still exists, and is PRINTED on every run.
-//               `generated: true` needs the render tool, which arrives with
-//               port-pay-core; until then no port may claim it.
-//   4 imports   no TS module imports an adapter's impl.file except its Worker's
+//               `generated: true` needs the render tool (tooling/ports/render.mjs),
+//               and the rendered table must be CURRENT (its renderCheck, run here
+//               on every build: a hand edit of the generated file is a finding).
+//   4 imports   no TS module imports an adapter's impl.file (or its outbound file
+//               and modules) except its Worker's
 //               composition root (services/<w>/src/ports.ts) or, while
 //               `generated: false`, a file the port's handTables names. A walk
 //               of the import graph of services/*/src (tests are not modules of
@@ -82,6 +84,7 @@ import { extname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripSourceComments } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
+import { renderCheck } from '../ports/render.mjs';
 import { renderEntityAt, ENTITY_SOURCE } from '../ports/render-entity.mjs';
 
 export const PORTS_DIR = 'tooling/ports';
@@ -91,8 +94,8 @@ export const CAPABILITY_REGISTER = 'tooling/capability-register.json';
 export const PROVIDER_REGISTER = 'tooling/legal/provider-register.json';
 export const SECRETS_MANIFEST = 'tooling/worker-secrets.json';
 export const CHANNEL_REGISTER = 'tooling/channel-register.json';
-/** The renderer `generated: true` needs; it arrives with port-pay-core. */
-export const RENDER_TOOL = 'tooling/ops/render-port-tables.mjs';
+/** The renderer `generated: true` needs (port-pay-core); limb 3 runs its check on every build. */
+export const RENDER_TOOL = 'tooling/ports/render.mjs';
 /** A Worker's one composition root, relative to services/<w>/. */
 export const COMPOSITION_ROOT = 'src/ports.ts';
 export const LIMB_NAMES = Object.freeze({
@@ -384,6 +387,13 @@ export function evaluate(root) {
       if (src === null) { find(2, `${rel} adapter \`${a.id}\` impl.file \`${a.impl.file}\` does not exist.`); continue; }
       if (!declares(src, a.impl.symbol, extname(a.impl.file))) find(2, `${rel} adapter \`${a.id}\` symbol \`${a.impl.symbol}\` is not declared in \`${a.impl.file}\`.`);
     }
+    for (const a of doc?.adapters ?? []) {
+      if (!a?.outbound) continue;
+      const src = readStripped(root, a.outbound.file);
+      if (src === null) { find(2, `${rel} adapter \`${a.id}\` outbound.file \`${a.outbound.file}\` does not exist.`); continue; }
+      if (!declares(src, a.outbound.symbol, extname(a.outbound.file))) find(2, `${rel} adapter \`${a.id}\` outbound symbol \`${a.outbound.symbol}\` is not declared in \`${a.outbound.file}\`.`);
+      for (const m of a.outbound.modules ?? []) if (!existsSync(join(root, m))) find(2, `${rel} adapter \`${a.id}\` outbound module \`${m}\` does not exist.`);
+    }
     const src = doc?.selection?.source;
     if (typeof src === 'string') {
       const [file, pointer] = src.split('#');
@@ -409,10 +419,17 @@ export function evaluate(root) {
         waivers.push(`${doc.port}: hand table \`${h.anchor}\` in ${h.file} — until ${h.until}`);
       }
     }
-    if (doc?.generated === true) {
-      if (!existsSync(join(root, RENDER_TOOL))) find(3, `${rel} claims \`generated: true\`, but ${RENDER_TOOL} (the renderer, arriving with port-pay-core) does not exist; no rendered table can be current.`);
-      else find(3, `${rel} claims \`generated: true\`; this guard does not yet know how to check ${RENDER_TOOL} for a current table. Teach limb 3 in the change that lands the renderer.`);
+    if (doc?.generated === true && !existsSync(join(root, RENDER_TOOL))) {
+      find(3, `${rel} claims \`generated: true\`, but ${RENDER_TOOL} (the renderer) does not exist; no rendered table can be current.`);
     }
+  }
+  // The rendered table is current, whether or not a port claims `generated` yet: a hand
+  // edit of services/platform/src/generated/ports.ts is a finding on every build.
+  if (existsSync(join(root, RENDER_TOOL)) && ports.some(({ doc }) => doc?.port === 'payments')) {
+    const r = renderCheck(root);
+    if (r.lost) lost(3, `render --check: ${r.detail}`);
+    else if (!r.ok) find(3, `render --check: ${r.detail}`);
+    else notes.push(`limb 3: ${r.detail}`);
   }
 
   // ── limb 4 · imports ──
@@ -434,7 +451,8 @@ export function evaluate(root) {
       for (const { doc } of tsPorts) limb4Clean.set(doc.port, false);
     }
     for (const { rel, doc } of tsPorts) {
-      const implFiles = new Set((doc.adapters ?? []).map((a) => a?.impl?.file).filter((f) => typeof f === 'string' && /\.ts$/.test(f)));
+      // An adapter's files: its inbound impl, its outbound half and that half's private modules (port-pay-core).
+      const implFiles = new Set((doc.adapters ?? []).flatMap((a) => [a?.impl?.file, a?.outbound?.file, ...(a?.outbound?.modules ?? [])]).filter((f) => typeof f === 'string' && /\.ts$/.test(f)));
       const allowed = new Set(doc.generated === false ? (doc.handTables ?? []).map((h) => h.file) : []);
       for (const [from, targets] of graph) {
         const worker = from.split('/')[1];

@@ -49,7 +49,7 @@ import type { AppEnv } from '../types';
 import { readBoundedBody } from '../lib/body';
 import { withinEdgeCeiling } from '../lib/edge-ceiling';
 import { isMoneyEnvironment, type MoneyEnvironment } from '../lib/mor/contract';
-import { verifierFor } from '../lib/mor/registry';
+import { inboundFor } from '../ports';
 import { isAttributableProduct } from '../config';
 import { derivationStateOf, isUnconcluded, persistNotification } from '../lib/mor/store';
 import { type GrantDeps, grantFromVerifiedEvent } from '../lib/mor/grant';
@@ -102,7 +102,9 @@ money.post('/:provider', async (c) => {
   const rid = c.get('requestId') ?? '-';
   const providerId = c.req.param('provider');
 
-  const verifier = verifierFor(providerId);
+  // ⏱ 2026-10-01 · port-pay-core: through the composition root, which serves an adapter only
+  // in the environments the registry lists — the fake rail is a 404 on a live deploy.
+  const verifier = inboundFor(providerId, environmentOf(c.env.MONEY_ENVIRONMENT));
   if (verifier === null) {
     // 404, not 400: there is no such rail on this host. Answering 200 would tell
     // an unknown sender we took responsibility for a notification we discarded.

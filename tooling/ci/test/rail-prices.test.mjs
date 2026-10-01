@@ -18,7 +18,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { BUNDLES_REGISTER } from '../../catalog/read.mjs';
-import { netAfterFee, EXTENSION_REGISTER } from '../../catalog/render-rail-prices.mjs';
+import { netAfterFee, EXTENSION_REGISTER, RAILS, RAIL_PRICE_MAP, railPriceMapFor } from '../../catalog/render-rail-prices.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SCRIPT = join(REPO, 'tooling', 'catalog', 'render-rail-prices.mjs');
@@ -92,6 +92,21 @@ describe('the real tree', () => {
     assert.equal(r.code, 0, r.all);
     assert.match(r.out, /ok {3}render-rail-prices --check/);
     assert.match(r.out, /razorpay: \d+ of \d+ offering\(s\) pending .*Razorpay PR B \(designed, not briefed\)/);
+  });
+});
+
+// #1127 money review, nit 5: RAIL_PRICE_IDS bound every rail but Paddle to Razorpay's plan
+// ids, so a third rail would have sold Razorpay's plans. Each rail is bound by its own row.
+describe('RAIL_PRICE_IDS binds each rail to ITS OWN map', () => {
+  test('green control: every rail in RAILS has an explicit row, and the rows are distinct', () => {
+    for (const r of RAILS) assert.equal(typeof railPriceMapFor(r), 'string');
+    assert.equal(railPriceMapFor('paddle'), 'PADDLE_PRICE_IDS');
+    assert.equal(railPriceMapFor('razorpay'), 'RAZORPAY_PLAN_IDS');
+    assert.equal(new Set(Object.values(RAIL_PRICE_MAP)).size, Object.keys(RAIL_PRICE_MAP).length);
+  });
+  test("red: a rail with no row (cashfree) throws, never borrows another rail's map", () => {
+    assert.throws(() => railPriceMapFor('cashfree'), /rail "cashfree" has no row in RAIL_PRICE_MAP/);
+    assert.throws(() => railPriceMapFor('toString'), /has no row/);
   });
 });
 
