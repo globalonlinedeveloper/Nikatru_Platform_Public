@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show TargetPlatform;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
@@ -6,7 +8,10 @@ import 'package:nikatru_core/nikatru_core.dart';
 // deliberately does NOT export it, so web stays compilable). Tests run natively,
 // where `dart.library.io` is available.
 import 'package:nikatru_notifications/nikatru_notifications.dart'
-    show WindowsNotificationIdentity;
+    show
+        LinuxReminderScheduler,
+        MemoryReminderLedgerStore,
+        WindowsNotificationIdentity;
 import 'package:nikatru_notifications/src/local_notification_service_io.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
@@ -51,9 +56,20 @@ class _FakePlugin implements NotificationPlugin {
     return permission;
   }
 
+  /// Every immediate show, with its payload — the Linux scheduler's output.
+  final List<({int id, String title, String? payload})> shown =
+      <({int id, String title, String? payload})>[];
+
   @override
-  Future<void> showNow(int id, String title, String body) async =>
-      calls.add('showNow:$id');
+  Future<void> showNow(
+    int id,
+    String title,
+    String body, {
+    String? payload,
+  }) async {
+    calls.add('showNow:$id');
+    shown.add((id: id, title: title, payload: payload));
+  }
 
   @override
   Future<void> scheduleDaily(
@@ -85,17 +101,28 @@ class _FakePlugin implements NotificationPlugin {
     required bool exact,
     String? payload,
     NotificationChannel? channel,
+    List<NotificationAction> actions = const <NotificationAction>[],
   }) async {
     if (exact && refuseExactOnce) {
       refuseExactOnce = false;
       throw PlatformException(code: 'exact_alarms_not_permitted');
     }
     calls.add('scheduleOnce:$id');
-    once.add(_Once(id, when, exact, payload, channel?.id));
+    once.add(_Once(id, when, exact, payload, channel?.id, actions));
   }
 
   @override
   Future<bool> canScheduleExact() async => exactAllowed;
+
+  /// What the user answers on the "Alarms & reminders" page.
+  bool grantExactOnRequest = true;
+
+  @override
+  Future<bool> requestExactAlarms() async {
+    calls.add('requestExactAlarms');
+    exactAllowed = grantExactOnRequest;
+    return exactAllowed;
+  }
 
   /// What the OS reports as the tap that launched the process.
   NotificationTap? launchedBy;
@@ -120,12 +147,78 @@ class _FakePlugin implements NotificationPlugin {
 }
 
 class _Once {
-  _Once(this.id, this.when, this.exact, this.payload, this.channel);
+  _Once(
+    this.id,
+    this.when,
+    this.exact,
+    this.payload,
+    this.channel, [
+    this.actions = const <NotificationAction>[],
+  ]);
   final int id;
   final tz.TZDateTime when;
   final bool exact;
   final String? payload;
   final String? channel;
+  final List<NotificationAction> actions;
+}
+
+/// A fake clock and timer pair: the scheduler's timer is captured, and
+/// [advance] moves the clock and fires every timer whose moment has come —
+/// so "fires at its instant" is asserted without a real wait.
+class _FakeTime {
+  _FakeTime(this.now);
+
+  DateTime now;
+  final List<_FakeTimer> timers = <_FakeTimer>[];
+
+  Timer timer(Duration delay, void Function() fire) {
+    final _FakeTimer t = _FakeTimer(now.add(delay), fire);
+    timers.add(t);
+    return t;
+  }
+
+  Future<void> advance(Duration by) async {
+    final DateTime end = now.add(by);
+    while (true) {
+      final List<_FakeTimer> due =
+          timers
+              .where((_FakeTimer t) => t.isActive && !t.at.isAfter(end))
+              .toList()
+            ..sort((_FakeTimer a, _FakeTimer b) => a.at.compareTo(b.at));
+      if (due.isEmpty) break;
+      final _FakeTimer t = due.first;
+      now = t.at.isAfter(now) ? t.at : now;
+      t.fireNow();
+      // Let the scheduler's async show/re-arm chain run.
+      for (int i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+    now = end;
+  }
+}
+
+class _FakeTimer implements Timer {
+  _FakeTimer(this.at, this._fire);
+  final DateTime at;
+  final void Function() _fire;
+  bool _active = true;
+
+  void fireNow() {
+    if (!_active) return;
+    _active = false;
+    _fire();
+  }
+
+  @override
+  void cancel() => _active = false;
+
+  @override
+  bool get isActive => _active;
+
+  @override
+  int get tick => 0;
 }
 
 /// One zone the resolver can name, paired with what a 02:00 reminder MUST
@@ -143,15 +236,24 @@ void main() {
     bool isWeb = false,
     TZDateTimeNow? now,
     WindowsNotificationIdentity? windows,
-  }) =>
-      LocalNotificationService(
-        plugin: plugin,
-        platform: platform,
-        isWeb: isWeb,
-        localTimezone: () async => 'UTC',
-        now: now,
-        windows: windows,
-      );
+    LinuxReminderScheduler? linux,
+  }) => LocalNotificationService(
+    plugin: plugin,
+    platform: platform,
+    isWeb: isWeb,
+    localTimezone: () async => 'UTC',
+    now: now,
+    windows: windows,
+    // Never the real `$XDG_DATA_HOME` ledger from a test.
+    linuxScheduler:
+        linux ??
+        LinuxReminderScheduler(
+          store: MemoryReminderLedgerStore(),
+          show: (int id, String t, String b, String? p) =>
+              plugin.showNow(id, t, b, payload: p),
+          timer: (Duration d, void Function() f) => Timer(Duration.zero, () {}),
+        ),
+  );
 
   const WindowsNotificationIdentity identity = WindowsNotificationIdentity(
     appName: 'Probe',
@@ -415,36 +517,180 @@ void main() {
     });
   });
 
-  group('linux (show yes, repeat-schedule no)', () {
-    test('scheduleAt and reconcile no-op (no zonedSchedule on Linux)',
-        () async {
-      final _FakePlugin p = _FakePlugin();
-      final LocalNotificationService s = build(p, TargetPlatform.linux);
-      await s.scheduleAt(one(3, DateTime(2030, 1, 1, 9)));
-      await s.reconcile(<ScheduledNotification>[
-        one(4, DateTime(2030, 1, 1, 9)),
-      ], owns: (int id) => true);
+  group('linux (NO-04: this package schedules; the plugin only shows)', () {
+    // A fake clock in UTC: `tz.local` is UTC under these tests, so a wall
+    // clock and an instant agree and the assertion is exact.
+    late _FakeTime time;
+    late _FakePlugin p;
+    late MemoryReminderLedgerStore ledger;
+
+    LinuxReminderScheduler scheduler() => LinuxReminderScheduler(
+      store: ledger,
+      show: (int id, String t, String b, String? pl) =>
+          p.showNow(id, t, b, payload: pl),
+      now: () => time.now,
+      timer: time.timer,
+    );
+
+    LocalNotificationService linux() => build(
+      p,
+      TargetPlatform.linux,
+      now: () => tz.TZDateTime.from(time.now, tz.UTC),
+      linux: scheduler(),
+    );
+
+    setUp(() {
+      time = _FakeTime(DateTime.utc(2026, 10, 1, 8));
+      p = _FakePlugin();
+      ledger = MemoryReminderLedgerStore();
+    });
+
+    test('RED CONTROL: a fake clock fires a reminder AT its instant', () async {
+      final LocalNotificationService s = linux();
+      await s.init();
+      await s.scheduleAt(
+        one(3, DateTime(2026, 10, 1, 9, 30), payload: 'sub:a'),
+      );
+      // Never through the plugin's zonedSchedule, which Linux lacks.
       expect(p.once, isEmpty);
-    });
-
-    test('scheduleDaily is a no-op (no zonedSchedule on Linux)', () async {
-      final _FakePlugin p = _FakePlugin();
-      await build(p, TargetPlatform.linux).scheduleDaily(reminder);
-      expect(p.calls, isNot(contains('scheduleDaily:7')));
-    });
-
-    test('showNow still works', () async {
-      final _FakePlugin p = _FakePlugin();
-      await build(p, TargetPlatform.linux).showNow(title: 'a', body: 'b');
-      expect(p.calls.any((String c) => c.startsWith('showNow')), isTrue);
+      await time.advance(const Duration(minutes: 89));
+      expect(p.shown, isEmpty, reason: 'one minute early');
+      await time.advance(const Duration(minutes: 1));
+      expect(p.shown.map((r) => r.id), <int>[3]);
+      expect(p.shown.single.payload, 'sub:a');
+      // Shown once: the ledger no longer holds it.
+      await time.advance(const Duration(hours: 3));
+      expect(p.shown, hasLength(1));
+      expect(await scheduler().pendingIds(), isEmpty);
     });
 
     test(
-      'cancel still delegates (Linux can dismiss a shown notification)',
+      'a reminder missed while closed shows once at the next launch',
+      () async {
+        await linux().scheduleAt(one(4, DateTime(2026, 10, 1, 9)));
+        // The app is closed; the next launch is at 10:00.
+        time.now = DateTime.utc(2026, 10, 1, 10);
+        final _FakePlugin relaunched = p = _FakePlugin();
+        await linux().init();
+        expect(relaunched.shown.map((r) => r.id), <int>[4]);
+        // ...and the login-time `--remind` after it finds nothing left.
+        expect(await linux().showDueReminders(), 0);
+      },
+    );
+
+    test('reconcile replaces the owned ledger set, leaving others', () async {
+      final LocalNotificationService s = linux();
+      await s.scheduleAt(one(1, DateTime(2026, 10, 2, 9)));
+      await s.scheduleAt(one(50, DateTime(2026, 10, 2, 9)));
+      await s.reconcile(<ScheduledNotification>[
+        one(51, DateTime(2026, 10, 3, 9)),
+      ], owns: (int id) => id >= 50);
+      expect((await scheduler().pendingIds())..sort(), <int>[1, 51]);
+    });
+
+    test('scheduleDaily holds the next instance in the ledger', () async {
+      await linux().scheduleDaily(reminder);
+      expect(await scheduler().pendingIds(), <int>[7]);
+      expect(p.calls, isNot(contains('scheduleDaily:7')));
+    });
+
+    test('cancel removes a pending reminder before it fires', () async {
+      final LocalNotificationService s = linux();
+      await s.init();
+      await s.scheduleAt(one(9, DateTime(2026, 10, 1, 9)));
+      await s.cancel(9);
+      expect(p.calls, contains('cancel:9'));
+      await time.advance(const Duration(hours: 2));
+      expect(p.shown, isEmpty);
+    });
+
+    test('showNow still works', () async {
+      await linux().showNow(title: 'a', body: 'b');
+      expect(p.calls.any((String c) => c.startsWith('showNow')), isTrue);
+    });
+
+    test('never exact, and carries no actions', () async {
+      final LocalNotificationService s = linux();
+      expect(s.capabilities.exactTime, isFalse);
+      expect(await s.canScheduleExact(), isFalse);
+    });
+  });
+
+  group('actions (NO-10) and exact alarms (NO-12)', () {
+    const List<NotificationAction> buttons = <NotificationAction>[
+      NotificationAction(id: 'paid', title: 'Mark as paid'),
+      NotificationAction(id: 'snooze', title: 'Snooze 1 day'),
+    ];
+    ScheduledNotification withButtons(int id) => ScheduledNotification(
+      id: id,
+      title: 't',
+      body: 'b',
+      at: DateTime(2030, 1, 1, 9),
+      payload: 'sub:x',
+      actions: buttons,
+    );
+
+    test('Android, iOS, macOS and Windows post the buttons', () async {
+      for (final TargetPlatform t in <TargetPlatform>[
+        TargetPlatform.android,
+        TargetPlatform.iOS,
+        TargetPlatform.macOS,
+        TargetPlatform.windows,
+      ]) {
+        final _FakePlugin p = _FakePlugin();
+        await build(p, t, windows: identity).scheduleAt(withButtons(1));
+        expect(
+          p.once.single.actions.map((NotificationAction a) => a.id),
+          <String>['paid', 'snooze'],
+          reason: '$t',
+        );
+      }
+    });
+
+    test(
+      'a button press arrives with its action id; a body tap without',
       () async {
         final _FakePlugin p = _FakePlugin();
-        await build(p, TargetPlatform.linux).cancel(9);
-        expect(p.calls, contains('cancel:9'));
+        final LocalNotificationService s = build(p, TargetPlatform.android);
+        await s.init();
+        final List<NotificationTap> got = <NotificationTap>[];
+        s.notificationTaps().listen(got.add);
+        p.onTap!(
+          const NotificationTap(id: 1, payload: 'sub:x', actionId: 'paid'),
+        );
+        p.onTap!(const NotificationTap(id: 1, payload: 'sub:x'));
+        await Future<void>.delayed(Duration.zero);
+        expect(got.map((NotificationTap t) => t.actionId), <String?>[
+          'paid',
+          null,
+        ]);
+      },
+    );
+
+    test('requestExactAlarms opens the page and reads the answer', () async {
+      final _FakePlugin p = _FakePlugin()
+        ..exactAllowed = false
+        ..grantExactOnRequest = false;
+      final LocalNotificationService s = build(p, TargetPlatform.android);
+      expect(await s.requestExactAlarms(), isFalse);
+      expect(p.calls, contains('requestExactAlarms'));
+      p.grantExactOnRequest = true;
+      expect(await s.requestExactAlarms(), isTrue);
+    });
+
+    test(
+      'a second-precision instant is honoured (the 10 s test reminder)',
+      () async {
+        final _FakePlugin p = _FakePlugin();
+        await build(
+          p,
+          TargetPlatform.android,
+          now: fixedNow,
+        ).scheduleAt(one(5, DateTime(2026, 10, 1, 8, 0, 10)));
+        expect(
+          p.once.single.when.toUtc(),
+          DateTime.utc(2026, 10, 1, 8, 0, 10),
+        );
       },
     );
   });
