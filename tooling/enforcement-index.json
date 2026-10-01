@@ -2766,6 +2766,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-chassis"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-worker-secrets-declared.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "D-9",
       "F-11"
@@ -3837,6 +3847,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ops-watch.yml#failure-ledger"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-secret-scopes.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ops-watch.yml#tech-currency"
     ],
     "kind": "script",
@@ -3929,6 +3949,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/name-clearance-sweep.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#heartbeats"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/osv-scan-due.mjs",
     "references": [],
     "state": "WIRED"
   },

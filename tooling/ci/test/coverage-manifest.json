@@ -198,7 +198,7 @@
     50,
 
   "channel-register.test.mjs":
-    357,
+    367,
 
   "channel-surface.test.mjs":
     7,
@@ -214,6 +214,9 @@
 
   "check-jwks-error-rate.test.mjs":
     23,
+
+  "check-secret-scopes.test.mjs":
+    8,
 
   "chrome-raster.test.mjs":
     1,
@@ -327,7 +330,7 @@
     46,
 
   "e2e-proof-fresh.test.mjs":
-    67,
+    71,
 
   "e2e-purge-retry.test.mjs":
     15,
@@ -653,6 +656,9 @@
   "ops-watch-readers.test.mjs":
     13,
 
+  "osv-scan-due.test.mjs":
+    7,
+
   "package-boundaries.test.mjs":
     33,
 
@@ -843,7 +849,7 @@
     4,
 
   "rollback.test.mjs":
-    25,
+    30,
 
   "rollup-lossless.test.mjs":
     52,
@@ -1062,7 +1068,7 @@
     42,
 
   "web-cache-policy.test.mjs":
-    86,
+    90,
 
   "web-drive-stages-fonts.test.mjs":
     5,
@@ -1087,6 +1093,12 @@
 
   "worker-routes.test.mjs":
     11,
+
+  "worker-secrets-declared.test.mjs":
+    19,
+
+  "worker-secrets-tool.test.mjs":
+    10,
 
   "worker-set.test.mjs":
     37,
