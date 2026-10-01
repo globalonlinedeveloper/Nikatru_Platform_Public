@@ -1551,6 +1551,19 @@ describe('submit-play --sync-listing — the repo listing tree becomes the Play 
     assert.deepEqual(calls.filter((c) => WRITES.test(c) || c.startsWith('DELETE /androidpublisher') && c.includes('/listings/')), [], calls.join('\n'));
   });
 
+  // The backup writes the bytes an image url answers, so the url's host is pinned (CodeQL
+  // js/http-to-file-access, dispositioned by-design on exactly this pin).
+  test('an image url off Play\'s image CDN is never fetched — the backup refuses and NOTHING is written', async () => {
+    const { code, out, calls } = await submit(listed, {
+      args: SYNC,
+      env: syncEnv(),
+      apiOpts: { images: { phoneScreenshots: [{ id: 'x', sha256: 'old-a', url: 'https://evil.example/x.png' }] } },
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /not Play's image CDN \(https:\/\/\*\.googleusercontent\.com\), so it was not fetched/);
+    assert.deepEqual(calls.filter((c) => WRITES.test(c)), [], calls.join('\n'));
+  });
+
   test('an image upload answered with NO sha256 is UNVERIFIED — a refusal, never a pass, and nothing is committed', async () => {
     const { code, out, calls } = await submit(listed, { args: SYNC, env: syncEnv(), apiOpts: { omitUploadSha: true } });
     assert.equal(code, 1, out);

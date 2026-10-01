@@ -1328,6 +1328,22 @@
       "path": "tooling/ci/test/channel-register.test.mjs",
       "disposition": "fixed-in-tree",
       "reason": "Fixed in code 2026-09-30: the Firefox-redirect PASS case destructures only `out`, the one value it asserts on."
+    },
+    {
+      "alert": 543,
+      "rule": "js/http-to-file-access",
+      "path": "tooling/release/submit-play.mjs",
+      "disposition": "by-design",
+      "host": "*.googleusercontent.com",
+      "reason": "--sync-listing backs up each Play listing image it is about to replace, by design (#1099 review finding 4). The url is pinned by playImageUrlOrRefuse to https on Play's image CDN (or the loopback test seam) and a redirect is refused (redirect: manual); the file name is fixed by the script and the response cannot choose the path, which sits under --backup-dir (default build/, gitignored). Added 2026-10-01."
+    },
+    {
+      "alert": 544,
+      "rule": "js/http-to-file-access",
+      "path": "tooling/release/submit-play.mjs",
+      "disposition": "by-design",
+      "host": "androidpublisher.googleapis.com",
+      "reason": "--sync-listing writes the listing and contact details Play held, as a backup, before it replaces them (#1099 review finding 4). The origin is the pinned Play API origin (loopbackOr: the real origin or the loopback test seam only); the file is the fixed listing.json under --backup-dir (default build/, gitignored), so the response cannot choose the path. Added 2026-10-01."
     }
   ]
 }

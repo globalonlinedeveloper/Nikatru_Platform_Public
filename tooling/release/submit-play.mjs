@@ -1124,8 +1124,8 @@ async function backupBeforeWrite({ edit, details, live, slots }) {
     images[type] = [];
     for (const [i, img] of liveImgs.entries()) {
       const url = String(img?.url ?? '');
-      if (!/^https?:\/\//.test(url)) throw new Error(`backup: ${type} image ${i} has no fetchable url (${JSON.stringify(img?.url ?? null)}), so it could not be kept. Nothing was written.`);
-      const res = await fetch(url, { redirect: 'follow' });
+      playImageUrlOrRefuse(url, type, i); // the ONE host a backup reads from: Play's image CDN (or the loopback seam)
+      const res = await fetch(url, { redirect: 'manual' }); // a redirect off the pinned host is a refusal, not a hop
       if (!res.ok) throw new Error(`backup: ${type} image ${i} answered HTTP ${res.status}, so it could not be kept. Nothing was written.`);
       const file = `${type}-${i + 1}.png`;
       writeFileSync(join(dir, file), Buffer.from(await res.arrayBuffer()));
@@ -1135,6 +1135,27 @@ async function backupBeforeWrite({ edit, details, live, slots }) {
   const out = join(dir, 'listing.json');
   writeFileSync(out, `${JSON.stringify({ app: app.slug, package: packageName, takenAt: new Date().toISOString(), edit, language: LISTING_LANGUAGE, details, listing: live, images }, null, 2)}\n`);
   return out;
+}
+
+/** ⏱ 2026-10-01 (CodeQL js/http-to-file-access on the backup): the backup writes the bytes an image
+ *  url answers, so the url's HOST is pinned. Play's Image.url is "A URL that will serve a preview of
+ *  the image" on Google's image CDN, `*.googleusercontent.com`, over https; anything else refuses
+ *  before a byte is fetched. Under the loopback test seam (PLAY_API_BASE_URL) only that same loopback
+ *  origin is accepted. The file names are fixed by this script; a response never chooses a path. */
+function playImageUrlOrRefuse(raw, type, i) {
+  let u = null;
+  try {
+    u = new URL(raw);
+  } catch {
+    u = null;
+  }
+  const google = u !== null && u.protocol === 'https:' && u.hostname.endsWith('.googleusercontent.com');
+  const seam = u !== null && PLAY_BASE !== PLAY_API_ORIGIN && u.origin === new URL(PLAY_BASE).origin;
+  if (!google && !seam) {
+    throw new Error(
+      `backup: ${type} image ${i} is served from ${JSON.stringify(raw || null)}, not Play's image CDN (https://*.googleusercontent.com), so it was not fetched and could not be kept. Nothing was written.`,
+    );
+  }
 }
 
 /** Everything the tree says the listing is — read BEFORE any request, so a bad tree costs no edit. */
