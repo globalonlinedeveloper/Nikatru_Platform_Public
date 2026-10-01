@@ -20,10 +20,7 @@ import 'package:nikatru_purchases/nikatru_purchases.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
-
-/// The server's sentence from the LAST deletion attempt, or null.
-final StateProvider<String?> lastDeletionBillingSentenceProvider =
-    StateProvider<String?>((ref) => null);
+import '../../state/providers.dart' show lastDeletionBillingSentenceProvider;
 
 /// Clears the last sentence and returns the recorder `_deleteAccount` calls
 /// with the error it caught. Its controller is captured HERE, before the

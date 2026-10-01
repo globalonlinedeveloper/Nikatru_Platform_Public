@@ -60,7 +60,7 @@
       "what": "The delete-account dialog says what happens to billing (Paddle cancelled at period end; an App Store / Google Play subscription must be cancelled in the store), in en and ta, and shows the sentence the server's 503 `subscription_still_billing` carries in `message`.",
       "apps": ["*"],
       "open": false,
-      "closedBy": "train st-money-ready (2026-10-01): the dialog draws the plan line by where the plan was bought BEFORE the confirm, and the result renders the 503's `message` (ApiException.serverSentence → AccountDeletionFailure.serverSentence).",
+      "closedBy": "train st-money-ready (2026-10-01): the dialog draws the plan line by where the plan was bought BEFORE the confirm, and the 503's `message` (ApiException.serverSentence → AccountDeletionFailure.serverSentence) is rendered by the login screen's deletion notice, where the sign-out redirect lands the user (review 1 of #1114: the dialog is torn down by that redirect), and cleared on Dismiss.",
       "verify": [
         "apps/subscriptiontracker/test/delete_account_test.dart",
         "packages/api_client/test/dio_money_transports_test.dart"

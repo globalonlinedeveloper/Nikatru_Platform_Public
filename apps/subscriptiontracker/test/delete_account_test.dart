@@ -514,6 +514,84 @@ void main() {
     },
   );
 
+  // ⏱ 2026-10-01 · AB-A5-02-client, review 1 of #1114 (finding 1). The 503
+  // `subscription_still_billing` sentence must reach the screen the user LANDS
+  // on. The seam signs out on this refusal too, so the router replaces Settings
+  // with the login screen and takes the dialog with it; a test that pumps
+  // SettingsScreen bare never sees that. Same rig as the 502 test above.
+  testWidgets(
+    '🔴 THE 503 BILLING SENTENCE SURVIVES THE SIGN-OUT REDIRECT — on the login screen',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1200, 4000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final _StillBillingAuth auth = _StillBillingAuth();
+      final ProviderContainer container = ProviderContainer(
+        overrides: <Override>[
+          onboardingSeenProvider.overrideWith(_OnboardingSeen.new),
+          legalReacceptanceNeededProvider.overrideWithValue(false),
+          authRepositoryProvider.overrideWithValue(auth),
+          keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
+          analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
+          secureStoreProvider.overrideWithValue(MemSecureStore()),
+          notificationServiceProvider.overrideWithValue(FakeNotifications()),
+          renewalRemindersProvider.overrideWithValue(
+            RecordingSublyNotifications(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            routerConfig: container.read(routerProvider),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      container.read(routerProvider).go('/settings');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('deleteAccountPassword')),
+        _FakeAuth.rightPassword,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('deleteAccountConfirm')));
+      await tester.pumpAndSettle();
+
+      expect(auth.deleteCalls, 1);
+      expect(auth.signedIn, isFalse, reason: 'the seam signs out regardless');
+      // The redirect really happened — otherwise this test proves nothing.
+      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(find.byKey(const Key('accountDeletionNotice')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('accountDeletionNotice')),
+          matching: find.text(_StillBillingAuth.sentence),
+        ),
+        findsOneWidget,
+        reason:
+            'the server says WHY nothing was deleted and what to do first; the '
+            'user must read it where they land, not in a dialog the redirect '
+            'tore down',
+      );
+
+      // Dismiss clears it with the outcome, so a later sign-out cannot show it.
+      await tester.tap(find.text('Dismiss'));
+      await tester.pumpAndSettle();
+      expect(find.text(_StillBillingAuth.sentence), findsNothing);
+      expect(container.read(lastDeletionBillingSentenceProvider), isNull);
+    },
+  );
+
   // A plain `test`, not `testWidgets`: there is no widget here, and inside
   // testWidgets' FakeAsync zone a real future only advances when something
   // pumps — so this stalled for the full ten-minute timeout before it was moved.

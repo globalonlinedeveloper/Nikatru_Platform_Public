@@ -833,6 +833,7 @@ class _AccountDeletionNotice extends ConsumerWidget {
       lastAccountDeletionOutcomeProvider,
     );
     final String? detail = ref.watch(lastAccountDeletionDetailProvider);
+    final String? billing = ref.watch(lastDeletionBillingSentenceProvider);
     if (outcome == null) return const SizedBox.shrink();
     return Container(
       key: E2EKeys.accountDeletionNotice,
@@ -867,6 +868,18 @@ class _AccountDeletionNotice extends ConsumerWidget {
             key: const Key('accountDeletionNoticeText'),
             style: small,
           ),
+          // ⏱ 2026-10-01 · AB-A5-02-client: the server's own reason, when it
+          // refused because a plan is still billing — what to cancel first.
+          // HERE, not in the dialog: this refusal signs out too, and the
+          // redirect tears the dialog down before it is read.
+          if (!outcome.accountIsGone && billing != null) ...<Widget>[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              billing,
+              key: const Key('accountDeletionNoticeBilling'),
+              style: small,
+            ),
+          ],
           if (!outcome.accountIsGone) ...<Widget>[
             const SizedBox(height: AppSpacing.sm),
             // No turnaround time and no retention period: the published page
@@ -901,6 +914,8 @@ class _AccountDeletionNotice extends ConsumerWidget {
                 ref.read(lastAccountDeletionOutcomeProvider.notifier).state =
                     null;
                 ref.read(lastAccountDeletionDetailProvider.notifier).state =
+                    null;
+                ref.read(lastDeletionBillingSentenceProvider.notifier).state =
                     null;
               },
               child: Text(l10n.dismiss),
