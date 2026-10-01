@@ -50,6 +50,8 @@ function repo({
   noticeFile = true,
   brickConfig = true,
   contactPage = true,
+  // ⏱ 2026-10-01 · the security.txt Contact lines; null writes no file at all.
+  securityTxt = [`mailto:${ADDR}`],
   rootFiles = {},
 } = {}) {
   const root = join(TMP, `r${seq++}`);
@@ -69,6 +71,14 @@ function repo({
       join(siteDir, 'contact.html'),
       `<html><head><style>@media print { a { color: #000 } }</style></head>` +
         `<body><p>Write to ${contactEmail}</p></body></html>\n`,
+    );
+  }
+
+  if (securityTxt !== null) {
+    mkdirSync(join(siteDir, '.well-known'), { recursive: true });
+    writeFileSync(
+      join(siteDir, '.well-known', 'security.txt'),
+      `# fixture\n${securityTxt.map((c) => `Contact: ${c}`).join('\n')}\nExpires: 2027-01-01T00:00:00.000Z\n`,
     );
   }
 
@@ -142,6 +152,31 @@ describe('assert-repo-posture', () => {
     const r = run(root);
     assert.equal(r.status, 1);
     assert.match(r.stderr, /does not show "support@example\.test" in its visible text/);
+  });
+
+  // ⏱ 2026-10-01 · rv2-security-021 — the fourth surface, security.txt's Contact.
+  test('🔴 a security.txt whose Contact names a DIFFERENT address FAILS', () => {
+    const r = run(repo({ securityTxt: ['mailto:security@example.test'] }));
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /security\.txt names "mailto:security@example\.test" as a Contact/);
+  });
+
+  test('a security.txt with only an https Contact FAILS — the address is the channel SECURITY.md promises', () => {
+    const r = run(repo({ securityTxt: ['https://example.test/report'] }));
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /carries no `Contact: mailto:support@example\.test`/);
+  });
+
+  test('an https Contact BESIDE the address passes', () => {
+    const r = run(repo({ securityTxt: [`mailto:${ADDR}`, 'https://example.test/report'] }));
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /SECURITY\.md, NOTICE\.md, security\.txt and 1 app config\(s\) all name support@example\.test/);
+  });
+
+  test('a missing security.txt FAILS', () => {
+    const r = run(repo({ securityTxt: null }));
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /security\.txt is missing/);
   });
 
   test('an app that declares NO supportEmail FAILS — the chassis has one and it does not', () => {
