@@ -175,6 +175,8 @@ import {
   unitConclusion,
   supersededBy,
   zeroEntryNeutral,
+  calleeOf,
+  runPredatesUnitCalls,
   decideUnitFreshness,
   decideUnitRedSince,
   scheduleWeekdays,
@@ -6698,6 +6700,37 @@ describe('post-gate call jobs of the gate workflow — read, graded, admitted (A
     const c = unitConclusion(q(['deploy-web']), run, RUN_3848_JOBS, CI());
     assert.equal(c.verdict, 'lost', c.detail);
     assert.equal(unitConclusion(q(['deploy-web']), { ...run, referenced_workflows: null }, RUN_3848_JOBS, CI()).verdict, 'lost', 'a non-array is not an array');
+  });
+
+  // ⏱ 2026-10-01 · PR #1115: a new post-gate call no main run had carried read 30 runs'
+  // job lists and timed the step out. Arm (a) now runs off the run record, before the fetch.
+  test('RC-a4 — a run that predates EVERY call of the unit is out of its history, unread; a new unit\'s history is EMPTY, not UNREAD', () => {
+    assert.equal(calleeOf(CI().jobs.get('deploy-web')), '.github/workflows/deploy-web.yml');
+    assert.equal(calleeOf(CI().jobs.get('guards')), null, 'a `uses:` inside a step names no callee');
+    const why = runPredatesUnitCalls(q(['deploy-web']), RUN_3848, CI());
+    assert.equal(why, 'its referenced_workflows name no "/.github/workflows/deploy-web.yml@": the run predates the call');
+    assert.ok(runPredatesUnitCalls(q(['deploy-web', 'deploy-workers']), RUN_3848, CI()), 'neither call referenced');
+    // Read as before whenever the run COULD hold the unit, or the record cannot say.
+    const both = { ...RUN_3848, referenced_workflows: [REF('extensions-ci.yml'), REF('deploy-web.yml')] };
+    assert.equal(runPredatesUnitCalls(q(['deploy-web']), both, CI()), null, 'the call is referenced');
+    assert.equal(runPredatesUnitCalls(q(['deploy-web', 'deploy-workers']), both, CI()), null, 'ONE referenced call puts the run in the unit\'s history');
+    assert.equal(runPredatesUnitCalls(q(['guards']), RUN_3848, CI()), null, 'a job that is not a call');
+    assert.equal(runPredatesUnitCalls(q(['deploy-web', 'guards']), RUN_3848, CI()), null, 'any job that is not a call');
+    const { referenced_workflows: _drop, ...bare } = RUN_3848;
+    assert.equal(runPredatesUnitCalls(q(['deploy-web']), bare, CI()), null, 'no referenced_workflows: read as before (RC-a3)');
+    assert.equal(runPredatesUnitCalls(q(['deploy-web']), { ...RUN_3848, referenced_workflows: null }, CI()), null);
+    assert.equal(runPredatesUnitCalls({ ...q([]), unit: 'run' }, RUN_3848, CI()), null, 'a whole-run unit');
+    // What the scan does with it: a window of nothing but predating runs leaves NO entry, and
+    // an empty history is the bootstrap state (green, "no FAILED run"). Red control: the same
+    // window kept as neutral entries reads UNREAD, which is live exit 2 and would red ci-gate.
+    const r = row('duty.workflow.deploy-web.yml', ['deploy-web']);
+    const window = [RUN_3848, { ...RUN_3848, id: 36106900355 }];
+    const kept = window.filter((run) => !runPredatesUnitCalls(q(['deploy-web']), run, CI()));
+    assert.deepEqual(kept, []);
+    const empty = classifyRedSince(r, decideUnitRedSince(q(['deploy-web']), [], false));
+    assert.equal(empty.verdict, 'green', empty.line);
+    const neutral = window.map((run) => ({ run, c: unitConclusion(q(['deploy-web']), run, RUN_3848_JOBS, CI()) }));
+    assert.equal(classifyRedSince(r, decideUnitRedSince(q(['deploy-web']), neutral, false)).verdict, 'unread');
   });
 
   test('RC-b — the post-gate if: cannot hold (a schedule run, or a push off main), zero entries: neutral', () => {

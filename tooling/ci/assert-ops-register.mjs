@@ -2943,6 +2943,39 @@ export function supersededBy(run, runs) {
   return best;
 }
 
+/** PURE. The workflow a CALL job runs (its job-level `uses:`, `./` stripped), or null. */
+export function calleeOf(job) {
+  const uses = (job?.lines ?? []).map((l) => String(l?.text ?? '').match(/^ {4}uses:\s*(['"]?)(\S+?)\1\s*$/)).find(Boolean);
+  return uses ? uses[2].replace(/^\.\//, '') : null;
+}
+
+/** PURE. ⏱ 2026-10-01 · PB-03, row O-APP-WORKERS-DEPLOY-BEFORE-THE-MIGRATION. Arm (a)
+ *  of `zeroEntryNeutral`, read off the RUN RECORD before the run's job list is
+ *  fetched: why `run` cannot be in the history of a `jobs` unit whose EVERY job is
+ *  a call, or null. A run whose `referenced_workflows` (an array) names none of the
+ *  callees was created from a workflow file without that call, so it says nothing
+ *  about the unit, and `scanUnit` drops it unread. Measured on PR #1115: a new
+ *  post-gate call (platform-db-migrate) that no main run had carried yet made the
+ *  scan read 30 runs' job lists, two pages each, and the step ran past its
+ *  3-minute bound, although every one of those runs was neutral on arm (a). The
+ *  unit's history now starts at the first run that references its call. Until
+ *  then it is EMPTY, the bootstrap state, not a window of neutral runs read as
+ *  UNREAD (exit 2). On the merge commit's own run, UNREAD would red ci-gate and so
+ *  skip the one job whose first run ends it. Null, read as before, for a unit with
+ *  any job that is not a call, or a run without a `referenced_workflows` array. */
+export function runPredatesUnitCalls(q, run, wf) {
+  const u = unitOf(q);
+  const refs = run?.referenced_workflows;
+  if (u.kind !== 'jobs' || u.jobs.length === 0 || !Array.isArray(refs)) return null;
+  const callees = [];
+  for (const id of u.jobs) {
+    const callee = calleeOf(wf?.jobs?.get?.(id));
+    if (!callee || refs.some((r) => String(r?.path ?? '').includes(`/${callee}@`))) return null;
+    callees.push(`"/${callee}@"`);
+  }
+  return `its referenced_workflows name no ${callees.join(' or ')}: the run predates the call`;
+}
+
 /** PURE. Why a call job with ZERO entries in `run` could not have run there, or
  *  null. The four neutral arms of G4_UNMEASURED (PD2B2-4), in order: (a) the
  *  run predates the call; (b) its `if:` could not hold; (c) the gate it needs did
@@ -2950,8 +2983,7 @@ export function supersededBy(run, runs) {
  *  and superseded by `newer` (`supersededBy`, computed by the caller from the
  *  branch page). Null keeps it COVERAGE LOST. */
 export function zeroEntryNeutral(job, run, apiJobs, wf, newer = null) {
-  const uses = (job?.lines ?? []).map((l) => String(l?.text ?? '').match(/^ {4}uses:\s*(['"]?)(\S+?)\1\s*$/)).find(Boolean);
-  const callee = uses ? uses[2].replace(/^\.\//, '') : null;
+  const callee = calleeOf(job);
   const refs = run?.referenced_workflows;
   if (callee && Array.isArray(refs) && !refs.some((r) => String(r?.path ?? '').includes(`/${callee}@`))) {
     return `(a) its referenced_workflows name no "/${callee}@": the run predates the call`;
@@ -3486,6 +3518,7 @@ async function scanUnit(q, repo, wf, cache, filters, what) {
       entries.push({ run, c: { verdict: 'neutral', detail: `run ${run.id}: not read — a schedule run created on UTC weekday ${new Date(Date.parse(run.created_at)).getUTCDay()}, and the unit's own \`if:\` admits only weekday(s) ${[...days].sort().join(',')}` } });
       continue;
     }
+    if (runPredatesUnitCalls(q, run, wf)) continue; // not in the unit's history, so its job list is never fetched
     const c = unitConclusion(q, run, await jobsOfRun(repo, run.id, cache), wf, supersededBy(run, all ?? runs));
     entries.push({ run, c });
     if (c.verdict === 'success') break;
