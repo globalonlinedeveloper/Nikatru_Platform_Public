@@ -52,6 +52,15 @@
 #     declared BEFORE `vars.TURNSTILE_SITE_KEY` is ever set, so the gate cannot
 #     fail closed on the day it is switched on. ⚠️ The widget's own configured
 #     domain list is a SEPARATE console setting and still names the old subdomain.
+#     ⏱ 2026-10-01 · rv2-security-021 — IT CARRIES NO SUBRESOURCE INTEGRITY, ON
+#     PURPOSE. `/turnstile/v0/api.js` is a third-party script Cloudflare serves
+#     unversioned and changes without notice (its docs require it be loaded from
+#     that URL, never proxied or cached), so an `integrity=` hash would break the
+#     sign-up gate on Cloudflare's next push. This CSP host-pins it instead:
+#     script-src admits that one host and no other, and
+#     assert-web-cache-policy.mjs refuses a script-src host with no line of this
+#     shape:
+# script-src-host: https://challenges.cloudflare.com — no SRI: Cloudflare changes api.js without notice, so the CSP host-pin is the control
 #   · `connect-src` names the hosts the app calls, and deploy-web holds it to the
 #     set tooling/web/connect-origins.mjs computes, before the build. It does NOT
 #     name the apex, because `'self'` IS the apex once the app is served there.
@@ -68,10 +77,26 @@
 # ⚠️ `frame-ancestors 'none'` and `X-Frame-Options: DENY` are both set: the app
 # must not be framed, including by another path on its own origin, because
 # same-origin framing is otherwise unrestricted between app paths on one apex.
+#
+# ⏱ 2026-10-01 · rv2-security-021 — THE PERMISSIONS-POLICY, CHOSEN FROM WHAT THE APP
+# USES rather than copied from sites/nikatru/_headers. The app asks for no device
+# sensor, camera, microphone, location, USB/serial/HID/MIDI device or screen
+# capture, so each is denied (`=()`), including to the Turnstile frame.
+#   · `payment=()` was CHECKED, not copied: checkout opens the hosted page in a NEW
+#     browsing context (packages/purchases UrlCheckoutLauncher,
+#     LaunchMode.externalApplication), never in a frame of this document, and
+#     frame-src admits only Turnstile. Nothing here calls the Payment Request API.
+#   · `web-share=(self)` is stated, not denied: on web the export
+#     (packages/platform_storage ShareFileExporter, share_plus) hands a file to
+#     `navigator.share`, falling back to a download.
+#   · `fullscreen`, `autoplay`, clipboard and the private-state-token features are
+#     left at their defaults on purpose: the engine and the Turnstile widget may
+#     use them, and nothing measured shows either does not.
 /*
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: accelerometer=(), browsing-topics=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(), midi=(), payment=(), serial=(), usb=(), web-share=(self)
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
   Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' 'sha256-SqMf+O735lfNTprKa7S7jIWl1q79qFSdJCsyK+SUFsM=' https://challenges.cloudflare.com; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' https://challenges.cloudflare.com; connect-src 'self' https://auth-api.nikatru.com https://subscriptiontracker-api.nikatru.com https://config.nikatru.com https://platform.nikatru.com https://glitchtip.nikatru.com; upgrade-insecure-requests
 # ⏱ 2026-09-24 — THIS POLICY IS BOOTED BEFORE IT SHIPS. The launch smoke
