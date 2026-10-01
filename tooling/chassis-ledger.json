@@ -819,7 +819,7 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "package-lock.json",
-      "lines": 2802,
+      "lines": 3088,
       "verdict": "STAYS",
       "why": "Per-app Worker lockfile, resolved from package.json by `npm install --package-lock-only --ignore-scripts` and rendered with its name as {{app_id}}-api, so a stamped Worker's first install (provision-backend step [1], `npm ci`) is a tree OSV-Scanner reads here before any app is stamped. assert-renovate-reach.mjs holds its packages[\"\"] to package.json. Added 2026-09-26, O-SERVICE-KIT-UNBUILT (E-a1)."
     },

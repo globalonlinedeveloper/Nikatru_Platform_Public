@@ -64,8 +64,8 @@ not published.
 The toolchain is declared once, in [`tooling/versions.json`](tooling/versions.json), and
 `tooling/ci/assert-version-consistency.mjs` fails the build if any workflow disagrees with it.
 
-There are two workspaces, deliberately separate — Dart resolves through pub workspaces + Melos,
-JavaScript through pnpm.
+There are two dependency worlds, deliberately separate — Dart resolves through pub workspaces +
+Melos; each JavaScript unit is its own npm package with its own committed lockfile.
 
 ```bash
 dart pub global activate melos 8.9.0
@@ -78,12 +78,15 @@ melos run gate
 and what "green" means here.
 
 ```bash
-pnpm install
+npm ci --prefix sites/_shared
 ```
 
-installs the JavaScript side (`sites/_shared`, `tooling/content_pipeline`). The two Workers under
-`services/` keep their own committed lockfiles and use `npm ci` — that is intentional, and
-[`.gitignore`](.gitignore) explains why in the comment above `**/.wrangler/`.
+installs one JavaScript unit from its committed `package-lock.json`, and every unit works the same
+way: `services/platform`, `services/subscriptiontracker-api`, `sites/_shared`, `packages/tokens` and
+the tool islands `_playwright`, `tooling/web-ext` and `tooling/wrangler`. It is what CI runs.
+`tooling/content_pipeline` has no dependencies. There is no root install: the root pnpm workspace was
+retired on 2026-09-27 because nothing ran it. [`.gitignore`](.gitignore) explains why the lockfiles
+are committed, in the comment above `**/.wrangler/`.
 
 Four of the six platforms build on a Windows host with WSL2 (web · windows · linux · android).
 **macOS and iOS build only on Apple hardware**, so they are GitHub Actions-only by construction —

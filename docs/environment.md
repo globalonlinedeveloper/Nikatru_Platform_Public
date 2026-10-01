@@ -22,7 +22,9 @@ a digit written down anywhere in prose: it is `traps.json`'s own `count` fact, w
 - **Dart / Flutter (Melos workspace):** `melos run gate` is analyze + test over the whole tree in
   ONE resolution. Resolve with `flutter pub get` (Flutter members need the Flutter tool); `dart
   analyze` and `dart test` work for the pure-Dart packages.
-- **JS / TS:** `pnpm install` at the root — it is a pnpm workspace, so never install per package.
+- **JS / TS:** each unit installs on its own — `npm ci` in its directory, from its committed
+  `package-lock.json` — which is what CI runs. There is no root install: pnpm was retired on
+  2026-09-27 because nothing ran it (`pnpm-workspace.yaml` stays as a root anchor; its header says why).
 - **Workers:** deployed by `wrangler` from CI; see `services/*`.
 
 ## The checkout

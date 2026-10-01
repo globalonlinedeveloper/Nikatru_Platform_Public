@@ -107,6 +107,10 @@ const problems = [];
 // workflow — so a build from it is exactly as reproducible-or-not as any unit
 // below. Its absence from this list is what let an unpinned pnpm workspace sit
 // in a repo whose CI reports "dependency resolution is reproducible".
+// ⏱ 2026-09-27 (O-RENOVATE-BACKLOG-OUTRUNS-ITS-LIMITS, M4): pnpm is retired and the root
+// package.json with it — its one job was the `packageManager` pnpm pin, and nothing ran pnpm.
+// The root is still scanned: a package.json that reappears there is a unit again, held to its
+// lockfile, and the COVERAGE LOST check below still refuses a scan that skips it.
 const rootIsUnit = existsSync(join(repoRoot, 'package.json'));
 /** ⏱ 2026-09-24 (EXT-3) — THE TOOLING ISLANDS ARE NODE UNITS. Each is a directory
  *  whose only job is to hold one tool's exact version and its lockfile, installed
@@ -315,7 +319,7 @@ const byManager = nodeUnits.reduce((acc, u) => {
 }, {});
 console.log(
   `ok  lockfile discipline — ${nodeUnits.length} node unit(s) locked (${Object.entries(byManager).map(([m, n]) => `${n} ${m}`).join(', ')}), ` +
-    `repo root included, every workflow install is reproducible, no npx fetch in ${workflows.length} workflow(s) or ${scripts.length} script(s)`,
+    `${rootIsUnit ? 'repo root included' : 'repo root scanned (no package.json there)'}, every workflow install is reproducible, no npx fetch in ${workflows.length} workflow(s) or ${scripts.length} script(s)`,
 );
 
 /** The one COVERAGE LOST stop: each could-not-look branch above prints its own reason and ends
