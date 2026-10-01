@@ -312,7 +312,7 @@ checkout.post('/checkout', async (c) => {
   // …and one the rail has a price for — the rail resolves its own price
   // (RAIL_PRICE_IDS[railId][appId][offeringId]) and refuses an unsellable offering. Which
   // rail sells is the rendered selection (CHECKOUT_RAIL_ID), never a vendor named here.
-  const rail = CHECKOUT_RAIL_ID === null ? null : railFor(CHECKOUT_RAIL_ID, c.env);
+  const rail = railFor(CHECKOUT_RAIL_ID, c.env);
   if (rail === null || !railCan(rail, 'checkout')) {
     console.error(`[checkout] rid=${rid} no payments adapter declares checkout for this deploy (CHECKOUT_RAIL_ID=${String(CHECKOUT_RAIL_ID)}).`);
     return c.json({ error: 'checkout_not_configured' }, 503);

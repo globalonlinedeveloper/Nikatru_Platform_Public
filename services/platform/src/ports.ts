@@ -67,8 +67,14 @@ export function inboundFor(provider: string, environment: MoneyEnvironment | nul
 /**
  * The outbound rail for a provider id, bound to this Worker's secrets BY NAME, or null
  * when the registry lists no outbound half for it. Callers narrow with `railCan`.
+ *
+ * `provider` is `string | null` so a RENDERED selection that may be null
+ * (CHECKOUT_RAIL_ID) is passed straight in: the null test is made here, on a typed
+ * parameter, and never by a route against a generated constant whose value the build
+ * already fixes (#1127, CodeQL #548 js/comparison-between-incompatible-types).
  */
-export function railFor(provider: string, env: Env): RailOutbound | null {
+export function railFor(provider: string | null, env: Env): RailOutbound | null {
+  if (provider === null) return null;
   const row = ROW.get(provider);
   if (row === undefined) return null;
   const make = OUTBOUND[row.id];

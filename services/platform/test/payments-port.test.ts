@@ -107,8 +107,17 @@ describe('the rendered table is the one the Worker reads', () => {
   it('the web checkout rail is the one real adapter declaring checkout, and the root binds it', () => {
     const sellers = PAYMENTS_ADAPTERS.filter((a) => a.status !== 'fake' && a.capabilities.includes('checkout'));
     expect(sellers.map((a) => a.id)).toEqual([CHECKOUT_RAIL_ID]);
-    const rail = railFor(CHECKOUT_RAIL_ID ?? '', {} as unknown as AppEnv['Bindings']);
+    const rail = railFor(CHECKOUT_RAIL_ID, {} as unknown as AppEnv['Bindings']);
     expect(rail !== null && railCan(rail, 'checkout')).toBe(true);
+  });
+
+  // #1127 CodeQL #548: the route passes the rendered, nullable selection straight to
+  // `railFor` and never compares the generated constant itself. With `provider: string`
+  // this file does not typecheck (`tsc --noEmit` exits 1, TS2345), which is the red.
+  it('railFor takes the nullable rendered selection: null (no seller, or several) binds to null', () => {
+    const none: typeof CHECKOUT_RAIL_ID = null;
+    expect(railFor(none, {} as unknown as AppEnv['Bindings'])).toBeNull();
+    expect(railFor(null, {} as unknown as AppEnv['Bindings'])).toBeNull();
   });
 
   it('a rail with no outbound half binds to null, never to a stand-in', () => {
