@@ -4,7 +4,8 @@
 //   AUTHED  POST   /v1/calendar/feed            — { app_id } → mint (or ROTATE)
 //                                                  the caller's feed; answers the
 //                                                  https and webcal URLs, ONCE
-//   AUTHED  DELETE /v1/calendar/feed?app_id=…   — revoke it
+//   AUTHED  DELETE /v1/calendar/feed?app_id=…   — revoke it (204, and 204 again
+//                                                  for a feed already revoked)
 //   PUBLIC  GET    /v1/calendar/<token>.ics     — the feed; `?download=1` adds an
 //                                                  attachment disposition
 //
@@ -26,12 +27,28 @@
 // REMINDERS_CEILING_LIMITER. A calendar provider fetches every subscriber's feed
 // from its own few networks, so that key bounds a provider's whole fetch rate,
 // not one person's — see the limit's derivation in wrangler.jsonc.
+//
+// ⏱ 2026-10-01 · rv2-services-015. THE TWO AUTHED ROUTES HAVE A PER-PERSON
+// BURST BREAKER: EVENTS_LIMITER keyed `calendar:<user>`, the binding and key
+// shape report.ts and reminders.ts use. Each mint is a D1 write and a fresh
+// capability; nothing bounded how fast one account could rotate it. Checked
+// FIRST, before the body is read, so a refused request costs no I/O at all.
+// Fail-open by the helper's design (lib/edge-ceiling.ts), so it is a breaker,
+// not a quota.
+//
+// ⏱ 2026-10-01 · rv2-services-003. Both writes go through `run()` (lib/d1), so
+// a transient D1 reset is retried rather than answered 500. The mint is an
+// upsert of a hash the request computed before the statement ran, so its retry
+// is the same write. The revoke's retry is why DELETE answers 204 for a feed
+// that EXISTS and is already revoked: when the first attempt committed and only
+// its acknowledgement was lost, the retry changes nothing, and "no feed" would
+// be a false 404. Only a (user, app) with no feed row at all is the 404.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { firstRow, nowIso } from '../lib/d1';
+import { firstRow, nowIso, run } from '../lib/d1';
 import { readBoundedBody } from '../lib/body';
-import { withinEdgeCeiling } from '../lib/edge-ceiling';
+import { withinEdgeCeiling, withinRateLimit } from '../lib/edge-ceiling';
 import { writeCalendar, type IcsEvent } from '../lib/ics';
 import {
   DEFAULT_LEAD_DAYS,
@@ -64,7 +81,13 @@ export function feedUrls(origin: string, token: string): { https_url: string; we
   return { https_url: https, webcal_url: https.replace(/^https:/, 'webcal:') };
 }
 
+/** The per-person burst breaker both authed routes check first (rv2-services-015). */
+function withinCalendarLimit(env: AppEnv['Bindings'], userId: string): Promise<boolean> {
+  return withinRateLimit(env.EVENTS_LIMITER, `calendar:${userId}`, 'EVENTS_LIMITER');
+}
+
 calendar.post('/calendar/feed', async (c) => {
+  if (!(await withinCalendarLimit(c.env, c.get('userId')))) return c.json({ error: 'rate_limited' }, 429);
   const read = await readBoundedBody(c.req.raw, MAX_FEED_BODY_BYTES);
   if (!read.ok) return c.json({ error: read.error }, read.status);
   let body: unknown;
@@ -80,13 +103,14 @@ calendar.post('/calendar/feed', async (c) => {
   const createdAt = nowIso();
   // Mint and rotate are one statement: the (user, app) row is replaced in place,
   // so a person has at most one live feed per app and the previous URL dies here.
-  await c.env.PLATFORM_DB.prepare(
-    `INSERT INTO reminder_feed (user_id, app_id, token_hash, created_at, revoked_at) VALUES (?, ?, ?, ?, NULL)
-     ON CONFLICT (user_id, app_id) DO UPDATE SET
-       token_hash = excluded.token_hash, created_at = excluded.created_at, revoked_at = NULL`,
-  )
-    .bind(c.get('userId'), appId, await sha256Hex(token), createdAt)
-    .run();
+  const tokenHash = await sha256Hex(token);
+  await run(
+    c.env.PLATFORM_DB.prepare(
+      `INSERT INTO reminder_feed (user_id, app_id, token_hash, created_at, revoked_at) VALUES (?, ?, ?, ?, NULL)
+       ON CONFLICT (user_id, app_id) DO UPDATE SET
+         token_hash = excluded.token_hash, created_at = excluded.created_at, revoked_at = NULL`,
+    ).bind(c.get('userId'), appId, tokenHash, createdAt),
+  );
   // Named keys, not a spread: assert-analytics-contract pins this literal
   // against the released Dart client (CalendarFeed.tryParse), and a key it
   // cannot name is a key it cannot compare.
@@ -95,15 +119,25 @@ calendar.post('/calendar/feed', async (c) => {
 });
 
 calendar.delete('/calendar/feed', async (c) => {
+  if (!(await withinCalendarLimit(c.env, c.get('userId')))) return c.json({ error: 'rate_limited' }, 429);
   const appId = c.req.query('app_id');
   if (!isReminderApp(appId)) return c.json({ error: 'unknown_app' }, 404);
   c.set('appId', appId);
-  const res = await c.env.PLATFORM_DB.prepare(
-    'UPDATE reminder_feed SET revoked_at = ? WHERE user_id = ? AND app_id = ? AND revoked_at IS NULL',
-  )
-    .bind(nowIso(), c.get('userId'), appId)
-    .run();
-  if (Number(res.meta?.changes ?? 0) === 0) return c.json({ error: 'no_feed' }, 404);
+  const userId = c.get('userId');
+  const res = await run(
+    c.env.PLATFORM_DB.prepare(
+      'UPDATE reminder_feed SET revoked_at = ? WHERE user_id = ? AND app_id = ? AND revoked_at IS NULL',
+    ).bind(nowIso(), userId, appId),
+  );
+  if (Number(res.meta?.changes ?? 0) === 0) {
+    // Nothing changed: either there is no feed, or it is already revoked — by an
+    // earlier DELETE, or by this one's own first attempt before a reset. Only
+    // the first is a 404; a revoked feed is exactly what DELETE asked for.
+    const row = await firstRow<{ revoked_at: string | null }>(
+      c.env.PLATFORM_DB.prepare('SELECT revoked_at FROM reminder_feed WHERE user_id = ? AND app_id = ?').bind(userId, appId),
+    );
+    if (row === null) return c.json({ error: 'no_feed' }, 404);
+  }
   return c.body(null, 204);
 });
 
@@ -141,7 +175,7 @@ calendar.get('/calendar/:file', async (c) => {
     const date = nextOccurrence(sub, today);
     if (date === null) continue;
     const name = (sub.name ?? '').trim() || 'A subscription';
-    const price = priceLabel(sub.price);
+    const price = priceLabel(sub.price, sub.currency, sub.price_minor);
     events.push({
       // Stable across fetches: the same occurrence is the same event, so a client
       // that re-reads the feed updates it rather than adding a second copy.

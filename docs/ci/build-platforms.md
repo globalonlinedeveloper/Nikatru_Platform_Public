@@ -1628,8 +1628,12 @@ in `ci-gate`'s `needs`. The overlay above gets its first build proof on a pull r
 - **Cost.** The Android part of `linux_web_android` measured 11.5 and 11.7 min per app (runs
   35741818599 and 35737416404), hence `timeout-minutes: 30`. It adds about 5 minutes to the pull
   request's critical path, and to `main`'s `ci-gate`, which the deploy lanes wait on. It costs $0:
-  a public repository on GitHub-hosted runners. There is no Gradle cache yet
-  (`O-PR-LANE-GRADLE-CACHE`).
+  a public repository on GitHub-hosted runners. ⏱ 2026-10-01 (`O-PR-LANE-GRADLE-CACHE`): this job,
+  and no other, restores `~/.gradle/caches` and `~/.gradle/wrapper` keyed on the Gradle files, the
+  versions pin and the lockfile, and turns on Gradle's local build cache for its runner only; the
+  first cold `assembleRelease` measured 404.8 s (run 36808572305). `setup-flutter`, which the
+  release builds here share, carries no Gradle cache, and a pull request's save is scoped to its
+  own ref, so no release job restores what a PR wrote.
 
 ### PR lane — web and Linux
 

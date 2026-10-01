@@ -90,7 +90,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { allRows, nowIso } from '../lib/d1';
+import { allRows, nowIso, run } from '../lib/d1';
 import { isKnownApp, isSellableExtension } from '../config';
 import { isMoneyEnvironment } from '../lib/mor/contract';
 import { readBoundedBody } from '../lib/body';
@@ -224,13 +224,13 @@ cancellation.post('/plan/cancel', async (c) => {
   }
 
   const requestedAt = nowIso();
-  await c.env.PLATFORM_DB.prepare(
-    `INSERT INTO cancellation_requests
-       (request_id, user_id, app_id, environment, provider,
-        provider_subscription_id, requested_at, executed_at, not_executed_reason)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
+  await run(
+    c.env.PLATFORM_DB.prepare(
+      `INSERT INTO cancellation_requests
+         (request_id, user_id, app_id, environment, provider,
+          provider_subscription_id, requested_at, executed_at, not_executed_reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
       crypto.randomUUID(),
       userId,
       appId,
@@ -240,8 +240,8 @@ cancellation.post('/plan/cancel', async (c) => {
       requestedAt,
       notExecutedReason === null ? requestedAt : null,
       notExecutedReason,
-    )
-    .run();
+    ),
+  );
 
   if (notExecutedReason === null) {
     // 200 ONLY HERE: the rail confirmed the cancel. Access continues to the end

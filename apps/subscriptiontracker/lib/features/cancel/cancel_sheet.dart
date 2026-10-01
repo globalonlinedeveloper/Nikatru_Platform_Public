@@ -144,6 +144,17 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
   bool _busy = false;
   _Failure? _failure;
 
+  /// The step-2 heading's focus (ST truth pass, DE-12). The step change
+  /// REPLACES the confirm button the keyboard and the reader were on, so
+  /// focus went nowhere and nothing was said; it lands on the heading now.
+  final FocusNode _outcomeHeading = FocusNode(debugLabel: 'cancel-outcome');
+
+  @override
+  void dispose() {
+    _outcomeHeading.dispose();
+    super.dispose();
+  }
+
   Future<void> _confirm() async {
     setState(() {
       _busy = true;
@@ -164,6 +175,9 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
       setState(() {
         _busy = false;
         _step = 1;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _outcomeHeading.requestFocus();
       });
     } catch (e) {
       // 🔴 THIS FAILURE PATH DID NOT EXIST, and the stakes here are higher than
@@ -366,10 +380,23 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),
-                Text(
-                  l10n.cancelledHeading,
-                  textAlign: TextAlign.center,
-                  style: text.headlineSmall?.copyWith(color: scheme.onSurface),
+                // A LIVE REGION, so arriving on this step is ANNOUNCED
+                // ("Removed from your tracker") rather than silent, and a
+                // heading the moved focus lands on.
+                Focus(
+                  focusNode: _outcomeHeading,
+                  child: Semantics(
+                    key: const Key('cancel.outcome.heading'),
+                    header: true,
+                    liveRegion: true,
+                    child: Text(
+                      l10n.cancelledHeading,
+                      textAlign: TextAlign.center,
+                      style: text.headlineSmall?.copyWith(
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
