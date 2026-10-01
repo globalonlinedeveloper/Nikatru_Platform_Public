@@ -27,7 +27,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { firstRow, nowIso } from '../lib/d1';
+import { firstRow, nowIso, run } from '../lib/d1';
 import { isKnownApp } from '../config';
 import { readBoundedBody } from '../lib/body';
 import { withinEdgeCeiling, withinRateLimit } from '../lib/edge-ceiling';
@@ -101,22 +101,23 @@ reminders.put('/reminders/prefs', async (c) => {
     return c.json({ error: 'rate_limited' }, 429);
   }
   // An absent lead keeps the stored one (or the default for a first write).
-  await c.env.PLATFORM_DB.prepare(
-    `INSERT INTO reminder_prefs (user_id, app_id, email_opt_in, lead_days, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
-     ON CONFLICT (user_id, app_id) DO UPDATE SET
-       email_opt_in = excluded.email_opt_in,
-       lead_days = CASE WHEN ?6 = 1 THEN excluded.lead_days ELSE reminder_prefs.lead_days END,
-       updated_at = excluded.updated_at`,
-  )
-    .bind(
+  // `run`: an upsert of the same values, so a retry after a reset is the same write.
+  await run(
+    c.env.PLATFORM_DB.prepare(
+      `INSERT INTO reminder_prefs (user_id, app_id, email_opt_in, lead_days, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
+       ON CONFLICT (user_id, app_id) DO UPDATE SET
+         email_opt_in = excluded.email_opt_in,
+         lead_days = CASE WHEN ?6 = 1 THEN excluded.lead_days ELSE reminder_prefs.lead_days END,
+         updated_at = excluded.updated_at`,
+    ).bind(
       userId,
       parsed.appId,
       parsed.emailOptIn ? 1 : 0,
       parsed.leadDays ?? DEFAULT_LEAD_DAYS,
       nowIso(),
       parsed.leadDays === null ? 0 : 1,
-    )
-    .run();
+    ),
+  );
   const row = await firstRow<{ email_opt_in: number; lead_days: number }>(
     c.env.PLATFORM_DB.prepare('SELECT email_opt_in, lead_days FROM reminder_prefs WHERE user_id = ? AND app_id = ?').bind(
       userId,
@@ -174,11 +175,16 @@ reminders.post('/reminders/unsubscribe', async (c) => {
   const owner = await tokenOwner(c.env.PLATFORM_DB, c.req.query('t'));
   if (!owner) return c.text('This unsubscribe link is not valid any more.', 404, privateHeaders());
   c.set('appId', owner.app_id);
-  await c.env.PLATFORM_DB.prepare(
-    'UPDATE reminder_prefs SET email_opt_in = 0, updated_at = ? WHERE user_id = ? AND app_id = ?',
-  )
-    .bind(nowIso(), owner.user_id, owner.app_id)
-    .run();
+  // 🔴 `run`, BECAUSE THE PROVIDER SENDS THIS ONCE (rv2-services-003). A mail
+  // client's RFC 8058 POST is not retried by anybody: a transient D1 reset here
+  // was a 500, and the person kept getting the mail they had asked to stop.
+  await run(
+    c.env.PLATFORM_DB.prepare('UPDATE reminder_prefs SET email_opt_in = 0, updated_at = ? WHERE user_id = ? AND app_id = ?').bind(
+      nowIso(),
+      owner.user_id,
+      owner.app_id,
+    ),
+  );
   // A POST from a mail client (RFC 8058) reads the status; a person pressing the
   // page's button reads the page.
   return c.html(

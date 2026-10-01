@@ -21,6 +21,14 @@
 // are per channel. No parameter ⇒ `default`. A value the channel register does
 // not declare ⇒ 400 `unknown_channel`, decided the same way as the 404: from
 // memory, before the ceiling and before KV.
+//
+// ⏱ 2026-10-01 · rv2-services-013. A KV READ THAT THROWS IS A 503
+// `config_unavailable`, `no-store` — never the compiled-in defaults. A thrown
+// `get` is not "no override": the override may be exactly the raised floor or
+// the kill switch an app's launch path must see, and serving the defaults in its
+// place would hand every client a stale answer, edge-cached for five minutes, as
+// if it were current. It was an unhandled 500 before; a 503 says "try again"
+// and the client keeps the config it has.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
@@ -64,7 +72,14 @@ app.get('/:app', async (c) => {
     return c.json({ error: 'rate_limited' }, 429);
   }
 
-  const kvValue = await c.env.CONFIG_KV.get(`config:${appId}`);
+  let kvValue: string | null;
+  try {
+    kvValue = await c.env.CONFIG_KV.get(`config:${appId}`);
+  } catch (err) {
+    console.warn(`[config] rid=${c.get('requestId') ?? '-'} app=${appId} KV read failed — 503`, err);
+    c.header('Cache-Control', 'no-store');
+    return c.json({ error: 'config_unavailable' }, 503);
+  }
   const cfg = resolveConfig(appId, kvValue, channel ?? DEFAULT_CHANNEL);
   if (!cfg) return c.json({ error: 'unknown_app' }, 404);
   // Edge + client cache; overrides propagate within the TTL.
