@@ -37,6 +37,3 @@ Capture the FULL page (not just the visible screen), the VISIBLE area, a REGION 
 (Region and element capture shortcuts can be assigned at edge://extensions/shortcuts.)
 
 Free, private, and pixel-perfect.
-
-Optional FullShot Pro: sign in with a Nikatru account for watermarks and logos, brand kits, and saved annotation and redaction presets. Capturing, annotating, redacting and exporting stay free and need no account.
-In-extension purchases: FullShot Pro, an optional subscription billed monthly or yearly. Prices range from USD 5.99 a month to USD 34.99 a year. The Upgrade button in FullShot opens that purchase on nikatru.com, sold through Paddle, our merchant of record (in India, by Rajasekar Selvam, trading as NIKATRU via Razorpay).

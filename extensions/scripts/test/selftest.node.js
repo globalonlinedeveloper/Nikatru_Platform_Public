@@ -2153,9 +2153,12 @@ const LISTING_SRC = {
 };
 const OFFER = (term, amount) => ({ product_id: 'pro_' + term, amount_minor: amount, currency_code: 'USD', term, trial_days: 0 });
 /* The fixture's channel register (business-010): one row per store, each the
-   real register's extension shape — Paddle, and Razorpay for India. */
-const CHANNEL_ROW = (dir, rail = 'paddle', regionRails = [{ region: 'IN', rail: 'razorpay' }]) =>
-  ({ id: 'ch-' + dir, storeMetadataDir: 'extensions/Extension/{tool}/store/' + dir, purchaseRail: { rail, regionRails } });
+   real register's extension shape — Paddle, and Razorpay for India — and a
+   measured redirect URI, so a buyer can sign in there (#1117 review 1: a
+   `sells` line renders only where one can; R19 below nulls it). */
+const SIGN_IN_URI = 'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/';
+const CHANNEL_ROW = (dir, rail = 'paddle', regionRails = [{ region: 'IN', rail: 'razorpay' }], extensionRedirectUri = SIGN_IN_URI) =>
+  ({ id: 'ch-' + dir, storeMetadataDir: 'extensions/Extension/{tool}/store/' + dir, purchaseRail: { rail, regionRails }, extensionRedirectUri });
 const CHANNELS = { channels: ['chrome', 'edge', 'firefox'].map(d => CHANNEL_ROW(d)) };
 function withListing(offerings, mutate = () => {}) {
   return withStores((t, root) => {
@@ -2273,6 +2276,37 @@ const SELLER = 'Paddle, our merchant of record (in India, by Example Licensor vi
   const label = 'two currencies give two ranges, one per currency, joined with "; "';
   if (res.code === 0 && edge.includes('Pro: INR 499.00 a month to INR 3499.00 a year; USD 5.99 a month to USD 34.99 a year.')) ok(label, 'exit 0 · INR …; USD …');
   else bad(label, 'exit ' + res.code + '\n--- edge ---\n' + edge.slice(-300) + '\n--- output ---\n' + res.out.slice(-800));
+}
+
+/* 🔴 R19 · SELLING NEEDS A SIGN-IN ON THAT STORE (#1117 review 1, 2026-10-01).
+   Edge's channel has a null extensionRedirectUri: no buyer can sign in there,
+   so Edge renders no `sells` line and no `signin` line, and does render the
+   `nosignin` line; Chrome, which can sign in, renders the opposite. */
+{
+  const root = withListing([OFFER('month', 599), OFFER('year', 3499)], (t, r) => {
+    t.policy.networkAllowlist = ['api.example.test'];
+    writeJson(r, 'channel-register.json', { channels: [CHANNEL_ROW('chrome'), CHANNEL_ROW('edge', 'paddle', [], null), CHANNEL_ROW('firefox')] });
+    edit(r, TOOL + '/store/listing.json', x => {
+      const o = JSON.parse(x);
+      o.long.push({ when: 'signin', text: 'Sign in to Pro here.' }, { when: 'nosignin', text: 'Pro sign-in is not enabled here.' });
+      return JSON.stringify(o, null, 2) + '\n';
+    });
+  });
+  const res = run('render-listing.mjs', ['goodtool', ...cfg(root)], root);
+  const read = s => fs.readFileSync(path.join(root, TOOL, 'store/' + s + '/long-description.txt'), 'utf8');
+  const [chrome, edge] = [read('chrome'), read('edge')];
+  const label = 'a store whose channel cannot sign in renders no "sells" and no "signin" line, and its "nosignin" line';
+  if (res.code === 0 && !edge.includes('Pro: USD') && !edge.includes('Sign in to Pro here.') && edge.includes('Pro sign-in is not enabled here.') &&
+      chrome.includes('Sold by ' + SELLER + ', not by Google.') && chrome.includes('Sign in to Pro here.') && !chrome.includes('not enabled here')) ok(label, 'exit 0 · edge dark, chrome sells');
+  else bad(label, 'exit ' + res.code + '\n--- edge ---\n' + edge.slice(-300) + '\n--- chrome ---\n' + chrome.slice(-300) + '\n--- output ---\n' + res.out.slice(-600));
+}
+{
+  const root = withListing(null, (t, r) => {
+    edit(r, TOOL + '/store/listing.json', x => { const o = JSON.parse(x); o.long.push({ when: 'singin', text: 'typo' }); return JSON.stringify(o, null, 2) + '\n'; });
+  });
+  expect('a listing line with an unknown "when" is a finding (1), never a line that renders everywhere', {
+    script: 'render-listing.mjs', argv: ['goodtool', '--check', ...cfg(root)], code: 1, contains: 'which is none of pro, sells, signin, nosignin, free', root
+  });
 }
 
 /* 🔴 business-010 · THE SELLER IS THE CHANNEL'S RAIL, NOT THE LICENCE (2026-10-01,

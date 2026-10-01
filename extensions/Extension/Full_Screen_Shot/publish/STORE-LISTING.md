@@ -83,9 +83,6 @@ Capture the FULL page (not just the visible screen), the VISIBLE area, a REGION 
 (Region and element capture shortcuts can be assigned at chrome://extensions/shortcuts.)
 
 Free, private, and pixel-perfect.
-
-Optional FullShot Pro: sign in with a Nikatru account for watermarks and logos, brand kits, and saved annotation and redaction presets. Capturing, annotating, redacting and exporting stay free and need no account.
-FullShot Pro is sold through Paddle, our merchant of record (in India, by Rajasekar Selvam, trading as NIKATRU via Razorpay), not by Google.
 ```
 
 ---
