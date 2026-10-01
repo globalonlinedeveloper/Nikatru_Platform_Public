@@ -165,8 +165,9 @@ class _IcuWalk {
 Map<String, dynamic> _readArb(String relative) {
   const String pkg = 'packages/design_system';
   final List<String> candidates = <String>[relative, '$pkg/$relative'];
-  final String? found =
-      candidates.where((String p) => File(p).existsSync()).firstOrNull;
+  final String? found = candidates
+      .where((String p) => File(p).existsSync())
+      .firstOrNull;
   expect(
     found,
     isNotNull,
@@ -182,7 +183,9 @@ Map<String, dynamic> _readArb(String relative) {
 ///
 /// ⏱ 2026-10-01 · train T20 (XP-06): Hindi is the third locale, for every
 /// stamped app at once. Each limb below ranges over THIS list, so Hindi is held
-/// to exactly what Tamil is held to.
+/// to exactly what Tamil is held to. The files read are
+/// `lib/src/l10n/chassis_ta.arb` and `lib/src/l10n/chassis_hi.arb`
+/// (`_readArb` below builds the name from each code).
 const List<String> kTranslations = <String>['ta', 'hi'];
 
 void main() {
@@ -235,20 +238,19 @@ void main() {
   // `sameInBothLocales` with the reason it legitimately matches
   // (O-PAYWALL-SPEAKS-ONLY-WEB-CHECKOUT). The force-update wall replaces the
   // whole app and offers one control, so its keys may never be on the list.
-  group('every Tamil value is a translation, not the English pasted across',
-      () {
+  group('every Tamil value is a translation, not the English pasted across', () {
     // Measured at 60b63fb9: these three, and only these, were identical.
     const Map<String, String> sameInBothLocales = <String, String>{
       'legalese': 'the copyright mark and the company name',
       'languageEnglish':
           'the language picker names each language in itself, so a reader '
-              'looking for English finds "English"',
+          'looking for English finds "English"',
       'languageTamil':
           'the language picker names each language in itself: "தமிழ்" is '
-              'Tamil written in Tamil, in both files',
+          'Tamil written in Tamil, in both files',
       'languageHindi':
           'the language picker names each language in itself: "हिन्दी" is '
-              'Hindi written in Hindi, in every file (T20, XP-06)',
+          'Hindi written in Hindi, in every file (T20, XP-06)',
     };
     const List<String> unrecoverable = <String>[
       'updateRequiredTitle',
@@ -256,8 +258,7 @@ void main() {
       'updateRequiredAction',
     ];
 
-    test('no translated value equals its English one unless it is named',
-        () {
+    test('no translated value equals its English one unless it is named', () {
       final List<String> pasted = <String>[
         for (final String l in kTranslations)
           for (final String key in enKeys.toList()..sort())
@@ -289,7 +290,8 @@ void main() {
       expect(
         stale,
         isEmpty,
-        reason: 'These keys are in `sameInBothLocales` but are gone from '
+        reason:
+            'These keys are in `sameInBothLocales` but are gone from '
             'chassis_en.arb or now differ in a translation. Remove them from the '
             'list:\n  ${stale.join('\n  ')}',
       );
@@ -300,13 +302,15 @@ void main() {
         expect(
           enKeys,
           contains(key),
-          reason: 'COVERAGE LOST — $key is gone from chassis_en.arb, so the '
+          reason:
+              'COVERAGE LOST — $key is gone from chassis_en.arb, so the '
               'comparison below has nothing to compare.',
         );
         expect(
           sameInBothLocales.keys,
           isNot(contains(key)),
-          reason: '$key was added to `sameInBothLocales`. On a screen that '
+          reason:
+              '$key was added to `sameInBothLocales`. On a screen that '
               'replaces the whole app and cannot be dismissed, English is a '
               'Tamil reader locked out in a language they may not read.',
         );
@@ -363,14 +367,15 @@ void main() {
       final List<String> hits = <String>[];
       for (final (String locale, Map<String, dynamic> arb)
           in <(String, Map<String, dynamic>)>[
-        ('en', en),
-        for (final String l in kTranslations) (l, arbs[l]!),
-      ]) {
+            ('en', en),
+            for (final String l in kTranslations) (l, arbs[l]!),
+          ]) {
         for (final String key in keys) {
           expect(
             arb.containsKey(key),
             isTrue,
-            reason: 'COVERAGE LOST — $key is not in the $locale arb, so its '
+            reason:
+                'COVERAGE LOST — $key is not in the $locale arb, so its '
                 'wording was not checked.',
           );
           final RegExpMatch? m = webWording.firstMatch(arb[key] as String);
@@ -380,7 +385,8 @@ void main() {
       expect(
         hits,
         isEmpty,
-        reason: 'A string a store build shows names the web or a browser:\n  '
+        reason:
+            'A string a store build shows names the web or a browser:\n  '
             '${hits.join('\n  ')}',
       );
     });
@@ -423,8 +429,7 @@ void main() {
     });
   });
 
-  group('a translated value keeps the placeholders its original references',
-      () {
+  group('a translated value keeps the placeholders its original references', () {
     test('there is something here to check', () {
       final int withPlaceholders = enKeys
           .where((String k) => _placeholdersIn(en[k] as String).isNotEmpty)
@@ -449,7 +454,8 @@ void main() {
           ).difference(_placeholdersIn(arbs[l]![key] as String));
           if (lost.isNotEmpty) {
             broken.add(
-                '$l $key is missing ${(lost.toList()..sort()).join(', ')}');
+              '$l $key is missing ${(lost.toList()..sort()).join(', ')}',
+            );
           }
         }
       }
@@ -473,8 +479,7 @@ void main() {
             arbs[l]![key] as String,
           ).difference(_placeholdersIn(en[key] as String));
           if (extra.isNotEmpty) {
-            invented
-                .add('$l $key adds ${(extra.toList()..sort()).join(', ')}');
+            invented.add('$l $key adds ${(extra.toList()..sort()).join(', ')}');
           }
         }
       }
@@ -497,18 +502,22 @@ void main() {
   // load the delegate the way an app does and read a key out of it.
   group('the delegate really resolves, in both locales', () {
     test(
-        'both locales are offered — a delegate over one cannot change anything',
-        () {
-      expect(ChassisLocalizations.supportedLocales.length,
-          greaterThanOrEqualTo(2));
-      expect(
-        ChassisLocalizations.supportedLocales.map((Locale l) => l.languageCode),
-        containsAll(<String>['en', ...kTranslations]),
-      );
-    });
+      'both locales are offered — a delegate over one cannot change anything',
+      () {
+        expect(
+          ChassisLocalizations.supportedLocales.length,
+          greaterThanOrEqualTo(2),
+        );
+        expect(
+          ChassisLocalizations.supportedLocales.map(
+            (Locale l) => l.languageCode,
+          ),
+          containsAll(<String>['en', ...kTranslations]),
+        );
+      },
+    );
 
-    test('EVERY declared key renders a non-empty string in BOTH locales',
-        () async {
+    test('EVERY declared key renders a non-empty string in BOTH locales', () async {
       // The whole point of moving the keys was that one fix reaches every app.
       // The other side of that is that one BLANK reaches every app, and a blank
       // is what a translator's empty cell produces — parity cannot see it,
@@ -517,8 +526,9 @@ void main() {
         const Locale('en'),
         for (final String l in kTranslations) Locale(l),
       ]) {
-        final Map<String, dynamic> arb =
-            locale.languageCode == 'en' ? en : arbs[locale.languageCode]!;
+        final Map<String, dynamic> arb = locale.languageCode == 'en'
+            ? en
+            : arbs[locale.languageCode]!;
         expect(
           ChassisLocalizations.delegate.isSupported(locale),
           isTrue,
@@ -543,40 +553,42 @@ void main() {
     });
 
     testWidgets(
-        'a widget under a MaterialApp reads the chassis strings through context',
-        (
-      WidgetTester tester,
-    ) async {
-      // The accessor the brick's 13 re-pointed files use. If the barrel stops
-      // exporting it, or the delegate is not composed, this is where it shows —
-      // and it is the one thing an arb comparison can never tell you.
-      late String fromContext;
-      await tester.pumpWidget(
-        MaterialApp(
-          localizationsDelegates: <LocalizationsDelegate<dynamic>>[
-            ...ChassisLocalizations.localizationsDelegates,
-          ],
-          supportedLocales: ChassisLocalizations.supportedLocales,
-          locale: const Locale('ta'),
-          home: Builder(
-            builder: (BuildContext context) {
-              fromContext = context.chassisL10n.settingsTitle;
-              return Text(fromContext);
-            },
+      'a widget under a MaterialApp reads the chassis strings through context',
+      (WidgetTester tester) async {
+        // The accessor the brick's 13 re-pointed files use. If the barrel stops
+        // exporting it, or the delegate is not composed, this is where it shows —
+        // and it is the one thing an arb comparison can never tell you.
+        late String fromContext;
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+              ...ChassisLocalizations.localizationsDelegates,
+            ],
+            supportedLocales: ChassisLocalizations.supportedLocales,
+            locale: const Locale('ta'),
+            home: Builder(
+              builder: (BuildContext context) {
+                fromContext = context.chassisL10n.settingsTitle;
+                return Text(fromContext);
+              },
+            ),
           ),
-        ),
-      );
-      await tester.pump();
-      expect(fromContext, arbs['ta']!['settingsTitle']);
-      expect(
-        fromContext,
-        isNot(en['settingsTitle']),
-        reason:
-            'the Tamil value is byte-identical to the English one, which is what a '
-            'MISSING Tamil key looks like from here — gen-l10n serves the English '
-            'value and nothing fails',
-      );
-      expect(find.text(arbs['ta']!['settingsTitle'] as String), findsOneWidget);
-    });
+        );
+        await tester.pump();
+        expect(fromContext, arbs['ta']!['settingsTitle']);
+        expect(
+          fromContext,
+          isNot(en['settingsTitle']),
+          reason:
+              'the Tamil value is byte-identical to the English one, which is what a '
+              'MISSING Tamil key looks like from here — gen-l10n serves the English '
+              'value and nothing fails',
+        );
+        expect(
+          find.text(arbs['ta']!['settingsTitle'] as String),
+          findsOneWidget,
+        );
+      },
+    );
   });
 }
