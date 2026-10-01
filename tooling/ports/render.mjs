@@ -19,7 +19,7 @@
 // be read (COVERAGE LOST), 0 when current. Without --check it writes. assert-ports.mjs
 // limb 3 runs `renderCheck` on every build. Row O-NO-PORT-SELECTS-AN-ADAPTER-BY-CONFIG.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -92,6 +92,21 @@ export function renderPortsTs(doc) {
   return `${L.join('\n')}\n`;
 }
 
+/**
+ * The file's text, or null when it does not exist. ONE read, never an exists-then-read
+ * pair: a check between the test and the use is a file-system race (CodeQL
+ * js/file-system-race, #1127). Any error but ENOENT — a directory, a permission — throws,
+ * and the callers turn it into LOST rather than into "absent".
+ */
+export function readIfPresent(abs) {
+  try {
+    return readFileSync(abs, 'utf8');
+  } catch (e) {
+    if (e?.code === 'ENOENT') return null;
+    throw e;
+  }
+}
+
 /** Re-render in memory and compare. {ok, lost, detail}. */
 export function renderCheck(root) {
   let doc;
@@ -105,7 +120,12 @@ export function renderCheck(root) {
   }
   const want = renderPortsTs(doc);
   const abs = join(root, RENDERED_PORTS);
-  const have = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+  let have;
+  try {
+    have = readIfPresent(abs);
+  } catch (e) {
+    return { ok: false, lost: true, detail: `${RENDERED_PORTS} could not be read (${e.message})` };
+  }
   if (have === null) return { ok: false, lost: false, detail: `${RENDERED_PORTS} does not exist; run node tooling/ports/render.mjs` };
   if (have !== want) {
     const a = have.split('\n');
@@ -148,7 +168,13 @@ function main() {
   const abs = join(root, RENDERED_PORTS);
   mkdirSync(dirname(abs), { recursive: true });
   const want = renderPortsTs(doc);
-  const have = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+  let have;
+  try {
+    have = readIfPresent(abs);
+  } catch (e) {
+    console.error(`LOST render — ${RENDERED_PORTS} could not be read (${e.message})`);
+    process.exit(2);
+  }
   if (have !== want) writeFileSync(abs, want);
   console.log(`ok   render — ${have === want ? 'unchanged' : 'wrote'} ${RENDERED_PORTS}`);
 }

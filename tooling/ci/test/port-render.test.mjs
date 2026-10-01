@@ -73,6 +73,33 @@ describe('render.mjs — the payments table', () => {
       assert.equal(r.lost, true);
     } finally { rmSync(scratch, { recursive: true, force: true }); }
   });
+  // #1127 CodeQL js/file-system-race: the generated file is read ONCE, never exists-then-read.
+  // A path that exists but cannot be read (here a directory) was an uncaught EISDIR, exit 1,
+  // in both modes; it is LOST (exit 2) now, and only ENOENT means "absent".
+  it('COVERAGE LOST: a generated path that exists but cannot be read is exit 2 in both modes, never a crash', () => {
+    const scratch = mkdtempSync(join(tmpdir(), 'port-render-dir-'));
+    try {
+      mkdirSync(join(scratch, 'tooling/ports'), { recursive: true });
+      cpSync(join(REPO, PAYMENTS_REGISTRY), join(scratch, PAYMENTS_REGISTRY));
+      mkdirSync(join(scratch, RENDERED_PORTS), { recursive: true });
+      for (const args of [['--check', '--root', scratch], ['--root', scratch]]) {
+        const r = run(args);
+        assert.equal(r.code, 2, `${args.join(' ')}: ${r.out}`);
+        assert.match(r.out, /^LOST render( --check)? — services\/platform\/src\/generated\/ports\.ts could not be read/m);
+      }
+    } finally { rmSync(scratch, { recursive: true, force: true }); }
+  });
+  it('green control: an ABSENT generated file is written (ENOENT is absence, not an error)', () => {
+    const scratch = mkdtempSync(join(tmpdir(), 'port-render-new-'));
+    try {
+      mkdirSync(join(scratch, 'tooling/ports'), { recursive: true });
+      cpSync(join(REPO, PAYMENTS_REGISTRY), join(scratch, PAYMENTS_REGISTRY));
+      const r = run(['--root', scratch]);
+      assert.equal(r.code, 0, r.out);
+      assert.match(r.out, /^ok {3}render — wrote services\/platform\/src\/generated\/ports\.ts/);
+      assert.equal(run(['--check', '--root', scratch]).code, 0);
+    } finally { rmSync(scratch, { recursive: true, force: true }); }
+  });
   it('refuses an unknown flag (exit 2)', () => {
     assert.equal(run(['--chek']).code, 2);
   });
