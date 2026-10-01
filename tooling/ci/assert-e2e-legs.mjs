@@ -629,6 +629,15 @@ for (const t of nativeTargets.filter((x) => orRows[x].status === 'waits')) {
     problems.push(`nativeTargets.oauthReturn ${t} waits, and names no \`waitsFor\`: a wait nobody can trace is an excuse.`);
   }
 }
+/** Whether `text` passes `--target <t>` as a whole word (`--target ios` is not `--target ios-sim`). No regex is built from `t`. */
+function namesTarget(text, t) {
+  const needle = `--target ${t}`;
+  for (let i = text.indexOf(needle); i !== -1; i = text.indexOf(needle, i + 1)) {
+    const next = text[i + needle.length];
+    if (next === undefined || !/[\w-]/.test(next)) return true;
+  }
+  return false;
+}
 if (orLegs.length) {
   const orWf = typeof OR.workflow === 'string' ? parseWorkflow(ROOT, OR.workflow) : null;
   const drive = typeof OR.drive === 'string' ? OR.drive : '';
@@ -638,7 +647,7 @@ if (orLegs.length) {
     for (const t of orLegs) {
       const job = orWf.jobs.get(orRows[t].job);
       const runs = job?.logical.some(
-        (l) => drive && l.text.includes(`node ${drive}`) && l.text.includes('--oauth-return') && new RegExp(`--target ${t}(?![\\w-])`).test(l.text),
+        (l) => drive && l.text.includes(`node ${drive}`) && l.text.includes('--oauth-return') && namesTarget(l.text, t),
       );
       if (!runs) {
         problems.push(
@@ -649,10 +658,19 @@ if (orLegs.length) {
     }
   }
   const orSuiteRel = `${APP_DIR}/${OR.suite}`;
-  if (typeof OR.suite !== 'string' || !existsSync(join(ROOT, orSuiteRel))) {
+  // Read, not stat-then-read: one call answers "is it there" and "what does it say".
+  let orSuiteText = null;
+  if (typeof OR.suite === 'string') {
+    try {
+      orSuiteText = readFileSync(join(ROOT, orSuiteRel), 'utf8');
+    } catch {
+      orSuiteText = null;
+    }
+  }
+  if (orSuiteText === null) {
     problems.push(`the OAuth-return suite ${orSuiteRel} does not exist, and ${orLegs.join(', ')} declare legs it proves.`);
   } else {
-    const orSuite = stripSourceComments(readFileSync(join(ROOT, orSuiteRel), 'utf8'), '.dart');
+    const orSuite = stripSourceComments(orSuiteText, '.dart');
     const anchors = Array.isArray(OR.anchors) ? OR.anchors : [];
     const miss = anchors.filter((a) => !orSuite.includes(a));
     if (anchors.length === 0 || miss.length) {

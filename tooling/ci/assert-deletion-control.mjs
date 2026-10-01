@@ -873,15 +873,21 @@ if (withAccounts === 0) {
 // The rule lives in ONE function, so it is read where it lives: a decision that
 // stops sending a linked account to its provider is the same defect as a screen
 // that bypasses it, one file over.
-const decisionPath = join(ROOT, DECISION_FILE);
-if (!existsSync(decisionPath)) {
+// Read, not stat-then-read: one call answers "is it there" and "what does it say".
+let decisionText = null;
+try {
+  decisionText = readFileSync(join(ROOT, DECISION_FILE), 'utf8');
+} catch {
+  decisionText = null;
+}
+if (decisionText === null) {
   coverageLost([
     `${DECISION_FILE} does not exist.`,
     'It holds `deletionReauthOf`, the rule limb 4 grades every target against. A rule this scan cannot read is a',
     're-authentication it has not checked, on every target at once.',
   ]);
 }
-const decisionSrc = stripSourceComments(readFileSync(decisionPath, 'utf8'), '.dart');
+const decisionSrc = stripSourceComments(decisionText, '.dart');
 const decision = /\bDeletionReauth\s+deletionReauthOf\s*\(\s*AuthUser\s+\w+\s*\)\s*=>([^;]+);/.exec(decisionSrc);
 if (!decision) {
   coverageLost([
