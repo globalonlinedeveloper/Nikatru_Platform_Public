@@ -894,8 +894,23 @@ function prBaseEntries(root) {
   if (!ref) return null;
   const r = git(['show', `${ref}:${CODEQL_DISPOSITIONS_REL}`]);
   if (r.status !== 0) return null;
-  const { entries, problems } = parseDispositions(r.stdout);
-  return problems.length ? null : entries;
+  return baseEntriesOf(r.stdout);
+}
+
+/** PURE. The entries of a BASE dispositions file, read only to diff against the
+ *  head: never validated, because the base may predate a rule the head enforces
+ *  (on 2026-10-01 main's file still held `*.supabase.co` hosts, which this PR
+ *  refuses, and validating it made every PR that touched the file "unreadable").
+ *  null when the text is not a dispositions document. */
+export function baseEntriesOf(text) {
+  let doc;
+  try {
+    doc = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(doc?.dispositions)) return null;
+  return doc.dispositions.filter((e) => e && Number.isInteger(e.alert));
 }
 
 /** The paths this pull request changes, or null when the event is not a pull
@@ -976,7 +991,7 @@ async function limbC(probeFile) {
     const claims = probe.codeqlClaims ?? {};
     claimAt = (sha, n) => (sha in claims ? claims[sha].includes(n) : null);
     touched = Array.isArray(probe.prTouched) ? new Set(probe.prTouched) : null;
-    baseEntries = Array.isArray(probe.prBaseDispositions) ? parseDispositions(JSON.stringify({ dispositions: probe.prBaseDispositions })).entries : null;
+    baseEntries = Array.isArray(probe.prBaseDispositions) ? baseEntriesOf(JSON.stringify({ dispositions: probe.prBaseDispositions })) : null;
   } else {
     const token = ghToken();
     if (!token) unreadable(['limb C — neither GITHUB_TOKEN nor GH_TOKEN is in the environment, so no code-scanning alert was read.']);

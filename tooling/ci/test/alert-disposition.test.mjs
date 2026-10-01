@@ -58,7 +58,7 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { reconcile, declaredSources, issueFilingJobs, sourceHealth, classify, parseDispositions, judgeCodeql, scopeToPr, changedEntries, CODEQL_DISPOSITIONS_REL, PINNED_SUPABASE_HOST } from '../assert-alert-disposition.mjs';
+import { reconcile, declaredSources, issueFilingJobs, sourceHealth, classify, parseDispositions, judgeCodeql, scopeToPr, changedEntries, baseEntriesOf, CODEQL_DISPOSITIONS_REL, PINNED_SUPABASE_HOST } from '../assert-alert-disposition.mjs';
 import { SUPABASE_HOSTED_HOST_SHA256 } from '../../ops/credential-origin.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -560,6 +560,20 @@ describe('LIMB C — every open CodeQL alert is fixed in code or carries a dispo
     assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
     assert.match(r.stdout, /⬜ MAIN DEBT — #999993 /);
     assert.match(r.stdout, /on the 1 entr\(ies\) it adds, removes or edits/);
+  });
+
+  // ⏱ 2026-10-01: CI on this PR printed "its base could not be read" — main's file
+  // still held `*.supabase.co`, which the head refuses, and the base was VALIDATED.
+  test('a base file written under an older rule (a wildcard host) is still read for the diff', () => {
+    const legacy = REAL.entries.map((e) => (e.host ? { ...e, host: ['*.supabase.co'] } : e));
+    assert.ok(parseDispositions(JSON.stringify({ dispositions: legacy })).problems.length > 0, 'the legacy file must fail validation, or this case proves nothing');
+    assert.equal(baseEntriesOf(JSON.stringify({ dispositions: legacy })).length, REAL.entries.length);
+    assert.equal(baseEntriesOf('not json'), null);
+    const extra = alert(999992, 'js/unused-local-variable', 'tooling/ci/untouched.mjs');
+    const r = withFile(REAL.entries, { prTouched: DISP, prBaseDispositions: legacy, codeql: { open: [...live(), extra], dismissed: [] } });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.doesNotMatch(r.stdout, /STRICTLY/);
+    assert.match(r.stdout, /⬜ MAIN DEBT — #999992 /);
   });
 
   test('changedEntries: added, removed and edited numbers; an identical entry with keys reordered is not a change', () => {
