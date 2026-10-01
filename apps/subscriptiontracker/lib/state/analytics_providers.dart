@@ -328,8 +328,16 @@ Future<core.ConsentArtifact> applyLegalAcceptance({
 }) async {
   final DateTime at = now ?? DateTime.now();
   final String plat = platform ?? _platformName();
-  final core.ConsentArtifact terms = await controller.record(
-    core.ConsentPurpose.terms,
+  // 🔴 ⏱ 2026-10-01 · EN-05 — THE TERMS ARE SENT FIRST AND KEPT ONLY ONCE THE
+  // SERVER HAS THEM. This was `record` then `send`, "best-effort by contract,
+  // exactly as the analytics decision is" — but a terms acceptance is not an
+  // analytics decision: it is the legal record the re-acceptance gate opens
+  // on. `ConsentTransport.send` never throws, it answers `err`, and that answer
+  // was ignored, so an offline accept left "accepted" on this device with
+  // nothing on the append-only trail, and the next launch hydrated it as
+  // settled. Sent in the order they were taken, as before.
+  final core.ConsentArtifact terms = core.ConsentArtifact.create(
+    purpose: core.ConsentPurpose.terms,
     granted: true,
     policyVersion: versions.stamp,
     anonId: anonId,
@@ -337,10 +345,14 @@ Future<core.ConsentArtifact> applyLegalAcceptance({
     appVersion: appVersion,
     platform: plat,
   );
-  // Best-effort by contract, exactly as the analytics decision is: the decision
-  // already applies on-device, and an upload failure must never make a user's
-  // choice look rejected. Sent in the order they were taken.
-  await transport.send(appId: appId, artifact: terms);
+  final core.Result<void> sent = await transport.send(
+    appId: appId,
+    artifact: terms,
+  );
+  if (!sent.isOk) throw core.LegalAcceptanceNotRecorded();
+  await controller.adopt(terms);
+  // The marketing decision stays best-effort: it applies on-device, and an
+  // upload failure must never make that choice look rejected.
   if (marketingEmail != null) {
     final core.ConsentArtifact marketing = await controller.record(
       core.ConsentPurpose.marketingEmail,

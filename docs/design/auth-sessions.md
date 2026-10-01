@@ -16,7 +16,7 @@ before that token expires.
 | Piece | Where |
 |---|---|
 | `signOut({SignOutScope scope = SignOutScope.local})` on the seam. The default is unchanged. | `packages/core/lib/src/auth/auth_repository.dart:166` |
-| The adapter maps the scope to gotrue's own type, and **before a global revoke it makes sure it holds a live token** (see below) | `packages/auth_supabase/lib/src/supabase_auth_repository.dart:353` |
+| The adapter maps the scope to gotrue's own type, and **before a global revoke it makes sure it holds a live token** (see below) | `packages/auth_supabase/lib/src/supabase_auth_repository.dart:405` |
 | `signOutAndForgetUser(ref, {scope})`, still the only place allowed to call `.signOut(` | `apps/subscriptiontracker/lib/state/providers/auth.dart:7` and the brick's `providers.dart` |
 | "Log out of all devices" (Subly) and "Sign out of all devices" (the chassis `SettingsView`, so every stamped app) | the two `settings_screen.dart` files |
 

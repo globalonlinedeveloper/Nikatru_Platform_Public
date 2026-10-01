@@ -62,6 +62,7 @@ class ResetPasswordView extends StatefulWidget {
     required this.problem,
     required this.onSubmit,
     required this.onLeave,
+    this.panel,
     super.key,
   });
 
@@ -77,6 +78,9 @@ class ResetPasswordView extends StatefulWidget {
   /// typed half, and a test that only found the first would pass whichever
   /// reason was rendered.
   static const Key linkDeadHint = Key('resetPasswordLinkDeadHint');
+
+  /// ⏱ 2026-10-01 · EN-06 — the rules, readable before a refusal.
+  static const Key checklist = Key('resetPasswordChecklist');
 
   /// Whether the exchange produced a session at all. No session ⇒ dead link.
   final bool hasSession;
@@ -97,6 +101,10 @@ class ResetPasswordView extends StatefulWidget {
   /// navigates. See the adapter: it is a sign-out, not a `context.go` alone.
   final VoidCallback onLeave;
 
+  /// The leading half of the wide split (`AuthFrame.panel`), as on
+  /// `ReacceptTermsView`. Null renders the single column.
+  final Widget? panel;
+
   @override
   State<ResetPasswordView> createState() => _ResetPasswordViewState();
 }
@@ -104,16 +112,44 @@ class ResetPasswordView extends StatefulWidget {
 class _ResetPasswordViewState extends State<ResetPasswordView> {
   final TextEditingController _password = TextEditingController();
   final TextEditingController _confirm = TextEditingController();
+
+  /// Where Enter goes from the first box. Held on the state: a node built in
+  /// `build` is a new node on every keystroke, and the checklist rebuilds on
+  /// every keystroke.
+  final FocusNode _confirmFocus = FocusNode();
   bool _busy = false;
   bool _done = false;
   String? _error;
 
+  /// Whether the server refused THIS password as breached — the one rule the
+  /// checklist cannot know before the request. Forgotten on the next keystroke.
+  bool _breached = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _password.addListener(_passwordEdited);
+  }
+
+  void _passwordEdited() {
+    if (mounted) setState(() => _breached = false);
+  }
+
   @override
   void dispose() {
+    _password.removeListener(_passwordEdited);
     _password.dispose();
     _confirm.dispose();
+    _confirmFocus.dispose();
     super.dispose();
   }
+
+  AuthRevealLabels _revealLabels(ChassisLocalizations l10n) => AuthRevealLabels(
+    show: l10n.authShow,
+    hide: l10n.authHide,
+    showName: l10n.authShowPassword,
+    hideName: l10n.authHidePassword,
+  );
 
   /// The message for [p], or null when there is nothing wrong.
   ///
@@ -157,7 +193,13 @@ class _ResetPasswordViewState extends State<ResetPasswordView> {
       // ⏱ 2026-09-24 — ONE arm, through the mapper, which reads the failure's
       // code and reasons: a breached password now says so, where this printed
       // GoTrue's "known to be weak and easy to guess" as written.
-      if (mounted) setState(() => _error = authErrorText(l10n, e));
+      if (mounted) {
+        final String sentence = authErrorText(l10n, e);
+        setState(() {
+          _error = sentence;
+          _breached = sentence == l10n.passwordBreached;
+        });
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -168,6 +210,7 @@ class _ResetPasswordViewState extends State<ResetPasswordView> {
     final ChassisLocalizations l10n = context.chassisL10n;
 
     return AuthFrame(
+      panel: widget.panel,
       title: l10n.resetPasswordTitle,
       children: _body(context, l10n),
     );
@@ -176,10 +219,16 @@ class _ResetPasswordViewState extends State<ResetPasswordView> {
   List<Widget> _body(BuildContext context, ChassisLocalizations l10n) {
     if (_done) {
       return <Widget>[
-        Text(
-          l10n.resetPasswordDone,
-          key: ResetPasswordView.doneLine,
-          style: Theme.of(context).textTheme.bodyLarge,
+        // ⏱ 2026-10-01 · EN-06 — a LIVE REGION: the form this line replaces
+        // had focus, and without it a screen reader said nothing when the
+        // password was changed.
+        Semantics(
+          liveRegion: true,
+          child: Text(
+            l10n.resetPasswordDone,
+            key: ResetPasswordView.doneLine,
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
         ),
         const SizedBox(height: 20),
         FilledButton(
@@ -237,23 +286,52 @@ class _ResetPasswordViewState extends State<ResetPasswordView> {
         style: Theme.of(context).textTheme.bodyMedium,
       ),
       const SizedBox(height: 16),
-      TextField(
-        key: ResetPasswordView.passwordField,
+      // ⏱ 2026-10-01 · EN-06 — `AuthField`, the sign-in form's field, with
+      // the same Show / Hide and the same rules checklist sign-up shows. These
+      // were two plain `TextField(obscureText: true)` boxes: a person setting
+      // a password they will have to type again could not see what they
+      // typed, and learned the length rule only from a refusal.
+      AuthField(
+        label: l10n.resetPasswordNew,
         controller: _password,
-        obscureText: true,
+        keyboardType: TextInputType.text,
+        obscure: true,
+        fieldKey: ResetPasswordView.passwordField,
+        reveal: _revealLabels(l10n),
         // `newPassword`, never `password`: it is what tells a password manager
         // to OFFER to save rather than to autofill the old one.
         autofillHints: const <String>[AutofillHints.newPassword],
-        decoration: InputDecoration(labelText: l10n.resetPasswordNew),
+        textInputAction: TextInputAction.next,
+        onSubmitted: _confirmFocus.requestFocus,
       ),
-      const SizedBox(height: 12),
-      TextField(
-        key: ResetPasswordView.confirmField,
+      const SizedBox(height: AppSpacing.sm),
+      AuthPasswordChecklist(
+        key: ResetPasswordView.checklist,
+        rules: <AuthRule>[
+          AuthRule(
+            label: l10n.authPasswordRuleLength(core.kMinPasswordLength),
+            state: _password.text.length >= core.kMinPasswordLength
+                ? AuthRuleState.met
+                : AuthRuleState.pending,
+          ),
+          AuthRule(
+            label: l10n.authPasswordRuleBreach,
+            state: _breached ? AuthRuleState.failed : AuthRuleState.pending,
+          ),
+        ],
+      ),
+      const SizedBox(height: AppSpacing.md),
+      AuthField(
+        label: l10n.resetPasswordConfirm,
         controller: _confirm,
-        obscureText: true,
+        keyboardType: TextInputType.text,
+        obscure: true,
+        fieldKey: ResetPasswordView.confirmField,
+        reveal: _revealLabels(l10n),
+        focusNode: _confirmFocus,
         autofillHints: const <String>[AutofillHints.newPassword],
-        decoration: InputDecoration(labelText: l10n.resetPasswordConfirm),
-        onSubmitted: (_) => _submit(l10n),
+        textInputAction: TextInputAction.done,
+        onSubmitted: _busy ? null : () => _submit(l10n),
       ),
       if (_error != null) ...<Widget>[
         const SizedBox(height: 12),
