@@ -117,9 +117,9 @@
 //   · executed ABOVE its floor          → never a failure (no churn per new test);
 //                                         the floor rises only by the refresh script
 //
-// The floor is a LINUX (ubuntu-24.04, guard-meta) measurement and is written
+// The floor is a LINUX (ubuntu-24.04, guard-tests shards) measurement and is written
 // ONLY by tooling/scripts/refresh-executed-floor.mjs from a green main run's
-// junit artifact. So: only ci.yml's guard-meta step passes the flag; locally
+// junit artifact. So: only ci.yml's guard-tests-floor step passes the flag; locally
 // the limb prints `executed floor: not measured here (Linux CI only)` — a
 // named skip, never a silent pass — and a junit whose file= paths are Windows-
 // shaped is REFUSED against the floor (COVERAGE LOST), because 36 suites ran
@@ -289,7 +289,7 @@ export function compareFloors(manifest, counts, dirs = new Map()) {
 
 export const EXECUTED_FLOOR_REL = 'tooling/ci/test/executed-floor.json';
 export const EXECUTED_FLOOR_HEADER =
-  'Per-suite EXECUTED case counts, measured on the Linux ubuntu-24.04 guard-meta runner. Read by ' +
+  'Per-suite EXECUTED case counts, measured on the Linux ubuntu-24.04 guard-tests runners and merged by guard-tests-floor. Read by ' +
   'tooling/ci/assert-case-count-honest.mjs --executed-floor (executed >= floor; a floored suite absent ' +
   'from junit is COVERAGE LOST; rises never fail). Written ONLY by tooling/scripts/refresh-executed-floor.mjs ' +
   'from the guard-tests-junit artifact of a GREEN ci.yml run on main; never written from a local run. ' +
@@ -554,7 +554,7 @@ function executedFloorLimb(args, cases, counts, dirs) {
   if (args.executedFloor === null) {
     console.log(
       'executed floor: not measured here (Linux CI only) — the per-suite executed floor in ' +
-        `${EXECUTED_FLOOR_REL} is a Linux ubuntu-24.04 measurement and only ci.yml's guard-meta step passes ` +
+        `${EXECUTED_FLOOR_REL} is a Linux ubuntu-24.04 measurement and only ci.yml's guard-tests-floor step passes ` +
         '--executed-floor. This run checked the declared floor ONLY; a deleted loop-generated case is NOT caught here.',
     );
     return 0;
@@ -593,7 +593,7 @@ function executedFloorLimb(args, cases, counts, dirs) {
       `${windows.length} case(s) in ${args.junit} were run on a WINDOWS host (e.g. ${JSON.stringify(windows[0].file)}).`,
       `The floor in ${label} is a Linux ubuntu-24.04 measurement, and suites run fewer cases on Windows (platform`,
       'skips), so the comparison would red on correct code or, worse, teach someone to lower the floor. Drop',
-      '--executed-floor locally; only guard-meta passes it.',
+      '--executed-floor locally; only guard-tests-floor passes it.',
     );
   }
   const collided = Object.keys(floor.suites).filter((s) => (dirs.get(s) ?? []).length > 1);
