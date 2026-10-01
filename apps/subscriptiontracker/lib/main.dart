@@ -15,11 +15,13 @@ import 'package:nikatru_chassis_screens/shell/web_semantics.dart';
 import 'core/app_config.dart';
 import 'core/device_integrity.dart';
 import 'core/router.dart' show installAppErrorScreen;
-import 'core/windows_notification_identity.g.dart';
 import 'state/providers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // NO-04 · the XDG autostart entry runs this binary with `--remind` at login:
+  // it shows the reminders that fell due while the app was closed, and exits.
+  if (await runRemindLaunch(linuxAppId: AppConfig.appId)) return;
 
   // 🔴 WEB HAD NO ACCESSIBILITY TREE UNTIL THIS LINE. Flutter web compiles the
   // semantics DOM only once a client asks for it; until then a screen reader
@@ -105,11 +107,9 @@ Future<void> main() async {
       // survived. The fork is gone: renewal reminders schedule through this
       // instance (renewalRemindersProvider), so there is one registration and
       // every notification the app posts is tappable by construction.
-      // [windows] is this app's toast identity, rendered from app.yaml; without
-      // it Windows would have no notifications at all.
-      final core.NotificationService taps = createLocalNotificationService(
-        windows: kWindowsNotificationIdentity,
-      );
+      // [createLaunchNotificationService] adds the Windows toast identity, the
+      // Linux ledger's id (NO-04) and Apple's reminder buttons (NO-10).
+      final core.NotificationService taps = createLaunchNotificationService();
       await taps.init();
 
       // 🔴 [pipeline C-15 / G-43] (absent from origins.lock.json by construction — G-43 is a MASTER_PLAN §3 chassis-gap id, a different register from the pipeline ids; see Private/pre-minimal-2026-09-08:MASTER_PLAN.md) IDENTITY, BEFORE THE FIRST FRAME — and this

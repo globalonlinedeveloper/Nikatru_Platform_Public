@@ -6,10 +6,13 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
+import 'package:nikatru_notifications/nikatru_notifications.dart'
+    show LinuxAutostartControl, QuietHours;
+
 import '../services/notifications/notification_service.dart'
     show ReminderRules, RenewalReminders;
 import 'analytics_providers.dart';
-import 'providers.dart' show renewalRemindersProvider;
+import 'providers.dart' show linuxAutostartProvider, renewalRemindersProvider;
 
 /// Where the settings live on disk — the same [core.KeyValueStore] seam the
 /// consent decision and the install id use ([ADR 005]). Namespaced like
@@ -24,11 +27,26 @@ class SettingsState {
       'priceHike': true,
       'unused': true,
       'weekly': false,
+      'quiet': false,
     },
     this.reminderLeadDays = defaultLeadDays,
     this.reminderMinuteOfDay = defaultMinuteOfDay,
+    this.quietStartMinute = defaultQuietStart,
+    this.quietEndMinute = defaultQuietEnd,
     this.blocked = const <String>{},
   });
+
+  /// NO-13: the quiet-hours window, as minutes after midnight, applied while
+  /// `prefs['quiet']` is on. 22:00–07:00 until the user moves it.
+  final int quietStartMinute;
+  final int quietEndMinute;
+  static const int defaultQuietStart = 22 * 60;
+  static const int defaultQuietEnd = 7 * 60;
+
+  /// The window [reminderRules] defers into, or null while quiet hours are off.
+  QuietHours? get quietHours => (prefs['quiet'] ?? false)
+      ? QuietHours(startMinute: quietStartMinute, endMinute: quietEndMinute)
+      : null;
 
   /// ST-R3 (audit C26): the account DEFAULT lead — days before a renewal the
   /// reminder fires — for every row without its own `reminder_days`. 2 is
@@ -55,6 +73,7 @@ class SettingsState {
     leadDays: <int>[reminderLeadDays],
     hour: reminderMinuteOfDay ~/ 60,
     minute: reminderMinuteOfDay % 60,
+    quiet: quietHours,
   );
 
   /// The user's currency as an ISO 4217 code — the unit a NEW subscription is
@@ -108,12 +127,16 @@ class SettingsState {
     Map<String, bool>? prefs,
     int? reminderLeadDays,
     int? reminderMinuteOfDay,
+    int? quietStartMinute,
+    int? quietEndMinute,
     Set<String>? blocked,
   }) => SettingsState(
     currencyCode: currencyCode ?? this.currencyCode,
     prefs: prefs ?? this.prefs,
     reminderLeadDays: reminderLeadDays ?? this.reminderLeadDays,
     reminderMinuteOfDay: reminderMinuteOfDay ?? this.reminderMinuteOfDay,
+    quietStartMinute: quietStartMinute ?? this.quietStartMinute,
+    quietEndMinute: quietEndMinute ?? this.quietEndMinute,
     blocked: blocked ?? this.blocked,
   );
 
@@ -122,7 +145,11 @@ class SettingsState {
     'prefs': prefs,
     'reminderLeadDays': reminderLeadDays,
     'reminderMinuteOfDay': reminderMinuteOfDay,
+    'quietStartMinute': quietStartMinute,
+    'quietEndMinute': quietEndMinute,
   };
+
+  static bool _isMinuteOfDay(Object? m) => m is int && m >= 0 && m < 24 * 60;
 
   /// [fallbackCurrencyCode] is the currency when the store holds no choice —
   /// the device region's, supplied by [SettingsController] (ST-C1).
@@ -139,15 +166,23 @@ class SettingsState {
     final Object? prefs = json['prefs'];
     final Object? lead = json['reminderLeadDays'];
     final Object? minute = json['reminderMinuteOfDay'];
+    final Object? quietStart = json['quietStartMinute'];
+    final Object? quietEnd = json['quietEndMinute'];
     return SettingsState(
       currencyCode: _currencyFrom(json, fallback: fallbackCurrencyCode),
       // A value outside what the chooser offers is junk, not a choice.
       reminderLeadDays: lead is int && leadChoices.contains(lead)
           ? lead
           : defaultLeadDays,
-      reminderMinuteOfDay: minute is int && minute >= 0 && minute < 24 * 60
-          ? minute
+      reminderMinuteOfDay: _isMinuteOfDay(minute)
+          ? minute! as int
           : defaultMinuteOfDay,
+      quietStartMinute: _isMinuteOfDay(quietStart)
+          ? quietStart! as int
+          : defaultQuietStart,
+      quietEndMinute: _isMinuteOfDay(quietEnd)
+          ? quietEnd! as int
+          : defaultQuietEnd,
       prefs: <String, bool>{
         ...defaults.prefs,
         if (prefs is Map<String, Object?>)
@@ -272,6 +307,21 @@ class SettingsController extends Notifier<SettingsState> {
     return _persist();
   }
 
+  /// NO-13: move the quiet-hours window.
+  Future<void> setQuietHours({int? startMinute, int? endMinute}) {
+    for (final int? m in <int?>[startMinute, endMinute]) {
+      if (m != null && (m < 0 || m >= 24 * 60)) {
+        throw ArgumentError.value(m, 'minute', 'not a minute of the day');
+      }
+    }
+    _touched = true;
+    state = state.copyWith(
+      quietStartMinute: startMinute,
+      quietEndMinute: endMinute,
+    );
+    return _persist();
+  }
+
   /// Flip [key]. Returns what the switch now IS — which, for a reminder pref
   /// the OS refuses, is OFF although ON was asked for.
   Future<bool> toggle(String key) async {
@@ -311,7 +361,20 @@ class SettingsController extends Notifier<SettingsState> {
         return false;
       }
     }
+    if (key == 'alerts') await _syncAutostart(on);
     return on;
+  }
+
+  /// NO-04: the Linux login entry follows "Renewal alerts" — created on
+  /// opt-in, removed on opt-out, so OFF leaves nothing that runs at login.
+  /// Null (every other target) is a no-op; a failed write costs the login
+  /// catch-up, never the switch.
+  Future<void> _syncAutostart(bool on) async {
+    final LinuxAutostartControl? entry = ref.read(linuxAutostartProvider);
+    if (entry == null) return;
+    try {
+      await (on ? entry.enable() : entry.disable());
+    } catch (_) {}
   }
 
   /// Fire-and-forget from the UI's point of view (the callbacks are

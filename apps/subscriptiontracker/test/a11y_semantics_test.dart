@@ -2687,11 +2687,31 @@ void main() {
               .map((SemanticsData d) => d.label)
               .toList();
           expect(buttons, contains(l10n.close));
+          // ⏱ 2026-10-01 · NO-10: a due card carries its four answers —
+          // Mark as paid, Snooze, Keep it, How to stop — each a named button
+          // about THAT plan. Nothing else may be one.
+          final Set<String> rowActions = <String>{
+            l10n.reminderActionMarkPaid,
+            l10n.reminderActionSnooze,
+            l10n.reminderActionKeep,
+            l10n.reminderActionHowToStop,
+          };
+          final List<String> cards = buttons
+              .where((String l) => l != l10n.close && !rowActions.contains(l))
+              .toList();
           expect(
-            buttons.where((String l) => l != l10n.close),
+            cards,
             everyElement(contains(' renews ')),
             reason: 'only a card about one plan may announce itself a button',
           );
+          // Every card that is a control carries its four answers.
+          for (final String a in rowActions) {
+            expect(
+              buttons.where((String l) => l == a).length,
+              cards.length,
+              reason: '"$a" on every due card, and nowhere else',
+            );
+          }
           // COVERAGE: the aggregate card is there on every day of the year
           // (three demo rows carry `unused: true`), and it is NOT a button.
           final List<String> inert = data

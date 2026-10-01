@@ -1,4 +1,4 @@
-import 'package:nikatru_core/nikatru_core.dart' show Entitlements;
+import 'package:nikatru_core/nikatru_core.dart' show Entitlements, Money;
 
 import '../models/budget_info.dart';
 import '../models/payment_record.dart';
@@ -21,6 +21,17 @@ abstract class ApiClient {
   );
   Future<void> deleteSubscription(String id);
   Future<List<PaymentRecord>> getPaymentHistory(String id);
+
+  /// Record that [id] was paid [amount] on [paidOn] — "Mark as paid" (ST-R5,
+  /// NO-10): `POST /v1/subscriptions/:id/payments`. [idempotencyKey] makes a
+  /// retried press (a notification action can be delivered twice) one
+  /// payment; a host that does not read it yet ignores the query parameter.
+  Future<void> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  });
   Future<BudgetInfo> getBudget();
   Future<BudgetInfo> updateBudget(BudgetInfo budget);
   Future<Entitlements> getEntitlements();

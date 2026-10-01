@@ -3407,7 +3407,9 @@ void main() {
       WidgetTester tester,
     ) async {
       // ⏱ 2026-09-28 (ST-R4): Linux, not Windows — Windows schedules now.
-      await onPlatform(TargetPlatform.linux, () async {
+      // ⏱ 2026-10-01 (NO-04): Fuchsia, not Linux — packages/notifications
+      // schedules on Linux now (in process, at launch, at login).
+      await onPlatform(TargetPlatform.fuchsia, () async {
         final ProviderContainer c = _container(_MemStore());
         addTearDown(c.dispose);
 
@@ -3431,7 +3433,9 @@ void main() {
       WidgetTester tester,
     ) async {
       // ⏱ 2026-09-28 (ST-R4): Linux, not Windows — Windows schedules now.
-      await onPlatform(TargetPlatform.linux, () async {
+      // ⏱ 2026-10-01 (NO-04): Fuchsia, not Linux — packages/notifications
+      // schedules on Linux now (in process, at launch, at login).
+      await onPlatform(TargetPlatform.fuchsia, () async {
         final _MemStore store = _MemStore();
         store.data['nikatru.reminders_enabled'] = 'true';
         final ProviderContainer c = _container(store);
@@ -3462,7 +3466,9 @@ void main() {
       WidgetTester tester,
     ) async {
       // ⏱ 2026-09-28 (ST-R4): Linux, not Windows — Windows schedules now.
-      await onPlatform(TargetPlatform.linux, () async {
+      // ⏱ 2026-10-01 (NO-04): Fuchsia, not Linux — packages/notifications
+      // schedules on Linux now (in process, at launch, at login).
+      await onPlatform(TargetPlatform.fuchsia, () async {
         final _MemStore store = _MemStore();
         store.data['nikatru.reminders_enabled'] = 'true';
         store.data['nikatru.last_nudge_shown_at'] = DateTime(
@@ -5814,7 +5820,12 @@ class _FakeTapPlugin implements NotificationPlugin {
   Future<bool> requestPermission() async => true;
 
   @override
-  Future<void> showNow(int id, String title, String body) async {}
+  Future<void> showNow(
+    int id,
+    String title,
+    String body, {
+    String? payload,
+  }) async {}
 
   /// ⚠️ `Object when`, not `tz.TZDateTime`. A supertype is a legal override and
   /// it is the deliberate one here: naming the timezone type would make every
@@ -5841,10 +5852,14 @@ class _FakeTapPlugin implements NotificationPlugin {
     required bool exact,
     String? payload,
     core.NotificationChannel? channel,
+    List<core.NotificationAction> actions = const <core.NotificationAction>[],
   }) async {}
 
   @override
   Future<bool> canScheduleExact() async => false;
+
+  @override
+  Future<bool> requestExactAlarms() async => false;
 
   @override
   Future<List<int>> pendingIds() async => const <int>[];
