@@ -342,7 +342,7 @@ class SettingsScreen extends ConsumerWidget {
               ],
               selected: <ThemeMode>{mode},
               onSelectionChanged: (Set<ThemeMode> s) =>
-                  ref.read(themeModeProvider.notifier).set(s.first),
+                  setThemeModeByUser(ref, s.first),
             ),
 
             // ── LANGUAGE ─────────────────────────────────────────────────────
@@ -356,11 +356,10 @@ class SettingsScreen extends ConsumerWidget {
                 color: Colors.transparent,
                 child: RadioGroup<String>(
                   groupValue: ref.watch(localeProvider)?.languageCode ?? '',
-                  onChanged: (String? code) => ref
-                      .read(localeProvider.notifier)
-                      .set(
-                        (code == null || code.isEmpty) ? null : Locale(code),
-                      ),
+                  onChanged: (String? code) => setLocaleByUser(
+                    ref,
+                    (code == null || code.isEmpty) ? null : Locale(code),
+                  ),
                   child: Column(
                     children: <Widget>[
                       RadioListTile<String>(
@@ -1303,7 +1302,7 @@ class SettingsScreen extends ConsumerWidget {
     // `return outcome` ever ran — into `_DeleteAccountDialog._run`, which does
     // not catch: the dialog stays `_busy` (so `PopScope` refuses to close) and
     // the login screen is handed no outcome at all. That is the live E2E flake.
-    final List<UserStateDrop> drops = userStateDrops(ref);
+    final List<UserStateDrop> drops = userStateDrops(ref, accountDeleted: true);
     final StateController<core.AccountDeletionOutcome?> outcomeSink = ref.read(
       lastAccountDeletionOutcomeProvider.notifier,
     );

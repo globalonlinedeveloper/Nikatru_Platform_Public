@@ -894,6 +894,30 @@
       }
     },
     {
+      "id": "table:subscriptiontracker_db.preferences",
+      "kind": "d1-table",
+      "name": "preferences",
+      "personalData": true,
+      "holds": "⏱ 2026-09-30 · ST-N6 (D11). A user's app preferences — currency, light/dark theme, language, and the reminder switches, lead and time of day — as one row per preference keyed on their user id, each with a server-bumped version, so they follow the account to every device the user signs in on.",
+      "retention": {
+        "kind": "keep",
+        "reason": "The user's own settings, kept until they change them or delete the account. Same erasure position as budgets."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/subscriptiontracker-api/src/routes/account.ts",
+        "reason": "Same mechanism as table:subscriptiontracker_db.budgets: the column is spelled `user_id`, so the erasure route derives this table into its sweep without naming it (services/subscriptiontracker-api/test/erasure-derivation.test.ts pins the five-table set). tooling/ci/assert-erasure-reach.mjs is what refuses to let it drop back out."
+      },
+      "writtenBy": [
+        "services/subscriptiontracker-api/migrations/0008_preferences.sql",
+        "services/subscriptiontracker-api/src/routes/preferences.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "in apps that offer accounts) create an account"
+      }
+    },
+    {
       "id": "table:subscriptiontracker_db.budget_categories",
       "kind": "d1-table",
       "name": "budget_categories",
