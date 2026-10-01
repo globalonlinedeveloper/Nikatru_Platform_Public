@@ -280,9 +280,12 @@ class _BudgetEditorState extends ConsumerState<BudgetEditor> {
                     ),
                   ),
                   // ⏱ 2026-10-01 · MO-07: the chip is the way to what it
-                  // marks. Where this build sells it opens the paywall (the
-                  // sheet closes first, so Back lands on Insights); where it
-                  // cannot, it stays a label rather than a dead button.
+                  // marks. Where this build sells it closes the sheet and
+                  // opens the paywall with `router.go`, which REPLACES the
+                  // location (as every other paywall entry does), so the
+                  // paywall's own back control is the way out, not a pop to
+                  // Insights; where it cannot sell, it stays a label rather
+                  // than a dead button.
                   if (capsLocked)
                     ProChip(
                       key: BudgetEditor.proChip,
