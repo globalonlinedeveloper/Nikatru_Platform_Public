@@ -22,6 +22,7 @@
     {
       "site": "sites/nikatru",
       "path": "/app/connect",
+      "adds": { "connect-src": ["https://auth-api.nikatru.com", "https://platform.nikatru.com"] },
       "why": "⏱ 2026-10-01 · O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH. The desktop app's system-browser sign-in page signs in against GoTrue and asks the platform Worker for a one-time hand-off code, so it needs connect-src https://auth-api.nikatru.com and https://platform.nikatru.com and nothing else — no script source is widened, so the page carries no Turnstile and offers Sign in with Apple only. Detached and restated whole, as /ext/connect is, because Cloudflare joins a header two rules set and a browser enforces every CSP it receives."
     }
   ]
