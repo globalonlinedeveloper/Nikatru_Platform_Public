@@ -179,7 +179,7 @@ verification, C11 streams and their secret names, **C12 the suppression-list exp
 names the method**, C13 warming, and C14 the per-stream cost from `tooling/ceilings.json` (LOST while it records none). Without `--dry-run` it refuses. Tests: `tooling/ci/test/port-switch.test.mjs`.
 For `payments` it adds C9 the
 webhook URL to register and the secrets by name, C10 the price ids still to create per offering, C11 the channels whose
-`purchaseRails` would change, and C12 the run-off note; each pending conformance case prints as its own `FAIL` line.
+`purchaseRails` would change (a store-billed channel never moves to a web rail, and C8 nets only what moves), and C12 the run-off note; each pending conformance case prints as its own `FAIL` line.
 
 `node tooling/ports/render.mjs [--check]` renders the tables code reads (today
 `services/platform/src/generated/ports.ts` from `payments.json`); `--check` exits 1 on any difference, and limb 3

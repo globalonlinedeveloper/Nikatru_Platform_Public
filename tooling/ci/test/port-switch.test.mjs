@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseArgs, feeFor, webhook } from '../../ops/port-switch.mjs';
+import { parseArgs, feeFor, webhook, channelsChanging, storeBilledRails } from '../../ops/port-switch.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -258,10 +258,36 @@ describe('port-switch — the payments additions over a copy of the REAL registe
     assert.match(r.out, /^FAIL  C10 prices: 2 of 5 offering\(s\) have no paddle price id yet/m);
     assert.match(r.out, /to create on paddle: fullshot pro_monthly/);
     assert.doesNotMatch(r.out, /to create on paddle: subscriptiontracker/);
-    assert.match(r.out, /^PASS  C11 channels: 3 channel\(s\) would change purchaseRail: android-play \(play-billing → paddle\)/m);
+    // #1127 money review, finding 3: RevenueCat's channels are billed by the STORES, so a web rail
+    // cannot take them. Nothing moves, and no margin is counted for them.
+    assert.match(r.out, /^PASS  C11 channels: no channel's purchaseRail changes; 3 store-billed channel\(s\) stay on their store's billing, which `paddle` cannot take: android-play \(play-billing\), ios-appstore \(apple-iap\), macos-appstore \(apple-iap\)$/m);
     assert.match(r.out, /^PASS  C12 run-off: a RUN-OFF, not a cutover: card and UPI mandates do not move/m);
     assert.match(r.out, /^ {4}run-off revenuecat: Leaves with us/m);
+    assert.match(r.out, /^PASS  C8 margin: no channel served by revenuecat would change rail; no net moves$/m);
+  });
+
+  // #1127 money review, finding 3: the dry run said android-play, ios-appstore and macos-appstore
+  // move to Razorpay and counted their margin gain. A store-billed channel never moves to a web rail.
+  it('red: --to razorpay moves no store-billed channel, and C8 nets only the channels that move', () => {
+    const r = run(['payments', '--to', 'razorpay', '--dry-run', '--root', root]);
+    const c11 = r.out.split('\n').find((l) => /C11 channels/.test(l)) ?? '';
+    for (const ch of ['android-play', 'ios-appstore', 'macos-appstore']) {
+      assert.doesNotMatch(c11, new RegExp(`${ch} \\([a-z-]+ → razorpay\\)`), `${ch} is billed by its store`);
+      assert.doesNotMatch(r.out, new RegExp(`^ {4}${ch} \\(`, 'm'), `C8 nets nothing for ${ch}`);
+    }
+    assert.match(c11, /^PASS  C11 channels: 8 channel\(s\) would change purchaseRail: web \(paddle → razorpay\)/);
+    assert.match(c11, /3 store-billed channel\(s\) stay on their store's billing, which `razorpay` cannot take/);
     assert.match(r.out, /^PASS  C8 margin: \d+ net\(s\)/m, 'the per-channel net per price, current against target');
+    assert.match(r.out, /^ {4}web \(paddle\): paddle → razorpay$/m);
+  });
+  it('green control: a store-billing target CAN take a store-billed channel (the rule is derived, not a name list)', () => {
+    const doc = JSON.parse(readFileSync(join(root, 'tooling/ports/payments.json'), 'utf8'));
+    const revenuecat = doc.adapters.find((a) => a.id === 'revenuecat');
+    const otherStore = { id: 'store-two', capabilities: ['verify', 'cancel-store'], cost: { feeCells: ['play-billing-subscription'] } };
+    const r = channelsChanging(root, otherStore, [revenuecat], [...doc.adapters, otherStore]);
+    assert.equal(r.verdict, 'PASS');
+    assert.match(r.detail, /channel\(s\) would change purchaseRail: ios-appstore \(apple-iap → store-two\), macos-appstore \(apple-iap → store-two\)$/);
+    assert.ok(storeBilledRails(doc.adapters, JSON.parse(readFileSync(join(root, 'tooling/catalog/fee-register.json'), 'utf8')).cells).has('play-billing'));
   });
   it('a port other than payments prints none of C9–C12', () => {
     const r = run(['telemetry', '--to', 'sentry', '--dry-run', '--root', root]);

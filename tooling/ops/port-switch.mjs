@@ -49,7 +49,9 @@
 //   C10 prices    the price ids still to create per offering on the target rail
 //                 (app-config-data.json `prices.*.rails.<id>`, via
 //                 render-rail-prices.mjs `plan`). FAIL while any is missing.
-//   C11 channels  the channels whose purchaseRails the switch would change.
+//   C11 channels  the channels whose purchaseRails the switch would change. A STORE-billed
+//                 channel (a rail of a `cancel-store` adapter) moves only to another
+//                 store-billing adapter, never to a web rail; C8 nets the same set.
 //   C12 run-off   card and UPI mandates do not move: existing subscribers renew on
 //                 the current rail until they lapse (each current adapter's
 //                 export duty is printed). The reconcile during the dual run is
@@ -151,6 +153,22 @@ export function feeFor(adapter, rail, price, cells) {
 /** The rails an adapter serves: the `rail` of each of its fee cells. */
 const railsOf = (adapter, cells) => new Set((adapter?.cost?.feeCells ?? []).map((id) => cells[id]?.rail).filter(Boolean));
 
+/** An adapter that fronts a STORE's own billing: only the store can bill or cancel (`cancel-store`). */
+export const billsThroughStore = (adapter) => (adapter?.capabilities ?? []).includes('cancel-store');
+
+/**
+ * The store-billed rails, DERIVED from the registry: every rail a `cancel-store` adapter serves
+ * (today RevenueCat's apple-iap and play-billing). A channel on one of these is billed by the
+ * store, so it can move only to another store-billing adapter, never to a web rail, and a
+ * switch to a web rail counts no margin for it (#1127 money review, finding 3).
+ */
+export function storeBilledRails(adapters, cells) {
+  return new Set((adapters ?? []).filter(billsThroughStore).flatMap((a) => [...railsOf(a, cells)]));
+}
+
+/** Can a channel billed on `rail` move to `target` at all? */
+const canMoveTo = (rail, target, stores) => !stores.has(rail) || billsThroughStore(target);
+
 /** C8 · margin. Returns {verdict, detail, lines}. */
 export function margin(root, doc, target, current) {
   const lines = [];
@@ -175,6 +193,7 @@ export function margin(root, doc, target, current) {
   for (const [k, b] of Object.entries(reg.data?.prices?.bundles ?? {})) if (!k.startsWith('_') && isObj(b)) plans.push({ label: `bundle ${k}`, webUsd: b.amount_minor, store: b.store });
   if (!plans.length) return { verdict: 'LOST', detail: 'the price register yields no plan to net', lines };
 
+  const stores = storeBilledRails(doc.adapters, cells);
   const lostWhy = [];
   let rows = 0;
   let lower = 0;
@@ -183,8 +202,10 @@ export function margin(root, doc, target, current) {
     const rail = ch.purchaseRail.rail;
     const cur = current.find((a) => railsOf(a, cells).has(rail));
     if (!cur || cur.id === target.id) continue;
+    // The same set C11 moves: a store-billed channel never moves to a web rail, so it nets nothing.
+    if (!canMoveTo(rail, target, stores)) continue;
     lines.push(`    ${ch.id} (${rail}): ${cur.id} → ${target.id}`);
-    const onStore = rail === 'play-billing' || rail === 'apple-iap';
+    const onStore = stores.has(rail);
     for (const p of plans) {
       const price = onStore ? (isObj(p.store) ? p.store.USD : null) : p.webUsd;
       if (!Number.isInteger(price)) continue;
@@ -317,7 +338,7 @@ export function run(opts) {
     const pr = pricesToCreate(root, target);
     add(10, 'prices', pr.verdict, pr.detail);
     extra.push(...pr.lines);
-    const ch = channelsChanging(root, target, current);
+    const ch = channelsChanging(root, target, current, adapters);
     add(11, 'channels', ch.verdict, ch.detail);
     add(12, 'run-off', 'PASS', `a RUN-OFF, not a cutover: card and UPI mandates do not move, so subscribers on ${current.map((a) => a.id).join(', ') || 'the current rail'} renew there until they lapse; the dual run lasts the longest live term, and its reconcile is alert-only`);
     for (const a of current) extra.push(`    run-off ${a.id}: ${a.exportDuty}`);
@@ -382,16 +403,22 @@ export function pricesToCreate(root, target) {
 }
 
 /** C11 · the channels whose purchaseRails the switch would change. */
-export function channelsChanging(root, target, current) {
+export function channelsChanging(root, target, current, adapters = [...current, target]) {
   let feeDoc;
   let channels;
   try { feeDoc = JSON.parse(readFileSync(join(root, FEE_REGISTER), 'utf8')); } catch (e) { return { verdict: 'LOST', detail: `${FEE_REGISTER} could not be read (${e.message})` }; }
   try { channels = JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8')).channels ?? []; } catch (e) { return { verdict: 'LOST', detail: `${CHANNEL_REGISTER} could not be read (${e.message})` }; }
   const cells = isObj(feeDoc?.cells) ? feeDoc.cells : {};
   const served = new Set(current.flatMap((a) => [...railsOf(a, cells)]));
-  const moving = channels.filter((c) => typeof c?.purchaseRail?.rail === 'string' && served.has(c.purchaseRail.rail) && !railsOf(target, cells).has(c.purchaseRail.rail));
-  if (!moving.length) return { verdict: 'PASS', detail: 'no channel\'s purchaseRail changes' };
-  return { verdict: 'PASS', detail: `${moving.length} channel(s) would change purchaseRail: ${moving.map((c) => `${c.id} (${c.purchaseRail.rail} → ${target.id})`).join(', ')}` };
+  const stores = storeBilledRails(adapters, cells);
+  const leaving = channels.filter((c) => typeof c?.purchaseRail?.rail === 'string' && served.has(c.purchaseRail.rail) && !railsOf(target, cells).has(c.purchaseRail.rail));
+  const moving = leaving.filter((c) => canMoveTo(c.purchaseRail.rail, target, stores));
+  const held = leaving.filter((c) => !canMoveTo(c.purchaseRail.rail, target, stores));
+  const heldNote = held.length
+    ? `; ${held.length} store-billed channel(s) stay on their store's billing, which \`${target.id}\` cannot take: ${held.map((c) => `${c.id} (${c.purchaseRail.rail})`).join(', ')}`
+    : '';
+  if (!moving.length) return { verdict: 'PASS', detail: `no channel's purchaseRail changes${heldNote}` };
+  return { verdict: 'PASS', detail: `${moving.length} channel(s) would change purchaseRail: ${moving.map((c) => `${c.id} (${c.purchaseRail.rail} → ${target.id})`).join(', ')}${heldNote}` };
 }
 
 export const MAIL_TRANSPORT = 'tooling/mail-transport.json';
