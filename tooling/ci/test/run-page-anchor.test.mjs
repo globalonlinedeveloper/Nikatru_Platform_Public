@@ -490,7 +490,10 @@ describe('the anchor is WIRED into every reader, not merely available to them', 
   test('assert-alert-disposition.mjs — ⏱ 2026-09-28: the firing history reads through the shared reader and grades the union', () => {
     const c = code('tooling/ci/assert-alert-disposition.mjs');
     assert.match(c, /import \{[^}]*\banchoredRunRead\b[^}]*\} from '\.\/anchored-run-read\.mjs';/);
-    assert.match(c, /const read = await anchoredRunRead\(\{ workflow: workflowFile, url: `\$\{GH_API\}\/repos\/\$\{repo\}\/actions\/workflows\/\$\{workflowFile\}\/runs\?event=schedule&per_page=\$\{RUN_SAMPLE\}`/, '⏱ 2026-10-01: the page is scheduled runs only — 30 dispatches pushed every scheduled run off an any-event page (#1114)');
+    // ⏱ 2026-10-01: the query moved into firingHistoryUrl() and gained event=schedule (hand dispatches had pushed the
+    // nightly run off an unfiltered page); the read still goes through the shared reader with that URL.
+    assert.match(c, /const read = await anchoredRunRead\(\{ workflow: workflowFile, url: firingHistoryUrl\(repo, workflowFile\),/);
+    assert.match(c, /return `\$\{GH_API\}\/repos\/\$\{repo\}\/actions\/workflows\/\$\{workflowFile\}\/runs\?event=schedule&per_page=\$\{RUN_SAMPLE\}`;/);
     assert.match(c, /return read\.union;/);
     assert.match(c, /runsByWorkflow\.set\(s\.workflow, await fetchRuns\(repo, /);
   });

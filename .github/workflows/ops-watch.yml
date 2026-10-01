@@ -714,6 +714,34 @@ jobs:
           fi
           exit "$code"
 
+      # why (2026-09-30, lane fix-auth-jwks-504): every ES256 verification rests on
+      # the JWKS read the shield caches, and nothing counted how often a CLIENT got
+      # it as a 5xx. Per UTC day over the week since the last run; over 1% on any
+      # day is red. It counts eyeball requests ONLY: the shield's own Cache API
+      # lookups log as 504 and once read as "12% of auth-api is 504s" while no
+      # client got one (the script header). It also reports a day with more than 5
+      # failed shield revalidations: each one opens up to a minute of STALE answers,
+      # which are 200s. A READ; always(), like the rule above. It needs Zone
+      # Analytics Read on nikatru.com (GraphQL httpRequestsAdaptiveGroups): proven for
+      # the repository CLOUDFLARE_API_TOKEN by dispatch runs 36797307729 and
+      # 36822297767. The read token the owner mints (rv2-security-001) must carry it
+      # too, or this step exits 2 the day that token answers.
+      - name: Clients get the JWKS as a 5xx on at most 1% of reads a day
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set +e
+          node tooling/ops/check-jwks-error-rate.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=The JWKS error rate is UNKNOWN::The nikatru.com zone analytics could not be read, or no day had enough client reads to judge, so nothing is known about JWKS failures from this run, and that is never a pass. The step log names the reason (a token without Zone Analytics Read is named as such)."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=Clients got the JWKS as a 5xx on over 1% of reads in a day, or the shield served it STALE after more than 5 failed origin reads::Every token verification rests on this read, and a stale 200 hides a Box C outage from monitor 17 for up to an hour. The step log names the day and which bound it crossed. Read Box C's envoy and cloudflared logs for that day (runbooks/boxes/boxc.md) and the edge-shield Worker's logs for shield_jwks_stale."
+          fi
+          exit "$code"
+
   failure-ledger:
     # why (B-5, 2026-09-29): this job REDS and `alert` pages on it, so its name says so. It was "print-only"
     # while its step ended `exit "$code"`; workflow-scan's printOnlyJobsThatFail refuses that contradiction.

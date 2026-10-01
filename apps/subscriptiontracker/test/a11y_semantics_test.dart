@@ -70,6 +70,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
+import 'package:subscriptiontracker/core/format/category_label.dart';
 import 'package:subscriptiontracker/core/format/money_format.dart';
 import 'package:subscriptiontracker/core/format/sub_math.dart';
 import 'package:subscriptiontracker/core/router.dart';
@@ -1284,12 +1285,18 @@ String expectedDonutLabel(ProviderContainer c, AppLocalizations l10n) {
   ];
   final double sum = w.fold(0, (double x, double y) => x + y);
   final NumberFormat pct = NumberFormat.percentPattern(l10n.localeName);
+  // ⏱ ST-X8 (audit C6): the row NAMES its category in the reader's language
+  // — the stored id is an English word. The id → name table is graded on its
+  // own in `category_names_by_id_test.dart`; here it only names the row.
   return <String>[
     for (int i = 0; i < cats.length; i++)
       sum <= 0 || w[i] <= 0
-          ? l10n.a11yCategoryRowNoShare(cats[i].name, figures.parts[i])
+          ? l10n.a11yCategoryRowNoShare(
+              categoryLabel(l10n, cats[i].name),
+              figures.parts[i],
+            )
           : l10n.a11yCategoryRow(
-              cats[i].name,
+              categoryLabel(l10n, cats[i].name),
               figures.parts[i],
               pct.format(w[i] / sum),
             ),

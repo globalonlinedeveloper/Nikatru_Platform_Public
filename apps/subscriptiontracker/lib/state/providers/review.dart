@@ -7,12 +7,13 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show PersistedValue;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart'
-    show InAppReviewPrompter;
+    show InAppReviewPrompter, ReviewCapabilities;
 
 import '../../core/app_config.dart';
 import '../analytics_providers.dart';
@@ -47,6 +48,17 @@ final Provider<core.ReviewPrompter> reviewPrompterProvider =
         microsoftStoreId: AppConfig.microsoftStoreId,
       ),
     );
+
+/// Whether this platform has a store LISTING a "Rate" row can open — the
+/// same declared matrix the prompter consults, read synchronously so a
+/// settings row can be absent rather than dead (ST-Y4). False on web and
+/// Linux. A provider so a test can say which platform it is on.
+final Provider<bool> storeListingAvailableProvider = Provider<bool>(
+  (ref) => ReviewCapabilities.forPlatform(
+    defaultTargetPlatform,
+    isWeb: kIsWeb,
+  ).canOpenStoreListing,
+);
 
 /// The timing rule. A provider rather than a constant so a test can shorten the
 /// thresholds instead of simulating four months of calendar time.

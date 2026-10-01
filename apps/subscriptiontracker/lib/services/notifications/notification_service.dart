@@ -10,6 +10,7 @@ import 'package:nikatru_notifications/nikatru_notifications.dart'
     show NotificationCapabilities;
 
 import '../../core/windows_notification_identity.g.dart';
+import '../../data/models/budget_info.dart';
 import '../../data/models/subscription.dart';
 
 /// Every user-visible string this service hands to the OS, already rendered in
@@ -35,6 +36,8 @@ class ReminderCopy {
     required this.channelDescription,
     this.trialTitle,
     this.trialBody,
+    this.overBudgetTitle,
+    this.overBudgetBody,
   });
 
   /// The Android notification CHANNEL name — visible in the OS settings app,
@@ -63,6 +66,12 @@ class ReminderCopy {
   /// renewal copy, which still names the right day.
   final String? trialTitle;
   final String Function(String name, DateTime trialEnds)? trialBody;
+
+  /// ST-I2 (audit C14): the over-budget alert. `(spent, budget) → body`, both
+  /// already formatted. Null posts no over-budget alert at all — there is no
+  /// English fallback for a sentence the caller did not render.
+  final String? overBudgetTitle;
+  final String Function(String spent, String budget)? overBudgetBody;
 }
 
 /// WHEN renewal reminders fire — the user's rules (ST-R3, audit C23/C26).
@@ -424,6 +433,83 @@ class RenewalReminders {
     await _service.cancel(digestId);
   }
 
+  /// The over-budget alert [budget] and [spent] call for — ST-I2 (audit C14)
+  /// — or null when none is owed.
+  ///
+  /// Owed only when a budget is SET (a zero budget is "none", not "every
+  /// charge is over it" — `BudgetInfo.usageOf` alone would call any spend
+  /// over zero) and the monthly average in the budget's currency passes it:
+  /// the same `usageOf` reading the Insights budget card paints as
+  /// "… over budget", so the notification and the card never disagree.
+  ///
+  /// ⏱ AT THE REMINDER TIME OF DAY, the next one ahead — the user's own
+  /// "when to bother me" rule — not the instant the budget was crossed: the
+  /// person crossing it is looking at the card that already says so. One
+  /// pending alert at most, re-armed on each sync, so while spending stays
+  /// over it recurs at most once a day, and only after the app has run.
+  @visibleForTesting
+  core.ScheduledNotification? plannedOverBudget({
+    required BudgetInfo budget,
+    required core.MoneyBag spent,
+    required ReminderCopy copy,
+    required ReminderRules rules,
+    required core.MoneyFormatter money,
+  }) {
+    final String? title = copy.overBudgetTitle;
+    final String Function(String, String)? body = copy.overBudgetBody;
+    if (title == null || body == null) return null;
+    if (budget.monthlyBudget.minorUnits <= 0) return null;
+    final BudgetUsage usage = budget.usageOf(spent);
+    if (!usage.over) return null;
+    final DateTime now = _now();
+    DateTime at = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      rules.hour,
+      rules.minute,
+    );
+    if (!at.isAfter(now)) {
+      at = DateTime(now.year, now.month, now.day + 1, rules.hour, rules.minute);
+    }
+    return core.ScheduledNotification(
+      id: overBudgetId,
+      title: title,
+      body: body(
+        money.format(usage.spentHere),
+        money.formatRounded(budget.monthlyBudget),
+      ),
+      at: at,
+      payload: overBudgetPayload,
+      channel: _channel(copy),
+    );
+  }
+
+  /// Arm the over-budget alert [plannedOverBudget] calls for, or cancel it
+  /// when none is owed ([budget] null: the alert is off). OWNED ID ONLY —
+  /// [overBudgetId] — so the renewals and the digest are never touched.
+  Future<void> syncOverBudget({
+    required BudgetInfo? budget,
+    required core.MoneyBag spent,
+    required ReminderCopy copy,
+    required ReminderRules rules,
+    required core.MoneyFormatter money,
+  }) async {
+    if (!capabilities.canSchedule) return;
+    final core.ScheduledNotification? planned = budget == null
+        ? null
+        : plannedOverBudget(
+            budget: budget,
+            spent: spent,
+            copy: copy,
+            rules: rules,
+            money: money,
+          );
+    await _service.reconcile(<core.ScheduledNotification>[
+      if (planned != null) planned,
+    ], owns: (int id) => id == overBudgetId);
+  }
+
   /// Cancel every reminder [subscriptionId] can hold, now — belt and braces
   /// for a delete (ST-T3b), where the next [syncAll] also drops them. The ids
   /// are the ones [plannedFor] mints: one per lead the app offers, the
@@ -456,11 +542,20 @@ class RenewalReminders {
   /// Fixed id for the digest, outside the renewal namespace below.
   static const int digestId = 0x7ffffffe;
 
+  /// Fixed id for the over-budget alert (ST-I2), beside the digest and
+  /// outside the renewal namespace for the same reason.
+  static const int overBudgetId = 0x7ffffffd;
+
+  /// The over-budget alert's payload: a tap opens Insights, where the budget
+  /// card is (`routeForNotificationPayload`).
+  static const String overBudgetPayload = 'budget';
+
   /// The RENEWAL id namespace: [renewalIdBase, renewalIdBase + renewalIdRange).
   ///
   /// 🔴 DISJOINT BY CONSTRUCTION from every other id on the shared plugin:
   /// the chassis daily reminder is `kDailyReminderId` (1), the chassis
-  /// immediate bucket is 0x7f000000, the digest is 0x7ffffffe — which is what
+  /// immediate bucket is 0x7f000000, the digest is 0x7ffffffe and the
+  /// over-budget alert 0x7ffffffd — which is what
   /// lets [syncAll] reconcile by membership rather than by `cancelAll()`.
   /// Ids scheduled by builds before ST-R3 (one per subscription) are in the
   /// same namespace, so the first sync after an update cancels them.

@@ -13,6 +13,10 @@
 //   AG7  the workflow read: node flags that take a value, and --test reporters dropped
 //   AG8  a small top-level directory a test reads in a loop selects that test (the first
 //        CI run of this tool missed hook-runner-pin.test.mjs exactly so)
+//   AG9  a guard whose subject is a SHAPE OF TEXT is selected by the changed file's text,
+//        with the guard's own detector (#1076 cycle 3: tooling/ops/land-rules.mjs began
+//        to read ci.yml and assert-workflow-readers was not run; a prose edit ran no
+//        assert-mechanism-claims)
 //
 // Run:  node --test "tooling/ci/test/affected-guards.test.mjs"
 import { test } from 'node:test';
@@ -277,4 +281,65 @@ test('AG8 a two-file top-level directory a test reads in a loop selects the test
     assert.equal(wide.code, 2, wide.out);
     assert.deepEqual(selectedIds(wide.out), [], wide.out);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+/** The fixture plus the two REAL content-subject guards and their registers, wired into ci.yml. */
+function contentFixture(mutate = (rel, text) => text) {
+  const root = fixture();
+  for (const rel of ['tooling/ci/assert-workflow-readers.mjs', 'tooling/ci/assert-mechanism-claims.mjs', 'tooling/workflow-readers.json', 'tooling/mechanism-claims.json']) {
+    put(root, rel, mutate(rel, readFileSync(join(REPO, rel), 'utf8')));
+  }
+  const ci = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8').replace(
+    '      - name: the guard tests\n',
+    '      - name: workflow readers\n        run: node tooling/ci/assert-workflow-readers.mjs\n' +
+      '      - name: mechanism claims\n        run: node tooling/ci/assert-mechanism-claims.mjs\n' +
+      '      - name: the guard tests\n',
+  );
+  put(root, '.github/workflows/ci.yml', ci);
+  // Under misc/, which no guard of the fixture names as a place: only the text can select.
+  put(root, 'misc/reads-ci.mjs', "import { readFileSync } from 'node:fs';\nconst ci = readFileSync('.github/workflows/ci.yml', 'utf8');\nconsole.log(ci.length);\n");
+  put(root, 'misc/reads-nothing.mjs', "console.log('no workflow here');\n");
+  // Joined at run time: written out whole, the claim shape would be a candidate site of THIS
+  // file for assert-mechanism-claims, which sweeps every tracked text file.
+  put(root, 'docs/claim.md', `# how it works\n\nThere is ${['no', 'second', 'list'].join(' ')} to keep in step.\n`);
+  git(root, 'add', '-A');
+  git(root, 'commit', '-q', '-m', 'content guards');
+  return root;
+}
+
+test('AG9 a guard whose subject is a shape of TEXT is selected by the changed file\'s text — with its own detector', async () => {
+  const root = contentFixture();
+  try {
+    // A script that reads a workflow by text selects assert-workflow-readers, whatever directory it is in.
+    const reader = await run(root, ['--list', '--paths', 'misc/reads-ci.mjs']);
+    assert.equal(reader.code, 0, reader.out);
+    assert.deepEqual(selectedIds(reader.out), ['guard:assert-workflow-readers'], reader.out);
+    assert.match(reader.out, /tier 1 {2}guard:assert-workflow-readers/);
+    // GREEN control: its neighbour, which reads no workflow, does not.
+    const quiet = await run(root, ['--list', '--paths', 'misc/reads-nothing.mjs']);
+    assert.ok(!selectedIds(quiet.out).includes('guard:assert-workflow-readers'), quiet.out);
+    // A prose edit carrying a claim shape selects assert-mechanism-claims, and is mapped by it.
+    const prose = await run(root, ['--list', '--paths', 'docs/claim.md']);
+    assert.equal(prose.code, 0, prose.out);
+    assert.deepEqual(selectedIds(prose.out), ['guard:assert-mechanism-claims'], prose.out);
+    assert.match(prose.out, /coverage 1\/1 changed paths mapped \(100%\)/);
+    // GREEN control: prose with no shape is still only what lane-map declares ungraded.
+    const plain = await run(root, ['--list', '--paths', 'docs/a.md']);
+    assert.deepEqual(selectedIds(plain.out), [], plain.out);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('AG9 🔴 a content rule that can no longer read its guard\'s declaration is COVERAGE LOST, not a silent no-match', async () => {
+  const root = contentFixture((rel, text) => (rel.endsWith('assert-workflow-readers.mjs') ? text.replace('const READS = [', 'const READ_SHAPES = [') : text));
+  try {
+    const r = await run(root, ['--list', '--paths', 'misc/reads-ci.mjs']);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — tooling\/ci\/assert-workflow-readers\.mjs no longer declares `const READS = \[/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('AG9 the REAL tree: tooling/ops/land-rules.mjs selects assert-workflow-readers (the #1076 miss)', async () => {
+  const r = await run(REPO, ['--list', '--paths', 'tooling/ops/land-rules.mjs']);
+  assert.equal(r.code, 0, r.out);
+  assert.ok(selectedIds(r.out).includes('guard:assert-workflow-readers'), r.out);
 });

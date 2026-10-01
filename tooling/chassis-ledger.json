@@ -297,6 +297,12 @@
       "why": "A per-app sworn store filing. assert-sworn-store-files.mjs carries an inverse limb requiring the TEMPLATE to stay blank, so these cannot be filled here and cannot leave."
     },
     {
+      "path": "store/android-play/release-notes.txt",
+      "lines": 2,
+      "verdict": "STAYS",
+      "why": "A per-app, per-release store field: Play's \"What's new\" notes, which tooling/release/submit-play.mjs sends with each release. Line 1 binds them to the release after the versionCode Play has consumed (0 for a newly stamped app), so every app writes its own and none can leave the template."
+    },
+    {
       "path": "store/android-play/privacy-policy-url.txt",
       "lines": 1,
       "verdict": "STAYS",
