@@ -59,6 +59,19 @@ core.ExternalLinkLauncher updateLinkLauncher(String resolvedUpdateUrl) =>
       policy: appLinkPolicy.withHttpsUrl(resolvedUpdateUrl),
     );
 
+/// The launcher for ONE subscription's "website to cancel" (ST truth pass,
+/// DE-01): [appLinkPolicy] plus that one https URL, the same one-URL widening
+/// [updateLinkLauncher] makes — the user typed the address and the API
+/// validated it, so it is a destination this row names and no other. A
+/// PROVIDER so a test sees which URL the detail screen opened.
+final Provider<core.ExternalLinkLauncher Function(String url)>
+cancelLinkLauncherProvider =
+    Provider<core.ExternalLinkLauncher Function(String url)>(
+      (ref) =>
+          (String url) =>
+              UrlLauncherExternalLinks(policy: appLinkPolicy.withHttpsUrl(url)),
+    );
+
 /// The calendar feed's launcher (ST-T4a client): [appLinkPolicy] plus the
 /// platform host, for `webcal:` (a calendar app subscribes) and `https:` (web
 /// downloads the file). A PROVIDER, unlike the two above, so a test can see

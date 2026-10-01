@@ -70,16 +70,34 @@ class AppErrorScreen extends StatelessWidget {
   /// Call once at startup, before `runApp`. Returns the previous builder so a
   /// test can restore it — a global left mutated across tests is a flake
   /// generator.
+  ///
+  /// ⏱ ST truth pass (EN-17): [localized] and [onGoHome]. There is no
+  /// `Localizations` at install time, but there almost always is one where
+  /// the error widget is BUILT — an error inside a screen is under the app's
+  /// `MaterialApp`. So [localized] is asked at build time, with the failing
+  /// widget's context, and answers null when no localizations are there yet
+  /// (the first-build case [fallbackTitle] exists for). [onGoHome] is the
+  /// recovery: a screen with no way out is a dead end, and "restart the app"
+  /// is not a control.
   static ErrorWidgetBuilder install({
     String title = fallbackTitle,
     String message = fallbackMessage,
+    AppErrorCopy? Function(BuildContext context)? localized,
+    VoidCallback? onGoHome,
   }) {
     final ErrorWidgetBuilder previous = ErrorWidget.builder;
-    ErrorWidget.builder = (FlutterErrorDetails details) => AppErrorScreen(
-      title: title,
-      message: message,
-      details: details.exceptionAsString(),
-    );
+    ErrorWidget.builder = (FlutterErrorDetails details) => Builder(
+          builder: (BuildContext context) {
+            final AppErrorCopy? copy = localized?.call(context);
+            return AppErrorScreen(
+              title: copy?.title ?? title,
+              message: copy?.message ?? message,
+              details: details.exceptionAsString(),
+              onRetry: copy == null ? null : onGoHome,
+              retryLabel: copy?.goHomeLabel,
+            );
+          },
+        );
     return previous;
   }
 
@@ -95,48 +113,64 @@ class AppErrorScreen extends StatelessWidget {
       // overflow stripe is the failure this widget exists to replace. Top
       // alignment cannot overflow upward, and the cap stops the message running
       // 1600 px edge to edge on a desktop.
+      // ⏱ ST truth pass (EN-17): it SCROLLS. At 200 % text on a 360×640
+      // phone the column outgrew the viewport and drew the overflow stripe
+      // this screen exists to replace.
       child: ContentPane.form(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: theme.textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-            // Debug only — see [details].
-            if (details != null && !kReleaseMode) ...<Widget>[
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                Icons.error_outline,
+                size: 48,
+                color: theme.colorScheme.error,
+              ),
               const SizedBox(height: 16),
+              Semantics(
+                header: true,
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleLarge,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 8),
               Text(
-                details!,
-                style: theme.textTheme.bodySmall,
+                message,
+                style: theme.textTheme.bodyMedium,
                 textAlign: TextAlign.center,
-                maxLines: 6,
-                overflow: TextOverflow.ellipsis,
               ),
+              // Debug only — see [details].
+              if (details != null && !kReleaseMode) ...<Widget>[
+                const SizedBox(height: 16),
+                Text(
+                  details!,
+                  style: theme.textTheme.bodySmall,
+                  textAlign: TextAlign.center,
+                  maxLines: 6,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              if (onRetry != null) ...<Widget>[
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: onRetry,
+                  child: Text(retryLabel ?? 'Retry'),
+                ),
+              ],
             ],
-            if (onRetry != null) ...<Widget>[
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: onRetry,
-                child: Text(retryLabel ?? 'Retry'),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );
   }
 }
+
+/// The localized copy [AppErrorScreen.install] asks for at build time: the
+/// title, the message and the label of its "go home" recovery.
+typedef AppErrorCopy = ({String title, String message, String goHomeLabel});
 
 /// Shown when a route does not exist — the router's `errorBuilder`.
 ///
@@ -172,26 +206,46 @@ class NotFoundScreen extends StatelessWidget {
       // the whole screen.
       body: ContentPane.form(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(title, style: theme.textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: theme.textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-            if (attemptedLocation != null) ...<Widget>[
+        // ⏱ ST truth pass (EN-17): scrolls at 200 % text, and the title is a
+        // heading a reader can jump to.
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Semantics(
+                header: true,
+                child: Text(title, style: theme.textTheme.headlineSmall),
+              ),
               const SizedBox(height: 8),
-              Text(attemptedLocation!, style: theme.textTheme.bodySmall),
+              Text(
+                message,
+                style: theme.textTheme.bodyMedium,
+                textAlign: TextAlign.center,
+              ),
+              if (attemptedLocation != null) ...<Widget>[
+                const SizedBox(height: 8),
+                Text(
+                  pathOf(attemptedLocation!),
+                  key: const Key('not-found-path'),
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+              const SizedBox(height: 24),
+              FilledButton(onPressed: onGoHome, child: Text(goHomeLabel)),
             ],
-            const SizedBox(height: 24),
-            FilledButton(onPressed: onGoHome, child: Text(goHomeLabel)),
-          ],
+          ),
         ),
       ),
     );
+  }
+
+  /// [location] without its query or fragment (ST truth pass, EN-17). A
+  /// link's query is where a token, an e-mail address or a tracking id rides
+  /// (`/reset?code=…`), and this screen is the one that prints the location
+  /// back — over a shoulder, into a screenshot.
+  static String pathOf(String location) {
+    final int cut = location.indexOf(RegExp(r'[?#]'));
+    return cut < 0 ? location : location.substring(0, cut);
   }
 }
 

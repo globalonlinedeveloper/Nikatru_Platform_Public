@@ -503,5 +503,17 @@
   "categoryCloud": "கிளவுட் சேமிப்பு",
   "categoryNews": "செய்திகள்",
   "categorySecurity": "பாதுகாப்பு",
-  "categoryOther": "மற்றவை"
+  "categoryOther": "மற்றவை",
+  "nameErrorRequired": "பெயரை உள்ளிடவும்",
+  "priceWithCadence": "{amount} {cadence}",
+  "calendarDayToday": "இன்று",
+  "calendarDayRenewals": "{count, plural, =1{1 புதுப்பித்தல்} other{{count} புதுப்பித்தல்கள்}}",
+  "calendarCharged": "வசூலிக்கப்பட்டது",
+  "nextChargeNone": "இல்லை",
+  "detailPausedNoCharge": "இடைநிறுத்தப்பட்டது — கட்டணம் இல்லை",
+  "detailCancelledOn": "{date} அன்று ரத்து செய்யப்பட்டது",
+  "detailFirstCharge": "முதல் கட்டணம்",
+  "detailCancelledOnLabel": "ரத்து செய்த நாள்",
+  "detailWebsiteNotOpened": "அந்த இணையதளத்தைத் திறக்க முடியவில்லை.",
+  "detailRemindersNoDeviceNotifications": "இந்தச் சாதனம் அறிவிப்புகளை அனுப்பாது — மின்னஞ்சல் நினைவூட்டல்களும் நாட்காட்டி ஊட்டமும் அமைப்புகளில் உள்ளன"
 }
