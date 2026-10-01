@@ -58,10 +58,10 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync, spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createServer } from 'node:http';
 import { generateKeyPairSync, createVerify, createHash } from 'node:crypto';
 
@@ -342,11 +342,21 @@ async function api({
   trackReleases = {},     // track -> releases[] as edits.tracks.list returns them
   details = { defaultLanguage: 'en-US' },
   listing = null,         // the live en-US listing; null answers 404
-  images = {},            // imageType -> [{ sha256 }]
+  images = {},            // imageType -> [{ sha256 }]; each is served at a loopback url for the backup
+  imageUrlStatus = 200,   // what the image url answers — the backup refuses on anything else
+  omitUploadSha = false,  // an upload answer with no sha256 is UNVERIFIED
 } = {}) {
   const calls = [];
   const bodies = [];
   const state = { details: { ...details }, listing, images: { ...images } };
+  /** Bytes behind each image url — the backup downloads them before anything is replaced. */
+  const imageBytes = new Map();
+  const served = (type, img, i) => {
+    if (img.url) return img;
+    const id = img.id ?? `seed-${type}-${i}`;
+    if (!imageBytes.has(id)) imageBytes.set(id, Buffer.from(`live-bytes-${id}`));
+    return { ...img, id, url: `http://127.0.0.1:${server.address().port}/img/${id}` };
+  };
   const body = (req) =>
     new Promise((res) => {
       const chunks = [];
@@ -408,6 +418,14 @@ async function api({
       return send(200, { access_token: TOKEN, token_type: 'Bearer', expires_in: 3600, scope: claims.scope });
     }
 
+    // Image urls are public on Play (no bearer token); the backup fetches them.
+    if (path.startsWith('/img/')) {
+      const bytes = imageBytes.get(path.slice('/img/'.length));
+      if (imageUrlStatus !== 200 || !bytes) return send(imageUrlStatus === 200 ? 404 : imageUrlStatus, { error: 'gone' });
+      res.writeHead(200, { 'content-type': 'image/png' });
+      return res.end(bytes);
+    }
+
     if (!authed()) return send(401, { error: { message: 'missing or wrong bearer token' } });
 
     const editsRoot = `/androidpublisher/v3/applications/${PACKAGE}/edits`;
@@ -433,14 +451,20 @@ async function api({
       if (req.method === 'GET') return state.listing === null ? send(404, { error: { message: 'not found' } }) : send(200, state.listing);
       if (req.method === 'PUT') {
         const sent = JSON.parse((await body(req)).toString());
-        bodies.push({ what: 'listing', body: sent });
+        bodies.push({ what: 'listing-put', body: sent });
         state.listing = sent;
         return send(200, sent);
+      }
+      if (req.method === 'PATCH') {
+        const sent = JSON.parse((await body(req)).toString());
+        bodies.push({ what: 'listing', body: sent });
+        state.listing = { language: 'en-US', ...(state.listing ?? {}), ...sent };
+        return send(200, state.listing);
       }
     }
     if (path.startsWith(`${listingAt}/`)) {
       const type = path.slice(listingAt.length + 1);
-      if (req.method === 'GET') return send(200, { images: state.images[type] ?? [] });
+      if (req.method === 'GET') return send(200, { images: (state.images[type] ?? []).map((img, i) => served(type, img, i)) });
       if (req.method === 'DELETE') {
         state.images[type] = [];
         return send(200, { deleted: [] });
@@ -449,9 +473,11 @@ async function api({
     if (req.method === 'POST' && path.startsWith(`${uploadRoot}/${EDIT_ID}/listings/en-US/`)) {
       if (url.searchParams.get('uploadType') !== 'media') return send(400, { error: 'expected uploadType=media' });
       const type = path.slice(`${uploadRoot}/${EDIT_ID}/listings/en-US/`.length);
-      const img = { id: String(Math.random()), sha256: sha256(await body(req)) };
+      const bytes = await body(req);
+      const img = { id: `up-${type}-${(state.images[type] ?? []).length}`, sha256: sha256(bytes) };
+      imageBytes.set(img.id, bytes);
       (state.images[type] ??= []).push(img);
-      return send(200, { image: img });
+      return send(200, { image: omitUploadSha ? { id: img.id } : img });
     }
     if (req.method === 'POST' && path === `${uploadRoot}/${EDIT_ID}/bundles`) {
       if (url.searchParams.get('uploadType') !== 'resumable') return send(400, { error: 'expected uploadType=resumable' });
@@ -573,15 +599,46 @@ describe('submit-play — the submission path is walkable', () => {
   });
 
   test('release notes over Play\'s 500-character limit FAIL the dry run', () => {
-    const { code, out } = run(tree({ releaseNotes: 'x'.repeat(501) }));
+    const { code, out } = run(tree({ releaseNotes: `after-version-code: 0\n${'x'.repeat(501)}` }));
     assert.equal(code, 1, out);
     assert.match(out, /release-notes\.txt is 501 characters; Play caps release notes at 500/);
   });
 
   test('an EMPTY release-notes.txt FAILS rather than sending a blank', () => {
-    const { code, out } = run(tree({ releaseNotes: '  \n' }));
+    const { code, out } = run(tree({ releaseNotes: 'after-version-code: 0\n  \n' }));
     assert.equal(code, 1, out);
-    assert.match(out, /release-notes\.txt is EMPTY/);
+    assert.match(out, /release-notes\.txt carries a header and no notes/);
+  });
+
+  // ⏱ 2026-10-01 (#1099 review, nit b): the notes say which release they are for.
+  test('release notes with no after-version-code header FAIL — notes must name their release', () => {
+    const { code, out } = run(tree({ releaseNotes: 'First release.\n' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does not open with "after-version-code: <N>"/);
+  });
+
+  const consumedAt = (n) => (r) => {
+    r.channels[0].versionCodeHighWater = { consumed: { subscriptiontracker: { value: n } } };
+  };
+
+  test('STALE notes (written for an earlier release) only PRINT in the push-CI dry run with no bundle', () => {
+    const { code, out } = run(tree({ releaseNotes: 'after-version-code: 1\nFirst release.\n', mutateRegister: consumedAt(6) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /STALE RELEASE NOTES — .* after versionCode 1, and Play has consumed up to 6/);
+  });
+
+  test('STALE notes FAIL the lane dry run that holds a bundle — release 2 never re-ships release 1 notes', () => {
+    const { code, out } = run(tree({ withArtifact: true, releaseNotes: 'after-version-code: 1\nFirst release.\n', mutateRegister: consumedAt(6) }), {
+      args: ['--dry-run', '--app', 'subscriptiontracker'],
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL STALE RELEASE NOTES/);
+  });
+
+  test('notes written for THIS release (header = the consumed mark) pass', () => {
+    const { code, out } = run(tree({ releaseNotes: 'after-version-code: 6\nSecond release.\n', mutateRegister: consumedAt(6) }));
+    assert.equal(code, 0, out);
+    assert.match(out, /release notes .* for the release after versionCode 6/);
   });
 
   test('refuses when BOTH modes are given', () => {
@@ -1079,6 +1136,47 @@ describe('submit-play — the publish gate refuses', () => {
     assert.match(out, /refuses the production track \("production"\) with status "completed"/);
   });
 
+  // ⏱ 2026-10-01 (#1099 review, nit c): the post-discovery production check is DEFENCE IN DEPTH —
+  // PG-6 always fires first, so no input reaches it in the real script. It is tested the only honest
+  // way: a copy of the script with PG-6 switched off must still refuse a non-draft production track,
+  // before any upload. The rewrites are counted, so a script that changes shape fails here loudly.
+  test('the post-discovery production check refuses on its OWN — PG-6 switched off in a copy', async () => {
+    const ci = pathToFileURL(join(REPO, 'tooling', 'ci')).href + '/';
+    const rel = pathToFileURL(join(REPO, 'tooling', 'release')).href + '/';
+    const swaps = [
+      ["from '../ci/read-identity.mjs'", `from '${ci}read-identity.mjs'`],
+      ["from '../ci/workflow-scan.mjs'", `from '${ci}workflow-scan.mjs'`],
+      ["from './submit-common.mjs'", `from '${rel}submit-common.mjs'`],
+      ["join(dirname(fileURLToPath(import.meta.url)), '..', 'ci', 'assert-submission-safety.mjs')", JSON.stringify(join(REPO, 'tooling', 'ci', 'assert-submission-safety.mjs'))],
+      ["if (isProductionTrack(requestedTrack) && releaseStatus !== 'draft') {", 'if (false) {'],
+    ];
+    let src = readFileSync(SCRIPT, 'utf8');
+    for (const [from, to] of swaps) {
+      assert.equal(src.split(from).length - 1, 1, `the copy needs exactly one ${from}`);
+      src = src.replace(from, to);
+    }
+    const copy = join(TMP, `pg6-off-${seq++}.mjs`);
+    writeFileSync(copy, src);
+    const srv = await api({});
+    try {
+      const out = await new Promise((res) => {
+        const p = spawn(process.execPath, [copy, ...SUBMIT_ARGS, '--track', 'production', '--repo-root', tree(gated)], {
+          env: cleanEnv(submitEnv(srv.origin)),
+        });
+        let o = '';
+        p.stdout.on('data', (d) => { o += d; });
+        p.stderr.on('data', (d) => { o += d; });
+        p.on('close', (code) => res({ code, o }));
+      });
+      assert.equal(out.code, 1, out.o);
+      assert.doesNotMatch(out.o, /refuses the production track/, 'green control: PG-6 really is off in the copy');
+      assert.match(out.o, /resolved track "production" is a production track\. \[ADR 031\] class A/);
+      assert.equal(srv.calls.some((c) => c.includes('/bundles')), false, srv.calls.join('\n'));
+    } finally {
+      await srv.close();
+    }
+  });
+
   test('PG-6 · refuses a staged-rollout status — there is no userFraction flag at all', async () => {
     const { code, out } = await submit(gated, { args: [...SUBMIT_ARGS, '--status', 'inProgress'] });
     assert.equal(code, 1, out);
@@ -1338,12 +1436,28 @@ describe('submit-play --submit — the Google Play Developer API edit lifecycle'
     const put = bodies.find((b) => b.what === 'track');
     assert.equal(put.body.track, 'production', out);
     assert.deepEqual(put.body.releases.map((r) => r.status), ['draft']);
+    assert.match(out, /STAGED AS A DRAFT — uploaded, nothing sent for review/);
+    assert.match(out, /record it as draft_staged, never in_review/);
+    assert.doesNotMatch(out, /submit-play: SUBMITTED\./);
   });
 
   test('release notes: release-notes.txt rides on the release as its en-US notes', async () => {
-    const { code, out, bodies } = await submit({ ...gated, releaseNotes: 'First release.\n' });
+    const { code, out, bodies } = await submit({ ...gated, releaseNotes: 'after-version-code: 0\nFirst release.\n' });
     assert.equal(code, 0, out);
     assert.deepEqual(bodies.find((b) => b.what === 'track').body.releases[0].releaseNotes, [{ language: 'en-US', text: 'First release.' }]);
+  });
+
+  test('release notes: STALE notes refuse --submit before any request', async () => {
+    const { code, out, calls } = await submit({
+      ...gated,
+      releaseNotes: 'after-version-code: 1\nFirst release.\n',
+      mutateRegister: (r) => {
+        r.channels[0].versionCodeHighWater = { consumed: { subscriptiontracker: { value: 6 } } };
+      },
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /FAIL STALE RELEASE NOTES/);
+    assert.equal(calls.some((c) => c.includes('/edits')), false, calls.join('\n'));
   });
 
   test('release notes: none are sent when the file is absent', async () => {
@@ -1379,7 +1493,6 @@ describe('submit-play --sync-listing — the repo listing tree becomes the Play 
     const { code, out, bodies, state, calls } = await submit(listed, { args: SYNC, env: syncEnv() });
     assert.equal(code, 0, out);
     assert.deepEqual(bodies.find((b) => b.what === 'listing').body, {
-      language: 'en-US',
       title: 'Subly',
       shortDescription: 'Track every subscription in one place',
       fullDescription: 'A longer description.',
@@ -1393,6 +1506,56 @@ describe('submit-play --sync-listing — the repo listing tree becomes the Play 
     assert.deepEqual(sums('tenInchScreenshots'), [sha256('tablet-1'), sha256('tablet-2')]);
     assert.ok(calls.some((c) => c.endsWith(':commit')), calls.join('\n'));
     assert.match(out, /LISTING SYNCED \(7 change\(s\)\)/);
+  });
+
+  // ⏱ 2026-10-01 (#1099 review, finding 4): only the declared fields are written, and what they
+  // replace is kept on disk before the first write.
+  test('PATCHes only the declared fields — a console-only promo video survives — and backs up what it replaces first', async () => {
+    const liveListing = { language: 'en-US', title: 'Old title', shortDescription: 'Old short', fullDescription: 'Old full', video: 'https://www.youtube.com/watch?v=promo' };
+    const { code, out, bodies, state, calls } = await submit(listed, {
+      args: SYNC,
+      env: syncEnv(),
+      apiOpts: {
+        details: { defaultLanguage: 'en-US', contactPhone: '+91 00000 00000' },
+        listing: liveListing,
+        images: { phoneScreenshots: [{ sha256: 'old-a' }, { sha256: 'old-b' }] },
+      },
+    });
+    assert.equal(code, 0, out);
+    assert.equal(bodies.some((b) => b.what === 'listing-put'), false, 'a PUT replaces the whole Listing; only PATCH is allowed');
+    assert.deepEqual(Object.keys(bodies.find((b) => b.what === 'listing').body).sort(), ['fullDescription', 'shortDescription', 'title']);
+    assert.equal(state.listing.video, 'https://www.youtube.com/watch?v=promo', 'the promo video the tree does not declare is untouched');
+    assert.equal(state.details.contactPhone, '+91 00000 00000', 'an undeclared contact field is untouched');
+    const backupAt = (out.match(/backup of the values about to be replaced — (.+listing\.json)/) ?? [])[1];
+    assert.ok(backupAt, out);
+    const backup = JSON.parse(readFileSync(backupAt, 'utf8'));
+    assert.deepEqual(backup.listing, liveListing, 'the listing as Play held it, video included');
+    assert.equal(backup.details.contactPhone, '+91 00000 00000');
+    assert.deepEqual(backup.images.phoneScreenshots.map((i) => i.sha256), ['old-a', 'old-b']);
+    const dir = dirname(backupAt);
+    assert.equal(readFileSync(join(dir, 'phoneScreenshots-1.png'), 'utf8'), 'live-bytes-seed-phoneScreenshots-0', 'the replaced image BYTES are kept');
+    // ordering: the backup was taken before the first write
+    const firstWrite = calls.findIndex((c) => /^(PATCH|DELETE) .*(details|listings)|^POST \/upload\/.*\/listings\//.test(c));
+    const imgFetch = calls.findIndex((c) => c.startsWith('GET /img/'));
+    assert.ok(imgFetch !== -1 && imgFetch < firstWrite, calls.join('\n'));
+  });
+
+  test('a backup that cannot be completed writes NOTHING', async () => {
+    const { code, out, calls } = await submit(listed, {
+      args: SYNC,
+      env: syncEnv(),
+      apiOpts: { images: { phoneScreenshots: [{ sha256: 'old-a' }] }, imageUrlStatus: 410 },
+    });
+    assert.equal(code, 1, out);
+    assert.match(out, /could not be kept\. Nothing was written/);
+    assert.deepEqual(calls.filter((c) => WRITES.test(c) || c.startsWith('DELETE /androidpublisher') && c.includes('/listings/')), [], calls.join('\n'));
+  });
+
+  test('an image upload answered with NO sha256 is UNVERIFIED — a refusal, never a pass, and nothing is committed', async () => {
+    const { code, out, calls } = await submit(listed, { args: SYNC, env: syncEnv(), apiOpts: { omitUploadSha: true } });
+    assert.equal(code, 1, out);
+    assert.match(out, /UNVERIFIED — icon/);
+    assert.equal(calls.some((c) => c.endsWith(':commit')), false, calls.join('\n'));
   });
 
   test('a record already in sync writes nothing and commits nothing', async () => {

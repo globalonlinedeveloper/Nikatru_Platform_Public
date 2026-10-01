@@ -82,8 +82,8 @@
 //       1 = it is not, or a gate refused, or the API did.
 //       2 = COVERAGE LOST: an input it must read is absent or unreadable (submit-common.mjs).
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { readFileSync, existsSync, statSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join, dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash, createSign } from 'node:crypto';
@@ -121,7 +121,7 @@ const PRIMARY_SOURCES = Object.freeze({
   editsCommit: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits/commit',
   editsDelete: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits/delete',
   // ⏱ 2026-10-01 — the --sync-listing mode's endpoints, and the release-notes limit.
-  listingsUpdate: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits.listings/update',
+  listingsPatch: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits.listings/patch',
   detailsPatch: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits.details/patch',
   imagesList: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits.images/list',
   imagesDeleteall: 'https://developers.google.com/android-publisher/api-ref/rest/v3/edits.images/deleteall',
@@ -669,30 +669,52 @@ if (!problems.length) {
   ok(`metadata tree ${metaDir} — ${filesChecked} field(s) present and non-empty, ${limitsChecked} within a SOURCED Play limit`);
 }
 
-// ── 1b. the release notes ("What's new") — the one changelog source ──
-// The register names release-notes.txt in android-play's additionalFiles (with the same 500 cap),
-// so assert-store-metadata requires it in every Play tree, the brick included. This block stays
-// for the release path itself: it is what puts the text ON the release.
-// ⏱ 2026-10-01 (lane prep-play-first-release). Until then no release carried notes: the track
-// update sent none and nothing in the tree held any. `release-notes.txt` in the listing tree is
-// now that source, sent with the release as its default-language notes. Optional because Play
-// does not require notes; bounded because Play does, and the bound is sourced:
-// ${PRIMARY_SOURCES.releaseNotesLimit}, verbatim (fetched 2026-10-01): "You can enter release
-// notes using up to 500 Unicode characters per language." Counted in code points, as above.
+// ── 1b. the release notes ("What's new") — the one changelog source, bound to ONE release ──
+// ⏱ 2026-10-01 (lane prep-play-first-release). Until then no release carried notes. The register
+// names release-notes.txt in android-play's additionalFiles (with the same 500 cap), so
+// assert-store-metadata requires it in every Play tree, the brick included; this block is what puts
+// the text ON the release. The cap is sourced: PRIMARY_SOURCES.releaseNotesLimit, verbatim
+// (fetched 2026-10-01): "You can enter release notes using up to 500 Unicode characters per
+// language." Counted in code points, as above.
+//
+// ⏱ 2026-10-01 (#1099 review, nit b) — THE NOTES ARE FOR ONE RELEASE, AND SAY WHICH. The file's
+// first line is `after-version-code: <N>`: these notes are for the upload that follows versionCode
+// N, which must be the register's `versionCodeHighWater.consumed.<app>` (0 when the app has
+// consumed none). Every upload raises that mark before the next dispatch can pass, so release 2
+// cannot re-ship release 1's notes: the header goes stale, and a real submission refuses until
+// somebody writes the next release's notes. A push-CI dry run with no bundle only PRINTS it, so a
+// raised mark never blocks unrelated merges.
 const RELEASE_NOTES_FILE = 'release-notes.txt';
 const RELEASE_NOTES_MAX = 500;
+const RELEASE_NOTES_HEADER = /^after-version-code:\s*(\d+)\s*$/;
 let releaseNotes = null;
 {
-  const text = read(`${metaDir}/${RELEASE_NOTES_FILE}`);
+  const rel = `${metaDir}/${RELEASE_NOTES_FILE}`;
+  const text = read(rel);
+  const consumed = Number(channel.versionCodeHighWater?.consumed?.[app.slug]?.value ?? 0);
+  const binding = SUBMIT || (DRY_RUN && !ALLOW_MISSING_ARTIFACT);
   if (text === null) {
-    prints.push(`NO RELEASE NOTES — ${metaDir}/${RELEASE_NOTES_FILE} is absent, so the release goes up with none. Play does not require them.`);
-  } else if (text.trim() === '') {
-    problems.push(`${metaDir}/${RELEASE_NOTES_FILE} is EMPTY. Delete it to send no notes; an empty file is a release note nobody wrote.`);
-  } else if (charCount(text) > RELEASE_NOTES_MAX) {
-    problems.push(`${metaDir}/${RELEASE_NOTES_FILE} is ${charCount(text)} characters; Play caps release notes at ${RELEASE_NOTES_MAX} per language. Source: ${PRIMARY_SOURCES.releaseNotesLimit}`);
+    prints.push(`NO RELEASE NOTES — ${rel} is absent, so the release goes up with none. Play does not require them.`);
   } else {
-    releaseNotes = text.trim();
-    ok(`release notes ${metaDir}/${RELEASE_NOTES_FILE} — ${charCount(text)} of ${RELEASE_NOTES_MAX} characters`);
+    const [first, ...rest] = text.split('\n');
+    const header = first.trim().match(RELEASE_NOTES_HEADER);
+    const body = rest.join('\n').trim();
+    if (!header) {
+      problems.push(
+        `${rel} does not open with "after-version-code: <N>". The notes must say which release they are for: the one after the versionCode Play has consumed (${consumed} for "${app.slug}").`,
+      );
+    } else if (body === '') {
+      problems.push(`${rel} carries a header and no notes. Delete the file to send none; an empty note is a release note nobody wrote.`);
+    } else if (charCount(body) > RELEASE_NOTES_MAX) {
+      problems.push(`${rel} is ${charCount(body)} characters; Play caps release notes at ${RELEASE_NOTES_MAX} per language. Source: ${PRIMARY_SOURCES.releaseNotesLimit}`);
+    } else if (Number(header[1]) !== consumed) {
+      const line = `STALE RELEASE NOTES — ${rel} is for the release after versionCode ${header[1]}, and Play has consumed up to ${consumed} for "${app.slug}" (${REGISTER} versionCodeHighWater). Write THIS release's notes and set "after-version-code: ${consumed}".`;
+      if (binding) problems.push(line);
+      else prints.push(line);
+    } else {
+      releaseNotes = body;
+      ok(`release notes ${rel} — for the release after versionCode ${consumed}, ${charCount(body)} of ${RELEASE_NOTES_MAX} characters`);
+    }
   }
 }
 
@@ -1086,6 +1108,34 @@ const PLAY_IMAGE_TYPE_OF_ASSET = Object.freeze({ 'store-icon-512.png': 'icon', '
 /** Play screenshot slots for each deviceTypeCoverage set. */
 const PLAY_IMAGE_TYPES_OF_SET = Object.freeze({ phone: ['phoneScreenshots'], tablet: ['sevenInchScreenshots', 'tenInchScreenshots'] });
 const TESTING_ONLY_TRACKS = new Set(['internal', 'qa']);
+/** The listing fields the tree declares. Only these are ever written; every other Listing field
+ *  (a promo `video`, whatever the API adds next) stays as Play holds it. */
+const LISTING_TEXT_FIELDS = Object.freeze(['title', 'shortDescription', 'fullDescription']);
+
+/** Writes the values about to be replaced to `--backup-dir` (default build/play-listing-backups/,
+ *  gitignored) as one dated JSON file plus the bytes of each image in a slot about to be replaced.
+ *  Returns the JSON file's path. Throws — before anything is written to Play — if any part fails. */
+async function backupBeforeWrite({ edit, details, live, slots }) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '').replace(/\d{3}Z$/, 'Z');
+  const dir = resolvePath(opt('backup-dir') ?? join(ROOT, 'build', 'play-listing-backups'), `${app.slug}-${stamp}`);
+  mkdirSync(dir, { recursive: true });
+  const images = {};
+  for (const { type, liveImgs } of slots) {
+    images[type] = [];
+    for (const [i, img] of liveImgs.entries()) {
+      const url = String(img?.url ?? '');
+      if (!/^https?:\/\//.test(url)) throw new Error(`backup: ${type} image ${i} has no fetchable url (${JSON.stringify(img?.url ?? null)}), so it could not be kept. Nothing was written.`);
+      const res = await fetch(url, { redirect: 'follow' });
+      if (!res.ok) throw new Error(`backup: ${type} image ${i} answered HTTP ${res.status}, so it could not be kept. Nothing was written.`);
+      const file = `${type}-${i + 1}.png`;
+      writeFileSync(join(dir, file), Buffer.from(await res.arrayBuffer()));
+      images[type].push({ id: img?.id ?? null, url, sha256: img?.sha256 ?? null, file });
+    }
+  }
+  const out = join(dir, 'listing.json');
+  writeFileSync(out, `${JSON.stringify({ app: app.slug, package: packageName, takenAt: new Date().toISOString(), edit, language: LISTING_LANGUAGE, details, listing: live, images }, null, 2)}\n`);
+  return out;
+}
 
 /** Everything the tree says the listing is — read BEFORE any request, so a bad tree costs no edit. */
 function desiredListing() {
@@ -1154,6 +1204,7 @@ async function syncListing() {
     }
     ok(`no release beyond internal testing is served (tracks: ${tracks.map((t) => t?.track).join(', ')}) — nothing written here can reach a user`);
 
+    // ── READ: everything Play holds for the declared fields, before anything is written ──
     const details = await asJson(await request('edits.details.get', 'GET', `${at}/details`, { token: tok }));
     if (details.defaultLanguage !== LISTING_LANGUAGE) {
       throw new Error(
@@ -1161,31 +1212,50 @@ async function syncListing() {
       );
     }
     const detailDiff = Object.entries(want.details).filter(([k, v]) => details[k] !== v);
-    if (detailDiff.length) {
-      changes.push(`details: ${detailDiff.map(([k, v]) => `${k} ${JSON.stringify(details[k] ?? null)} → ${JSON.stringify(v)}`).join(', ')}`);
-      if (!PLAN_ONLY) {
-        await request('edits.details.patch', 'PATCH', `${at}/details`, { token: tok, headers: { 'content-type': 'application/json' }, body: JSON.stringify(want.details) });
-      }
-    }
+    if (detailDiff.length) changes.push(`details: ${detailDiff.map(([k, v]) => `${k} ${JSON.stringify(details[k] ?? null)} → ${JSON.stringify(v)}`).join(', ')}`);
 
     const liveRes = await request('edits.listings.get', 'GET', `${at}/listings/${LISTING_LANGUAGE}`, { token: tok, expect: [200, 404] });
     const live = liveRes.status === 404 ? {} : await asJson(liveRes);
-    const textDiff = ['title', 'shortDescription', 'fullDescription'].filter((k) => (live[k] ?? '') !== want.listing[k]);
+    const textDiff = LISTING_TEXT_FIELDS.filter((k) => (live[k] ?? '') !== want.listing[k]);
     if (textDiff.length) {
       changes.push(`listing ${LISTING_LANGUAGE}: ${textDiff.map((k) => `${k} (${[...(live[k] ?? '')].length} → ${[...want.listing[k]].length} chars)`).join(', ')}`);
-      if (!PLAN_ONLY) {
-        await request('edits.listings.update', 'PUT', `${at}/listings/${LISTING_LANGUAGE}`, { token: tok, headers: { 'content-type': 'application/json' }, body: JSON.stringify(want.listing) });
-      }
     }
 
-    const imgBase = `${uploadBase}/${edit}/listings/${LISTING_LANGUAGE}`;
+    const slots = [];
     for (const { type, files } of want.images) {
       const liveImgs = (await asJson(await request('edits.images.list', 'GET', `${at}/listings/${LISTING_LANGUAGE}/${type}`, { token: tok }))).images ?? [];
       const liveSums = liveImgs.map((i) => String(i?.sha256 ?? '').toLowerCase());
       const wantSums = files.map(sha);
       if (liveSums.join() === wantSums.join()) continue;
       changes.push(`${type}: ${liveSums.length} image(s) on Play → ${files.length} from the tree`);
-      if (PLAN_ONLY) continue;
+      slots.push({ type, files, liveImgs, wantSums });
+    }
+
+    for (const c of changes) console.log(`→    ${PLAN_ONLY ? 'would change' : 'changing'} ${c}`);
+    if (changes.length === 0) ok('Play already holds exactly what the tree says — nothing to write');
+    if (PLAN_ONLY || changes.length === 0) return { changes, committed: false };
+
+    // ── BACKUP: every value about to be replaced, on disk, BEFORE the first write ──
+    // ⏱ 2026-10-01 (#1099 review, finding 4). The tree wins by design, but what it replaces is kept:
+    // the full details and listing as Play held them, and the BYTES of every image in a slot about to
+    // be replaced (an image deleted from Play takes its URL with it). A backup that cannot be completed
+    // stops the run before anything is written — overwriting what we could not keep is not a sync.
+    const backup = await backupBeforeWrite({ edit, details, live, slots });
+    ok(`backup of the values about to be replaced — ${backup}`);
+
+    // ── WRITE: only the declared fields ──
+    if (detailDiff.length) {
+      // PATCH, and only the declared contact fields: contactPhone and anything else stays as Play holds it.
+      await request('edits.details.patch', 'PATCH', `${at}/details`, { token: tok, headers: { 'content-type': 'application/json' }, body: JSON.stringify(want.details) });
+    }
+    if (textDiff.length) {
+      // PATCH, not PUT (${PRIMARY_SOURCES.listingsPatch}): a PUT replaces the whole Listing and would clear
+      // a promo `video` the console holds and the tree does not declare.
+      const body = Object.fromEntries(LISTING_TEXT_FIELDS.map((k) => [k, want.listing[k]]));
+      await request('edits.listings.patch', 'PATCH', `${at}/listings/${LISTING_LANGUAGE}`, { token: tok, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    }
+    const imgBase = `${uploadBase}/${edit}/listings/${LISTING_LANGUAGE}`;
+    for (const { type, files, liveImgs, wantSums } of slots) {
       if (liveImgs.length) await request('edits.images.deleteall', 'DELETE', `${at}/listings/${LISTING_LANGUAGE}/${type}`, { token: tok });
       for (const [i, rel] of files.entries()) {
         const bytes = readFileSync(abs(rel));
@@ -1197,15 +1267,13 @@ async function syncListing() {
           }),
         );
         const got = String(up?.image?.sha256 ?? '').toLowerCase();
-        if (got !== '' && got !== wantSums[i]) {
+        // A missing hash is UNVERIFIED, and unverified is a refusal, never a pass (#1099 review, nit a).
+        if (got === '') throw new Error(`UNVERIFIED — ${type} ${rel}: Play's upload answer carried no sha256, so nobody can say these are the bytes it holds. Nothing is committed.`);
+        if (got !== wantSums[i]) {
           throw new Error(`${type} ${rel}: Play holds sha256 ${got} and the file hashes to ${wantSums[i]}. The upload was corrupted in transit.`);
         }
       }
     }
-
-    for (const c of changes) console.log(`→    ${PLAN_ONLY ? 'would change' : 'changed'} ${c}`);
-    if (changes.length === 0) ok('Play already holds exactly what the tree says — nothing to write');
-    if (PLAN_ONLY || changes.length === 0) return { changes, committed: false };
 
     await request('edits.validate', 'POST', `${at}:validate`, { token: tok, headers: { 'content-type': 'application/json' }, body: '' });
     ok('edit validated — Play reports no errors in it');
@@ -1454,9 +1522,14 @@ if (!SUBMIT) {
   process.exitCode = 1;
 } else {
   console.log('');
-  console.log('submit-play: SUBMITTED.');
+  // ⏱ 2026-10-01 (#1099 review, finding 1): a DRAFT is uploaded and NOT submitted, and the run says so.
+  console.log(releaseStatus === 'draft' ? 'submit-play: STAGED AS A DRAFT — uploaded, nothing sent for review, nothing served.' : 'submit-play: SUBMITTED.');
   console.log(`   Track: ${requestedTrack === '' ? '(least-public the API offered)' : requestedTrack} · status ${releaseStatus} · package ${packageName}`);
-  console.log('   ⬜ [10]D-9 LEDGER: this is the event limb (iii) of D-10 has been waiting for. Record it.');
+  console.log(
+    releaseStatus === 'draft'
+      ? '   ⬜ [10]D-9 LEDGER: record it as draft_staged, never in_review — the owner\'s console "Send changes for review" is still owed.'
+      : '   ⬜ [10]D-9 LEDGER: this is the event limb (iii) of D-10 has been waiting for. Record it.',
+  );
   console.log('   ⬜ Promoting this to production is [ADR 031] class A — owner-only, per instance, in the Console.');
   process.exitCode = 0;
 }
