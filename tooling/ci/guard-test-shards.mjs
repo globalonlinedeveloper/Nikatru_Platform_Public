@@ -46,10 +46,11 @@
 // not cover the suite exactly once. 2 = COVERAGE LOST: no test files found, the
 // weights unreadable, a shard's files missing, or bad arguments.
 // ─────────────────────────────────────────────────────────────────────────────
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { basenameOf, parseJunitCases, unescapeXml } from './assert-case-count-honest.mjs';
+import { listDir } from './tree-walk.mjs';
 
 export const TEST_DIR_REL = 'tooling/ci/test';
 export const DURATIONS_REL = 'tooling/ci/test/guard-test-durations.json';
@@ -64,7 +65,7 @@ class CoverageLost extends Error {}
 export function listTestFiles(root) {
   const dir = join(root, TEST_DIR_REL);
   if (!existsSync(dir)) throw new CoverageLost(`${TEST_DIR_REL} does not exist under ${root}`);
-  const files = readdirSync(dir)
+  const files = listDir(dir)
     .filter((f) => f.endsWith('.test.mjs'))
     .sort()
     .map((f) => `${TEST_DIR_REL}/${f}`);
@@ -280,7 +281,7 @@ function intArg(argv, name) {
 function readShardDirs(dir, shards) {
   if (!existsSync(dir)) throw new CoverageLost(`--dir ${dir} does not exist, so no shard's results can be read`);
   const found = new Map();
-  for (const name of readdirSync(dir)) {
+  for (const name of listDir(dir)) {
     const m = /-(\d+)$/.exec(name);
     if (!m) continue;
     const index = Number(m[1]);

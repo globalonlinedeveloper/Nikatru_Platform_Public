@@ -218,7 +218,7 @@ describe('the CLI', () => {
     try {
       const r = cli(['--merge', '--shards', '2', '--dir', dir, '--out', join(dir, 'merged.xml')]);
       assert.equal(r.status, 1);
-      assert.match(r.stderr, new RegExp(`${lists[1].files[0].replace(/[.]/g, '\\.')} is in no shard`));
+      assert.ok(r.stderr.includes(`${lists[1].files[0]} is in no shard`), r.stderr);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
