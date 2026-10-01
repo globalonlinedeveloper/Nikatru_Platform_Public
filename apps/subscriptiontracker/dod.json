@@ -256,7 +256,7 @@
           "find": "      setState(() {\n        _saving = false;",
           "replace": "      setState(() {\n        _saving = true;"
         },
-        "codeHash": "2ae093dd592a11c1344c294fff08a17c8ed03ec277b48174b9d293537d203bec"
+        "codeHash": "03a331445c1f2e72355359952f4c59ccccce6008dbfaad09943a3d53d941779b"
       }
     },
     {
@@ -272,7 +272,7 @@
           "find": "_failure = ApiException.isOfflineError(e)",
           "replace": "_step = 1; _failure = ApiException.isOfflineError(e)"
         },
-        "codeHash": "a0ebb7307f3b00cad3c70e21ec62f2335025c7663e425e1b4603b817b72306d9"
+        "codeHash": "82f87d58165d8edef37c786a7ebe4875852b9e5544c554883bc90d75149d04b1"
       }
     }
   ],

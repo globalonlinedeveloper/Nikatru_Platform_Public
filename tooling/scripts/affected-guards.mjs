@@ -104,9 +104,12 @@ import { dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseAllWorkflows, shellSegments, workflowSteps } from '../ci/workflow-scan.mjs';
 import { globToRegExp, readMap } from '../ci/lane-detect.mjs';
+import { TEST_DIR_REL as SHARD_TEST_DIR } from '../ci/guard-test-shards.mjs';
 import { classifyRed, detachedCheckout, removeCheckout } from './preflight.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+/** The guard-tests shard planner, as a workflow names it. */
+const SHARD_SCRIPT = 'tooling/ci/guard-test-shards.mjs';
 const CI_WORKFLOW = 'ci.yml';
 /** The lane's target is under five minutes for a typical change on the 4-core laptop. */
 export const DEFAULT_BUDGET_S = 240;
@@ -537,14 +540,27 @@ export function workflowCalls(root, parsed = parseAllWorkflows(root)) {
         const wd = workingDir(wf, job, step);
         if (wd.includes('${{')) continue;
         const pr = [...step.env.values()].some((v) => /\$\{\{\s*github\.event\./.test(v.value ?? ''));
-        for (const seg of shellSegments(step.run.text)) {
+        const segs = shellSegments(step.run.text);
+        // A guard-tests shard runs `node --test $(cat <plan>)`: its files come from
+        // guard-test-shards.mjs --plan in the same step, and are the whole suite
+        // across the matrix. Without this the `$` below drops every guard suite.
+        const sharded = segs.some((seg) => {
+          const c = parseNodeCall(seg);
+          return c?.script && posix.normalize(posix.join(wd, c.script)) === SHARD_SCRIPT && c.args.includes('--plan');
+        });
+        for (const seg of segs) {
           const call = parseNodeCall(seg);
           if (!call) continue;
           if (call.test) {
+            let literal = 0;
             for (const g of call.test) {
               const glob = posix.normalize(posix.join(wd, g));
-              if (/\.(m?js|cjs)$/.test(glob) && !glob.includes('$')) tests.push({ wf: wfName, job: job.name, glob, wd, flags: call.flags });
+              if (/\.(m?js|cjs)$/.test(glob) && !glob.includes('$')) {
+                tests.push({ wf: wfName, job: job.name, glob, wd, flags: call.flags });
+                literal++;
+              }
             }
+            if (sharded && literal === 0) tests.push({ wf: wfName, job: job.name, glob: `${SHARD_TEST_DIR}/*.test.mjs`, wd, flags: call.flags });
             continue;
           }
           const rel = posix.normalize(posix.join(wd, call.script));
