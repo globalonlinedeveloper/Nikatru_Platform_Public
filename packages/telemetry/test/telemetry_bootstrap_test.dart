@@ -94,6 +94,23 @@ void main() {
       expect(options.enableAutoSessionTracking, isFalse);
     });
 
+    // ⏱ 2026-10-01 · full review AA-08. The SDK default is ON (measured in the
+    // pinned 9.26.0: sentry_flutter_options.dart `enableNativeCrashHandling =
+    // true`), so the pre-set is belt and braces, as above. Every channel row in
+    // tooling/channel-register.json declares `crashSink.native: false`, and
+    // assert-seams-wired.mjs holds that claim to this assignment; this case
+    // holds the assignment to the SDK.
+    test('turns native crash handling off', () async {
+      final options = SentryFlutterOptions()..enableNativeCrashHandling = true;
+      expect(options.enableNativeCrashHandling, isTrue);
+
+      await TelemetryBootstrap.optionsCallback(_config, isWeb: false)(options);
+
+      expect(options.enableNativeCrashHandling, isFalse,
+          reason: 'a native crash event never passes the Dart beforeSend, so '
+              'it would reach GlitchTip unscrubbed and unsymbolicated');
+    });
+
     test('wires beforeSend, and it routes through scrubEvent', () async {
       final options = SentryFlutterOptions();
       expect(options.beforeSend, isNull);

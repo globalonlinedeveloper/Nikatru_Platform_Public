@@ -41,7 +41,9 @@ import {
   EXPECTATION_FILE,
   expectationVerdict,
   parseExpectation,
+  parseTargets,
   readingWord,
+  UNMEASURED,
 } from '../../ops/symbolication-proof.mjs';
 import { parseWorkflow, workflowEvents } from '../workflow-scan.mjs';
 
@@ -418,7 +420,7 @@ describe('expectationVerdict — reality against the RECORD, never against an id
   test('…and it can never be read as "symbolication works"', () => {
     const { truthOk, sinkOk } = run35470727346Readings();
     const text = said(held({ truthOk, sinkOk }));
-    assert.match(text, /🔴 THIS GREEN DOES NOT MEAN GLITCHTIP SYMBOLICATES FLUTTER ANDROID FRAMES\./);
+    assert.match(text, /🔴 THIS GREEN DOES NOT MEAN GLITCHTIP SYMBOLICATES FLUTTER ANDROID-X64 FRAMES\./);
     assert.doesNotMatch(text, /AS RECORDED — both readings MATCH/);
   });
 
@@ -490,41 +492,97 @@ describe('expectationVerdict — reality against the RECORD, never against an id
   });
 });
 
+// ⏱ 2026-10-01 (AA-06) — the register holds one record per target, so every
+// case below wraps the record it mutates as `targets.android-x64` and asks for it.
+const T = 'android-x64';
+const asRegister = (record, extra = {}) => JSON.stringify({ targets: { [T]: { proof: 'leg', ...record }, ...extra } });
+const parseOne = (record) => parseExpectation(asRegister(record), T);
+
 describe('parseExpectation — a register nobody can read back is COVERAGE LOST, not a default', () => {
-  const ok = JSON.stringify(RECORD);
+  const ok = asRegister(RECORD);
   test('the well-formed record parses', () => {
-    assert.deepEqual(parseExpectation(ok).expectation.row, RECORD.row);
+    assert.deepEqual(parseExpectation(ok, T).expectation.row, RECORD.row);
   });
   test('text that is not JSON is refused', () => {
-    assert.match(parseExpectation('{ nope').error, /not JSON/);
+    assert.match(parseExpectation('{ nope', T).error, /not JSON/);
   });
   test('an array, or null, is not a register', () => {
-    assert.match(parseExpectation('[]').error, /not a JSON object/);
-    assert.match(parseExpectation('null').error, /not a JSON object/);
+    assert.match(parseExpectation('[]', T).error, /not a JSON object/);
+    assert.match(parseExpectation('null', T).error, /not a JSON object/);
   });
   test('a reading outside {match, mismatch} is refused, including "unavailable"', () => {
     for (const bad of ['unavailable', true, null, undefined, 'MATCH']) {
-      const r = parseExpectation(JSON.stringify({ ...RECORD, sink: bad }));
+      const r = parseOne({ ...RECORD, sink: bad });
       assert.match(r.error, /"sink"/, `${JSON.stringify(bad)} was accepted`);
     }
   });
   test('an empty `broken` is refused: the banner it prints is load-bearing text', () => {
-    assert.match(parseExpectation(JSON.stringify({ ...RECORD, broken: '   ' })).error, /"broken" is missing or empty/);
+    assert.match(parseOne({ ...RECORD, broken: '   ' }).error, /"broken" is missing or empty/);
   });
   test('each printed field is required, so a stripped register cannot pass', () => {
     for (const k of ['recordedBy', 'row', 'broken', 'until']) {
       const cut = { ...RECORD };
       delete cut[k];
-      assert.match(parseExpectation(JSON.stringify(cut)).error, new RegExp(`"${k}"`));
+      assert.match(parseOne(cut).error, new RegExp(`"${k}"`));
     }
   });
   test('the evidence, and the version the record was measured on, are required', () => {
-    assert.match(parseExpectation(JSON.stringify({ ...RECORD, evidence: undefined })).error, /no "evidence" object/);
+    assert.match(parseOne({ ...RECORD, evidence: undefined }).error, /no "evidence" object/);
     for (const k of ['run', 'event', 'glitchtipVersion']) {
       const ev = { ...RECORD.evidence };
       delete ev[k];
-      assert.match(parseExpectation(JSON.stringify({ ...RECORD, evidence: ev })).error, new RegExp(`evidence\\.${k}`));
+      assert.match(parseOne({ ...RECORD, evidence: ev }).error, new RegExp(`evidence\\.${k}`));
     }
+  });
+
+  // ── ⏱ 2026-10-01 · ONE RECORD PER TARGET (full review AA-06) ─────────────
+  test('no target named is refused: there is no default record', () => {
+    for (const t of [undefined, '', '  ']) assert.match(parseExpectation(ok, t).error, /no target was named/);
+  });
+  test('a target the register does not hold is refused, naming what it does hold', () => {
+    assert.match(parseExpectation(ok, 'linux-x64').error, /no record for target "linux-x64" \(it holds android-x64\)/);
+  });
+  test('the old flat register (no `targets`) is refused, not read as android', () => {
+    assert.match(parseExpectation(JSON.stringify(RECORD), T).error, /no "targets" object/);
+    assert.match(parseExpectation(JSON.stringify({ targets: {} }), T).error, /no "targets" object, or it is empty/);
+  });
+  test('a `none` target cannot be held against, and says why', () => {
+    const reg = asRegister(RECORD, { 'ios-arm64': { proof: 'none', row: 'R', why: 'no simulator runs a release build' } });
+    assert.match(parseExpectation(reg, 'ios-arm64').error, /"ios-arm64" is recorded as proof "none" — no simulator runs a release build/);
+  });
+  test('a `none` target needs its why and its row; any other proof kind is refused', () => {
+    assert.match(parseExpectation(asRegister(RECORD, { w: { proof: 'none', row: 'R', why: ' ' } }), T).error, /targets\.w\.why is missing or empty/);
+    assert.match(parseExpectation(asRegister(RECORD, { w: { proof: 'none', why: 'x' } }), T).error, /targets\.w\.row is missing or empty/);
+    assert.match(parseExpectation(asRegister(RECORD, { w: { proof: 'later', why: 'x', row: 'R' } }), T).error, /targets\.w\.proof is "later"/);
+  });
+  test('ANOTHER target\'s broken record fails the whole register, not just that target', () => {
+    const reg = asRegister(RECORD, { 'linux-x64': { proof: 'leg', ...RECORD, broken: '' } });
+    assert.match(parseExpectation(reg, T).error, /targets\.linux-x64: the register's "broken" is missing or empty/);
+  });
+  test('an UNMEASURED leg parses with no evidence, but only when BOTH sides are unmeasured', () => {
+    const { evidence, ...noEvidence } = RECORD;
+    assert.equal(parseOne({ ...noEvidence, groundTruth: UNMEASURED, sink: UNMEASURED }).error, undefined);
+    assert.match(parseOne({ ...RECORD, sink: UNMEASURED }).error, /unmeasured on both sides or on neither/);
+  });
+});
+
+describe('expectationVerdict — an UNMEASURED leg (its first run)', () => {
+  const { evidence, ...noEvidence } = RECORD;
+  const FIRST = { ...noEvidence, groundTruth: UNMEASURED, sink: UNMEASURED };
+  const first = (o) => expectationVerdict({ expectation: FIRST, target: 'linux-x64', liveVersion: '6.2.6', ...o });
+  test('any first reading is exit 1 — a target nobody recorded cannot be "as recorded"', () => {
+    for (const [truthOk, sinkOk] of [[true, true], [true, false], [false, false]]) {
+      const v = first({ truthOk, sinkOk });
+      assert.equal(v.exit, 1, said(v));
+      assert.equal(v.asRecorded, false);
+      assert.match(said(v), /FIRST MEASUREMENT — symbolication-expectation\.json targets\.linux-x64 is UNMEASURED/);
+      assert.match(said(v), /set targets\.linux-x64\.groundTruth and \.sink to what this run read/);
+    }
+  });
+  test('an UNAVAILABLE reading or an unread version is still COVERAGE LOST (2)', () => {
+    assert.equal(first({ truthOk: null, sinkOk: false }).exit, 2);
+    assert.equal(first({ truthOk: true, sinkOk: null }).exit, 2);
+    assert.equal(first({ truthOk: true, sinkOk: true, liveVersion: null }).exit, 2);
   });
 });
 
@@ -601,7 +659,7 @@ describe('the CLI refuses rather than passes', () => {
       writeFileSync(join(d, 'trace.txt'), RAW_TRACE.join('\n'));
       writeFileSync(join(d, 'sym.txt'), `#0      probeThrowSite (file:///x/symbolication_crash_probe.dart:${exp.line}:3)\n`);
       const r = run([
-        'verdict', '--source', join(ROOT, PROBE), '--trace', join(d, 'trace.txt'),
+        'verdict', '--target', 'android-x64', '--source', join(ROOT, PROBE), '--trace', join(d, 'trace.txt'),
         '--symbolized', join(d, 'sym.txt'), '--marker', 'm', '--report', join(d, 'r.json'),
       ]);
       assert.equal(r.code, 2, r.out);
@@ -610,6 +668,11 @@ describe('the CLI refuses rather than passes', () => {
     } finally {
       rmSync(d, { recursive: true, force: true });
     }
+  });
+  test('verdict without --target is COVERAGE LOST (2): no target\'s record is the default', () => {
+    const r = run(['verdict', '--source', join(ROOT, PROBE), '--trace', 'x', '--symbolized', 'x', '--marker', 'm', '--report', 'x']);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /--target is required for verdict/);
   });
   test('a flag given no value is refused by the parser, not bound to the next flag', () => {
     assert.notEqual(run(['expect', '--source']).code, 0);
@@ -623,9 +686,9 @@ describe('the CLI refuses rather than passes', () => {
     try {
       writeFileSync(join(d, 'trace.txt'), RAW_TRACE.join('\n'));
       writeFileSync(join(d, 'sym.txt'), `#0      probeThrowSite (file:///x/symbolication_crash_probe.dart:${exp.line}:3)\n`);
-      writeFileSync(join(d, 'bad.json'), '{ "groundTruth": "match" }');
+      writeFileSync(join(d, 'bad.json'), '{ "targets": { "android-x64": { "proof": "leg", "groundTruth": "match" } } }');
       const r = run([
-        'verdict', '--source', join(ROOT, PROBE), '--trace', join(d, 'trace.txt'),
+        'verdict', '--target', 'android-x64', '--source', join(ROOT, PROBE), '--trace', join(d, 'trace.txt'),
         '--symbolized', join(d, 'sym.txt'), '--marker', 'm', '--report', join(d, 'r.json'),
         '--expectation', join(d, 'bad.json'),
       ], { GLITCHTIP_TOKEN: 'never-used' });
@@ -644,7 +707,7 @@ describe('the CLI refuses rather than passes', () => {
       writeFileSync(join(d, 'trace.txt'), RAW_TRACE.join('\n'));
       writeFileSync(join(d, 'sym.txt'), `#0      probeThrowSite (file:///x/symbolication_crash_probe.dart:${exp.line}:3)\n`);
       const r = run([
-        'verdict', '--source', join(ROOT, PROBE), '--trace', join(d, 'trace.txt'),
+        'verdict', '--target', 'android-x64', '--source', join(ROOT, PROBE), '--trace', join(d, 'trace.txt'),
         '--symbolized', join(d, 'sym.txt'), '--marker', 'm', '--report', join(d, 'r.json'),
         '--expectation', join(d, 'gone.json'),
       ], { GLITCHTIP_TOKEN: 'never-used' });
@@ -680,7 +743,7 @@ describe('the CLI refuses rather than passes', () => {
         writeFileSync(join(d, 'trace.txt'), RAW_TRACE.join('\n'));
         writeFileSync(join(d, 'sym.txt'), `#0      probeThrowSite (file:///x/symbolication_crash_probe.dart:${exp.line}:3)\n`);
         const r = spawnSync(process.execPath, [
-          join(ops, 'symbolication-proof.mjs'), 'verdict', '--source', join(ROOT, PROBE), '--trace', join(d, 'trace.txt'),
+          join(ops, 'symbolication-proof.mjs'), 'verdict', '--target', 'android-x64', '--source', join(ROOT, PROBE), '--trace', join(d, 'trace.txt'),
           '--symbolized', join(d, 'sym.txt'), '--marker', 'm', '--report', join(d, 'r.json'), '--wait-seconds', '0',
         ], {
           encoding: 'utf8',
@@ -714,7 +777,7 @@ describe('the CLI refuses rather than passes', () => {
 });
 
 describe('the real tree', () => {
-  const register = () => parseExpectation(readFileSync(join(ROOT, 'tooling', 'ops', EXPECTATION_FILE), 'utf8'));
+  const register = () => parseExpectation(readFileSync(join(ROOT, 'tooling', 'ops', EXPECTATION_FILE), 'utf8'), 'android-x64');
 
   test('the register exists, parses, and records the state ADR 090 recorded', () => {
     const r = register();
@@ -744,6 +807,75 @@ describe('the real tree', () => {
     assert.equal(v.asRecorded, true);
     assert.match(said(v), /DOES NOT MEAN GLITCHTIP SYMBOLICATES/);
   });
+  // ── ⏱ 2026-10-01 · ONE LEG PER TARGET (full review AA-06) ────────────────
+  // The matrix, the register and the channel register name the same targets, or
+  // one of them is lying: a leg with no record is coverage lost at run time, a
+  // `leg` record no leg runs is a record nobody re-measures, and a target a graded
+  // Flutter channel ships with no entry at all is the silence AA-06 was about.
+  const targetsOnDisk = () => parseTargets(readFileSync(join(ROOT, 'tooling', 'ops', EXPECTATION_FILE), 'utf8'));
+  /** The matrix's `target:` list, read off the parsed workflow's lines. */
+  const matrixTargets = () => {
+    const wf = parseWorkflow(ROOT, WORKFLOW);
+    const line = wf.lines.map((l) => l.text).find((t) => /^\s+target:\s*\[/.test(t));
+    assert.ok(line, `${WORKFLOW} has no \`target: [...]\` matrix line`);
+    return line.replace(/^\s+target:\s*\[/, '').replace(/\].*$/, '').split(',').map((x) => x.trim()).filter(Boolean);
+  };
+  /** The symbolication target each Flutter platform ships as. */
+  const TARGET_OF = { android: 'android-x64', ios: 'ios-arm64', macos: 'macos-arm64', windows: 'windows-x64', linux: 'linux-x64', web: 'web' };
+  test('the register parses as a whole, and every target is a leg or says why it is not', () => {
+    const r = targetsOnDisk();
+    assert.equal(r.error, undefined, r.error);
+    for (const [t, e] of Object.entries(r.targets)) {
+      if (e.proof === 'none') assert.ok(e.why.length > 40, `targets.${t}.why is too thin to be a reason`);
+    }
+  });
+  test('the workflow matrix runs EXACTLY the register\'s `leg` targets', () => {
+    const legs = Object.entries(targetsOnDisk().targets).filter(([, e]) => e.proof === 'leg').map(([t]) => t).sort();
+    assert.deepEqual([...matrixTargets()].sort(), legs);
+    assert.ok(legs.includes('android-x64') && legs.length >= 2, `the proof must be more than android-x64: ${legs.join(', ')}`);
+  });
+  test('every platform a Flutter channel ships has a target entry here', () => {
+    const reg = JSON.parse(readFileSync(join(ROOT, 'tooling', 'channel-register.json'), 'utf8'));
+    const flutter = new Set(Object.entries(reg.surfaces).filter(([k, v]) => k !== '_why' && v?.flutterApp === true).map(([k]) => k));
+    const targets = targetsOnDisk().targets;
+    const platforms = new Set(reg.channels.filter((c) => flutter.has(c.surface)).flatMap((c) => c.platforms ?? []));
+    assert.ok(platforms.size >= 6, `only ${[...platforms].join(', ')} found; the register read is broken`);
+    for (const p of platforms) {
+      assert.ok(TARGET_OF[p], `platform "${p}" has no symbolication target mapped in this test`);
+      assert.ok(targets[TARGET_OF[p]], `platform "${p}" ships, and ${EXPECTATION_FILE} has no targets.${TARGET_OF[p]}`);
+    }
+  });
+  test('every `targets.<t>` a channel\'s crashSink note cites exists in the register', () => {
+    const reg = JSON.parse(readFileSync(join(ROOT, 'tooling', 'channel-register.json'), 'utf8'));
+    const targets = targetsOnDisk().targets;
+    let cited = 0;
+    for (const c of reg.channels) {
+      for (const m of String(c.crashSink?.note ?? '').matchAll(/symbolication-expectation\.json `targets\.([\w-]+)`/g)) {
+        cited++;
+        assert.ok(targets[m[1]], `${c.id}'s crashSink note cites targets.${m[1]}, which ${EXPECTATION_FILE} does not hold`);
+      }
+    }
+    assert.ok(cited >= 8, `only ${cited} citation(s) found; the notes or this pattern drifted`);
+  });
+  test('each leg decodes its OWN target\'s symbols and verdicts against its OWN record', () => {
+    const raw = readFileSync(join(ROOT, WORKFLOW), 'utf8');
+    assert.match(raw, /SYMBOLS_DIR: build\/symbols\/probe-\$\{\{ matrix\.target \}\}/);
+    assert.match(raw, /-d "\$\{SYMBOLS_DIR\}\/app\.\$\{TARGET\}\.symbols"/);
+    assert.match(raw, /symbolication-proof\.mjs verdict\s+--target "\$TARGET"/);
+    assert.match(raw, /name: symbolication-proof-evidence-\$\{\{ matrix\.target \}\}/, 'two legs uploading one artifact name collide');
+    assert.match(raw, /name: symbols-symbolication-probe-\$\{\{ matrix\.target \}\}/, 'two legs uploading one artifact name collide');
+    assert.match(raw, /fail-fast: false/);
+  });
+  test('the Linux leg builds an obfuscated release bundle and runs it under xvfb', () => {
+    const raw = readFileSync(join(ROOT, WORKFLOW), 'utf8');
+    const build = raw.slice(raw.indexOf('- name: Build the crash probe (obfuscated release Linux bundle)'), raw.indexOf('- uses: actions/upload-artifact'));
+    assert.match(build, /if: \$\{\{ matrix\.target == 'linux-x64' \}\}/);
+    assert.match(build, /flutter build linux --release\s+--obfuscate --split-debug-info="\$SYMBOLS_DIR"\s+-t "\$PROBE_SOURCE"/);
+    const runStep = raw.slice(raw.indexOf('- name: Run the probe under xvfb'), raw.indexOf('- name: Extract the raw trace'));
+    assert.match(runStep, /xvfb-run -a/);
+    for (const needle of ['wait_for "BEGIN', 'wait_for "TRACE', 'wait_for "SENT']) assert.ok(runStep.includes(needle), needle);
+  });
+
   test('the workflow passes no --expectation, so CI reads the register beside the script', () => {
     const raw = readFileSync(join(ROOT, WORKFLOW), 'utf8');
     assert.doesNotMatch(raw, /--expectation/, 'an overridden register path in CI is a register nobody grades');

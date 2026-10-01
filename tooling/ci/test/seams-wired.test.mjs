@@ -160,14 +160,17 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
 
   // ⏱ 2026-09-15 — the crash-sink lanes are the surfaces DECLARED `flutterApp: true`
   // (O-EXT-SURFACE-AXIS), so the fixture declares its surface and puts its rows on it.
+  // ⏱ 2026-10-01 — each row declares its crash sink (O-CRASHSINK-DECLARATION-UNGRADED):
+  // the guard fails a graded Flutter row without one, which is not this file's subject.
+  const SINK = { layers: ['dart'], native: false, note: 'fixture: the Dart layer only.' };
   const CHANNEL_REGISTER = JSON.stringify(
     {
       surfaces: { app: { flutterApp: true }, extension: { flutterApp: false } },
       channels: [
-        { id: 'web', surface: 'app', platforms: ['web'], lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' } },
-        { id: 'android-play', surface: 'app', platforms: ['android'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' } },
-        { id: 'windows-store', surface: 'app', platforms: ['windows'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' } },
-        { id: 'linux-snap', surface: 'app', platforms: ['linux'], lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' } },
+        { id: 'web', surface: 'app', platforms: ['web'], lane: { workflow: '.github/workflows/deploy-web.yml', job: 'deploy-web' }, crashSink: SINK },
+        { id: 'android-play', surface: 'app', platforms: ['android'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'linux_web_android' }, crashSink: SINK },
+        { id: 'windows-store', surface: 'app', platforms: ['windows'], lane: { workflow: '.github/workflows/build-platforms.yml', job: 'windows' }, crashSink: SINK },
+        { id: 'linux-snap', surface: 'app', platforms: ['linux'], lane: { workflow: '.github/workflows/submit-snap.yml', job: 'dry-run' }, crashSink: SINK },
       ],
     },
     null,
@@ -274,7 +277,10 @@ const String kPrivacyPolicyVersion = '2026-07-26';
         'onPressed: () => recordAnalyticsConsent(ref, granted: true),',
       'apps/subscriptiontracker/lib/main.dart': APP1_MAIN,
       'packages/telemetry/lib/src/telemetry_bootstrap.dart':
-        'options.enableAutoSessionTracking = false;\n',
+        'options.enableAutoSessionTracking = false;\noptions.enableNativeCrashHandling = false;\n',
+      // ⏱ 2026-10-01 (AA-08) — the Android half of `native: false`.
+      'apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml':
+        '<manifest><application><meta-data android:name="io.sentry.ndk.enable" android:value="false"/></application></manifest>\n',
       'sites/nikatru/privacy.html': '<p class="updated" data-policy-version="2026-07-26">x</p>',
       'tooling/channel-register.json': CHANNEL_REGISTER,
       '.github/workflows/deploy-web.yml': workflow(jobWith('deploy-web', DSN)),

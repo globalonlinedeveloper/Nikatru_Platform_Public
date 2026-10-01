@@ -9,10 +9,16 @@
 // insights_screen.dart). Every bar here is derived from a row's price, cycle
 // and next renewal, so the card says "next 12 months" and nothing more.
 //
-// The projection: month 0 is the current month and counts the plans that
-// still renew in it; each later month counts every monthly plan and the yearly
-// plans whose renewal month it is. Bars are drawn in the display currency (no
-// FX until ST-T5 I3); the sentence carries every currency's total.
+// The projection: every CHARGE each plan still charging makes in each of the
+// twelve months, from the date engine `Subscription.nextCharge` uses
+// (`RecurrenceSchedule`, via `SubMath.chargedInMonth`) — the same list the
+// calendar draws. Bars are drawn in the display currency (no FX until ST-T5
+// I3); the sentence carries every currency's total.
+//
+// ⏱ ST truth pass (IN-03): this added a price to month k when the plan was
+// `monthly` or its STORED renewal month was k — so a weekly plan charged 11
+// times a year instead of 52, a quarterly one once, every cadence that was not
+// monthly was read as yearly, and a paused plan kept charging in the forecast.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -26,8 +32,10 @@ import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
+import '../../state/providers.dart' show nowProvider;
 
-/// What [subs] charge in each of the 12 months starting with [now]'s month.
+/// What [subs] charge in each of the 12 months starting with [now]'s month:
+/// every charge of every row still charging ([SubMath.chargedInMonth]).
 List<({DateTime month, MoneyBag charged})> forecastMonths(
   List<Subscription> subs,
   DateTime now,
@@ -35,17 +43,7 @@ List<({DateTime month, MoneyBag charged})> forecastMonths(
   for (int k = 0; k < 12; k++)
     () {
       final DateTime m = DateTime(now.year, now.month + k);
-      return (
-        month: m,
-        charged: MoneyBag.sum(<Money>[
-          for (final Subscription s in subs)
-            if (k == 0
-                ? s.renewsIn(m.year, m.month)
-                : s.cycle == BillingCycle.monthly ||
-                      s.nextRenewal.month == m.month)
-              s.price,
-        ]),
-      );
+      return (month: m, charged: SubMath.chargedInMonth(subs, m.year, m.month));
     }(),
 ];
 
@@ -76,17 +74,19 @@ class ForecastCard extends ConsumerWidget {
       preview: const _Bars(
         heights: <double>[.5, .6, .55, .7, .65, .8, .75, .95, .8, .85, .85, 1],
       ),
-      child: _unlocked(context, l10n),
+      // `nowProvider`, never `DateTime.now()`: month 0 is a function of
+      // today, and the unlocked golden must be able to pin it.
+      child: _unlocked(context, l10n, ref.watch(nowProvider)()),
     );
   }
 
-  Widget _unlocked(BuildContext context, AppLocalizations l10n) {
+  Widget _unlocked(BuildContext context, AppLocalizations l10n, DateTime now) {
     final ThemeData theme = Theme.of(context);
     final TextTheme text = theme.textTheme;
     final ColorScheme scheme = theme.colorScheme;
     final List<({DateTime month, MoneyBag charged})> months = forecastMonths(
       subs,
-      DateTime.now(),
+      now,
     );
     final List<double> w = <double>[
       for (final ({DateTime month, MoneyBag charged}) m in months)

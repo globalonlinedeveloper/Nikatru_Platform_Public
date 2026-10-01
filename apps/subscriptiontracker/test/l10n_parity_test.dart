@@ -244,6 +244,9 @@ void main() {
       // ⏱ ST-D3 D3-5: a11yCategoryShare left with the donut; its successor.
       'a11yCategoryRowNoShare':
           'two placeholders and a colon: no word to translate',
+      // ⏱ ST truth pass (2026-10-01, IN-01): a price beside its own cadence
+      // caption; both halves arrive translated.
+      'priceWithCadence': 'two placeholders and a space: no word to translate',
     };
     const List<String> unrecoverable = <String>[
       'updateRequiredTitle',
