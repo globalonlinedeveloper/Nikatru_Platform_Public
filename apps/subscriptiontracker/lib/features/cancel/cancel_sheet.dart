@@ -4,6 +4,7 @@ import 'package:nikatru_api_client/nikatru_api_client.dart' show ApiException;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/e2e_keys.dart';
+import '../../core/format/category_label.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/subscriptions_controller.dart';
@@ -275,7 +276,7 @@ class _CancelSheetState extends ConsumerState<_CancelSheet> {
                       fontSize: AppTypeRamp.minimumSize,
                     ),
                     title: s.name,
-                    subtitle: s.category,
+                    subtitle: categoryLabel(l10n, s.category),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),

@@ -37,6 +37,7 @@ import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 
 import '../../core/app_config.dart';
+import '../../core/format/category_label.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../core/windows_notification_identity.g.dart';
@@ -614,7 +615,8 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
       // that outranks the usage band, which is about a plan still charging.
       final LifeStatus? life = LifeStatus.of(l10n, s);
       final String? note = life?.label ?? usage;
-      subtitle = note == null ? s.category : '${s.category} · $note';
+      final String category = categoryLabel(l10n, s.category);
+      subtitle = note == null ? category : '$category · $note';
       status =
           life?.kind ??
           (!hasUsage

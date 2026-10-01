@@ -6,6 +6,7 @@ import 'package:nikatru_core/nikatru_core.dart' show MoneyParser;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/e2e_keys.dart';
+import '../../core/format/category_label.dart';
 import '../../data/api/api_client.dart' show ApiException;
 import '../../data/models/budget_info.dart';
 import '../../data/models/subscription.dart';
@@ -65,9 +66,10 @@ final List<String> _categories = <String>[
   _uncategorised,
 ];
 
-// The category VALUES are data, not copy, and are correctly untranslated —
-// every other screen paints them raw for that reason (`scan_screen.dart`
-// records it). The field LABELS are arb keys in both locales.
+// The category VALUES are IDS, not copy: the row stores the id and every
+// match is on it. Only the PAINT is translated, through `categoryLabel`
+// (ST-X8, audit C6) — the dropdown shows the name and saves the id. The field
+// LABELS are arb keys in both locales.
 
 /// Opens the add sheet — or, with [initial], the EDIT sheet (ST-E1):
 /// prefilled from the row, and saving sends one PATCH of only what changed.
@@ -756,7 +758,8 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
     label: l10n.fieldLabelCategory,
     value: _category,
     items: <(String, String)>[
-      for (final String c in <String>[..._categories, ?_ownCategory]) (c, c),
+      for (final String c in <String>[..._categories, ?_ownCategory])
+        (c, categoryLabel(l10n, c)),
     ],
     onChanged: (String? v) => setState(() => _category = v ?? _uncategorised),
   );

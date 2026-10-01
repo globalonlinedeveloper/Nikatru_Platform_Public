@@ -307,9 +307,12 @@ void main() {
         );
 
         // ── Usage words and the per-cycle suffixes on the rows.
-        expect(find.text('Streaming · ${l.usageActive}'), findsOneWidget);
-        expect(find.text('Streaming · ${l.usageOccasional}'), findsOneWidget);
-        expect(find.text('Streaming · ${l.usageRarelyUsed}'), findsWidgets);
+        // ⏱ ST-X8 (audit C6): the category is NAMED in the locale too — the
+        // row stores the id 'Streaming', and the reader sees its name.
+        final String cat = l.categoryStreaming;
+        expect(find.text('$cat · ${l.usageActive}'), findsOneWidget);
+        expect(find.text('$cat · ${l.usageOccasional}'), findsOneWidget);
+        expect(find.text('$cat · ${l.usageRarelyUsed}'), findsWidgets);
         expect(find.text(l.perMonth), findsWidgets);
 
         // ── DueInfo.localized is now what the rows read (the L1 migration).

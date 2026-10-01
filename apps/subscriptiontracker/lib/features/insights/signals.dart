@@ -24,6 +24,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import '../../core/format/category_label.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
@@ -208,7 +209,10 @@ class SignalsSection extends ConsumerWidget {
         return AppListRow(
           key: Key('insights.signal.category.$category'),
           leading: const _SignalIcon(Icons.layers_outlined),
-          title: l10n.signalDuplicateTitle(subs.length, category),
+          title: l10n.signalDuplicateTitle(
+            subs.length,
+            categoryLabel(l10n, category),
+          ),
           subtitle: l10n.signalDuplicateBody(
             subs.map((Subscription s) => s.name).join(', '),
             money.formatBagRounded(SubMath.totalMonthly(subs)),

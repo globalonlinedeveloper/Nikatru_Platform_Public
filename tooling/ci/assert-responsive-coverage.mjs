@@ -669,9 +669,14 @@ const REQUIRED_COVERAGE = [
     // surfaces unchanged: `test/auth_frame_adoption_test.dart` (every chassis
     // auth view on the shared AuthFrame, pumped at kPhone and 1440) joined the
     // corpus. Read off the per-root line, `— 29 file(s)`.
-    surfaces: 26,
-    widthTestFiles: 29,
-    coveredSurfaces: 26,
+    // ⏱ RAISED 26 → 27 surfaces / 29 → 30 files / 26 → 27 covered ON 2026-10-01
+    // (audit D8, D12/F53, lane fix-rv2-st-after-dw): `SettingsHeading`
+    // (lib/settings/help_section.dart) joined, and `test/help_section_test.dart`
+    // pumps it with the Help card at all three classes. Read off this guard's
+    // per-root lines — `27 surface(s) reachable, 27 measured` and `— 30 file(s)`.
+    surfaces: 27,
+    widthTestFiles: 30,
+    coveredSurfaces: 27,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',
