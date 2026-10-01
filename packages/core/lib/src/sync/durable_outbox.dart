@@ -109,6 +109,7 @@ class OutboxEntry {
     this.mayHaveReached = false,
     this.rev = 0,
     this.waits = 0,
+    this.serverWaitUntil,
   });
 
   /// The client-minted id — the `Idempotency-Key` every attempt sends.
@@ -156,6 +157,11 @@ class OutboxEntry {
   /// the busy backoff grows with it; it never counts as an attempt.
   final int waits;
 
+  /// Not before this instant BECAUSE THE SERVER SAID SO (its `Retry-After`).
+  /// A fresh change resets the client's own backoff, never this (review 4 of
+  /// #1080): a tap during a rate limit must not send at once.
+  final DateTime? serverWaitUntil;
+
   OutboxEntry copyWith({
     String? recordId,
     Map<String, dynamic>? body,
@@ -167,6 +173,8 @@ class OutboxEntry {
     bool? mayHaveReached,
     int? rev,
     int? waits,
+    DateTime? serverWaitUntil,
+    bool clearServerWait = false,
   }) => OutboxEntry(
     id: id,
     owner: owner,
@@ -184,6 +192,9 @@ class OutboxEntry {
     mayHaveReached: mayHaveReached ?? this.mayHaveReached,
     rev: rev ?? this.rev,
     waits: waits ?? this.waits,
+    serverWaitUntil: clearServerWait
+        ? null
+        : (serverWaitUntil ?? this.serverWaitUntil),
   );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -202,6 +213,8 @@ class OutboxEntry {
     if (mayHaveReached) 'sent': true,
     'rev': rev,
     if (waits > 0) 'waits': waits,
+    if (serverWaitUntil != null)
+      'server_until': serverWaitUntil!.toUtc().toIso8601String(),
   };
 
   /// Rebuild a stored entry; null when [json] is not one.
@@ -241,6 +254,7 @@ class OutboxEntry {
       mayHaveReached: json['sent'] == true || json['attempts'] != 0,
       rev: json['rev'] is int ? json['rev'] as int : 0,
       waits: json['waits'] is int ? json['waits'] as int : 0,
+      serverWaitUntil: at(json['server_until']),
     );
   }
 }
@@ -304,12 +318,19 @@ class DurableOutbox {
     this.readAttempts = 3,
     DateTime Function()? now,
     void Function()? onChanged,
+    Duration Function(Duration backoff, Duration? retryAfter)? retryWait,
   }) : _now = now ?? DateTime.now,
-       _onChanged = onChanged;
+       _onChanged = onChanged,
+       _retryWait = retryWait;
 
   final Future<KeyValueStore> _store;
   final DateTime Function() _now;
   final void Function()? _onChanged;
+
+  /// How long a counted failure waits, from the exponential backoff and the
+  /// server's `Retry-After` (when it sent one). Null: the backoff, exactly.
+  /// The preferences queue sets it (review 3 of #1080: Retry-After and jitter).
+  final Duration Function(Duration backoff, Duration? retryAfter)? _retryWait;
 
   /// The store key the queue lives under.
   final String key;
@@ -388,8 +409,11 @@ class DurableOutbox {
   /// Queue a write, coalescing it with what is already waiting for the same
   /// record (see the header). [mayHaveReached] is true when the caller already
   /// dispatched this write once itself (a first attempt whose outcome is
-  /// unknown). Throws whatever the store throws: the caller must then tell the
-  /// user the write was NOT kept.
+  /// unknown). [freshBackoff]: a merge into a waiting entry also clears its
+  /// backoff, so a NEW change is tried at once (review 3 of #1080) — but not
+  /// before a wait the SERVER imposed ([OutboxEntry.serverWaitUntil]). Throws
+  /// whatever the store throws: the caller must then tell the user the write
+  /// was NOT kept.
   Future<OutboxEnqueueResult> enqueue({
     required String owner,
     required String recordId,
@@ -398,6 +422,7 @@ class DurableOutbox {
     Map<String, dynamic> body = const <String, dynamic>{},
     String? id,
     bool mayHaveReached = false,
+    bool freshBackoff = false,
   }) => _locked((KeyValueStore kv, _Shared shared) async {
     final _Doc doc = await _read(kv);
     final String record = doc.aliases[recordId] ?? recordId;
@@ -428,9 +453,16 @@ class DurableOutbox {
             open && last.op == OutboxOp.create && !last.mayHaveReached;
         final bool intoUpdate = open && last.op == OutboxOp.update;
         if (intoCreate || intoUpdate) {
+          final DateTime? asked = last.serverWaitUntil;
+          final bool serverHolds =
+              freshBackoff && asked != null && asked.isAfter(_now());
           final OutboxEntry merged = last.copyWith(
             body: <String, dynamic>{...last.body, ...body},
             rev: last.rev + 1,
+            attempts: freshBackoff ? 0 : null,
+            waits: freshBackoff ? 0 : null,
+            clearNextAttempt: freshBackoff && !serverHolds,
+            nextAttemptAt: serverHolds ? asked : null,
           );
           doc.entries[doc.entries.indexOf(last)] = merged;
           result = OutboxEnqueueResult._(merged, cancelled: false);
@@ -655,27 +687,42 @@ class DurableOutbox {
       Duration wait = _backoff(waits);
       if (hint != null && hint > wait) wait = hint;
       if (wait > maxBackoff) wait = maxBackoff;
+      final DateTime until = _now().add(wait);
       doc.entries[i] = doc.entries[i].copyWith(
         waits: waits,
         lastError: errorText,
-        nextAttemptAt: _now().add(wait),
+        nextAttemptAt: until,
+        serverWaitUntil: hint != null ? until : null,
+        clearServerWait: hint == null,
       );
     } else if (i >= 0) {
       final int attempts = doc.entries[i].attempts + 1;
       final bool isDead =
           failure == OutboxFailure.refused || attempts >= maxAttempts;
       if (isDead) dead = 1;
+      final DateTime? until = isDead
+          ? null
+          : _now().add(_waitAfter(attempts, hint));
       doc.entries[i] = doc.entries[i].copyWith(
         attempts: attempts,
         dead: isDead,
         lastError: errorText,
-        nextAttemptAt: isDead ? null : _now().add(_backoff(attempts)),
+        nextAttemptAt: until,
         clearNextAttempt: isDead,
+        serverWaitUntil: hint != null ? until : null,
+        clearServerWait: hint == null || isDead,
       );
     }
     await _write(kv, doc);
     return _Settled(sent, dead);
   });
+
+  /// The wait after the [attempts]th counted failure; see [_retryWait].
+  Duration _waitAfter(int attempts, Duration? hint) {
+    final Duration backoff = _backoff(attempts);
+    final Duration Function(Duration, Duration?)? policy = _retryWait;
+    return policy == null ? backoff : policy(backoff, hint);
+  }
 
   Duration _backoff(int attempts) {
     final int factor = 1 << (attempts - 1).clamp(0, 20);

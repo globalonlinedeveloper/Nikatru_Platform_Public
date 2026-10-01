@@ -689,14 +689,19 @@ const REQUIRED_COVERAGE = [
     // surfaces unchanged: `test/data_section_test.dart` joined the corpus with
     // the Your data card (`dataCard`, a function, not a surface). Read off the
     // per-root line, `— 33 file(s)`.
-    // ⏱ RAISED 2026-10-01 (train ST-SETTINGS, SE-03), on top of the line above:
-    // surfaces 31 → 32, coveredSurfaces 31 → 32 and `widthTestFiles` 33 → 34, IN
-    // THE CHANGE THAT EARNED THEM: the chassis DevicesSection arrived measured at
-    // all three window classes and at 200 % text (`test/devices_section_test.dart`).
-    // Read off the per-root lines, `32 surface(s) reachable, 32 measured` and `— 34 file(s)`.
-    surfaces: 32,
+    // ⏱ RAISED 31 → 32 surfaces / 31 → 32 covered ON 2026-10-01 · ST-N6
+    // (D23/F37, #1080), merged with the above: the chassis `RefreshOnResume`,
+    // pumped at all three classes by test/app_shell_view_test.dart (files
+    // unchanged). Read off the merged tree: `32 surface(s) reachable, 32
+    // measured` and `— 33 file(s)`.
+    // ⏱ RAISED 2026-10-01 · ST-SETTINGS (SE-03), merged over ST-N6: surfaces
+    // 32 → 33, coveredSurfaces 32 → 33, `widthTestFiles` 33 → 34 — the chassis
+    // DevicesSection, measured at all three classes and at 200 % text
+    // (test/devices_section_test.dart). Read off the merged tree: `33
+    // surface(s) reachable, 33 measured` and `— 34 file(s)`.
+    surfaces: 33,
     widthTestFiles: 34,
-    coveredSurfaces: 32,
+    coveredSurfaces: 33,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',

@@ -237,7 +237,25 @@ class _GoogleOnlyAuth extends _FakeAuth {
   }
 }
 
-Future<void> _pumpSettings(WidgetTester tester, _FakeAuth auth) async {
+/// A preferences server this device cannot reach: every call is "no answer",
+/// so a queued change stays queued until something removes it.
+class _UnreachablePreferences implements core.AccountPreferencesTransport {
+  @override
+  Future<Map<String, core.PreferenceValue>> read() async =>
+      throw const core.AccountPreferencesFailure(0);
+
+  @override
+  Future<core.PreferencesPatchResult> patch(
+    Map<String, core.PreferenceChange> changes,
+  ) async => throw const core.AccountPreferencesFailure(0);
+}
+
+Future<void> _pumpSettings(
+  WidgetTester tester,
+  _FakeAuth auth, {
+  _MemStore? store,
+  core.AccountPreferencesTransport? preferences,
+}) async {
   // A TALL SURFACE, deliberately. Settings is a ListView, so an off-screen row
   // has no element and `findsNothing` would pass for a control that exists and
   // is merely below the fold — which would make the signed-out assertion below
@@ -255,7 +273,9 @@ Future<void> _pumpSettings(WidgetTester tester, _FakeAuth auth) async {
         // sees once. The gate itself is driven in legal_gates_test.dart.
         legalReacceptanceNeededProvider.overrideWithValue(false),
         authRepositoryProvider.overrideWithValue(auth),
-        keyValueStoreProvider.overrideWith((ref) async => _MemStore()),
+        keyValueStoreProvider.overrideWith((ref) async => store ?? _MemStore()),
+        if (preferences != null)
+          accountPreferencesTransportProvider.overrideWithValue(preferences),
         analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
         // The deletion path now forgets the user's device-local state as well
         // as their account (`forgetSignedInUser`), and both of those seams are
@@ -625,6 +645,51 @@ void main() {
     await auth.signInWithEmail(email: 'a@b.test', password: 'anything');
     expect(auth.currentUser, isNotNull);
   });
+
+  testWidgets(
+    '🔴 review 4 of #1080: deleting the account leaves none of its queued preference changes on the device',
+    (WidgetTester tester) async {
+      // A sign-out KEEPS a pending change for the same user's return. A
+      // deletion cannot: that user never returns, so the change — and the id
+      // it is filed under — would stay on the device for good.
+      final _MemStore store = _MemStore();
+      final Future<core.KeyValueStore> kv = Future<core.KeyValueStore>.value(
+        store,
+      );
+      await core
+          .preferencesOutbox(kv)
+          .enqueue(
+            owner: 'u1',
+            recordId: 'locale',
+            op: core.OutboxOp.update,
+            kind: core.kPreferenceOutboxKind,
+            body: <String, dynamic>{'value': 'ta', 'base_version': 0},
+          );
+      expect(
+        await core.preferencesOutbox(kv).pending(owner: 'u1'),
+        hasLength(1),
+      );
+
+      final _FakeAuth auth = _FakeAuth();
+      await _pumpSettings(
+        tester,
+        auth,
+        store: store,
+        preferences: _UnreachablePreferences(),
+      );
+      await _openDialog(tester, _FakeAuth.rightPassword);
+      await tester.tap(find.byKey(const Key('deleteAccountConfirm')));
+      await tester.pumpAndSettle();
+
+      expect(auth.deleteCalls, 1);
+      expect(await core.preferencesOutbox(kv).pending(owner: 'u1'), isEmpty);
+      expect(
+        store.data[core.kPreferencesOutboxKey] ?? '',
+        isNot(contains('u1')),
+        reason: 'not even the erased account\'s id stays in the queue',
+      );
+    },
+  );
 
   testWidgets('a signed-in user is offered the control; a signed-out one is not', (
     WidgetTester tester,
