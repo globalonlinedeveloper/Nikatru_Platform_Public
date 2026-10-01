@@ -223,7 +223,7 @@ const jsonFile = (value) => `${JSON.stringify(value, null, 2)}\n`;
 // refused, so it is generated here, beside the association files, and graded by
 // the same guard (assert-well-known-shape.mjs limb I).
 //
-// EVERY FIELD IS DERIVED, NOT TYPED:
+// EVERY FIELD BUT EXPIRES IS DERIVED, NOT TYPED:
 //   · Contact — `mailto:` + `AppConfig.supportEmail` from the brick's app_config.dart,
 //     the ONE place the support address is decided. assert-repo-posture.mjs holds
 //     this Contact equal to SECURITY.md, sites/nikatru/contact.html and every app's
