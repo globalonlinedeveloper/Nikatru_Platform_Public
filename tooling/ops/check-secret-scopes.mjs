@@ -43,9 +43,10 @@
 // `--names-file` is a FIXTURE ({repository: [...], environments: {env: [...]}}) for the
 // tests; it prints a banner that must never appear in a real log.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, readdirSync, writeFileSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseAllWorkflows } from '../ci/workflow-scan.mjs';
 
 const DEFAULT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const REGISTER_REL = 'tooling/channel-register.json';
@@ -73,13 +74,14 @@ export function scopedRows(register, referenced) {
   return rows;
 }
 
-/** Every `secrets.NAME` (and `secrets['NAME']`) the workflows reference. */
+/** Every `secrets.NAME` (and `secrets['NAME']`) the workflows reference, read through workflow-scan.mjs
+ *  (comment-blanked). Null when no workflow could be read: the caller refuses, never "no references". */
 export function referencedNames(root) {
   const out = new Set();
-  const dir = join(root, '.github', 'workflows');
-  for (const f of readdirSync(dir)) {
-    if (!/\.ya?ml$/.test(f)) continue;
-    const text = readFileSync(join(dir, f), 'utf8').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  const wfs = parseAllWorkflows(root);
+  if (!wfs.length) return null;
+  for (const wf of wfs) {
+    const text = wf.lines.map((l) => l.text).join('\n');
     // Inside `${{ … }}` only: prose and file names (`worker-secrets.json`) are not references.
     for (const expr of text.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
       for (const m of expr[1].matchAll(/(?<![\w.-])secrets\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*\])/g)) out.add(m[1] ?? m[2]);
@@ -177,6 +179,7 @@ async function main() {
   }
   const register = JSON.parse(readFileSync(join(root, REGISTER_REL), 'utf8'));
   const referenced = referencedNames(root);
+  if (referenced === null) { console.error('COVERAGE LOST — could not read any workflow under .github/workflows, so no secret reference is known'); process.exitCode = 2; return; }
   const rows = scopedRows(register, referenced);
   if (!rows.length) { console.error('COVERAGE LOST — the register scopes no secret to an environment, so there is nothing to read back'); process.exitCode = 2; return; }
 

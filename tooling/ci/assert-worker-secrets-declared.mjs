@@ -34,6 +34,9 @@
 //               bytes, base64 or hex); a `deploy` row is carried by
 //               .github/workflows/deploy-workers.yml as `secrets.<NAME>`.
 //
+// LANE-BOUND: deploy-workers.yml — the one workflow that carries a Worker secret at deploy time
+// (the platform job's --secrets-file), so a `setBy: deploy` row is checked against it and no other.
+//
 // Exit 0 green, 1 a finding, 2 COVERAGE LOST: the manifest is absent,
 // unparseable or empty, or no Worker yielded a single read. The FIRST line names
 // the deciding limb. Usage: node tooling/ci/assert-worker-secrets-declared.mjs [root]
@@ -44,6 +47,7 @@ import { fileURLToPath } from 'node:url';
 import { stripSourceComments } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
 import { forbiddenValues } from './assert-ports.mjs';
+import { parseAllWorkflows } from './workflow-scan.mjs';
 
 export const MANIFEST = 'tooling/worker-secrets.json';
 export const PORTS_DIR = 'tooling/ports';
@@ -75,16 +79,13 @@ function tsFiles(root, rel) {
   return out;
 }
 
+/** Each workflow's comment-blanked text, read through workflow-scan.mjs (the one workflow reader). */
+export const workflowTexts = (root) => new Map(parseAllWorkflows(root).map((w) => [w.rel, w.lines.map((l) => l.text).join('\n')]));
+
 /** The names every deploy workflow passes as `--var NAME:`: set at deploy time, never secrets. */
-export function deployVars(root) {
+export function deployVars(root, texts = workflowTexts(root)) {
   const out = new Set();
-  let entries = [];
-  try { entries = listDir(join(root, '.github/workflows'), { withFileTypes: true }); } catch { return out; }
-  for (const e of entries) {
-    if (!/\.ya?ml$/.test(e.name)) continue;
-    const text = stripSourceComments(readFileSync(join(root, '.github/workflows', e.name), 'utf8'), '.yml');
-    for (const m of text.matchAll(/--var\s+([A-Z][A-Z0-9_]*):/g)) out.add(m[1]);
-  }
+  for (const text of texts.values()) for (const m of text.matchAll(/--var\s+([A-Z][A-Z0-9_]*):/g)) out.add(m[1]);
   return out;
 }
 
@@ -143,6 +144,11 @@ export function evaluate(root) {
   const rows = Array.isArray(doc?.rows) ? doc.rows : null;
   if (!rows || !rows.length) { lost('A', `${MANIFEST} has no rows`); return { findings, notes }; }
 
+  const texts = workflowTexts(root);
+  if (!texts.size) {
+    lost('A', 'could not read any workflow under .github/workflows (through workflow-scan.mjs), so the deploy-time --var names and the deploy carrier are unknown; every verdict would be a guess');
+    return { findings, notes };
+  }
   const workers = readWorkers(root);
   for (const w of workers) if (w.error) lost('E', w.error);
   const ok = workers.filter((w) => !w.error);
@@ -164,8 +170,7 @@ export function evaluate(root) {
       try { portDocs.set(e.name.replace(/\.json$/, ''), JSON.parse(readFileSync(join(root, PORTS_DIR, e.name), 'utf8'))); } catch { /* assert-ports owns an unparseable registry */ }
     }
   }
-  let deployText = null;
-  try { deployText = stripSourceComments(readFileSync(join(root, DEPLOY_WORKFLOW), 'utf8'), '.yml'); } catch { /* a deploy row then has no carrier: G */ }
+  const deployText = texts.get(DEPLOY_WORKFLOW) ?? null; // absent: a deploy row then has no carrier (G)
 
   rows.forEach((r, i) => {
     const at = `rows[${i}]`;

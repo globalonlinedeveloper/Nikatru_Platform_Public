@@ -4081,7 +4081,10 @@ if (storageLags.length > 0) {
   const DEFAULT_SIGNING = [/^ANDROID_/, /^APPLE_[A-Z0-9_]*P12/, /PROVISIONING/];
   const isSigningRead = (name) => (rx.length ? rx : DEFAULT_SIGNING).some((r) => r.test(name));
   const signingRefs = scopeRefs.filter((r) => isSigningRead(r.name));
-  if (signingRefs.length && !sc) {
+  // A register that scopes ANY secret to an environment has adopted scopes, and then a signing read
+  // with no signingScope is a hole in them. (A register that scopes nothing — a §8-only fixture — has
+  // no environment for a signing key to be held to.)
+  if (signingRefs.length && !sc && scopedToEnvironment.size > 0) {
     problems.push(
       `8c rule (e): ${signingRefs.length} signing secret read(s) (${[...new Set(signingRefs.map((r) => r.name))].join(', ')}) and no \`ciSecretRegister.signingScope\` saying which environment holds them. A signing key read by any job with no environment is readable by every job.`,
     );
