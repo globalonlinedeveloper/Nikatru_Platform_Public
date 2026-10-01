@@ -140,6 +140,8 @@
       "attest",
       "challenge",
       "install",
+      "handoff",
+      "code",
       "payments"
     ],
     "_payments": [
@@ -241,6 +243,13 @@
       "POST /v1/auth/native/:app/attest/{challenge,install}: a single-use challenge the native sign-in",
       "attestation binds to, and an app install registering its signing key. Neither is a provider tell:",
       "no payment or identity provider posts to them, and both are behind the fail-closed native limiters."
+    ],
+    "_handoff": [
+      "⏱ 2026-10-01 · O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH. `handoff` and `code` are RESOURCES OF OURS under",
+      "POST /v1/auth/handoff/:app/code (the signed-in nikatru.com/app/connect page mints a desktop app's PKCE-bound",
+      "sign-in code) and POST /v1/auth/native/:app/handoff/token (the app exchanges it). Neither is a provider tell:",
+      "no payment or identity provider posts to them; the first is JWT-authenticated, the second sits behind the",
+      "fail-closed native edge limiter and refuses any browser."
     ]
   },
   "roles": {

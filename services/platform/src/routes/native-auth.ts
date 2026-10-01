@@ -18,6 +18,9 @@
 //   POST /v1/auth/native/:app/resend
 //   POST /v1/auth/native/:app/attest/challenge   (⏱ 2026-09-29, ADR no.NNN)
 //   POST /v1/auth/native/:app/attest/install     (⏱ 2026-09-29, ADR no.NNN)
+//   POST /v1/auth/native/:app/handoff/token      (⏱ 2026-10-01, the desktop
+//        system-browser hand-off: a code the web page minted, PKCE-bound, in
+//        exchange for a NEW session — lib/native-attest/handoff.ts)
 //
 // The first four are exactly the paths gotrue-dart builds from a base URL, so the client
 // half (ST-T7b) points a second GoTrueClient at `/v1/auth/native/<app>`. Refresh,
@@ -84,6 +87,7 @@ import {
   type AttestKind,
   type AttestOp,
 } from '../lib/native-attest';
+import { redeemHandoffCode } from '../lib/native-attest/handoff';
 
 /**
  * How long one GoTrue call may take before the route gives up on it.
@@ -161,7 +165,7 @@ function gotrueError(status: number, errorCode: string, msg: string, extra: Reco
 }
 
 /** One log line per call. Never the email, the password, the body or a token. */
-function logged(c: Context<AppEnv>, op: NativeAuthOp | 'challenge' | 'install' | '-', res: Response, shield = '-'): Response {
+function logged(c: Context<AppEnv>, op: NativeAuthOp | 'challenge' | 'install' | 'handoff' | '-', res: Response, shield = '-'): Response {
   console.log(
     `[native-auth] rid=${c.get('requestId') ?? '-'} route=${op} app=${c.get('appId') ?? '-'} status=${res.status} shield=${shield}`,
   );
@@ -412,6 +416,71 @@ async function relay(c: Context<AppEnv>, op: NativeAuthOp, edge: StrictVerdict):
   return logged(c, op, res, upstream.headers.get('x-nikatru-shield') ?? '-');
 }
 
+/** The one answer every failed hand-off exchange gets — no oracle (expired, reused, mismatched, forged). */
+const handoffInvalid = () => gotrueError(400, 'invalid_grant', 'The sign-in code is invalid, expired or already used');
+
+/** A GoTrue admin-side call with the service-role bearer. Never forwards anything of the caller's. */
+function gotrueAdmin(c: Context<AppEnv>, key: string, path: string, init: { method: 'GET' | 'POST'; body?: unknown }): Promise<Response> {
+  return fetch(`${c.env.SUPABASE_URL}/auth/v1${path}`, {
+    method: init.method,
+    headers: { 'Content-Type': 'application/json', apikey: key, Authorization: `Bearer ${key}` },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    redirect: 'manual',
+    signal: AbortSignal.timeout(NATIVE_AUTH_UPSTREAM_TIMEOUT_MS),
+  });
+}
+
+/** lowercase hex digest, as GoTrue issues a `hashed_token` (tooling/e2e/magic_link.mjs TOKEN_HASH_SHAPE). */
+const TOKEN_HASH = /^[0-9a-f]{40,128}$/;
+
+/**
+ * ⏱ 2026-10-01 — A NEW SESSION FOR `user`, minted with no password and no
+ * captcha: the caller has already redeemed a hand-off code that only a FRESH web
+ * sign-in on nikatru.com could mint (routes/native-handoff.ts holds it to
+ * RECENT_AUTH_SECONDS), with this app's PKCE verifier. GoTrue has no "create session" admin
+ * call, so it is the documented server-side pair: `admin/generate_link`
+ * (type magiclink — it SENDS NO MAIL) for the account's current address, then
+ * `/verify` with that token hash, which answers a session. The user is read by
+ * id first, so a changed address follows the account, a deleted or banned one
+ * is refused, and the session must name the same id or it is withheld.
+ * ⚠️ The magic-link token is one per user: an unused one emailed earlier is
+ * replaced (tooling/e2e/magic_link.mjs says the same).
+ */
+async function handoffSession(c: Context<AppEnv>, user: string): Promise<Response> {
+  const key = c.env.SUPABASE_SERVICE_ROLE_KEY;
+  const down = () => gotrueError(503, 'native_auth_unavailable', 'Sign-in is unavailable. Try again shortly.');
+  if (!key) {
+    console.error(`[native-auth] rid=${c.get('requestId') ?? '-'} SUPABASE_SERVICE_ROLE_KEY is not set`);
+    return down();
+  }
+  try {
+    const u = await gotrueAdmin(c, key, `/admin/users/${encodeURIComponent(user)}`, { method: 'GET' });
+    if (u.status === 404) return handoffInvalid();
+    if (!u.ok) return down();
+    const account = (await u.json()) as Record<string, unknown>;
+    const banned = typeof account.banned_until === 'string' && Date.parse(account.banned_until) > Date.now();
+    if (account.id !== user || banned || typeof account.email !== 'string' || account.email === '') return handoffInvalid();
+
+    const link = await gotrueAdmin(c, key, '/admin/generate_link', { method: 'POST', body: { type: 'magiclink', email: account.email } });
+    if (!link.ok) return down();
+    const hashed = ((await link.json()) as Record<string, unknown>).hashed_token;
+    if (typeof hashed !== 'string' || !TOKEN_HASH.test(hashed)) return down();
+
+    const verified = await gotrueAdmin(c, key, '/verify', { method: 'POST', body: { type: 'magiclink', token_hash: hashed } });
+    if (!verified.ok) return down();
+    const session = (await verified.json()) as Record<string, unknown>;
+    const who = isPlainObject(session.user) ? session.user.id : undefined;
+    if (who !== user || typeof session.access_token !== 'string' || typeof session.refresh_token !== 'string') return down();
+    return new Response(JSON.stringify(session), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    });
+  } catch (err) {
+    console.error(`[native-auth] rid=${c.get('requestId') ?? '-'} hand-off session failed (${err instanceof Error ? err.name : typeof err})`);
+    return down();
+  }
+}
+
 /**
  * The app, before anything else: it costs no limiter call and answers before any
  * body is read. (A browser never gets this far: middleware/cors.ts has already
@@ -504,6 +573,42 @@ export function createNativeAuth(apps: readonly string[]): Hono<AppEnv> {
       return logged(c, 'install', gotrueError(r.status, r.code, r.status === 400 ? r.why : r.status === 503 ? 'Sign-in is unavailable. Try again shortly.' : 'The app attestation did not verify'));
     }
     return logged(c, 'install', c.json({ key_id: r.keyId }, r.created ? 201 : 200));
+  });
+
+  // ⏱ 2026-10-01 — THE SYSTEM-BROWSER HAND-OFF (lib/native-attest/handoff.ts):
+  // a desktop app that cannot attest exchanges the code the signed-in web page
+  // minted (routes/native-handoff.ts) for a session of its own. No attestation
+  // and no password: the code is the credential, bound to this app, its
+  // redirect and its PKCE verifier, and spent once. Under the per-network
+  // ceiling (fail closed); every refusal is the same 400.
+  nativeAuth.post('/auth/native/:app/handoff/token', async (c) => {
+    const edgeRefusal = refusedBy(await strictEdgeCeiling(c.env.NATIVE_AUTH_EDGE_LIMITER, c, 'NATIVE_AUTH_EDGE_LIMITER'));
+    if (edgeRefusal) return logged(c, 'handoff', edgeRefusal);
+    const bounded = await readBoundedBody(c.req.raw, NATIVE_AUTH_MAX_BODY_BYTES);
+    if (!bounded.ok) return logged(c, 'handoff', gotrueError(bounded.status, bounded.status === 413 ? 'request_too_large' : 'bad_json', bounded.error));
+    let body: unknown;
+    try {
+      body = JSON.parse(bounded.text);
+    } catch {
+      return logged(c, 'handoff', gotrueError(400, 'bad_json', 'The request body is not JSON'));
+    }
+    if (!isPlainObject(body)) return logged(c, 'handoff', gotrueError(400, 'bad_json', 'The request body is not a JSON object'));
+    if (!challengesConfigured(c.env)) {
+      console.error(`[native-auth] rid=${c.get('requestId') ?? '-'} NATIVE_ATTEST_CHALLENGE_KEY or PLATFORM_DB is not set`);
+      return logged(c, 'handoff', gotrueError(503, 'native_auth_unavailable', 'Sign-in is unavailable. Try again shortly.'));
+    }
+    const r = await redeemHandoffCode(c.env, {
+      app: c.get('appId') as string,
+      code: body.code,
+      verifier: body.code_verifier,
+      redirectUri: body.redirect_uri,
+      now: Date.now(),
+    });
+    if (!r.ok) {
+      console.warn(`[native-auth] rid=${c.get('requestId') ?? '-'} hand-off refused (${r.why})`);
+      return logged(c, 'handoff', handoffInvalid());
+    }
+    return logged(c, 'handoff', await handoffSession(c, r.user));
   });
 
   return nativeAuth;

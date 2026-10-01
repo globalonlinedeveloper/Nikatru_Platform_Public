@@ -204,6 +204,10 @@ export interface Env {
    * characters of randomness, `wrangler secret put NATIVE_ATTEST_CHALLENGE_KEY`;
    * ours, not a vendor's). Absent or short, the challenge endpoint and every
    * native op answer 503. Rotating it invalidates only challenges in flight.
+   * ⏱ 2026-10-01: the desktop system-browser hand-off's codes are sealed under a
+   * key HKDF-derived from it (lib/native-attest/handoff.ts), so absent or short,
+   * the hand-off mint and exchange answer 503 too, and a rotation also
+   * invalidates the codes in flight (each lives two minutes).
    */
   NATIVE_ATTEST_CHALLENGE_KEY?: string;
 
