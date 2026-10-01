@@ -34,17 +34,31 @@
 // The shield marks each stale answer with `x-edge-shield-stale`, but the zone
 // analytics carry no response header. So stale serving is counted from the event
 // that STARTS each stale-serve window: the shield's own origin read (User-Agent
-// [REVALIDATE_UA]) failing with a 5xx, a 499 (its 5 s deadline) or no status.
-// After each failure the shield serves the copy for a 60 s back-off without
-// asking again, so one failed read stands for up to a minute of stale answers
-// at one colo.
+// [REVALIDATE_UA]) failing with a 5xx, a 499 (its 5 s deadline) or no status, or
+// answering a 200 whose content type is not JSON (an HTML maintenance page, or
+// the tunnel landing on the wrong service). The shield refuses to store such a
+// body and serves its stale copy instead. After each failure the shield serves
+// the copy for a 60 s back-off without asking again, so one failed read stands
+// for up to a minute of stale answers at one colo.
+// ⚠️ NOT COUNTED: a 200 that IS JSON but is not a usable JWKS (`{"keys":[]}`).
+// The analytics carry no body, and a JSON content type is all that tells this
+// stale start apart. Monitor 17 (which expects "alg":"ES256") catches it once
+// the one-hour bound has passed.
+//
+// TWO QUERIES, ON PURPOSE. The per-day client counts are grouped by date, source
+// and status only: a grouping that included the User-Agent would let anyone
+// with ~1,000 distinct User-Agents a week push the answer to the row limit,
+// making every run exit 2. The stale starts are read by a second query that
+// FILTERS on the shield's own User-Agent, so no client can add rows to it.
 //
 // EXIT CODES (AGENTS.md): 0 every judged day under both bounds · 1 a day over
 // either · 2 COULD NOT LOOK: no token, a zone that does not resolve, a GraphQL
 // error (a token without Zone → Analytics → Read is refused here, naming the
 // field), an answer at the row limit (it may be truncated), or no day with
-// enough reads to judge. 2 IS NOT A PASS. The CI token's scope was proven by
-// ops-watch run 36797307729 (workflow_dispatch, 2026-10-01): the step read 7 days.
+// enough reads to judge. 2 IS NOT A PASS. The CI token's scope was first proven by
+// ops-watch run 36797307729 (workflow_dispatch, 2026-10-01). The run that proves
+// the two-query shape (userAgent filter, content type) at the PR's final head is
+// cited in PR #1096's body.
 //
 // Usage:  node tooling/ops/check-jwks-error-rate.mjs
 //   env:  CLOUDFLARE_API_TOKEN (Zone → Zone → Read and Zone → Analytics → Read on nikatru.com)
@@ -79,38 +93,67 @@ export const REVALIDATE_UA = 'nikatru-edge-shield/jwks-revalidate';
 /** The GraphQL row limit; an answer this long may be truncated. */
 export const ROW_LIMIT = 1000;
 
-const QUERY = `query($zone: String!, $since: Time!, $until: Time!, $host: String!, $path: String!) {
+/** Per day, source and status, with NO User-Agent: no client can add rows to it. */
+export const DAILY_QUERY = `query($zone: String!, $since: Time!, $until: Time!, $host: String!, $path: String!) {
   viewer { zones(filter: { zoneTag: $zone }) {
     httpRequestsAdaptiveGroups(limit: ${ROW_LIMIT}, filter: {
       datetime_geq: $since, datetime_lt: $until, clientRequestHTTPHost: $host, clientRequestPath: $path
-    }) { count dimensions { date requestSource edgeResponseStatus userAgent } }
+    }) { count dimensions { date requestSource edgeResponseStatus } }
+  } }
+}`;
+
+/** Only the shield's own origin reads, FILTERED on its User-Agent, per day, status and content type. */
+export const REVALIDATION_QUERY = `query($zone: String!, $since: Time!, $until: Time!, $host: String!, $path: String!, $ua: String!) {
+  viewer { zones(filter: { zoneTag: $zone }) {
+    httpRequestsAdaptiveGroups(limit: ${ROW_LIMIT}, filter: {
+      datetime_geq: $since, datetime_lt: $until, clientRequestHTTPHost: $host, clientRequestPath: $path,
+      requestSource: "edgeWorkerFetch", userAgent: $ua
+    }) { count dimensions { date edgeResponseStatus edgeResponseContentTypeName } }
   } }
 }`;
 
 /**
- * PURE. Per-day tallies from the GraphQL rows: `eyeball`, `eyeball5xx`, the
- * shield's failed revalidations (`staleStarts`), and every other subrequest 5xx
- * (`sub5xx`, which includes the phantom Cache API 504s). `sub5xx` is context only.
+ * PURE. Did this shield revalidation fail, and so start a stale-serve window? A
+ * 5xx, a 499 (the deadline), no status, or a 200 that is not JSON.
  */
-export function tally(rows) {
+export function isStaleStart(status, contentType) {
+  if ((status >= 500 && status <= 599) || status === 499 || status === 0) return true;
+  return status === 200 && contentType !== 'json';
+}
+
+/**
+ * PURE. Per-day tallies: from the daily rows `eyeball`, `eyeball5xx` and every
+ * other subrequest 5xx (`sub5xx`, which includes the phantom Cache API 504s, and
+ * is context only); from the revalidation rows the shield's failed reads
+ * (`staleStarts`). A failed read that is a 5xx is also in the daily rows, so it
+ * is taken back out of `sub5xx` rather than shown twice.
+ */
+export function tally(rows, revalidationRows = []) {
   const days = new Map();
-  for (const r of rows) {
+  const day = (r) => {
     const d = r?.dimensions ?? {};
     if (typeof d.date !== 'string' || typeof r.count !== 'number') {
       throw new CouldNotLook(`an analytics row came back without a date or a count: ${JSON.stringify(r).slice(0, 200)}`);
     }
     const t = days.get(d.date) ?? { date: d.date, eyeball: 0, eyeball5xx: 0, staleStarts: 0, sub5xx: 0 };
-    const status = d.edgeResponseStatus;
-    const is5xx = status >= 500 && status <= 599;
+    days.set(d.date, t);
+    return { t, d };
+  };
+  for (const r of rows) {
+    const { t, d } = day(r);
+    const is5xx = d.edgeResponseStatus >= 500 && d.edgeResponseStatus <= 599;
     if (d.requestSource === 'eyeball') {
       t.eyeball += r.count;
       if (is5xx) t.eyeball5xx += r.count;
-    } else if (d.requestSource === 'edgeWorkerFetch' && d.userAgent === REVALIDATE_UA && (is5xx || status === 499 || status === 0)) {
-      t.staleStarts += r.count;
     } else if (is5xx) {
       t.sub5xx += r.count;
     }
-    days.set(d.date, t);
+  }
+  for (const r of revalidationRows) {
+    const { t, d } = day(r);
+    if (!isStaleStart(d.edgeResponseStatus, d.edgeResponseContentTypeName)) continue;
+    t.staleStarts += r.count;
+    if (d.edgeResponseStatus >= 500 && d.edgeResponseStatus <= 599) t.sub5xx = Math.max(0, t.sub5xx - r.count);
   }
   return [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -163,7 +206,7 @@ export function judge(days, { maxRate = MAX_5XX_RATE, minSample = MIN_SAMPLE, ma
 }
 
 /** IMPURE. The GraphQL rows for the window, or CouldNotLook. */
-export async function readRows(zone, token, { since, until, doFetch = fetch, sleep, note } = {}) {
+export async function readRows(zone, token, { query = DAILY_QUERY, extra = {}, since, until, doFetch = fetch, sleep, note } = {}) {
   return readWithBoundedRetry(
     async (_attempt, { signal }) => {
       let res;
@@ -171,7 +214,7 @@ export async function readRows(zone, token, { since, until, doFetch = fetch, sle
         res = await doFetch(`${CF_API}/graphql`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: QUERY, variables: { zone, since, until, host: HOST, path: JWKS_PATH } }),
+          body: JSON.stringify({ query, variables: { zone, since, until, host: HOST, path: JWKS_PATH, ...extra } }),
           signal,
         });
       } catch (err) {
@@ -223,7 +266,9 @@ export async function run({ env = process.env, fetchImpl = globalThis.fetch, sle
   const opts = { doFetch: fetchImpl, sleep };
   try {
     const id = await zoneId(ZONE, token, opts);
-    const days = tally(await readRows(id, token, { ...opts, since, until }));
+    const daily = await readRows(id, token, { ...opts, since, until });
+    const revalidations = await readRows(id, token, { ...opts, since, until, query: REVALIDATION_QUERY, extra: { ua: REVALIDATE_UA } });
+    const days = tally(daily, revalidations);
     const v = judge(days);
     for (const line of v.lines) (v.code === 0 ? console.log : console.error)(line);
     return v.code;
