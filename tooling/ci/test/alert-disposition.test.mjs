@@ -58,7 +58,8 @@ import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { reconcile, declaredSources, issueFilingJobs, sourceHealth, classify, parseDispositions, judgeCodeql, scopeToPr, changedEntries, baseEntriesOf, CODEQL_DISPOSITIONS_REL, PINNED_SUPABASE_HOST } from '../assert-alert-disposition.mjs';
+import { reconcile, declaredSources, issueFilingJobs, sourceHealth, classify, parseDispositions, judgeCodeql, scopeToPr, changedEntries, baseEntriesOf, CODEQL_DISPOSITIONS_REL, PINNED_SUPABASE_HOST, firingHistoryUrl } from '../assert-alert-disposition.mjs';
+import { runQueryPredicate } from '../run-page-anchor.mjs';
 import { SUPABASE_HOSTED_HOST_SHA256 } from '../../ops/credential-origin.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -718,5 +719,22 @@ describe('LIMB C — every open CodeQL alert is fixed in code or carries a dispo
     assert.equal(PINNED_SUPABASE_HOST, `sha256:${SUPABASE_HOSTED_HOST_SHA256}`);
     const wild = REAL.entries.flatMap((e) => [e.host ?? []].flat()).filter((h) => String(h).includes('*'));
     assert.deepEqual(wild, [], 'the committed file still names a wildcard host');
+  });
+});
+
+// ⏱ 2026-10-01 — #1107 (run 36839022640): the landers' E2E dispatches filled e2e.yml's newest 30 runs, the nightly
+// scheduled run fell off an UNFILTERED page, and limb A read COVERAGE LOST on every PR. The query must ask the server
+// for scheduled runs only, and that filter must survive into the cross-read and the second source.
+describe('limb A reads the firing history as SCHEDULED runs only', () => {
+  test('RED if the query loses event=schedule: a page of hand dispatches could hide the nightly run', () => {
+    const url = new URL(firingHistoryUrl('o/r', 'e2e.yml'));
+    assert.equal(url.searchParams.get('event'), 'schedule', String(url));
+    assert.ok(Number(url.searchParams.get('per_page')) > 0, 'per_page must stay, or saturation cannot be told');
+  });
+  test('the anchored reader re-applies the filter to its other sources (runQueryPredicate)', () => {
+    const keep = runQueryPredicate(firingHistoryUrl('o/r', 'e2e.yml'));
+    assert.ok(keep, 'runQueryPredicate refused the query, so the cross-read and second source could not apply it');
+    assert.equal(keep({ event: 'schedule', head_branch: 'main', status: 'completed', conclusion: 'success' }), true);
+    assert.equal(keep({ event: 'workflow_dispatch', head_branch: 'main', status: 'completed', conclusion: 'success' }), false);
   });
 });
