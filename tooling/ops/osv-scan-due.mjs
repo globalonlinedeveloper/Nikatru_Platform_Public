@@ -25,6 +25,7 @@
 import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 
 export const WORKFLOW = 'ops-watch.yml';
 export const SCAN_STEP = 'Known-vulnerable dependencies on main (canary, floor, then the tree)';
@@ -50,9 +51,12 @@ export function decide(newest, nowMs) {
 export async function newestGradedScan({ fetchImpl = fetch, repo, token, currentRunId = null }) {
   const api = `https://api.github.com/repos/${repo}`;
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+  // The shared reading of "a blip or an outage" (bounded-retry.mjs): a dropped wire, a 429 or a 5xx is
+  // asked again within its ceiling; any other non-OK status is an answer.
   const get = async (url) => {
-    const res = await fetchImpl(url, { headers, signal: AbortSignal.timeout(30_000) });
-    if (!res.ok) throw new Error(`GET ${url.replace(api, '')} answered HTTP ${res.status}`);
+    const path = url.replace(api, '');
+    const res = await fetchWithBoundedRetry(({ signal }) => fetchImpl(url, { headers, signal }), { describe: (s) => `GET ${path}: ${s}` });
+    if (!res.ok) throw new Error(`GET ${path} answered HTTP ${res.status}`);
     return res.json();
   };
   const runs = await get(`${api}/actions/workflows/${WORKFLOW}/runs?branch=main&status=completed&per_page=${MAX_RUNS}`);

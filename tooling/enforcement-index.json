@@ -3847,7 +3847,7 @@
   {
     "claims": [],
     "invokedBy": [
-      ".github/workflows/ops-watch.yml#failure-ledger"
+      ".github/workflows/ops-watch.yml#code-scanning-age"
     ],
     "kind": "script",
     "ref": "tooling/ops/check-secret-scopes.mjs",

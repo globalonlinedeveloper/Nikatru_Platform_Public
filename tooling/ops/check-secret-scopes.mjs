@@ -10,7 +10,7 @@
 // the register, so a secret declared environment-scoped could sit at repository
 // level, readable by every job, unseen. CI's GITHUB_TOKEN cannot list secrets
 // (#1095), so this runs where a token that can list names exists: the lead's gh
-// (the twice-daily ops check), and ops-watch's weekly failure-ledger job when
+// (the twice-daily ops check), and ops-watch's Monday code-scanning-age job when
 // SECRETS_READ_TOKEN is set.
 //
 // What it reads: the repository's secret names, every environment's names, the
@@ -47,6 +47,7 @@ import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseAllWorkflows } from '../ci/workflow-scan.mjs';
+import { fetchWithBoundedRetry } from './bounded-retry.mjs';
 
 const DEFAULT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const REGISTER_REL = 'tooling/channel-register.json';
@@ -149,9 +150,12 @@ export function flipText(text, names) {
 async function readNames({ repo, token, fetchImpl = fetch }) {
   const api = `https://api.github.com/repos/${repo}`;
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+  // The shared reading of "a blip or an outage" (bounded-retry.mjs): a dropped wire, a 429 or a 5xx is
+  // asked again within its ceiling; any other non-OK status is an answer.
   const get = async (url) => {
-    const res = await fetchImpl(url, { headers, signal: AbortSignal.timeout(30_000) });
-    if (!res.ok) throw new Error(`GET ${url.replace(api, '')} answered HTTP ${res.status}`);
+    const path = url.replace(api, '');
+    const res = await fetchWithBoundedRetry(({ signal }) => fetchImpl(url, { headers, signal }), { describe: (s) => `GET ${path}: ${s}` });
+    if (!res.ok) throw new Error(`GET ${path} answered HTTP ${res.status}`);
     return res.json();
   };
   const repository = new Set(((await get(`${api}/actions/secrets?per_page=100`)).secrets ?? []).map((s) => s.name));

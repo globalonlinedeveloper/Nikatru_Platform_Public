@@ -377,19 +377,27 @@ describe('rollback.mjs — the floor (tooling/ops/rollback-floors.json)', () => 
     assert.ok(requests.some((r) => /\/compare\/117bd66ecb846decb743426d80f5124b59131601\.\.\.0123456789abcdef/.test(r.pathname)));
   });
 
-  for (const [status, said] of [['behind', /is OLDER than the floor 117bd66e/], ['diverged', /is not a descendant of the floor 117bd66e/], ['HTTP404', /could not be placed against the floor 117bd66e/]]) {
-    test(`🔴 RED CONTROL: compare "${status}" REFUSES, exit 1, before any re-promotion — a dry run included`, () => {
-      for (const extra of [['--dry-run'], []]) {
-        const { code, out, requests, outputs } = platformRun(status, extra);
-        assert.equal(code, 1, out);
-        assert.match(out, said);
-        assert.match(out, /O-PROVIDER-REFRESH-TOKENS-STORED-PLAIN/);
-        assert.doesNotMatch(out, /\$ \(cd services\/platform/, 'the rollback command was printed past a refused floor');
-        assert.ok(!requests.some((r) => r.host === 'api.cloudflare.com'));
-        assert.deepEqual(outputs, {}, 'outputs were written past a refused floor');
-      }
-    });
-  }
+  /** One refused compare answer: exit 1 before any re-promotion, on a dry run and a real run alike. */
+  const assertRefused = (status, said) => {
+    for (const extra of [['--dry-run'], []]) {
+      const { code, out, requests, outputs } = platformRun(status, extra);
+      assert.equal(code, 1, out);
+      assert.match(out, said);
+      assert.match(out, /O-PROVIDER-REFRESH-TOKENS-STORED-PLAIN/);
+      assert.doesNotMatch(out, /\$ \(cd services\/platform/, 'the rollback command was printed past a refused floor');
+      assert.ok(!requests.some((r) => r.host === 'api.cloudflare.com'));
+      assert.deepEqual(outputs, {}, 'outputs were written past a refused floor');
+    }
+  };
+  test('🔴 RED CONTROL: compare "behind" (older than the floor) REFUSES, exit 1, before any re-promotion — a dry run included', () => {
+    assertRefused('behind', /is OLDER than the floor 117bd66e/);
+  });
+  test('🔴 RED CONTROL: compare "diverged" REFUSES, exit 1, before any re-promotion — a dry run included', () => {
+    assertRefused('diverged', /is not a descendant of the floor 117bd66e/);
+  });
+  test('🔴 RED CONTROL: an unreadable compare (HTTP 404) REFUSES, exit 1 — a floor it cannot prove is met is not met', () => {
+    assertRefused('HTTP404', /could not be placed against the floor 117bd66e/);
+  });
 
   test('a unit with no floor asks GitHub nothing about ancestry', () => {
     const { code, out, requests } = rollback(['--unit', 'subscriptiontracker-web', '--deployment', '9001', '--dry-run'], { env: { ROLLBACK_REPLAY_COMPARE: 'behind' } });

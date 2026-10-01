@@ -787,19 +787,6 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
-      # why: train P17 (security-001, security-022): where GitHub actually STORES each scoped secret,
-      # read back against tooling/channel-register.json, names only. GITHUB_TOKEN cannot list
-      # secrets, so it reads with SECRETS_READ_TOKEN (Secrets + Environments read, owner-minted);
-      # until that exists the read is `unreadable` inside its dated ceiling, then COVERAGE LOST.
-      # A STEP of this Monday job, not a job of its own: a new job costs assert-ops-register's
-      # replay more requests than its ceiling (docs/ci/ops-watch.md, the OSV steps' reason).
-      - name: Where GitHub stores each scoped secret matches the register (names only)
-        if: ${{ !cancelled() }}
-        timeout-minutes: 3
-        env:
-          GH_TOKEN: ${{ secrets.SECRETS_READ_TOKEN }}
-        run: node tooling/ops/check-secret-scopes.mjs --unreadable-until 2026-11-30
-
       - name: The ISO week the log cache is keyed by
         id: week
         run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
@@ -921,6 +908,20 @@ jobs:
             echo "::error title=A high or critical code-scanning alert is untriaged past its window::The step log lists each one with its rule, age and path:line. Fix it, or dismiss it on GitHub WITH a reason; a dismissal with no reason is graded as still open."
           fi
           exit "$code"
+
+      # why: train P17 (security-001, security-022): where GitHub actually STORES each scoped secret,
+      # read back against tooling/channel-register.json, names only. GITHUB_TOKEN cannot list
+      # secrets, so it reads with SECRETS_READ_TOKEN (Secrets + Environments read, owner-minted);
+      # until that exists the read is `unreadable` inside its dated ceiling, then COVERAGE LOST.
+      # A STEP of this Monday security job, not a job of its own: a new job costs
+      # assert-ops-register's replay more requests than its ceiling (docs/ci/ops-watch.md). LAST,
+      # and always(): its red silences no reader before it, and theirs do not silence it.
+      - name: Where GitHub stores each scoped secret matches the register (names only)
+        if: always()
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ secrets.SECRETS_READ_TOKEN }}
+        run: node tooling/ops/check-secret-scopes.mjs --unreadable-until 2026-11-30
 
   tech-currency:
     name: What the pipeline runs on is not being retired by its vendors

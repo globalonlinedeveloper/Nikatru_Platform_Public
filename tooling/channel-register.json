@@ -1585,7 +1585,7 @@
         "name": "SECRETS_READ_TOKEN",
         "kind": "service-credential",
         "productionData": "none",
-        "why": "⏱ 2026-10-02 · train P17. A read-only GitHub token (fine-grained: this repository, Secrets read and Environments read, nothing else) that lets ops-watch.yml's weekly failure-ledger job list secret NAMES per scope for tooling/ops/check-secret-scopes.mjs; GITHUB_TOKEN cannot list secrets. The API returns names and dates, never a value, so it reads no secret and writes nothing. OWNER-MINTED: until it exists the read-back is `unreadable` inside its ceiling (--unreadable-until 2026-11-30), and the lead's twice-daily ops check runs the same script with the lead's gh."
+        "why": "⏱ 2026-10-02 · train P17. A read-only GitHub token (fine-grained: this repository, Secrets read and Environments read, nothing else) that lets ops-watch.yml's Monday code-scanning-age job list secret NAMES per scope for tooling/ops/check-secret-scopes.mjs; GITHUB_TOKEN cannot list secrets. The API returns names and dates, never a value, so it reads no secret and writes nothing. OWNER-MINTED: until it exists the read-back is `unreadable` inside its ceiling (--unreadable-until 2026-11-30), and the lead's twice-daily ops check runs the same script with the lead's gh."
       },
       {
         "name": "GH_BILLING_TOKEN",
