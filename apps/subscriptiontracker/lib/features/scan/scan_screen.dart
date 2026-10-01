@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/e2e_keys.dart';
+import '../../core/format/category_label.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
@@ -429,8 +430,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             children: <Widget>[
               for (int i = 0; i < subs.length; i++) ...<Widget>[
                 if (i > 0) const Divider(height: 1),
-                // `name` and `category` are DATA, not copy — they come from
-                // the user's own records (or the demo seed). The figure is the
+                // `name` is DATA, not copy — it comes from the user's own
+                // records (or the demo seed). `category` is an ID, painted
+                // through `categoryLabel` (ST-X8, audit C6). The figure is the
                 // charge with its own cycle; the summary above carries the
                 // per-month total.
                 AppListRow(
@@ -440,7 +442,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                     fontSize: AppTypeRamp.minimumSize,
                   ),
                   title: subs[i].name,
-                  subtitle: subs[i].category,
+                  subtitle: categoryLabel(l10n, subs[i].category),
                   figure: money.format(subs[i].price),
                   caption: cadenceCaption(l10n, subs[i].cycle),
                   // B49: a result row opens the subscription it names.

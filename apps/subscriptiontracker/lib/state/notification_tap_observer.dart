@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:nikatru_core/nikatru_core.dart' as core;
 
+import '../services/notifications/notification_service.dart'
+    show RenewalReminders;
 import 'analytics_funnel.dart';
 
 /// [13]T-9 — the wire between a tap and the funnel that records it.
@@ -61,7 +63,12 @@ class NotificationTapObserver {
 /// reminder carries it (RenewalReminders.payloadFor) — opens `/sub/{id}`.
 /// The payload comes back through the OS and is UNTRUSTED, so the id must be
 /// a plain token; anything else goes nowhere rather than into a route.
+///
+/// ST-I2 (audit C14): `budget` — the over-budget alert
+/// (`RenewalReminders.overBudgetPayload`) — opens `/insights`, where the
+/// budget card is.
 String? routeForNotificationPayload(String? payload) {
+  if (payload == RenewalReminders.overBudgetPayload) return '/insights';
   if (payload == null || !payload.startsWith('sub:')) return null;
   final String id = payload.substring(4);
   if (!RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(id)) return null;

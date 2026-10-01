@@ -802,7 +802,7 @@ class SettingsScreen extends ConsumerWidget {
             ],
 
             // ── ACCOUNT & DATA (live-only rows) ──────────────────────────────
-            const SizedBox(height: 22),
+            _sectionLabel(context, l10n.settingsAccountSection),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
@@ -820,27 +820,19 @@ class SettingsScreen extends ConsumerWidget {
                   _LinkRow(
                     icon: '⇩',
                     label: l10n.exportDataCsv,
-                    last: false,
-                    onTap: exportDataTap(ref),
-                  ),
-                  // The published contact PAGE — a form, reachable without a
-                  // mail client, which is the route most web users take. The
-                  // chassis-mandated mailto (E1) is the separate row in the
-                  // legal card below; both exist because they fail in different
-                  // conditions.
-                  _LinkRow(
-                    icon: '?',
-                    label: l10n.helpAndSupport,
                     last: true,
-                    onTap: () => openExternalUrl(AppConfig.contactUrl),
+                    onTap: exportDataTap(ref),
                   ),
                 ],
               ),
             ),
 
+            _sectionLabel(context, l10n.settingsHelpSection),
+            _helpCard(context, ref, l10n),
+
             // ── LEGAL (chassis). Both stores require these to be reachable
             //    IN-APP, not only from a store listing. [pipeline C-13]
-            const SizedBox(height: 12),
+            _sectionLabel(context, l10n.legal),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
@@ -867,17 +859,8 @@ class SettingsScreen extends ConsumerWidget {
                   _LinkRow(
                     icon: '₹',
                     label: l10n.refundPolicy,
-                    last: false,
-                    onTap: () => openExternalUrl(AppConfig.refundUrl),
-                  ),
-                  // The chassis support route (E1). A `mailto:` with the subject
-                  // pre-filled, so a bug report arrives already labelled.
-                  _LinkRow(
-                    icon: '✉',
-                    label: l10n.contactSupport,
-                    subtitle: AppConfig.supportEmail,
                     last: true,
-                    onTap: _contactSupport,
+                    onTap: () => openExternalUrl(AppConfig.refundUrl),
                   ),
                 ],
               ),
@@ -900,7 +883,7 @@ class SettingsScreen extends ConsumerWidget {
             // `LicensePage` reads `LicenseRegistry`, which every package
             // registers into automatically, so both stay correct as dependencies
             // change instead of being a list somebody must remember to update.
-            const SizedBox(height: 12),
+            _sectionLabel(context, l10n.settingsAboutSection),
             Container(
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
@@ -1044,6 +1027,7 @@ class SettingsScreen extends ConsumerWidget {
                   AppConfig.appName,
                   runningVersion,
                   AppConfig.companyName,
+                  ref.watch(nowProvider)().year.toString(),
                 ),
                 style: AppText.of(context).muted.copyWith(fontSize: 11),
               ),
@@ -1061,10 +1045,14 @@ class SettingsScreen extends ConsumerWidget {
   /// (#6F6F7B), which scored **3.74:1 on the dark scaffold** — under SC 1.4.3's
   /// 4.5:1 for this 11px text — on all seven headings this screen draws. Light
   /// is byte-identical (`AppText.of` returns the const objects themselves), so
-  /// this repaints nothing.
+  /// this repaints nothing. ST-Y3 (audit D8): a chassis [SettingsHeading].
   static Widget _sectionLabel(BuildContext context, String text) => Padding(
     padding: const EdgeInsets.fromLTRB(2, 22, 2, 8),
-    child: Text(text.toUpperCase(), style: AppText.of(context).label),
+    child: SettingsHeading(
+      text,
+      paint: text.toUpperCase(),
+      style: AppText.of(context).label,
+    ),
   );
 
   /// 🔴 AWAITED, AND ITS FAILURE IS SAID OUT LOUD. This was
@@ -1145,16 +1133,27 @@ class SettingsScreen extends ConsumerWidget {
     await _signOut(context, ref, l10n, scope: core.SignOutScope.global);
   }
 
-  Future<void> _contactSupport() async {
-    final Uri uri = Uri.parse(
-      'mailto:${AppConfig.supportEmail}'
-      '?subject=${Uri.encodeComponent('${AppConfig.appName} support')}',
-    );
-    // Through the app's ONE launcher: its policy admits a mailto to the
-    // configured support address and nothing else. No mail client / launch
-    // failed reads as not opened, never as a throw — settings cannot crash here.
-    await externalLinks.open(uri);
-  }
+  Widget _helpCard(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations l10n,
+  ) => helpCard(
+    context,
+    decoration: cardDecoration(context),
+    row: _LinkRow.new,
+    contactPageLabel: l10n.helpAndSupport,
+    openContactPage: () => openExternalUrl(AppConfig.contactUrl),
+    contactSupportLabel: l10n.contactSupport,
+    supportEmail: AppConfig.supportEmail,
+    supportSubject: '${AppConfig.appName} support',
+    feedbackLabel: l10n.sendFeedback,
+    feedbackSubject: l10n.feedbackMailSubject(AppConfig.appName),
+    openMail: externalLinks.open,
+    canRate: ref.watch(storeListingAvailableProvider),
+    rateLabel: l10n.rateApp(AppConfig.appName),
+    openStoreListing: () => ref.read(reviewPrompterProvider).openStoreListing(),
+    rateUnavailable: l10n.rateAppUnavailable,
+  );
 
   /// [pipeline C-13] EDIT DISPLAY NAME.
   ///
