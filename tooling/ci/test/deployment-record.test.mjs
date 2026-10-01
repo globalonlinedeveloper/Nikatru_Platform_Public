@@ -769,6 +769,33 @@ describe('record-deployment — the store rule is enforced BEFORE anything is wr
     assert.doesNotMatch(out, /could not record the deployment/);
   });
 
+  // ⏱ 2026-10-01 — `draft_staged`, the origin state's mirror: written only where a lane submits.
+  test('a SUBMITTABLE store row records a staged DRAFT with its listing and versionCode', () => {
+    const { code, out } = record([
+      'subscriptiontracker-android-play',
+      '--mode', 'production',
+      '--state', 'draft_staged',
+      '--listing-url', 'https://play.google.com/store/apps/details?id=com.nikatru.subscriptiontracker',
+      '--version-code', '6',
+    ]);
+    assert.equal(code, 1);
+    assert.match(out, /could not record the deployment/); // reached the API: every shape gate passed
+  });
+
+  test('a NON-submittable store row REFUSES a staged draft — no lane here uploaded it', () => {
+    const { code, out } = record(['fullshot-chrome-webstore', '--state', 'draft_staged']);
+    assert.equal(code, 1);
+    assert.match(out, /not a store channel a lane here submits through/);
+    assert.doesNotMatch(out, /could not record the deployment/);
+  });
+
+  test('a WEB row REFUSES a staged draft', () => {
+    const { code, out } = record(['subscriptiontracker-web', '--state', 'draft_staged']);
+    assert.equal(code, 1);
+    assert.match(out, /not a store channel a lane here submits through/);
+    assert.doesNotMatch(out, /could not record the deployment/);
+  });
+
   test('a WEB row REFUSES the origin state too — nobody submits to a web channel', () => {
     const { code, out } = record(['subscriptiontracker-web', '--state', 'pending_manual_publish']);
     assert.equal(code, 1);
@@ -1201,8 +1228,10 @@ describe('read-ledger-version-code — the largest versionCode the ledger holds'
 });
 
 describe('deployment-record — SUBMIT_TIME_STATES draws the submitted/live line', () => {
-  test('a submitting run may assert exactly one state', () => {
-    assert.deepEqual([...SUBMIT_TIME_STATES], ['in_review']);
+  // ⏱ 2026-10-01: two, each one fact an uploading run knows — it submitted, or it staged a draft
+  // and submitted nothing. `in_review` stays first: messages naming "the" state read index 0.
+  test('a submitting run may assert exactly these states, in_review first', () => {
+    assert.deepEqual([...SUBMIT_TIME_STATES], ['in_review', 'draft_staged']);
   });
 
   test('every state carries a meaning, and every meaning names a state', () => {
@@ -1224,6 +1253,13 @@ describe('deployment-record — SUBMIT_TIME_STATES draws the submitted/live line
     assert.equal(SUBMISSION_STATES.includes('pending_manual_publish'), false);
     assert.equal(SUBMIT_TIME_STATES.includes('pending_manual_publish'), false);
     assert.deepEqual([...SUBMISSION_STATES], ['in_review', 'live', 'rejected', 'pulled']);
+  });
+
+  // ⏱ 2026-10-01 (#1099 review, finding 1): a staged DRAFT is uploaded and NOT sent for review.
+  test('a staged draft is a state, assertable at upload, and NOT a submission', () => {
+    assert.equal(STATES.includes('draft_staged'), true);
+    assert.equal(SUBMIT_TIME_STATES.includes('draft_staged'), true);
+    assert.equal(SUBMISSION_STATES.includes('draft_staged'), false);
   });
 });
 
