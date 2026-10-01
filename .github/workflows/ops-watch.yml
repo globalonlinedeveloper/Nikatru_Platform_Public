@@ -721,12 +721,15 @@ jobs:
       # lookups log as 504 and once read as "12% of auth-api is 504s" while no
       # client got one (the script header). It also reports a day with more than 5
       # failed shield revalidations: each one opens up to a minute of STALE answers,
-      # which are 200s. A READ; always(), like the rule above. The token scope it
-      # needs (Zone Analytics Read) was proven by dispatch run 36797307729.
+      # which are 200s. A READ; always(), like the rule above. It needs Zone
+      # Analytics Read on nikatru.com (GraphQL httpRequestsAdaptiveGroups): proven for
+      # the repository CLOUDFLARE_API_TOKEN by dispatch runs 36797307729 and
+      # 36822297767. The read token the owner mints (rv2-security-001) must carry it
+      # too, or this step exits 2 the day that token answers.
       - name: Clients get the JWKS as a 5xx on at most 1% of reads a day
         if: always()
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set +e
           node tooling/ops/check-jwks-error-rate.mjs

@@ -32,7 +32,8 @@ ceiling the reader applies, and far enough after that a slow run is not read as
 a dead one.
 
 Required repo secrets: CLOUDFLARE_API_TOKEN (D1 read; Zone Analytics Read on nikatru.com for the
-edge-shield job's JWKS error-rate step, proven by run 36797307729 on 2026-10-01), CLOUDFLARE_ACCOUNT_ID.
+edge-shield job's JWKS error-rate step, proven by runs 36797307729 and 36822297767 on 2026-10-01;
+the step reads CLOUDFLARE_READ_TOKEN first, so that token needs Zone Analytics Read too), CLOUDFLARE_ACCOUNT_ID.
 A MISSING SECRET IS A FAILED RUN, NOT A SKIPPED ONE. The reader fails closed on
 an absent token, a non-200, or unparseable JSON: "I could not tell" must never
 read as "it is fine", which is exactly how the claim it replaces became
