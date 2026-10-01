@@ -1,7 +1,15 @@
-import 'package:nikatru_core/nikatru_core.dart' show Money, MoneyBag;
+import 'package:nikatru_core/nikatru_core.dart'
+    show Money, MoneyBag, RecurrenceSchedule;
 
 import '../../data/models/subscription.dart';
 import 'monthly_share.dart';
+
+/// One PROJECTED charge: [sub] charges its price [on] this date.
+class ProjectedCharge {
+  const ProjectedCharge(this.sub, this.on);
+  final Subscription sub;
+  final DateTime on;
+}
 
 class CategoryTotal {
   const CategoryTotal(this.name, this.value);
@@ -63,6 +71,79 @@ class SubMath {
             .where((Subscription x) => x.renewsIn(year, month))
             .map((Subscription x) => x.price),
       );
+
+  /// Every charge the CHARGING rows will take from [from] to [to] (both
+  /// inclusive), soonest first — each row's stored next charge walked forward
+  /// by its cadence (`RecurrenceSchedule.occurrencesBetween`), so a monthly
+  /// plan shows in every month a calendar pages to, not only in the one its
+  /// stored date falls in. A row with no cadence is its one stored date.
+  ///
+  /// ⏱ T12 (CA-04). [chargedInMonth] above still reads the ONE stored date;
+  /// the calendar pages, so it reads this.
+  static List<ProjectedCharge> chargesBetween(
+    List<Subscription> s,
+    DateTime from,
+    DateTime to,
+  ) {
+    final DateTime a = DateTime(from.year, from.month, from.day);
+    final DateTime b = DateTime(to.year, to.month, to.day);
+    final List<ProjectedCharge> out = <ProjectedCharge>[];
+    for (final Subscription x in charging(s)) {
+      final Cadence? c = x.cycle;
+      if (c == null || !c.isValid) {
+        final DateTime d = DateTime(
+          x.nextRenewal.year,
+          x.nextRenewal.month,
+          x.nextRenewal.day,
+        );
+        if (!d.isBefore(a) && !d.isAfter(b)) out.add(ProjectedCharge(x, d));
+        continue;
+      }
+      for (final DateTime d in RecurrenceSchedule.occurrencesBetween(
+        x.nextRenewal,
+        c,
+        a,
+        b,
+      )) {
+        out.add(ProjectedCharge(x, d));
+      }
+    }
+    out.sort((ProjectedCharge p, ProjectedCharge q) {
+      final int byDate = p.on.compareTo(q.on);
+      return byDate != 0 ? byDate : _tieBreak(p.sub, q.sub);
+    });
+    return out;
+  }
+
+  /// The charges in [month] of [year] — [chargesBetween] over that month.
+  static List<ProjectedCharge> chargesInMonth(
+    List<Subscription> s,
+    int year,
+    int month,
+  ) => chargesBetween(s, DateTime(year, month), DateTime(year, month + 1, 0));
+
+  /// What a cancelled plan has NOT taken since the user cancelled it: per
+  /// cancelled row with a `cancelled_on`, its monthly share times the WHOLE
+  /// months from that date to [now]. ₹499 a month cancelled three months ago
+  /// is ₹1,497. A row cancelled this month has saved nothing yet, and a
+  /// deleted row is gone from every figure.
+  static MoneyBag savedSinceCancelled(List<Subscription> s, DateTime now) =>
+      MoneyBag.sum(<Money>[
+        for (final Subscription x in s)
+          if (x.deletedAt == null &&
+              x.status == SubscriptionStatus.cancelled &&
+              x.cancelledOn != null &&
+              wholeMonthsBetween(x.cancelledOn!, now) > 0)
+            x.monthlyShare.accruedOver(wholeMonthsBetween(x.cancelledOn!, now)),
+      ]);
+
+  /// Whole calendar months from [from] to [to]: Jan 15 → Apr 15 is 3,
+  /// Jan 15 → Apr 14 is 2. Never negative.
+  static int wholeMonthsBetween(DateTime from, DateTime to) {
+    int months = (to.year - from.year) * 12 + (to.month - from.month);
+    if (to.day < from.day) months--;
+    return months < 0 ? 0 : months;
+  }
 
   static List<CategoryTotal> categoryTotals(List<Subscription> s) {
     final Map<String, List<MonthlyShare>> m = <String, List<MonthlyShare>>{};

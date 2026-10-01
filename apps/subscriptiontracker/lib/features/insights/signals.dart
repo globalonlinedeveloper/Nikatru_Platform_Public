@@ -12,6 +12,10 @@
 //   · ANNUAL SOON   — a yearly plan renewing within 60 days;
 //   · STILL USING?  — ASKED, never inferred: the costliest plan the user has
 //     not answered for. "Yes" is stored on this device and the row leaves.
+//     ⏱ T12 (IN-08): "No" is an answer too, and it LEADS somewhere — it is
+//     recorded the same way and opens the plan's stop flow (train T10's
+//     `/sub/:id/stop`; train T11 moves both answers to the API so they
+//     follow the account).
 //
 // ⚠️ THE CANVAS'S "went up 25%" (PRICE RISE) IS NOT DRAWN. A row carries one
 // price and no history, so a rise cannot be computed; it arrives with the
@@ -110,7 +114,13 @@ class StillUsingController extends AsyncNotifier<Set<String>> {
 
   /// Records "yes" for [id]. The row leaves at once; a failed write is not
   /// swallowed — the answer is rolled back so the question comes back.
-  Future<void> answerYes(String id) async {
+  Future<void> answerYes(String id) => _answer(id);
+
+  /// Records "no" for [id]: the question is answered and leaves, and the
+  /// CALLER opens the stop flow — "no" is a decision to act on, not a note.
+  Future<void> answerNo(String id) => _answer(id);
+
+  Future<void> _answer(String id) async {
     final Set<String> before = state.value ?? <String>{};
     final Set<String> next = <String>{...before, id};
     state = AsyncData<Set<String>>(next);
@@ -223,41 +233,92 @@ class SignalsSection extends ConsumerWidget {
           onTap: () => context.push('/sub/${sub.id}'),
         );
       case StillUsingSignal(:final Subscription sub):
-        return Row(
-          key: Key('insights.signal.stillUsing.${sub.id}'),
+        void no() {
+          ref.read(stillUsingProvider.notifier).answerNo(sub.id);
+          context.push(stopRouteFor(sub.id));
+        }
+        void yes() => ref.read(stillUsingProvider.notifier).answerYes(sub.id);
+        final Widget answers = Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.xs,
           children: <Widget>[
-            Expanded(
-              child: AppListRow(
-                leading: const _SignalIcon(Icons.help_outline),
-                title: l10n.signalStillUsingTitle(sub.name),
-                subtitle: l10n.signalStillUsingBody(
-                  chargeWithCycle(l10n, money, sub),
-                ),
-                onTap: () => context.push('/sub/${sub.id}'),
-                showChevron: false,
+            Semantics(
+              label: l10n.signalStillUsingNoA11y(sub.name),
+              button: true,
+              excludeSemantics: true,
+              onTap: no,
+              child: OutlinedButton(
+                key: Key('insights.signal.stillUsing.no.${sub.id}'),
+                onPressed: no,
+                child: Text(l10n.signalStillUsingNo),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.only(right: AppSpacing.md),
-              child: Semantics(
-                label: l10n.signalStillUsingYesA11y(sub.name),
-                button: true,
-                excludeSemantics: true,
-                onTap: () =>
-                    ref.read(stillUsingProvider.notifier).answerYes(sub.id),
-                child: FilledButton.tonal(
-                  key: Key('insights.signal.stillUsing.yes.${sub.id}'),
-                  onPressed: () =>
-                      ref.read(stillUsingProvider.notifier).answerYes(sub.id),
-                  child: Text(l10n.signalStillUsingYes),
-                ),
+            Semantics(
+              label: l10n.signalStillUsingYesA11y(sub.name),
+              button: true,
+              excludeSemantics: true,
+              onTap: yes,
+              child: FilledButton.tonal(
+                key: Key('insights.signal.stillUsing.yes.${sub.id}'),
+                onPressed: yes,
+                child: Text(l10n.signalStillUsingYes),
               ),
             ),
           ],
         );
+        final Widget question = AppListRow(
+          leading: const _SignalIcon(Icons.help_outline),
+          title: l10n.signalStillUsingTitle(sub.name),
+          subtitle: l10n.signalStillUsingBody(
+            chargeWithCycle(l10n, money, sub),
+          ),
+          onTap: () => context.push('/sub/${sub.id}'),
+          showChevron: false,
+        );
+        // Beside the question while the text is at its ordinary size; on a
+        // line of their own once enlarged text would squeeze the question
+        // into an unreadable sliver (Insights at 200 %).
+        final bool stacked = MediaQuery.textScalerOf(context).scale(1) > 1;
+        return stacked
+            ? Column(
+                key: Key('insights.signal.stillUsing.${sub.id}'),
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  question,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.md,
+                      0,
+                      AppSpacing.md,
+                      AppSpacing.sm,
+                    ),
+                    child: Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: answers,
+                    ),
+                  ),
+                ],
+              )
+            : Row(
+                key: Key('insights.signal.stillUsing.${sub.id}'),
+                children: <Widget>[
+                  Expanded(child: question),
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(
+                      end: AppSpacing.md,
+                    ),
+                    child: answers,
+                  ),
+                ],
+              );
     }
   }
 }
+
+/// Where "No, not using it" goes: the plan's stop-a-charge flow (train T10's
+/// `/sub/:id/stop`, DE-07), where stopping, pausing and removing are. ONE
+/// function, so the destination is a one-line move.
+String stopRouteFor(String id) => '/sub/$id/stop';
 
 /// The 40 px tinted tile a signal row leads with: the scheme's secondary
 /// container pair, so it reads in both schemes without a literal.

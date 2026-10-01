@@ -41,6 +41,12 @@ import '../tokens/app_spacing.dart';
 ///  * **Only a marked day is a control, and only when [onDayTap] is given.**
 ///    A tappable cell is announced as a button with its selected state, and
 ///    is [cellExtent] (48) tall, the platform's minimum tap target.
+///  * **A deadline is a second, different mark with its own words.** A day in
+///    [deadlines] carries a SQUARE in `tertiary` beside (or instead of) the
+///    round `primary` dot, and its cell is announced with the app's phrase
+///    ("14, trial ends") — shape and words, never the colour alone. The
+///    legend a screen draws uses [markDot] and [deadlineMarker], so the key
+///    and the grid cannot disagree.
 ///
 /// Every string is derived from [locale]; the grid carries no copy.
 class MonthGrid extends StatelessWidget {
@@ -52,6 +58,8 @@ class MonthGrid extends StatelessWidget {
     this.marks = const <int, int>{},
     this.selectedDay,
     this.onDayTap,
+    this.firstDayOfWeek,
+    this.deadlines = const <int, String>{},
   });
 
   /// Any moment inside the month to draw; only its year and month are read.
@@ -78,6 +86,16 @@ class MonthGrid extends StatelessWidget {
   /// control, which is what a screen with nowhere to show a selection wants.
   final ValueChanged<int>? onDayTap;
 
+  /// The first column, ISO-numbered like `intl`'s `FIRSTDAYOFWEEK`
+  /// (0 = Monday … 6 = Sunday), when the user chose one. Null — the default —
+  /// is the locale's own week start.
+  final int? firstDayOfWeek;
+
+  /// Day-of-month → the spoken phrase for what ENDS on it ("trial ends",
+  /// "cancel by"), already localised by the app. A listed day carries the
+  /// deadline marker and its cell announces the phrase after the date.
+  final Map<int, String> deadlines;
+
   /// Each cell's fixed height: the platform's minimum tap target, because a
   /// marked cell becomes a control when [onDayTap] is given.
   static const double cellExtent = kMinInteractiveDimension;
@@ -100,6 +118,18 @@ class MonthGrid extends StatelessWidget {
 
   bool _isMarked(int day) => (marks[day] ?? 0) > 0;
 
+  /// The round mark a day with something on it carries — for a legend.
+  static Widget markDot(BuildContext context) => _Marker(
+    color: Theme.of(context).colorScheme.primary,
+    shape: BoxShape.circle,
+  );
+
+  /// The square mark a day with a deadline carries — for a legend.
+  static Widget deadlineMarker(BuildContext context) => _Marker(
+    color: Theme.of(context).colorScheme.tertiary,
+    shape: BoxShape.rectangle,
+  );
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -114,7 +144,8 @@ class MonthGrid extends StatelessWidget {
     // `FIRSTDAYOFWEEK` is ISO (0 = Monday) and `DateTime.weekday` is
     // Mon=1..Sun=7, so `weekday - 1` is the same scale. Dart's `%` is
     // non-negative for a positive divisor.
-    final int firstDayOfWeek = symbols.FIRSTDAYOFWEEK;
+    final int firstDayOfWeek = (this.firstDayOfWeek ?? symbols.FIRSTDAYOFWEEK)
+        .clamp(0, 6);
     final int firstOffset =
         (DateTime(y, m, 1).weekday - 1 - firstDayOfWeek) % 7;
     // NARROWWEEKDAYS and WEEKDAYS are Sunday-first in every locale, so both
@@ -164,8 +195,10 @@ class MonthGrid extends StatelessWidget {
           : (marked ? scheme.onPrimaryContainer : scheme.onSurface);
       final Color dot = isToday ? scheme.onPrimary : scheme.primary;
       final BorderRadius radius = BorderRadius.circular(AppRadius.control);
+      final String? deadline = deadlines[day];
+      final String numeral = dayFmt.format(DateTime(y, m, day));
 
-      final Widget content = Column(
+      final Widget column = Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
           // ONE line, scaled down to the cell's width if a scaled two-digit
@@ -174,7 +207,7 @@ class MonthGrid extends StatelessWidget {
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(
-              dayFmt.format(DateTime(y, m, day)),
+              numeral,
               maxLines: 1,
               softWrap: false,
               style: text.labelLarge?.copyWith(
@@ -184,18 +217,34 @@ class MonthGrid extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.xs / 2),
-          if (marked)
+          if (marked || deadline != null)
             ExcludeSemantics(
-              child: Container(
-                width: dotSize,
-                height: dotSize,
-                decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  if (marked) _Marker(color: dot, shape: BoxShape.circle),
+                  if (marked && deadline != null)
+                    const SizedBox(width: AppSpacing.xs / 2),
+                  if (deadline != null)
+                    _Marker(
+                      color: isToday ? scheme.onPrimary : scheme.tertiary,
+                      shape: BoxShape.rectangle,
+                    ),
+                ],
               ),
             )
           else
             const SizedBox(height: dotSize),
         ],
       );
+      // The deadline is SAID, after the date: "14, trial ends".
+      final Widget content = deadline == null
+          ? column
+          : Semantics(
+              label: '$numeral, $deadline',
+              excludeSemantics: true,
+              child: column,
+            );
 
       final bool control = onDayTap != null && marked;
       return Container(
@@ -302,4 +351,19 @@ class DateBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+/// One [MonthGrid.dotSize] mark: the round renewal dot or the square deadline.
+class _Marker extends StatelessWidget {
+  const _Marker({required this.color, required this.shape});
+
+  final Color color;
+  final BoxShape shape;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: MonthGrid.dotSize,
+    height: MonthGrid.dotSize,
+    decoration: BoxDecoration(color: color, shape: shape),
+  );
 }

@@ -3315,5 +3315,228 @@
         "example": "Netflix"
       }
     }
+  },
+  "calendarPrevMonth": "Previous month",
+  "@calendarPrevMonth": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · the pager's back control."
+  },
+  "calendarNextMonth": "Next month",
+  "@calendarNextMonth": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · the pager's forward control."
+  },
+  "calendarToday": "Today",
+  "@calendarToday": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · returns the pager to the current month."
+  },
+  "calendarViewMonth": "Month",
+  "@calendarViewMonth": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · the one-month grid view."
+  },
+  "calendarViewAgenda": "12 months",
+  "@calendarViewAgenda": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · the twelve-month agenda view."
+  },
+  "calendarViewLabel": "Calendar view",
+  "@calendarViewLabel": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · accessible name of the Month / 12 months switch."
+  },
+  "calendarNothingRenews": "Nothing renews in {month}",
+  "@calendarNothingRenews": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · an empty month with no later charge. {month} is month and year.",
+    "placeholders": {
+      "month": {
+        "type": "String",
+        "example": "October 2026"
+      }
+    }
+  },
+  "calendarNothingRenewsNext": "Nothing renews in {month} — next: {name} on {date}",
+  "@calendarNothingRenewsNext": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · an empty month, pointing at the next charge after it.",
+    "placeholders": {
+      "month": {
+        "type": "String",
+        "example": "October 2026"
+      },
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      },
+      "date": {
+        "type": "String",
+        "example": "3 Nov 2026"
+      }
+    }
+  },
+  "calendarMostExpensive": "Most expensive month ahead: {month} · {amount}",
+  "@calendarMostExpensive": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · on a large window, the month of the next twelve that charges the most.",
+    "placeholders": {
+      "month": {
+        "type": "String",
+        "example": "March 2027"
+      },
+      "amount": {
+        "type": "String",
+        "example": "₹5,397"
+      }
+    }
+  },
+  "calendarLegendRenews": "Renews",
+  "@calendarLegendRenews": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · legend for the round renewal mark."
+  },
+  "calendarLegendDeadline": "Trial ends or cancel by",
+  "@calendarLegendDeadline": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · legend for the square deadline mark."
+  },
+  "calendarTrialEnds": "trial ends",
+  "@calendarTrialEnds": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · spoken after a grid date that a trial ends on: '14, trial ends'."
+  },
+  "calendarCancelBy": "cancel by",
+  "@calendarCancelBy": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · spoken after a grid date that is a cancel-by deadline: '14, cancel by'."
+  },
+  "calendarDeadlines": "Deadlines",
+  "@calendarDeadlines": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · heading over the month's trial-end and cancel-by rows."
+  },
+  "calendarTrialEndsRow": "Trial ends — then {amount}",
+  "@calendarTrialEndsRow": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · a trial-end row's subtitle. {amount} is the price with its cycle.",
+    "placeholders": {
+      "amount": {
+        "type": "String",
+        "example": "₹649/mo"
+      }
+    }
+  },
+  "calendarCancelByRow": "Cancel by — renews {date}",
+  "@calendarCancelByRow": {
+    "description": "Consumed by features/calendar/calendar_screen.dart · a cancel-by row's subtitle. {date} is the renewal it avoids.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "Fri, 14 Nov"
+      }
+    }
+  },
+  "calendarFeedTitle": "Renewals in your calendar app",
+  "@calendarFeedTitle": {
+    "description": "Consumed by features/calendar/calendar_feed_actions.dart · heading over Subscribe / Download / Copy link."
+  },
+  "calendarFeedSubscribe": "Subscribe",
+  "@calendarFeedSubscribe": {
+    "description": "Consumed by features/calendar/calendar_feed_actions.dart · opens the private feed in the calendar app (webcal:) or the web subscribe URL."
+  },
+  "calendarFeedDownload": "Download .ics",
+  "@calendarFeedDownload": {
+    "description": "Consumed by features/calendar/calendar_feed_actions.dart · downloads the feed as a file."
+  },
+  "calendarFeedCopy": "Copy link",
+  "@calendarFeedCopy": {
+    "description": "Consumed by features/calendar/calendar_feed_actions.dart · copies the private feed URL."
+  },
+  "calendarFeedCopied": "Calendar link copied. Anyone with it can see your renewals.",
+  "@calendarFeedCopied": {
+    "description": "Consumed by features/calendar/calendar_feed_actions.dart · after Copy link; the link is a credential, so it says so."
+  },
+  "fxConvertedAt": "Converted at ECB rates of {date}",
+  "@fxConvertedAt": {
+    "description": "Consumed by features/insights/fx_caption.dart · under a total that converted other currencies. {date} is the ECB fix date.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "25 Sept 2026"
+      }
+    }
+  },
+  "fxConvertedAtYourRate": "Converted at your rate",
+  "@fxConvertedAtYourRate": {
+    "description": "Consumed by features/insights/fx_caption.dart · the total converted with only the user's own rate (no ECB table yet)."
+  },
+  "fxYourRate": "Your rate: 1 {from} = {rate} {to}",
+  "@fxYourRate": {
+    "description": "Consumed by features/insights/fx_caption.dart · the one rate the user set by hand.",
+    "placeholders": {
+      "from": {
+        "type": "String",
+        "example": "USD"
+      },
+      "rate": {
+        "type": "String",
+        "example": "88"
+      },
+      "to": {
+        "type": "String",
+        "example": "INR"
+      }
+    }
+  },
+  "fxNotConverted": "Plans in other currencies are shown in their own currency.",
+  "@fxNotConverted": {
+    "description": "Consumed by features/insights/fx_caption.dart · mixed currencies and no rate yet."
+  },
+  "fxSetRate": "Set my rate",
+  "@fxSetRate": {
+    "description": "Consumed by features/insights/fx_caption.dart · opens the one-rate override."
+  },
+  "fxUseEcbRate": "Use ECB rate",
+  "@fxUseEcbRate": {
+    "description": "Consumed by features/insights/fx_caption.dart · clears the user's rate."
+  },
+  "fxRateDialogTitle": "Your exchange rate",
+  "@fxRateDialogTitle": {
+    "description": "Consumed by features/insights/fx_caption.dart · the override dialog's title."
+  },
+  "fxRateField": "{to} for 1 {from}",
+  "@fxRateField": {
+    "description": "Consumed by features/insights/fx_caption.dart · the override field's label.",
+    "placeholders": {
+      "to": {
+        "type": "String",
+        "example": "INR"
+      },
+      "from": {
+        "type": "String",
+        "example": "USD"
+      }
+    }
+  },
+  "fxRateInvalid": "Enter a rate above zero",
+  "@fxRateInvalid": {
+    "description": "Consumed by features/insights/fx_caption.dart · the override field's error."
+  },
+  "budgetAverageShare": "Average monthly share",
+  "@budgetAverageShare": {
+    "description": "Consumed by features/insights/budget_card.dart · says what the meter measures (IN-09): a yearly plan counts a twelfth, so the figure is an average, not what was charged this month. Short on purpose — it sits under the card title."
+  },
+  "insightsSavedLabel": "Saved since you cancelled",
+  "@insightsSavedLabel": {
+    "description": "Consumed by features/insights/summary_tiles.dart · the savings tile's label (IN-10)."
+  },
+  "signalStillUsingNo": "No",
+  "@signalStillUsingNo": {
+    "description": "Consumed by features/insights/signals.dart · answers the still-using question with No; opens the stop flow."
+  },
+  "signalStillUsingNoA11y": "No, not using {name}",
+  "@signalStillUsingNoA11y": {
+    "description": "Consumed by features/insights/signals.dart · the accessible name of the No button.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "insightsSavedCaption": "{count, plural, =1{From 1 cancelled plan} other{From {count} cancelled plans}}",
+  "@insightsSavedCaption": {
+    "description": "Consumed by features/insights/summary_tiles.dart · under the savings figure.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   }
 }

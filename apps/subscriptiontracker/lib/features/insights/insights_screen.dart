@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 // A `show` list and not a bare import: `core/theme/app_theme.dart` and
 // `app_colors.dart` below are re-export shims for this same package, so an
 // unrestricted import makes both of them redundant and the analyzer says so
@@ -14,11 +15,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show AppBreakpoints, ContentPane;
 
+import '../../core/format/home_totals.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
+import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../add/add_subscription_sheet.dart';
 import '../shared/async_gate.dart';
@@ -26,6 +29,7 @@ import '../shell/app_shell.dart';
 import 'budget_card.dart';
 import 'category_card.dart';
 import 'forecast_card.dart';
+import 'fx_caption.dart';
 import 'signals.dart';
 import 'summary_tiles.dart';
 
@@ -135,23 +139,56 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
 
   /// The breakdown for [period], ranked by the MONTHLY ranking in both units so
   /// flipping the switch never reorders the rows under the reader's eye.
+  ///
+  /// ⏱ T12 (IN-06): every category is folded into the home currency by
+  /// [totals] — a category billed in dollars now claims its share of a rupee
+  /// whole instead of none — and, once folded, ranked by that one figure.
   static List<CategoryTotal> _categoryTotals(
     List<Subscription> subs,
     InsightsPeriod period,
+    HomeTotals totals,
   ) {
-    final List<CategoryTotal> monthly = SubMath.categoryTotals(subs);
+    final List<CategoryTotal> monthly = <CategoryTotal>[
+      for (final CategoryTotal c in SubMath.categoryTotals(subs))
+        CategoryTotal(c.name, totals.of(c.value)),
+    ];
+    if (totals.fx != null) {
+      final List<String> order = <String>[
+        for (final CategoryTotal c in monthly) c.name,
+      ];
+      monthly.sort((CategoryTotal a, CategoryTotal b) {
+        final int byAmount = SubMath.chartWeight(
+          b.value,
+          totals.home,
+        ).compareTo(SubMath.chartWeight(a.value, totals.home));
+        return byAmount != 0
+            ? byAmount
+            : order.indexOf(a.name).compareTo(order.indexOf(b.name));
+      });
+    }
     if (period == InsightsPeriod.month) return monthly;
     return <CategoryTotal>[
       for (final CategoryTotal c in monthly)
         CategoryTotal(
           c.name,
-          MoneyBag.sum(<Money>[
-            for (final Subscription s in subs)
-              if (s.category == c.name) s.yearlyCharge,
-          ]),
+          totals.of(
+            MoneyBag.sum(<Money>[
+              for (final Subscription s in SubMath.charging(subs))
+                if (s.category == c.name) s.yearlyCharge,
+            ]),
+          ),
         ),
     ];
   }
+
+  /// IN-07: a category row opens Home filtered to that category.
+  static void _openCategory(BuildContext context, String category) =>
+      context.go(
+        Uri(
+          path: '/home',
+          queryParameters: <String, String>{'category': category},
+        ).toString(),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +217,9 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
       emptyActionLabel: l10n.addSubscriptionTitle,
       onEmptyAction: () => showAddSubscriptionSheet(context),
       builder: (List<Subscription> subs) {
-        final List<CategoryTotal> cats = _categoryTotals(subs, _period);
+        final HomeTotals totals = homeTotalsOf(ref);
+        final DateTime now = ref.watch(nowProvider)();
+        final List<CategoryTotal> cats = _categoryTotals(subs, _period, totals);
 
         // The page's card STACK, in reading order — built ONCE, then laid out
         // in one column or two, so no arm can gain a card the other lacks.
@@ -188,7 +227,7 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
         // LOWEST card whatever it is (the FAB and fold cases in
         // `width_shell_fab_test.dart`).
         final List<Widget> cards = <Widget>[
-          BudgetCard(subs: subs, currencyCode: currencyCode),
+          BudgetCard(subs: subs, currencyCode: currencyCode, totals: totals),
           // D3-4: what the rows can prove, and one question — never the
           // `unused` / `usedPct` fields nothing writes.
           SignalsSection(subs: subs, money: money),
@@ -197,6 +236,7 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
             money: money,
             currencyCode: currencyCode,
             perYear: _period == InsightsPeriod.year,
+            onCategoryTap: (String name) => _openCategory(context, name),
           ),
           // D3-6: the Pro card, gated on its own (PaywallGate.card).
           ForecastCard(subs: subs, money: money, currencyCode: currencyCode),
@@ -222,7 +262,15 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
                   // figures, not cards of the grid.
                   _header(context, l10n),
                   const SizedBox(height: AppSpacing.lg),
-                  SummaryTiles(subs: subs, money: money, now: DateTime.now()),
+                  SummaryTiles(
+                    subs: subs,
+                    money: money,
+                    now: now,
+                    totals: totals,
+                  ),
+                  // "Converted at ECB rates of {date}" — only when the plans
+                  // are in more than one currency.
+                  FxCaption(bag: SubMath.totalMonthly(subs)),
                   const SizedBox(height: AppSpacing.lg),
                   if (twoUp)
                     _twoColumnCards(keyed, _cardGap)

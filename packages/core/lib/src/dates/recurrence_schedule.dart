@@ -189,6 +189,32 @@ abstract final class RecurrenceSchedule {
     int? anchorDay,
   }) => rollForward(next, cadence, today, anchorDay: anchorDay).next;
 
+  /// Every charge date from [from] to [to] (both inclusive, date fields only)
+  /// for a row whose stored next charge is [next] — the PROJECTION a calendar
+  /// pages through. Dates before [next] are never invented: the chain starts
+  /// at [next] and only walks forward. Bounded by [maxCrossings] dates, so a
+  /// daily plan over a decade costs the same bound as the roll.
+  static List<DateTime> occurrencesBetween(
+    DateTime next,
+    Cadence cadence,
+    DateTime from,
+    DateTime to, {
+    int? anchorDay,
+  }) {
+    final int anchor = anchorDay ?? next.day;
+    final int fromKey = _key(from);
+    final int toKey = _key(to);
+    final List<DateTime> out = <DateTime>[];
+    DateTime cur = DateTime(next.year, next.month, next.day);
+    int steps = 0;
+    while (_key(cur) <= toKey && steps < maxCrossings) {
+      if (_key(cur) >= fromKey) out.add(cur);
+      cur = advance(cur, cadence, anchorDay: anchor);
+      steps++;
+    }
+    return out;
+  }
+
   /// `YYYY-MM-DD` for [d]'s date fields — the wire's date shape.
   static String ymd(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'

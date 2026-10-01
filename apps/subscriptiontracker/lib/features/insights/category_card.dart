@@ -22,6 +22,13 @@
 // ⏱ ST-X8 (audit C6): a category's NAME — in the bars, the table and every
 // row's semantics label — is painted through `categoryLabel`, never printed as
 // the stored id, which is an English word. The id still keys everything else.
+// row prints its amount and no percentage — never a 0 %. ⏱ T12 (IN-06): once a
+// rate table has been read the screen hands this card categories already
+// folded into the home currency, so that case is now only the offline first
+// launch.
+//
+// ⏱ T12 (IN-07): a row is a CONTROL when [CategoryCard.onCategoryTap] is set —
+// it opens Home filtered to that category, announced as a button.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -41,7 +48,12 @@ class CategoryCard extends StatefulWidget {
     required this.money,
     required this.currencyCode,
     required this.perYear,
+    this.onCategoryTap,
   });
+
+  /// Called with a category's name when its row is tapped (IN-07). Null keeps
+  /// every row a plain figure.
+  final ValueChanged<String>? onCategoryTap;
 
   /// Already ranked (SubMath.categoryTotals order) and in the chosen unit.
   final List<CategoryTotal> categories;
@@ -144,6 +156,10 @@ class _CategoryCardState extends State<CategoryCard> {
                 child: Semantics(
                   key: CategoryCard.row(i),
                   container: true,
+                  button: widget.onCategoryTap != null,
+                  onTap: widget.onCategoryTap == null
+                      ? null
+                      : () => widget.onCategoryTap!(cats[i].name),
                   label: shareOf(i) == null
                       ? l10n.a11yCategoryRowNoShare(
                           categoryLabel(l10n, cats[i].name),
@@ -155,49 +171,54 @@ class _CategoryCardState extends State<CategoryCard> {
                           shareOf(i)!,
                         ),
                   excludeSemantics: true,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: Text(
-                              categoryLabel(l10n, cats[i].name),
+                  child: _tappable(
+                    widget.onCategoryTap == null
+                        ? null
+                        : () => widget.onCategoryTap!(cats[i].name),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: Text(
+                                categoryLabel(l10n, cats[i].name),
+                                style: text.titleSmall?.copyWith(
+                                  color: scheme.onSurface,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              key: CategoryCard.figure(i),
+                              figures.parts[i],
                               style: text.titleSmall?.copyWith(
                                 color: scheme.onSurface,
+                                fontFeatures: const <FontFeature>[
+                                  FontFeature.tabularFigures(),
+                                ],
                               ),
                             ),
-                          ),
-                          Text(
-                            key: CategoryCard.figure(i),
-                            figures.parts[i],
-                            style: text.titleSmall?.copyWith(
-                              color: scheme.onSurface,
-                              fontFeatures: const <FontFeature>[
-                                FontFeature.tabularFigures(),
-                              ],
-                            ),
-                          ),
-                          if (shareOf(i) != null) ...<Widget>[
-                            const SizedBox(width: AppSpacing.sm),
-                            Text(
-                              shareOf(i)!,
-                              style: text.labelMedium?.copyWith(
-                                color: scheme.onSurfaceVariant,
+                            if (shareOf(i) != null) ...<Widget>[
+                              const SizedBox(width: AppSpacing.sm),
+                              Text(
+                                shareOf(i)!,
+                                style: text.labelMedium?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                ),
                               ),
-                            ),
+                            ],
                           ],
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.xs),
-                      LinearProgressIndicator(
-                        value: top <= 0 ? 0 : weights[i] / top,
-                        minHeight: AppSpacing.sm,
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
-                        color: scheme.primary,
-                        backgroundColor: scheme.surfaceContainerHighest,
-                      ),
-                    ],
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        LinearProgressIndicator(
+                          value: top <= 0 ? 0 : weights[i] / top,
+                          minHeight: AppSpacing.sm,
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
+                          color: scheme.primary,
+                          backgroundColor: scheme.surfaceContainerHighest,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -205,6 +226,18 @@ class _CategoryCardState extends State<CategoryCard> {
       ),
     );
   }
+
+  /// [child] as an ink-splashing control when [onTap] is set.
+  static Widget _tappable(VoidCallback? onTap, Widget child) => onTap == null
+      ? child
+      : Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.control),
+            onTap: onTap,
+            child: child,
+          ),
+        );
 
   Widget _table(
     BuildContext context,

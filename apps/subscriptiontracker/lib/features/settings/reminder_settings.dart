@@ -18,6 +18,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
+import '../calendar/calendar_feed_actions.dart';
 import '../shared/priming.dart';
 import '../shared/widgets.dart' show cardDecoration;
 
@@ -272,24 +273,23 @@ class _ReminderChannelsCardState extends ConsumerState<ReminderChannelsCard> {
     }
   }
 
+  /// ⏱ T12 (CA-06): the SAME calls the calendar screen's feed controls make
+  /// (`calendar_feed_actions.dart`) — the session's feed, minted once.
   Future<void> _addToCalendar() async {
     final core.Result<core.CalendarFeed>? r = await _run(
-      (String? t) =>
-          _transport.mintCalendarFeed(appId: AppConfig.appId, accessToken: t),
+      (String? _) => ref.read(calendarFeedProvider.notifier).ensure(),
     );
     if (r is! core.Ok<core.CalendarFeed>) return;
-    final core.CalendarFeed feed = r.value;
     // A calendar app subscribes by webcal:; a browser tab cannot, so web
     // downloads the same feed as a file (the route's ?download=1).
-    final Uri open = kIsWeb
-        ? feed.httpsUrl.replace(
-            queryParameters: <String, String>{
-              ...feed.httpsUrl.queryParameters,
-              'download': '1',
-            },
-          )
-        : feed.webcalUrl;
-    await ref.read(calendarLinkLauncherProvider).open(open);
+    await ref
+        .read(calendarLinkLauncherProvider)
+        .open(
+          calendarFeedUri(
+            r.value,
+            kIsWeb ? CalendarFeedAction.download : CalendarFeedAction.subscribe,
+          ),
+        );
   }
 
   /// RESET is a ROTATION: POST /v1/calendar/feed replaces the token, so the
@@ -297,8 +297,7 @@ class _ReminderChannelsCardState extends ConsumerState<ReminderChannelsCard> {
   /// not opened — the person asked to cut the old one off, not to subscribe.
   Future<void> _reset() async {
     final core.Result<core.CalendarFeed>? r = await _run(
-      (String? t) =>
-          _transport.mintCalendarFeed(appId: AppConfig.appId, accessToken: t),
+      (String? _) => ref.read(calendarFeedProvider.notifier).rotate(),
     );
     if (r == null || !r.isOk || !mounted) return;
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(

@@ -84,7 +84,13 @@ enum HomeSort { nextCharge, price, monthlyShare, name }
 /// The `PaywallGate` wraps the INSIGHTS branch in `lib/core/router.dart`, so
 /// `paywallLockedProvider` keeps its one real consumer there.
 class HomeScreen extends ConsumerWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({this.category, super.key});
+
+  /// T12 (IN-07): list only this category's rows — the drill-down from an
+  /// Insights category row (`/home?category=`). Null or empty is every row.
+  /// It lands as Home's own category filter chip (HO-03), so the user sees
+  /// the filter in force and clears it where every other filter is cleared.
+  final String? category;
 
   /// The narrowest BODY that holds the summary side column beside a
   /// list/detail split: `form` (420) + divider (1) + `expanded` (840) = 1261.
@@ -143,19 +149,38 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return const Column(
-      children: <Widget>[
-        // [pipeline T-8] Above everything. MOUNTED EXACTLY ONCE IN THE APP —
-        // chassis_properties_test pumps the whole SublyApp and asserts it.
-        CatchUpNudgeBanner(),
-        // [research/44 §7 rung 3] The same-app upgrade card, in the slot the
-        // stamped chassis gives it: under the nudge, above the dashboard. It
-        // renders NOTHING while `features.promo_card_enabled` is absent.
-        UpgradePromoCard(),
-        Expanded(child: _HomeDashboard()),
-      ],
+    // The filter reaches the dashboard through [_HomeFilter] so the shell
+    // below stays one `const` tree — the shape the chassis property audit
+    // reads its mounts from (assert-stamp-properties).
+    return _HomeFilter(
+      category: (category ?? '').isEmpty ? null : category,
+      child: const Column(
+        children: <Widget>[
+          // [pipeline T-8] Above everything. MOUNTED EXACTLY ONCE IN THE APP —
+          // chassis_properties_test pumps the whole SublyApp and asserts it.
+          CatchUpNudgeBanner(),
+          // [research/44 §7 rung 3] The same-app upgrade card, in the slot the
+          // stamped chassis gives it: under the nudge, above the dashboard. It
+          // renders NOTHING while `features.promo_card_enabled` is absent.
+          UpgradePromoCard(),
+          Expanded(child: _HomeDashboard()),
+        ],
+      ),
     );
   }
+}
+
+/// The category Home is filtered to (T12, IN-07), handed to the dashboard.
+class _HomeFilter extends InheritedWidget {
+  const _HomeFilter({required this.category, required super.child});
+
+  final String? category;
+
+  static String? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_HomeFilter>()?.category;
+
+  @override
+  bool updateShouldNotify(_HomeFilter old) => old.category != category;
 }
 
 /// Subly's product dashboard, docked as the Home destination.
@@ -212,6 +237,25 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
       setState(() {});
       _scheduleMidnight();
     });
+  }
+
+  /// The drill-down category last applied (IN-07), so a rebuild does not
+  /// re-impose a filter the user has since cleared.
+  String? _drilledTo;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final String? category = _HomeFilter.of(context);
+    if (category == _drilledTo) return;
+    _drilledTo = category;
+    // A NEW drill-down replaces any category chip, and only that group: a
+    // status or currency filter the user set stays.
+    _filters.removeWhere((String f) => f.startsWith(_cat));
+    if (category != null) {
+      _filters.add('$_cat$category');
+      _filtersOpen = true;
+    }
   }
 
   @override
@@ -802,9 +846,12 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
             value: '$_status${st.name}',
             label: statusLabel(st),
           ),
-        if (categories.length > 1)
+        if (categories.length > 1 || _drilledTo != null)
           for (final String c in categories)
-            ListFilterOption<String>(value: '$_cat$c', label: c),
+            ListFilterOption<String>(
+              value: '$_cat$c',
+              label: categoryLabel(l10n, c),
+            ),
         if (currencies.length > 1)
           for (final String c in currencies)
             ListFilterOption<String>(value: '$_cur$c', label: c),

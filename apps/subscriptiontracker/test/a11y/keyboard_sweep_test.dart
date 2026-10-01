@@ -509,9 +509,18 @@ kExpected = <String, ({int controls, int reachable})>{
   // app-bar back button, the restore row and the cancel row, each named by
   // its own icon in `/manage-plan · a keyboard reaches the cancel-plan row`.
   '/manage-plan': (controls: 3, reachable: 3),
-  '/calendar': (controls: 7, reachable: 7),
+  // ⏱ T12 (CA-04): 7 -> 25, measured by this suite at the pinned 2026-08-21.
+  // +4 are the pager (back, forward) and the Month / 12 months switch's two
+  // segments; the rest are renewal rows — the month now lists every PROJECTED
+  // charge of the twelve seed plans, not only the ones whose one stored date
+  // fell in August. (The feed's three controls need a live backend and a
+  // session, which this sweep has neither of.)
+  '/calendar': (controls: 25, reachable: 25),
   // ⏱ ST-D3: 3 -> 6, measured by this suite on the rebuilt Insights.
-  '/insights': (controls: 6, reachable: 6),
+  // ⏱ T12: 6 -> 17 — each of the seed's ten category rows is a control now
+  // (IN-07, it opens Home filtered), and the still-using question gained its
+  // "No" (IN-08).
+  '/insights': (controls: 17, reachable: 17),
 };
 
 /// Every [GoRoute] in the tree, including the ones nested under a shell.
