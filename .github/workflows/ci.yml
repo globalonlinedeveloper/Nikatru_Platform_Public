@@ -1875,6 +1875,8 @@ jobs:
       # --flutter -- flutter test` (pubspec.yaml melos.scripts.test). The legs run
       # those two halves with the same flags; only the flutter half is split, by
       # MEMBERS_GLOB scoped (packages) and ignored (apps).
+      # --parsable, because plain `melos list` prints a warning to STDOUT on an empty
+      # set, so the zero-member refusal could never fire (#1111 review 1, finding 2).
       - name: melos run test (this leg's half)
         env:
           PART: ${{ matrix.part }}
@@ -1888,7 +1890,7 @@ jobs:
             apps)     filter="--ignore=$MEMBERS_GLOB" ;;
             *) echo "::error::unknown workspace-gate leg '$PART'"; exit 1 ;;
           esac
-          members="$(melos list --flutter --dir-exists=test "$filter")"
+          members="$(melos list --parsable --flutter --dir-exists=test "$filter")"
           echo "$members"
           if [ -z "$members" ]; then echo "::error::leg '$PART' ($filter) matched no Flutter member with tests, so it would test nothing"; exit 1; fi
           melos exec --fail-fast --dir-exists=test --flutter "$filter" -- flutter test
