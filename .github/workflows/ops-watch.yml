@@ -685,7 +685,10 @@ jobs:
       # it as a 5xx. Per UTC day over the week since the last run; over 1% on any
       # day is red. It counts eyeball requests ONLY: the shield's own Cache API
       # lookups log as 504 and once read as "12% of auth-api is 504s" while no
-      # client got one (the script header). A READ; always(), like the rule above.
+      # client got one (the script header). It also reports a day with more than 5
+      # failed shield revalidations: each one opens up to a minute of STALE answers,
+      # which are 200s. A READ; always(), like the rule above. The token scope it
+      # needs (Zone Analytics Read) was proven by dispatch run 36797307729.
       - name: Clients get the JWKS as a 5xx on at most 1% of reads a day
         if: always()
         env:
@@ -698,7 +701,7 @@ jobs:
           if [ "$code" -eq 2 ]; then
             echo "::error title=The JWKS error rate is UNKNOWN::The nikatru.com zone analytics could not be read, or no day had enough client reads to judge, so nothing is known about JWKS failures from this run, and that is never a pass. The step log names the reason (a token without Zone Analytics Read is named as such)."
           elif [ "$code" -eq 1 ]; then
-            echo "::error title=Clients got the JWKS as a 5xx on over 1% of reads in a day::Every token verification rests on this read. The step log names the day. Read Box C's envoy and cloudflared logs for that day (runbooks/boxes/boxc.md) and the edge-shield Worker's logs for shield_jwks_stale."
+            echo "::error title=Clients got the JWKS as a 5xx on over 1% of reads in a day, or the shield served it STALE after more than 5 failed origin reads::Every token verification rests on this read, and a stale 200 hides a Box C outage from monitor 17 for up to an hour. The step log names the day and which bound it crossed. Read Box C's envoy and cloudflared logs for that day (runbooks/boxes/boxc.md) and the edge-shield Worker's logs for shield_jwks_stale."
           fi
           exit "$code"
 

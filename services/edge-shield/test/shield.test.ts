@@ -12,16 +12,23 @@
 //     no Origin to get there;
 //   · fail OPEN — an absent, throwing or rejecting limiter admits and is counted;
 //   · the JWKS edge cache — one origin read per TTL whatever the query string,
-//     and a stale copy (never a 504) when the origin fails;
+//     a stale copy (never a 504) for at most an hour when the origin fails, a
+//     back-off after a failed read, and a clean canonical origin read whose
+//     answer is stored only when it is a JWKS;
 //   · classification — what is counted, what is not, and why.
 // No test reaches the network: ../_shared/test/no-network.ts rejects any fetch
 // a test did not stub.
 // ─────────────────────────────────────────────────────────────────────────────
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker, {
+  JWKS_MAX_STALE_SECONDS,
+  JWKS_RETRY_BACKOFF_SECONDS,
   JWKS_REVALIDATE_TIMEOUT_MS,
-  JWKS_STALE_IF_ERROR_SECONDS,
+  JWKS_STORE_SECONDS,
   JWKS_TTL_SECONDS,
+  RETRY_AT_HEADER,
+  REVALIDATE_UA,
+  STALE_HEADER,
   STORED_AT_HEADER,
 } from '../src/index';
 import { CLASSES, classify, normalisePath, type ShieldClass } from '../src/classify';
@@ -390,74 +397,117 @@ describe('fail OPEN — the shield is never the reason auth is down', () => {
 
 describe('JWKS at the edge', () => {
   const jwks = '{"keys":[{"kty":"EC","kid":"k1"}]}';
+  const CANONICAL = `${AUTH}/auth/v1/.well-known/jwks.json`;
+  const MIN = 60;
+
+  /** A cache already holding a copy read from the origin `ageS` seconds ago (a negative age is a stamp in the future). */
+  function heldFor(ageS: number, body = '{"keys":[{"kty":"EC","kid":"old"}]}', extra: Record<string, string> = {}) {
+    const cache = stubCache();
+    cache.store.set(
+      CANONICAL,
+      new Response(body, {
+        status: 200,
+        headers: {
+          'Cache-Control': `public, max-age=${JWKS_STORE_SECONDS}`,
+          [STORED_AT_HEADER]: String(Date.now() - ageS * 1000),
+          ...extra,
+        },
+      }),
+    );
+    return { cache, body };
+  }
+  const read = async (url = CANONICAL, init: Parameters<typeof req>[1] = {}) => {
+    const c = ctx();
+    const res = await worker.fetch(req(url, init), fullEnv(), c);
+    await Promise.all(c.waits);
+    return res;
+  };
+  const quietErrors = () => vi.spyOn(console, 'error').mockImplementation(() => {});
 
   it('reads the origin once per TTL and serves the rest from the cache, whatever the query string', async () => {
     const cache = stubCache();
     reply = () => new Response(jwks, { status: 200, headers: { 'content-type': 'application/json', 'set-cookie': 's=1' } });
-    const c1 = ctx();
-    const first = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), fullEnv(), c1);
-    await Promise.all(c1.waits);
-    const second = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json?cb=123`), fullEnv(), ctx());
+    const first = await read();
+    const second = await read(`${CANONICAL}?cb=123`);
     expect(originCalls).toHaveLength(1);
     expect(first.headers.get('x-nikatru-shield-cache')).toBe('MISS');
     expect(second.headers.get('x-nikatru-shield-cache')).toBe('HIT');
     expect(await second.text()).toBe(jwks);
     expect(second.headers.get('x-nikatru-shield')).toBe('1');
     const stored = [...cache.store.values()][0];
-    // Stored for the stale-if-error bound, freshness judged by the stamp; the
-    // client is told the ruling's 300 s and never sees the internal stamp.
-    expect(stored.headers.get('Cache-Control')).toBe(`public, max-age=${JWKS_STALE_IF_ERROR_SECONDS}`);
+    // Stored for the storage lifetime, so the CACHE never expires it (an expired
+    // lookup is the phantom 504). Freshness is judged from the stamp instead.
+    expect(stored.headers.get('Cache-Control')).toBe(`public, max-age=${JWKS_STORE_SECONDS}`);
     expect(Number(stored.headers.get(STORED_AT_HEADER))).toBeGreaterThan(0);
     expect(stored.headers.get('set-cookie')).toBeNull();
+    expect(first.headers.get('set-cookie')).toBeNull();
+    expect(first.headers.get('Cache-Control')).toBe(`public, max-age=${JWKS_TTL_SECONDS}`);
     for (const r of [first, second]) {
-      expect(r.headers.get('Cache-Control')).toBe(`public, max-age=${JWKS_TTL_SECONDS}`);
       expect(r.headers.get(STORED_AT_HEADER)).toBeNull();
+      expect(r.headers.get(RETRY_AT_HEADER)).toBeNull();
+      expect(r.headers.get(STALE_HEADER)).toBeNull();
     }
-    expect([...cache.store.keys()]).toEqual([`${AUTH}/auth/v1/.well-known/jwks.json`]);
+    expect([...cache.store.keys()]).toEqual([CANONICAL]);
   });
 
   it('caches for exactly 300 s (the ruling’s bound)', () => {
     expect(JWKS_TTL_SECONDS).toBe(300);
   });
 
-  /** A cache already holding a copy read from the origin `ageS` seconds ago. */
-  function heldFor(ageS: number, body = '{"keys":[{"kty":"EC","kid":"old"}]}') {
-    const cache = stubCache();
-    cache.store.set(
-      `${AUTH}/auth/v1/.well-known/jwks.json`,
-      new Response(body, {
-        status: 200,
-        headers: {
-          'Cache-Control': `public, max-age=${JWKS_STALE_IF_ERROR_SECONDS}`,
-          [STORED_AT_HEADER]: String(Date.now() - ageS * 1000),
-        },
-      }),
-    );
-    return { cache, body };
-  }
-
-  it('🔴 the stored entry OUTLIVES its freshness: the cache must not expire it (an expired lookup is the phantom 504)', () => {
-    // Cloudflare logs each lookup of a cache-expired entry as a Cache API 504
-    // (requestSource edgeWorkerCacheAPI, cacheStatus stale). Storing for 300 s
-    // produced 879 of them a day; the stale copy must also survive to be served.
-    expect(JWKS_STALE_IF_ERROR_SECONDS).toBeGreaterThan(JWKS_TTL_SECONDS);
-  });
-
-  it('a copy younger than the TTL is served without asking the origin', async () => {
-    const { body } = heldFor(JWKS_TTL_SECONDS - 5);
-    const res = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), fullEnv(), ctx());
+  it('a HIT tells downstream caches only the REMAINING freshness, never a fresh 300 s', async () => {
+    heldFor(100);
+    const res = await read();
     expect(originCalls).toHaveLength(0);
     expect(res.headers.get('x-nikatru-shield-cache')).toBe('HIT');
-    expect(await res.text()).toBe(body);
+    expect(res.headers.get('Cache-Control')).toBe(`public, max-age=${JWKS_TTL_SECONDS - 100}`);
   });
 
-  it('a copy older than the TTL is revalidated, under a deadline, and a 200 replaces it', async () => {
+  it('🔴 the origin read is a CLEAN GET of the canonical URL: no client path variant, query or header', async () => {
+    stubCache();
+    reply = () => new Response(jwks, { status: 200 });
+    await read(`${AUTH}/auth/v1//.well-known/JWKS.json/?cb=1`, {
+      headers: { cookie: 'sb=secret', authorization: 'Bearer client', apikey: 'anon', 'user-agent': 'GlitchTip/6.2.6' },
+    });
+    expect(originCalls).toHaveLength(1);
+    const sent = originCalls[0];
+    expect(sent.url).toBe(CANONICAL);
+    expect(sent.method).toBe('GET');
+    expect(sent.headers.get('user-agent')).toBe(REVALIDATE_UA);
+    for (const h of ['cookie', 'authorization', 'apikey', 'cf-connecting-ip']) expect(sent.headers.get(h)).toBeNull();
+  });
+
+  it('🔴 a path variant answered with a 200 that is NOT a JWKS is never cached, so the canonical read is never served it', async () => {
+    const cache = stubCache();
+    reply = () => new Response('<html>not a jwks</html>', { status: 200, headers: { 'content-type': 'text/html' } });
+    const variant = await read(`${AUTH}/auth/v1//.well-known/JWKS.json/`);
+    expect(variant.status).toBe(200);
+    expect(cache.store.size).toBe(0);
+    reply = () => new Response(jwks, { status: 200 });
+    const canonical = await read();
+    expect(canonical.headers.get('x-nikatru-shield-cache')).toBe('MISS');
+    expect(await canonical.text()).toBe(jwks);
+  });
+
+  it.each(['<html>error</html>', '{"keys":[]}', '{}', 'null', ''])('🔴 a 200 whose body is %j is never stored', async (body) => {
+    const cache = stubCache();
+    reply = () => new Response(body, { status: 200 });
+    await read();
+    expect(cache.store.size).toBe(0);
+  });
+
+  it('never caches a non-200 answer', async () => {
+    const cache = stubCache();
+    reply = () => new Response('bad gateway', { status: 502 });
+    const res = await read();
+    expect(res.status).toBe(502);
+    expect(cache.store.size).toBe(0);
+  });
+
+  it('a copy older than the TTL is revalidated, under a deadline, and a usable 200 replaces it', async () => {
     const { cache } = heldFor(JWKS_TTL_SECONDS + 1);
     const deadline = vi.spyOn(AbortSignal, 'timeout');
     reply = () => new Response(jwks, { status: 200 });
-    const c = ctx();
-    const res = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), fullEnv(), c);
-    await Promise.all(c.waits);
+    const res = await read();
     expect(originCalls).toHaveLength(1);
     expect(deadline).toHaveBeenCalledWith(JWKS_REVALIDATE_TIMEOUT_MS);
     expect(res.headers.get('x-nikatru-shield-cache')).toBe('MISS');
@@ -465,67 +515,119 @@ describe('JWKS at the edge', () => {
     expect(await [...cache.store.values()][0].clone().text()).toBe(jwks);
   });
 
-  it('an entry with no stamp (stored before the stamp existed) is revalidated, not trusted', async () => {
-    const cache = stubCache();
-    cache.store.set(`${AUTH}/auth/v1/.well-known/jwks.json`, new Response('{"keys":[{"kid":"legacy"}]}', { status: 200 }));
-    reply = () => new Response(jwks, { status: 200 });
-    const res = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), fullEnv(), ctx());
-    expect(originCalls).toHaveLength(1);
-    expect(await res.text()).toBe(jwks);
+  it('🔴 an origin outage of 59 minutes past freshness serves the stale copy, marked with its age', async () => {
+    const age = JWKS_TTL_SECONDS + 59 * MIN;
+    const { body } = heldFor(age);
+    quietErrors();
+    reply = () => new Response('down', { status: 503 });
+    const res = await read();
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-nikatru-shield-cache')).toBe('STALE');
+    expect(Number(res.headers.get(STALE_HEADER))).toBeGreaterThanOrEqual(age);
+    expect(Number(res.headers.get(STALE_HEADER))).toBeLessThan(age + 5);
+    expect(res.headers.get('Cache-Control')).toBe('no-cache');
+    expect(await res.text()).toBe(body);
+  });
+
+  it('🔴 an origin outage of 61 minutes past freshness returns the ORIGIN’S ERROR: a stale copy never hides an outage for long', async () => {
+    heldFor(JWKS_TTL_SECONDS + 61 * MIN);
+    reply = () => new Response('down', { status: 503 });
+    const res = await read();
+    expect(res.status).toBe(503);
+    expect(res.headers.get(STALE_HEADER)).toBeNull();
+    expect(JWKS_MAX_STALE_SECONDS).toBe(60 * MIN);
   });
 
   it('🔴 an origin TIMEOUT with a stale copy held serves the copy — 200, never a 504', async () => {
     const { body } = heldFor(JWKS_TTL_SECONDS + 60);
-    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const err = quietErrors();
     reply = () => Promise.reject(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
-    const res = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), fullEnv(), ctx());
+    const res = await read();
     expect(res.status).toBe(200);
     expect(res.headers.get('x-nikatru-shield-cache')).toBe('STALE');
-    expect(res.headers.get('Cache-Control')).toBe('no-cache');
+    expect(res.headers.get(STALE_HEADER)).not.toBeNull();
     expect(res.headers.get(STORED_AT_HEADER)).toBeNull();
+    expect(res.headers.get(RETRY_AT_HEADER)).toBeNull();
     expect(await res.text()).toBe(body);
     expect(err.mock.calls.flat().join(' ')).toContain('shield_jwks_stale');
   });
 
   it.each([500, 502, 504, 520, 530])('🔴 an origin %i with a stale copy held serves the copy, and keeps it', async (status) => {
     const { cache, body } = heldFor(JWKS_TTL_SECONDS + 60);
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    quietErrors();
     reply = () => new Response('upstream', { status });
-    const c = ctx();
-    const res = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), fullEnv(), c);
-    await Promise.all(c.waits);
+    const res = await read();
     expect(res.status).toBe(200);
     expect(res.headers.get('x-nikatru-shield-cache')).toBe('STALE');
     expect(await res.text()).toBe(body);
     expect(await [...cache.store.values()][0].clone().text()).toBe(body);
   });
 
+  it('a 200 that is not a JWKS, with a stale copy held, serves the copy and stores nothing new', async () => {
+    const { cache, body } = heldFor(JWKS_TTL_SECONDS + 60);
+    quietErrors();
+    reply = () => new Response('<html>maintenance</html>', { status: 200 });
+    const res = await read();
+    expect(res.headers.get('x-nikatru-shield-cache')).toBe('STALE');
+    expect(await res.text()).toBe(body);
+    expect(await [...cache.store.values()][0].clone().text()).toBe(body);
+  });
+
+  it('🔴 after a failed revalidation the origin is NOT asked again for the back-off, then it is', async () => {
+    const t0 = 1_700_000_000_000;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(t0);
+    heldFor(JWKS_TTL_SECONDS + 60);
+    quietErrors();
+    reply = () => new Response('down', { status: 503 });
+    await read();
+    expect(originCalls).toHaveLength(1);
+
+    clock.mockReturnValue(t0 + (JWKS_RETRY_BACKOFF_SECONDS - 1) * 1000);
+    const during = await read();
+    expect(originCalls).toHaveLength(1);
+    expect(during.headers.get('x-nikatru-shield-cache')).toBe('STALE');
+    expect(during.headers.get(RETRY_AT_HEADER)).toBeNull();
+
+    clock.mockReturnValue(t0 + (JWKS_RETRY_BACKOFF_SECONDS + 1) * 1000);
+    reply = () => new Response(jwks, { status: 200 });
+    const after = await read();
+    expect(originCalls).toHaveLength(2);
+    expect(after.headers.get('x-nikatru-shield-cache')).toBe('MISS');
+    expect(JWKS_RETRY_BACKOFF_SECONDS).toBeGreaterThanOrEqual(30);
+    expect(JWKS_RETRY_BACKOFF_SECONDS).toBeLessThanOrEqual(60);
+  });
+
   it('an origin 4xx passes through even with a copy held: a definite answer, not an outage', async () => {
     heldFor(JWKS_TTL_SECONDS + 60);
     reply = () => new Response('not found', { status: 404 });
-    const res = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), fullEnv(), ctx());
+    const res = await read();
     expect(res.status).toBe(404);
+  });
+
+  it('🔴 a copy stamped in the FUTURE is neither fresh nor a stale fallback: the origin is asked, and its error stands', async () => {
+    heldFor(-60);
+    reply = () => new Response('down', { status: 503 });
+    const res = await read();
+    expect(originCalls).toHaveLength(1);
+    expect(res.status).toBe(503);
+  });
+
+  it('an entry with no stamp (stored before the stamp existed) is revalidated, not trusted', async () => {
+    const cache = stubCache();
+    cache.store.set(CANONICAL, new Response('{"keys":[{"kid":"legacy"}]}', { status: 200 }));
+    reply = () => new Response(jwks, { status: 200 });
+    const res = await read();
+    expect(originCalls).toHaveLength(1);
+    expect(await res.text()).toBe(jwks);
   });
 
   it('with NOTHING stored the origin read has no deadline: a slow success is never cut short', async () => {
     stubCache();
     const deadline = vi.spyOn(AbortSignal, 'timeout');
     reply = () => new Response(jwks, { status: 200 });
-    const incoming = req(`${AUTH}/auth/v1/.well-known/jwks.json`);
-    await worker.fetch(incoming, fullEnv(), ctx());
+    await read();
+    expect(originCalls).toHaveLength(1);
     expect(deadline).not.toHaveBeenCalled();
-    // The incoming request itself was forwarded, with no init and so no signal.
-    expect(originCalls).toEqual([incoming]);
-  });
-
-  it('never caches a non-200 answer', async () => {
-    const cache = stubCache();
-    reply = () => new Response('bad gateway', { status: 502 });
-    const c = ctx();
-    const res = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), fullEnv(), c);
-    await Promise.all(c.waits);
-    expect(res.status).toBe(502);
-    expect(cache.store.size).toBe(0);
   });
 
   it('a cache fault is a miss, never an outage', async () => {
@@ -535,9 +637,9 @@ describe('JWKS at the edge', () => {
         put: () => Promise.reject(new Error('cache down')),
       },
     });
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    quietErrors();
     reply = () => new Response(jwks, { status: 200 });
-    const res = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), fullEnv(), ctx());
+    const res = await worker.fetch(req(CANONICAL), fullEnv(), ctx());
     expect(res.status).toBe(200);
     expect(await res.text()).toBe(jwks);
   });
@@ -546,7 +648,7 @@ describe('JWKS at the edge', () => {
     stubCache();
     reply = () => new Response(jwks, { status: 200 });
     const env = fullEnv(0);
-    const res = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), env, ctx());
+    const res = await worker.fetch(req(CANONICAL), env, ctx());
     expect(res.status).toBe(200);
     for (const b of Object.values(env)) expect(b.calls).toHaveLength(0);
   });

@@ -12,14 +12,33 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { HOST, JWKS_PATH, MAX_5XX_RATE, MIN_SAMPLE, judge, run, tally } from '../../ops/check-jwks-error-rate.mjs';
+import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  HOST,
+  JWKS_PATH,
+  MAX_5XX_RATE,
+  MAX_STALE_STARTS_PER_DAY,
+  MIN_SAMPLE,
+  REVALIDATE_UA,
+  ROW_LIMIT,
+  judge,
+  run,
+  tally,
+} from '../../ops/check-jwks-error-rate.mjs';
+
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 const ZONE_ID = 'zone-id-1';
 const noSleep = async () => {};
 const env = { CLOUDFLARE_API_TOKEN: 'test-token' };
 const NOW = new Date('2026-09-30T20:00:00Z');
 
-const row = (date, requestSource, edgeResponseStatus, count) => ({ count, dimensions: { date, requestSource, edgeResponseStatus } });
+const row = (date, requestSource, edgeResponseStatus, count, userAgent = '') => ({
+  count,
+  dimensions: { date, requestSource, edgeResponseStatus, userAgent },
+});
 
 /** 2026-09-30 as measured: eyeball reads all 200, and the shield's Cache API
  *  lookups of an expired entry logged as 504 (the phantom). */
@@ -98,16 +117,66 @@ describe('only what a CLIENT got is judged', () => {
 });
 
 describe('the query asks for the one path on the one host', () => {
-  test('host, path and a seven-day window are the variables sent', async () => {
+  test('host, path and a window of seven WHOLE UTC days (today excluded) are the variables sent', async () => {
     const f = cloudflare();
     await quiet(() => run({ env, fetchImpl: f, sleep: noSleep, now: NOW }));
     const gql = f.calls.find((c) => c.url.endsWith('/graphql'));
     assert.equal(gql.body.variables.host, HOST);
     assert.equal(gql.body.variables.path, JWKS_PATH);
     assert.equal(gql.body.variables.zone, ZONE_ID);
-    assert.equal(gql.body.variables.until, NOW.toISOString());
-    assert.equal(gql.body.variables.since, '2026-09-23T20:00:00.000Z');
+    // NOW is 2026-09-30T20:00Z: the partial 09-30 and the partial 09-23 are both out.
+    assert.equal(gql.body.variables.until, '2026-09-30T00:00:00.000Z');
+    assert.equal(gql.body.variables.since, '2026-09-23T00:00:00.000Z');
     assert.match(gql.body.query, /requestSource/);
+    assert.match(gql.body.query, /userAgent/);
+    assert.match(gql.body.query, new RegExp(`limit: ${ROW_LIMIT}\\b`));
+  });
+
+  test('the revalidation User-Agent is the one the shield sends', () => {
+    const src = readFileSync(join(REPO, 'services', 'edge-shield', 'src', 'index.ts'), 'utf8');
+    const m = /export const REVALIDATE_UA = '([^']+)';/.exec(src);
+    assert.ok(m, 'services/edge-shield/src/index.ts no longer declares REVALIDATE_UA');
+    assert.equal(m[1], REVALIDATE_UA);
+  });
+});
+
+describe('🔴 a STALE serve hides an outage behind a 200, so it is counted on its own', () => {
+  const day = (staleStarts, status = 503) => [
+    row('2026-09-29', 'eyeball', 200, 1400),
+    row('2026-09-29', 'edgeWorkerFetch', status, staleStarts, REVALIDATE_UA),
+    row('2026-09-29', 'edgeWorkerFetch', 200, 300, REVALIDATE_UA),
+  ];
+
+  test('more than the daily allowance of failed shield revalidations is RED, though every client got a 200', async () => {
+    const rows = day(MAX_STALE_STARTS_PER_DAY + 1);
+    const { code, out } = await quiet(() => run({ env, fetchImpl: cloudflare({ rows }), sleep: noSleep, now: NOW }));
+    assert.equal(code, 1, out);
+    assert.match(out, /✗ 2026-09-29 {2}6 failed shield revalidations/);
+    assert.match(out, /0\/1400 client reads 5xx/);
+  });
+
+  test('a deadline abort (499) and no status (0) count as failed revalidations too', () => {
+    for (const status of [499, 0, 520]) {
+      assert.equal(tally(day(MAX_STALE_STARTS_PER_DAY + 1, status))[0].staleStarts, MAX_STALE_STARTS_PER_DAY + 1);
+    }
+  });
+
+  test('up to the allowance is shown, not reported', () => {
+    const v = judge(tally(day(MAX_STALE_STARTS_PER_DAY)));
+    assert.equal(v.code, 0);
+    assert.match(v.lines.join('\n'), /5 failed shield revalidation\(s\)/);
+  });
+
+  test('a 5xx subrequest from any OTHER caller is context, never a stale start', () => {
+    const rows = [
+      row('2026-09-29', 'eyeball', 200, 1400),
+      row('2026-09-29', 'edgeWorkerFetch', 503, 50, 'GlitchTip/6.2.6'),
+      row('2026-09-29', 'edgeWorkerCacheAPI', 504, 900, ''),
+    ];
+    const [t] = tally(rows);
+    assert.equal(t.staleStarts, 0);
+    assert.equal(t.sub5xx, 950);
+    assert.equal(judge([t]).code, 0);
   });
 });
 
@@ -145,6 +214,13 @@ describe('COULD NOT LOOK is exit 2, never a pass', () => {
   test('a GraphQL HTTP refusal', async () => {
     const { code } = await quiet(() => run({ env, fetchImpl: cloudflare({ gqlStatus: 403 }), sleep: noSleep, now: NOW }));
     assert.equal(code, 2);
+  });
+
+  test('an answer AT the row limit may be truncated, so it is not judged', async () => {
+    const rows = Array.from({ length: ROW_LIMIT }, () => row('2026-09-29', 'eyeball', 200, 2));
+    const { code, out } = await quiet(() => run({ env, fetchImpl: cloudflare({ rows }), sleep: noSleep, now: NOW }));
+    assert.equal(code, 2, out);
+    assert.match(out, /may be truncated/);
   });
 
   test('a row without a date or a count is refused, not skipped', () => {
