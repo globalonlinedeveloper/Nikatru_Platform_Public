@@ -52,17 +52,47 @@ class SubMath {
       MoneyBag.sum(charging(s).map((Subscription x) => x.yearlyCharge));
 
   /// The money that leaves the account in [month] of [year]: the whole
-  /// [Subscription.price] of every row whose one renewal falls in it.
+  /// [Subscription.price] of EVERY charge in it ([chargesInMonth]).
   ///
   /// 🔴 `price`, NOT THE SHARE, for the reason [dueWithin] gives: a yearly
   /// renewal in March takes the whole yearly price in March. The calendar
   /// summed the twelfth and read 12x short in the month the money went.
+  ///
+  /// ⏱ ST truth pass (CA-01): and every charge, not the one stored date — a
+  /// weekly plan takes its price four or five times in a month.
   static MoneyBag chargedInMonth(List<Subscription> s, int year, int month) =>
       MoneyBag.sum(
-        charging(s)
-            .where((Subscription x) => x.renewsIn(year, month))
-            .map((Subscription x) => x.price),
+        chargesInMonth(
+          s,
+          year,
+          month,
+        ).map((({Subscription sub, DateTime date}) c) => c.sub.price),
       );
+
+  /// Every charge in [month] of [year], one entry per charge, soonest first —
+  /// CHARGING rows only, so a paused plan dated this month is neither drawn
+  /// nor counted. The calendar's dots, its list and [chargedInMonth] all read
+  /// this one list, so the three cannot disagree.
+  static List<({Subscription sub, DateTime date})> chargesInMonth(
+    List<Subscription> s,
+    int year,
+    int month,
+  ) {
+    final List<({Subscription sub, DateTime date})> out =
+        <({Subscription sub, DateTime date})>[
+          for (final Subscription x in charging(s))
+            for (final DateTime d in x.chargesIn(year, month))
+              (sub: x, date: d),
+        ];
+    out.sort((
+      ({Subscription sub, DateTime date}) a,
+      ({Subscription sub, DateTime date}) b,
+    ) {
+      final int byDate = a.date.compareTo(b.date);
+      return byDate != 0 ? byDate : _tieBreak(a.sub, b.sub);
+    });
+    return out;
+  }
 
   static List<CategoryTotal> categoryTotals(List<Subscription> s) {
     final Map<String, List<MonthlyShare>> m = <String, List<MonthlyShare>>{};

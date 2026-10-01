@@ -489,7 +489,7 @@
       "anchor": "// the header cannot drift from the buckets underneath it.",
       "status": "proven",
       "test": "tooling/ci/test/no-hardcoded-strings.test.mjs",
-      "case": "prints the three dead keys, exits 0, and states its domain",
+      "case": "prints the dead keys, exits 0, and states its domain",
       "proves": "The assertion right under the sentence counts the printed per-key lines and requires them to equal the number in the owner header. A header computed apart from the buckets and disagreeing with them fails it."
     },
     {
