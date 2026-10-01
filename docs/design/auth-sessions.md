@@ -288,3 +288,21 @@ extend the probe with an access-token leg: the pre-reset access token must get a
    per-isolate memo of "no record for this user" that trades up to its lifetime of extra gap?
 3. After a password reset, should the other devices be refused at the Workers immediately
    (`revoke-others`, §4), or only when they next refresh (today)?
+
+## 9. Provider refresh tokens at rest (#1104), and what the ciphertext is bound to
+
+⏱ 2026-10-02 · a correction recorded here because #1104's merged body claimed otherwise (post-merge
+review, finding 6). The refresh token a provider sign-in hands the platform Worker is sealed with
+AES-256-GCM under `TOKEN_ENC_KEY_V1` (a 96-bit random IV per write, a 128-bit tag) before it is
+stored (`services/platform/src/lib/token-crypto.ts`). The additional authenticated data binds the
+ciphertext to its ROW: the table, the provider, the subject and the key id. It does **not** bind
+`app_id`: #1104's body said "user, provider, app, key id", and that was wrong. The impact is nil
+today, because `app_id` selects no credential: the Apple revoke takes its `client_id` from the
+Worker's environment, and the row's primary key is `(subject_ref, provider)`. Add `app_id` to the
+AAD only if it ever selects one, and then as `TOKEN_ENC_KEY_V2` with a re-seal pass, because a
+change to the AAD makes every existing row unreadable under v1.
+
+The key is a row of `tooling/worker-secrets.json` (production `TOKEN_ENC_KEY_V1`; the sandbox
+Worker has its own, vault key `TOKEN_ENC_KEY_V1_SANDBOX`), and `tooling/ops/rollback-floors.json`
+refuses to put `platform` back on a build before `117bd66e`, which would read a sealed row's `''`
+as a token.
