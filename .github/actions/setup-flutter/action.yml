@@ -122,7 +122,10 @@ runs:
         mkdir -p "$ARCHIVE_DIR"
         cd "$ARCHIVE_DIR"
         if [ ! -f "$ARCHIVE_FILE" ]; then curl --fail --silent --show-error --location --retry 3 --retry-all-errors --connect-timeout 15 --output "$ARCHIVE_FILE.part" "$ARCHIVE_URL"; mv "$ARCHIVE_FILE.part" "$ARCHIVE_FILE"; fi
-        if command -v sha256sum >/dev/null 2>&1; then printf '%s  %s\n' "$ARCHIVE_SHA256" "$ARCHIVE_FILE" | sha256sum --check; else printf '%s  %s\n' "$ARCHIVE_SHA256" "$ARCHIVE_FILE" | shasum -a 256 --check; fi
+        # ⏱ 2026-10-01: macOS runner images now ship a BSD `sha256sum` ("usage: sha256sum [-bctwz]") with no
+        # `--check`, so "does a sha256sum exist" picked the wrong tool and the Apple build failed before unpacking
+        # (Build apps run 36864391489). macOS always has perl's `shasum`, which checks the same "<hex>  <file>" line.
+        if [ "$RUNNER_OS" = macOS ] || ! command -v sha256sum >/dev/null 2>&1; then printf '%s  %s\n' "$ARCHIVE_SHA256" "$ARCHIVE_FILE" | shasum -a 256 --check; else printf '%s  %s\n' "$ARCHIVE_SHA256" "$ARCHIVE_FILE" | sha256sum --check; fi
         rm -rf "$SDK_ROOT"
         mkdir -p "$SDK_ROOT"
         case "$ARCHIVE_FILE" in *.zip) unzip -q -o "$ARCHIVE_FILE" -d "$SDK_ROOT" ;; *) tar -xJf "$ARCHIVE_FILE" -C "$SDK_ROOT" ;; esac
