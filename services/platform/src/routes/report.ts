@@ -33,6 +33,7 @@ import { isKnownApp } from '../config';
 import { readBoundedBody } from '../lib/body';
 import { withinRateLimit } from '../lib/edge-ceiling';
 import { notifyReport } from '../lib/report-notify';
+import { mailFor } from '../ports';
 
 const report = new Hono<AppEnv>();
 
@@ -171,7 +172,7 @@ report.post('/report', async (c) => {
   }
 
   c.executionCtx.waitUntil(
-    notifyReport(c.env.PLATFORM_DB, c.env.RESEND_API_KEY, { id, appId: parsed.appId, reason: parsed.reason, createdAt: now }),
+    notifyReport(c.env.PLATFORM_DB, mailFor('reports', c.env), { id, appId: parsed.appId, reason: parsed.reason, createdAt: now }),
   );
   return c.json({ ok: true, id }, 202);
 });

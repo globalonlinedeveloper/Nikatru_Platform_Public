@@ -1,0 +1,136 @@
+{
+  "$schema": "./port.schema.json",
+  "port": "mail",
+  "level": { "claimed": 3, "target": 3 },
+  "interface": {
+    "ts": { "file": "services/_shared/src/ports/mail.ts", "symbols": ["MailTransport", "MailMessage", "MailOutcome"] }
+  },
+  "adapters": [
+    {
+      "id": "resend",
+      "vendor": "resend",
+      "status": "live",
+      "impl": { "file": "services/platform/src/adapters/mail/resend.ts", "symbol": "createResendMail" },
+      "capabilities": ["send", "idempotency"],
+      "secrets": ["RESEND_API_KEY", "RESEND_REMINDERS_API_KEY"],
+      "identity": ["mail.from.reports", "mail.from.reminders", "supportEmail"],
+      "environments": ["sandbox", "live"],
+      "cost": { "feeCells": [], "unit": null },
+      "conformance": { "file": "services/platform/test/mail-resend.conformance.test.ts" },
+      "exportDuty": "Leaves with us: nothing to move for the record — every report and reminder is ours in platform_db (content_reports, reminder_sent), and Resend holds only its delivery log. MUST be exported before any switch: the suppression list (bounces, complaints, unsubscribes), account-wide on the auth+alerts account ([ADR 041]); mailing it from a new provider re-mails people who complained. Cannot move: sending reputation, which is the provider's and the domain's history with receivers.",
+      "readAt": { "url": "https://resend.com/docs/api-reference/emails/send-email", "on": "2026-10-01" },
+      "delivery": {
+        "rail": "resend",
+        "dnsNeeded": [],
+        "domainVerification": "mail.nikatru.com is verified on the Resend auth+alerts account (tooling/mail-transport.json rails[resend]); a send from the bare domain is refused 550 (trap auth-06), so every stream's From is on the verified subdomain.",
+        "warming": "In service: the reputation of mail.nikatru.com on Resend is the one a target starts without.",
+        "suppression": { "export": null, "import": null }
+      }
+    },
+    {
+      "id": "ses",
+      "vendor": "amazon-ses",
+      "status": "draft",
+      "impl": { "file": "services/platform/src/adapters/mail/ses.ts", "symbol": "createSesMail" },
+      "capabilities": ["send"],
+      "secrets": ["AWS_SES_ACCESS_KEY_ID", "AWS_SES_SECRET_ACCESS_KEY"],
+      "identity": ["mail.from.reports", "mail.from.reminders", "supportEmail"],
+      "environments": [],
+      "cost": { "feeCells": [], "unit": null },
+      "conformance": { "file": "services/platform/test/mail-ses.conformance.test.ts" },
+      "exportDuty": "Leaves with us: as for resend, every record is ours in platform_db. Export on leaving: the account-level suppression list (SES v2 ListSuppressedDestinations). Cannot move: the account's sending reputation and its production-access (out-of-sandbox) grant.",
+      "readAt": { "url": "https://docs.aws.amazon.com/ses/latest/APIReference-V2/API_SendEmail.html", "on": "2026-10-01" },
+      "delivery": {
+        "rail": null,
+        "dnsNeeded": [
+          { "kind": "dkim", "name": "<token>._domainkey.mail.nikatru.com (three)", "expect": "Easy DKIM: three CNAMEs, each <token>.dkim.amazonses.com" },
+          { "kind": "mx", "name": "<mail-from>.mail.nikatru.com", "expect": "return-path (custom MAIL FROM): MX 10 feedback-smtp.<region>.amazonses.com" },
+          { "kind": "spf", "name": "<mail-from>.mail.nikatru.com", "expect": "v=spf1 include:amazonses.com ~all on the MAIL FROM subdomain" },
+          { "kind": "dmarc", "name": "_dmarc.nikatru.com", "expect": "the existing organisational record; aligned (relaxed) through DKIM d=mail.nikatru.com and the MAIL FROM subdomain" }
+        ],
+        "domainVerification": "Create the mail.nikatru.com domain identity in SES (CreateEmailIdentity), publish its DKIM CNAMEs, and wait for VerifiedForSendingStatus; then request production access, which lifts the sandbox's verified-recipient rule.",
+        "warming": "A new SES account starts with no reputation and a low sending quota: ramp the reminders stream over days, reports first.",
+        "suppression": { "export": null, "import": null }
+      }
+    },
+    {
+      "id": "smtp",
+      "vendor": "resend",
+      "status": "external",
+      "impl": { "configAt": "Box C GoTrue env GOTRUE_SMTP_*", "verify": "node tooling/ops/check-mail-auth-dns.mjs && node tooling/ops/verify-supabase-templates.mjs" },
+      "capabilities": ["send"],
+      "secrets": [],
+      "identity": [],
+      "environments": ["live"],
+      "cost": { "feeCells": [], "unit": null },
+      "conformance": null,
+      "exportDuty": "Auth mail (confirmations, password resets) is GoTrue's own SMTP send through the Resend relay on the same auth+alerts account; it carries the same account-wide suppression list as the resend row. Switching it is a Box C env edit plus DNS, not code.",
+      "readAt": null
+    },
+    {
+      "id": "fake",
+      "vendor": null,
+      "status": "fake",
+      "impl": { "file": "services/_shared/src/ports/fakes/mail.ts", "symbol": "createFakeMail" },
+      "capabilities": ["send", "idempotency"],
+      "secrets": [],
+      "identity": [],
+      "environments": ["test", "sandbox"],
+      "cost": { "feeCells": [], "unit": null },
+      "conformance": { "file": "services/_shared/test/mail-fake.conformance.test.ts" },
+      "exportDuty": "Nothing leaves: the fake records messages in memory for the life of the test and has no list to export.",
+      "readAt": null
+    }
+  ],
+  "streams": {
+    "reports": {
+      "adapter": "resend",
+      "secrets": ["RESEND_API_KEY"],
+      "from": "mail.from.reports",
+      "to": "supportEmail",
+      "why": "The support notice that a content report arrived (services/platform/src/lib/report-notify.ts), capped by MAX_REPORT_NOTICES_PER_DAY because the auth+alerts quota is shared with password resets."
+    },
+    "reminders": {
+      "adapter": "resend",
+      "secrets": ["RESEND_REMINDERS_API_KEY", "RESEND_API_KEY"],
+      "from": "mail.from.reminders",
+      "why": "The renewal digest (services/platform/src/lib/reminders.ts). Its own key when RESEND_REMINDERS_API_KEY is set; until then the reports key, under the digest's own small daily cap (MAX_REMINDER_MAILS_PER_DAY), which lane train-st-reminder-delivery owns and this registry never raises."
+    },
+    "auth": {
+      "adapter": "smtp",
+      "secrets": [],
+      "from": null,
+      "why": "Confirmations and password resets: GoTrue on Box C sends them over SMTP (configured in its env, not in this tree). Its sender must be on mail.nikatru.com (trap auth-06); tooling/mail-transport.json is the record of the relay."
+    }
+  },
+  "selection": {
+    "by": "stream",
+    "source": "services/platform/src/ports.ts#MAIL_STREAM_TABLE",
+    "default": { "live": "resend", "sandbox": "resend", "test": "fake" },
+    "canary": null
+  },
+  "generated": false,
+  "handTables": [
+    {
+      "file": "services/platform/src/ports.ts",
+      "anchor": "export const MAIL_STREAM_TABLE",
+      "until": "port-pay-core",
+      "why": "The stream → adapter and secret table is a hand copy of this file's `streams` until the port renderer lands; services/platform/test/mail-port.test.ts fails on any difference."
+    }
+  ],
+  "conformance": {
+    "suite": { "file": "services/_shared/test/conformance/mail.ts", "runner": "runMailConformance" },
+    "pending": []
+  },
+  "switch": {
+    "runbook": "Private/runbooks/switch-vendor.md#mail",
+    "dryRun": "node tooling/ops/port-switch.mjs mail --to <adapter> --dry-run"
+  },
+  "_why": [
+    "L3: every Worker send goes through MailTransport, chosen per stream in the composition root (services/platform/src/ports.ts mailFor); no caller imports an adapter. resend and the fake pass runMailConformance with nothing pending; ses passes it too, as a draft no environment selects.",
+    "Senders are entity-source paths (tooling/house-identity.json mail.from.*, supportEmail), rendered into services/platform/src/generated/entity.ts by tooling/ports/render-entity.mjs; assert-ports limb 9 refuses an owner-domain address literal anywhere else in services/*/src.",
+    "The ses row exists to prove the port is not Resend-shaped: SES v2 SendEmail, SigV4 signed with WebCrypto, a different id field and error model, and no idempotency (so it declares none). Its secret names are declared on the Worker Env and not provisioned.",
+    "The smtp row is auth mail: GoTrue's SMTP on Box C through the Resend relay — the same vendor as the resend row, one port. Its switch is a Box C env edit plus DNS.",
+    "THE SUPPRESSION LIST MUST MOVE WITH ANY SWITCH ([ADR 041]: account-wide). Its export and import methods are null until Private/runbooks/switch-vendor.md#mail names them, so every mail dry run FAILs on it until then."
+  ]
+}

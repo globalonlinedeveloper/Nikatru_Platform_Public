@@ -1473,6 +1473,14 @@
       "test": "tooling/ci/test/ports.test.mjs",
       "case": "the shape is READ from port.schema.json: tightening the schema file alone reddens limb 1",
       "proves": "The same case: editing this file alone changes the guard's verdict, which is only true while the guard reads it."
+    },
+    {
+      "file": "tooling/ports/render-entity.mjs",
+      "anchor": "cannot drift from the source in CI.",
+      "status": "proven",
+      "test": "tooling/ci/test/ports.test.mjs",
+      "case": "red: an entity-source sender edited without a re-render reddens limb 9 (the generated module is stale)",
+      "proves": "port-mail. The case edits a sender in a copy of the REAL tooling/house-identity.json and leaves services/platform/src/generated/entity.ts as it was; assert-ports exits 1 with limb 9 naming render-entity: STALE, so the generated module cannot differ from the entity source while CI's assert-ports step is green."
     }
   ],
   "backlog": {}

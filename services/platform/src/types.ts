@@ -567,6 +567,23 @@ export interface Env {
    */
   RESEND_API_KEY?: string;
   /**
+   * port-mail · the `reminders` stream's own Resend key (tooling/ports/mail.json
+   * `streams.reminders`). DECLARED, NOT PROVISIONED: until it is set the reminder
+   * digest sends with RESEND_API_KEY under its own small daily cap
+   * (lib/reminders.ts MAX_REMINDER_MAILS_PER_DAY). src/ports.ts `mailFor` is the
+   * one reader.
+   */
+  RESEND_REMINDERS_API_KEY?: string;
+  /**
+   * port-mail · the Amazon SES DRAFT adapter's credentials
+   * (src/adapters/mail/ses.ts; tooling/ports/mail.json row `ses`, status draft,
+   * no environment). DECLARED, NOT PROVISIONED — no AWS account exists and
+   * nothing reads them; the names are here so a switch rehearsal
+   * (`port-switch.mjs mail --to ses --dry-run`) can name them.
+   */
+  AWS_SES_ACCESS_KEY_ID?: string;
+  AWS_SES_SECRET_ACCESS_KEY?: string;
+  /**
    * The commit this Worker was deployed from — `--var RELEASE:<sha>` in
    * deploy-workers.yml. NOT `API_VERSION`: that is the literal "v1" and has
    * never changed, so it groups every error the factory will ever report into

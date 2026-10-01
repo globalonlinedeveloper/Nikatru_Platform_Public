@@ -222,3 +222,63 @@ describe('port-switch — margin over a copy of the REAL registers', () => {
     assert.deepEqual(feeFor(paddle, 'paddle', 3499, cells).cells, ['paddle-checkout']);
   });
 });
+
+describe('port-switch — a MAIL switch moves more than code (C9–C14)', () => {
+  let root;
+  before(() => {
+    root = mkdtempSync(join(tmpdir(), 'port-switch-mail-'));
+    for (const rel of ['tooling/ports', 'tooling/mail-transport.json', 'tooling/house-identity.json', 'tooling/ceilings.json', 'tooling/channel-register.json',
+      'services/platform/src/types.ts', 'services/platform/test/mail-resend.conformance.test.ts', 'services/platform/test/mail-ses.conformance.test.ts',
+      'services/_shared/test/mail-fake.conformance.test.ts']) cpSync(join(REPO, rel), join(root, rel), { recursive: true });
+  });
+  const edit = (rel, fn) => {
+    const abs = join(root, rel);
+    const before = readFileSync(abs, 'utf8');
+    const doc = JSON.parse(before);
+    fn(doc);
+    writeFileSync(abs, JSON.stringify(doc));
+    return () => writeFileSync(abs, before);
+  };
+
+  it('red: --to ses prints the SES draft as FAIL (status: draft) and exits 1 — on the REAL registry', () => {
+    const r = run(['mail', '--to', 'ses', '--dry-run']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /FAIL — C1 target: `ses` is draft \(status: draft\)/);
+    assert.match(r.out, /FAIL\s+C2 status: `ses` is draft/);
+    const c9 = r.out.split('\n').find((l) => /C9 dns/.test(l)) ?? '';
+    assert.match(c9, /^FAIL\s+C9 dns: `ses` has no rail/);
+    for (const k of ['SPF include', 'DKIM', 'return-path MX', 'DMARC alignment']) assert.ok(c9.includes(k), `C9 names ${k}`);
+    assert.match(r.out, /FAIL\s+C12 suppression: .*export from `resend`, import into `ses`/);
+  });
+  it('the real resend rail names SPF, DKIM, return-path and DMARC; the suppression duty FAILs until named; cost is LOST, not guessed', () => {
+    const r = run(['mail', '--to', 'resend', '--dry-run']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /PASS\s+C9 dns: rail `resend`: .*SPF include send\.mail\.nikatru\.com.*return-path MX.*DKIM resend\._domainkey/);
+    assert.match(r.out, /PASS\s+C11 streams: .*auth: smtp \(external/);
+    assert.match(r.out, /FAIL\s+C12 suppression/);
+    assert.match(r.out, /LOST\s+C14 cost: tooling\/ceilings\.json records no row for resend/);
+  });
+  it('green control: with both methods named, C12 passes and secrets are listed per stream', () => {
+    const undo = edit('tooling/ports/mail.json', (d) => {
+      for (const a of d.adapters) if (a.delivery) a.delivery.suppression = { export: 'export method named in the runbook', import: 'import method named in the runbook' };
+    });
+    try {
+      const r = run(['mail', '--to', 'resend', '--from', 'ses', '--dry-run', '--root', root]);
+      assert.match(r.out, /PASS\s+C12 suppression: export: export method named in the runbook → import: import method named in the runbook/);
+      assert.match(r.out, /reports: stays on resend/);
+    } finally { undo(); }
+  });
+  it('red: a rail missing its return-path MX FAILs C9', () => {
+    const undo = edit('tooling/mail-transport.json', (d) => { d.authRecords.records = d.authRecords.records.filter((x) => x.kind !== 'mx'); });
+    try {
+      const r = run(['mail', '--to', 'resend', '--from', 'ses', '--dry-run', '--root', root]);
+      assert.match(r.out, /FAIL\s+C9 dns: rail `resend` in tooling\/mail-transport\.json lacks return-path MX/);
+    } finally { undo(); }
+  });
+  it('a fake target needs no DNS, domain or warm-up — and is still refused for live by C1', () => {
+    const r = run(['mail', '--to', 'fake', '--dry-run', '--env', 'test', '--from', 'resend', '--root', root]);
+    assert.match(r.out, /PASS\s+C9 dns: `fake` is a fake/);
+    const live = run(['mail', '--to', 'fake', '--dry-run', '--root', root]);
+    assert.match(live.first, /FAIL — C1 target: `fake` is a fake/);
+  });
+});

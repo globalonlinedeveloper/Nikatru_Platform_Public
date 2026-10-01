@@ -34,18 +34,22 @@ import type { AppTarget, Env } from '../types';
 import { rollForward } from '../renewals';
 import { allRows, firstRow } from './d1';
 import { readAccount } from './platform-erasure';
-import { sendResendMail } from './report-notify';
 import { sha256Hex } from '../middleware/ext-device-auth';
 import { catalogueApp } from './catalog';
 import { parseReminderDays } from '../../../_shared/src/reminder-days';
+import type { MailOutcome, MailTransport } from '../../../_shared/src/ports/mail';
+import { MAIL_FROM } from '../generated/entity';
+import { mailFor } from '../ports';
 
 /**
- * [ADR 029] §2 — everything a machine sends leaves Resend from mail.nikatru.com,
- * typed by local-part. Owner alerts are `alerts@`; a reminder to a USER is a
- * different type of mail, so it has its own local-part and its own display name,
- * and a recipient can filter or trust the two separately.
+ * [ADR 029] §2 — everything a machine sends leaves from mail.nikatru.com, typed
+ * by local-part. Owner alerts are `alerts@`; a reminder to a USER is a different
+ * type of mail, so it has its own local-part and its own display name, and a
+ * recipient can filter or trust the two separately. The value is the entity
+ * source's (tooling/house-identity.json `mail.from.reminders`); the mail port
+ * sets it from the `reminders` stream, so this export only names it.
  */
-export const REMINDER_FROM = 'Nikatru reminders <reminders@mail.nikatru.com>';
+export const REMINDER_FROM: string = MAIL_FROM.reminders;
 
 /**
  * The `kind` column of `reminder_sent`. A closed set, enforced here (0020 has
@@ -594,7 +598,7 @@ async function remindApp(
   env: Env,
   target: AppTarget,
   state: RunState,
-  apiKey: string,
+  mail: MailTransport,
   serviceKey: string,
   fetchImpl: typeof fetch,
 ): Promise<ReminderRow> {
@@ -640,28 +644,28 @@ async function remindApp(
       let delivered = false;
       let refused = false;
       let why = '';
+      let res: MailOutcome;
       try {
-        const res = await sendResendMail(
-          apiKey,
-          {
-            from: REMINDER_FROM,
-            to: [account.email],
-            subject: digest.subject,
-            text: digest.text,
-            html: digest.html,
-            headers: {
-              'List-Unsubscribe': `<${unsubscribeUrl}>`,
-              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-            },
+        res = await mail.send({
+          stream: 'reminders',
+          to: [account.email],
+          subject: digest.subject,
+          text: digest.text,
+          html: digest.html,
+          headers: {
+            'List-Unsubscribe': `<${unsubscribeUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
           },
-          fetchImpl,
-        );
-        delivered = res.ok;
-        refused = !res.ok;
-        if (!res.ok) why = `Resend answered ${res.status}`;
+        });
       } catch (err) {
-        why = `Resend not reached: ${String(err).slice(0, 80)}`;
+        // The port resolves every outcome; a throw is a defect, and it may have sent.
+        res = { ok: false, kind: 'timeout', retryable: false, detail: `mail transport threw ${err instanceof Error ? err.name : 'a non-error'}` };
       }
+      delivered = res.ok;
+      // `timeout` got no answer and may have been delivered; every other failure
+      // is a definite answer that delivered nothing.
+      refused = !res.ok && res.kind !== 'timeout';
+      if (!res.ok) why = res.detail;
       if (delivered) {
         sent++;
         state.sentToday++;
@@ -709,6 +713,12 @@ export async function runReminderMail(
       detail: `not configured: ${missing.join(' and ')} not set on this Worker, so no reminder can be sent`,
     }));
   }
+  // The `reminders` stream (src/ports.ts): its own key when one is set, else the
+  // reports key above — so with RESEND_API_KEY present this is never null.
+  const mail = mailFor('reminders', env, fetchImpl);
+  if (!mail) {
+    return targets.map((t) => ({ target: t.appId, ok: false, detail: 'not configured: no key for the reminders mail stream' }));
+  }
   const today = ymdOf(nowMs);
   const state: RunState = {
     today,
@@ -725,7 +735,7 @@ export async function runReminderMail(
   }
   const rows: ReminderRow[] = [];
   for (const t of targets) {
-    rows.push(await remindApp(env, t, state, env.RESEND_API_KEY as string, env.SUPABASE_SERVICE_ROLE_KEY as string, fetchImpl));
+    rows.push(await remindApp(env, t, state, mail, env.SUPABASE_SERVICE_ROLE_KEY as string, fetchImpl));
   }
   return rows;
 }

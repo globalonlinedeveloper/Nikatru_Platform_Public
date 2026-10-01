@@ -19,5 +19,18 @@
   "homepageUrl": {
     "value": "https://nikatru.com/",
     "why": "The storefront that lists every extension. Optional in a store listing, and the same for every tool."
+  },
+  "mail": {
+    "_why": "PIPELINE identity, not a legal fact: the From of each Worker mail stream (tooling/ports/mail.json `streams`). Rendered into services/platform/src/generated/entity.ts by tooling/ports/render-entity.mjs, the only place Worker code reads an address from. Every sender is on mail.nikatru.com, the subdomain the Resend account has verified ([ADR 029] §2; trap auth-06: a send from the bare domain is refused 550). The values are the ones the code carried as literals until port-mail moved them here; none was chosen anew.",
+    "from": {
+      "reports": {
+        "value": "Nikatru reports <alerts@mail.nikatru.com>",
+        "why": "[ADR 029] §2: owner alerts are `alerts@` on the pooled machine-mail subdomain. The support notice that a content report arrived (services/platform/src/lib/report-notify.ts); was REPORT_NOTICE_FROM."
+      },
+      "reminders": {
+        "value": "Nikatru reminders <reminders@mail.nikatru.com>",
+        "why": "[ADR 029] §2: a reminder to a USER is a different type of mail from an owner alert, so it has its own local-part and display name (services/platform/src/lib/reminders.ts); was REMINDER_FROM."
+      }
+    }
   }
 }
