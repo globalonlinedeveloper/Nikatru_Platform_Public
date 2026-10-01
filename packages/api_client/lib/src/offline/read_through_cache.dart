@@ -59,6 +59,11 @@ const Duration kRevalidateAfter = Duration(seconds: 2);
 /// request — the debounce that stops a slow network from looping.
 const Duration kMinRevalidateInterval = Duration(seconds: 30);
 
+/// The Worker's `error` code on a 409 that means "this Idempotency-Key is
+/// still being processed" (services/subscriptiontracker-api/src/lib/
+/// idempotency.ts) — the ONE 409 an outbox may wait out.
+const String kIdempotencyInProgress = 'idempotency_in_progress';
+
 /// How the shared outbox should treat a failed send over [RestClient]: the one
 /// mapping from this client's failures to `OutboxFailure`.
 ///
@@ -72,8 +77,13 @@ OutboxFailure classifyForOutbox(Object error) {
   if (s == 0) return OutboxFailure.offline;
   if (s == 401) return OutboxFailure.unauthorized;
   // The server is still processing this very key: wait, never count it
-  // (review #1075 round 3, minor d).
-  if (s == 409) return OutboxFailure.busy;
+  // (review #1075 round 3, minor d). ONLY that 409 (review #1075 round 4,
+  // minor 1): `busy` costs no attempt and never dead-letters, so any other 409
+  // — a conflict that no wait will resolve — classified as busy would hold
+  // its entry, and every write queued behind it, forever. It is a refusal.
+  if (s == 409 && error.message == kIdempotencyInProgress) {
+    return OutboxFailure.busy;
+  }
   if (s == 408 || s == 429 || s >= 500) {
     return OutboxFailure.transient;
   }
