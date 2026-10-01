@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/e2e_keys.dart';
+import '../../core/format/category_label.dart';
 import '../../core/format/money_format.dart';
 import '../../data/models/payment_record.dart';
 import '../../data/models/subscription.dart';
@@ -519,7 +520,7 @@ class _PaymentHistory extends ConsumerWidget {
 /// simply active — its status, joined by " · " with no empty part (ST-E1).
 @visibleForTesting
 String detailSubtitle(AppLocalizations l10n, Subscription s) => <String>[
-  s.category,
+  categoryLabel(l10n, s.category),
   if (s.plan.trim().isNotEmpty) s.plan.trim(),
   if (s.status == SubscriptionStatus.paused) l10n.statusPaused,
   if (s.status == SubscriptionStatus.cancelled) l10n.statusCancelled,
