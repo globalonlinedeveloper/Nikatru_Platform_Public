@@ -152,8 +152,11 @@ const MAX_CATEGORY_ID = 64;
  *
  * @ceiling none — a VALUE bound on one numeric column, not a resource bound. Its
  * real right-hand side is Number.MAX_SAFE_INTEGER, a language limit.
+ *
+ * Exported because routes/budget.ts bounds `monthly_budget` and each cap by the
+ * same figure: a budget is an amount of the same money a price is.
  */
-const MAX_PRICE = 1_000_000_000;
+export const MAX_PRICE = 1_000_000_000;
 /**
  * Upper bound on `price_minor`: MAX_PRICE in a currency with four minor-unit
  * digits, the most ISO 4217 assigns. 10^13, well inside exact-integer range.
@@ -240,8 +243,9 @@ const RAILS = [
 ] as const;
 const CYCLE_UNITS = ['day', 'week', 'month', 'year'] as const;
 
-/** ISO 4217 is three letters; stored upper case, as the client reads it. */
-const CURRENCY = /^[A-Za-z]{3}$/;
+/** ISO 4217 is three letters; stored upper case, as the client reads it.
+ *  Exported so routes/budget.ts checks a budget's currency by the same rule. */
+export const CURRENCY = /^[A-Za-z]{3}$/;
 /** A catalogue key: lower-case, no spaces, nothing a URL or a file path would
  *  need to escape. */
 const SERVICE_ID = /^[a-z0-9][a-z0-9._-]*$/;

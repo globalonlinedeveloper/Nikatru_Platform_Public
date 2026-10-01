@@ -20,6 +20,7 @@ import { Hono } from 'hono';
 import report, { MAX_REPORTS_PER_USER_PER_HOUR, MAX_EXCERPT_CHARS, parseReport } from '../src/routes/report';
 import { MAX_REPORT_NOTICES_PER_DAY, REPORT_NOTICE_TO, RESEND_EMAILS_URL } from '../src/lib/report-notify';
 import { retentionSweep, CONTENT_REPORTS_RETENTION_DAYS, type RetentionPeriods } from '../src/scheduled';
+import { app as realApp } from '../src/index';
 import type { AppEnv } from '../src/types';
 import { realPlatformDb, type RealDb } from './harness';
 
@@ -341,5 +342,22 @@ describe('a parallel burst never exceeds a cap', () => {
     expect((await post(db, ALICE, GOOD, { RESEND_API_KEY: 're_test_key' })).status).toBe(202);
     expect(db.count('content_reports', 'notified_at IS NOT NULL')).toBe(1);
     // The refusal half is 'a failed send leaves the report stored and un-noticed' above.
+  });
+});
+
+// ⏱ 2026-10-01 · rv2-services-017. Every case above drives the route with the
+// caller already set, so none of them could see `platformAuth` come off
+// `/v1/report` in src/index.ts. This one goes through the REAL app.
+describe('POST /v1/report — behind auth on the REAL app', () => {
+  it('🔴 no Authorization is a 401, and zero content_reports rows', async () => {
+    const db = realPlatformDb();
+    const res = await realApp.request(
+      'http://x/v1/report',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(GOOD) },
+      { PLATFORM_DB: db, SUPABASE_URL: 'https://auth.example' } as unknown as AppEnv['Bindings'],
+    );
+    expect(res.status).toBe(401);
+    expect(db.count('content_reports')).toBe(0);
+    expect(db.sql.filter((q) => q.includes('content_reports'))).toEqual([]);
   });
 });
