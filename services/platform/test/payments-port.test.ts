@@ -4,9 +4,10 @@
 //   1. A rail without `checkout` cannot be handed to the checkout dispatcher — a COMPILE
 //      error, held by `@ts-expect-error` (an unused expect-error fails `tsc --noEmit`, so
 //      deleting the guard in services/_shared/src/ports/payments.ts reddens the typecheck).
-//   2. The fake rail is a 404 at the inbound door on a LIVE deploy, exactly as an unknown
-//      provider is, and is served on a sandbox deploy (src/ports.ts `inboundFor`, from the
-//      rendered environments in src/generated/ports.ts).
+//   2. The fake rail is a 404 at the inbound door on EVERY deployed environment, exactly as
+//      an unknown provider is (src/ports.ts `inboundFor`, from the rendered environments in
+//      src/generated/ports.ts), and its verify checks the CONFIGURED secret, never the
+//      committed public constant (#1127 money review, finding 1).
 //   3. The cancel path and the web checkout rail are the RENDERED table's, not a hand map.
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect } from 'vitest';
@@ -20,7 +21,7 @@ import {
   type CheckoutRequest,
   type RailOutbound,
 } from '../../_shared/src/ports/payments';
-import { FAKE_SIGNATURE_HEADER, fakeSignature, makeFakeRail } from '../../_shared/src/ports/fakes/payments';
+import { FAKE_RAIL_TEST_SECRET, FAKE_SIGNATURE_HEADER, fakeSignature, fakeVerifier, makeFakeRail } from '../../_shared/src/ports/fakes/payments';
 import { inboundFor, portFor, railFor } from '../src/ports';
 import { CHECKOUT_RAIL_ID, PAYMENTS_ADAPTERS, RAIL_CANCEL_PATH } from '../src/generated/ports';
 import { RAIL_CANCEL_PATH as REGISTRY_CANCEL_PATH } from '../src/lib/mor/registry';
@@ -47,11 +48,14 @@ describe('the outbound port — a capability is declared AND typed', () => {
   });
 });
 
-function door(environment: 'live' | 'sandbox') {
+/** A value only this test knows: the secret an operator would set, NOT the committed constant. */
+const OPERATOR_SECRET = 'operator-chosen-private-value';
+
+function door(environment: 'live' | 'sandbox', extra: Record<string, string> = {}) {
   const db = realPlatformDb();
   const app = new Hono<AppEnv>();
   app.route('/v1/money', money);
-  const env = { PLATFORM_DB: db, MONEY_ENVIRONMENT: environment } as unknown as AppEnv['Bindings'];
+  const env = { PLATFORM_DB: db, MONEY_ENVIRONMENT: environment, ...extra } as unknown as AppEnv['Bindings'];
   return async (provider: string, raw: string, headers: Record<string, string>) =>
     app.fetch(new Request(`https://x/v1/money/${provider}`, { method: 'POST', headers, body: raw }), env, {
       waitUntil() {},
@@ -69,32 +73,65 @@ const fakeBody = JSON.stringify({
 
 describe('the inbound door serves an adapter only in the environments the registry lists', () => {
   it('🔴 a live-environment request to /v1/money/fake is a 404 unknown_provider', async () => {
-    const send = door('live');
-    const res = await send('fake', fakeBody, { [FAKE_SIGNATURE_HEADER]: await fakeSignature(fakeBody) });
+    const send = door('live', { FAKE_RAIL_WEBHOOK_SECRET: OPERATOR_SECRET });
+    const res = await send('fake', fakeBody, { [FAKE_SIGNATURE_HEADER]: await fakeSignature(fakeBody, OPERATOR_SECRET) });
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: 'unknown_provider' });
   });
 
-  it('the same signed body on a SANDBOX deploy reaches the rail (it is not a 404)', async () => {
-    const send = door('sandbox');
-    const res = await send('fake', fakeBody, { [FAKE_SIGNATURE_HEADER]: await fakeSignature(fakeBody) });
-    expect(res.status).not.toBe(404);
-    const body = (await res.json()) as { recorded?: boolean };
-    expect(body.recorded).toBe(true);
+  // #1127 money review, finding 1: the sandbox door accepted a body signed with the PUBLIC
+  // constant and granted an entitlement to any user id. The fake is now registered for
+  // `test` only, so a sandbox deploy 404s it whatever it is signed with, and nothing is recorded.
+  it('🔴 a SANDBOX deploy refuses a body signed with the public test constant, even with its own secret set', async () => {
+    const send = door('sandbox', { FAKE_RAIL_WEBHOOK_SECRET: OPERATOR_SECRET });
+    const res = await send('fake', fakeBody, { [FAKE_SIGNATURE_HEADER]: await fakeSignature(fakeBody, FAKE_RAIL_TEST_SECRET) });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'unknown_provider' });
   });
 
-  it('a forged fake body is refused at verify on a sandbox deploy', async () => {
-    const send = door('sandbox');
-    const res = await send('fake', fakeBody, { [FAKE_SIGNATURE_HEADER]: '0'.repeat(64) });
-    expect(res.status).toBe(401);
+  it('🔴 a SANDBOX deploy refuses even a body signed with its configured secret: the fake is not registered there', async () => {
+    const send = door('sandbox', { FAKE_RAIL_WEBHOOK_SECRET: OPERATOR_SECRET });
+    const res = await send('fake', fakeBody, { [FAKE_SIGNATURE_HEADER]: await fakeSignature(fakeBody, OPERATOR_SECRET) });
+    expect(res.status).toBe(404);
   });
 
-  it('inboundFor follows the rendered environments', () => {
+  it('inboundFor follows the rendered environments: the fake is served on no deployed environment', () => {
     expect(inboundFor('fake', 'live')).toBeNull();
-    expect(inboundFor('fake', 'sandbox')?.provider).toBe('fake');
+    expect(inboundFor('fake', 'sandbox')).toBeNull();
     expect(inboundFor('paddle', 'live')?.provider).toBe('paddle');
+    expect(inboundFor('paddle', 'sandbox')?.provider).toBe('paddle');
     expect(inboundFor('nobody', 'live')).toBeNull();
     expect(portFor('payments', 'live')).not.toContain('fake');
+    expect(portFor('payments', 'sandbox')).not.toContain('fake');
+    expect(portFor('payments', 'test')).toEqual(['fake']);
+  });
+});
+
+// The fake's verify, where it IS registered (`test`): the HMAC is checked under the
+// secret it is HANDED, never under the committed constant.
+describe("the fake rail's verify takes the configured secret, never the public constant", () => {
+  const signed = async (secret: string) => new Headers({ [FAKE_SIGNATURE_HEADER]: await fakeSignature(fakeBody, secret) });
+
+  it('green control: a body signed with the configured secret is accepted', async () => {
+    expect(await fakeVerifier.verify(fakeBody, await signed(OPERATOR_SECRET), OPERATOR_SECRET, Date.now())).toEqual({ ok: true });
+  });
+
+  it('🔴 a body signed with the PUBLIC constant is refused (401) when the configured secret is anything else', async () => {
+    const v = await fakeVerifier.verify(fakeBody, await signed(FAKE_RAIL_TEST_SECRET), OPERATOR_SECRET, Date.now());
+    expect(v.ok).toBe(false);
+    expect(v.ok === false && v.status).toBe(401);
+  });
+
+  it('🔴 no configured secret is a 401 before any signature is read: the constant is never a fallback', async () => {
+    const v = await fakeVerifier.verify(fakeBody, await signed(FAKE_RAIL_TEST_SECRET), '', Date.now());
+    expect(v.ok).toBe(false);
+    expect(v.ok === false && v.status).toBe(401);
+    expect(v.ok === false && v.reason).toMatch(/FAKE_RAIL_WEBHOOK_SECRET is not set/);
+  });
+
+  it('a zero signature under the configured secret is refused (401)', async () => {
+    const v = await fakeVerifier.verify(fakeBody, new Headers({ [FAKE_SIGNATURE_HEADER]: '0'.repeat(64) }), OPERATOR_SECRET, Date.now());
+    expect(v.ok === false && v.status).toBe(401);
   });
 });
 
@@ -118,6 +155,17 @@ describe('the rendered table is the one the Worker reads', () => {
     const none: typeof CHECKOUT_RAIL_ID = null;
     expect(railFor(none, {} as unknown as AppEnv['Bindings'])).toBeNull();
     expect(railFor(null, {} as unknown as AppEnv['Bindings'])).toBeNull();
+  });
+
+  // #1127 money review, finding 2: railFor enforces the environments inboundFor does.
+  it('🔴 railFor binds the fake on NO deployed environment, and an unset MONEY_ENVIRONMENT reads as live', () => {
+    const on = (MONEY_ENVIRONMENT?: string) => ({ ...(MONEY_ENVIRONMENT === undefined ? {} : { MONEY_ENVIRONMENT }) }) as unknown as AppEnv['Bindings'];
+    expect(railFor('fake', on('sandbox'))).toBeNull();
+    expect(railFor('fake', on('live'))).toBeNull();
+    expect(railFor('fake', on())).toBeNull();
+    expect(railFor('fake', on('staging'))).toBeNull();
+    // green control: the real rail binds wherever the registry lists it.
+    for (const e of ['sandbox', 'live', undefined]) expect(railFor('paddle', on(e))?.id).toBe('paddle');
   });
 
   it('a rail with no outbound half binds to null, never to a stand-in', () => {

@@ -19,7 +19,7 @@ export const PAYMENTS_ADAPTERS: readonly PaymentsAdapterRow[] = [
   { id: 'paddle', status: 'live', environments: ['sandbox', 'live'], capabilities: ['verify', 'parse', 'checkout', 'cancel'], cancelPath: 'api' },
   { id: 'razorpay', status: 'built', environments: ['sandbox', 'live'], capabilities: ['verify'], cancelPath: 'none' },
   { id: 'revenuecat', status: 'built', environments: ['sandbox', 'live'], capabilities: ['verify', 'cancel-store'], cancelPath: 'store' },
-  { id: 'fake', status: 'fake', environments: ['test', 'sandbox'], capabilities: ['verify', 'parse', 'checkout', 'cancel', 'refund', 'reconcile'], cancelPath: 'api' },
+  { id: 'fake', status: 'fake', environments: ['test'], capabilities: ['verify', 'parse', 'checkout', 'cancel', 'refund', 'reconcile'], cancelPath: 'api' },
 ];
 
 // How each rail cancels, DERIVED from its declared capabilities (cancel → api, cancel-store → store).
@@ -39,6 +39,6 @@ export const CHECKOUT_RAIL_ID: PaymentsAdapterId | null = 'paddle';
 // The adapter ids per environment: the set a deploy of that environment may select.
 export const PAYMENTS_ADAPTERS_BY_ENVIRONMENT: Readonly<Record<PortEnvironment, readonly PaymentsAdapterId[]>> = {
   test: ['fake'],
-  sandbox: ['paddle', 'razorpay', 'revenuecat', 'fake'],
+  sandbox: ['paddle', 'razorpay', 'revenuecat'],
   live: ['paddle', 'razorpay', 'revenuecat'],
 };

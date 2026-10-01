@@ -36,7 +36,7 @@ runPaymentsConformance(
     secret: () => FAKE_RAIL_TEST_SECRET,
     async encode(spec, o) {
       const raw = fakeBody(spec);
-      const sig = o?.badSignature ? '0'.repeat(64) : await fakeSignature(raw);
+      const sig = o?.badSignature ? '0'.repeat(64) : await fakeSignature(raw, FAKE_RAIL_TEST_SECRET);
       return { raw, headers: new Headers({ [FAKE_SIGNATURE_HEADER]: sig }), nowMs: Date.now() };
     },
     sellable: { appId: 'subscriptiontracker', offeringId: 'pro_monthly' },

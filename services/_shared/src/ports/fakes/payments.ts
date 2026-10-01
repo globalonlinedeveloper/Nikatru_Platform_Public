@@ -2,15 +2,17 @@
 // ⏱ 2026-10-01 · port-pay-core · THE FAKE RAIL — both halves, no vendor.
 //
 // Registered in tooling/ports/payments.json with `status: fake` and
-// `environments: ["test", "sandbox"]`; assert-ports limb 7 refuses it in live, and the
-// inbound door answers 404 for `/v1/money/fake` on a live deploy (src/ports.ts
-// `inboundFor`). It exists so the conformance suite has a second adapter whose every
-// byte is ours, and so a sandbox can rehearse the whole money loop with no vendor.
+// `environments: ["test"]` ONLY: assert-ports limb 7 refuses it in live, and the inbound
+// door answers 404 for `/v1/money/fake` on EVERY deployed environment, sandbox included
+// (src/ports.ts `inboundFor`; the #1127 money review found a forgeable sandbox door). It
+// exists so the conformance suite has a second adapter whose every byte is ours. No
+// sandbox E2E uses it; one that needs it must register `sandbox`, set
+// FAKE_RAIL_WEBHOOK_SECRET on that deploy, and say who sets it.
 //
-//   INBOUND   JSON bodies signed HMAC-SHA256 (hex) under FAKE_RAIL_TEST_SECRET, in the
-//             `x-fake-signature` header. The secret is a FIXED, PUBLIC test value: a
-//             fake protects nothing, and its signature exists so "a bad signature is
-//             refused" is a real case and not a skipped one.
+//   INBOUND   JSON bodies signed HMAC-SHA256 (hex), in the `x-fake-signature` header,
+//             under the secret `verify` is HANDED (the door reads FAKE_RAIL_WEBHOOK_SECRET).
+//             Unset → refused. FAKE_RAIL_TEST_SECRET is a fixed, PUBLIC value that unit
+//             tests inject as that secret; `verify` never reads it.
 //   OUTBOUND  checkout URLs on the reserved host checkout.fake.invalid (RFC 2606:
 //             `.invalid` never resolves), cancel / refund / reconcile over in-memory
 //             state. Never a network call.
@@ -30,7 +32,11 @@ import type {
 import { notSent } from '../payments';
 
 export const FAKE_RAIL_ID = 'fake';
-/** Public by design: see the header. Never a real credential's shape. */
+/**
+ * Public by design, and for UNIT TESTS ONLY: a test harness passes it to `verify` as
+ * the secret. `verify` never reads it, and no deploy configures it. Never a real
+ * credential's shape.
+ */
 export const FAKE_RAIL_TEST_SECRET = 'fake-rail-public-test-secret-not-a-credential';
 export const FAKE_SIGNATURE_HEADER = 'x-fake-signature';
 export const FAKE_CHECKOUT_HOST = 'checkout.fake.invalid';
@@ -39,8 +45,8 @@ const enc = new TextEncoder();
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
 
-/** HMAC-SHA256 of `body` under `secret`, lowercase hex. */
-export async function fakeSignature(body: string, secret: string = FAKE_RAIL_TEST_SECRET): Promise<string> {
+/** HMAC-SHA256 of `body` under `secret`, lowercase hex. The secret is always explicit. */
+export async function fakeSignature(body: string, secret: string): Promise<string> {
   const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(body)));
   return [...mac].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -146,11 +152,18 @@ export function parseFakeBody(raw: string): ParseOutcome {
 export const fakeVerifier: RailInbound = {
   provider: FAKE_RAIL_ID,
   secretEnvVar: 'FAKE_RAIL_WEBHOOK_SECRET',
-  async verify(raw: string, headers: Headers): Promise<VerifyOutcome> {
+  // The HMAC is checked under the `secret` the caller hands in (the door reads
+  // FAKE_RAIL_WEBHOOK_SECRET), NEVER under FAKE_RAIL_TEST_SECRET: that constant is
+  // published in this repository, so a verify under it accepts any forger's body
+  // (#1127 money review, finding 1). No secret configured → refused, before the body.
+  async verify(raw: string, headers: Headers, secret: string): Promise<VerifyOutcome> {
+    if (typeof secret !== 'string' || secret === '') {
+      return { ok: false, status: 401, reason: 'FAKE_RAIL_WEBHOOK_SECRET is not set: the fake rail verifies nothing without its own secret' };
+    }
     const sig = (headers.get(FAKE_SIGNATURE_HEADER) ?? '').trim().toLowerCase();
     if (sig === '') return { ok: false, status: 400, reason: `no ${FAKE_SIGNATURE_HEADER} header` };
     if (!/^[0-9a-f]{64}$/.test(sig)) return { ok: false, status: 400, reason: `${FAKE_SIGNATURE_HEADER} is not a hex HMAC-SHA256` };
-    const want = await fakeSignature(raw);
+    const want = await fakeSignature(raw, secret);
     return timingSafeEqualHex(sig, want) ? { ok: true } : { ok: false, status: 401, reason: 'signature mismatch' };
   },
   parse: parseFakeBody,

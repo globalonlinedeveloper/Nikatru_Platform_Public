@@ -61,12 +61,12 @@
       "impl": { "file": "services/_shared/src/ports/fakes/payments.ts", "symbol": "fakeVerifier" },
       "outbound": { "file": "services/_shared/src/ports/fakes/payments.ts", "symbol": "makeFakeRail", "modules": [] },
       "capabilities": ["verify", "parse", "checkout", "cancel", "refund", "reconcile"],
-      "secrets": [],
+      "secrets": ["FAKE_RAIL_WEBHOOK_SECRET"],
       "identity": [],
-      "environments": ["test", "sandbox"],
+      "environments": ["test"],
       "cost": { "feeCells": [], "unit": { "usd": 0, "per": "sale", "asOf": "2026-10-01", "verify": "services/_shared/src/ports/fakes/payments.ts — no network call, no vendor, no fee" } },
       "conformance": { "file": "services/platform/test/money-rail.fake.conformance.test.ts" },
-      "exportDuty": "Nothing leaves: the fake holds in-memory state only, per process, and takes no money. Cannot move: nothing — it serves test and sandbox, never live (assert-ports limb 7).",
+      "exportDuty": "Nothing leaves: the fake holds in-memory state only, per process, and takes no money. Cannot move: nothing — it serves test only: never sandbox or live (assert-ports limb 7; the door 404s it on every deploy).",
       "readAt": null
     }
   ],

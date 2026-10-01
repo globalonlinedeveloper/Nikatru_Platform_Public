@@ -48,7 +48,8 @@ describe('render.mjs — the payments table', () => {
     const before = readFileSync(rel, 'utf8');
     try {
       const doc = JSON.parse(before);
-      doc.adapters.find((a) => a.id === 'fake').environments = ['test'];
+      // The fake put back on sandbox (the #1127 money review's forgeable door) without a re-render.
+      doc.adapters.find((a) => a.id === 'fake').environments = ['test', 'sandbox'];
       writeFileSync(rel, JSON.stringify(doc));
       assert.equal(run(['--check', '--root', root]).code, 1);
     } finally { writeFileSync(rel, before); }

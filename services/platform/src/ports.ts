@@ -30,7 +30,7 @@ import type { MailSenders, MailStream, MailTransport } from '../../_shared/src/p
 import { createResendMail } from './adapters/mail/resend';
 import { MAIL_FROM } from './generated/entity';
 import type { Env } from './types';
-import type { MoneyEnvironment } from './lib/mor/contract';
+import { isMoneyEnvironment, type MoneyEnvironment } from './lib/mor/contract';
 import type { RailInbound, RailOutbound, SecretReader } from '../../_shared/src/ports/payments';
 import { MOR_VERIFIER_IDS, PAYMENTS_ADAPTERS, type PaymentsAdapterId, type PortEnvironment } from './generated/ports';
 import { paddleVerifier } from './lib/mor/paddle';
@@ -114,11 +114,20 @@ export function inboundFor(provider: string, environment: MoneyEnvironment | nul
  * (CHECKOUT_RAIL_ID) is passed straight in: the null test is made here, on a typed
  * parameter, and never by a route against a generated constant whose value the build
  * already fixes (#1127, CodeQL #548 js/comparison-between-incompatible-types).
+ *
+ * The SAME environment rule as `inboundFor` (#1127 money review, finding 2): a rail the
+ * registry does not list for this deploy's MONEY_ENVIRONMENT binds to null, so a row
+ * carrying `provider = 'fake'` can never be "cancelled" against an in-memory rail on a
+ * deployed Worker. An unset or unrecognised MONEY_ENVIRONMENT reads as `live`, the
+ * narrowest set: a misconfigured Worker never widens what it serves (every deploy sets
+ * it; wrangler.jsonc and assert-money-config.mjs hold that).
  */
 export function railFor(provider: string | null, env: Env): RailOutbound | null {
   if (provider === null) return null;
   const row = ROW.get(provider);
   if (row === undefined) return null;
+  const environment: MoneyEnvironment = isMoneyEnvironment(env.MONEY_ENVIRONMENT) ? env.MONEY_ENVIRONMENT : 'live';
+  if (!row.environments.includes(environment)) return null;
   const make = OUTBOUND[row.id];
   if (make === null) return null;
   const secrets: SecretReader = (name) => {
