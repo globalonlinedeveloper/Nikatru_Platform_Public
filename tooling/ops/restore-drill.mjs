@@ -5,6 +5,7 @@
 //
 //   node tooling/ops/restore-drill.mjs <set> --to <scratch dir> [--file <path>]
 //        [--restic-bin <path>] [--rclone-bin <path>] [--root <repoRoot>]
+//   A --*-bin ending .js/.cjs/.mjs is run with this node (process.execPath).
 //
 // Row O-BOXES-NOT-DECLARED-AS-DATA. The sets, their destinations and each
 // set's drill are tooling/boxes/backups.json (read through
@@ -43,14 +44,15 @@
 // repository that could not be listed). The first line names the verdict.
 // ─────────────────────────────────────────────────────────────────────────────
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { basename, join, posix, resolve } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { basename, dirname, join, posix, resolve, win32 } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { validateAll } from './box-declaration.mjs';
 
 export const CALL_TIMEOUT_MS = 300_000;
 const DATED_DIR = /^(\d{4}-\d{2}-\d{2})\/$/;
+const HOST_PATH = process.platform === 'win32' ? win32 : posix;
 
 export function parseArgs(argv) {
   const out = { set: null, to: null, file: null, root: null, resticBin: 'restic', rcloneBin: 'rclone' };
@@ -87,6 +89,40 @@ export function missingEnv(names, env) {
   return (names ?? []).filter((n) => (Array.isArray(n) ? !n.some((x) => env[x]) : !env[n])).map((n) => (Array.isArray(n) ? n.join(' | ') : n));
 }
 
+/**
+ * Is `target` the repository `root` or inside it? Under `p`'s semantics: on
+ * win32 a drive letter and every name compare case-insensitively, `\` and `/`
+ * are one separator, and a `\\?\` long-path prefix is the same path. A string
+ * prefix test fails OPEN there (#1148: `startsWith(`${root}/`)` against a
+ * backslashed resolve). `real` maps a path to its target through symlinks and
+ * junctions, so a link outside the repo that points into it is inside.
+ */
+export function insideRepo(root, target, { p = HOST_PATH, real = p === HOST_PATH ? realOrAncestor : () => null } = {}) {
+  const strip = (s) => (p === win32 ? String(s).replace(/^[\\/]{2}\?[\\/]UNC[\\/]/i, '\\\\').replace(/^[\\/]{2}\?[\\/]/, '') : String(s));
+  const norm = (s) => { const r = p.resolve(strip(s)); return p === win32 ? r.toLowerCase() : r; };
+  const roots = new Set([norm(root)]);
+  const targets = new Set([norm(target)]);
+  for (const [set, s] of [[roots, root], [targets, target]]) { const r = real(p.resolve(strip(s))); if (r) set.add(norm(r)); }
+  for (const r of roots) for (const t of targets) {
+    const rel = p.relative(r, t);
+    if (rel === '' || (rel !== '..' && !rel.startsWith(`..${p.sep}`) && !p.isAbsolute(rel))) return true;
+  }
+  return false;
+}
+
+/** The real path of `path`, or of its nearest existing ancestor with the rest re-joined; null if none resolves. */
+function realOrAncestor(path) {
+  let head = path;
+  const tail = [];
+  for (;;) {
+    try { return join(realpathSync.native(head), ...tail); } catch { /* not there yet */ }
+    const up = dirname(head);
+    if (up === head) return null;
+    tail.unshift(basename(head));
+    head = up;
+  }
+}
+
 export function run(opts, { env = process.env, spawn = spawnSync } = {}) {
   const root = resolve(opts.root ?? process.cwd());
   const v = validateAll(root);
@@ -108,12 +144,14 @@ export function run(opts, { env = process.env, spawn = spawnSync } = {}) {
   for (const m of JSON.stringify(dest).matchAll(/<([A-Z][A-Z0-9_]*)>/g)) if (env[m[1]] && env[m[1]].length >= 4) secretVals.push([env[m[1]], `<${m[1]}>`]);
   const redact = (s) => secretVals.reduce((acc, [val, name]) => acc.split(val).join(name), String(s ?? ''));
   const firstLine = (r) => redact(`${r.stderr ?? ''}${r.stdout ?? ''}`.trim().split('\n').find((l) => l.trim()) ?? `exit ${r.status}`).slice(0, 200);
-  const call = (bin, args) => spawn(bin, args, { encoding: 'utf8', timeout: CALL_TIMEOUT_MS, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  // A tool given as a .js/.cjs/.mjs file runs under THIS node: Windows cannot spawn a
+  // shebang file, and the drill spawns without a shell (#1148 — the test's fake rclone).
+  const call = (bin, args) => (/\.[cm]?js$/i.test(bin) ? spawn(process.execPath, [bin, ...args], { encoding: 'utf8', timeout: CALL_TIMEOUT_MS, env, stdio: ['ignore', 'pipe', 'pipe'] }) : spawn(bin, args, { encoding: 'utf8', timeout: CALL_TIMEOUT_MS, env, stdio: ['ignore', 'pipe', 'pipe'] }));
   const toolMissing = (r, bin) => r.error?.code === 'ENOENT' ? `${bin} is not installed here (--${bin.includes('restic') ? 'restic' : 'rclone'}-bin)` : r.error ? `${bin} did not run (${r.error.code ?? r.error.message})` : null;
 
   // the scratch directory: fresh, under --to, removed at the end whatever happened
   const scratchRoot = resolve(opts.to);
-  if (scratchRoot === root || scratchRoot.startsWith(`${root}/`)) return finish(2, 'LOST', '--to is inside the repository; restore into a scratch directory outside it');
+  if (insideRepo(root, scratchRoot)) return finish(2, 'LOST', '--to is inside the repository; restore into a scratch directory outside it');
   mkdirSync(scratchRoot, { recursive: true });
   const work = mkdtempSync(join(scratchRoot, `drill-${set.id}-`));
   const cleanup = (res) => {

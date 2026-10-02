@@ -56,12 +56,17 @@ const FULL = [
   '  linux-snap:',
   '    state: pending',
   '    declaredOn: null',
+  '  apps-gov-in:',
+  '    state: pending',
+  '    declaredOn: null',
   '',
 ].join('\n');
 
 describe('store-record — the channels come from the schema', () => {
-  test('the five store channels, each with its id fields', () => {
-    assert.deepEqual([...STORE_CHANNELS].sort(), ['android-play', 'ios-appstore', 'linux-snap', 'macos-appstore', 'windows-store']);
+  test('the six store channels, each with its id fields', () => {
+    // ⏱ 2026-10-01 (rv2-newproduct-012, AA-16): apps-gov-in joined, with no id field.
+    assert.deepEqual([...STORE_CHANNELS].sort(), ['android-play', 'apps-gov-in', 'ios-appstore', 'linux-snap', 'macos-appstore', 'windows-store']);
+    assert.deepEqual(STORE_ID_FIELDS['apps-gov-in'], []);
     assert.deepEqual(STORE_ID_FIELDS['ios-appstore'], ['recordId']);
     assert.deepEqual(STORE_ID_FIELDS['macos-appstore'], ['recordId']);
     assert.deepEqual(STORE_ID_FIELDS['android-play'], ['appSigningSha256']);

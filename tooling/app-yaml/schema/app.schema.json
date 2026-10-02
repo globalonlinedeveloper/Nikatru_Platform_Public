@@ -168,6 +168,16 @@
             "state": { "type": "string", "enum": ["pending", "issued"] },
             "declaredOn": { "type": ["string", "null"], "format": "date" }
           }
+        },
+        "apps-gov-in": {
+          "description": "The apps.gov.in (Mobile Seva AppStore, Government of India) record. The portal publishes no submission API and each app is its own listing, created by hand in the authenticated portal (tooling/channel-register.json `apps-gov-in` noSubmissionApi), so the record is its state alone: issued once the owner's upload has created THIS app's listing. ⏱ 2026-10-01 (rv2-newproduct-012, AA-16, O-STORE-RECORDS-ARE-ONE-PER-CHANNEL): it was the one store channel with no per-app record, so app #2 had nowhere to say whether its listing exists and tooling/ci/assert-store-identity.mjs counted none. The signing pin is NOT here: one key (alias nikatru-appsgovin) is decided for the channel (the row's `signing`), and whether a second app signs with it or with a key of its own is the owner's custody decision.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "declaredOn"],
+          "properties": {
+            "state": { "type": "string", "enum": ["pending", "issued"] },
+            "declaredOn": { "type": ["string", "null"], "format": "date" }
+          }
         }
       }
     },
