@@ -758,12 +758,16 @@ async function run(rules, origins, csp) {
   }
   const warmMs = Date.now() - warmStarted;
   // The network goes away: every socket closed, the listener closed, and a
-  // request from here must FAIL before this leg is evidence of anything.
+  // request from here must FAIL before this leg is evidence of anything. The
+  // probe asks the bare loopback origin, not `base`: a closed listener refuses
+  // every path, and `base` carries the artifact's <base href> (CodeQL #559,
+  // js/file-access-to-http — file data in a request URL).
+  const probeOrigin = `http://127.0.0.1:${server.address().port}/`;
   server.closeAllConnections();
   await new Promise((r) => server.close(() => r()));
-  const stillServing = await fetch(base, { signal: AbortSignal.timeout(5000) }).then(() => true, () => false);
+  const stillServing = await fetch(probeOrigin, { signal: AbortSignal.timeout(5000) }).then(() => true, () => false);
   if (stillServing) {
-    lost(`the bundle server still answered ${base} after it was shut down, so the offline leg would test nothing.`);
+    lost(`the bundle server still answered ${probeOrigin} after it was shut down, so the offline leg would test nothing.`);
   }
   const violationsBefore = violations.length;
   const nav = await send('Page.navigate', { url: base }, session);
