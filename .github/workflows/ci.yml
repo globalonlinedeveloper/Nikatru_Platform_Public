@@ -1559,8 +1559,8 @@ jobs:
           node tooling/ci/assert-app-yaml.mjs
       # why: O-NEW-PRODUCT-HAS-NO-READOUT (15b). Read from the tree the stamp just wrote, every product step of the
       # probe is DONE, OWNER or AFTER-LIVE except the two agent steps a stamp cannot take: its name clearance (the
-      # probe dials the stores) and its price row (nothing writes apps.<id> in app-config-data.json, and an absent
-      # row is an undecided price, never "free": rv2-newproduct-002). --expect-next exits 1 on any other NEXT set,
+      # probe dials the stores) and its price row (the stamp writes apps.<id>.update_url only, never its paywall, and
+      # an undeclared paywall is an undecided price, never "free": rv2-newproduct-002). --expect-next exits 1 on any other NEXT set,
       # a missing one included.
       - name: The new-product plan reads the stamped probe, and only its name clearance and price row are the agent's
         run: node tooling/kit/new-product.mjs plan probe --check --expect-next "name clearance,price row"

@@ -289,7 +289,9 @@ void main() {
     testWidgets('Insights · converted · compact · ${b.name}', (
       WidgetTester tester,
     ) async {
-      final DateTime now = DateTime.now();
+      // ⏱ 2026-10-02 · the pinned [_kNow], as the screen reads it: a wall-clock
+      // fixture beside a pinned screen put these rows weeks out, not 5 and 9 days.
+      final DateTime now = _kNow;
       await _pump(
         tester,
         _classes['compact']!,

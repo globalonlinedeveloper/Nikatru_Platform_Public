@@ -23,6 +23,15 @@
 //             by assert-auth-callbacks.mjs `allowListFor` from every app in
 //             scope. An app missing from it has every auth link REPLACED with the
 //             Site URL (app #1) by GoTrue, silently.
+//   snap      services/platform/src/app-config-data.json `apps.<id>.update_url`
+//             `linux-snap` (⏱ 2026-10-02, club rt-web fix round): the Snap Store
+//             row is ARMED, no adapter opens it, so [10]D-8 (update-exit.mjs)
+//             requires every catalogued app to be SERVED its own snapcraft.io
+//             page, derived from apps/<id>/store/linux-snap/snap-name.txt. The
+//             stamp writes the brick's snap-name.txt and, until this, no served
+//             URL — so every fresh stamp failed assert-stamp-properties. Only
+//             that one key is written: the row carries no `paywall`, so the
+//             price row stays NEXT (product-steps/price-row.mjs), never "free".
 //
 // What this does NOT do: change anything live. The allow list here is the
 // record of what GoTrue must admit; applying it to the identity project is the
@@ -42,6 +51,7 @@ import { BUNDLES_REGISTER, CATALOG_DIR, memberSlugsOf, readCatalogFile, stampedE
 import { appendToArray, addMember, assertSpliced, replaceValue } from './json-splice.mjs';
 import { MAIL_TRANSPORT, allowListFor, readDerivation } from '../ci/assert-auth-callbacks.mjs';
 import { appSet } from '../ci/app-set.mjs';
+import { snapcraftUrl } from '../ci/update-exit.mjs';
 
 export const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -249,9 +259,110 @@ export function planE2eEntries(root, { today = new Date().toISOString().slice(0,
   return out;
 }
 
+export const PLATFORM_CONFIG_DATA = 'services/platform/src/app-config-data.json';
+export const CHANNEL_REGISTER = 'tooling/channel-register.json';
+export const SNAP_CHANNEL = 'linux-snap';
+/** A catalogue slug, checked before it becomes a path segment. */
+const SLUG_RE = /^[a-z][a-z0-9_]*$/;
+/** A snap name as the Snap Store accepts it, checked before it becomes a URL. */
+const SNAP_NAME_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+
+const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * snap — every catalogued app that ships store/linux-snap/snap-name.txt and is
+ * not yet served a `linux-snap` update_url gets `apps.<id>.update_url
+ * {"linux-snap": <its snapcraft.io page>}`, the value [10]D-8 derives from the
+ * same file. A value already served on that key (its own, or a string
+ * update_url) is a decision, never overwritten: the guard grades it.
+ */
+export function planSnapUpdateUrls(root) {
+  const rel = PLATFORM_CONFIG_DATA;
+  const before = readText(root, rel);
+  const out = { rel, before, after: before, added: [], lost: [] };
+  if (before === null) {
+    out.lost.push(`${rel} does not exist, so no app could be served its Snap Store page.`);
+    return out;
+  }
+  let data;
+  try {
+    data = JSON.parse(before);
+  } catch (e) {
+    out.lost.push(`${rel} is not valid JSON (${e.message}).`);
+    return out;
+  }
+  if (!isMap(data?.apps) || Object.keys(data.apps).length === 0) {
+    out.lost.push(`${rel} has no \`apps\` entries to add a stamped app beside.`);
+    return out;
+  }
+  const register = readText(root, CHANNEL_REGISTER);
+  let channels;
+  try {
+    channels = register === null ? null : JSON.parse(register)?.channels;
+  } catch (e) {
+    out.lost.push(`${CHANNEL_REGISTER} is not valid JSON (${e.message}).`);
+    return out;
+  }
+  if (!Array.isArray(channels)) {
+    out.lost.push(`${CHANNEL_REGISTER} has no \`channels\` array, so whether "${SNAP_CHANNEL}" is a channel is unknown.`);
+    return out;
+  }
+  if (!channels.some((row) => row?.id === SNAP_CHANNEL)) return out; // no snap channel, nothing to serve
+  const cat = readCatalogFile(root, `${CATALOG_DIR}/apps.json`);
+  if (!cat.ok || !Array.isArray(cat.value)) {
+    out.lost.push(`${cat.why ?? `${CATALOG_DIR}/apps.json is not a JSON array`}, so no app could be served its Snap Store page.`);
+    return out;
+  }
+  let text = before;
+  const expected = structuredClone(data);
+  for (const row of cat.value) {
+    const id = row?.slug;
+    if (typeof id !== 'string' || !SLUG_RE.test(id)) continue;
+    const name = (readText(root, `apps/${id}/store/linux-snap/snap-name.txt`) ?? '').trim();
+    if (name === '') continue; // no snap tree: [10]D-8 reports COVERAGE LOST for it
+    if (!SNAP_NAME_RE.test(name)) {
+      out.lost.push(`apps/${id}/store/linux-snap/snap-name.txt holds ${JSON.stringify(name)}, which is not a snap name, so no snapcraft.io page can be derived from it.`);
+      continue;
+    }
+    const url = snapcraftUrl(name);
+    // The file's own style: one line per map, as apps.subscriptiontracker.update_url is written.
+    const urlMap = `{ ${JSON.stringify(SNAP_CHANNEL)}: ${JSON.stringify(url)} }`;
+    const appRow = `{\n  "update_url": ${urlMap}\n}`;
+    const own = data.apps[id];
+    if (own !== undefined && !isMap(own)) continue; // a malformed row is the Worker's and the guards' to report
+    const current = own?.update_url;
+    if (typeof current === 'string' || (isMap(current) && Object.hasOwn(current, SNAP_CHANNEL))) continue;
+    if (own === undefined) {
+      text = addMember(text, ['apps'], id, appRow);
+      expected.apps[id] = { update_url: { [SNAP_CHANNEL]: url } };
+    } else if (current === undefined || current === null) {
+      if (Object.keys(own).length === 0) {
+        text = replaceValue(text, ['apps', id], appRow);
+      } else if (current === null) {
+        text = replaceValue(text, ['apps', id, 'update_url'], urlMap);
+      } else {
+        text = addMember(text, ['apps', id], 'update_url', urlMap);
+      }
+      expected.apps[id].update_url = { [SNAP_CHANNEL]: url };
+    } else if (isMap(current) && Object.keys(current).length > 0) {
+      text = addMember(text, ['apps', id, 'update_url'], SNAP_CHANNEL, JSON.stringify(url));
+      expected.apps[id].update_url[SNAP_CHANNEL] = url;
+    } else if (isMap(current)) {
+      text = replaceValue(text, ['apps', id, 'update_url'], urlMap);
+      expected.apps[id].update_url = { [SNAP_CHANNEL]: url };
+    } else {
+      continue; // an update_url of another type is the guards' to report
+    }
+    out.added.push(id);
+  }
+  if (text !== before) assertSpliced(text, expected, rel);
+  out.after = text;
+  return out;
+}
+
 /** Every plan this stamp step owns, in the order they are written. */
 export function planAll(root) {
-  return [planBundleExclusions(root), planAuthAllowList(root), planE2eEntries(root)];
+  return [planBundleExclusions(root), planAuthAllowList(root), planE2eEntries(root), planSnapUpdateUrls(root)];
 }
 
 /** `{ code, lines }` — writes unless `check`. */

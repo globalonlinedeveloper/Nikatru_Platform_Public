@@ -66,7 +66,7 @@
 //                  named ones, 1 otherwise, either way. The app-brick probe uses
 //                  it: a fresh stamp's name clearance is the agent's (the probe
 //                  dials the stores, which CI does not), so is its price row
-//                  (nothing writes apps.<id>), the backend probe adds its
+//                  (nothing writes apps.<id>.paywall), the backend probe adds its
 //                  provision steps, and every other step must be DONE, OWNER or
 //                  AFTER-LIVE.
 //   --root         the tree to read (default: this file's repository).

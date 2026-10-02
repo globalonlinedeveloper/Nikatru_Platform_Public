@@ -72,8 +72,9 @@
 //   4. `node tooling/ci/gen-app-licence-rows.mjs --check --app <id>` exits 0;
 //   5. `node tooling/kit/stamp-shared.mjs --check` exits 0 (⏱ 2026-10-01, train
 //      P43): the shared files outside apps/<id>/ — the bundle register's
-//      exclusion, the e2e leg register's `apps.<id>` entry and the generated
-//      auth allow list — carry the new app. post_gen's site chain writes them.
+//      exclusion, the e2e leg register's `apps.<id>` entry, the generated
+//      auth allow list and (⏱ 2026-10-02) its served Snap Store update_url in
+//      app-config-data.json — carry the new app. post_gen's site chain writes them.
 //   6. `node tooling/kit/stamp-native.mjs --check --app <id>` exits 0 — the five
 //      native folders, their waivers, splash, privacy manifests and Linux
 //      packaging are what the native stamp writes (post_gen only warns on it).

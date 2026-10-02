@@ -532,6 +532,25 @@ describe('step 9 · price row', () => {
     assert.match(a.command, /"offerings": \[\]\}` declares it free/);
   });
 
+  // ⏱ 2026-10-02 · the stamp now writes apps.<id> (its Snap Store update_url only,
+  // stamp-shared.mjs planSnapUpdateUrls). Red control: the reader that took any
+  // row's absent offerings as `[]` answered DONE here.
+  test('apps.<id> carrying only the stamped update_url → NEXT: a row is not a paywall decision', () => {
+    const restore = mutate('services/platform/src/app-config-data.json', (t) => {
+      const j = JSON.parse(t);
+      j.apps.nextapp = { update_url: { 'linux-snap': 'https://snapcraft.io/nextapp' } };
+      return JSON.stringify(j, null, 2) + '\n';
+    });
+    try {
+      const a = stepOf('price row', 'nextapp', { privateRoot: null, kind: 'app' });
+      assert.equal(a.state, 'NEXT');
+      assert.match(a.detail, /declares no paywall\.offerings/);
+      assert.match(a.command, /"offerings": \[\]\}` declares it free/);
+    } finally {
+      restore();
+    }
+  });
+
   test('apps.<id> declaring no offering → DONE, free by declaration; render-rail-prices.mjs --check is green', () => {
     const restore = mutate('services/platform/src/app-config-data.json', (t) => {
       const j = JSON.parse(t);

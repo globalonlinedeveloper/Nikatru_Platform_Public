@@ -645,7 +645,7 @@
     8,
 
   "new-product-plan.test.mjs":
-    69,
+    70,
 
   "new-tool-chain.test.mjs":
     12,
@@ -1033,6 +1033,9 @@
 
   "stamp-properties.test.mjs":
     30,
+
+  "stamp-shared-snap.test.mjs":
+    4,
 
   "stamp-text-fidelity.test.mjs":
     44,
