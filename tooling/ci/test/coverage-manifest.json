@@ -140,6 +140,9 @@
   "autopilot-land-gate.test.mjs":
     11,
 
+  "autopilot-ledger.test.mjs":
+    20,
+
   "autopilot-outage.test.mjs":
     14,
 

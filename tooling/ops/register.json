@@ -2063,6 +2063,28 @@
       "unverifiedWhy": "The workflow has not run yet: a pull_request_target workflow runs from the default branch, so its first run is the first pull request event after this row reaches main."
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-10-02 for O-WATCH-RUNS-ON-THE-LAPTOP. The cloud-lane watch, the run ledger and E2E-after-deploy ran only as laptop daemons, so all three stopped when the laptop was off. They read only GitHub facts, so they run here in both modes. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together.",
+      "id": "duty.workflow.autopilot-watch.yml",
+      "kind": "duty",
+      "what": "Every 15 minutes and on each CI, E2E live or Land completion, tooling/autopilot/watch.mjs reads the laptop heartbeat (opening, editing or closing ONE `laptop-off` issue on a transition), the open same-repo PR board (newest ci-gate run per head, STALL past 6 h), every run that ended red in the last 12 h with an owner and a cause, and the open `land-freeze` issue, and edits the body of ONE `Autopilot ledger` issue with public facts only. A second job dispatches e2e.yml on main when the head a CI run deployed to web is not E2E-proven and touches an app or shared UI path (at most once per 30 minutes; never while an `e2e-hold` issue is open).",
+      "detector": "The run's own exit: watch.mjs exits 1 when a write was refused or a body was refused as not public, 2 when it could not look. tooling/ci/test/autopilot-ledger.test.mjs holds every decision and this workflow's shape on every CI run.",
+      "response": "Read the run: it prints the laptop state, the ledger edit and the E2E decision. The ledger issue is the record; a stale ledger means this workflow stopped, which its run history shows.",
+      "cadence": "trigger",
+      "trigger": "a 15-minute schedule, completion of CI, E2E live or Land, or a manual dispatch",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/autopilot-watch.yml",
+        "record": "GitHub Actions run history for autopilot-watch.yml, the `Autopilot ledger` issue body it edits, and the `laptop-off` issues it opens and closes",
+        "failingValue": "conclusion = failure — a write or a body was refused, or the watch could not look",
+        "readBy": "tooling/ci/test/autopilot-ledger.test.mjs on every CI run (the decisions and the shell); the lead, through the ledger issue. NOT graded RED-SINCE on purpose: a transient GitHub read failure would otherwise turn every pull request's ci-gate red until the next slot (TRAPS ci-26), and its next 15-minute slot re-runs it."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has not run yet: a schedule exists only once the file is on the default branch."
+    },
+    {
       "_whyThisRowExists": "APPENDED 2026-09-23 for O-CI-GATE-CASCADE-STRANDS-THE-DEPLOY-LANES. On 2026-09-22 a red ci-gate on 2c4540fa failed `Deploy web` #426 and `Deploy workers` #168 on their gate step; the repair commit 35147514 turned CI green but matched neither lane's push paths, so nothing re-entered them and production served the previous build until a scheduled Ops watch noticed. This workflow is the re-entry. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together. WIDENED 2026-09-23 for O-REDEPLOY-STRANDED-MISSES-THE-BUILD-LANE: Build apps #102 (run 35800063831, the Worker's 00:00Z dispatch) failed its gate step and was not re-entered, because the derivation took push-on-main lanes only and the run's always() aggregate `all-platforms` failed beside the gate.",
       "id": "duty.workflow.redeploy-stranded.yml",
       "kind": "duty",

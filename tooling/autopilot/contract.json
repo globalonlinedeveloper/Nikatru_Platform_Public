@@ -40,7 +40,13 @@
   },
   "publicLabels": {
     "pr": ["land-ok", "land-hold", "needs-review", "review:approve", "review:changes", "fix-first"],
-    "issue": ["land-freeze", "laptop-off"]
+    "issue": ["land-freeze", "laptop-off", "e2e-hold"]
+  },
+  "watch": {
+    "STALL_H": 6,
+    "LEDGER_WINDOW_H": 12,
+    "LEDGER_BODY_CAP": 60000,
+    "E2E_DISPATCH_MIN_GAP_MIN": 30
   },
   "routines": [
     { "id": "reviewer", "account": "1", "minute": 5 },

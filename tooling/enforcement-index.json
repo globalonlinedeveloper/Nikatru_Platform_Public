@@ -53,6 +53,17 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/autopilot-watch.yml#e2e-after-deploy",
+      ".github/workflows/autopilot-watch.yml#watch"
+    ],
+    "kind": "script",
+    "ref": "tooling/autopilot/watch.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 044",
       "ADR 076",

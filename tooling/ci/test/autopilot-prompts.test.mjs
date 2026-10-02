@@ -21,7 +21,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const DIR = join(ROOT, 'docs/autopilot');
 const C = JSON.parse(readFileSync(join(ROOT, 'tooling/autopilot/contract.json'), 'utf8'));
 
-const NUMBERS = { ...C.thresholds, ...Object.fromEntries(Object.entries(C.heartbeat).filter(([k]) => /^[A-Z]/.test(k))), ...C.claimStaleness };
+const NUMBERS = { ...C.thresholds, ...Object.fromEntries(Object.entries(C.heartbeat).filter(([k]) => /^[A-Z]/.test(k))), ...C.claimStaleness, ...(C.watch ?? {}) };
 const LABELS = new Set([...C.labels.fixed, ...C.labels.prefixed.map((p) => `${p}<`), ...C.publicLabels.pr, ...C.publicLabels.issue]);
 const isLabel = (w) => LABELS.has(w) || C.labels.prefixed.some((p) => w.startsWith(p));
 

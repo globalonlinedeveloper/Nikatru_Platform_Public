@@ -41,6 +41,11 @@
       "firstSeen": "2026-10-02",
       "evidence": []
     },
+    "tooling/autopilot/watch.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
     "tooling/catalog/render-rail-prices.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-28",

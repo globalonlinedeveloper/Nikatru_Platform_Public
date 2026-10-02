@@ -61,10 +61,20 @@ nothing else). `read` exits 0 fresh, 10 stale, 11 handover, 12 drill-stale, 2 un
 Public pull requests: `land-ok`, `land-hold`, `needs-review`, `review:approve`,
 `review:changes`, `fix-first`.
 
-Public issues: `land-freeze`, `laptop-off`.
+Public issues: `land-freeze`, `laptop-off`, `e2e-hold` (a known E2E red being fixed: the
+watch dispatches no E2E run while one is open).
 
 Private queue issues (see queue.md): `cloud-lane`, `ready`, `blocked`, `claimed:<id>`,
 `pr-open`, `done`, `failed`, `prio:<p>`, `acct:<n>`, `drill`.
+
+## The watch (`.github/workflows/autopilot-watch.yml`)
+
+| Threshold | Value | Meaning |
+|---|---|---|
+| `STALL_H` = 6 | hours | an open, green, ready PR with no `land-ok` this old is a STALL |
+| `LEDGER_WINDOW_H` = 12 | hours | the run ledger lists every run that ended red in this window |
+| `LEDGER_BODY_CAP` = 60000 | characters | the ledger issue body; the oldest rows are dropped first |
+| `E2E_DISPATCH_MIN_GAP_MIN` = 30 | minutes | at most one E2E-after-deploy dispatch per this gap |
 
 ## Routines
 
