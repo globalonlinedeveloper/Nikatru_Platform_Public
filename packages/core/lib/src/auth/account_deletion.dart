@@ -169,8 +169,18 @@ enum AccountDeletionOutcome {
 /// `AuthFailure` changes — but a caller that wants to say what really happened
 /// can ask for [outcome] instead of parsing a sentence.
 class AccountDeletionFailure extends AuthFailure {
-  AccountDeletionFailure(this.outcome, {String? message, this.detail})
-      : super(message ?? outcome.plainMessage);
+  AccountDeletionFailure(
+    this.outcome, {
+    String? message,
+    this.detail,
+    this.serverSentence,
+  }) : super(message ?? outcome.plainMessage);
+
+  /// ⏱ 2026-10-01 · AB-A5-02-client. The server's own sentence for the user,
+  /// when the refusal carried one — DELETE /v1/account's 503
+  /// `subscription_still_billing` says the plan is still billing and what to do
+  /// first. Shown BESIDE the outcome's sentence, never instead of it.
+  final String? serverSentence;
 
   /// Build the failure a given HTTP [statusCode] deserves. Throwing on a 2xx is
   /// refused loudly rather than quietly producing a "failure" that means success.
@@ -227,6 +237,10 @@ AccountDeletionOutcome accountDeletionOutcomeOf(Object error) =>
     error is AccountDeletionFailure
         ? error.outcome
         : AccountDeletionOutcome.unknown;
+
+/// The server's sentence for the user carried by [error], or null.
+String? accountDeletionServerSentenceOf(Object error) =>
+    error is AccountDeletionFailure ? error.serverSentence : null;
 
 /// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH. How recent a password-less account's last
 /// sign-in must be for the app to call `DELETE /v1/account` WITHOUT opening the

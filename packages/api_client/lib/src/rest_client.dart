@@ -10,9 +10,16 @@ class ApiException implements Exception {
     this.detail,
     this.malformed = false,
     this.retryAfter,
+    this.serverSentence,
   });
   final int statusCode;
   final String message;
+
+  /// ⏱ 2026-10-01 · AB-A5-02-client. The body's `message`, when the server
+  /// wrote one FOR THE USER — today only DELETE /v1/account's 503
+  /// `subscription_still_billing`, whose sentence says why nothing was deleted.
+  /// [message] stays the machine code; this is never parsed, only shown.
+  final String? serverSentence;
 
   /// True when the request never got an answer: no network, DNS, a timeout.
   ///
@@ -222,11 +229,15 @@ class RestClient {
       final int? wait = int.tryParse(
         e.response?.headers.value('retry-after')?.trim() ?? '',
       );
+      final Object? sentence = data is Map ? data['message'] : null;
       throw ApiException(
         code,
         msg,
         detail: detail?.toString(),
         retryAfter: wait == null ? null : Duration(seconds: wait),
+        serverSentence: sentence is String && sentence.isNotEmpty
+            ? sentence
+            : null,
       );
     }
     throw ApiException(0, e.toString());
