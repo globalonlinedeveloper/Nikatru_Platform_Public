@@ -1,0 +1,46 @@
+{
+  "box": "boxc",
+  "_why": [
+    "BOX C — the auth box: the self-hosted GoTrue and its Postgres since 2026-09-24 (Box A before). Declared as DATA and read back by tooling/ops/check-box-declared.mjs, READ-ONLY over SSH: exit 1 on drift, 2 when it could not look.",
+    "This is the box the product cannot survive losing (tooling/ops/register.json `_substrateHosts._supabaseBoxCronWhy`): every identity's foreign key lives in its database. Its five root crons are the five `duty.supabase-*` rows, carried from Box A byte-identical on 2026-09-24.",
+    "No address is written here; the box is reached through the environment names under `ssh`. A field the public tree does not state is null and is reported UNREAD (LOST) until the first read-back fills it."
+  ],
+  "roles": ["auth"],
+  "provider": { "vendor": "hostinger", "plan": "KVM 8", "product": "VPS" },
+  "cost": { "source": "Private/platform-state/identity.json", "vendorId": "hostinger", "why": "Cited by vendor id, never copied: CI cannot read Private, so box-move grades the cost delta LOST there." },
+  "spec": { "cpu": 8, "ramGiB": 32, "diskGiB": 400, "asOf": "2026-10-01", "verify": "check-box-declared.mjs reads nproc, free -b and df -B1 / and compares (RAM and disk within 15% below the plan's figure)" },
+  "ssh": { "hostEnv": "BOXC_SSH_HOST", "userEnv": "BOXC_SSH_USER", "keyEnv": "BOXC_SSH_KEY", "portEnv": "BOXC_SSH_PORT", "sudoEnv": "BOXC_SSH_SUDO" },
+  "cronTz": { "value": "Asia/Kolkata", "measuredOn": "2026-09-06", "by": "timedatectl", "cite": "tooling/ops/register.json#duty.supabase-dump", "carried": "measured on Box A, whose crontab moved to this box byte-identical on 2026-09-24; the read-back re-reads it here (trap shell-25: cron reads the timezone once at start, so record it as read, never as assumed)" },
+  "services": [
+    { "id": "supabase-db", "image": "supabase/postgres", "version": "17.6.1.136", "compose": { "project": "supabase", "service": "db" }, "containers": 1, "hostnames": [], "secrets": ["POSTGRES_PASSWORD", "JWT_SECRET"], "use": null },
+    { "id": "gotrue", "image": "supabase/gotrue", "version": null, "compose": { "project": "supabase", "service": "auth" }, "containers": 1, "hostnames": ["auth-api.nikatru.com"], "secrets": ["JWT_SECRET", "GOTRUE_SMTP_USER", "GOTRUE_SMTP_PASS", "GOTRUE_EXTERNAL_APPLE_SECRET"], "use": null },
+    { "id": "envoy", "image": "envoyproxy/envoy", "version": null, "compose": { "project": "supabase", "service": null }, "containers": 1, "hostnames": ["auth-api.nikatru.com"], "secrets": [], "use": null },
+    { "id": "studio", "image": "supabase/studio", "version": null, "compose": { "project": "supabase", "service": "studio" }, "containers": 1, "hostnames": ["studio.nikatru.com"], "secrets": ["DASHBOARD_PASSWORD"], "use": null }
+  ],
+  "units": ["docker", "containerd", "cron", "ssh", "cloudflared", "beszel-agent"],
+  "volumes": [
+    { "name": "/opt/supabase", "kind": "bind", "holds": "the compose project, its .env (JWT_SECRET is read from it by the dump) and the dumps (backups/)", "backupSets": ["supabase-auth-pg"] },
+    { "name": "db-config", "kind": "named", "holds": "the pgsodium root key the dump copies out (duty.supabase-dump)", "backupSets": ["supabase-auth-pg"] }
+  ],
+  "backupSets": ["supabase-auth-pg"],
+  "hostnames": [
+    { "name": "auth-api.nikatru.com", "record": "tunnel-cname", "via": "the Box C Cloudflare tunnel, through envoy" },
+    { "name": "studio.nikatru.com", "record": "tunnel-cname", "via": "the Box C Cloudflare tunnel, behind Cloudflare Access" }
+  ],
+  "tunnel": { "secret": "TUNNEL_TOKEN", "why": "auth-api is served through the tunnel and envoy (services/edge-shield sits in front of /auth/v1/*): the record does not change in a move; the connector runs on the target with this secret." },
+  "monitors": [17, 18, 19, 24, 25, 26, 27],
+  "crons": [
+    { "name": "supabase-dump", "schedule": "15 0,6,12,18 * * *", "script": "/opt/supabase/backup.sh", "register": "duty.supabase-dump" },
+    { "name": "supabase-drive-sync", "schedule": "35 0,6,12,18 * * *", "script": "/opt/supabase/sb_drive_sync.sh", "register": "duty.supabase-drive-sync" },
+    { "name": "supabase-second-copy", "schedule": "50 0,6,12,18 * * *", "script": "/opt/supabase/sb_boxb_sync.sh", "register": "duty.supabase-second-copy" },
+    { "name": "supabase-backup-liveness", "schedule": "47 * * * *", "script": "/opt/supabase/backup-liveness.py", "register": "duty.supabase-backup-liveness" },
+    { "name": "supabase-disk-alert", "schedule": "17 * * * *", "script": "/opt/supabase/disk-alert.py", "register": "duty.supabase-disk-alert" }
+  ],
+  "allowLists": [
+    { "id": "boxc-pg-hba", "where": "the Postgres pg_hba.conf in the supabase db volume: the host lines that admit a client by address", "owner": "operator", "row": null, "verify": "on the box, read pg_hba.conf through the db container (SHOW hba_file; then read the file) and list the address lines, names only", "confirmedOn": null },
+    { "id": "edge-shield-waf-boxc", "where": "the Cloudflare WAF and rate-limit rules in front of auth-api (services/edge-shield, row O-BOXES-UNSHIELDED-FROM-SPIKES) that name the origin's address", "owner": "operator", "row": "O-BOXES-UNSHIELDED-FROM-SPIKES", "verify": "list the zone's custom rules and grep their expressions for the declared address", "confirmedOn": null }
+  ],
+  "_toConfirm": [
+    "Read back on the first run and fill, never guess: the GoTrue, envoy and studio image versions; the compose service names of envoy and the studio's meta companion if one runs; the database's data volume name; every OS unit beyond the six named. `node tooling/ops/check-box-declared.mjs boxc --print-observed` prints what was read, names only."
+  ]
+}
