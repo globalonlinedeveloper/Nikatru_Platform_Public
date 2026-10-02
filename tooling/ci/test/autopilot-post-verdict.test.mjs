@@ -9,7 +9,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { planVerdict, postVerdict, resolveToken } from '../../autopilot/post-verdict.mjs';
+import { planVerdict, postVerdict, resolveToken, VERDICT_MAX } from '../../autopilot/post-verdict.mjs';
+import { restClient } from '../../autopilot/review-paths.mjs';
 
 const SCRIPT = join(resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..'), 'tooling/autopilot/post-verdict.mjs');
 const HEAD = 'a'.repeat(40);
@@ -82,5 +83,19 @@ describe('post-verdict', () => {
     const r = spawnSync(process.execPath, [SCRIPT, '--pr', '3', '--head', HEAD, '--verdict-file', '/nonexistent/v.txt'], { encoding: 'utf8' });
     assert.equal(r.status, 1);
     assert.match(r.stdout, /REFUSED: the verdict file could not be read/);
+  });
+  test('🔴 the file\'s text is held to a verdict\'s shape before it is posted (CodeQL 583)', () => {
+    assert.match(planVerdict({ pr: prJson(), head: HEAD, text: `VERDICT: APPROVE\nkey ${['ghp', 'R4'.repeat(18)].join('_')}\n` }).refuse, /secret-shaped/);
+    assert.match(planVerdict({ pr: prJson(), head: HEAD, text: `VERDICT: CHANGES\n${'x'.repeat(VERDICT_MAX)}` }).refuse, /over/);
+  });
+  test('🔴 the REST client refuses a repo or a path outside the shapes it builds', async () => {
+    assert.throws(() => restClient({ repo: 'evil.example/x/y', token: 't' }), /owner\/name/);
+    let called = false;
+    const { call } = restClient({ repo: 'o/r', token: 't', fetchImpl: async () => { called = true; return { ok: true, status: 200, text: async () => '' }; } });
+    await assert.rejects(call('GET', '@evil.example/x'), /refused request path/);
+    await assert.rejects(call('GET', '/a b'), /refused request path/);
+    assert.equal(called, false);
+    await call('DELETE', `/issues/3/labels/${encodeURIComponent('review:approve')}`);
+    assert.equal(called, true);
   });
 });

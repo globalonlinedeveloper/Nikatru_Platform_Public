@@ -161,6 +161,12 @@ describe('the reader over the contents API', () => {
     assert.equal((await readBeatApi({ repo: 'o/r', fetchImpl: async () => ({ ok: false, status: 404 }) })).text, null);
     assert.equal((await readBeatApi({ repo: 'o/r', fetchImpl: async () => { throw new Error('ECONNRESET'); } })).text, null);
   });
+  test('🔴 a repo outside owner/name never reaches a request (CodeQL 582)', async () => {
+    let called = false;
+    const r = await readBeatApi({ repo: 'evil.example/x/y', fetchImpl: async () => { called = true; return { ok: true, text: async () => '' }; } });
+    assert.equal(r.text, null);
+    assert.equal(called, false);
+  });
   test('the CLI refuses bad usage with exit 2', () => {
     const r = spawnSync(process.execPath, [SCRIPT, 'write'], { encoding: 'utf8' });
     assert.equal(r.status, 2, r.stdout + r.stderr);

@@ -98,9 +98,20 @@ export function decideLabels({ files, complete = true, labels = [], synchronize 
 
 const API = () => process.env.GITHUB_API_URL || 'https://api.github.com';
 
+/** A request path this module builds: a slash, then URL-safe characters only. */
+export const PATH_SHAPE = /^\/[A-Za-z0-9_.~\/?=&%:,-]*$/;
+
+/**
+ * The thin REST client. The repo and every path are held to the shapes this module builds
+ * before a request is made; a JSON body (labels from contract.json, a verdict file's text)
+ * is sent only to the GitHub API origin (CodeQL js/file-access-to-http, alert 583;
+ * disposition in tooling/ci/codeql-dispositions.json).
+ */
 export function restClient({ repo, token, fetchImpl = globalThis.fetch }) {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(String(repo))) throw new Error(`repo ${JSON.stringify(repo)} is not owner/name`);
   const headers = { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'nikatru-autopilot', 'x-github-api-version': '2022-11-28' };
   const call = async (method, path, body) => {
+    if (!PATH_SHAPE.test(String(path))) throw new Error(`refused request path ${JSON.stringify(String(path).slice(0, 80))}`);
     const res = await fetchImpl(`${API()}/repos/${repo}${path}`, { method, headers: body === undefined ? headers : { ...headers, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
     const text = await res.text().catch(() => '');
     let json = null;

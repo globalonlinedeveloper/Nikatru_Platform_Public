@@ -29,6 +29,9 @@ import { envToken, flag, ghSpawnSpec, isMain, redact } from './cli.mjs';
 import { LABELS, restClient } from './review-paths.mjs';
 
 export const VERDICT_LINE = /^VERDICT: (APPROVE|CHANGES)\s*$/;
+/** GitHub's review body limit; a longer verdict is refused, never cut. */
+export const VERDICT_MAX = 65_000;
+const SECRET = /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16})\b|-----BEGIN [A-Z ]*PRIVATE KEY-----/;
 const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
 
 /**
@@ -39,6 +42,9 @@ export function planVerdict({ pr, head, text }) {
   const lines = String(text ?? '').replace(/\r\n?/g, '\n').split('\n');
   const m = VERDICT_LINE.exec(lines[0] ?? '');
   if (!m) return { refuse: 'the verdict file\'s first line is not `VERDICT: APPROVE` or `VERDICT: CHANGES`' };
+  // The file's text is posted to the GitHub API; it is held to a verdict's shape first.
+  if (String(text).length > VERDICT_MAX) return { refuse: `the verdict file is ${String(text).length} characters, over ${VERDICT_MAX}` };
+  if (SECRET.test(String(text))) return { refuse: 'the verdict file carries a secret-shaped string: nothing posted' };
   if (!/^[0-9a-f]{40}$/.test(String(head))) return { refuse: `--head ${JSON.stringify(head)} is not a full commit sha` };
   const now = pr?.head?.sha;
   if (now !== head) return { refuse: `the head moved: the review read ${String(head).slice(0, 8)}, the PR is now at ${String(now).slice(0, 8)} — nothing posted; review the new head` };

@@ -111,7 +111,9 @@ export function assertPublic(body) {
   return null;
 }
 
-const esc = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+// Markdown table cell: backslashes first (CodeQL js/incomplete-sanitization, alert 581),
+// then the cell delimiter, then newlines.
+const esc = (s) => String(s ?? '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 
 /** The ledger issue body, capped at LEDGER_BODY_CAP: the OLDEST ledger rows are dropped first. */
 export function renderLedger({ now, laptop, board, ledger, freeze, cap = W.LEDGER_BODY_CAP }) {

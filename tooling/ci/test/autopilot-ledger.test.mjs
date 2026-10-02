@@ -89,6 +89,11 @@ describe('(c) the run ledger', () => {
     assert.doesNotMatch(body, /\| 100 \|/, 'the oldest row is dropped');
     assert.match(body, /older row\(s\) dropped/);
   });
+  test('🔴 a cell escapes backslashes before pipes, so a trailing backslash cannot break the table (CodeQL 581)', () => {
+    const ledger = runLedger({ runs: [run(60, { name: 'CI \\|x' })], now: NOW });
+    const body = renderLedger({ now: NOW, laptop: { state: 'fresh', beat: null }, board: [], ledger, freeze: null });
+    assert.match(body, /\| 60 \| CI \\\\\\\|x \|/);
+  });
   test('🔴 a body with a C:/Users path or a secret-shaped string is refused', () => {
     assert.match(assertPublic('see C:\\Users\\owner\\x'), /C:\/Users/);
     assert.match(assertPublic(`token ${['ghp', 'Q7'.repeat(18)].join('_')}`), /secret-shaped/);

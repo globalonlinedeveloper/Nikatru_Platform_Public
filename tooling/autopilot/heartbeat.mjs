@@ -38,6 +38,13 @@ export const STATE = Object.freeze({ FRESH, STALE, HANDOVER, DRILL_STALE, UNKNOW
 export const STATE_EXIT = Object.freeze({ [FRESH]: 0, [STALE]: 10, [HANDOVER]: 11, [DRILL_STALE]: 12, [UNKNOWN]: 2 });
 
 const MIN = 60_000;
+// The ref, the file and the repo are interpolated into a request URL; contract.json is a
+// file, so each is held to a git/GitHub name shape before any request is built (CodeQL
+// js/file-access-to-http, alert 582; disposition in tooling/ci/codeql-dispositions.json).
+const REF_SHAPE = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+const FILE_SHAPE = /^[A-Za-z0-9._-]+$/;
+export const REPO_SHAPE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+if (!REF_SHAPE.test(HB.ref) || !FILE_SHAPE.test(HB.file)) throw new Error('contract.json heartbeat.ref / heartbeat.file is not a plain git name');
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 
 // ── PURE ────────────────────────────────────────────────────────────────────
@@ -124,6 +131,7 @@ const API = () => process.env.GITHUB_API_URL || 'https://api.github.com';
 export async function readBeatApi({ repo = DEFAULT_REPO, token = null, fetchImpl = globalThis.fetch, timeoutMs = HB.CALL_CEILING_S * 1000 } = {}) {
   const headers = { accept: 'application/vnd.github.raw+json', 'user-agent': 'nikatru-heartbeat', 'x-github-api-version': '2022-11-28' };
   if (token) headers.authorization = `Bearer ${token}`;
+  if (!REPO_SHAPE.test(String(repo))) return { text: null, why: `repo ${JSON.stringify(repo)} is not owner/name` };
   try {
     const res = await fetchImpl(`${API()}/repos/${repo}/contents/${HB.file}?ref=${encodeURIComponent(HB.ref)}`, { headers, signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return { text: null, why: `contents API answered HTTP ${res.status}` };
