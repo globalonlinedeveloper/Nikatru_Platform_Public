@@ -53,3 +53,16 @@ snapshot" limb will already be red by then.
 
 The `2026-07-26` snapshot here was recovered from history after exactly that
 happened.
+
+## Translations
+
+A translated notice sits beside the English one at the same version
+(`2026-09-26/ta/privacy.html` is the first). It is a translation of the `<main>`
+document only: the head's `lang`, title, description, skip link and back link are
+translated too, and the footer stays the English snapshot's frozen chrome.
+
+Only `en` is text-compared with the live page. A translation is held to the English
+snapshot of the same version on what does not translate: the count of `<h2>`, `<li>`,
+`<p>` and `<b>`, the link targets, and how often the age floor 18 appears. A locale
+that has had a notice before and has none at the version in force fails the build,
+so **an English version bump ships its translations in the same change.**
