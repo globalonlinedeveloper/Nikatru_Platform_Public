@@ -288,6 +288,23 @@ DeletionReauth deletionReauthOf(AuthUser user) =>
     ? DeletionReauth.provider
     : DeletionReauth.password;
 
+/// ⏱ 2026-10-02 · #1142 review item 2. Whether the dialog ALSO offers [user]
+/// their password, next to the provider re-auth [deletionReauthOf] chose: an
+/// account that HAS a password identity, on a target whose password grant
+/// passes ([passwordGrant] — web, and attested Android and iOS; the app reads
+/// it from `AuthCapabilities.passwordReauth`).
+///
+/// 🔴 WITHOUT IT A LINKED ACCOUNT COULD LOSE IN-APP DELETION ON EVERY TARGET.
+/// Its Google account closed, or its Apple relay address gone, the provider
+/// sheet can never return the same user, and before this the dialog showed no
+/// password field to an account that still has one. A password-only account
+/// takes the password anyway ([DeletionReauth.password]); an OAuth-only account
+/// has no password to offer, which is the accepted trade (#1142's body).
+bool offersPasswordReauth(AuthUser user, {required bool passwordGrant}) =>
+    passwordGrant &&
+    user.hasPasswordIdentity &&
+    deletionReauthOf(user) == DeletionReauth.provider;
+
 /// ⏱ 2026-09-15 · O-OAUTH-DELETE-REAUTH (owner ruling on OWNER_QUEUE A-10) — a
 /// PASSWORD-LESS account confirms deletion by signing in with its provider AGAIN,
 /// at the moment of deletion. Returns when [user] has freshly authenticated;

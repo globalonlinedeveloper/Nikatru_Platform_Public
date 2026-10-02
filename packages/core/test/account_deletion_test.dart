@@ -434,6 +434,28 @@ void main() {
         DeletionReauth.password,
       );
     });
+
+    // ⏱ 2026-10-02 · #1142 review item 2: a linked account keeps its password
+    // NEXT to the provider where the grant passes, so a dead provider account
+    // does not end its in-app deletion.
+    test('🔴 offersPasswordReauth: a LINKED account is offered its password '
+        'where the grant passes, and not where it does not', () {
+      final AuthUser linked = user(providers: const <String>['google']);
+      expect(offersPasswordReauth(linked, passwordGrant: true), isTrue);
+      expect(offersPasswordReauth(linked, passwordGrant: false), isFalse);
+    });
+
+    test('offersPasswordReauth: no password to offer an OAuth-only account, '
+        'and nothing extra for a password-only one', () {
+      expect(
+        offersPasswordReauth(
+          user(password: false, providers: const <String>['apple']),
+          passwordGrant: true,
+        ),
+        isFalse,
+      );
+      expect(offersPasswordReauth(user(), passwordGrant: true), isFalse);
+    });
   });
 
   group('AuthUser carries the password identity and the last sign-in', () {

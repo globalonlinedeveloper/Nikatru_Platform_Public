@@ -298,11 +298,11 @@
         "linux": { "status": "leg", "job": "linux-oauth-return" }
       },
       "proofRuns": {
-        "android": null,
-        "ios": null,
-        "macos": null,
-        "windows": null,
-        "linux": null
+        "android": 36969834609,
+        "ios": 36969834609,
+        "macos": 36969834609,
+        "windows": 36969834609,
+        "linux": 36969834609
       }
     }
   },
@@ -319,8 +319,12 @@
       "One row per target the catalog ships an app to (tooling/channel-register.json, web included), one cell per account",
       "kind. `via` is what deletionReauthOf answers for that kind and the guard holds it to the rule. `ships` on a native",
       "target via the provider needs that target's nativeTargets.oauthReturn leg; `waits` names the proof it waits for.",
-      "`proofRun` is the CI run that walked the deletion on that target, null until one has: web's is the nightly e2e",
-      "account-delete-purges leg."
+      "⏱ 2026-10-02 · #1142 review item 1 (lead ruling): a cell says `ships` only with `proofRun`, the id of the recorded",
+      "run that proves that path on that target, and assert-deletion-control limb 4b fails a `ships` cell without one.",
+      "Native linked/passwordless: native-auth-proof.yml run 36969834609, whose <target>-oauth-return leg watched the",
+      "OS hand the app an OAuth return (windows proves the single-instance forwarder, not MSIX protocol registration;",
+      "ios, the app opening its own callback). web/password: e2e.yml run 36971514409, whose suite deleted its",
+      "account from inside the app. Every other cell WAITS for the run its `waitsFor` names."
     ],
     "decision": "packages/core/lib/src/auth/account_deletion.dart",
     "accounts": {
@@ -330,43 +334,35 @@
     },
     "targets": {
       "web": {
-        "password": { "via": "password", "status": "ships" },
-        "linked": { "via": "provider", "status": "ships" },
-        "passwordless": { "via": "provider", "status": "ships" }
+        "password": { "via": "password", "status": "ships", "proofRun": 36971514409 },
+        "linked": { "via": "provider", "status": "waits", "waitsFor": "a recorded run of the provider re-auth on web: e2e.yml provisions a password account, and no CI run drives an Apple or Google sheet headless. A linked web account can still type its password (offersPasswordReauth, #1142 item 2), the grant e2e.yml run 36971514409 walks" },
+        "passwordless": { "via": "provider", "status": "waits", "waitsFor": "a recorded run of the provider re-auth on web: e2e.yml provisions a password account, and no CI run drives an Apple or Google sheet headless. A linked web account can still type its password (offersPasswordReauth, #1142 item 2), the grant e2e.yml run 36971514409 walks" }
       },
       "android": {
-        "password": { "via": "password", "status": "ships" },
-        "linked": { "via": "provider", "status": "ships" },
-        "passwordless": { "via": "provider", "status": "ships" }
+        "password": { "via": "password", "status": "waits", "waitsFor": "a post-#1070 device run of the attested password grant (Play internal track, TestFlight): emulators and simulators cannot attest, and the channel rows keep nativeAuth false until that run exists" },
+        "linked": { "via": "provider", "status": "ships", "proofRun": 36969834609 },
+        "passwordless": { "via": "provider", "status": "ships", "proofRun": 36969834609 }
       },
       "ios": {
-        "password": { "via": "password", "status": "ships" },
-        "linked": { "via": "provider", "status": "ships" },
-        "passwordless": { "via": "provider", "status": "ships" }
+        "password": { "via": "password", "status": "waits", "waitsFor": "a post-#1070 device run of the attested password grant (Play internal track, TestFlight): emulators and simulators cannot attest, and the channel rows keep nativeAuth false until that run exists" },
+        "linked": { "via": "provider", "status": "ships", "proofRun": 36969834609 },
+        "passwordless": { "via": "provider", "status": "ships", "proofRun": 36969834609 }
       },
       "macos": {
         "password": { "via": "password", "status": "waits", "waitsFor": "the attested system-browser hand-off (build-native-signin-all-targets): a desktop build has no attested password grant (O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH)" },
-        "linked": { "via": "provider", "status": "ships" },
-        "passwordless": { "via": "provider", "status": "ships" }
+        "linked": { "via": "provider", "status": "ships", "proofRun": 36969834609 },
+        "passwordless": { "via": "provider", "status": "ships", "proofRun": 36969834609 }
       },
       "windows": {
         "password": { "via": "password", "status": "waits", "waitsFor": "the attested system-browser hand-off (build-native-signin-all-targets): a desktop build has no attested password grant (O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH)" },
-        "linked": { "via": "provider", "status": "ships" },
-        "passwordless": { "via": "provider", "status": "ships" }
+        "linked": { "via": "provider", "status": "ships", "proofRun": 36969834609 },
+        "passwordless": { "via": "provider", "status": "ships", "proofRun": 36969834609 }
       },
       "linux": {
         "password": { "via": "password", "status": "waits", "waitsFor": "the attested system-browser hand-off (build-native-signin-all-targets): a desktop build has no attested password grant (O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH)" },
-        "linked": { "via": "provider", "status": "ships" },
-        "passwordless": { "via": "provider", "status": "ships" }
+        "linked": { "via": "provider", "status": "ships", "proofRun": 36969834609 },
+        "passwordless": { "via": "provider", "status": "ships", "proofRun": 36969834609 }
       }
-    },
-    "proofRuns": {
-      "web": "the nightly e2e.yml account-delete-purges leg",
-      "android": null,
-      "ios": null,
-      "macos": null,
-      "windows": null,
-      "linux": null
     }
   },
   "captchaGatedSurfaces": {

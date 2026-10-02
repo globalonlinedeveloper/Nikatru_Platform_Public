@@ -837,6 +837,9 @@ describe('a deletion control that moved into the chassis package', () => {
 // red case below is a way to put that forced password path back, or to grade a
 // target the register cannot back; each was RUN red against the guard.
 describe('limb 4 — the re-auth is the one the account can give, on every target', () => {
+  // The whole password-grant branch condition, through its `{` — since #1142 item 2 it also offers a linked
+  // account its password where the grant passes (`|| (… offersPasswordReauth(…))`).
+  const PASSWORD_BRANCH = /if \(core\.deletionReauthOf\(user\) == core\.DeletionReauth\.password[^{]*\{/;
   const regEdit = (fn) => (root) =>
     mutate(root, REGISTER, (s) => {
       const j = JSON.parse(s);
@@ -861,7 +864,7 @@ describe('limb 4 — the re-auth is the one the account can give, on every targe
     withTree(
       (root) =>
         mutate(root, SUBLY_SETTINGS, (s) =>
-          s.replace('if (core.deletionReauthOf(user) == core.DeletionReauth.password) {', 'if (user.hasPasswordIdentity) {'),
+          s.replace(PASSWORD_BRANCH, 'if (user.hasPasswordIdentity) {'),
         ),
       (r) => {
         assert.equal(r.status, 1, r.stdout);
@@ -874,7 +877,7 @@ describe('limb 4 — the re-auth is the one the account can give, on every targe
     withTree(
       (root) =>
         mutate(root, BRICK_SETTINGS, (s) =>
-          s.replace('if (core.deletionReauthOf(user) == core.DeletionReauth.password) {', 'if (user.hasPasswordIdentity) {'),
+          s.replace(PASSWORD_BRANCH, 'if (user.hasPasswordIdentity) {'),
         ),
       (r) => {
         assert.equal(r.status, 1, r.stdout);
@@ -973,6 +976,55 @@ describe('limb 4 — the re-auth is the one the account can give, on every targe
       (r) => {
         assert.equal(r.status, 1, r.stdout);
         assert.match(r.stderr, /macos\/password waits, and names no `waitsFor`/);
+      },
+    );
+  });
+
+  // ⏱ 2026-10-02 · limb 4b (#1142 review item 1): `ships` is a claim a recorded run makes.
+  test('R11 · 🔴 a native "ships" cell with its run id blanked', () => {
+    withTree(
+      regEdit((j) => {
+        delete j.deletionReauth.targets.android.linked.proofRun;
+      }),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /android\/linked says "ships" and records no `proofRun`/);
+      },
+    );
+  });
+
+  test('R12 · 🔴 a web "ships" cell with no run is held to it too', () => {
+    withTree(
+      regEdit((j) => {
+        j.deletionReauth.targets.web.password.proofRun = null;
+      }),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /web\/password says "ships" and records no `proofRun`/);
+      },
+    );
+  });
+
+  test("R13 · 🔴 a provider cell that ships on a run other than its target's OAuth-return run", () => {
+    withTree(
+      regEdit((j) => {
+        j.deletionReauth.targets.linux.passwordless.proofRun = 1;
+      }),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /linux\/passwordless ships via the provider on run 1, and nativeTargets\.oauthReturn\.proofRuns\.linux records/);
+      },
+    );
+  });
+
+  test('R14 · 🔴 the OAuth-return run unrecorded: the provider cells that ship on it go red', () => {
+    withTree(
+      regEdit((j) => {
+        j.nativeTargets.oauthReturn.proofRuns.macos = null;
+      }),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout);
+        assert.match(r.stderr, /macos\/linked ships via the provider on run \d+, and nativeTargets\.oauthReturn\.proofRuns\.macos records null/);
       },
     );
   });

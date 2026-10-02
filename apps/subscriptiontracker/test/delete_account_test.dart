@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 // does Subly's own data layer — an unnarrowed import makes that name ambiguous.
 import 'package:nikatru_api_client/nikatru_api_client.dart' show RestClient;
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
-    show InMemoryAuthRepository;
+    show AuthCapabilities, InMemoryAuthRepository;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
@@ -253,6 +253,10 @@ class _LinkedAuth extends _FakeAuth {
   int appleCalls = 0;
   int googleCalls = 0;
 
+  /// #1142 item 2: where the grant passes (web, attested mobile), a linked
+  /// account's own password re-proves it; elsewhere the grant is refused.
+  bool passwordWorks = false;
+
   @override
   core.AuthUser? get currentUser => signedIn
       ? core.AuthUser(
@@ -271,6 +275,10 @@ class _LinkedAuth extends _FakeAuth {
     String? captchaToken,
   }) async {
     passwordGrants++;
+    if (passwordWorks && password == _FakeAuth.rightPassword) {
+      _freshSignIn();
+      return currentUser!;
+    }
     throw core.AuthFailure('captcha protection: request disallowed');
   }
 
@@ -310,6 +318,7 @@ Future<void> _pumpSettings(
   _FakeAuth auth, {
   _MemStore? store,
   core.AccountPreferencesTransport? preferences,
+  AuthCapabilities? caps,
 }) async {
   // A TALL SURFACE, deliberately. Settings is a ListView, so an off-screen row
   // has no element and `findsNothing` would pass for a control that exists and
@@ -331,6 +340,7 @@ Future<void> _pumpSettings(
         keyValueStoreProvider.overrideWith((ref) async => store ?? _MemStore()),
         if (preferences != null)
           accountPreferencesTransportProvider.overrideWithValue(preferences),
+        if (caps != null) authCapabilitiesProvider.overrideWithValue(caps),
         analyticsConsentProvider.overrideWithValue(core.ConsentStatus.denied),
         // The deletion path now forgets the user's device-local state as well
         // as their account (`forgetSignedInUser`), and both of those seams are
@@ -1155,20 +1165,29 @@ void main() {
   // build that grant is captcha-gated and refused, so the account could not
   // delete itself in-app. Each case below is red on the `hasPasswordIdentity`
   // branch it replaces: the password field shows, and nothing is deleted.
+  //
+  // ⏱ 2026-10-02 · #1142 review item 2. Where the password grant passes
+  // (web, attested Android and iOS) the linked account keeps its password NEXT
+  // to the provider: the field is optional, and an empty one opens the sheet.
+  // Where it does not (a desktop build), there is no field at all.
+  final AuthCapabilities desktop = AuthCapabilities.forPlatform(
+    TargetPlatform.linux,
+    isWeb: false,
+  );
   group('an email account with a provider LINKED', () {
     for (final String provider in <String>['apple', 'google']) {
       testWidgets(
-        '🔴 $provider linked: NO password prompt, the $provider sheet, and the '
-        'account is deleted',
+        '🔴 $provider linked, on a desktop build: NO password prompt, the '
+        '$provider sheet, and the account is deleted',
         (WidgetTester tester) async {
           final _LinkedAuth auth = _LinkedAuth(provider);
-          await _pumpSettings(tester, auth);
+          await _pumpSettings(tester, auth, caps: desktop);
           await tester.tap(find.text('Delete account'));
           await tester.pumpAndSettle();
           expect(
             find.byKey(const Key('deleteAccountPassword')),
             findsNothing,
-            reason: 'a linked account re-proves at its provider, not by typing',
+            reason: 'no password grant passes here, so none is offered',
           );
           await tester.tap(find.byKey(const Key('deleteAccountConfirm')));
           await tester.pump();
@@ -1182,7 +1201,55 @@ void main() {
           expect(auth.deleteCalls, 1);
         },
       );
+
+      testWidgets(
+        '🔴 $provider linked, where the grant passes: the password is OFFERED '
+        'and optional — left empty, the $provider sheet confirms',
+        (WidgetTester tester) async {
+          final _LinkedAuth auth = _LinkedAuth(provider);
+          await _pumpSettings(tester, auth);
+          await tester.tap(find.text('Delete account'));
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const Key('deleteAccountPassword')),
+            findsOneWidget,
+          );
+          expect(
+            tester
+                .widget<FilledButton>(
+                  find.byKey(const Key('deleteAccountConfirm')),
+                )
+                .onPressed,
+            isNotNull,
+            reason: 'the provider is a confirmation of its own',
+          );
+          await tester.tap(find.byKey(const Key('deleteAccountConfirm')));
+          await tester.pump();
+          await tester.pumpAndSettle();
+          expect(auth.passwordGrants, 0);
+          expect(provider == 'apple' ? auth.appleCalls : auth.googleCalls, 1);
+          expect(auth.deleteCalls, 1);
+        },
+      );
     }
+
+    testWidgets(
+      '🔴 BOTH identities, the provider unusable: the account deletes by its '
+      'PASSWORD, and no provider sheet opens',
+      (WidgetTester tester) async {
+        final _LinkedAuth auth = _LinkedAuth('google')..passwordWorks = true;
+        await _pumpSettings(tester, auth);
+        await tester.tap(find.text('Delete account'));
+        await tester.pumpAndSettle();
+        await _typePassword(tester, _FakeAuth.rightPassword);
+        await tester.tap(find.byKey(const Key('deleteAccountConfirm')));
+        await tester.pump();
+        await tester.pumpAndSettle();
+        expect(auth.passwordGrants, 1);
+        expect(auth.googleCalls + auth.appleCalls, 0);
+        expect(auth.deleteCalls, 1);
+      },
+    );
 
     testWidgets('a password-only account still gets its password re-auth', (
       WidgetTester tester,

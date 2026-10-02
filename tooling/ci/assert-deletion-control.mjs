@@ -936,6 +936,7 @@ if (reauthTargets.length === 0) {
 }
 const DR = register?.deletionReauth?.targets;
 const oauthLegs = register?.nativeTargets?.oauthReturn?.targets ?? {};
+const oauthRuns = register?.nativeTargets?.oauthReturn?.proofRuns ?? {};
 const ungraded = [];
 for (const t of reauthTargets) {
   for (const kind of Object.keys(REAUTH_RULE)) {
@@ -973,11 +974,29 @@ for (const t of reauthTargets) {
         problems.push(`${REGISTER_REL} deletionReauth ${t}/${kind} waits, and names no \`waitsFor\`: a wait nobody can trace is an excuse.`);
       }
       waits.push(`${t}/${kind}`);
-    } else if (via === 'provider' && t !== 'web' && oauthLegs[t]?.status !== 'leg') {
-      problems.push(
-        `${REGISTER_REL} deletionReauth ${t}/${kind} ships via the provider, and nativeTargets.oauthReturn runs no leg on ` +
-          `${t}. A provider re-auth lands through the OAuth return; one no build has been watched taking on ${t} does not ship there.`,
-      );
+    } else {
+      // ⏱ 2026-10-02 · limb 4b (#1142 review item 1, lead ruling): `ships` is a claim a RUN makes. A cell graded
+      // ships with no recorded run is a guard printing "clean" over a path nobody watched work.
+      if (!Number.isInteger(cell.proofRun) || cell.proofRun <= 0) {
+        problems.push(
+          `${REGISTER_REL} deletionReauth ${t}/${kind} says "ships" and records no \`proofRun\` (the id of the CI run that ` +
+            'proves that path on that target). Feature parity is locked: grade it "waits", with the run it waits for.',
+        );
+      }
+      if (via === 'provider' && t !== 'web') {
+        if (oauthLegs[t]?.status !== 'leg') {
+          problems.push(
+            `${REGISTER_REL} deletionReauth ${t}/${kind} ships via the provider, and nativeTargets.oauthReturn runs no leg on ` +
+              `${t}. A provider re-auth lands through the OAuth return; one no build has been watched taking on ${t} does not ship there.`,
+          );
+        } else if (cell.proofRun !== oauthRuns[t]) {
+          problems.push(
+            `${REGISTER_REL} deletionReauth ${t}/${kind} ships via the provider on run ${JSON.stringify(cell.proofRun ?? null)}, ` +
+              `and nativeTargets.oauthReturn.proofRuns.${t} records ${JSON.stringify(oauthRuns[t] ?? null)}. A provider re-auth ` +
+              `ships on ${t} only on the green run of its OAuth-return leg.`,
+          );
+        }
+      }
     }
     row.push(`${kind}=${via}·${cell.status}`);
   }
