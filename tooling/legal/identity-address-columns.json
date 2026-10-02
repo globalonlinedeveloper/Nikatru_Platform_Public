@@ -1,0 +1,12 @@
+{
+  "_what": "Every column in the identity store (self-hosted GoTrue on Box C) that can hold a network address, and the value a write leaves in it. SYN-P2: every app notice says no network address is stored, and the identity store is inside that promise. tooling/ci/assert-app-yaml.mjs limb 10 refuses any column here that the trigger file does not empty on write, and an empty list (COVERAGE LOST).",
+  "_measuredBy": "A catalog read on Box C, counts and names only: every inet or cidr column and every column named ip, *_ip, ip_address, remote_addr or client_ip, in both databases of the stack (postgres and _supabase). The query is the first block of the trigger file's header. Re-run it after every GoTrue image upgrade: a new column is an address the notice would then wrongly deny.",
+  "store": "Box C, supabase/gotrue:v2.189.0, auth.schema_migrations max 20260302000000",
+  "asOf": "2026-10-02",
+  "triggerFile": "docs/platform/supabase/sql/identity-address-null-on-write.sql",
+  "columns": [
+    { "table": "auth.sessions", "column": "ip", "emptiedTo": "NULL" },
+    { "table": "auth.audit_log_entries", "column": "ip_address", "emptiedTo": "''" },
+    { "table": "auth.mfa_challenges", "column": "ip_address", "emptiedTo": "'0.0.0.0'::inet" }
+  ]
+}

@@ -49,15 +49,15 @@ processors:
 
   - id: hostinger
     role: infrastructure
-    purpose: Hosts the machines the self-hosted identity stack and crash-report service run on.
+    purpose: Hosts the machines our own sign-in service and crash-report service run on, so it holds the account records (your email address and user id) and the crash reports those services store.
     source: tooling/legal/provider-register.json
-    asOf: "2026-09-25"
+    asOf: "2026-10-02"
 
   - id: supabase
     role: identity
-    purpose: Runs the hosted account and sign-in service the app's servers are still configured to use.
+    purpose: Ran the account and sign-in service until 27 September 2026, and still holds a fallback copy of the account and sign-in records from before that date until it is retired; the app does not use it.
     source: tooling/legal/provider-register.json
-    asOf: "2026-09-25"
+    asOf: "2026-10-02"
 
   - id: paddle
     role: merchant_of_record
@@ -91,6 +91,12 @@ processors:
     purpose: When you buy in India anywhere other than the Apple App Store or Google Play, Nikatru is the seller and Razorpay takes the payment as our payment gateway, processing your payment details on our behalf.
     source: tooling/legal/provider-register.json
     asOf: "2026-09-26"
+
+  - id: google-workspace
+    role: infrastructure
+    purpose: Hosts our support mailbox, so it holds what you write to support, and stores our backups, which contain a copy of the records listed above.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-10-02"
 
   - id: resend
     role: email_delivery
