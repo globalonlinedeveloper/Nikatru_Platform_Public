@@ -73,6 +73,18 @@ void main() {
       );
     });
 
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): the EXPANDED class proper,
+    // not only its upper edge (1199) below.
+    testWidgets('at 1024 (expanded) one column capped at reading', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, kExpanded, const InsightsScreen());
+      expect(offeredWidth(tester, inPane(ListView)), AppBreakpoints.reading);
+      expect(_leftColumn, findsNothing);
+      expect(_rightColumn, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('at 1199 — one pixel below large — it is still one column', (
       WidgetTester tester,
     ) async {
