@@ -149,6 +149,7 @@ function claimableText(raw) {
 // the content-gate job is deleted") read "the guard exited 0 on known-bad
 // input". So it is read for nothing here. Excluding a file can only REMOVE
 // claims, never add one.
+// LANE-BOUND: time-travel.yml — named only to EXCLUDE it: it re-runs suites other lanes own, so counting it would let a deleted real lane stay covered; this guard grades every other workflow.
 const NOT_A_LANE = new Set(['time-travel.yml']);
 
 const wfDir = join(repoRoot, '.github', 'workflows');

@@ -143,7 +143,7 @@ jobs:
         env:
           NIKATRU_TEST_NOW: ${{ matrix.instant }}
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm test
 
   tooling:
