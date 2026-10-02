@@ -735,6 +735,10 @@
   "@logOutAllDevicesFailed": {
     "description": "Shown when logging out of all devices throws. Says DID NOT FINISH, like signOutFailed, and names no cause: the step that failed may be reaching the server, clearing the session stored on this device, or forgetting this device's per-user state, and trying again is the honest instruction for all three. It never claims the other devices were logged out, because nothing proves they were."
   },
+  "logOutAllDevicesSignInAgain": "You are signed out on every device, but sign-ins already open on other devices could not all be ended. Sign in again, then use Log out of all devices once more to finish.",
+  "@logOutAllDevicesSignInAgain": {
+    "description": "Shown when Log out of all devices signed every device out of the sign-in service (this one included) but the app's servers could not be told to refuse the sign-ins already open elsewhere (review 2 of #1140, finding 4). This device is already signed out, so the Log out of all devices control is not on screen: the sentence says to sign in again first. It never claims the other devices are fully logged out."
+  },
   "logOutAllDevicesConfirmTitle": "Log out of all devices?",
   "@logOutAllDevicesConfirmTitle": {
     "description": "Title of the dialog shown before logging out of all devices. The control is never fired by one tap: it logs THIS device out too, so it asks first (parent ruling L2, 2026-09-24)."

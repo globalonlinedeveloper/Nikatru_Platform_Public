@@ -1382,6 +1382,64 @@ void main() {
       expect(order, <String>['gotrue', 'workers:refreshed-1']);
     });
 
+    // ⏱ 2026-10-02 · review 2 of #1140, finding 2 — the held token must
+    // outlive GoTrue's /logout (retried inside 30 s) and BOTH Worker attempts
+    // (15 s connect + 20 s receive each). The Worker answers an expired token
+    // with the same 401 as a revoked one, and requestWorkerSessionRevocation
+    // reads a 401 to its RETRY as "done".
+    test('🔴 a token expiring MID-FLOW is never reported as done: under 5 minutes left, '
+        'it is refreshed before GoTrue', () async {
+      DateTime clock = now;
+      final List<String> worker = <String>[];
+      final _FakeGoTrue g = _FakeGoTrue(
+        // 60 s left: outside refreshSkew (30 s), inside the flow (~100 s).
+        session: _session('short', expiry: now.add(const Duration(seconds: 60))),
+        refreshedExpiry: now.add(const Duration(hours: 1)),
+        onSignOut: () => clock = clock.add(const Duration(seconds: 30)),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => clock,
+        // The real Worker and requestWorkerSessionRevocation: the first
+        // attempt never connects (15 s), the retry lands 35 s after that; a
+        // 401 to the retry is read as done, whether the token was revoked by
+        // the lost first attempt or had simply expired.
+        revokeAtWorkers: (String token) async {
+          clock = clock.add(const Duration(seconds: 15 + 35));
+          final int exp = _expOf(token);
+          worker.add(exp * 1000 > clock.millisecondsSinceEpoch
+              ? 'revoked:${_label(token)}'
+              : 'expired-401-read-as-done:${_label(token)}');
+        },
+      );
+
+      await auth.signOut(scope: core.SignOutScope.global);
+
+      expect(worker, <String>['revoked:refreshed-1'],
+          reason: 'a token that expires before the retry lands is answered 401, which the retry '
+              'reads as done; the user is told nothing while every other device stays signed in');
+      expect(g.refreshCalls, 1);
+    });
+
+    test('a token with more than 5 minutes left is sent as it is, with no refresh', () async {
+      final List<String> order = <String>[];
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: _session('six', expiry: now.add(const Duration(minutes: 6))),
+        onSignOut: () => order.add('gotrue'),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        revokeAtWorkers: (String token) async => order.add('workers:${_label(token)}'),
+      );
+
+      await auth.signOut(scope: core.SignOutScope.global);
+
+      expect(order, <String>['gotrue', 'workers:six']);
+      expect(g.refreshCalls, 0);
+      expect(SupabaseAuthRepository.globalSignOutTokenLife, const Duration(minutes: 5));
+    });
+
     test('🔴 the Workers cannot be told AFTER GoTrue: GoTrue IS signed out, and the '
         'refusal says so, never "could not reach … still signed in"', () async {
       final _FakeGoTrue g = _FakeGoTrue(session: live());
@@ -1398,7 +1456,7 @@ void main() {
         throwsA(isA<core.AuthFailure>()
             .having((core.AuthFailure e) => e.message, 'message', contains('signed out on every device'))
             .having((core.AuthFailure e) => e.message, 'message', isNot(contains('still signed in')))
-            .having((core.AuthFailure e) => e.code, 'code', isNot(core.AuthFailure.network))),
+            .having((core.AuthFailure e) => e.code, 'code', core.AuthFailure.othersNotRevoked)),
       );
       expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.global],
           reason: 'GoTrue\'s global sign-out runs whatever the Workers answer');
@@ -1515,7 +1573,12 @@ class _FakeGoTrue extends sb.GoTrueClient {
     this.signInError,
     this.resetError,
     this.resendError,
+    this.refreshedExpiry,
   }) : super(autoRefreshToken: false);
+
+  /// The expiry of the session a refresh issues; null keeps the default,
+  /// issued ALREADY STALE (see [refreshSession]).
+  final DateTime? refreshedExpiry;
 
   /// What `signUp` throws instead of succeeding — ⏱ 2026-09-24, so the wrap
   /// of the vendor type on the sign-up path is observable at all.
@@ -1675,7 +1738,7 @@ class _FakeGoTrue extends sb.GoTrueClient {
     // observable: a cached future would replay refreshed-1 forever.
     session = _session(
       'refreshed-$refreshCalls',
-      expiry: DateTime.utc(2026, 8, 1, 11),
+      expiry: refreshedExpiry ?? DateTime.utc(2026, 8, 1, 11),
     );
     return sb.AuthResponse(session: session);
   }
@@ -1737,6 +1800,14 @@ class _FakeGoTrue extends sb.GoTrueClient {
     session = _session('signed-up');
     return sb.AuthResponse(session: session);
   }
+}
+
+/// The `exp` claim (epoch seconds) of a token produced by [_session].
+int _expOf(String jwt) {
+  final Object? payload = jsonDecode(
+    utf8.decode(base64Url.decode(base64Url.normalize(jwt.split('.')[1]))),
+  );
+  return (payload as Map<String, dynamic>)['exp'] as int;
 }
 
 /// Reads the marker back out of a token produced by [_session].

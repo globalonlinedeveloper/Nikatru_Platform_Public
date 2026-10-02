@@ -788,15 +788,24 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// hour. With GoTrue first the refresh tokens are dead before the watermark
   /// is written, so no device can be issued a token after it. The Worker call
   /// is made with the access token this device held a moment earlier (read,
-  /// and refreshed if due, before GoTrue's call): GoTrue's sign-out ends
-  /// sessions, not the signature, so the Worker still accepts it until the
-  /// revoke it carries.
+  /// and refreshed if under five minutes remain, before GoTrue's call):
+  /// GoTrue's sign-out ends sessions, not the signature, so the Worker still
+  /// accepts it until the revoke it carries.
   ///
   /// A GoTrue failure is surfaced and the Workers are NOT told (nothing proves
   /// the refresh tokens are dead, so a watermark would only re-open the
   /// window). A Worker failure AFTER GoTrue is surfaced too, and says what is
   /// true: every device is signed out of GoTrue, and the sign-ins already open
   /// elsewhere may not be refused yet.
+  ///
+  /// 🔴 THE HELD TOKEN MUST OUTLIVE THE WHOLE FLOW (review 2 of #1140,
+  /// finding 2). It is refreshed whenever less than [globalSignOutTokenLife]
+  /// remains, not merely inside [refreshSkew]: GoTrue's `/logout` may be
+  /// retried by the edge-shield inside 30 s, and each Worker attempt may take
+  /// 15 s to connect plus 20 s to answer, twice. A token with 30-100 s left
+  /// could expire in between, and the Worker answers an expired token and a
+  /// revoked one with the same 401, which the retry reads as done: other
+  /// devices' access tokens would stay valid while the user was told nothing.
   ///
   /// [core.SignOutScope.local] is exactly the call it always was.
   @override
@@ -810,7 +819,8 @@ class SupabaseAuthRepository implements core.AuthRepository {
       return _auth.signOut(scope: sdkSignOutScopeOf(scope));
     }
     final bool hadSession = _auth.currentSession != null;
-    final String? token = hadSession ? await currentAccessToken() : null;
+    final String? token =
+        hadSession ? await _tokenOutliving(globalSignOutTokenLife) : null;
     if (hadSession && token == null) {
       throw core.AuthFailure(
         _auth.currentSession != null
@@ -834,6 +844,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
         'You are signed out on every device, but the sign-ins already open '
         'on other devices could not all be ended. Sign in and use Log out '
         'of all devices again to finish.',
+        code: core.AuthFailure.othersNotRevoked,
       );
     }
   }
@@ -1001,19 +1012,40 @@ class SupabaseAuthRepository implements core.AuthRepository {
     return _refreshInFlight ??= _refreshOnce();
   }
 
+  /// How long the token held for "Log out of all devices" must still be valid
+  /// when the flow starts: GoTrue's `/logout` (the edge-shield retries it
+  /// inside 30 s) plus two Worker attempts of up to 35 s each is 100 s, and
+  /// five minutes covers that three times over. See [signOut].
+  @visibleForTesting
+  static const Duration globalSignOutTokenLife = Duration(minutes: 5);
+
+  /// The current access token, refreshed first (through the same single-flight
+  /// refresh as [currentAccessToken]) if less than [life] remains; null when
+  /// there is no session or the refresh failed.
+  Future<String?> _tokenOutliving(Duration life) async {
+    final sb.Session? s = _auth.currentSession;
+    if (s == null) return null;
+    if (!_expiresWithin(s, life)) return s.accessToken;
+    return _refreshInFlight ??= _refreshOnce();
+  }
+
   /// Whether [s] is expired, or close enough that it will be by the time a
   /// request carrying it arrives. Unknown expiry (`expiresAt == null`, which is
   /// what a token whose `exp` claim cannot be read reports) is treated as NOT
   /// expiring: refreshing on every single call would be worse than trusting a
   /// token the SDK's own ticker is already managing.
-  bool _isExpiring(sb.Session s) {
+  bool _isExpiring(sb.Session s) => _expiresWithin(s, refreshSkew);
+
+  /// Whether [s] expires within [margin] of now (see [_isExpiring] for an
+  /// unknown expiry).
+  bool _expiresWithin(sb.Session s, Duration margin) {
     final int? exp = s.expiresAt;
     if (exp == null) return false;
     final DateTime expiry = DateTime.fromMillisecondsSinceEpoch(
       exp * 1000,
       isUtc: true,
     );
-    return !expiry.isAfter(_now().toUtc().add(refreshSkew));
+    return !expiry.isAfter(_now().toUtc().add(margin));
   }
 
   Future<String?> _refreshOnce() async {
