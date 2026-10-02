@@ -168,6 +168,7 @@ import {
   BAND_ROW_FRACTION,
 } from './capture-network-posture.mjs';
 import { backendDefinesForRun, assertCaptureDefines, CaptureBackendRefused } from './capture-backend.mjs';
+import { captureProvenance, watchedPaths } from './capture-provenance.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(join(HERE, '..', '..'));
@@ -1439,13 +1440,29 @@ if (problems.length) {
 // shared record at the channel root would be right about one set and wrong about
 // the other — provenance that passes the guard and lies about the run, which the
 // register's `_provenanceWhy` calls worse than no record at all.
+//
+// 🔴 AND WHICH COMMIT IT PHOTOGRAPHED (2026-10-01, row
+// O-STORE-SCREENSHOTS). Until then the record
+// said how and not WHEN, and the Play sets captured on 2026-09-22 passed every
+// guard after the truth pass and the design foundation redrew their screens.
+// `capturedSha` is GITHUB_SHA in CI and HEAD off it (capture-provenance.mjs);
+// `assert-listing-assets.mjs --for-submission` refuses a set whose screens
+// changed after it.
 if (!PROOF) {
   for (const m of measured) {
+    const { paths: watched } = watchedPaths({
+      root: ROOT,
+      app,
+      frameNames: m.shots.map((f) => f.replace(/\.png$/i, '')),
+      rule: REG?.storeMetadataContract?.screenProvenance,
+    });
+    const provenance = captureProvenance({ root: ROOT, watched });
     writeFileSync(
       join(m.dir, 'CAPTURE.json'),
       `${JSON.stringify(
         {
           capturedBy: 'tooling/store/capture-play-screenshots.mjs',
+          ...provenance,
           posture: 'live',
           deviceType: m.cap.type,
           viewport: `${m.cap.cssWidth}x${m.cap.cssHeight}@${m.cap.dpr}`,

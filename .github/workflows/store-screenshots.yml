@@ -225,9 +225,14 @@ jobs:
       # carried as the one declared gap in test/single-threaded-relaunch.test.mjs
       # because the file belonged to another wave on 2026-09-11; that entry goes
       # in the same commit, because a ratchet that outlives its gap is a lie.
+      # why: --for-submission (2026-10-01, O-STORE-SCREENSHOTS)
+      # proves the set just captured records the commit it photographed (capturedSha,
+      # GITHUB_SHA here) and that its screens are this checkout's. Scoped by --channel to
+      # the set this job captured, so another channel's older set cannot fail it. The
+      # same flag, unscoped or scoped, is the check run before any upload.
       - name: The captured set satisfies the listing-asset guard
         id: listing
-        run: node --single-threaded tooling/ci/assert-listing-assets.mjs
+        run: node --single-threaded tooling/ci/assert-listing-assets.mjs --for-submission --channel android-play
 
       # why: A CAPTURE IS FINISHED WHEN EVERY SET DERIVED FROM IT IS
       # (O-CAPTURE-LEAVES-DERIVED-SETS-STALE). The apps.gov.in set is derived from
@@ -574,7 +579,7 @@ jobs:
 
       - name: The captured set satisfies the listing-asset guard
         id: listing
-        run: node --single-threaded tooling/ci/assert-listing-assets.mjs
+        run: node --single-threaded tooling/ci/assert-listing-assets.mjs --for-submission --channel linux-snap
 
       - name: The captured set satisfies the device-coverage guard
         run: node --single-threaded tooling/ci/assert-play-device-coverage.mjs
@@ -890,7 +895,7 @@ jobs:
 
       - name: The captured set satisfies the listing-asset guard
         id: listing
-        run: node --single-threaded tooling/ci/assert-listing-assets.mjs
+        run: node --single-threaded tooling/ci/assert-listing-assets.mjs --for-submission --channel "$STORE_CHANNEL"
 
       - name: The captured set satisfies the device-coverage guard
         run: node --single-threaded tooling/ci/assert-play-device-coverage.mjs
@@ -1197,7 +1202,7 @@ jobs:
 
       - name: The captured sets satisfy the listing-asset guard
         id: listing
-        run: node --single-threaded tooling/ci/assert-listing-assets.mjs
+        run: node --single-threaded tooling/ci/assert-listing-assets.mjs --for-submission --channel ios-appstore
 
       # why: this is the guard that fails if only ONE set was captured. The
       # register declares minDistinctTypes 2 for this channel, so a run that
