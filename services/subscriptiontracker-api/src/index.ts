@@ -35,6 +35,7 @@ import {
 } from './lib/health';
 import { reportWorkerError, requestSinkContext } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
+import { requestId } from './lib/request-id';
 import { supabaseAuth, erasureAuth } from './middleware/auth';
 import account from './routes/account';
 import subscriptions from './routes/subscriptions';
@@ -48,12 +49,9 @@ import insights from './routes/insights';
 const app = new Hono<AppEnv>();
 
 // ── Request id: stamp/propagate a correlation id, echo it, log it on errors ───
-app.use('*', async (c, next) => {
-  const rid = c.req.header('x-request-id') ?? crypto.randomUUID();
-  c.set('requestId', rid);
-  c.header('x-request-id', rid);
-  await next();
-});
+// The caller's id is kept only when it is a plain token
+// (services/_shared/src/request-id.ts); anything else is replaced by a uuid.
+app.use('*', requestId);
 
 app.use('*', corsMiddleware);
 

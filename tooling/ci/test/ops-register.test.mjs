@@ -5528,12 +5528,26 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     // on a CI completion on main and declares no `workflow_dispatch` on purpose: a
     // dispatched run has no workflow_run to read, would post nothing and go green,
     // and would clear a red by not running. Excluded by the same derived reason.
-    assert.equal(census.excluded.length, 4, 'the committed register has exactly four trigger rows with no non-merge exit');
+    // ⏱ 2026-10-02: five. duty.workflow.land.yml (O-MERGES-DEPEND-ON-THE-LAPTOP) declares `workflow_dispatch`
+    // and carries NO recordQuery on purpose: a transient read failure of the lander would otherwise redden
+    // every PR's ci-gate until its next slot. It is excluded with that reason printed, not silently.
+    assert.equal(census.excluded.length, 5, 'the committed register has exactly five unadmitted trigger rows');
+    assert.ok(census.excluded.some((l) => /duty\.workflow\.land\.yml — .* carries no `mechanism\.recordQuery`/.test(l)), 'land.yml is excluded for want of a recordQuery, and says so');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.main-healthy\.yml/.test(l)), 'main-healthy.yml is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.ci\.yml/.test(l)), 'ci.yml is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.extensions-ci\.yml/.test(l)), 'the extensions CI callee is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.lane-workers\.yml/.test(l)), 'the workers lane callee is excluded by derivation');
-    assert.ok(census.excluded.every((l) => /declares NO `workflow_dispatch`/.test(l)), 'every exclusion must carry the derived reason');
+    assert.ok(census.excluded.every((l) => /declares NO `workflow_dispatch`|is the GATE workflow|carries no `mechanism\.recordQuery`/.test(l)), 'every exclusion must carry the derived reason');
+    // ⏱ 2026-10-02 (O-MERGES-DEPEND-ON-THE-LAPTOP): ci.yml declares `workflow_dispatch` for land.yml's
+    // post-merge start, and stays out because it is the gate workflow, said as such at the line.
+    assert.ok(census.excluded.some((l) => /duty\.workflow\.ci\.yml — `\.github\/workflows\/ci\.yml` is the GATE workflow/.test(l)), census.excluded.join('\n'));
+  });
+
+  test('🔴 the gate workflow is never "dispatchable", whatever its `on:` says — a dispatch re-runs the same red commit', () => {
+    // Red control: with the exclusion argument emptied, ci.yml's own `workflow_dispatch` admits it.
+    assert.equal(dispatchableWorkflows(REPO_ROOT, null).has('ci.yml'), true, 'the real ci.yml must declare workflow_dispatch, or this control proves nothing');
+    assert.equal(dispatchableWorkflows(REPO_ROOT).has('ci.yml'), false);
+    assert.equal(dispatchableWorkflows(REPO_ROOT).has('redeploy-stranded.yml'), true, 'every other dispatchable workflow stays');
   });
 
   test('`rowWorkflowFile` reads the anchor when there is no recordQuery — so an unqueried row still gets a REASON', () => {
@@ -6486,18 +6500,21 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
       "Judge whether the analytics rail's silence is a FAULT",
       'Every name-clearance record is inside its 30-day ceiling',
       // ⏱ 2026-09-30 [rv2-security-004] — the daily OSV scan of main, steps rather than a job (the replay's request ceiling).
+      // ⏱ 2026-10-02 (#1095 review finding 5) — DUE on any scheduled run, not one droppable slot.
+      'Is the daily OSV scan of main due on this run',
       'Install OSV-Scanner (version and digest from tooling/versions.json)',
       'Known-vulnerable dependencies on main (canary, floor, then the tree)',
     ]);
-    assert.deepEqual(named.map((s) => s.runsGuard), [true, false, false, false, false, false, false]);
+    assert.deepEqual(named.map((s) => s.runsGuard), [true, false, false, false, false, false, false, false]);
     // ⏱ 2026-09-23 — this pinned `null`, the defect itself: with no condition the
     // heartbeat read was SKIPPED in every red register run (O-OPS-WATCH-HEARTBEAT-
     // READER-SKIPPED). It now runs whatever the register concluded.
     assert.match(named[1].cond, /!cancelled\(\)/, 'O-OPS-WATCH-HEARTBEAT-READER-SKIPPED: the heartbeat reader must carry !cancelled()');
     assert.match(named[2].cond, /!cancelled\(\)/);
     assert.match(named[4].cond, /!cancelled\(\)/, 'the name-clearance ceiling must be read after a red register too');
-    assert.match(named[5].cond, /!cancelled\(\)[\s\S]*github\.event\.schedule == '30 7 \* \* \*'[\s\S]*inputs\.dependency_advisories/, 'the OSV install runs after a red register, on its own daily slot or a named dispatch input (trap ci-55)');
-    assert.match(named[6].cond, /!cancelled\(\)[\s\S]*steps\.osv\.outcome == 'success'/, 'the OSV scan runs whenever its install succeeded');
+    assert.match(named[5].cond, /!cancelled\(\)[\s\S]*github\.event_name == 'schedule'/, 'the due check runs after a red register, on every SCHEDULED run and no dispatch (trap ci-55)');
+    assert.match(named[6].cond, /!cancelled\(\)[\s\S]*steps\.osvdue\.outputs\.due == 'true'[\s\S]*inputs\.dependency_advisories/, 'the OSV install runs after a red register when the scan is due, or on a named dispatch input (trap ci-55)');
+    assert.match(named[7].cond, /!cancelled\(\)[\s\S]*steps\.osv\.outcome == 'success'/, 'the OSV scan runs whenever its install succeeded');
     assert.equal(describeUnit({ workflow: 'w.yml', unit: RUN_UNIT }), 'the whole w.yml run');
   });
 
@@ -6536,12 +6553,12 @@ describe('post-gate call jobs of the gate workflow — read, graded, admitted (A
     '      - run: echo gate',
     '  deploy-web:',
     '    needs: [ci-gate]',
-    "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
+    "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'",
     '    uses: ./.github/workflows/deploy-web.yml',
     '    secrets: inherit',
     '  deploy-workers:',
     '    needs: [ci-gate]',
-    "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
+    "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'",
     '    uses: ./.github/workflows/deploy-workers.yml',
     '    secrets: inherit',
     '  late:',
@@ -6737,9 +6754,18 @@ describe('post-gate call jobs of the gate workflow — read, graded, admitted (A
     const refs = [REF('extensions-ci.yml'), REF('deploy-web.yml')];
     const sched = unitConclusion(q(['deploy-web']), { ...RUN_3848, event: 'schedule', referenced_workflows: refs }, RUN_3848_JOBS, CI());
     assert.equal(sched.verdict, 'neutral', sched.detail);
-    assert.match(sched.detail, /\(b\) its `if:` is POST_GATE_IF and the run is "schedule" on "main"/);
+    assert.match(sched.detail, /\(b\) its `if:` is POST_GATE_IF and the run is "schedule" on "main", not a push or dispatch of main/);
     const branch = unitConclusion(q(['deploy-web']), { ...RUN_3848, head_branch: 'feature', referenced_workflows: refs }, RUN_3848_JOBS, CI());
     assert.equal(branch.verdict, 'neutral', branch.detail);
+  });
+
+  // ⏱ 2026-10-02 (O-MERGES-DEPEND-ON-THE-LAPTOP): land.yml starts main's run as a dispatch,
+  // and that run DOES carry the post-gate call — arm (b) must not excuse it.
+  test('🔴 RC-b′ — a DISPATCH of main can run the call, so zero entries there is NOT neutral under arm (b)', () => {
+    const refs = [REF('extensions-ci.yml'), REF('deploy-web.yml')];
+    const d = unitConclusion(q(['deploy-web']), { ...RUN_3848, event: 'workflow_dispatch', referenced_workflows: refs }, RUN_3848_JOBS, CI());
+    assert.equal(d.verdict, 'lost', d.detail);
+    assert.doesNotMatch(d.detail, /\(b\) its `if:` is POST_GATE_IF/);
   });
 
   test('RC-c — ci-gate did not pass, the callee referenced, zero entries: neutral (that red is the gate row)', () => {

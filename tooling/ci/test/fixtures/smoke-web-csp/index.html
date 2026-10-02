@@ -11,6 +11,9 @@
   <title>smoke-web-artifact CSP fixture</title>
   <!-- An empty icon, so the browser does not ask for /favicon.ico outside the base path. -->
   <link rel="icon" href="data:,">
+  <!-- The offline leg: the test copies the app's REAL web/sw.js and web/sw-register.js in
+       beside this file, and this tag loads the second exactly as the app's index.html does. -->
+  <script src="sw-register.js"></script>
   <script src="flutter_bootstrap.js" defer></script>
 </head>
 <body></body>

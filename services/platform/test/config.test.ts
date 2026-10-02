@@ -324,6 +324,8 @@ describe('the served app set comes from the catalogue, not from this Worker', ()
     // `free_features` and `trial_copy` (rulings D-11 and D-25: what the in-app
     // paywall pitches, as feature codes, and the trial-copy switch, served
     // false). They serialise AFTER `offerings`; every other byte is unchanged.
+    // ⏱ 2026-10-01 — MO-07: `pro_features` names delivered Pro items only,
+    // ["forecast","caps"] (ADR 101); every other byte is unchanged.
     expect(JSON.stringify(baseConfig('subscriptiontracker'))).toBe(
       '{"app_id":"subscriptiontracker","api_base_url":"https://subscriptiontracker-api.nikatru.com/v1",' +
         '"features":{"renewals":true,"budgets":true,"exports":true},"flags":{},' +
@@ -331,7 +333,7 @@ describe('the served app set comes from the catalogue, not from this Worker', ()
         '{"product_id":"pro_monthly","amount_minor":599,"currency_code":"USD","term":"month","trial_days":30},' +
         '{"product_id":"pro_yearly","amount_minor":3499,"currency_code":"USD","term":"year","trial_days":30},' +
         '{"product_id":"pro_lifetime","amount_minor":8900,"currency_code":"USD","term":"one_time","trial_days":0}],' +
-        '"pro_features":["plan","save"],"free_features":["track","remind","sync"],"trial_copy":false},' +
+        '"pro_features":["forecast","caps"],"free_features":["track","remind","sync"],"trial_copy":false},' +
         '"content_pack":null,"copy":{},"min_supported_version":"1.0.0","max_promos_per_week":0,' +
         '"update_url":null}',
     );

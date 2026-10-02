@@ -168,7 +168,7 @@
     10,
 
   "business-facts.test.mjs":
-    9,
+    13,
 
   "capability-register-seams.test.mjs":
     27,
@@ -207,10 +207,10 @@
     36,
 
   "channel-claims.test.mjs":
-    50,
+    55,
 
   "channel-register.test.mjs":
-    357,
+    368,
 
   "channel-surface.test.mjs":
     7,
@@ -226,6 +226,9 @@
 
   "check-jwks-error-rate.test.mjs":
     23,
+
+  "check-secret-scopes.test.mjs":
+    15,
 
   "chrome-raster.test.mjs":
     1,
@@ -338,8 +341,11 @@
   "e2e-legs.test.mjs":
     46,
 
+  "e2e-parity.test.mjs":
+    37,
+
   "e2e-proof-fresh.test.mjs":
-    67,
+    71,
 
   "e2e-purge-retry.test.mjs":
     15,
@@ -447,7 +453,7 @@
     20,
 
   "green-means-ran.test.mjs":
-    48,
+    49,
 
   "guard-coverage.test.mjs":
     84,
@@ -515,8 +521,11 @@
   "install-pinned-tool.test.mjs":
     27,
 
+  "land-next.test.mjs":
+    59,
+
   "land-rules.test.mjs":
-    22,
+    23,
 
   "lane-detect.test.mjs":
     19,
@@ -660,7 +669,7 @@
     116,
 
   "ops-register.test.mjs":
-    439,
+    441,
 
   "ops-status.test.mjs":
     53,
@@ -670,6 +679,9 @@
 
   "ops-watch-readers.test.mjs":
     13,
+
+  "osv-scan-due.test.mjs":
+    7,
 
   "package-boundaries.test.mjs":
     33,
@@ -691,6 +703,9 @@
 
   "paywall-flip-ready.test.mjs":
     13,
+
+  "personal-site.test.mjs":
+    20,
 
   "plan-deploy.test.mjs":
     36,
@@ -765,7 +780,7 @@
     26,
 
   "prod-provenance-walk.test.mjs":
-    30,
+    32,
 
   "prod-provenance.test.mjs":
     154,
@@ -867,7 +882,7 @@
     4,
 
   "rollback.test.mjs":
-    37,
+    44,
 
   "rollup-lossless.test.mjs":
     52,
@@ -939,7 +954,7 @@
     32,
 
   "site-integrity.test.mjs":
-    109,
+    122,
 
   "small-business-program.test.mjs":
     17,
@@ -948,7 +963,7 @@
     14,
 
   "smoke-web-artifact.test.mjs":
-    30,
+    36,
 
   "snap-submission.test.mjs":
     48,
@@ -1089,7 +1104,7 @@
     42,
 
   "web-cache-policy.test.mjs":
-    86,
+    109,
 
   "web-drive-stages-fonts.test.mjs":
     5,
@@ -1114,6 +1129,12 @@
 
   "worker-routes.test.mjs":
     11,
+
+  "worker-secrets-declared.test.mjs":
+    20,
+
+  "worker-secrets-tool.test.mjs":
+    24,
 
   "worker-set.test.mjs":
     37,

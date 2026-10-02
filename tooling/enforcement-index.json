@@ -2777,6 +2777,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-chassis"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-worker-secrets-declared.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "D-9",
       "F-11"
@@ -3100,6 +3110,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/install-pinned-tool.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/land.yml#land"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/land-next.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -3636,7 +3656,27 @@
       ".github/workflows/e2e.yml#e2e"
     ],
     "kind": "script",
+    "ref": "tooling/e2e/sign_in_via.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
     "ref": "tooling/e2e/verify_consent.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
+    "ref": "tooling/e2e/verify_export_csv.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -3850,6 +3890,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ops-watch.yml#code-scanning-age"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-secret-scopes.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ops-watch.yml#tech-currency"
     ],
     "kind": "script",
@@ -3942,6 +3992,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/name-clearance-sweep.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#heartbeats"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/osv-scan-due.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -4368,6 +4428,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/generate-personal-site.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 075"
     ],
@@ -4401,6 +4471,7 @@
   },
   {
     "claims": [
+      "ADR 023",
       "ADR 075",
       "O-7",
       "R-13"
