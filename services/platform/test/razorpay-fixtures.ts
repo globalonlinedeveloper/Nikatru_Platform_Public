@@ -17,7 +17,6 @@ export const FIXTURE_PLAN = 'plan_conformance01';
 export const planFor = (appId: string, offeringId: string) => (appId === 'subscriptiontracker' && offeringId === 'pro_monthly' ? FIXTURE_PLAN : undefined);
 
 export const unix = (iso: string) => Math.floor(Date.parse(iso) / 1000);
-const SUB_ID = 'sub_conformance1';
 const PAY_ID = 'pay_conformance1';
 
 /** A Razorpay webhook envelope for one EventSpec. */
