@@ -275,6 +275,10 @@
       "reads": "deploy-workers.yml's jobs and their --var flags"
     },
     {
+      "path": "tooling/ci/assert-worker-secrets-declared.mjs",
+      "property": "workflow-scan"
+    },
+    {
       "path": "tooling/ci/assert-workflow-hardening.mjs",
       "property": "workflow-scan",
       "resolves": "local-uses"
@@ -329,6 +333,10 @@
       "property": "workflow-scan",
       "resolves": "local-uses",
       "reads": "each release lane's workflow file and, for a lane that is only a `workflow_call` callee, its one caller (laneRunHost), to name the workflow whose run_number a build stamp carries"
+    },
+    {
+      "path": "tooling/ops/check-secret-scopes.mjs",
+      "property": "workflow-scan"
     },
     {
       "path": "tooling/ops/check-tech-currency.mjs",

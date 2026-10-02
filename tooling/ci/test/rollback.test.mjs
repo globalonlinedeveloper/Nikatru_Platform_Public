@@ -33,6 +33,9 @@ import {
   SMOKE_SCRIPTS,
   smokeArgv,
   smokeFromEnv,
+  floorsFor,
+  floorVerdict,
+  FLOORS_REL,
 } from '../../ops/rollback.mjs';
 import { PUBLISHED_ID_KEYS, PUBLISHED_ID_FLAGS, ROLLBACK_KINDS, rollbackRecord } from '../record-deployment.mjs';
 import { parseWorkflow, workflowSteps } from '../workflow-scan.mjs';
@@ -96,6 +99,11 @@ function rollbackReplay(appendFileSync) {
     }
     if (host === 'api.github.com' && method === 'GET' && /^\/repos\/x\/y\/deployments\/9001\/statuses$/.test(pathname)) {
       return json(JSON.parse(process.env.ROLLBACK_REPLAY_STATUSES ?? '[]'), 200);
+    }
+    // ⏱ 2026-10-02 · the rollback floor asks `compare/<floor>...<sha>`; `ahead` unless a case says otherwise.
+    if (host === 'api.github.com' && method === 'GET' && /^\/repos\/x\/y\/compare\/[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(pathname)) {
+      const status = process.env.ROLLBACK_REPLAY_COMPARE ?? 'ahead';
+      return status === 'HTTP404' ? json({ message: 'Not Found' }, 404) : json({ status }, 200);
     }
     if (host === 'api.cloudflare.com' && method === 'POST' && /\/pages\/projects\/[^/]+\/deployments\/[^/]+\/rollback$/.test(pathname)) {
       const cf = JSON.parse(process.env.ROLLBACK_REPLAY_CF ?? '{"success":true,"errors":[],"result":{}}');
@@ -441,6 +449,67 @@ describe('rollback.mjs — the pure helpers', () => {
     const cmd = commandFor(target, { id: PAGES_ID }, '');
     assert.match(cmd, /\$CLOUDFLARE_API_TOKEN/);
     assert.match(cmd, /\$CLOUDFLARE_ACCOUNT_ID/);
+  });
+});
+
+// ⏱ 2026-10-02 · #1104 post-merge review, finding 1: no build before 117bd66e may go back live on
+// platform, because it reads the sealed rows' '' as a token. The floor is DATA, asked of GitHub.
+describe('rollback.mjs — the floor (tooling/ops/rollback-floors.json)', () => {
+  const platformRun = (compare, extra = []) =>
+    rollback(['--unit', 'platform', '--deployment', '9001', ...extra], {
+      deployment: { id: 9001, sha: SHA, environment: 'platform', payload: WORKER_PAYLOAD },
+      statuses: WORKER_STATUSES,
+      env: compare === undefined ? {} : { ROLLBACK_REPLAY_COMPARE: compare },
+    });
+
+  test('GREEN CONTROL: a recorded commit AHEAD of the floor passes it, and says so', () => {
+    const { code, out, requests } = platformRun('ahead', ['--dry-run']);
+    assert.equal(code, 0, out);
+    assert.match(out, /floor: 01234567 is at or after 117bd66e \(O-PROVIDER-REFRESH-TOKENS-STORED-PLAIN\) — compare says ahead/);
+    assert.ok(requests.some((r) => /\/compare\/117bd66ecb846decb743426d80f5124b59131601\.\.\.0123456789abcdef/.test(r.pathname)));
+  });
+
+  /** One refused compare answer: exit 1 before any re-promotion, on a dry run and a real run alike. */
+  const assertRefused = (status, said) => {
+    for (const extra of [['--dry-run'], []]) {
+      const { code, out, requests, outputs } = platformRun(status, extra);
+      assert.equal(code, 1, out);
+      assert.match(out, said);
+      assert.match(out, /O-PROVIDER-REFRESH-TOKENS-STORED-PLAIN/);
+      assert.doesNotMatch(out, /\$ \(cd services\/platform/, 'the rollback command was printed past a refused floor');
+      assert.ok(!requests.some((r) => r.host === 'api.cloudflare.com'));
+      assert.deepEqual(outputs, {}, 'outputs were written past a refused floor');
+    }
+  };
+  test('🔴 RED CONTROL: compare "behind" (older than the floor) REFUSES, exit 1, before any re-promotion — a dry run included', () => {
+    assertRefused('behind', /is OLDER than the floor 117bd66e/);
+  });
+  test('🔴 RED CONTROL: compare "diverged" REFUSES, exit 1, before any re-promotion — a dry run included', () => {
+    assertRefused('diverged', /is not a descendant of the floor 117bd66e/);
+  });
+  test('🔴 RED CONTROL: an unreadable compare (HTTP 404) REFUSES, exit 1 — a floor it cannot prove is met is not met', () => {
+    assertRefused('HTTP404', /could not be placed against the floor 117bd66e/);
+  });
+
+  test('a unit with no floor asks GitHub nothing about ancestry', () => {
+    const { code, out, requests } = rollback(['--unit', 'subscriptiontracker-web', '--deployment', '9001', '--dry-run'], { env: { ROLLBACK_REPLAY_COMPARE: 'behind' } });
+    assert.equal(code, 0, out);
+    assert.ok(!requests.some((r) => /\/compare\//.test(r.pathname)));
+  });
+
+  test('the pure helpers: a malformed floor is a Refusal, never "no floor"; only ahead or identical pass', () => {
+    assert.throws(() => floorsFor({}, 'platform'), Refusal);
+    assert.throws(() => floorsFor({ floors: [{ unit: 'platform', sha: '117bd66e', why: 'a short sha is not a floor at all' }] }, 'platform'), /full commit "sha"/);
+    const floor = { unit: 'platform', sha: 'a'.repeat(40), since: '2026-10-01', row: 'O-X', why: 'fixture floor with a reason' };
+    assert.equal(floorVerdict(floor, SHA, 'ahead'), null);
+    assert.equal(floorVerdict(floor, SHA, 'identical'), null);
+    for (const s of ['behind', 'diverged', undefined, 'unreadable: boom']) assert.match(floorVerdict(floor, SHA, s), /floor aaaaaaaa/);
+  });
+
+  test('THE REAL FILE: platform\'s floor is 117bd66e, the first build that seals provider tokens', () => {
+    const doc = JSON.parse(readFileSync(join(ROOT, FLOORS_REL), 'utf8'));
+    const floors = floorsFor(doc, 'platform');
+    assert.deepEqual(floors.map((f) => f.sha), ['117bd66ecb846decb743426d80f5124b59131601']);
   });
 });
 
