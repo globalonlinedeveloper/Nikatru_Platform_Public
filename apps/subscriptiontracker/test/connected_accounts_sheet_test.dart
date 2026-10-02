@@ -9,12 +9,19 @@
 // RED CONTROLS: offer Google without `providers.google` (the server-off case
 // draws a Connect button); wire `onUnlink` to a no-op (the account keeps
 // Apple).
+//
+// ⏱ 2026-10-02 · review of #1155, finding 3: link and unlink need a FRESH
+// sign-in. RED CONTROLS: a stale session that cancels the re-authentication,
+// and a server that answers `reauth_required`, each leave the account as it
+// was (drop `core.guardSignInMethodChange` and both go red).
 // ─────────────────────────────────────────────────────────────────────────────
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_api_client/nikatru_api_client.dart'
+    show ApiException, RestClient;
 import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show AuthProviders, InMemoryAuthRepository;
 import 'package:nikatru_chassis_screens/settings/connected_accounts_view.dart';
@@ -25,10 +32,17 @@ import 'package:subscriptiontracker/state/providers.dart';
 import 'support/width_harness.dart';
 
 void main() {
+  late int reauthAsked;
+  late int serverChecks;
+
   Future<InMemoryAuthRepository> pump(
     WidgetTester tester, {
     required AuthProviders providers,
+    bool reauthPasses = true,
+    Object? serverRefuses,
   }) async {
+    reauthAsked = 0;
+    serverChecks = 0;
     final InMemoryAuthRepository auth = InMemoryAuthRepository();
     await auth.signInWithApple();
     await pumpAt(
@@ -38,6 +52,15 @@ void main() {
       overrides: <Override>[
         authRepositoryProvider.overrideWithValue(auth),
         authProvidersProvider.overrideWithValue(providers),
+        signInMethodReauthProvider.overrideWithValue((_) async {
+          reauthAsked++;
+          return reauthPasses;
+        }),
+        signInMethodServerCheckProvider.overrideWithValue(() async {
+          serverChecks++;
+          final Object? refusal = serverRefuses;
+          if (refusal != null) throw refusal;
+        }),
       ],
     );
     return auth;
@@ -84,4 +107,104 @@ void main() {
     );
     unawaited(auth.dispose());
   });
+
+  testWidgets(
+    'RED CONTROL: a stale session that does not re-authenticate cannot '
+    'unlink, and the server is never asked',
+    (WidgetTester tester) async {
+      final InMemoryAuthRepository auth = await pump(
+        tester,
+        providers: const AuthProviders(apple: true, google: true),
+        reauthPasses: false,
+      );
+      await tester.tap(
+        find.byKey(ConnectedAccountsView.unlinkButton(core.SignInMethod.apple)),
+      );
+      await tester.pumpAndSettle();
+      expect(reauthAsked, 1);
+      expect(serverChecks, 0);
+      expect(auth.currentUser?.oauthProviders, <String>['apple']);
+      expect(
+        find.text(
+          'For your security, sign in again to change how you sign in.',
+        ),
+        findsOneWidget,
+      );
+      unawaited(auth.dispose());
+    },
+  );
+
+  testWidgets(
+    'RED CONTROL: the server refusing a stale token stops an unlink',
+    (WidgetTester tester) async {
+      final InMemoryAuthRepository auth = await pump(
+        tester,
+        providers: const AuthProviders(apple: true, google: true),
+        serverRefuses: core.AuthFailure(
+          'stale',
+          code: core.AuthFailure.reauthRequired,
+        ),
+      );
+      await tester.tap(
+        find.byKey(ConnectedAccountsView.unlinkButton(core.SignInMethod.apple)),
+      );
+      await tester.pumpAndSettle();
+      expect(serverChecks, 1);
+      expect(auth.currentUser?.oauthProviders, <String>['apple']);
+      unawaited(auth.dispose());
+    },
+  );
+
+  testWidgets('a stale session cannot link either', (
+    WidgetTester tester,
+  ) async {
+    final InMemoryAuthRepository auth = await pump(
+      tester,
+      providers: const AuthProviders(apple: true, google: true),
+      reauthPasses: false,
+    );
+    await tester.tap(
+      find.byKey(ConnectedAccountsView.linkButton(core.SignInMethod.google)),
+    );
+    await tester.pumpAndSettle();
+    expect(reauthAsked, 1);
+    expect(serverChecks, 0);
+    expect(
+      find.text('For your security, sign in again to change how you sign in.'),
+      findsOneWidget,
+    );
+    unawaited(auth.dispose());
+  });
+
+  test('the server\'s 403 is the auth layer\'s reauth_required', () async {
+    await expectLater(
+      confirmSignInMethodChangeAtServer(_Refusing(403)),
+      throwsA(
+        isA<core.AuthFailure>().having(
+          (core.AuthFailure f) => f.code,
+          'code',
+          core.AuthFailure.reauthRequired,
+        ),
+      ),
+    );
+    await expectLater(
+      confirmSignInMethodChangeAtServer(_Refusing(500)),
+      throwsA(isA<ApiException>()),
+    );
+  });
+}
+
+/// A platform client whose every POST is answered with [status].
+class _Refusing extends RestClient {
+  _Refusing(this.status)
+    : super(
+        baseUrl: 'https://platform.test/v1',
+        tokenProvider: () async => 't',
+      );
+
+  final int status;
+
+  @override
+  Future<dynamic> post(String path, {Object? body, String? idempotencyKey}) =>
+      Future<dynamic>.error(ApiException(status, 'refused'));
 }

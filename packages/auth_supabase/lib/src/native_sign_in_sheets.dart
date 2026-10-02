@@ -10,10 +10,22 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 /// token carries no nonce on this path).
 @immutable
 class NativeIdToken {
-  const NativeIdToken({required this.idToken, this.rawNonce});
+  const NativeIdToken({
+    required this.idToken,
+    this.rawNonce,
+    this.authorizationCode,
+  });
 
   final String idToken;
   final String? rawNonce;
+
+  /// ⏱ 2026-10-02 · review of #1155, finding 1. Apple's one-time
+  /// authorization code (valid five minutes). An ID-token sign-in carries no
+  /// provider refresh token, and without one an account deletion has nothing
+  /// to revoke at Apple — so the code goes to the platform Worker, which
+  /// exchanges it with the Sign in with Apple key and keeps the refresh token
+  /// for the revoke. Never logged, never stored on the device.
+  final String? authorizationCode;
 }
 
 /// ⏱ 2026-10-01 · EN-19. One provider's NATIVE sheet — the OS's own Apple or
@@ -85,7 +97,11 @@ class AppleSignInSheet implements NativeSignInSheet {
           );
       final String? token = cred.identityToken;
       if (token == null) return null;
-      return NativeIdToken(idToken: token, rawNonce: raw);
+      return NativeIdToken(
+        idToken: token,
+        rawNonce: raw,
+        authorizationCode: cred.authorizationCode,
+      );
     } on SignInWithAppleAuthorizationException catch (e) {
       if (e.code == AuthorizationErrorCode.canceled) return null;
       rethrow;

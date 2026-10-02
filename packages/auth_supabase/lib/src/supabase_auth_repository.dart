@@ -567,8 +567,9 @@ class SupabaseAuthRepository implements core.AuthRepository {
     }
     if (token == null) return;
     _launchedProvider = name;
+    final sb.AuthResponse res;
     try {
-      await _auth.signInWithIdToken(
+      res = await _auth.signInWithIdToken(
         provider: provider,
         idToken: token.idToken,
         nonce: token.rawNonce,
@@ -576,7 +577,21 @@ class SupabaseAuthRepository implements core.AuthRepository {
     } on sb.AuthException catch (e) {
       throw _failureOf(e);
     }
+    // ⏱ 2026-10-02 · review of #1155, finding 1: the sheet's authorization
+    // code, held for THIS account's session only, so the provider-token
+    // keeper can post it ([core.AuthSession.providerAuthorizationCode]).
+    final String? code = token.authorizationCode;
+    final String? owner = res.user?.id ?? res.session?.user.id;
+    _pendingCode =
+        name == 'apple' && code != null && code.isNotEmpty && owner != null
+            ? (owner: owner, code: code)
+            : null;
   }
+
+  /// The last native Apple sheet's authorization code and the account it
+  /// signed in. Offered on that account's sessions until a sign-out or the
+  /// next sheet; the keeper sends it once.
+  ({String owner, String code})? _pendingCode;
 
   /// 🔴 WHY GOOGLE IS ASKED FOR `offline` ACCESS WITH `consent`: without both,
   /// Google issues no refresh token on a returning sign-in, so there is nothing
@@ -773,6 +788,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
     // A launch record outlives nothing it names: the next account on this
     // device must not inherit the last one's provider.
     _launchedProvider = null;
+    _pendingCode = null;
     if (scope == core.SignOutScope.local) {
       return _auth.signOut(scope: sdkSignOutScopeOf(scope));
     }
@@ -1111,14 +1127,18 @@ class SupabaseAuthRepository implements core.AuthRepository {
                 i.provider,
             ],
           );
+    final ({String owner, String code})? pending = _pendingCode;
+    final String? code =
+        pending != null && pending.owner == s.user.id ? pending.code : null;
     return core.AuthSession(
       accessToken: s.accessToken,
       refreshToken: s.refreshToken,
+      providerAuthorizationCode: code,
       // ⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE: the provider's own
       // refresh token, which gotrue puts on the session that completes the
       // OAuth redirect and on no session after it.
       providerRefreshToken: provider == null ? null : s.providerRefreshToken,
-      oauthProvider: provider,
+      oauthProvider: provider ?? (code == null ? null : 'apple'),
       // GoTrue reports expiry as UNIX seconds; null when it does not know.
       expiresAt: s.expiresAt == null
           ? null

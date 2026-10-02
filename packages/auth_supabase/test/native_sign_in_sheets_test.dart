@@ -25,9 +25,21 @@ class _Sheet implements NativeSignInSheet {
 /// `getOAuthSignInUrl`, so a browser launch is observable — and refused —
 /// here.
 class _GoTrue extends sb.GoTrueClient {
-  _GoTrue({this.idTokenError}) : super(autoRefreshToken: false);
+  _GoTrue({this.idTokenError, this.session}) : super(autoRefreshToken: false);
 
   final sb.AuthException? idTokenError;
+
+  /// The session `signInWithIdToken` lands, and `currentSession` then holds.
+  sb.Session? session;
+  sb.Session? _current;
+
+  @override
+  sb.Session? get currentSession => _current;
+
+  @override
+  Future<void> signOut({sb.SignOutScope scope = sb.SignOutScope.local}) async {
+    _current = null;
+  }
   final List<Map<String, Object?>> idTokenCalls = <Map<String, Object?>>[];
   int browserLaunches = 0;
 
@@ -46,7 +58,8 @@ class _GoTrue extends sb.GoTrueClient {
     });
     final sb.AuthException? e = idTokenError;
     if (e != null) throw e;
-    return sb.AuthResponse();
+    _current = session;
+    return sb.AuthResponse(session: session);
   }
 
   @override
@@ -97,6 +110,72 @@ void main() {
       expect(gotrue.browserLaunches, 0);
       expect(gotrue.idTokenCalls.single['provider'], sb.OAuthProvider.google);
       expect(gotrue.idTokenCalls.single['nonce'], isNull);
+    });
+  });
+
+  group('⏱ 2026-10-02 · #1155 review, finding 1: the Apple code reaches the '
+      'session', () {
+    sb.Session sessionFor(String id) => sb.Session(
+      accessToken: 'at',
+      tokenType: 'bearer',
+      user: sb.User(
+        id: id,
+        appMetadata: const <String, dynamic>{},
+        userMetadata: const <String, dynamic>{},
+        aud: 'authenticated',
+        createdAt: '2026-10-02T00:00:00Z',
+      ),
+    );
+
+    test(
+      'RED CONTROL: a native Apple sign-in session carries the sheet code, '
+      'for the keeper to exchange; a sign-out forgets it',
+      () async {
+        final _GoTrue gotrue = _GoTrue(session: sessionFor('u-native'));
+        final SupabaseAuthRepository repo = SupabaseAuthRepository(
+          client: gotrue,
+          nativeSheets: NativeSignInSheets(
+            apple: _Sheet(
+              token: const NativeIdToken(
+                idToken: 'apple.jwt',
+                rawNonce: 'raw-n',
+                authorizationCode: 'c.native-code',
+              ),
+            ),
+          ),
+        );
+        await repo.signInWithApple();
+        final core.AuthSession? s = await repo.currentSession();
+        expect(s?.providerAuthorizationCode, 'c.native-code');
+        expect(s?.oauthProvider, 'apple');
+        expect(s?.providerRefreshToken, isNull);
+
+        await repo.signOut();
+        gotrue.session = sessionFor('u-native');
+        // Signed back in by another door: the old code is not offered again.
+        await gotrue.signInWithIdToken(
+          provider: sb.OAuthProvider.google,
+          idToken: 'g.jwt',
+        );
+        expect((await repo.currentSession())?.providerAuthorizationCode, isNull);
+      },
+    );
+
+    test('a Google sheet never carries a code', () async {
+      final _GoTrue gotrue = _GoTrue(session: sessionFor('u-g'));
+      final SupabaseAuthRepository repo = SupabaseAuthRepository(
+        client: gotrue,
+        nativeSheets: NativeSignInSheets(
+          google: _Sheet(
+            token: const NativeIdToken(
+              idToken: 'g.jwt',
+              authorizationCode: 'not-apple',
+            ),
+          ),
+        ),
+      );
+      await repo.signInWithGoogle();
+      expect((await repo.currentSession())?.providerAuthorizationCode, isNull);
     });
   });
 

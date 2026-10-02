@@ -191,6 +191,9 @@ String? _codeSentence(ChassisLocalizations l10n, core.AuthFailure e) =>
       // or expired one-time code.
       core.AuthFailure.lastSignInMethod => l10n.authLastSignInMethod,
       core.AuthFailure.codeInvalid => l10n.authCodeInvalid,
+      // ⏱ 2026-10-02 · review of #1155, finding 3 — a sign-in method change
+      // from a session whose last sign-in is too old.
+      core.AuthFailure.reauthRequired => l10n.authReauthRequired,
       _ => null,
     };
 

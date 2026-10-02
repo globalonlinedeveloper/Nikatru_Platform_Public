@@ -474,6 +474,14 @@ final Provider<void> appleTokenKeeperProvider = Provider<void>((ref) {
       provider,
       token,
     ),
+    // ⏱ 2026-10-02 · review of #1155, finding 1: the native Apple sheet's
+    // session carries a code, not a token; the server exchanges it.
+    sendAuthorizationCode: (String provider, String code) =>
+        sendAppleAuthorizationCode(
+          ref.read(platformRestClientProvider),
+          provider,
+          code,
+        ),
     onError: reportAppleTokenNotKept,
     retryDelays: ref.watch(appleTokenRetryDelaysProvider),
   );
@@ -499,6 +507,26 @@ Future<void> sendProviderRefreshToken(
     client,
     provider: provider,
     refreshToken: token,
+    appId: AppConfig.appId,
+  );
+}
+
+/// ⏱ 2026-10-02 · review of #1155, finding 1 — WHERE A NATIVE APPLE SHEET'S
+/// AUTHORIZATION CODE GOES: `PUT /account/apple-code`, body
+/// `{authorizationCode, appId}`. Only Apple's sheet mints one; a code naming
+/// another provider is refused here rather than sent somewhere it means
+/// nothing. NAMED for the reason [sendProviderRefreshToken] is.
+Future<void> sendAppleAuthorizationCode(
+  RestClient client,
+  String provider,
+  String code,
+) {
+  if (provider != 'apple') {
+    throw ArgumentError.value(provider, 'provider', 'only Apple mints a code');
+  }
+  return exchangeAppleAuthorizationCode(
+    client,
+    authorizationCode: code,
     appId: AppConfig.appId,
   );
 }

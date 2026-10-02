@@ -1164,5 +1164,9 @@
   "devicesRetry": "Tap to try again",
   "@devicesRetry": {
     "description": "SE-03 · Under 'Your devices could not be loaded.'; tapping the row reads the list again."
+  },
+  "authReauthRequired": "For your security, sign in again to change how you sign in.",
+  "@authReauthRequired": {
+    "description": "Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart (#1155 review, finding 3). The platform Worker's reauth_required for a sign-in method change: the session's last sign-in is too old, or the person cancelled the re-authentication. Nothing was changed."
   }
 }

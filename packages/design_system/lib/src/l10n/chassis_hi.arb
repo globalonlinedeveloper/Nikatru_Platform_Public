@@ -261,5 +261,6 @@
   "emailCodeResend": "नया कोड भेजें",
   "emailCodeResendIn": "{seconds, plural, =1{1 सेकंड में नया कोड भेजें} other{{seconds} सेकंड में नया कोड भेजें}}",
   "emailCodeSentAgain": "नया कोड भेजा जा रहा है।",
-  "emailCodeUsePassword": "इसके बजाय अपना पासवर्ड इस्तेमाल करें"
+  "emailCodeUsePassword": "इसके बजाय अपना पासवर्ड इस्तेमाल करें",
+  "authReauthRequired": "आपकी सुरक्षा के लिए, साइन इन का तरीका बदलने के लिए फिर से साइन इन करें।"
 }

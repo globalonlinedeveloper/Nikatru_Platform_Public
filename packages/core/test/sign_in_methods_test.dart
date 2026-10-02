@@ -73,4 +73,101 @@ void main() {
     // The takeover rule (`mayLinkIdentity`): never from an unproven address.
     expect(mayLinkMethod(user(verified: false), SignInMethod.apple), isFalse);
   });
+
+  group('⏱ 2026-10-02 · #1155 review, finding 3: guardSignInMethodChange', () {
+    final DateTime now = DateTime.utc(2026, 10, 2, 12);
+    AuthUser signedInAt(DateTime? at) =>
+        AuthUser(id: 'u1', email: 'a@b.test', lastSignInAt: at);
+
+    test('RED CONTROL: a stale session that does not re-authenticate cannot '
+        'link or unlink — nothing changes', () async {
+      int changes = 0;
+      int checks = 0;
+      int asked = 0;
+      await expectLater(
+        guardSignInMethodChange<void>(
+          user: signedInAt(now.subtract(const Duration(hours: 3))),
+          reauthenticate: () async {
+            asked++;
+            return false;
+          },
+          serverCheck: () async => checks++,
+          change: () async => changes++,
+          now: () => now,
+        ),
+        throwsA(
+          isA<AuthFailure>().having(
+            (AuthFailure f) => f.code,
+            'code',
+            AuthFailure.reauthRequired,
+          ),
+        ),
+      );
+      expect(asked, 1);
+      expect(checks, 0);
+      expect(changes, 0);
+    });
+
+    test('RED CONTROL: the server refusing a stale token stops the change',
+        () async {
+      int changes = 0;
+      await expectLater(
+        guardSignInMethodChange<void>(
+          user: signedInAt(now.subtract(const Duration(minutes: 1))),
+          reauthenticate: () async => true,
+          serverCheck: () async => throw AuthFailure(
+            'stale',
+            code: AuthFailure.reauthRequired,
+          ),
+          change: () async => changes++,
+          now: () => now,
+        ),
+        throwsA(isA<AuthFailure>()),
+      );
+      expect(changes, 0);
+    });
+
+    test('a sign-in a minute ago goes straight through, server checked first',
+        () async {
+      final List<String> order = <String>[];
+      await guardSignInMethodChange<void>(
+        user: signedInAt(now.subtract(const Duration(minutes: 1))),
+        reauthenticate: () async {
+          order.add('asked');
+          return true;
+        },
+        serverCheck: () async => order.add('server'),
+        change: () async => order.add('change'),
+        now: () => now,
+      );
+      expect(order, <String>['server', 'change']);
+    });
+
+    test('a stale session that re-authenticates may change', () async {
+      final List<String> order = <String>[];
+      await guardSignInMethodChange<void>(
+        user: signedInAt(null),
+        reauthenticate: () async {
+          order.add('asked');
+          return true;
+        },
+        serverCheck: () async => order.add('server'),
+        change: () async => order.add('change'),
+        now: () => now,
+      );
+      expect(order, <String>['asked', 'server', 'change']);
+    });
+
+    test('nobody signed in: refused', () async {
+      await expectLater(
+        guardSignInMethodChange<void>(
+          user: null,
+          reauthenticate: () async => true,
+          serverCheck: () async {},
+          change: () async {},
+        ),
+        throwsA(isA<AuthFailure>()),
+      );
+    });
+  });
 }
