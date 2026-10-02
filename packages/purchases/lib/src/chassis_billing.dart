@@ -24,6 +24,7 @@ class ChassisBillingConfig {
     required this.accountId,
     required this.accessToken,
     required this.cancellationTransport,
+    this.checkoutSessions = const core.UnavailableCheckoutSessionTransport(),
     this.iapBridge,
     this.iapBridgeConfig,
     this.launcher = const UrlCheckoutLauncher(),
@@ -46,6 +47,12 @@ class ChassisBillingConfig {
   final Future<String?> Function() accessToken;
 
   final core.CancellationTransport cancellationTransport;
+
+  /// ⏱ 2026-10-01 · O-ST-HOSTED-CHECKOUT-CANNOT-START. How the hosted rail asks
+  /// the platform host (`POST /v1/checkout`) for a checkout page. The discard
+  /// default sells nothing on a hosted channel, which is the state of a build
+  /// whose backend is not live.
+  final core.CheckoutSessionTransport checkoutSessions;
 
   /// The store SDK seam. Null in an app that has not opted in to mobile IAP —
   /// which is every app today, and the reason [ChassisBilling.railFor] REFUSES
@@ -249,6 +256,7 @@ abstract final class ChassisBilling {
         accountId: config.accountId,
         accessToken: config.accessToken,
         cancellationTransport: config.cancellationTransport,
+        checkoutSessions: config.checkoutSessions,
         launcher: config.launcher,
         capabilities: PurchaseCapabilities.forChannel(channel),
       ),
@@ -345,6 +353,7 @@ class UnavailablePurchaseRail implements PurchaseRail, RestoresPurchases {
         .requestCancellation(appId: _appId, accessToken: await _accessToken());
     return r.fold((core.CancellationReceipt receipt) {
       if (!receipt.hasActivePlan) return CancellationOutcome.noActivePlan;
+      if (receipt.cancelAt != null) return CancellationOutcome.inStore;
       if (receipt.executed) return CancellationOutcome.executed;
       if (receipt.recorded) return CancellationOutcome.recorded;
       return CancellationOutcome.failed;

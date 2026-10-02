@@ -23,7 +23,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -97,6 +97,12 @@ function tree({
     write(`sites/${r}/sitemap.xml`, `<?xml version="1.0"?><urlset><url><loc>https://${r}.example.org/</loc></url>${r === 'nikatru' ? sitemapExtra : ''}</urlset>`);
     if (r === 'nikatru' && !omitWebmanifest) {
       write(`sites/${r}/site.webmanifest`, JSON.stringify({ name: 'NIKATRU', description: webmanifestDescription }));
+    }
+    // ⏱ 2026-10-02 — the personal root's llms.txt and manifest are REQUIRED_COVERAGE too:
+    // both carried the claims the PERSONAL_ROOTS limb now grades.
+    if (r === 'rajasekarselvam') {
+      write(`sites/${r}/llms.txt`, '# Fixture Person\n');
+      write(`sites/${r}/site.webmanifest`, JSON.stringify({ name: 'Fixture Person' }));
     }
   }
   if (redirectsBody !== null) write('sites/nikatru/_redirects', redirectsBody);
@@ -283,6 +289,63 @@ describe('assert-channel-claims — [D-1] an affordance is a promise only if rea
     // not. quotedValueAround() exists exactly for this shape.
     const { code, out } = run(tree({ nikatruBody: '<a href="[SNAP OR dl.nikatru.com APPIMAGE URL]">Linux</a>' }));
     assert.equal(code, 0, out);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-02 — PERSONAL_ROOTS: on the founder's site a product claim BLOCKS when the
+// registers do not back it (rajasekarselvam.com audit, D1). The same words on the
+// nikatru root still only print.
+describe('assert-channel-claims — PERSONAL_ROOTS grade a claim against the registers', () => {
+  const OVERCLAIM = '<p>I publish games, with download links for all six platforms on every store.</p>';
+  const writeAt = (root, rel, body) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), body); };
+  /** A live store channel and an app listed on it: the register-backed case. */
+  const backedStore = (root) => {
+    const reg = JSON.parse(readFileSync(join(root, 'tooling/channel-register.json'), 'utf8'));
+    const play = reg.channels.find((c) => c.id === 'android-play');
+    Object.assign(play, { name: 'Google Play', kind: 'store', served: true, storefrontKey: 'play' });
+    writeAt(root, 'tooling/channel-register.json', JSON.stringify(reg));
+    writeAt(root, 'catalog/apps.json', JSON.stringify([{ slug: 'subscriptiontracker', platforms: ['web', 'android'], status: 'live', listings: { play: 'https://play.google.com/store/apps/details?id=com.example.fixture' } }]));
+  };
+
+  test('RED CONTROL: the old copy on the personal root FAILS — games, download links, all six, every store', () => {
+    const { code, out } = run(tree({ rajaBody: OVERCLAIM }));
+    assert.equal(code, 1, out);
+    assert.match(out, /sites\/rajasekarselvam\/index\.html:1 claims "games" — a game as a product kind/);
+    assert.match(out, /claims "download links" — a store or download claim/);
+    assert.match(out, /claims "all six" — a count of six platforms/);
+    assert.match(out, /claims "every store" — a store or download claim/);
+    assert.match(out, /the registers hold 1 live app\(s\), live on 0 channel\(s\)/);
+  });
+
+  test('the SAME copy on sites/nikatru prints and passes — the blocking rule is scoped, not global', () => {
+    const { code, out } = run(tree({ nikatruBody: OVERCLAIM }));
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /a game as a product kind/);
+    assert.match(out, /all six/);
+  });
+
+  test('a platform ENUMERATION longer than the live platform set FAILS on the personal root', () => {
+    const { code, out } = run(tree({ rajaBody: '<p>Apps for iOS, Android, Windows and macOS.</p>' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /claims "iOS, Android, Windows and macOS" — 4 platforms named in a run/);
+  });
+
+  test('a store claim the register DOES back passes; a game claim with no game in the catalogue still fails', () => {
+    const root = tree({ rajaBody: '<p>Find my apps on the app stores. I also make games.</p>' });
+    backedStore(root);
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.doesNotMatch(out, /claims "app stores"/, 'one live store channel backs a store claim');
+    assert.match(out, /claims "games" — a game as a product kind/);
+  });
+
+  test('a live app whose app.yaml category names games backs a games claim', () => {
+    const root = tree({ rajaBody: '<p>I make games.</p>' });
+    writeAt(root, 'apps/subscriptiontracker/app.yaml', 'id: subscriptiontracker\ncategory: Games\n');
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.match(out, /make no product claim the registers do not back — .* and 1 game\(s\)/);
   });
 });
 
