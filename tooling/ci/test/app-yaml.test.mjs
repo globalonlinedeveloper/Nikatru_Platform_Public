@@ -547,23 +547,27 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
   // trigger by its table, timing and function, so no spelling slips past it;
   // `CREATE OR REPLACE TRIGGER` and a quoted table name both passed before.
   const withStatement = (sql, stmt) => sql.replace('COMMIT;', `${stmt}\n\nCOMMIT;`);
-  for (const [name, stmt] of [
-    ['CREATE TRIGGER', 'CREATE TRIGGER nikatru_address_null_on_write\n  BEFORE INSERT OR UPDATE ON auth.mfa_challenges\n  FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.audit_ip_empty();'],
-    ['CREATE OR REPLACE TRIGGER (PG14+), another name', 'CREATE OR REPLACE TRIGGER zz_other\n  BEFORE INSERT OR UPDATE ON auth.mfa_challenges\n  FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.audit_ip_empty();'],
-    ['a quoted "auth"."mfa_challenges"', 'CREATE TRIGGER zz_quoted BEFORE INSERT OR UPDATE ON "auth"."mfa_challenges" FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.audit_ip_empty();'],
-    ['the on-verify function, on INSERT too', 'CREATE TRIGGER zz_insert BEFORE INSERT OR UPDATE ON auth.mfa_challenges FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.mfa_ip_blank_on_verify();'],
-  ]) {
-    test(`MUTATION: an every-write trigger on auth.mfa_challenges by ${name} is refused (limb 10)`, () => {
-      const root = tree();
-      try {
-        const sql = get(root, IDENTITY_SQL);
-        put(root, IDENTITY_SQL, withStatement(sql, stmt));
-        const { code, out } = spawn(GUARD, [root]);
-        assert.equal(code, 1, out);
-        assert.match(out, /a trigger on auth\.mfa_challenges \(BEFORE INSERT OR UPDATE, .*that is not its declared on-verify trigger/);
-      } finally { kill(root); }
-    });
-  }
+  const refusesEveryWriteTrigger = (stmt) => {
+    const root = tree();
+    try {
+      put(root, IDENTITY_SQL, withStatement(get(root, IDENTITY_SQL), stmt));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /a trigger on auth\.mfa_challenges \(BEFORE INSERT OR UPDATE, .*that is not its declared on-verify trigger/);
+    } finally { kill(root); }
+  };
+  test('MUTATION: an every-write trigger on auth.mfa_challenges by CREATE TRIGGER is refused (limb 10)', () => {
+    refusesEveryWriteTrigger('CREATE TRIGGER nikatru_address_null_on_write\n  BEFORE INSERT OR UPDATE ON auth.mfa_challenges\n  FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.audit_ip_empty();');
+  });
+  test('MUTATION: an every-write trigger on auth.mfa_challenges by CREATE OR REPLACE TRIGGER (PG14+), another name, is refused (limb 10)', () => {
+    refusesEveryWriteTrigger('CREATE OR REPLACE TRIGGER zz_other\n  BEFORE INSERT OR UPDATE ON auth.mfa_challenges\n  FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.audit_ip_empty();');
+  });
+  test('MUTATION: an every-write trigger on a quoted "auth"."mfa_challenges" is refused (limb 10)', () => {
+    refusesEveryWriteTrigger('CREATE TRIGGER zz_quoted BEFORE INSERT OR UPDATE ON "auth"."mfa_challenges" FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.audit_ip_empty();');
+  });
+  test('MUTATION: the on-verify function attached on INSERT too is refused (limb 10)', () => {
+    refusesEveryWriteTrigger('CREATE TRIGGER zz_insert BEFORE INSERT OR UPDATE ON auth.mfa_challenges FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.mfa_ip_blank_on_verify();');
+  });
 
   test('MUTATION: any other statement naming auth.mfa_challenges is refused (limb 10)', () => {
     const root = tree();
