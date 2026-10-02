@@ -73,10 +73,10 @@ void main() {
         account: const AuthUser(
           id: 'u',
           email: kE2EAddress,
-          displayName: 'Rajasekar Selvam',
+          displayName: 'Fixture Person',
         ),
       );
-      expect(needles, contains('Rajasekar Selvam'));
+      expect(needles, contains('Fixture Person'));
     });
 
     // ⚠️ THE CLAIM HERE WAS FALSE AND THE CASE IS STILL WORTH KEEPING. This
@@ -203,7 +203,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
-        _frame(<Widget>[const Text('Hi, Rajasekar Selvam')]),
+        _frame(<Widget>[const Text('Hi, Fixture Person')]),
       );
       final _Shutter shutter = _Shutter();
 
@@ -216,7 +216,7 @@ void main() {
             account: const AuthUser(
               id: 'u',
               email: kE2EAddress,
-              displayName: 'Rajasekar Selvam',
+              displayName: 'Fixture Person',
             ),
           ),
         ),

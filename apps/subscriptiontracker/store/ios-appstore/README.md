@@ -71,7 +71,8 @@ codes) the difference is a field inside the audit, not a second document.
 Apple: *"Starting May 1, 2024, apps that don't describe their use of required
 reason API in their privacy manifest file aren't accepted by App Store Connect."*
 (`developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api`,
-recorded with its fetch date in the shared brain's `vendors/apple.md` §9.) A wrong
+recorded with its fetch date in the shared brain at `nikatru/vendors/apple.md#status`; cited as "§9" until
+2026-10-01, a section that file never had.) A wrong
 answer here therefore costs an **upload round-trip**, not a review cycle. The
 rejection string `ITMS-91053` is written down once in the audit and **no guard
 asserts it**: the RULE is sourced, the CODE appears on no Apple public page and is
