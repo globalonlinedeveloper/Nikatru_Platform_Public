@@ -23,6 +23,7 @@ import '../../data/local/subscription_store.dart';
 import '../../data/models/payment_record.dart';
 import '../../data/models/price_change.dart';
 import '../../data/models/spend_history.dart';
+import '../../data/models/subscription.dart';
 import '../../data/subscriptions/subscription_repository.dart';
 import '../settings_controller.dart' show currencyCodeProvider;
 import '../subscriptions_controller.dart' show subscriptionsControllerProvider;
@@ -307,9 +308,12 @@ final FutureProviderFamily<List<PriceChange>, String> priceHistoryProvider =
 /// Every charge and price edit over the last year — ST-P6 (round-2 F23, the
 /// trend) and ST-I4 (round-2 X09, the price-rise alert).
 ///
-/// It WATCHES the list, so an edit that moves a price (and writes its
-/// `price_change` row in the same batch) re-reads the history, and the rise
-/// shows without a restart.
+/// It WATCHES the list's PRICE-BEARING PROJECTION ([_historyKey]: which plans
+/// are live, and what each costs), so an edit that moves a price (and writes
+/// its `price_change` row in the same batch) or removes a plan re-reads the
+/// history, and the rise shows without a restart. A rename, a note or a
+/// loading flip of the same rows does not: watching the whole list cost two
+/// SELECTs on every optimistic update.
 ///
 /// 🔴 NULL, NOT AN ERROR, WHEN THE READ FAILS — and not an empty history
 /// either. Null is "unknown": Insights hides the trend and draws no rise, and
@@ -320,13 +324,29 @@ final FutureProviderFamily<List<PriceChange>, String> priceHistoryProvider =
 /// re-reads it.
 final FutureProvider<SpendHistory?> spendHistoryProvider =
     FutureProvider<SpendHistory?>((ref) async {
-      ref.watch(subscriptionsControllerProvider);
+      ref.watch(
+        subscriptionsControllerProvider.select(
+          (AsyncValue<List<Subscription>> v) => _historyKey(v.value),
+        ),
+      );
       try {
         return await ref.watch(subscriptionRepositoryProvider).spendHistory();
       } catch (_) {
         return null;
       }
     });
+
+/// What `GET /v1/insights` depends on, from the list: each live plan's id and
+/// exact price. Null while no list has loaded.
+String? _historyKey(List<Subscription>? rows) {
+  if (rows == null) return null;
+  final List<String> keys = <String>[
+    for (final Subscription s in rows)
+      if (s.deletedAt == null)
+        '${s.id}:${s.price.minorUnits}${s.price.currencyCode}',
+  ]..sort();
+  return keys.join(',');
+}
 
 // ── `purchasesServiceProvider` WAS HERE, AND IT IS GONE ON PURPOSE ──────────
 // [pipeline 5]M-11/M-13/M-15, [ADR 026]. `lib/services/purchases/` held a

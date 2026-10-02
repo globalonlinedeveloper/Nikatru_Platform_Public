@@ -93,6 +93,47 @@ void main() {
     expect(PdfReportRenderer.escapeText('café'), 'café');
   });
 
+  test('a table cell is CLIPPED to its column; a plain line is not', () {
+    const String long =
+        'A plan name long enough to run across the next column and off the page';
+    final String pdf = _text(
+      PdfReport(
+        title: 't',
+        sections: const <ReportSection>[
+          ReportSection(
+            heading: 'Plans',
+            lines: <String>['A line is not a cell'],
+            columns: <String>['Name', 'Charge'],
+            rows: <List<String>>[
+              <String>[long, 'INR 100.00'],
+            ],
+          ),
+        ],
+      ).render(),
+    );
+    const double col =
+        (PdfReportRenderer.pageWidth - 2 * PdfReportRenderer.margin) / 2;
+    final RegExp clipped = RegExp(
+      r'q ([\d.]+) [\d.]+ ([\d.]+) [\d.]+ re W n BT /F[12] [\d.]+ Tf '
+      r'([\d.]+) [\d.]+ Td \(([^)]*)\) Tj ET Q',
+    );
+    final Map<String, RegExpMatch> byText = <String, RegExpMatch>{
+      for (final RegExpMatch m in clipped.allMatches(pdf)) m.group(4)!: m,
+    };
+    expect(
+      byText.keys,
+      containsAll(<String>['Name', 'Charge', long, 'INR 100.00']),
+    );
+    final RegExpMatch m = byText[long]!;
+    final double x = double.parse(m.group(1)!);
+    final double w = double.parse(m.group(2)!);
+    expect(x, double.parse(m.group(3)!), reason: 'the clip starts at the run');
+    expect(x + w, lessThan(PdfReportRenderer.margin + col));
+    expect(w, col - PdfReportRenderer.cellGutter);
+    expect(byText.containsKey('A line is not a cell'), isFalse);
+    expect(pdf, contains('(A line is not a cell) Tj ET\n'));
+  });
+
   test('the same report renders the same bytes', () {
     expect(_report().render(), _report().render());
   });

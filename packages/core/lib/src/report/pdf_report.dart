@@ -83,6 +83,9 @@ class PdfReportRenderer {
   static const double _bodySize = 10;
   static const double _leading = 14;
 
+  /// The space kept clear at the right of every table cell.
+  static const double cellGutter = 4;
+
   static Uint8List render(PdfReport report) {
     final List<_Page> pages = _layout(report);
     return _write(pages);
@@ -101,8 +104,13 @@ class PdfReportRenderer {
       }
     }
 
-    void text(String s, double x, double size, {bool bold = false}) =>
-        pages.last.runs.add(_Run(s, x, y, size, bold));
+    void text(
+      String s,
+      double x,
+      double size, {
+      bool bold = false,
+      double? clip,
+    }) => pages.last.runs.add(_Run(s, x, y, size, bold, clip));
 
     need(_titleSize);
     y -= _titleSize;
@@ -131,7 +139,15 @@ class PdfReportRenderer {
         y -= _leading;
         for (int i = 0; i < s.columns.length; i++) {
           final String cell = i < cells.length ? cells[i] : '';
-          text(cell, margin + i * colWidth, _bodySize, bold: bold);
+          // Clipped to its column less a gutter: a long plan name is cut at
+          // the column's edge instead of running into the next cell.
+          text(
+            cell,
+            margin + i * colWidth,
+            _bodySize,
+            bold: bold,
+            clip: colWidth - cellGutter,
+          );
         }
       }
 
@@ -212,10 +228,20 @@ class PdfReportRenderer {
   static List<int> _content(_Page page) {
     final StringBuffer b = StringBuffer();
     for (final _Run r in page.runs) {
-      b.write(
-        'BT /${r.bold ? 'F2' : 'F1'} ${_num(r.size)} Tf '
-        '${_num(r.x)} ${_num(r.y)} Td (${escapeText(r.text)}) Tj ET\n',
-      );
+      final double? clip = r.clip;
+      final String run =
+          'BT /${r.bold ? 'F2' : 'F1'} ${_num(r.size)} Tf '
+          '${_num(r.x)} ${_num(r.y)} Td (${escapeText(r.text)}) Tj ET';
+      if (clip == null) {
+        b.write('$run\n');
+      } else {
+        // A clipping rectangle [clip] wide around the run, from below the
+        // descenders to above the cap height; `q`/`Q` scope it to this run.
+        b.write(
+          'q ${_num(r.x)} ${_num(r.y - r.size / 2)} ${_num(clip)} '
+          '${_num(r.size * 2)} re W n $run Q\n',
+        );
+      }
     }
     return latin1.encode(b.toString());
   }
@@ -246,12 +272,15 @@ class _Page {
 }
 
 class _Run {
-  const _Run(this.text, this.x, this.y, this.size, this.bold);
+  const _Run(this.text, this.x, this.y, this.size, this.bold, this.clip);
   final String text;
   final double x;
   final double y;
   final double size;
   final bool bold;
+
+  /// The width the run is clipped to, from [x]; null = not clipped.
+  final double? clip;
 }
 
 /// [BytesBuilder] with the two appends this file makes.
