@@ -3585,9 +3585,20 @@ describe('limb T — the tax sentences and the rupee book', () => {
     });
     return { apps: { subscriptiontracker: { pro_monthly: entry(14900), pro_yearly: entry(149900) } } };
   };
+  const LIFETIME = { product_id: 'pro_lifetime', amount_minor: 8900, currency_code: 'USD', term: 'one_time' };
   const taxTree = (opts = {}) => {
+    const prices = book(opts.paddle, opts.razorpay);
+    // ⏱ 2026-10-02 · PR #1149 ruling item 5: `lifetime` serves a one-time offering, out of the India book
+    // ('out': no webInrMinor, as the real tree) or wrongly in it ('in': webInrMinor set).
+    if (opts.lifetime) {
+      prices.apps.subscriptiontracker.pro_lifetime = {
+        ...(opts.lifetime === 'in' ? { webInrMinor: 249900 } : {}),
+        rails: { paddle: { pending: 'fixture', taxMode: 'unread' }, razorpay: { pending: 'fixture', taxMode: 'inclusive' } },
+      };
+    }
+    const offerings = opts.lifetime ? [...SUBLY_OFFERINGS, LIFETIME] : SUBLY_OFFERINGS;
     const root = tree([SUBLY], {
-      rail: { ...rail({ subscriptiontracker: { features: {}, paywall: { enabled: false, offerings: SUBLY_OFFERINGS } } }), prices: book(opts.paddle, opts.razorpay) },
+      rail: { ...rail({ subscriptiontracker: { features: {}, paywall: { enabled: false, offerings } } }), prices },
     });
     writeFileSync(
       p(root, 'pricing.html'),
@@ -3652,6 +3663,40 @@ describe('limb T — the tax sentences and the rupee book', () => {
     assert.match(g.out, /does not carry ₹149/);
   });
 
+  // ⏱ 2026-10-02 · PR #1149 ruling item 5: a one-time offering is out of the India book until the
+  // Razorpay order path exists (render-rail-prices.mjs `inIndiaBook`, limb J).
+  test('green control: a served one-time offering is quoted in USD and left OUT of the India block', () => {
+    const root = taxTree({ lifetime: 'out' });
+    assert.equal(generate(root).code, 0);
+    const pricing = readFileSync(p(root, 'pricing.html'), 'utf8');
+    const india = pricing.slice(pricing.indexOf('<!-- PRICING:india -->'), pricing.indexOf('<!-- /PRICING:india -->'));
+    assert.match(india, /₹149 \/ month/);
+    assert.doesNotMatch(india, /One-time|once/);
+    const g = guard(root);
+    assert.equal(g.code, 0, g.out);
+  });
+
+  test('🔴 RED: a one-time row in the India block fails by name', () => {
+    const root = taxTree({ lifetime: 'out' });
+    assert.equal(generate(root).code, 0);
+    const f = p(root, 'pricing.html');
+    writeFileSync(
+      f,
+      readFileSync(f, 'utf8').replace('<td>₹149 / month</td></tr>', '<td>₹149 / month</td></tr>\n    <tr><td>Nikatru Subscription Tracker</td><td>Pro One-time</td><td>₹2,499 once</td></tr>'),
+    );
+    const g = guard(root);
+    assert.equal(g.code, 1, g.out);
+    assert.match(g.out, /limb T: the <!-- PRICING:india --> block on sites\/nikatru\/pricing\.html quotes subscriptiontracker's pro_lifetime, a one-time offering/);
+  });
+
+  test('🔴 RED: a one-time offering carrying webInrMinor (in the India book) fails by name', () => {
+    const root = taxTree({ lifetime: 'in' });
+    assert.equal(generate(root).code, 0);
+    const g = guard(root);
+    assert.equal(g.code, 1, g.out);
+    assert.match(g.out, /quotes subscriptiontracker's pro_lifetime, a one-time offering the India rail cannot sell/);
+  });
+
   test('a price book whose rails disagree on taxMode, or state a mode with no sentence, is refused', () => {
     const problems = [];
     const disagreeing = book();
@@ -3674,6 +3719,19 @@ describe('limb T — the tax sentences and the rupee book', () => {
     const page = '<ul>\n    <!-- TAX:sentences -->\n    <li>Prices are inclusive of applicable taxes unless stated otherwise.</li>\n    <!-- /TAX:sentences -->\n  </ul>';
     assert.equal(applyTaxSentences(page, 'terms.html', null), '<ul>\n    <!-- TAX:sentences -->\n    <!-- /TAX:sentences -->\n  </ul>');
     assert.throws(() => applyTaxSentences(`${page}\n<!-- TAX:sentences -->`, 'terms.html', null), /expected exactly one/);
+  });
+
+  // ⏱ 2026-10-02 · PR #1149 ruling item 4: terms.html's own change clause promises "a new date" when the
+  // Terms change, and its section 4 tax clause changed with the TAX pair. Red control: the base page's
+  // "Last updated: 9 September 2026" fails here.
+  test('the REAL terms.html is dated no earlier than the change that put its TAX pair in (2 October 2026)', () => {
+    const terms = readFileSync(join(REPO, 'sites', 'nikatru', 'terms.html'), 'utf8');
+    assert.ok(terms.includes('<!-- TAX:sentences -->'), 'terms.html carries no TAX pair');
+    const m = terms.match(/<p class="updated">Last updated: (\d{1,2} [A-Z][a-z]+ \d{4})<\/p>/);
+    assert.ok(m, 'terms.html has no "Last updated" line');
+    const dated = Date.parse(`${m[1]} 00:00:00 UTC`);
+    assert.ok(Number.isFinite(dated), `unreadable date ${m[1]}`);
+    assert.ok(dated >= Date.parse('2026-10-02T00:00:00Z'), `terms.html says "Last updated: ${m[1]}", older than its tax clause change`);
   });
 
   test('rupees() groups the Indian way, and agrees with Intl en-IN', () => {

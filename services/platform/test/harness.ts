@@ -57,6 +57,7 @@ import reminders0020 from '../migrations/0020_reminders.sql?raw';
 import extLinkFloor0021 from '../migrations/0021_ext_link_floor.sql?raw';
 import nativeAttest0022 from '../migrations/0022_native_attest.sql?raw';
 import providerTokenEncryption0023 from '../migrations/0023_provider_token_encryption.sql?raw';
+import providerPaymentLinks0024 from '../migrations/0024_provider_payment_links.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -123,6 +124,9 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   // encrypted at rest: `token_ct` and `token_key_id` on provider_tokens. ADD
   // COLUMN, so ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
   providerTokenEncryption0023,
+  // ⏱ 2026-10-02 · PR #1149 ruling item 2 — a Razorpay charge's payment → its
+  // subscription, so a refund or dispute resolves by payment id.
+  providerPaymentLinks0024,
 ];
 
 /**
@@ -174,6 +178,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   reminders0020,
   // 0022 is CREATE TABLE / CREATE INDEX IF NOT EXISTS only — it replays.
   nativeAttest0022,
+  // 0024 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  providerPaymentLinks0024,
 ];
 
 // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a

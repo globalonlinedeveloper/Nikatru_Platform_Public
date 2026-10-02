@@ -361,6 +361,36 @@ describe('limb I — one tax mode per rail', () => {
   });
 });
 
+// ⏱ 2026-10-02 · PR #1149 ruling item 5: the India book prices exactly what the India rail can sell.
+describe('limb J — the India book', () => {
+  test('green control: the real tree leaves the lifetime plan out of the India book (no webInrMinor)', () => {
+    const real = JSON.parse(readFileSync(join(REPO, REGISTER), 'utf8'));
+    assert.equal(lifetime(real).plan, 'single-lifetime');
+    assert.equal(lifetime(real).webInrMinor, undefined);
+    assert.ok(Number.isInteger(monthly(real).webInrMinor));
+  });
+
+  test('RED CONTROL: a one-time offering carrying webInrMinor is exit 1 while the order path is not built', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      lifetime(d).webInrMinor = 249900;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /pro_lifetime is a one-time offering and carries webInrMinor/);
+  });
+
+  test('a recurring offering with no webInrMinor is exit 1 (the India rail sells it as a plan)', () => {
+    const root = fixture();
+    mutate(root, (d) => {
+      delete monthly(d).webInrMinor;
+    });
+    const r = run(root, '--check');
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.err, /pro_monthly has no integer webInrMinor/);
+  });
+});
+
 describe('limb C — the rails', () => {
   test('a pending rail with no reason is exit 1', () => {
     const root = fixture();

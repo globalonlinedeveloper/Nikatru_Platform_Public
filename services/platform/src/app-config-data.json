@@ -191,7 +191,9 @@
       "wire does not carry: the plan, the India web price, the store column and the rail handles.",
       "",
       "`apps.<id>.<product_id>`: `plan` (single-monthly | single-yearly | single-lifetime, the same enum as app.yaml",
-      "`billing.mobileIap.storeProducts[].plan`), `webInrMinor` (ADR 078's India web price, unchanged by ADR 093), `store`",
+      "`billing.mobileIap.storeProducts[].plan`), `webInrMinor` (ADR 078's India web price, unchanged by ADR 093; ABSENT on a",
+      "one-time offering until the Razorpay order path exists, so India buyers are never shown a plan the India rail cannot",
+      "sell: render-rail-prices.mjs limb J, PR #1149 ruling item 5), `store`",
       "(ADR 093 section 2's store column: `USD`, `INR` and `readBack`, absent on the lifetime plan, which no store sells) and",
       "`readBack.<apple|google>` is null until that store's console accepts the price, then `{USD, INR, readAt}` as read there;",
       "render-rail-prices.mjs limb H refuses a null one for a plan apps/<id>/app.yaml declares live on that store.",
@@ -289,10 +291,9 @@
         },
         "pro_lifetime": {
           "plan": "single-lifetime",
-          "webInrMinor": 249900,
           "rails": {
             "paddle": { "priceId": "pri_01m346p14yzeqjjwj153thx8p2", "amountMinor": 8900, "readAt": "2026-09-26T23:43:12Z", "taxMode": "unread" },
-            "razorpay": { "pending": "no Razorpay one-time item exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here", "taxMode": "inclusive" }
+            "razorpay": { "pending": "not sold in India: the Razorpay order path (POST /v1/orders) is not built, so this one-time offering carries no webInrMinor and is out of the India book (render-rail-prices.mjs limb J) until it is and the owner creates the item (ADR 094)", "taxMode": "inclusive" }
           }
         }
       }

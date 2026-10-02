@@ -1,5 +1,9 @@
-// ⏱ 2026-10-01 · fix-india-rail-tax-data · Razorpay against the payments conformance suite — NOTHING
-// PENDING (O-RAZORPAY-CHECKOUT-ADAPTER's 15 cases cleared from tooling/ports/payments.json).
+// ⏱ 2026-10-01 · fix-india-rail-tax-data · Razorpay against the payments conformance suite — ONE case
+// PENDING (O-RAZORPAY-CHECKOUT-ADAPTER's 15 cases cleared from tooling/ports/payments.json but one).
+// ⏱ 2026-10-02 · PR #1149 ruling item 2: `refund revokes` stays pending. A Razorpay refund names a
+// payment, its body names no subscription (test/razorpay-fixtures.ts), and only the STORE's
+// `payment id → subscription id` link resolves it — test/razorpay-rail.test.ts proves that through the
+// door; this port-level case cannot see the link, and the link is unproven on a real test-mode event.
 //
 // Its `verify` rests on https://razorpay.com/docs/webhooks/validate-test/ (read 2026-09-12). The wire
 // bodies below are Razorpay-shaped webhook envelopes as lib/mor/razorpay.ts's header describes them

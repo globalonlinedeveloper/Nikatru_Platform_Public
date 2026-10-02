@@ -41,11 +41,15 @@ export function razorpayBody(spec: EventSpec): string {
     return JSON.stringify({ entity: 'event', account_id: 'acc_conformance1', event, contains, payload, created_at });
   }
   if (spec.kind === 'adjustment') {
-    const payment = { id: PAY_ID, entity: 'payment', status: 'refunded', invoice_id: 'inv_conformance1', subscription_id: spec.subscriptionId, notes: [] };
+    const bare = { id: PAY_ID, entity: 'payment', status: 'refunded', invoice_id: 'inv_conformance1', notes: [] };
+    const payment = { ...bare, subscription_id: spec.subscriptionId };
     if (spec.action === 'refund') {
+      // ⏱ 2026-10-02 · PR #1149 ruling item 2: the refund's payment entity names NO subscription — the docs'
+      // payment entity names `invoice_id` — so only the store's `payment id → subscription id` link (written
+      // at `subscription.charged`) can resolve it. The port-level `refund revokes` case is PENDING for it.
       return JSON.stringify({
         entity: 'event', account_id: 'acc_conformance1', event: 'refund.processed', contains: ['refund', 'payment'], created_at,
-        payload: { refund: { entity: { id: 'rfnd_conformance1', entity: 'refund', payment_id: PAY_ID, status: 'processed', notes: [] } }, payment: { entity: payment } },
+        payload: { refund: { entity: { id: 'rfnd_conformance1', entity: 'refund', payment_id: PAY_ID, status: 'processed', notes: [] } }, payment: { entity: bare } },
       });
     }
     const won = spec.action === 'restore';

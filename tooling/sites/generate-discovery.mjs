@@ -147,7 +147,7 @@ import { isAuthMailPath } from './gen-auth-mail.mjs';
 import { parseYaml } from '../app-yaml/yaml.mjs';
 import { renderAvailability, AVAILABILITY_CSS, availabilitySummary, availabilityRow } from './availability.mjs';
 // ⏱ 2026-10-01 · fix-india-rail-tax-data: the ONE tax mode per rail (limb I there grades it).
-import { railTaxModes, RAILS as TAX_RAILS } from '../catalog/render-rail-prices.mjs';
+import { inIndiaBook, railTaxModes, RAILS as TAX_RAILS } from '../catalog/render-rail-prices.mjs';
 
 /** The deploy root this generator owns. The mirror (`sites/rajasekarselvam`) is
  *  deliberately NOT generated into — see the note in assert-discovery-surface.mjs
@@ -1779,7 +1779,9 @@ export function applyPricing(html, products, india) {
 // PROBLEM, never a fallback: `unread` exists only for Paddle (a vendor read-back
 // not yet recorded), so its sentence says only what holds in every mode.
 // The rupee book is the `PRICING:india` pair on pricing.html: `webInrMinor` per
-// priced offering, Indian digit grouping, and the razorpay tax mode in words.
+// priced offering the India rail can sell (no one-time offering until the Razorpay
+// order path exists: render-rail-prices.mjs `inIndiaBook`, limb J), Indian digit
+// grouping, and the razorpay tax mode in words.
 // assert-discovery-surface.mjs limb T re-derives both and fails a published
 // sentence that differs, a hand tax sentence outside the pair, and an India block
 // that renders a dollar.
@@ -1912,6 +1914,9 @@ export function pricingIndia(rail, products, modes, problems) {
   const rows = [];
   for (const p of list) {
     for (const o of p.offerings) {
+      // ⏱ 2026-10-02 · PR #1149 ruling item 5: a one-time offering is out of the India book until the
+      // Razorpay order path exists (render-rail-prices.mjs limb J), so the India block does not quote it.
+      if (p.kind !== 'bundle' && !inIndiaBook(o.term.unit === null ? 'one_time' : o.term.unit)) continue;
       const minor = webInrOf(rail, p, o);
       if (!Number.isInteger(minor) || minor <= 0) {
         problems.push(

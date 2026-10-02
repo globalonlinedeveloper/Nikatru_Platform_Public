@@ -236,6 +236,30 @@
       }
     },
     {
+      "id": "table:platform_db.provider_payment_links",
+      "kind": "d1-table",
+      "name": "provider_payment_links",
+      "personalData": true,
+      "holds": "⏱ 2026-10-02 · PR #1149 ruling item 2 (O-RAZORPAY-CHECKOUT-ADAPTER). One row per subscription charge on a rail whose refunds and disputes name a PAYMENT rather than a subscription (Razorpay): the rail's payment id, the subscription id it charged, our account id when the charge resolved one, the money world, and the notification that carried both ids. Written once, first link wins, on the signed `subscription.charged`, so a later refund or chargeback of that payment resolves its subscription without trusting the payment entity's own fields. No name, no email, no payment detail.",
+      "retention": {
+        "kind": "keep",
+        "reason": "It is the answer to 'which subscription does this refunded or disputed payment belong to', and a refund or chargeback can arrive for as long as the subscription's payments can be reversed — i.e. for the life of the account. It is ERASED WITH THE ACCOUNT by construction: the column is spelled `user_id`, and the shared erasure route derives the tables it empties from the schema."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "The row links a person's payment to their subscription. When the person is erased the link has nothing left to resolve to (provider_accounts goes with them), and keeping it would keep their account id after the account is gone. A row written with no account (an unclaimed charge) carries no user id and is not theirs to erase."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0024_provider_payment_links.sql",
+        "services/platform/src/lib/mor/store.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      }
+    },
+    {
       "id": "table:platform_db.unclaimed_payments",
       "kind": "d1-table",
       "name": "unclaimed_payments",

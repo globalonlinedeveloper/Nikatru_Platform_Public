@@ -189,6 +189,16 @@ describe('assert-paywall-flip-ready', () => {
     assert.match(r.out, /carries 1 pending razorpay case\(s\): refund revokes/);
   });
 
+  // ⏱ 2026-10-02 · PR #1149 ruling item 2: the REAL registry keeps the refund's payment → subscription
+  // link pending until a real test-mode refund proves it, so closing the row on today's tree is red even
+  // with the GST duty implemented. Deleting that pending entry from payments.json reddens THIS test.
+  test('🔴 the REAL payments registry keeps limb 5 red: razorpay `refund revokes` is pending on O-RAZORPAY-CHECKOUT-ADAPTER', () => {
+    const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'ports', 'payments.json'), 'utf8'));
+    const r = run({ pay: real });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /RAZORPAY-CHECKOUT-ADAPTER is closed, but tooling\/ports\/payments\.json carries 1 pending razorpay case\(s\): refund revokes/);
+  });
+
   test('the REAL duty matrix holds the GST invoice duty owner-gated on Q13', () => {
     const real = JSON.parse(readFileSync(join(REPO, 'tooling', 'legal', 'duty-matrix.json'), 'utf8'));
     const row = real.duties.find((d) => d.id === 'india-seller-issues-gst-tax-invoice');

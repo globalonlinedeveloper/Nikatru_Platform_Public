@@ -289,11 +289,12 @@ describe('GET /config/:app?market= — the buyer-declared market price book', ()
   const book = (configData as unknown as { prices: { apps: Record<string, Record<string, { webInrMinor: number }>> } }).prices.apps
     .subscriptiontracker;
 
-  it('RED CONTROL (the row): an India buyer is served INR at webInrMinor for every offering, never USD', async () => {
+  it('RED CONTROL (the row): an India buyer is served INR at webInrMinor for every offering in the India book, never USD', async () => {
     const { get } = harness();
     const india = await offeringsOf(await get('subscriptiontracker', undefined, '?market=IN'));
     const world = await offeringsOf(await get('subscriptiontracker'));
-    expect(india.length).toBe(world.length);
+    // ⏱ 2026-10-02 · PR #1149 ruling item 5: the India book is every offering but the one-time one.
+    expect(india.map((o) => o.product_id)).toEqual(world.map((o) => o.product_id).filter((id) => id !== 'pro_lifetime'));
     expect(india.length).toBeGreaterThan(0);
     for (const o of india) {
       expect(o.currency_code).toBe('INR');
@@ -301,6 +302,33 @@ describe('GET /config/:app?market= — the buyer-declared market price book', ()
     }
     // The control: the same offerings, unasked, are USD at their web price.
     for (const o of world) expect(o.currency_code).toBe('USD');
+  });
+
+  // ⏱ 2026-10-02 · PR #1149 ruling item 5. The India rail sells a recurring offering as a Razorpay PLAN
+  // (razorpay-rail.ts creates a subscription); a one-time offering would be a Razorpay ITEM on the order path
+  // (POST /v1/orders), which is NOT built — so none may be served to India until it is. Red control: put
+  // `webInrMinor` back on pro_lifetime in app-config-data.json and this test fails on pro_lifetime.
+  it('every offering served under market=IN, for every app, has a Razorpay plan or item the India rail can sell', async () => {
+    const data = configData as unknown as {
+      apps: Record<string, { paywall?: { offerings?: unknown[] } }>;
+      prices: { apps: Record<string, Record<string, { plan: string; rails?: { razorpay?: Record<string, unknown> } }>> };
+    };
+    const ORDER_PATH_BUILT = false; // razorpay-rail.ts: "The ONE-TIME ORDER path (POST /v1/orders) is not built"
+    let checked = 0;
+    for (const appId of Object.keys(data.apps).filter((id) => !id.startsWith('_'))) {
+      if (!Array.isArray(data.apps[appId]?.paywall?.offerings)) continue;
+      const { get } = harness();
+      const res = await get(appId, undefined, '?market=IN');
+      if (res.status !== 200) continue;
+      for (const o of await offeringsOf(res)) {
+        const entry = data.prices.apps[appId]?.[o.product_id];
+        expect(entry?.rails?.razorpay, `${appId} ${o.product_id} has no razorpay rail entry`).toBeTruthy();
+        const sellsAs = entry.plan === 'single-lifetime' ? 'item' : 'plan';
+        expect(sellsAs === 'plan' || ORDER_PATH_BUILT, `${appId} ${o.product_id} is served to India as a one-time Razorpay item, and the order path is not built`).toBe(true);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 
   it('a market with no book of its own is served the default (USD) book unchanged', async () => {

@@ -578,10 +578,13 @@ export function resolvePaywall(id: string, kvValue: string | null): AppConfig['p
 // FAIL CLOSED: an India response re-prices EVERY offering or serves none of them
 // in rupees — an offering with no India price in the book is DROPPED from that
 // response, never left at its USD amount under an INR label or beside INR ones.
-// render-rail-prices.mjs limb A already holds every served offering priced, so
-// the drop is unreachable from the committed tree; it is here for a KV override
-// that adds an offering the book does not price. The KV override cannot move an
-// India price: the rupee amount is read from the committed book only.
+// ⏱ 2026-10-02 · PR #1149 ruling item 5: the drop is REACHED from the committed
+// tree for a one-time (lifetime) offering, which carries no `webInrMinor` until the
+// Razorpay order path exists (render-rail-prices.mjs limb J), so an India buyer is
+// never shown a plan the India rail cannot sell; every recurring offering is priced
+// (limb J). It also covers a KV override that adds an offering the book does not
+// price. The KV override cannot move an India price: the rupee amount is read from
+// the committed book only.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Each market with its own web price book: its currency, and the price-book field that holds the amount. */

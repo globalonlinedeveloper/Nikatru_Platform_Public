@@ -91,6 +91,14 @@
 //       one rail states the same mode: the buyer reads ONE tax sentence per rail, and
 //       tooling/sites/generate-discovery.mjs renders it from `railTaxModes` below. A
 //       rail with no taxMode is the row's red control.
+//   J · THE INDIA BOOK (⏱ 2026-10-02, PR #1149 ruling item 5) — `webInrMinor` is the
+//       India web book config.ts serves under `?market=IN` and the `PRICING:india` block
+//       quotes, so it prices exactly what the India rail can SELL: every recurring
+//       offering carries an integer `webInrMinor` (a Razorpay subscription PLAN sells
+//       it), and a one-time (lifetime) offering carries NONE while
+//       RAZORPAY_ORDER_PATH_BUILT is false — the order path (POST /v1/orders) that
+//       would sell it as a Razorpay ITEM is not built (razorpay-rail.ts), so an India
+//       buyer shown it would meet a 503 for a price the page advertised.
 //   COVERAGE LOST (exit 2) — the register missing or unparseable, no `prices`
 //   section, zero served offerings or zero price-book entries read, no
 //   TypeScript source to sweep, or catalog/bundles.json unreadable; the fee
@@ -265,6 +273,13 @@ export function railPriceMapFor(rail) {
 
 /** The served `term` → the plan an app offering is. */
 export const APP_PLANS = Object.freeze({ month: 'single-monthly', year: 'single-yearly', one_time: 'single-lifetime' });
+/** ⏱ 2026-10-02 · PR #1149 ruling item 5 (limb J). Whether the Razorpay ONE-TIME ORDER path (POST /v1/orders,
+ *  a Razorpay ITEM) exists. Until it does, the India rail sells subscription PLANS only, and a one-time offering is
+ *  out of the India book: no `webInrMinor`, so neither config.ts nor the `PRICING:india` block shows it. */
+export const RAZORPAY_ORDER_PATH_BUILT = false;
+/** Is an offering of this served `term` in the India web book? Read by limb J, generate-discovery.mjs's India
+ *  block and assert-discovery-surface.mjs limb T — one answer, three readers. */
+export const inIndiaBook = (term) => term !== 'one_time' || RAZORPAY_ORDER_PATH_BUILT;
 /** The served `term` → the plan a bundle offering is. A bundle has no lifetime plan. */
 export const BUNDLE_PLANS = Object.freeze({ month: 'bundle-monthly', year: 'bundle-yearly' });
 /** [ADR 093] §2: the store column carries these currencies and no other. */
@@ -589,6 +604,15 @@ export function plan(root, data) {
         problems.push(`apps.${app} offering "${id}" is served in ${JSON.stringify(o.currency_code)}; the web column here is USD.`);
       }
       const web = { USD: o.amount_minor, INR: entry.webInrMinor };
+      // J · the India book prices exactly what the India rail can sell.
+      if (inIndiaBook(o.term) && !(Number.isInteger(entry.webInrMinor) && entry.webInrMinor > 0)) {
+        problems.push(`${where} has no integer webInrMinor: a recurring offering is sold in India as a Razorpay plan, and the India book (config.ts ?market=IN, the PRICING:india block) needs its rupee price.`);
+      } else if (!inIndiaBook(o.term) && entry.webInrMinor !== undefined) {
+        problems.push(
+          `${where} is a one-time offering and carries webInrMinor, so India buyers would be shown it; the Razorpay order path ` +
+            '(POST /v1/orders) that would sell it is not built (RAZORPAY_ORDER_PATH_BUILT). Leave it out of the India book until it is.',
+        );
+      }
       // C · the rails.
       for (const hit of gradeRails(where, entry, web, problems)) {
         const prior = seenIds.get(hit.id);

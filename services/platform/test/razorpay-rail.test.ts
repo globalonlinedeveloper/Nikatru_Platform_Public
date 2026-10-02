@@ -19,7 +19,9 @@ import {
   RAZORPAY_KEY_ID_PREFIX,
   RAZORPAY_KEY_ID_VAR,
   RAZORPAY_KEY_SECRET_VAR,
+  RAZORPAY_CHECKOUT_HOSTS,
   makeRazorpayRail,
+  razorpayCheckoutUrl,
   razorpayRail,
 } from '../src/lib/mor/razorpay-rail';
 import type { EventSpec } from '../../_shared/test/conformance/payments';
@@ -97,6 +99,36 @@ describe('the Razorpay webhook door — red tests through routes/money.ts', () =
     const res = await d.send(adj('evt_rzp_r2', at(2), 'refund'));
     expect(res.status).toBe(200);
     expect(d.row()).toMatchObject({ is_active: 0, revocation_reason: 'refund_approved' });
+  });
+
+  // ⏱ 2026-10-02 · PR #1149 ruling item 2 (option b). Red control, run on the REAL source: removing the
+  // `linkPayment` call in store.ts applySubscription leaves the refund unclaimed and this test red.
+  it('🔴 a refund whose payment entity names NO subscription still revokes, by the payment → subscription link written at subscription.charged', async () => {
+    const d = door();
+    expect((await d.send(sub('evt_rzp_l1', at(1)))).status).toBe(200);
+    const links = d.db.rows('SELECT provider_payment_id, provider_subscription_id, user_id, environment FROM provider_payment_links');
+    expect(links).toEqual([{ provider_payment_id: 'pay_conformance1', provider_subscription_id: SUB, user_id: USER, environment: 'live' }]);
+    const refund = adj('evt_rzp_l2', at(2), 'refund');
+    const body = JSON.parse(razorpayBody(refund)) as { payload: { payment: { entity: Record<string, unknown> }; subscription?: unknown } };
+    // The body itself cannot name the subscription: no subscription entity, no subscription_id, no notes.
+    expect(body.payload.subscription).toBeUndefined();
+    expect(body.payload.payment.entity).not.toHaveProperty('subscription_id');
+    expect(body.payload.payment.entity.notes).toEqual([]);
+    const parsed = razorpayVerifier.parse(razorpayBody(refund), 'evt_rzp_l2');
+    expect(parsed.ok && parsed.notification.subject).toMatchObject({ kind: 'adjustment', subscriptionId: null, transactionId: 'pay_conformance1' });
+    const res = await d.send(refund);
+    expect(res.status).toBe(200);
+    expect(d.row()).toMatchObject({ is_active: 0, revocation_reason: 'refund_approved' });
+  });
+
+  it('a refund of a payment no charge linked changes no access (stored unclaimed, never a guess)', async () => {
+    const d = door();
+    // A trial (subscription.authenticated) names no payment, so no link is written.
+    expect((await d.send(sub('evt_rzp_n1', at(1), { status: 'trialing', trialEnd: FUTURE }))).status).toBe(200);
+    expect(d.db.count('provider_payment_links')).toBe(0);
+    expect((await d.send(adj('evt_rzp_n2', at(2), 'refund'))).status).toBe(200);
+    expect(d.row()?.is_active).toBe(1);
+    expect(d.db.count('unclaimed_payments')).toBe(1);
   });
 
   it('🔴 a dispute holds: payment.dispute.created revokes as chargeback, and a won dispute restores', async () => {
@@ -234,7 +266,9 @@ describe('razorpayRail — outbound, fail closed', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('creates a subscription with our notes and Basic auth, and refuses an answer on a foreign host or without our notes', async () => {
+  // ⏱ 2026-10-02 · PR #1149 ruling item 3 (design.md §1.6): the checkout URL is OUR apex page, never the
+  // vendor's hosted short_url — whatever short_url Razorpay answers, on whatever host, is not returned.
+  it('creates a subscription with our notes and Basic auth, returns OUR apex checkout URL (never short_url), and refuses an answer without our notes or a sub_ id', async () => {
     let answer: (sent: { notes: Record<string, string> }) => unknown = (sent) => ({ id: 'sub_new1', status: 'created', notes: sent.notes, short_url: 'https://rzp.io/i/abc' });
     const seen: Array<{ url: string; auth: string; body: Record<string, unknown> }> = [];
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -243,14 +277,26 @@ describe('razorpayRail — outbound, fail closed', () => {
       return new Response(JSON.stringify(answer(body)), { status: 200 });
     });
     const rail = makeRazorpayRail((n) => FIXTURE_KEYS[n], { planFor });
-    expect(await rail.createCheckout!(REQ)).toEqual({ ok: true, url: 'https://rzp.io/i/abc', reference: 'sub_new1' });
+    const apex = 'https://nikatru.com/checkout/?provider=razorpay&sub=sub_new1';
+    expect(await rail.createCheckout!(REQ)).toEqual({ ok: true, url: apex, reference: 'sub_new1' });
     expect(seen[0].url).toBe('https://api.razorpay.com/v1/subscriptions');
     expect(seen[0].auth).toBe(`Basic ${btoa(`${FIXTURE_KEYS.RAZORPAY_KEY_ID}:${FIXTURE_KEYS.RAZORPAY_KEY_SECRET}`)}`);
     expect(seen[0].body).toMatchObject({ plan_id: FIXTURE_PLAN, customer_notify: 1, notes: { user_id: USER, app_id: APP, offering_id: 'pro_monthly', env: 'live' } });
     answer = (sent) => ({ id: 'sub_new1', status: 'created', notes: sent.notes, short_url: 'https://evil.example/i/abc' });
+    expect(await rail.createCheckout!(REQ)).toEqual({ ok: true, url: apex, reference: 'sub_new1' });
+    answer = (sent) => ({ id: 'sub_new1', status: 'created', notes: sent.notes });
+    expect(await rail.createCheckout!(REQ)).toEqual({ ok: true, url: apex, reference: 'sub_new1' });
+    answer = (sent) => ({ id: '../evil', status: 'created', notes: sent.notes, short_url: 'https://rzp.io/i/abc' });
     expect(await rail.createCheckout!(REQ)).toMatchObject({ ok: false, sent: true });
     answer = () => ({ id: 'sub_new1', status: 'created', notes: {}, short_url: 'https://rzp.io/i/abc' });
     expect(await rail.createCheckout!(REQ)).toMatchObject({ ok: false, sent: true });
+  });
+
+  it('the checkout host allow-list is the apex alone, and the URL is the apex /checkout/ page with provider and sub', () => {
+    expect(RAZORPAY_CHECKOUT_HOSTS).toEqual(['nikatru.com']);
+    const u = new URL(razorpayCheckoutUrl('sub_X1'));
+    expect([u.protocol, u.host, u.pathname]).toEqual(['https:', 'nikatru.com', '/checkout/']);
+    expect(Object.fromEntries(u.searchParams)).toEqual({ provider: 'razorpay', sub: 'sub_X1' });
   });
 
   it('a hung upstream is `timeout`, never a throw', async () => {
@@ -290,6 +336,10 @@ describe('razorpayRail — outbound, fail closed', () => {
     expect(rail.reconcile).toBeUndefined();
     const row = paymentsRegistry.adapters.find((a) => a.id === 'razorpay');
     expect(row?.secrets).toEqual(expect.arrayContaining([RAZORPAY_KEY_ID_VAR, RAZORPAY_KEY_SECRET_VAR]));
-    expect(paymentsRegistry.conformance.pending.filter((p) => p.adapter === 'razorpay')).toEqual([]);
+    // ⏱ 2026-10-02 · PR #1149 ruling item 2: exactly ONE razorpay case stays pending — the refund's
+    // payment → subscription link, unproven on a real test-mode event — so flip limb 5 stays red.
+    expect(paymentsRegistry.conformance.pending.filter((p) => p.adapter === 'razorpay')).toEqual([
+      { adapter: 'razorpay', case: 'refund revokes', row: 'O-RAZORPAY-CHECKOUT-ADAPTER' },
+    ]);
   });
 });

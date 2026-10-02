@@ -59,7 +59,15 @@ import type { MoRWebhookVerifier, MoneyEnvironment, MoneySubject, ParseOutcome, 
 //                created_at: <unix seconds> }
 //   EVENT ID   the `x-razorpay-event-id` HEADER, passed in as `eventIdHint`
 //              (below); a parse without it is refused.
-//   ORDERING   `created_at` (unix seconds) → `occurredAt`.
+//   ORDERING   `created_at` (unix seconds) → `occurredAt`. ⚠️ THE CLOCK IS WHOLE
+//              SECONDS (PR #1149 ruling item 6): the store applies only a STRICTLY
+//              newer `occurred_at` (store.ts upsertEntitlement and moneyWentBackFor),
+//              so two DIFFERENT events stamped in the same second — say
+//              `subscription.charged` then `subscription.cancelled` — keep the FIRST
+//              DELIVERED and conclude the second `stale`. Rare, and the price of the
+//              replay defence below (a replay under a fresh id at the same instant is
+//              dropped); the dropped event is stored, and the subscription's next
+//              event re-states its status from the entity.
 //
 //   subscription.{activated,charged,resumed,authenticated,pending,halted,
 //   paused,cancelled,completed}: access is derived from the ENTITY's `status`,
@@ -97,17 +105,25 @@ import type { MoRWebhookVerifier, MoneyEnvironment, MoneySubject, ParseOutcome, 
 //                to `railEnvironment`, so the store REFUSES an event of the other
 //                world. Absent → null: configuration stays the authority. An
 //                unreadable `notes.env` is a REFUSAL, never a default.
-//   ⚠️ THE ADJUSTMENT'S SUBSCRIPTION — THE ONE LINK NOT SOURCED. A refund or a
-//                dispute names a PAYMENT (`payment_id`), and the store finds the
-//                account by subscription id. The subscription id is read, in
-//                order, from the event's own subscription entity, the payment
-//                entity's `subscription_id`, then its `notes.subscription_id`.
-//                Whether a real subscription charge's payment entity carries
-//                either is UNCONFIRMED (the docs' payment entity names
-//                `invoice_id`); when none is present the adjustment is stored
-//                with `subscriptionId: null` and changes no access — a missed
-//                revocation, recorded and visible, never a wrong one. The first
-//                delivered test-mode refund decides this link.
+//   ⚠️ THE ADJUSTMENT'S SUBSCRIPTION — RESOLVED BY PAYMENT (⏱ 2026-10-02, PR
+//                #1149 ruling item 2, option b). A refund or a dispute names a
+//                PAYMENT (`payment_id`), and the store finds the account by
+//                subscription id. Whether a real refund's payment entity carries
+//                the subscription is UNCONFIRMED (the docs' payment entity names
+//                `invoice_id`), so the link no longer rests on it: every
+//                `subscription.charged` names the payment it charged, and the
+//                store writes `payment id → subscription id` there
+//                (store.ts `linkPayment`, migration 0024); an adjustment resolves
+//                its subscription by its `payment_id` through that link FIRST.
+//                Only with no stored link does the store fall back to what THIS
+//                file reads off the body: the event's own subscription entity,
+//                the payment entity's `subscription_id`, then its
+//                `notes.subscription_id`. With neither, the adjustment is stored
+//                unclaimed and changes no access — a missed revocation, recorded
+//                and visible, never a wrong one. The link is still unproven on a
+//                real event: tooling/ports/payments.json keeps the razorpay
+//                `refund revokes` case PENDING until one test-mode refund is seen
+//                to resolve by it.
 //
 // ⚠️ THE ACCOUNT WAS NEVER THE MISSING PIECE (corrected earlier, kept): the
 // Razorpay account is `plan: live, KYC complete` as of 2026-09-05
@@ -323,7 +339,8 @@ function parseSubscription(
   };
 }
 
-/** The subscription an adjustment reverses — see "THE ADJUSTMENT'S SUBSCRIPTION" in the header. */
+/** The subscription an adjustment's OWN BODY names — the store's fallback when no charge linked its payment
+ *  (see "THE ADJUSTMENT'S SUBSCRIPTION" in the header). */
 function subscriptionOfAdjustment(payload: Record<string, unknown>, payment: Record<string, unknown> | null): string | null {
   const candidates = [
     entityOf(payload, 'subscription')?.id,

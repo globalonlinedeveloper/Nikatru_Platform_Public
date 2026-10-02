@@ -72,6 +72,7 @@ import { listDir } from './tree-walk.mjs';
 import { requireAppSet } from './app-set.mjs';
 import { stripInert } from './text-reductions.mjs';
 import { BUNDLES_REGISTER, readBundles } from '../catalog/read.mjs';
+import { inIndiaBook } from '../catalog/render-rail-prices.mjs';
 import {
   planDiscovery,
   APPS_DIR,
@@ -1944,6 +1945,18 @@ let inrPricesChecked = 0;
     const declaredOf = (slug) => (Array.isArray(rail?.apps?.[slug]?.paywall?.offerings) ? rail.apps[slug].paywall.offerings : []);
     for (const [, slug] of pricing.matchAll(/data-product="([^"]+)"/g)) {
       for (const o of declaredOf(slug)) {
+        // ⏱ 2026-10-02 · PR #1149 ruling item 5: a one-time offering is out of the India book until the Razorpay
+        // order path exists (render-rail-prices.mjs `inIndiaBook`, limb J); the block must NOT quote it.
+        if (!inIndiaBook(o?.term)) {
+          const minorOut = rail?.prices?.apps?.[slug]?.[o?.product_id]?.webInrMinor;
+          if (Number.isInteger(minorOut) || /Pro One-time/.test(inr.body)) {
+            problems.push(
+              `limb T: the ${pricingOpen('india')} block on ${PRICING_PAGE} quotes ${slug}'s ${o?.product_id}, a one-time offering the ` +
+                'India rail cannot sell (the Razorpay order path is not built, render-rail-prices.mjs limb J).',
+            );
+          }
+          continue;
+        }
         const bundlePlan = { month: 'bundle-monthly', year: 'bundle-yearly' }[o?.term];
         const minor =
           rail?.prices?.apps?.[slug]?.[o?.product_id]?.webInrMinor ??

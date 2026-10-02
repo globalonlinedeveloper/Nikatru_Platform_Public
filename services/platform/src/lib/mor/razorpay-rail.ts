@@ -2,7 +2,7 @@
 // ⏱ 2026-10-01 · fix-india-rail-tax-data · RAZORPAY, OUTBOUND — an adapter of the payments port.
 //
 // `razorpayRail` is Razorpay's `RailOutbound` (services/_shared/src/ports/payments.ts):
-// checkout (a Razorpay SUBSCRIPTION whose hosted `short_url` the buyer opens) and cancel
+// checkout (a Razorpay SUBSCRIPTION the buyer authorises on OUR apex checkout page) and cancel
 // at the cycle end. It is reached ONLY through the Worker's composition root, src/ports.ts
 // `railFor` — assert-ports limb 4 refuses any other module importing this file — and it is
 // selected for web checkout only when the BUYER DECLARES market `IN` (src/ports.ts
@@ -20,9 +20,15 @@
 //              checked against MONEY_ENVIRONMENT so a sandbox deploy never creates live money.
 //   · CREATE   POST https://api.razorpay.com/v1/subscriptions
 //              { plan_id, total_count, customer_notify: 1, notes: {...} } → the subscription
-//              entity: `id` (`sub_…`), `status` `created`, `short_url` (the hosted page the
-//              buyer authorises the mandate on, on `rzp.io`), `notes` echoed
+//              entity: `id` (`sub_…`), `status` `created`, `notes` echoed
 //              (razorpay.com/docs/api/payments/subscriptions/create-subscription/).
+//   · THE URL  ⏱ 2026-10-02 · PR #1149 ruling item 3 (design.md §1.6): the checkout URL
+//              is OUR page, `https://nikatru.com/checkout/?provider=razorpay&sub=<id>`, which
+//              loads Checkout.js with { key, subscription_id } — NEVER Razorpay's hosted
+//              `short_url`, which this file does not read. The main website is the
+//              Razorpay-approved one, and every app checks out on that one apex path, so
+//              O-RAZORPAY-WEBSITE-CAP-PATHS is never raised. The host allow-list is
+//              `nikatru.com` only. The apex page itself is design PR E, not built here.
 //   · CANCEL   POST https://api.razorpay.com/v1/subscriptions/<id>/cancel
 //              { cancel_at_cycle_end: 1 } → the subscription entity; access runs to
 //              `current_end` (razorpay.com/docs/api/payments/subscriptions/cancel-subscription/).
@@ -70,8 +76,19 @@ export const RAZORPAY_API_BASE = 'https://api.razorpay.com/v1';
 /** The key-id prefix each money world requires. Never the key. */
 export const RAZORPAY_KEY_ID_PREFIX: Readonly<Record<MoneyEnvironment, string>> = { live: 'rzp_live_', sandbox: 'rzp_test_' };
 
-/** The hosts a returned checkout URL may live on. */
-export const RAZORPAY_CHECKOUT_HOSTS: readonly string[] = ['rzp.io', 'api.razorpay.com'];
+/** The hosts a returned checkout URL may live on: the apex alone (design.md §1.6, PR #1149 ruling item 3). */
+export const RAZORPAY_CHECKOUT_HOSTS: readonly string[] = ['nikatru.com'];
+
+/** OUR checkout page, which loads Checkout.js with the subscription id — never Razorpay's hosted `short_url`. */
+export const RAZORPAY_CHECKOUT_PAGE = 'https://nikatru.com/checkout/';
+
+/** The apex checkout URL for one subscription: `?provider=razorpay&sub=<id>`. Exported for the tests. */
+export function razorpayCheckoutUrl(subscriptionId: string): string {
+  const u = new URL(RAZORPAY_CHECKOUT_PAGE);
+  u.searchParams.set('provider', RAZORPAY_RAIL_ID);
+  u.searchParams.set('sub', subscriptionId);
+  return u.toString();
+}
 
 /**
  * How many billing cycles the subscription is created for (`total_count`, required on create).
@@ -216,17 +233,14 @@ async function createRazorpayCheckout(secrets: SecretReader, opts: RazorpayRailO
   if (echoed[RAZORPAY_NOTE_USER_ID] !== userId || echoed[RAZORPAY_NOTE_APP_ID] !== appId || echoed[RAZORPAY_NOTE_ENV] !== environment) {
     return sentFailure(`app=${appId} — subscription ${id ?? '(unnamed)'} came back without our notes; every webhook for it would be unattributable, so the checkout is refused. Cancel it.`);
   }
-  let url: string | null = null;
-  if (typeof sub.short_url === 'string' && sub.short_url.length <= MAX_CHECKOUT_URL_LEN) {
-    try {
-      const u = new URL(sub.short_url);
-      if (u.protocol === 'https:' && RAZORPAY_CHECKOUT_HOSTS.includes(u.host)) url = u.toString();
-    } catch {
-      url = null;
-    }
+  if (id === null) {
+    return sentFailure(`app=${appId} — Razorpay created a subscription with no usable sub_ id. Cancel it.`);
   }
-  if (id === null || url === null) {
-    return sentFailure(`app=${appId} — subscription ${id ?? '(unnamed)'} carries no usable id or short_url on ${RAZORPAY_CHECKOUT_HOSTS.join(' / ')}. Cancel it.`);
+  // OUR apex page, never the vendor's hosted `short_url` (see THE URL in the header).
+  const url = razorpayCheckoutUrl(id);
+  const host = new URL(url).host;
+  if (url.length > MAX_CHECKOUT_URL_LEN || !RAZORPAY_CHECKOUT_HOSTS.includes(host)) {
+    return sentFailure(`app=${appId} — the checkout URL for ${id} is not on ${RAZORPAY_CHECKOUT_HOSTS.join(' / ')}. Cancel it.`);
   }
   return { ok: true, url, reference: id };
 }

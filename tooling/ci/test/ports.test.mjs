@@ -588,15 +588,14 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       assert.match(r.out, /limb 7 \(fakes\) tooling\/ports\/payments\.json selection\.default\.live is the fake `fake`/);
     } finally { writeFileSync(rel, before); }
   });
-  // ⏱ 2026-10-01 · fix-india-rail-tax-data: razorpay is conformant with nothing pending now, so a case
-  // pending on the fake alone still leaves two (paddle, razorpay); the red pends one on each of them.
-  it('red: claiming L3 with a scenario pending on the fake and on razorpay reddens limb 6', () => {
+  // ⏱ 2026-10-02 · PR #1149 ruling item 2: razorpay keeps one case pending (`refund revokes`) in the REAL
+  // registry, so a case pending on the fake leaves paddle the one conformant adapter.
+  it('red: claiming L3 with a scenario pending on the fake reddens limb 6', () => {
     const rel = join(root, 'tooling/ports/payments.json');
     const before = readFileSync(rel, 'utf8');
     try {
       const doc = JSON.parse(before);
       doc.conformance.pending.push({ adapter: 'fake', case: 'an older event after a newer one cannot re-grant', row: 'O-FIXTURE' });
-      doc.conformance.pending.push({ adapter: 'razorpay', case: 'refund revokes', row: 'O-FIXTURE' });
       writeFileSync(rel, JSON.stringify(doc));
       const r = run(root);
       assert.equal(r.code, 1, r.out);

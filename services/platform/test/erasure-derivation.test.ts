@@ -96,6 +96,9 @@ describe('the delete set is derived from the real platform schema', () => {
       'identity',
       'provider_accounts',
       'provider_notifications',
+      // ⏱ 2026-10-02 · 0024 (PR #1149). Spelt `user_id` ON PURPOSE: a buyer's payment → subscription
+      // links leave with the account.
+      'provider_payment_links',
       // ⏱ 2026-09-28 · 0020, renewal reminders. Spelt `user_id` ON PURPOSE:
       // erasing the account deletes the email preference, the sent ledger and the
       // calendar feed — a deleted feed row answers the same 404 as a revoked one.
