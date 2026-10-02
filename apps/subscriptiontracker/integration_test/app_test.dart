@@ -36,6 +36,7 @@ import 'package:nikatru_chassis_screens/firstrun/setup_steps_view.dart'
 import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
     show releaseWebSemantics;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
+import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
 import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
@@ -51,6 +52,7 @@ import 'package:subscriptiontracker/state/analytics_providers.dart'
     show kInstallIdKey;
 
 import 'consent.dart';
+import 'flow_steps.dart';
 import 'import_steps.dart';
 import 'magic_link_sign_in.dart';
 import 'offline_read_steps.dart';
@@ -97,6 +99,18 @@ void main() {
   const String expectWorkersTrust = String.fromEnvironment(
     'E2E_EXPECT_WORKERS_TRUST',
   );
+  // ⏱ 2026-10-01 · EN-08 (train st-e2e-parity): HOW THE FULL WALK SIGNS IN,
+  // decided by tooling/e2e/sign_in_via.mjs and never defaulted. `form`: the
+  // real front door — the form, its Turnstile widget (a sandbox stack's always-
+  // pass TEST key, or a stack with no gate), GoTrue. `token`: the harness-minted
+  // one-time token, for a stack whose real Turnstile key a headless browser
+  // cannot solve. The walk prints which (`NK_E2E step=sign-in via=…`), and the
+  // same script grades the drive log: a `form` run whose session came from the
+  // harness token is red.
+  const String signInVia = String.fromEnvironment('E2E_SIGN_IN');
+  // `run` walks the 14d changed flows; `skip` parks them, said (the dispatch
+  // input pending_flows; tooling/e2e/native_auth_proof.mjs PENDING_FLOWS_ROW).
+  const String pendingFlows = String.fromEnvironment('E2E_PENDING_FLOWS');
   const bool captchaGateOn = expectCaptchaGate == 'yes';
   const bool workersTrustIssuer = expectWorkersTrust == 'yes';
 
@@ -111,6 +125,12 @@ void main() {
     }
     if (expectWorkersTrust != 'yes' && expectWorkersTrust != 'no') {
       undecided.add('E2E_EXPECT_WORKERS_TRUST="$expectWorkersTrust"');
+    }
+    if (signInVia != 'form' && signInVia != 'token') {
+      undecided.add('E2E_SIGN_IN="$signInVia"');
+    }
+    if (pendingFlows != 'run' && pendingFlows != 'skip') {
+      undecided.add('E2E_PENDING_FLOWS="$pendingFlows"');
     }
     if (undecided.isNotEmpty) {
       fail(
@@ -1436,13 +1456,19 @@ void main() {
     // NO NAVIGATION HERE, AND SINCE IM-07 NONE IN THE HELPER EITHER: the
     // session appearing is the whole of signing in, and the router lands it on
     // Home (`afterSignInDestination`). The form branch below needs none.
-    if (!await signInWithMagicToken(tester, tokenHash, pumpFor: pumpFor)) {
+    // ⏱ 2026-10-01 · EN-08: `form` never touches the token; `token` is said.
+    if (signInVia == 'form' ||
+        !await signInWithMagicToken(tester, tokenHash, pumpFor: pumpFor)) {
       await tester.enterText(find.byKey(E2EKeys.loginEmail), email);
       await tester.enterText(find.byKey(E2EKeys.loginPassword), password);
-      await pumpFor(tester, const Duration(milliseconds: 500));
+      // The Turnstile widget answers before the button is worth tapping.
+      await pumpFor(tester, const Duration(seconds: 3));
       await tester.tap(find.byKey(E2EKeys.loginSubmit));
       // GoTrue sign-in; the router then lands the session on Home.
       await pumpFor(tester, const Duration(seconds: 10));
+      e2eLine(binding, 'NK_E2E step=sign-in via=form');
+    } else {
+      e2eLine(binding, 'NK_E2E step=sign-in via=harness-token');
     }
 
     // Every screen past this point reads or writes through the deployed
@@ -1994,6 +2020,128 @@ void main() {
     await pumpFor(tester, const Duration(seconds: 4));
     expect(shellIndex(), 0);
     await swipeAwaySnackBars(tester, 'deleting the weekly plan at 14c');
+
+    // ── 14d EVERY CHANGED FLOW, read back from the server (train
+    // st-e2e-parity) ─────────────────────────────────────────────────────────
+    // Each leg taps the real control and asserts the row, the prefs or the
+    // feed the deployed Workers answer (flow_steps.dart), never presence.
+    // tooling/e2e-leg-register.json `flows` anchors each one here.
+    //
+    // ⏱ 2026-10-02 · PARKED unless E2E_PENDING_FLOWS=run (lead ruling on
+    // #1143): web E2E 36987311361 went red at the edit sheet's submit (not
+    // hit-testable). Skipped and SAID, so main's nightly cannot go red on a
+    // leg not yet proven; tooling/e2e-leg-register.json grades each pending.
+    if (pendingFlows != 'run') {
+      e2eLine(binding, kWebFlowsPendingLine);
+    } else {
+      // EDIT a price, read it back — on B, which survives to verify_row.
+      await openRowOnHome(tester, pumpFor, subNameB);
+      await editPriceAndReadBack(
+        tester,
+        pumpFor,
+        name: subNameB,
+        newPrice: '8.88',
+        expectMinorUnits: 888,
+      );
+      // PAUSE → RESUME, each read back.
+      await statusAndReadBack(
+        tester,
+        pumpFor,
+        name: subNameB,
+        action: 'Pause',
+        want: SubscriptionStatus.paused,
+        chip: 'Paused',
+      );
+      await statusAndReadBack(
+        tester,
+        pumpFor,
+        name: subNameB,
+        action: 'Resume',
+        want: SubscriptionStatus.active,
+      );
+      await backToHome(tester, pumpFor);
+      await shot('14d-edited-resumed');
+
+      // MARK CANCELLED, then DELETE → UNDO → DELETE, on a plan of their own.
+      final String flowName =
+          'E2E Flow ${DateTime.now().millisecondsSinceEpoch}';
+      await addPlanThroughSheet(tester, pumpFor, name: flowName, price: '3.10');
+      await openRowOnHome(tester, pumpFor, flowName);
+      await statusAndReadBack(
+        tester,
+        pumpFor,
+        name: flowName,
+        action: 'Mark as cancelled',
+        want: SubscriptionStatus.cancelled,
+        chip: 'Cancelled',
+      );
+      await deleteUndoThenDelete(tester, pumpFor, name: flowName);
+      await backToHome(tester, pumpFor);
+      await shot('14d-delete-undo');
+
+      // SAVE A BUDGET, read it back (GET /v1/budget).
+      await tester.tap(find.text('Insights'));
+      await pumpFor(tester, const Duration(seconds: 2));
+      await scrollUntilFound(
+        tester,
+        target: find.byKey(BudgetCard.editButton),
+        scrollable: scrollableWithin(find.byType(InsightsScreen)),
+        what: 'the Insights budget card\'s Edit',
+        maxScrolls: 20,
+        delta: 200,
+      );
+      await saveBudgetAndReadBack(
+        tester,
+        pumpFor,
+        amount: '123',
+        expectMinorUnits: 12300,
+      );
+      await shot('14d-budget-saved');
+
+      // E-MAIL REMINDER PREFS PUT, then the CALENDAR FEED minted, fetched and
+      // rotated — both on Settings, both read back from the platform Worker.
+      await tester.tap(find.text('Settings'));
+      await pumpFor(tester, const Duration(seconds: 2));
+      await scrollUntilFound(
+        tester,
+        target: find.byKey(const Key('settings.reminder.email')),
+        scrollable: scrollableWithin(find.byType(SettingsScreen)),
+        what: 'the e-mail reminders switch',
+        maxScrolls: 30,
+        delta: 200,
+      );
+      await toggleEmailRemindersAndReadBack(tester, pumpFor);
+      await mintFetchAndRotateCalendarFeed(tester, pumpFor);
+      await shot('14d-reminders-feed');
+
+      // EXPORT CSV: the row taps the real exporter, the browser downloads the
+      // file, and tooling/e2e/verify_export_csv.mjs reads it off the runner's
+      // disk after the drive — the rows the server held when it was tapped.
+      final List<Subscription> exported = await serverRows(tester);
+      await scrollUntilFound(
+        tester,
+        target: find.byKey(const Key('settings.data.export')),
+        scrollable: scrollableWithin(find.byType(SettingsScreen)),
+        what: 'the Export (CSV) row',
+        maxScrolls: 30,
+        delta: 200,
+      );
+      await tapWhenHittable(
+        tester,
+        find.byKey(const Key('settings.data.export')),
+        'Export (CSV)',
+        scrollable: scrollableWithin(find.byType(SettingsScreen)).first,
+      );
+      await pumpFor(tester, const Duration(seconds: 4));
+      e2eLine(
+        binding,
+        'NK_E2E step=export rows=${exported.length} name=$subNameB '
+        'price=8.88',
+      );
+      await tester.tap(find.text('Home'));
+      await pumpFor(tester, const Duration(seconds: 2));
+      expect(shellIndex(), 0);
+    }
 
     // ── 15 Settings: switch currency (client-state propagation) ──────────────
     await tester.tap(find.text('Settings'));
