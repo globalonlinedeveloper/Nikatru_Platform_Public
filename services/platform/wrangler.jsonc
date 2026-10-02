@@ -5,6 +5,8 @@
   //                          compiled-in defaults; DATA/flags, never server UI.
   //   • cron 0 6 * * *     — CONSOLIDATED scheduler for the whole portfolio
   //                          (Supabase keep-alive + per-app renewals fan-out).
+  //   • cron 10/20/30/40 6 * * * — the heavy nightly limbs, ONE INVOCATION EACH
+  //                          (src/scheduled.ts SPLIT_FIRINGS, 2026-10-01).
   //   • cron 0 18 * * *    — the GitHub dispatcher ALONE (see triggers below).
   //
   // ⚠️ "staying under the 5-cron-triggers/account Free cap" STOOD HERE UNTIL
@@ -483,6 +485,7 @@
       // literal expressions. With the backup and the hourly stuck-run firing
       // below and the 03:17 e2e firing, this file holds 7 of the 250 cron triggers Workers Paid allows
       // (it was 5 on Free, which is why this file used to say "ONE cron").
+      // ⏱ 2026-10-02: 11 of the 250, with the four split firings after 06:00 (and the 03:17 e2e firing).
       //
       // The margin this buys, measured: the schedule it replaces (ops-watch's
       // own 12 slots) delivered 2.3 successful runs/day with a MAX GAP of 48.8h
@@ -503,6 +506,20 @@
       // was starting 5-6.6 h late. The ops watchdog rides it like any grid firing.
       "17 3 * * *",
       "0 6 * * *",
+      // 🔴 THE HEAVY NIGHTLY LIMBS, EACH ON ITS OWN TRIGGER AND SO ITS OWN
+      // INVOCATION (O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED, 2026-10-01). Until
+      // then `0 6 * * *` ran all of them in ONE invocation, sharing one D1
+      // statement budget while each cap was checked as if it ran alone.
+      // src/scheduled.ts routes each to SPLIT_FIRINGS alone: 06:10 the reminder
+      // digest (after the 06:00 renewals it reads), 06:20 the money
+      // re-derivation, 06:30 the erasure retry (after the 06:00 token backfill),
+      // 06:40 the events rollup then the retention sweep (after the 02:30
+      // backup). scheduled-crons.test.ts sums each trigger's JOB_STATEMENT_BUDGET
+      // against d1.queriesPerInvocation. Each ends with the cron beat, like 06:00.
+      "10 6 * * *",
+      "20 6 * * *",
+      "30 6 * * *",
+      "40 6 * * *",
       "0 12 * * *",
       "0 18 * * *",
       // 🔴 THE STUCK-RUN CHECK'S OWN HOURLY FIRING (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY,
@@ -552,7 +569,7 @@
   // inherit `vars`, `d1_databases`, `kv_namespaces`, `r2_buckets` or
   // `services`. Without `routes: []` this block would claim the two production
   // custom domains above for the sandbox script; without `crons: []` it would
-  // run the five production crons — the destructive nightly retention sweep
+  // run the production crons — the destructive nightly retention sweep
   // among them — a second time. tooling/ci/assert-money-config.mjs limb 1c
   // refuses both, an inherited `workers_dev`, and a production database.
   //

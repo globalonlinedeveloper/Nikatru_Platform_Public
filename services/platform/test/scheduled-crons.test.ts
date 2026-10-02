@@ -1,9 +1,23 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import wranglerRaw from '../wrangler.jsonc?raw';
 import REGISTER_RAW from '../../../tooling/ops/register.json?raw';
+import CEILINGS_RAW from '../../../tooling/ceilings.json?raw';
 import {
   scheduled,
   NIGHTLY_CRON,
+  SPLIT_FIRINGS,
+  JOB_STATEMENT_BUDGET,
+  REMINDER_MAIL_CRON,
+  MONEY_REDERIVE_CRON,
+  ERASURE_RETRY_CRON,
+  RETENTION_CRON,
+  MONEY_REDERIVE_JOB,
+  ERASURE_RETRY_JOB,
+  EVENTS_ROLLUP_JOB,
+  RETENTION_SWEEP_JOB,
+  MAX_REDERIVE_PER_RUN,
+  MAX_ERASURE_RETRIES_PER_RUN,
+  MAX_SWEEP_STATEMENTS_PER_RUN,
   BACKUP_CRON,
   BACKUP_JOB,
   BOXA_REACH_JOB,
@@ -15,8 +29,12 @@ import {
   REMINDER_MAIL_JOB,
   E2E_DISPATCH_CRON,
 } from '../src/scheduled';
-import { realPlatformDb } from './harness';
+import { realPlatformDb, type RealDb } from './harness';
 import type { Env } from '../src/types';
+import { deriveAndApply, persistNotification } from '../src/lib/mor/store';
+import { PADDLE_CUSTOM_DATA_APP_ID, PADDLE_CUSTOM_DATA_USER_ID, paddleVerifier } from '../src/lib/mor/paddle';
+import { isKnownProduct } from '../src/config';
+import { recordPendingErasure } from '../src/lib/erasure-ledger';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE WORKER HAS TWO SCHEDULES AND THEY DO DIFFERENT WORK.
@@ -60,6 +78,11 @@ function parseJsonc(text: string): Record<string, unknown> {
 }
 
 const CRONS = ((parseJsonc(wranglerRaw).triggers as { crons?: string[] } | undefined)?.crons ?? []);
+
+/** ⏱ 2026-10-01 · the heavy firings, each its own trigger (SPLIT_FIRINGS). */
+const SPLIT = [...SPLIT_FIRINGS.keys()];
+/** The dispatcher's six-hourly grid: every cron but the backup, the hourly one and the split firings. */
+const GRID = CRONS.filter((c) => c !== BACKUP_CRON && c !== OPS_HOURLY_CRON && !SPLIT.includes(c));
 
 const WATCHED = (() => {
   const reg = JSON.parse(REGISTER_RAW) as {
@@ -119,7 +142,10 @@ describe('the nightly cron is a real one, and the others are margin firings', ()
     // ⏱ 2026-09-24 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY): the hourly stuck-run cron
     // is a fourth kind of firing, kept by ops_stuck_runs alone, so the grid is
     // every cron but the backup AND the hourly one.
-    const grid = CRONS.filter((c) => c !== BACKUP_CRON && c !== OPS_HOURLY_CRON);
+    //
+    // ⏱ 2026-10-01 (O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED): the split firings
+    // are a fifth kind, each kept by exactly the jobs SPLIT_FIRINGS runs on it.
+    const grid = GRID;
     expect(WATCHED[GITHUB_DISPATCH_JOB]).toEqual(grid);
     // [O-LAPTOP-ROUTINES-DIE-OVERNIGHT] The ops watchdog rides the dispatcher's
     // grid, so it keeps exactly the same crons.
@@ -133,9 +159,18 @@ describe('the nightly cron is a real one, and the others are margin firings', ()
     expect(WATCHED[BACKUP_JOB]).toEqual([BACKUP_CRON]);
     expect(WATCHED[OPS_STUCK_RUNS_JOB]).toEqual([OPS_HOURLY_CRON]);
     const onGrid = new Set([GITHUB_DISPATCH_JOB, OPS_WATCHDOG_JOB, BOXB_REACH_JOB, BOXA_REACH_JOB]);
+    const splitJobs = new Map<string, string>();
+    for (const [cron, firing] of SPLIT_FIRINGS) {
+      expect(CRONS, `split cron ${cron} is not declared`).toContain(cron);
+      for (const job of firing.jobs) splitJobs.set(job, cron);
+      // Exactly the jobs the firing runs keep its cron — no more, no fewer.
+      const keepers = Object.entries(WATCHED).filter(([, cs]) => cs.includes(cron)).map(([j]) => j).sort();
+      expect(keepers, `cron ${cron}`).toEqual([...firing.jobs].sort());
+    }
     for (const [job, jobCrons] of Object.entries(WATCHED)) {
       if (onGrid.has(job) || job === BACKUP_JOB || job === OPS_STUCK_RUNS_JOB) continue;
-      expect(jobCrons, `${job} must keep only the nightly cron`).toEqual([NIGHTLY_CRON]);
+      const own = splitJobs.get(job);
+      expect(jobCrons, `${job} must keep only ${own ?? 'the nightly cron'}`).toEqual([own ?? NIGHTLY_CRON]);
     }
     // And every declared cron is kept by someone — the half check-heartbeats.mjs
     // refuses outright, restated here so it fails in the fast suite too.
@@ -157,7 +192,8 @@ describe('the nightly cron is a real one, and the others are margin firings', ()
     // deliberately: it would have gone on passing while measuring the wrong set.
     // OPS_HOURLY_CRON is excluded for the same reason (⏱ 2026-09-24): it
     // dispatches nothing, and its `*` hour is no hour of the grid.
-    const hours = CRONS.filter((c) => c !== BACKUP_CRON && c !== OPS_HOURLY_CRON)
+    // The split firings are excluded for the same reason (⏱ 2026-10-01).
+    const hours = GRID
       .map((c) => Number(c.split(/\s+/)[1]))
       .sort((a, b) => a - b);
     const gaps = hours.map((h, i) => (i === 0 ? h + 24 - hours[hours.length - 1] : h - hours[i - 1]));
@@ -185,7 +221,7 @@ async function runScheduled(cron: string | undefined) {
 describe('which limbs run is decided by which cron fired', () => {
   it('🔴 EVERY margin firing writes ONLY the dispatcher, the ops watchdog and the two probes — the sweep does not run four times a day', async () => {
     // ⏱ 2026-10-01 · PB-02: the two reachability probes joined the grid (their two-in-a-row page).
-    for (const c of CRONS.filter((x) => x !== NIGHTLY_CRON && x !== BACKUP_CRON && x !== OPS_HOURLY_CRON && x !== E2E_DISPATCH_CRON)) {
+    for (const c of GRID.filter((x) => x !== NIGHTLY_CRON && x !== E2E_DISPATCH_CRON)) {
       expect(await runScheduled(c), `margin cron ${c}`).toEqual([GITHUB_DISPATCH_JOB, OPS_WATCHDOG_JOB, BOXB_REACH_JOB, BOXA_REACH_JOB].sort());
     }
     // ⏱ 2026-10-02 · the PINNED e2e firing dispatches and watches, and probes nothing: a
@@ -203,28 +239,38 @@ describe('which limbs run is decided by which cron fired', () => {
   });
 
   it('the nightly firing still writes every watched job it owns', async () => {
-    // ops_stuck_runs is written by the hourly firing alone (⏱ 2026-09-24).
+    // ops_stuck_runs is written by the hourly firing alone (⏱ 2026-09-24), and
+    // the split jobs by their own firings (⏱ 2026-10-01).
+    const splitJobs = [...SPLIT_FIRINGS.values()].flatMap((f) => f.jobs);
     const jobs = await runScheduled(NIGHTLY_CRON);
     expect(jobs.sort()).toEqual(
       Object.keys(WATCHED)
-        .filter((j) => j !== BACKUP_JOB && j !== OPS_STUCK_RUNS_JOB)
+        .filter((j) => j !== BACKUP_JOB && j !== OPS_STUCK_RUNS_JOB && !splitJobs.includes(j))
         .sort(),
     );
   });
 
-  it('🔴 ST-R1 — the 06:00 firing runs reminder_mail, and the 00:00, 12:00 and 18:00 firings do not', async () => {
-    // LITERALS for the three margin crons, so this reads the same whatever the
-    // exports say: a digest sent on a margin firing would be a SECOND mail the
-    // same day, which the cap would allow and nobody would ever see as wrong.
+  it('🔴 each split firing writes ONLY its own jobs — no dispatch, no other limb', async () => {
+    expect(SPLIT.length).toBe(4);
+    for (const [cron, firing] of SPLIT_FIRINGS) {
+      expect(await runScheduled(cron), `cron ${cron}`).toEqual([...firing.jobs].sort());
+    }
+  });
+
+  it('🔴 ST-R1 — only the 06:10 firing runs reminder_mail; 00:00, 06:00, 12:00 and 18:00 do not', async () => {
+    // LITERALS, so this reads the same whatever the exports say: a digest sent on
+    // a second firing would be a SECOND mail the same day, which the cap would
+    // allow and nobody would ever see as wrong. ⏱ 2026-10-01: it left 06:00 for
+    // its own invocation, 06:10, after the 06:00 renewals pass it reads.
     expect(REMINDER_MAIL_JOB).toBe('reminder_mail');
-    expect(NIGHTLY_CRON).toBe('0 6 * * *');
-    expect(await runScheduled('0 6 * * *')).toContain('reminder_mail');
-    for (const c of ['0 0 * * *', '0 12 * * *', '0 18 * * *']) {
+    expect(REMINDER_MAIL_CRON).toBe('10 6 * * *');
+    expect(await runScheduled('10 6 * * *')).toEqual(['reminder_mail']);
+    for (const c of ['0 0 * * *', '0 6 * * *', '0 12 * * *', '0 18 * * *']) {
       expect(CRONS, `${c} is no longer declared, so this case would test nothing`).toContain(c);
       expect(await runScheduled(c), `cron ${c}`).not.toContain('reminder_mail');
     }
-    // …and the register watches it on the nightly cron alone.
-    expect(WATCHED[REMINDER_MAIL_JOB]).toEqual(['0 6 * * *']);
+    // …and the register watches it on its own cron alone.
+    expect(WATCHED[REMINDER_MAIL_JOB]).toEqual(['10 6 * * *']);
   });
 
   it('⚠️ an UNRECOGNISED cron runs the DISPATCHER ONLY — and that inverted on 2026-09-03', async () => {
@@ -414,10 +460,149 @@ describe('the hourly stuck-run firing is its own firing, and its beat stops whil
   });
 
   it('C7 — the dispatcher grid no longer reads the Actions run lists: the check moved, it is not run twice', async () => {
-    for (const c of CRONS.filter((x) => x !== BACKUP_CRON && x !== OPS_HOURLY_CRON)) {
+    for (const c of GRID) {
       const { calls, posts } = await fireWith(c, true);
       expect(calls.filter((x) => x.url.includes('/actions/runs?status=')), `cron ${c}`).toEqual([]);
       expect(posts(WATCHDOG_BEAT), `cron ${c} still beats the 6-hourly watchdog`).toHaveLength(1);
     }
   });
+});
+
+// ── ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED ────────────────
+// THE PER-INVOCATION BUDGET IS SUMMED PER TRIGGER, AND EACH HEAVY FIRING IS
+// COUNTED ON THE DATABASE.
+//
+// 🔴 THE DEFECT. `0 6 * * *` ran fourteen limbs in ONE invocation, sharing one
+// d1.queriesPerInvocation budget, while every limb's cap was checked as if it ran
+// alone. Measured here: one completed erasure costs 48 statements, so the old
+// MAX_ERASURE_RETRIES_PER_RUN = 50 was ~2,400 by itself, and 200 re-derived
+// candidates 1,002 — a backlog in either could starve the census, the rollup,
+// the sweep and their heartbeats on the same firing.
+//
+// RED CONTROL (run against the real tree): put every split job back on
+// `0 6 * * *` in tooling/ops/register.json `watchedJobs`, and B1 fails on that
+// one trigger's sum.
+// ─────────────────────────────────────────────────────────────────────────────
+const D1_CEILING = (JSON.parse(CEILINGS_RAW) as { ceilings: { id: string; value: number | null }[] }).ceilings.find(
+  (c) => c.id === 'd1.queriesPerInvocation',
+)?.value;
+
+/** Fire `cron` through the REAL handler on `db`, and count the statements it prepared. */
+async function countFiring(cron: string, db: RealDb, extra: Record<string, unknown> = {}): Promise<number> {
+  const pending: Promise<unknown>[] = [];
+  const ctx = { waitUntil: (p: Promise<unknown>) => pending.push(p), passThroughOnException: () => {} };
+  const env = { PLATFORM_DB: db, ...extra } as unknown as Env;
+  const before = db.sql.length;
+  await scheduled({ cron } as never, env, ctx as never);
+  await Promise.all(pending);
+  return db.sql.length - before;
+}
+
+describe('every trigger fits ONE invocation, summed from what each job declares', () => {
+  it('the ceiling is a number this suite can compare against', () => {
+    expect(typeof D1_CEILING).toBe('number');
+  });
+
+  it('every watched job declares a statement budget — none escapes the sum', () => {
+    for (const job of Object.keys(WATCHED)) {
+      expect(JOB_STATEMENT_BUDGET[job], `${job} declares no JOB_STATEMENT_BUDGET`).toBeGreaterThan(0);
+    }
+  });
+
+  it('🔴 B1 — each trigger\'s summed statement budget is within d1.queriesPerInvocation', () => {
+    const over: string[] = [];
+    for (const cron of CRONS) {
+      const jobs = Object.entries(WATCHED).filter(([, cs]) => cs.includes(cron)).map(([j]) => j);
+      const sum = jobs.reduce((n, j) => n + (JOB_STATEMENT_BUDGET[j] ?? Number.POSITIVE_INFINITY), 0);
+      if (sum > (D1_CEILING as number)) over.push(`${cron}: ${sum} > ${D1_CEILING} (${jobs.map((j) => `${j}=${JOB_STATEMENT_BUDGET[j]}`).join(' ')})`);
+    }
+    expect(over).toEqual([]);
+  });
+});
+
+describe('🔴 each heavy firing, at its cap, spends no more than it declares — counted on the database', () => {
+  const NOW_MS = Date.now();
+  const SUB = 'sub_0000000000000000000000077';
+
+  it('MONEY_REDERIVE_CRON with MAX_REDERIVE_PER_RUN candidates', async () => {
+    const db = realPlatformDb();
+    db.db.exec(
+      `INSERT INTO provider_accounts (provider, provider_subscription_id, app_id, user_id, linked_at) ` +
+        `VALUES ('paddle','${SUB}','subscriptiontracker','u-budget','2026-08-01T00:00:00.000Z')`,
+    );
+    const occurred = new Date(NOW_MS - 3 * 86_400_000).toISOString();
+    const deliver = async (raw: string) => {
+      const parsed = paddleVerifier.parse(raw);
+      if (!parsed.ok) throw new Error(parsed.reason);
+      const deps = { db: db as unknown as D1Database, environment: 'live' as const, nowMs: NOW_MS, isKnownProduct };
+      await persistNotification(deps, parsed.notification, raw);
+      await deriveAndApply(deps, parsed.notification);
+    };
+    // Refunds before their grant are REFUSED, so each stays a candidate.
+    for (let i = 0; i < MAX_REDERIVE_PER_RUN; i++) {
+      await deliver(JSON.stringify({
+        event_id: `evt_budget_${i}`, notification_id: 'ntf_b', event_type: 'adjustment.created', occurred_at: occurred,
+        data: { id: 'adj_0000000000000000000000077', action: 'refund', status: 'approved', transaction_id: 'txn_0000000000000000000000077', subscription_id: SUB },
+      }));
+    }
+    await deliver(JSON.stringify({
+      event_id: 'evt_budget_grant', notification_id: 'ntf_g', event_type: 'subscription.updated', occurred_at: new Date(NOW_MS - 4 * 86_400_000).toISOString(),
+      data: {
+        id: SUB, status: 'active', current_billing_period: { starts_at: '2026-08-01T00:00:00.000Z', ends_at: '2099-01-01T00:00:00.000Z' }, items: [],
+        custom_data: { [PADDLE_CUSTOM_DATA_USER_ID]: 'u-budget', [PADDLE_CUSTOM_DATA_APP_ID]: 'subscriptiontracker' },
+        customer_id: 'ctm_0000000000000000000000077', customer: {},
+      },
+    }));
+    const spent = await countFiring(MONEY_REDERIVE_CRON, db, { MONEY_ENVIRONMENT: 'live' });
+    const detail = String(db.rows('SELECT detail FROM cron_heartbeat WHERE job = ?', MONEY_REDERIVE_JOB)[0]?.detail);
+    // Precondition: the run really was at its cap.
+    expect(detail).toContain(`candidates=${MAX_REDERIVE_PER_RUN} `);
+    expect(spent).toBeLessThanOrEqual(JOB_STATEMENT_BUDGET[MONEY_REDERIVE_JOB]);
+    expect(spent).toBeLessThanOrEqual(D1_CEILING as number);
+  }, 60_000);
+
+  it('ERASURE_RETRY_CRON with MAX_ERASURE_RETRIES_PER_RUN orders, every subject completing', async () => {
+    const db = realPlatformDb();
+    for (let i = 0; i < MAX_ERASURE_RETRIES_PER_RUN; i++) {
+      await recordPendingErasure(db as unknown as D1Database, {
+        subjectRef: `budget-subject-${i}`,
+        appId: 'subscriptiontracker',
+        nowIso: new Date(NOW_MS - 60_000).toISOString(),
+        reason: 'unreachable',
+      });
+    }
+    globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      Promise.resolve(
+        (init?.method ?? 'GET') === 'GET'
+          ? new Response(JSON.stringify({ email: 'gone@example.com' }), { status: 200 })
+          : new Response(null, { status: 204 }),
+      )) as unknown as typeof fetch;
+    const spent = await countFiring(ERASURE_RETRY_CRON, db, {
+      SUPABASE_URL: 'https://auth.example',
+      SUPABASE_SERVICE_ROLE_KEY: 'srk',
+      ERASURE_SUBSCRIPTIONTRACKER: { eraseSubject: async () => ({ ok: true }) },
+    });
+    const last = db.rows('SELECT detail FROM cron_heartbeat WHERE job = ? ORDER BY rowid DESC LIMIT 1', ERASURE_RETRY_JOB)[0];
+    expect(String(last?.detail)).toContain(`due=${MAX_ERASURE_RETRIES_PER_RUN} confirmed=${MAX_ERASURE_RETRIES_PER_RUN} failed=0 completed=${MAX_ERASURE_RETRIES_PER_RUN}`);
+    expect(spent).toBeLessThanOrEqual(JOB_STATEMENT_BUDGET[ERASURE_RETRY_JOB]);
+    expect(spent).toBeLessThanOrEqual(D1_CEILING as number);
+  }, 60_000);
+
+  it('RETENTION_CRON with a backlog that outlasts the sweep budget: capped, and inside the firing\'s sum', async () => {
+    const db = realPlatformDb();
+    const n = MAX_SWEEP_STATEMENTS_PER_RUN * 1000 + 1;
+    db.db.exec(
+      `INSERT INTO signups (email, signed_up_at)
+       SELECT 'b' || n || '@example.com', '2020-01-01T00:00:00.000Z'
+       FROM (WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < ${n}) SELECT n FROM c)`,
+    );
+    const spent = await countFiring(RETENTION_CRON, db);
+    const sweep = String(db.rows('SELECT detail FROM cron_heartbeat WHERE job = ?', RETENTION_SWEEP_JOB)[0]?.detail);
+    // The budget ran out with `signups` still full (and the stores after it never
+    // reached): capped, every pass spent, the remainder left for tomorrow.
+    expect(sweep).toMatch(new RegExp(`capped=[1-9]\\d* passes=${MAX_SWEEP_STATEMENTS_PER_RUN}\\b`));
+    expect(db.count('signups')).toBeGreaterThan(0);
+    expect(spent).toBeLessThanOrEqual(JOB_STATEMENT_BUDGET[EVENTS_ROLLUP_JOB] + JOB_STATEMENT_BUDGET[RETENTION_SWEEP_JOB]);
+    expect(spent).toBeLessThanOrEqual(D1_CEILING as number);
+  }, 60_000);
 });
