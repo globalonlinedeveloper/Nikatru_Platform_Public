@@ -1117,13 +1117,59 @@ jobs:
           echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
           gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
 
+  # why: the box, port and restore-drill tooling RUNS ON THE OWNER'S WINDOWS LAPTOP (the
+  # drills, the landers), and a Linux-only run let #1148 ship two Windows-only defects: a
+  # repository-containment check that failed open on backslashed paths, and a shebang test
+  # shim Windows cannot spawn (row O-CLOUD-LANES-TEST-LINUX-ONLY). So the same three files
+  # run on both OSes here, beside the package matrix's windows leg; the Linux leg is cheap
+  # parity. Only these files: the job stays lean. guard-tests runs them on Linux too.
+  ops-tooling:
+    name: ops tooling tests · ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: .
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: ./.github/actions/setup-node
+      - name: The box, port and restore-drill tests pass on this OS
+        run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test tooling/ci/test/boxes.test.mjs tooling/ci/test/ports.test.mjs tooling/ci/test/port-switch.test.mjs
+
+  ff-ops-tooling:
+    # why: FF-2 — starts only once `ops-tooling` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
+    name: fail-fast · ops-tooling
+    needs: ops-tooling
+    if: failure() && needs.ops-tooling.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: ops-tooling is red, so the rest of this run is cancelled (FF-2)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RED_JOB: ops-tooling
+        run: |
+          echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+
   # why: the single aggregate for this workflow. It carries always(), needs every
   # job above, and treats skipped as not-green. It is not a required check of its
   # own: ci-gate requires it through ci.yml's `extensions` call job, whose result is
   # red when any job here is.
   ci-required:
     name: ci-required
-    needs: [build-free, contracts, gate-inventory, discover, secrets-scan, catalogue, core, gates, sims, package, selftest, templates, e2e-proof-fresh]
+    needs: [build-free, contracts, gate-inventory, discover, secrets-scan, catalogue, core, gates, sims, package, selftest, templates, e2e-proof-fresh, ops-tooling]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -1142,6 +1188,7 @@ jobs:
       R_SELFTEST: ${{ needs.selftest.result }}
       R_TEMPLATES: ${{ needs.templates.result }}
       R_E2E_PROOF_FRESH: ${{ needs.e2e-proof-fresh.result }}
+      R_OPS_TOOLING: ${{ needs.ops-tooling.result }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -1205,6 +1252,7 @@ jobs:
             "selftest=$R_SELFTEST"
             "templates=$R_TEMPLATES"
             "e2e-proof-fresh=$R_E2E_PROOF_FRESH"
+            "ops-tooling=$R_OPS_TOOLING"
           )
 
           # ── STRUCTURAL: NO JOB MAY ESCAPE THIS AGGREGATOR ───────────────────
