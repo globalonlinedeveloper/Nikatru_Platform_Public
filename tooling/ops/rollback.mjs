@@ -21,6 +21,8 @@
 //      unit's environment, carry a `success` status, and name the id of what it
 //      published. A record written before the id existed names none: "nothing
 //      to re-promote", exit 1.
+//   2b. the unit's FLOORS (tooling/ops/rollback-floors.json) are checked: the recorded
+//      commit must be each floor or a descendant of it (THE FLOOR, below).
 //   3. it is re-promoted:
 //        web     → POST {CLOUDFLARE_API}/accounts/<account>/pages/projects/<app>/
 //                  deployments/<id>/rollback. The pinned wrangler has no Pages
@@ -271,6 +273,43 @@ export function planRollback(target, deployment, statuses, ledgerId) {
   return { sha, id: id.toLowerCase(), environmentUrl, smoke };
 }
 
+// ── THE FLOOR ────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-02 · #1104 post-merge review, finding 1 (lane fix-1104-followups). A unit can carry
+// a FLOOR in tooling/ops/rollback-floors.json: the first build that writes data the builds before
+// it misread. Re-promoting a commit that is not the floor or a descendant of it is refused, BEFORE
+// anything changes. Ancestry is asked of GitHub's compare API (`compare/<floor>...<sha>`: ahead or
+// identical passes; behind or diverged is under the floor), because rollback.yml checks out one
+// commit and local git could not answer. An answer this cannot read is a refusal too: a floor it
+// cannot prove is met is not met.
+export const FLOORS_REL = 'tooling/ops/rollback-floors.json';
+
+/** PURE. The floors declared for `unit`, validated; a malformed file is a Refusal, never "no floor". */
+export function floorsFor(doc, unit) {
+  if (!Array.isArray(doc?.floors)) throw new Refusal(`${FLOORS_REL} has no "floors" array, so no floor could be checked`);
+  const mine = doc.floors.filter((f) => f?.unit === unit);
+  for (const f of mine) {
+    if (!/^[0-9a-f]{40}$/.test(String(f.sha ?? '')) || typeof f.why !== 'string' || f.why.length < 20) {
+      throw new Refusal(`${FLOORS_REL}: the floor for "${unit}" needs a full commit "sha" and a "why" (20+ characters)`);
+    }
+  }
+  return mine;
+}
+
+/** PURE. A compare status for `<floor>...<sha>` → null when the floor is met, else the Refusal message. */
+export function floorVerdict(floor, sha, compareStatus) {
+  if (compareStatus === 'ahead' || compareStatus === 'identical') return null;
+  const what =
+    compareStatus === 'behind'
+      ? `is OLDER than the floor ${floor.sha.slice(0, 8)}`
+      : compareStatus === 'diverged'
+      ? `is not a descendant of the floor ${floor.sha.slice(0, 8)} (the histories diverged)`
+      : `could not be placed against the floor ${floor.sha.slice(0, 8)} (compare answered ${JSON.stringify(compareStatus)})`;
+  return (
+    `${sha.slice(0, 8)} ${what} that ${FLOORS_REL} sets for "${floor.unit}" since ${floor.since} (${floor.row}): ${floor.why} ` +
+    'Re-promote a Deployment at or after the floor, or revert the change on main instead.'
+  );
+}
+
 /** PURE. The Worker rollback's message: wrangler caps it at 120 characters. */
 export const rollbackMessage = (ledgerId, sha, runId) =>
   `rollback.yml${runId ? ` run ${runId}` : ''}: ledger Deployment ${ledgerId} (${sha.slice(0, 8)})`.slice(0, 120);
@@ -476,6 +515,24 @@ async function main() {
     plan = planRollback(target, deployment, statuses, ledgerId);
   } catch (e) {
     return fail(e instanceof Refusal ? e.message : `could not read ledger Deployment ${ledgerId}: ${e.message}`);
+  }
+
+  // The floor, before anything changes — a dry run included, so a rehearsal says what a real run would.
+  try {
+    const floors = floorsFor(JSON.parse(readFileSync(join(ROOT, FLOORS_REL), 'utf8')), unit);
+    for (const floor of floors) {
+      let status;
+      try {
+        status = (await api(`compare/${floor.sha}...${plan.sha}`, token, repo, null, ctx))?.status;
+      } catch (e) {
+        status = `unreadable: ${e.message}`;
+      }
+      const refusal = floorVerdict(floor, plan.sha, status);
+      if (refusal) throw new Refusal(refusal);
+      console.log(`  floor: ${plan.sha.slice(0, 8)} is at or after ${floor.sha.slice(0, 8)} (${floor.row}) — compare says ${status}`);
+    }
+  } catch (e) {
+    return fail(e instanceof Refusal ? e.message : `could not read ${FLOORS_REL}: ${e.message}`);
   }
 
   const message = rollbackMessage(ledgerId, plan.sha, process.env.GITHUB_RUN_ID);

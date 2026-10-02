@@ -58,6 +58,7 @@
 //   node tooling/e2e/native_auth_proof.mjs --app <id> --target <t>
 //        [--device <id>] [--callback] [--log <path>] [--expect-refusal]
 //        [--stagger-anchor <epoch ms> --stagger-apps <JSON app list>]
+//        [--sign-in form|token] [--notification-tap] [--pending-flows skip|run]
 //
 // Env: E2E_EMAIL, E2E_PASSWORD, SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL.
 // Exit 0 = every step read back · 1 = a step failed or is missing · 2 = the
@@ -83,6 +84,67 @@ export const TRACE_URL = 'https://platform.nikatru.com/cdn-cgi/trace';
 export const SILENCE_LIMIT_MS = 20 * 60_000;
 
 export const OFFLINE_READ_LINE = 'NK_PROOF step=offline-read outcome=ok';
+
+// ⏱ 2026-10-01 · train st-e2e-parity (EN-07, XP-02). The device leg OPENS THE
+// APP again and walks the core flow (integration_test/flow_steps.dart,
+// walkCoreFlow): add a weekly plan → read it back → edit its price → pause →
+// delete → Undo → delete. Every line below is required of a run whose suite
+// calls walkCoreFlow, in this order; flow_steps.dart kCoreFlowLines is the
+// other copy, held equal by tooling/ci/test/e2e-parity.test.mjs.
+export const CORE_FLOW_LINES = Object.freeze([
+  'NK_PROOF step=core-add outcome=ok',
+  'NK_PROOF step=core-read-back outcome=ok',
+  'NK_PROOF step=core-edit-price outcome=ok',
+  'NK_PROOF step=core-pause outcome=ok',
+  'NK_PROOF step=core-delete-undo outcome=ok',
+  'NK_PROOF step=core-delete outcome=ok',
+]);
+
+// ⏱ 2026-10-02 · lead ruling on #1143 (land the proven, park the red legs).
+// Dispatch 36987269922: on all five targets the refusal probe passed and the
+// token session reached Home, and the core flow failed at its first step
+// (`addPlanThroughSheet`: `Bad state: No element` on the add form's name field).
+// One targeted fix followed (flow_steps.dart walks the ST-T9 pick step); until a
+// dispatch proves it, the core flow and the notification tap after it are
+// PARKED: `--pending-flows skip` (the default) builds the suite with
+// NK_PROOF_PENDING_FLOWS=skip, the suite prints CORE_FLOW_PENDING_LINE instead
+// of walking them, and readProof requires that line — so a parked leg is said
+// on every run, never silently absent. tooling/e2e-leg-register.json `flows`
+// carries each parked leg as `status: pending` with this run id and failure.
+export const PENDING_FLOWS_MODES = Object.freeze(['skip', 'run']);
+export const PENDING_FLOWS_ROW = 'O-E2E-CORE-FLOW-LEGS-PENDING';
+export const CORE_FLOW_PENDING_LINE = `NK_PROOF step=core-flow outcome=pending row=${PENDING_FLOWS_ROW}`;
+
+/** How a device leg gets its session (`--sign-in`). `form`: the real form —
+ *  the line SIGN_IN_LINE is required and a harness-token session is a FINDING.
+ *  `token`: the harness-minted one-time token, for a target whose form route
+ *  needs an attestation no hosted runner can produce (ADR no.NNN); the leg's
+ *  sign-in is then declared an equivalent in tooling/e2e-leg-register.json. */
+export const SIGN_IN_MODES = Object.freeze(['form', 'token']);
+export const SIGN_IN_LINE = 'NK_PROOF step=sign-in outcome=ok';
+export const TOKEN_SESSION_LINE = 'NK_PROOF step=session outcome=ok via=harness-token';
+
+/** The notification-tap leg (flow_steps.dart proveNotificationTap). */
+export const AWAIT_NOTIFICATION_MARKER = 'NK_PROOF_AWAIT_NOTIFICATION';
+export const TAP_PROOF_TITLE = 'NK tap proof';
+export const NOTIFICATION_TAP_LINE = 'NK_PROOF step=notification-tap outcome=ok';
+/** The targets whose HOST can tap a delivered notification on a hosted runner.
+ *  Android alone: adb opens the shade and taps the row. iOS (simulator), macOS,
+ *  Windows and Linux have no host-side tap on a runner without a UI-automation
+ *  harness; each is a declared equivalent in the leg register's `flows`. */
+export const NOTIFICATION_TAP_TARGETS = Object.freeze(['android']);
+
+/** PURE. The APP_VERSION a CI device leg is built with: `e2e-<run>-<sha7>`, the
+ *  shape production's consent ingest accepts for an E2E row (services/platform
+ *  lib E2E_RUN). ⏱ 2026-10-02 · dispatch 36971560167: with no APP_VERSION the
+ *  build stamped `dev`, the ingest answered 422 unreleased_build, and on every
+ *  target the re-acceptance never recorded, so no leg reached Home. Null off CI. */
+export function proofAppVersion(env) {
+  const run = String(env?.GITHUB_RUN_NUMBER ?? '');
+  const sha = String(env?.GITHUB_SHA ?? '');
+  if (!/^\d{1,9}$/.test(run) || !/^[0-9a-fA-F]{7,40}$/.test(sha)) return null;
+  return `e2e-${run}-${sha.slice(0, 7).toLowerCase()}`;
+}
 /** The platform Worker's origin — the host TRACE_URL reads, and the native route's. */
 export const PLATFORM_ORIGIN = new URL(TRACE_URL).origin;
 
@@ -328,6 +390,50 @@ export function offlineReadDeclared(root, app) {
   return /\bkOfflineReadOkLine\b/.test(code);
 }
 
+/** Does [app]'s proof suite walk the core flow? Comment-stripped, as above. */
+export function coreFlowDeclared(root, app) {
+  let raw;
+  try {
+    raw = readFileSync(join(root, 'apps', app, PROOF_TEST), 'utf8');
+  } catch {
+    return false;
+  }
+  const code = raw
+    .split('\n')
+    .map((l) => l.replace(/^\s*\/\/.*$/, ''))
+    .join('\n');
+  return /\bawait\s+walkCoreFlow\s*\(/.test(code);
+}
+
+/** The Android package the notification tap grants, from the app's Gradle file. */
+export function androidPackageOf(root, app) {
+  for (const f of ['build.gradle.kts', 'build.gradle']) {
+    let gradle;
+    try {
+      gradle = readFileSync(join(root, 'apps', app, 'android', 'app', f), 'utf8');
+    } catch {
+      continue;
+    }
+    const m = /applicationId\s*=?\s*["']([^"']+)["']/.exec(gradle);
+    if (m) return m[1];
+  }
+  throw new Error(`apps/${app}/android/app/build.gradle(.kts) declares no applicationId`);
+}
+
+/** PURE. The bounds centre of the uiautomator node whose text is [title], or null. */
+export function tapPointOf(dumpXml, title) {
+  for (const m of String(dumpXml ?? '').matchAll(/<node\b[^>]*>/g)) {
+    const node = m[0];
+    const text = /\btext="([^"]*)"/.exec(node)?.[1];
+    if (text !== title) continue;
+    const b = /\bbounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(node);
+    if (!b) continue;
+    const [x1, y1, x2, y2] = b.slice(1).map(Number);
+    return { x: Math.round((x1 + x2) / 2), y: Math.round((y1 + y2) / 2) };
+  }
+  return null;
+}
+
 /** The unusable reset callback the OS opens: a real marker, a code no flow minted. */
 export const callbackUrl = (app) => `com.nikatru.${app}://auth-callback?nk_auth=reset&code=st-n1-invalid`;
 
@@ -398,13 +504,34 @@ export function openCommands(target, url, { app, root, device, home = homedir() 
 export const appOpensCallback = (target) => target === 'ios';
 
 /** What the run's output proves, and what it does not. */
-export function readProof(out, { callback, offlineRead = false }) {
+export function readProof(out, { callback, offlineRead = false, coreFlow = false, signIn = 'form', notificationTap = false, flowsParked = false }) {
   const text = String(out ?? '');
   const problems = [];
   const need = (line, why) => {
     if (!text.includes(line)) problems.push(`missing "${line}" — ${why}`);
   };
-  need('NK_PROOF step=sign-in outcome=ok', 'the real form did not sign the user in and reach Home');
+  if (signIn === 'token') {
+    need(TOKEN_SESSION_LINE, 'the harness session did not reach Home');
+  } else {
+    need(SIGN_IN_LINE, 'the real form did not sign the user in and reach Home');
+    // A form leg whose session came from the harness token proves no front door.
+    if (text.includes(TOKEN_SESSION_LINE)) problems.push(`"${TOKEN_SESSION_LINE}" in a --sign-in form leg — the session came from the harness token, not the form`);
+  }
+  if (flowsParked) {
+    // Parked: the suite must SAY so; the core-flow and tap lines are not asked.
+    if (coreFlow || notificationTap) need(CORE_FLOW_PENDING_LINE, 'a parked run must print that the core flow was skipped, and why');
+  } else if (text.includes(CORE_FLOW_PENDING_LINE)) {
+    problems.push(`"${CORE_FLOW_PENDING_LINE}" in a --pending-flows run leg — the suite skipped the flows this run asked it to walk`);
+  }
+  if (coreFlow && !flowsParked) {
+    let at = -1;
+    for (const line of CORE_FLOW_LINES) {
+      const i = text.indexOf(line, at + 1);
+      if (i === -1) problems.push(`missing "${line}" — the core flow (add → read back → edit price → pause → delete → Undo → delete) stopped before this step`);
+      else at = i;
+    }
+  }
+  if (notificationTap && !flowsParked) need(NOTIFICATION_TAP_LINE, 'the tapped reminder did not land on its /sub/<id>');
   for (const step of ['sign-up-registered', 'recover-unregistered']) {
     const m = new RegExp(`NK_PROOF step=${step} answer=(\\S+)`).exec(text);
     if (!m) problems.push(`missing "NK_PROOF step=${step}" — GoTrue's answer was not recorded`);
@@ -420,11 +547,14 @@ export function readProof(out, { callback, offlineRead = false }) {
 }
 
 function args(argv) {
-  const o = { callback: false, expectRefusal: false };
+  const o = { callback: false, expectRefusal: false, signIn: 'form', notificationTap: false, pendingFlows: 'skip' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--callback') o.callback = true;
     else if (a === '--expect-refusal') o.expectRefusal = true;
+    else if (a === '--notification-tap') o.notificationTap = true;
+    else if (a === '--sign-in') o.signIn = argv[++i];
+    else if (a === '--pending-flows') o.pendingFlows = argv[++i];
     else if (a === '--app' || a === '--target' || a === '--device' || a === '--log') o[a.slice(2)] = argv[++i];
     else if (a === '--stagger-anchor') o.staggerAnchor = argv[++i];
     else if (a === '--stagger-apps') o.staggerApps = argv[++i];
@@ -485,6 +615,35 @@ function runOpen(commands, root) {
   }
 }
 
+/**
+ * IMPURE. Android: grant POST_NOTIFICATIONS, wait for the reminder (scheduled
+ * one minute out), open the shade and tap the row titled TAP_PROOF_TITLE —
+ * a real tap on the system UI, which the app receives as a notification
+ * response. Polls for up to five minutes: an inexact alarm may land late.
+ */
+async function tapNotification(o, root) {
+  const adb = (...a) => spawnSync('adb', [...(o.device ? ['-s', o.device] : []), ...a], { cwd: root, encoding: 'utf8' });
+  const pkg = androidPackageOf(root, o.app);
+  adb('shell', 'pm', 'grant', pkg, 'android.permission.POST_NOTIFICATIONS');
+  const end = Date.now() + 5 * 60_000;
+  await realSleep(55_000);
+  while (Date.now() < end) {
+    adb('shell', 'cmd', 'statusbar', 'expand-notifications');
+    await realSleep(1_500);
+    adb('shell', 'uiautomator', 'dump', '/sdcard/nk-shade.xml');
+    const dump = adb('shell', 'cat', '/sdcard/nk-shade.xml').stdout;
+    const at = tapPointOf(dump, TAP_PROOF_TITLE);
+    if (at) {
+      console.log(`${NAME}: tapping "${TAP_PROOF_TITLE}" at ${at.x},${at.y}`);
+      adb('shell', 'input', 'tap', String(at.x), String(at.y));
+      return;
+    }
+    adb('shell', 'cmd', 'statusbar', 'collapse');
+    await realSleep(10_000);
+  }
+  console.error(`${NAME}: no notification titled "${TAP_PROOF_TITLE}" reached the shade within five minutes`);
+}
+
 async function main() {
   const root = process.cwd();
   let o;
@@ -492,6 +651,11 @@ async function main() {
     o = args(process.argv.slice(2));
     if (!o.app || !TARGETS.includes(o.target)) throw new Error(`--app <id> and --target <${TARGETS.join('|')}> are required`);
     if (o.target === 'windows' && o.callback) throw new Error('windows cannot take --callback here: protocol activation needs the MSIX installed');
+    if (!SIGN_IN_MODES.includes(o.signIn)) throw new Error(`--sign-in must be one of ${SIGN_IN_MODES.join(', ')}`);
+    if (!PENDING_FLOWS_MODES.includes(o.pendingFlows)) throw new Error(`--pending-flows must be one of ${PENDING_FLOWS_MODES.join(', ')}`);
+    if (o.notificationTap && !NOTIFICATION_TAP_TARGETS.includes(o.target)) {
+      throw new Error(`--notification-tap: the host cannot tap a notification on ${o.target} (only ${NOTIFICATION_TAP_TARGETS.join(', ')})`);
+    }
   } catch (e) {
     console.error(`${NAME}: ${e.message}`);
     process.exit(2);
@@ -513,6 +677,7 @@ async function main() {
     if (code !== 0) process.exit(code);
     return;
   }
+  if (o.signIn === 'token') defines.push('E2E_TOKEN_HASH');
   const missing = defines.filter((k) => !process.env[k]);
   if (missing.length) {
     console.error(`${NAME}: missing env ${missing.join(', ')} — the build would run in demo posture or without the user`);
@@ -521,8 +686,20 @@ async function main() {
   }
   const offlineRead = offlineReadDeclared(root, o.app);
   console.log(`${NAME}: ${o.app}'s proof suite ${offlineRead ? 'declares' : 'does not declare'} the offline read`);
+  const coreFlow = coreFlowDeclared(root, o.app);
+  console.log(`${NAME}: ${o.app}'s proof suite ${coreFlow ? 'walks' : 'does not walk'} the core flow; sign-in via ${o.signIn}`);
+  const flowsParked = o.pendingFlows === 'skip';
+  if (flowsParked && (coreFlow || o.notificationTap)) {
+    console.log(`${NAME}: the core flow${o.notificationTap ? ' and the notification tap are' : ' is'} PARKED (--pending-flows skip) under ${PENDING_FLOWS_ROW} — red on dispatch 36987269922; not graded proven`);
+  }
   await printEgressIp();
 
+  const appVersion = proofAppVersion(process.env);
+  if (!appVersion && process.env.GITHUB_ACTIONS === 'true') {
+    console.error(`${NAME}: GITHUB_RUN_NUMBER/GITHUB_SHA do not make an e2e-<run>-<sha7> stamp — production's consent ingest refuses an unstamped build, so no leg could reach Home`);
+    if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=none refused=version\n`);
+    process.exit(2);
+  }
   const flutterArgs = [
     'test', PROOF_TEST,
     // why: on CI flutter picks the `github` reporter, which holds a test's
@@ -533,11 +710,16 @@ async function main() {
     ...(o.device ? ['-d', o.device] : []),
     ...defines.map((k) => `--dart-define=${k}=${process.env[k]}`),
     `--dart-define=NK_PROOF_CALLBACK=${o.callback}`,
+    `--dart-define=NK_PROOF_SIGN_IN=${o.signIn}`,
+    `--dart-define=NK_PROOF_NOTIFICATION_TAP=${o.notificationTap}`,
+    `--dart-define=NK_PROOF_PENDING_FLOWS=${o.pendingFlows}`,
+    ...(appVersion ? [`--dart-define=APP_VERSION=${appVersion}`] : []),
     ...(o.callback && appOpensCallback(o.target) ? [`--dart-define=NK_PROOF_OPEN_FROM_APP=${callbackUrl(o.app)}`] : []),
   ];
   const url = callbackUrl(o.app);
   let out = '';
   let opened = false;
+  let tapping = false;
   let hung = false;
   const child = spawn('flutter', flutterArgs, {
     cwd: join(root, 'apps', o.app),
@@ -568,6 +750,10 @@ async function main() {
       const diag = afterOpenDiagnostics(o.target, { device: o.device, dir: process.env.RUNNER_TEMP || root });
       if (diag) setTimeout(() => runDiagnostics(diag, root), 28_000);
     }
+    if (o.notificationTap && !tapping && out.includes(AWAIT_NOTIFICATION_MARKER)) {
+      tapping = true;
+      tapNotification(o, root).catch((e) => console.error(`${NAME}: the notification tap failed: ${e?.message ?? e}`));
+    }
   };
   child.stdout.on('data', onData(process.stdout));
   child.stderr.on('data', onData(process.stderr));
@@ -575,7 +761,7 @@ async function main() {
   clearTimeout(silence);
   if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=${code}${hung ? ' killed=silence' : ''}\n`);
 
-  const problems = readProof(out, { callback: o.callback, offlineRead });
+  const problems = readProof(out, { callback: o.callback, offlineRead, coreFlow, signIn: o.signIn, notificationTap: o.notificationTap, flowsParked });
   if (code !== 0) problems.unshift(`flutter test exited ${code}`);
   if (hung) problems.unshift(`flutter test printed nothing for ${SILENCE_LIMIT_MS / 60_000} min and was killed — the app never reported back (a launch that hung, not a sign-in that failed)`);
   if (problems.length) {
