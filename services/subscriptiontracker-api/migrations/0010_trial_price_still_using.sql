@@ -17,7 +17,7 @@
 --     0001's `(user_id, next_renewal)` — so every night scanned the whole table
 --     (SV-02).
 --
--- STRICTLY ADDITIVE, like 0002 to 0007: three ADD COLUMN and three CREATE
+-- STRICTLY ADDITIVE, like 0002 to 0009: three ADD COLUMN and three CREATE
 -- INDEX IF NOT EXISTS; no DROP, no RENAME, no type change, no table rebuild
 -- (tooling/ci/check-migrations.mjs bans all four).
 --
