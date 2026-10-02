@@ -11,7 +11,8 @@
 //   QM4  a 70,000-character prompt is written as the issue body plus 1 continuation
 //        comment, and reads back whole
 //   QM5  a missing prompt file is refused and listed (exit 1); the others still plan
-//   QM6  Windows dep paths (backslashes, drive letters, upper-case LWLD) resolve; an
+//   QM6  Windows dep paths (backslashes, drive letters, upper-case LWLD) resolve; a dep
+//        path under the user profile is NOT a leak (only its basename is published); an
 //        un-rewritten user-profile path or a token-shaped string in a body is refused
 //   QM7  --apply refuses a target repo that is not private, and writes nothing
 //   QM8  launched (a .routine) and already-merged lanes are skipped; no merged-PR facts
@@ -230,14 +231,16 @@ test('QM6 Windows dep paths resolve; a user-profile path or token shape in a bod
     items: [
       item('win-a', { deps: ['D:\\lanes\\state\\LWLD-win-b.out', 'D:\\lanes\\state\\lwld-done.out'] }),
       item('win-b'),
+      item('win-c', { deps: [`${profile.replace('\\x.md', '')}\\lwld-win-b.out`] }),
       item('leaks-path'),
       item('leaks-token'),
     ],
-    prompts: { 'win-a': 'A', 'win-b': 'B', 'leaks-path': `read ${profile} first`, 'leaks-token': `use ${ghToken}` },
+    prompts: { 'win-a': 'A', 'win-b': 'B', 'win-c': 'C', 'leaks-path': `read ${profile} first`, 'leaks-token': `use ${ghToken}` },
     markers: { 'lwld-done': 'land exit=0\r\n' },
   });
   const r = await run(t.args, { token: null });
   assert.match(r.out, /create  lane: win-a .*deps=\[#<win-b>\]/, 'the backslash path resolved, and the CRLF marker read as satisfied');
+  assert.match(r.out, /create  lane: win-c .*deps=\[#<win-b>\]/, 'a dep PATH under the user profile is the laptop shape, not a leak: only its basename is published');
   assert.match(r.out, /REFUSE {2}leaks-path: .*un-rewritten Windows user-profile path/);
   assert.match(r.out, /REFUSE {2}leaks-token: .*GitHub classic token/);
   assert.ok(!r.out.includes(ghToken) && !r.out.includes(profile));

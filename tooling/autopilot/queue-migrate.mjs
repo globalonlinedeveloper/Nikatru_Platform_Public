@@ -188,12 +188,14 @@ export function planMigration({ items, aliases = {}, prompt, launched, satisfied
     if (text === null) { refused.push({ lane: it.lane, reason: 'no prompt file: prepare it with the laptop\'s prompt builder first' }); continue; }
     chosen.push({ it, text });
   }
-  // The secret guard reads the whole rendered body; a dep line is generated, so a stub render covers it.
+  // The secret guard reads everything that is published: the header, the prompt, and the
+  // marker NAMES a dep line can carry. Never the raw dep paths — on the laptop they are
+  // user-profile paths by construction, and only their basenames are ever written.
   const safe = [];
   for (const c of chosen) {
     let body;
     try { body = renderIssue({ ...c.it, deps: [], prompt: c.text }).body; } catch (e) { refused.push({ lane: c.it.lane, reason: e.message }); continue; }
-    const f = secretFindings(body + '\n' + c.it.deps.join('\n'), vault);
+    const f = secretFindings([body, ...c.it.deps.map(markerName)].join('\n'), vault);
     if (f.length) { refused.push({ lane: c.it.lane, reason: `refused by the secret guard: the body ${f.join('; ')}` }); continue; }
     safe.push(c);
   }
