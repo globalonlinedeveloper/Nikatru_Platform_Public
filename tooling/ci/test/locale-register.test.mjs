@@ -231,11 +231,11 @@ describe('L4 · native declarations', () => {
 describe('L5 · named readers', () => {
   test('RED CONTROL: the chassis picker back on a typed list FAILS twice — L5 and L6', () => {
     const rel = 'packages/chassis_screens/lib/settings/settings_screen.dart';
-    edit(rel, 'for (final RegisteredLocale row in kSupportedLocales)', "for (final String c in <String>['en', 'ta'])");
+    edit(rel, 'for (final RegisteredLocale r in kSupportedLocales)\n                              (r.code, r.nativeName),', "('en', 'English'),\n                            ('ta', 'தமிழ்'),");
     const r = run();
     assert.equal(r.status, 1, r.stderr + r.stdout);
     assert.match(r.stderr, /L5 packages\/chassis_screens\/lib\/settings\/settings_screen\.dart no longer reads the register/);
-    assert.match(r.stderr, /L6 packages\/chassis_screens\/lib\/settings\/settings_screen\.dart:\d+ types the locale list \[en, ta\] by hand/);
+    assert.match(r.stderr, /L6 packages\/chassis_screens\/lib\/settings\/settings_screen\.dart:\d+(-\d+)? types the locale list \[en, ta\] by hand/);
   });
 
   test('the notice limb reading the brick again FAILS', () => {
