@@ -82,7 +82,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { readAppleBundleId } from '../ci/read-identity.mjs';
 import { appleArtifactPath } from '../ci/apple-signing.mjs';
-import { submitCli } from './submit-common.mjs';
+import { submitCli, storeSubmitter, invokedAsScript } from './submit-common.mjs';
 import { bundleIdOf, REGISTER as APPLE_REGISTER } from '../ci/apple-provisioning.mjs';
 import { storeRecordOf, missingIdsOf } from '../store/store-record.mjs';
 
@@ -90,6 +90,37 @@ const CHANNELS = ['ios-appstore', 'macos-appstore'];
 const REGISTER = 'tooling/channel-register.json';
 const APPS = 'catalog/apps.json';
 
+// ── the ChannelSubmitter (submit-common.mjs · tooling/ports/channels.json) ────
+/** Both Apple channels behind the one store contract — one submitter per row,
+ *  as the register carries one row per channel. `--submit` REFUSES by design
+ *  (UNVERIFIED below), so the plan is the console path the runbook walks, every
+ *  write a human's in App Store Connect; `upload` runs that refusing `--submit`. */
+const appleSubmitter = (channel) =>
+  storeSubmitter({
+    channel,
+    script: 'tooling/release/submit-appstore.mjs',
+    steps: (artifact) => [
+      { does: `run the Small Business Program gate for ${channel} before any submission`, surface: 'local', call: `node tooling/ci/assert-small-business-program.mjs --for-submission=${channel} --real-submission`, writes: false },
+      { does: `upload ${artifact?.path ?? 'the signed build'} to App Store Connect (the API path is UNVERIFIED, so a human uploads)`, surface: 'console', call: 'App Store Connect — Private/runbooks/store-submission-apple.md', writes: true },
+      { does: 'attach the build to the version and submit it for review', surface: 'console', call: 'App Store Connect — Private/runbooks/store-submission-apple.md', writes: true },
+    ],
+    uploadArgv: (artifact) => ['--submit', '--channel', channel, '--app', artifact.app],
+  });
+export const iosAppstoreSubmitter = appleSubmitter(CHANNELS[0]);
+export const macosAppstoreSubmitter = appleSubmitter(CHANNELS[1]);
+
+// ── the CLI, which runs only when this file is the entry point ────────────────
+// ⏱ 2026-10-01 (port-channels): the export above made this file a module that
+// tooling/release/test/submitters.contract.test.mjs imports, and a script whose
+// body runs on import cannot be imported — it would read the test's argv and
+// exit. So the body is `cli()`, called below only when node was pointed at this
+// file. The body is the CLI exactly as it was, and it is DELIBERATELY LEFT AT
+// COLUMN 0: re-indenting it would rewrite every line other lanes patch here, and
+// every patch to it would stop applying. Its behaviour, flags and exit codes are
+// unchanged; the dry runs in ci.yml `app-dryrun` walk it as before.
+if (invokedAsScript(import.meta.url)) await cli();
+
+async function cli() {
 // ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
 const { flag, opt, root: ROOT, ok, abs, read, coverageLost, die, appOf } = submitCli('submit-appstore');
 
@@ -584,3 +615,4 @@ if (DRY_RUN) {
 }
 
 // The --submit path refused at the top of this file, before any check ran.
+}

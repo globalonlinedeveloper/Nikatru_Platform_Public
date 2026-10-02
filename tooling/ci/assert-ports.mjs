@@ -59,12 +59,18 @@
 //               earned · target prints on every run.
 //   7 fakes     a `fake` never lists `live`, and selection.default.live is never one.
 //   8 cross     every capability-register vendor key (minus `_`-keys) and every
-//               provider-register provider id is EXACTLY ONE adapter's `vendor`
-//               or one tooling/ports/_non-port.json row; and a ported vendor's
+//               provider-register provider id is the `vendor` of adapters of
+//               EXACTLY ONE port, or one tooling/ports/_non-port.json row (two
+//               adapters of one port may share a vendor — boxes.json's two
+//               Hostinger boxes are one placement, printed together); and a ported vendor's
 //               C-8 seam.file equals its port's interface file, unless the
 //               adapter declares that exact file as a `c8Seam` divergence
 //               (printed). A vendor behind two adapters of ONE port (mail's
 //               HTTP API and its SMTP relay) is placed once, in that port.
+//               An adapter's `channel` is a tooling/channel-register.json
+//               row, named by one adapter; a `candidates` id is NOT a row yet (a
+//               candidate with a row is an adapter), and every candidate PRINTS.
+//               (⏱ 2026-10-01, port-channels: tooling/ports/channels.json.)
 //   9 literals  no owner-domain address is a literal in services/*/src outside
 //               src/generated/ (comment-stripped, so a citation in prose is not
 //               one): an address is an entity-source FIELD, rendered. Every
@@ -312,7 +318,8 @@ export function readSecretSources(root) {
     try {
       const doc = JSON.parse(readFileSync(join(root, SECRETS_MANIFEST), 'utf8'));
       const rows = Array.isArray(doc) ? doc : Array.isArray(doc?.rows) ? doc.rows : Array.isArray(doc?.secrets) ? doc.secrets : null;
-      const names = new Set((rows ?? []).map((r) => (typeof r === 'string' ? r : r?.name)).filter((n) => typeof n === 'string'));
+      // a row's NAME is `secret` (tooling/worker-secrets.json, read by assert-worker-secrets-declared.mjs); `name` is the older spelling
+      const names = new Set((rows ?? []).map((r) => (typeof r === 'string' ? r : r?.secret ?? r?.name)).filter((n) => typeof n === 'string'));
       if (!names.size) return { lost: `${SECRETS_MANIFEST} exists but yields no secret names`, source: 'manifest', names, declaredElsewhere: new Set() };
       return { lost: null, source: 'manifest', names, declaredElsewhere: new Set() };
     } catch (e) {
@@ -385,7 +392,9 @@ export function evaluate(root) {
       if (ids.has(a?.id)) find(1, `${rel} lists adapter \`${a?.id}\` twice.`);
       ids.add(a?.id);
       if (a?.status === 'fake' && a?.vendor !== null) find(1, `${rel} adapter \`${a.id}\` is a fake with vendor ${JSON.stringify(a.vendor)}; a fake has none.`);
-      if (a?.status !== 'fake' && a?.vendor === null) find(1, `${rel} adapter \`${a.id}\` has vendor null but is not a fake.`);
+      // A per-channel adapter names its tooling/channel-register.json row instead of a vendor (limb 8 resolves it).
+      if (a?.status !== 'fake' && a?.vendor === null && typeof a?.channel !== 'string') find(1, `${rel} adapter \`${a.id}\` has vendor null but is not a fake and names no \`channel\`.`);
+      if (typeof a?.channel === 'string' && a?.vendor !== null) find(1, `${rel} adapter \`${a.id}\` names both a vendor and a channel; a channel adapter's store is its register row's.`);
       const impl = a?.impl ?? {};
       if (a?.status === 'external' ? !(impl.configAt && impl.verify) : !(impl.file && impl.symbol)) {
         find(1, `${rel} adapter \`${a?.id}\` impl must be ${a?.status === 'external' ? '{configAt, verify}' : '{file, symbol}'} for status ${a?.status}.`);
@@ -618,8 +627,9 @@ export function evaluate(root) {
       for (const a of doc?.adapters ?? []) {
         if (typeof a?.vendor !== 'string') continue;
         // One placement per port: a vendor behind two adapters of the same port
-        // (an HTTP API and an SMTP relay) is still one vendor in one port.
-        if (inPort.has(a.vendor)) continue;
+        // (an HTTP API and an SMTP relay; two boxes at one provider) is still one
+        // vendor in one port.
+        if (inPort.has(a.vendor)) { result.vendorPort.get(a.vendor).adapter += `, ${a.id}`; continue; }
         inPort.add(a.vendor);
         place(a.vendor, `${doc.port}/${a.id}`);
         result.vendorPort.set(a.vendor, { port: doc.port, adapter: a.id, earned: earnedOf.get(doc.port) ?? 0 });
@@ -632,7 +642,7 @@ export function evaluate(root) {
     for (const [id, regs] of all) {
       const at = placed.get(id) ?? [];
       if (at.length === 0) find(8, `vendor \`${id}\` (${[...regs].join(', ')}) is no adapter's \`vendor\` and no ${NON_PORT_REL} row. Port it, or say in _non-port.json why not.`);
-      else if (at.length > 1) find(8, `vendor \`${id}\` is placed ${at.length} times (${at.join(', ')}); exactly one adapter or one non-port row.`);
+      else if (at.length > 1) find(8, `vendor \`${id}\` is placed ${at.length} times (${at.join(', ')}); exactly one port's adapters or one non-port row.`);
     }
     for (const v of placed.keys()) {
       if (!all.has(v)) find(8, `\`${v}\` is placed in tooling/ports/ but is in neither ${CAPABILITY_REGISTER} vendors nor ${PROVIDER_REGISTER} providers.`);
@@ -797,6 +807,32 @@ export function evaluate(root) {
       if (claimed > earned) find(6, `${rel} client claims L${claimed} and earns L${earned}: ${why[0] ?? 'see above'}.`);
       if (claimed > target) find(6, `${rel} client claims L${claimed} above its target L${target}.`);
       notes.push(`limb 10: ${doc.port}/client — ${[...conformant].map(([k, n]) => `${k} ${n} conformant`).join(', ')}; ${libFiles.length} Dart lib file(s) scanned`);
+    }
+  }
+  // a per-channel adapter's `channel` is a register row, and a candidate is not one yet
+  const channelAdapters = ports.flatMap(({ rel, doc }) => (doc?.adapters ?? []).filter((a) => typeof a?.channel === 'string').map((a) => ({ rel, a })));
+  const candidates = ports.flatMap(({ rel, doc }) => (doc?.candidates ?? []).map((c) => ({ rel, port: doc.port, c })));
+  if (channelAdapters.length || candidates.length) {
+    let rows = null;
+    try {
+      const ch = JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8'));
+      rows = new Set((ch?.channels ?? []).map((c) => c?.id).filter((x) => typeof x === 'string'));
+    } catch (e) {
+      lost(8, `${CHANNEL_REGISTER} could not be read (${e.message}); no adapter's \`channel\` can be resolved.`);
+    }
+    if (rows) {
+      if (rows.size === 0) lost(8, `${CHANNEL_REGISTER} carries no channel row, so every \`channel\` would resolve to nothing.`);
+      const named = new Map();
+      for (const { rel, a } of channelAdapters) {
+        if (rows.size && !rows.has(a.channel)) find(8, `${rel} adapter \`${a.id}\` names channel \`${a.channel}\`, which is no ${CHANNEL_REGISTER} row.`);
+        named.set(a.channel, [...(named.get(a.channel) ?? []), `${rel}/${a.id}`]);
+      }
+      for (const [c, at] of named) if (at.length > 1) find(8, `channel \`${c}\` is named by ${at.length} adapters (${at.join(', ')}); one channel, one adapter.`);
+      for (const { rel, port, c } of candidates) {
+        if (rows.has(c.id)) find(8, `${rel} candidate \`${c.id}\` already has a ${CHANNEL_REGISTER} row: it is an adapter now, not a candidate.`);
+        else if (named.has(c.id)) find(8, `${rel} candidate \`${c.id}\` is also an adapter's channel.`);
+        else notes.push(`CANDIDATE ${port}/${c.id} (${c.name}): not submittable — ${c.deferral?.source ?? 'no source'}; commission ${c.commission?.cell ? `${c.commission.cell} read ${c.commission.asOf}` : 'UNREAD'}`);
+      }
     }
   }
   return result;

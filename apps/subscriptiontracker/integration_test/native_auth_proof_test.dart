@@ -45,7 +45,9 @@ import 'package:subscriptiontracker/features/auth/reset_password_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
 import 'package:subscriptiontracker/main.dart' as app;
 import 'package:subscriptiontracker/state/providers.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
+import 'flow_steps.dart';
 import 'native_auth_proof_steps.dart';
 import 'offline_read_steps.dart';
 
@@ -55,6 +57,32 @@ const bool _awaitCallback = bool.fromEnvironment('NK_PROOF_CALLBACK');
 // iOS: the URL the APP opens itself (tooling/e2e/native_auth_proof.mjs,
 // appOpensCallback); empty where the host's OS opens it.
 const String _openFromApp = String.fromEnvironment('NK_PROOF_OPEN_FROM_APP');
+// How this leg gets its session (tooling/e2e/native_auth_proof.mjs --sign-in):
+// `form` — the real form (desktop, and every target that can sign in on a
+// hosted runner); `token` — the harness-minted one-time token, where the form's
+// route needs an attestation no hosted emulator or simulator can produce (ADR
+// no.NNN). The driver refuses a `form` leg whose output carries the token line.
+const String _signInVia = String.fromEnvironment(
+  'NK_PROOF_SIGN_IN',
+  defaultValue: 'form',
+);
+const String _tokenHash = String.fromEnvironment('E2E_TOKEN_HASH');
+// Android: the host taps the reminder (native_auth_proof.mjs --notification-tap).
+const bool _notificationTap = bool.fromEnvironment('NK_PROOF_NOTIFICATION_TAP');
+// `run` walks the core flow and the tap; anything else PARKS them, said
+// (native_auth_proof.mjs --pending-flows; lead ruling on #1143).
+const String _pendingFlows = String.fromEnvironment('NK_PROOF_PENDING_FLOWS');
+
+/// A wall-clock pump that lets real I/O land, for the flow steps.
+Future<void> _pumpFor(WidgetTester tester, Duration total) async {
+  final DateTime end = DateTime.now().add(total);
+  while (DateTime.now().isBefore(end)) {
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+  }
+}
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -102,20 +130,63 @@ void main() {
           );
       if (!consentAnswered) debugPrint('NK_PROOF step=consent outcome=absent');
 
-      // 1 ── the real form, the real route.
-      await proveFormSignIn(
-        tester,
-        email: _email,
-        password: _password,
-        emailField: find.byKey(E2EKeys.loginEmail),
-        passwordField: find.byKey(E2EKeys.loginPassword),
-        submit: find.byKey(E2EKeys.loginSubmit),
-        home: find.byType(HomeScreen),
-        reacceptButton: find.byKey(ReacceptTermsScreen.acceptButton),
-        reacceptTick: find.byKey(LegalConsentFields.termsCheckbox),
-        tapThrough: firstRun,
-      );
-      debugPrint('NK_PROOF step=sign-in outcome=ok');
+      // 1 ── the real form, the real route — or, where that route needs an
+      // attestation a hosted runner cannot produce, the harness token, said so.
+      if (_signInVia == 'token') {
+        expect(
+          _tokenHash.isNotEmpty,
+          isTrue,
+          reason: 'NK_PROOF_SIGN_IN=token and no E2E_TOKEN_HASH was defined.',
+        );
+        await tester.runAsync(
+          () => sb.Supabase.instance.client.auth.verifyOTP(
+            type: sb.OtpType.magiclink,
+            tokenHash: _tokenHash,
+          ),
+        );
+        bool home = false;
+        final DateTime end = DateTime.now().add(const Duration(seconds: 60));
+        while (!home && DateTime.now().isBefore(end)) {
+          home = await pumpUntilShown(
+            tester,
+            find.byType(HomeScreen),
+            timeout: const Duration(seconds: 2),
+            tapThrough: firstRun,
+          );
+          if (!home &&
+              find
+                  .byKey(ReacceptTermsScreen.acceptButton)
+                  .evaluate()
+                  .isNotEmpty) {
+            await acceptUpdatedTerms(
+              tester,
+              accept: find.byKey(ReacceptTermsScreen.acceptButton),
+              tick: find.byKey(LegalConsentFields.termsCheckbox),
+            );
+          }
+        }
+        expect(
+          home,
+          isTrue,
+          reason:
+              'the harness session did not reach Home. On screen: ${onScreen()}',
+        );
+        debugPrint('NK_PROOF step=session outcome=ok via=harness-token');
+      } else {
+        await proveFormSignIn(
+          tester,
+          email: _email,
+          password: _password,
+          emailField: find.byKey(E2EKeys.loginEmail),
+          passwordField: find.byKey(E2EKeys.loginPassword),
+          submit: find.byKey(E2EKeys.loginSubmit),
+          home: find.byType(HomeScreen),
+          reacceptButton: find.byKey(ReacceptTermsScreen.acceptButton),
+          reacceptTick: find.byKey(LegalConsentFields.termsCheckbox),
+          tapThrough: firstRun,
+        );
+        debugPrint('NK_PROOF step=sign-in outcome=ok');
+      }
 
       final ProviderContainer container = ProviderScope.containerOf(
         tester.element(find.byType(HomeScreen).first),
@@ -145,6 +216,20 @@ void main() {
         await expectListSurvivesOffline(seeded);
       });
       debugPrint(kOfflineReadOkLine);
+
+      // 1c ── the core flow (XP-02), through the UI, read back from the
+      // server: add a weekly plan → read it back → edit its price → pause
+      // (status chip) → delete → Undo → delete (flow_steps.dart).
+      // 1d ── the notification tap (Android): one minute out, tapped by the
+      // host, landing on /sub/<id>.
+      // ⏱ 2026-10-02 · PARKED unless NK_PROOF_PENDING_FLOWS=run: red on all
+      // five targets in dispatch 36987269922 (O-E2E-CORE-FLOW-LEGS-PENDING).
+      if (_pendingFlows == 'run') {
+        await walkCoreFlow(tester, _pumpFor);
+        if (_notificationTap) await proveNotificationTap(tester, _pumpFor);
+      } else {
+        debugPrint(kCoreFlowPendingLine);
+      }
 
       // 2 ── the other gated calls, answered without the captcha.
       final core.AuthRepository auth = container.read(authRepositoryProvider);
