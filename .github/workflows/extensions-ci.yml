@@ -346,11 +346,18 @@ jobs:
         working-directory: .
         run: node tooling/ci/gen-issue-forms.mjs --check
 
+      # why: a dispatch of ci.yml on main (land.yml's post-merge start) carries no
+      # `before`; its first parent is what a push of the same squash merge carries.
+      # Only that caller: extensions.yml's own dispatch keeps the all-tools widening.
       - id: set
         name: Build the matrix
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: node scripts/discover.mjs --base "$BASE_SHA" --out "$GITHUB_OUTPUT"
+        run: |
+          case "${GITHUB_EVENT_NAME} ${GITHUB_WORKFLOW_REF}" in
+            "workflow_dispatch "*/.github/workflows/ci.yml@refs/heads/main) BASE_SHA="$(git rev-parse --verify HEAD^1)" ;;
+          esac
+          node scripts/discover.mjs --base "$BASE_SHA" --out "$GITHUB_OUTPUT"
 
       - name: Show the matrix
         env:
