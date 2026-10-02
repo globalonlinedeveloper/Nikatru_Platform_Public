@@ -31,7 +31,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'nod
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { parseAllWorkflows, workflowSteps, shellSegments, joinShellContinuations } from '../workflow-scan.mjs';
+import { parseAllWorkflows, workflowSteps, shellSegments, joinShellContinuations, POST_GATE_IF } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-channel-register.mjs');
@@ -2898,6 +2898,20 @@ describe('assert-channel-register — §8c storage/fallback/call-pass and §8d: 
       fixture({
         rows: [repoRow, readRow],
         files: { [PR_WORKFLOW]: prWorkflow({ on: ['  push:', '  pull_request:'], jobIf: "github.event_name == 'push' && github.ref == 'refs/heads/main'", secretLines: ['          T: ${{ secrets.FIXTURE_DEPLOY_TOKEN }}'] }) },
+      }),
+    );
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /8d:/);
+  });
+
+  // ⏱ 2026-10-02 (O-MERGES-DEPEND-ON-THE-LAPTOP): POST_GATE_IF admits a dispatch of main beside a push.
+  test('8d: the post-gate `if:` (push OR dispatch, AND main) excludes pull requests, so the read is not graded as reachable', () => {
+    const repoRow = { ...deployRow(), environment: null, repositoryWhy: 'read by the env-less fixture job, by decision' };
+    delete repoRow.storedAt;
+    const { code, out } = run(
+      fixture({
+        rows: [repoRow, readRow],
+        files: { [PR_WORKFLOW]: prWorkflow({ on: ['  push:', '  workflow_dispatch:', '  pull_request:'], jobIf: POST_GATE_IF, secretLines: ['          T: ${{ secrets.FIXTURE_DEPLOY_TOKEN }}'] }) },
       }),
     );
     assert.equal(code, 0, out);
