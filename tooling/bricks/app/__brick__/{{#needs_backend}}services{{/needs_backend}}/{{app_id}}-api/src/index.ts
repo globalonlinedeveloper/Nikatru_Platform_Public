@@ -18,18 +18,15 @@ import {
 } from './lib/health';
 import { reportWorkerError } from './lib/error-sink';
 import { corsMiddleware } from './middleware/cors';
+import { requestId } from './lib/request-id';
 import { supabaseAuth, erasureAuth } from './middleware/auth';
 import account from './routes/account';
 
 const app = new Hono<AppEnv>();
 
-// Correlation id: stamp/propagate + echo.
-app.use('*', async (c, next) => {
-  const rid = c.req.header('x-request-id') ?? crypto.randomUUID();
-  c.set('requestId', rid);
-  c.header('x-request-id', rid);
-  await next();
-});
+// Correlation id: stamp/propagate + echo. The caller's id is kept only when it is
+// a plain token (services/_shared/src/request-id.ts); anything else is replaced.
+app.use('*', requestId);
 
 app.use('*', corsMiddleware);
 

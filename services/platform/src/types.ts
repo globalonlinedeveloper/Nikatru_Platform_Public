@@ -2,10 +2,10 @@
 // Shared types for the platform Worker. Keep Env in sync with wrangler.jsonc.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The shape of a Cloudflare Rate Limiting binding, as this Worker uses it. */
-export interface RateLimiterBinding {
-  limit(opts: { key: string }): Promise<{ success: boolean }>;
-}
+/** The shape of a Cloudflare Rate Limiting binding. Declared once, beside the
+ *  limiter that reads it (services/_shared/src/rate-limit.ts). */
+import type { RateLimiterBinding } from '../../_shared/src/rate-limit';
+export type { RateLimiterBinding };
 
 /** Worker bindings + environment. Names must match wrangler.jsonc bindings. */
 export interface Env {
