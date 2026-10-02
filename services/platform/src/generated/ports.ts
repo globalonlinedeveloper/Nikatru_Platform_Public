@@ -17,7 +17,7 @@ export interface PaymentsAdapterRow {
 // Every payments adapter, in registry order, with the environments it may serve.
 export const PAYMENTS_ADAPTERS: readonly PaymentsAdapterRow[] = [
   { id: 'paddle', status: 'live', environments: ['sandbox', 'live'], capabilities: ['verify', 'parse', 'checkout', 'cancel'], cancelPath: 'api' },
-  { id: 'razorpay', status: 'built', environments: ['sandbox', 'live'], capabilities: ['verify'], cancelPath: 'none' },
+  { id: 'razorpay', status: 'built', environments: ['sandbox', 'live'], capabilities: ['verify', 'parse', 'checkout', 'cancel'], cancelPath: 'api' },
   { id: 'revenuecat', status: 'built', environments: ['sandbox', 'live'], capabilities: ['verify', 'cancel-store'], cancelPath: 'store' },
   { id: 'fake', status: 'fake', environments: ['test'], capabilities: ['verify', 'parse', 'checkout', 'cancel', 'refund', 'reconcile'], cancelPath: 'api' },
 ];
@@ -25,7 +25,7 @@ export const PAYMENTS_ADAPTERS: readonly PaymentsAdapterRow[] = [
 // How each rail cancels, DERIVED from its declared capabilities (cancel → api, cancel-store → store).
 export const RAIL_CANCEL_PATH: Readonly<Record<string, RailCancelPath>> = {
   paddle: 'api',
-  razorpay: 'none',
+  razorpay: 'api',
   revenuecat: 'store',
   fake: 'api',
 };
@@ -33,7 +33,15 @@ export const RAIL_CANCEL_PATH: Readonly<Record<string, RailCancelPath>> = {
 // The inbound rails that verify real money (non-fake adapters declaring `verify`), in registry order.
 export const MOR_VERIFIER_IDS = ['paddle', 'razorpay', 'revenuecat'] as const satisfies readonly PaymentsAdapterId[];
 
-// The web checkout rail: the one non-fake adapter declaring `checkout` (null when zero or several do).
+// The web checkout rail per BUYER-DECLARED market: the `web` channel's purchaseRail in tooling/channel-register.json#purchaseRails
+// (`default` = its `rail`; each ISO 3166-1 alpha-2 key = a `regionRails` entry whose rail declares `checkout`).
+// Read ONLY through src/ports.ts `checkoutRailFor(market)`; never keyed by cf.country.
+export const CHECKOUT_RAIL_BY_MARKET: Readonly<Record<string, PaymentsAdapterId | null>> = {
+  default: 'paddle',
+  IN: 'razorpay',
+};
+
+// The default web checkout rail (CHECKOUT_RAIL_BY_MARKET.default): what a buyer who declares no market, or one with no region rail, pays through.
 export const CHECKOUT_RAIL_ID: PaymentsAdapterId | null = 'paddle';
 
 // The adapter ids per environment: the set a deploy of that environment may select.

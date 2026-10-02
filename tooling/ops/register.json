@@ -4587,6 +4587,28 @@
         "cloudflare"
       ],
       "source": "verified",
+      "id": "retention.d1.platform_db.provider_payment_links",
+      "store": "d1:platform_db:provider_payment_links",
+      "what": "The payment-to-subscription map: which subscription a Razorpay payment charged (PR #1149 ruling item 2).",
+      "rule": "keep",
+      "keepWhy": "It is the only durable answer to \"which subscription does this refunded or disputed payment belong to\", written once on the signed `subscription.charged` that names both ids. A refund or chargeback can arrive for as long as a payment can be reversed, so a timer here would turn a later refund into an unclaimed one that revokes nothing; the row carries `user_id`, so it already leaves when the account does via the derived erasure sweep — which is a different mechanism from retention.",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/platform/migrations/0024_provider_payment_links.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      }
+    },
+    {
+      "kind": "retention",
+      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
+      "response": "n/a",
+      "cadence": "365d",
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified",
       "id": "retention.d1.platform_db.unclaimed_payments",
       "store": "d1:platform_db:unclaimed_payments",
       "what": "Money arrived and no account could be resolved.",

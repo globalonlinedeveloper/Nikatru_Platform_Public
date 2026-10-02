@@ -152,6 +152,11 @@
           "resolver": "provider-register",
           "reason": "NO `app_version` COLUMN and no `environment` column either: the row is DERIVED from a notification rather than received, so the environment lives on the notification it was derived from. `provider` is the column it does carry, and it is a closed set the legal register owns. The row links a person to a subscription, which is why it deliberately carries `user_id` and joins the erasure sweep."
         },
+        "provider_payment_links": {
+          "marker": "environment",
+          "resolver": "live-environment",
+          "reason": "⏱ 2026-10-02 · PR #1149 ruling item 2. NO `app_version` COLUMN: the row is DERIVED from a signed `subscription.charged` notification (a Razorpay payment id → the subscription it charged) by services/platform/src/lib/mor/store.ts linkPayment. `environment` (0024_provider_payment_links.sql) is stamped from the destination's money world, the same column unclaimed_payments carries; a sandbox row here would resolve a sandbox refund against a live subscription, so a non-live row in production is a finding."
+        },
         "unclaimed_payments": {
           "marker": "environment",
           "resolver": "live-environment",

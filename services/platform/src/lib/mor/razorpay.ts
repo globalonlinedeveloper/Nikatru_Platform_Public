@@ -1,7 +1,9 @@
-import type { MoRWebhookVerifier, ParseOutcome, VerifyOutcome } from './contract';
+import { isPlainObject } from '../../../../_shared/src/validate';
+import { isMoneyEnvironment } from './contract';
+import type { MoRWebhookVerifier, MoneyEnvironment, MoneySubject, ParseOutcome, SubjectSubscription, VerifyOutcome } from './contract';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// razorpay.ts — THE INDIA RAIL'S SIGNATURE CHECK, AND NOTHING IT CANNOT SOURCE.
+// razorpay.ts — THE INDIA RAIL'S SIGNATURE CHECK, AND ITS PAYLOAD MAPPING (⏱ 2026-10-01).
 //
 // [ADR 076]: India domestic sales run on Razorpay; every non-India channel stays
 // on Paddle. Nikatru is the seller of record and issues the GST invoice; Razorpay
@@ -37,35 +39,98 @@ import type { MoRWebhookVerifier, ParseOutcome, VerifyOutcome } from './contract
 //   2. THE DIGEST IS OVER THE BODY ALONE, so `raw` is passed through untouched.
 //   3. THE EVENT ID IS A HEADER, NOT A BODY FIELD. See `parse` below.
 //
-// ── WHAT IS NOT ESTABLISHED, AND SO IS NOT WRITTEN ───────────────────────────
-// ⚠️ `parse` REFUSES, DELIBERATELY, AND THE REGISTRY'S OWN WORDS ARE THE REASON.
-// It says of a rail nobody has sourced: "Registering an adapter built on a
-// guessed signature scheme would put a rail in the registry that CANNOT verify
-// anything, and it would satisfy every count-based guard while doing so." The
-// signature scheme IS sourced, above — the EVENT PAYLOAD SHAPES ARE NOT. The page
-// that documents the signature does not document the body of
-// `subscription.charged`, and no live sample exists to read.
+// ── ⏱ 2026-10-01 · fix-india-rail-tax-data · WHAT `parse` NOW MAPS, AND FROM WHAT ──
+// Until today `parse` REFUSED every body, because the signature page does not
+// document the event payloads and no live sample existed. It now translates the
+// subscription, refund and dispute events below into the contract's vocabulary
+// (O-RAZORPAY-CHECKOUT-ADAPTER). ⚠️ THE SOURCE, STATED EXACTLY: the shapes are
+// written against Razorpay's published webhook payload examples
+// (razorpay.com/docs/webhooks/payloads/ — subscriptions, refunds, disputes). Those
+// pages could NOT be fetched from the build sandbox on 2026-10-01 (HTTP 404 at
+// /docs/webhooks/payloads/subscriptions/ and /docs/webhooks/subscriptions/), so
+// what follows is the docs' published envelope as the author knows it, NOT a page
+// re-read today and NOT a delivered event. No live or test-mode sample exists in
+// this repository. EVERY SHAPE BELOW IS TO BE CONFIRMED AGAINST THE FIRST
+// DELIVERED TEST-MODE EVENT, and a body that does not match is REFUSED (400, the
+// rail retries, nothing is written) — never guessed into a row.
 //
-// ⚠️ AND THE ACCOUNT IS NOT THE MISSING PIECE - AN EARLIER DRAFT OF THIS
-// PARAGRAPH SAID IT WAS, AND WAS WRONG. Private/platform-state/identity.json records
-// the Razorpay account as `plan: live, KYC complete` as of 2026-09-05, registered
-// deliberately (owner, 2026-08-28) as the domestic INR gateway. The mistake was
-// reading an ABSENCE OF CREDENTIALS IN THIS REPOSITORY as an absence of the account:
-// no RAZORPAY_WEBHOOK_SECRET in the vault and none in the repository secrets says the
-// WEBHOOK has never been configured and its secret never captured - a much smaller
-// thing, and the actual gate.
+//   ENVELOPE   { entity: "event", account_id, event, contains: [...],
+//                payload: { subscription?: { entity }, payment?: { entity },
+//                           refund?: { entity }, dispute?: { entity } },
+//                created_at: <unix seconds> }
+//   EVENT ID   the `x-razorpay-event-id` HEADER, passed in as `eventIdHint`
+//              (below); a parse without it is refused.
+//   ORDERING   `created_at` (unix seconds) → `occurredAt`. ⚠️ THE CLOCK IS WHOLE
+//              SECONDS (PR #1149 ruling item 6): the store applies only a STRICTLY
+//              newer `occurred_at` (store.ts upsertEntitlement and moneyWentBackFor),
+//              so two DIFFERENT events stamped in the same second — say
+//              `subscription.charged` then `subscription.cancelled` — keep the FIRST
+//              DELIVERED and conclude the second `stale`. Rare, and the price of the
+//              replay defence below (a replay under a fresh id at the same instant is
+//              dropped); the dropped event is stored, and the subscription's next
+//              event re-states its status from the entity.
 //
-// So what this half waits on is a webhook endpoint configured on the live account,
-// its secret captured, and ONE event delivered and kept. Note also that the register
-// still calls Razorpay the domestic BACKUP rather than the live rail; [ADR 076]
-// changed that and the row has not caught up.
+//   subscription.{activated,charged,resumed,authenticated,pending,halted,
+//   paused,cancelled,completed}: access is derived from the ENTITY's `status`,
+//   never from the event name (contract.ts decideSubscription), so an event name
+//   this file never lists still decides correctly from its entity:
+//     active        → granted, to `current_end` (an active body with no
+//                     `current_end` is REFUSED: a null end reads as lifetime).
+//     authenticated → trialing ONLY when `start_at` (the first charge) is later
+//                     than the event's `created_at`: the free part ends at
+//                     `start_at`, which is both `trialEnd` and the period end.
+//                     Authenticated with no future start changes no access
+//                     (`unknown`; the charge that follows decides).
+//     cancelled / completed → until_end, `cancelled_at_period_end` (INV-514:
+//                     a cancel ends renewal, the paid period is kept).
+//     pending       → until_end, `payment_failed_final` (Razorpay is retrying
+//                     the charge; access runs out with the paid period).
+//     halted        → suspended, `payment_failed_final` (retries exhausted).
+//     paused        → suspended, `subscription_paused`.
+//     expired       → suspended, `subscription_expired`.
+//     created       → `unknown` (nothing paid, nothing authorised).
+//   refund.processed → adjustment `refund_approved`, effective (the refund
+//                     entity's `status` is `processed`).
+//   payment.dispute.{created,under_review,action_required,lost} → adjustment
+//                     `chargeback` (a dispute HOLDS: it revokes while open).
+//   payment.dispute.won, and .closed whose dispute `status` is `won` →
+//                     `chargeback_reversed`, the contract's one `restores` member.
+//   anything else  → `unknown`: stored verbatim, answered 200, never a crash.
 //
-// The contract is explicit about which way to fail: "An adapter that guesses at a
-// shape it cannot source will mis-parse silently and write a wrong row that looks
-// exactly like a right one. Refusing is recoverable; a wrong grant is not." So
-// this rail can prove a notification is genuinely Razorpay's and will not claim
-// to know what it says. That is a real security boundary shipped early, not a
-// half-finished feature: a forged body is rejected today.
+//   ATTRIBUTION  `notes.user_id` / `notes.app_id` on the subscription entity —
+//                the notes OUR razorpay-rail.ts sets when it creates the
+//                subscription. Absent → `accountUserId: null`: stored, unlinked,
+//                never granted.
+//   THE MONEY WORLD  no Razorpay body field names it. razorpay-rail.ts writes
+//                `notes.env` (`live` | `sandbox`) at creation, and it is mapped
+//                to `railEnvironment`, so the store REFUSES an event of the other
+//                world. Absent → null: configuration stays the authority. An
+//                unreadable `notes.env` is a REFUSAL, never a default.
+//   ⚠️ THE ADJUSTMENT'S SUBSCRIPTION — RESOLVED BY PAYMENT (⏱ 2026-10-02, PR
+//                #1149 ruling item 2, option b). A refund or a dispute names a
+//                PAYMENT (`payment_id`), and the store finds the account by
+//                subscription id. Whether a real refund's payment entity carries
+//                the subscription is UNCONFIRMED (the docs' payment entity names
+//                `invoice_id`), so the link no longer rests on it: every
+//                `subscription.charged` names the payment it charged, and the
+//                store writes `payment id → subscription id` there
+//                (store.ts `linkPayment`, migration 0024); an adjustment resolves
+//                its subscription by its `payment_id` through that link FIRST.
+//                Only with no stored link does the store fall back to what THIS
+//                file reads off the body: the event's own subscription entity,
+//                the payment entity's `subscription_id`, then its
+//                `notes.subscription_id`. With neither, the adjustment is stored
+//                unclaimed and changes no access — a missed revocation, recorded
+//                and visible, never a wrong one. The link is still unproven on a
+//                real event: tooling/ports/payments.json keeps the razorpay
+//                `refund revokes` case PENDING until one test-mode refund is seen
+//                to resolve by it.
+//
+// ⚠️ THE ACCOUNT WAS NEVER THE MISSING PIECE (corrected earlier, kept): the
+// Razorpay account is `plan: live, KYC complete` as of 2026-09-05
+// (Private/platform-state/identity.json). What the first delivered event still
+// waits on is a webhook endpoint configured on it and its secret captured
+// (RAZORPAY_WEBHOOK_SECRET) — an owner step, not code.
 //
 // ⚬ THE EVENT-ID SOURCE IS DECIDED (⏱ 2026-09-24, O-RAZORPAY-CHECKOUT-ADAPTER).
 // Razorpay's unique event id lives in `x-razorpay-event-id`, a header, and
@@ -75,14 +140,18 @@ import type { MoRWebhookVerifier, ParseOutcome, VerifyOutcome } from './contract
 // `missing_event_id`, nothing stored) and passes its value to `parse` as
 // `eventIdHint`, the store persists that id as `provider_event_id`, and the
 // nightly replay passes the stored id back as the same hint. No body field that
-// no documentation promises is needed. What `parse` still waits on is the BODY
-// SHAPE, and that is read from a real test-mode event, not from a doc page.
+// no documentation promises is needed. (⏱ 2026-10-01: the BODY SHAPE is now mapped
+// from the docs' examples, above — still to be confirmed on a real test-mode event.)
 //
 // ⚠️ AND THE ID IS NOT SIGNED. The digest covers the body alone (difference 2
 // above), so the header is caller-controlled: a replayed genuine body under a
 // fresh id passes `verify` and is not a duplicate by id. Whatever `parse` derives
 // must therefore stay safe to apply twice on what the SIGNED body says, never
-// lean on the id alone for replay defence.
+// lean on the id alone for replay defence. ⏱ 2026-10-01: it does — every field
+// `parse` maps is read from the SIGNED body (the entity's status and dates, our
+// notes, and the signed `created_at` as the ordering clock), so a replay under a
+// fresh id re-states the same decision at the same instant and cannot outrank a
+// newer event; nothing is derived from the header but the dedup key.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Razorpay's own header, spelled as the documentation spells it. Header lookup
@@ -127,6 +196,210 @@ export async function razorpaySignature(secret: string, raw: string): Promise<st
   return toHex(await crypto.subtle.sign('HMAC', key, enc.encode(raw)));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · fix-india-rail-tax-data · THE PAYLOAD MAPPING (see the header).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The notes keys OUR subscription creation writes (razorpay-rail.ts imports these — one constant, two ends). */
+export const RAZORPAY_NOTE_USER_ID = 'user_id';
+export const RAZORPAY_NOTE_APP_ID = 'app_id';
+export const RAZORPAY_NOTE_OFFERING_ID = 'offering_id';
+export const RAZORPAY_NOTE_ENV = 'env';
+
+/** @ceiling none — an input SHAPE cap on an id copied into a row. */
+const MAX_ID_LEN = 128;
+
+function idOrNull(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  return t.length > 0 && t.length <= MAX_ID_LEN ? t : null;
+}
+
+/** Unix SECONDS → ISO-8601, or null for anything that is not a positive integer. Never NaN. */
+function unixToIso(v: unknown): string | null {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0 || v > 32_503_680_000) return null;
+  return new Date(v * 1000).toISOString();
+}
+
+/** A unix field that may be absent (null) but, when present, must be readable. */
+function optionalUnix(v: unknown): { ok: true; iso: string | null } | { ok: false } {
+  if (v === null || v === undefined) return { ok: true, iso: null };
+  const iso = unixToIso(v);
+  return iso === null ? { ok: false } : { ok: true, iso };
+}
+
+/** `notes` is an object of strings, or an EMPTY ARRAY when none were set (the docs' examples show `[]`). */
+function notesOf(entity: Record<string, unknown>): Record<string, unknown> {
+  return isPlainObject(entity.notes) ? entity.notes : {};
+}
+
+/** `payload.<name>.entity`, or null. */
+function entityOf(payload: Record<string, unknown>, name: string): Record<string, unknown> | null {
+  const wrap = payload[name];
+  if (!isPlainObject(wrap)) return null;
+  return isPlainObject(wrap.entity) ? wrap.entity : null;
+}
+
+/** The subscription statuses this file maps; anything else on a subscription entity is a REFUSAL. */
+const SUBSCRIPTION_STATUSES = new Set([
+  'created', 'authenticated', 'active', 'pending', 'halted', 'cancelled', 'completed', 'expired', 'paused',
+]);
+
+const SUBSCRIPTION_ID = /^sub_[A-Za-z0-9]+$/;
+
+function parseSubscription(
+  eventType: string,
+  sub: Record<string, unknown>,
+  payment: Record<string, unknown> | null,
+  occurredAt: string,
+): ParseOutcome | MoneySubject {
+  const status = sub.status;
+  if (typeof status !== 'string' || !SUBSCRIPTION_STATUSES.has(status)) {
+    return { ok: false, reason: `razorpay: subscription status ${JSON.stringify(status)} is not one this adapter maps` };
+  }
+  const subscriptionId = idOrNull(sub.id);
+  if (subscriptionId === null || !SUBSCRIPTION_ID.test(subscriptionId)) {
+    return { ok: false, reason: 'razorpay: subscription entity id is missing or not a sub_ id' };
+  }
+  const currentEnd = optionalUnix(sub.current_end);
+  if (!currentEnd.ok) return { ok: false, reason: 'razorpay: subscription current_end is present but unreadable' };
+  const startAt = optionalUnix(sub.start_at);
+  if (!startAt.ok) return { ok: false, reason: 'razorpay: subscription start_at is present but unreadable' };
+
+  const notes = notesOf(sub);
+  // THE MONEY WORLD: our own `notes.env`, when we set it. Present but not a world is refused.
+  let railEnvironment: MoneyEnvironment | null = null;
+  const env = notes[RAZORPAY_NOTE_ENV];
+  if (env !== undefined && env !== null) {
+    if (!isMoneyEnvironment(env)) return { ok: false, reason: `razorpay: notes.${RAZORPAY_NOTE_ENV} ${JSON.stringify(env)} is not a money world` };
+    railEnvironment = env;
+  }
+
+  let access: SubjectSubscription['access'];
+  let endsWithReason: string | null = null;
+  let periodEnd = currentEnd.iso;
+  let trialEnd: string | null = null;
+  switch (status) {
+    case 'active':
+      // A null end on a grant reads as LIFETIME downstream — the fail-open this rail exists to keep out.
+      if (periodEnd === null) return { ok: false, reason: 'razorpay: an active subscription with no current_end cannot be granted' };
+      access = 'granted';
+      break;
+    case 'authenticated':
+      // The mandate is authorised; the first charge is at `start_at`. Free access exists only when that is later.
+      if (startAt.iso === null || Date.parse(startAt.iso) <= Date.parse(occurredAt)) {
+        return { kind: 'unknown', detail: `subscription ${subscriptionId} is authenticated with no future start_at; the charge decides access` };
+      }
+      access = 'trialing';
+      trialEnd = startAt.iso;
+      periodEnd = startAt.iso;
+      break;
+    case 'cancelled':
+    case 'completed':
+      access = 'until_end';
+      endsWithReason = 'cancelled_at_period_end';
+      break;
+    case 'pending':
+      access = 'until_end';
+      endsWithReason = 'payment_failed_final';
+      break;
+    case 'halted':
+      access = 'suspended';
+      endsWithReason = 'payment_failed_final';
+      break;
+    case 'paused':
+      access = 'suspended';
+      endsWithReason = 'subscription_paused';
+      break;
+    case 'expired':
+      access = 'suspended';
+      endsWithReason = 'subscription_expired';
+      break;
+    default:
+      // `created`: nothing paid, nothing authorised.
+      return { kind: 'unknown', detail: `subscription ${subscriptionId} is '${status}' (${eventType}); no access follows from it` };
+  }
+  return {
+    kind: 'subscription',
+    subscriptionId,
+    statusVerbatim: status,
+    access,
+    endsWithReason,
+    currentPeriodEnd: periodEnd,
+    trialEnd,
+    transactionId: payment === null ? null : idOrNull(payment.id),
+    accountUserId: idOrNull(notes[RAZORPAY_NOTE_USER_ID]),
+    accountAppId: idOrNull(notes[RAZORPAY_NOTE_APP_ID]),
+    customerId: idOrNull(sub.customer_id),
+    customerEmail: null,
+    railEnvironment,
+    productId: idOrNull(sub.plan_id),
+  };
+}
+
+/** The subscription an adjustment's OWN BODY names — the store's fallback when no charge linked its payment
+ *  (see "THE ADJUSTMENT'S SUBSCRIPTION" in the header). */
+function subscriptionOfAdjustment(payload: Record<string, unknown>, payment: Record<string, unknown> | null): string | null {
+  const candidates = [
+    entityOf(payload, 'subscription')?.id,
+    payment?.subscription_id,
+    payment === null ? undefined : notesOf(payment).subscription_id,
+  ];
+  for (const c of candidates) {
+    const id = idOrNull(c);
+    if (id !== null && SUBSCRIPTION_ID.test(id)) return id;
+  }
+  return null;
+}
+
+const DISPUTE_HOLDS = new Set(['payment.dispute.created', 'payment.dispute.under_review', 'payment.dispute.action_required', 'payment.dispute.lost']);
+
+function subjectOf(eventType: string, payload: Record<string, unknown>, occurredAt: string): ParseOutcome | MoneySubject {
+  const payment = entityOf(payload, 'payment');
+  if (eventType.startsWith('subscription.')) {
+    const sub = entityOf(payload, 'subscription');
+    if (sub === null) return { ok: false, reason: `razorpay: ${eventType} carries no payload.subscription.entity` };
+    return parseSubscription(eventType, sub, payment, occurredAt);
+  }
+  if (eventType === 'refund.processed') {
+    const refund = entityOf(payload, 'refund');
+    if (refund === null) return { ok: false, reason: 'razorpay: refund.processed carries no payload.refund.entity' };
+    const status = idOrNull(refund.status);
+    if (status === null) return { ok: false, reason: 'razorpay: refund entity carries no status' };
+    return {
+      kind: 'adjustment',
+      actionVerbatim: eventType,
+      statusVerbatim: status,
+      transactionId: idOrNull(refund.payment_id) ?? (payment === null ? null : idOrNull(payment.id)),
+      subscriptionId: subscriptionOfAdjustment(payload, payment),
+      reason: 'refund_approved',
+      restores: false,
+      // Only a PROCESSED refund has moved money back.
+      effective: status === 'processed',
+    };
+  }
+  if (eventType.startsWith('payment.dispute.')) {
+    const dispute = entityOf(payload, 'dispute');
+    if (dispute === null) return { ok: false, reason: `razorpay: ${eventType} carries no payload.dispute.entity` };
+    const status = idOrNull(dispute.status) ?? '';
+    const won = eventType === 'payment.dispute.won' || (eventType === 'payment.dispute.closed' && status === 'won');
+    const holds = DISPUTE_HOLDS.has(eventType) || (eventType === 'payment.dispute.closed' && status === 'lost');
+    if (!won && !holds) return { kind: 'unknown', detail: `${eventType} (dispute status '${status}') changes no access` };
+    return {
+      kind: 'adjustment',
+      actionVerbatim: eventType,
+      statusVerbatim: status || eventType,
+      transactionId: idOrNull(dispute.payment_id) ?? (payment === null ? null : idOrNull(payment.id)),
+      subscriptionId: subscriptionOfAdjustment(payload, payment),
+      reason: won ? 'chargeback_reversed' : 'chargeback',
+      restores: won,
+      effective: true,
+    };
+  }
+  // Payments, orders, invoices, settlements… stored verbatim with this detail, answered 200.
+  return { kind: 'unknown', detail: `razorpay event '${eventType}' carries no subscription, refund or dispute this rail consumes` };
+}
+
 export const razorpayVerifier: MoRWebhookVerifier = {
   provider: 'razorpay',
   secretEnvVar: 'RAZORPAY_WEBHOOK_SECRET',
@@ -161,21 +434,34 @@ export const razorpayVerifier: MoRWebhookVerifier = {
     return { ok: true };
   },
 
-  parse(_raw: string, _eventIdHint?: string): ParseOutcome {
-    // See the header of this file. The signature scheme is sourced and the event
-    // id's source is decided; the event payload shapes are not, and no event has
-    // been delivered to sample. Refusing is a 400 that writes nothing and lets the
-    // rail retry — the stored entitlement keeps whatever it already said.
+  parse(raw: string, eventIdHint?: string): ParseOutcome {
+    // The event id is a HEADER on this rail (see the header of this file): the
+    // door refuses a delivery without it before parse runs, and the nightly
+    // replay passes the stored id back. A parse with neither has no dedup key.
+    const eventId = idOrNull(eventIdHint);
+    if (eventId === null) {
+      return { ok: false, reason: 'razorpay: no event id — the x-razorpay-event-id header value is required as the hint' };
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      return { ok: false, reason: 'razorpay: body is not JSON' };
+    }
+    if (!isPlainObject(body)) return { ok: false, reason: 'razorpay: body is not a JSON object' };
+    if (body.entity !== 'event') return { ok: false, reason: 'razorpay: body.entity is not "event"' };
+    const eventType = idOrNull(body.event);
+    if (eventType === null) return { ok: false, reason: 'razorpay: body.event is missing or unusable' };
+    const occurredAt = unixToIso(body.created_at);
+    if (occurredAt === null) return { ok: false, reason: 'razorpay: body.created_at is missing or not a unix timestamp' };
+    const payload = isPlainObject(body.payload) ? body.payload : null;
+    if (payload === null) return { ok: false, reason: 'razorpay: body.payload is missing or not an object' };
+
+    const subject = subjectOf(eventType, payload, occurredAt);
+    if ('ok' in subject) return subject; // a ParseOutcome refusal
     return {
-      ok: false,
-      reason:
-        'razorpay: the payload shape is not established from a primary source yet. The signature scheme is ' +
-        '(razorpay.com/docs/webhooks/validate-test/, read 2026-09-12) and is enforced by `verify`, so a forged ' +
-        "body is already refused. The event id is decided: Razorpay's unique id is the `x-razorpay-event-id` " +
-        'HEADER, which the door reads and passes here as the hint, the store persists as `provider_event_id`, and ' +
-        'the nightly replay (scheduled.ts) passes back. What is missing is a real event sample to read the body ' +
-        'from. The ACCOUNT is live and KYC-complete (2026-09-05); what is missing is a configured webhook, its ' +
-        'captured secret, and one delivered event.',
+      ok: true,
+      notification: { provider: 'razorpay', eventId, notificationId: null, eventType, occurredAt, subject },
     };
   },
 };

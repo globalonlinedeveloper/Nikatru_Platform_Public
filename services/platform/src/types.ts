@@ -343,14 +343,17 @@ export interface Env {
    * cast is a trap — and so tooling/capability-register.json's `razorpay` vendor
    * claims them.
    *
-   * 🔴 ALL THREE ARE ABSENT TODAY, AND NOTHING READS THE TWO KEYS YET. The owner
-   * pastes them, live and sandbox, through the vault one-command; no workflow
-   * names them. Optional so the Worker builds and deploys without them.
+   * 🔴 ALL THREE ARE ABSENT TODAY. The owner pastes them, live and sandbox,
+   * through the vault one-command; no workflow names them. Optional so the Worker
+   * builds and deploys without them.
    *
    * `RAZORPAY_WEBHOOK_SECRET` is the key the `X-Razorpay-Signature` HMAC is
    * computed with (src/lib/mor/razorpay.ts `secretEnvVar`); absent, POST
    * /v1/money/razorpay answers 503 before it reads anything. `RAZORPAY_KEY_ID` and
-   * `RAZORPAY_KEY_SECRET` are the API key pair a checkout creator will use.
+   * `RAZORPAY_KEY_SECRET` are the API key pair the India rail's outbound half reads
+   * BY NAME through the composition root (⏱ 2026-10-01 · fix-india-rail-tax-data:
+   * src/lib/mor/razorpay-rail.ts — subscription creation and the cycle-end cancel);
+   * absent, both verbs fail closed with nothing sent.
    *
    * Set with `wrangler secret put <NAME>`. NEVER a committed var:
    * tooling/ci/assert-money-config.mjs fails the build on a destination secret
