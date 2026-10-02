@@ -95,6 +95,9 @@ describe('refresh-executed-floor — which runs may fill the floor', () => {
     assert.match(runRefusals({ ...GREEN_MAIN, conclusion: 'failure' }).join(), /conclusion/);
     assert.match(runRefusals({ ...GREEN_MAIN, head_branch: 'feat/x' }).join(), /branch/);
     assert.match(runRefusals({ ...GREEN_MAIN, event: 'pull_request' }).join(), /event/);
+    assert.match(runRefusals({ ...GREEN_MAIN, event: 'schedule' }).join(), /event/);
+    // ⏱ 2026-10-02 — land.yml's post-merge run of main is a dispatch; it is main's run too.
+    assert.deepEqual(runRefusals({ ...GREEN_MAIN, event: 'workflow_dispatch' }), []);
     assert.match(runRefusals({ ...GREEN_MAIN, path: '.github/workflows/deploy.yml' }).join(), /workflow/);
     assert.match(runRefusals({ ...GREEN_MAIN, head_repository: { full_name: 'fork/r' } }).join(), /head repository/);
     assert.match(runRefusals({ ...GREEN_MAIN, status: 'in_progress' }).join(), /status/);
