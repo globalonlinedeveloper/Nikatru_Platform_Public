@@ -2330,8 +2330,13 @@ describe('assert-ops-register — end to end, against the real repository', () =
    *  page plus one cross-check. The replay measured 27 after the row.
    *  2026-09-24: 28 → 30, the same documented raise for the tenth scheduled
    *  workflow, duty.workflow.name-clearance.yml. The replay measured 29 after
-   *  the row (its history is answered by replayWorld's derived run). */
-  const OPS_GITHUB_REQUEST_CEILING = 30;
+   *  the row (its history is answered by replayWorld's derived run).
+   *  2026-10-02: 30 → 31, ONE read: the laptop heartbeat (`beat.json` on ref
+   *  lead/heartbeat, the contents API), made only when a duty.laptop.* row is
+   *  failing, so the outage rule can grade it DEGRADED during a proven outage
+   *  (O-LAPTOP-OUTAGE-READS-AS-RED). The replay measured 31 after the read; a
+   *  healthy run makes none. */
+  const OPS_GITHUB_REQUEST_CEILING = 31;
   const REPLAY_FIXTURE = join(CI_DIR, 'test', 'fixtures', 'ops-freeze-2026-09-11.json');
   let realRun = null;
   const realGuard = () => {
