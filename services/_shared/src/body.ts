@@ -1,5 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// BOUND THE BODY **BEFORE** PARSING IT.
+// body.ts — BOUND THE BODY **BEFORE** PARSING IT. THE ONE HOME.
+//
+// ⏱ 2026-10-01 · rv2 SYN-S2 (services-009).
+// services/platform and services/subscriptiontracker-api re-export this file
+// whole (it moved here from platform src/lib/body.ts in #1080), and so now does
+// the brick's stamped Worker's src/lib/body.ts: the Worker every future app's
+// API is stamped from was born with no body cap at all, and a stamp inherits
+// nothing added later.
 //
 // 🔴 THE DEFECT THIS EXISTS FOR. `c.req.json()` was the first statement of the
 // /v1/events handler. Both protections that look like they bound the request —
