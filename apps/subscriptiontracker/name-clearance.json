@@ -3,9 +3,9 @@
     "GENERATED — whyLines() in tooling/store/name-clearance-why.mjs computes these lines from this record's own fields, and limb 11 of tooling/ci/assert-name-clearance.mjs refuses any other text. Change a field, then regenerate offline: node tooling/store/name-clearance.mjs --why --app subscriptiontracker",
     "\"Nikatru Subscription Tracker\", probed 2026-09-28; overall UNDETERMINED. Re-probe (networked, ~20 external calls): node tooling/store/name-clearance.mjs 'Nikatru Subscription Tracker' --app subscriptiontracker --execute",
     "Clear (PROVEN-FREE) — an authority answered \"no such name\" with its red control green: web, amo.",
-    "Held (HELD) — the name is reserved in that store's console under a recorded id, attested by the owner, or by the lead under a cited owner delegation with the store-API proof: android-play (store record com.nikatru.subscriptiontracker, 2026-10-01; recorded by the lead under the owner's 2026-10-01 delegation ('Always You Do': every step but the final rollout), relayed and ruled by lead db0cc7 in Private/research/session-2026-09-23/lead-1m/reviews/prep-play-first-release.review-2026-10-01.md).",
+    "Held (HELD) — the name is reserved in that store's console under a recorded id, attested by the owner, or by the lead under a cited owner delegation with the store-API proof: android-play (store record com.nikatru.subscriptiontracker, 2026-10-01; recorded by the lead under the owner's 2026-10-01 delegation ('Always You Do': every step but the final rollout), relayed and ruled by lead db0cc7 in Private/research/session-2026-09-23/lead-1m/reviews/prep-play-first-release.review-2026-10-01.md), ios-appstore (global; store record 6814737675, 2026-10-02; recorded by the lead under the owner's 2026-10-01 delegation ('Always You Do': every step but the final rollout), relayed by lead db0cc7 as patch 4 of Private/research/session-2026-09-23/full-review-r2/dispatch/briefs/fix-submit-native-auth-gate.md), macos-appstore (global; store record 6814737675, 2026-10-02; recorded by the lead under the owner's 2026-10-01 delegation ('Always You Do': every step but the final rollout), relayed by lead db0cc7 as patch 4 of Private/research/session-2026-09-23/full-review-r2/dispatch/briefs/fix-submit-native-auth-gate.md).",
     "Blocked for a submission (PROVEN-TAKEN) — a live record holds the name: none.",
-    "Blocked for a submission (UNDETERMINED) — could not check, which is never a pass: ios-appstore (global), macos-appstore (global), windows-store, linux-snap (global), chrome-webstore, edge-addons.",
+    "Blocked for a submission (UNDETERMINED) — could not check, which is never a pass: windows-store, linux-snap (global), chrome-webstore, edge-addons.",
     "Not applicable (NOT-APPLICABLE) — no third party holds a name there, and no submission passes on it: windows-direct, linux-appimage, apps-gov-in.",
     "Trademark: PROCEED, ruled by owner on 2026-09-09, basis ADR 074 (owner, 2026-09-09: store name chosen; section 6 defers the NIKATRU mark), read and applied by the parent on 2026-09-24 under the owner's 2026-09-23 delegation. No software can clear a trademark; the ruling is the owner's.",
     "A submit lane runs node tooling/ci/assert-name-clearance.mjs --for-submission=<channel>, which passes only PROVEN-FREE, or HELD with its store record id, on that channel. The owner records a hold with: node tooling/store/name-clearance.mjs --hold <channel> --record <store record id> --app subscriptiontracker",
@@ -54,25 +54,43 @@
       }
     },
     "ios-appstore": {
-      "verdict": "UNDETERMINED",
+      "verdict": "HELD",
       "uniqueness": "global",
-      "why": "No iOS listing carries this name (control green, 194 result(s) scanned). THIS IS NOT PROOF OF AVAILABILITY: the search index omits unreleased and name-reserved records, and Apple exposes no availability endpoint short of creating a record — which is forbidden here. MANUAL STEP: the App Store Connect new-app dialog, read and cancelled without saving.",
+      "why": "HELD, recorded by the lead on 2026-10-02 under the owner's 2026-10-01 delegation ('Always You Do': every step but the final rollout), relayed by lead db0cc7 as patch 4 of Private/research/session-2026-09-23/full-review-r2/dispatch/briefs/fix-submit-native-auth-gate.md: the store's own API shows record 6814737675 is ours (App Store Connect API v1, authenticated as this factory's ASC team key: GET /v1/apps/6814737675 (read-only client, 1 GET, 0 mutating) → 200; attributes.name 'Nikatru Subscription Tracker' equals app.yaml name; attributes.bundleId com.nikatru.subscriptiontracker, observed 2026-10-02). No unauthenticated probe can see a console reservation, so --execute carries this verdict forward rather than re-probing over it. Before the hold the probe read UNDETERMINED: No iOS listing carries this name (control green, 194 result(s) scanned). THIS IS NOT PROOF OF AVAILABILITY: the search index omits unreleased and name-reserved records, and Apple exposes no availability endpoint short of creating a record — which is forbidden here. MANUAL STEP: the App Store Connect new-app dialog, read and cancelled without saving.",
       "evidence": [],
       "control": {
         "what": "itunes.apple.com/lookup?bundleId=com.google.Gmail (known present: \"Gmail - Email by Google\")",
         "green": true,
         "detail": "HTTP 200, resultCount 1"
+      },
+      "storeRecordId": "6814737675",
+      "heldBy": "lead",
+      "heldOn": "2026-10-02",
+      "delegation": "the owner's 2026-10-01 delegation ('Always You Do': every step but the final rollout), relayed by lead db0cc7 as patch 4 of Private/research/session-2026-09-23/full-review-r2/dispatch/briefs/fix-submit-native-auth-gate.md",
+      "proof": {
+        "call": "App Store Connect API v1, authenticated as this factory's ASC team key: GET /v1/apps/6814737675 (read-only client, 1 GET, 0 mutating)",
+        "result": "200; attributes.name 'Nikatru Subscription Tracker' equals app.yaml name; attributes.bundleId com.nikatru.subscriptiontracker",
+        "observedOn": "2026-10-02"
       }
     },
     "macos-appstore": {
-      "verdict": "UNDETERMINED",
+      "verdict": "HELD",
       "uniqueness": "global",
-      "why": "No macOS listing carries this name (control green, 33 result(s) scanned). THIS IS NOT PROOF OF AVAILABILITY: the search index omits unreleased and name-reserved records, and Apple exposes no availability endpoint short of creating a record — which is forbidden here. MANUAL STEP: the App Store Connect new-app dialog, read and cancelled without saving.",
+      "why": "HELD, recorded by the lead on 2026-10-02 under the owner's 2026-10-01 delegation ('Always You Do': every step but the final rollout), relayed by lead db0cc7 as patch 4 of Private/research/session-2026-09-23/full-review-r2/dispatch/briefs/fix-submit-native-auth-gate.md: the store's own API shows record 6814737675 is ours (App Store Connect API v1, authenticated as this factory's ASC team key: GET /v1/apps/6814737675 (read-only client, 1 GET, 0 mutating) → 200; attributes.name 'Nikatru Subscription Tracker' equals app.yaml name; attributes.bundleId com.nikatru.subscriptiontracker, observed 2026-10-02). No unauthenticated probe can see a console reservation, so --execute carries this verdict forward rather than re-probing over it. Before the hold the probe read UNDETERMINED: No macOS listing carries this name (control green, 33 result(s) scanned). THIS IS NOT PROOF OF AVAILABILITY: the search index omits unreleased and name-reserved records, and Apple exposes no availability endpoint short of creating a record — which is forbidden here. MANUAL STEP: the App Store Connect new-app dialog, read and cancelled without saving.",
       "evidence": [],
       "control": {
         "what": "itunes.apple.com/lookup?bundleId=com.google.Gmail (known present: \"Gmail - Email by Google\")",
         "green": true,
         "detail": "HTTP 200, resultCount 1"
+      },
+      "storeRecordId": "6814737675",
+      "heldBy": "lead",
+      "heldOn": "2026-10-02",
+      "delegation": "the owner's 2026-10-01 delegation ('Always You Do': every step but the final rollout), relayed by lead db0cc7 as patch 4 of Private/research/session-2026-09-23/full-review-r2/dispatch/briefs/fix-submit-native-auth-gate.md",
+      "proof": {
+        "call": "App Store Connect API v1, authenticated as this factory's ASC team key: GET /v1/apps/6814737675 (read-only client, 1 GET, 0 mutating)",
+        "result": "200; attributes.name 'Nikatru Subscription Tracker' equals app.yaml name; attributes.bundleId com.nikatru.subscriptiontracker",
+        "observedOn": "2026-10-02"
       }
     },
     "windows-store": {

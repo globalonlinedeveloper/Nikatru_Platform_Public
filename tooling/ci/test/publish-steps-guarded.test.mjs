@@ -185,13 +185,15 @@ describe('assert-publish-steps-guarded limb 3 — every submit lane runs its sto
     assert.match(out, /FAIL COVERAGE LOST — submit-preconditions[.]mjs names tooling\/ci\/assert-play-device-coverage[.]mjs, which is not on disk/, out);
   });
 
+  // ⏱ 2026-10-01: the device-coverage entry applies by the register now (C-03), so the entry that
+  // still NAMES android-play outright is assert-app-yaml.mjs's (IAP_STORE_CHANNELS).
   test('COVERAGE LOST: a channel the table names that the register does not declare', () => {
     const root = realCopy((r) => mutateRegister(r, (reg) => {
       reg.channels = reg.channels.filter((c) => c.id !== 'android-play');
     }));
     const { code, out } = preconditions(root);
     assert.equal(code, 2, out);
-    assert.match(out, /applies tooling\/ci\/assert-play-device-coverage[.]mjs to channel "android-play", which tooling\/channel-register[.]json does not declare/, out);
+    assert.match(out, /applies tooling\/ci\/assert-app-yaml[.]mjs to channel "android-play", which tooling\/channel-register[.]json does not declare/, out);
   });
 
   test('a mistyped limb is COVERAGE LOST, and preconditions is a named limb', () => {
@@ -207,6 +209,9 @@ describe('submit-preconditions.mjs — the IAP review reader grades the table\'s
     const root = iapCopy((s) => s);
     const r = spawnSync(process.execPath, [join(root, 'tooling', 'ci', 'assert-iap-review-screenshots.mjs')], { cwd: root, encoding: 'utf8' });
     assert.doesNotMatch(`${r.stdout}${r.stderr}`, /IAP_REVIEW_CHANNELS names/, `${r.stdout}${r.stderr}`);
+    // ⏱ 2026-10-01: a reader that never LOADED also prints no refusal — measured, when the table gained
+    // an import iapCopy did not copy. "Past the refusal" means it got as far as reading the tree.
+    assert.doesNotMatch(`${r.stdout}${r.stderr}`, /ERR_MODULE_NOT_FOUND/, `${r.stdout}${r.stderr}`);
   });
 
   test('a second IAP review channel is COVERAGE LOST in the reader, not graded as the first', () => {
@@ -220,13 +225,14 @@ describe('submit-preconditions.mjs — the IAP review reader grades the table\'s
   });
 });
 
-/** The IAP reader and the two modules it imports, copied beside an empty tree;
+/** The IAP reader and the modules it imports, copied beside an empty tree;
  *  `edit` rewrites submit-preconditions.mjs's text. The refusal runs before any
- *  read, so the reader needs nothing else to reach it. */
+ *  read, so the reader needs nothing else to reach it. ⏱ 2026-10-01: the table
+ *  imports channel-surface.mjs (isNativeRow), so that is copied too. */
 function iapCopy(edit) {
   const root = join(TMP, `iap${seq++}`);
   mkdirSync(join(root, 'tooling', 'ci'), { recursive: true });
-  for (const f of ['assert-iap-review-screenshots.mjs', 'tree-walk.mjs']) cpSync(join(REPO, 'tooling', 'ci', f), join(root, 'tooling', 'ci', f));
+  for (const f of ['assert-iap-review-screenshots.mjs', 'tree-walk.mjs', 'channel-surface.mjs']) cpSync(join(REPO, 'tooling', 'ci', f), join(root, 'tooling', 'ci', f));
   const table = readFileSync(join(REPO, 'tooling', 'ci', 'submit-preconditions.mjs'), 'utf8');
   writeFileSync(join(root, 'tooling', 'ci', 'submit-preconditions.mjs'), edit(table));
   return root;
@@ -302,5 +308,117 @@ describe('⏱ 9b — limb 3: --real-submission where the job publishes, never wh
     const { code, out } = preconditions(root);
     assert.equal(code, 1, out);
     assert.match(out, /STALE EXEMPTION {2}linux-snap/, out);
+  });
+});
+
+// ── ⏱ 2026-10-01 · O-SUBMIT-LANES-IGNORE-NATIVE-AUTH — C-04, C-03 and AA-02 in every submit lane ──
+// C-04: no lane read `nativeAuth`. C-03: a missing screenshot set was fatal on Play alone. AA-02:
+// every dry run ran its gates before its build, so no rehearsal built anything from 2026-09-25.
+describe('⏱ 2026-10-01 — limb 3: the nativeAuth and device-coverage gates, and a dry run that builds before it gates', () => {
+  const PLAY = '.github/workflows/submit-play.yml';
+  const WIN = '.github/workflows/submit-windows-store.yml';
+  const IOS_NAME_STEP =
+    '      - name: Name clearance holds for ios-appstore (owner HELD or PROVEN-FREE)\n' +
+    '        run: node tooling/ci/assert-name-clearance.mjs --for-submission=ios-appstore\n';
+  const BUILD_MACOS = '      - name: Build macOS (unsigned on purpose — this lane must never submit)\n';
+  const PLAY_NATIVE_DRY =
+    '      - name: A build that cannot sign in reaches no public track (android-play)\n' +
+    '        run: node tooling/ci/assert-channel-register.mjs --for-submission=android-play\n';
+  const BUILD_AAB = '      - name: Build the app bundle\n';
+  const WIN_NATIVE_REAL = '        run: node tooling/ci/assert-channel-register.mjs --for-submission=windows-store --real-submission\n';
+
+  test('GREEN CONTROL: every lane runs both new gates for each of its channels, the real jobs marked real', () => {
+    const { code, out } = runGuard(['--limb', 'preconditions']);
+    assert.equal(code, 0, out);
+    for (const [lane, jobs, ids] of [
+      ['submit-play', ['dry-run', 'submit'], ['android-play']],
+      ['submit-windows-store', ['dry-run', 'submit'], ['windows-store']],
+      ['submit-snap', ['dry-run', 'submit'], ['linux-snap']],
+      ['submit-appstore', ['dry-run'], ['ios-appstore', 'macos-appstore']],
+    ]) {
+      for (const job of jobs) {
+        for (const id of ids) {
+          for (const guard of ['assert-channel-register', 'assert-play-device-coverage']) {
+            const re = new RegExp(`PRECONDITION {2}\\S+${lane}[.]yml:\\d+ job "${job}" channel ${id}\\n {14}node tooling/ci/${guard}[.]mjs --for-submission=${id}`);
+            assert.match(out, re, `${lane} ${job} ${id} ${guard}\n${out}`);
+          }
+        }
+      }
+    }
+    assert.doesNotMatch(out, /GATE BEFORE THE BUILD|NO PUBLIC REACH|STALE PUBLIC REACH/, out);
+  });
+
+  test('🔴 RED CONTROL (AA-02): a dry-run gate moved back above its build is a finding (exit 1)', () => {
+    const root = realCopy((r) => {
+      mutateFile(r, PLAY, PLAY_NATIVE_DRY, '');
+      mutateFile(r, PLAY, BUILD_AAB, `${PLAY_NATIVE_DRY}${BUILD_AAB}`);
+    });
+    const { code, out } = preconditions(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /MASKED PRECONDITION {2}\S+submit-play[.]yml:\d+ job "dry-run" channel android-play\n {4}node tooling\/ci\/assert-channel-register[.]mjs --for-submission=android-play\n {4}GATE BEFORE THE BUILD/, out);
+  });
+
+  test('🔴 (AA-02) the order is against the LAST build: a gate between the iOS and the macOS build is a finding', () => {
+    const root = realCopy((r) => {
+      mutateFile(r, APPSTORE, IOS_NAME_STEP, '');
+      mutateFile(r, APPSTORE, BUILD_MACOS, `${IOS_NAME_STEP}${BUILD_MACOS}`);
+    });
+    const { code, out } = preconditions(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /MASKED PRECONDITION {2}\S+submit-appstore[.]yml:\d+ job "dry-run" channel ios-appstore[\s\S]*GATE BEFORE THE BUILD: [^\n]*submit-appstore[.]yml:\d+/, out);
+  });
+
+  test('(AA-02) a REAL submit job keeps its gates first: the snap submit job gates before it builds, and is green', () => {
+    const snap = readFileSync(join(REPO, SNAP), 'utf8');
+    const submitAt = snap.indexOf('\n  submit:\n');
+    assert.ok(submitAt !== -1, 'the snap submit job anchor moved');
+    const job = snap.slice(submitAt);
+    assert.ok(job.indexOf('assert-name-clearance.mjs --for-submission=linux-snap') < job.indexOf('flutter-release-build.mjs'), 'the snap submit job no longer gates first');
+    assert.equal(preconditions(realCopy()).code, 0);
+  });
+
+  test('COVERAGE LOST (AA-02): a dry run whose build and pack are respelled past BUILD_OR_PACK has nothing to order against', () => {
+    const root = realCopy((r) => {
+      mutateFile(r, SNAP, 'node tooling/ci/flutter-release-build.mjs "$APP" linux linux-snap', 'echo build linux');
+      mutateFile(r, SNAP, 'sudo snapcraft pack --destructive-mode', 'echo pack');
+    });
+    const { code, out } = preconditions(root);
+    assert.equal(code, 2, out);
+    assert.match(out, /FAIL COVERAGE LOST — [.]github\/workflows\/submit-snap[.]yml job "dry-run" publishes nothing and holds precondition gates, and no step in it builds or packs/, out);
+  });
+
+  test('🔴 (C-04) the Windows submit job without its nativeAuth gate is a finding (exit 1)', () => {
+    const root = realCopy((r) => mutateFile(r, WIN, WIN_NATIVE_REAL, ''));
+    const { code, out } = preconditions(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /MISSING PRECONDITION {2}[.]github\/workflows\/submit-windows-store[.]yml job "submit" channel windows-store\n {4}no step runs: node tooling\/ci\/assert-channel-register[.]mjs --for-submission=windows-store/, out);
+  });
+
+  test('🔴 (C-04) the Windows submit job\'s nativeAuth gate without --real-submission grades the commit as a dry run (exit 1)', () => {
+    const root = realCopy((r) => mutateFile(r, WIN, WIN_NATIVE_REAL, WIN_NATIVE_REAL.replace(' --real-submission\n', '\n')));
+    const { code, out } = preconditions(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /MASKED PRECONDITION {2}\S+submit-windows-store[.]yml:\d+ job "submit" channel windows-store\n {4}node tooling\/ci\/assert-channel-register[.]mjs[^\n]*\n[\s\S]*REAL SUBMISSION UNMARKED/, out);
+  });
+
+  test('🔴 (C-03) the App Store dry run without its iOS device-coverage step is a finding (exit 1)', () => {
+    const run = '        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=ios-appstore\n';
+    const root = realCopy((r) => mutateFile(r, APPSTORE, run, ''));
+    const { code, out } = preconditions(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /MISSING PRECONDITION {2}[.]github\/workflows\/submit-appstore[.]yml job "dry-run" channel ios-appstore\n {4}no step runs: node tooling\/ci\/assert-play-device-coverage[.]mjs --for-submission=ios-appstore/, out);
+  });
+
+  test('🔴 (C-04) a new submitting native row with no PUBLIC_REACH entry is a finding (exit 1)', () => {
+    const root = realCopy((r) =>
+      mutateRegister(r, (reg) => {
+        const snap = reg.channels.find((c) => c.id === 'linux-snap');
+        reg.channels.push({ ...structuredClone(snap), id: 'zz-native-store' });
+      }),
+    );
+    const { code, out } = preconditions(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /NO PUBLIC REACH {2}zz-native-store\n/, out);
+    assert.doesNotMatch(out, /NO PUBLIC REACH {2}linux-snap/, out);
   });
 });

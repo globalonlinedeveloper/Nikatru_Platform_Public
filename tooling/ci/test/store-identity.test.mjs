@@ -88,7 +88,8 @@ const DECLARATION = () => ({
 /** ⏱ 2026-09-26 (O-STORE-RECORDS-ARE-ONE-PER-CHANNEL, 9a): every app declares a
  *  record per store channel. The default is what the brick stamps — nothing
  *  issued, nothing declared. `over` replaces a channel's lines; null drops it. */
-const STORE_CHANNEL_IDS = ['windows-store', 'ios-appstore', 'macos-appstore', 'android-play', 'linux-snap'];
+// ⏱ 2026-10-01 (rv2-newproduct-012, AA-16): apps-gov-in has its per-app record too.
+const STORE_CHANNEL_IDS = ['windows-store', 'ios-appstore', 'macos-appstore', 'android-play', 'linux-snap', 'apps-gov-in'];
 const PENDING_LINES = '    state: pending\n    declaredOn: null\n';
 const storesBlock = (over = {}) =>
   'stores:\n' +
@@ -796,7 +797,8 @@ describe('assert-store-identity — one store record per (app, channel), shared 
   test('PASSES and prints one line per (app, channel) with its state and declaredOn', () => {
     const { code, out } = run(fixture());
     assert.equal(code, 0, out);
-    assert.match(out, /ok {2}store records — 5 \(app, channel\) record\(s\) across 1 app\(s\) and 5 store channel\(s\)/);
+    assert.match(out, /ok {2}store records — 6 \(app, channel\) record\(s\) across 1 app\(s\) and 6 store channel\(s\)/);
+    assert.match(out, /subscriptiontracker × apps-gov-in: pending; declaredOn null/);
     assert.match(out, /subscriptiontracker × android-play: pending; declaredOn null/);
   });
 
@@ -816,7 +818,7 @@ describe('assert-store-identity — one store record per (app, channel), shared 
       ),
     );
     assert.equal(code, 0, out);
-    assert.match(out, /10 \(app, channel\) record\(s\) across 2 app\(s\)/);
+    assert.match(out, /12 \(app, channel\) record\(s\) across 2 app\(s\)/);
   });
 
   test('two apps sharing a Partner Center Store ID FAIL; two brick-stamped apps (nothing issued) do not', () => {
@@ -844,6 +846,17 @@ describe('assert-store-identity — one store record per (app, channel), shared 
     const { code, out } = run(withStores(storesBlock({ 'linux-snap': null })));
     assert.equal(code, 1, out);
     assert.match(out, /app "subscriptiontracker" × linux-snap: apps\/subscriptiontracker\/app\.yaml declares no stores\.linux-snap record/);
+  });
+
+  // ⏱ 2026-10-01 (rv2-newproduct-012, AA-16). apps.gov.in is a store channel
+  // where each app is its own hand-made portal listing, and until today the
+  // schema had no record for it: app #2 had nowhere to say whether its listing
+  // exists, and this guard counted none. Red before the schema gained it (the
+  // record was refused as an unknown key); red now when it is missing.
+  test('an app with no apps-gov-in record FAILS, naming the channel', () => {
+    const { code, out } = run(withStores(storesBlock({ 'apps-gov-in': null })));
+    assert.equal(code, 1, out);
+    assert.match(out, /app "subscriptiontracker" × apps-gov-in: apps\/subscriptiontracker\/app\.yaml declares no stores\.apps-gov-in record/);
   });
 
   // RC3 — pending on an ARMED pair: FAILS on a served row, PRINTED on an armed, unserved one.
