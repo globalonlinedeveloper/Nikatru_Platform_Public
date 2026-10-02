@@ -23,6 +23,7 @@
 //   · a Function that reads the client IP fingerprints it with a KEYED hash
 //   · a promise a Function quotes from the site copy is still ON the site copy
 //   · the site's app list and catalog/apps.json do not disagree
+//   · every product screenshot it serves hashes to a recorded store capture
 //
 // That last one is not cosmetic. Both app stores require a reachable privacy
 // policy; `sites/nikatru` is the policy host for every app we publish. Deleting
@@ -50,6 +51,7 @@ import { join, relative, resolve, dirname, sep, extname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 // ONE reading of "what a person saw on this page", shared with the archive and
 // claims guards. See tooling/ci/text-reductions.mjs for why it is not four copies.
 // `stripSourceComments` is the same module's reading of "what this file's CODE
@@ -429,9 +431,17 @@ for (const { root, name } of SCANNING_OWN_REPO ? appFacingRoots : []) {
 // frozen bytes of superseded policies and their entire value is being the
 // document that was actually published; the statutory duty attaches to the live
 // page, not to the archive of a page nobody may now rely on.
+//
+// ⏱ 2026-10-02 — EVERY DEPLOY ROOT, not `appFacingRoots` only. The founder's
+// site (sites/rajasekarselvam, not app-facing) sits on a zone with the same
+// obfuscation on, and measured live that day its contact button served as
+// "[email protected]" linking to a Cloudflare interstitial that answers 404:
+// visitors without JavaScript, and crawlers, had no address at all. Rule 4(2) is
+// the nikatru reason; "a contact link that works without JavaScript" is the
+// reason for every root, so the limb walks them all.
 let emailOffChecks = 0;
 const EMAIL_OFF_REGION = /<!--\s*email_off\s*-->[\s\S]*?<!--\s*\/\s*email_off\s*-->/gi;
-for (const { root } of appFacingRoots) {
+for (const root of siteRoots) {
   for (const abs of htmlIn(root)) {
     const rel = relative(repoRoot, abs).replaceAll('\\', '/');
     if (rel.includes('/legal/')) continue;
@@ -443,12 +453,79 @@ for (const { root } of appFacingRoots) {
       problems.push(
         `${rel} carries ${unprotected.length} mailto: link(s) OUTSIDE an <!--email_off--> region ` +
           `(${[...new Set(unprotected)].sort().join(', ')}). Cloudflare Email Address Obfuscation will rewrite ` +
-          'them to "[email protected]" in the served HTML, so the customer-care address rule 4(2) of the ' +
-          'Consumer Protection (E-Commerce) Rules 2020 requires us to DISPLAY is absent from the bytes a crawler, ' +
-          'a reviewer with JavaScript off or a compliance scanner reads. Wrap the WHOLE anchor: ' +
+          'them to "[email protected]" in the served HTML, so the address (on an app-facing root, the ' +
+          'customer-care address rule 4(2) of the Consumer Protection (E-Commerce) Rules 2020 requires us to ' +
+          'DISPLAY) is absent from the bytes a crawler, a visitor with JavaScript off or a compliance scanner ' +
+          'reads, and the link opens a Cloudflare page that answers 404. Wrap the WHOLE anchor: ' +
           '<!--email_off--><a href="mailto:…">…</a><!--/email_off-->.',
       );
     }
+  }
+}
+
+// ── NO SERVED PAGE SHOWS AN UNFILLED TEMPLATE SLOT ───────────────────────────
+// ⏱ 2026-10-02 (rajasekarselvam.com audit, D2). `sites/rajasekarselvam/cv.html`
+// was a CV TEMPLATE — `[Job title] — [Company]`, `[Degree] — [Institution]`,
+// a yellow "TEMPLATE" banner — and it answered 200 at /cv to anyone who guessed
+// the URL. It was `noindex` and linked from nowhere, and every guard here treated
+// those two facts as making it harmless; a stranger with the URL still read a CV
+// with no history in it under the founder's name. A deploy root has no build
+// step, so every .html under it is served: a bracketed slot in its visible text
+// is a placeholder a visitor can read, whatever the robots tag says.
+//
+// The slot shape is a bracket around a capitalised word run (`[Job title]`,
+// `[APP NAME]`, `[Java / Spring — confirm]`). Measured over every tracked page
+// on 2026-10-02: no real page carries one; the only hits were cv.html and the
+// file named below.
+const PLACEHOLDER_SLOT = /\[[A-Z][A-Za-z]*(?:[ /&—-]+[A-Za-z]+)*\]/g;
+/** Served files that carry slots BY DESIGN, by name, with the reason. Audited below:
+ *  an entry whose file is gone, or has lost its noindex, fails. */
+const PLACEHOLDER_EXCUSED = new Map([
+  [
+    'sites/nikatru/apps/_template.html',
+    'the per-app landing template generate-discovery.mjs reads (NOT_GENERATED there); `[APP NAME]`/`[SLUG]` ' +
+      'are its instructions, it is noindex, and it is owned by the nikatru lane. It IS served at ' +
+      '/apps/_template — printed below every run so that stays visible until that lane moves it out of the root.',
+  ],
+]);
+let placeholderPages = 0;
+for (const root of siteRoots) {
+  for (const abs of htmlIn(root)) {
+    const rel = relative(repoRoot, abs).replaceAll('\\', '/');
+    if (rel.includes('/legal/') || isAuthMailPath(rel)) continue;
+    if (PLACEHOLDER_EXCUSED.has(rel)) continue;
+    placeholderPages++;
+    const slots = [...new Set(visibleText(readFileSync(abs, 'utf8')).match(PLACEHOLDER_SLOT) ?? [])];
+    if (slots.length) {
+      problems.push(
+        `${rel} shows ${slots.length} unfilled template slot(s) in its visible text (${slots.slice(0, 4).join(', ')}` +
+          `${slots.length > 4 ? ', …' : ''}). Every .html under a deploy root is served — noindex and "linked from ` +
+          'nowhere" keep it out of search, not out of reach. Fill it, or move it out of the deploy root and ' +
+          'redirect its URL (sites/rajasekarselvam/_redirects does this for /cv).',
+      );
+    }
+  }
+}
+for (const [rel] of PLACEHOLDER_EXCUSED) {
+  // Scoped to an entry whose DIRECTORY exists, as assert-discovery-surface.mjs scopes its
+  // PAGE_QUALITY_EXCLUDED audit: a fixture tree that models no apps/ directory has not lost
+  // the file, it does not model it. "Models" means the directory holds a PAGE: the
+  // screenshot fixture (writeShot) makes apps/shots/ with no page beside it, and a
+  // bare directory is not a tree that lost its template.
+  const abs = join(repoRoot, rel);
+  let pagesBeside = [];
+  try {
+    pagesBeside = listDir(dirname(abs)).filter((n) => n.endsWith('.html'));
+  } catch {
+    continue;
+  }
+  if (pagesBeside.length === 0) continue;
+  if (!existsSync(abs)) {
+    problems.push(`PLACEHOLDER_EXCUSED names ${rel}, which no longer exists. Delete the entry: an excuse that outlives its file is a hole for the next one.`);
+  } else if (!/<meta[^>]+name\s*=\s*["']robots["'][^>]*noindex/i.test(readFileSync(abs, 'utf8'))) {
+    problems.push(`${rel} is excused from the template-slot limb and has LOST its noindex, so a search result can now land a stranger on its placeholders.`);
+  } else {
+    prints.push(`SERVED TEMPLATE: ${rel} is reachable on its host with unfilled slots — ${PLACEHOLDER_EXCUSED.get(rel)}`);
   }
 }
 
@@ -701,7 +778,7 @@ for (const root of siteRoots) {
       const expected = lastmodFor(repoRoot, `sites/${name}/${page}`);
       if (e.lastmod !== expected) {
         problems.push(
-          `sites/${name}/sitemap.xml gives ${e.loc} lastmod ${e.lastmod}, and sites/${name}/${page} last changed ${expected} according to git. The sitemap's dates are a FUNCTION of the repository (tooling/sites/lastmod.mjs), not a field somebody keeps up to date by hand — a date a crawler cannot rely on is worse than none, because it is the signal that decides whether the page is re-fetched. Run \`node tooling/sites/generate-discovery.mjs\` for sites/nikatru; sites/rajasekarselvam has one URL and is edited by hand.`,
+          `sites/${name}/sitemap.xml gives ${e.loc} lastmod ${e.lastmod}, and sites/${name}/${page} last changed ${expected} according to git. The sitemap's dates are a FUNCTION of the repository (tooling/sites/lastmod.mjs), not a field somebody keeps up to date by hand — a date a crawler cannot rely on is worse than none, because it is the signal that decides whether the page is re-fetched. Run \`node tooling/sites/generate-discovery.mjs\` for sites/nikatru; for sites/rajasekarselvam, \`node tooling/sites/generate-personal-site.mjs\` re-dates its homepage when it rewrites it, and a hand edit to that page needs the date set by hand.`,
         );
       }
     }
@@ -1258,6 +1335,109 @@ try {
   rmSync(scratch, { recursive: true, force: true });
 }
 
+// ── a product screenshot the site serves is a RECORDED capture, by its bytes ─
+// ⏱ 2026-10-02 — O-SITE-SCREENSHOTS-STALE. The four images on
+// https://nikatru.com/apps/subscriptiontracker showed the retired name "Subly"
+// and a red "Could not reach the network" banner, while clean store captures sat
+// in apps/subscriptiontracker/store/android-play/screenshots/. Nothing compared
+// the two: the retired-name guard reads file NAMES, not pixels, and no limb
+// asked where a served screenshot came from. So the web copies could be any
+// picture at all, and were.
+//
+// This limb reads tooling/site-shots.json, the DERIVATION RECORD of every web
+// copy, and fails when:
+//   · a file under <root>/apps/shots/ has no entry (an old image put back), or
+//     its bytes do not hash to the entry's `sha256` (a picture swapped in place);
+//   · the entry's `from` is not a frame of a store-screenshot capture — a PNG
+//     under apps/<app>/store/<channel>/screenshots*/ whose CAPTURE.json names the
+//     pipeline (`capturedBy`) and records a `live` posture;
+//   · that frame no longer hashes to the entry's `sourceSha256`: the store set
+//     was re-captured and the site still shows the old one;
+//   · an entry names a file the site no longer serves (a stale record).
+// The record is the apps.gov.in derivation's mechanism (its CAPTURE.json
+// `derivation.sources`), pointed at the site: the hashes, not a reviewer's eye,
+// tie a served picture to a capture. What no hash can do is judge the frame;
+// the capture's own pull request is that review.
+const SHOTS_RECORD = 'tooling/site-shots.json';
+const SHOT_SOURCE = /^apps\/[a-z0-9-]+\/store\/[a-z0-9-]+\/screenshots[a-z0-9-]*\/[^/]+\.png$/;
+const sha256Of = (abs) => createHash('sha256').update(readFileSync(abs)).digest('hex');
+let shotsChecked = 0;
+{
+  const served = [];
+  for (const root of siteRoots) {
+    for (const abs of walk(join(root, 'apps', 'shots'))) served.push(relative(repoRoot, abs).split(sep).join('/'));
+  }
+  const recordAbs = join(repoRoot, ...SHOTS_RECORD.split('/'));
+  let entries = [];
+  let readable = true;
+  if (existsSync(recordAbs)) {
+    try {
+      const parsed = JSON.parse(readFileSync(recordAbs, 'utf8'));
+      if (!Array.isArray(parsed.shots)) throw new Error('it has no `shots` array');
+      entries = parsed.shots;
+    } catch (err) {
+      readable = false;
+      problems.push(`${SHOTS_RECORD} cannot be read (${err.message}), so no served screenshot can be traced to a capture.`);
+    }
+  }
+  const byFile = new Map(entries.map((e) => [e.file, e]));
+  const command = `re-derive it from the capture and re-record it (the command is in ${SHOTS_RECORD} \`derivation.command\`)`;
+  for (const rel of served) {
+    const entry = byFile.get(rel);
+    if (!entry) {
+      if (readable) {
+        problems.push(
+          `${rel} is served as a product screenshot and ${SHOTS_RECORD} records no capture it was made from — ` +
+            `an image nobody can trace to the store-screenshot pipeline; ${command}, or delete it.`,
+        );
+      }
+      continue;
+    }
+    shotsChecked++;
+    const actual = sha256Of(join(repoRoot, ...rel.split('/')));
+    if (actual !== entry.sha256) {
+      problems.push(
+        `${rel} does not match its recorded bytes (sha256 ${actual.slice(0, 12)}…, recorded ${String(entry.sha256).slice(0, 12)}…) — ` +
+          `the served picture is not the one derived from ${entry.from}; ${command}.`,
+      );
+    }
+    const from = String(entry.from ?? '');
+    const fromAbs = join(repoRoot, ...from.split('/'));
+    if (!SHOT_SOURCE.test(from) || !existsSync(fromAbs)) {
+      problems.push(
+        `${rel} is recorded as made from \`${from}\`, which is not a frame of a store-screenshot capture ` +
+          '(a PNG under apps/<app>/store/<channel>/screenshots*/ that exists).',
+      );
+      continue;
+    }
+    let capture = null;
+    try {
+      capture = JSON.parse(readFileSync(join(dirname(fromAbs), 'CAPTURE.json'), 'utf8'));
+    } catch {
+      /* reported below */
+    }
+    if (!capture?.capturedBy || capture.posture !== 'live') {
+      problems.push(
+        `${rel} is made from ${from}, whose set's CAPTURE.json does not record a live capture by the pipeline ` +
+          `(capturedBy ${JSON.stringify(capture?.capturedBy ?? null)}, posture ${JSON.stringify(capture?.posture ?? null)}).`,
+      );
+    }
+    const source = sha256Of(fromAbs);
+    if (source !== entry.sourceSha256) {
+      problems.push(
+        `${rel} was derived from ${from} as recorded, and that frame has changed on disk (sha256 ${source.slice(0, 12)}…, recorded ` +
+          `${String(entry.sourceSha256).slice(0, 12)}…): the store set was re-captured and the site still shows the old frame; ${command}.`,
+      );
+    }
+  }
+  const servedSet = new Set(served);
+  for (const e of entries) {
+    if (!servedSet.has(e.file)) {
+      problems.push(`${SHOTS_RECORD} records ${e.file}, which no deploy root serves — a stale entry; remove it.`);
+    }
+  }
+}
+
 // ── coverage self-check, BEFORE reporting clean ──────────────────────────────
 // A claimed root the scan does not actually reach is the lane guard's claim
 // pointing at nothing — the caller (ci.yml) says "this script covers X" and X is
@@ -1360,10 +1540,17 @@ if (SCANNING_OWN_REPO) {
   // would bury that under a report about the guard.
   if (emailOffChecks === 0 && missingBoundPages === 0) {
     lost.push(
-      'NO app-facing page contains a `mailto:` link at all, so the Cloudflare-obfuscation limb ranged over ' +
+      'NO served page contains a `mailto:` link at all, so the Cloudflare-obfuscation limb ranged over ' +
         'nothing. sites/nikatru publishes support@nikatru.com on eleven pages today; if the contact route stopped ' +
         'being a mailto: (a form, a JS handler), rule 4(2) still wants a readable address in the served bytes and ' +
         'this limb has stopped being the thing that checks for one.',
+    );
+  }
+  if (shotsChecked === 0) {
+    lost.push(
+      `NO served product screenshot was traced to a store capture, so the ${SHOTS_RECORD} provenance limb ranged over ` +
+        'nothing. sites/nikatru/apps/shots/ serves four today; if they moved, re-point this limb, because an untraced ' +
+        'picture is how the site came to show the retired name and an offline banner.',
     );
   }
   if (lost.length) {
@@ -1672,7 +1859,13 @@ console.log(
   `    ${sellerNameChecks} commercial page(s) name the seller's legal person, not just the brand`,
 );
 console.log(
-  `    ${emailOffChecks} page(s) with a mailto: keep it inside <!--email_off-->, so the rule 4(2) contact address is in the served bytes without JavaScript`,
+  `    ${emailOffChecks} page(s) with a mailto: keep it inside <!--email_off-->, across every deploy root, so the contact address is in the served bytes without JavaScript`,
+);
+console.log(
+  `    ${placeholderPages} served page(s) show no unfilled template slot ([Job title]-style); ${PLACEHOLDER_EXCUSED.size} excused by name`,
+);
+console.log(
+  `    ${shotsChecked} served product screenshot(s) match the bytes ${SHOTS_RECORD} records, each derived from a live store capture frame that is still on disk`,
 );
 console.log(
   `    ${routerDocsChecked} app-path document(s) served as their own bytes by the apex router, not the app shell, across ${routerRoots} router root(s)`,

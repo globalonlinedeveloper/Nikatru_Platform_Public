@@ -1307,10 +1307,10 @@
       "proves": "Floors the derived Worker and twin sets, and each group separately, so a rename that empties the derivation goes red instead of iterating nothing. WEAK: it proves the floor half of the sentence; a typed list that met the floors would also pass."
     },
     {
-      "file": "services/subscriptiontracker-api/src/middleware/auth.ts",
+      "file": "services/_shared/src/auth-middleware.ts",
       "anchor": "the two cannot drift into a weaker one an attacker reaches by making the",
       "status": "demoted",
-      "reason": "Gradeable and NOT graded, recorded as a gap: no case in services/subscriptiontracker-api/test/auth.test.ts sends a wrong-issuer or wrong-audience ES256 token down the cache-fallback path. 'the fallback does NOT widen — a FOREIGN ES256 key is still 401 against the cache' pins the KEY, not the verify options, so a fallback called with weaker `opts` would stay green. Judged 2026-09-19."
+      "reason": "Gradeable and NOT graded, recorded as a gap: no case in services/subscriptiontracker-api/test/auth.test.ts sends a wrong-issuer or wrong-audience ES256 token down the cache-fallback path (the sentence moved verbatim to services/_shared/src/auth-middleware.ts with the plumbing on 2026-10-01; the gap moved with it). 'the fallback does NOT widen — a FOREIGN ES256 key is still 401 against the cache' pins the KEY, not the verify options, so a fallback called with weaker `opts` would stay green. Judged 2026-09-19."
     },
     {
       "file": "services/subscriptiontracker-api/test/entitlements.test.ts",
