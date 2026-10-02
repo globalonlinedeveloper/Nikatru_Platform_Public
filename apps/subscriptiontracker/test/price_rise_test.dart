@@ -123,20 +123,23 @@ void main() {
     expect(r.map((PriceRiseSignal s) => s.sub.id), <String>['b', 'a']);
   });
 
-  test('PlanPriceChange decodes the wire: exact amounts first, then decimals', () {
-    final PlanPriceChange c = PlanPriceChange.fromJson(<String, dynamic>{
-      'id': 'x',
-      'subscription_id': 'a',
-      'old_price': 649,
-      'new_price': 799,
-      'old_price_minor': null,
-      'new_price_minor': 79900,
-      'old_currency': null,
-      'new_currency': 'inr',
-      'changed_at': '2026-09-27T10:00:00.000Z',
-    }, fallbackCurrencyCode: 'INR');
-    expect(c.before, const Money(64900, 'INR'));
-    expect(c.after, const Money(79900, 'INR'));
-    expect(c.isRise, isTrue);
-  });
+  test(
+    'PlanPriceChange decodes the wire: exact amounts first, then decimals',
+    () {
+      final PlanPriceChange c = PlanPriceChange.fromJson(<String, dynamic>{
+        'id': 'x',
+        'subscription_id': 'a',
+        'old_price': 649,
+        'new_price': 799,
+        'old_price_minor': null,
+        'new_price_minor': 79900,
+        'old_currency': null,
+        'new_currency': 'inr',
+        'changed_at': '2026-09-27T10:00:00.000Z',
+      }, fallbackCurrencyCode: 'INR');
+      expect(c.before, const Money(64900, 'INR'));
+      expect(c.after, const Money(79900, 'INR'));
+      expect(c.isRise, isTrue);
+    },
+  );
 }

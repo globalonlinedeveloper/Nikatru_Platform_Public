@@ -255,7 +255,10 @@ class SignalsSection extends ConsumerWidget {
             money.formatBagRounded(SubMath.totalMonthly(subs)),
           ),
         );
-      case PriceRiseSignal(:final Subscription sub, :final PlanPriceChange change):
+      case PriceRiseSignal(
+        :final Subscription sub,
+        :final PlanPriceChange change,
+      ):
         return AppListRow(
           key: Key('insights.signal.priceRise.${sub.id}'),
           leading: const _SignalIcon(Icons.trending_up),
