@@ -1017,6 +1017,14 @@ try {
           `--target=${SUITE_FILE}`,
           '-d', 'web-server',
           '--browser-name=chrome',
+          // 🔴 `--web-port=3000` IS LOAD-BEARING, as in e2e.yml (2026-10-02, O-STORE-SCREENSHOTS).
+          // With no port the app is served on http://localhost:<random>, and the SHARED
+          // platform Worker allows exact origins only; its one localhost entry is port
+          // 3000 (services/platform/wrangler.jsonc ALLOWED_ORIGINS). Since #1122 a terms
+          // re-acceptance is SENT before the gate opens, so the consent POST refused by
+          // CORS kept the Play capture on the interstitial (run 36953158433). The phone
+          // and tablet drives run one after the other, so one fixed port is enough.
+          '--web-port=3000',
           // THE DIMENSION LEVER. `flutter drive --help`: "The dimension of the browser
           // when running a Flutter Web test … This will affect screenshot dimensions".
           `--browser-dimension=${cap.cssWidth}x${cap.cssHeight}@${cap.dpr}`,
