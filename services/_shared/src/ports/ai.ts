@@ -241,7 +241,18 @@ export const ZERO_USAGE: AiUsage = { inputTokens: 0, outputTokens: 0, cacheReadT
  * bounded by the high-resolution tier's ceiling (IMAGE_TOKEN_CEILING); and
  * REQUEST_OVERHEAD_TOKENS covers the framing a request adds around its text.
  */
+/**
+ * The most visual tokens one image costs: the high-resolution tier's ceiling,
+ * Claude 4.7 and later (vision docs, read 2026-10-02).
+ *
+ * @ceiling none — an upper bound in an input ESTIMATE, the provider's own per-image maximum, not a platform resource we spend.
+ */
 export const IMAGE_TOKEN_CEILING = 4784;
+/**
+ * The framing a request adds around its text: a margin, not a measurement.
+ *
+ * @ceiling none — a safety margin in an input ESTIMATE, not a platform resource we spend.
+ */
 export const REQUEST_OVERHEAD_TOKENS = 2048;
 const utf8Bytes = (s: string): number => new TextEncoder().encode(s).length;
 export function estimateInputTokens(request: AiRequest): number {
