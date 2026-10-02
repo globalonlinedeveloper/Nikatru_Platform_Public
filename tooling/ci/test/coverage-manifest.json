@@ -149,6 +149,9 @@
   "bounded-spawn.test.mjs":
     9,
 
+  "box-config-drift.test.mjs":
+    16,
+
   "boxes.test.mjs":
     47,
 
@@ -732,7 +735,7 @@
     91,
 
   "platform-register.test.mjs":
-    107,
+    120,
 
   "play-declarations.test.mjs":
     186,
@@ -753,10 +756,10 @@
     16,
 
   "port-switch.test.mjs":
-    37,
+    46,
 
   "ports.test.mjs":
-    73,
+    104,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -1158,7 +1161,7 @@
     24,
 
   "worker-set.test.mjs":
-    37,
+    40,
 
   "worker-shared-modules.test.mjs":
     17,
