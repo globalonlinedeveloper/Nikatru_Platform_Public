@@ -85,6 +85,21 @@ void main() {
         lessThanOrEqualTo(AppBreakpoints.form),
       );
     });
+
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): the expanded (1024) and
+    // extra-large (1920) window classes, so all five are measured.
+    for (final (Size window, String _) in <(Size, String)>[
+      (kExpanded, 'expanded'),
+      (kWide, 'extra-large'),
+    ]) {
+      testWidgets('at ${window.width.toInt()} the form cap still binds', (
+        WidgetTester tester,
+      ) async {
+        await pumpAt(tester, window, const VerifyEmailScreen());
+        expect(offeredWidth(tester, inPane(Column)), AppBreakpoints.form);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 
   // The THIRD gate screen, and the one whose copy is longest: an address is
@@ -164,5 +179,19 @@ void main() {
       );
       expect(AppBreakpoints.form, 420);
     });
+
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): expanded and extra-large.
+    for (final (Size window, String _) in <(Size, String)>[
+      (kExpanded, 'expanded'),
+      (kWide, 'extra-large'),
+    ]) {
+      testWidgets('at ${window.width.toInt()} the form cap still binds', (
+        WidgetTester tester,
+      ) async {
+        await pumpAt(tester, window, const ReacceptTermsScreen());
+        expect(offeredWidth(tester, inPane(Column)), AppBreakpoints.form);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 }

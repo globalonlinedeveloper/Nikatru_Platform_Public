@@ -2,7 +2,8 @@
 // submit-preconditions.mjs — the gates a store submission must pass, and which
 // channel rows each one applies to. ONE table: limb 3 of
 // assert-publish-steps-guarded.mjs reads it to decide which steps every submit
-// lane must run, and assert-iap-review-screenshots.mjs reads its channel list.
+// lane must run, assert-iap-review-screenshots.mjs reads its channel list, and
+// assert-channel-register.mjs --for-submission reads PUBLIC_REACH.
 //
 // Row O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. Measured on main at 80ef8e39: no
 // submit-*.yml ran assert-name-clearance.mjs or assert-iap-review-screenshots.mjs,
@@ -30,6 +31,7 @@
 // named channel the register does not declare, and a register with no
 // submission row at all.
 // ─────────────────────────────────────────────────────────────────────────────
+import { flutterAppChannel } from './channel-surface.mjs';
 
 /** The channels whose store reviews an auto-renewable subscription against its
  *  review screenshot. assert-iap-review-screenshots.mjs grades this list's one
@@ -72,6 +74,58 @@ export const DECLARATION_ONLY_CHANNELS = Object.freeze({
   'windows-store': "Partner Center's Properties (the privacy answers) and its age ratings questionnaire",
 });
 
+/** ⏱ 2026-10-01 (O-SUBMIT-LANES-IGNORE-NATIVE-AUTH) — a NATIVE row: its surface ships a Flutter
+ *  build and it is not the web row. The reading assert-channel-register §6c-ii holds `nativeAuth`
+ *  to, through the one surface answer (channel-surface.mjs), never a literal surface name. */
+export const isNativeRow = (register, row) => flutterAppChannel(register, row) === true && row?.kind !== 'web';
+
+/** ⏱ 2026-10-01 (C-03, folded into O-SUBMIT-LANES-IGNORE-NATIVE-AUTH) — the channel declares the
+ *  screenshot sets assert-play-device-coverage.mjs counts. Read off the register, so a store that
+ *  declares its sets owes the gate with no edit here. */
+export const declaresDeviceCoverage = (register, channelId) =>
+  Boolean(register?.storeMetadataContract?.perChannel?.[channelId]?.graphicAssets?.screenshots?.deviceTypeCoverage);
+
+/**
+ * ⏱ 2026-10-01 — O-SUBMIT-LANES-IGNORE-NATIVE-AUTH (SYN-R1, C-04). The steps of a REAL submission that
+ * put a build in front of the public, one entry per submitting native channel.
+ * `assert-channel-register.mjs --for-submission=<row> --real-submission` refuses exactly these while the
+ * row's `nativeAuth` is not true, and nothing else. A blanket refusal deadlocks Android's proof: its
+ * sign-in needs a PLAY_RECOGNIZED verdict (services/platform/src/lib/native-attest/play-integrity.ts),
+ * and only an internal-track upload earns one. So the internal track stays open.
+ *
+ *   step     what a refusal names;
+ *   env      the variable the submit script reads its target from, which the gate reads from its own
+ *            step environment; null when every real submission reaches the public;
+ *   unset    what the script does with no target (each script's least-public default);
+ *   reaches  (target) => true when releasing to that target reaches the public.
+ *
+ * Limb 3 of assert-publish-steps-guarded.mjs fails a submitting native row with no entry here, and
+ * the gate exits COVERAGE LOST on one, so a new native store cannot skip the question by omission.
+ */
+export const PUBLIC_REACH = Object.freeze({
+  'android-play': {
+    step: 'a release to the production track',
+    env: 'PLAY_TRACK',
+    unset: 'submit-play.mjs discovers the least-public track the API reports, and never production',
+    reaches: (track) => track === 'production' || track.endsWith(':production'),
+  },
+  'linux-snap': {
+    step: 'a release to the candidate or stable risk',
+    env: 'SNAP_CHANNEL',
+    unset: 'submit-snap.mjs releases to latest/edge',
+    reaches: (spec) => spec.split(',').some((c) => c.trim().split('/').some((p) => p === 'candidate' || p === 'stable')),
+  },
+  'windows-store': {
+    step: 'the certification commit (msstore submission publish)',
+    env: null,
+    reaches: () => true,
+  },
+  // submit-appstore.mjs refuses --submit by design, so no job submits these today. The day one does,
+  // its submission is for App Review, which is the public listing.
+  'ios-appstore': { step: 'a submission for App Review', env: null, reaches: () => true },
+  'macos-appstore': { step: 'a submission for App Review', env: null, reaches: () => true },
+});
+
 /** Submitting app channels that owe NO declaration gate, each with its ruling. Limb 3 fails a
  *  submitting app row that is neither gated nor listed here, so a new store lane cannot skip
  *  the declaration gate by omission. */
@@ -108,11 +162,25 @@ export const SUBMIT_PRECONDITIONS = [
     channels: IAP_REVIEW_CHANNELS,
     appliesTo: (row) => submits(row) && IAP_REVIEW_CHANNELS.includes(row.id),
   },
+  // ⏱ 2026-10-01 (C-03) — every submitting store row that declares screenshot sets, not Play alone:
+  // a missing set was fatal only on Play while the iOS, macOS, Windows and Snap sets were declared and
+  // empty. The guard has taken --for-submission=<channel> for any declaring channel since 2026-09-23.
   {
     guard: 'tooling/ci/assert-play-device-coverage.mjs',
     arg: (row) => `--for-submission=${row.id}`,
-    channels: ['android-play'],
-    appliesTo: (row) => submits(row) && row.id === 'android-play',
+    channels: null,
+    appliesTo: (row, register) => submits(row) && row.kind === 'store' && declaresDeviceCoverage(register, row.id),
+  },
+  // ⏱ 2026-10-01 (O-SUBMIT-LANES-IGNORE-NATIVE-AUTH, C-04) — a build the register says cannot sign
+  // anybody in (`nativeAuth` not true) reaches no PUBLIC step (PUBLIC_REACH). It carries `realFlag`
+  // as the declaration gate does: a dry run prints what a real submission would be refused, and
+  // never refuses; the job that publishes passes --real-submission. Not a console declaration.
+  {
+    guard: 'tooling/ci/assert-channel-register.mjs',
+    arg: (row) => `--for-submission=${row.id}`,
+    channels: null,
+    appliesTo: (row, register) => submits(row) && isNativeRow(register, row),
+    realFlag: REAL_SUBMISSION_FLAG,
   },
   // ⏱ 2026-09-26 — a preview declaration ("sworn": false) cannot be submitted
   // (O-BRICK-SWORN-FILES-HAVE-NO-PREVIEW-STATE). Applies to every submitting row

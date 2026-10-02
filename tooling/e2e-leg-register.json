@@ -59,7 +59,17 @@
     "from (`userTables`) and the one table verify_row counts (`rowTable`). The databases are not here:",
     "tooling/e2e/backend.mjs resolves them from E2E_APP_ID and services/<id>-api/wrangler.jsonc. `legs`",
     "below are still the one app's six, so assert-e2e-legs.mjs reports COVERAGE LOST for a register that",
-    "names any number of apps other than one, until the legs are keyed by app too."
+    "names any number of apps other than one, until the legs are keyed by app too.",
+    "",
+    "⏱ 2026-10-01 · THE LEGS ARE KEYED BY APP (rv2-newproduct-005, O-BRICK-STAMPS-NO-E2E-SUITE). The six legs moved from",
+    "the top level into each `apps.<id>.legs`, and assert-e2e-legs.mjs grades every entry against ITS OWN suite: an anchor",
+    "that stops resolving names the app (`apps/<id>`), and a blocker is re-evaluated over that app's own lib/ and suite. Every",
+    "app of the workspace set must have an entry; tooling/kit/stamp-shared.mjs writes a stamped app's entry with the brick",
+    "suite's legs (two asserted, four blocked), so app #2 is graded from its first commit instead of turning this guard",
+    "COVERAGE LOST. The sentences above that say \"one app\" are a dated measurement, left as written.",
+    "A stamped entry carries no userTables/rowTable: those name the tables the e2e purge deletes the throwaway user's rows",
+    "from, they belong to the app's backend, and tooling/e2e/backend.mjs refuses to purge until they are written.",
+    "`nativeTargets.app` names the app whose native suite and web legs limb NATIVE grades; the native axis is still one app's."
   ],
   "apps": {
     "subscriptiontracker": {
@@ -74,120 +84,120 @@
         "budget_categories",
         "budgets"
       ],
-      "rowTable": "subscriptions"
+      "rowTable": "subscriptions",
+      "legs": [
+        {
+          "id": "anonymous",
+          "asks": "a stranger with no account reaches the app and can move through first-run",
+          "status": "asserted",
+          "anchors": [
+            "shot('01-onboarding')",
+            "expectNothingCoveringTheApp('the onboarding screen')",
+            "tester.tap(find.text('Skip'))"
+          ]
+        },
+        {
+          "id": "sign-in",
+          "asks": "real credentials against live Supabase move the user off the login screen and into the app",
+          "status": "asserted",
+          "_targetAxis": [
+            "APPENDED 2026-09-07 (ADR 067 · cutover-blockers). e2e.yml now carries an auth_target axis",
+            "(hosted | boxa), and `asserted` above is a HOSTED fact. Under auth_target=boxa the suite",
+            "returns early at apps/subscriptiontracker/integration_test/app_test.dart into expectOneIssuerRefusal, whose",
+            "own expectation is that the signed-in Home never loads its list — the anchors listed below",
+            "are still IN the file, which is what assert-e2e-legs greps for and why it still prints",
+            "'3 of 6 ... equality holds', but under boxa they are not REACHED. What a boxa run proves is",
+            "the one-issuer refusal (the deployed Worker rejects a Box A-minted session), not this leg.",
+            "Prose, deliberately: making the status target-shaped would need the guard to learn the axis,",
+            "and assert-e2e-legs.mjs is not this unit's file. Recorded so the first reader of a green",
+            "'asserted' after a boxa dispatch is not told the dashboard was reached.",
+            "⏱ 2026-09-25: the axis is no longer a target name. e2e.yml derives E2E_WORKERS_TRUST from the",
+            "run's SUPABASE_URL and tooling/platform-register.json vars.SUPABASE_URL, and `asserted` is a",
+            "fact of a run with trust `yes` (production, before and after the Phase 5 switch). A run with",
+            "trust `no` (a `selfhosted` dispatch before the switch) reads exactly as boxa did above."
+          ],
+          "anchors": [
+            "E2EKeys.loginSubmit",
+            "shot('03-landing')",
+            "expectLandedOnHome(tester, 'the full walk', sawReacceptance)"
+          ]
+        },
+        {
+          "id": "purchase-sandbox",
+          "asks": "a sandbox purchase completes from inside the app",
+          "status": "blocked",
+          "blockedBy": "[5] apps/subscriptiontracker sells nothing",
+          "declaredOn": "2026-08-02"
+        },
+        {
+          "id": "entitlement-flip",
+          "asks": "the entitlement the purchase bought is read back and flips to active",
+          "status": "blocked",
+          "blockedBy": "[5] apps/subscriptiontracker sells nothing",
+          "declaredOn": "2026-08-02"
+        },
+        {
+          "id": "feature-unlock",
+          "asks": "a feature that was gated before the purchase is usable after it",
+          "status": "blocked",
+          "blockedBy": "[5] apps/subscriptiontracker sells nothing",
+          "declaredOn": "2026-08-02"
+        },
+        {
+          "id": "account-delete-purges",
+          "asks": "deleting the account from inside the app really erases the user and its rows",
+          "status": "asserted",
+          "declaredOn": "2026-08-08",
+          "_targetAxis": [
+            "APPENDED 2026-09-07 (ADR 067 · cutover-blockers). Same axis as sign-in, same reading:",
+            "`asserted` is a HOSTED fact. Under auth_target=boxa this leg's anchors",
+            "(E2EKeys.accountDeletionNotice, find.text('Account deleted'), shot('20-account-deleted'))",
+            "are not reached — the run returns early into the one-issuer refusal, because the deployed",
+            "Worker that performs the erasure trusts exactly one issuer and a Box A-minted session is",
+            "refused by design until Phase 5 moves it. tooling/e2e/verify_purged.mjs still runs and still",
+            "re-reads the admin API, so nothing is skipped; what changes is which fact the run proves.",
+            "⏱ 2026-09-25: as for sign-in, the reading keys on E2E_WORKERS_TRUST, not a target name:",
+            "`asserted` is a fact of a run with trust `yes`; a run with trust `no` reads as boxa did above.",
+            "⏱ 2026-09-26: and on a CAPTCHA-GATED stack (E2E_EXPECT_CAPTCHA_GATE=yes) the in-app half cannot delete:",
+            "the dialog's reauth is the Turnstile-gated password grant and a headless browser has no token (E2E live",
+            "run 36220597628). The suite then asserts the refusal (\"Not deleted\", reauthFailed, still signed in) and",
+            "tooling/e2e/delete_headless.mjs performs the erasure through the ungated /verify and the deployed",
+            "DELETE /v1/account; verify_purged.mjs audits it unchanged. The anchors below are the ungated walk's."
+          ],
+          "_why": [
+            "PROMOTED 2026-08-08, and the excuse it replaced is the THIRD this leg has killed — which is the",
+            "design working three times. v1 'apps/subscriptiontracker has no delete-account call site' died when [ADR 027]",
+            "shipped the control. v2 'no deployed route erases apps/subscriptiontracker own database' died when",
+            "services/subscriptiontracker-api shipped DELETE /v1/account and the shared route began relaying to it. v3 'no",
+            "e2e step exercises the erasure route against the deployed API' dies here, because there is now a",
+            "step: integration_test/app_test.dart's third test signs in as a SECOND throwaway user, writes a",
+            "subscription through the live Worker, deletes the account from inside the running app, and lands",
+            "on the login screen — and tooling/e2e/verify_purged.mjs then re-reads live D1 and the GoTrue",
+            "admin API server-side.",
+            "",
+            "🔴 THE ANCHORS BELOW COVER THE CLIENT HALF ONLY, AND THAT IS STATED RATHER THAN GLOSSED. They",
+            "resolve in the suite, which is all this guard can read. A client can only report what it was",
+            "told, so 'the app said Account deleted' is not 'the rows are gone' — the server-side half is",
+            "tooling/e2e/verify_purged.mjs, wired into e2e.yml between the D1 read-back and the teardown, and",
+            "it is held in place by assert-e2e-proof-fresh.mjs's REQUIRED_WORK rather than by this file.",
+            "Splitting the proof is deliberate; claiming the whole leg from four string matches would be the",
+            "overclaim N-6 already had.",
+            "",
+            "⚠️ A SECOND THROWAWAY USER IS LOAD-BEARING, NOT TIDINESS. The delete walk destroys the account it",
+            "signs in with, and verify_row.mjs asserts COUNT(*) >= 1 for the FIRST user after the drive. One",
+            "user would mean leg 6 could only pass by turning leg 2 red."
+          ],
+          "anchors": [
+            "E2EKeys.settingsDeleteAccount",
+            "E2EKeys.deleteAccountConfirm",
+            "E2EKeys.accountDeletionNotice",
+            "find.text('Account deleted')",
+            "shot('20-account-deleted')"
+          ]
+        }
+      ]
     }
   },
-  "legs": [
-    {
-      "id": "anonymous",
-      "asks": "a stranger with no account reaches the app and can move through first-run",
-      "status": "asserted",
-      "anchors": [
-        "shot('01-onboarding')",
-        "expectNothingCoveringTheApp('the onboarding screen')",
-        "tester.tap(find.text('Skip'))"
-      ]
-    },
-    {
-      "id": "sign-in",
-      "asks": "real credentials against live Supabase move the user off the login screen and into the app",
-      "status": "asserted",
-      "_targetAxis": [
-        "APPENDED 2026-09-07 (ADR 067 · cutover-blockers). e2e.yml now carries an auth_target axis",
-        "(hosted | boxa), and `asserted` above is a HOSTED fact. Under auth_target=boxa the suite",
-        "returns early at apps/subscriptiontracker/integration_test/app_test.dart into expectOneIssuerRefusal, whose",
-        "own expectation is that the signed-in Home never loads its list — the anchors listed below",
-        "are still IN the file, which is what assert-e2e-legs greps for and why it still prints",
-        "'3 of 6 ... equality holds', but under boxa they are not REACHED. What a boxa run proves is",
-        "the one-issuer refusal (the deployed Worker rejects a Box A-minted session), not this leg.",
-        "Prose, deliberately: making the status target-shaped would need the guard to learn the axis,",
-        "and assert-e2e-legs.mjs is not this unit's file. Recorded so the first reader of a green",
-        "'asserted' after a boxa dispatch is not told the dashboard was reached.",
-        "⏱ 2026-09-25: the axis is no longer a target name. e2e.yml derives E2E_WORKERS_TRUST from the",
-        "run's SUPABASE_URL and tooling/platform-register.json vars.SUPABASE_URL, and `asserted` is a",
-        "fact of a run with trust `yes` (production, before and after the Phase 5 switch). A run with",
-        "trust `no` (a `selfhosted` dispatch before the switch) reads exactly as boxa did above."
-      ],
-      "anchors": [
-        "E2EKeys.loginSubmit",
-        "shot('03-landing')",
-        "expectLandedOnHome(tester, 'the full walk', sawReacceptance)"
-      ]
-    },
-    {
-      "id": "purchase-sandbox",
-      "asks": "a sandbox purchase completes from inside the app",
-      "status": "blocked",
-      "blockedBy": "[5] apps/subscriptiontracker sells nothing",
-      "declaredOn": "2026-08-02"
-    },
-    {
-      "id": "entitlement-flip",
-      "asks": "the entitlement the purchase bought is read back and flips to active",
-      "status": "blocked",
-      "blockedBy": "[5] apps/subscriptiontracker sells nothing",
-      "declaredOn": "2026-08-02"
-    },
-    {
-      "id": "feature-unlock",
-      "asks": "a feature that was gated before the purchase is usable after it",
-      "status": "blocked",
-      "blockedBy": "[5] apps/subscriptiontracker sells nothing",
-      "declaredOn": "2026-08-02"
-    },
-    {
-      "id": "account-delete-purges",
-      "asks": "deleting the account from inside the app really erases the user and its rows",
-      "status": "asserted",
-      "declaredOn": "2026-08-08",
-      "_targetAxis": [
-        "APPENDED 2026-09-07 (ADR 067 · cutover-blockers). Same axis as sign-in, same reading:",
-        "`asserted` is a HOSTED fact. Under auth_target=boxa this leg's anchors",
-        "(E2EKeys.accountDeletionNotice, find.text('Account deleted'), shot('20-account-deleted'))",
-        "are not reached — the run returns early into the one-issuer refusal, because the deployed",
-        "Worker that performs the erasure trusts exactly one issuer and a Box A-minted session is",
-        "refused by design until Phase 5 moves it. tooling/e2e/verify_purged.mjs still runs and still",
-        "re-reads the admin API, so nothing is skipped; what changes is which fact the run proves.",
-        "⏱ 2026-09-25: as for sign-in, the reading keys on E2E_WORKERS_TRUST, not a target name:",
-        "`asserted` is a fact of a run with trust `yes`; a run with trust `no` reads as boxa did above.",
-        "⏱ 2026-09-26: and on a CAPTCHA-GATED stack (E2E_EXPECT_CAPTCHA_GATE=yes) the in-app half cannot delete:",
-        "the dialog's reauth is the Turnstile-gated password grant and a headless browser has no token (E2E live",
-        "run 36220597628). The suite then asserts the refusal (\"Not deleted\", reauthFailed, still signed in) and",
-        "tooling/e2e/delete_headless.mjs performs the erasure through the ungated /verify and the deployed",
-        "DELETE /v1/account; verify_purged.mjs audits it unchanged. The anchors below are the ungated walk's."
-      ],
-      "_why": [
-        "PROMOTED 2026-08-08, and the excuse it replaced is the THIRD this leg has killed — which is the",
-        "design working three times. v1 'apps/subscriptiontracker has no delete-account call site' died when [ADR 027]",
-        "shipped the control. v2 'no deployed route erases apps/subscriptiontracker own database' died when",
-        "services/subscriptiontracker-api shipped DELETE /v1/account and the shared route began relaying to it. v3 'no",
-        "e2e step exercises the erasure route against the deployed API' dies here, because there is now a",
-        "step: integration_test/app_test.dart's third test signs in as a SECOND throwaway user, writes a",
-        "subscription through the live Worker, deletes the account from inside the running app, and lands",
-        "on the login screen — and tooling/e2e/verify_purged.mjs then re-reads live D1 and the GoTrue",
-        "admin API server-side.",
-        "",
-        "🔴 THE ANCHORS BELOW COVER THE CLIENT HALF ONLY, AND THAT IS STATED RATHER THAN GLOSSED. They",
-        "resolve in the suite, which is all this guard can read. A client can only report what it was",
-        "told, so 'the app said Account deleted' is not 'the rows are gone' — the server-side half is",
-        "tooling/e2e/verify_purged.mjs, wired into e2e.yml between the D1 read-back and the teardown, and",
-        "it is held in place by assert-e2e-proof-fresh.mjs's REQUIRED_WORK rather than by this file.",
-        "Splitting the proof is deliberate; claiming the whole leg from four string matches would be the",
-        "overclaim N-6 already had.",
-        "",
-        "⚠️ A SECOND THROWAWAY USER IS LOAD-BEARING, NOT TIDINESS. The delete walk destroys the account it",
-        "signs in with, and verify_row.mjs asserts COUNT(*) >= 1 for the FIRST user after the drive. One",
-        "user would mean leg 6 could only pass by turning leg 2 red."
-      ],
-      "anchors": [
-        "E2EKeys.settingsDeleteAccount",
-        "E2EKeys.deleteAccountConfirm",
-        "E2EKeys.accountDeletionNotice",
-        "find.text('Account deleted')",
-        "shot('20-account-deleted')"
-      ]
-    }
-  ],
   "nativeTargets": {
     "_why": [
       "⏱ 2026-09-29 · AB-E2E-02. READ BY tooling/ci/assert-e2e-legs.mjs limb NATIVE. Every leg above runs on web only, and",
@@ -218,6 +228,7 @@
       "(ADR no.NNN), and a desktop's e-mail sign-in is the system-browser hand-off (#1133), which no app screen opens until that",
       "work's PR B lands. Whether the FORM works is graded separately, by the `flows` row sign-in-form (web, today)."
     ],
+    "app": "subscriptiontracker",
     "workflow": ".github/workflows/e2e.yml",
     "job": "native",
     "drive": "tooling/e2e/native_auth_proof.mjs",

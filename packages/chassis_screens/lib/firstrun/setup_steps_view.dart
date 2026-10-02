@@ -144,34 +144,47 @@ class _SetupStepsViewState extends State<SetupStepsView> {
                     AppSpacing.gutterCompact,
                     AppSpacing.lg,
                   ),
-                  child: Row(
+                  // ⏱ 2026-10-02 · train P39 (SYN-X1 C-12): an OverflowBar, not a
+                  // Row with a Spacer. At 200 % text on a 360-wide window the
+                  // Tamil labels are 53 px wider than the row, and a Row can
+                  // only overflow; this lays out exactly as the Row did while
+                  // the three fit, and stacks them, end-aligned and in the same
+                  // focus order, when they do not.
+                  child: OverflowBar(
+                    alignment: MainAxisAlignment.spaceBetween,
+                    overflowAlignment: OverflowBarAlignment.end,
+                    overflowSpacing: AppSpacing.sm,
                     children: <Widget>[
                       TextButton(
                         key: SetupStepsView.skipButton,
                         onPressed: widget.busy ? null : widget.onSkip,
                         child: Text(widget.skipLabel),
                       ),
-                      const Spacer(),
-                      if (_i > 0) ...<Widget>[
-                        TextButton(
-                          key: SetupStepsView.backButton,
-                          onPressed: widget.busy
-                              ? null
-                              : () => setState(() => _i--),
-                          child: Text(widget.backLabel),
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                      ],
-                      FilledButton(
-                        key: SetupStepsView.advanceButton,
-                        onPressed: widget.busy
-                            ? null
-                            : (_last
-                                  ? widget.onFinish
-                                  : () => setState(() => _i++)),
-                        child: Text(
-                          _last ? widget.finishLabel : widget.nextLabel,
-                        ),
+                      OverflowBar(
+                        spacing: AppSpacing.sm,
+                        overflowAlignment: OverflowBarAlignment.end,
+                        overflowSpacing: AppSpacing.sm,
+                        children: <Widget>[
+                          if (_i > 0)
+                            TextButton(
+                              key: SetupStepsView.backButton,
+                              onPressed: widget.busy
+                                  ? null
+                                  : () => setState(() => _i--),
+                              child: Text(widget.backLabel),
+                            ),
+                          FilledButton(
+                            key: SetupStepsView.advanceButton,
+                            onPressed: widget.busy
+                                ? null
+                                : (_last
+                                      ? widget.onFinish
+                                      : () => setState(() => _i++)),
+                            child: Text(
+                              _last ? widget.finishLabel : widget.nextLabel,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

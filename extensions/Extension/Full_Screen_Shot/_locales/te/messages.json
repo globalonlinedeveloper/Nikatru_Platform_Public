@@ -135,7 +135,7 @@
     "message": "బ్యాచ్"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "FullShot Pro కు అప్‌గ్రేడ్ చేయండి"
   },
   "popupLinkOptions": {
     "message": "ఎంపికలు"
@@ -441,10 +441,10 @@
     "message": "నేరుగా గుర్తుపెట్టే పనిలోకి వెళ్తుంది (ఒకే భాగం ఉన్న క్యాప్చర్‌లకు మాత్రమే)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "ఎడిటర్‌లో ఒకే-కీ షార్ట్‌కట్‌లు"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "అక్షర కీలు ఒక టూల్‌ను ఎంచుకుంటాయి, + మరియు - జూమ్ చేస్తాయి, ? కీల జాబితాను చూపుతుంది. ఆఫ్‌లో ఉన్నప్పుడు, చిత్రంపై ఫోకస్ ఉన్నప్పుడు మాత్రమే అవి పనిచేస్తాయి."
   },
   "optionsTheme": {
     "message": "థీమ్"
@@ -1247,7 +1247,7 @@
     "message": "సరిపోల్చు"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "$PERCENT$ జూమ్",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1256,28 +1256,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "ఎరుపు"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "ఆంబర్"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "ఆకుపచ్చ"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "నీలం"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "ఊదా"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "గులాబీ"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "నలుపు"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "తెలుపు"
   },
   "editorZoomTipToHundred": {
     "message": "విండోకు సరిపోయింది — 100% కోసం క్లిక్ చేయండి"
@@ -2026,7 +2026,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ కనిపించే మొత్తం ప్రాంతాన్ని క్యాప్చర్ చేస్తుంది",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2049,10 +2049,10 @@
     "message": "Chrome Web Store తన పేజీలను పొడిగింపులు చదవకుండా అడ్డుకుంటుంది, కాబట్టి దీన్ని క్యాప్చర్ చేయలేము."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons తన పేజీలను పొడిగింపులు చదవకుండా అడ్డుకుంటుంది, కాబట్టి దీన్ని క్యాప్చర్ చేయలేము."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) తన పేజీలను పొడిగింపులు చదవకుండా అడ్డుకుంటుంది, కాబట్టి దీన్ని క్యాప్చర్ చేయలేము."
   },
   "errRestrictedGeneric": {
     "message": "ఈ పేజీని బ్రౌజర్ కాపాడుతోంది, కాబట్టి దీన్ని క్యాప్చర్ చేయలేము."
