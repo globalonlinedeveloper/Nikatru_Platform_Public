@@ -354,6 +354,68 @@ const imp = p => import(pathToFileURL(path.join(ROOT, p)).href);
       drop(dir);
     }
 
+    /* --check GRADES THE SHIPPED FILE (O-FULLSHOT-LOCALES-MISS-15-KEYS).
+       51 locales served the same 15 keys in English while `--check` exited 0,
+       because it compared the file with a build and a build of an empty memory
+       IS English. Each case is a real `--check` run against a sandbox, with the
+       green control first: a check that cannot pass proves nothing by failing. */
+    {
+      const dir = sandbox('de');
+      const r = runGen(dir, 'de', ['--check']);
+      check('CONTROL: --check passes the committed de locale', r.status === 0,
+        'exit ' + r.status + (r.status ? ' — ' + r.out.split('\n').filter(s => /^[A-Z]{5,}/.test(s)).slice(0, 2).join(' | ') : ''));
+      drop(dir);
+    }
+    {
+      const dir = sandbox('de', d => {
+        const f = path.join(d, '_locales', 'de', 'messages.json');
+        const m = JSON.parse(fs.readFileSync(f, 'utf8'));
+        delete m.editorColorAmber;
+        fs.writeFileSync(f, G.serialize(m));
+      });
+      const r = runGen(dir, 'de', ['--check']);
+      check('--check FAILS when one shipped locale lacks one key English has, and names it',
+        r.status === 1 && /^MISSING\s+de\s+editorColorAmber$/m.test(r.out), 'exit ' + r.status);
+      drop(dir);
+    }
+    {
+      const dir = sandbox('de', d => {
+        const f = path.join(d, '_locales', 'de', 'messages.json');
+        const m = JSON.parse(fs.readFileSync(f, 'utf8'));
+        m.editorZoomLevelName.placeholders.percent.content = '$2';
+        fs.writeFileSync(f, G.serialize(m));
+      });
+      const r = runGen(dir, 'de', ['--check']);
+      check('--check FAILS when a shipped placeholders block differs from English, and names it',
+        r.status === 1 && /^PLACEHOLDERS\s+de\s+editorZoomLevelName$/m.test(r.out), 'exit ' + r.status);
+      drop(dir);
+    }
+    /* THE AUDIT'S SHAPE: a new English key reaches the locale as English and no
+       translation follows. The build is byte-identical to disk, so drift is
+       silent; only the UNTRANSLATED limb can see it. */
+    {
+      const dir = sandbox('de', d => editEnglish2(d));
+      const built = runGen(dir, 'de');
+      const r = runGen(dir, 'de', ['--check']);
+      check('--check FAILS on a key served as English fallback with no AWAITING-TRANSLATION marker',
+        built.status === 0 && r.status === 1 && /^UNTRANSLATED\s+de\s+zzTestOnlyNewKey$/m.test(r.out) && !/^DRIFT/m.test(r.out),
+        'build exit ' + built.status + ', check exit ' + r.status);
+      drop(dir);
+    }
+    {
+      const dir = sandbox('de', d => {
+        editEnglish2(d);
+        const e = JSON.parse(fs.readFileSync(enPath(d), 'utf8'));
+        e.zzTestOnlyNewKey.description = 'AWAITING-TRANSLATION. ' + e.zzTestOnlyNewKey.description;
+        fs.writeFileSync(enPath(d), JSON.stringify(e, null, 2) + '\n');
+      });
+      const built = runGen(dir, 'de');
+      const r = runGen(dir, 'de', ['--check']);
+      check('CONTROL: the same key DECLARED AWAITING-TRANSLATION passes --check',
+        built.status === 0 && r.status === 0, 'build exit ' + built.status + ', check exit ' + r.status);
+      drop(dir);
+    }
+
     /* The standing invariant. The two sandboxes above prove the guard bites;
        this proves it currently has nothing to bite — that the tree as committed
        survives a generator run. It is the check that stays red until every

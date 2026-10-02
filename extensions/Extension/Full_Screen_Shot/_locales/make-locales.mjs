@@ -53,7 +53,12 @@
    USAGE
      node _locales/make-locales.mjs              build every locale
      node _locales/make-locales.mjs --check      build in memory, diff against
-                                                 disk, exit 1 on any drift
+                                                 disk, exit 1 on any drift, and
+                                                 grade every SHIPPED file: exit 1
+                                                 when it lacks a key English has,
+                                                 its placeholders block differs
+                                                 from English, or it serves English
+                                                 for a key not declared pending
      node _locales/make-locales.mjs --report     coverage + staleness table
      node _locales/make-locales.mjs --request    work order: every (locale,key)
                                                  with no usable translation
@@ -340,6 +345,50 @@ export function unreproducible(built, onDisk, en) {
   return out;
 }
 
+/* ============================================================================
+   WHAT --check GRADES ON THE SHIPPED FILE — parity, placeholders, translation
+   ============================================================================
+   Drift alone is not enough. A locale that is byte-identical to a fresh build can
+   still serve English for every key its memory lacks: that is how 51 locales
+   shipped the same 15 keys in English (i18n audit 2026-10-02, O-FULLSHOT-
+   LOCALES-MISS-15-KEYS) while --check exited 0 and printed "765 missing entries"
+   as a statistic. So --check reads the file Chrome loads, not the build, and
+   fails on three things:
+     MISSING       a key English accounts for is absent from the shipped file
+     PLACEHOLDERS  an entry's placeholders block is not byte-identical to English
+                   (it is copied, never translated, so any difference is a hand edit)
+     UNTRANSLATED  the entry is English fallback — no translation, or a STALE one —
+                   and the key is not declared AWAITING-TRANSLATION in its English
+                   description. That marker is the one sanctioned way to land an
+                   English string before its translations; test/i18n-sim.node.js
+                   fails the marker the moment any memory translates the key.
+   A pending plural base excuses every category form it expands into, read
+   through the base, exactly as the i18n tier reads it. */
+export function pendingKeys(en) {
+  return new Set(Object.keys(en).filter(k => /AWAITING-TRANSLATION/.test(en[k].description || '')));
+}
+
+export function shippedProblems(code, onDisk, built, en) {
+  const out = [];
+  if (!onDisk || typeof onDisk !== 'object') return [{ kind: 'MISSING', key: '(the whole messages.json)' }];
+  for (const key of expectedKeys(code, en)) {
+    const entry = onDisk[key];
+    if (!entry || typeof entry.message !== 'string') { out.push({ kind: 'MISSING', key }); continue; }
+    const enPh = en[sourceKeyFor(key)].placeholders;
+    if (JSON.stringify(entry.placeholders || null) !== JSON.stringify(enPh || null)) out.push({ kind: 'PLACEHOLDERS', key });
+  }
+  const pend = pendingKeys(en);
+  const excused = key => {
+    if (pend.has(key)) return true;
+    const sp = splitPluralKey(key);
+    return !!sp && (pend.has(sp.base + 'One') || pend.has(sp.base + 'Other'));
+  };
+  for (const key of built.notes.missing.concat(built.notes.stale.map(s => s.key))) {
+    if (!excused(key)) out.push({ kind: 'UNTRANSLATED', key });
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------------ main */
 
 function loadContext() {
@@ -384,7 +433,7 @@ function main() {
   if (mode === 'privacy') return runPrivacy(ctx);
 
   const list = targets(argv);
-  let drift = 0, problems = 0;
+  let drift = 0, problems = 0, shipped = 0;
   const rows = [];
 
   /* EVERY locale is built in memory before ANY locale is written. The guard has
@@ -428,6 +477,10 @@ function main() {
       if (onDiskText !== text) fs.writeFileSync(file, text);
     } else if (mode === 'check') {
       if (onDiskText !== text) { drift++; console.log('DRIFT  ' + l.code + '  — on-disk file does not match a fresh build'); }
+      for (const f of shippedProblems(l.code, p.onDisk, p.built, ctx.en)) {
+        shipped++;
+        console.log(f.kind.padEnd(13) + l.code.padEnd(7) + f.key);
+      }
     }
 
     const built = p.built;
@@ -476,7 +529,8 @@ function main() {
 
   if (mode === 'check') {
     if (drift) console.log('\n' + drift + ' locale(s) DRIFTED — run the generator');
-    return (drift || problems) ? 1 : 0;
+    if (shipped) console.log(shipped + ' shipped entr' + (shipped === 1 ? 'y' : 'ies') + ' MISSING, UNTRANSLATED or with a PLACEHOLDERS block unlike English — see the lines above');
+    return (drift || problems || shipped) ? 1 : 0;
   }
   return problems ? 1 : 0;
 }
