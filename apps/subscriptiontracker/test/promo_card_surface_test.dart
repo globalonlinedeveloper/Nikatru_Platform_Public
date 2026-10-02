@@ -361,7 +361,7 @@ void main() {
       await tester.pumpWidget(_host(_MemStore(), _config(promoEnabled: true)));
       await tester.pumpAndSettle();
       expect(
-        find.text('Manage subscription'),
+        find.text('Manage plan'),
         findsOneWidget,
         reason:
             'a card that offers a shortcut to start paying and no equally '

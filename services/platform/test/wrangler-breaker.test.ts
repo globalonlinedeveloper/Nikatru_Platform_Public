@@ -200,6 +200,32 @@ describe('wrangler.jsonc declares BOTH halves of the cost circuit breaker', () =
     });
   }
 
+  it('declares BOTH checkout limiters, at the top level AND in env.sandbox, each in its own namespace', () => {
+    // ⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED. routes/checkout.ts read
+    // CHECKOUT_CEILING_LIMITER while no wrangler.jsonc bound it ("HONEST GAP"), so
+    // POST /v1/checkout — every accepted call an undeletable Paddle transaction —
+    // was bounded by auth alone. The edge ceiling fails OPEN and the per-user
+    // bucket fails CLOSED; the unit tests inject both, so only this sees a deletion.
+    const top = { CHECKOUT_CEILING_LIMITER: ['1027', 60], CHECKOUT_USER_LIMITER: ['1029', 5] } as const;
+    const sandbox = { CHECKOUT_CEILING_LIMITER: ['1028', 60], CHECKOUT_USER_LIMITER: ['1030', 5] } as const;
+    const sbRl = sandboxRl();
+    const sbByName = new Map(sbRl.map((e) => [String(e.name), e]));
+    for (const [where, map, want] of [
+      ['top level', byName, top],
+      ['env.sandbox', sbByName, sandbox],
+    ] as const) {
+      for (const [name, [id, limit]] of Object.entries(want)) {
+        const e = map.get(name);
+        expect(e, `${name} missing from ${where} — POST /v1/checkout is unbounded there`).toBeDefined();
+        expect(String(e!.namespace_id), `${where} ${name}`).toBe(id);
+        expect(e!.simple?.limit, `${where} ${name}`).toBe(limit);
+        expect(e!.simple?.period, `${where} ${name}`).toBe(60);
+      }
+    }
+    const sbIds = sbRl.map((e) => String(e.namespace_id));
+    expect(new Set(sbIds).size, `env.sandbox namespace_id collision among ${sbIds.join(', ')}`).toBe(sbIds.length);
+  });
+
   it('the three limiters have DISTINCT namespace ids, so they do not share a budget', () => {
     const ids = rl.map((e) => String(e.namespace_id));
     expect(new Set(ids).size, `namespace_id collision among ${ids.join(', ')}`).toBe(ids.length);
