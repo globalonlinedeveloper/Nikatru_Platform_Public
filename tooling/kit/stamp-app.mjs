@@ -22,7 +22,10 @@
 //     the child's environment otherwise, so a value left exported in the
 //     caller's shell cannot turn a new stamp into a silent overwrite.
 //   · The app id is refused BEFORE mason, with the contract's own message
-//     (contracts/app-id/app-id.js appIdProblems); pre_gen refuses it too.
+//     (contracts/app-id/app-id.js appIdProblems); pre_gen refuses it too. So
+//     is an id another product already claims (tooling/kit/product-set.mjs
+//     clashesOf: a service, extension or site id, a Worker, D1 database or
+//     host name), which pre_gen cannot see (rv2-newproduct-015).
 //   · THE APP'S LICENCE ROWS (LEAD RULING NP12B-R2, 2026-09-27). Every file a
 //     pub package ships into the new app's web bundle needs an `app:<id>` row
 //     in tooling/legal/asset-register.json, and until this step nothing wrote
@@ -49,6 +52,15 @@
 //     other than the root pubspec.lock (the new app's dependencies resolve into
 //     it), fails the stamp, named. So a future Flutter that writes some other
 //     file is a red stamp, not a quiet diff in someone's next commit.
+//   · THE LAUNCHER ICONS (O-BRICK-STAMPS-WEB-ONLY, D30). post_gen stamps the five
+//     native folders (tooling/kit/stamp-native.mjs), and `flutter create` writes
+//     Flutter's default logo into each. `dart run flutter_launcher_icons` brands
+//     them from the config and art the brick stamps, and it can only run once
+//     the workspace resolves with the new app on it — so it runs here, after the
+//     root pub get, from apps/<id> (the tool reads ./pubspec.yaml). The same
+//     tree keeper wraps it, and it owns NO tracked file: a run that re-resolved
+//     the workspace from the subdirectory and rewrote the root lock fails the
+//     stamp, named, instead of riding into the next commit.
 //
 // ── POST-CONDITIONS: WHERE post_gen WARNS, THIS FILE EXITS NON-ZERO ──────────
 // post_gen.dart runs the site chain and tag-owner --write, and on a failure it
@@ -57,10 +69,17 @@
 //   1. apps/<id>/pubspec.yaml exists — a stamp that wrote no app is not a stamp;
 //   2. `node tooling/sites/regen.mjs --check` exits 0;
 //   3. `node tooling/ci/tag-owner.mjs --check` exits 0;
-//   4. `node tooling/ci/gen-app-licence-rows.mjs --check --app <id>` exits 0.
+//   4. `node tooling/ci/gen-app-licence-rows.mjs --check --app <id>` exits 0;
+//   5. `node tooling/kit/stamp-shared.mjs --check` exits 0 (⏱ 2026-10-01, train
+//      P43): the shared files outside apps/<id>/ — the bundle register's
+//      exclusion, the e2e leg register's `apps.<id>` entry and the generated
+//      auth allow list — carry the new app. post_gen's site chain writes them.
+//   6. `node tooling/kit/stamp-native.mjs --check --app <id>` exits 0 — the five
+//      native folders, their waivers, splash, privacy manifests and Linux
+//      packaging are what the native stamp writes (post_gen only warns on it).
 // Any one failing makes the exit 1, and the line names it.
 //
-// Exit 0 = stamped, and all four post-conditions hold (or --dry-run printed the plan).
+// Exit 0 = stamped, and all five post-conditions hold (or --dry-run printed the plan).
 // Exit 1 = refused before mason, a mason step failed, the root pub get left a
 //          tracked file changed, or a post-condition failed.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,6 +89,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { appIdProblems } from '../../contracts/app-id/app-id.js';
+import { clashesOf, describeClashes } from './product-set.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO = resolve(HERE, '..', '..');
@@ -81,6 +101,8 @@ export const SAFE_ARG = /^[A-Za-z0-9._/\\:=-]+$/;
 export const REGEN = 'tooling/sites/regen.mjs';
 export const TAG_OWNER = 'tooling/ci/tag-owner.mjs';
 export const APP_LICENCE_ROWS = 'tooling/ci/gen-app-licence-rows.mjs';
+export const STAMP_SHARED = 'tooling/kit/stamp-shared.mjs';
+export const STAMP_NATIVE = 'tooling/kit/stamp-native.mjs';
 const OVERWRITE_ENV = 'NIKATRU_ALLOW_OVERWRITE';
 
 /**
@@ -88,7 +110,8 @@ const OVERWRITE_ENV = 'NIKATRU_ALLOW_OVERWRITE';
  * suite reads it.
  *
  * @returns {{problems: string[], id: string|null, vars: string|null, overwrite: boolean,
- *            steps: {label: string, command: string, args: string[], cwd: string, env: Record<string,string>}[],
+ *            steps: {label: string, command: string, args: string[], cwd: string, env: Record<string,string>,
+ *                    keepsTrackedTree?: true, treeRoot?: string, owns?: string[]}[],
  *            post: ({label: string, kind: 'exists', path: string} |
  *                   {label: string, kind: 'spawn', command: string, args: string[], cwd: string})[]}}
  */
@@ -133,6 +156,18 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
     problems.push(...idProblems.map((p) => `${p} Refused before mason; nothing was stamped.`));
     return nothing(id, vars, overwrite);
   }
+  // rv2-newproduct-015: the id must also be one no OTHER product claims (tooling/kit/product-set.mjs).
+  // `platform` as an app would bind its APP_DB to the live platform_db. A re-stamp of
+  // the same app is its own claim, so --overwrite of an existing app is not refused.
+  const { clashes, problems: claimProblems } = clashesOf(root, id, 'app');
+  if (claimProblems.length) {
+    problems.push(`the claimed-id set could not be read (${claimProblems[0]}); nothing was stamped.`);
+    return nothing(id, vars, overwrite);
+  }
+  if (clashes.length) {
+    problems.push(`${describeClashes(id, clashes)}. Refused before mason; nothing was stamped.`);
+    return nothing(id, vars, overwrite);
+  }
 
   const childEnv = { ...env };
   delete childEnv[OVERWRITE_ENV];
@@ -150,10 +185,22 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
       ? { label, command: 'cmd.exe', args: ['/d', '/s', '/c', 'flutter.bat', ...args], cwd: root, env: childEnv }
       : { label, command: 'flutter', args, cwd: root, env: childEnv };
   const licenceRows = join(root, ...APP_LICENCE_ROWS.split('/'));
+  const appDir = join(root, 'apps', id);
   const steps = [
     mason('mason get', ['get']),
     mason('mason make', ['make', 'app', '-c', vars, '-o', '.', '--on-conflict', 'overwrite']),
     { ...flutter('flutter pub get (repo root)', ['pub', 'get']), keepsTrackedTree: true },
+    {
+      label: `dart run flutter_launcher_icons (apps/${id})`,
+      ...(platform === 'win32'
+        ? { command: 'cmd.exe', args: ['/d', '/s', '/c', 'dart.bat', 'run', 'flutter_launcher_icons'] }
+        : { command: 'dart', args: ['run', 'flutter_launcher_icons'] }),
+      cwd: appDir,
+      env: childEnv,
+      keepsTrackedTree: true,
+      treeRoot: root,
+      owns: [],
+    },
     { label: `node ${APP_LICENCE_ROWS} --write --app ${id}`, command: process.execPath, args: [licenceRows, '--write', '--app', id], cwd: root, env: childEnv },
   ];
   if (problems.length) return nothing(id, vars, overwrite);
@@ -163,11 +210,14 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
     { label: `node ${REGEN} --check`, kind: 'spawn', command: process.execPath, args: [join(root, ...REGEN.split('/')), '--check'], cwd: root },
     { label: `node ${TAG_OWNER} --check`, kind: 'spawn', command: process.execPath, args: [join(root, ...TAG_OWNER.split('/')), '--check'], cwd: root },
     { label: `node ${APP_LICENCE_ROWS} --check --app ${id}`, kind: 'spawn', command: process.execPath, args: [licenceRows, '--check', '--app', id], cwd: root },
+    { label: `node ${STAMP_SHARED} --check`, kind: 'spawn', command: process.execPath, args: [join(root, ...STAMP_SHARED.split('/')), '--check', '--root', root], cwd: root },
+    { label: `node ${STAMP_NATIVE} --check --app ${id}`, kind: 'spawn', command: process.execPath, args: [join(root, ...STAMP_NATIVE.split('/')), '--check', '--app', id], cwd: root },
   ];
   return { problems, id, vars, overwrite, steps, post };
 }
 
-/** The one tracked file the root pub get may change: the new app's dependencies resolve into it. */
+/** The one tracked file the root pub get may change: the new app's dependencies resolve into it.
+ *  A step that declares its own `owns` (the launcher icons: none) is held to that instead. */
 export const PUB_GET_OWNS = new Set(['pubspec.lock']);
 
 /** `git <args>` in `root`, NUL-separated output as a list. Throws naming the command. */
@@ -211,7 +261,7 @@ export const gitTree = {
     }
     return { root, keep, dirty: dirtyTracked(root) };
   },
-  settle({ root, keep, dirty }) {
+  settle({ root, keep, dirty }, owns = PUB_GET_OWNS) {
     const restored = [];
     for (const [rel, bytes] of keep) {
       const abs = join(root, ...rel.split('/'));
@@ -222,8 +272,8 @@ export const gitTree = {
     }
     const after = dirtyTracked(root);
     const stray = new Set();
-    for (const [rel, h] of after) if (!PUB_GET_OWNS.has(rel) && dirty.get(rel) !== h) stray.add(rel);
-    for (const rel of dirty.keys()) if (!PUB_GET_OWNS.has(rel) && !after.has(rel)) stray.add(rel);
+    for (const [rel, h] of after) if (!owns.has(rel) && dirty.get(rel) !== h) stray.add(rel);
+    for (const rel of dirty.keys()) if (!owns.has(rel) && !after.has(rel)) stray.add(rel);
     return { restored, stray: [...stray].sort() };
   },
 };
@@ -247,7 +297,7 @@ export function runStamp(plan, { run = spawnStep, exists = existsSync, tree = gi
     let snap = null;
     if (step.keepsTrackedTree) {
       try {
-        snap = tree.snapshot(step.cwd);
+        snap = tree.snapshot(step.treeRoot ?? step.cwd);
       } catch (e) {
         error(`✗ ${step.label}: the tracked tree could not be read before it (${e.message}); it was not run.`);
         return 1;
@@ -258,7 +308,7 @@ export function runStamp(plan, { run = spawnStep, exists = existsSync, tree = gi
     let settled = null;
     if (snap) {
       try {
-        settled = tree.settle(snap);
+        settled = step.owns ? tree.settle(snap, new Set(step.owns)) : tree.settle(snap);
       } catch (e) {
         error(`✗ ${step.label}: the tracked tree could not be checked after it (${e.message}).`);
         return 1;
@@ -274,7 +324,7 @@ export function runStamp(plan, { run = spawnStep, exists = existsSync, tree = gi
     if (settled?.stray.length) {
       error(
         `✗ ${step.label} left ${settled.stray.length} tracked file(s) changed: ${settled.stray.join(', ')}. ` +
-          `Only ${[...PUB_GET_OWNS].join(', ')} is its to write; revert the rest before any commit. The post-conditions were not checked.`,
+          `${step.owns ? (step.owns.length ? `Only ${step.owns.join(', ')} is` : 'No tracked file is') : `Only ${[...PUB_GET_OWNS].join(', ')} is`} its to write; revert the rest before any commit. The post-conditions were not checked.`,
       );
       return 1;
     }
@@ -292,7 +342,7 @@ export function runStamp(plan, { run = spawnStep, exists = existsSync, tree = gi
     );
     return 1;
   }
-  log(`ok  stamp-app: "${plan.id}" stamped; the site chain, the release tag filter and its licence rows all check clean.`);
+  log(`ok  stamp-app: "${plan.id}" stamped; the site chain, the release tag filter, its licence rows and its native platforms all check clean.`);
   return 0;
 }
 
