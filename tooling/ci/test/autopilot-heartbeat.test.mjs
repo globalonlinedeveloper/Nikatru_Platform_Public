@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { laptopState, parseBeat, nextBeat, stateLine, writeBeat, ghApi, readBeatApi, readBeatGit, STALE_MIN, STATE_EXIT, HB } from '../../autopilot/heartbeat.mjs';
+import { laptopState, parseBeat, nextBeat, stateLine, writeBeat, ghApi, readBeatApi, readBeatGit, isBranchOrTag, REF_PATH, STALE_MIN, STATE_EXIT, HB } from '../../autopilot/heartbeat.mjs';
 import { isMain, samePath, ghSpawnSpec, redact } from '../../autopilot/cli.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -60,6 +60,7 @@ describe('the writer — tree, parentless commit, forced ref; seq from the previ
       calls.push({ method, path, body });
       if (method === 'GET') {
         if (prev === undefined) throw new Error('gh api GET …: HTTP 404');
+        if (path.includes('/git/ref/')) return { object: { sha: 'b'.repeat(40) } };
         return { content: Buffer.from(typeof prev === 'string' ? prev : JSON.stringify(prev)).toString('base64') };
       }
       if (path.endsWith('/git/trees')) return { sha: 't'.repeat(40) };
@@ -73,7 +74,9 @@ describe('the writer — tree, parentless commit, forced ref; seq from the previ
     const { gh, calls } = fakeGh(beat(10, 'primary', 41));
     const r = writeBeat({ repo: 'o/r', mode: 'primary', now: new Date(NOW), gh });
     assert.equal(r.beat.seq, 42);
-    assert.deepEqual(calls.map((c) => `${c.method} ${c.path.split('?')[0]}`), ['GET repos/o/r/contents/beat.json', 'POST repos/o/r/git/trees', 'POST repos/o/r/git/commits', 'PATCH repos/o/r/git/refs/heads/lead/heartbeat']);
+    assert.deepEqual(calls.map((c) => `${c.method} ${c.path.split('?')[0]}`), ['GET repos/o/r/git/ref/lead/heartbeat', 'GET repos/o/r/contents/beat.json', 'POST repos/o/r/git/trees', 'POST repos/o/r/git/commits', 'PATCH repos/o/r/git/refs/lead/heartbeat']);
+    assert.equal(calls[1].path, `repos/o/r/contents/beat.json?ref=${'b'.repeat(40)}`, 'the previous beat is read at the sha the ref names');
+    calls.splice(0, 1);
     const content = JSON.parse(calls[1].body.tree[0].content);
     assert.deepEqual(content, { v: 1, at: '2026-10-02T12:00:00.000Z', seq: 42, mode: 'primary', host: 'laptop' });
     assert.equal(parseBeat(JSON.stringify(content)).seq, 42, 'the writer writes what the reader reads');
@@ -83,7 +86,7 @@ describe('the writer — tree, parentless commit, forced ref; seq from the previ
   test('🔴 the first beat (no ref) and a garbled previous beat restart at seq 1; a missing ref is CREATED', () => {
     const first = fakeGh(undefined, { refMissing: true });
     assert.equal(writeBeat({ repo: 'o/r', mode: 'drill', now: new Date(NOW), gh: first.gh }).beat.seq, 1);
-    assert.deepEqual(first.calls.at(-1), { method: 'POST', path: 'repos/o/r/git/refs', body: { ref: 'refs/heads/lead/heartbeat', sha: 'c'.repeat(40) } });
+    assert.deepEqual(first.calls.at(-1), { method: 'POST', path: 'repos/o/r/git/refs', body: { ref: 'refs/lead/heartbeat', sha: 'c'.repeat(40) } });
     assert.equal(writeBeat({ repo: 'o/r', mode: 'primary', now: new Date(NOW), gh: fakeGh('{garbage').gh }).beat.seq, 1);
   });
   test('🔴 a PATCH refused for any other reason is not papered over with a create', () => {
@@ -95,6 +98,22 @@ describe('the writer — tree, parentless commit, forced ref; seq from the previ
     assert.throws(() => writeBeat({ repo: 'o/r', mode: 'primary', gh }), /403/);
   });
   test('🔴 an unknown mode is refused', () => assert.throws(() => nextBeat(null, { mode: 'nap' }), /--mode/));
+  test('🔴 writeBeat NEVER targets refs/heads/ (a moving branch starts a Cloudflare Pages build every beat)', () => {
+    for (const run of [fakeGh(beat(10, 'primary', 41)), fakeGh(undefined, { refMissing: true })]) {
+      writeBeat({ repo: 'o/r', mode: 'primary', now: new Date(NOW), gh: run.gh });
+      const writes = run.calls.filter((c) => c.method !== 'GET');
+      assert.ok(writes.some((c) => /\/git\/refs/.test(c.path)), 'the ref write was made');
+      for (const c of run.calls) {
+        assert.doesNotMatch(c.path, /refs\/heads\/|\/git\/refs?\/heads\//, `${c.method} ${c.path} targets a branch`);
+        assert.doesNotMatch(JSON.stringify(c.body ?? {}), /refs\/(?:heads|tags)\//, `${c.method} ${c.path} body names a branch or tag`);
+      }
+    }
+    assert.equal(HB.ref, 'refs/lead/heartbeat');
+    assert.equal(REF_PATH, 'lead/heartbeat');
+    assert.equal(isBranchOrTag(HB.ref), false);
+    assert.equal(isBranchOrTag('refs/heads/lead/heartbeat'), true, 'the guard would refuse a branch');
+    assert.equal(isBranchOrTag('refs/tags/heartbeat'), true);
+  });
 });
 
 describe('Windows: the spawn and the entry point', () => {
@@ -131,6 +150,7 @@ describe('Windows: the spawn and the entry point', () => {
     const got = readBeatGit({ run });
     assert.equal(parseBeat(got.text).seq, 7);
     assert.deepEqual(seen.map((s) => `${s.file} ${s.args[0]} shell=${s.shell}`), ['git fetch shell=false', 'git show shell=false']);
+    assert.equal(seen[0].args.at(-1), '+refs/lead/heartbeat:refs/lead/heartbeat', 'fetched by its full name into the same non-branch name');
   });
   test('🔴 the entry point matches a Windows argv whatever the drive letter’s case or slash direction', () => {
     const url = 'file:///C:/Users/owner/Nikatru_Platform_Public/tooling/autopilot/heartbeat.mjs';
@@ -149,16 +169,22 @@ describe('Windows: the spawn and the entry point', () => {
 describe('the reader over the contents API', () => {
   test('raw content with an optional token; a non-200 or a throw is "no beat" (→ unknown), never a guess', async () => {
     let auth;
+    const urls = [];
     const ok = await readBeatApi({ repo: 'o/r', token: 't0k', fetchImpl: async (url, init) => {
       auth = init.headers.authorization;
-      assert.match(url, /\/repos\/o\/r\/contents\/beat\.json\?ref=lead%2Fheartbeat$/);
+      urls.push(url);
+      if (url.includes('/git/ref/')) return { ok: true, json: async () => ({ object: { sha: 'd'.repeat(40) } }) };
       return { ok: true, text: async () => JSON.stringify(beat(1)) };
     } });
     assert.equal(auth, 'Bearer t0k');
     assert.equal(parseBeat(ok.text).seq, 7);
-    const anon = await readBeatApi({ repo: 'o/r', fetchImpl: async (url, init) => ({ ok: true, text: async () => String(init.headers.authorization) }) });
+    assert.match(urls[0], /\/repos\/o\/r\/git\/ref\/lead\/heartbeat$/);
+    assert.match(urls[1], new RegExp(`/repos/o/r/contents/beat\\.json\\?ref=${'d'.repeat(40)}$`));
+    assert.ok(!urls.some((u) => /heads/.test(u)), 'never read as a branch');
+    const anon = await readBeatApi({ repo: 'o/r', fetchImpl: async (url, init) => (url.includes('/git/ref/') ? { ok: true, json: async () => ({ object: { sha: 'd'.repeat(40) } }) } : { ok: true, text: async () => String(init.headers.authorization) }) });
     assert.equal(anon.text, 'undefined', 'no token → no authorization header');
     assert.equal((await readBeatApi({ repo: 'o/r', fetchImpl: async () => ({ ok: false, status: 404 }) })).text, null);
+    assert.equal((await readBeatApi({ repo: 'o/r', fetchImpl: async () => ({ ok: true, json: async () => ({ object: { sha: '../x' } }) }) })).text, null, 'a ref that names no sha is no beat');
     assert.equal((await readBeatApi({ repo: 'o/r', fetchImpl: async () => { throw new Error('ECONNRESET'); } })).text, null);
   });
   test('🔴 a repo outside owner/name never reaches a request (CodeQL 582)', async () => {

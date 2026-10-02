@@ -21,7 +21,7 @@
   "verbs": ["CLAIM", "YIELD", "RELEASE", "RECLAIM", "PROGRESS"],
   "laptopRunner": "laptop",
   "heartbeat": {
-    "ref": "lead/heartbeat",
+    "ref": "refs/lead/heartbeat",
     "file": "beat.json",
     "schemaVersion": 1,
     "modes": ["primary", "handover", "drill"],
@@ -46,7 +46,10 @@
     "STALL_H": 6,
     "LEDGER_WINDOW_H": 12,
     "LEDGER_BODY_CAP": 60000,
-    "E2E_DISPATCH_MIN_GAP_MIN": 30
+    "E2E_DISPATCH_MIN_GAP_MIN": 30,
+    "JOB_READS_PER_PASS": 5,
+    "BOARD_READS_PER_PASS": 25,
+    "REQUEST_CEILING": 80
   },
   "runner": {
     "RUNNER_HOUSEKEEPING_OPS": 6,

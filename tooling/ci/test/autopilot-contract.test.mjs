@@ -76,7 +76,7 @@ export const QUEUE_LANE_MODULES = Object.freeze(['issue-queue.mjs', 'queue-migra
 const sources = () => readdirSync(DIR).filter((n) => n.endsWith('.mjs') && !QUEUE_LANE_MODULES.includes(n)).map((n) => ({ rel: `tooling/autopilot/${n}`, text: readFileSync(join(DIR, n), 'utf8') }));
 
 test('C1 the contract holds the brief’s values', () => {
-  assert.equal(CONTRACT.heartbeat.ref, 'lead/heartbeat');
+  assert.equal(CONTRACT.heartbeat.ref, 'refs/lead/heartbeat', 'a full ref name, never a branch (refs/heads/ starts a Pages build every beat)');
   assert.equal(CONTRACT.heartbeat.file, 'beat.json');
   assert.equal(CONTRACT.heartbeat.schemaVersion, 1);
   assert.deepEqual(CONTRACT.heartbeat.modes, ['primary', 'handover', 'drill']);

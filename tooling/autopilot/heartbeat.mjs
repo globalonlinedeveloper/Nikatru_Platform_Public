@@ -10,12 +10,16 @@
 // Every name and number is tooling/autopilot/contract.json; docs/autopilot/
 // contract.md is the prose.
 //
-// THE BEAT. Ref `lead/heartbeat` in THIS repo holds ONE parentless commit whose
-// tree is one file, `beat.json`:
+// THE BEAT. Ref `refs/lead/heartbeat` in THIS repo holds ONE parentless commit
+// whose tree is one file, `beat.json`:
 //   {"v":1,"at":"<ISO UTC>","seq":<int>,"mode":"primary|handover|drill","host":"laptop"}
-// It is written through the git data API (tree → commit → force the ref), the
-// same route the `lead/patches` precedent uses. No push trigger in this repo
-// matches a non-main branch, so a beat starts nothing.
+// It is written through the git data API (tree → commit → create/force the ref by
+// its FULL name). 🔴 It is NOT a branch: nothing is ever written under refs/heads/.
+// A moving branch starts a Cloudflare Pages build (the Git integration on project
+// rajasekarselvam builds every branch that moves — a beat every 600 s is 144 failed
+// builds a day against the account's 500 a month), on top of any `push:` trigger.
+// A ref outside refs/heads/ and refs/tags/ is neither a branch nor a tag, so no
+// workflow trigger and no Pages build sees it (lead ruling on #1171, 2026-10-02).
 //
 // Usage:
 //   write   node tooling/autopilot/heartbeat.mjs write --once|--loop 600 [--mode primary|handover|drill] [--repo o/r]
@@ -41,10 +45,16 @@ const MIN = 60_000;
 // The ref, the file and the repo are interpolated into a request URL; contract.json is a
 // file, so each is held to a git/GitHub name shape before any request is built (CodeQL
 // js/file-access-to-http, alert 582; disposition in tooling/ci/codeql-dispositions.json).
-const REF_SHAPE = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+const REF_SHAPE = /^refs\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+$/;
 const FILE_SHAPE = /^[A-Za-z0-9._-]+$/;
 export const REPO_SHAPE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-if (!REF_SHAPE.test(HB.ref) || !FILE_SHAPE.test(HB.file)) throw new Error('contract.json heartbeat.ref / heartbeat.file is not a plain git name');
+const SHA_SHAPE = /^[0-9a-f]{40}$/;
+/** True for a ref that is a branch or a tag: the beat must never be one (a branch builds on Pages). */
+export const isBranchOrTag = (ref) => /^refs\/(?:heads|tags)\//.test(String(ref));
+if (!REF_SHAPE.test(HB.ref) || !FILE_SHAPE.test(HB.file)) throw new Error('contract.json heartbeat.ref must be a full refs/<ns>/<name> and heartbeat.file a plain git name');
+if (isBranchOrTag(HB.ref)) throw new Error(`contract.json heartbeat.ref ${HB.ref} is a branch or a tag: a moving branch starts a Pages build every beat`);
+/** The ref without `refs/`, as the git data API's /git/ref/{ref} and /git/refs/{ref} paths take it. */
+export const REF_PATH = HB.ref.slice('refs/'.length);
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 
 // ── PURE ────────────────────────────────────────────────────────────────────
@@ -127,13 +137,21 @@ export function outageGrade({ rowId, cadenceMs, windowMs, lastSuccessMs, laptop,
 
 const API = () => process.env.GITHUB_API_URL || 'https://api.github.com';
 
-/** The beat over the REST contents API; the token is optional (the repo is public). */
+/**
+ * The beat over the REST API; the token is optional (the repo is public). The ref is
+ * not a branch, so it is resolved first (`/git/ref/lead/heartbeat` → a commit sha),
+ * and the file is read at that sha.
+ */
 export async function readBeatApi({ repo = DEFAULT_REPO, token = null, fetchImpl = globalThis.fetch, timeoutMs = HB.CALL_CEILING_S * 1000 } = {}) {
-  const headers = { accept: 'application/vnd.github.raw+json', 'user-agent': 'nikatru-heartbeat', 'x-github-api-version': '2022-11-28' };
+  const headers = { accept: 'application/vnd.github+json', 'user-agent': 'nikatru-heartbeat', 'x-github-api-version': '2022-11-28' };
   if (token) headers.authorization = `Bearer ${token}`;
   if (!REPO_SHAPE.test(String(repo))) return { text: null, why: `repo ${JSON.stringify(repo)} is not owner/name` };
   try {
-    const res = await fetchImpl(`${API()}/repos/${repo}/contents/${HB.file}?ref=${encodeURIComponent(HB.ref)}`, { headers, signal: AbortSignal.timeout(timeoutMs) });
+    const ref = await fetchImpl(`${API()}/repos/${repo}/git/ref/${REF_PATH}`, { headers, signal: AbortSignal.timeout(timeoutMs) });
+    if (!ref.ok) return { text: null, why: `git ref API answered HTTP ${ref.status}` };
+    const sha = (await ref.json())?.object?.sha;
+    if (!SHA_SHAPE.test(String(sha))) return { text: null, why: `${HB.ref} does not name a commit sha` };
+    const res = await fetchImpl(`${API()}/repos/${repo}/contents/${HB.file}?ref=${sha}`, { headers: { ...headers, accept: 'application/vnd.github.raw+json' }, signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return { text: null, why: `contents API answered HTTP ${res.status}` };
     return { text: await res.text(), why: null };
   } catch (e) {
@@ -144,10 +162,10 @@ export async function readBeatApi({ repo = DEFAULT_REPO, token = null, fetchImpl
 /** The beat from a local clone: fetch the ref shallowly (unless told not to), then show the file. */
 export function readBeatGit({ fetch = true, run = execFileSync } = {}) {
   const opts = { shell: false, windowsHide: true, timeout: HB.CALL_CEILING_S * 1000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] };
-  const local = `refs/remotes/origin/${HB.ref}`;
+  // Fetched into the same non-branch name locally: never a remote-tracking BRANCH either.
   try {
-    if (fetch) run('git', ['fetch', '--quiet', '--depth=1', 'origin', `+refs/heads/${HB.ref}:${local}`], opts);
-    return { text: run('git', ['show', `${local}:${HB.file}`], opts), why: null };
+    if (fetch) run('git', ['fetch', '--quiet', '--no-tags', '--depth=1', 'origin', `+${HB.ref}:${HB.ref}`], opts);
+    return { text: run('git', ['show', `${HB.ref}:${HB.file}`], opts), why: null };
   } catch (e) {
     return { text: null, why: `git: ${redact(String(e.stderr || e.message).trim().split('\n')[0])}` };
   }
@@ -168,12 +186,19 @@ export function ghApi(method, path, body = null, { run = execFileSync } = {}) {
   }
 }
 
-/** One beat: previous seq → tree → parentless commit → force the ref (create it when missing). */
+/**
+ * One beat: previous seq → tree → parentless commit → force the ref (create it when
+ * missing). 🔴 The ref is `refs/lead/heartbeat` by its FULL name, never a branch:
+ * every path and body here is held off refs/heads/ (a moving branch is a Pages build).
+ */
 export function writeBeat({ repo = DEFAULT_REPO, mode, now = new Date(), gh = ghApi } = {}) {
   let prev = null;
   try {
-    const cur = gh('GET', `repos/${repo}/contents/${HB.file}?ref=${encodeURIComponent(HB.ref)}`);
-    prev = parseBeat(Buffer.from(String(cur?.content ?? ''), 'base64').toString('utf8'));
+    const sha = gh('GET', `repos/${repo}/git/ref/${REF_PATH}`)?.object?.sha;
+    if (SHA_SHAPE.test(String(sha))) {
+      const cur = gh('GET', `repos/${repo}/contents/${HB.file}?ref=${sha}`);
+      prev = parseBeat(Buffer.from(String(cur?.content ?? ''), 'base64').toString('utf8'));
+    }
   } catch {
     prev = null; // the first beat, or a garbled one: seq restarts at 1
   }
@@ -181,10 +206,10 @@ export function writeBeat({ repo = DEFAULT_REPO, mode, now = new Date(), gh = gh
   const tree = gh('POST', `repos/${repo}/git/trees`, { tree: [{ path: HB.file, mode: '100644', type: 'blob', content: `${JSON.stringify(beat)}\n` }] });
   const commit = gh('POST', `repos/${repo}/git/commits`, { message: `heartbeat seq=${beat.seq} mode=${beat.mode}`, tree: tree.sha, parents: [] });
   try {
-    gh('PATCH', `repos/${repo}/git/refs/heads/${HB.ref}`, { sha: commit.sha, force: true });
+    gh('PATCH', `repos/${repo}/git/refs/${REF_PATH}`, { sha: commit.sha, force: true });
   } catch (e) {
     if (!/\b(404|422)\b|not exist|Not Found/i.test(e.message)) throw e;
-    gh('POST', `repos/${repo}/git/refs`, { ref: `refs/heads/${HB.ref}`, sha: commit.sha });
+    gh('POST', `repos/${repo}/git/refs`, { ref: HB.ref, sha: commit.sha });
   }
   return { beat, commit: commit.sha };
 }

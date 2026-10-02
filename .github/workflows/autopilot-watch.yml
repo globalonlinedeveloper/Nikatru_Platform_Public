@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      # why: the checkout of main, and the laptop heartbeat (ref lead/heartbeat).
+      # why: the checkout of main, and the laptop heartbeat (ref refs/lead/heartbeat, not a branch).
       contents: read
       # why: the ci-gate check-runs on each open PR's head.
       checks: read

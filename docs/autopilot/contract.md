@@ -15,13 +15,18 @@ While the laptop is provably off, its scheduled duties are graded DEGRADED rathe
 
 ## The heartbeat
 
-- Ref `lead/heartbeat` in the Public repo, holding one parentless commit whose tree is one file,
+- Ref `refs/lead/heartbeat` in the Public repo — **not a branch**: nothing is ever written under
+  `refs/heads/`, because the Cloudflare Pages Git integration (project `rajasekarselvam`) builds
+  every branch that moves, and a beat every 600 s would be 144 failed Pages builds a day against
+  the account's 500 a month. It holds one parentless commit whose tree is one file,
   `beat.json`:
   `{"v":1,"at":"<ISO UTC>","seq":<int>,"mode":"primary|handover|drill","host":"laptop"}`.
 - Written by `node tooling/autopilot/heartbeat.mjs write --loop 600 --mode primary` on the
-  laptop (its own `gh` auth; git data API: tree, parentless commit, forced ref).
-- Read by `node tooling/autopilot/heartbeat.mjs read` from anywhere: a shallow fetch of the ref,
-  or the REST contents API with an optional token.
+  laptop (its own `gh` auth; git data API: tree, parentless commit, the ref created or forced by
+  its FULL name).
+- Read by `node tooling/autopilot/heartbeat.mjs read` from anywhere: a shallow fetch of the ref
+  into the same local name, or the REST API (`/git/ref/lead/heartbeat` → the commit sha → the
+  contents at that sha) with an optional token.
 
 | Threshold | Value | Meaning |
 |---|---|---|
@@ -75,6 +80,9 @@ Private queue issues (see queue.md): `cloud-lane`, `ready`, `blocked`, `claimed:
 | `LEDGER_WINDOW_H` = 12 | hours | the run ledger lists every run that ended red in this window |
 | `LEDGER_BODY_CAP` = 60000 | characters | the ledger issue body; the oldest rows are dropped first |
 | `E2E_DISPATCH_MIN_GAP_MIN` = 30 | minutes | at most one E2E-after-deploy dispatch per this gap |
+| `JOB_READS_PER_PASS` = 5 | requests | a pass reads the jobs of at most this many failed runs (newest first); the rest show `jobs not read` |
+| `BOARD_READS_PER_PASS` = 25 | PRs | a pass re-reads check-runs for at most this many PRs; a PR whose head is unchanged since the last ledger and whose ci-gate was already GREEN or RED reuses that verdict and costs nothing |
+| `REQUEST_CEILING` = 80 | requests | the most REST requests one pass may make; the next one is refused and the pass writes nothing (exit 2) |
 
 ## The runners (`docs/autopilot/runner.prompt.md`)
 

@@ -633,7 +633,7 @@
       "path": "tooling/autopilot/heartbeat.mjs",
       "disposition": "by-design",
       "host": "api.github.com",
-      "reason": "readBeatApi GETs the laptop heartbeat (beat.json on ref lead/heartbeat) from the GitHub contents API; the ref and file name come from tooling/autopilot/contract.json, the autopilot contract, and reading that beat is the function's purpose (O-LAPTOP-OUTAGE-READS-AS-RED). The file cannot choose the host (GITHUB_API_URL or the literal api.github.com); the module refuses at load a ref or file that is not a plain git name, readBeatApi refuses a repo that is not owner/name before a request is built, and the ref is URL-encoded. Added 2026-10-02 (club-rt-autopilot)."
+      "reason": "readBeatApi GETs the laptop heartbeat (beat.json on the non-branch ref refs/lead/heartbeat, resolved through /git/ref to a commit sha the module holds to 40 hex) from the GitHub contents API; the ref and file name come from tooling/autopilot/contract.json, the autopilot contract, and reading that beat is the function's purpose (O-LAPTOP-OUTAGE-READS-AS-RED). The file cannot choose the host (GITHUB_API_URL or the literal api.github.com); the module refuses at load a ref or file that is not a plain git name, readBeatApi refuses a repo that is not owner/name before a request is built, and the ref is held to refs/<ns>/<name> and refused when it is a branch or a tag. Added 2026-10-02 (club-rt-autopilot)."
     },
     {
       "alert": 583,

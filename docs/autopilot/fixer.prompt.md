@@ -9,7 +9,7 @@ Follow the steps in order. Every name and number here is `tooling/autopilot/cont
 ## 1. Standby check — always first
 
 ```
-git fetch --depth=1 origin lead/heartbeat
+git fetch --depth=1 --no-tags origin +refs/lead/heartbeat:refs/lead/heartbeat
 node tooling/autopilot/heartbeat.mjs read --no-fetch
 ```
 
