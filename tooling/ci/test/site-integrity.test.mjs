@@ -32,10 +32,11 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadContext } from '../../entity/facts.mjs';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
 // The same function the guard and the generator both evaluate. [12]W-3a
 import { today } from '../../sites/lastmod.mjs';
 
@@ -284,7 +285,31 @@ function selfHosted(dir, { root = 'a' } = {}) {
   const url = join(dir, 'apps', 'demo', 'store', 'fixture-store', 'privacy-policy-url.txt');
   mkdirSync(dirname(url), { recursive: true });
   writeFileSync(url, `${FIXTURE_ORIGIN}\n`);
+  // One served product screenshot traced to a live capture frame, for the
+  // provenance limb's floor (O-SITE-SCREENSHOTS-STALE) — same bargain as above.
+  // Only on a root that already carries a privacy page: sites/<root>/apps/ makes
+  // a root app-facing, and the cases about a root that is NOT must stay so.
+  if (existsSync(join(site, 'privacy.html'))) writeShot(dir, root);
   return to;
+}
+
+/** The provenance limb's three parts, written into `dir`: a capture frame with
+ *  its CAPTURE.json, a served web copy under sites/<root>/apps/shots/, and the
+ *  tooling/site-shots.json entry tying them by hash. Each case below breaks one. */
+const SHOT_FROM = 'apps/demo/store/fixture-store/screenshots/01-home.png';
+const sha = (buf) => createHash('sha256').update(buf).digest('hex');
+function writeShot(dir, root, { web = 'RIFF-web-copy', master = 'PNG-master', capture = { capturedBy: 'tooling/store/capture.mjs', posture: 'live' }, record } = {}) {
+  const file = `sites/${root}/apps/shots/demo-1-v1.webp`;
+  const put = (rel, body) => {
+    mkdirSync(dirname(join(dir, rel)), { recursive: true });
+    writeFileSync(join(dir, rel), body);
+  };
+  put(file, web);
+  put(SHOT_FROM, master);
+  put(`${dirname(SHOT_FROM)}/CAPTURE.json`, JSON.stringify(capture));
+  const shots = record ?? [{ file, sha256: sha(web), from: SHOT_FROM, sourceSha256: sha(master) }];
+  put('tooling/site-shots.json', JSON.stringify({ shots }));
+  return file;
 }
 
 const REQUIRED = ['index.html', '404.html', 'robots.txt', '_headers'];
@@ -1529,6 +1554,91 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
     const r = run(dir, { from: selfHosted(dir, { root: 'a' }) });
     assert.equal(r.code, 2, r.out); // COVERAGE LOST alone is exit 2, not a finding (O-EXIT2-CONVENTION-GAP)
     assert.match(r.out, /sites\/nikatru is no longer scanned for legal pages/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-02 — O-SITE-SCREENSHOTS-STALE. The served product screenshots showed
+// the retired name and an offline banner while clean store captures sat beside
+// them; nothing tied one to the other. Each case is one edit on a passing
+// self-hosted fixture. Mutation-proven on the real tree as well: the old v1 image
+// put back, v1 bytes written over a v2 name, a byte appended to a Play frame, the
+// capture's posture set to demo, and the shots directory moved each turn it red,
+// and an emptied record with no shots is COVERAGE LOST.
+describe('check-site-integrity · a served screenshot is a recorded store capture', () => {
+  function afterEdit(name, edit) {
+    const dir = build(name, { sites: ['nikatru', 'b'], legal: allThree('nikatru') });
+    const from = selfHosted(dir, { root: 'nikatru' });
+    edit(dir);
+    return run(dir, { from });
+  }
+
+  test('the scaffolded screenshot passes and is counted', () => {
+    const r = afterEdit('shot-clean', () => {});
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 served product screenshot\(s\) match/);
+  });
+
+  test('an old image put back beside the recorded one FAILS — no recorded capture', () => {
+    const r = afterEdit('shot-old-back', (d) => writeFileSync(join(d, 'sites/nikatru/apps/shots/demo-1-v0.webp'), 'RIFF-old'));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /demo-1-v0\.webp is served as a product screenshot and tooling\/site-shots\.json records no capture/);
+  });
+
+  test('other bytes under a recorded name FAIL', () => {
+    const r = afterEdit('shot-swapped', (d) => writeFileSync(join(d, 'sites/nikatru/apps/shots/demo-1-v1.webp'), 'RIFF-offline-banner'));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /demo-1-v1\.webp does not match its recorded bytes/);
+  });
+
+  test('a re-captured store frame FAILS until the web copy is re-derived', () => {
+    const r = afterEdit('shot-recaptured', (d) => writeFileSync(join(d, SHOT_FROM), 'PNG-new-capture'));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /that frame has changed on disk/);
+  });
+
+  test('a source whose capture is not live, or not by the pipeline, FAILS', () => {
+    const demo = afterEdit('shot-demo', (d) => writeShot(d, 'nikatru', { capture: { capturedBy: 'x.mjs', posture: 'demo' } }));
+    assert.equal(demo.code, 1, demo.out);
+    assert.match(demo.out, /does not record a live capture by the pipeline/);
+    const byHand = afterEdit('shot-byhand', (d) => writeShot(d, 'nikatru', { capture: { posture: 'live' } }));
+    assert.equal(byHand.code, 1, byHand.out);
+    assert.match(byHand.out, /capturedBy null/);
+  });
+
+  test('a source outside a store screenshot set FAILS', () => {
+    const r = afterEdit('shot-elsewhere', (d) => {
+      const file = 'sites/nikatru/apps/shots/demo-1-v1.webp';
+      const web = readFileSync(join(d, file));
+      writeFileSync(join(d, 'sites/nikatru/og-image.png'), 'PNG');
+      writeFileSync(
+        join(d, 'tooling/site-shots.json'),
+        JSON.stringify({ shots: [{ file, sha256: sha(web), from: 'sites/nikatru/og-image.png', sourceSha256: sha('PNG') }] }),
+      );
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /not a frame of a store-screenshot capture/);
+  });
+
+  test('a record entry for a file nobody serves FAILS as stale', () => {
+    const r = afterEdit('shot-stale', (d) => rmSync(join(d, 'sites/nikatru/apps/shots/demo-1-v1.webp')));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /records sites\/nikatru\/apps\/shots\/demo-1-v1\.webp, which no deploy root serves/);
+  });
+
+  test('an unreadable record FAILS rather than passing every image', () => {
+    const r = afterEdit('shot-badjson', (d) => writeFileSync(join(d, 'tooling/site-shots.json'), '{'));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /tooling\/site-shots\.json cannot be read/);
+  });
+
+  test('COVERAGE LOST when no screenshot is served or recorded at all', () => {
+    const r = afterEdit('shot-empty', (d) => {
+      rmSync(join(d, 'sites/nikatru/apps/shots'), { recursive: true, force: true });
+      writeFileSync(join(d, 'tooling/site-shots.json'), JSON.stringify({ shots: [] }));
+    });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /provenance limb ranged over nothing/);
   });
 });
 
