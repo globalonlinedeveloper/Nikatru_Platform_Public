@@ -367,10 +367,12 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     for (const rel of ['tooling/ports', 'tooling/capability-register.json', 'tooling/legal/provider-register.json', 'tooling/channel-register.json', 'tooling/house-identity.json', 'tooling/ops/port-switch.mjs',
       'tooling/catalog/fee-register.json', 'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart',
       // port-pay-client: the client half's seams, adapters and conformance tests (limb 10).
-      'packages/purchases/lib', 'packages/purchases/test/conformance', 'packages/billing_revenuecat/lib', 'packages/billing_revenuecat/test/revenuecat_bridge_conformance_test.dart']) copy(rel);
+      'packages/purchases/lib', 'packages/purchases/test/conformance', 'packages/billing_revenuecat/lib', 'packages/billing_revenuecat/test/revenuecat_bridge_conformance_test.dart',
+      // the channels port: the contract, its submitters and the conformance file that calls the runner
+      'tooling/release', 'extensions/scripts/publish-cws.mjs', 'extensions/scripts/publish-edge.mjs', 'extensions/scripts/publish-amo.mjs']) copy(rel);
     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
   });
-  it('green control: payments and mail claim and earn L3; auth and telemetry claim and earn L2', () => {
+  it('green control: payments and mail claim and earn L3; auth and telemetry claim and earn L2; channels claims L2 and earns L3', () => {
     const r = run(root);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /payments\s+L3\s+L3\s+L3/);
@@ -380,6 +382,8 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     assert.match(r.out, /PENDING payments\/revenuecat: refund reversed or dispute won restores \(O-REVENUECAT-VERIFIER\)/);
     assert.match(r.out, /payments\/client\s+L3\s+L3\s+L3/);
     assert.match(r.out, /limb 10: payments\/client — PurchaseRail 3 conformant, IapBridge 2 conformant/);
+    assert.match(r.out, /channels\s+L2\s+L3\s+L3/);
+    assert.match(r.out, /CANDIDATE channels\/indus-appstore \(Indus Appstore\): not submittable — \[ADR 076\] rider; commission UNREAD/);
   });
   // port-pay-client · MUTATE THE REAL TREE: RevenueCat's conformance test that imports the suite
   // but never CALLS the runner reddens limb 10, and the client half falls to L2 (IapBridge has one).
@@ -447,6 +451,40 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       // resend alone: the SES draft passes the suite too, and is not counted.
       assert.match(r.out, /mail\.json claims L3 and earns L2: 1 conformant adapter\(s\)/);
     });
+  });
+  // ⏱ 2026-10-01 (port-channels): the per-channel adapter names its register row, not a vendor.
+  const mutateChannels = (fn) => {
+    const rel = join(root, 'tooling/ports/channels.json');
+    const before = readFileSync(rel, 'utf8');
+    const doc = JSON.parse(before);
+    fn(doc);
+    writeFileSync(rel, JSON.stringify(doc));
+    try { return run(root); } finally { writeFileSync(rel, before); }
+  };
+  it('red: a channel adapter whose `channel` is no register row reddens limb 8', () => {
+    const r = mutateChannels((d) => { d.adapters.find((a) => a.id === 'amo').channel = 'firefox-addons'; });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 8 \(cross-register\): tooling\/ports\/channels\.json adapter `amo` names channel `firefox-addons`, which is no tooling\/channel-register\.json row/);
+  });
+  it('red: a non-fake adapter with neither a vendor nor a channel reddens limb 1', () => {
+    const r = mutateChannels((d) => { delete d.adapters.find((a) => a.id === 'linux-snap').channel; });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 1 \(schema\): .*adapter `linux-snap` has vendor null but is not a fake and names no `channel`/);
+  });
+  it('red: two adapters naming one channel redden limb 8', () => {
+    const r = mutateChannels((d) => { d.adapters.find((a) => a.id === 'macos-appstore').channel = 'ios-appstore'; });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /channel `ios-appstore` is named by 2 adapters/);
+  });
+  it('red: a candidate that already has a register row reddens limb 8', () => {
+    const r = mutateChannels((d) => { d.candidates[0].id = 'linux-snap'; });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /candidate `linux-snap` already has a tooling\/channel-register\.json row/);
+  });
+  it('red: a candidate that claims to be submittable reddens limb 1', () => {
+    const r = mutateChannels((d) => { d.candidates[0].submittable = true; });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 1 \(schema\): tooling\/ports\/channels\.json \$\.candidates\[0\]\.submittable: must be false/);
   });
   it('red: deleting one vendor from _non-port.json reddens limb 8', () => {
     const rel = join(root, 'tooling/ports/_non-port.json');

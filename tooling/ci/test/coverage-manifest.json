@@ -602,6 +602,9 @@
   "native-symbol-upload.test.mjs":
     26,
 
+  "new-channel.test.mjs":
+    8,
+
   "new-product-plan.test.mjs":
     41,
 
@@ -717,7 +720,7 @@
     37,
 
   "ports.test.mjs":
-    64,
+    69,
 
   "post-deploy-smoke.test.mjs":
     157,
