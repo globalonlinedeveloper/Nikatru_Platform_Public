@@ -25,7 +25,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
     sb.GoTrueClient? client,
     sb.GoTrueClient? nativeCredentials,
     Future<void> Function()? requestServerDeletion,
-    Future<void> Function()? revokeAtWorkers,
+    Future<void> Function(String accessToken)? revokeAtWorkers,
     DateTime Function()? clock,
     this.redirects = AuthRedirects.none,
     this.refreshSkew = const Duration(seconds: 30),
@@ -105,7 +105,13 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// of all devices" or a password reset. Null (a test, an app with no platform
   /// Worker) keeps the GoTrue-only behaviour; tooling/ci/assert-session-
   /// revocation.mjs limb 3 refuses an app that builds this adapter without it.
-  final Future<void> Function()? _revokeAtWorkers;
+  ///
+  /// ⏱ 2026-10-02 · review 1 of #1140 — it is handed the BEARER to send, rather
+  /// than reading this adapter's current token, because "Log out of all
+  /// devices" calls it AFTER GoTrue's global sign-out (see [signOut]), when this
+  /// device holds no session any more. The token it is handed is the one this
+  /// device held a moment before, still inside its `exp`.
+  final Future<void> Function(String accessToken)? _revokeAtWorkers;
 
   sb.GoTrueClient get _auth => _injected ?? sb.Supabase.instance.client.auth;
 
@@ -676,25 +682,41 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// watermark and passes. A refresh that fails here is not the reset's
   /// failure: the next Worker 401 refreshes or signs out, as any 401 does.
   ///
+  /// The order is already the one that leaves no window: GoTrue ended the
+  /// other sessions' refresh tokens when it set the password, so no device
+  /// can mint a token between that and the revoke.
+  ///
   /// 🔴 A WORKER FAILURE IS SURFACED: the password IS set and the other devices
   /// are NOT signed out, so the refusal carries its own code
   /// ([sessionsNotRevokedCode]) and the screen says exactly that.
+  ///
+  /// ⏱ 2026-10-02 · review 1 of #1140, finding 1 — and the session is refreshed
+  /// EVEN THEN. A failed revoke may still have written the Workers' record (a
+  /// `d1Pending` answer, a lost response), which refuses this device's token
+  /// too; refreshing before the refusal is raised leaves this device with a
+  /// token issued after any such record, so "Log out of all devices", the
+  /// advice the refusal gives, can still be sent.
   Future<void> _revokeAfterReset() async {
-    final Future<void> Function()? revoke = _revokeAtWorkers;
-    if (revoke == null) return;
+    final Future<void> Function(String accessToken)? revoke = _revokeAtWorkers;
+    final String? token = _auth.currentSession?.accessToken;
+    if (revoke == null || token == null) return;
+    bool revoked = true;
     try {
-      await revoke();
+      await revoke(token);
     } catch (_) {
-      throw core.AuthFailure(
-        'Your new password is set, but your other devices could not be '
-        'signed out.',
-        code: sessionsNotRevokedCode,
-      );
+      revoked = false;
     }
     try {
       await _auth.refreshSession();
     } catch (_) {
       // The 401 path owns a refresh that fails; see above.
+    }
+    if (!revoked) {
+      throw core.AuthFailure(
+        'Your new password is set, but your other devices could not be '
+        'signed out.',
+        code: sessionsNotRevokedCode,
+      );
     }
   }
 
@@ -755,14 +777,26 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// the session stored on this device — is rethrown as [core.AuthFailure],
   /// never as the SDK's own type, and says only that it did not finish.
   ///
-  /// ⏱ 2026-10-02 · AB-A4-01 — and THEN, BEFORE GoTrue's global sign-out, the
-  /// Workers are told ([_revokeAtWorkers]): GoTrue ends refresh tokens, never an
-  /// access token already issued, and only the Workers' revocation list does
-  /// that. Before, not after: GoTrue's call signs THIS device out, after which
-  /// there is no token left to make the Worker call with. A Worker that cannot
-  /// be reached or refuses is surfaced, never swallowed, and nothing has been
-  /// signed out yet, so the person is still signed in everywhere and can try
-  /// again.
+  /// ⏱ 2026-10-02 · AB-A4-01 — and the Workers are told ([_revokeAtWorkers]):
+  /// GoTrue ends refresh tokens, never an access token already issued, and
+  /// only the Workers' revocation list does that.
+  ///
+  /// 🔴 GOTRUE FIRST, THEN THE WORKERS (review 1 of #1140, finding 2). The
+  /// other order left a window: between revoke-all (which refuses tokens issued
+  /// BEFORE it) and GoTrue's call, another device that refreshed was issued a
+  /// token AFTER the watermark, which every Worker then admitted for up to an
+  /// hour. With GoTrue first the refresh tokens are dead before the watermark
+  /// is written, so no device can be issued a token after it. The Worker call
+  /// is made with the access token this device held a moment earlier (read,
+  /// and refreshed if due, before GoTrue's call): GoTrue's sign-out ends
+  /// sessions, not the signature, so the Worker still accepts it until the
+  /// revoke it carries.
+  ///
+  /// A GoTrue failure is surfaced and the Workers are NOT told (nothing proves
+  /// the refresh tokens are dead, so a watermark would only re-open the
+  /// window). A Worker failure AFTER GoTrue is surfaced too, and says what is
+  /// true: every device is signed out of GoTrue, and the sign-ins already open
+  /// elsewhere may not be refused yet.
   ///
   /// [core.SignOutScope.local] is exactly the call it always was.
   @override
@@ -775,7 +809,9 @@ class SupabaseAuthRepository implements core.AuthRepository {
     if (scope == core.SignOutScope.local) {
       return _auth.signOut(scope: sdkSignOutScopeOf(scope));
     }
-    if (_auth.currentSession != null && await currentAccessToken() == null) {
+    final bool hadSession = _auth.currentSession != null;
+    final String? token = hadSession ? await currentAccessToken() : null;
+    if (hadSession && token == null) {
       throw core.AuthFailure(
         _auth.currentSession != null
             ? 'Could not reach the server. You are still signed in on every '
@@ -784,25 +820,20 @@ class SupabaseAuthRepository implements core.AuthRepository {
                 'reached.',
       );
     }
-    await _revokeAtWorkersOrRefuse();
     try {
       await _auth.signOut(scope: sdkSignOutScopeOf(scope));
     } catch (_) {
       throw core.AuthFailure('Signing out of every device did not finish.');
     }
-  }
-
-  /// [_revokeAtWorkers], or a refusal that says nothing was signed out.
-  Future<void> _revokeAtWorkersOrRefuse() async {
-    final Future<void> Function()? revoke = _revokeAtWorkers;
-    if (revoke == null) return;
+    final Future<void> Function(String accessToken)? revoke = _revokeAtWorkers;
+    if (revoke == null || token == null) return;
     try {
-      await revoke();
+      await revoke(token);
     } catch (_) {
       throw core.AuthFailure(
-        'Could not reach the server. You are still signed in on every '
-        'device.',
-        code: core.AuthFailure.network,
+        'You are signed out on every device, but the sign-ins already open '
+        'on other devices could not all be ended. Sign in and use Log out '
+        'of all devices again to finish.',
       );
     }
   }

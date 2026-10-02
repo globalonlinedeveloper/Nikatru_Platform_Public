@@ -1193,8 +1193,10 @@ authRepositoryProvider = Provider<core.AuthRepository>((ref) {
     // reset tell the Workers too: GoTrue ends refresh tokens only, so without
     // this another device keeps calling both Workers for up to an hour. Limb 3
     // of tooling/ci/assert-session-revocation.mjs refuses an app without it.
-    revokeAtWorkers: () =>
-        requestWorkerSessionRevocation(ref.read(platformRestClientProvider)),
+    revokeAtWorkers: (String accessToken) => requestWorkerSessionRevocation(
+      ref.read(platformRestClientProvider),
+      accessToken: accessToken,
+    ),
     // 🔴 WITHOUT THIS EVERY AUTH MAIL POINTS AT THE PROJECT'S SITE URL — ONE URL
     // for the whole portfolio — so a stamped app's users would land, invisibly,
     // in a DIFFERENT app. ⏱ 2026-09-23 — one derivation for all five

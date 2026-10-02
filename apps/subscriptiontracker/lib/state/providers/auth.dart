@@ -136,9 +136,11 @@ final Provider<AuthRepository> authRepositoryProvider =
               // both Workers for up to an hour. Limb 3 of
               // tooling/ci/assert-session-revocation.mjs refuses an app
               // without it.
-              revokeAtWorkers: () => requestWorkerSessionRevocation(
-                ref.read(platformRestClientProvider),
-              ),
+              revokeAtWorkers: (String accessToken) =>
+                  requestWorkerSessionRevocation(
+                    ref.read(platformRestClientProvider),
+                    accessToken: accessToken,
+                  ),
               // 🔴 UNSET, EVERY AUTH LINK RESOLVES TO THE PROJECT'S SITE URL —
               // one URL shared by every app the portfolio's single Supabase
               // project authenticates. gotrue does not error on an absent

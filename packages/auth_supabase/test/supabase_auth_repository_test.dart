@@ -1339,45 +1339,105 @@ void main() {
   // both Workers for up to an hour, because nothing called the Workers'
   // POST /v1/sessions/revoke-all. The adapter now does, through
   // `revokeAtWorkers`, and these pin the order and the failure.
-  group('AB-A4-01 · the Workers are told before GoTrue, and a failure is said', () {
+  // ⏱ 2026-10-02 · review 1 of #1140 — GoTrue FIRST, then the Workers, with
+  // the token held before GoTrue's call; and a Worker failure after GoTrue
+  // says what is true.
+  group('AB-A4-01 · GoTrue first, then the Workers, and a failure is said', () {
     final DateTime now = DateTime.utc(2026, 8, 1, 12);
     sb.Session live() =>
         _session('live', expiry: now.add(const Duration(hours: 1)));
 
-    test('🔴 log out of all devices: revoke-all is sent BEFORE the GoTrue global sign-out', () async {
+    test('🔴 log out of all devices: GoTrue\'s global sign-out BEFORE revoke-all, '
+        'which carries the token this device held', () async {
       final List<String> order = <String>[];
       final _FakeGoTrue g = _FakeGoTrue(session: live(), onSignOut: () => order.add('gotrue'));
       final SupabaseAuthRepository auth = SupabaseAuthRepository(
         client: g,
         clock: () => now,
-        revokeAtWorkers: () async => order.add('workers'),
+        revokeAtWorkers: (String token) async => order.add('workers:${_label(token)}'),
       );
 
       await auth.signOut(scope: core.SignOutScope.global);
 
-      expect(order, <String>['workers', 'gotrue'],
-          reason: 'after GoTrue signs this device out there is no token left to tell the Workers with');
+      expect(order, <String>['gotrue', 'workers:live'],
+          reason: 'revoke-all first left a window: a device refreshing between the two '
+              'was issued a token after the watermark, admitted for an hour');
       expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.global]);
     });
 
-    test('🔴 the Workers cannot be told: an AuthFailure, and NOTHING is signed out', () async {
+    test('🔴 an expired token is refreshed BEFORE GoTrue, and the REFRESHED one is sent', () async {
+      final List<String> order = <String>[];
+      final _FakeGoTrue g = _FakeGoTrue(
+        session: _session('stale', expiry: now.subtract(const Duration(minutes: 5))),
+        onSignOut: () => order.add('gotrue'),
+      );
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        revokeAtWorkers: (String token) async => order.add('workers:${_label(token)}'),
+      );
+
+      await auth.signOut(scope: core.SignOutScope.global);
+
+      expect(order, <String>['gotrue', 'workers:refreshed-1']);
+    });
+
+    test('🔴 the Workers cannot be told AFTER GoTrue: GoTrue IS signed out, and the '
+        'refusal says so, never "could not reach … still signed in"', () async {
       final _FakeGoTrue g = _FakeGoTrue(session: live());
       final SupabaseAuthRepository auth = SupabaseAuthRepository(
         client: g,
         clock: () => now,
-        revokeAtWorkers: () async => throw StateError('503 revocation_unavailable'),
+        // What requestWorkerSessionRevocation throws for a 200 d1Pending, or a
+        // 401 to its first attempt: the server answered, and it is final.
+        revokeAtWorkers: (String token) async => throw StateError('d1_pending'),
       );
 
       await expectLater(
         auth.signOut(scope: core.SignOutScope.global),
-        throwsA(isA<core.AuthFailure>().having(
-          (core.AuthFailure e) => e.message,
-          'message',
-          contains('still signed in on every device'),
-        )),
+        throwsA(isA<core.AuthFailure>()
+            .having((core.AuthFailure e) => e.message, 'message', contains('signed out on every device'))
+            .having((core.AuthFailure e) => e.message, 'message', isNot(contains('still signed in')))
+            .having((core.AuthFailure e) => e.code, 'code', isNot(core.AuthFailure.network))),
       );
-      expect(g.signOutScopes, isEmpty, reason: 'a swallowed failure would report a sign-out the Workers never saw');
-      expect(auth.currentUser, isNotNull);
+      expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.global],
+          reason: 'GoTrue\'s global sign-out runs whatever the Workers answer');
+      expect(auth.currentUser, isNull);
+    });
+
+    test('🔴 a lost response the request retried to a 401 (done) ends signed out, with no refusal', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: live());
+      int calls = 0;
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        // requestWorkerSessionRevocation returns normally for that case
+        // (packages/api_client session_revocation_request_test.dart).
+        revokeAtWorkers: (String token) async => calls++,
+      );
+
+      await auth.signOut(scope: core.SignOutScope.global);
+
+      expect(calls, 1);
+      expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.global]);
+      expect(auth.currentUser, isNull);
+    });
+
+    test('GoTrue\'s global sign-out fails: the Workers are NOT told, and it is said', () async {
+      int calls = 0;
+      final _FakeGoTrue g = _FakeGoTrue(session: live(), signOutFailure: true);
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        revokeAtWorkers: (String token) async => calls++,
+      );
+
+      await expectLater(
+        auth.signOut(scope: core.SignOutScope.global),
+        throwsA(isA<core.AuthFailure>()
+            .having((core.AuthFailure e) => e.message, 'message', contains('did not finish'))),
+      );
+      expect(calls, 0, reason: 'nothing proves the refresh tokens are dead, so a watermark would re-open the window');
     });
 
     test('the ordinary Log out never calls the Workers', () async {
@@ -1386,7 +1446,7 @@ void main() {
       final SupabaseAuthRepository auth = SupabaseAuthRepository(
         client: g,
         clock: () => now,
-        revokeAtWorkers: () async => calls++,
+        revokeAtWorkers: (String token) async => calls++,
       );
 
       await auth.signOut();
@@ -1400,20 +1460,22 @@ void main() {
       final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
       final SupabaseAuthRepository auth = SupabaseAuthRepository(
         client: g,
-        revokeAtWorkers: () async => order.add('workers:${g.passwordsSet.length}:${g.refreshCalls}'),
+        revokeAtWorkers: (String token) async =>
+            order.add('workers:${_label(token)}:${g.passwordsSet.length}:${g.refreshCalls}'),
       );
 
       await auth.updatePassword(newPassword: 'correct-horse-battery');
 
-      expect(order, <String>['workers:1:0'], reason: 'told after the password is set and before the refresh');
+      expect(order, <String>['workers:live:1:0'], reason: 'told after the password is set and before the refresh');
       expect(g.refreshCalls, 1, reason: 'revoke-all refuses this device\'s token too; the refreshed one passes');
     });
 
-    test('🔴 a new password and the Workers cannot be told: the refusal SAYS the password is set', () async {
+    test('🔴 a new password and the Workers cannot be told: the session is STILL refreshed, '
+        'and the refusal SAYS the password is set', () async {
       final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
       final SupabaseAuthRepository auth = SupabaseAuthRepository(
         client: g,
-        revokeAtWorkers: () async => throw StateError('offline'),
+        revokeAtWorkers: (String token) async => throw StateError('d1_pending'),
       );
 
       await expectLater(
@@ -1423,6 +1485,9 @@ void main() {
             .having((core.AuthFailure e) => e.message, 'message', contains('new password is set'))),
       );
       expect(g.passwordsSet, <String>['correct-horse-battery']);
+      expect(g.refreshCalls, 1,
+          reason: 'a d1Pending answer wrote the record that refuses this device\'s token; '
+              'without the refresh, the advice "Log out of all devices" would meet a 401');
     });
   });
 }
