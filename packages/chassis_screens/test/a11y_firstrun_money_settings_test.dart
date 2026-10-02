@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_chassis_screens/firstrun/onboarding_screen.dart';
+import 'package:nikatru_chassis_screens/firstrun/setup_steps_view.dart';
 import 'package:nikatru_chassis_screens/monetization/manage_plan_screen.dart';
 import 'package:nikatru_chassis_screens/settings/devices_section.dart';
 import 'package:nikatru_chassis_screens/monetization/paywall_screen.dart';
@@ -44,6 +45,82 @@ void main() {
   ];
 
   // ── OnboardingView ────────────────────────────────────────────────────────
+  // ⏱ ST-T9 (EN-18): the after-sign-in setup's frame, swept in the same
+  // change that adds it to SWEPT_FLOOR_BY_ROOT.
+  // ⏱ ST-T9 (EN-18): the after-sign-in setup's frame, swept in the same
+  // change that adds it to SWEPT_FLOOR_BY_ROOT.
+  group('a11y: after-sign-in setup', () {
+    testWidgets('light, kPhone', (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      try {
+        await pumpForA11y(
+          tester,
+          kPhone,
+          SetupStepsView(
+            steps: const <SetupStep>[
+              SetupStep(title: 'One', body: 'The first thing'),
+              SetupStep(title: 'Two', body: 'The second thing'),
+            ],
+            onFinish: () {},
+            onSkip: () {},
+            nextLabel: 'Next',
+            finishLabel: 'Done',
+            skipLabel: 'Skip',
+            backLabel: 'Back',
+            positionLabel: (int i, int n) => 'Step $i of $n',
+          ),
+          brightness: Brightness.light,
+        );
+        expectSweepHadSubjects(
+          tester,
+          'setup (light)',
+          tappable: 2,
+          labelled: 3,
+        );
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      } finally {
+        handle.dispose();
+      }
+    }, variant: kTapTargetPlatforms);
+
+    testWidgets('dark, kPhone', (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      try {
+        await pumpForA11y(
+          tester,
+          kPhone,
+          SetupStepsView(
+            steps: const <SetupStep>[
+              SetupStep(title: 'One', body: 'The first thing'),
+              SetupStep(title: 'Two', body: 'The second thing'),
+            ],
+            onFinish: () {},
+            onSkip: () {},
+            nextLabel: 'Next',
+            finishLabel: 'Done',
+            skipLabel: 'Skip',
+            backLabel: 'Back',
+            positionLabel: (int i, int n) => 'Step $i of $n',
+          ),
+          brightness: Brightness.dark,
+        );
+        expectSweepHadSubjects(
+          tester,
+          'setup (dark)',
+          tappable: 2,
+          labelled: 3,
+        );
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      } finally {
+        handle.dispose();
+      }
+    }, variant: kTapTargetPlatforms);
+  });
+
   group('a11y: onboarding', () {
     testWidgets('light, kPhone', (WidgetTester tester) async {
       final SemanticsHandle handle = tester.ensureSemantics();

@@ -703,10 +703,32 @@ const REQUIRED_COVERAGE = [
     // Measured by this guard's own run on the merge: "18 of 18 reachable
     // surface(s) carry an a11y sweep, from 1 a11y test file(s) across 113
     // case(s)".
-    surfaces: 18,
+    // ⏱ 2026-10-01 · ST-T9 (EN-18): 18 → 19 surfaces and 113 → 115 cases,
+    // RAISED IN THE CHANGE THAT EARNED THEM — the after-sign-in setup
+    // (`/setup`, SetupScreen) arrived swept (`setup · the after-sign-in
+    // steps`, two cases). Read off the per-root line: `19 of 19 reachable
+    // surface(s) carry an a11y sweep, from 1 a11y test file(s) across 115
+    // case(s)`.
+    //
+    // ⏱ RAISED 18 → 19 and cases 113 → 114 on 2026-10-01 by train
+    // ST-detail-stop (DE-07): the cancel sheet RETIRED and the stop flow is two
+    // surfaces — `showStopSheet` (swept by the four cases that swept the cancel
+    // sheet, re-pointed) and `StopScreen` at `/sub/:id/stop` (one new case,
+    // 'nothing on the stop page is naked'). assert-responsive-coverage.mjs
+    // re-measured to 19 in the same change. Measured by this guard's own run:
+    // "19 of 19 reachable surface(s) carry an a11y sweep, from 1 a11y test
+    // file(s) across 114 case(s)".
+    // ⏱ 2026-10-01 · club apply-st: BOTH raises above landed together — 18 → 20
+    // surfaces and 113 → 116 cases (SetupScreen's two cases, the stop page's
+    // one). Read off the per-root line: `20 of 20 … across 116 case(s)`.
+    // ⏱ 2026-10-01 · T20 (IN-12): 20 → 21 surfaces and 116 → 117 cases — the
+    // share-a-month sheet (`showShareMonthSheet`) arrived swept ('nothing on
+    // the share-a-month sheet is naked'). Read off the per-root line:
+    // `21 of 21 … across 117 case(s)`.
+    surfaces: 21,
     a11yFiles: 1,
-    cases: 113,
-    label: 'the app P5 wrote this guard for — 18 surfaces, all eighteen swept',
+    cases: 117,
+    label: 'the app P5 wrote this guard for — 19 surfaces, all nineteen swept',
   },
   {
     dir: BRICK,
@@ -817,23 +839,33 @@ const REQUIRED_COVERAGE = [
     // chassis SettingsHeading arrived swept with the Help card
     // (`a11y: help-section`, light + dark kPhone). Read off the per-root line:
     // `27 of 27 … across 63 case(s)`.
+    // ⏱ 2026-10-01 · ST-T9 (EN-18), on top of audit D8: 27 -> 28 surfaces,
+    // 63 -> 65 cases — the chassis SetupStepsView arrived swept (`a11y:
+    // after-sign-in setup`, light + dark kPhone). Read off the per-root line:
+    // `28 of 28 … across 65 case(s)`.
     // ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST: 27 -> 31 surfaces, 4 -> 5
     // files, 63 -> 71 cases — TamperedBuildScreen, TamperedBuildApp,
     // RootedDeviceNoticeHost and ReauthDialog arrived swept in
     // a11y_integrity_test.dart (light kPhone + dark kDesktop each). Read off the
     // per-root line: `31 of 31 … from 5 a11y test file(s) across 71 case(s)`.
+    // ⏱ 2026-10-01 · club apply-st merged onto main: BOTH raises above, so
+    // 27 -> 32 surfaces and 63 -> 73 cases. Read off the per-root line:
+    // `32 of 32 … from 5 a11y test file(s) across 73 case(s)`.
     // ⏱ 2026-10-01 · ST-N6 (#1080), merged with the above: 31 -> 32 surfaces —
     // the chassis RefreshOnResume arrived swept in the consent-scrim chain of
     // a11y_shell_test.dart (files and cases unchanged). Read off the per-root
     // line on the merged tree: `32 of 32 … from 5 a11y test file(s) across 71
     // case(s)`.
-    // ⏱ 2026-10-01 · ST-SETTINGS (SE-03), merged over ST-N6: 32 -> 33 surfaces,
-    // 71 -> 73 cases — the chassis DevicesSection arrived swept (`a11y:
-    // devices`, light + dark kPhone). Read off the per-root line on the merged
-    // tree: `33 of 33 … from 5 a11y test file(s) across 73 case(s)`.
-    surfaces: 33,
+    // ⏱ 2026-10-01 · club apply-st on ST-N6 (#1080): RefreshOnResume on top —
+    // read off the merged tree: `33 of 33 … from 5 a11y test file(s) across 73
+    // case(s)`.
+    // ⏱ 2026-10-01 · ST-SETTINGS (SE-03) on club apply-st: 33 -> 34 surfaces,
+    // 73 -> 75 cases — the chassis DevicesSection, swept (`a11y: devices`,
+    // light + dark kPhone). Read off the merged tree: `34 of 34 … from 5 a11y
+    // test file(s) across 75 case(s)`.
+    surfaces: 34,
     a11yFiles: 5,
-    cases: 73,
+    cases: 75,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -1054,10 +1086,17 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'features/monetization/manage_plan_screen.dart#ManagePlanScreen',
         'features/onboarding/onboarding_screen.dart#OnboardingScreen',
         'features/add/add_subscription_sheet.dart#showAddSubscriptionSheet',
-        'features/cancel/cancel_sheet.dart#showCancelSheet',
+        // 2026-10-01 (DE-07): the cancel sheet RETIRED; the stop flow that
+        // replaced it is two surfaces — the sheet the detail opens and the
+        // `/sub/:id/stop` page — each swept in a11y_semantics_test.dart.
+        'features/stop/stop_flow.dart#showStopSheet',
+        'features/stop/stop_flow.dart#StopScreen',
         // 2026-09-29 (ST-D3 D3-2): the budget editor, the first surface that
         // can WRITE a budget, swept in a11y_semantics_test.dart.
         'features/insights/budget_editor.dart#showBudgetEditorSheet',
+        // 2026-10-01 (ST-T9 EN-18): the after-sign-in setup, in the same
+        // change as its sweep (a11y_semantics_test.dart "setup · …").
+        'features/setup/setup_screen.dart#SetupScreen',
       ].map((k) => `apps/subscriptiontracker/lib/${k}`),
     ),
   ],
@@ -1100,6 +1139,9 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'auth/turnstile_gate.dart#TurnstileGate',
         'auth/verify_email_screen.dart#VerifyEmailView',
         'firstrun/onboarding_screen.dart#OnboardingView',
+        // 2026-10-01 (ST-T9 EN-18): the setup step list, in the same change
+        // as its sweep (a11y_firstrun_money_settings_test.dart).
+        'firstrun/setup_steps_view.dart#SetupStepsView',
         // 2026-09-23: the two home bodies, swept in a11y_home_test.dart.
         'home/home_screen.dart#CatchUpBannerView',
         'home/home_screen.dart#WelcomeView',

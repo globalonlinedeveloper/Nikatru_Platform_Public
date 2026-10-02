@@ -1,0 +1,28 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 0009_tags.sql — a subscription can carry the user's own labels
+-- (audit row AD-12, train T20 `st-polish`: tags, the API half).
+-- Applies to APP_DB (subscriptiontracker_db):
+--   wrangler d1 migrations apply APP_DB --local   (or --remote)
+--
+-- Free-text labels ("family", "work", "shared") the user puts on a row, so the
+-- home list can be filtered by one. Stored as the JSON text of a list of
+-- strings, exactly as 0003 stores `reminder_days`: the route writes it, and the
+-- route is its one reader (`serializeSubscription`).
+--
+-- NULL = no tags, which is what every row that exists today holds.
+--
+-- STRICTLY ADDITIVE, like 0002–0006: one ADD COLUMN, no DROP, no RENAME, no
+-- type change, no table rebuild (tooling/ci/check-migrations.mjs bans all four).
+-- NO CHECK, for 0003's reason: the route bounds the list (src/routes/
+-- subscriptions.ts `validate`, MAX_TAGS and MAX_TAG), where a new bound is a
+-- code change and not a table rebuild.
+--
+-- 🔴 DEPLOY ORDER: THIS MIGRATION, THEN THE WORKER, ALONE, BEFORE THE WEB BUILD.
+-- A Worker that names the column on a database without it 500s every write. A
+-- client that lands before the Worker sends `tags` to a validator that does not
+-- name the key and drops it — so the label would vanish on save. The column and
+-- the Worker therefore ship first, as 0004 did.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- The row's labels, as JSON text: at most MAX_TAGS strings of MAX_TAG chars.
+ALTER TABLE subscriptions ADD COLUMN tags TEXT;

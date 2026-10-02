@@ -45,6 +45,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
+import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/format/money_format.dart';
 import 'package:subscriptiontracker/core/format/sub_math.dart';
 import 'package:subscriptiontracker/core/router.dart';
@@ -228,6 +229,13 @@ Future<void> _pumpShell(WidgetTester tester, Locale locale) async {
   expect(find.byType(AppShell), findsOneWidget);
 }
 
+/// The FAB's own tooltip. Home has others now (the sort menu, HO-03), so a
+/// bare `find.byType(Tooltip)` is no longer one widget.
+final Finder _fabTooltip = find.ancestor(
+  of: find.byKey(E2EKeys.fabAdd),
+  matching: find.byType(Tooltip),
+);
+
 Future<AppLocalizations> _l10n(String code) =>
     AppLocalizations.delegate.load(Locale(code));
 
@@ -262,18 +270,13 @@ void main() {
           reason: 'exactly one time-of-day greeting must render, from the arb',
         );
 
-        // ── PLURAL 1: markedUnusedCount, fed the count the screen computed.
+        // ── HO-05: "Still using {name}?" — the strip that replaced the "N
+        // marked unused" count — asked about the first flagged row, from the
+        // arb (Home asks one decision at a time).
         expect(
-          find.text(l.markedUnusedCount(SubMath.unused(subs).length)),
+          find.text(l.homeSignalStillUsing(SubMath.unused(subs).first.name)),
           findsOneWidget,
-          reason:
-              'the unused banner must render the plural for the REAL count '
-              '(${SubMath.unused(subs).length}); feeding the key a different '
-              'number renders a different sentence and this goes red',
-        );
-        expect(
-          find.text(l.cancelToSave(money.formatBag(SubMath.savings(subs)))),
-          findsOneWidget,
+          reason: 'the still-using question renders from the arb',
         );
 
         // ── PLURAL 2: activeCount, in the hero pill.
@@ -370,7 +373,7 @@ void main() {
       expect(en.markedUnusedCount(2), '2 marked unused');
     });
 
-    testWidgets('the ONE-unused screen renders the singular arm', (
+    testWidgets('the ONE-unused screen asks about one row', (
       WidgetTester tester,
     ) async {
       final AppLocalizations en = await _l10n('en');
@@ -380,13 +383,13 @@ void main() {
         const HomeScreen(),
         unusedCount: 1,
       );
-      expect(find.text(en.markedUnusedCount(1)), findsOneWidget);
+      // HO-05: one flagged row, one question — never one for a row that is
+      // not there.
+      expect(find.text(en.homeSignalStillUsing('Gamma')), findsOneWidget);
       expect(
-        find.text(en.markedUnusedCount(2)),
+        find.text(en.homeSignalStillUsing('Delta')),
         findsNothing,
-        reason:
-            'the count fed to the key must be the real one — a hardcoded 2 '
-            'would pass the two-unused case above and fail here',
+        reason: 'the strips must follow the real rows, not a fixed count',
       );
     });
   });
@@ -457,7 +460,7 @@ void main() {
         // control, and it REUSES the add sheet's own title key so the control
         // and the surface it opens cannot drift into two words for one action.
         expect(
-          tester.widget<Tooltip>(find.byType(Tooltip)).message,
+          tester.widget<Tooltip>(_fabTooltip).message,
           l.addSubscriptionTitle,
         );
       });
@@ -488,12 +491,30 @@ void main() {
       await _pumpShell(tester, const Locale('en'));
 
       expect(en.calendarLink, en.navCalendar);
+      // HO-04: the section link reads "Calendar" only while the 30-day horizon
+      // holds four charges or fewer; past that it is "{n} more". So on /home
+      // the word is the pill's, and the link's whenever it says "Calendar".
+      final int links =
+          find.text(en.navCalendar).evaluate().length -
+          find
+              .descendant(
+                of: find.byKey(AppShell.navPillKey),
+                matching: find.text(en.navCalendar),
+              )
+              .evaluate()
+              .length;
       expect(
-        find.text(en.navCalendar),
-        findsNWidgets(2),
-        reason:
-            'one on the nav pill, one as home\'s "Upcoming renewals" link — a '
-            'bare find.text() on this word can no longer be tapped',
+        links + find.textContaining(RegExp(r'^\d+ more$')).evaluate().length,
+        lessThanOrEqualTo(1),
+        reason: 'one Upcoming link at most, in one of its two words',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(AppShell.navPillKey),
+          matching: find.text(en.navCalendar),
+        ),
+        findsOneWidget,
+        reason: 'the pill keeps its own Calendar label',
       );
       expect(
         find.byIcon(Icons.calendar_month_rounded),
@@ -522,7 +543,7 @@ void main() {
         );
       }
       expect(
-        tester.widget<Tooltip>(find.byType(Tooltip)).message,
+        tester.widget<Tooltip>(_fabTooltip).message,
         isNot('Add subscription'),
       );
     });

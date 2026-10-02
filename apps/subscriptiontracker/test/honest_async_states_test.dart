@@ -85,6 +85,13 @@ void main() {
         ],
       );
       final AppLocalizations l10n = await _en();
+      // ⏱ 2026-10-01 · DE-11: the details list sits above the history now, so
+      // at kPhone the card is below the fold of a lazy list until scrolled to.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('payment-history-loading')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.byKey(const Key('payment-history-loading')), findsOneWidget);
       expect(find.text(l10n.noPaymentsYet), findsNothing);
     });
@@ -103,6 +110,11 @@ void main() {
         ],
       );
       final AppLocalizations l10n = await _en();
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('payment-history-failed')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.byKey(const Key('payment-history-failed')), findsOneWidget);
       expect(find.text(l10n.paymentHistoryFailed), findsOneWidget);
       expect(find.text(l10n.noPaymentsYet), findsNothing);

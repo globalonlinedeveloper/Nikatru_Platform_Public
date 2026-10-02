@@ -2,6 +2,7 @@
 // `../providers.dart`; import that.
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show FutureProviderFamily;
 import 'package:nikatru_api_client/nikatru_api_client.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart'
@@ -97,4 +98,27 @@ final FutureProvider<core.ContentPack?> contentPackProvider =
       // content; the app must run without it. What must never happen is a
       // failed load being served as though it succeeded.
       return r.fold((core.ContentPack p) => p, (core.Failure _) => null);
+    });
+
+/// ST-T9 (AD-03) — the service catalogue the add sheet's pick step searches,
+/// typed from [contentPackProvider] with names in [locale] (falling back to
+/// `en`). Null when no pack serves or the pack does not read as a catalogue:
+/// the sheet then offers only "Add by hand", never a partial list.
+///
+/// A family by locale, not a read of the ambient one, so a Tamil sheet and
+/// its golden name every service in Tamil without a global.
+final FutureProviderFamily<core.ServiceCatalogue?, String>
+serviceCatalogueProvider =
+    FutureProvider.family<core.ServiceCatalogue?, String>((
+      ref,
+      String locale,
+    ) async {
+      final core.ContentPack? pack = await ref.watch(
+        contentPackProvider.future,
+      );
+      if (pack == null) return null;
+      return core.ServiceCatalogue.fromPack(
+        pack,
+        locale: locale,
+      ).fold((core.ServiceCatalogue c) => c, (core.Failure _) => null);
     });

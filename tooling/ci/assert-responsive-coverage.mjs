@@ -498,11 +498,31 @@ const REQUIRED_COVERAGE = [
     // ⏱ LOWERED 19 → 18 the same day by ST-D3 D3-3, deliberately: `BudgetScreen`
     // is RETIRED (ADR 077 §A) and `width_budget_test.dart` went with it; the
     // file count stays above its floor (17 files, floor 16).
+    // ⏱ RAISED 18 → 19 (and coveredSurfaces with it) on 2026-10-01 by ST-T9
+    // (EN-18): the after-sign-in setup (`/setup`) is a new surface, measured
+    // at every window class by `width_setup_test.dart`. `widthTestFiles`
+    // stays 16 for the guards.test.mjs fixture reason recorded below.
+    // ⏱ RAISED 18 → 19 (and coveredSurfaces with it) on 2026-10-01 by train
+    // ST-detail-stop (DE-07): the cancel sheet RETIRED (−1) and the stop flow
+    // that replaced it is two surfaces (+2), `showStopSheet` and the
+    // `/sub/:id/stop` route's `StopScreen`, both measured at kPhone, kTablet
+    // and kDesktop by width_stop_test.dart, which replaces
+    // width_cancel_sheet_test.dart. Measured by this guard's own run: "19
+    // surface(s) reachable, 19 measured — the two sets are EQUAL".
+    // ⏱ 2026-10-01 · club apply-st: the two raises above landed TOGETHER, so
+    // 18 → 20 — /setup (+1) and the stop flow's net +1. Read off this guard's
+    // own run: "20 surface(s) reachable, 20 measured — the two sets are EQUAL".
+    // ⏱ 2026-10-01 · T20 (IN-12): 20 → 21 — the share-a-month sheet, a dialog
+    // from a tablet up (showAdaptiveSheet), measured at kPhone, kTablet and
+    // kDesktop by width_share_month_test.dart. Read off this guard's own run:
+    // "21 surface(s) reachable, 21 measured — the two sets are EQUAL".
     // ⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): UNCHANGED AT 18, one for one —
     // `ScanScreen` left with `width_scan_test.dart` and `ImportScreen` arrived
     // with `width_import_test.dart` at kPhone, kTablet and kDesktop. Measured by
     // this guard's own run: "18 surface(s) reachable, 18 measured", 18 files.
-    surfaces: 18,
+    // ⏱ 2026-10-01 · club apply-st on IM-01: the swap above is one for one,
+    // so 21 stands.
+    surfaces: 21,
     // 🔴 THIS FLOOR IS ONE UNDER ITS TREE AND IT IS BEING LEFT THERE ON
     // PURPOSE, WHICH IS WORTH MORE WORDS THAN RAISING IT WOULD HAVE BEEN.
     // MEASURED 2026-09-05: `ls apps/subscriptiontracker/test | grep -cE
@@ -519,8 +539,13 @@ const REQUIRED_COVERAGE = [
     // red on `only 16 width test file(s) … floor is 17`.
     // 📌 OWED, AND REPORTED TO THE OWNER RATHER THAN LEFT IN A COMMENT: raise
     // this to 17 in the same change that grows that fixture's `N`.
-    widthTestFiles: 16, // 15 `width_*_test.dart` + `responsive_width_test.dart`
-    coveredSurfaces: 18,
+    // ⏱ 2026-10-01 · ST-detail-stop: THE OWED RAISE, PAID — 16 → 17, in the
+    // same change that grows guards.test.mjs's fixture `N` 16 → 17 (one more
+    // single-subject width file there). The tree holds 18 (`corpus: … — 18
+    // file(s)`), so this is still one under it: the raise is the one the note
+    // above owed, not a re-measure to the tree.
+    widthTestFiles: 17, // 16 `width_*_test.dart` + `responsive_width_test.dart`
+    coveredSurfaces: 21,
     label: 'the app this guard was written for — every surface measured, and it fails if one stops being',
   },
   {
@@ -678,6 +703,11 @@ const REQUIRED_COVERAGE = [
     // (lib/settings/help_section.dart) joined, and `test/help_section_test.dart`
     // pumps it with the Help card at all three classes. Read off this guard's
     // per-root lines — `27 surface(s) reachable, 27 measured` and `— 30 file(s)`.
+    // ⏱ RAISED 27 → 28 surfaces / 30 → 31 files / 27 → 28 covered ON 2026-10-01
+    // (ST-T9, EN-18, on top of audit D8): the chassis `SetupStepsView` arrived
+    // with `test/setup_steps_view_test.dart`, pumped at kPhone, kTablet and
+    // kDesktop. Read off the per-root lines — `28 surface(s) reachable, 28
+    // measured` and `— 31 file(s)`.
     // ⏱ RAISED 2026-10-01 (O-APPS-GOV-IN-VAPT-CHECKLIST), on top of the line
     // above: surfaces 27 → 31, coveredSurfaces 27 → 31 and `widthTestFiles` 30 → 32,
     // IN THE CHANGE THAT EARNED THEM: TamperedBuildScreen, TamperedBuildApp,
@@ -685,23 +715,29 @@ const REQUIRED_COVERAGE = [
     // test/device_integrity_gate_test.dart (all three classes) and
     // test/a11y_integrity_test.dart. Read off the per-root lines,
     // `31 surface(s) reachable, 31 measured` and `— 32 file(s)`.
+    // ⏱ 2026-10-01 · club apply-st merged onto main: BOTH raises above, so
+    // 27 → 32 surfaces / 30 → 33 files / 27 → 32 covered. Read off the
+    // per-root lines — `32 surface(s) reachable, 32 measured` and `— 33 file(s)`.
     // ⏱ RAISED `widthTestFiles` 32 → 33 ON 2026-10-01 (train ST import hub),
     // surfaces unchanged: `test/data_section_test.dart` joined the corpus with
     // the Your data card (`dataCard`, a function, not a surface). Read off the
     // per-root line, `— 33 file(s)`.
+    // ⏱ 2026-10-01 · club apply-st on the import hub: 32 surfaces, and 34
+    // files with both data_section_test.dart and setup_steps_view_test.dart.
     // ⏱ RAISED 31 → 32 surfaces / 31 → 32 covered ON 2026-10-01 · ST-N6
     // (D23/F37, #1080), merged with the above: the chassis `RefreshOnResume`,
     // pumped at all three classes by test/app_shell_view_test.dart (files
     // unchanged). Read off the merged tree: `32 surface(s) reachable, 32
     // measured` and `— 33 file(s)`.
-    // ⏱ RAISED 2026-10-01 · ST-SETTINGS (SE-03), merged over ST-N6: surfaces
-    // 32 → 33, coveredSurfaces 32 → 33, `widthTestFiles` 33 → 34 — the chassis
-    // DevicesSection, measured at all three classes and at 200 % text
-    // (test/devices_section_test.dart). Read off the merged tree: `33
-    // surface(s) reachable, 33 measured` and `— 34 file(s)`.
-    surfaces: 33,
-    widthTestFiles: 34,
-    coveredSurfaces: 33,
+    // ⏱ 2026-10-01 · club apply-st on ST-N6 (#1080): read off the merged tree —
+    // `33 surface(s) reachable, 33 measured` and `— 34 file(s)`.
+    // ⏱ RAISED 2026-10-01 · ST-SETTINGS (SE-03) on club apply-st: 33 → 34
+    // surfaces and covered, 34 → 35 width files — the chassis DevicesSection
+    // at all three classes and 200 % text (test/devices_section_test.dart).
+    // Read off the merged tree: `34 surface(s) reachable, 34 measured`, `— 35 file(s)`.
+    surfaces: 34,
+    widthTestFiles: 35,
+    coveredSurfaces: 34,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',

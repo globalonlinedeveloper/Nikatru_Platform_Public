@@ -13,6 +13,7 @@ import '../../state/providers.dart' show renewalRemindersProvider;
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 import '../settings/reminder_settings.dart' show chooseLeadDays;
+import '../shared/failure_copy.dart';
 import '../shared/widgets.dart' show cardDecoration;
 
 /// The notice periods the chooser offers, in days.
@@ -32,11 +33,22 @@ class SubscriptionReminderRows extends ConsumerWidget {
       await ref
           .read(subscriptionsControllerProvider.notifier)
           .updateReminderFields(sub.id, changes);
-    } on Object {
+    } on Object catch (e) {
       if (!context.mounted) return;
+      // DE-09 (audit B09): what failed is the SUBSCRIPTION SAVE — this used to
+      // read "Could not reach the reminder service", a service this write
+      // never touches. By cause first; the fallback names the row.
+      final AppLocalizations l10n = AppLocalizations.of(context);
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(
-          content: Text(AppLocalizations.of(context).reminderChannelsFailed),
+          key: const Key('reminder-save-failed'),
+          content: Text(
+            writeFailureMessage(
+              l10n,
+              e,
+              fallback: l10n.reminderSaveFailed(sub.name),
+            ),
+          ),
         ),
       );
     }

@@ -100,7 +100,8 @@
 //
 //   login    8 of 8   (was 4 of 8)
 //   settings 25 of 27 (was 9 of 27)
-//   home     20 of 20 (was 17 of 20)
+//   home     20 of 20 (was 17 of 20); 23 of 23 since T8 (2026-10-01): the
+//            search field, sort menu and filter toggle (HO-03)
 //
 // 55 controls, 53 reachable by Tab, 2 not. Both remaining are the `en` and `ta`
 // members of the LANGUAGE `RadioGroup`.
@@ -169,11 +170,13 @@ import 'support/width_harness.dart';
 
 /// The desktop shell width (see the header) at a viewport tall enough that no
 /// screen in the sweep scrolls. Both halves are asserted, not assumed:
-/// [_everythingIsLaidOut] fails if 2960 ever stops being enough.
+/// [_everythingIsLaidOut] fails if 3080 ever stops being enough.
 ///
 /// ⏱ 2026-09-30 · ST-Y3/ST-Y4: 2400 -> 2600. Settings gained three card
 /// headings and the Help section's Rate and Feedback rows and scrolled by
 /// 142 px at 2400 — measured by [_everythingIsLaidOut], which is what it is for.
+/// ⏱ 2026-10-01 · ST-T9 (AD-05): 2600 -> 2700. Settings gained the Categories
+/// row and scrolled by 10 px at 2600, measured the same way.
 // ⏱ 2026-10-01 · NO-12/NO-13: 2600 -> 2800. Settings grew again by quiet
 // hours and "Send a test reminder" — [_everythingIsLaidOut] measures it. The
 // width, and so every count, is as it was; the height only has to hold the
@@ -181,10 +184,12 @@ import 'support/width_harness.dart';
 // ⏱ 2026-10-01 · IM-01/IM-03: 2800 -> 2880. Settings › Your data's Import, Back
 // up and Restore rows on top of NO-12/NO-13 scrolled by 73 px at 2800 —
 // measured by [_everythingIsLaidOut].
-// ⏱ 2026-10-01 · ST-SETTINGS (SE-09): 2880 -> 2960. The one Reminders card
-// plus its own Preferences card and heading scrolled settings by 39 px at
-// 2880 — measured by [_everythingIsLaidOut].
-const Size kKeyboardSurface = Size(1079, 2960);
+// ⏱ 2026-10-01 · club apply-st on IM-01/IM-03 and NO-12/NO-13: every growth
+// above together, and the Categories row; re-measured by [_everythingIsLaidOut].
+// ⏱ 2026-10-01 · ST-SETTINGS (SE-09) merged over club apply-st: 3000 -> 3080
+// for the one Reminders card with its own Preferences card and heading —
+// measured by [_everythingIsLaidOut] on the merged tree (43 px short at 3000).
+const Size kKeyboardSurface = Size(1079, 3080);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
 ///
@@ -678,21 +683,32 @@ void main() {
         // ⏱ 2026-09-30 · ST-Y4 (audit D12/F53): 26 -> 28 and 24 -> 26 — the
         // Help section's "Rate" and "Send feedback" _LinkRows, both wired.
         // (Contact support MOVED into Help; it is not a new control.)
+        // ⏱ 2026-10-01 · ST-T9 (AD-05): 28 -> 29 and 26 -> 27 — the
+        // "Categories" row that opens the categories manager, wired and in
+        // the orbit.
+        // ⏱ 2026-10-01 · T20 (XP-06): 26 -> 27, the हिन्दी radio — a control,
+        // and like en and ta reached by arrow inside the group, not by Tab.
+        // (On top of ST-T9's Categories row: 29 -> 30, reachable 27.)
         // ⏱ 2026-10-01 · NO-13: 28 -> 30 and 26 -> 28 — the "Quiet hours"
         // switch and "Send a test reminder", both in the Tab orbit.
+        // ⏱ 2026-10-01 · club apply-st on NO-13: both sets together — 32
+        // controls, 29 reachable (the three radios stay off the Tab orbit).
         // ⏱ 2026-10-01 · IM-01/IM-03: 30 -> 33 and 28 -> 31 — Your data's
         // Import, Back up (JSON) and Restore rows, each wired and in the orbit.
-        controls: 33 + core.Money.symbols.length,
-        reachable: 31 + core.Money.symbols.length,
+        // ⏱ 2026-10-01 · club apply-st on IM-01/IM-03: both sets — 35 controls,
+        // 32 reachable.
+        controls: 35 + core.Money.symbols.length,
+        reachable: 32 + core.Money.symbols.length,
       );
       expect(
         s.dead.length,
-        2,
+        3,
         reason:
             'settings controls outside the Tab orbit: ${s.deadLabels}. EXACTLY '
-            'two are expected and both must be RadioListTiles inside the '
-            'language RadioGroup, which is a single Tab stop by design. A '
-            'third would be a real regression wearing the same shape',
+            'three are expected (en, ta, hi — T20) and all must be '
+            'RadioListTiles inside the language RadioGroup, which is a single '
+            'Tab stop by design. A fourth would be a real regression wearing '
+            'the same shape',
       );
       for (final Element e in s.dead) {
         expect(
@@ -809,7 +825,12 @@ void main() {
       );
     });
 
-    testWidgets('home · 20 of 20', (WidgetTester tester) async {
+    testWidgets('home · 23 of 23', (WidgetTester tester) async {
+      // ⏱ 2026-10-01 · T8 (HO-03): 20 -> 23, all three reachable — the search
+      // field, the sort menu and the filter toggle of the shared
+      // `ListControls`. The chips are folded away until the toggle opens them,
+      // so they are not in this inventory.
+      //
       // WAS 17 of 20. Home's subscription rows were always `InkWell`s, so they
       // traversed for free; the three that did not were the app-bar actions —
       // notifications, account/settings, calendar — i.e. every route OUT of
@@ -819,8 +840,8 @@ void main() {
         tester,
         'home',
         const HomeScreen(),
-        controls: 20,
-        reachable: 20,
+        controls: 23,
+        reachable: 23,
       );
       expect(
         s.deadLabels,
