@@ -1507,6 +1507,11 @@
         "reason": "exposed 53 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-04); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-main-rows.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ci/assert-mechanism-claims.mjs": {
       "catches": 1,
       "firstSeen": "2026-09-16",

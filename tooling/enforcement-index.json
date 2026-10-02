@@ -1388,6 +1388,16 @@
       ".github/workflows/ci.yml#guard-meta"
     ],
     "kind": "guard",
+    "ref": "tooling/ci/assert-main-rows.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guard-meta"
+    ],
+    "kind": "guard",
     "ref": "tooling/ci/assert-mechanism-claims.mjs",
     "references": [],
     "state": "WIRED"
