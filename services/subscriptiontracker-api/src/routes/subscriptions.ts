@@ -84,7 +84,41 @@ export function serializeSubscription(row: Subscription) {
     // 0004_notice_days.sql (ST-R8). `?? null`: a DB 0004 has not reached yields
     // no such key on the row, and the wire says null ("no notice period").
     notice_days: row.notice_days ?? null,
+    // 0009_tags.sql (AD-12). Stored as the JSON text `validate` wrote, served as
+    // the list; NULL, a DB 0007 has not reached, or text edited outside this
+    // Worker is served as [] ("no tags"), never a 500.
+    tags: parseTags(row.tags),
   };
+}
+
+/** `tags` as stored -> the list it holds, or [] for anything else. */
+export function parseTags(raw: string | null | undefined): string[] {
+  if (typeof raw !== 'string' || raw === '') return [];
+  let v: unknown;
+  try {
+    v = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  return isTagList(v) ? v : [];
+}
+
+/**
+ * A tag list the route accepts: at most MAX_TAGS strings, each 1..MAX_TAG
+ * characters with no leading or trailing space, no two equal ignoring case.
+ * The client normalises to exactly this (Subscription.normaliseTags), so a 400
+ * here is a client that skipped it, never a user's typo.
+ */
+function isTagList(v: unknown): v is string[] {
+  if (!Array.isArray(v) || v.length > MAX_TAGS) return false;
+  const seen = new Set<string>();
+  for (const t of v) {
+    if (typeof t !== 'string' || t === '' || t.length > MAX_TAG || t.trim() !== t) return false;
+    const key = t.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+  }
+  return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -176,6 +210,11 @@ const MAX_CYCLE_EVERY = 366;
 /** @ceiling none — a VALUE bound: a notice period at most a year before the
  *  charge, the same year MAX_REMINDER_DAY allows a reminder (0004, ST-R8). */
 const MAX_NOTICE_DAYS = 365;
+/** @ceiling none — a VALUE bound: labels on one row (0007, AD-12). The
+ *  client's `Subscription.maxTags` is the same number. */
+const MAX_TAGS = 10;
+/** @ceiling none — column width; one label. `Subscription.maxTagLength`. */
+const MAX_TAG = 32;
 /** @ceiling none — a VALUE bound: "your share of N", N people at most. */
 const MAX_SHARE_DENOMINATOR = 100;
 
@@ -281,7 +320,8 @@ type Column =
   | 'share_numerator'
   | 'share_denominator'
   | 'category_id'
-  | 'notice_days';
+  | 'notice_days'
+  | 'tags';
 
 /** Only the keys the body actually carried — PATCH must not touch the others. */
 type Fields = Partial<Record<Column, string | number | null>>;
@@ -547,6 +587,21 @@ function validate(body: unknown): ValidatedSubscription {
       return invalid(`notice_days must be a whole number of days, 0 to ${MAX_NOTICE_DAYS}`);
     } else {
       fields.notice_days = notice;
+    }
+  }
+
+  // ── 0007: the user's labels (AD-12) ────────────────────────────────────────
+  const tags = body.tags;
+  if (tags !== undefined) {
+    if (tags === null) {
+      fields.tags = null;
+    } else if (!isTagList(tags)) {
+      return invalid(
+        `tags must be a list of at most ${MAX_TAGS} different labels of 1 to ${MAX_TAG} characters, no leading or trailing space`,
+      );
+    } else {
+      // [] is stored as NULL: "no tags" has one spelling in the table.
+      fields.tags = tags.length === 0 ? null : JSON.stringify(tags);
     }
   }
 
@@ -864,10 +919,10 @@ app.post('/', async (c) => {
           currency, price_minor, cycle_every, cycle_unit, first_charge_on,
           status, trial_ends_on, cancelled_on, deleted_at, notes, service_id,
           cancel_url, rail, rail_holder, reminder_days, shared_with,
-          share_numerator, share_denominator, category_id, notice_days)
+          share_numerator, share_denominator, category_id, notice_days, tags)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-               ?, ?)`,
+               ?, ?, ?)`,
     ).bind(
       id,
       userId,
@@ -903,6 +958,7 @@ app.post('/', async (c) => {
       f.share_denominator ?? 1,
       f.category_id ?? null,
       f.notice_days ?? null,
+      f.tags ?? null,
     ),
   );
 

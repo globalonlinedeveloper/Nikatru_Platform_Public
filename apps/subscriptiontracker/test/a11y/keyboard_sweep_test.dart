@@ -368,6 +368,8 @@ const Map<String, String> kCannotBeSwept = <String, String>{
 const Map<String, Map<String, String>> kPathParameters =
     <String, Map<String, String>>{
       '/sub/:id': <String, String>{'id': '1'},
+      // DE-07: the stop flow for the same row.
+      '/sub/:id/stop': <String, String>{'id': '1'},
     };
 
 /// `state.extra` for the one route whose builder reads it.
@@ -458,6 +460,8 @@ kExpected = <String, ({int controls, int reachable})>{
   // redirect, and `/import` is swept in its place — the hub phase: close, the
   // paste field, and "Read it", which is disabled until there is text.
   '/import': (controls: 2, reachable: 2),
+  // ⏱ 2026-10-01 · ST-T9 (EN-18): the after-sign-in setup.
+  '/setup': (controls: 3, reachable: 3),
   // 5 -> 7 on 2026-08-26: the two `_LegalLink`s joined the orbit. The
   // control count did NOT move — `FocusableTap` still builds a
   // `GestureDetector` with an `onTap`, so the rig counts the same nine.
@@ -493,7 +497,13 @@ kExpected = <String, ({int controls, int reachable})>{
   // opens the row's lifecycle menu (Pause, Mark as cancelled, Delete).
   // ⏱ 2026-09-28 · ST-R3: 4 -> 5, the detail's own Reminders row (the notice
   // row appears only once the API emits notice_days; the seed does not).
-  '/sub/:id': (controls: 5, reachable: 5),
+  // ⏱ 2026-10-01 · DE-04: 5 -> 6, "Mark as paid" on the history heading. The
+  // seed row matches no catalogue entry, so "How to cancel" is its generic
+  // steps — text, no control.
+  '/sub/:id': (controls: 6, reachable: 6),
+  // ⏱ 2026-10-01 · DE-07: the stop flow's choose step — back, plus its four
+  // answers (stop, pause, already cancelled, remove) for an active row.
+  '/sub/:id/stop': (controls: 5, reachable: 5),
   // ⏱ 2026-09-27 · ST-U2 (audit C34): the paywall's back button.
   '/paywall': (controls: 1, reachable: 1),
   // 2 -> 3 on 2026-08-26, and NO WIDGET CHANGED. The third control was
@@ -503,14 +513,19 @@ kExpected = <String, ({int controls, int reachable})>{
   // app-bar back button, the restore row and the cancel row, each named by
   // its own icon in `/manage-plan · a keyboard reaches the cancel-plan row`.
   '/manage-plan': (controls: 3, reachable: 3),
-  // ⏱ ST truth pass (2026-10-01, CA-01): 7 -> 21, and NO control was added.
-  // Each renewal row is a control, and the calendar now draws EVERY charge in
-  // the month from the date engine instead of each row's one stored date: on
-  // the pinned 2026-08-21 every demo plan that charges in August is a row, not
-  // only the seven whose stored date happened to be in August.
-  '/calendar': (controls: 21, reachable: 21),
+  // ⏱ T12 (CA-04): 7 -> 25, measured by this suite at the pinned 2026-08-21.
+  // +4 are the pager (back, forward) and the Month / 12 months switch's two
+  // segments; the rest are renewal rows — the month now lists every PROJECTED
+  // charge of the twelve seed plans, not only the ones whose one stored date
+  // fell in August. (The feed's three controls need a live backend and a
+  // session, which this sweep has neither of.)
+  '/calendar': (controls: 25, reachable: 25),
   // ⏱ ST-D3: 3 -> 6, measured by this suite on the rebuilt Insights.
-  '/insights': (controls: 6, reachable: 6),
+  // ⏱ T12: 6 -> 17 — each of the seed's ten category rows is a control now
+  // (IN-07, it opens Home filtered), and the still-using question gained its
+  // "No" (IN-08).
+  // ⏱ T20 (IN-12): 17 -> 18, the header's Share control.
+  '/insights': (controls: 18, reachable: 18),
 };
 
 /// Every [GoRoute] in the tree, including the ones nested under a shell.
@@ -760,14 +775,19 @@ void main() {
       .toSet();
 
   group('the router is the only declaration of the route set', () {
+    // ⏱ 2026-10-01 · ST-T9 (EN-18): 19 -> 20 and 16 -> 17, `/setup`.
+    // ⏱ 2026-10-01 · DE-07: 20 -> 21 and 17 -> 18, `/sub/:id/stop`.
     // ⏱ 2026-10-01 · IM-01 (ADR 077 §2.2): 19 → 20 routes, 3 → 4 redirects —
     // `/scan` is a redirect onto `/import`, and `/import` builds the hub.
-    test('20 routes, 16 of them build a screen, 4 are redirect-only', () {
+    // ⏱ 2026-10-01 · club apply-st on IM-01: 22 routes, 18 screens, 4
+    // redirect-only — /setup and /sub/:id/stop (the club), /import and the
+    // /scan redirect (main).
+    test('22 routes, 18 of them build a screen, 4 are redirect-only', () {
       expect(
         declared.length,
-        20,
+        22,
         reason:
-            'the router declares ${declared.length} GoRoutes, not 20. That is '
+            'the router declares ${declared.length} GoRoutes, not 22. That is '
             'not a failure by itself — an app may gain a route — but this '
             "file's coverage claim is about a set of that size, and the new "
             'route needs a kExpected entry before any number here can be read. '
@@ -776,9 +796,9 @@ void main() {
       expect(
         // ⏱ ST-D3 D3-3: 17 → 16 — `/budget` is a redirect to `/insights` now.
         screenBearing.length,
-        16,
+        18,
         reason:
-            '${screenBearing.length} routes build a screen, not 16. Screen '
+            '${screenBearing.length} routes build a screen, not 18. Screen '
             'paths: ${screenPaths.toList()..sort()}',
       );
       for (final GoRoute r in declared) {

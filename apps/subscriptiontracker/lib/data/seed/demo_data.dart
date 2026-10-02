@@ -209,16 +209,4 @@ class DemoData {
       BudgetCap('Security', Money(500, demoCurrency)),
     ],
   );
-
-  /// Popular quick-add options from the "Add subscription" sheet.
-  static const List<List<String>> popular = <List<String>>[
-    <String>['Hulu', 'HUL'],
-    <String>['HBO Max', 'HBO'],
-    <String>['Dropbox', 'DBX'],
-    <String>['Figma', 'FIG'],
-    <String>['Slack', 'SLK'],
-    <String>['Audible', 'AUD'],
-    <String>['Peloton', 'PEL'],
-    <String>['Canva', 'CNV'],
-  ];
 }

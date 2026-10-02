@@ -4,9 +4,9 @@
     "consumes one family, hand-authored-content, which tooling/legal/content-licence-register.json clears as",
     "first-party work. Rendered by make-recipe.mjs, so a rebuilt pack cannot leave this naming a stale hash."
   ],
-  "content_hash": "74068490eca5bd8fddc8d47d0a4c50a24426f7d2e37c44bdb0486a03a0ceb478",
+  "content_hash": "73d4cb8e86d7a291f0ad7fdce2410aa3b1cdfb8d9a3bad6baefeab7bfc8d54d8",
   "pack_id": "subscriptiontracker",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "families": [
     {
       "family": "hand-authored-content",
