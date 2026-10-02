@@ -3989,6 +3989,11 @@
       "firstSeen": "2026-08-18",
       "evidence": []
     },
+    "tooling/sites/generate-personal-site.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
     "tooling/sites/generate-well-known.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-09",
