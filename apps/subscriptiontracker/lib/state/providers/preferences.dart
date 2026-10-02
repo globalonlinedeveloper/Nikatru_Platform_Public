@@ -9,6 +9,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
     show PersistedValue;
 
 import '../analytics_providers.dart';
+import 'auth.dart' show authUserProvider;
 
 // ═════════════════════════════════════════════════════════════════════════════
 // SECTION H · USER PREFERENCES THE CHASSIS PERSISTS
@@ -153,3 +154,61 @@ final NotifierProvider<OnboardingSeenController, bool?> onboardingSeenProvider =
     NotifierProvider<OnboardingSeenController, bool?>(
       OnboardingSeenController.new,
     );
+
+/// ⏱ ST-T9 (EN-18) — whether THIS ACCOUNT has seen the after-sign-in setup
+/// (home currency, reminder channels, "pick what you pay for").
+///
+/// Keyed by the account, not the device: a second account on the same device
+/// is a first sign-in too, and the same account on a second device is not
+/// re-asked once that device has recorded it. (Account-level preferences
+/// from #1080 replace the device store when they land; the key is the
+/// account's either way.)
+///
+/// NULL while unknown — no account, or the store not read yet — and the
+/// setup is offered only on a definite `false`, for the reason
+/// [OnboardingSeenController] records: an undecided redirect must decline.
+class SetupSeenController extends Notifier<bool?> {
+  static String keyFor(String accountId) => 'nikatru.setup_seen.$accountId';
+
+  @override
+  bool? build() {
+    final String? id = ref.watch(authUserProvider).value?.id;
+    if (id == null) return null;
+    _hydrate(id);
+    return null;
+  }
+
+  Future<void> _hydrate(String id) async {
+    bool seen;
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      seen = await kv.read(keyFor(id)) == 'true';
+    } on Object {
+      // Unreadable ⇒ do NOT offer it: unlike onboarding, setup is optional
+      // and everything in it is in Settings, so the asymmetric cost runs the
+      // other way — nagging an existing account is the worse error.
+      seen = true;
+    }
+    if (ref.mounted && state == null) state = seen;
+  }
+
+  /// Skip and finish alike: in memory first, then the store.
+  Future<void> markSeen() async {
+    state = true;
+    final String? id = ref.read(authUserProvider).value?.id;
+    if (id == null) return;
+    try {
+      final core.KeyValueStore kv = await ref.read(
+        keyValueStoreProvider.future,
+      );
+      await kv.write(keyFor(id), 'true');
+    } on Object {
+      // A failed write re-offers setup on the next launch, which Skip ends.
+    }
+  }
+}
+
+final NotifierProvider<SetupSeenController, bool?> setupSeenProvider =
+    NotifierProvider<SetupSeenController, bool?>(SetupSeenController.new);

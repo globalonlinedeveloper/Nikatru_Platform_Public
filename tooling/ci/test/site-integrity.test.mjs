@@ -30,6 +30,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { loadContext } from '../../entity/facts.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
@@ -182,7 +183,7 @@ const FIXTURE_PROMISE = 'We keep only what this fixture says we keep.';
  *  import — and duplicated ON PURPOSE as a second reader of the same fact: if
  *  the guard's constant changes without these fixtures following, the
  *  self-hosted cases go red instead of the requirement quietly relaxing. */
-const SELLER_LEGAL_NAME = 'Rajasekar Selvam';
+const SELLER_LEGAL_NAME = loadContext().legalName;
 
 /** A contact address for the self-hosted fixtures. Deliberately NOT the real
  *  one: the limb under test is "is a mailto: wrapped against Cloudflare's
@@ -219,6 +220,11 @@ function selfHosted(dir, { root = 'a' } = {}) {
   for (const dep of GUARD_IMPORTS_SITES) {
     copyFileSync(join(CI_DIR, '..', 'sites', dep), join(sitesDir, dep));
   }
+  // The guard reads the seller's legal name from the entity source through tooling/entity/facts.mjs,
+  // which resolves the source from its own location: both travel, or the copy cannot start.
+  mkdirSync(join(dir, 'tooling', 'entity'), { recursive: true });
+  copyFileSync(join(CI_DIR, '..', 'entity', 'facts.mjs'), join(dir, 'tooling', 'entity', 'facts.mjs'));
+  copyFileSync(join(CI_DIR, '..', 'house-identity.json'), join(dir, 'tooling', 'house-identity.json'));
 
   const site = join(dir, 'sites', root);
   // Only the homepage is indexable; every other page declares noindex, so the
@@ -1310,7 +1316,7 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
       patch(d, 'sites/nikatru/terms.html', `proprietorship of ${SELLER_LEGAL_NAME}`, 'proprietorship'),
     );
     assert.equal(r.code, 1);
-    assert.match(r.out, /terms\.html does not name "Rajasekar Selvam"/);
+    assert.ok(r.out.includes(`terms.html does not name ${JSON.stringify(SELLER_LEGAL_NAME)}`), r.out);
     assert.match(r.out, /NIKATRU is a trading name/);
   });
 
@@ -1322,7 +1328,7 @@ describe('check-site-integrity · the new limbs cannot go vacuously quiet', () =
       patch(d, 'sites/nikatru/privacy.html', `proprietorship of ${SELLER_LEGAL_NAME}`, 'proprietorship'),
     );
     assert.equal(r.code, 1);
-    assert.match(r.out, /privacy\.html does not name "Rajasekar Selvam"/);
+    assert.ok(r.out.includes(`privacy.html does not name ${JSON.stringify(SELLER_LEGAL_NAME)}`), r.out);
   });
 
   test('the name surviving only inside an HTML comment does NOT count', () => {

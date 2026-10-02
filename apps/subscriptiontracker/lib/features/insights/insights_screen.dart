@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 // A `show` list and not a bare import: `core/theme/app_theme.dart` and
 // `app_colors.dart` below are re-export shims for this same package, so an
 // unrestricted import makes both of them redundant and the analyzer says so
@@ -11,15 +12,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 // The two-column branch below reads `AppBreakpoints.large`, and
 // `app_theme.dart`'s shim re-exports `AppSpacing` and `AppRadius` but NOT
 // `AppBreakpoints`.
+import 'package:nikatru_core/nikatru_core.dart'
+    as core
+    show ExportFile, ExportOutcome;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show AppBreakpoints, ContentPane;
 
+import '../../core/format/home_totals.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
-import '../../state/providers.dart' show nowProvider;
+import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../add/add_subscription_sheet.dart';
 import '../shared/async_gate.dart';
@@ -27,6 +32,8 @@ import '../shell/app_shell.dart';
 import 'budget_card.dart';
 import 'category_card.dart';
 import 'forecast_card.dart';
+import 'fx_caption.dart';
+import 'share_month.dart';
 import 'signals.dart';
 import 'summary_tiles.dart';
 
@@ -134,25 +141,62 @@ class InsightsScreen extends ConsumerStatefulWidget {
 class _InsightsScreenState extends ConsumerState<InsightsScreen> {
   InsightsPeriod _period = InsightsPeriod.month;
 
+  /// The layer the summary tiles are painted in, so Share (IN-12) can hand
+  /// on exactly the picture on screen.
+  final GlobalKey _tilesKey = GlobalKey();
+
   /// The breakdown for [period], ranked by the MONTHLY ranking in both units so
   /// flipping the switch never reorders the rows under the reader's eye.
+  ///
+  /// ⏱ T12 (IN-06): every category is folded into the home currency by
+  /// [totals] — a category billed in dollars now claims its share of a rupee
+  /// whole instead of none — and, once folded, ranked by that one figure.
   static List<CategoryTotal> _categoryTotals(
     List<Subscription> subs,
     InsightsPeriod period,
+    HomeTotals totals,
   ) {
-    final List<CategoryTotal> monthly = SubMath.categoryTotals(subs);
+    final List<CategoryTotal> monthly = <CategoryTotal>[
+      for (final CategoryTotal c in SubMath.categoryTotals(subs))
+        CategoryTotal(c.name, totals.of(c.value)),
+    ];
+    if (totals.fx != null) {
+      final List<String> order = <String>[
+        for (final CategoryTotal c in monthly) c.name,
+      ];
+      monthly.sort((CategoryTotal a, CategoryTotal b) {
+        final int byAmount = SubMath.chartWeight(
+          b.value,
+          totals.home,
+        ).compareTo(SubMath.chartWeight(a.value, totals.home));
+        return byAmount != 0
+            ? byAmount
+            : order.indexOf(a.name).compareTo(order.indexOf(b.name));
+      });
+    }
     if (period == InsightsPeriod.month) return monthly;
     return <CategoryTotal>[
       for (final CategoryTotal c in monthly)
         CategoryTotal(
           c.name,
-          MoneyBag.sum(<Money>[
-            for (final Subscription s in subs)
-              if (s.category == c.name) s.yearlyCharge,
-          ]),
+          totals.of(
+            MoneyBag.sum(<Money>[
+              for (final Subscription s in SubMath.charging(subs))
+                if (s.category == c.name) s.yearlyCharge,
+            ]),
+          ),
         ),
     ];
   }
+
+  /// IN-07: a category row opens Home filtered to that category.
+  static void _openCategory(BuildContext context, String category) =>
+      context.go(
+        Uri(
+          path: '/home',
+          queryParameters: <String, String>{'category': category},
+        ).toString(),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -181,7 +225,9 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
       emptyActionLabel: l10n.addSubscriptionTitle,
       onEmptyAction: () => showAddSubscriptionSheet(context),
       builder: (List<Subscription> subs) {
-        final List<CategoryTotal> cats = _categoryTotals(subs, _period);
+        final HomeTotals totals = homeTotalsOf(ref);
+        final DateTime now = ref.watch(nowProvider)();
+        final List<CategoryTotal> cats = _categoryTotals(subs, _period, totals);
 
         // The page's card STACK, in reading order — built ONCE, then laid out
         // in one column or two, so no arm can gain a card the other lacks.
@@ -189,7 +235,7 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
         // LOWEST card whatever it is (the FAB and fold cases in
         // `width_shell_fab_test.dart`).
         final List<Widget> cards = <Widget>[
-          BudgetCard(subs: subs, currencyCode: currencyCode),
+          BudgetCard(subs: subs, currencyCode: currencyCode, totals: totals),
           // D3-4: what the rows can prove, and one question — never the
           // `unused` / `usedPct` fields nothing writes.
           SignalsSection(subs: subs, money: money),
@@ -198,6 +244,7 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
             money: money,
             currencyCode: currencyCode,
             perYear: _period == InsightsPeriod.year,
+            onCategoryTap: (String name) => _openCategory(context, name),
           ),
           // D3-6: the Pro card, gated on its own (PaywallGate.card).
           ForecastCard(subs: subs, money: money, currencyCode: currencyCode),
@@ -221,15 +268,21 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
                   // The heading and the summary stay FULL WIDTH in both
                   // layouts: they are the page's label and its headline
                   // figures, not cards of the grid.
-                  _header(context, l10n),
+                  _header(context, l10n, subs, now),
                   const SizedBox(height: AppSpacing.lg),
-                  // `nowProvider` (ST truth pass, IN-02): the 30-day window
-                  // is a function of today, and a test must pin it.
-                  SummaryTiles(
-                    subs: subs,
-                    money: money,
-                    now: ref.watch(nowProvider)(),
+                  // IN-12: the tiles are what "Share" photographs.
+                  RepaintBoundary(
+                    key: _tilesKey,
+                    child: SummaryTiles(
+                      subs: subs,
+                      money: money,
+                      now: now,
+                      totals: totals,
+                    ),
                   ),
+                  // "Converted at ECB rates of {date}" — only when the plans
+                  // are in more than one currency.
+                  FxCaption(bag: SubMath.totalMonthly(subs)),
                   const SizedBox(height: AppSpacing.lg),
                   if (twoUp)
                     _twoColumnCards(keyed, _cardGap)
@@ -249,8 +302,16 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
 
   /// The title and the Month / Year switch on one line; the switch drops under
   /// the title when the two do not fit (a phone at 200 % text).
-  Widget _header(BuildContext context, AppLocalizations l10n) {
+  Widget _header(
+    BuildContext context,
+    AppLocalizations l10n,
+    List<Subscription> subs,
+    DateTime now,
+  ) {
     final ThemeData theme = Theme.of(context);
+    // IN-12: absent while `features.exports` is off, like every export.
+    final Future<core.ExportOutcome> Function(core.ExportFile)? export =
+        exportFileTap(ref);
     return Wrap(
       alignment: WrapAlignment.spaceBetween,
       crossAxisAlignment: WrapCrossAlignment.center,
@@ -266,25 +327,53 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
             ),
           ),
         ),
-        Semantics(
-          label: l10n.insightsPeriodLabel,
-          container: true,
-          child: SegmentedButton<InsightsPeriod>(
-            key: const Key('insights.period'),
-            segments: <ButtonSegment<InsightsPeriod>>[
-              ButtonSegment<InsightsPeriod>(
-                value: InsightsPeriod.month,
-                label: Text(l10n.insightsPeriodMonth),
+        // A Wrap, not a Row: at 200 % text on a phone the share control
+        // drops under the switch rather than overflowing beside it.
+        Wrap(
+          spacing: AppSpacing.sm,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: <Widget>[
+            Semantics(
+              label: l10n.insightsPeriodLabel,
+              container: true,
+              child: SegmentedButton<InsightsPeriod>(
+                key: const Key('insights.period'),
+                segments: <ButtonSegment<InsightsPeriod>>[
+                  ButtonSegment<InsightsPeriod>(
+                    value: InsightsPeriod.month,
+                    label: Text(l10n.insightsPeriodMonth),
+                  ),
+                  ButtonSegment<InsightsPeriod>(
+                    value: InsightsPeriod.year,
+                    label: Text(l10n.insightsPeriodYear),
+                  ),
+                ],
+                selected: <InsightsPeriod>{_period},
+                onSelectionChanged: (Set<InsightsPeriod> next) =>
+                    setState(() => _period = next.single),
               ),
-              ButtonSegment<InsightsPeriod>(
-                value: InsightsPeriod.year,
-                label: Text(l10n.insightsPeriodYear),
+            ),
+            if (export != null)
+              // The NAME is the icon's label, not the tooltip: a tooltip is
+              // announced as a hint, and a control named only by one is
+              // "nothing" to the a11y sweep. The tooltip stays for a pointer
+              // and is kept out of the tree so the name is not read twice.
+              Tooltip(
+                message: l10n.shareMonth,
+                excludeFromSemantics: true,
+                child: IconButton(
+                  key: ShareMonthKeys.open,
+                  icon: Icon(Icons.ios_share, semanticLabel: l10n.shareMonth),
+                  onPressed: () => showShareMonthSheet(
+                    context,
+                    subs: subs,
+                    month: now,
+                    tiles: _tilesKey,
+                    export: export,
+                  ),
+                ),
               ),
-            ],
-            selected: <InsightsPeriod>{_period},
-            onSelectionChanged: (Set<InsightsPeriod> next) =>
-                setState(() => _period = next.single),
-          ),
+          ],
         ),
       ],
     );

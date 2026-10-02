@@ -16,6 +16,7 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
         StatusKind,
         TwoPane;
 
+import '../../core/format/home_totals.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
@@ -29,6 +30,7 @@ import '../shared/due.dart';
 import '../shared/async_gate.dart';
 import '../shared/widgets.dart';
 import '../shell/app_shell.dart';
+import 'calendar_feed_actions.dart';
 
 /// ⏱ 2026-09-28 · train ST-D2 — THE CALENDAR IS BUILT FROM THE FOUNDATION.
 ///
@@ -50,16 +52,52 @@ import '../shell/app_shell.dart';
 ///    step. The due phrase keeps its urgency as a MEANING
 ///    ([DueInfo.statusOf]) and the row resolves the scheme-forked tone.
 ///
+/// ⏱ T12 · PLAN THE YEAR (CA-04, CA-05, CA-06).
+///  · The month PAGES: back, forward and Today, over PROJECTED charges
+///    ([SubMath.chargesBetween]) — a monthly plan is on every month's grid,
+///    not only on the one its stored date falls in. A "12 months" view lists
+///    the year ahead as an agenda.
+///  · An empty month says when the next charge is ("Nothing renews in
+///    October — next: Netflix on 3 Nov"), and a large window names the most
+///    expensive month ahead.
+///  · Trial ends and cancel-by deadlines are on the grid as a second, square
+///    mark with a legend, and are SAID ("14, trial ends").
+///  · The private feed is here, where a user looks for it — Subscribe,
+///    Download .ics, Copy link — through Settings' own calls.
+///
 /// The page inset is [AppShell.pageInsetOf], shared by both panes: the FAB
 /// floats over both columns, and two insets that agree today and drift
 /// tomorrow would read as a step in the seam between them.
 EdgeInsets _pageInset(BuildContext context) => AppShell.pageInsetOf(context);
 
-/// 🔴 STATEFUL SINCE THE `TwoPane` ADOPTION, AND THE STATE IS EXACTLY ONE INT.
-/// The detail column needs a selected day and nothing else: the month, the
-/// renewals and the totals are all still derived per build from the clock and
-/// the subscriptions provider. See [_CalendarScreenState._selectedDay] for why
-/// a day-of-month is the whole selection.
+/// The week's first column, ISO-numbered (0 = Monday … 6 = Sunday), or null
+/// for the locale's own. Train T14's week-start preference overrides THIS
+/// provider; until it lands the locale decides.
+final Provider<int?> calendarWeekStartProvider = Provider<int?>((ref) => null);
+
+/// How many months the agenda shows, and the most-expensive-month line scans.
+const int kCalendarAgendaMonths = 12;
+
+/// How far past an empty month the "next:" pointer looks for a charge.
+const int _nextChargeHorizonDays = 730;
+
+/// The month view or the twelve-month agenda.
+enum CalendarView { month, agenda }
+
+/// One deadline on the grid: [sub]'s trial ends, or the last day to cancel
+/// before the charge [charge].
+class _Deadline {
+  const _Deadline.trial(this.sub, this.on) : charge = null;
+  const _Deadline.cancelBy(this.sub, this.on, DateTime this.charge);
+  final Subscription sub;
+  final DateTime on;
+  final DateTime? charge;
+  bool get isTrial => charge == null;
+}
+
+/// 🔴 STATEFUL SINCE THE `TwoPane` ADOPTION. The state is the PAGE (a month
+/// offset from today's), the VIEW, and a selected day of the paged month —
+/// everything else is derived per build from the clock and the subscriptions.
 class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({this.clock, super.key});
 
@@ -76,36 +114,50 @@ class CalendarScreen extends ConsumerStatefulWidget {
   /// assets.
   final DateTime Function()? clock;
 
+  static const Key prevKey = Key('calendar.prev');
+  static const Key nextKey = Key('calendar.next');
+  static const Key todayKey = Key('calendar.today');
+  static const Key viewKey = Key('calendar.view');
+  static const Key monthLabelKey = Key('calendar.month');
+  static const Key emptyKey = Key('calendar.empty');
+  static const Key mostExpensiveKey = Key('calendar.mostExpensive');
+  static const Key legendKey = Key('calendar.legend');
+  static const Key agendaKey = Key('calendar.agenda');
+  static Key agendaMonthKey(int i) => Key('calendar.agenda.month.$i');
+
   @override
   ConsumerState<CalendarScreen> createState() => _CalendarScreenState();
 }
 
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
-  /// The selected day of THIS month, or null for "the whole month".
-  ///
-  /// A bare int and not a `DateTime`, because the screen renders exactly one
-  /// month and there is no month navigation to select out of.
+  /// Months from the current one: 0 is this month, 1 the next, -1 the last.
+  int _offset = 0;
+
+  CalendarView _view = CalendarView.month;
+
+  /// The selected day of the PAGED month, or null for "the whole month".
   ///
   /// 🔴 IT IS NOT TRUSTED ON READ. The month rolls over at midnight and the
   /// subscription list can change under a selection, so `build` re-validates it
   /// against `byDay` every frame. An invalid selection reads as null — the
-  /// whole month — which is the state the screen was in before anything was
-  /// tapped.
+  /// whole month — and paging clears it.
   int? _selectedDay;
+
+  void _page(int to) => setState(() {
+    _offset = to;
+    _selectedDay = null;
+  });
 
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final ThemeData theme = Theme.of(context);
     final MoneyFormatter money = MoneyFormatter(
       l10n.localeName,
       emptyCurrencyCode: ref.watch(currencyCodeProvider),
     );
-    // ⚠️ THE WHOLE-SCREEN EMPTY STATE IS **NOT** `l10n.calendarEmpty`. That one
-    // ("No renewals this month") is a statement about a MONTH and is still
-    // printed by the by-date section; a user with five subscriptions and none
-    // due this month keeps a real month grid. The state below is about the
-    // ACCOUNT — no subscriptions at all — and only it may replace the grid.
+    // ⚠️ THE WHOLE-SCREEN EMPTY STATE IS ABOUT THE ACCOUNT — no subscriptions
+    // at all — and only it may replace the grid. A month with nothing in it
+    // keeps its grid and says so (`calendarNothingRenews`).
     //
     // Returning early is safe here: this is a shell TAB, so `AppScaffold` owns
     // the navigation and it survives every state.
@@ -124,24 +176,24 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         .requireValue;
     final DateTime Function() clockFn = widget.clock ?? ref.watch(nowProvider);
     final DateTime now = clockFn();
-    final int y = now.year, m = now.month;
+    final DateTime month = DateTime(now.year, now.month + _offset);
+    final int y = month.year, m = month.month;
 
-    // ⏱ ST truth pass (CA-01, CA-02): EVERY charge in the month, from the
-    // date engine `Subscription.nextCharge` uses, CHARGING rows only. This
-    // drew the one STORED date per row — a weekly plan got one dot, a stale
-    // date sat on a day that had passed, and a paused plan was drawn as a
-    // renewal. One list now feeds the dots, the rows and the total.
-    final List<_Charge> inMonth = SubMath.chargesInMonth(subs, y, m);
+    // ⏱ ST truth pass (CA-01, CA-02) and T12 (CA-04): EVERY charge in the
+    // month, CHARGING rows only, projected by the date engine — one list
+    // feeds the dots, the rows, the day labels and the total.
+    final List<ProjectedCharge> charges = SubMath.chargesInMonth(subs, y, m);
     final Map<int, int> byDay = <int, int>{};
     final Map<int, List<Money>> spentByDay = <int, List<Money>>{};
-    for (final _Charge c in inMonth) {
-      byDay[c.date.day] = (byDay[c.date.day] ?? 0) + 1;
-      (spentByDay[c.date.day] ??= <Money>[]).add(c.sub.price);
+    for (final ProjectedCharge c in charges) {
+      byDay[c.on.day] = (byDay[c.on.day] ?? 0) + 1;
+      (spentByDay[c.on.day] ??= <Money>[]).add(c.sub.price);
     }
-    // What LEAVES THE ACCOUNT this month: each charge's whole price — the
-    // same list as `inMonth`, so the total and the list agree.
+    final List<_Deadline> deadlines = _deadlinesIn(subs, y, m);
+    // What LEAVES THE ACCOUNT this month: each projected charge's whole price.
+    // The same list the rows are, so the total and the rows agree.
     final MoneyBag monthTotal = MoneyBag.sum(
-      inMonth.map((_Charge c) => c.sub.price),
+      charges.map((ProjectedCharge c) => c.sub.price),
     );
 
     // The selection, re-validated — see [_selectedDay]. `byDay` is the same map
@@ -150,6 +202,23 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final int? selectedDay = byDay.containsKey(_selectedDay)
         ? _selectedDay
         : null;
+
+    if (_view == CalendarView.agenda) {
+      // The agenda is a single reading column at every width: twelve months
+      // of rows read top to bottom, so a detail column would have nothing of
+      // its own to show.
+      return ContentPane.reading(
+        key: const Key('calendar-grid-pane'),
+        child: ListView(
+          padding: _pageInset(context),
+          children: <Widget>[
+            ..._head(context, l10n, money, month, monthTotal, now),
+            ..._agenda(context, l10n, money, subs, month, now),
+            const CalendarFeedBar(),
+          ],
+        ),
+      );
+    }
 
     // THE WIDTH DECISION (unchanged by ST-D2; `test/width_calendar_test.dart`
     // measures it). Below `AppBreakpoints.expanded` (840) the screen is ONE
@@ -166,10 +235,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       list: Builder(
         builder: (BuildContext context) {
           // 🔴 `TwoPane.isTwoPaneOf`, NOT `MediaQuery`: the decision `TwoPane`
-          // published from the width it was handed. Window and body differ (the
-          // rail takes its width first), and re-deriving from the window would
-          // drop the renewals from this column while the detail column was not
-          // being built at all.
+          // published from the width it was handed.
           final bool split = TwoPane.isTwoPaneOf(context);
           return ContentPane.reading(
             // KEYED because there are TWO panes and `find.byType(ContentPane)`
@@ -181,32 +247,26 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               // gutters stay inside the ListView.
               padding: _pageInset(context),
               children: <Widget>[
-                Text(
-                  l10n.calendarTitle,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  // ONE key with two placeholders: `{month}` carries month AND
-                  // year because a locale may order them either way. It stays a
-                  // MONTH total even with a day selected — it captions the grid.
-                  l10n.calendarSubtitle(
-                    DateFormat.yMMMM(l10n.localeName).format(now),
-                    money.formatBag(monthTotal),
-                  ),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.lg),
+                ..._head(context, l10n, money, month, monthTotal, now),
                 AppCard(
                   child: MonthGrid(
-                    month: now,
+                    month: month,
                     locale: l10n.localeName,
                     today: now,
                     marks: byDay,
+                    firstDayOfWeek: ref.watch(calendarWeekStartProvider),
+                    deadlines: <int, String>{
+                      for (final int day in <int>{
+                        for (final _Deadline d in deadlines) d.on.day,
+                      })
+                        day: <String>{
+                          for (final _Deadline d in deadlines)
+                            if (d.on.day == day)
+                              d.isTrial
+                                  ? l10n.calendarTrialEnds
+                                  : l10n.calendarCancelBy,
+                        }.join(', '),
+                    },
                     // ST truth pass (CA-03): a cell NAMES its renewals — the
                     // dot is decorative, so without this no reader heard which
                     // days charge or what.
@@ -221,17 +281,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                       ],
                     ].join(', '),
                     // 🔴 SELECTION EXISTS ONLY IN TWO-PANE MODE. Below 840
-                    // there is no detail column for a selection to point at, so
-                    // a selected cell would be a highlight that changed nothing
-                    // — and a window shrunk back to a phone would carry a mark
-                    // the user could no longer clear. `split` gates the ring AND
-                    // the tap.
+                    // there is no detail column for a selection to point at.
                     selectedDay: split ? selectedDay : null,
                     // Tapping the selected day again clears it — the only way
-                    // back to the whole month; a "show all" control would need
-                    // copy this screen has no key for. Only MARKED days are
-                    // controls (MonthGrid's rule), which is what keeps a day's
-                    // detail list non-empty and `calendarEmpty` true.
+                    // back to the whole month. Only MARKED days are controls.
                     onDayTap: split
                         ? (int day) => setState(() {
                             _selectedDay = day == selectedDay ? null : day;
@@ -239,18 +292,27 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         : null,
                   ),
                 ),
+                _legend(context, l10n, deadlines.isNotEmpty),
+                // A large window has room to plan the year: the costliest
+                // month of the twelve ahead.
+                if (split) ?_mostExpensive(context, l10n, money, subs, now),
                 // BELOW 840 THE RENEWALS SIT UNDER THE GRID. Above it they ARE
                 // the detail column; including them here too would render every
                 // row twice.
-                if (!split)
+                if (!split) ...<Widget>[
                   ..._renewals(
                     context,
                     l10n,
                     money,
+                    subs,
+                    month,
                     now,
                     l10n.calendarByDate,
-                    inMonth,
+                    charges,
                   ),
+                  ..._deadlineRows(context, l10n, money, deadlines),
+                ],
+                const CalendarFeedBar(),
               ],
             ),
           );
@@ -263,49 +325,386 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         key: const Key('calendar-day-pane'),
         child: ListView(
           padding: _pageInset(context),
-          children: _renewals(
-            context,
-            l10n,
-            money,
-            now,
-            selectedDay == null
-                ? l10n.calendarByDate
-                // A day's heading is that date from the locale's symbol table.
-                // No arb key: a date is not copy.
-                : DateFormat.yMMMMd(
-                    l10n.localeName,
-                  ).format(DateTime(y, m, selectedDay)),
-            selectedDay == null
-                ? inMonth
-                : inMonth
-                      .where((_Charge c) => c.date.day == selectedDay)
-                      .toList(),
-          ),
+          children: <Widget>[
+            ..._renewals(
+              context,
+              l10n,
+              money,
+              subs,
+              month,
+              now,
+              selectedDay == null
+                  ? l10n.calendarByDate
+                  // A day's heading is that date from the locale's symbol
+                  // table. No arb key: a date is not copy.
+                  : DateFormat.yMMMMd(
+                      l10n.localeName,
+                    ).format(DateTime(y, m, selectedDay)),
+              selectedDay == null
+                  ? charges
+                  : charges
+                        .where((ProjectedCharge c) => c.on.day == selectedDay)
+                        .toList(),
+            ),
+            if (selectedDay == null)
+              ..._deadlineRows(context, l10n, money, deadlines),
+          ],
         ),
       ),
-      // 🔴 UNREACHABLE BY CONSTRUCTION: `detail` above is never null. A real
-      // placeholder would need a sentence ("Select a day…") with no arb key. If
-      // `detail` ever becomes nullable, this must become a real placeholder AND
-      // the key must be added first.
+      // 🔴 UNREACHABLE BY CONSTRUCTION: `detail` above is never null.
       placeholder: const SizedBox.shrink(),
     );
   }
 
-  /// The "By date" section — heading, one card of rows, or the empty line.
+  /// Title, the pager (back · month · forward · Today), the view switch and
+  /// the month's total.
+  List<Widget> _head(
+    BuildContext context,
+    AppLocalizations l10n,
+    MoneyFormatter money,
+    DateTime month,
+    MoneyBag monthTotal,
+    DateTime now,
+  ) {
+    final ThemeData theme = Theme.of(context);
+    final String monthName = DateFormat.yMMMM(l10n.localeName).format(month);
+    return <Widget>[
+      Text(
+        l10n.calendarTitle,
+        style: theme.textTheme.headlineSmall?.copyWith(
+          color: theme.colorScheme.onSurface,
+        ),
+      ),
+      const SizedBox(height: AppSpacing.sm),
+      // ONE row for the pager — back, the month, forward — so Tab reads it
+      // left to right; the view switch and Today on the next.
+      Row(
+        children: <Widget>[
+          IconButton(
+            key: CalendarScreen.prevKey,
+            tooltip: l10n.calendarPrevMonth,
+            onPressed: () => _page(_offset - 1),
+            icon: Icon(
+              Icons.chevron_left,
+              semanticLabel: l10n.calendarPrevMonth,
+            ),
+          ),
+          // The page's caption IS the pager's label: the month (and year — a
+          // locale may order them either way) and what leaves the account in
+          // it. One string, so the month is printed once. It stays a MONTH
+          // total even with a day selected.
+          Expanded(
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                key: CalendarScreen.monthLabelKey,
+                l10n.calendarSubtitle(monthName, money.formatBag(monthTotal)),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            key: CalendarScreen.nextKey,
+            tooltip: l10n.calendarNextMonth,
+            onPressed: () => _page(_offset + 1),
+            icon: Icon(
+              Icons.chevron_right,
+              semanticLabel: l10n.calendarNextMonth,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: AppSpacing.xs),
+      Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: AppSpacing.sm,
+        runSpacing: AppSpacing.sm,
+        children: <Widget>[
+          Semantics(
+            label: l10n.calendarViewLabel,
+            container: true,
+            child: SegmentedButton<CalendarView>(
+              key: CalendarScreen.viewKey,
+              showSelectedIcon: false,
+              segments: <ButtonSegment<CalendarView>>[
+                ButtonSegment<CalendarView>(
+                  value: CalendarView.month,
+                  label: Text(l10n.calendarViewMonth),
+                ),
+                ButtonSegment<CalendarView>(
+                  value: CalendarView.agenda,
+                  label: Text(l10n.calendarViewAgenda),
+                ),
+              ],
+              selected: <CalendarView>{_view},
+              onSelectionChanged: (Set<CalendarView> v) =>
+                  setState(() => _view = v.single),
+            ),
+          ),
+          if (_offset != 0)
+            TextButton(
+              key: CalendarScreen.todayKey,
+              onPressed: () => _page(0),
+              child: Text(l10n.calendarToday),
+            ),
+        ],
+      ),
+      const SizedBox(height: AppSpacing.lg),
+    ];
+  }
+
+  /// The key to the grid's two marks — the deadline half only when the month
+  /// has a deadline to explain.
+  Widget _legend(BuildContext context, AppLocalizations l10n, bool deadlines) {
+    final ThemeData theme = Theme.of(context);
+    final TextStyle? style = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    Widget item(Widget mark, String label) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        ExcludeSemantics(child: mark),
+        const SizedBox(width: AppSpacing.xs),
+        Text(label, style: style),
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.sm),
+      child: Wrap(
+        key: CalendarScreen.legendKey,
+        spacing: AppSpacing.lg,
+        runSpacing: AppSpacing.xs,
+        children: <Widget>[
+          item(MonthGrid.markDot(context), l10n.calendarLegendRenews),
+          if (deadlines)
+            item(
+              MonthGrid.deadlineMarker(context),
+              l10n.calendarLegendDeadline,
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Trial ends and cancel-by days that fall in [month] of [year]: a trial's
+  /// end date, and for a plan with a notice period, its next charge's date
+  /// less the notice — for every projected charge whose cancel-by lands here.
+  static List<_Deadline> _deadlinesIn(
+    List<Subscription> subs,
+    int year,
+    int month,
+  ) {
+    final DateTime first = DateTime(year, month);
+    final DateTime last = DateTime(year, month + 1, 0);
+    bool inMonth(DateTime d) => d.year == year && d.month == month;
+    final List<_Deadline> out = <_Deadline>[
+      for (final Subscription s in SubMath.charging(subs))
+        if (s.trialEndsOn != null && inMonth(s.trialEndsOn!))
+          _Deadline.trial(
+            s,
+            DateTime(
+              s.trialEndsOn!.year,
+              s.trialEndsOn!.month,
+              s.trialEndsOn!.day,
+            ),
+          ),
+    ];
+    for (final Subscription s in SubMath.charging(subs)) {
+      final int? notice = s.noticeDays;
+      if (notice == null) continue;
+      for (final ProjectedCharge c in SubMath.chargesBetween(
+        <Subscription>[s],
+        first,
+        last.add(Duration(days: notice)),
+      )) {
+        final DateTime by = DateTime(c.on.year, c.on.month, c.on.day - notice);
+        if (inMonth(by)) out.add(_Deadline.cancelBy(s, by, c.on));
+      }
+    }
+    out.sort((_Deadline a, _Deadline b) => a.on.compareTo(b.on));
+    return out;
+  }
+
+  /// The "Deadlines" section under the renewals, when the month has any.
+  List<Widget> _deadlineRows(
+    BuildContext context,
+    AppLocalizations l10n,
+    MoneyFormatter money,
+    List<_Deadline> deadlines,
+  ) {
+    if (deadlines.isEmpty) return const <Widget>[];
+    return <Widget>[
+      SectionHeader(l10n.calendarDeadlines),
+      AppCard(
+        padding: EdgeInsets.zero,
+        child: Column(
+          children: <Widget>[
+            for (int i = 0; i < deadlines.length; i++) ...<Widget>[
+              if (i > 0) const Divider(height: 1),
+              AppListRow(
+                key: Key(
+                  'calendar.deadline.${deadlines[i].sub.id}.'
+                  '${deadlines[i].isTrial ? 'trial' : 'cancelBy'}',
+                ),
+                leading: DateBadge(
+                  date: deadlines[i].on,
+                  locale: l10n.localeName,
+                ),
+                title: deadlines[i].sub.name,
+                subtitle: deadlines[i].isTrial
+                    ? l10n.calendarTrialEndsRow(
+                        '${money.format(deadlines[i].sub.price)}'
+                        '${cadenceCaption(l10n, deadlines[i].sub.cycle)}',
+                      )
+                    : l10n.calendarCancelByRow(
+                        DateFormat.MMMEd(
+                          l10n.localeName,
+                        ).format(deadlines[i].charge!),
+                      ),
+                status: StatusKind.warn,
+                onTap: () => context.push('/sub/${deadlines[i].sub.id}'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ];
+  }
+
+  /// Twelve months from the paged one, each a heading with its total and its
+  /// rows — or the empty-month sentence.
+  List<Widget> _agenda(
+    BuildContext context,
+    AppLocalizations l10n,
+    MoneyFormatter money,
+    List<Subscription> subs,
+    DateTime from,
+    DateTime now,
+  ) {
+    return <Widget>[
+      for (int i = 0; i < kCalendarAgendaMonths; i++)
+        KeyedSubtree(
+          key: CalendarScreen.agendaMonthKey(i),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: _renewals(
+              context,
+              l10n,
+              money,
+              subs,
+              DateTime(from.year, from.month + i),
+              now,
+              null,
+              SubMath.chargesInMonth(subs, from.year, from.month + i),
+            ),
+          ),
+        ),
+    ];
+  }
+
+  /// "Most expensive month ahead: March 2027 · ₹5,397" — the costliest of the
+  /// next twelve months, ranked in the home currency; null when nothing
+  /// charges in any of them.
+  Widget? _mostExpensive(
+    BuildContext context,
+    AppLocalizations l10n,
+    MoneyFormatter money,
+    List<Subscription> subs,
+    DateTime now,
+  ) {
+    final HomeTotals totals = homeTotalsOf(ref);
+    final List<({DateTime month, MoneyBag bag})> months =
+        <({DateTime month, MoneyBag bag})>[
+          for (int i = 0; i < kCalendarAgendaMonths; i++)
+            (
+              month: DateTime(now.year, now.month + i),
+              bag: MoneyBag.sum(
+                SubMath.chargesInMonth(
+                  subs,
+                  now.year,
+                  now.month + i,
+                ).map((ProjectedCharge c) => c.sub.price),
+              ),
+            ),
+        ];
+    // Ranked in the home currency (converted where a rate table has been
+    // read); with no table and no plan in the home currency, in the currency
+    // the plans are in — a ranking is never across unconverted currencies.
+    String rankIn = totals.home;
+    if (!months.any(
+      (({DateTime month, MoneyBag bag}) m) =>
+          totals.of(m.bag).byCurrency.containsKey(totals.home),
+    )) {
+      final List<String> seen = <String>[
+        for (final ({DateTime month, MoneyBag bag}) m in months)
+          ...m.bag.byCurrency.keys,
+      ];
+      if (seen.isEmpty) return null;
+      rankIn = seen.first;
+    }
+    DateTime? best;
+    MoneyBag? bestBag;
+    double bestWeight = 0;
+    for (final ({DateTime month, MoneyBag bag}) m in months) {
+      final double w = SubMath.chartWeight(totals.of(m.bag), rankIn);
+      if (w > bestWeight) {
+        best = m.month;
+        bestBag = m.bag;
+        bestWeight = w;
+      }
+    }
+    if (best == null) return null;
+    final ThemeData theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.sm),
+      child: Text(
+        key: CalendarScreen.mostExpensiveKey,
+        l10n.calendarMostExpensive(
+          DateFormat.yMMMM(l10n.localeName).format(best),
+          money.formatBag(bestBag!),
+        ),
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurface,
+        ),
+      ),
+    );
+  }
+
+  /// The "By date" section — heading, one card of rows, or the empty-month
+  /// sentence with the next charge after it.
   ///
-  /// ONE builder for both panes: below 840 it is the tail of the master column,
-  /// above 840 it is the whole detail column.
+  /// ONE builder for every place a month's charges are listed: the tail of the
+  /// phone column, the whole detail column, and each agenda month (whose
+  /// heading — [heading] null — is the month itself).
   List<Widget> _renewals(
     BuildContext context,
     AppLocalizations l10n,
     MoneyFormatter money,
+    List<Subscription> subs,
+    DateTime month,
     DateTime now,
-    String heading,
-    List<_Charge> rows,
+    String? heading,
+    List<ProjectedCharge> rows,
   ) {
     final ThemeData theme = Theme.of(context);
+    final String monthName = DateFormat.yMMMM(l10n.localeName).format(month);
     return <Widget>[
-      SectionHeader(heading),
+      SectionHeader(
+        heading ??
+            (rows.isEmpty
+                ? monthName
+                : l10n.calendarSubtitle(
+                    monthName,
+                    money.formatBag(
+                      MoneyBag.sum(
+                        rows.map((ProjectedCharge c) => c.sub.price),
+                      ),
+                    ),
+                  )),
+      ),
       if (rows.isNotEmpty)
         AppCard(
           // The rows carry their own inset; the card is their edge.
@@ -320,16 +719,38 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           ),
         )
       else
-        // Reachable only under `calendarByDate`: a day is selectable only when
-        // it HAS renewals, so a per-day list is never empty and this
-        // month-scoped sentence never appears under a day heading.
+        // Reachable only for a whole month: a day is selectable only when it
+        // HAS charges, so a per-day list is never empty.
         Text(
-          l10n.calendarEmpty,
+          key: heading == null ? null : CalendarScreen.emptyKey,
+          _emptyMonth(l10n, subs, month),
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
     ];
+  }
+
+  /// "Nothing renews in October 2026 — next: Netflix on 3 Nov 2026", or the
+  /// first half alone when nothing charges in the next two years.
+  static String _emptyMonth(
+    AppLocalizations l10n,
+    List<Subscription> subs,
+    DateTime month,
+  ) {
+    final String monthName = DateFormat.yMMMM(l10n.localeName).format(month);
+    final DateTime after = DateTime(month.year, month.month + 1);
+    final List<ProjectedCharge> next = SubMath.chargesBetween(
+      subs,
+      after,
+      after.add(const Duration(days: _nextChargeHorizonDays)),
+    );
+    if (next.isEmpty) return l10n.calendarNothingRenews(monthName);
+    return l10n.calendarNothingRenewsNext(
+      monthName,
+      next.first.sub.name,
+      DateFormat.yMMMd(l10n.localeName).format(next.first.on),
+    );
   }
 
   /// One charge: its date, its name, when it is due (in words, toned by
@@ -344,14 +765,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     BuildContext context,
     AppLocalizations l10n,
     MoneyFormatter money,
-    _Charge c,
+    ProjectedCharge c,
     DateTime now,
   ) {
     final Subscription s = c.sub;
     final int d = DateTime.utc(
-      c.date.year,
-      c.date.month,
-      c.date.day,
+      c.on.year,
+      c.on.month,
+      c.on.day,
     ).difference(DateTime.utc(now.year, now.month, now.day)).inDays;
     // A row with NO cadence is never rolled, so a past date on it is OVERDUE
     // (DueInfo's rule), not a charge the app can say happened.
@@ -365,7 +786,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     : (d == 1 ? l10n.renewsTomorrow : l10n.dueInDays(d))));
     final LifeStatus? life = LifeStatus.of(l10n, s);
     return AppListRow(
-      leading: DateBadge(date: c.date, locale: l10n.localeName),
+      leading: DateBadge(date: c.on, locale: l10n.localeName),
       title: s.name,
       subtitle: life == null ? when : '$when · ${life.label}',
       status:
@@ -377,7 +798,3 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     );
   }
 }
-
-/// One charge in the month: the row and the date it charges on
-/// ([SubMath.chargesInMonth]).
-typedef _Charge = ({Subscription sub, DateTime date});

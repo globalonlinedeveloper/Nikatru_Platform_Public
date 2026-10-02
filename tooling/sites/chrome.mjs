@@ -59,6 +59,7 @@
 // refuses, and `chrome-splice.test.mjs` has the failing case recorded.
 // ─────────────────────────────────────────────────────────────────────────────
 import { AUTH_MAIL_SERVED_DIR, AUTH_MAIL_TEMPLATES } from './gen-auth-mail.mjs';
+import { loadContext, renderTemplate } from '../entity/facts.mjs';
 
 /** The deploy root this chrome belongs to. `sites/rajasekarselvam` is a separate
  *  brochure site with its own identity and is deliberately NOT a member — it is
@@ -167,12 +168,17 @@ export function isChromePage(rel) {
  * exactly the kind of "it looked fine on the page I tested" failure that produced
  * six footers in the first place.
  */
-export function footer() {
+export function footer(ctx = loadContext()) {
+  // Every business fact below comes from the entity source (tooling/house-identity.json) through
+  // tooling/entity/facts.mjs; none is typed here. A null value refuses rather than dropping a clause,
+  // except the Udyam clause, which a future entity without a Udyam registration leaves out.
+  const t = (s) => renderTemplate(s, ctx, { escape: 'html', where: 'tooling/sites/chrome.mjs footer()' });
+  const msme = ctx.udyam ? t(' &middot; Registered MSME {{udyam}}') : '';
   return `<footer>
   <a href="/">Home</a> &middot; <a href="/apps/">Apps</a> &middot; <a href="/pricing">Pricing</a> &middot; <a href="/about">About</a> &middot; <a href="/support">Support</a> &middot; <a href="/contact">Contact</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/refund">Refunds</a> &middot; <a href="/shipping">Shipping</a> &middot; <a href="/delete-account">Delete account</a><br><br>
-  <span class="foot-em">Nikatru&trade;</span> &middot; Chennai, Tamil Nadu, India &middot; Registered MSME UDYAM-TN-02-0487004<br>
-  Developed by <a href="https://rajasekarselvam.com" target="_blank" rel="noopener"><span class="foot-em">Rajasekar Selvam</span></a><br>
-  &copy; 2026 Nikatru. All rights reserved.
+  <span class="foot-em">Nikatru&trade;</span> &middot; ${t('{{office.city}}, {{office.state}}, {{office.country}}')}${msme}<br>
+  Developed by <a href="${t('{{founder.url}}')}" target="_blank" rel="noopener"><span class="foot-em">${t('{{founder.name}}')}</span></a><br>
+  &copy; ${t('{{copyright.years}} {{copyright.holder}}')}. All rights reserved.
 </footer>`;
 }
 

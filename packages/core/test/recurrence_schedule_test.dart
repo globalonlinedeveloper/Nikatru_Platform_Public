@@ -157,6 +157,40 @@ void main() {
       expect(Cadence.weekly.legacyCycle, isNull);
       expect(Cadence.quarterly.legacyCycle, isNull);
     });
+    test('occurrencesBetween projects forward and never backward', () {
+      // A monthly plan stored at Jan 31: Feb clamps to the 28th, March
+      // returns to the anchor — the same chain the roll walks.
+      expect(
+        RecurrenceSchedule.occurrencesBetween(
+          DateTime(2026, 1, 31),
+          Cadence.monthly,
+          DateTime(2026, 2, 1),
+          DateTime(2026, 3, 31),
+        ),
+        <DateTime>[DateTime(2026, 2, 28), DateTime(2026, 3, 31)],
+      );
+      // A window that ends before the stored date holds nothing: no charge
+      // before [next] is ever invented.
+      expect(
+        RecurrenceSchedule.occurrencesBetween(
+          DateTime(2026, 5, 10),
+          Cadence.weekly,
+          DateTime(2026, 4, 1),
+          DateTime(2026, 4, 30),
+        ),
+        isEmpty,
+      );
+      // Weekly in one month: every seventh day, both ends inclusive.
+      expect(
+        RecurrenceSchedule.occurrencesBetween(
+          DateTime(2026, 4, 1),
+          Cadence.weekly,
+          DateTime(2026, 4, 1),
+          DateTime(2026, 4, 29),
+        ).length,
+        5,
+      );
+    });
   });
 
   group('occurrencesBetween — the charges a window holds', () {
