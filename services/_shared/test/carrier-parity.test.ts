@@ -69,8 +69,13 @@ const BRICK_WORKER = `${ROOT}/tooling/bricks/app/__brick__/{{#needs_backend}}ser
 
 const SKIP = new Set(['node_modules', '.wrangler', 'dist', 'coverage']);
 function tsFilesUnder(dir: string, out: string[] = []): string[] {
-  if (!fs.existsSync(dir)) return out;
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+  let entries: Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out; // no such directory
+  }
+  for (const e of entries) {
     if (SKIP.has(e.name)) continue;
     const p = `${dir}/${e.name}`;
     if (e.isDirectory()) tsFilesUnder(p, out);
@@ -175,8 +180,13 @@ describe('no carrier re-implements a kit export', () => {
   it('every KNOWN_DUPLICATES row still names a real duplicate (the list can only shrink)', () => {
     const stale: string[] = [];
     for (const d of KNOWN_DUPLICATES) {
-      const path = `${ROOT}/${d.file}`;
-      const still = fs.existsSync(path) && declaredNames(fs.readFileSync(path, 'utf8')).includes(d.name) && kitExports.has(d.name);
+      let source: string | null = null;
+      try {
+        source = fs.readFileSync(`${ROOT}/${d.file}`, 'utf8');
+      } catch {
+        // gone: the row is stale
+      }
+      const still = source !== null && declaredNames(source).includes(d.name) && kitExports.has(d.name);
       if (!still) stale.push(`KNOWN_DUPLICATES row ${d.file} :: ${d.name} names no duplicate any more — delete the row.`);
     }
     expect(stale, stale.join('\n')).toEqual([]);
