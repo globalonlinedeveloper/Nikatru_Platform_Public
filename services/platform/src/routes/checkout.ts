@@ -35,11 +35,14 @@
 //     only place that fix can live, which is why the `custom_data` echo below
 //     is a REFUSAL and not a log line.
 //
-// And nothing calls it. Both switches are off — `paywall.enabled = false`
-// portfolio-wide and [T-11] (renewal notices for two 30-day trials) still blocks
-// the flip ([ADR 044] §5(4)). The route therefore answers 403 `paywall_disabled`
-// for every app today, BY DESIGN, and its open path is proven only by a test
-// that supplies the KV override an owner would set. That is [pipeline C-6]
+// ⏱ 2026-10-01 · O-ST-HOSTED-CHECKOUT-CANNOT-START: the hosted rail CALLS it now
+// (packages/purchases `HostedCheckoutRail` → `CheckoutSessionTransport` → this
+// route) and opens the `checkout_url` it returns, so the attribution above rides
+// on every hosted purchase. Both switches are still off — `paywall.enabled =
+// false` portfolio-wide and [T-11] (renewal notices for two 30-day trials) still
+// blocks the flip ([ADR 044] §5(4)). The route therefore answers 403
+// `paywall_disabled` for every app today, BY DESIGN, and its open path is proven
+// only by a test that supplies the KV override an owner would set. That is [pipeline C-6]
 // applied to itself: a fail-closed seam whose open path is never exercised is a
 // dead feature that reports healthy.
 // ═════════════════════════════════════════════════════════════════════════════
@@ -95,10 +98,10 @@
 // transaction we can attribute, or it carries nothing.
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
-import type { AppEnv, RateLimiterBinding } from '../types';
+import type { AppEnv } from '../types';
 import { MARKET_PATTERN, isKnownApp, isSellableExtension, resolvePaywall } from '../config';
 import { readBoundedBody } from '../lib/body';
-import { withinEdgeCeiling } from '../lib/edge-ceiling';
+import { strictRateLimit, withinEdgeCeiling } from '../lib/edge-ceiling';
 import { isMoneyEnvironment, type MoneyEnvironment } from '../lib/mor/contract';
 import { checkoutThrough, railCan } from '../../../_shared/src/ports/payments';
 import { checkoutRailFor, railFor } from '../ports';
@@ -158,19 +161,28 @@ export const MAX_CHECKOUT_BODY_BYTES = 1024;
  * like a revoked token.
  */
 /**
- * The OPTIONAL server-derived ceiling for this route, read by name for the same
- * reason as the key above.
+ * The server-derived ceiling for this route, keyed `edge:<colo>:<asn>`.
  *
- * ⬜ HONEST GAP, STATED RATHER THAN HIDDEN: there is no `CHECKOUT_CEILING_LIMITER`
- * in `wrangler.jsonc` today, and `withinEdgeCeiling` fails OPEN on an absent
- * binding (it logs once per isolate and allows). So in production this route is
- * bounded by the auth boundary alone until that binding is added — which matters
- * more here than on a read route, because every accepted request creates a
- * Paddle transaction that CANNOT BE DELETED, only canceled. It is wired now, on
- * its own namespace name, so adding the binding is a config change rather than a
- * code change; the 429 branch is exercised in the tests today.
+ * ⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED — BOUND NOW. This used to read "HONEST
+ * GAP": no `CHECKOUT_CEILING_LIMITER` in `wrangler.jsonc`, so the route was
+ * bounded by the auth boundary alone. It is declared at the top level and in
+ * `env.sandbox`, each on its own namespace id, and test/wrangler-breaker.test.ts
+ * fails if either entry goes. It still fails OPEN on an absent binding, like
+ * every other edge ceiling: the fail-CLOSED bound is [CHECKOUT_USER_LIMITER_VAR].
  */
 const CHECKOUT_LIMITER_VAR = 'CHECKOUT_CEILING_LIMITER';
+
+/**
+ * The per-USER bucket, keyed `checkout:<sub>` on the VERIFIED subject — this
+ * route sits behind platformAuth, so the key is not a value the caller chose.
+ *
+ * 🔴 IT FAILS CLOSED (`strictRateLimit`), unlike the edge ceiling above. Every
+ * accepted request creates a Paddle transaction that CANNOT BE DELETED, only
+ * canceled, so an absent binding or a limiter fault answers 503 rather than
+ * admitting a request nothing bounds. One account opening a checkout a handful
+ * of times a minute is a person changing their mind; more is a script.
+ */
+const CHECKOUT_USER_LIMITER_VAR = 'CHECKOUT_USER_LIMITER';
 
 /** Our own offering vocabulary. `[a-z][a-z0-9_]*`, same grammar as an app id. */
 const OFFERING_ID_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
@@ -272,12 +284,18 @@ checkout.post('/checkout', async (c) => {
   // The ceiling first among the I/O steps, and BEFORE the subrequest: every
   // accepted request mints a transaction at Paddle that can only be canceled,
   // never deleted.
-  const limiter = (c.env as unknown as Record<string, RateLimiterBinding | undefined>)[
-    CHECKOUT_LIMITER_VAR
-  ];
-  if (!(await withinEdgeCeiling(limiter, c, CHECKOUT_LIMITER_VAR))) {
+  if (!(await withinEdgeCeiling(c.env.CHECKOUT_CEILING_LIMITER, c, CHECKOUT_LIMITER_VAR))) {
     return c.json({ error: 'rate_limited' }, 429);
   }
+  // The per-user bucket, after auth (userId is the verified subject) and before
+  // any read or subrequest. FAILS CLOSED — see CHECKOUT_USER_LIMITER_VAR.
+  const perUser = await strictRateLimit(
+    c.env.CHECKOUT_USER_LIMITER,
+    `checkout:${userId}`,
+    CHECKOUT_USER_LIMITER_VAR,
+  );
+  if (perUser === 'over') return c.json({ error: 'rate_limited' }, 429);
+  if (perUser === 'unavailable') return c.json({ error: 'checkout_unavailable' }, 503);
 
   const read = await readBoundedBody(c.req.raw, MAX_CHECKOUT_BODY_BYTES);
   if (!read.ok) return c.json({ error: read.error }, read.status);
@@ -326,8 +344,8 @@ checkout.post('/checkout', async (c) => {
   // state cannot be known without it — the config route's "decide from memory
   // before the KV read" lesson applies to the UNKNOWN-APP answer (which is
   // decided above, from the compiled-in registry) and not to this one. What
-  // bounds the read is the ceiling above, which has no binding yet. Stated, not
-  // hidden: see CHECKOUT_LIMITER_VAR.
+  // bounds the read is the two limiters above: the edge ceiling and the
+  // fail-closed per-user bucket (O-ST-CHECKOUT-UNBOUNDED, 2026-10-01).
   const kvValue = await c.env.CONFIG_KV.get(`config:${appId}`);
   const paywall = resolvePaywall(appId, kvValue);
   if (paywall === null) return c.json({ error: 'unknown_app' }, 404);

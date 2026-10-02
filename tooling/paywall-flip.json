@@ -32,8 +32,14 @@
       "id": "AB-M4-03-client",
       "what": "The app picks the cancel path from where the person paid (the entitlement's provider/store), maps the server's 409 to a store outcome with its own copy, and a 404 to 'no active plan' (moneyflows MF-3b). Needs new strings in apps/subscriptiontracker/lib/l10n/app_{en,ta}.arb.",
       "apps": ["*"],
-      "open": true,
-      "blockedOn": "the arb files were owned by the open ST-T4b PR #1058 on 2026-09-29"
+      "open": false,
+      "closedBy": "train st-money-ready (2026-10-01): BillingSource reads the entitlement's store; Manage plan shows 'Manage in {store}' and no Cancel for a store plan; DioCancellationTransport reads 404 as no plan and 409 as CancellationOutcome.inStore.",
+      "verify": [
+        "packages/purchases/lib/src/billing_source.dart",
+        "packages/chassis_screens/test/manage_plan_view_test.dart",
+        "apps/subscriptiontracker/test/plan_states_test.dart",
+        "packages/api_client/test/dio_money_transports_test.dart"
+      ]
     },
     {
       "id": "AB-M3-01",
@@ -53,8 +59,37 @@
       "id": "AB-A5-02-client",
       "what": "The delete-account dialog says what happens to billing (Paddle cancelled at period end; an App Store / Google Play subscription must be cancelled in the store), in en and ta, and shows the sentence the server's 503 `subscription_still_billing` carries in `message`.",
       "apps": ["*"],
-      "open": true,
-      "blockedOn": "apps/subscriptiontracker/lib/l10n/app_{en,ta}.arb and settings_screen.dart were owned by the open ST-T4b PR #1058 on 2026-09-29"
+      "open": false,
+      "closedBy": "train st-money-ready (2026-10-01): the dialog draws the plan line by where the plan was bought BEFORE the confirm, and the 503's `message` (ApiException.serverSentence → AccountDeletionFailure.serverSentence) is rendered by the login screen's deletion notice, where the sign-out redirect lands the user (review 1 of #1114: the dialog is torn down by that redirect), and cleared on Dismiss.",
+      "verify": [
+        "apps/subscriptiontracker/test/delete_account_test.dart",
+        "packages/api_client/test/dio_money_transports_test.dart"
+      ]
+    },
+    {
+      "id": "O-ST-HOSTED-CHECKOUT-CANNOT-START",
+      "what": "A hosted channel (web, windows-store, windows-direct, linux-snap, linux-appimage) can START a checkout from the served config: the hosted rail asks POST /v1/checkout (which attributes the transaction to the verified account) and opens the checkout_url it returns. Before: it required a checkout_url_template that no config serves, so canStartCheckout was false everywhere.",
+      "apps": ["*"],
+      "open": false,
+      "closedBy": "train st-money-ready (2026-10-01)",
+      "verify": [
+        "packages/purchases/lib/src/hosted_checkout_rail.dart",
+        "packages/purchases/test/chassis_billing_test.dart",
+        "packages/purchases/test/hosted_checkout_rail_test.dart",
+        "apps/subscriptiontracker/test/purchase_parity_test.dart"
+      ]
+    },
+    {
+      "id": "O-ST-CHECKOUT-UNBOUNDED",
+      "what": "POST /v1/checkout is bounded: CHECKOUT_CEILING_LIMITER (edge, fails open) and CHECKOUT_USER_LIMITER (per verified user, fails closed) are bound at the top level and in env.sandbox, each on its own namespace id.",
+      "apps": ["*"],
+      "open": false,
+      "closedBy": "train st-money-ready (2026-10-01)",
+      "verify": [
+        "services/platform/wrangler.jsonc",
+        "services/platform/test/wrangler-breaker.test.ts",
+        "services/platform/test/checkout.test.ts"
+      ]
     },
     {
       "id": "AB-M4-07",

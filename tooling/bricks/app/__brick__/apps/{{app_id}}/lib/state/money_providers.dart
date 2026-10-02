@@ -24,13 +24,9 @@ import 'package:nikatru_purchases/nikatru_purchases.dart';
 import '../core/app_config.dart';
 import 'providers.dart';
 
-/// The rail's own description of what it sells — [pipeline 5]M-11.
-///
-/// Resolved from the CFG-1 config document's `paywall` block, which means a
-/// price change is a config edit and not a release. While the config is still
-/// resolving this is [RailConfig.empty], i.e. "nothing to sell yet" — never a
-/// guessed price, because a guessed price is the defect this requirement is
-/// named after.
+/// What the rail sells, [pipeline 5]M-11: the CFG-1 `paywall` block, so a
+/// price change is config, not a release; [RailConfig.empty] until it
+/// resolves, never a guessed price. Hosted checkout: `checkoutSessionsFor`.
 final Provider<RailConfig> railConfigProvider = Provider<RailConfig>((ref) {
   final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
   // ST-U2 (audit C35): `paywall.enabled` is the outer switch for SELLING too.
@@ -128,6 +124,10 @@ PurchaseRail purchaseRailFor(
     accountId: () async => ref.read(authRepositoryProvider).currentUser?.id,
     accessToken: () => ref.read(authRepositoryProvider).currentAccessToken(),
     cancellationTransport: ref.watch(cancellationTransportProvider),
+    checkoutSessions: checkoutSessionsFor(
+      AppConfig.isBackendLive,
+      kPlatformBaseUrl,
+    ),
     // ⏱ 2026-09-27 (O-BRICK-SELLS-NOTHING-IN-A-STORE, 12b): WIRED, NOT NULL.
     // The brick used to pass two literal nulls here, so every stamped app sold
     // nothing in a store even after its owner created the store products — the
