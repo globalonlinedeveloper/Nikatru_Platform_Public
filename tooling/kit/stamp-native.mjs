@@ -100,6 +100,8 @@ const CMAKE_DEFINE = 'add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DE
 const CMAKE_DEFINE_LIVE = /^\s*add_compile_definitions\(\s*_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS\s*\)/m;
 const CMAKE_PLUGINS_LIVE = /^\s*include\(\s*flutter\/generated_plugins\.cmake\s*\)/m;
 const AMAZON_RECEIVER = 'com.amazon.device.iap.ResponseReceiver';
+/** Every RegExp metacharacter escaped, the backslash included (CodeQL #570). */
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const TOOLS_NS = 'xmlns:tools="http://schemas.android.com/tools"';
 
 /** A transform met a file it does not recognise. Refusing beats guessing: a
@@ -164,7 +166,7 @@ export function withAmazonReceiverRemoved(text) {
     if (open === null) throw new NativeStampRefused(`${ANDROID_MANIFEST} has no <manifest> element.`);
     out = `${out.slice(0, open.index)}<manifest ${TOOLS_NS}${out.slice(open.index + '<manifest'.length)}`;
   }
-  const live = new RegExp(`<receiver\\s[^>]*android:name="${AMAZON_RECEIVER.replace(/\./g, '\\.')}"[^>]*tools:node="remove"`);
+  const live = new RegExp(`<receiver\\s[^>]*android:name="${escapeRegExp(AMAZON_RECEIVER)}"[^>]*tools:node="remove"`);
   if (live.test(stripXmlComments(out))) return out;
   const close = out.lastIndexOf('</application>');
   if (close === -1) throw new NativeStampRefused(`${ANDROID_MANIFEST} has no </application> to put the removal inside.`);
@@ -180,6 +182,41 @@ export function withAmazonReceiverRemoved(text) {
     '',
   ].join('\n');
   return `${out.slice(0, close)}${block}    ${out.slice(close).replace(/^\s*/, '')}`;
+}
+
+/** The Android manifest with sentry-android's NDK signal handler switched OFF.
+ *  ⏱ 2026-10-02 (club apply-ci, the first CI red). Every Android row of
+ *  tooling/channel-register.json declares crashSink.native=false, and
+ *  assert-seams-wired.mjs requires this meta-data inside <application> of every
+ *  workspace app's manifest: the Dart `enableNativeCrashHandling = false` does not
+ *  reach the NDK handler, and SentryAndroid.init reads this switch first. A
+ *  stamped app is graded from its first commit, so the stamp writes it, in the
+ *  shape the first app carries. Comment-stripped, so prose about it is not it. */
+export function withNdkSwitchedOff(text) {
+  const src = stripXmlComments(text);
+  const open = src.search(/<application[\s>]/);
+  const shut = src.indexOf('</application>');
+  if (open >= 0 && shut > open) {
+    for (const m of src.slice(open, shut).matchAll(/<meta-data\b[^>]*>/g)) {
+      if (/android:name\s*=\s*"io\.sentry\.ndk\.enable"/.test(m[0]) && /android:value\s*=\s*"false"/.test(m[0])) return text;
+    }
+  }
+  const close = text.lastIndexOf('</application>');
+  if (close === -1) throw new NativeStampRefused(`${ANDROID_MANIFEST} has no </application> to put the NDK switch inside.`);
+  const block = [
+    '        <!-- NATIVE CRASH LAYER OFF, stamped by tooling/kit/stamp-native.mjs. Every',
+    '             Android row of tooling/channel-register.json declares',
+    '             crashSink.native=false; the Dart enableNativeCrashHandling = false does',
+    "             not reach sentry-android's NDK signal handler, and SentryAndroid.init",
+    '             reads this switch from the manifest first.',
+    '             tooling/ci/assert-seams-wired.mjs fails while a row says native=false',
+    '             and this line is gone. -->',
+    '        <meta-data',
+    '            android:name="io.sentry.ndk.enable"',
+    '            android:value="false" />',
+    '',
+  ].join('\n');
+  return `${text.slice(0, close)}${block}    ${text.slice(close).replace(/^\s*/, '')}`;
 }
 
 /** The macOS Info.plist with a CFBundleDisplayName key for render.mjs to fill.
@@ -391,7 +428,7 @@ function textEdits(id) {
   return [
     { platform: 'android', rel: GRADLE_PROPERTIES, edit: withGradleWaiver },
     { platform: 'windows', rel: WINDOWS_CMAKE, edit: withWindowsWaiver },
-    { platform: 'android', rel: ANDROID_MANIFEST, edit: withAmazonReceiverRemoved },
+    { platform: 'android', rel: ANDROID_MANIFEST, edit: (t) => withNdkSwitchedOff(withAmazonReceiverRemoved(t)) },
     { platform: 'macos', rel: MACOS_INFO_PLIST, edit: withMacosDisplayNameKey },
     { platform: 'linux', rel: LINUX_CMAKE, edit: withLinuxPackagingInstall },
     { platform: 'linux', rel: LINUX_RUNNER, edit: withLinuxWindowIcon },
@@ -423,8 +460,16 @@ export function flutterCreateArgs({ id, dest }) {
   return ['create', '--no-pub', `--platforms=${NATIVE_PLATFORMS.join(',')}`, '--project-name', id, '--org', ORG, dest];
 }
 
-/** The default runner: flutter on PATH (flutter.bat through cmd.exe on Windows). */
+/** What a flutter argument may contain before it reaches cmd.exe /c: stamp-app.mjs's
+ *  SAFE_ARG, plus the comma of `--platforms=` and the tilde of a Windows 8.3 temp
+ *  path. Nothing a shell reads as syntax (CodeQL #572). */
+export const SAFE_FLUTTER_ARG = /^[A-Za-z0-9._/\\:=,~-]+$/;
+
+/** The default runner: flutter on PATH (flutter.bat through cmd.exe on Windows).
+ *  Every argument is checked first; a refused one runs nothing. */
 function runFlutter(args) {
+  const bad = args.filter((a) => typeof a !== 'string' || !SAFE_FLUTTER_ARG.test(a));
+  if (bad.length) return { status: -1, output: `refused flutter argument(s) ${bad.map((a) => JSON.stringify(a)).join(', ')} (${SAFE_FLUTTER_ARG})` };
   const r =
     process.platform === 'win32'
       ? spawnSync('cmd.exe', ['/d', '/s', '/c', 'flutter.bat', ...args], { encoding: 'utf8' })

@@ -28,6 +28,7 @@ import {
   flutterCreateArgs,
   stampNative,
   withAmazonReceiverRemoved,
+  withNdkSwitchedOff,
   withGradleWaiver,
   withLaunchBitmap,
   withLinuxPackagingInstall,
@@ -215,6 +216,26 @@ describe('stamp-native — each transform on the stock shape', () => {
     assert.equal(withAmazonReceiverRemoved(out), out, 'not idempotent');
   });
 
+  // ⏱ 2026-10-02 · club apply-ci's first CI red: assert-seams-wired refused the stamped
+  // probe, whose manifest had no NDK switch while every Android row says native=false.
+  test('🔴 the NDK crash handler is switched off inside <application>, once, in the shape assert-seams-wired reads', () => {
+    const stock = STOCK['android/app/src/main/AndroidManifest.xml'];
+    assert.doesNotMatch(stock, /io\.sentry\.ndk\.enable/, 'the stock manifest already carries it, so this test proves nothing');
+    const out = withNdkSwitchedOff(stock);
+    assert.match(out, /<meta-data\s+android:name="io\.sentry\.ndk\.enable"\s+android:value="false" \/>\n\s*<\/application>/);
+    assert.doesNotMatch(out, /<!--[^>]*--[^>]*-->/, 'XML 1.0 forbids "--" inside a comment');
+    assert.equal(withNdkSwitchedOff(out), out, 'not idempotent');
+  });
+
+  test('an NDK switch that exists only inside a comment is not the switch', () => {
+    const commented = STOCK['android/app/src/main/AndroidManifest.xml'].replace(
+      '    </application>',
+      '        <!-- <meta-data android:name="io.sentry.ndk.enable" android:value="false" /> -->\n    </application>',
+    );
+    const out = withNdkSwitchedOff(commented);
+    assert.equal(out.split('android:name="io.sentry.ndk.enable"').length - 1, 2, 'the live line was not added beside the commented one');
+  });
+
   test('a removal that exists only inside a comment is not the removal', () => {
     const commented = STOCK['android/app/src/main/AndroidManifest.xml'].replace(
       '    </application>',
@@ -285,6 +306,8 @@ describe("stamp-native — app #1's hand-made native files are a fixed point of 
   test('windows/CMakeLists.txt (the STL1011 waiver)', () => fixed('windows/CMakeLists.txt', withWindowsWaiver));
   test('android/app/src/main/AndroidManifest.xml (the Amazon receiver removal)', () =>
     fixed('android/app/src/main/AndroidManifest.xml', withAmazonReceiverRemoved));
+  test('android/app/src/main/AndroidManifest.xml (the NDK switch)', () =>
+    fixed('android/app/src/main/AndroidManifest.xml', withNdkSwitchedOff));
   test('ios/Runner/Base.lproj/LaunchScreen.storyboard (the LaunchImage size)', () =>
     fixed('ios/Runner/Base.lproj/LaunchScreen.storyboard', withStoryboardLaunchSize));
   test('android/app/src/main/res/drawable/launch_background.xml (the live bitmap)', () =>
@@ -364,6 +387,8 @@ describe('stamp-native — the orchestrator', () => {
     // every edit and every derived file landed
     assert.match(readFileSync(join(app, 'android/gradle.properties'), 'utf8'), /^android\.r8\.proguardAndroidTxt\.disallowed=false$/m);
     assert.ok(backgroundDrawsSplash(readFileSync(join(app, ANDROID_BACKGROUNDS[0]), 'utf8')));
+    // ⏱ 2026-10-02: the NDK switch assert-seams-wired requires of every workspace app (club apply-ci, first CI red).
+    assert.match(readFileSync(join(app, 'android/app/src/main/AndroidManifest.xml'), 'utf8'), /<meta-data\s+android:name="io\.sentry\.ndk\.enable"\s+android:value="false" \/>/);
     assert.ok(runnerResources(readFileSync(join(app, 'ios/Runner.xcodeproj/project.pbxproj'), 'utf8')).includes('PrivacyInfo.xcprivacy'));
     for (const rel of [
       'ios/Runner/PrivacyInfo.xcprivacy',

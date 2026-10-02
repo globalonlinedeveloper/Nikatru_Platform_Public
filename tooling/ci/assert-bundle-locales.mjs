@@ -123,7 +123,21 @@ function compare(surface, declared, locales, { allow = [] } = {}) {
   return out;
 }
 
-const stripXmlComments = (s) => s.replace(/<!--[\s\S]*?-->/g, '');
+/** XML with its comments removed, by a scan rather than a regex replace (CodeQL
+ *  #569, js/incomplete-multi-character-sanitization): an unterminated comment drops
+ *  the rest, as an XML reader would, and nothing is ever re-joined into a `<!--`. */
+const stripXmlComments = (s) => {
+  let out = '';
+  let i = 0;
+  for (;;) {
+    const open = s.indexOf('<!--', i);
+    if (open === -1) return out + s.slice(i);
+    out += s.slice(i, open);
+    const close = s.indexOf('-->', open + 4);
+    if (close === -1) return out;
+    i = close + 3;
+  }
+};
 const plistString = (plist, key) =>
   stripXmlComments(plist).match(new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`))?.[1] ?? null;
 const plistArray = (plist, key) => {

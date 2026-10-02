@@ -204,6 +204,9 @@ async function main() {
     try { child.kill(); } catch { /* already gone */ }
   }
   if (!devtools) lost(`no headless Chrome could be started (tried: ${candidates.join(', ')}), so no tree was read.`);
+  // The bundle's base href and every CDP command go down this socket (CodeQL #571,
+  // js/file-access-to-http): it is held to the loopback Chrome this script launched.
+  if (!/^ws:\/\/127\.0\.0\.1:\d+\//.test(devtools)) lost(`Chrome announced DevTools at ${devtools}, which is not loopback; refusing to send anything to it.`);
 
   ws = new WebSocket(devtools);
   await new Promise((r, j) => {

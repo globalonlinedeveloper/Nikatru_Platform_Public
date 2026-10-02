@@ -618,6 +618,14 @@
       "disposition": "by-design",
       "host": "api.cloudflare.com",
       "reason": "worker-secrets.mjs:190 (cf()'s PUT body; :153 when CodeQL flagged it). The vault value is the body of PUT /accounts/<id>/workers/scripts/<w>/secrets on api.cloudflare.com, which sets a Worker secret: the purpose of the tool. apiBase() admits no other host but a 127.0.0.1 test double, and no value is ever printed. Added 2026-10-02."
+    },
+    {
+      "alert": 571,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/smoke/web-a11y-tree.mjs",
+      "disposition": "by-design",
+      "host": "127.0.0.1",
+      "reason": "The CDP commands (carrying the served bundle URL, read from its index.html base href) go to the DevTools socket of the headless Chrome this script launched; the script refuses any DevTools URL that is not ws://127.0.0.1:<port>/ before sending."
     }
   ]
 }
