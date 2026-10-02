@@ -54,6 +54,7 @@ import { KILL_MS, runBounded } from './fixtures/silent-server.mjs';
 // whole module instead of letting each case show what it catches.
 import * as monitor from '../../ops/check-prod-provenance.mjs';
 import { databaseSources } from '../migration-tables.mjs';
+import { runQueryPredicate } from '../run-page-anchor.mjs';
 
 const { collectPaged, CouldNotLook, formatWalk, WALK_ATTEMPTS, WALK_PAUSE_MS, POINT_READ_CAP } = monitor;
 
@@ -198,7 +199,7 @@ describe('the point read — absence from a listing is not a finding', () => {
     .stdout.trim()
     .split('\n')
     .flatMap((l) => String(l.split('\t')[3] ?? '').split(',').slice(1));
-  const callerRunsAt = (workflow, full) => `actions/workflows/${workflow}/runs?head_sha=${full}&branch=main&event=push&status=completed&per_page=100`;
+  const callerRunsAt = (workflow, full) => `actions/workflows/${workflow}/runs?head_sha=${full}&branch=main&status=completed&per_page=100`;
   const noLaneHas = (full) => Object.fromEntries([
     ...LANES.map((wf) => [runsAt(wf, full), listing([])]),
     ...RUN_HOSTS.map((wf) => [callerRunsAt(wf, full), listing([])]),
@@ -294,7 +295,7 @@ describe('the point read — absence from a listing is not a finding', () => {
 // ── ⏱ 2026-09-25 [ADR 095 §4] · A CALLEE LANE IS POINT-READ IN ITS CALLER TOO ──
 // Once deploy-web.yml is `workflow_call`-only, a stamp's run number is ci.yml's,
 // so the point read lists the lane's own file and then its caller's
-// `branch=main&event=push` runs at the commit, and names the workflow it found
+// `branch=main` runs (push or dispatch, 2026-10-02) at the commit, and names the workflow it found
 // the run in. A copy of the monitor's offline inputs carries that tree.
 describe('the point read — a callee lane is looked up in its caller\'s runs', () => {
   const RUNS = [{ run_number: 101, head_sha: 'e138f5be72555ab717d0391e771b40c0883d9fab', conclusion: 'success' }];
@@ -304,7 +305,7 @@ describe('the point read — a callee lane is looked up in its caller\'s runs', 
   const CI = [
     'name: CI', 'on:', '  push:', '    branches: [main]', '  pull_request:', 'jobs:',
     '  gate:', '    runs-on: ubuntu-24.04', '    timeout-minutes: 5', '    steps:', '      - run: echo gate',
-    '  deploy-web:', '    needs: gate', "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
+    '  deploy-web:', '    needs: gate', "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'",
     '    uses: ./.github/workflows/deploy-web.yml', '',
   ].join('\n');
   const CALLEE = [
@@ -314,7 +315,7 @@ describe('the point read — a callee lane is looked up in its caller\'s runs', 
   const commitOf = (full) => ({ status: 200, body: { sha: full } });
   const listing = (runs) => ({ status: 200, body: { total_count: runs.length, workflow_runs: runs } });
   const ownAt = (workflow, full) => `actions/workflows/${workflow}/runs?head_sha=${full}&status=completed&per_page=100`;
-  const ciAt = (full) => `actions/workflows/ci.yml/runs?head_sha=${full}&branch=main&event=push&status=completed&per_page=100`;
+  const ciAt = (full) => `actions/workflows/ci.yml/runs?head_sha=${full}&branch=main&status=completed&per_page=100`;
 
   function calleeRoot() {
     const root = mkdtempSync(join(tmpdir(), 'nikatru-point-read-callee-'));
@@ -372,7 +373,7 @@ describe('the point read — a callee lane is looked up in its caller\'s runs', 
       assert.equal(r.status, 0, r.stdout + r.stderr);
       assert.match(
         r.stdout,
-        /point read · 1\.0\.3850\+c1c2c3c: GET commits\/c1c2c3c → 200 · GET actions\/workflows\/deploy-web\.yml\/runs\?[^ ]* → 200 · GET actions\/workflows\/ci\.yml\/runs\?head_sha=c1c2c3c4[0-9]*&branch=main&event=push&[^ ]* → 200 → FOUND ci\.yml run 3850/,
+        /point read · 1\.0\.3850\+c1c2c3c: GET commits\/c1c2c3c → 200 · GET actions\/workflows\/deploy-web\.yml\/runs\?[^ ]* → 200 · GET actions\/workflows\/ci\.yml\/runs\?head_sha=c1c2c3c4[0-9]*&branch=main&[^ ]* → 200 → FOUND ci\.yml run 3850/,
       );
       assert.match(r.stdout, /host-resolved build accepted: 1\.0\.3850\+c1c2c3c — resolved in ci\.yml run 3850/);
     } finally {
@@ -753,5 +754,22 @@ describe('a stale filtered run listing — the fresh unfiltered source is walked
     const r = read({ query: '', page: [run(10, OLD)], cross: [run(40, NEW)] });
     await assert.rejects(r.done, (e) => e instanceof CouldNotLook && /no filter to drop, so no fresher source exists/.test(e.message));
     assert.equal(r.walks.length, 1);
+  });
+});
+
+// ── ⏱ 2026-10-02 (O-MERGES-DEPEND-ON-THE-LAPTOP) · THE CALLER FILTER ADMITS A DISPATCH OF MAIN ──
+// land.yml merges with GITHUB_TOKEN and starts main's run as a workflow_dispatch, so a
+// build it deploys is stamped with a dispatch run of ci.yml. A push-only caller filter
+// would leave every such build unattributable.
+describe('the caller filter reads every post-gate run of main, and nothing off main', () => {
+  const keep = runQueryPredicate(monitor.HOST_RUN_FILTER);
+  const run = (over) => ({ head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success', ...over });
+  test('🔴 a dispatch of main and a push to main both list (red under the old `event=push`)', () => {
+    assert.equal(keep(run({})), true);
+    assert.equal(keep(run({ event: 'workflow_dispatch' })), true);
+    assert.equal(runQueryPredicate('branch=main&event=push')(run({ event: 'workflow_dispatch' })), false, 'the old filter is the defect this replaces');
+  });
+  test('a run off main never lists', () => {
+    assert.equal(keep(run({ head_branch: 'feat/x', event: 'workflow_dispatch' })), false);
   });
 });

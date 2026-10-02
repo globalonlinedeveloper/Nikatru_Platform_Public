@@ -21,7 +21,7 @@
 //                               and `serialMinutesPerPr=<p50 sum>` on its own
 //                               line, the value a platform-state row records.
 //                               Reads by sha only (check-runs of the head, the
-//                               push runs of the merge sha), never a listing
+//                               main runs of the merge sha), never a listing
 //                               filtered by branch. Exit 0, or 2 when fewer
 //                               than half the PRs could be measured.
 //
@@ -40,6 +40,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gateVerdict, redChecks, mainHealth, readFreeze, statusForRun, serialTiming, GATE_CHECK, isMainWorkflowRun } from './land-rules.mjs';
 import { fetchWithBoundedRetry } from './bounded-retry.mjs';
+import { POST_GATE_EVENTS } from './post-gate.mjs';
 
 const API = 'https://api.github.com';
 const REPO_SHAPE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -167,8 +168,9 @@ async function main(argv) {
       for (const p of merged) {
         const checks = await getJson(`/repos/${repo}/commits/${p.head.sha}/check-runs?check_name=${GATE_CHECK}&per_page=100`, tok);
         const g = gateVerdict(checks.check_runs ?? []);
-        const runs = await getJson(`/repos/${repo}/actions/runs?head_sha=${p.merge_commit_sha}&event=push&per_page=20`, tok);
-        const ci = (runs.workflow_runs ?? []).filter((r) => isMainWorkflowRun(r) && r.conclusion === 'success').sort((a, b) => b.id - a.id)[0];
+        // No `event=` filter: a land.yml merge's main run is a dispatch, not a push (POST_GATE_EVENTS).
+        const runs = await getJson(`/repos/${repo}/actions/runs?head_sha=${p.merge_commit_sha}&per_page=20`, tok);
+        const ci = (runs.workflow_runs ?? []).filter((r) => isMainWorkflowRun(r) && POST_GATE_EVENTS.includes(r.event) && r.conclusion === 'success').sort((a, b) => b.id - a.id)[0];
         const gateAt = (checks.check_runs ?? []).find((c) => c.name === GATE_CHECK && g.gate && String(c.details_url ?? '').includes(`/runs/${g.gate.run}/`))?.completed_at ?? null;
         samples.push({ pr: p.number, gateGreenAt: g.verdict === 'GREEN' ? gateAt : null, mergedAt: p.merged_at, mainGreenAt: ci?.updated_at ?? null });
       }

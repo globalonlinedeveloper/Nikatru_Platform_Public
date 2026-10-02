@@ -148,10 +148,20 @@ describe('rule (b): main is healthy when the newest CI run on the newest main sh
     assert.equal(statusForRun(run(), { repo: REPO }).post.body.context, MAIN_HEALTH_CONTEXT);
   });
 
+  // ⏱ 2026-10-02 (O-MERGES-DEPEND-ON-THE-LAPTOP): land.yml merges with GITHUB_TOKEN, whose
+  // push starts no run, and dispatches ci.yml on main instead. That run is main's health too.
+  test('a completed DISPATCH of CI on main (land.yml\'s post-merge start) posts its conclusion', () => {
+    assert.equal(statusForRun(run({ event: 'workflow_dispatch' }), { repo: REPO }).post.body.state, 'success');
+    assert.equal(statusForRun(run({ event: 'workflow_dispatch', conclusion: 'failure' }), { repo: REPO }).post.body.state, 'failure');
+    assert.equal(statusForRun(run({ event: 'workflow_dispatch', head_branch: 'feature' }), { repo: REPO }).post, null, 'a dispatch on another branch is not main');
+  });
+
   test('nothing is posted for a cancelled run, a PR run, a fork\'s `main`, another workflow or an unfinished run', () => {
     for (const over of [
       { conclusion: 'cancelled' },
       { event: 'pull_request' },
+      { event: 'schedule' },
+      { event: 'pull_request_target' },
       { head_repository: { full_name: 'someone/fork' } },
       { path: '.github/workflows/codeql.yml', name: 'CodeQL (push)' },
       { status: 'in_progress', conclusion: null },

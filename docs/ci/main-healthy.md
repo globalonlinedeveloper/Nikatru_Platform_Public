@@ -4,7 +4,9 @@ Added 2026-09-29 (rv2-pipe-a P-1). The workflow itself carries only `# why:` lin
 
 ## What it does
 
-On every completed `CI` run of a push to `main`, it posts the commit status
+On every completed `CI` run of a push to `main` — or, since 2026-10-02, of a dispatch on
+`main`, which is how `land.yml` starts main's pipeline after its `GITHUB_TOKEN` merge
+([`land.md`](land.md)) — it posts the commit status
 `main-healthy` on the commit that run ran on: `success` or `failure`, with the run's URL
 as `target_url`. It posts **nothing** for a cancelled run (a newer push superseded it, and
 that push's own run verifies the commit too), for a pull-request run, for a fork's branch

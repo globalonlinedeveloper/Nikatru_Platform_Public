@@ -1222,7 +1222,7 @@ describe('assert-release-lane-generic.mjs — the gate (limbs D, D-all and A′ 
   const WF = '.github/workflows';
   /** The gate in the shape the real one has: prepare's app set, a dry-run matrix over it,
    *  a call to the Workers lane, and a post-gate deploy call. `dryRun` is the matrix job's `run:`. */
-  const gate = ({ dryRun = 'node tooling/release/submit-play.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact', extraStep = '', deployIf = "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'\n", deployNeededByGate = false } = {}) => `name: CI
+  const gate = ({ dryRun = 'node tooling/release/submit-play.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact', extraStep = '', deployIf = "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'\n", deployNeededByGate = false } = {}) => `name: CI
 on:
   push:
     branches: [main]

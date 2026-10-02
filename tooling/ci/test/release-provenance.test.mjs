@@ -2453,7 +2453,7 @@ describe('assert-release-provenance — a publish moved into a local composite a
 // its jobs reach the verdict job through the call's inherited `needs`. Each red
 // case below is the credit's own neutralizer, or the served-lane lookup the move
 // broke: deploy-web.yml is call-only and has no resolved workflow of its own.
-const POST_GATE = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
+const POST_GATE = "(github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'";
 
 function verdictCaller({ callNeeds = '    needs: [ci-gate]\n', callIf = POST_GATE, verdictCoe = false } = {}) {
   const coe = verdictCoe ? '    continue-on-error: true\n' : '';

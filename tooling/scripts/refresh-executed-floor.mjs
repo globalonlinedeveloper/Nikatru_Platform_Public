@@ -12,7 +12,7 @@
 //
 // So this script never measures anything itself. It takes the junit ARTIFACT
 // (guard-tests-junit) of a ci.yml run it has VERIFIED is:
-//     workflow .github/workflows/ci.yml · branch main · event push ·
+//     workflow .github/workflows/ci.yml · branch main · event push or dispatch ·
 //     status completed · conclusion success · same repository (not a fork)
 // and a junit written on a Windows host is refused outright. A local run can
 // therefore never write the floor, and the Windows/Linux gap stops mattering.
@@ -31,7 +31,7 @@
 //
 // Usage:  node tooling/scripts/refresh-executed-floor.mjs <run-id> [--lower <suite> --reason "…"]…
 // Needs `gh` authenticated for this repository (an agent/dev step, never CI's).
-// Exit 0 = floor written.  1 = the run is not a green ci.yml push to main, or a
+// Exit 0 = floor written.  1 = the run is not a green ci.yml run of main, or a
 // merge was refused.  2 = COVERAGE LOST (bad arguments, missing/empty/Windows artifact).
 // ─────────────────────────────────────────────────────────────────────────────
 import { execFileSync } from 'node:child_process';
@@ -39,6 +39,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { POST_GATE_EVENTS } from '../ops/post-gate.mjs';
 import {
   EXECUTED_FLOOR_REL,
   isWindowsPath,
@@ -89,7 +90,8 @@ export function runRefusals(run) {
   if (!run || typeof run !== 'object') return ['the run metadata could not be read'];
   if (run.path !== WORKFLOW_PATH) r.push(`workflow is ${JSON.stringify(run.path)}, not ${WORKFLOW_PATH}`);
   if (run.head_branch !== 'main') r.push(`branch is ${JSON.stringify(run.head_branch)}, not main`);
-  if (run.event !== 'push') r.push(`event is ${JSON.stringify(run.event)}, not push`);
+  // ⏱ 2026-10-02 — a dispatch of main is land.yml's post-merge run (POST_GATE_EVENTS).
+  if (!POST_GATE_EVENTS.includes(run.event)) r.push(`event is ${JSON.stringify(run.event)}, not push or workflow_dispatch`);
   if (run.status !== 'completed') r.push(`status is ${JSON.stringify(run.status)}, not completed`);
   if (run.conclusion !== 'success') r.push(`conclusion is ${JSON.stringify(run.conclusion)}, not success`);
   const head = run.head_repository?.full_name;

@@ -2215,10 +2215,20 @@ export function classifyPublishes(job) {
 
 /** THE POST-GATE PREDICATE, byte for byte. ⏱ 2026-09-25 [ADR 095 §4] A job that
  *  `needs` its workflow's aggregator runs only after it, and this is the ONE `if:`
- *  that makes such a job post-gate: a push to main, nothing wider. Exported once:
+ *  that makes such a job post-gate: a run of main itself, nothing wider. Exported once:
  *  assert-green-means-ran rule A9 grades the class and assert-ops-register admits
- *  its RED-SINCE rows by it, and two spellings would shrink that domain unseen. */
-export const POST_GATE_IF = "github.event_name == 'push' && github.ref == 'refs/heads/main'";
+ *  its RED-SINCE rows by it, and two spellings would shrink that domain unseen.
+ *  ⏱ 2026-10-02 (O-MERGES-DEPEND-ON-THE-LAPTOP) — `workflow_dispatch` ON MAIN JOINS
+ *  `push`. land.yml merges with the workflow's GITHUB_TOKEN, and a push made with
+ *  that token starts no workflow run, so it dispatches ci.yml on main instead (a
+ *  dispatch is the one write that token may start a run with). The ref conjunct is
+ *  unchanged: a dispatch on any other branch is not post-gate. POST_GATE_EVENTS is
+ *  the same set for readers that grade a run object rather than an `if:`; they ask
+ *  it through tooling/ops/post-gate.mjs, so they need not import this parse. */
+export const POST_GATE_EVENTS = Object.freeze(['push', 'workflow_dispatch']);
+export const POST_GATE_IF = "(github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'";
+/** Is this run object (REST or workflow_run payload) a post-gate run of main? */
+export const isPostGateRun = (run) => POST_GATE_EVENTS.includes(String(run?.event ?? '')) && run?.head_branch === 'main';
 
 /**
  * Every job of `wf` that touches the post-gate class of aggregator job `gateJob`,
