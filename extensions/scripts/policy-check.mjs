@@ -1967,7 +1967,7 @@ const PLACEHOLDER = /^(?:|todo\b.*|tbd\b.*|fixme\b.*|\?+|xxx+|replace.*|why\b.*)
     textScanned++;
     for (const m of src.matchAll(TAG)) mark(rel, '@' + m[1] + ' at line ' + lineOf(src, m.index));
     for (const m of src.matchAll(SPDX)) {
-      const id = m[1].replace(/\s*(?:\*\/|-->).*$/, '').trim();
+      const id = m[1].replace(/\s*(?:\*\/|--!?>).*$/, '').trim();
       if (!spdxOf.has(rel)) spdxOf.set(rel, []);
       spdxOf.get(rel).push(id);
       if (!firstParty(rel, id)) mark(rel, 'SPDX "' + (id || '(empty)') + '" at line ' + lineOf(src, m.index));

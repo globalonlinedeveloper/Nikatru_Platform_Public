@@ -734,6 +734,12 @@ expect('an external <a href> does NOT fail (it navigates, it does not load)', {
     script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'none is third-party-shaped',
     root: fixture(root => { edit(root, TOOL + '/background.js', s => '/* SPDX-License-Identifier: PolyForm-Shield-1.0.0 */\n' + s); })
   });
+  // An HTML comment may also close as `--!>` (CodeQL js/bad-tag-filter): the
+  // closer is not read as part of the licence id, so the house licence passes.
+  expect('CONTROL: the house licence\'s SPDX header in an HTML comment closed by --!> passes', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'none is third-party-shaped',
+    root: fixture(root => { edit(root, TOOL + '/popup/popup.html', s => '<!-- SPDX-License-Identifier: PolyForm-Shield-1.0.0 --!>\n' + s); })
+  });
   expect('CONTROL: core\'s own licence under vendor/core/ is first-party', {
     script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'none is third-party-shaped',
     root: fixture(root => {

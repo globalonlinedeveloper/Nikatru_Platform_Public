@@ -2131,7 +2131,7 @@ const quotaError = (message) => {
     // thing the router does, before the async block that answers.
     const head = (BG_SRC.split("chrome.runtime.onMessage.addListener(")[1] || '').slice(0, 1200);
     check('the router asks who is talking before anything else',
-      /^\(msg, sender, respond\) => \{\s*(?:\/\*[\s\S]*?\*\/\s*)*if \(!senderMayAsk\(msg, sender\)\)/.test(head),
+      /^\(msg, sender, respond\) => \{\s*(?:\/\*(?:[^*]|\*(?!\/))*\*\/\s*)*if \(!senderMayAsk\(msg, sender\)\)/.test(head),
       head.slice(0, 200));
     check('...and START_CAPTURE reads its tab through tabIdFor, never msg.tabId',
       /case 'START_CAPTURE':[\s\S]{0,200}chrome\.tabs\.get\(tabIdFor\(msg, sender\)\)/.test(BG_SRC) &&

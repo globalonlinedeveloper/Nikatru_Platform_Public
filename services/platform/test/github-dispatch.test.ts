@@ -378,7 +378,8 @@ describe('🔴 e2e.yml is pinned to its own 03:17Z firing', () => {
   it('the pinned minute is the one e2e.yml\'s own `schedule:` keeps — the freshness claim reads that slot', () => {
     const file = WORKFLOWS['../../../.github/workflows/e2e.yml'] as string;
     expect(file).toBeTruthy();
-    expect(file).toMatch(new RegExp(`cron:\\s*'${E2E_DISPATCH_CRON.replace(/\*/g, '\\*')}'`));
+    // Compared whole, never spliced into a pattern (CodeQL js/incomplete-sanitization).
+    expect([...file.matchAll(/cron:\s*'([^']*)'/g)].map((m) => m[1])).toContain(E2E_DISPATCH_CRON);
   });
 
   it('the 03:17 firing fires the pinned target, and nothing else', async () => {
