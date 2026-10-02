@@ -135,7 +135,7 @@
     "message": "Batch"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Oppgrader til FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Innstillinger"
@@ -441,10 +441,10 @@
     "message": "Gå rett i gang med merknader (bare opptak i én del)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Snarveier med én tast i redigeringsprogrammet"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Bokstavtaster velger et verktøy, + og - zoomer, ? viser tastene. Når innstillingen er slått av, virker de bare mens bildet har fokus."
   },
   "optionsTheme": {
     "message": "Tema"
@@ -1247,7 +1247,7 @@
     "message": "Tilpass"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Zoom $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1256,28 +1256,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Rød"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Ravgul"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Grønn"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Blå"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Fiolett"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Rosa"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Svart"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Hvit"
   },
   "editorZoomTipToHundred": {
     "message": "Tilpasset til vinduet – klikk for 100 %"
@@ -2026,7 +2026,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ tar hele det synlige området",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2049,10 +2049,10 @@
     "message": "Chrome Web Store hindrer utvidelser i å lese sidene sine, så denne kan ikke tas."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons hindrer utvidelser i å lese sidene sine, så denne kan ikke tas."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) hindrer utvidelser i å lese sidene sine, så denne kan ikke tas."
   },
   "errRestrictedGeneric": {
     "message": "Denne siden er beskyttet av nettleseren og kan ikke tas."

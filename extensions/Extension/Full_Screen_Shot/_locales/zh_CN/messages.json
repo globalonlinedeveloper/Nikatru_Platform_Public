@@ -135,7 +135,7 @@
     "message": "批量"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "升级到 FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "选项"
@@ -441,10 +441,10 @@
     "message": "直接进入标注（仅限单段截图）。"
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "编辑器中的单键快捷键"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "字母键用于选择工具，+ 和 - 用于缩放，? 列出所有按键。关闭后，仅当图片获得焦点时才有效。"
   },
   "optionsTheme": {
     "message": "主题"
@@ -1220,7 +1220,7 @@
     "message": "适应"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "缩放 $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1229,28 +1229,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "红色"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "琥珀色"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "绿色"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "蓝色"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "紫罗兰色"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "粉色"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "黑色"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "白色"
   },
   "editorZoomTipToHundred": {
     "message": "适应窗口 – 点击切换到 100%"
@@ -1921,7 +1921,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "按 $ENTER$ 截取整个可见区域",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -1944,10 +1944,10 @@
     "message": "Chrome 应用商店禁止扩展程序读取其页面，因此无法截取此页。"
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge 加载项禁止扩展程序读取其页面，因此无法截取此页。"
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox 附加组件 (addons.mozilla.org) 禁止扩展程序读取其页面，因此无法截取此页。"
   },
   "errRestrictedGeneric": {
     "message": "此页面受浏览器保护，无法截取。"

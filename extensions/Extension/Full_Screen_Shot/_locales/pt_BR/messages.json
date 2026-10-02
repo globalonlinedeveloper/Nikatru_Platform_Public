@@ -135,7 +135,7 @@
     "message": "Lote"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Fazer upgrade para o FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Opções"
@@ -441,10 +441,10 @@
     "message": "Ir direto para as anotações (só em capturas de parte única)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Atalhos de uma tecla no editor"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "As teclas de letra escolhem uma ferramenta, + e - controlam o zoom, ? lista as teclas. Quando desativados, só funcionam enquanto a imagem estiver em foco."
   },
   "optionsTheme": {
     "message": "Tema"
@@ -1274,7 +1274,7 @@
     "message": "Ajustar"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Zoom de $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1283,28 +1283,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Vermelho"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Âmbar"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Verde"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Azul"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Violeta"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Rosa"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Preto"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Branco"
   },
   "editorZoomTipToHundred": {
     "message": "Ajustar à janela – clique para 100%"
@@ -2131,7 +2131,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ captura toda a área visível",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2154,10 +2154,10 @@
     "message": "A Chrome Web Store impede que extensões leiam as páginas dela, então esta não pode ser capturada."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "O site Complementos do Microsoft Edge impede que extensões leiam as páginas dele, então esta não pode ser capturada."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "O site Complementos do Firefox (addons.mozilla.org) impede que extensões leiam as páginas dele, então esta não pode ser capturada."
   },
   "errRestrictedGeneric": {
     "message": "Esta página é protegida pelo navegador e não pode ser capturada."

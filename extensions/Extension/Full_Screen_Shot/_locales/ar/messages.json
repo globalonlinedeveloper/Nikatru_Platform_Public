@@ -135,7 +135,7 @@
     "message": "دفعة"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "الترقية إلى FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "الخيارات"
@@ -441,10 +441,10 @@
     "message": "الانتقال مباشرة إلى التعليق (للقطات المكوّنة من جزء واحد فقط)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "اختصارات بمفتاح واحد في المحرر"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "مفاتيح الحروف تختار أداة، و+ و- للتكبير والتصغير، و? يعرض قائمة المفاتيح. عند إيقافها، لا تعمل إلا عندما تكون الصورة في موضع التركيز."
   },
   "optionsTheme": {
     "message": "المظهر"
@@ -1355,7 +1355,7 @@
     "message": "ملاءمة"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "تكبير $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1364,28 +1364,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "أحمر"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "كهرماني"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "أخضر"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "أزرق"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "بنفسجي"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "وردي"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "أسود"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "أبيض"
   },
   "editorZoomTipToHundred": {
     "message": "ملاءمة النافذة — انقر للعرض بنسبة 100٪"
@@ -2446,7 +2446,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "يلتقط $ENTER$ كامل المنطقة المرئية",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2469,10 +2469,10 @@
     "message": "يمنع متجر Chrome الإلكتروني الإضافات من قراءة صفحاته، لذا لا يمكن التقاط هذه الصفحة."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "يمنع متجر Microsoft Edge Add-ons الإضافات من قراءة صفحاته، لذا لا يمكن التقاط هذه الصفحة."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "يمنع متجر Firefox Add-ons (addons.mozilla.org) الإضافات من قراءة صفحاته، لذا لا يمكن التقاط هذه الصفحة."
   },
   "errRestrictedGeneric": {
     "message": "هذه الصفحة محمية من المتصفح ولا يمكن التقاطها."

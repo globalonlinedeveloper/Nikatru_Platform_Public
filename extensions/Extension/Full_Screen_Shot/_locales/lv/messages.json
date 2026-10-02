@@ -135,7 +135,7 @@
     "message": "Pakete"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Jaunināt uz FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Iestatījumi"
@@ -441,10 +441,10 @@
     "message": "Uzreiz pāriet pie anotēšanas (tikai vienas daļas uzņēmumiem)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Viena taustiņa īsinājumtaustiņi redaktorā"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Burtu taustiņi izvēlas rīku, + un - tuvina un tālina, ? parāda taustiņu sarakstu. Ja izslēgts, tie darbojas tikai tad, kad attēls ir fokusā."
   },
   "optionsTheme": {
     "message": "Motīvs"
@@ -1274,7 +1274,7 @@
     "message": "Ietilpināt"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Tālummaiņa $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1283,28 +1283,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Sarkana"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Dzintara"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Zaļa"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Zila"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Violeta"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Rozā"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Melna"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Balta"
   },
   "editorZoomTipToHundred": {
     "message": "Ietilpināts logā – noklikšķiniet, lai iegūtu 100 %"
@@ -2131,7 +2131,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ uzņem visu redzamo apgabalu",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2154,10 +2154,10 @@
     "message": "Chrome Web Store neļauj paplašinājumiem lasīt savas lapas, tāpēc šo lapu nevar uzņemt."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons neļauj paplašinājumiem lasīt savas lapas, tāpēc šo lapu nevar uzņemt."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) neļauj paplašinājumiem lasīt savas lapas, tāpēc šo lapu nevar uzņemt."
   },
   "errRestrictedGeneric": {
     "message": "Šo lapu aizsargā pārlūks, un to nevar uzņemt."

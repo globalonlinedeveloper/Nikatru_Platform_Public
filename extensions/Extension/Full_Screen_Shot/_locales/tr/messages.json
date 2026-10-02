@@ -135,7 +135,7 @@
     "message": "Toplu"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "FullShot Pro'ya yükselt"
   },
   "popupLinkOptions": {
     "message": "Seçenekler"
@@ -441,10 +441,10 @@
     "message": "Doğrudan işaretlemeye geçer (yalnızca tek parçalı yakalamalarda)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Düzenleyicide tek tuşlu kısayollar"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Harf tuşları bir araç seçer, + ve - yakınlaştırıp uzaklaştırır, ? tuşları listeler. Kapalıyken yalnızca görüntü odaktayken çalışırlar."
   },
   "optionsTheme": {
     "message": "Tema"
@@ -1247,7 +1247,7 @@
     "message": "Sığdır"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Yakınlaştırma $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1256,28 +1256,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Kırmızı"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Kehribar"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Yeşil"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Mavi"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Mor"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Pembe"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Siyah"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Beyaz"
   },
   "editorZoomTipToHundred": {
     "message": "Pencereye sığdırıldı — %100 için tıklayın"
@@ -2026,7 +2026,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ tüm görünür alanı yakalar",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2049,10 +2049,10 @@
     "message": "Chrome Web Mağazası uzantıların kendi sayfalarını okumasını engeller, bu yüzden bu sayfa yakalanamaz."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons uzantıların kendi sayfalarını okumasını engeller, bu yüzden bu sayfa yakalanamaz."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) uzantıların kendi sayfalarını okumasını engeller, bu yüzden bu sayfa yakalanamaz."
   },
   "errRestrictedGeneric": {
     "message": "Bu sayfa tarayıcı tarafından korunuyor ve yakalanamaz."

@@ -135,7 +135,7 @@
     "message": "Hàng loạt"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Nâng cấp lên FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Tùy chọn"
@@ -441,10 +441,10 @@
     "message": "Vào thẳng phần chú thích (chỉ với ảnh không bị chia phần)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Phím tắt một phím trong trình chỉnh sửa"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Phím chữ cái chọn công cụ, + và - để thu phóng, ? liệt kê các phím. Khi tắt, chúng chỉ hoạt động khi hình ảnh đang có tiêu điểm."
   },
   "optionsTheme": {
     "message": "Giao diện"
@@ -1220,7 +1220,7 @@
     "message": "Vừa khung"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Thu phóng $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1229,28 +1229,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Đỏ"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Hổ phách"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Xanh lá"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Xanh dương"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Tím"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Hồng"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Đen"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Trắng"
   },
   "editorZoomTipToHundred": {
     "message": "Vừa cửa sổ — bấm để xem ở 100%"
@@ -1921,7 +1921,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ chụp toàn bộ vùng đang hiển thị",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -1944,10 +1944,10 @@
     "message": "Chrome Web Store không cho tiện ích đọc các trang của mình, vì vậy không thể chụp trang này."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons không cho tiện ích đọc các trang của mình, vì vậy không thể chụp trang này."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) không cho tiện ích đọc các trang của mình, vì vậy không thể chụp trang này."
   },
   "errRestrictedGeneric": {
     "message": "Trang này được trình duyệt bảo vệ nên không thể chụp."
