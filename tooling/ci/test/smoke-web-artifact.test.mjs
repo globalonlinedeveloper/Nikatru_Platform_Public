@@ -670,6 +670,64 @@ describe('smoke-web-artifact.mjs — the probe in a page its service worker cont
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-02 · lane ci-pr-web-smoke. #1145 was green on its PR because ci.yml
+// `web-artifacts` ran this smoke with NO --connect, so the probe above never ran
+// before the merge. The job now passes the list `connect-origins.mjs --emit-listed`
+// prints from the app's real _headers (built-artifact-pr-lane.test.mjs T16w holds
+// the step). These cases run the smoke with THAT list, as the PR job does: the
+// #1145 shape and a bundle whose CSP lacks a listed origin are both red.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The --connect flags ci.yml `web-artifacts` passes, from the real tree's emitter. */
+function prLaneConnect() {
+  const r = spawnSync(process.execPath, [join(ROOT, 'tooling', 'web', 'connect-origins.mjs'), '--app', 'subscriptiontracker', '--emit-listed'], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SYSTEMROOT: process.env.SYSTEMROOT },
+  });
+  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+  const m = /^connect=(.*)$/m.exec(r.stdout);
+  assert.ok(m, r.stdout);
+  const args = m[1].split(' ');
+  assert.ok(args.includes(API), `the emitted list no longer names ${API}: ${m[1]}`);
+  return args;
+}
+
+describe('ci.yml web-artifacts — the PR smoke probes the list --emit-listed prints', () => {
+  test('GREEN — every listed origin is probed, paused and answered, in a page its worker controls', { timeout: 120000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const connect = prLaneConnect();
+    const r = await smokeInChrome(workerFetchingBundle(), connect);
+    assert.equal(r.code, 0, r.out);
+    for (const origin of connect.filter((a) => a !== '--connect')) {
+      assert.ok(r.out.includes(`ok   connect-src allows ${origin} — fetched from the page, paused`), `${origin} was not probed:\n${r.out}`);
+    }
+    if (r.seen === null) return t.skip('the no-egress half needs a shell wrapper for Chrome, which Windows cannot spawn');
+    assert.deepEqual(r.seen.filter((u) => connect.some((o) => o.startsWith('https://') && hostOf(o) === hostOf(u))), [], r.seen.join(', '));
+  });
+
+  test('🔴 RED CONTROL — the #1145 shape (no bypass) with the PR list is exit 1, as main was', { timeout: 120000 }, async (t) => {
+    if (!needChrome(t)) return;
+    if (process.platform === 'win32') return t.skip('needs the shell wrapper for Chrome, so the unpaused probe cannot leave');
+    const src = readFileSync(SMOKE, 'utf8');
+    const seam = "    const bypass = await send('Network.setBypassServiceWorker', { bypass: true }, session);\n";
+    assert.ok(src.includes(seam), 'the seam moved: the smoke no longer bypasses the service worker on that line');
+    const copy = join(TMP, `smoke-${seq++}`, 'tooling', 'smoke', 'smoke-web-artifact.mjs');
+    mkdirSync(dirname(copy), { recursive: true });
+    writeFileSync(copy, src.replace(seam, '    const bypass = {};\n'));
+    const r = await smokeInChrome(workerFetchingBundle(), prLaneConnect(), copy);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /\d+ probe request\(s\) were NOT paused by the interception/);
+  });
+
+  test('🔴 RED CONTROL — a bundle whose CSP lacks a listed origin is exit 1, naming it', { timeout: 90000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const r = await smokeInChrome(cspBundle(appHeadersWith(` ${API}`, '')), prLaneConnect());
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /refused a --connect origin: connect-src refused https:\/\/subscriptiontracker-api\.nikatru\.com/);
+  });
+});
+
 describe("deploy-web.yml — the pre-publication smoke probes the build's derived connect origins", () => {
   test('the smoke step takes its --connect flags from the connect-src compare, and hand-passes no define', () => {
     // Without the flags the probe silently probes nothing: the smoke prints a

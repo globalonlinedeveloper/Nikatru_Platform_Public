@@ -3098,6 +3098,7 @@
       ".github/workflows/build-platforms.yml#linux_web_android",
       ".github/workflows/build-platforms.yml#windows",
       ".github/workflows/ci.yml#security-scan",
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web",
       ".github/workflows/ops-watch.yml#heartbeats",
       ".github/workflows/submit-appstore.yml#dry-run",
@@ -4589,6 +4590,7 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#web-artifacts",
       ".github/workflows/deploy-web.yml#deploy-web"
     ],
     "kind": "script",
