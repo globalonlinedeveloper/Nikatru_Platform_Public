@@ -166,7 +166,16 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
-      # why: the variables are STEP env, never job env: a job-level NODE_OPTIONS
+      # why: TEST_CLOCK is the clock preload as an ABSOLUTE file URL, written the way
+      # setup-node writes SPAWN_CEILING: a relative `--import` resolves against the
+      # step's cwd (tooling/ci/test/spawn-ceiling-cwd.test.mjs refuses one in any
+      # workflow). It is a path, not NODE_OPTIONS, so the job env it lands in loads nothing.
+      - name: The clock preload, as a file URL
+        run: |
+          clock="$(node -p "require('url').pathToFileURL(require('path').resolve(process.env.GITHUB_WORKSPACE, 'tooling/scripts/test-clock.mjs')).href")"
+          test -n "$clock"
+          echo "TEST_CLOCK=$clock" >> "$GITHUB_ENV"
+      # why: NODE_OPTIONS is exported inside the STEP, never job env: a job-level NODE_OPTIONS
       # reaches the JavaScript actions too, and actions/checkout's node would try
       # to preload a file it has not checked out yet. The preload is named on the
       # command line as well: the flag is the runner's own load, the variable is
@@ -174,14 +183,16 @@ jobs:
       - name: The guards' suites, on another day
         env:
           NIKATRU_TEST_NOW: ${{ matrix.instant }}
-          NODE_OPTIONS: --import=${{ github.workspace }}/tooling/scripts/test-clock.mjs
-        run: node --import ./tooling/scripts/test-clock.mjs --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/ci/test/*.test.mjs"
+        run: |
+          export NODE_OPTIONS="--import=$TEST_CLOCK"
+          node --import "$SPAWN_CEILING" --import "$TEST_CLOCK" --test-timeout=600000 --test "tooling/ci/test/*.test.mjs"
       - name: The pipeline's suites, on another day
         if: ${{ !cancelled() }}
         env:
           NIKATRU_TEST_NOW: ${{ matrix.instant }}
-          NODE_OPTIONS: --import=${{ github.workspace }}/tooling/scripts/test-clock.mjs
-        run: node --import ./tooling/scripts/test-clock.mjs --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/content_pipeline/test/*.test.mjs"
+        run: |
+          export NODE_OPTIONS="--import=$TEST_CLOCK"
+          node --import "$SPAWN_CEILING" --import "$TEST_CLOCK" --test-timeout=600000 --test "tooling/content_pipeline/test/*.test.mjs"
 
   dart:
     # why: `melos run test` is the workspace gate's own command, so every Dart
