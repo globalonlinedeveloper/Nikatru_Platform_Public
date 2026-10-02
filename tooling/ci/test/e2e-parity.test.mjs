@@ -17,6 +17,7 @@ import {
   TOKEN_SESSION_LINE,
   NOTIFICATION_TAP_LINE,
   coreFlowDeclared,
+  proofAppVersion,
   readProof,
   tapPointOf,
 } from '../../e2e/native_auth_proof.mjs';
@@ -189,6 +190,31 @@ describe('the native driver reads the device leg back', () => {
     const xml = '<hierarchy><node text="Other" bounds="[0,0][10,10]"/><node index="1" text="NK tap proof" bounds="[100,200][300,260]"/></hierarchy>';
     assert.deepEqual(tapPointOf(xml, 'NK tap proof'), { x: 200, y: 230 });
     assert.equal(tapPointOf(xml, 'NK tap'), null);
+  });
+});
+
+// ⏱ 2026-10-02 · dispatch 36971560167: a device leg built with no APP_VERSION
+// stamped `dev`, production's consent ingest refused it (422 unreleased_build),
+// and no target recorded the terms acceptance. The driver's stamp is held to the
+// server's own shape: the literal below must be the one build-stamp.ts exports.
+describe('a device leg is stamped the way production accepts an E2E row', () => {
+  const E2E_RUN_LITERAL = 'export const E2E_RUN = /^e2e-(\\d{1,9})-([0-9a-f]{7})$/;';
+  const E2E_RUN = /^e2e-(\d{1,9})-([0-9a-f]{7})$/;
+  test('the server still accepts exactly this shape', () => {
+    const src = readFileSync(join(REPO, 'services/platform/src/lib/build-stamp.ts'), 'utf8');
+    assert.ok(src.includes(E2E_RUN_LITERAL), 'build-stamp.ts E2E_RUN moved — re-read it and update this pin and proofAppVersion together');
+    assert.match(src, /consent_artifacts: \['released-build', 'e2e-run'\]/);
+  });
+  test('green: a CI run makes an accepted stamp', () => {
+    const v = proofAppVersion({ GITHUB_RUN_NUMBER: '312', GITHUB_SHA: 'ABCDEF0123456789abcdef0123456789abcdef01' });
+    assert.equal(v, 'e2e-312-abcdef0');
+    assert.match(v, E2E_RUN);
+  });
+  test('🔴 off CI, or with a malformed run or sha, there is no stamp (the driver refuses on CI)', () => {
+    assert.equal(proofAppVersion({}), null);
+    assert.equal(proofAppVersion({ GITHUB_RUN_NUMBER: '12a', GITHUB_SHA: 'abcdef0' }), null);
+    assert.equal(proofAppVersion({ GITHUB_RUN_NUMBER: '12', GITHUB_SHA: 'xyz' }), null);
+    assert.doesNotMatch('dev', E2E_RUN);
   });
 });
 

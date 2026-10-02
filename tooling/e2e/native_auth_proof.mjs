@@ -118,6 +118,18 @@ export const NOTIFICATION_TAP_LINE = 'NK_PROOF step=notification-tap outcome=ok'
  *  Windows and Linux have no host-side tap on a runner without a UI-automation
  *  harness; each is a declared equivalent in the leg register's `flows`. */
 export const NOTIFICATION_TAP_TARGETS = Object.freeze(['android']);
+
+/** PURE. The APP_VERSION a CI device leg is built with: `e2e-<run>-<sha7>`, the
+ *  shape production's consent ingest accepts for an E2E row (services/platform
+ *  lib E2E_RUN). ⏱ 2026-10-02 · dispatch 36971560167: with no APP_VERSION the
+ *  build stamped `dev`, the ingest answered 422 unreleased_build, and on every
+ *  target the re-acceptance never recorded, so no leg reached Home. Null off CI. */
+export function proofAppVersion(env) {
+  const run = String(env?.GITHUB_RUN_NUMBER ?? '');
+  const sha = String(env?.GITHUB_SHA ?? '');
+  if (!/^\d{1,9}$/.test(run) || !/^[0-9a-fA-F]{7,40}$/.test(sha)) return null;
+  return `e2e-${run}-${sha.slice(0, 7).toLowerCase()}`;
+}
 /** The platform Worker's origin — the host TRACE_URL reads, and the native route's. */
 export const PLATFORM_ORIGIN = new URL(TRACE_URL).origin;
 
@@ -655,6 +667,12 @@ async function main() {
   console.log(`${NAME}: ${o.app}'s proof suite ${coreFlow ? 'walks' : 'does not walk'} the core flow; sign-in via ${o.signIn}`);
   await printEgressIp();
 
+  const appVersion = proofAppVersion(process.env);
+  if (!appVersion && process.env.GITHUB_ACTIONS === 'true') {
+    console.error(`${NAME}: GITHUB_RUN_NUMBER/GITHUB_SHA do not make an e2e-<run>-<sha7> stamp — production's consent ingest refuses an unstamped build, so no leg could reach Home`);
+    if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=none refused=version\n`);
+    process.exit(2);
+  }
   const flutterArgs = [
     'test', PROOF_TEST,
     // why: on CI flutter picks the `github` reporter, which holds a test's
@@ -667,6 +685,7 @@ async function main() {
     `--dart-define=NK_PROOF_CALLBACK=${o.callback}`,
     `--dart-define=NK_PROOF_SIGN_IN=${o.signIn}`,
     `--dart-define=NK_PROOF_NOTIFICATION_TAP=${o.notificationTap}`,
+    ...(appVersion ? [`--dart-define=APP_VERSION=${appVersion}`] : []),
     ...(o.callback && appOpensCallback(o.target) ? [`--dart-define=NK_PROOF_OPEN_FROM_APP=${callbackUrl(o.app)}`] : []),
   ];
   const url = callbackUrl(o.app);
