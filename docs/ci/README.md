@@ -833,7 +833,7 @@ naming the job it belonged to and the line it sat above.
 | [`extensions-ci.md`](extensions-ci.md) | `.github/workflows/extensions-ci.yml` | Extensions CI | `workflow_call` | 27 |
 | [`extensions.md`](extensions.md) | `.github/workflows/extensions.yml` | Extensions | `push`, `pull_request`, `schedule`, `workflow_dispatch` | 12 |
 | none | `.github/workflows/lane-workers.yml` | Lane — workers | `workflow_call` | 5 |
-| [`main-healthy.md`](main-healthy.md) | `.github/workflows/main-healthy.yml` | Main healthy | `workflow_run` | 1 |
+| [`main-healthy.md`](main-healthy.md) | `.github/workflows/main-healthy.yml` | Main health status (posts CI's verdict) | `workflow_run` | 1 |
 | none | `.github/workflows/migrate-platform-db.yml` | Migrate PLATFORM_DB | `workflow_call` | 1 |
 | none | `.github/workflows/mutation-proofs.yml` | Mutation proofs | `workflow_dispatch`, `schedule` | 1 |
 | none | `.github/workflows/name-clearance.yml` | Name clearance | `workflow_dispatch`, `schedule` | 1 |
