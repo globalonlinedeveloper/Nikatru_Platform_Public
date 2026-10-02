@@ -711,7 +711,7 @@ describe('JWKS at the edge', () => {
   });
 });
 
-describe('one retry on an origin fault (520/522/524), only where a repeat is safe', () => {
+describe('one retry on an origin fault (520/522), only where a repeat is safe', () => {
   // 2026-09-30 15:30:59Z POST /logout and 2026-10-01 15:00:51Z POST
   // /admin/generate_link: 520s with no line in Box C's logs — lost in transit.
   const faultThenOk = (status: number) => {
@@ -719,7 +719,7 @@ describe('one retry on an origin fault (520/522/524), only where a repeat is saf
     reply = () => (++n === 1 ? new Response('origin fault', { status }) : new Response('ok', { status: 200 }));
   };
 
-  for (const status of [520, 522, 524]) {
+  for (const status of [520, 522]) {
     it(`a GET answered ${status} is asked once more, and the client gets the second answer`, async () => {
       faultThenOk(status);
       const log = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -764,8 +764,28 @@ describe('one retry on an origin fault (520/522/524), only where a repeat is saf
     }
   });
 
-  it('a definite answer is never retried: 500, 502, 503 and 404 reach the client after ONE request', async () => {
-    for (const status of [500, 502, 503, 404]) {
+  // ⏱ 2026-10-02 · review 1 of #1140, finding 6: 524 joined this list. It
+  // arrives after ~100 s, past the 30 s budget, and the origin had the request.
+  // ⏱ 2026-10-02 · review 1 of #1140, finding 5 — the e-mail link and the OAuth
+  // return are GETs that SPEND a one-time code; the never-retried case above
+  // covered POST /verify only.
+  it('🔴 never retried: GET /verify (an e-mail link) and GET /callback (an OAuth return), in any spelling', async () => {
+    for (const url of [
+      `${AUTH}/auth/v1/verify?token=x&type=signup&redirect_to=https://nikatru.com/`,
+      `${AUTH}//AUTH/v1/Verify/?token=x&type=recovery`,
+      `${AUTH}/auth/v1/callback?code=x&state=y`,
+    ]) {
+      for (const method of ['GET', 'HEAD']) {
+        originCalls = [];
+        reply = () => new Response('origin fault', { status: 520 });
+        const res = await worker.fetch(req(url, { method }), fullEnv(), ctx());
+        expect({ url, method, calls: originCalls.length, status: res.status }).toEqual({ url, method, calls: 1, status: 520 });
+      }
+    }
+  });
+
+  it('a definite answer is never retried: 500, 502, 503, 524 and 404 reach the client after ONE request', async () => {
+    for (const status of [500, 502, 503, 524, 404]) {
       originCalls = [];
       reply = () => new Response('no', { status });
       const res = await worker.fetch(req(`${AUTH}/auth/v1/user`), fullEnv(), ctx());
@@ -776,7 +796,7 @@ describe('one retry on an origin fault (520/522/524), only where a repeat is saf
 
   it('a second fault returns the FIRST answer, after exactly two requests', async () => {
     let n = 0;
-    reply = () => new Response(`fault ${++n}`, { status: n === 1 ? 520 : 524 });
+    reply = () => new Response(`fault ${++n}`, { status: n === 1 ? 520 : 522 });
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const res = await worker.fetch(req(`${AUTH}/auth/v1/user`), fullEnv(), ctx());
     expect(originCalls).toHaveLength(2);

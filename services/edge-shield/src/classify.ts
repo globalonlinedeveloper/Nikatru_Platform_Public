@@ -129,14 +129,25 @@ export type Route = { kind: 'jwks' } | { kind: 'limit'; cls: ShieldClass } | { k
  */
 const RETRY_SAFE_AUTH_POSTS = new Set(['/logout', '/admin/generate_link']);
 
-/** Whether an origin fault (520/522/524) on this request may be retried once:
- *  any GET or HEAD the shield handles, and the GoTrue POSTs above. Pure. */
+/**
+ * ⏱ 2026-10-02 · review 1 of #1140, finding 5 — the GETs that CONSUME a
+ * one-time code, so they are never retried either: `/verify` is the link in an
+ * auth e-mail (`?token=…`, used once), `/callback` is the OAuth provider's
+ * return (`?code=…`, used once). A fault that came back after GoTrue spent the
+ * code would turn into an "expired link" on the retry, hiding the fault.
+ */
+const ONE_TIME_AUTH_GETS = new Set(['/verify', '/callback']);
+
+/** Whether an origin fault (520/522) on this request may be retried once: any
+ *  GET or HEAD the shield handles except the one-time-code GETs above, and the
+ *  GoTrue POSTs above. Pure. */
 export function retryableOnOriginFault(url: URL, method: string): boolean {
   const m = method.toUpperCase();
-  if (m === 'GET' || m === 'HEAD') return true;
-  if (m !== 'POST' || url.hostname.toLowerCase() !== AUTH_HOST) return false;
   const path = normalisePath(url.pathname);
-  return path.startsWith('/auth/v1/') && RETRY_SAFE_AUTH_POSTS.has(path.slice('/auth/v1'.length));
+  const auth = url.hostname.toLowerCase() === AUTH_HOST && path.startsWith('/auth/v1/');
+  const rest = auth ? path.slice('/auth/v1'.length) : null;
+  if (m === 'GET' || m === 'HEAD') return rest === null || !ONE_TIME_AUTH_GETS.has(rest);
+  return m === 'POST' && rest !== null && RETRY_SAFE_AUTH_POSTS.has(rest);
 }
 
 /** What the shield does with a request. Pure: host, path, query and method only. */

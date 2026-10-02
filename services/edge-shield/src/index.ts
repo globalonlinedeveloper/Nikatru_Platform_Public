@@ -15,7 +15,7 @@
 //      `x-nikatru-shield: <RELEASE>`, which ops-watch reads to prove the shield is
 //      still in path and the deploy smoke reads to prove THIS commit is
 //      (tooling/ops/check-edge-shield.mjs; `1` when no RELEASE was deployed).
-//      It resends a request ONCE when the origin faults (520/522/524) and
+//      It resends a request ONCE when the origin faults (520/522) and
 //      repeating it is safe (passThrough() below, 2026-10-02);
 //   2. counts the requests of four classes (src/classify.ts) against one
 //      GLOBAL cap each, and refuses one over its cap with Retry-After
@@ -278,9 +278,11 @@ async function jwks(ctx: ExecutionContext, mark: string): Promise<Response> {
 
 /**
  * ⏱ 2026-10-02 — ONE RETRY ON AN ORIGIN FAULT. Cloudflare answers 520 (the
- * origin closed or reset the connection), 522 (it never accepted one) or 524 (it
- * accepted and never answered) when a request is lost between the edge and the
- * tunnel. Measured: two 520s on auth-api in 24 h (2026-09-30 15:30:59Z
+ * origin closed or reset the connection) or 522 (it never accepted one) when a
+ * request is lost between the edge and the tunnel. NOT 524 (review 1 of #1140,
+ * finding 6): Cloudflare sends it only after ~100 s with no answer, so the
+ * 30 s [ORIGIN_RETRY_BUDGET_MS] below would never have allowed its retry, and
+ * an origin that accepted the request may have acted on it. Measured: two 520s on auth-api in 24 h (2026-09-30 15:30:59Z
  * `POST /logout` after 14.8 s, 2026-10-01 15:00:51Z `POST /admin/generate_link`
  * after 12.9 s), neither with any line in Box C's GoTrue or envoy log, and the
  * second reddened main's E2E. A request that never arrived is worth asking
@@ -291,7 +293,7 @@ async function jwks(ctx: ExecutionContext, mark: string): Promise<Response> {
  * Each retry logs `shield_origin_retry`: a 52x on auth-api with no Box C line is
  * the lost-request signature (tooling/ops/register.json, the shield's row).
  */
-export const ORIGIN_FAULT_STATUSES: ReadonlySet<number> = new Set([520, 522, 524]);
+export const ORIGIN_FAULT_STATUSES: ReadonlySet<number> = new Set([520, 522]);
 // @ceiling none — a latency budget for one request and its one retry, not a platform resource
 export const ORIGIN_RETRY_BUDGET_MS = 30_000;
 /** Below this much budget left, a retry could not plausibly answer; the first answer stands. */
