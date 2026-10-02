@@ -91,12 +91,16 @@ rank `untagged`, `nit` or `pre-existing`.
 
 **Definition.** The same job failing then passing **on rerun**: a run re-run (`run_attempt > 1`)
 in which one job name has a `failure`/`timed_out` attempt followed by a `success` attempt of the
-**same run**, on its one head SHA. The `ci-gate` aggregator is never the flake itself, and a run
+**same run**, on its one head SHA. An aggregator is never the flake itself: `ci-gate` by name, and
+any job whose red attempt started after another job of that attempt had failed or been cancelled
+(an `if: always()` verdict over its needs, such as extensions' `ci-required` or lane-workers'
+`lane-verdict`). A run
 started by `schedule` or `workflow_dispatch` is a watcher: its red→green is the watched state
 recovering, never a flake. Two separate runs on one SHA are never a flake: measured on the week to
 2026-10-02, 13 of 14 such pairs were ops-watch's cron and dispatches (and an E2E dispatch) on an
 unchanged main SHA, and on a PR an `edited` re-trigger re-runs CI on the same head against a newer
-merge with main. `reruns` is the sum of `run_attempt - 1` over the window's runs. Minutes lost are
+merge with main. On that real week (`tooling/review/fixtures/real-week-2026-10-02/`, trimmed) the
+rule counts 26 flakes, all real jobs. `reruns` is the sum of `run_attempt - 1` over the window's runs. Minutes lost are
 the wall minutes of the attempts before the last. Instances are keyed by job name, and name their
 workflow by path.
 

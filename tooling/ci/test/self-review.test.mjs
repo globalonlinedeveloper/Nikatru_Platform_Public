@@ -465,6 +465,41 @@ describe('R1 — the documented defaults complete a real week', () => {
   });
 });
 
+describe('R2 — the review\'s real week drops to the true flake count', () => {
+  const REAL = JSON.parse(readFileSync(join(REPO_ROOT, 'tooling', 'review', 'fixtures', 'real-week-2026-10-02', 'runs-and-jobs.json'), 'utf8'));
+  const RW = { since: Date.parse(REAL.window.since), until: Date.parse(REAL.window.until) };
+  /** The rule the review read: two runs of one workflow on one head SHA, red then green. */
+  function sameShaPairs(runs) {
+    const g = new Map();
+    for (const r of runs.filter((x) => x.status === 'completed' && Date.parse(x.created_at) >= RW.since && Date.parse(x.created_at) < RW.until)) {
+      const k = `${r.path}|${r.head_sha}`;
+      if (!g.has(k)) g.set(k, []);
+      g.get(k).push(r);
+    }
+    return [...g.values()].filter((rs) => {
+      rs.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+      const i = rs.findIndex((r) => ['failure', 'timed_out'].includes(r.conclusion));
+      return i !== -1 && rs.slice(i + 1).some((r) => r.conclusion === 'success');
+    });
+  }
+  test('the 14 same-SHA pairs the review counted are here, 13 of them watcher runs', () => {
+    const pairs = sameShaPairs(REAL.runs);
+    assert.equal(pairs.length, 14);
+    assert.equal(pairs.filter((rs) => rs.every((r) => ['schedule', 'workflow_dispatch'].includes(r.event))).length, 13);
+  });
+  test('flaky() counts only same-run re-runs of real jobs: 26, no watcher, no aggregator', () => {
+    const fl = flaky({ runs: REAL.runs, attemptJobs: REAL.attemptJobs }, RW);
+    assert.equal(fl.instances.length, 26);
+    assert.ok(fl.instances.every((i) => i.kind === 'rerun'));
+    const events = new Set(fl.instances.map((i) => REAL.runs.find((r) => r.id === i.runId).event));
+    assert.ok(!events.has('schedule') && !events.has('workflow_dispatch'), 'a watcher run is never a flake');
+    for (const agg of ['extensions / ci-required', 'lane-workers / lane-verdict', 'ci-gate']) assert.ok(!fl.byName[agg], `${agg} is red because a job it waited on was`);
+    assert.equal(fl.byName['Guards — platform, data and ops'].count, 15);
+    // the instances name workflows by path, never by a run name
+    assert.ok(fl.instances.every((i) => /^\.github\/workflows\/[\w.-]+\.ya?ml$/.test(i.workflow)));
+  });
+});
+
 describe('R4 — a cancelled or skipped first gate gave no verdict', () => {
   const sha = 'd'.repeat(40);
   const data = (checks) => ({

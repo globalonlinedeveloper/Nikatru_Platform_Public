@@ -77,7 +77,7 @@ export const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
 /** One real week, MEASURED, not estimated: the requests a full run at the defaults sent for the week to `asOf`
  *  (`--until asOf`). DEFAULT_BUDGET is sized from it with headroom (the test holds it at 1.5× or more), so the
  *  documented defaults complete a real week. Re-measure when the factory's volume moves. */
-export const MEASURED_WEEK = Object.freeze({ requests: 975, asOf: '2026-10-02' });
+export const MEASURED_WEEK = Object.freeze({ requests: 902, asOf: '2026-10-02' });
 export const DEFAULT_BUDGET = 1500;
 export const RATE_FLOOR = 100;
 export const DAY_MS = 86_400_000;
@@ -517,7 +517,13 @@ export function flaky(data, w) {
       if (name === GATE_CHECK) continue;
       js.sort((a, b) => (a.run_attempt ?? 0) - (b.run_attempt ?? 0));
       const redIdx = js.findIndex((j) => RED.has(j.conclusion));
-      if (redIdx !== -1 && js.slice(redIdx + 1).some((j) => j.conclusion === 'success')) {
+      // An aggregator (`if: always()` over its needs: extensions' ci-required, lane-workers' lane-verdict) is red
+      // because a job it waited on was: in its red attempt, another job failed or was cancelled and FINISHED
+      // before it started.
+      // Jobs that ran side by side start together, so two real flakes in one attempt both still count.
+      const red = js[redIdx];
+      const derived = red && jobs.some((k) => k !== red && k.name !== name && k.run_attempt === red.run_attempt && LOST.has(k.conclusion) && ms(k.completed_at) <= ms(red.started_at));
+      if (redIdx !== -1 && !derived && js.slice(redIdx + 1).some((j) => j.conclusion === 'success')) {
         const lost = js.slice(0, js.length - 1).reduce((s, j) => s + minutes(j.started_at, j.completed_at), 0);
         instances.push({ kind: 'rerun', workflow: run?.path ?? null, name, sha: run?.head_sha ?? null, runId: Number(runId), minutesLost: round(lost) });
       }
