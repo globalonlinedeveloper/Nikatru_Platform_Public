@@ -102,7 +102,16 @@ function fakeP12(size = 512) {
  *  guard can read it without parsing ASN.1. The DER wrapper here is a stub; the
  *  plist is the real shape, field for field, including the `Entitlements` dict
  *  that carries `application-identifier` as `<TEAM>.<bundle id>`. */
-function fakeProfile({ name = 'Subly App Store', team = TEAM, bundleId = 'com.nikatru.subscriptiontracker', expires = '2027-07-31T00:00:00Z' } = {}) {
+/** The expiry the pinned 1888-byte classic archive was measured with. */
+const PINNED_EXPIRES = '2027-07-31T00:00:00Z';
+/** A profile that is VALID on the day the suite runs: two years ahead of now,
+ *  in the plist's own `YYYY-MM-DDTHH:MM:SSZ` form. ⏱ 2026-10-01 · it was the
+ *  literal 2027-07-31, a date fuse: from that day every fixture profile read as
+ *  EXPIRED and "the platform gate is honest…" failed on the expiry instead of the
+ *  gate (found by the time-travel run at now+400 days). */
+const VALID_UNTIL = new Date(Date.now() + 2 * 365 * 86_400_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+function fakeProfile({ name = 'Subly App Store', team = TEAM, bundleId = 'com.nikatru.subscriptiontracker', expires = VALID_UNTIL } = {}) {
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -767,7 +776,7 @@ describe('apple-signing — the provisioning profile reader', () => {
     assert.equal(p.name, 'Subly App Store');
     assert.deepEqual(p.teamIds, [TEAM]);
     assert.equal(p.bundleId, 'com.nikatru.subscriptiontracker');
-    assert.equal(p.expires, '2027-07-31T00:00:00Z');
+    assert.equal(p.expires, VALID_UNTIL);
   });
 
   test('the `Name` key is not confused with `AppIDName`, which sits above it', () => {
@@ -1066,8 +1075,11 @@ describe('apple-signing — unzip and ZIP64', () => {
     const PINNED_MACOS_MEMBER = 'subly-macos.provisionprofile';
     const PINNED_BUNDLE_ID = 'com.nikatru.subly';
     const zip = makeZip([
-      { name: PINNED_IOS_MEMBER, bytes: fakeProfile({ name: 'Subly iOS', bundleId: PINNED_BUNDLE_ID }), method: 0 },
-      { name: PINNED_MACOS_MEMBER, bytes: fakeProfile({ name: 'Subly macOS', bundleId: PINNED_BUNDLE_ID }), method: 8 },
+      // The expiry is PINNED here, unlike every other fixture profile: these
+      // bytes are the measurement, and the date is part of what was deflated.
+      // This archive is read for its offsets, never graded for expiry.
+      { name: PINNED_IOS_MEMBER, bytes: fakeProfile({ name: 'Subly iOS', bundleId: PINNED_BUNDLE_ID, expires: PINNED_EXPIRES }), method: 0 },
+      { name: PINNED_MACOS_MEMBER, bytes: fakeProfile({ name: 'Subly macOS', bundleId: PINNED_BUNDLE_ID, expires: PINNED_EXPIRES }), method: 8 },
     ]);
     assert.equal(zip.length, 1888, 'the pinned fixture is no longer the 1888-byte archive the two constants below were measured over');
     assert.equal(zip.readUInt32LE(eocdOf(zip) + 16) === 0xffffffff, false, 'the fixture must not be ZIP64');

@@ -246,9 +246,19 @@ class _RenderingNotifications extends RenewalReminders {
 /// [count] monthly subscriptions at $10 each, all renewing 12 Aug 2026 — so the
 /// digest total is a figure the assertion can name (10.00 / 20.00) and the
 /// renewal date is one whose month word differs between the two locales.
+/// 🔴 THE DAY THESE TESTS RUN ON, PINNED through `nowProvider`. ⏱ 2026-10-01.
+/// The digest counts what renews in the week its next Sunday opens, and the
+/// default rows renew on the 12th of every month — so on the wall clock, "a row
+/// renewing OUTSIDE that week" stopped being outside it whenever that Sunday
+/// fell on the 5th to the 12th: `'No renewals this week.'` went red about one
+/// week in every month, with no code change (found by reading, for the
+/// time-travel lane). Friday 21 Aug 2026: the digest opens Sunday 23 Aug, the
+/// default rows next renew on 12 Sep, outside it, and [_inDigestWeek] is 25 Aug.
+final DateTime _kNow = DateTime(2026, 8, 21, 10);
+
 /// A day inside the week the next digest opens on (ST-R7).
 DateTime _inDigestWeek() {
-  final DateTime sunday = RenewalReminders.digestDay(DateTime.now());
+  final DateTime sunday = RenewalReminders.digestDay(_kNow);
   return DateTime(sunday.year, sunday.month, sunday.day + 2);
 }
 
@@ -278,6 +288,7 @@ _Harness _harness(int count, {Locale? locale, DateTime? renewal}) {
         _FixedRepository(_subs(count, renewal: renewal)),
       ),
       renewalRemindersProvider.overrideWithValue(notifier),
+      nowProvider.overrideWithValue(() => _kNow),
     ],
   );
   addTearDown(container.dispose);

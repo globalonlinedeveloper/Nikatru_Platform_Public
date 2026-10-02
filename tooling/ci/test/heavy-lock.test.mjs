@@ -25,6 +25,11 @@ import {
   acquireHeavyLock, releaseHeavyLock, reclaim, staleReason, readHolder, pidAlive, waitForBackup, queryBackupState,
   machineFree, defaultLockPath, TOKEN_ENV, LOCK_PATH_ENV,
 } from '../../scripts/heavy-lock.mjs';
+import { useRealClock } from '../../scripts/test-clock.mjs';
+
+// The lock's age is read off a FILE'S MTIME, which the filesystem stamps on the
+// real clock; a moved `Date` would read every fresh lock as ~400 days old.
+useRealClock('the lock age compares file mtimes, which the filesystem stamps on the real clock, with Date.now()');
 
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts');
 const HEAVY = join(SCRIPTS, 'heavy.mjs');

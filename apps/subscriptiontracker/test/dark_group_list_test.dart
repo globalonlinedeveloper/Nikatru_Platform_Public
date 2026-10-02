@@ -47,6 +47,9 @@ import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
 import 'package:subscriptiontracker/features/shared/widgets.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
+// The fixture reads the same clock as the screens (`nowProvider`'s default),
+// so a time-travel run moves both (test/support/test_clock.dart).
+import 'package:subscriptiontracker/state/providers.dart' show wallClock;
 
 import 'support/width_harness.dart';
 
@@ -401,7 +404,7 @@ void main() {
       );
       // Both screens read `DateTime.now()` directly, so the expectation is
       // computed the same way rather than pinned to a month.
-      final DateTime now = DateTime.now();
+      final DateTime now = wallClock();
       final String taMonth = DateFormat.yMMMM('ta').format(now);
       final String enMonth = DateFormat.yMMMM('en').format(now);
 

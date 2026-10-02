@@ -5076,8 +5076,12 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
   const TECH_CURRENCY = 'duty.freshness.tech-currency';
   const LAPTOP_802 = ['duty.laptop.nikatru-ops-check', 'duty.laptop.nikatru-watchdog'];
   const CODE_SCANNING_AGE = 'duty.freshness.code-scanning-age';
-  const PAGE_ONLY_ROWS = [RENOVATE_BACKLOG, CODE_SCANNING_AGE, TECH_CURRENCY, BACKUP, ...LAPTOP_802, DRIVER];
-  test('PAGE-ONLY - the committed register scopes exactly the four laptop duties, the Renovate backlog, the code-scanning age and tech currency, and it holds', () => {
+  // ⏱ 2026-10-01 · the weekly time-travel run joins the freshness class: a fuse
+  // it finds drains only by merging its pin, and main's run turns green only
+  // after that merge. Register order puts it beside mutation-proofs, first.
+  const TIME_TRAVEL = 'duty.freshness.time-travel';
+  const PAGE_ONLY_ROWS = [TIME_TRAVEL, RENOVATE_BACKLOG, CODE_SCANNING_AGE, TECH_CURRENCY, BACKUP, ...LAPTOP_802, DRIVER];
+  test('PAGE-ONLY - the committed register scopes exactly the four laptop duties, time travel, the Renovate backlog, the code-scanning age and tech currency, and it holds', () => {
     const reg = JSON.parse(readFileSync(resolve(CI_DIR, '..', 'ops', 'register.json'), 'utf8'));
     const scoped = reg.rows.filter((r) => r.liveVerdictScope !== undefined).map((r) => r.id);
     assert.deepEqual(scoped, PAGE_ONLY_ROWS);
@@ -6190,7 +6194,8 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     const register = JSON.parse(readFileSync(REPLAY_REGISTER, 'utf8'));
     const { world, derivedRuns } = replayWorld(f, register);
     // ⏱ 2026-09-29 (A-2): mutation-proofs.yml is the second scheduled workflow added after the freeze.
-    assert.deepEqual(derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml'], 'only the scheduled workflows added after the freeze are derived');
+    // ⏱ 2026-10-01: time-travel.yml is the third.
+    assert.deepEqual(derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml', 'time-travel.yml'], 'only the scheduled workflows added after the freeze are derived');
     assert.equal(world.runs['mutation-proofs.yml'].length, 1);
     assert.equal(world.runs['mutation-proofs.yml'][0][1], 'schedule');
     assert.equal(world.runs['name-clearance.yml'].length, 1);
@@ -6203,7 +6208,7 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
     const { 'trufflehog.yml': _dropped, ...rest } = f.runs;
     const pure = replayWorld({ ...f, runs: rest }, register);
     assert.equal(Object.hasOwn(pure.world.runs, 'trufflehog.yml'), false, 'the derivation must never answer a workflow the freeze read');
-    assert.deepEqual(pure.derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml']);
+    assert.deepEqual(pure.derivedRuns, ['name-clearance.yml', 'mutation-proofs.yml', 'time-travel.yml']);
   });
 
   test('O-NAME-CLEARANCE-SWEEP-RUN-BY-NOTHING · a firstDue is replayed at the distance the REAL clock sees, so one the live guard refuses is still refused', () => {

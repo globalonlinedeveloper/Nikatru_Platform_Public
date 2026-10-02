@@ -63,7 +63,7 @@ const Color kSublySeed = Color(0xFF6459F5);
 
 /// Local midnight today — see the header's clock note.
 DateTime get _today {
-  final DateTime n = DateTime.now();
+  final DateTime n = wallClock();
   return DateTime(n.year, n.month, n.day);
 }
 

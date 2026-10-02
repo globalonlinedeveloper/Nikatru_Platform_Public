@@ -716,8 +716,11 @@ class SubscriptionsController extends AsyncNotifier<List<Subscription>> {
         emptyCurrencyCode: newRowCurrencyCode,
       );
       // ST-R7: the week the digest OPENS on — counted from its own Sunday,
-      // not from today, because it is read then.
-      final DateTime sunday = RenewalReminders.digestDay(DateTime.now());
+      // not from today, because it is read then. Today comes from
+      // `nowProvider`, so a test can name the week (reminder_plan_test).
+      final DateTime sunday = RenewalReminders.digestDay(
+        ref.read(nowProvider)(),
+      );
       final int due = SubMath.charging(subs).where((Subscription s) {
         final int d = s.daysUntil(sunday);
         return d >= 0 && d <= 7;

@@ -141,7 +141,7 @@ void main() {
   testWidgets('C16 · a renewal card opens the subscription it is about', (
     WidgetTester tester,
   ) async {
-    final DateTime soon = DateTime.now().add(const Duration(days: 2));
+    final DateTime soon = wallClock().add(const Duration(days: 2));
     await _pumpRouted(
       tester,
       const NotificationsScreen(),

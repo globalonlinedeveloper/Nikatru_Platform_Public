@@ -1052,6 +1052,9 @@
   "test-clock-mix.test.mjs":
     25,
 
+  "test-clock.test.mjs":
+    8,
+
   "text-reductions.test.mjs":
     46,
 

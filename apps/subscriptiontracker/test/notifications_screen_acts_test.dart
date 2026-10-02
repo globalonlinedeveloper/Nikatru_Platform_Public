@@ -36,7 +36,7 @@ class _Repo implements SubscriptionRepository {
 }
 
 Subscription _sub(String id, int daysFromToday) {
-  final DateTime t = DateTime.now();
+  final DateTime t = wallClock();
   return Subscription(
     id: id,
     name: id,

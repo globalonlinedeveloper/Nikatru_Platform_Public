@@ -936,9 +936,9 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "vitest.config.ts",
-      "lines": 61,
+      "lines": 67,
       "verdict": "STAYS",
-      "why": "Per-Worker test config: it resolves the workerd build of jose, not the node build, and inherits services/_shared/test so a stamped Worker runs the chassis suite from its first `npm test`. Since 2026-09-22 (O-WORKER-TEST-REACHES-LIVE-HOSTS) its setupFiles names services/_shared/test/no-network.ts, so a stamped Worker's unit tests cannot reach the network."
+      "why": "Per-Worker test config: it resolves the workerd build of jose, not the node build, and inherits services/_shared/test so a stamped Worker runs the chassis suite from its first `npm test`. Since 2026-09-22 (O-WORKER-TEST-REACHES-LIVE-HOSTS) its setupFiles names services/_shared/test/no-network.ts, so a stamped Worker's unit tests cannot reach the network. Since 2026-10-01 it also names services/_shared/test/test-clock.ts, so the weekly time-travel run moves a stamped Worker's clock with NIKATRU_TEST_NOW (61 -> 67 lines)."
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",

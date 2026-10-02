@@ -43,11 +43,17 @@ const WORKERS_STUB = fileURLToPath(new URL('./test/stubs/cloudflare-workers.ts',
 // request the test did not stub, and the test that made it fails naming the
 // URL — so a unit test cannot quietly depend on a live host and time out CI
 // when that host is slow, which services/platform's handler test did.
+//
+// ── AND `../_shared/test/test-clock.ts` ──────────────────────────────────────
+// ⏱ 2026-10-01. With NIKATRU_TEST_NOW set, `Date` starts at that instant and
+// advances; unset, nothing changes. The weekly time-travel workflow runs this
+// suite ~400 days ahead and at the year boundary, so a date fuse a test sets
+// fires there and not on every pull request on the day it was set for.
 // ─────────────────────────────────────────────────────────────────────────────
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts', '../_shared/test/**/*.test.ts'],
-    setupFiles: ['../_shared/test/no-network.ts'],
+    setupFiles: ['../_shared/test/no-network.ts', '../_shared/test/test-clock.ts'],
   },
   resolve: {
     conditions: ['workerd', 'browser', 'import', 'default'],

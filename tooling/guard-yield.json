@@ -3943,6 +3943,11 @@
       "firstSeen": "2026-09-25",
       "evidence": []
     },
+    "tooling/scripts/test-clock.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/sites/gen-auth-mail.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-24",

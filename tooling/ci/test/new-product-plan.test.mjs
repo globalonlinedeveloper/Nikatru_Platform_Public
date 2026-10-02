@@ -31,6 +31,7 @@ import { tmpdir } from 'node:os';
 import { REPO, STEPS, planProduct, exitCodeOf, main } from '../../kit/new-product.mjs';
 import { main as pagesOriginMain } from '../../web/pages-origin.mjs';
 import { APPS_CATALOG } from '../../kit/product-steps/tree.mjs';
+import { TEST_NOW_VAR } from '../../scripts/test-clock.mjs';
 
 const APP = 'subscriptiontracker';
 let TMP;
@@ -456,8 +457,16 @@ describe('step 9 · price row', () => {
 
   test('every served offering priced → DONE; render-rail-prices.mjs --check is green', () => {
     assert.equal(stepOf('price row').state, 'DONE');
-    const g = guard('tooling/catalog/render-rail-prices.mjs', FX, '--check');
-    assert.equal(g.status, 0, g.out);
+    // ON THE REAL CLOCK, deliberately: --check grades the LIVE fee register's
+    // asOf dates against today (a fee cell is re-read within 90 days), so on a
+    // time-travel run it would grade a future nobody has re-read yet. The date
+    // that register next goes stale is an ops obligation, not a test fuse.
+    const r = spawnSync(process.execPath, [repoFile('tooling/catalog/render-rail-prices.mjs'), FX, '--check'], {
+      cwd: FX,
+      encoding: 'utf8',
+      env: { ...process.env, [TEST_NOW_VAR]: '' },
+    });
+    assert.equal(r.status, 0, `${r.stdout ?? ''}${r.stderr ?? ''}`);
   });
 
   test('an app serving no offering → DONE, no entry owed', () => {
