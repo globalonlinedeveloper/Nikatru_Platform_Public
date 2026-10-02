@@ -1088,8 +1088,7 @@ class SettingsScreen extends ConsumerWidget {
   /// it too — `test/sign_out_destination_test.dart` is the standing proof.
   ///
   /// [scope] is global for "Log out of all devices" only. Its failure gets its
-  /// own sentence (and, when only the Workers could not be told, one that says
-  /// to sign in again first: [core.AuthFailure.othersNotRevoked]), and it names no cause: the step that failed may be the
+  /// own sentence, and it names no cause: the step that failed may be the
   /// server revoke, this device's stored session or the per-user forget, and
   /// "this device" is not the whole of what did not finish.
   Future<void> _signOut(
@@ -1102,23 +1101,14 @@ class SettingsScreen extends ConsumerWidget {
     try {
       await signOutAndForgetUser(ref, scope: scope);
     } catch (e) {
-      // ⏱ 2026-10-02 · review 2 of #1140, finding 4: GoTrue signed every
-      // device out (this one too) and only the Workers could not be told, so
-      // "try again" has no control left to press; say to sign in first.
-      final bool othersStillOpen = scope == core.SignOutScope.global &&
-          e is core.AuthFailure &&
+      // Review 2 of #1140, finding 4: signed out everywhere, Workers not told.
+      final bool signInFirst = e is core.AuthFailure &&
           e.code == core.AuthFailure.othersNotRevoked;
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            othersStillOpen
-                ? l10n.logOutAllDevicesSignInAgain
-                : scope == core.SignOutScope.global
-                    ? l10n.logOutAllDevicesFailed
-                    : l10n.signOutFailed,
-          ),
-        ),
-      );
+      messenger.showSnackBar(SnackBar(content: Text(signInFirst
+          ? l10n.logOutAllDevicesSignInAgain
+          : scope == core.SignOutScope.global
+              ? l10n.logOutAllDevicesFailed
+              : l10n.signOutFailed)));
     }
   }
 
