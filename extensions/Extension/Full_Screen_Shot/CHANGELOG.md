@@ -41,6 +41,14 @@ next version number when one is stamped.
 - **Editor colour swatches and the zoom button have spoken names**: the swatches were named by
   their hex code and the zoom button by a bare "100%" (found by the new keyboard walk, EXB-05).
 
+### Security
+
+- **The background worker checks who is talking to it** (rv2-security-014). Another extension
+  gets no answer at all, and deleting your data, reading the data summary or the diagnostic
+  bundle, starting a batch and starting a capture are answered only for FullShot's own pages —
+  never for a script running inside a web page. A capture asked for by a page that is itself a
+  tab acts on that tab, never on one it names.
+
 ## [1.10.3] — 2026-09-29
 
 A build milestone, like every entry here: the manifest is stamped because the shipped files moved

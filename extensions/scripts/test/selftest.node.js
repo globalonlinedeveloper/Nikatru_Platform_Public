@@ -36,6 +36,7 @@
    Exit codes: 0 every pair behaved · 1 a gate did not bite, or bit wrongly. */
 
 'use strict';
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -693,6 +694,100 @@ expect('a remote <script src> fails', {
 expect('an external <a href> does NOT fail (it navigates, it does not load)', {
   script: 'policy-check.mjs', argv: ['goodtool'], root: fixture(), code: 0, contains: 'external <a href>'
 });
+
+/* ---------------- gate 9: third-party files are recorded ----------------
+   O-EXTENSION-THIRD-PARTY-FILES-UNGATED (rv2-security-015). Each marker is its
+   own case, by hand, and each has a control: the gate is about a RECORD, so a
+   recorded file must pass and a record that no longer describes the bytes must
+   not. */
+{
+  const TP = 'third-party files in the package are recorded';
+  const LIB = '/*! tinylib v1.2.3 | (c) Somebody Else | @license MIT */\nglobalThis.T = 1;\n';
+  const sha = s => crypto.createHash('sha256').update(Buffer.from(s, 'utf8')).digest('hex');
+  const entry = over => Object.assign({
+    path: TOOL + '/popup/tinylib.js', upstream: 'https://example.com/tinylib', version: '1.2.3', spdx: 'MIT', sha256: sha(LIB)
+  }, over || {});
+  expect('a .min.js file in the package fails unrecorded', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'popup/lib.min.js: a minified file name',
+    root: fixture(root => { w(root, TOOL + '/popup/lib.min.js', "'use strict';\nglobalThis.L = 1;\n"); })
+  });
+  expect('an @license banner in a packaged script fails unrecorded', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'popup/popup.js: @license at line 1',
+    root: fixture(root => { edit(root, TOOL + '/popup/popup.js', s => '/*! x | @license MIT */\n' + s); })
+  });
+  expect('an @preserve comment in a packaged stylesheet fails unrecorded', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'popup/popup.css: @preserve',
+    root: fixture(root => { edit(root, TOOL + '/popup/popup.css', s => '/* @preserve normalize v8 */\n' + s); })
+  });
+  expect('a foreign SPDX header in a packaged script fails unrecorded', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'background.js: SPDX "Apache-2.0" at line 1',
+    root: fixture(root => { edit(root, TOOL + '/background.js', s => '/* SPDX-License-Identifier: Apache-2.0 */\n' + s); })
+  });
+  expect('core\'s MPL-2.0 header OUTSIDE vendor/core/ is foreign', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'SPDX "MPL-2.0"',
+    root: fixture(root => {
+      writeJson(root, 'core/core.json', { version: '0.1.0', channel: 'v1', license: 'MPL-2.0' });
+      edit(root, TOOL + '/background.js', s => '/* SPDX-License-Identifier: MPL-2.0 */\n' + s);
+    })
+  });
+  expect('CONTROL: the house licence\'s SPDX header passes', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'none is third-party-shaped',
+    root: fixture(root => { edit(root, TOOL + '/background.js', s => '/* SPDX-License-Identifier: PolyForm-Shield-1.0.0 */\n' + s); })
+  });
+  expect('CONTROL: core\'s own licence under vendor/core/ is first-party', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'none is third-party-shaped',
+    root: fixture(root => {
+      writeJson(root, 'core/core.json', { version: '0.1.0', channel: 'v1', license: 'MPL-2.0' });
+      w(root, TOOL + '/vendor/core/a.js', '/* SPDX-License-Identifier: MPL-2.0 */\nglobalThis.A = 1;\n');
+      const t = readJson(root, TOOL + '/tool.json'); t.package.include.push('vendor/'); writeJson(root, TOOL + '/tool.json', t);
+      edit(root, TOOL + '/background.js', s => s + "importScripts('vendor/core/a.js');\n");
+    })
+  });
+  expect('CONTROL: an e-mail address is not an @license tag', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: 'none is third-party-shaped',
+    root: fixture(root => { edit(root, TOOL + '/popup/popup.js', s => '// questions: legal@license.example\n' + s); })
+  });
+  expect('CONTROL: a recorded third-party file whose bytes match passes', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: '1 recorded third-party file(s), each hash-matched',
+    root: fixture(root => { w(root, TOOL + '/popup/tinylib.js', LIB); writeJson(root, 'THIRD_PARTY.json', { files: [entry()] }); })
+  });
+  expect('a recorded file whose bytes changed fails on its hash', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'the file that ships is not the file recorded',
+    root: fixture(root => { w(root, TOOL + '/popup/tinylib.js', LIB + 'globalThis.T = 2;\n'); writeJson(root, 'THIRD_PARTY.json', { files: [entry()] }); })
+  });
+  expect('a record with no upstream, version or licence fails', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: '"upstream" is not an https URL; "version" is empty; "spdx" is empty',
+    root: fixture(root => { w(root, TOOL + '/popup/tinylib.js', LIB); writeJson(root, 'THIRD_PARTY.json', { files: [entry({ upstream: 'http://x', version: '', spdx: ' ' })] }); })
+  });
+  expect('a record whose licence disagrees with the file\'s SPDX header fails', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'the record says "MIT"',
+    root: fixture(root => {
+      const src = '/* SPDX-License-Identifier: BSD-3-Clause */\n' + LIB;
+      w(root, TOOL + '/popup/tinylib.js', src);
+      writeJson(root, 'THIRD_PARTY.json', { files: [entry({ sha256: sha(src) })] });
+    })
+  });
+  expect('a record of a file the package does not select fails', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 1, contains: 'a record of nothing',
+    root: fixture(root => { writeJson(root, 'THIRD_PARTY.json', { files: [entry({ path: TOOL + '/test/tinylib.js' })] }); })
+  });
+  expect('CONTROL: another tool\'s record is not graded here', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 0, contains: TP,
+    root: fixture(root => { writeJson(root, 'THIRD_PARTY.json', { files: [entry({ path: 'Extension/Other_Tool/x.min.js', sha256: 'nope' })] }); })
+  });
+  expect('a register that does not parse cannot grade anything: exit 2', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 2, contains: 'THIRD_PARTY.json does not parse',
+    root: fixture(root => { w(root, 'THIRD_PARTY.json', '{ "files": [ }\n'); })
+  });
+  expect('a register with no files array cannot grade anything: exit 2', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 2, contains: 'must be an object with a "files" array',
+    root: fixture(root => { writeJson(root, 'THIRD_PARTY.json', [entry()]); })
+  });
+  expect('an empty packaged set is exit 2, never a pass over nothing', {
+    script: 'policy-check.mjs', argv: ['goodtool'], code: 2, contains: 'nothing to scan',
+    root: fixture(root => { const t = readJson(root, TOOL + '/tool.json'); t.package.include = ['_locales/']; writeJson(root, TOOL + '/tool.json', t); })
+  });
+}
 
 /* ---------------- the CSP posture gate ----------------
 
