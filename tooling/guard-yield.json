@@ -3063,6 +3063,11 @@
         "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-worker-secrets-declared.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ci/assert-workflow-hardening.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-26",
@@ -3716,6 +3721,11 @@
       "firstSeen": "2026-09-30",
       "evidence": []
     },
+    "tooling/ops/check-secret-scopes.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ops/check-tech-currency.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-29",
@@ -3765,6 +3775,11 @@
     "tooling/ops/name-clearance-sweep.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ops/osv-scan-due.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ops/post-deploy-smoke.mjs": {
