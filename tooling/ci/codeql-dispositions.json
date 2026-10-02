@@ -644,6 +644,14 @@
       "reason": "restClient sends JSON bodies to the GitHub REST API: label names from tooling/autopilot/contract.json (review-gate.yml) and, for post-verdict.mjs, the review verdict file's text, whose whole purpose is to be posted as a COMMENT review (O-REVIEWS-DEPEND-ON-THE-LAPTOP). The file cannot choose the host; restClient refuses a repo that is not owner/name and any path outside the shape it builds, and post-verdict refuses a verdict file without the VERDICT line, over 65,000 characters, or carrying a secret-shaped string, before anything is posted. Added 2026-10-02 (club-rt-autopilot)."
     },
     {
+      "alert": 586,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/autopilot/heartbeat.mjs",
+      "disposition": "by-design",
+      "host": "api.github.com",
+      "reason": "readBeatApi's second request reads beat.json at the commit sha the git ref API returned for refs/lead/heartbeat; the file name comes from tooling/autopilot/contract.json, and reading the laptop heartbeat is the function's purpose (O-LAPTOP-OUTAGE-READS-AS-RED). The file cannot choose the host (GITHUB_API_URL or the literal api.github.com); the module refuses at load a ref that is not refs/<ns>/<name> or a file that is not a plain git name, readBeatApi refuses a repo that is not owner/name, and the sha must be 40 hex characters (SHA_SHAPE) before the request is built. The same flow as alert 582, re-numbered when the read moved to the ref API (review of #1171, ruling 1). Added 2026-10-02 (club-rt-autopilot)."
+    },
+    {
       "alert": 571,
       "rule": "js/file-access-to-http",
       "path": "tooling/smoke/web-a11y-tree.mjs",
