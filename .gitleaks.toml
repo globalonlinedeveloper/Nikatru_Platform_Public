@@ -295,3 +295,16 @@ condition = "AND"
 paths = ['''(^|[\\/])sites[\\/]nikatru[\\/]js[\\/]signin\.js$''']
 regexTarget = "secret"
 regexes = ['''^sb_publishable_[A-Za-z0-9_-]{20,}$''']
+
+# 🔴 ONE COMMIT, NOT A PATH OR A PATTERN. Lead ruling 2026-10-02 on PR #1159.
+# Commit a3a058b7cab807110f4154906f48a4e53e759810 added the self-review fixture
+# tooling/review/fixtures/reruns-week/responses.json with SYNTHETIC job ids that
+# happened to be 4-4-4 Aadhaar-shaped — never personal data. They were replaced
+# in a801347735b365dceb6611a03ad6446a96eda92d (job ids moved out of the shape),
+# so the tree is clean; only that one commit in the PR's history still matches.
+# History is never rewritten here, so the hole is scoped to that sha and that
+# rule alone: the same value in any OTHER commit is still a finding.
+[[allowlists]]
+description = "a3a058b7cab8: synthetic self-review fixture ids, replaced in a801347735b3 — lead ruling 2026-10-02"
+targetRules = ["nikatru-india-aadhaar"]
+commits = ["a3a058b7cab807110f4154906f48a4e53e759810"]
