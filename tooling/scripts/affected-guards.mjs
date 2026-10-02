@@ -837,6 +837,10 @@ export function buildChecks(root, tree, { parsed, readSource = (rel) => readFile
   for (const f of tree.list) {
     const m = f.match(/^services\/([^/]+)\/package\.json$/);
     if (!m) continue;
+    // services/_shared is the kit, not a Worker (worker-set.mjs excludes it by name too): it has a
+    // package.json since 2026-10-01 only to declare `jose`, and its suite runs inside every Worker's,
+    // which the line below already ties it to.
+    if (m[1] === '_shared') continue;
     const dir = `services/${m[1]}`;
     const subjects = [{ kind: 'dir', path: dir, tier: 0 }]; // its own Worker: the tightest tie
     for (const g of workersLane?.globs ?? []) if (!g.glob.startsWith('services/')) subjects.push({ kind: 'lane', path: g.glob, re: g.re });

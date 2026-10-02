@@ -39,6 +39,12 @@ function harness() {
     // No money environment: past the product gate both routes answer 503, and
     // neither reaches a database or a rail.
     MONEY_ENVIRONMENT: undefined,
+    // ⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED: checkout's two limiters run BEFORE
+    // its product gate, and the per-user bucket fails CLOSED (503) when unbound —
+    // which would read here as "sold" for every id. Both admit, so the gate is
+    // what answers.
+    CHECKOUT_CEILING_LIMITER: { limit: async () => ({ success: true }) },
+    CHECKOUT_USER_LIMITER: { limit: async () => ({ success: true }) },
   } as unknown as AppEnv['Bindings'];
   const post = (path: string, body: unknown) =>
     app.request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }, env);

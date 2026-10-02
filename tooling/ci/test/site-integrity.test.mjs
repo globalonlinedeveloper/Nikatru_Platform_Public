@@ -587,6 +587,41 @@ function urlTree(name, over = {}, opts = {}) {
   return fixture(name, { ...files, ...over }, opts);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-10-02 (rajasekarselvam.com audit, D2 + D4). Two limbs reach the brochure root.
+//   · email_off: the obfuscation limb walked app-facing roots only, so the founder's
+//     contact button served as "[email protected]" and nothing here could say so.
+//   · template slots: cv.html, an unfilled CV template, answered 200 at /cv.
+describe('check-site-integrity · the brochure root is not exempt from the served-bytes limbs', () => {
+  test('RED CONTROL: a mailto outside <!--email_off--> on a NON-app-facing root fails', () => {
+    const dir = build('eo-brochure', { extra: { 'sites/b/index.html': '<html><body><a href="mailto:hi@example.com">hi@example.com</a></body></html>\n' } });
+    const { code, out } = run(dir);
+    assert.equal(code, 1, out);
+    assert.match(out, /sites\/b\/index\.html carries 1 mailto: link\(s\) OUTSIDE an <!--email_off--> region/);
+  });
+
+  test('the same anchor wrapped in <!--email_off--> passes', () => {
+    const dir = build('eo-brochure-ok', { extra: { 'sites/b/index.html': '<html><body><!--email_off--><a href="mailto:hi@example.com">hi@example.com</a><!--/email_off--></body></html>\n' } });
+    const { code, out } = run(dir);
+    assert.equal(code, 0, out);
+    assert.match(out, /1 page\(s\) with a mailto: keep it inside <!--email_off-->, across every deploy root/);
+  });
+
+  test('RED CONTROL: a served page showing [Job title]-style slots fails, noindex or not', () => {
+    const cv = '<html><head><meta name="robots" content="noindex, nofollow"></head><body><h2>[Job title] — [Company]</h2></body></html>\n';
+    const dir = build('ph-cv', { extra: { 'sites/b/cv.html': cv } });
+    const { code, out } = run(dir);
+    assert.equal(code, 1, out);
+    assert.match(out, /sites\/b\/cv\.html shows 2 unfilled template slot\(s\) in its visible text \(\[Job title\], \[Company\]\)/);
+  });
+
+  test('a bracket that is not a slot — a footnote, a lower-case aside — is not one', () => {
+    const dir = build('ph-ok', { extra: { 'sites/b/index.html': '<html><body><p>See note [1] and [sic].</p></body></html>\n' } });
+    const { code, out } = run(dir);
+    assert.equal(code, 0, out);
+  });
+});
+
 describe('check-site-integrity · one canonical URL form', () => {
   test('PASSES on a root whose canonicals, sitemap and links all agree', () => {
     const { code, out } = run(urlTree('uf-ok'));
