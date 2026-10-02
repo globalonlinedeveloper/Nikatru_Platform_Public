@@ -122,7 +122,7 @@ class DestructiveOutcomeNotice extends StatelessWidget {
             ),
           ],
           Align(
-            alignment: Alignment.centerRight,
+            alignment: AlignmentDirectional.centerEnd,
             child: TextButton(
               onPressed: onDismiss,
               child: Text(dismissLabel),

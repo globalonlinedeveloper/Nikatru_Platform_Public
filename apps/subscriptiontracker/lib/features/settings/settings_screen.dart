@@ -439,7 +439,7 @@ class SettingsScreen extends ConsumerWidget {
                 return SizedBox(
                   width: 76,
                   child: Padding(
-                    padding: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsetsDirectional.only(end: 8),
                     // ⚠️ A SET OF CHIPS OF WHICH EXACTLY ONE IS ON, AND THE ONLY
                     // THING THAT SAID SO WAS THE GRADIENT. `selected:` is the
                     // load-bearing half here — without it a reader hears four
@@ -1779,7 +1779,9 @@ class _Toggle extends StatelessWidget {
             ),
             child: AnimatedAlign(
               duration: const Duration(milliseconds: 180),
-              alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+              alignment: value
+                  ? AlignmentDirectional.centerEnd
+                  : AlignmentDirectional.centerStart,
               child: Container(
                 margin: const EdgeInsets.all(3),
                 width: 22,

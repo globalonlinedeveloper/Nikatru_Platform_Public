@@ -162,9 +162,9 @@ class GlyphTile extends StatelessWidget {
           ),
         ),
         if (statusColor != null)
-          Positioned(
+          PositionedDirectional(
             bottom: -2,
-            right: -2,
+            end: -2,
             child: Container(
               width: 12,
               height: 12,

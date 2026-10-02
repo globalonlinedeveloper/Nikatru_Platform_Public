@@ -22,6 +22,7 @@ import {
   LOCALES_CONFIG,
   READERS,
   handTypedLists,
+  ltrOnlyCalls,
   msixLanguages,
   plistLocalizations,
   renderDartRegister,
@@ -58,6 +59,8 @@ function filesToCopy() {
     ...READERS.map((r) => r.file),
     AUTH_MAIL_COPY_REL,
     DIGEST_COPY,
+    `${BRICK}/lib/app.dart`,
+    'packages/design_system/lib/src/widgets/promo_card.dart',
     ...['confirm-signup.html', 'magic-link.html', 'reset-password.html'].flatMap((f) => [
       `docs/platform/supabase/email-templates/${f}`,
       `sites/nikatru/auth-mail/${f}`,
@@ -245,9 +248,11 @@ describe('L5 · named readers', () => {
   test('a scan that no longer reaches a named reader is COVERAGE LOST', () => {
     rmSync(join(root, 'tooling/release/submit-play.mjs'));
     const r = run();
-    // L5 records the missing file first; the scan's reach check then refuses outright.
-    assert.equal(r.status, 2, r.stderr + r.stdout);
-    assert.match(r.stderr, /did not reach tooling\/release\/submit-play\.mjs/);
+    // L5 records the missing file as a FINDING (exit 1), and the reach check's
+    // could-not-look is reported beside it rather than hiding it behind exit 2.
+    assert.equal(r.status, 1, r.stderr + r.stdout);
+    assert.match(r.stderr, /L5 tooling\/release\/submit-play\.mjs is missing/);
+    assert.match(r.stderr, /\(and COVERAGE LOST — the hand-typed-list scan did not reach tooling\/release\/submit-play\.mjs/);
   });
 });
 
@@ -356,5 +361,50 @@ describe('L7 · server-side copy, and the auth e-mails it renders', () => {
     const p = authMailCopyProblems(reg, c);
     assert.ok(p.some((x) => /has a block for fr/.test(x)), p.join('\n'));
     assert.ok(p.some((x) => /hi: `intro` never says \{email\}/.test(x)), p.join('\n'));
+  });
+});
+
+describe('L8 · right-to-left readiness', () => {
+  test('RED CONTROL (item 4): promo_card back on fromLTRB(16, 12, 8, 12) FAILS with file and line', () => {
+    edit('packages/design_system/lib/src/widgets/promo_card.dart', 'EdgeInsetsDirectional.fromSTEB(16, 12, 8, 12)', 'EdgeInsets.fromLTRB(16, 12, 8, 12)');
+    const r = run();
+    assert.equal(r.status, 1, r.stderr + r.stdout);
+    assert.match(r.stderr, /L8 packages\/design_system\/lib\/src\/widgets\/promo_card\.dart:\d+ EdgeInsets\.fromLTRB\(16, …, 8, …\) — use EdgeInsetsDirectional\.fromSTEB/);
+  });
+
+  test('every LTR-only form is found, with its directional twin named', () => {
+    const src = [
+      "const a = EdgeInsets.only(right: 8);",
+      "const b = EdgeInsets.fromLTRB(\n  16,\n  8,\n  8,\n  8,\n);",
+      "final c = Positioned(bottom: -2, right: -2, child: x);",
+      "final d = Align(alignment: on ? Alignment.centerRight : Alignment.centerLeft);",
+      "final e = Text('x', textAlign: TextAlign.left);",
+    ].join('\n');
+    assert.deepEqual(
+      ltrOnlyCalls(src).map((h) => `${h.line} ${h.what.split(' — ')[0]}`),
+      ['1 EdgeInsets.only(left:/right:)', '2 EdgeInsets.fromLTRB(16, …, 8, …)', '8 Positioned(left:/right:)', '9 Alignment.centerRight', '9 Alignment.centerLeft', '10 TextAlign.left'],
+    );
+  });
+
+  test('direction-NEUTRAL forms pass: symmetric insets, both-sides pins, gradients, comments', () => {
+    const src = [
+      'const a = EdgeInsets.fromLTRB(16, 0, 16, 20);',
+      'const b = EdgeInsets.only(left: 4, right: 4, top: 2);',
+      'final c = Positioned(left: 0, right: 0, bottom: 0, child: x);',
+      'const g = LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight);',
+      '// was EdgeInsets.only(right: 8) before RTL',
+      'const d = EdgeInsetsDirectional.only(end: 8);',
+      'const e = EdgeInsets.only(top: 8);',
+    ].join('\n');
+    assert.deepEqual(ltrOnlyCalls(src), []);
+  });
+
+  test('a UI tree the scan cannot reach is COVERAGE LOST', () => {
+    // The brick's only Dart file in the copy goes; its ARB files stay, so there
+    // is no finding — only a tree L8 can no longer see.
+    rmSync(join(root, BRICK, 'lib/app.dart'));
+    const r = run();
+    assert.equal(r.status, 2, r.stderr + r.stdout);
+    assert.match(r.stderr, /COVERAGE LOST — the right-to-left scan read no Dart file under tooling\/bricks/);
   });
 });

@@ -309,21 +309,40 @@ class SignalsSection extends ConsumerWidget {
                   ),
                 ],
               )
-            : Row(
-                key: Key('insights.signal.stillUsing.${sub.id}'),
-                children: <Widget>[
-                  Expanded(child: question),
-                  Padding(
-                    padding: const EdgeInsetsDirectional.only(
-                      end: AppSpacing.md,
+            // ⏱ 2026-10-02 · i18n pipeline: the answers take at most
+            // [kStillUsingAnswersShare] of the row and WRAP under each other
+            // past it. Uncapped, a language whose two labels run long (the
+            // en-XA pseudo-locale, +40%) squeezed the question to 6.8 px and
+            // overflowed it by 45 — measured by pseudo_locale_screens_test at
+            // 360 px. English at 360 takes 174.5 of 324, under the cap, so
+            // nothing moves there.
+            : LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints c) => Row(
+                  key: Key('insights.signal.stillUsing.${sub.id}'),
+                  children: <Widget>[
+                    Expanded(child: question),
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(
+                        end: AppSpacing.md,
+                      ),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: c.maxWidth * kStillUsingAnswersShare,
+                        ),
+                        child: answers,
+                      ),
                     ),
-                    child: answers,
-                  ),
-                ],
+                  ],
+                ),
               );
     }
   }
 }
+
+/// The most of a still-using row the two answer buttons may take beside the
+/// question; past it they wrap under each other, so the question keeps the
+/// rest whatever the language's label lengths.
+const double kStillUsingAnswersShare = 0.55;
 
 /// Where "No, not using it" goes: the plan's stop-a-charge flow (train T10's
 /// `/sub/:id/stop`, DE-07), where stopping, pausing and removing are. ONE

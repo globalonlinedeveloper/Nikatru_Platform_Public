@@ -33,6 +33,11 @@
 //   L6 hand-typed no locale list outside the register: two or more distinct
 //                 register codes as adjacent quoted tokens in code (comments
 //                 stripped), in any scanned file not in EXEMPT below.
+//   L8 rtl        no UI file (apps/*/lib, packages/*/lib, the brick's lib) lays
+//                 out hard-wired left-to-right: an asymmetric EdgeInsets.fromLTRB,
+//                 a one-sided EdgeInsets.only or Positioned, a non-gradient
+//                 Alignment.*Left/*Right, TextAlign.left/right. Each has a
+//                 Directional twin that is identical in LTR and mirrors in RTL.
 //   L7 copy       the server-side copy tables — the renewal digest's
 //                 (services/platform/src/lib/digest-copy.json) and the auth
 //                 e-mails' (tooling/i18n/auth-mail-copy.json) — carry a complete
@@ -90,6 +95,10 @@ export const EXEMPT = [
   { path: 'tooling/scripts/assert-no-dead-files.mjs', why: 'quotes the lingo-phrases recipe in a note' },
   { path: 'packages/design_system/test/swallow_system_back_test.dart', why: 'a resolution-logic fixture: the supported list there is an input to resolve against, not the app\'s' },
 ];
+
+/** L8 — the UI trees held to direction-neutral layout: every app's lib, every
+ *  package's lib, the brick's lib. Each is a regex source anchored at the path's start. */
+const RTL_TREES = ['apps/[^/]+/lib/', 'packages/[^/]+/lib/', 'tooling/bricks/app/__brick__/apps/\\{\\{app_id\\}\\}/lib/'];
 
 /** What L6 reads. Everything under these roots with one of these extensions. */
 const SCAN_ROOTS = ['apps', 'packages', 'tooling', 'services', '.github'];
@@ -393,6 +402,74 @@ const exempt = (rel) => EXEMPT.find((e) => (e.path ? e.path === rel : rel.starts
 
 const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
+// ── L8 · right-to-left readiness ─────────────────────────────────────────────
+
+/** The argument list of the call whose `(` is at [open] in [text], split at
+ *  top-level commas, plus the offset after its `)`. Strings and nesting aware. */
+export function callArgs(text, open) {
+  const args = [];
+  let depth = 0;
+  let q = null;
+  let start = open + 1;
+  for (let i = open; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '\\') i++;
+      else if (c === q) q = null;
+      continue;
+    }
+    if (c === "'" || c === '"') q = c;
+    else if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') {
+      depth--;
+      if (depth === 0) {
+        args.push(text.slice(start, i));
+        return { args: args.map((a) => a.trim()).filter((a, n, all) => a !== '' || n < all.length - 1), end: i + 1 };
+      }
+    } else if (c === ',' && depth === 1) {
+      args.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  return { args, end: text.length };
+}
+
+/** Every layout call in Dart [text] that is hard-wired left-to-right: it lays out
+ *  the same in Arabic or Hebrew, so the screen reads mirrored-wrong. Comments are
+ *  stripped first. Direction-NEUTRAL forms pass: a symmetric fromLTRB, a
+ *  Positioned or EdgeInsets.only pinned to BOTH sides with one value, and a
+ *  gradient's begin/end (decoration, not reading order). */
+export function ltrOnlyCalls(text, file = 'x.dart') {
+  const src = stripComments(text, file);
+  const lineAt = (off) => src.slice(0, off).split('\n').length;
+  const out = [];
+  const named = (args) => Object.fromEntries(args.map((a) => a.match(/^(\w+)\s*:\s*([\s\S]*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));
+  const sides = (args) => {
+    const n = named(args);
+    return 'left' in n || 'right' in n ? ('left' in n && 'right' in n && n.left === n.right ? null : n) : null;
+  };
+  for (const m of src.matchAll(/\bEdgeInsets\.fromLTRB\s*\(/g)) {
+    const { args } = callArgs(src, m.index + m[0].length - 1);
+    if (args.length >= 3 && args[0] !== args[2]) out.push({ line: lineAt(m.index), what: `EdgeInsets.fromLTRB(${args[0]}, …, ${args[2]}, …) — use EdgeInsetsDirectional.fromSTEB` });
+  }
+  for (const m of src.matchAll(/\bEdgeInsets\.only\s*\(/g)) {
+    const { args } = callArgs(src, m.index + m[0].length - 1);
+    if (sides(args)) out.push({ line: lineAt(m.index), what: 'EdgeInsets.only(left:/right:) — use EdgeInsetsDirectional.only(start:/end:)' });
+  }
+  for (const m of src.matchAll(/\bPositioned\s*\(/g)) {
+    const { args } = callArgs(src, m.index + m[0].length - 1);
+    if (sides(args)) out.push({ line: lineAt(m.index), what: 'Positioned(left:/right:) — use PositionedDirectional(start:/end:)' });
+  }
+  for (const m of src.matchAll(/(\w+\s*:\s*)?(?:[^\n;:]*\?\s*)?\bAlignment\.(center|top|bottom)(Left|Right)\b/g)) {
+    if (/^(begin|end)\s*:/.test(m[1] ?? '')) continue;
+    out.push({ line: lineAt(m.index), what: `Alignment.${m[2]}${m[3]} — use AlignmentDirectional.${m[2]}${m[3] === 'Left' ? 'Start' : 'End'}` });
+  }
+  for (const m of src.matchAll(/\bTextAlign\.(left|right)\b/g)) {
+    out.push({ line: lineAt(m.index), what: `TextAlign.${m[1]} — use TextAlign.${m[1] === 'left' ? 'start' : 'end'}` });
+  }
+  return out.sort((a, b) => a.line - b.line);
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 
 export function main(args) {
@@ -406,6 +483,9 @@ export function main(args) {
     console.error(`✗ assert-locale-register: COVERAGE LOST — ${why}`);
     return 2;
   };
+  // A limb that could not look is reported AFTER every finding, and exits 2 only
+  // when there is none: a finding (exit 1) is never hidden behind a could-not-look.
+  const deferred = [];
 
   // L1
   const raw = read(REGISTER_REL);
@@ -531,7 +611,7 @@ export function main(args) {
       if (!sameList(langs, msix)) problems.push(`L4 ${pubRel} msix_config languages is "${langs.join(',')}", the register says "${msix.join(',')}" — the Store offers a listing only in a language the package declares.`);
     }
   }
-  if (nativeGraded === 0) return lost('no app has an Info.plist, an AndroidManifest.xml or an msix_config to grade — L4 checked nothing.');
+  if (nativeGraded === 0) deferred.push('no app has an Info.plist, an AndroidManifest.xml or an msix_config to grade — L4 checked nothing.');
   oks.push(`L4 native: ${nativeGraded} declaration(s) across ${apps.length} app(s) match the register`);
 
   // L5
@@ -565,12 +645,20 @@ export function main(args) {
   for (const c of digestLocales) if (!codes.includes(c)) problems.push(`L7 ${DIGEST_COPY} has a "${c}" block, which the register does not list as supported.`);
   oks.push(`L7 copy: the digest and the ${authCopy?.templates ? Object.keys(authCopy.templates).length : 0} auth e-mail(s) speak exactly the supported set`);
 
-  // L6
+  // L6 (and L8, over the same listing)
   let scanned = 0;
   const reached = new Set();
   const lists = [];
+  const ltr = [];
+  const rtlTrees = new Map(RTL_TREES.map((t) => [t, 0]));
   for (const rel of scanFiles(root)) {
-    if (!SCAN_EXT.test(rel) || exempt(rel) || !existsSync(join(root, rel))) continue;
+    if (!existsSync(join(root, rel))) continue;
+    const tree = RTL_TREES.find((t) => new RegExp(`^${t}`).test(rel));
+    if (tree && rel.endsWith('.dart') && !rel.endsWith('.g.dart')) {
+      rtlTrees.set(tree, rtlTrees.get(tree) + 1);
+      for (const hit of ltrOnlyCalls(readFileSync(join(root, rel), 'utf8'), rel)) ltr.push({ rel, ...hit });
+    }
+    if (!SCAN_EXT.test(rel) || exempt(rel)) continue;
     scanned++;
     reached.add(rel);
     for (const hit of handTypedLists(readFileSync(join(root, rel), 'utf8'), rel, allCodes)) lists.push({ rel, ...hit });
@@ -578,7 +666,7 @@ export function main(args) {
   // The reach check: every named reader is a file that once held a hand-typed list,
   // so a scan that no longer reaches all of them is not evidence of anything.
   const unreached = READERS.map((r) => r.file).filter((f) => !reached.has(f));
-  if (unreached.length) return lost(`the hand-typed-list scan did not reach ${unreached.join(', ')} — files that once held a typed locale list.`);
+  if (unreached.length) deferred.push(`the hand-typed-list scan did not reach ${unreached.join(', ')} — files that once held a typed locale list.`);
   for (const l of lists) {
     problems.push(
       `L6 ${l.rel}:${l.from}${l.to !== l.from ? `-${l.to}` : ''} types the locale list [${l.codes.join(', ')}] by hand. ` +
@@ -588,10 +676,23 @@ export function main(args) {
   }
   oks.push(`L6 hand-typed: ${scanned} file(s) scanned, ${EXEMPT.length} named exemption(s), no locale list outside the register`);
 
+  // L8
+  const empty = [...rtlTrees].filter(([, n]) => n === 0).map(([t]) => t);
+  if (empty.length) deferred.push(`the right-to-left scan read no Dart file under ${empty.join(', ')} — a tree it exists to hold.`);
+  for (const h of ltr) {
+    problems.push(`L8 ${h.rel}:${h.line} ${h.what}. It lays out the same in a right-to-left language, so the screen reads mirrored-wrong.`);
+  }
+  oks.push(`L8 right-to-left: ${[...rtlTrees.values()].reduce((a, b) => a + b, 0)} Dart file(s) in ${rtlTrees.size} UI tree(s), no hard-wired left/right layout`);
+
   if (problems.length) {
     console.error(`✗ assert-locale-register — ${problems.length} problem(s):`);
     for (const p of problems) console.error(`    ${p}`);
+    for (const d of deferred) console.error(`    (and COVERAGE LOST — ${d})`);
     return 1;
+  }
+  if (deferred.length) {
+    for (const d of deferred) lost(d);
+    return 2;
   }
   for (const o of oks) console.log(`ok   ${o}`);
   console.log('assert-locale-register: ok — every surface reads the one locale register');

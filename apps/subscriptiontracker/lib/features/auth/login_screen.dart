@@ -603,7 +603,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         ],
         if (!_signUp)
           Align(
-            alignment: Alignment.centerRight,
+            alignment: AlignmentDirectional.centerEnd,
             child: TextButton(
               // Gated like every other control on this screen. This is
               // the half the user can SEE; the latch at the top of
@@ -922,7 +922,7 @@ class _EmailChangedNotice extends ConsumerWidget {
               key: text,
             ),
             Align(
-              alignment: Alignment.centerRight,
+              alignment: AlignmentDirectional.centerEnd,
               child: TextButton(
                 onPressed: () =>
                     ref.read(emailChangeSignedOutProvider.notifier).state =
@@ -1038,7 +1038,7 @@ class _AccountDeletionNotice extends ConsumerWidget {
             ),
           ],
           Align(
-            alignment: Alignment.centerRight,
+            alignment: AlignmentDirectional.centerEnd,
             child: TextButton(
               onPressed: () {
                 ref.read(lastAccountDeletionOutcomeProvider.notifier).state =

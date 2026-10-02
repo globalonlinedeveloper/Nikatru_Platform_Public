@@ -256,7 +256,9 @@ void main() {
       }
     }
 
-    for (final Locale locale in <Locale>[for (final RegisteredLocale r in kSupportedLocales) r.locale]) {
+    for (final Locale locale in <Locale>[
+      for (final RegisteredLocale r in kSupportedLocales) r.locale,
+    ]) {
       testWidgets(
         '[${locale.languageCode}] at 375 and textScaler 1.3 nothing overflows',
         (WidgetTester tester) async {
