@@ -1097,10 +1097,28 @@
       ]
     },
     {
-      "binding": "AUTH_CREDENTIAL_GLOBAL_LIMITER",
+      "binding": "AUTH_PASSWORD_GLOBAL_LIMITER",
       "kind": "ratelimits",
       "scope": "edge",
-      "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. services/edge-shield's auth-credential limiter, keyed global:auth-credential, all clients together: GoTrue calls that prove, mint or mail a credential on Box C (password/pkce/id_token grants, otp, signup, recover, resend, verify, magiclink, reauthenticate, MFA verify/challenge). Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
+      "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. ⏱ 2026-10-01 · SYN-A2 / PB-01, row O-ONE-CLIENT-CAN-EXHAUST-THE-CREDENTIAL-CAP: one of the THREE credential limiters the single AUTH_CREDENTIAL_GLOBAL_LIMITER was split into, so filling one refuses nothing in the other two. services/edge-shield's auth-password limiter, keyed global:auth-password, all clients together: GoTrue /token grants on Box C other than refresh_token (password, pkce, id_token, or none). Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
+      "readers": [
+        "services/edge-shield/src/classify.ts"
+      ]
+    },
+    {
+      "binding": "AUTH_SIGNUP_RECOVER_GLOBAL_LIMITER",
+      "kind": "ratelimits",
+      "scope": "edge",
+      "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. ⏱ 2026-10-01 · SYN-A2 / PB-01, row O-ONE-CLIENT-CAN-EXHAUST-THE-CREDENTIAL-CAP: one of the THREE credential limiters the single AUTH_CREDENTIAL_GLOBAL_LIMITER was split into, so filling one refuses nothing in the other two. services/edge-shield's auth-signup-recover limiter, keyed global:auth-signup-recover, all clients together: GoTrue calls on Box C that mint an account, mail a credential or redeem what was mailed (signup, otp, recover, resend, verify, magiclink). Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
+      "readers": [
+        "services/edge-shield/src/classify.ts"
+      ]
+    },
+    {
+      "binding": "AUTH_FACTOR_GLOBAL_LIMITER",
+      "kind": "ratelimits",
+      "scope": "edge",
+      "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. ⏱ 2026-10-01 · SYN-A2 / PB-01, row O-ONE-CLIENT-CAN-EXHAUST-THE-CREDENTIAL-CAP: one of the THREE credential limiters the single AUTH_CREDENTIAL_GLOBAL_LIMITER was split into, so filling one refuses nothing in the other two. services/edge-shield's auth-factor limiter, keyed global:auth-factor, all clients together: GoTrue MFA calls on Box C (factors/<id>/verify and /challenge) and reauthenticate. Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
       "readers": [
         "services/edge-shield/src/classify.ts"
       ]
@@ -1157,7 +1175,7 @@
     {
       "_why": [
         "services/edge-shield — the Cloudflare edge in front of Box C (self-hosted GoTrue, auth-api.nikatru.com) and",
-        "Box B (GlitchTip, glitchtip.nikatru.com). It counts four request classes against one GLOBAL cap each and",
+        "Box B (GlitchTip, glitchtip.nikatru.com). It counts six request classes against one GLOBAL cap each and",
         "answers 429 with Retry-After over a cap, or 503 for the refresh grant (LEAD RULING SHIELD-R2); it reads no",
         "client address (SHIELD-R3), and the per-IP limit on the credential paths is the zone's own rate-limiting",
         "rule, tooling/edge-ratelimit-rule.json. It serves the GoTrue JWKS from the edge cache for 300 s, and passes",

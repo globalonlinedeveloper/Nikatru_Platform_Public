@@ -10,6 +10,9 @@
 //     ONE global cap each (LEAD RULING SHIELD-R3), in the shape the client
 //     behind each host understands — and the Worker reads no client address and
 //     no Origin to get there;
+//   · 🔴 one client cannot starve another's sign-in — the three credential
+//     classes are separate buckets, so filling one refuses nothing in the others
+//     (SYN-A2 / PB-01, row O-ONE-CLIENT-CAN-EXHAUST-THE-CREDENTIAL-CAP);
 //   · fail OPEN — an absent, throwing or rejecting limiter admits and is counted;
 //   · the JWKS edge cache — one origin read per TTL whatever the query string,
 //     a stale copy (never a 504) for at most an hour when the origin fails, a
@@ -62,7 +65,9 @@ function counting(limit: number): Counting {
 
 function fullEnv(globalLimit = 1000): TestEnv {
   return {
-    AUTH_CREDENTIAL_GLOBAL_LIMITER: counting(globalLimit),
+    AUTH_PASSWORD_GLOBAL_LIMITER: counting(globalLimit),
+    AUTH_SIGNUP_RECOVER_GLOBAL_LIMITER: counting(globalLimit),
+    AUTH_FACTOR_GLOBAL_LIMITER: counting(globalLimit),
     AUTH_REFRESH_GLOBAL_LIMITER: counting(globalLimit),
     AUTH_OTHER_GLOBAL_LIMITER: counting(globalLimit),
     INTAKE_GLOBAL_LIMITER: counting(globalLimit),
@@ -129,11 +134,26 @@ function req(url: string, init: RequestInit & { ip?: string | null } = {}): Requ
   return new Request(url, { ...rest, headers });
 }
 
-const password = () =>
+const password = (ip?: string) =>
   req(`${AUTH}/auth/v1/token?grant_type=password`, {
     method: 'POST',
     body: JSON.stringify({ email: 'a@example.com', password: 'x' }),
     headers: { 'content-type': 'application/json', apikey: 'anon' },
+    ip,
+  });
+const signup = (ip?: string) =>
+  req(`${AUTH}/auth/v1/signup`, {
+    method: 'POST',
+    body: JSON.stringify({ email: 'b@example.com', password: 'y' }),
+    headers: { 'content-type': 'application/json', apikey: 'anon' },
+    ip,
+  });
+const factorVerify = (ip?: string) =>
+  req(`${AUTH}/auth/v1/factors/f1/verify`, {
+    method: 'POST',
+    body: JSON.stringify({ challenge_id: 'c1', code: '123456' }),
+    headers: { 'content-type': 'application/json', apikey: 'anon', authorization: 'Bearer t' },
+    ip,
   });
 
 describe('pass-through fidelity', () => {
@@ -237,7 +257,9 @@ describe('pass-through fidelity', () => {
 
 describe('refused with Retry-After, per class', () => {
   const cases: Array<[ShieldClass, () => Request]> = [
-    ['auth-credential', password],
+    ['auth-password', () => password()],
+    ['auth-signup-recover', () => signup()],
+    ['auth-factor', () => factorVerify()],
     ['auth-refresh', () => req(`${AUTH}/auth/v1/token?grant_type=refresh_token`, { method: 'POST', body: '{}' })],
     ['auth-other', () => req(`${AUTH}/auth/v1/user`)],
     ['intake', () => req(`${GT}/api/1/envelope/`, { method: 'POST', body: 'x' })],
@@ -293,7 +315,14 @@ describe('refused with Retry-After, per class', () => {
 
   it('every class but the refresh grant is refused 429; the refresh grant 503', () => {
     const by = Object.fromEntries(Object.entries(CLASSES).map(([k, v]) => [k, v.refusal]));
-    expect(by).toEqual({ 'auth-credential': 429, 'auth-refresh': 503, 'auth-other': 429, intake: 429 });
+    expect(by).toEqual({
+      'auth-password': 429,
+      'auth-signup-recover': 429,
+      'auth-factor': 429,
+      'auth-refresh': 503,
+      'auth-other': 429,
+      intake: 429,
+    });
   });
 
   it('auth: the refusal is GoTrue’s versioned over-limit shape, so the app shows "Too many attempts"', async () => {
@@ -363,10 +392,72 @@ describe('refused with Retry-After, per class', () => {
   });
 });
 
+describe('🔴 one client cannot starve another’s sign-in (SYN-A2 / PB-01, row O-ONE-CLIENT-CAN-EXHAUST-THE-CREDENTIAL-CAP)', () => {
+  // Until 2026-10-01 every credential path shared ONE global bucket, and no
+  // per-IP limit covered /token: one client's junk password posts filled it, and
+  // every sign-up in the colo was refused here, before GoTrue could tell the two
+  // clients apart. The deployed credential cap is 300/min (../wrangler.jsonc).
+  const CAP = 300;
+
+  /**
+   * EVERY limiter the Worker asks for, each counting per key at `cap`, made on
+   * the name the class table reads rather than from a fixed list. So this block
+   * goes RED against the one shared bucket it replaced: a fixed list would leave
+   * that bucket's binding absent, and the Worker would fail OPEN and admit.
+   */
+  function everyLimiter(cap: number): Env {
+    const made = new Map<string, Counting>();
+    return new Proxy({} as Env, {
+      get: (_t, name) => {
+        if (typeof name !== 'string' || !name.endsWith('_LIMITER')) return undefined;
+        if (!made.has(name)) made.set(name, counting(cap));
+        return made.get(name);
+      },
+    });
+  }
+
+  const refresh = (ip: string) => req(`${AUTH}/auth/v1/token?grant_type=refresh_token`, { method: 'POST', body: '{}', ip });
+  const user = (ip: string) => req(`${AUTH}/auth/v1/user`, { ip });
+  const credential: Array<[ShieldClass, (ip: string) => Request]> = [
+    ['auth-password', password],
+    ['auth-signup-recover', signup],
+    ['auth-factor', factorVerify],
+  ];
+
+  it('RED CONTROL: one client at 301 password posts does not 429 a second client’s POST /auth/v1/signup', async () => {
+    const env = everyLimiter(CAP);
+    const failedOpen = failOpenSeen();
+    const flood: number[] = [];
+    for (let i = 0; i <= CAP; i++) flood.push((await worker.fetch(password('198.51.100.1'), env, ctx())).status);
+    // The flood DID fill its bucket — the limiter is live, not failing open.
+    expect(flood.filter((st) => st === 200)).toHaveLength(CAP);
+    expect(flood.at(-1)).toBe(429);
+    const res = await worker.fetch(signup('198.51.100.2'), env, ctx());
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-nikatru-shield')).toBe('1');
+    expect(originCalls.at(-1)?.url).toBe(`${AUTH}/auth/v1/signup`);
+    expect(failOpenSeen()).toBe(failedOpen);
+  });
+
+  for (const [full, flood] of credential) {
+    it(`${full} full refuses nothing in another credential class, the refresh grant or the backstop`, async () => {
+      const env = everyLimiter(CAP);
+      for (let i = 0; i < CAP; i++) await worker.fetch(flood('198.51.100.1'), env, ctx());
+      expect((await worker.fetch(flood('198.51.100.1'), env, ctx())).status).toBe(429);
+      const others = [...credential.filter(([cls]) => cls !== full).map(([, make]) => make), refresh, user];
+      expect(others).toHaveLength(4);
+      for (const make of others) {
+        const r = make('198.51.100.2');
+        expect((await worker.fetch(r, env, ctx())).status, new URL(r.url).pathname).toBe(200);
+      }
+    });
+  }
+});
+
 describe('fail OPEN — the shield is never the reason auth is down', () => {
   it('a limiter that THROWS admits the request, logs shield_fail_open and counts it', async () => {
     const env = fullEnv();
-    env.AUTH_CREDENTIAL_GLOBAL_LIMITER = {
+    env.AUTH_PASSWORD_GLOBAL_LIMITER = {
       calls: [],
       async limit() {
         throw new Error('rate limiting service unavailable');
@@ -379,7 +470,7 @@ describe('fail OPEN — the shield is never the reason auth is down', () => {
     expect(originCalls).toHaveLength(1);
     expect(failOpenSeen()).toBe(before + 1);
     const line = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
-    expect(line).toMatchObject({ event: 'shield_fail_open', class: 'auth-credential', isolateCount: before + 1 });
+    expect(line).toMatchObject({ event: 'shield_fail_open', class: 'auth-password', isolateCount: before + 1 });
     expect(line.reason).toContain('rate limiting service unavailable');
     // the line carries the class, the reason and the count — nothing about the client
     expect(Object.keys(line).sort()).toEqual(['class', 'event', 'isolateCount', 'reason']);
@@ -845,27 +936,49 @@ describe('one retry on an origin fault (520/522), only where a repeat is safe', 
 describe('classification', () => {
   const at = (u: string, m = 'POST') => classify(new URL(u), m);
 
-  it('credential: every non-refresh grant, and each path that proves, mints or mails a credential', () => {
+  it('password: every /token grant but refresh_token, and a missing or repeated grant_type', () => {
     for (const u of [
       `${AUTH}/auth/v1/token?grant_type=password`,
       `${AUTH}/auth/v1/token?grant_type=pkce`,
       `${AUTH}/auth/v1/token?grant_type=id_token`,
       `${AUTH}/auth/v1/token`,
       `${AUTH}/auth/v1/token?grant_type=refresh_token&grant_type=password`,
-      `${AUTH}/auth/v1/otp`,
+      `${AUTH}/auth/v1/token?grant_type=`,
+      `${AUTH}//auth/v1//TOKEN/?grant_type=password`,
+    ]) {
+      expect(at(u), u).toEqual({ kind: 'limit', cls: 'auth-password' });
+    }
+  });
+
+  it('signup-recover: each path that mints an account, mails a credential or redeems what was mailed', () => {
+    for (const u of [
       `${AUTH}/auth/v1/signup`,
+      `${AUTH}/auth/v1/otp`,
       `${AUTH}/auth/v1/recover`,
       `${AUTH}/auth/v1/resend`,
       `${AUTH}/auth/v1/verify?token=x&type=signup`,
       `${AUTH}/auth/v1/magiclink`,
-      `${AUTH}/auth/v1/reauthenticate`,
+      `${AUTH}//auth/v1//SIGNUP/`,
+    ]) {
+      expect(at(u), u).toEqual({ kind: 'limit', cls: 'auth-signup-recover' });
+    }
+    expect(at(`${AUTH}/auth/v1/verify?token=x`, 'GET')).toEqual({ kind: 'limit', cls: 'auth-signup-recover' });
+  });
+
+  it('factor: MFA verify and challenge on any factor id, and reauthenticate', () => {
+    for (const u of [
       `${AUTH}/auth/v1/factors/abc/verify`,
       `${AUTH}/auth/v1/factors/abc/challenge`,
-      `${AUTH}//auth/v1//TOKEN/?grant_type=password`,
+      `${AUTH}/auth/v1/factors/0b6f2a1c-1d2e-4f50-8a9b-0c1d2e3f4a5b/verify/`,
+      `${AUTH}/auth/v1/reauthenticate`,
     ]) {
-      expect(at(u), u).toEqual({ kind: 'limit', cls: 'auth-credential' });
+      expect(at(u), u).toEqual({ kind: 'limit', cls: 'auth-factor' });
     }
-    expect(at(`${AUTH}/auth/v1/verify?token=x`, 'GET')).toEqual({ kind: 'limit', cls: 'auth-credential' });
+    expect(at(`${AUTH}/auth/v1/reauthenticate`, 'GET')).toEqual({ kind: 'limit', cls: 'auth-factor' });
+    // Enrolling, listing or removing a factor proves nothing: the wide backstop.
+    for (const u of [`${AUTH}/auth/v1/factors`, `${AUTH}/auth/v1/factors/abc`]) {
+      expect(at(u), u).toEqual({ kind: 'limit', cls: 'auth-other' });
+    }
   });
 
   it('refresh: exactly one grant_type, and it is refresh_token', () => {
