@@ -636,6 +636,18 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'tooling/ops/register.json (row O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 4). What holds its behaviour ' +
       'correct is tooling/ci/test/rollback.test.mjs. Classified 2026-09-25, the round the workflow landed.',
   ],
+  [
+    'migrate-platform-db.yml',
+    'the ONE production migration of the shared platform_db, called by ci.yml after ci-gate and needed by both ' +
+      'deploy calls (row O-APP-WORKERS-DEPLOY-BEFORE-THE-MIGRATION, PB-03). It builds no app, produces no release ' +
+      'artifact and names no app id: platform_db is one database every app reads, so there is no app dimension ' +
+      'for R-1 to quantify and it would sit in the denominator as a permanent empty-set pass, the reason already ' +
+      'written out for redeploy-stranded.yml. Its migration was a step of deploy-workers.yml\'s platform job, ' +
+      'which this file grades; the step moved, the ownership did not. What holds it correct is ' +
+      'tooling/ci/assert-deploy-triggers-deploy.mjs limb 5 (every deploy binding PLATFORM_DB needs it) and ' +
+      'tooling/ci/assert-prod-provenance.mjs limb 9 (it is the one applier, on the platform unit\'s plan). ' +
+      'Classified 2026-10-01, the round the workflow landed.',
+  ],
 ]);
 
 // ── the workflow set, anchored to what git tracks ────────────────────────────
