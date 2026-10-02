@@ -1,3 +1,4 @@
+import { isPlainObject } from '../../../../_shared/src/validate';
 import { isMoneyEnvironment } from './contract';
 import type { MoRWebhookVerifier, MoneyEnvironment, MoneySubject, ParseOutcome, SubjectSubscription, VerifyOutcome } from './contract';
 
@@ -207,9 +208,6 @@ export const RAZORPAY_NOTE_ENV = 'env';
 
 /** @ceiling none — an input SHAPE cap on an id copied into a row. */
 const MAX_ID_LEN = 128;
-
-const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 function idOrNull(v: unknown): string | null {
   if (typeof v !== 'string') return null;

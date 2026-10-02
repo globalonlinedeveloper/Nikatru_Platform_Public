@@ -59,6 +59,7 @@ import type {
   SecretReader,
 } from '../../../../_shared/src/ports/payments';
 import { notSent } from '../../../../_shared/src/ports/payments';
+import { isPlainObject } from '../../../../_shared/src/validate';
 import type { MoneyEnvironment } from './contract';
 import type { Env } from '../../types';
 import { RAZORPAY_NOTE_APP_ID, RAZORPAY_NOTE_ENV, RAZORPAY_NOTE_OFFERING_ID, RAZORPAY_NOTE_USER_ID } from './razorpay';
@@ -105,9 +106,6 @@ export const RAZORPAY_TIMEOUT_MS = 10_000;
 const MAX_CHECKOUT_URL_LEN = 2048;
 
 const SUBSCRIPTION_ID = /^sub_[A-Za-z0-9]{1,40}$/;
-
-const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** Resolve OUR offering to Razorpay's plan id, or undefined when the rail does not sell it. */
 export type RazorpayPlanResolver = (appId: string, offeringId: string) => string | undefined;
