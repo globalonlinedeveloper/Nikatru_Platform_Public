@@ -48,12 +48,12 @@ void main() {
   test('pseudoText is accented, bracketed and at least `expansion` longer', () {
     const String s = 'Settings';
     final String p = pseudoText(s, kXA);
-    expect(p, startsWith('${kPseudoOpen}Šéţţîñĝš'));
+    expect(p, startsWith('$kPseudoOpenŠéţţîñĝš'));
     expect(p, endsWith(kPseudoClose));
     expect(p.length, greaterThanOrEqualTo((s.length * 1.4).ceil()));
     final String r = pseudoText(s, kXB);
-    expect(r, startsWith('‫'));
-    expect(r, endsWith('‬'));
+    expect(r, startsWith('\u202B'));
+    expect(r, endsWith('\u202C'));
   });
 
   test('formatIcu: placeholders, plural =1/other with #, select arms', () {

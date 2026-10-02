@@ -155,6 +155,12 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/ci/assert-locale-register.mjs",
+      "property": "refuses-blind",
+      "evidence": "is missing — it is a named reader of the register",
+      "reads": "L5: ci.yml, for the chassis regeneration step reading `node tooling/i18n/locales.mjs --codes`; L6: every workflow file, for a hand-typed locale list"
+    },
+    {
       "path": "tooling/ci/assert-lockfile-discipline.mjs",
       "property": "refuses-blind",
       "evidence": "\"every workflow install is reproducible\" was asked of nothing.",

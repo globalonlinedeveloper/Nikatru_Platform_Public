@@ -404,19 +404,13 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                   child: Column(
                     children: <Widget>[
-                      // One tile per SUPPORTED row of the locale register
-                      // (tooling/i18n/locales.json), named in its own script —
-                      // never a hand-typed list, so the picker cannot offer a
-                      // language the app has no ARB for.
-                      RadioListTile<String>(
-                        value: '',
-                        title: Text(l10n.languageSystem),
-                      ),
-                      for (final RegisteredLocale row in kSupportedLocales)
-                        RadioListTile<String>(
-                          value: row.code,
-                          title: Text(row.nativeName),
-                        ),
+                      for (final (String code, String name)
+                          in <(String, String)>[
+                            ('', l10n.languageSystem),
+                            for (final RegisteredLocale r in kSupportedLocales)
+                              (r.code, r.nativeName),
+                          ])
+                        RadioListTile<String>(value: code, title: Text(name)),
                     ],
                   ),
                 ),

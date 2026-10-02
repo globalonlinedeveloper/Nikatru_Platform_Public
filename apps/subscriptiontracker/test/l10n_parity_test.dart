@@ -269,7 +269,6 @@ void main() {
       'authBrandMark':
           'the letter on the brand tile beside the product name (ST-D10); it '
           'is the initial of the name, which is not translated either',
-      'legalese': 'the copyright mark and the company name',
       'versionFooter':
           'placeholders, a version mark and the copyright mark: no word in it '
           'to translate',
@@ -331,13 +330,24 @@ void main() {
     });
 
     test('the force-update wall is translated, and is never on the list', () {
+      // ⏱ 2026-10-02 · i18n pipeline: the wall's keys are CHASSIS keys and this
+      // ARB no longer redeclares them (assert-locale-register L9); the app
+      // reads them through chassis_keys.g.dart. So the wording is held where it
+      // lives — packages/design_system/test/chassis_l10n_parity_test.dart runs
+      // this same check — and here it must stay out of the list AND out of
+      // this ARB, or the second copy is back.
+      final Map<String, dynamic> chassisEn =
+          jsonDecode(
+                File(
+                  '../../packages/design_system/lib/src/l10n/chassis_en.arb',
+                ).readAsStringSync(),
+              )
+              as Map<String, dynamic>;
       for (final String key in unrecoverable) {
         expect(
-          enKeys,
-          contains(key),
-          reason:
-              'COVERAGE LOST — $key is gone from app_en.arb, so the '
-              'comparison below has nothing to compare.',
+          chassisEn.containsKey(key),
+          isTrue,
+          reason: 'COVERAGE LOST — $key is in neither ARB.',
         );
         expect(
           sameInBothLocales.keys,
@@ -347,6 +357,7 @@ void main() {
               'the whole app and cannot be dismissed, English is a Tamil reader '
               'locked out in a language they may not read.',
         );
+        if (!enKeys.contains(key)) continue;
         for (final String l in kTranslations) {
           expect(
             arbs[l]![key],
@@ -382,12 +393,12 @@ void main() {
       r'browser|web|site|உலாவி|இணைய|ब्राउज़र|वेब|साइट',
       caseSensitive: false,
     );
-    const List<String> storeReachable = <String>[
-      'paywallOpeningStore',
-      'paywallRetryMessage',
-      'paywallUnavailable',
-      'paywallTryAgain',
-    ];
+    // ⏱ 2026-10-02 · i18n pipeline: the four paywall sentences
+    // (paywallOpeningStore, paywallRetryMessage, paywallUnavailable,
+    // paywallTryAgain) are chassis keys this ARB no longer redeclares;
+    // chassis_l10n_parity_test.dart holds them to the same rule. What stays
+    // here is every app-owned `restore*` string.
+    const List<String> storeReachable = <String>[];
 
     test('no store-reachable value names the web, in any locale', () {
       final List<String> keys = <String>[

@@ -1849,7 +1849,9 @@ jobs:
           set -euo pipefail
           (cd packages/design_system && flutter gen-l10n)
           test -s packages/design_system/lib/src/l10n/chassis_localizations.dart
-          for c in $(node tooling/i18n/locales.mjs --codes); do
+          codes="$(node tooling/i18n/locales.mjs --codes)"
+          test -n "$codes"
+          for c in $codes; do
             test -s "packages/design_system/lib/src/l10n/chassis_localizations_$c.dart"
           done
           # The half with a failing input: `sha256sum -c` fails on a file that

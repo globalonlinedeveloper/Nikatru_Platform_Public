@@ -682,7 +682,7 @@ export function main(args) {
       if (dup.length) {
         problems.push(
           `L9 ${dir}/app_en.arb redeclares ${dup.length} chassis key(s) (${dup.slice(0, 8).join(', ')}${dup.length > 8 ? ', …' : ''}). ` +
-            `Delete them from every app_<locale>.arb (node tooling/i18n/arb-remove-keys.mjs ${dir} app <keys>) and read the ` +
+            `Strip them out of every app_<locale>.arb (node tooling/i18n/arb-remove-keys.mjs ${dir} app <keys>) and read the ` +
             'chassis key: through context.chassisL10n, or through l10n where the app exports chassis_keys.g.dart.',
         );
       }

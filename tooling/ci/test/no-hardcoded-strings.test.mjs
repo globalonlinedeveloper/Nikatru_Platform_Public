@@ -1761,8 +1761,12 @@ const b = Text('Hardcoded right after a URL');
         const { code, out } = run(REPO);
         assert.equal(code, 0, out);
         assert.match(out, /👤 OWNER l10n render direction/);
-        for (const key of ['notificationActionOpen']) {
-          assert.match(out, new RegExp(`${key} \\[declared in \\d of 3 enforced tree\\(s\\)\\]`), key);
+        // ⏱ 2026-10-02 · i18n pipeline (ARB hygiene): the keys NOTHING read —
+        // notificationActionOpen, calendarEmpty and fifteen more — left every
+        // app ARB, and the app's redeclared chassis keys with them. Pinned
+        // ABSENT, so one coming back unread is re-filed here, not missed.
+        for (const key of ['notificationActionOpen', 'calendarEmpty', 'markedUnusedCount']) {
+          assert.doesNotMatch(out, new RegExp(`^\\s+${key} \\[declared in`, 'm'), key);
         }
         // ⏱ 2026-10-01 · ST truth pass (EN-17) — errorTitle AND errorMessage
         // ARE RENDERED NOW, so they left this list (it was "the three dead
@@ -1785,9 +1789,9 @@ const b = Text('Hardcoded right after a URL');
         // offer. Pinned ABSENT, so the day it goes unrendered again it is
         // re-filed here instead of drifting back in unread.
         assert.doesNotMatch(out, /^\s+appTitle \[declared in/m);
-        // The LITERAL branch, still exercised: it was errorTitle's English
-        // fallback in system_screens.dart until that key started rendering.
-        assert.match(out, /notificationActionOpen \[declared in \d of 3 enforced tree\(s\)\] — but its English copy ships as a hardcoded LITERAL at /);
+        // The LITERAL branch is exercised by the fixture cases above (fallback.dart,
+        // discovery-copy.ts, assert-near-miss.mjs); its last real-tree example,
+        // notificationActionOpen, left the ARB on 2026-10-02.
         assert.doesNotMatch(out, /COVERAGE LOST/);
 
         // 🔴 THE DOMAIN SENTENCE, PINNED TO THE REST OF THE PRINT. The title of
