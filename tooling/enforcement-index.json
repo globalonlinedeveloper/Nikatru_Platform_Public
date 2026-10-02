@@ -1361,6 +1361,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-chassis"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-locale-register.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "F-8"
     ],
@@ -3657,6 +3667,16 @@
     ],
     "kind": "script",
     "ref": "tooling/e2e/verify_row.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#workspace-gate"
+    ],
+    "kind": "script",
+    "ref": "tooling/i18n/locales.mjs",
     "references": [],
     "state": "WIRED"
   },

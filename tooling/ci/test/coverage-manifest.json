@@ -557,6 +557,9 @@
   "local-chromedriver.test.mjs":
     12,
 
+  "locale-register.test.mjs":
+    36,
+
   "lockfile-discipline.test.mjs":
     9,
 
@@ -711,7 +714,7 @@
     112,
 
   "policy-archive.test.mjs":
-    31,
+    33,
 
   "policy-claims.test.mjs":
     62,
@@ -1060,6 +1063,9 @@
 
   "text-reductions.test.mjs":
     46,
+
+  "translation-qa.test.mjs":
+    12,
 
   "triage-failed-runs.test.mjs":
     114,

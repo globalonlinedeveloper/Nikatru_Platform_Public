@@ -552,6 +552,7 @@ export function main(args) {
   const oks = [];
   const lost = (why) => {
     console.error(`✗ assert-locale-register: COVERAGE LOST — ${why}`);
+    process.exitCode = 2;
     return 2;
   };
   // A limb that could not look is reported AFTER every finding, and exits 2 only
