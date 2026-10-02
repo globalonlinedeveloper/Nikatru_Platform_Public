@@ -27,6 +27,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { TAX_SENTENCES } from '../../sites/generate-discovery.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUARD = join(CI_DIR, 'assert-policy-claims.mjs');
@@ -670,6 +671,27 @@ describe('the seller by rail — every page names one seller per purchase rail',
     const r = run(fixture({ pages: { 'refund.html': refund } }));
     assert.equal(r.status, 1, out(r));
     assert.match(out(r), /refund\.html: rail razorpay — a block names GatePay as the seller \("GatePay is the seller"\)/);
+  });
+
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data (C-25): terms.html §4 now carries the GENERATED India
+  // tax sentence (generate-discovery.mjs TAX_SENTENCES), which names the gateway. It must keep
+  // satisfying this limb (green), and the same sentence turned to make the gateway the seller
+  // must fail it (red) — a seller disagreement between the page and the register is a finding.
+  test('C-25: the generated India tax sentence states the register\'s seller; flipped, it FAILS', () => {
+    const generated = TAX_SENTENCES.razorpay.inclusive.replaceAll('Razorpay', 'GatePay');
+    const sellers = (india) =>
+      termsWith(
+        '<p>For every other purchase, Seller Co is our merchant of record and the legal seller, in every country we sell to except India.</p>' +
+          `<ul><li>${india}</li></ul>` +
+          '<p>PayRail records store purchases on our behalf and is never the seller.</p>',
+      );
+    const green = run(fixture({ pages: { 'terms.html': sellers(generated) } }));
+    assert.equal(green.status, 0, out(green));
+    const flipped = generated.replace('Nikatru is the seller and GatePay processes the payment', 'GatePay is the seller and Nikatru processes the payment');
+    assert.notEqual(flipped, generated, 'the mutation must change the sentence, or the red case proves nothing');
+    const red = run(fixture({ pages: { 'terms.html': sellers(flipped) } }));
+    assert.equal(red.status, 1, out(red));
+    assert.match(out(red), /terms\.html: rail razorpay — a block names GatePay as the seller \("GatePay is the seller"\)/);
   });
 
   test('sellerIs never: an aggregator no longer called never the seller FAILS', () => {

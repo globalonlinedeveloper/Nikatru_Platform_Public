@@ -24,6 +24,12 @@
 //     extension store row of tooling/channel-register.json can sign in
 //     (contracts/legal/pro-gate.mjs canSignIn): that row's truth is in the tree,
 //     so closing it is decided by the tree, not by the evidence list alone.
+//   5 ⏱ 2026-10-01 · fix-india-rail-tax-data. REFUSES RAZORPAY-CHECKOUT-ADAPTER
+//     CLOSED while tooling/ports/payments.json's razorpay adapter declares no
+//     `checkout` or carries a `pending` conformance case, or while
+//     tooling/legal/duty-matrix.json's india-seller-issues-gst-tax-invoice row is
+//     still `status: owner-gated` (its `ownerItem` is Q13): the India rail sells
+//     only once the adapter, its suite and the seller's GST invoice path are all real.
 //   COVERAGE LOST (exit 2) when the checklist or the config cannot be read, or
 //   either ranges over nothing.
 //
@@ -59,8 +65,12 @@ const REQUIRED_IDS = [
   'EXT-SIGN-IN',
   'EXT-CANCEL',
   'EXT-LINK-BINDING',
+  'RAZORPAY-CHECKOUT-ADAPTER',
 ];
 const REGISTER = 'tooling/channel-register.json';
+const PAYMENTS = 'tooling/ports/payments.json';
+const DUTIES = 'tooling/legal/duty-matrix.json';
+const GST_DUTY = 'india-seller-issues-gst-tax-invoice';
 
 const problems = [];
 const fail = (m) => problems.push(m);
@@ -137,6 +147,45 @@ if (signInRow && signInRow.open === false) {
       `EXT-SIGN-IN is closed, but every extension channel in ${REGISTER} (${extRows.map((c) => c.id).join(', ')}) has a null extensionRedirectUri: no buyer can sign in, so Pro can never be true.`,
     );
   }
+}
+
+// ── the India rail (limb 5) ──────────────────────────────────────────────────
+const razorpayRow = (rows ?? []).find((r) => r?.id === 'RAZORPAY-CHECKOUT-ADAPTER');
+if (razorpayRow && razorpayRow.open === false) {
+  const payments = readJson(PAYMENTS);
+  const duties = readJson(DUTIES);
+  const adapter = Array.isArray(payments?.adapters) ? payments.adapters.find((a) => a?.id === 'razorpay') : undefined;
+  const pending = Array.isArray(payments?.conformance?.pending) ? payments.conformance.pending.filter((p) => p?.adapter === 'razorpay') : [];
+  const duty = JSON.stringify(duties ?? null).includes(`"${GST_DUTY}"`) ? findRow(duties, GST_DUTY) : undefined;
+  if (payments !== null && adapter === undefined) {
+    coverageLost(`${PAYMENTS} has no razorpay adapter, so whether RAZORPAY-CHECKOUT-ADAPTER is true cannot be read.`);
+  } else if (adapter !== undefined && (!Array.isArray(adapter.capabilities) || !adapter.capabilities.includes('checkout'))) {
+    fail(`RAZORPAY-CHECKOUT-ADAPTER is closed, but ${PAYMENTS} razorpay declares no \`checkout\`: nothing can sell on the India rail.`);
+  } else if (pending.length) {
+    fail(`RAZORPAY-CHECKOUT-ADAPTER is closed, but ${PAYMENTS} carries ${pending.length} pending razorpay case(s): ${pending.map((p) => p.case).join('; ')}.`);
+  }
+  if (duties !== null && duty === undefined) {
+    fail(`RAZORPAY-CHECKOUT-ADAPTER is closed, but ${DUTIES} has no ${GST_DUTY} row: Nikatru sells on that rail and owes the GST invoice.`);
+  } else if (duty !== undefined && duty.status === 'owner-gated') {
+    fail(`RAZORPAY-CHECKOUT-ADAPTER is closed while ${DUTIES} ${GST_DUTY} is still owner-gated (${duty.ownerItem ?? 'no ownerItem'}): no GST tax invoice or credit note can be issued yet.`);
+  }
+}
+
+/** The object anywhere in `tree` whose `id` is `id` (the duty matrix nests its rows). */
+function findRow(tree, id) {
+  if (Array.isArray(tree)) {
+    for (const v of tree) {
+      const hit = findRow(v, id);
+      if (hit) return hit;
+    }
+  } else if (tree && typeof tree === 'object') {
+    if (tree.id === id) return tree;
+    for (const v of Object.values(tree)) {
+      const hit = findRow(v, id);
+      if (hit) return hit;
+    }
+  }
+  return undefined;
 }
 
 // ── the switch (limb 1) ──────────────────────────────────────────────────────

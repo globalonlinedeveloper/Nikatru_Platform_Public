@@ -315,7 +315,7 @@
     16,
 
   "discovery-surface.test.mjs":
-    168,
+    175,
 
   "dod-sync.test.mjs":
     20,
@@ -531,7 +531,7 @@
     30,
 
   "legal-tripwires.test.mjs":
-    26,
+    27,
 
   "licence-register.test.mjs":
     80,
@@ -684,7 +684,7 @@
     16,
 
   "paywall-flip-ready.test.mjs":
-    13,
+    22,
 
   "plan-deploy.test.mjs":
     36,
@@ -708,13 +708,13 @@
     31,
 
   "policy-claims.test.mjs":
-    62,
+    63,
 
   "port-render.test.mjs":
-    16,
+    19,
 
   "port-switch.test.mjs":
-    37,
+    38,
 
   "ports.test.mjs":
     64,
@@ -801,7 +801,7 @@
     136,
 
   "rail-prices.test.mjs":
-    61,
+    68,
 
   "redeploy-stranded.test.mjs":
     50,

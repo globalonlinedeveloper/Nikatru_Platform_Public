@@ -84,6 +84,13 @@
 //       store's `store.readBack.<apple|google>` as { USD, INR, readAt }: the
 //       store accepted a price, so the register records what it accepted rather
 //       than leaving the target to stand in for the fact.
+//   I · TAX MODE (O-TAX-TREATMENT-STATED-TWO-WAYS) — every rail entry, a read-back
+//       or pending, carries `taxMode`: `inclusive`, `exclusive`, or `unread`, and
+//       `unread` only on a rail whose mode is a vendor READ-BACK (TAX_MODE_READ_BACK:
+//       Paddle reports `tax_mode` on the read that fetches the price). Every entry of
+//       one rail states the same mode: the buyer reads ONE tax sentence per rail, and
+//       tooling/sites/generate-discovery.mjs renders it from `railTaxModes` below. A
+//       rail with no taxMode is the row's red control.
 //   COVERAGE LOST (exit 2) — the register missing or unparseable, no `prices`
 //   section, zero served offerings or zero price-book entries read, no
 //   TypeScript source to sweep, or catalog/bundles.json unreadable; the fee
@@ -308,6 +315,10 @@ export const MAP_NAMES = [
 ];
 
 const MIN_REASON = 20;
+/** Limb I: whether a rail's price already includes the tax due on it. */
+export const TAX_MODES = Object.freeze(['inclusive', 'exclusive', 'unread']);
+/** Limb I: the rails whose tax mode is a VENDOR READ-BACK, so `unread` is honest until the next read. */
+export const TAX_MODE_READ_BACK = Object.freeze(['paddle']);
 const RAIL_ID = Object.freeze({
   paddle: { key: 'priceId', re: /^pri_[a-z0-9]{26}$/, currency: 'USD' },
   razorpay: { key: 'planId', re: /^plan_[A-Za-z0-9]{14}$/, currency: 'INR' },
@@ -421,6 +432,63 @@ function gradeStore(where, entry, web, lifetime, problems, extension = false) {
   }
 }
 
+/** Limb I: one rail entry's `taxMode`. */
+function gradeTaxMode(where, rail, r, problems) {
+  if (!('taxMode' in r)) {
+    problems.push(
+      `${where}.rails.${rail} has no \`taxMode\`. Every rail entry says whether its price includes the tax due on it ` +
+        `(${TAX_MODES.join(' | ')}): the published tax sentence is rendered from it, so a rail without one has no sentence.`,
+    );
+    return;
+  }
+  if (!TAX_MODES.includes(r.taxMode)) {
+    problems.push(`${where}.rails.${rail}.taxMode is ${JSON.stringify(r.taxMode)}; it is one of ${TAX_MODES.join(', ')}.`);
+    return;
+  }
+  if (r.taxMode === 'unread' && !TAX_MODE_READ_BACK.includes(rail)) {
+    problems.push(
+      `${where}.rails.${rail}.taxMode is "unread", but ${rail}'s mode is decided, not read back from a vendor ` +
+        `(read-back rails: ${TAX_MODE_READ_BACK.join(', ')}). State it.`,
+    );
+  }
+}
+
+/**
+ * Limb I's answer: the ONE tax mode each rail states across every app entry, or a problem per
+ * rail whose entries disagree or carry none. generate-discovery.mjs renders the tax sentences
+ * from `modes`; a rail missing from it has no sentence and the generator refuses.
+ * @returns {{ modes: Record<string, string>, problems: string[] }}
+ */
+export function railTaxModes(data) {
+  const problems = [];
+  const seen = new Map(RAILS.map((rail) => [rail, new Map()]));
+  const bookApps = isObj(data?.prices?.apps) ? data.prices.apps : {};
+  for (const app of dataKeys(bookApps)) {
+    const entries = isObj(bookApps[app]) ? bookApps[app] : {};
+    for (const id of dataKeys(entries)) {
+      for (const rail of RAILS) {
+        const mode = entries[id]?.rails?.[rail]?.taxMode;
+        if (typeof mode !== 'string') continue;
+        const at = seen.get(rail);
+        if (!at.has(mode)) at.set(mode, []);
+        at.get(mode).push(`prices.apps.${app}.${id}`);
+      }
+    }
+  }
+  const modes = {};
+  for (const [rail, at] of seen) {
+    if (at.size === 1) modes[rail] = [...at.keys()][0];
+    else if (at.size === 0) problems.push(`no price-book entry states a taxMode for ${rail}, so ${rail} has no tax sentence.`);
+    else {
+      problems.push(
+        `${rail} states ${at.size} tax modes (${[...at].map(([m, w]) => `${m}: ${w.join(', ')}`).join('; ')}). ` +
+          'A buyer reads one tax sentence per rail; read the vendor and state one.',
+      );
+    }
+  }
+  return { modes, problems };
+}
+
 /** Limb C for one app entry. Returns the read-back ids it declares, for the duplicate check. */
 function gradeRails(where, entry, web, problems) {
   const rails = entry.rails;
@@ -439,8 +507,10 @@ function gradeRails(where, entry, web, problems) {
       problems.push(`${where}.rails.${rail} is missing. Declare it: a read-back, or { "pending": "<why>" }.`);
       continue;
     }
+    gradeTaxMode(where, rail, r, problems);
     if ('pending' in r) {
-      const extra = Object.keys(r).filter((k) => k !== 'pending');
+      // `taxMode` is a fact about the RAIL, not the price, so a pending entry carries it too (limb I).
+      const extra = Object.keys(r).filter((k) => k !== 'pending' && k !== 'taxMode');
       if (typeof r.pending !== 'string' || r.pending.trim().length < MIN_REASON) {
         problems.push(
           `${where}.rails.${rail}.pending is ${JSON.stringify(r.pending)}. A pending rail carries its reason ` +
@@ -600,6 +670,11 @@ export function plan(root, data) {
 
   // H · a plan live on a store records what the store accepted.
   counts.readBacks = gradeReadBacks(root, book, problems, lost);
+
+  // I · one tax mode per rail (each entry's own taxMode was graded with its rail, above).
+  const tax = railTaxModes(data);
+  problems.push(...tax.problems.filter((p) => !p.startsWith('no price-book entry')));
+  counts.taxModes = tax.modes;
 
   if (counts.served === 0) lost.push(`${REGISTER} serves zero offerings, so no rail map has anything to render.`);
   if (counts.entries === 0) lost.push(`${REGISTER} prices zero served offerings: the price book read as empty.`);
@@ -1097,6 +1172,10 @@ export function run(root, { check = false, sheet = null, net = false, now = Date
     `⬜ razorpay: ${p.counts.razorpayPending} of ${p.counts.razorpayTotal} offering(s) pending — no Razorpay plan exists ` +
       'until Razorpay PR B (designed, not briefed) and the owner\'s plans; RAZORPAY_PLAN_IDS renders empty for them',
   );
+  // I · each rail's one tax mode, printed on every run; `unread` stays visible until the vendor read records it.
+  for (const [rail, mode] of Object.entries(p.counts.taxModes ?? {})) {
+    out.push(`${mode === 'unread' ? '⬜' : '✓'} tax mode ${rail}: ${mode}${mode === 'unread' ? ' — the next vendor price read records it' : ''}`);
+  }
   if (sheet !== null) {
     const s = storeSheet(root, reg.data, sheet, p.book);
     if (s.lost.length) {

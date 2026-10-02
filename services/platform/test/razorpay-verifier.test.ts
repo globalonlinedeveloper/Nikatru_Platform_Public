@@ -115,22 +115,22 @@ describe('razorpay verify — the three refusals stay distinct', () => {
   }
 });
 
-describe('razorpay parse — refuses rather than guesses', () => {
-  // The contract: "Refusing is recoverable; a wrong grant is not." The payload
-  // shapes are not sourced and no account exists to sample one, so this half says
-  // so out loud instead of inventing a mapping that would write real rows.
-  it('refuses, and the reason names what is missing and what is already enforced', () => {
+// ⏱ 2026-10-01 · fix-india-rail-tax-data · `parse` maps subscription / refund / dispute bodies now
+// (lib/mor/razorpay.ts header; the mapping's own tests are test/razorpay-rail.test.ts and the
+// conformance suite). What stays here is the refusal half: no event id, or a body that is not the
+// documented envelope, is still a 400 that writes nothing — never a guess.
+describe('razorpay parse — still refuses what it cannot read', () => {
+  it('refuses without the x-razorpay-event-id hint, and the reason names the header', () => {
     const r = razorpayVerifier.parse(BODY);
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.reason).toMatch(/not established from a primary source/);
     expect(r.reason).toMatch(/x-razorpay-event-id/);
-    expect(r.reason).toMatch(/enforced by `verify`/);
   });
 
-  it('refuses an empty body and a valid-looking one alike — it is not shape-sensitive yet', () => {
-    expect(razorpayVerifier.parse('').ok).toBe(false);
-    expect(razorpayVerifier.parse('{"event":"subscription.charged"}').ok).toBe(false);
+  it('refuses an empty body and an envelope with no payload, even with an event id', () => {
+    expect(razorpayVerifier.parse('', 'evt_1').ok).toBe(false);
+    expect(razorpayVerifier.parse('{"event":"subscription.charged"}', 'evt_1').ok).toBe(false);
+    expect(razorpayVerifier.parse(BODY, 'evt_1').ok).toBe(false); // no `payload` object
   });
 });
 

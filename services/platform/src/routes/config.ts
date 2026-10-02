@@ -22,6 +22,14 @@
 // not declare ⇒ 400 `unknown_channel`, decided the same way as the 404: from
 // memory, before the ceiling and before KV.
 //
+// ⏱ 2026-10-01 · fix-india-rail-tax-data · O-WEB-INR-PRICE-BOOK. `?market=<ISO
+// 3166-1 alpha-2>` is the BUYER'S OWN declaration of where they buy from — never
+// `cf.country` (Q2, ruled). A market with its own web price book (India) is served
+// every paywall offering at that book's price and currency (src/config.ts
+// `priceForMarket`: rupees, GST-inclusive); any other well-formed market is served
+// the default (USD) book. A malformed value ⇒ 400 `unknown_market`, from memory,
+// before the ceiling and before KV, exactly as an unknown channel is.
+//
 // ⏱ 2026-10-01 · rv2-services-013. A KV READ THAT THROWS IS A 503
 // `config_unavailable`, `no-store` — never the compiled-in defaults. A thrown
 // `get` is not "no override": the override may be exactly the raised floor or
@@ -32,7 +40,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { DEFAULT_CHANNEL, isKnownApp, isKnownChannel, resolveConfig } from '../config';
+import { DEFAULT_CHANNEL, MARKET_PATTERN, isKnownApp, isKnownChannel, priceForMarket, resolveConfig } from '../config';
 import { withinEdgeCeiling } from '../lib/edge-ceiling';
 
 const app = new Hono<AppEnv>();
@@ -52,6 +60,11 @@ app.get('/:app', async (c) => {
   const channel = c.req.query('channel');
   if (channel !== undefined && !isKnownChannel(channel)) {
     return c.json({ error: 'unknown_channel' }, 400);
+  }
+  // The buyer-declared market, refused the same way when it is not a market at all.
+  const market = c.req.query('market');
+  if (market !== undefined && !MARKET_PATTERN.test(market)) {
+    return c.json({ error: 'unknown_market' }, 400);
   }
 
   // The SAME server-derived ceiling /v1/events got in PR #91, on its own
@@ -82,9 +95,11 @@ app.get('/:app', async (c) => {
   }
   const cfg = resolveConfig(appId, kvValue, channel ?? DEFAULT_CHANNEL);
   if (!cfg) return c.json({ error: 'unknown_app' }, 404);
-  // Edge + client cache; overrides propagate within the TTL.
+  // Edge + client cache; overrides propagate within the TTL. The market is in the
+  // query string, so it is part of the cache key: an India answer is never served
+  // to a buyer who declared no market.
   c.header('Cache-Control', 'public, max-age=300, s-maxage=300');
-  return c.json(cfg);
+  return c.json(market === undefined ? cfg : priceForMarket(cfg, appId, market));
 });
 
 export default app;

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Hono } from 'hono';
 import config from '../src/routes/config';
 import type { AppEnv } from '../src/types';
+import configData from '../src/app-config-data.json';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -275,5 +276,63 @@ describe('GET /config/:app — a KV fault is a 503, never the compiled-in defaul
   it('the same app with a working KV is the 200 it always was', async () => {
     const { get } = harness();
     expect((await get('subscriptiontracker')).status).toBe(200);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · fix-india-rail-tax-data · O-WEB-INR-PRICE-BOOK (business-017):
+// the India buyer is served the rupee price book, on their own declaration only.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('GET /config/:app?market= — the buyer-declared market price book', () => {
+  type Offering = { product_id: string; amount_minor: number; currency_code: string };
+  const offeringsOf = async (res: Response) => ((await res.json()) as { paywall: { offerings: Offering[] } }).paywall.offerings;
+  const book = (configData as unknown as { prices: { apps: Record<string, Record<string, { webInrMinor: number }>> } }).prices.apps
+    .subscriptiontracker;
+
+  it('RED CONTROL (the row): an India buyer is served INR at webInrMinor for every offering, never USD', async () => {
+    const { get } = harness();
+    const india = await offeringsOf(await get('subscriptiontracker', undefined, '?market=IN'));
+    const world = await offeringsOf(await get('subscriptiontracker'));
+    expect(india.length).toBe(world.length);
+    expect(india.length).toBeGreaterThan(0);
+    for (const o of india) {
+      expect(o.currency_code).toBe('INR');
+      expect(o.amount_minor).toBe(book[o.product_id].webInrMinor);
+    }
+    // The control: the same offerings, unasked, are USD at their web price.
+    for (const o of world) expect(o.currency_code).toBe('USD');
+  });
+
+  it('a market with no book of its own is served the default (USD) book unchanged', async () => {
+    const { get } = harness();
+    const us = await (await get('subscriptiontracker', undefined, '?market=US')).json();
+    const none = await (await get('subscriptiontracker')).json();
+    expect(us).toEqual(none);
+  });
+
+  it('never reads cf.country: an Indian edge with no declared market is served USD', async () => {
+    const { get } = harness();
+    const res = await get('subscriptiontracker', { country: 'IN', colo: 'BOM', asn: 9829 });
+    for (const o of await offeringsOf(res)) expect(o.currency_code).toBe('USD');
+  });
+
+  it('a malformed market is a 400 unknown_market, decided before KV and before the ceiling', async () => {
+    for (const bad of ['in', 'IND', '', 'I1', 'IN%20']) {
+      const { kv, ceiling, get } = harness();
+      const res = await get('subscriptiontracker', undefined, `?market=${bad}`);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'unknown_market' });
+      expect(kv.reads).toEqual([]);
+      expect(ceiling.keys).toEqual([]);
+    }
+  });
+
+  it('a KV-added offering the book does not price is dropped from the India answer, never left in USD', async () => {
+    const kvValue = JSON.stringify({
+      paywall: { offerings: [{ product_id: 'pro_weekly', amount_minor: 199, currency_code: 'USD', term: 'week' }] },
+    });
+    const { get } = harness({ kvValue });
+    const india = await offeringsOf(await get('subscriptiontracker', undefined, '?market=IN'));
+    expect(india).toEqual([]);
   });
 });

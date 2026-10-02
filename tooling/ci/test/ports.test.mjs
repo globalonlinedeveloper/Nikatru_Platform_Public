@@ -489,7 +489,11 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     const rel = join(root, 'services/platform/src/generated/ports.ts');
     const before = readFileSync(rel, 'utf8');
     try {
-      writeFileSync(rel, before.replace("razorpay: 'none',", "razorpay: 'api',"));
+      // ⏱ 2026-10-01 · fix-india-rail-tax-data: razorpay declares `cancel` now (api), so the hand edit
+      // flips it back — and the mutation is asserted to have changed the file (a no-op replace is vacuous).
+      const mutated = before.replace("razorpay: 'api',", "razorpay: 'none',");
+      assert.notEqual(mutated, before, 'the mutation must change the rendered table');
+      writeFileSync(rel, mutated);
       const r = run(root);
       assert.equal(r.code, 1, r.out);
       assert.match(r.first, /limb 3 \(waivers\): render --check: services\/platform\/src\/generated\/ports\.ts differs from its render/);
@@ -507,12 +511,15 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       assert.match(r.out, /limb 7 \(fakes\) tooling\/ports\/payments\.json selection\.default\.live is the fake `fake`/);
     } finally { writeFileSync(rel, before); }
   });
-  it('red: claiming L3 with a scenario pending on the fake reddens limb 6', () => {
+  // ⏱ 2026-10-01 · fix-india-rail-tax-data: razorpay is conformant with nothing pending now, so a case
+  // pending on the fake alone still leaves two (paddle, razorpay); the red pends one on each of them.
+  it('red: claiming L3 with a scenario pending on the fake and on razorpay reddens limb 6', () => {
     const rel = join(root, 'tooling/ports/payments.json');
     const before = readFileSync(rel, 'utf8');
     try {
       const doc = JSON.parse(before);
       doc.conformance.pending.push({ adapter: 'fake', case: 'an older event after a newer one cannot re-grant', row: 'O-FIXTURE' });
+      doc.conformance.pending.push({ adapter: 'razorpay', case: 'refund revokes', row: 'O-FIXTURE' });
       writeFileSync(rel, JSON.stringify(doc));
       const r = run(root);
       assert.equal(r.code, 1, r.out);
