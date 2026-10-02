@@ -464,6 +464,30 @@
       "name": "NATIVE_AUTH_PLAY_VERIFY_LIMITER",
       "namespace_id": "1025",
       "simple": { "limit": 10, "period": 60 }
+    },
+    {
+      // ⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED. The server-derived ceiling for
+      // POST /v1/checkout (src/routes/checkout.ts), keyed `edge:<colo>:<asn>` by
+      // src/lib/edge-ceiling.ts — never a client address. Every accepted request
+      // mints a Paddle transaction that can be canceled but never deleted, which
+      // is why this route is bounded at all. 60/min per (colo, asn): a checkout
+      // is one tap per purchase, so a shared NAT buying at once fits, a flood
+      // does not. Fails OPEN like the other edge ceilings; the per-user bucket
+      // below is the half that fails closed. 1027: a namespace_id is
+      // account-wide; env.sandbox below holds 1028 and 1030.
+      "name": "CHECKOUT_CEILING_LIMITER",
+      "namespace_id": "1027",
+      "simple": { "limit": 60, "period": 60 }
+    },
+    {
+      // ⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED. The per-USER bucket for POST
+      // /v1/checkout, keyed `checkout:<sub>` on the VERIFIED subject (the route
+      // sits behind platformAuth). 5/min: a person opens a checkout, changes
+      // plan, opens another — not dozens. FAILS CLOSED (strictRateLimit): an
+      // absent binding is a 503 on every checkout, never an admit.
+      "name": "CHECKOUT_USER_LIMITER",
+      "namespace_id": "1029",
+      "simple": { "limit": 5, "period": 60 }
     }
   ],
   "triggers": {
@@ -552,7 +576,8 @@
   // refuses both, an inherited `workers_dev`, and a production database.
   //
   // ⚠️ `ratelimits` ARE DECLARED WITH THEIR OWN namespace_ids (1006-1010, 1012, 1014,
-  // 1016, 1019-1020), never the top level's 1001-1005, 1011, 1013, 1015 or 1017-1018: a
+  // 1016, 1019-1020, 1023-1024, 1026, 1028, 1030), never the top level's 1001-1005, 1011,
+  // 1013, 1015, 1017-1018, 1021-1022, 1025, 1027 or 1029: a
   // shared namespace would let a public
   // sandbox URL spend the budget production's callers are counted against. Every limiter
   // binding is optional and fails OPEN (src/types.ts:63), so an absent one is a
@@ -575,7 +600,7 @@
         "APP_ID": "platform",
         // why: the SAME identity project as production (D1 identity option
         // (a)). ES256 verification reads its JWKS, and /v1/health probes it
-        // (src/index.ts:188).
+        // (src/index.ts:185).
         "SUPABASE_URL": "https://auth-api.nikatru.com",
         // why: src/types.ts:413.
         "API_VERSION": "v1",
@@ -599,7 +624,7 @@
       },
       "d1_databases": [
         {
-          // why: src/types.ts:13 and the /v1/health probe (src/index.ts:172).
+          // why: src/types.ts:13 and the /v1/health probe (src/index.ts:169).
           // `platform_db_sandbox`, created 2026-09-23 and EMPTY. This Worker is
           // its sole migration applier, as at the top level.
           "binding": "PLATFORM_DB",
@@ -610,7 +635,7 @@
       ],
       "kv_namespaces": [
         // why: REQUIRED — src/types.ts:18; src/routes/config.ts:77 reads it
-        // and /v1/health probes it (src/index.ts:183), so an absent binding
+        // and /v1/health probes it (src/index.ts:180), so an absent binding
         // 503s config and reports the Worker unhealthy.
         // `platform-config-sandbox`, created 2026-09-24.
         { "binding": "CONFIG_KV", "id": "7ba3a916f8a5429091dec4a39284bffb" }
@@ -709,6 +734,21 @@
           "name": "NATIVE_AUTH_PLAY_VERIFY_LIMITER",
           "namespace_id": "1026",
           "simple": { "limit": 10, "period": 60 }
+        },
+        {
+          // why: src/routes/checkout.ts (the edge ceiling). The top level's
+          // CHECKOUT_CEILING_LIMITER (1027), same limit; fails open.
+          "name": "CHECKOUT_CEILING_LIMITER",
+          "namespace_id": "1028",
+          "simple": { "limit": 60, "period": 60 }
+        },
+        {
+          // why: src/routes/checkout.ts (the per-user bucket). The top level's
+          // CHECKOUT_USER_LIMITER (1029), same limit. 🔴 It FAILS CLOSED, so
+          // without this entry every sandbox checkout answers 503.
+          "name": "CHECKOUT_USER_LIMITER",
+          "namespace_id": "1030",
+          "simple": { "limit": 5, "period": 60 }
         }
       ]
     }

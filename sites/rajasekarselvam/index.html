@@ -4,12 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rajasekar Selvam — Independent software developer</title>
-<meta name="description" content="Rajasekar Selvam is an independent software developer in Chennai, India, with 11+ years in software — building and publishing cross-platform apps and games for iOS, Android, Windows, macOS, Linux and the web. Founder of Nikatru.">
+<meta name="description" content="Rajasekar Selvam is an independent software developer in Chennai, India, building cross-platform apps with Flutter. Founder of Nikatru.">
 <link rel="canonical" href="https://rajasekarselvam.com/">
 <meta name="author" content="Rajasekar Selvam">
 <meta name="theme-color" content="#0B1220">
 <meta property="og:title" content="Rajasekar Selvam — Independent software developer">
-<meta property="og:description" content="Cross-platform apps & games for six platforms from one codebase. Founder of Nikatru.">
+<meta property="og:description" content="Independent software developer in Chennai, India, building cross-platform apps with Flutter. Founder of Nikatru.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Rajasekar Selvam">
 <meta property="og:url" content="https://rajasekarselvam.com/">
@@ -20,8 +20,9 @@
 <meta property="og:image:alt" content="Rajasekar Selvam — Independent Software Developer, founder of Nikatru.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Rajasekar Selvam — Independent software developer">
-<meta name="twitter:description" content="Cross-platform apps & games for six platforms from one codebase. Founder of Nikatru.">
+<meta name="twitter:description" content="Independent software developer in Chennai, India, building cross-platform apps with Flutter. Founder of Nikatru.">
 <meta name="twitter:image" content="https://rajasekarselvam.com/og-image.png">
+<meta name="twitter:image:alt" content="Rajasekar Selvam — Independent Software Developer, founder of Nikatru.">
 <link rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="%2317253F"/><stop offset="1" stop-color="%230A111E"/></linearGradient><linearGradient id="g" x1="0.05" y1="1" x2="0.95" y2="0"><stop offset="0" stop-color="%232E6FF2"/><stop offset="0.55" stop-color="%232AA0D8"/><stop offset="1" stop-color="%2317C3A2"/></linearGradient></defs><rect width="100" height="100" rx="24" fill="url(%23t)"/><text x="50" y="68" font-family="Arial,sans-serif" font-size="52" font-weight="800" fill="url(%23g)" text-anchor="middle">RS</text></svg>'>
 <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="/icon-16.png">
@@ -31,13 +32,17 @@
   :root{
     --ink:#0B1220;--ink-2:#111C33;--primary:#2563EB;--teal:#0F766E;--on-accent:#FFFFFF;
     --bg:#F6F8FC;--card:#FFFFFF;--card-2:#F8FAFD;--text:#1E293B;--strong:#0B1220;--muted:#586275;--line:#E2E8F0;--ico-bg:#EEF3FF;--radius:16px;
+    --ring:#3B82F6;--mail-bg:var(--ink);--mail-bg-hover:#1B2A4A;--mail-fg:#FFFFFF;
   }
   @media (prefers-color-scheme: dark){
     :root{
       --bg:#0B1220;--card:#111C33;--card-2:#0E1830;--text:#C7D2E3;--strong:#F1F5F9;--muted:#93A1BC;--line:#22304D;--ico-bg:rgba(46,111,242,.14);--primary:#6E9BFF;--teal:#17C3A2;--on-accent:#0B1220;
+      /* The contact button is TOKENISED, not overridden: a dark-mode `.mail{…}` rule above the
+         base `.mail` rule lost on source order and the button rendered with no fill (audit
+         2026-10-02 §2.8). Tokens resolve per scheme with no rule order to lose.
+         tooling/sites/generate-personal-site.mjs `pageContract` grades both. */
+      --ring:#6E9BFF;--mail-bg:linear-gradient(90deg,var(--primary),var(--teal));--mail-bg-hover:linear-gradient(90deg,#8DB0FF,#3DD6B8);--mail-fg:var(--on-accent);
     }
-    .mail{background:linear-gradient(90deg,var(--primary),var(--teal))}
-    .mail:hover{background:linear-gradient(90deg,var(--primary),var(--teal));filter:brightness(1.1)}
   }
   [hidden]{display:none!important}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -45,9 +50,11 @@
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
   .wrap{max-width:1000px;margin:0 auto;padding:0 24px}
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-  .skip{position:absolute;left:12px;top:-52px;z-index:200;background:var(--primary);color:var(--on-accent);padding:10px 16px;border-radius:10px;text-decoration:none;font-weight:600;transition:top .2s}
-  .skip:focus{top:12px}
-  :focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:6px}
+  .skip-link{position:absolute;left:12px;top:-52px;z-index:200;background:var(--primary);color:var(--on-accent);padding:10px 16px;border-radius:10px;text-decoration:none;font-weight:600;transition:top .2s}
+  .skip-link:focus{top:12px}
+  /* --ring, not --primary: light --primary (#2563EB) is 2.97:1 on the dark nav and hero, under
+     the 3:1 non-text floor (WCAG 1.4.11). #3B82F6 holds 3:1 on white and on #0B1220 alike. */
+  :focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:6px}
 
   nav{position:sticky;top:0;z-index:50;background:rgba(11,18,32,.92);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.06)}
   .nav-in{display:flex;align-items:center;justify-content:space-between;height:64px}
@@ -73,8 +80,8 @@
   h1{font-size:clamp(32px,5vw,52px);font-weight:800;letter-spacing:-.02em;line-height:1.1;margin-top:10px}
   h1 .grad{background:linear-gradient(90deg,#5B93FF,#25E0BC);-webkit-background-clip:text;background-clip:text;color:transparent}
   .sub{margin-top:18px;color:#A9B7CE;font-size:18px}
-  .chips{display:flex;flex-wrap:wrap;gap:9px;margin-top:24px}
-  .chip{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:6px 14px;font-size:13px;color:#D7E0EF}
+  .status{margin-top:16px;color:#D7E0EF;font-size:15px}
+  .status a{color:#fff;font-weight:600}
   .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
   .btn{display:inline-block;text-decoration:none;font-weight:700;padding:13px 26px;border-radius:12px;font-size:15px}
   .btn-p{background:linear-gradient(90deg,var(--primary),var(--teal));color:var(--on-accent)}
@@ -106,8 +113,8 @@
 
   .contact{text-align:center}
   .contact .lead{margin:12px auto 0}
-  .mail{display:inline-block;margin-top:24px;background:var(--ink);color:#fff;text-decoration:none;font-weight:600;padding:13px 30px;border-radius:12px}
-  .mail:hover{background:#1B2A4A}
+  .mail{display:inline-block;margin-top:24px;background:var(--mail-bg);color:var(--mail-fg);text-decoration:none;font-weight:600;padding:13px 30px;border-radius:12px}
+  .mail:hover{background:var(--mail-bg-hover)}
   .social{margin-top:18px;display:flex;gap:18px;justify-content:center}
   .social a{color:var(--muted);text-decoration:none;font-size:14.5px;font-weight:600}
   .social a:hover{color:var(--primary)}
@@ -117,10 +124,13 @@
   footer a:hover{color:#fff}
   @media(max-width:640px){
     .nav-toggle{display:flex}
-    .nav-links{position:absolute;top:64px;left:0;right:0;flex-direction:column;gap:0;background:rgba(11,18,32,.98);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.08);max-height:0;overflow:hidden;transition:max-height .28s ease}
-    .nav-links.open{max-height:320px}
+    /* visibility, not only max-height: a clipped link is still a tab stop (audit 2026-10-02 §2.7).
+       The visibility change waits for the collapse to finish, and applies at once on open. */
+    .nav-links{position:absolute;top:64px;left:0;right:0;flex-direction:column;gap:0;background:rgba(11,18,32,.98);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.08);max-height:0;overflow:hidden;visibility:hidden;transition:max-height .28s ease,visibility 0s linear .28s}
+    .nav-links.open{max-height:320px;visibility:visible;transition:max-height .28s ease,visibility 0s}
     .nav-links a{padding:15px 24px;font-size:16px;border-top:1px solid rgba(255,255,255,.06)}
     .hero{text-align:center}
+    .actions{justify-content:center}
     .feature{padding:30px}
   }
   @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important;animation:none!important}}
@@ -140,19 +150,16 @@
   .reveal.in{opacity:1;transform:none}
   @media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}}
 
-  /* Projects (hidden until PROJECTS has entries) */
-  .proj-shot{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:10px;border:1px solid var(--line);background:var(--card-2);margin-bottom:14px}
-  .proj-role{color:var(--teal);font-size:12.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-bottom:4px}
-  .proj-tech{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-  .proj-tech span{font-size:12px;border:1px solid var(--line);border-radius:6px;padding:3px 8px;color:var(--muted)}
-  .proj-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
-  .proj-links a{font-size:12.5px;font-weight:600;text-decoration:none;padding:6px 12px;border-radius:8px;border:1px solid var(--line);color:var(--strong);background:var(--card-2)}
-  .proj-links a:hover{border-color:var(--primary);color:var(--primary)}
+  /* Work: generated from the catalogue by tooling/sites/generate-personal-site.mjs */
+  .work-list{list-style:none}
+  .work-item h3 a{color:var(--strong);text-decoration:none}
+  .work-item h3 a:hover{text-decoration:underline}
+  .work-state{margin-top:10px;font-size:13px;font-weight:600;color:var(--strong)}
 </style>
 </head>
 <body id="top">
 
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip-link" href="#main">Skip to content</a>
 
 <nav>
   <div class="wrap nav-in">
@@ -160,8 +167,7 @@
     <div class="nav-right">
       <div class="nav-links" id="navLinks">
         <a href="#about">About</a>
-        <a href="#work">What I build</a>
-        <a href="#projects" id="navProjects" hidden>Projects</a>
+        <a href="#work">Work</a>
         <a href="https://nikatru.com" target="_blank" rel="noopener">Nikatru</a>
         <a href="#contact">Contact</a>
       </div>
@@ -184,12 +190,11 @@
     <div class="hero-txt">
       <div class="eyebrow">Independent Software Developer</div>
       <h1>Rajasekar <span class="grad">Selvam</span></h1>
-      <p class="sub">I design, build and publish cross-platform apps and games — from a single codebase to
-      six platforms. Founder of <b style="color:#fff">Nikatru</b>, based in Chennai, India.</p>
-      <div class="chips">
-        <span class="chip">iOS</span><span class="chip">Android</span><span class="chip">Windows</span>
-        <span class="chip">macOS</span><span class="chip">Linux</span><span class="chip">Web</span>
-      </div>
+      <p class="sub">I design and build cross-platform apps with Flutter, end to end. Founder of
+      <b style="color:#fff">Nikatru</b>, based in Chennai, India.</p>
+<!-- PS:status -->
+      <p class="status">Live now: <a href="https://nikatru.com/apps/subscriptiontracker">Nikatru Subscription Tracker</a> (1 of 6 channels live).</p>
+<!-- /PS:status -->
       <div class="actions">
         <a class="btn btn-p" href="https://nikatru.com" target="_blank" rel="noopener">Visit Nikatru →</a>
         <a class="btn btn-g" href="#contact">Get in touch</a>
@@ -201,37 +206,49 @@
 <section id="about" class="about">
   <div class="wrap">
     <h2>About</h2>
-    <p>I'm an independent software developer who takes products end-to-end — design, development, testing
-    and store publishing — on my own. My focus is building well-crafted apps and games with <b>Flutter</b>,
-    so one codebase ships natively to <b>iOS, Android, Windows, macOS, Linux and the web</b>.</p>
-    <p>I work under my studio brand <b>Nikatru</b>, a Government of India registered MSME established in
-    2021. Whether it's a productivity tool, a game or a web app, I care about clean design, performance
-    and shipping things that actually reach users across every screen.</p>
-    <p>With <b>11+ years of professional software development</b> behind me — spanning enterprise systems and
-    independent products — I now channel that experience entirely into designing, building and shipping
-    under Nikatru.</p>
+    <p>I'm an independent software developer who takes products end to end — design, development, testing
+    and publishing — on my own. I build with <b>Flutter</b>, so one codebase can serve phones, desktops
+    and the web.</p>
+    <p>I work under my studio brand <b>Nikatru</b>, <!-- FACT:msme-established -->a Government of India registered MSME (Udyam UDYAM-TN-02-0487004) established in 2021<!-- /FACT:msme-established -->.
+    I care about clean design, performance and shipping things that actually reach people.</p>
+    <p>My background is professional software development, spanning enterprise systems and independent
+    products; I now put that experience entirely into designing, building and shipping under Nikatru.</p>
     <div class="stack">
       <span class="tech">Flutter</span><span class="tech">Dart</span><span class="tech">Cross-platform</span>
-      <span class="tech">UI / UX</span><span class="tech">Games</span><span class="tech">Web</span>
-      <span class="tech">App Store publishing</span><span class="tech">Backend / APIs</span>
+      <span class="tech">UI / UX</span><span class="tech">Web</span><span class="tech">Backend / APIs</span>
     </div>
   </div>
 </section>
 
 <section id="work" style="padding-top:0">
   <div class="wrap">
-    <h2>What I build</h2>
-    <p class="lead">One developer, the full journey — from first sketch to a live listing on every store.</p>
+    <h2>Work</h2>
+    <p class="lead">What I've built and released under Nikatru. Each one links to its page on nikatru.com.</p>
+<!-- PS:work -->
+    <ul class="grid3 work-list">
+      <li class="card work-item">
+        <h3><a href="https://nikatru.com/apps/subscriptiontracker">Nikatru Subscription Tracker<span class="sr-only"> on nikatru.com</span></a></h3>
+        <p>Track every subscription in one place</p>
+        <p class="work-state">1 of 6 channels live</p>
+      </li>
+    </ul>
+<!-- /PS:work -->
+  </div>
+</section>
+
+<section id="approach" style="padding-top:0">
+  <div class="wrap">
+    <h2>How I work</h2>
     <div class="grid3">
       <div class="card">
         <div class="ico" aria-hidden="true">📱</div>
         <h3>Cross-platform apps</h3>
-        <p>Native-feeling applications for mobile and desktop, built once and shipped to all six platforms.</p>
+        <p>Native-feeling apps for mobile, desktop and the web, built from one Flutter codebase.</p>
       </div>
       <div class="card">
-        <div class="ico" aria-hidden="true">🎮</div>
-        <h3>Games</h3>
-        <p>Lightweight, fun games published across app stores and the open web.</p>
+        <div class="ico" aria-hidden="true">🛠️</div>
+        <h3>End to end</h3>
+        <p>Design, development, testing and release, by one developer who owns every step.</p>
       </div>
       <div class="card">
         <div class="ico" aria-hidden="true">🌐</div>
@@ -239,14 +256,6 @@
         <p>Fast, responsive web experiences and the sites that support them.</p>
       </div>
     </div>
-  </div>
-</section>
-
-<section id="projects" hidden>
-  <div class="wrap">
-    <h2>Projects</h2>
-    <p class="lead">Shipped work — apps and games published under Nikatru, with store links for every platform.</p>
-    <div class="grid3" id="projects-grid"></div>
   </div>
 </section>
 
@@ -261,8 +270,8 @@
         </svg>
         <div>
           <h2>Nikatru</h2>
-          <p>My studio brand — where the apps and games live. See everything I've published, with download
-          links for all six platforms.</p>
+          <p>My studio brand, and the home of everything I publish: each app's own page, its pricing and
+          its policies live on nikatru.com.</p>
         </div>
       </div>
       <a class="btn btn-p" href="https://nikatru.com" target="_blank" rel="noopener">Explore Nikatru →</a>
@@ -274,9 +283,10 @@
   <div class="wrap">
     <h2>Get in touch</h2>
     <p class="lead">Have a project, an idea, or just want to say hello? I'd be glad to hear from you.</p>
-    <a class="mail" href="mailto:support@nikatru.com">support@nikatru.com</a>
+    <!--email_off--><a class="mail" href="mailto:support@nikatru.com">support@nikatru.com</a><!--/email_off-->
     <div class="social">
       <a href="https://nikatru.com" target="_blank" rel="noopener">nikatru.com ↗</a>
+      <a href="https://nikatru.com/#updates">Get updates ↗</a>
     </div>
   </div>
 </section>
@@ -288,23 +298,75 @@
   <a href="https://nikatru.com" target="_blank" rel="noopener">Nikatru</a>
 </footer>
 
+<!-- PS:jsonld -->
+<!--email_off-->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "Person",
-  "@id": "https://rajasekarselvam.com/#person",
-  "name": "Rajasekar Selvam",
-  "url": "https://rajasekarselvam.com/",
-  "image": "https://rajasekarselvam.com/og-image.png",
-  "jobTitle": "Independent Software Developer",
-  "description": "Independent software developer in Chennai, India, with 11+ years of professional software experience, building and publishing cross-platform apps and games for iOS, Android, Windows, macOS, Linux and the web. Founder of Nikatru.",
-  "email": "support@nikatru.com",
-  "knowsAbout": ["Cross-platform app development", "Flutter", "Dart", "iOS apps", "Android apps", "Windows apps", "macOS apps", "Linux apps", "Web development", "Game development", "UI/UX design", "App store publishing"],
-  "address": { "@type": "PostalAddress", "addressLocality": "Chennai", "addressRegion": "Tamil Nadu", "addressCountry": "IN" },
-  "worksFor": { "@type": "Organization", "@id": "https://nikatru.com/#org", "name": "Nikatru", "url": "https://nikatru.com/" },
-  "sameAs": ["https://nikatru.com/"]
+  "@graph": [
+    {
+      "@type": "ProfilePage",
+      "@id": "https://rajasekarselvam.com/#profilepage",
+      "url": "https://rajasekarselvam.com/",
+      "name": "Rajasekar Selvam — Independent software developer",
+      "inLanguage": "en",
+      "isPartOf": {
+        "@id": "https://rajasekarselvam.com/#website"
+      },
+      "mainEntity": {
+        "@id": "https://rajasekarselvam.com/#person"
+      }
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://rajasekarselvam.com/#website",
+      "url": "https://rajasekarselvam.com/",
+      "name": "Rajasekar Selvam",
+      "inLanguage": "en",
+      "publisher": {
+        "@id": "https://rajasekarselvam.com/#person"
+      }
+    },
+    {
+      "@type": "Person",
+      "@id": "https://rajasekarselvam.com/#person",
+      "name": "Rajasekar Selvam",
+      "url": "https://rajasekarselvam.com/",
+      "image": "https://rajasekarselvam.com/rajasekar-v4.jpg",
+      "jobTitle": "Independent Software Developer",
+      "description": "Independent software developer in Chennai, India, building cross-platform apps with Flutter. Founder of Nikatru.",
+      "email": "support@nikatru.com",
+      "knowsAbout": [
+        "Cross-platform app development",
+        "Flutter",
+        "Dart",
+        "Web development",
+        "UI/UX design"
+      ],
+      "address": {
+        "@type": "PostalAddress",
+        "addressLocality": "Chennai",
+        "addressRegion": "Tamil Nadu",
+        "addressCountry": "IN"
+      },
+      "worksFor": {
+        "@id": "https://nikatru.com/#org"
+      }
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://nikatru.com/#org",
+      "name": "Nikatru",
+      "url": "https://nikatru.com/",
+      "founder": {
+        "@id": "https://rajasekarselvam.com/#person"
+      }
+    }
+  ]
 }
 </script>
+<!--/email_off-->
+<!-- /PS:jsonld -->
 
 <script>
 (function(){
@@ -319,42 +381,6 @@
   btn.addEventListener("click",function(){setOpen(!menu.classList.contains("open"));});
   menu.querySelectorAll("a").forEach(function(a){a.addEventListener("click",function(){setOpen(false);});});
   document.addEventListener("keydown",function(e){if(e.key==="Escape")setOpen(false);});
-})();
-
-/* ============================================================
-   PROJECTS — add one object per shipped app; the section and
-   nav link stay hidden until this array has entries.
-   Example:
-   { name:"My Notes App",
-     role:"Design · Development · Publishing",
-     tagline:"Fast, offline-first notes.",
-     shot:"shots/mynotes.webp",        // 16:10 screenshot in the repo
-     tech:["Flutter","Dart"],
-     links:{ web:"https://notes.nikatru.com",
-             android:"https://play.google.com/store/apps/details?id=...",
-             ios:"https://apps.apple.com/app/id..." } }
-   ============================================================ */
-var PROJECTS=[
-  // add your first shipped app here
-];
-(function(){
-  if(!PROJECTS.length)return;
-  var sec=document.getElementById("projects"),grid=document.getElementById("projects-grid"),nav=document.getElementById("navProjects");
-  if(!sec||!grid)return;
-  var LABELS={ios:"App Store",android:"Google Play",windows:"Microsoft Store",macos:"Mac App Store",linux:"Snap / AppImage",web:"Web App"};
-  grid.innerHTML=PROJECTS.map(function(p){
-    var links=p.links||{};
-    var btns=Object.keys(LABELS).filter(function(k){return links[k];}).map(function(k){
-      return '<a target="_blank" rel="noopener" href="'+links[k]+'">'+LABELS[k]+'</a>';}).join("");
-    return '<div class="card">'+
-      (p.shot?'<img class="proj-shot" loading="lazy" src="'+p.shot+'" alt="'+p.name+' screenshot">':"")+
-      '<div class="proj-role">'+(p.role||"")+'</div>'+
-      '<h3>'+p.name+'</h3><p>'+(p.tagline||"")+'</p>'+
-      (p.tech&&p.tech.length?'<div class="proj-tech">'+p.tech.map(function(t){return '<span>'+t+'</span>';}).join("")+'</div>':"")+
-      '<div class="proj-links">'+btns+'</div></div>';
-  }).join("");
-  sec.hidden=false;
-  if(nav)nav.hidden=false;
 })();
 
 /* Scroll reveal (progressive enhancement) */

@@ -46,6 +46,12 @@ const RE_EXPORTS: ReadonlyArray<readonly [string, string]> = [
   ['src/lib/d1.ts', '_shared/src/d1'],
   ['src/lib/health.ts', '_shared/src/health'],
   ['src/lib/error-sink.ts', '_shared/src/error-sink'],
+  // ⏱ 2026-10-01 · rv2 SYN-S2 (services-009/018):
+  // the request hardening the live Workers grew, which this template was born without.
+  ['src/lib/body.ts', '_shared/src/body'],
+  ['src/lib/validate.ts', '_shared/src/validate'],
+  ['src/lib/rate-limit.ts', '_shared/src/rate-limit'],
+  ['src/lib/request-id.ts', '_shared/src/request-id'],
 ];
 
 const read = (rel: string) => fs.readFileSync(`${nodeProcess.cwd()}/${rel}`, 'utf8');

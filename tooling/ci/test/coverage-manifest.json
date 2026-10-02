@@ -177,7 +177,7 @@
     10,
 
   "business-facts.test.mjs":
-    9,
+    13,
 
   "capability-register-seams.test.mjs":
     27,
@@ -216,10 +216,10 @@
     36,
 
   "channel-claims.test.mjs":
-    50,
+    55,
 
   "channel-register.test.mjs":
-    367,
+    368,
 
   "channel-surface.test.mjs":
     7,
@@ -462,7 +462,7 @@
     20,
 
   "green-means-ran.test.mjs":
-    48,
+    49,
 
   "guard-coverage.test.mjs":
     84,
@@ -530,8 +530,11 @@
   "install-pinned-tool.test.mjs":
     27,
 
+  "land-next.test.mjs":
+    59,
+
   "land-rules.test.mjs":
-    22,
+    23,
 
   "lane-detect.test.mjs":
     19,
@@ -675,7 +678,7 @@
     116,
 
   "ops-register.test.mjs":
-    439,
+    441,
 
   "ops-status.test.mjs":
     53,
@@ -709,6 +712,9 @@
 
   "paywall-flip-ready.test.mjs":
     13,
+
+  "personal-site.test.mjs":
+    20,
 
   "plan-deploy.test.mjs":
     36,
@@ -783,7 +789,7 @@
     26,
 
   "prod-provenance-walk.test.mjs":
-    30,
+    32,
 
   "prod-provenance.test.mjs":
     154,
@@ -957,7 +963,7 @@
     32,
 
   "site-integrity.test.mjs":
-    118,
+    122,
 
   "small-business-program.test.mjs":
     17,
@@ -966,7 +972,7 @@
     14,
 
   "smoke-web-artifact.test.mjs":
-    30,
+    36,
 
   "snap-submission.test.mjs":
     48,
@@ -1107,7 +1113,7 @@
     42,
 
   "web-cache-policy.test.mjs":
-    90,
+    109,
 
   "web-drive-stages-fonts.test.mjs":
     5,

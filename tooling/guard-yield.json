@@ -3325,6 +3325,11 @@
         "reason": "exposed 15 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-11); re-judged at the next fetch"
       }
     },
+    "tooling/ci/land-next.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
     "tooling/ci/lane-detect.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-25",
@@ -3987,6 +3992,11 @@
     "tooling/sites/generate-landing-payload.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-18",
+      "evidence": []
+    },
+    "tooling/sites/generate-personal-site.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
       "evidence": []
     },
     "tooling/sites/generate-well-known.mjs": {
