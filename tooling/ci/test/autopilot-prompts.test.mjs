@@ -66,7 +66,7 @@ const prompts = () => readdirSync(DIR).filter((n) => n.endsWith('.prompt.md')).m
 
 test('P1–P4 every routine prompt holds to the contract', () => {
   const all = prompts();
-  assert.ok(all.some((p) => p.name === 'reviewer.prompt.md'), 'COVERAGE LOST: the reviewer prompt is missing');
+  for (const n of Object.keys(REQUIRED)) assert.ok(all.some((p) => p.name === n), `COVERAGE LOST: ${n} is missing`);
   for (const name of Object.keys(REQUIRED)) if (existsSync(join(DIR, name))) assert.ok(all.some((p) => p.name === name));
   assert.deepEqual(all.flatMap((p) => promptFindings(p.name, p.text)), []);
 });
@@ -86,6 +86,12 @@ test('P5 red controls, planted into the real reviewer prompt', () => {
   assert.ok(promptFindings('fixer.prompt.md', fixer).some((x) => /says merge outside a "never"/.test(x)));
   assert.ok(!promptFindings('fixer.prompt.md', '## 1. Standby check\n`heartbeat.mjs read`\n- Never merge anything.\n').some((x) => /says merge/.test(x)));
   assert.ok(promptFindings('runner.prompt.md', '## 1. Standby check\n`heartbeat.mjs read`\n').some((x) => /no DRY/.test(x)));
+  const realFixer = prompts().find((p) => p.name === 'fixer.prompt.md')?.text;
+  if (realFixer) {
+    const f = promptFindings('fixer.prompt.md', `${realFixer}\nWhen it is green, merge the PR.\n`.replace('`FIX_CLAIM_STALE_H` (3 hours)', '`FIX_CLAIM_STALE_H` (5 hours)'));
+    assert.ok(f.some((x) => /says merge outside a "never"/.test(x)), f.join('\n'));
+    assert.ok(f.some((x) => /FIX_CLAIM_STALE_H says 5/.test(x)));
+  }
   const runner = prompts().find((p) => p.name === 'runner.prompt.md')?.text;
   if (runner) {
     const r = promptFindings('runner.prompt.md', runner.replace('`CLAIM_SETTLE_S` (90 seconds)', '`CLAIM_SETTLE_S` (30 seconds)').replace('## 9. DRY', '## 9. Drill'));
