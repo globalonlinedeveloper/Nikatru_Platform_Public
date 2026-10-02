@@ -135,7 +135,7 @@
     "message": "Μαζικά"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Αναβάθμιση σε FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Επιλογές"
@@ -441,10 +441,10 @@
     "message": "Απευθείας στον σχολιασμό (μόνο για στιγμιότυπα ενός μέρους)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Συντομεύσεις ενός πλήκτρου στο πρόγραμμα επεξεργασίας"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Τα πλήκτρα γραμμάτων επιλέγουν εργαλείο, τα + και - κάνουν ζουμ, το ? εμφανίζει τα πλήκτρα. Όταν είναι απενεργοποιημένες, λειτουργούν μόνο όσο η εικόνα έχει την εστίαση."
   },
   "optionsTheme": {
     "message": "Θέμα"
@@ -1247,7 +1247,7 @@
     "message": "Προσαρμογή"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Ζουμ $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1256,28 +1256,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Κόκκινο"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Κεχριμπαρένιο"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Πράσινο"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Μπλε"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Βιολετί"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Ροζ"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Μαύρο"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Λευκό"
   },
   "editorZoomTipToHundred": {
     "message": "Προσαρμογή στο παράθυρο — κάντε κλικ για 100%"
@@ -2026,7 +2026,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "Το $ENTER$ καταγράφει όλη την ορατή περιοχή",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2049,10 +2049,10 @@
     "message": "Το Chrome Web Store δεν επιτρέπει στις επεκτάσεις να διαβάζουν τις σελίδες του, οπότε αυτή η σελίδα δεν μπορεί να καταγραφεί."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Το Microsoft Edge Add-ons δεν επιτρέπει στις επεκτάσεις να διαβάζουν τις σελίδες του, οπότε αυτή η σελίδα δεν μπορεί να καταγραφεί."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Το Firefox Add-ons (addons.mozilla.org) δεν επιτρέπει στις επεκτάσεις να διαβάζουν τις σελίδες του, οπότε αυτή η σελίδα δεν μπορεί να καταγραφεί."
   },
   "errRestrictedGeneric": {
     "message": "Αυτή η σελίδα προστατεύεται από το πρόγραμμα περιήγησης και δεν μπορεί να καταγραφεί."

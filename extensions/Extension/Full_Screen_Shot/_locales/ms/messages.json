@@ -135,7 +135,7 @@
     "message": "Kelompok"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Naik taraf ke FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Pilihan"
@@ -441,10 +441,10 @@
     "message": "Terus masuk ke anotasi (tangkapan satu bahagian sahaja)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Pintasan satu kekunci dalam editor"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Kekunci huruf memilih alat, + dan - mengezum, ? menyenaraikan kekunci. Apabila dimatikan, ia hanya berfungsi semasa imej mempunyai fokus."
   },
   "optionsTheme": {
     "message": "Tema"
@@ -1220,7 +1220,7 @@
     "message": "Muat"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Zum $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1229,28 +1229,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Merah"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Ambar"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Hijau"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Biru"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Ungu"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Merah jambu"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Hitam"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Putih"
   },
   "editorZoomTipToHundred": {
     "message": "Muat pada tetingkap — klik untuk 100%"
@@ -1921,7 +1921,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ menangkap seluruh kawasan yang kelihatan",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -1944,10 +1944,10 @@
     "message": "Chrome Web Store menghalang sambungan daripada membaca halamannya, jadi halaman ini tidak boleh ditangkap."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons menghalang sambungan daripada membaca halamannya, jadi halaman ini tidak boleh ditangkap."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) menghalang sambungan daripada membaca halamannya, jadi halaman ini tidak boleh ditangkap."
   },
   "errRestrictedGeneric": {
     "message": "Halaman ini dilindungi oleh pelayar dan tidak boleh ditangkap."

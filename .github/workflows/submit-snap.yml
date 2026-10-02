@@ -92,10 +92,6 @@ jobs:
       - name: Derive the release line from pubspec
         id: ver
         run: node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" >> "$GITHUB_OUTPUT"
-      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
-      # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
-      - name: Name clearance holds for linux-snap (owner HELD or PROVEN-FREE)
-        run: node tooling/ci/assert-name-clearance.mjs --for-submission=linux-snap
       - name: Build linux
         env:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
@@ -191,6 +187,19 @@ jobs:
         env:
           SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS_EXPIRES }}
         run: node tooling/release/submit-snap.mjs --dry-run --app "$APP"
+      # why: O-SUBMIT-DRY-RUN-GATES-BLIND-THE-REHEARSAL (AA-02): the gates below run AFTER the build, the pack and
+      # the store dry run, so a red gate still fails this job and skips submit, but only once the snap was rehearsed.
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
+      # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
+      - name: Name clearance holds for linux-snap (owner HELD or PROVEN-FREE)
+        run: node tooling/ci/assert-name-clearance.mjs --for-submission=linux-snap
+      # why: C-03. A missing screenshot set was fatal only on Play; a Snap Store listing carries one too.
+      - name: The Snap Store screenshot set covers its declared device types
+        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=linux-snap
+      # why: O-SUBMIT-LANES-IGNORE-NATIVE-AUTH. A dry run prints what a real submission of a build that cannot
+      # sign in would be refused, and never refuses; the submit job passes --real-submission.
+      - name: A build that cannot sign in reaches no public risk (linux-snap)
+        run: node tooling/ci/assert-channel-register.mjs --for-submission=linux-snap
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ needs.gate.outputs.app }}-linux-snap
@@ -293,6 +302,13 @@ jobs:
       # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
       - name: Name clearance holds for linux-snap (owner HELD or PROVEN-FREE)
         run: node tooling/ci/assert-name-clearance.mjs --for-submission=linux-snap
+      # why: C-03. A missing screenshot set was fatal only on Play; a Snap Store listing carries one too.
+      - name: The Snap Store screenshot set covers its declared device types
+        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=linux-snap
+      # why: O-SUBMIT-LANES-IGNORE-NATIVE-AUTH. Refused while nativeAuth is false on the candidate or stable risk
+      # only; SNAP_CHANNEL is unset here as on the upload step, so the upload goes to latest/edge.
+      - name: A build that cannot sign in reaches no public risk (linux-snap)
+        run: node tooling/ci/assert-channel-register.mjs --for-submission=linux-snap --real-submission
       - name: Build linux
         env:
           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}

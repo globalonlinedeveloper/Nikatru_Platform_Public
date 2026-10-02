@@ -135,7 +135,7 @@
     "message": "Paket"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Nadgradite na FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Možnosti"
@@ -441,10 +441,10 @@
     "message": "Skoči naravnost v označevanje (samo enodelni zajemi)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Bližnjice z eno tipko v urejevalniku"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Črkovne tipke izberejo orodje, + in - povečujeta in pomanjšujeta, ? prikaže seznam tipk. Ko je izklopljeno, delujejo le, ko je slika v fokusu."
   },
   "optionsTheme": {
     "message": "Tema"
@@ -1301,7 +1301,7 @@
     "message": "Prilag."
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Povečava $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1310,28 +1310,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Rdeča"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Jantarna"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Zelena"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Modra"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Vijolična"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Rožnata"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Črna"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Bela"
   },
   "editorZoomTipToHundred": {
     "message": "Prilagojeno oknu — kliknite za 100 %"
@@ -2236,7 +2236,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ zajame celotno vidno območje",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2259,10 +2259,10 @@
     "message": "Spletna trgovina Chrome razširitvam preprečuje branje svojih strani, zato te ni mogoče zajeti."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons razširitvam preprečuje branje svojih strani, zato te ni mogoče zajeti."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) razširitvam preprečuje branje svojih strani, zato te ni mogoče zajeti."
   },
   "errRestrictedGeneric": {
     "message": "To stran brskalnik varuje in je ni mogoče zajeti."

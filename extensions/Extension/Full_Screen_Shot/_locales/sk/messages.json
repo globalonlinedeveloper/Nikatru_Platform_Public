@@ -135,7 +135,7 @@
     "message": "Dávka"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Prejsť na FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Možnosti"
@@ -441,10 +441,10 @@
     "message": "Prejde rovno k popiskom (len pri jednodielnych snímkach)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Jednoklávesové skratky v editore"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Klávesy s písmenami vyberajú nástroj, + a - menia priblíženie, ? zobrazí zoznam kláves. Keď je voľba vypnutá, fungujú len vtedy, keď má obrázok fokus."
   },
   "optionsTheme": {
     "message": "Motív"
@@ -1301,7 +1301,7 @@
     "message": "Prisp."
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Priblíženie $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1310,28 +1310,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Červená"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Jantárová"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Zelená"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Modrá"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Fialová"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Ružová"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Čierna"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Biela"
   },
   "editorZoomTipToHundred": {
     "message": "Prispôsobené oknu — kliknutím na 100 %"
@@ -2236,7 +2236,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ zachytí celú viditeľnú oblasť",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2259,10 +2259,10 @@
     "message": "Internetový obchod Chrome bráni rozšíreniam čítať jeho stránky, takže túto zachytiť nemožno."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Doplnky Microsoft Edge bránia rozšíreniam čítať svoje stránky, takže túto zachytiť nemožno."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Doplnky Firefoxu (addons.mozilla.org) bránia rozšíreniam čítať svoje stránky, takže túto zachytiť nemožno."
   },
   "errRestrictedGeneric": {
     "message": "Túto stránku prehliadač chráni a zachytiť ju nemožno."
