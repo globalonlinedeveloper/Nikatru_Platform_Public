@@ -141,13 +141,6 @@ const PRIMITIVES = [
 // instance; this guard then fails until the row is deleted. Never add a row to
 // make a new instance pass — convert it.
 const BASELINE = [
-  {
-    limb: 'ST-Y3',
-    file: 'apps/subscriptiontracker/lib/features/settings/settings_screen.dart',
-    anchor: 'key: E2EKeys.deleteAccountPassword',
-    what: 'the delete-account password field',
-    owner: 'D15 — the ST-D settings train adds the hint',
-  },
   // The brick's two harnesses: the fix is two lines in each, and ST-T8a was
   // barred from brick files (they share tooling/chassis-ledger.json with W55 and
   // M5). Latent until a stamped app's web e2e or store capture first runs.

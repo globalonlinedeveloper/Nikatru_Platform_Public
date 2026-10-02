@@ -59,3 +59,7 @@ in this repository uploads them.
 There is **no app-specific icon**. `[10]D-6` requires a distinct visual identity
 per app so that fifty apps stamped from one brick do not reach the store looking
 identical.
+
+## ⏱ 2026-10-02 — not captured, and why
+
+Dispatched twice from branch `fix/store-screenshots-all-channels` (row O-STORE-SCREENSHOTS); run 36952983438 stopped on the new after-sign-in setup ("Step 1 of 3 | Your home currency"; the suite now skips it). Run 36955811141 got past it to Home. On the second run every drive that got past sign-in signed in, skipped the after-sign-in setup, reached Home, and stopped in `addThroughSheet` (integration_test/store_screenshots_test.dart): "The add sheet did not open". Since #1130 the add FAB opens the catalogue pick step ("Search services | POPULAR | Netflix …") and the name field the suite types into is behind it, so the suite cannot seed the rows its frames show. The fix is in the suite (choose the custom entry from the pick step before typing), not in this directory. No frame is made by hand in its place.

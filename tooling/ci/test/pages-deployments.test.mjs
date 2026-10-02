@@ -1277,6 +1277,8 @@ const PAUSED = {
     type: 'github',
     config: { deployments_enabled: false, production_deployments_enabled: false, preview_deployment_setting: 'none' },
   },
+  // The build it was paused on: created before pausedAt (DECLARED, below).
+  latest_deployment: { id: 'a1b2c3d4-0000-4000-8000-000000000001', created_on: '2026-09-26T15:58:02.123456Z' },
 };
 const DECLARED = { project: 'nikatru', pausedAt: '2026-09-26T16:31:47Z', servedBy: 'nikatru-apex', decision: 'ADR 098' };
 const DERIVED = [
@@ -1400,6 +1402,25 @@ describe('judgeRollbackOnly — `rollback-only (paused)` only while the account 
     const r = judgeRollbackOnly({ ...DECLARED, answer: PAUSED, derived: DERIVED.filter((p) => p.project !== 'nikatru-apex') });
     assert.equal(r.code, 1);
     assert.match(r.line, /no site directory or catalogue slug derives `nikatru-apex`/);
+  });
+
+  // ⏱ 2026-10-01 · PB-20 (row O-PAUSED-PAGES-PROJECT-NIKATRU): the paused copy is the one it was paused on.
+  test('🔴 RED CONTROL — a deployment created AFTER the pause', () => {
+    const after = { id: 'a1b2c3d4-0000-4000-8000-000000000002', created_on: '2026-09-27T09:00:00Z' };
+    const r = judgeRollbackOnly({ ...DECLARED, answer: { ...PAUSED, latest_deployment: after }, derived: DERIVED });
+    assert.equal(r.code, 1);
+    assert.match(r.line, /newest deployment a1b2c3d4-0000-4000-8000-000000000002 was created 2026-09-27T09:00:00Z, AFTER the pause/);
+  });
+
+  test('a deployment created AT the pause instant is the paused build (<=), GREEN', () => {
+    const at = { id: 'x', created_on: DECLARED.pausedAt };
+    assert.equal(judgeRollbackOnly({ ...DECLARED, answer: { ...PAUSED, latest_deployment: at }, derived: DERIVED }).code, 0);
+  });
+
+  test('NOT JUDGED — no newest deployment, or one with no readable created_on', () => {
+    assert.equal(judgeRollbackOnly({ ...DECLARED, answer: { ...PAUSED, latest_deployment: null }, derived: DERIVED }).code, 2);
+    assert.equal(judgeRollbackOnly({ ...DECLARED, answer: { ...PAUSED, latest_deployment: { id: 'x' } }, derived: DERIVED }).code, 2);
+    assert.equal(judgeRollbackOnly({ ...DECLARED, answer: { ...PAUSED, latest_deployment: { id: 'x', created_on: 'soon' } }, derived: DERIVED }).code, 2);
   });
 
   test('NOT JUDGED — no Git source (a Direct Upload project has no switch), unreadable domains, or another project', () => {

@@ -384,9 +384,14 @@ describe('deployment-record — the environment resolves against the register', 
     assert.equal(resolveEnvironment(REGISTER, 'nikatru-site'), null);
   });
 
-  test('a site record takes no published-id flag: --pages-deployment-id on kind site is REFUSED', () => {
+  // ⏱ 2026-10-01 · PB-07 (row O-APEX-SITE-HAS-NO-ROLLBACK): the site is a Direct Upload Pages
+  // project, so its record names the deployment it published, and rollback.yml re-promotes it.
+  test('a site record takes --pages-deployment-id, as a web record does, and no Worker flag', () => {
     const r = publishedIds('site', { 'pages-deployment-id': '0123abcd-0123-4abc-8def-0123456789ab' }, {});
-    assert.match(r.refusal, /unit of kind "site", which publishes nothing rollback\.yml can re-promote/);
+    assert.equal(r.refusal, null);
+    assert.equal(r.ids.pages_deployment_id, '0123abcd-0123-4abc-8def-0123456789ab');
+    const w = publishedIds('site', { 'worker-version-id': '0123abcd-0123-4abc-8def-0123456789ab' }, {});
+    assert.match(w.refusal, /--worker-version-id was given for a unit of kind "site", which takes --pages-deployment-id/);
   });
 
   // A service row must never satisfy the store rules: record-deployment.mjs
@@ -1486,11 +1491,13 @@ describe('the deploy workflows hand the recorder the id their deploy step publis
     assert.match(step.run.text, /--pages-deployment-id "\$PAGES_DEPLOYMENT_ID"(\s|$)/);
   });
 
-  test('THE REAL TREE: the `site` job records nikatru-site with no id flag, which its kind would refuse', () => {
+  // ⏱ 2026-10-01 · PB-07: the site job records the Pages deployment it published.
+  test('THE REAL TREE: the `site` job records nikatru-site with the Pages deployment id its deploy step gave, through env:', () => {
     const site = recorderSteps('deploy-web.yml').find((s) => s.job === 'site');
     assert.ok(site, 'deploy-web.yml has no recording `site` job');
-    assert.match(site.step.run.text, /record-deployment\.mjs nikatru-site https:\/\/nikatru\.com\s*$/);
-    assert.doesNotMatch(site.step.run.text, /--(pages-deployment-id|worker-version-id|wrangler-output-env)\b/);
+    assert.match(site.step.run.text, /record-deployment\.mjs nikatru-site https:\/\/nikatru\.com --pages-deployment-id "\$PAGES_DEPLOYMENT_ID"\s*$/);
+    assert.equal(site.step.env.get('PAGES_DEPLOYMENT_ID')?.value, '${{ steps.deploy.outputs.pages-deployment-id }}');
+    assert.doesNotMatch(site.step.run.text, /--(worker-version-id|wrangler-output-env)\b/);
     assert.equal(resolveEnvironment(REAL_REGISTER, 'nikatru-site')?.channel?.kind, 'site');
   });
 

@@ -1349,6 +1349,14 @@
       "reason": "Gradeable and NOT graded, recorded as a gap: `judgeImports` (limb 3) has no case in tooling/ci/test/assert-deploy-triggers-deploy.test.mjs; the real-tree case calls `judge` (limbs 1-2) only. Judged 2026-09-19."
     },
     {
+      "file": "tooling/ci/assert-deploy-triggers-deploy.mjs",
+      "anchor": "//      binds platform_db unordered. DERIVED, NOT LISTED: every wrangler config under",
+      "status": "proven",
+      "test": "tooling/ci/test/assert-deploy-triggers-deploy.test.mjs",
+      "case": "platformDbConfigs reads bindings, not comments that name one",
+      "proves": "Limb 5 (PB-03, 2026-10-01). The case plants configs under services/ and tooling/sites/ that the guard has never seen and requires exactly the two that bind PLATFORM_DB to be read, and the comment that only names it to be skipped; a typed list of today's three configs fails it."
+    },
+    {
       "file": "tooling/ci/assert-no-store-bundle-copy.mjs",
       "anchor": "// Derived, not listed: every `store/` directory under `apps/` and `extensions/`,",
       "status": "demoted",

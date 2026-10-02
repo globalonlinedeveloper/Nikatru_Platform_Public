@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       unit:
-        description: 'Ledger environment: <app>-web, subscriptiontracker-api or platform. Never a database.'
+        description: 'Ledger environment: <app>-web, nikatru-site, subscriptiontracker-api, platform or edge-shield. Never a database.'
         required: true
         type: string
       deployment:
@@ -74,21 +74,19 @@ jobs:
           dry=()
           if [ "$DRY_RUN" = true ]; then dry=(--dry-run); fi
           node tooling/ops/rollback.mjs --unit "$UNIT" --deployment "$DEPLOYMENT" "${dry[@]}"
-      # why: the smoke the unit's deploy runs, joined to the re-promoted build:
-      # the web build number is the recorded run's number, the Worker build is
-      # the recorded SHA. rollback.mjs hands over both.
+      # why: THE UNIT'S OWN smoke, the one its deploy runs, joined to the re-promoted
+      # build (rows O-APEX-SITE-HAS-NO-ROLLBACK, O-EDGE-SHIELD-ROLLBACK-SMOKE-MISFIT):
+      # the web build number is the recorded run's number, a Worker's build or the
+      # site's version.json is the recorded SHA, and the edge shield's header is that
+      # SHA too. rollback.mjs hands over the script and its arguments (its kind's, or
+      # the register row's `rollbackSmoke`), and --run-smoke runs only a script its
+      # SMOKE_SCRIPTS names. Through env:, never spliced into run:.
       - name: Smoke — the live surface serves the re-promoted build
         if: steps.rollback.outputs.dry_run == 'false'
         env:
-          SMOKE_URL: ${{ steps.rollback.outputs.smoke_url }}
-          SMOKE_FIELD: ${{ steps.rollback.outputs.smoke_field }}
-          SMOKE_EXPECT: ${{ steps.rollback.outputs.smoke_expect }}
-          SMOKE_REQUIRE_OK: ${{ steps.rollback.outputs.smoke_require_ok }}
-        shell: bash
-        run: |
-          ok=()
-          if [ "$SMOKE_REQUIRE_OK" = true ]; then ok=(--require-ok); fi
-          node tooling/ops/post-deploy-smoke.mjs --url "$SMOKE_URL" --field "$SMOKE_FIELD" --expect "$SMOKE_EXPECT" "${ok[@]}"
+          SMOKE_SCRIPT: ${{ steps.rollback.outputs.smoke_script }}
+          SMOKE_ARGS: ${{ steps.rollback.outputs.smoke_args }}
+        run: node tooling/ops/rollback.mjs --run-smoke
       # why: conditioned on the RE-PROMOTION, not on the smoke, like both deploy
       # lanes' record steps. Recorded at the re-promoted SHA, never main's HEAD:
       # plan-deploy.mjs reads the newest record as what is live. UNIT is the unit

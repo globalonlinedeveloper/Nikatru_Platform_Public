@@ -175,6 +175,8 @@ import {
   unitConclusion,
   supersededBy,
   zeroEntryNeutral,
+  calleeOf,
+  runPredatesUnitCalls,
   decideUnitFreshness,
   decideUnitRedSince,
   scheduleWeekdays,
@@ -1323,6 +1325,43 @@ describe('assert-ops-register — O-7: every recorded deployment is probed', () 
     });
     assert.equal(v.errors.length, 0, v.errors.join(' | '));
     assert.match(v.prints.join(' | '), /exempt: Cloudflare Git integration/);
+  });
+
+  // ⏱ 2026-10-01 · PB-25 (row O-APEX-SMOKE-EXEMPTION-STALE): sites/nikatru is published by
+  // deploy-web.yml's `site` job now, so its old "no job to probe from" exemption is stale.
+  test('🔴 RED CONTROL — a `site:<name>` exemption for a site a deploy job publishes is STALE', () => {
+    const reg = baseRegister();
+    reg._deploySmokeExemptions = { 'site:nikatru': 'Cloudflare Git integration; covered by the external prober.' };
+    const v = evaluate(
+      reg,
+      {
+        ...tree,
+        deployJobs: [{ workflow: '.github/workflows/deploy-web.yml', job: 'site', environment: 'nikatru-site', smokes: 1 }],
+        sitesPublishedByJob: [{ site: 'nikatru', environment: 'nikatru-site' }],
+      },
+      NOW,
+    );
+    assert.match(v.errors.join(' | '), /`_deploySmokeExemptions\["site:nikatru"\]` is STALE: sites\/nikatru is published by a deploy job that records `nikatru-site`/);
+  });
+
+  test('GREEN CONTROL — the same site with its exemption retired', () => {
+    const v = evaluate(
+      baseRegister(),
+      {
+        ...tree,
+        deployJobs: [{ workflow: '.github/workflows/deploy-web.yml', job: 'site', environment: 'nikatru-site', smokes: 1 }],
+        sitesPublishedByJob: [{ site: 'nikatru', environment: 'nikatru-site' }],
+      },
+      NOW,
+    );
+    assert.equal(v.errors.length, 0, v.errors.join(' | '));
+  });
+
+  test('THE REAL REGISTER retires `site:nikatru` with a dated note, and keeps the one Git-integration site', () => {
+    const real = JSON.parse(readFileSync(join(CI_DIR, '..', 'ops', 'register.json'), 'utf8'))._deploySmokeExemptions;
+    assert.equal(Object.hasOwn(real, 'site:nikatru'), false);
+    assert.ok(Object.hasOwn(real, 'site:rajasekarselvam'));
+    assert.ok(real._why.some((l) => /^RETIRED 2026-10-01 — `site:nikatru`/.test(l)), 'no dated retirement note in `_why`');
   });
 
   test('an EMPTY exemption is not an exemption', () => {
@@ -5440,7 +5479,8 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     const byFile = new Map(parseAllWorkflows(REPO_ROOT).map((wf) => [String(wf.rel).split('/').pop(), wf]));
     const postGate = postGateAdmission(byFile, gateTopology(REPO_ROOT));
     assert.ok(postGate, 'the gate workflow or its gate job could not be derived — the post-gate admission is gone');
-    assert.deepEqual([...postGate.jobs].sort(), ['deploy-web', 'deploy-workers'], 'the post-gate jobs of ci.yml have changed');
+    // ⏱ 2026-10-01 · PB-03: platform-db-migrate, which both deploys need, is post-gate too.
+    assert.deepEqual([...postGate.jobs].sort(), ['deploy-web', 'deploy-workers', 'platform-db-migrate'], 'the post-gate jobs of ci.yml have changed');
     assert.equal(dispatchable.has('deploy-web.yml'), false, 'deploy-web.yml has grown a `workflow_dispatch` — a second way to start the lane that skips the gate');
     assert.equal(dispatchable.has('deploy-workers.yml'), false, 'deploy-workers.yml has grown a `workflow_dispatch` — same');
     assert.equal(dispatchable.has('ci.yml'), false, 'ci.yml has grown a `workflow_dispatch` — re-read the deadlock argument before letting it into this domain');
@@ -5449,6 +5489,7 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     const ids = redSinceDomain(real, dispatchable, postGate).map((r) => r.id);
     assert.ok(ids.includes('duty.workflow.deploy-web.yml'), 'the web deploy lane has fallen out of the RED-SINCE domain — the 2026-09-09 defect is back');
     assert.ok(ids.includes('duty.workflow.deploy-workers.yml'), 'the workers deploy lane has fallen out of the RED-SINCE domain');
+    assert.ok(ids.includes('duty.workflow.migrate-platform-db.yml'), 'the platform_db migration lane has fallen out of the RED-SINCE domain');
     assert.equal(ids.includes('duty.workflow.ci.yml'), false);
     const without = redSinceDomain(real, dispatchable).map((r) => r.id);
     assert.equal(without.includes('duty.workflow.deploy-web.yml'), false, 'without the post-gate admission the web lane must be out — else this test proves nothing about it');
@@ -5458,7 +5499,12 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     // strand it exists to end, and it must be graded like the lanes it serves.
     assert.ok(dispatchable.has('redeploy-stranded.yml'), '.github/workflows/redeploy-stranded.yml no longer declares `workflow_dispatch`');
     const census = redSinceTriggerCensus(real, dispatchable, postGate);
-    assert.deepEqual(census.admitted.sort(), ['duty.workflow.deploy-web.yml', 'duty.workflow.deploy-workers.yml', 'duty.workflow.redeploy-stranded.yml']);
+    assert.deepEqual(census.admitted.sort(), [
+      'duty.workflow.deploy-web.yml',
+      'duty.workflow.deploy-workers.yml',
+      'duty.workflow.migrate-platform-db.yml',
+      'duty.workflow.redeploy-stranded.yml',
+    ]);
     assert.equal(census.admittedBy['duty.workflow.deploy-web.yml'], 'post-gate');
     assert.equal(census.admittedBy['duty.workflow.deploy-workers.yml'], 'post-gate');
     assert.equal(census.admittedBy['duty.workflow.redeploy-stranded.yml'], 'workflow_dispatch');
@@ -5592,8 +5638,10 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
       assert.equal(t.selfGated.has('deploy-web.yml'), false, 'deploy-web.yml runs the gate script again — it is a post-gate callee');
       assert.equal(t.selfGated.has('deploy-workers.yml'), false, 'deploy-workers.yml runs the gate script again — it is a post-gate callee');
       const ci = parseAllWorkflows(REPO_ROOT).find((wf) => String(wf.rel).split('/').pop() === 'ci.yml');
-      assert.deepEqual(postGateJobs(ci, t.gateName).sort(), ['deploy-web', 'deploy-workers'], 'the post-gate jobs of ci.yml have changed');
-      for (const j of ['deploy-web', 'deploy-workers']) {
+      // ⏱ 2026-10-01 · PB-03: platform-db-migrate is post-gate too, and both deploys need it.
+      assert.deepEqual(postGateJobs(ci, t.gateName).sort(), ['deploy-web', 'deploy-workers', 'platform-db-migrate'], 'the post-gate jobs of ci.yml have changed');
+      assert.equal(t.selfGated.has('migrate-platform-db.yml'), false, 'migrate-platform-db.yml runs the gate script again — it is a post-gate callee');
+      for (const j of ['deploy-web', 'deploy-workers', 'platform-db-migrate']) {
         const needs = ci.jobs.get(j)?.needs ?? [];
         assert.ok(needs.includes(t.gateName), `${j} no longer needs ${t.gateName}`);
       }
@@ -6269,7 +6317,8 @@ describe('the 2026-09-11 freeze, replayed — INV1..INV6 against the exact answe
       // 9 → 10 on 2026-09-23: duty.workflow.redeploy-stranded.yml is RED-SINCE graded.
       // 10 → 11 on 2026-09-24: so is duty.workflow.name-clearance.yml, a workflow on a clock.
       // 11 → 12 on 2026-09-29: so is duty.workflow.mutation-proofs.yml (A-2), a workflow on a clock.
-      assert.match(r.out, /every one of the 12 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
+      // 12 → 13 on 2026-10-01: so is duty.workflow.migrate-platform-db.yml (PB-03), a post-gate lane.
+      assert.match(r.out, /every one of the 13 RED-SINCE read\(s\) against the GitHub API was unreadable on this run \(first reason: the query threw: GitHub API returned 403/);
     }
   });
 
@@ -6437,18 +6486,21 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
       "Judge whether the analytics rail's silence is a FAULT",
       'Every name-clearance record is inside its 30-day ceiling',
       // ⏱ 2026-09-30 [rv2-security-004] — the daily OSV scan of main, steps rather than a job (the replay's request ceiling).
+      // ⏱ 2026-10-02 (#1095 review finding 5) — DUE on any scheduled run, not one droppable slot.
+      'Is the daily OSV scan of main due on this run',
       'Install OSV-Scanner (version and digest from tooling/versions.json)',
       'Known-vulnerable dependencies on main (canary, floor, then the tree)',
     ]);
-    assert.deepEqual(named.map((s) => s.runsGuard), [true, false, false, false, false, false, false]);
+    assert.deepEqual(named.map((s) => s.runsGuard), [true, false, false, false, false, false, false, false]);
     // ⏱ 2026-09-23 — this pinned `null`, the defect itself: with no condition the
     // heartbeat read was SKIPPED in every red register run (O-OPS-WATCH-HEARTBEAT-
     // READER-SKIPPED). It now runs whatever the register concluded.
     assert.match(named[1].cond, /!cancelled\(\)/, 'O-OPS-WATCH-HEARTBEAT-READER-SKIPPED: the heartbeat reader must carry !cancelled()');
     assert.match(named[2].cond, /!cancelled\(\)/);
     assert.match(named[4].cond, /!cancelled\(\)/, 'the name-clearance ceiling must be read after a red register too');
-    assert.match(named[5].cond, /!cancelled\(\)[\s\S]*github\.event\.schedule == '30 7 \* \* \*'[\s\S]*inputs\.dependency_advisories/, 'the OSV install runs after a red register, on its own daily slot or a named dispatch input (trap ci-55)');
-    assert.match(named[6].cond, /!cancelled\(\)[\s\S]*steps\.osv\.outcome == 'success'/, 'the OSV scan runs whenever its install succeeded');
+    assert.match(named[5].cond, /!cancelled\(\)[\s\S]*github\.event_name == 'schedule'/, 'the due check runs after a red register, on every SCHEDULED run and no dispatch (trap ci-55)');
+    assert.match(named[6].cond, /!cancelled\(\)[\s\S]*steps\.osvdue\.outputs\.due == 'true'[\s\S]*inputs\.dependency_advisories/, 'the OSV install runs after a red register when the scan is due, or on a named dispatch input (trap ci-55)');
+    assert.match(named[7].cond, /!cancelled\(\)[\s\S]*steps\.osv\.outcome == 'success'/, 'the OSV scan runs whenever its install succeeded');
     assert.equal(describeUnit({ workflow: 'w.yml', unit: RUN_UNIT }), 'the whole w.yml run');
   });
 
@@ -6651,6 +6703,37 @@ describe('post-gate call jobs of the gate workflow — read, graded, admitted (A
     const c = unitConclusion(q(['deploy-web']), run, RUN_3848_JOBS, CI());
     assert.equal(c.verdict, 'lost', c.detail);
     assert.equal(unitConclusion(q(['deploy-web']), { ...run, referenced_workflows: null }, RUN_3848_JOBS, CI()).verdict, 'lost', 'a non-array is not an array');
+  });
+
+  // ⏱ 2026-10-01 · PR #1115: a new post-gate call no main run had carried read 30 runs'
+  // job lists and timed the step out. Arm (a) now runs off the run record, before the fetch.
+  test('RC-a4 — a run that predates EVERY call of the unit is out of its history, unread; a new unit\'s history is EMPTY, not UNREAD', () => {
+    assert.equal(calleeOf(CI().jobs.get('deploy-web')), '.github/workflows/deploy-web.yml');
+    assert.equal(calleeOf(CI().jobs.get('guards')), null, 'a `uses:` inside a step names no callee');
+    const why = runPredatesUnitCalls(q(['deploy-web']), RUN_3848, CI());
+    assert.equal(why, 'its referenced_workflows name no "/.github/workflows/deploy-web.yml@": the run predates the call');
+    assert.ok(runPredatesUnitCalls(q(['deploy-web', 'deploy-workers']), RUN_3848, CI()), 'neither call referenced');
+    // Read as before whenever the run COULD hold the unit, or the record cannot say.
+    const both = { ...RUN_3848, referenced_workflows: [REF('extensions-ci.yml'), REF('deploy-web.yml')] };
+    assert.equal(runPredatesUnitCalls(q(['deploy-web']), both, CI()), null, 'the call is referenced');
+    assert.equal(runPredatesUnitCalls(q(['deploy-web', 'deploy-workers']), both, CI()), null, 'ONE referenced call puts the run in the unit\'s history');
+    assert.equal(runPredatesUnitCalls(q(['guards']), RUN_3848, CI()), null, 'a job that is not a call');
+    assert.equal(runPredatesUnitCalls(q(['deploy-web', 'guards']), RUN_3848, CI()), null, 'any job that is not a call');
+    const { referenced_workflows: _drop, ...bare } = RUN_3848;
+    assert.equal(runPredatesUnitCalls(q(['deploy-web']), bare, CI()), null, 'no referenced_workflows: read as before (RC-a3)');
+    assert.equal(runPredatesUnitCalls(q(['deploy-web']), { ...RUN_3848, referenced_workflows: null }, CI()), null);
+    assert.equal(runPredatesUnitCalls({ ...q([]), unit: 'run' }, RUN_3848, CI()), null, 'a whole-run unit');
+    // What the scan does with it: a window of nothing but predating runs leaves NO entry, and
+    // an empty history is the bootstrap state (green, "no FAILED run"). Red control: the same
+    // window kept as neutral entries reads UNREAD, which is live exit 2 and would red ci-gate.
+    const r = row('duty.workflow.deploy-web.yml', ['deploy-web']);
+    const window = [RUN_3848, { ...RUN_3848, id: 36106900355 }];
+    const kept = window.filter((run) => !runPredatesUnitCalls(q(['deploy-web']), run, CI()));
+    assert.deepEqual(kept, []);
+    const empty = classifyRedSince(r, decideUnitRedSince(q(['deploy-web']), [], false));
+    assert.equal(empty.verdict, 'green', empty.line);
+    const neutral = window.map((run) => ({ run, c: unitConclusion(q(['deploy-web']), run, RUN_3848_JOBS, CI()) }));
+    assert.equal(classifyRedSince(r, decideUnitRedSince(q(['deploy-web']), neutral, false)).verdict, 'unread');
   });
 
   test('RC-b — the post-gate if: cannot hold (a schedule run, or a push off main), zero entries: neutral', () => {

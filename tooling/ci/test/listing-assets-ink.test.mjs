@@ -92,6 +92,7 @@ import { encodeRgba, decodeRgba } from '../../store/png-codec.mjs';
 // assert-seams-wired.mjs, whose six fixture tests all passed a broken check.
 // `inkFixtureFrame` is what the metric self-tests itself with.
 import { inkFixtureFrame, removedInkRunMedian } from '../../store/frame-ink.mjs';
+import { captureProvenance, screensChangedSince, watchedPaths } from '../../store/capture-provenance.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..', '..');
@@ -328,6 +329,7 @@ const INK_GUARD_FILES = [
   'tooling/store/png-codec.mjs',
   'tooling/store/capture-suite-scan.mjs',
   'tooling/store/frame-ink.mjs',
+  'tooling/store/capture-provenance.mjs',
 ];
 
 /** A copy of the real guard with one file mutated. The mutation is asserted to
@@ -461,6 +463,33 @@ describe('assert-listing-assets.mjs — THE INK, judged per device class against
     const r = run(build((s) => twoShots(s)));
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /android-play\/phone: no calibration set — cal\/phone\/ does not exist/);
+  });
+
+  // ⏱ 2026-10-01 (O-STORE-SCREENSHOTS): a class is calibrated BEFORE its frames
+  // arrive. Until then a frameless class printed "its calibration was not needed"
+  // and never opened its directory, so the five classes declared ahead of the
+  // first iOS, macOS, Windows and Snap captures would have met a broken
+  // calibration set inside the capture job. I9b is the red control: on the guard
+  // before this change it exited 0.
+  test('I9b · a class with NO frames and NO calibration set is COVERAGE LOST, naming it', () => {
+    const r = run(build(() => {}));
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /android-play\/phone: no calibration set — cal\/phone\/ does not exist.*No frame of it was read/);
+  });
+
+  test('I9c · a class with NO frames and a good calibration set is green, and prints its floor', () => {
+    const r = run(build((s) => calibration(s)));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /NO INK FRAMES YET: class "android-play\/phone" is declared and calibrated — calibration cal\/phone\/ \(4 page\(s\)\): served median [\d.]+, glyphless median [\d.]+, separation [\d.]+x, floor [\d.]+/);
+  });
+
+  test('I9d · a class with NO frames whose calibration does not separate FAILS — before any capture needs it', () => {
+    const r = run(build((s) => {
+      calibration(s);
+      rule(s).minSeparation = 1000;
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /class "android-play\/phone": the calibration set does not separate — .*minSeparation needs >= 1000x\. No frame of it was read/);
   });
 
   test('I10 · RC4 shape — a set with frames and no class is COVERAGE LOST, not skipped', () => {
@@ -628,7 +657,15 @@ describe('the rule the real register declares, and the one floor already on main
     const inkRule = reg.storeMetadataContract.inkRule;
     assert.equal(inkRule.metric, 'local-contrast-ink-v1');
     assert.equal(inkRule.minSeparation, 3);
-    assert.deepEqual(Object.keys(inkRule.classes).sort(), ['android-play/phone', 'android-play/tablet']);
+    assert.deepEqual(Object.keys(inkRule.classes).filter((k) => k !== '_why').sort(), [
+      'android-play/phone',
+      'android-play/tablet',
+      'ios-appstore/ipad',
+      'ios-appstore/iphone',
+      'linux-snap/desktop',
+      'macos-appstore/desktop',
+      'windows-store/desktop',
+    ]);
     // R2: no per-channel `inkFloor`, no drift fraction, no pasted frame rows.
     assert.doesNotMatch(text, /"inkFloor"\s*:/);
     assert.doesNotMatch(text, /"minFractionOfMeasured"\s*:/);
@@ -638,4 +675,397 @@ describe('the rule the real register declares, and the one floor already on main
     assert.deepEqual(sets.phone.capture, { logicalWidth: 360, logicalHeight: 640, dpr: 3 });
     assert.deepEqual(sets.tablet.capture, { logicalWidth: 900, logicalHeight: 1600, dpr: 2 });
   });
+
+  test('I24 · every device-type set the real register declares has an ink class, so no capture meets COVERAGE LOST', () => {
+    // 🔴 store-screenshots.yml runs assert-listing-assets straight after each
+    // capture, and a frame in a set with no class exits 2 there. A set declared
+    // without its class is a capture job certain to fail on a correct set.
+    const contract = JSON.parse(readFileSync(join(REPO, 'tooling', 'channel-register.json'), 'utf8')).storeMetadataContract;
+    const missing = [];
+    let declared = 0;
+    for (const [channel, row] of Object.entries(contract.perChannel)) {
+      const sets = row?.graphicAssets?.screenshots?.deviceTypeCoverage?.sets ?? {};
+      for (const set of Object.keys(sets).filter((k) => k !== '_why')) {
+        declared++;
+        if (!contract.inkRule.classes[`${channel}/${set}`]) missing.push(`${channel}/${set}`);
+      }
+    }
+    assert.ok(declared >= 7, `only ${declared} device-type set(s) were found — the walk no longer reaches them`);
+    assert.deepEqual(missing, []);
+  });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── --for-submission (folded in here 2026-10-01) — `assert-listing-assets.mjs
+// --for-submission` must refuse a store set that shows screens this tree no
+// longer draws, and tooling/store/capture-provenance.mjs must record which
+// commit a capture photographed.
+//
+// ── THE DEFECT THIS GRADES (2026-10-01) ─────────────────────────────────────
+// Row O-STORE-SCREENSHOTS. The Play phone and
+// tablet sets, and the apps.gov.in set derived from them, were captured on
+// 2026-09-22. #1061 aa1fa424, 35da94b2 and b1f933ef then redrew the screens
+// they show, and every guard still passed them: CAPTURE.json recorded the
+// posture, the board and the pixels, and no commit.
+//
+// ── 🔴 REAL-TREE MUTATIONS FIRST, FIXTURES SECOND ──────────────────────────
+// Run against the actual repository at BASE 31b0e65d plus this change, each
+// restored before the next (`--for-submission --channel android-play`):
+//
+//   real tree as committed (no capturedSha)               -> 1, "records no capturedSha"
+//   both Play records stamped with c7ee03c0, their
+//     capture commit of 2026-09-22                        -> 1, STALE, 58 files changed
+//   both stamped with HEAD                                -> 0, "ok   SUBMISSION"
+//   both stamped with a sha not in the clone              -> 2, COVERAGE LOST
+//
+// The fixtures below are the same shapes in a throwaway git repository, so
+// the content comparison runs against real commits.
+// ─────────────────────────────────────────────────────────────────────────────
+// One block scope, so its fixture and helpers shadow the ink ones above
+// without renaming either; it lives in this file rather than its own because a
+// new test file writing a fixture catalogue is one more direct catalogue reader
+// for assert-bundle-availability.mjs to count.
+{
+  const HERE = dirname(fileURLToPath(import.meta.url));
+  const REPO = join(HERE, '..', '..', '..');
+  const GUARD = join(REPO, 'tooling', 'ci', 'assert-listing-assets.mjs');
+
+  const SOURCE = 'https://support.google.com/googleplay/android-developer/answer/9866151 (fetched 2026-08-04) — fixture';
+  const LISTING = 'apps/subscriptiontracker/store/android-play';
+  const SHOTS = `${LISTING}/screenshots`;
+  const HOME = 'apps/subscriptiontracker/lib/features/home/home_screen.dart';
+  const SETTINGS = 'apps/subscriptiontracker/lib/features/settings/settings_screen.dart';
+  const DESIGN = 'packages/design_system/lib/src/tokens/app_colors.dart';
+  const PROVENANCE = {
+    alsoWatched: ['apps/{app}/lib/features/shared', 'packages/design_system/lib'],
+    source: 'fixture — the real block is storeMetadataContract.screenProvenance',
+  };
+
+  const shot = () => encodeRgba(inkFixtureFrame({ width: 360, height: 640, glyphs: true }), { opaque: true });
+  const screen = (name, says = 'Subscriptions') =>
+    Buffer.from(`class ${name} extends ConsumerWidget {\n  Widget build(_, __) => const Text('${says}');\n}\n`);
+
+  /** A capture suite in the shape capture-suite-scan.mjs reads: one shutter
+   *  binding, then per frame a `find.byType` naming the screen and its capture. */
+  const suite = (frames) =>
+    Buffer.from(
+      [
+        "import 'store_capture_guard.dart';",
+        "import 'store_frame_shutter.dart';",
+        '',
+        'void main() {',
+        "  testWidgets('captures the set', (WidgetTester tester) async {",
+        '    final StoreShutter shutter = storeShutter(',
+        '      tester: tester,',
+        '      sink: BindingScreenshotSink(binding),',
+        '      kind: currentStoreShutterKind(),',
+        '    );',
+        ...frames.flatMap(([frame, scr]) => [
+          `    expect(find.byType(${scr}), findsWidgets);`,
+          '    await captureFrame(',
+          '      take: shutter,',
+          `      frame: '${frame}',`,
+          '      forbidden: forbidden,',
+          '    );',
+        ]),
+        '  });',
+        '}',
+      ].join('\n'),
+    );
+
+  const guardLib = Buffer.from(
+    [
+      'Future<void> captureFrame({',
+      '  required Future<void> Function(String frame) take,',
+      '  required String frame,',
+      '  required Set<String> forbidden,',
+      '}) async {',
+      "  if (forbidden.isEmpty) { fail('nothing to look for'); }",
+      '  final List<String> onScreen = forbidden',
+      '      .where((String n) => find.textContaining(n).evaluate().isNotEmpty)',
+      '      .toList();',
+      "  if (onScreen.isNotEmpty) { fail('the account is on screen'); }",
+      '  await take(frame);',
+      '}',
+    ].join('\n'),
+  );
+
+  const shutterLib = Buffer.from(
+    [
+      'StoreShutterKind storeShutterKindFor({',
+      '  required bool isWeb,',
+      '  required TargetPlatform platform,',
+      '}) {',
+      '  if (isWeb) {',
+      '    return StoreShutterKind.plugin;',
+      '  }',
+      '  return switch (platform) {',
+      '    TargetPlatform.android => StoreShutterKind.plugin,',
+      '    TargetPlatform.iOS => StoreShutterKind.plugin,',
+      '    TargetPlatform.linux => StoreShutterKind.layer,',
+      '    TargetPlatform.windows => StoreShutterKind.layer,',
+      '    TargetPlatform.macOS => StoreShutterKind.layer,',
+      '    TargetPlatform.fuchsia => throw ArgumentError.value(platform),',
+      '  };',
+      '}',
+    ].join('\n'),
+  );
+
+  function write(root, rel, buf) {
+    const p = join(root, rel);
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, buf);
+  }
+
+  const git = (root, ...args) => {
+    const r = spawnSync('git', ['-C', root, '-c', 'user.email=fixture@example.invalid', '-c', 'user.name=fixture', '-c', 'commit.gpgsign=false', ...args], {
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+    return r.stdout.trim();
+  };
+  const commitAll = (root, msg) => {
+    git(root, 'add', '-A');
+    git(root, 'commit', '-q', '--allow-empty', '-m', msg);
+    return git(root, 'rev-parse', 'HEAD');
+  };
+
+  /** A listing tree that passes every limb, committed; returns `{ root, sha }`
+   *  where `sha` is the commit the set "photographed". `record(sha)` builds the
+   *  CAPTURE.json body, and `after(root)` runs once it is committed. */
+  function fixture({ record = (sha) => ({ capturedSha: sha, capturedAt: '2026-10-01T00:00:00Z' }), after: then = () => {}, register = () => {} } = {}) {
+    const root = mkdtempSync(join(tmpdir(), 'nk-submit-'));
+    roots.push(root);
+    const reg = {
+      channels: [{ id: 'android-play', kind: 'store', served: false, ownerQueue: 'A-3', storeMetadataDir: 'apps/{app}/store/android-play' }],
+      storeMetadataContract: {
+        requiredFiles: ['README.md'],
+        screenProvenance: structuredClone(PROVENANCE),
+        perChannel: {
+          'android-play': {
+            additionalFiles: ['feature-graphic.png', 'store-icon-512.png'],
+            graphicAssets: {
+              assets: {
+                'feature-graphic.png': { width: 1024, height: 500, alpha: false, source: SOURCE },
+                'store-icon-512.png': { width: 512, height: 512, alpha: true, maxBytes: 1048576, source: SOURCE },
+              },
+              screenshots: {
+                dir: 'screenshots',
+                provenanceFile: 'CAPTURE.json',
+                alpha: false,
+                minCount: 2,
+                maxCount: 8,
+                minSide: 320,
+                maxSide: 3840,
+                maxAspectRatio: 2,
+                source: SOURCE,
+                deviceTypeCoverage: { sets: { phone: { dir: 'screenshots', capture: { logicalWidth: 180, logicalHeight: 320, dpr: 2 } } } },
+              },
+            },
+          },
+        },
+      },
+    };
+    register(reg);
+    write(root, 'catalog/apps.json', Buffer.from(JSON.stringify([{ slug: 'subscriptiontracker' }])));
+    write(root, 'tooling/channel-register.json', Buffer.from(JSON.stringify(reg)));
+    write(root, `${LISTING}/feature-graphic.png`, encodeRgba({ width: 1024, height: 500, rgba: Buffer.alloc(1024 * 500 * 4, 0x40) }, { opaque: true }));
+    write(root, `${LISTING}/store-icon-512.png`, encodeRgba({ width: 512, height: 512, rgba: Buffer.alloc(512 * 512 * 4, 0x80) }));
+    write(root, `${LISTING}/README.md`, Buffer.from('# listing\n'));
+    write(root, DESIGN, Buffer.from('class AppColors {\n  static const Color warn = Color(0xFFF59E0B);\n}\n'));
+    write(root, 'apps/subscriptiontracker/lib/app.dart', Buffer.from('Widget build() => MaterialApp.router(\n  debugShowCheckedModeBanner: false,\n);\n'));
+    write(root, 'apps/subscriptiontracker/integration_test/store_capture_guard.dart', guardLib);
+    write(root, 'apps/subscriptiontracker/integration_test/store_frame_shutter.dart', shutterLib);
+    write(root, 'apps/subscriptiontracker/integration_test/store_screenshots_test.dart', suite([['01-home', 'HomeScreen'], ['02-settings', 'SettingsScreen']]));
+    write(root, HOME, screen('HomeScreen'));
+    write(root, SETTINGS, screen('SettingsScreen'));
+    write(root, 'apps/subscriptiontracker/lib/features/shared/card.dart', Buffer.from('class Card {}\n'));
+    write(root, 'docs/unrelated.md', Buffer.from('# unrelated\n'));
+    write(root, `${SHOTS}/01-home.png`, shot());
+    write(root, `${SHOTS}/02-settings.png`, shot());
+    git(root, 'init', '-q');
+    const sha = commitAll(root, 'the photographed commit');
+    write(root, `${SHOTS}/CAPTURE.json`, Buffer.from(JSON.stringify({ capturedBy: 'tooling/store/capture-play-screenshots.mjs', ...record(sha), posture: 'live' })));
+    commitAll(root, 'the captured set');
+    then(root);
+    return { root, sha };
+  }
+
+  const RUN_TIMEOUT_MS = 120_000;
+  const BOUND = { timeout: RUN_TIMEOUT_MS, killSignal: 'SIGKILL' };
+  function run(root, ...flags) {
+    const r = spawnSync(process.execPath, [GUARD, root, ...flags], { encoding: 'utf8', ...BOUND });
+    const died = r.error || r.signal ? `\n[listing-assets-ink.test --for-submission] did not finish — status ${r.status} · signal ${r.signal}` : '';
+    return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}${died}` };
+  }
+
+  const roots = [];
+  after(() => {
+    for (const r of roots) rmSync(r, { recursive: true, force: true });
+  });
+
+  describe('assert-listing-assets.mjs --for-submission — the set shows the screens in this tree', () => {
+    test('S0 · GREEN CONTROL — a set captured at a commit whose screens have not changed passes, and says so', () => {
+      const { root, sha } = fixture();
+      const r = run(root, '--for-submission');
+      assert.equal(r.code, 0, r.out);
+      assert.match(r.out, new RegExp(`ok   SUBMISSION — ${SHOTS}/: 2 frame\\(s\\) captured at ${sha.slice(0, 12)}`));
+      // Without the flag the limb does not run: a redesign PR lands before its recapture.
+      assert.doesNotMatch(run(root).out, /SUBMISSION/);
+    });
+
+    test('S1 · RED CONTROL (the brief\'s) — a set older than a change to a screen it shows FAILS, naming the file', () => {
+      const { root } = fixture({
+        after: (r) => {
+          write(r, HOME, screen('HomeScreen', 'Every subscription, one clean board'));
+          commitAll(r, 'redraw the home screen');
+        },
+      });
+      const r = run(root, '--for-submission');
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /screenshots\/ is STALE — captured at [0-9a-f]{12} \(2026-10-01T00:00:00Z\), and 1 file\(s\) under the screens it shows changed since: apps\/subscriptiontracker\/lib\/features\/home\/home_screen\.dart/);
+    });
+
+    test('S2 · a change to the design system alone (b1f933ef\'s shape) makes the set STALE too', () => {
+      const { root } = fixture({
+        after: (r) => {
+          write(r, DESIGN, Buffer.from('class AppColors {\n  static const Color warn = Color(0xFFF59E0C);\n}\n'));
+          commitAll(r, 'design foundation');
+        },
+      });
+      const r = run(root, '--for-submission');
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /STALE — .*packages\/design_system\/lib\/src\/tokens\/app_colors\.dart/);
+    });
+
+    test('S3 · a later commit that touches no watched path leaves the set fresh — it is the screens, not the clock', () => {
+      const { root } = fixture({
+        after: (r) => {
+          write(r, 'docs/unrelated.md', Buffer.from('# unrelated, edited\n'));
+          commitAll(r, 'docs');
+        },
+      });
+      const r = run(root, '--for-submission');
+      assert.equal(r.code, 0, r.out);
+      assert.match(r.out, /ok   SUBMISSION/);
+    });
+
+    test('S4 · a CAPTURE.json with no capturedSha FAILS — every set captured before 2026-10-01', () => {
+      const { root } = fixture({ record: () => ({}) });
+      const r = run(root, '--for-submission');
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /CAPTURE\.json records no capturedSha/);
+    });
+
+    test('S5 · a capturedSha this clone does not hold is COVERAGE LOST, with the fetch that fixes it', () => {
+      const { root } = fixture({ record: () => ({ capturedSha: '0123456789abcdef0123456789abcdef01234567' }) });
+      const r = run(root, '--for-submission');
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /COVERAGE LOST — --for-submission: these sets could not be compared/);
+      assert.match(r.out, /git fetch origin 0123456789abcdef0123456789abcdef01234567/);
+    });
+
+    test('S6 · a set captured from a tree with uncommitted screen edits FAILS', () => {
+      const { root } = fixture({ record: (sha) => ({ capturedSha: sha, capturedTreeDirty: [HOME] }) });
+      const r = run(root, '--for-submission');
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /captured from a tree with uncommitted changes under the screens it shows/);
+    });
+
+    test('S7 · a frame no capture names FAILS — nobody can say which screen it shows', () => {
+      const { root } = fixture({
+        after: (r) => {
+          write(r, `${SHOTS}/03-mystery.png`, shot());
+          commitAll(r, 'a hand-made frame');
+        },
+      });
+      const r = run(root, '--for-submission');
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /holds 03-mystery\.png, which no `captureFrame` in the capture suite names/);
+    });
+
+    test('S8 · no screenProvenance block is COVERAGE LOST — the design system would go unwatched', () => {
+      const { root } = fixture({ register: (reg) => delete reg.storeMetadataContract.screenProvenance });
+      const r = run(root, '--for-submission');
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /declares no `storeMetadataContract\.screenProvenance`/);
+    });
+
+    test('S9 · --channel scopes the limb, and a scope that reaches no set is COVERAGE LOST', () => {
+      const { root } = fixture({
+        after: (r) => {
+          write(r, HOME, screen('HomeScreen', 'redrawn'));
+          commitAll(r, 'redraw');
+        },
+      });
+      // The stale Play set is out of scope, the unknown channel is a finding, and
+      // nothing was checked — which certifies nothing.
+      const r = run(root, '--for-submission', '--channel', 'linux-snap');
+      assert.equal(r.code, 2, r.out);
+      assert.match(r.out, /--channel linux-snap: no channel of that id declares graphic requirements/);
+      assert.match(r.out, /ZERO committed sets were checked/);
+      assert.doesNotMatch(r.out, /STALE/);
+      const scoped = run(root, '--for-submission', '--channel', 'android-play');
+      assert.equal(scoped.code, 1, scoped.out);
+      assert.match(scoped.out, /STALE/);
+    });
+  });
+
+  describe('capture-provenance.mjs — what a capture records, and what it watches', () => {
+    test('P1 · in CI the commit is GITHUB_SHA, and no dirty-tree scan is made', () => {
+      const { root } = fixture();
+      const p = captureProvenance({ root, watched: ['apps'], env: { GITHUB_SHA: 'f'.repeat(40) }, now: new Date('2026-10-01T12:34:56.789Z') });
+      assert.deepEqual(p, { capturedSha: 'f'.repeat(40), capturedAt: '2026-10-01T12:34:56Z' });
+    });
+
+    test('P2 · off CI it is HEAD, and an uncommitted edit under a watched path is recorded', () => {
+      const { root } = fixture();
+      const head = git(root, 'rev-parse', 'HEAD');
+      assert.equal(captureProvenance({ root, watched: [HOME], env: {} }).capturedTreeDirty, undefined);
+      write(root, HOME, screen('HomeScreen', 'uncommitted'));
+      const p = captureProvenance({ root, watched: [HOME], env: {} });
+      assert.equal(p.capturedSha, head);
+      assert.deepEqual(p.capturedTreeDirty, [HOME]);
+    });
+
+    test('P3 · the watched paths are each frame\'s screen directory plus alsoWatched', () => {
+      const { root } = fixture();
+      const w = watchedPaths({ root, app: 'subscriptiontracker', frameNames: ['01-home', '02-settings', '09-nope'], rule: PROVENANCE });
+      assert.deepEqual(w.paths, [
+        'apps/subscriptiontracker/lib/features/home',
+        'apps/subscriptiontracker/lib/features/settings',
+        'apps/subscriptiontracker/lib/features/shared',
+        'packages/design_system/lib',
+      ]);
+      assert.deepEqual(w.unresolved, ['09-nope']);
+      assert.equal(w.suitePresent, true);
+    });
+
+    test('P4 · content, not ancestry — a set captured on a branch stays fresh after its squash lands', () => {
+      // The squash-merge shape: the screen change and the capture happen on a
+      // branch; main receives ONE new commit with the same content, which is not
+      // a descendant of the photographed commit.
+      const { root } = fixture();
+      const base = git(root, 'rev-parse', 'HEAD');
+      git(root, 'checkout', '-q', '-b', 'feature');
+      write(root, HOME, screen('HomeScreen', 'redrawn on the branch'));
+      const photographed = commitAll(root, 'redraw + capture on the branch');
+      git(root, 'checkout', '-q', '-');
+      git(root, 'merge', '-q', '--squash', 'feature');
+      const squash = commitAll(root, 'squash');
+      assert.notEqual(git(root, 'merge-base', photographed, squash), photographed, 'the squash must not descend from the photographed commit');
+      const paths = ['apps/subscriptiontracker/lib/features/home'];
+      assert.deepEqual(screensChangedSince({ root, sha: photographed, paths }), { verdict: 'fresh' });
+      assert.equal(screensChangedSince({ root, sha: base, paths }).verdict, 'stale');
+    });
+
+    test('P5 · the real capture writes the provenance into every CAPTURE.json it records', () => {
+      // A static read, because the capture needs Flutter and CI secrets: the
+      // writer spreads captureProvenance() into the record beside `posture`.
+      const src = readFileSync(join(REPO, 'tooling', 'store', 'capture-play-screenshots.mjs'), 'utf8');
+      const writer = src.slice(src.indexOf("join(m.dir, 'CAPTURE.json')") - 600, src.indexOf("posture: 'live'"));
+      assert.match(writer, /const provenance = captureProvenance\(\{ root: ROOT, watched \}\);/);
+      assert.match(src, /capturedBy: 'tooling\/store\/capture-play-screenshots\.mjs',\n\s+\.\.\.provenance,\n\s+posture: 'live',/);
+    });
+  });
+}

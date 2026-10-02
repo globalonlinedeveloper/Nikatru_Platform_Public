@@ -1032,6 +1032,17 @@ Future<void> sizeSurface(WidgetTester tester, Size size) async {
   });
 }
 
+/// A phone's width at a height that lays out ALL of settings, Log out
+/// included — a `ListView` builds only what fits, and the contrast cases'
+/// `covers: ['Settings', 'Log out']` fails the moment the bottom is culled.
+/// ⏱ 2026-10-01 · ST-SETTINGS (SE-09) on T13: 3000 -> 3400. The one Reminders
+/// card, its own Preferences card and T13's Import/Back up/Restore rows put
+/// Log out below 3000 (CI run 36902673128).
+/// ⏱ 2026-10-01 · merged over club apply-st (#1130, which took its two sweeps
+/// to 3600 for the Categories row, quiet hours, the test reminder and Your
+/// data's rows): -> 3600, all four sweeps, measured by the covers check.
+const Size _kSettingsSweep = Size(375, 3600);
+
 /// [tester.ensureSemantics] with the release in a `finally` — see the header.
 Future<void> semantically(
   WidgetTester tester,
@@ -2675,11 +2686,7 @@ void main() {
         // licences tile, no Log out — so a sweep pumped at phone height would
         // range over the top third and pass whatever the other two do. The
         // width is still a phone's; only the height is opened up.
-        await pumpScreen(
-          tester,
-          const SettingsScreen(),
-          size: const Size(375, 3000),
-        );
+        await pumpScreen(tester, const SettingsScreen(), size: _kSettingsSweep);
 
         // 🔴 MERGED-INTO-PARENT NODES ARE EXCLUDED, AND THAT IS NOT A WEAKENING
         // — IT IS THE DOUBLE COUNT REMOVED. `RadioListTile` and
@@ -3914,7 +3921,7 @@ void main() {
         await pumpScreen(
           tester,
           const SettingsScreen(),
-          size: const Size(375, 3000),
+          size: _kSettingsSweep,
           theme: appTheme(),
         );
         // 24 subjects — by some way the largest domain in the app, and the one
@@ -5039,10 +5046,7 @@ void main() {
         await pumpScreen(
           tester,
           const SettingsScreen(),
-          // ⏱ 2026-10-01 · club apply-st: 3000 -> 3600 — Settings carries the
-          // Categories row, quiet hours, the test reminder and Your data's
-          // Import, Back up and Restore together; Log out is the last row.
-          size: const Size(375, 3600),
+          size: _kSettingsSweep,
           theme: appTheme(),
           paintBackground: true,
         );
@@ -5414,10 +5418,7 @@ void main() {
         await pumpScreen(
           tester,
           const SettingsScreen(),
-          // ⏱ 2026-10-01 · club apply-st: 3000 -> 3600 — Settings carries the
-          // Categories row, quiet hours, the test reminder and Your data's
-          // Import, Back up and Restore together; Log out is the last row.
-          size: const Size(375, 3600),
+          size: _kSettingsSweep,
           theme: appTheme(brightness: Brightness.dark),
           paintBackground: true,
         );

@@ -12,17 +12,22 @@
 //
 // In order, and nothing changes before step 3:
 //   1. --unit is resolved against tooling/channel-register.json: a web unit
-//      (`<app>-web`) or a service unit (a `serviceEnvironments` row). Anything
+//      (`<app>-web`), a service unit (a `serviceEnvironments` row) or, since
+//      2026-10-01 (PB-07, row O-APEX-SITE-HAS-NO-ROLLBACK), a site unit (a
+//      `siteEnvironments` row naming its Direct Upload `pagesProject`). Anything
 //      else is refused, and a DATABASE is refused by name — D1 schema is never
 //      rolled back (register row revert.d1.schema, owner-run).
 //   2. ledger Deployment --deployment is read from GitHub. It must be on that
 //      unit's environment, carry a `success` status, and name the id of what it
 //      published. A record written before the id existed names none: "nothing
 //      to re-promote", exit 1.
+//   2b. the unit's FLOORS (tooling/ops/rollback-floors.json) are checked: the recorded
+//      commit must be each floor or a descendant of it (THE FLOOR, below).
 //   3. it is re-promoted:
 //        web     → POST {CLOUDFLARE_API}/accounts/<account>/pages/projects/<app>/
 //                  deployments/<id>/rollback. The pinned wrangler has no Pages
 //                  rollback command, so this is the API call.
+//        site    → the same call, on the row's `pagesProject`.
 //        service → `wrangler rollback <version-id> --message … --yes`, from the
 //                  wrangler island, in the service's directory, whose config
 //                  names the Worker exactly as the deploy's does.
@@ -30,6 +35,10 @@
 //   4. the RESOLVED unit, the recorded SHA, the id, the URL and the smoke the
 //      deploy runs go to $GITHUB_OUTPUT, for rollback.yml's smoke and record
 //      steps. The record step names `unit` from here, never the raw input.
+//      ⏱ 2026-10-01 · PB-08 (row O-EDGE-SHIELD-ROLLBACK-SMOKE-MISFIT): the smoke is
+//      a SCRIPT and its ARGUMENTS, the unit's register row's `rollbackSmoke` when it
+//      names one, else its kind's (SMOKE below). rollback.yml runs it back through
+//      `rollback.mjs --run-smoke`, which runs only a script SMOKE_SCRIPTS names.
 //
 // 🔴 THE LEDGER GETS THE RE-PROMOTED SHA, NOT main's HEAD. rollback.yml records
 // the outcome with `--rollback-of <id> --ref <that sha>`. plan-deploy.mjs reads
@@ -46,6 +55,7 @@
 //
 // Usage:
 //   node tooling/ops/rollback.mjs --unit <ledger environment> --deployment <ledger Deployment id> [--dry-run]
+//   node tooling/ops/rollback.mjs --run-smoke     env: SMOKE_SCRIPT, SMOKE_ARGS (this script's outputs)
 //   env: GH_TOKEN (or GITHUB_TOKEN), GITHUB_REPOSITORY, GITHUB_API_URL (the real origin or
 //        loopback, as record-deployment.mjs's githubApiBase allows); for a real run
 //        CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID; GITHUB_RUN_ID, when set, is
@@ -68,18 +78,68 @@ export const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
 const CALL_TIMEOUT_MS = 60_000;
 const WRANGLER_TIMEOUT_MS = 5 * 60_000;
 
+/** The scripts a smoke may run: each kind's deploy smoke, and each per-unit one a
+ *  register row names. `--run-smoke` refuses any other, so an edited output or row
+ *  cannot turn the smoke step into a way to run something else. */
+export const SMOKE_SCRIPTS = Object.freeze([
+  'tooling/ops/post-deploy-smoke.mjs',
+  'tooling/sites/smoke-site-deploy.mjs',
+  'tooling/ops/check-edge-shield.mjs',
+]);
+
 /** The smoke each kind of unit's DEPLOY runs, so a re-promotion is judged the
- *  way a promotion is. `expectFrom` names where the expected value comes from:
- *  the record's SHA, or a key of its payload. */
+ *  way a promotion is: a script and its arguments, where `{url}` is the record's
+ *  environment URL, `{sha}` its commit, and `{run_number}` its payload's run. A
+ *  register row's `rollbackSmoke` (same shape) replaces its kind's (PB-08). */
 export const SMOKE = Object.freeze({
   // deploy-web.yml: `<site_url>/version.json --field build_number --expect ${{ github.run_number }}`.
   // A build's number is the run number that built it, and the record's payload
   // names that run as `run_number`.
-  web: Object.freeze({ path: '/version.json', field: 'build_number', expectFrom: 'run_number', requireOk: false }),
+  web: Object.freeze({
+    script: 'tooling/ops/post-deploy-smoke.mjs',
+    args: Object.freeze(['--url', '{url}/version.json', '--field', 'build_number', '--expect', '{run_number}']),
+  }),
   // deploy-workers.yml: `/v1/health --field build --expect ${{ github.sha }} --require-ok`.
   // A Worker version keeps the vars it was deployed with, RELEASE among them.
-  service: Object.freeze({ path: '/v1/health', field: 'build', expectFrom: 'sha', requireOk: true }),
+  service: Object.freeze({
+    script: 'tooling/ops/post-deploy-smoke.mjs',
+    args: Object.freeze(['--url', '{url}/v1/health', '--field', 'build', '--expect', '{sha}', '--require-ok']),
+  }),
+  // deploy-web.yml's `site` job: `smoke-site-deploy.mjs --origin https://nikatru.com --expect-sha ${{ github.sha }}`.
+  // version.json is stamped into the uploaded copy, so a re-promoted deployment serves its own SHA.
+  site: Object.freeze({
+    script: 'tooling/sites/smoke-site-deploy.mjs',
+    args: Object.freeze(['--origin', '{url}', '--expect-sha', '{sha}']),
+  }),
 });
+
+/** PURE. A smoke `{ script, args }` (a kind's, or a row's `rollbackSmoke`) as the
+ *  exact argv to run, its placeholders filled from the plan. A Refusal for a script
+ *  SMOKE_SCRIPTS does not name, an argument that is not a string, a placeholder this
+ *  does not know, or a value it cannot join on. */
+export function smokeArgv(smoke, { url, sha, runNumber }, ledgerId) {
+  if (!smoke || !SMOKE_SCRIPTS.includes(smoke.script)) {
+    throw new Refusal(`the unit's smoke script ${JSON.stringify(smoke?.script ?? null)} is not one of ${SMOKE_SCRIPTS.join(', ')}`);
+  }
+  if (!Array.isArray(smoke.args) || !smoke.args.every((a) => typeof a === 'string')) {
+    throw new Refusal(`the unit's smoke arguments for ${smoke.script} are not a list of strings`);
+  }
+  const values = { url, sha, run_number: runNumber === null || runNumber === undefined ? null : String(runNumber) };
+  const args = smoke.args.map((a) =>
+    a.replace(/\{([a-z_]+)\}/g, (_, name) => {
+      if (!Object.hasOwn(values, name)) throw new Refusal(`the unit's smoke names a placeholder {${name}} this does not fill`);
+      const v = values[name];
+      const ok = name === 'url' ? /^https:\/\/[^\s]+$/.test(v ?? '') : /^[0-9A-Za-z]+$/.test(v ?? '');
+      if (!ok) {
+        throw new Refusal(
+          `ledger Deployment ${ledgerId} names no ${name}, so the smoke could not tell the re-promoted build from any other.`,
+        );
+      }
+      return v;
+    }),
+  );
+  return { script: smoke.script, args };
+}
 
 /** A refusal: said in words, exit 1, nothing changed. */
 export class Refusal extends Error {}
@@ -126,8 +186,20 @@ export function resolveUnit(register, unit, dbNames = new Set()) {
     );
   }
   const { kind } = resolved.channel;
-  if (kind === 'web') return { kind, unit, project: resolved.app, idKey: 'pages_deployment_id', idFlag: '--pages-deployment-id' };
-  if (kind === 'service') return { kind, unit, dir: resolved.channel.source, idKey: 'worker_version_id', idFlag: '--worker-version-id' };
+  // PB-08: the unit's own smoke, when its row names one, in place of its kind's.
+  const smoke = resolved.channel.rollbackSmoke ?? SMOKE[kind] ?? null;
+  if (kind === 'web') return { kind, unit, project: resolved.app, idKey: 'pages_deployment_id', idFlag: '--pages-deployment-id', smoke };
+  if (kind === 'service') return { kind, unit, dir: resolved.channel.source, idKey: 'worker_version_id', idFlag: '--worker-version-id', smoke };
+  if (kind === 'site') {
+    const project = resolved.channel.pagesProject;
+    if (typeof project !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(project)) {
+      throw new Refusal(
+        `"${unit}" is a site, and its ${REGISTER_REL} row names no \`pagesProject\`: there is no Direct Upload project to ` +
+          'put a deployment back on.',
+      );
+    }
+    return { kind, unit, project, idKey: 'pages_deployment_id', idFlag: '--pages-deployment-id', smoke };
+  }
   throw new Refusal(
     `"${unit}" is the ${resolved.channel.id} channel (kind: ${kind}), which is not re-promoted here: the store or the ` +
       'download host holds that build, and its own console is where a release is halted.',
@@ -149,7 +221,7 @@ export function payloadOf(deployment) {
 }
 
 /** PURE. What to put back, from the ledger Deployment and its statuses, or a
- *  Refusal. `{ sha, id, environmentUrl, smoke: {url, field, expect, requireOk} }`. */
+ *  Refusal. `{ sha, id, environmentUrl, smoke: { script, args } }`. */
 export function planRollback(target, deployment, statuses, ledgerId) {
   if (deployment?.environment !== target.unit) {
     throw new Refusal(
@@ -190,20 +262,45 @@ export function planRollback(target, deployment, statuses, ledgerId) {
   if (!/^https:\/\/[^\s]+$/.test(environmentUrl)) {
     throw new Refusal(`ledger Deployment ${ledgerId} names no https environment URL, so no smoke could ask it anything`);
   }
-  const smoke = SMOKE[target.kind];
-  const expect = smoke.expectFrom === 'sha' ? sha : payload[smoke.expectFrom];
-  if (expect === null || expect === undefined || !/^[0-9A-Za-z]+$/.test(String(expect))) {
-    throw new Refusal(
-      `ledger Deployment ${ledgerId} names no ${smoke.expectFrom}, so the smoke could not tell the re-promoted ` +
-        'build from any other.',
-    );
+  const smoke = smokeArgv(target.smoke ?? SMOKE[target.kind], { url: environmentUrl, sha, runNumber: payload.run_number }, ledgerId);
+  return { sha, id: id.toLowerCase(), environmentUrl, smoke };
+}
+
+// ── THE FLOOR ────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-02 · #1104 post-merge review, finding 1 (lane fix-1104-followups). A unit can carry
+// a FLOOR in tooling/ops/rollback-floors.json: the first build that writes data the builds before
+// it misread. Re-promoting a commit that is not the floor or a descendant of it is refused, BEFORE
+// anything changes. Ancestry is asked of GitHub's compare API (`compare/<floor>...<sha>`: ahead or
+// identical passes; behind or diverged is under the floor), because rollback.yml checks out one
+// commit and local git could not answer. An answer this cannot read is a refusal too: a floor it
+// cannot prove is met is not met.
+export const FLOORS_REL = 'tooling/ops/rollback-floors.json';
+
+/** PURE. The floors declared for `unit`, validated; a malformed file is a Refusal, never "no floor". */
+export function floorsFor(doc, unit) {
+  if (!Array.isArray(doc?.floors)) throw new Refusal(`${FLOORS_REL} has no "floors" array, so no floor could be checked`);
+  const mine = doc.floors.filter((f) => f?.unit === unit);
+  for (const f of mine) {
+    if (!/^[0-9a-f]{40}$/.test(String(f.sha ?? '')) || typeof f.why !== 'string' || f.why.length < 20) {
+      throw new Refusal(`${FLOORS_REL}: the floor for "${unit}" needs a full commit "sha" and a "why" (20+ characters)`);
+    }
   }
-  return {
-    sha,
-    id: id.toLowerCase(),
-    environmentUrl,
-    smoke: { url: `${environmentUrl}${smoke.path}`, field: smoke.field, expect: String(expect), requireOk: smoke.requireOk },
-  };
+  return mine;
+}
+
+/** PURE. A compare status for `<floor>...<sha>` → null when the floor is met, else the Refusal message. */
+export function floorVerdict(floor, sha, compareStatus) {
+  if (compareStatus === 'ahead' || compareStatus === 'identical') return null;
+  const what =
+    compareStatus === 'behind'
+      ? `is OLDER than the floor ${floor.sha.slice(0, 8)}`
+      : compareStatus === 'diverged'
+      ? `is not a descendant of the floor ${floor.sha.slice(0, 8)} (the histories diverged)`
+      : `could not be placed against the floor ${floor.sha.slice(0, 8)} (compare answered ${JSON.stringify(compareStatus)})`;
+  return (
+    `${sha.slice(0, 8)} ${what} that ${FLOORS_REL} sets for "${floor.unit}" since ${floor.since} (${floor.row}): ${floor.why} ` +
+    'Re-promote a Deployment at or after the floor, or revert the change on main instead.'
+  );
 }
 
 /** PURE. The Worker rollback's message: wrangler caps it at 120 characters. */
@@ -214,7 +311,7 @@ export const rollbackMessage = (ledgerId, sha, runId) =>
  *  The Pages call is written as the curl it is equivalent to; the account and
  *  the token stay variable names, never values. */
 export function commandFor(target, plan, message) {
-  if (target.kind === 'web') {
+  if (target.kind === 'web' || target.kind === 'site') {
     return (
       `curl -fsS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" ` +
       `"${CLOUDFLARE_API}/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/${target.project}/deployments/${plan.id}/rollback"`
@@ -294,8 +391,43 @@ function workerRollback(target, plan, message) {
   }
 }
 
+/** PURE. The smoke rollback.yml hands back (`SMOKE_SCRIPT`, `SMOKE_ARGS` — this
+ *  script's own outputs) as `{ script, args }`, or a Refusal: only a script
+ *  SMOKE_SCRIPTS names, with a JSON list of strings, is ever run. */
+export function smokeFromEnv(env) {
+  const script = env.SMOKE_SCRIPT;
+  if (!SMOKE_SCRIPTS.includes(script)) {
+    throw new Refusal(`SMOKE_SCRIPT ${JSON.stringify(script ?? null)} is not one of ${SMOKE_SCRIPTS.join(', ')}; nothing was run`);
+  }
+  let args;
+  try {
+    args = JSON.parse(env.SMOKE_ARGS ?? '');
+  } catch {
+    args = null;
+  }
+  if (!Array.isArray(args) || !args.every((a) => typeof a === 'string')) {
+    throw new Refusal('SMOKE_ARGS is not a JSON list of strings; nothing was run');
+  }
+  return { script, args };
+}
+
+/** `--run-smoke`: run the unit's smoke and exit with ITS code (0, 1, or 2 for could-not-look). */
+function runSmoke() {
+  let smoke;
+  try {
+    smoke = smokeFromEnv(process.env);
+  } catch (e) {
+    return fail(e.message);
+  }
+  console.log(`smoke · node ${smoke.script} ${smoke.args.join(' ')}`);
+  const r = spawnSync(process.execPath, [join(ROOT, smoke.script), ...smoke.args], { cwd: ROOT, stdio: 'inherit', env: process.env });
+  if (r.error) return fail(`the smoke did not run: ${r.error.message}`);
+  process.exitCode = r.status ?? 1;
+}
+
 async function main() {
   const argv = process.argv.slice(2);
+  if (argv.length === 1 && argv[0] === '--run-smoke') return runSmoke();
   let unit;
   let ledgerId;
   try {
@@ -336,6 +468,24 @@ async function main() {
     return fail(e instanceof Refusal ? e.message : `could not read ledger Deployment ${ledgerId}: ${e.message}`);
   }
 
+  // The floor, before anything changes — a dry run included, so a rehearsal says what a real run would.
+  try {
+    const floors = floorsFor(JSON.parse(readFileSync(join(ROOT, FLOORS_REL), 'utf8')), unit);
+    for (const floor of floors) {
+      let status;
+      try {
+        status = (await api(`compare/${floor.sha}...${plan.sha}`, token, repo, null, ctx))?.status;
+      } catch (e) {
+        status = `unreadable: ${e.message}`;
+      }
+      const refusal = floorVerdict(floor, plan.sha, status);
+      if (refusal) throw new Refusal(refusal);
+      console.log(`  floor: ${plan.sha.slice(0, 8)} is at or after ${floor.sha.slice(0, 8)} (${floor.row}) — compare says ${status}`);
+    }
+  } catch (e) {
+    return fail(e instanceof Refusal ? e.message : `could not read ${FLOORS_REL}: ${e.message}`);
+  }
+
   const message = rollbackMessage(ledgerId, plan.sha, process.env.GITHUB_RUN_ID);
   console.log(
     `${dryRun ? 'DRY RUN · ' : ''}re-promote ${unit} to ledger Deployment ${ledgerId} ` +
@@ -349,10 +499,8 @@ async function main() {
     id_flag: target.idFlag,
     id: plan.id,
     environment_url: plan.environmentUrl,
-    smoke_url: plan.smoke.url,
-    smoke_field: plan.smoke.field,
-    smoke_expect: plan.smoke.expect,
-    smoke_require_ok: String(plan.smoke.requireOk),
+    smoke_script: plan.smoke.script,
+    smoke_args: JSON.stringify(plan.smoke.args),
   };
   if (dryRun) {
     writeOutputs({ dry_run: 'true', ...outputs });
@@ -361,7 +509,7 @@ async function main() {
   }
 
   try {
-    if (target.kind === 'web') await pagesRollback(target, plan);
+    if (target.kind === 'web' || target.kind === 'site') await pagesRollback(target, plan);
     else workerRollback(target, plan, message);
   } catch (e) {
     return fail(e.message);

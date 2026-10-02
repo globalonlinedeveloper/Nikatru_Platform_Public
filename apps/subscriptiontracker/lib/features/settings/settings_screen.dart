@@ -63,11 +63,15 @@ import '../../state/settings_controller.dart';
 import '../auth/turnstile_gate.dart';
 import '../shared/chassis_adapters.dart';
 import '../shared/widgets.dart';
+import '../account/account_rows.dart';
 import 'categories_manager.dart' show CategoriesSettingsRow;
 import 'reminder_settings.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
+
+  /// The ONE Reminders section's card (SE-09).
+  static const Key remindersSection = Key('settingsRemindersSection');
 
   /// The three product preferences, as `[key, l10nLabel, l10nDescription]`
   /// resolved at build time — a `const` list cannot hold `l10n` lookups, so the
@@ -145,6 +149,43 @@ class SettingsScreen extends ConsumerWidget {
           _toggleKeys.toString(),
       'the rendered toggles must be exactly the declared pref keys — home reads '
       "prefs['unused'] and a silently dropped row severs that coupling",
+    );
+
+    // One preference row, hairline under it unless [last]. 🔴 GATED ON THE
+    // CAPABILITY MATRIX: reminder_settings.dart has the rest.
+    Widget toggleRow(List<String> t, {required bool last}) => Container(
+      // The hairline BETWEEN rows follows the card: in dark `outlineVariant`
+      // #47464F is **1.32:1** on it (a seam) where #ECECF2 is **10.48:1** (a
+      // grid). It is the theme's own divider (`buildAppTheme` → `_themeFrom`
+      // `divider: scheme.outlineVariant`), not a second answer.
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: last
+                ? Colors.transparent
+                : (isLight ? AppColors.line : scheme.outlineVariant),
+          ),
+        ),
+      ),
+      child: _isReminderPref(t[0]) && !remindersDeliverable
+          ? ListTile(
+              key: Key('settings.pref.${t[0]}.unavailable'),
+              leading: const Icon(Icons.notifications_off_outlined),
+              title: Text(t[1]),
+              subtitle: Text(
+                AppConfig.isBackendLive
+                    ? l10n.remindersElsewhere
+                    : l10n.remindersUnavailable,
+              ),
+              enabled: false,
+            )
+          : _prefRow(
+              context,
+              t[1],
+              reminderPrefSubtitle(context, settings, t[0], t[2]),
+              settings.prefs[t[0]] ?? false,
+              () => toggleReminderPref(context, ref, t[0]),
+            ),
     );
 
     // 🔴 A `Scaffold`, BUT TRANSPARENT AND WITHOUT AN `AppBar`, and both halves
@@ -529,75 +570,37 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: AppSpacing.md),
             const CategoriesSettingsRow(),
 
-            // ── PREFERENCES (live-only) ──────────────────────────────────────
-            _sectionLabel(context, l10n.preferences),
+            // ── REMINDERS — ONE SECTION (SE-09) ─────────────────────────────
+            // ⏱ 2026-10-01 · ST-SETTINGS: was two cards, two "Remind me" rows.
+            // `unused` (an in-app flag, not a reminder) is in Preferences below.
+            _sectionLabel(context, l10n.remindersSection),
             const ReminderSyncBanner(),
             Container(
+              key: SettingsScreen.remindersSection,
               decoration: cardDecoration(context),
               clipBehavior: Clip.antiAlias,
               child: Column(
                 children: <Widget>[
-                  for (int i = 0; i < toggles.length; i++)
-                    Container(
-                      // The hairline BETWEEN rows follows the card: in dark
-                      // `outlineVariant` #47464F is **1.32:1** on it (a seam)
-                      // where #ECECF2 is **10.48:1** (a grid). It is the
-                      // theme's own divider (`buildAppTheme` → `_themeFrom`
-                      // `divider: scheme.outlineVariant`), not a second answer.
-                      decoration: BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(
-                            color: i == toggles.length - 1
-                                ? Colors.transparent
-                                : (isLight
-                                      ? AppColors.line
-                                      : scheme.outlineVariant),
-                          ),
-                        ),
-                      ),
-                      // 🔴 GATED ON THE CAPABILITY MATRIX: where nothing can
-                      // be scheduled the row keeps its name and says what IS
-                      // there instead (reminder_settings.dart has the rest).
-                      child:
-                          _isReminderPref(toggles[i][0]) &&
-                              !remindersDeliverable
-                          ? ListTile(
-                              key: Key(
-                                'settings.pref.${toggles[i][0]}.unavailable',
-                              ),
-                              leading: const Icon(
-                                Icons.notifications_off_outlined,
-                              ),
-                              title: Text(toggles[i][1]),
-                              subtitle: Text(
-                                AppConfig.isBackendLive
-                                    ? l10n.remindersElsewhere
-                                    : l10n.remindersUnavailable,
-                              ),
-                              enabled: false,
-                            )
-                          : _prefRow(
-                              context,
-                              toggles[i][1],
-                              reminderPrefSubtitle(
-                                context,
-                                settings,
-                                toggles[i][0],
-                                toggles[i][2],
-                              ),
-                              settings.prefs[toggles[i][0]] ?? false,
-                              () => toggleReminderPref(
-                                context,
-                                ref,
-                                toggles[i][0],
-                              ),
-                            ),
-                    ),
+                  toggleRow(toggles[0], last: false),
                   const ReminderRuleRows(),
+                  toggleRow(toggles[2], last: false),
+                  const ReminderChannelsCard(embedded: true),
                 ],
               ),
             ),
-            const ReminderChannelsCard(),
+
+            // ── PREFERENCES (live-only) ──────────────────────────────────────
+            _sectionLabel(context, l10n.preferences),
+            Container(
+              decoration: cardDecoration(context),
+              clipBehavior: Clip.antiAlias,
+              child: Material(
+                color: Colors.transparent,
+                child: Column(
+                  children: <Widget>[toggleRow(toggles[1], last: true)],
+                ),
+              ),
+            ),
 
             // ST-U1 (C22/D4): the chassis DAILY "streak" reminder left this app.
             // ── PRIVACY — THE DPDP §6(3) WITHDRAWAL PATH (live-only) ─────────
@@ -800,6 +803,9 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
 
+            // SE-03 "Your devices" and SE-02 below: account_rows.dart.
+            const YourDevicesSection(),
+
             // ── ACCOUNT & DATA (live-only rows) ──────────────────────────────
             _sectionLabel(context, l10n.settingsAccountSection),
             // IM-01/IM-03: Export, Import, Back up and Restore are the chassis
@@ -809,6 +815,11 @@ class SettingsScreen extends ConsumerWidget {
               decoration: cardDecoration(context),
               row: _LinkRow.new,
               leading: <Widget>[
+                ...AccountSecurityRows.of(
+                  context,
+                  ref.watch(authRepositoryProvider).currentUser,
+                  _LinkRow.new,
+                ),
                 // Not yet wired — see the OPEN QUESTION in MANIFEST.md. Kept
                 // because deleting it is a product decision, not a merge one.
                 _LinkRow(icon: '⇄', label: l10n.connectedAccounts, last: false),
@@ -952,9 +963,10 @@ class SettingsScreen extends ConsumerWidget {
             // and it taps `find.text('Log out')`, which is why the label is
             // `l10n.logOut` ("Log out") and not the chassis `l10n.signOut`
             // ("Sign out").
+            // ⏱ 2026-10-01 · SE-05 (design D13): NEUTRAL INK — Log out loses
+            // nothing, and painting it like Delete said the two weigh the same.
             SoftButton(
               label: l10n.logOut,
-              color: AppColors.danger,
               onPressed: () => _signOut(context, ref, l10n),
             ),
 
@@ -971,10 +983,14 @@ class SettingsScreen extends ConsumerWidget {
             if (ref.watch(authRepositoryProvider).currentUser !=
                 null) ...<Widget>[
               const SizedBox(height: 10),
-              SoftButton(
-                label: l10n.logOutAllDevices,
-                color: AppColors.danger,
-                onPressed: () => _confirmLogOutAllDevices(context, ref, l10n),
+              // Asks first, then says it is working (account_rows.dart).
+              LogOutEverywhereButton(
+                onConfirmed: () => _signOut(
+                  context,
+                  ref,
+                  l10n,
+                  scope: core.SignOutScope.global,
+                ),
               ),
             ],
 
@@ -1095,40 +1111,6 @@ class SettingsScreen extends ConsumerWidget {
         ),
       );
     }
-  }
-
-  /// 🔴 ONE TAP MUST NOT LOG THE ACCOUNT OUT EVERYWHERE, the device in the
-  /// user's hand included — so "Log out of all devices" asks first
-  /// (AUTH-LOGOUT-ALL, parent ruling L2, 2026-09-24). The global [_signOut]
-  /// runs exactly once on "Log out everywhere" and never on Cancel, a barrier
-  /// tap or a back gesture (all three answer `false` or `null`).
-  /// `test/sign_out_forgets_user_test.dart` taps both buttons.
-  Future<void> _confirmLogOutAllDevices(
-    BuildContext context,
-    WidgetRef ref,
-    AppLocalizations l10n,
-  ) async {
-    final bool confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder: (BuildContext c) => AlertDialog(
-            title: Text(l10n.logOutAllDevicesConfirmTitle),
-            content: Text(l10n.logOutAllDevicesConfirmBody),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                child: Text(l10n.cancel),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(c, true),
-                child: Text(l10n.logOutAllDevicesConfirmAction),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    if (!confirmed || !context.mounted) return;
-    await _signOut(context, ref, l10n, scope: core.SignOutScope.global);
   }
 
   Widget _helpCard(
@@ -1639,6 +1621,8 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
               controller: widget.password,
               obscureText: true,
               enabled: !_busy,
+              // SE-05 (D15): a password manager can fill the re-authentication.
+              autofillHints: const <String>[AutofillHints.password],
               // The button below is disabled until this is non-empty, so the
               // destructive action cannot be reached by a stray tap.
               onChanged: (_) => setState(() {}),

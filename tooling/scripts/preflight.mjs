@@ -752,9 +752,10 @@ export const LEG_COMMANDS = {
     { cwd: 'extensions', subject: 'scripts/test/selftest.node.js', args: ['--single-threaded', 'scripts/test/selftest.node.js'] },
     { cwd: 'extensions', subject: 'scripts/test/amo-gate-zip.test.mjs', args: ['--import', '../tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', 'scripts/test/amo-gate-zip.test.mjs'] },
   ],
-  // prepare's one step, then app-dryrun's five, per app.
+  // prepare's one step, then app-dryrun's contract suite and its five dry runs, per app.
   [DRYRUN_LEG]: [
     { cwd: '.', subject: 'tooling/ci/assert-release-lane-generic.mjs', args: ['tooling/ci/assert-release-lane-generic.mjs', '--emit-apps'], emitsApps: true },
+    { cwd: '.', subject: 'tooling/release/test', args: ['--import', './tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', 'tooling/release/test/*.test.mjs'] },
     { cwd: '.', subject: 'tooling/release/submit-windows-store.mjs', args: ['tooling/release/submit-windows-store.mjs', '--dry-run', '--app', '{app}', '--allow-missing-artifact'] },
     { cwd: '.', subject: 'tooling/release/submit-appstore.mjs', args: ['tooling/release/submit-appstore.mjs', '--dry-run', '--channel', 'ios-appstore', '--app', '{app}', '--allow-missing-artifact'] },
     { cwd: '.', subject: 'tooling/release/submit-appstore.mjs', args: ['tooling/release/submit-appstore.mjs', '--dry-run', '--channel', 'macos-appstore', '--app', '{app}', '--allow-missing-artifact'] },

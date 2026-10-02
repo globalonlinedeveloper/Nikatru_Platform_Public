@@ -18,6 +18,7 @@ import 'package:subscriptiontracker/features/settings/reminder_settings.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
+import 'support/user_state_fakes.dart' show RecordingSublyNotifications;
 import 'support/width_harness.dart' show MemStore;
 
 class _SignedIn extends core.AuthRepository {
@@ -99,6 +100,7 @@ class _Launcher implements core.ExternalLinkLauncher {
 Future<({_Transport t, _Launcher l})> _pump(
   WidgetTester tester, {
   bool available = true,
+  bool withRuleRows = false,
 }) async {
   final _Transport t = _Transport();
   final _Launcher l = _Launcher();
@@ -109,6 +111,10 @@ Future<({_Transport t, _Launcher l})> _pump(
       reminderChannelsAvailableProvider.overrideWithValue(available),
       reminderChannelsTransportProvider.overrideWithValue(t),
       calendarLinkLauncherProvider.overrideWithValue(l),
+      if (withRuleRows)
+        renewalRemindersProvider.overrideWithValue(
+          RecordingSublyNotifications(),
+        ),
     ],
   );
   addTearDown(c.dispose);
@@ -121,7 +127,17 @@ Future<({_Transport t, _Launcher l})> _pump(
           ChassisLocalizations.delegate,
         ],
         supportedLocales: AppLocalizations.supportedLocales,
-        home: const Scaffold(body: ReminderChannelsCard()),
+        home: Scaffold(
+          body: withRuleRows
+              // SE-09: the ONE "Remind me" row lives in ReminderRuleRows.
+              ? const Column(
+                  children: <Widget>[
+                    ReminderRuleRows(),
+                    ReminderChannelsCard(),
+                  ],
+                )
+              : const ReminderChannelsCard(),
+        ),
       ),
     ),
   );
@@ -141,13 +157,18 @@ void main() {
   testWidgets('🔴 the email toggle PUTs the prefs, with the session token', (
     WidgetTester tester,
   ) async {
-    final w = await _pump(tester);
+    final w = await _pump(tester, withRuleRows: true);
     expect(w.t.calls, <String>['read:subscriptiontracker:tok']);
     await tester.tap(find.byKey(const Key('settings.reminder.email')));
     await tester.pumpAndSettle();
-    expect(w.t.calls.last, 'put:subscriptiontracker:tok:true:null');
-    // The lead row appears once email is on, and choosing 7 PUTs it.
-    await tester.tap(find.byKey(const Key('settings.reminder.email.lead')));
+    // ⏱ 2026-10-01 · SE-09: switching e-mail ON sends the ACCOUNT's lead (the
+    // one "Remind me" row's, 2 by default) — was `null`, which kept the
+    // server's own and let the two channels disagree.
+    expect(w.t.calls.last, 'put:subscriptiontracker:tok:true:2');
+    // There is no second "Remind me" row on the card any more...
+    expect(find.byKey(const Key('settings.reminder.email.lead')), findsNothing);
+    // ...and choosing 7 on THE row PUTs it to the platform too.
+    await tester.tap(find.byKey(const Key('settings.reminder.lead')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('settings.reminder.lead.7')));
     await tester.pumpAndSettle();

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
@@ -5,6 +7,8 @@ import 'package:nikatru_design_system/nikatru_design_system.dart';
 // brick file to exactly ONE chassis path, so the report dialog the settings
 // adapter opens is re-exported here rather than imported beside this file.
 export 'report_content_dialog.dart';
+// SE-03: the devices list, re-exported for the same one-import reason.
+export 'devices_section.dart';
 
 /// [pipeline C-13] The display-name editor. No confirmation step and no reauth,
 /// deliberately: renaming yourself is reversible in one tap, and guarding a
@@ -14,7 +18,7 @@ export 'report_content_dialog.dart';
 /// 🏗️ MOVED OUT OF THE BRICK BY [ADR 067] decision 2 and made PUBLIC in the
 /// move. It was `_EditProfileDialog`, and a private class cannot be constructed
 /// by the adapter that still owns the controller and the save call.
-class EditProfileDialog extends StatelessWidget {
+class EditProfileDialog extends StatefulWidget {
   const EditProfileDialog({
     required this.name,
     required this.onSave,
@@ -28,31 +32,86 @@ class EditProfileDialog extends StatelessWidget {
   /// zero-argument closure `onSave: () => _saveProfile(`, whose only way to see
   /// the typed name is a controller the caller holds.
   final TextEditingController name;
-  final VoidCallback onSave;
+
+  /// ⏱ 2026-10-01 · train ST-SETTINGS (SE-05): AWAITED. The dialog holds Save
+  /// disabled until the future completes, so a second tap while the first
+  /// write is in flight cannot send a second `updateProfile`. A callback that
+  /// returns nothing (a test's synchronous one) is simply complete at once.
+  final FutureOr<void> Function() onSave;
+
+  @override
+  State<EditProfileDialog> createState() => _EditProfileDialogState();
+}
+
+/// 🔴 CALM BY CONSTRUCTION (SE-05). Two refusals, both decided here so no app
+/// can wire past them: an EMPTY name is not a name (a blank save erased the
+/// display name and the tile then read "not set"), and a save already in
+/// flight is not started again — the guard is in [_save] itself, not only on
+/// the button, because two taps inside one frame both reach the old closure.
+class _EditProfileDialogState extends State<EditProfileDialog> {
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.name.addListener(_changed);
+  }
+
+  @override
+  void dispose() {
+    widget.name.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _canSave => !_saving && widget.name.text.trim().isNotEmpty;
+
+  Future<void> _save() async {
+    if (!_canSave) return;
+    setState(() => _saving = true);
+    try {
+      await widget.onSave();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
-    return AlertDialog(
-      title: Text(l10n.editProfile),
-      content: TextField(
-        controller: name,
-        autofocus: true,
-        textCapitalization: TextCapitalization.words,
-        decoration: InputDecoration(labelText: l10n.displayName),
-        onSubmitted: (_) => onSave(),
+    return PopScope(
+      canPop: !_saving,
+      child: AlertDialog(
+        title: Text(l10n.editProfile),
+        content: TextField(
+          controller: widget.name,
+          autofocus: true,
+          enabled: !_saving,
+          textCapitalization: TextCapitalization.words,
+          autofillHints: const <String>[AutofillHints.name],
+          decoration: InputDecoration(labelText: l10n.displayName),
+          onSubmitted: (_) => _save(),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: _saving ? null : () => Navigator.pop(context),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            key: EditProfileDialog.saveButton,
+            onPressed: _canSave ? _save : null,
+            child: _saving
+                ? const SizedBox.square(
+                    dimension: AppSpacing.lg,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(l10n.save),
+          ),
+        ],
       ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(l10n.cancel),
-        ),
-        FilledButton(
-          key: saveButton,
-          onPressed: onSave,
-          child: Text(l10n.save),
-        ),
-      ],
     );
   }
 }

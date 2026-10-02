@@ -29,7 +29,8 @@
 //   C2 status     its status (draft and retired cannot take traffic)
 //   C3 secrets    its secret NAMES are declared (assert-ports.mjs's reader: the
 //                 manifest, else interface Env); when tooling/ops/worker-secrets.mjs
-//                 exists its `check` is run as well. Values are never read here.
+//                 exists its `check --port <p> --adapter <a>` is run as well (one
+//                 line per secret: name, presence, length, sha8). Values never print.
 //   C4 identity   its identity paths resolve in tooling/house-identity.json
 //   C5 conformance  its conformance file CALLS the port's runner, and no case is
 //                 pending for it
@@ -275,7 +276,7 @@ export function run(opts) {
   else if (target.status === 'fake' && env === 'live') add(1, 'target', 'FAIL', `\`${target.id}\` is a fake; a fake is never selectable in live`);
   else if (!(target.environments ?? []).length) add(1, 'target', 'FAIL', `\`${target.id}\` is ${target.status} (status: ${target.status}) and lists no environment: no environment may select it`);
   else if (!(target.environments ?? []).includes(env)) add(1, 'target', 'FAIL', `\`${target.id}\` does not list the ${env} environment (${(target.environments ?? []).join(', ')})`);
-  else add(1, 'target', 'PASS', `\`${target.id}\` (vendor ${target.vendor ?? 'none — a fake'}) is a row of ${rel} for ${env}${model ? `; every feature priced at model \`${model}\`` : ''}`);
+  else add(1, 'target', 'PASS', `\`${target.id}\` (${target.vendor ? `vendor ${target.vendor}` : typeof target.channel === 'string' ? `channel ${target.channel} — the store is that ${CHANNEL_REGISTER} row's` : 'vendor none — a fake'}) is a row of ${rel} for ${env}${model ? `; every feature priced at model \`${model}\`` : ''}`);
   if (!target) return finish(checks);
 
   // C2
@@ -292,7 +293,7 @@ export function run(opts) {
       const missing = names.filter((n) => !sec.names.has(n) && !(sec.source === 'env' && sec.declaredElsewhere.has(n)));
       let tool = null;
       if (existsSync(join(root, WORKER_SECRETS_TOOL))) {
-        const r = spawnSync(process.execPath, [WORKER_SECRETS_TOOL, 'check'], { cwd: root, encoding: 'utf8', timeout: 120_000 });
+        const r = spawnSync(process.execPath, [WORKER_SECRETS_TOOL, 'check', '--port', doc.port, '--adapter', target.id, '--root', root], { cwd: root, encoding: 'utf8', timeout: 120_000 });
         tool = r.status;
       }
       if (missing.length) add(3, 'secrets', 'FAIL', `not declared: ${missing.join(', ')}`);

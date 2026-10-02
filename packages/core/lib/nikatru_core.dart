@@ -42,6 +42,7 @@ export 'src/entitlement_cache.dart';
 export 'src/entitlement_transport.dart';
 export 'src/reminder_channels_transport.dart';
 export 'src/result.dart';
+export 'src/sessions_transport.dart';
 export 'src/config/app_config.dart';
 export 'src/config/config_loader.dart';
 export 'src/config/default_configs.dart';

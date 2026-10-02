@@ -46,3 +46,7 @@ captured from different builds is two listings wearing one version number.
 
 `NN-<slug>.png`, ordered — e.g. `01-subscription-list.png`. Upload order is part
 of the listing, so the number is the listing's, not the filesystem's.
+
+## ⏱ 2026-10-02 — not captured, and why
+
+Dispatched twice from branch `fix/store-screenshots-all-channels` (row O-STORE-SCREENSHOTS); the iPad set is captured in the same job as the iPhone set (runs 36952989780 and 36955814987); see ../screenshots/README.md. On the second run every drive that got past sign-in signed in, skipped the after-sign-in setup, reached Home, and stopped in `addThroughSheet` (integration_test/store_screenshots_test.dart): "The add sheet did not open". Since #1130 the add FAB opens the catalogue pick step ("Search services | POPULAR | Netflix …") and the name field the suite types into is behind it, so the suite cannot seed the rows its frames show. The fix is in the suite (choose the custom entry from the pick step before typing), not in this directory. No frame is made by hand in its place.

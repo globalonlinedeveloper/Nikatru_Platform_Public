@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'auth_models.dart';
 import 'auth_repository.dart';
 
@@ -276,27 +278,50 @@ Future<void> confirmIdentityWithProvider({
     return;
   }
   // Subscribed BEFORE the sheet opens, so a fast provider cannot land between.
-  final Future<AuthUser?> fresh = auth
-      .authStateChanges()
-      .firstWhere(
-        (AuthUser? u) =>
-            u != null &&
-            u.id == user.id &&
-            u.lastSignInAt != null &&
-            (last == null || u.lastSignInAt!.isAfter(last)),
-      )
-      .timeout(timeout);
-  // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. The sheet the account can pass:
-  // a Google-only account has no Apple identity to sign in with.
-  if (reauthProviderOf(user) == 'google') {
-    await auth.signInWithGoogle();
-  } else {
-    await auth.signInWithApple();
-  }
+  //
+  // ⏱ 2026-10-01 · review of #1129, finding 3. The clock starts only once the
+  // sheet has returned, and the subscription always ends here: this was
+  // `firstWhere(...).timeout(...)` armed BEFORE the sheet, so a sheet that
+  // THREW (dismissed, no network) left the timer running and the stream
+  // listened to, and `timeout` later raised a TimeoutException nobody awaited.
+  final Completer<void> confirmed = Completer<void>();
+  final StreamSubscription<AuthUser?> watch = auth.authStateChanges().listen(
+    (AuthUser? u) {
+      if (!confirmed.isCompleted &&
+          u != null &&
+          u.id == user.id &&
+          u.lastSignInAt != null &&
+          (last == null || u.lastSignInAt!.isAfter(last))) {
+        confirmed.complete();
+      }
+    },
+    onError: (Object e) {
+      if (!confirmed.isCompleted) confirmed.completeError(e);
+    },
+    onDone: () {
+      if (!confirmed.isCompleted) {
+        confirmed.completeError(StateError('the auth stream closed'));
+      }
+    },
+  );
   try {
-    await fresh;
-  } on Object {
-    // A timeout, a closed stream, a stream error: none of them is a confirmation.
-    throw AuthFailure('The provider sign-in did not complete.');
+    // ⏱ 2026-09-25 · O-GOOGLE-SIGN-IN-NOT-BUILT. The sheet the account can
+    // pass: a Google-only account has no Apple identity to sign in with.
+    if (reauthProviderOf(user) == 'google') {
+      await auth.signInWithGoogle();
+    } else {
+      await auth.signInWithApple();
+    }
+    try {
+      await confirmed.future.timeout(timeout);
+    } on Object {
+      // A timeout, a closed stream, a stream error: none is a confirmation.
+      throw AuthFailure('The provider sign-in did not complete.');
+    }
+  } finally {
+    // NOT awaited: cancelling an `async*` stream (an app wrapper around this
+    // one) waits for its generator to reach the next yield, which may never
+    // come — `firstWhere` never waited either.
+    unawaited(watch.cancel());
   }
 }

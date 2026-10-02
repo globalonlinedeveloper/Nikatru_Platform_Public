@@ -225,9 +225,14 @@ jobs:
       # carried as the one declared gap in test/single-threaded-relaunch.test.mjs
       # because the file belonged to another wave on 2026-09-11; that entry goes
       # in the same commit, because a ratchet that outlives its gap is a lie.
+      # why: --for-submission (2026-10-01, O-STORE-SCREENSHOTS)
+      # proves the set just captured records the commit it photographed (capturedSha,
+      # GITHUB_SHA here) and that its screens are this checkout's. Scoped by --channel to
+      # the set this job captured, so another channel's older set cannot fail it. The
+      # same flag, unscoped or scoped, is the check run before any upload.
       - name: The captured set satisfies the listing-asset guard
         id: listing
-        run: node --single-threaded tooling/ci/assert-listing-assets.mjs
+        run: node --single-threaded tooling/ci/assert-listing-assets.mjs --for-submission --channel android-play
 
       # why: A CAPTURE IS FINISHED WHEN EVERY SET DERIVED FROM IT IS
       # (O-CAPTURE-LEAVES-DERIVED-SETS-STALE). The apps.gov.in set is derived from
@@ -574,7 +579,7 @@ jobs:
 
       - name: The captured set satisfies the listing-asset guard
         id: listing
-        run: node --single-threaded tooling/ci/assert-listing-assets.mjs
+        run: node --single-threaded tooling/ci/assert-listing-assets.mjs --for-submission --channel linux-snap
 
       - name: The captured set satisfies the device-coverage guard
         run: node --single-threaded tooling/ci/assert-play-device-coverage.mjs
@@ -890,7 +895,7 @@ jobs:
 
       - name: The captured set satisfies the listing-asset guard
         id: listing
-        run: node --single-threaded tooling/ci/assert-listing-assets.mjs
+        run: node --single-threaded tooling/ci/assert-listing-assets.mjs --for-submission --channel "$STORE_CHANNEL"
 
       - name: The captured set satisfies the device-coverage guard
         run: node --single-threaded tooling/ci/assert-play-device-coverage.mjs
@@ -1149,6 +1154,10 @@ jobs:
       # found: the runner image ships the size classes Xcode ships, and Apple's
       # required classes move with the hardware, so THIS is the step that will
       # go red the year the register's device names age out.
+      # why: the list is fed through `printf '%s'`, never `<<<`. A here-string
+      # appends a newline, so the LAST name was booted as "iPad Pro 13-inch
+      # (M5)\n" and simctl answered "Invalid device" for a simulator its own
+      # listing printed two lines up (run 36952989780, 2026-10-02).
       - name: Boot the simulators the register names
         env:
           DEVICES: ${{ steps.reg.outputs.devices }}
@@ -1163,7 +1172,7 @@ jobs:
               echo "::error title=No such simulator::The register names \"$d\" and this runner image has no available simulator by that name. Apple's required screenshot size classes move with the hardware line-up, so either the device name in tooling/channel-register.json has aged out, or this runner image ships a different Xcode. Fix the register (with the size the new class requires, and its source), not this workflow."
               rc=1
             fi
-          done <<< "$DEVICES"
+          done < <(printf '%s' "$DEVICES")
           [ "$rc" -eq 0 ] || exit 1
           xcrun simctl list devices booted
 
@@ -1197,7 +1206,7 @@ jobs:
 
       - name: The captured sets satisfy the listing-asset guard
         id: listing
-        run: node --single-threaded tooling/ci/assert-listing-assets.mjs
+        run: node --single-threaded tooling/ci/assert-listing-assets.mjs --for-submission --channel ios-appstore
 
       # why: this is the guard that fails if only ONE set was captured. The
       # register declares minDistinctTypes 2 for this channel, so a run that

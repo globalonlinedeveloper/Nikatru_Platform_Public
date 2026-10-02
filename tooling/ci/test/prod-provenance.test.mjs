@@ -48,6 +48,9 @@ const REGISTER = 'tooling/prod-provenance.json';
 const MIGRATIONS = 'services/platform/migrations';
 const OPS_WATCH = '.github/workflows/ops-watch.yml';
 const DEPLOY_WORKERS = '.github/workflows/deploy-workers.yml';
+// ⏱ 2026-10-01 · PB-03: platform_db migrates in its own callee, which ci.yml's deploy-workers call needs.
+const CI = '.github/workflows/ci.yml';
+const MIGRATE = '.github/workflows/migrate-platform-db.yml';
 const CHANNELS = 'tooling/channel-register.json';
 
 /** A real-tree copy carrying exactly what the gate reads. */
@@ -59,6 +62,8 @@ function realTree() {
   cpSync(join(REPO, OPS_WATCH), join(root, OPS_WATCH));
   // ⏱ 2026-09-25 · limb 9 reads the applier and the environment it records into.
   cpSync(join(REPO, DEPLOY_WORKERS), join(root, DEPLOY_WORKERS));
+  cpSync(join(REPO, CI), join(root, CI));
+  cpSync(join(REPO, MIGRATE), join(root, MIGRATE));
   cpSync(join(REPO, CHANNELS), join(root, CHANNELS));
   cpSync(join(REPO, 'tooling', 'ops', 'check-prod-provenance.mjs'), join(root, 'tooling', 'ops', 'check-prod-provenance.mjs'));
   mkdirSync(join(root, MIGRATIONS), { recursive: true });
@@ -454,7 +459,7 @@ describe('assert-prod-provenance — the gate limb', () => {
     withTree(
       (root) => {
         edit(root, DEPLOY_WORKERS, PLATFORM_RECORD, '');
-        edit(root, DEPLOY_WORKERS, '      - name: Apply PLATFORM_DB migrations (before deploy)\n', `${PLATFORM_RECORD}      - name: Apply PLATFORM_DB migrations (before deploy)\n`);
+        edit(root, DEPLOY_WORKERS, "      - name: Write this version's secrets file\n", `${PLATFORM_RECORD}      - name: Write this version's secrets file\n`);
       },
       (r) => {
         assert.equal(r.status, 1, r.stdout + r.stderr);
@@ -465,10 +470,10 @@ describe('assert-prod-provenance — the gate limb', () => {
 
   test('limb 9: a platform migration step that may be skipped or may fail past is RED', () => {
     withTree(
-      (root) => edit(root, DEPLOY_WORKERS, '          command: d1 migrations apply PLATFORM_DB --remote\n', '          command: d1 migrations apply PLATFORM_DB --remote\n        continue-on-error: true\n'),
+      (root) => edit(root, MIGRATE, '          command: d1 migrations apply PLATFORM_DB --remote\n', '          command: d1 migrations apply PLATFORM_DB --remote\n        continue-on-error: true\n'),
       (r) => {
         assert.equal(r.status, 1, r.stdout + r.stderr);
-        assert.match(r.stderr, /`continue-on-error: true` at line \d+ lets the deploy and its record run past a failed migration/);
+        assert.match(r.stderr, /migrate-platform-db\.yml job `migrate` .*`continue-on-error: true` at line \d+ lets the deploy run past a failed migration/);
       },
     );
     // ⏱ 2026-09-25 [PD2B-3] REPLACES the migration step's `if:` with one the deploy does not carry.
@@ -476,13 +481,34 @@ describe('assert-prod-provenance — the gate limb', () => {
       (root) =>
         edit(
           root,
-          DEPLOY_WORKERS,
-          "      - name: Apply PLATFORM_DB migrations (before deploy)\n        if: steps.plan.outputs.deploy == 'true'\n",
-          "      - name: Apply PLATFORM_DB migrations (before deploy)\n        if: github.event_name == 'push'\n",
+          MIGRATE,
+          "      - name: Apply PLATFORM_DB migrations (before every deploy that reads it)\n        if: steps.plan.outputs.deploy == 'true'\n",
+          "      - name: Apply PLATFORM_DB migrations (before every deploy that reads it)\n        if: github.event_name == 'push'\n",
         ),
       (r) => {
         assert.equal(r.status, 1, r.stdout + r.stderr);
-        assert.match(r.stderr, /the migration step \(line \d+\) carries `if: github\.event_name == 'push'` and the `id: deploy` step \(line \d+\) carries `if: steps\.plan\.outputs\.deploy == 'true'`/);
+        assert.match(r.stderr, /the migration step \(line \d+\) carries `if: github\.event_name == 'push'`, not exactly `if: steps\.plan\.outputs\.deploy == 'true'`/);
+      },
+    );
+  });
+
+  // ⏱ 2026-10-01 · PB-03: the migration moved into a callee ci.yml's deploy-workers call needs.
+  test('limb 9: the PLATFORM_DB migration on another unit\'s plan than the platform deploy is RED', () => {
+    withTree(
+      (root) => edit(root, MIGRATE, 'run: node tooling/ci/plan-deploy.mjs platform\n', 'run: node tooling/ci/plan-deploy.mjs edge-shield\n'),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /applies platform_db's migrations on the plan of `edge-shield`, not of services\/platform's environment `platform`/);
+      },
+    );
+  });
+
+  test('limb 9: the deploy-workers call no longer NEEDING the migrate call leaves platform_db with no applier — RED', () => {
+    withTree(
+      (root) => edit(root, CI, '    needs: [ci-gate, platform-db-migrate]\n', '    needs: [ci-gate]\n'),
+      (r) => {
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /platform_db: \.github\/workflows\/deploy-workers\.yml has 0 job\(s\) that run `d1 migrations apply … --remote` in services\/platform/);
       },
     );
   });
@@ -492,13 +518,15 @@ describe('assert-prod-provenance — the gate limb', () => {
       (root) => {
         const s = readFileSync(join(root, DEPLOY_WORKERS), 'utf8');
         const deployIf = "        if: steps.plan.outputs.deploy == 'true'\n        id: deploy\n";
-        const at = s.indexOf(deployIf, s.indexOf('      - name: Apply PLATFORM_DB migrations (before deploy)\n'));
-        assert.ok(at !== -1, 'the platform job no longer carries the deploy `if:` this case deletes');
+        // ⏱ 2026-10-01 · PB-03: the migration is in migrate-platform-db.yml; the deploy is the platform job's.
+        const job = s.indexOf('\n  platform:\n');
+        const at = s.indexOf(deployIf, job);
+        assert.ok(job !== -1 && at !== -1 && at < s.indexOf('\n  edge-shield:\n'), 'the platform job no longer carries the deploy `if:` this case deletes');
         writeFileSync(join(root, DEPLOY_WORKERS), s.slice(0, at) + '        id: deploy\n' + s.slice(at + deployIf.length));
       },
       (r) => {
         assert.equal(r.status, 1, r.stdout + r.stderr);
-        assert.match(r.stderr, /the migration step \(line \d+\) carries `if: steps\.plan\.outputs\.deploy == 'true'` and the `id: deploy` step \(line \d+\) carries no `if:`/);
+        assert.match(r.stderr, /job `platform` deploys on the plan of `platform` under no `if:`, and .*migrate-platform-db\.yml job `migrate` .* migrates on `platform` under `if: steps\.plan\.outputs\.deploy == 'true'`/);
       },
     );
   });

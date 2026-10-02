@@ -27,12 +27,20 @@
 // probe, or a probe left outside a route that moved, is COVERAGE LOST (exit 2)
 // before a single request is sent.
 //
+// ⏱ 2026-10-01 · ROW O-EDGE-SHIELD-SMOKE-NOT-JOINED-TO-SHA (PB-26). `1` proved A
+// shield is in path, not THIS commit's: a deploy that bound the routes to an older
+// version passed. The Worker now echoes the RELEASE it was deployed with
+// (services/edge-shield/src/index.ts shieldMark), and `--expect-release <sha>` — the
+// deploy smoke's, and rollback.yml's for the version it put back — requires the
+// header to BE that SHA. Without the flag (ops-watch), `1` or any commit SHA is in path.
+//
 // EXIT CODES (AGENTS.md): 0 every probe answered with the header · 1 a probe
-// answered WITHOUT it — "shield not in path" · 2 COULD NOT LOOK: the routes
+// answered WITHOUT it — "shield not in path" — or, with --expect-release, with
+// another release's · 2 COULD NOT LOOK: the routes
 // could not be read, the probes do not cover them, or a probe never answered
 // after the bounded retry. No credential is needed or read.
 //
-// Usage:  node tooling/ops/check-edge-shield.mjs [--settle] [--root <repoRoot>]
+// Usage:  node tooling/ops/check-edge-shield.mjs [--settle] [--expect-release <sha>] [--root <repoRoot>]
 // Run by .github/workflows/ops-watch.yml (its own edge-shield job, weekly on the Monday slot), and with --settle
 // as the post-deploy smoke of deploy-workers.yml's edge-shield job, where an
 // answer without the header is asked again for about two minutes (a route bound
@@ -106,11 +114,28 @@ export function coverage(routes, probes = PROBES) {
   return { unprobed, stray };
 }
 
-/** PURE. The verdict on one answer. */
-export function judge(probe, res) {
+/** A RELEASE the shield echoes: the full commit SHA it was deployed at. */
+export const RELEASE_SHA = /^[0-9a-f]{40}$/;
+
+/** PURE. Is this header value a shield's mark — `1`, or the SHA it was deployed at? */
+export const isShieldMark = (mark) => mark === '1' || (typeof mark === 'string' && RELEASE_SHA.test(mark));
+
+/** PURE. The verdict on one answer. `expectRelease` (a SHA, or null) requires the
+ *  header to name THAT release: a shield in path at another commit is RED. */
+export function judge(probe, res, expectRelease = null) {
   const mark = res.headers.get(SHIELD_HEADER);
   const where = `${probe.method} ${probe.url} → HTTP ${res.status}`;
-  if (mark === '1') return { ok: true, line: `ok   ${probe.what}: ${where}, ${SHIELD_HEADER}: 1` };
+  if (expectRelease !== null && isShieldMark(mark)) {
+    if (mark === expectRelease) return { ok: true, line: `ok   ${probe.what}: ${where}, ${SHIELD_HEADER}: ${mark} (this release)` };
+    return {
+      ok: false,
+      line:
+        `FAIL ${probe.what}: ${where} with ${SHIELD_HEADER}: ${JSON.stringify(mark)}, not ${expectRelease} — A SHIELD IS IN ` +
+        'PATH, BUT NOT THIS RELEASE. The zone routes reach a version deployed at another commit (or one deployed with no ' +
+        'RELEASE): the deploy or the re-promotion did not put this one in front of the boxes.',
+    };
+  }
+  if (isShieldMark(mark)) return { ok: true, line: `ok   ${probe.what}: ${where}, ${SHIELD_HEADER}: ${mark}` };
   return {
     ok: false,
     line:
@@ -132,7 +157,7 @@ export function judge(probe, res) {
  * header, the last such answer is returned and judged RED; it never becomes a
  * "could not look".
  */
-async function ask(probe, { fetchImpl, sleep, settle = false }) {
+async function ask(probe, { fetchImpl, sleep, settle = false, expectRelease = null }) {
   let unmarked = null;
   try {
     return await readWithBoundedRetry(
@@ -149,9 +174,12 @@ async function ask(probe, { fetchImpl, sleep, settle = false }) {
         } catch (err) {
           throw classifyThrown(err, `${probe.method} ${probe.url} did not answer (${err?.name ?? 'error'}: ${err?.message ?? err})`);
         }
-        if (settle && res.headers.get(SHIELD_HEADER) !== '1') {
+        if (settle && !judge(probe, res, expectRelease).ok) {
           unmarked = res;
-          throw transientLook(`${probe.method} ${probe.url} answered HTTP ${res.status} without ${SHIELD_HEADER}; a route bound moments ago may still be reaching the edge`);
+          throw transientLook(
+            `${probe.method} ${probe.url} answered HTTP ${res.status} without ${SHIELD_HEADER}${expectRelease ? `: ${expectRelease}` : ''}; ` +
+              'a route or version bound moments ago may still be reaching the edge',
+          );
         }
         return res;
       },
@@ -164,7 +192,11 @@ async function ask(probe, { fetchImpl, sleep, settle = false }) {
 }
 
 /** The whole check. Returns the exit code; prints its own lines. */
-export async function run({ root = ROOT, fetchImpl = globalThis.fetch, sleep, settle = false } = {}) {
+export async function run({ root = ROOT, fetchImpl = globalThis.fetch, sleep, settle = false, expectRelease = null } = {}) {
+  if (expectRelease !== null && !RELEASE_SHA.test(expectRelease)) {
+    console.error(`✗ COVERAGE LOST — --expect-release ${JSON.stringify(expectRelease)} is not a full lowercase commit SHA, so no answer could be joined to it.`);
+    return 2;
+  }
   const cfgAbs = join(root, EDGE_CONFIG_REL);
   if (!existsSync(cfgAbs)) {
     console.error(`✗ COVERAGE LOST — ${EDGE_CONFIG_REL} does not exist, so which routes the shield holds cannot be said.`);
@@ -194,13 +226,13 @@ export async function run({ root = ROOT, fetchImpl = globalThis.fetch, sleep, se
   for (const probe of PROBES) {
     let res;
     try {
-      res = await ask(probe, { fetchImpl, sleep, settle });
+      res = await ask(probe, { fetchImpl, sleep, settle, expectRelease });
     } catch (err) {
       unanswered++;
       console.error(`✗ COULD NOT LOOK — ${probe.what}: ${err instanceof CouldNotLook ? err.message : String(err)}`);
       continue;
     }
-    const v = judge(probe, res);
+    const v = judge(probe, res, expectRelease);
     if (v.ok) console.log(v.line);
     else {
       failed++;
@@ -215,19 +247,28 @@ export async function run({ root = ROOT, fetchImpl = globalThis.fetch, sleep, se
     console.error(`\nedge shield — ${unanswered} of ${PROBES.length} probe(s) never answered; nothing is known about them. Not a pass.`);
     return 2;
   }
-  console.log(`\nedge shield — in path on all ${routes.length} route(s): ${PROBES.length} probe(s), each answered with ${SHIELD_HEADER}: 1.`);
+  console.log(
+    `\nedge shield — in path on all ${routes.length} route(s): ${PROBES.length} probe(s), each answered with ` +
+      `${SHIELD_HEADER}: ${expectRelease ?? '1 or a release'}.`,
+  );
   return 0;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
-  const usage = 'Usage: node tooling/ops/check-edge-shield.mjs [--settle] [--root <repoRoot>]';
+  const usage = 'Usage: node tooling/ops/check-edge-shield.mjs [--settle] [--expect-release <sha>] [--root <repoRoot>]';
   const at = args.indexOf('--root');
-  const unknown = args.filter((a, i) => a.startsWith('--') && a !== '--root' && a !== '--settle' && args[i - 1] !== '--root');
+  const rel = args.indexOf('--expect-release');
+  const valued = new Set(['--root', '--expect-release']);
+  const unknown = args.filter((a, i) => a.startsWith('--') && !valued.has(a) && a !== '--settle' && !valued.has(args[i - 1]));
   if (unknown.length) {
     console.error(`✗ unknown flag ${unknown.join(', ')}. ${usage}`);
     process.exit(2);
   }
+  if (rel >= 0 && (args[rel + 1] === undefined || args[rel + 1].startsWith('--'))) {
+    console.error(`✗ --expect-release was given with no value. ${usage}`);
+    process.exit(2);
+  }
   const root = at >= 0 && args[at + 1] ? resolve(args[at + 1]) : ROOT;
-  process.exitCode = await run({ root, settle: args.includes('--settle') });
+  process.exitCode = await run({ root, settle: args.includes('--settle'), expectRelease: rel >= 0 ? args[rel + 1] : null });
 }

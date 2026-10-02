@@ -1097,9 +1097,14 @@ export function foldVerdicts(results, { projectsSwept, ungraded }) {
  *  RED (1) when the declaration and the repository disagree — the project is
  *  still DERIVED as serving a site or an app, or its `servedBy` is not derived at
  *  all — and when the account disagrees with it: a domain outside `*.pages.dev`,
- *  or any of Git deployments, production deployments or previews back ON.
+ *  any of Git deployments, production deployments or previews back ON, or
+ *  ⏱ 2026-10-01 (PB-20, row O-PAUSED-PAGES-PROJECT-NIKATRU) a NEWEST deployment
+ *  (`latest_deployment.created_on`) made AFTER `pausedAt`. The switches say no
+ *  build will run; this says none HAS since the pause, so the copy it keeps for
+ *  rollback is still the one it was paused on, and not a build nothing gated.
  *  NOT JUDGED (2) when the record does not carry those fields in the shapes read:
- *  a Direct Upload project has no switch to be off, so "paused" cannot be read.
+ *  a Direct Upload project has no switch to be off, so "paused" cannot be read;
+ *  and a record with no dated newest deployment has no build to keep.
  *  Otherwise 0, once, as `rollback-only (paused)` — its freshness is not judged. */
 export function judgeRollbackOnly({ project, pausedAt, servedBy, decision, answer, derived = [] }) {
   const serving = derived.find((p) => p.project === project);
@@ -1166,13 +1171,34 @@ export function judgeRollbackOnly({ project, pausedAt, servedBy, decision, answe
         `${ROLLBACK_ONLY_REL} so this project is graded again.`,
     };
   }
+  const newestAt = answer.latest_deployment?.created_on;
+  const newestMs = typeof newestAt === 'string' ? Date.parse(newestAt) : NaN;
+  if (!Number.isFinite(newestMs)) {
+    return {
+      code: 2,
+      line:
+        `?   ${at} — DECLARED rollback-only, but the record's \`latest_deployment.created_on\` is ` +
+        `${JSON.stringify(newestAt ?? null)}, so whether a build landed after the pause (${pausedAt}) cannot be read. ` +
+        `NOTHING was judged.`,
+    };
+  }
+  if (newestMs > Date.parse(pausedAt)) {
+    return {
+      code: 1,
+      line:
+        `✗   ${at} — DECLARED rollback-only (paused since ${pausedAt}) but its newest deployment ` +
+        `${answer.latest_deployment.id ?? '(no id)'} was created ${newestAt}, AFTER the pause. The copy it keeps for ` +
+        `rollback is no longer the build it was paused on, and nothing gated the one that replaced it: find what ` +
+        `deployed it, and re-declare or remove the entry in ${ROLLBACK_ONLY_REL} once the project is understood.`,
+    };
+  }
   return {
     code: 0,
     rollbackOnly: true,
     line:
       `ok  ${at} — rollback-only (paused): Git deployments, production deployments and previews all OFF, no custom ` +
-      `domain (${answer.domains.join(', ') || 'none'}); declared in ${ROLLBACK_ONLY_REL} (${decision}, paused ${pausedAt}), ` +
-      `so its freshness is NOT judged — ${servedBy} serves what it used to.`,
+      `domain (${answer.domains.join(', ') || 'none'}), newest deployment ${newestAt}, not after the pause; declared in ` +
+      `${ROLLBACK_ONLY_REL} (${decision}, paused ${pausedAt}), so its freshness is NOT judged — ${servedBy} serves what it used to.`,
   };
 }
 

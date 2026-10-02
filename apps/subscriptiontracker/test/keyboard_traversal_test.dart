@@ -170,7 +170,7 @@ import 'support/width_harness.dart';
 
 /// The desktop shell width (see the header) at a viewport tall enough that no
 /// screen in the sweep scrolls. Both halves are asserted, not assumed:
-/// [_everythingIsLaidOut] fails if 3000 ever stops being enough.
+/// [_everythingIsLaidOut] fails if 3080 ever stops being enough.
 ///
 /// ⏱ 2026-09-30 · ST-Y3/ST-Y4: 2400 -> 2600. Settings gained three card
 /// headings and the Help section's Rate and Feedback rows and scrolled by
@@ -186,7 +186,10 @@ import 'support/width_harness.dart';
 // measured by [_everythingIsLaidOut].
 // ⏱ 2026-10-01 · club apply-st on IM-01/IM-03 and NO-12/NO-13: every growth
 // above together, and the Categories row; re-measured by [_everythingIsLaidOut].
-const Size kKeyboardSurface = Size(1079, 3000);
+// ⏱ 2026-10-01 · ST-SETTINGS (SE-09) merged over club apply-st: 3000 -> 3080
+// for the one Reminders card with its own Preferences card and heading —
+// measured by [_everythingIsLaidOut] on the merged tree (43 px short at 3000).
+const Size kKeyboardSurface = Size(1079, 3080);
 
 /// True when [child] is [ancestor] or sits anywhere beneath it.
 ///

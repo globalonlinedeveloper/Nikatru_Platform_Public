@@ -1,7 +1,7 @@
 {
   "_readme": [
     "CLOUDFLARE PAGES PROJECTS KEPT FOR ROLLBACK ONLY. Read by tooling/ops/check-pages-deployments.mjs, the pages-deployments duty of .github/workflows/ops-watch.yml.",
-    "A project listed here serves nothing and nothing builds it, so it is NOT graded for freshness: judging it against main would be a red that no build can ever clear. It is still read on every sweep, once, and it must be PAUSED — Git deployments, production deployments and previews all OFF — and hold NO custom domain. Either one coming back while this entry still stands is RED: a paused copy that regains a hostname serves a build nothing refreshes.",
+    "A project listed here serves nothing and nothing builds it, so it is NOT graded for freshness: judging it against main would be a red that no build can ever clear. It is still read on every sweep, once, and it must be PAUSED — Git deployments, production deployments and previews all OFF — and hold NO custom domain. Either one coming back while this entry still stands is RED: a paused copy that regains a hostname serves a build nothing refreshes. So is a newest deployment created AFTER `pausedAt` (2026-10-01, PB-20): the copy kept for rollback must be the build it was paused on.",
     "The state is DECLARED here and never inferred from the account. Listing a project is the reviewed diff that stops its freshness being judged; removing it (the project is deleted, or it serves again) is the reviewed diff that brings it back.",
     "`servedBy` names the project that serves what this one used to, and must be one the reader grades. `pausedAt` is when every deployment was switched off."
   ],

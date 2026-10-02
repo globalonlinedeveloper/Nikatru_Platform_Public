@@ -61,3 +61,7 @@ limit declared without a `source`: an invented limit fires on correct input.
   screenshots as much as possible"*.
 - **A proof capture** (`node tooling/store/capture-play-screenshots.mjs --proof`)
   writes to a temporary directory, never here.
+
+## ⏱ 2026-10-02 — not captured, and why
+
+Dispatched three times from branch `fix/store-screenshots-all-channels` (row O-STORE-SCREENSHOTS); the committed set predates the redesign trains (ST-D0..D10 and #1130) and its CAPTURE.json names no commit, so `node tooling/ci/assert-listing-assets.mjs --for-submission --channel android-play` refuses it. Two of the three runs (36952954410 and 36955795858) stopped at the preflight: the sandbox platform Worker answered `ok:false` with `supabase_jwks: probe_timeout`, and healthy a minute later. The other, 36953158433, stopped on the terms interstitial because the web drive served on a random localhost port the platform Worker refuses (fixed on this branch: `--web-port=3000`). The re-capture, and the apps.gov.in set derived from it, also wait on the seeding fix every native channel hit: since #1130 the add FAB opens the catalogue pick step, and the suite types into a name field behind it. No frame is made by hand in its place.

@@ -284,6 +284,23 @@ export function checkApp(root, app, opts = {}) {
     }
     checked++;
   }
+  // The commit this set shows is its source's. A Play re-capture changes the
+  // source bytes too, so this is caught above as well; it is checked on its
+  // own because a hand edit of either record would not touch a pixel.
+  const playRecord = files[0]?.from ? join(root, dirname(files[0].from), 'CAPTURE.json') : null;
+  if (playRecord && existsSync(playRecord)) {
+    let play = null;
+    try {
+      play = JSON.parse(readFileSync(playRecord, 'utf8'));
+    } catch {
+      problems.push(`${rel(root, playRecord)} does not parse, so the commit this set inherits could not be read.`);
+    }
+    if (play && ((play.capturedSha ?? null) !== (cap.capturedSha ?? null) || (play.capturedAt ?? null) !== (cap.capturedAt ?? null))) {
+      problems.push(
+        `${rel(root, record)} records capturedSha ${JSON.stringify(cap.capturedSha ?? null)} and its source ${rel(root, playRecord)} records ${JSON.stringify(play.capturedSha ?? null)}. A derived set shows the commit its source photographed. Run \`${redo}\`.`,
+      );
+    }
+  }
   const iconName = rules.icon.file;
   const icon = join(agi, iconName);
   const playIcon = join(root, L.sourceDir(L.icon.from.channel, app), L.icon.from.set);
@@ -355,6 +372,16 @@ export function writeApp(root, app, opts = {}) {
     ],
     posture: playCap.posture,
     _postureWhy: 'Inherited from the Play set\'s CAPTURE.json, which the derivation refuses unless it says "live".',
+    // ⏱ 2026-10-01 (O-STORE-SCREENSHOTS): the
+    // commit the Play set photographed, inherited, so `assert-listing-assets
+    // .mjs --for-submission --channel apps-gov-in` can judge this set too.
+    ...(playCap.capturedSha !== undefined
+      ? {
+          capturedSha: playCap.capturedSha,
+          capturedAt: playCap.capturedAt ?? null,
+          _capturedWhy: 'Inherited from the Play set\'s CAPTURE.json: nothing photographed this set, it shows the commit its source did.',
+        }
+      : {}),
     derivation: {
       method: METHOD,
       command: `node tooling/ci/assert-apps-gov-in-media.mjs --write --app ${app}`,

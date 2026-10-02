@@ -49,6 +49,7 @@ import '../../data/auth/auth_repository.dart';
 import '../../data/local/subscription_store.dart' show LocalSubscriptionStore;
 import '../analytics_providers.dart';
 import 'account_preferences.dart' show forgetAccountPreferences;
+import 'analytics_envelope.dart' show kPlatformBaseUrl;
 import 'notifications.dart';
 import 'persistence.dart';
 import 'subscriptions.dart' show apiClientProvider, nowProvider;
@@ -838,6 +839,23 @@ final Provider<AuthCapabilities> authCapabilitiesProvider =
 final Provider<AuthProviders> authProvidersProvider = Provider<AuthProviders>(
   (ref) => AuthProviders.configured,
 );
+
+/// SE-03: whether "Your devices" exists in this build — the session routes are
+/// on the platform Worker, so a live backend. A provider so a widget test can
+/// show the section.
+final Provider<bool> sessionsAvailableProvider = Provider<bool>(
+  (ref) => AppConfig.isBackendLive,
+);
+
+/// SE-03: the client for `GET /v1/sessions` and `DELETE /v1/sessions/:id`.
+/// The unavailable transport off a live backend, so a demo build and every
+/// widget test are hermetic — the same shape as the reminder channels.
+final Provider<core.SessionsTransport> sessionsTransportProvider =
+    Provider<core.SessionsTransport>(
+      (ref) => AppConfig.isBackendLive
+          ? DioSessionsTransport(platformBaseUrl: kPlatformBaseUrl)
+          : const core.UnavailableSessionsTransport(),
+    );
 
 /// The signed-in user as a STREAM, so a screen showing their details updates
 /// when those details change.

@@ -5,7 +5,7 @@
 //   · pass-through fidelity — the origin receives the incoming request itself
 //     (method, URL, headers incl. the client address Cloudflare set, body
 //     stream), and the client receives the origin's status, headers and body
-//     plus `x-nikatru-shield: 1`;
+//     plus `x-nikatru-shield: 1`, or the deployed RELEASE when there is one;
 //   · a refusal with Retry-After per class (429; 503 for the refresh grant) from
 //     ONE global cap each (LEAD RULING SHIELD-R3), in the shape the client
 //     behind each host understands — and the Worker reads no client address and
@@ -30,6 +30,7 @@ import worker, {
   REVALIDATE_UA,
   STALE_HEADER,
   STORED_AT_HEADER,
+  shieldMark,
 } from '../src/index';
 import { CLASSES, classify, normalisePath, type ShieldClass } from '../src/classify';
 import { failOpenSeen } from '../src/limit';
@@ -40,7 +41,7 @@ const GT = 'https://glitchtip.nikatru.com';
 
 type Counting = RateLimiterBinding & { calls: string[] };
 /** Every binding of Env, present, each recording the keys it was asked about. */
-type TestEnv = { [K in keyof Env]-?: Counting };
+type TestEnv = { [K in Exclude<keyof Env, 'RELEASE'>]-?: Counting };
 
 /** A limiter that admits the first `limit` calls per key, then refuses. */
 function counting(limit: number): Counting {
@@ -203,6 +204,26 @@ describe('pass-through fidelity', () => {
     const res = await worker.fetch(req(`${GT}/api/1/envelope/`, { method: 'POST', body: '' }), fullEnv(), ctx());
     expect(res.status).toBe(403);
     expect(res.headers.get('x-nikatru-shield')).toBe('1');
+  });
+
+  // Row O-EDGE-SHIELD-SMOKE-NOT-JOINED-TO-SHA: the deploy smoke reads THIS commit off the header.
+  it('echoes the deployed RELEASE as the shield header, on a pass-through and on the JWKS cache path', async () => {
+    const sha = '0123456789abcdef0123456789abcdef01234567';
+    const env = { ...fullEnv(), RELEASE: sha };
+    const passed = await worker.fetch(password(), env, ctx());
+    expect(passed.headers.get('x-nikatru-shield')).toBe(sha);
+    stubCache();
+    const jwksAnswer = await worker.fetch(req(`${AUTH}/auth/v1/.well-known/jwks.json`), env, ctx());
+    expect(jwksAnswer.headers.get('x-nikatru-shield')).toBe(sha);
+  });
+
+  it('marks itself in path with `1` when the RELEASE is absent or is not a commit SHA', () => {
+    expect(shieldMark(undefined)).toBe('1');
+    expect(shieldMark({})).toBe('1');
+    expect(shieldMark({ RELEASE: '' })).toBe('1');
+    expect(shieldMark({ RELEASE: 'v1' })).toBe('1');
+    expect(shieldMark({ RELEASE: '0123456789ABCDEF0123456789ABCDEF01234567' })).toBe('1');
+    expect(shieldMark({ RELEASE: '0123456789abcdef0123456789abcdef01234567' })).toBe('0123456789abcdef0123456789abcdef01234567');
   });
 
   it('asks the runtime to pass through on an exception, before doing anything else', async () => {

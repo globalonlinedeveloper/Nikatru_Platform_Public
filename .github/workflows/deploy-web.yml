@@ -528,4 +528,7 @@ jobs:
         if: always() && steps.deploy.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node tooling/ci/record-deployment.mjs nikatru-site https://nikatru.com
+          # why: the Pages deployment rollback.yml re-promotes for the apex (row
+          # O-APEX-SITE-HAS-NO-ROLLBACK). Through env:, never spliced into run:.
+          PAGES_DEPLOYMENT_ID: ${{ steps.deploy.outputs.pages-deployment-id }}
+        run: node tooling/ci/record-deployment.mjs nikatru-site https://nikatru.com --pages-deployment-id "$PAGES_DEPLOYMENT_ID"

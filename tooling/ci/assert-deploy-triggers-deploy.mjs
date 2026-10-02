@@ -114,6 +114,22 @@
 //      (The literal paths in THE MEASURED FAILURE above are the file as it
 //      stood on 2026-08-04: history, not today's shape.)
 //
+//   5. 🔴 NOTHING THAT READS PLATFORM_DB GOES LIVE BEFORE ITS MIGRATIONS. Added
+//      2026-10-01 with row O-APP-WORKERS-DEPLOY-BEFORE-THE-MIGRATION (PB-03): every
+//      app Worker deployed and went live BEFORE deploy-workers.yml's platform job
+//      applied the platform_db migrations they read, and the apex site's Function
+//      binds platform_db unordered. DERIVED, NOT LISTED: every wrangler config under
+//      services/*/ and tooling/sites/*/ that binds `PLATFORM_DB` is read, and every
+//      job in any workflow that deploys one to PRODUCTION (a wrangler deploy in its
+//      directory — or a matrix leg whose `dir` it is — or a `pages deploy` of the
+//      project the tooling/sites/<project> directory names; never `--env`, never a
+//      dry run) must TRANSITIVELY NEED the one job that runs
+//      `d1 migrations apply PLATFORM_DB --remote`: through `needs:` inside its own
+//      workflow, and through the `needs:` of every job that calls that workflow,
+//      to that job or to a job calling the workflow it is in. No applier, two
+//      appliers, or a binding config no job deploys is a finding; no binding config
+//      at all is COVERAGE LOST.
+//
 // ── HOW IT READS THE FILE ───────────────────────────────────────────────────
 // By indentation-scoped structure, never by grepping for a string. A `grep` for
 // `deploy-workers.yml` would have matched the `on.push.paths` entry, the header
@@ -140,6 +156,7 @@ import { listDir } from './tree-walk.mjs';
 import { claimedTree, globClaims } from './deploy-globs.mjs';
 import { parseAllWorkflows, workflowSteps } from './workflow-scan.mjs';
 import { appWorkerMatrix } from './worker-set.mjs';
+import { stripSourceComments } from './text-reductions.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, '..', '..');
@@ -622,6 +639,146 @@ export function judgeWorkerMatrix(workflows, entries) {
   return { problems, jobs };
 }
 
+// ── LIMB 5 · PLATFORM_DB migrates before every deploy that binds it ──────────
+
+/** The binding every reader of the shared platform database declares. */
+export const PLATFORM_DB_BINDING = 'PLATFORM_DB';
+/** Where the configs that can bind it live: each Worker, and each Pages site's Function. */
+export const BINDING_CONFIG_DIRS = ['services', 'tooling/sites'];
+/** The one production migration of it: no `--env`, against the remote database. */
+const PLATFORM_DB_APPLY = /^d1 migrations apply PLATFORM_DB --remote$/;
+
+/** Every `<dir>/<name>` under BINDING_CONFIG_DIRS whose wrangler.jsonc binds PLATFORM_DB,
+ *  comments stripped, so a comment naming the binding is not a binding. */
+export function platformDbConfigs(root) {
+  const out = [];
+  for (const base of BINDING_CONFIG_DIRS) {
+    const abs = join(root, base);
+    if (!existsSync(abs)) continue;
+    for (const name of listDir(abs).sort()) {
+      const cfg = join(abs, name, 'wrangler.jsonc');
+      if (!existsSync(cfg)) continue;
+      const text = stripSourceComments(readFileSync(cfg, 'utf8'), '.ts');
+      if (new RegExp(`"binding"\\s*:\\s*"${PLATFORM_DB_BINDING}"`).test(text)) out.push(`${base}/${name}`);
+    }
+  }
+  return out;
+}
+
+const callTarget = (job) =>
+  job.lines.map((l) => l.text.match(/^ {4}uses:\s*['"]?\.\/(\.github\/workflows\/[^@\s'"]+\.ya?ml)['"]?\s*$/)).find(Boolean)?.[1] ?? null;
+const commandOf = (s) => norm(s.with.get('command')?.value ?? '');
+
+/**
+ * Limb 5, pure over parsed workflows, the binding config directories
+ * (platformDbConfigs) and the app Worker legs (`appWorkerMatrix(root).entries`).
+ * `{ problems, deployers, applier }`: `deployers` names each job graded,
+ * `<workflow>:<job> (<config dir>)`; `applier` the one migration job, or null.
+ */
+export function judgePlatformDbOrder(workflows, configs, entries) {
+  const problems = [];
+  const key = (wf, job) => `${wf.rel}:${job}`;
+  /** Every call job, in any workflow, that `uses:` the workflow at `rel`. */
+  const callersOf = (rel) => workflows.flatMap((wf) => [...wf.jobs.values()].filter((j) => callTarget(j) === rel).map((j) => ({ wf, job: j })));
+
+  // The applier: the one job whose wrangler-action runs the production PLATFORM_DB migration.
+  const appliers = [];
+  for (const wf of workflows) {
+    for (const [id, job] of wf.jobs) {
+      if (workflowSteps(job).some((s) => isWranglerAction(s) && PLATFORM_DB_APPLY.test(commandOf(s)))) appliers.push({ wf, id });
+    }
+  }
+  if (appliers.length !== 1) {
+    problems.push(
+      `${appliers.length} job(s) run \`d1 migrations apply ${PLATFORM_DB_BINDING} --remote\`` +
+        `${appliers.length ? ` (${appliers.map((a) => key(a.wf, a.id)).join(', ')})` : ''}, and there must be exactly ONE, ` +
+        'which every deploy of a config binding it needs: with none, nothing migrates platform_db before what reads it ' +
+        'goes live; with two, "the migration ran first" names no single job.',
+    );
+  }
+  // The nodes that count as "the migration": the applier, and every job that calls its
+  // workflow (and every job calling THAT one), since a call job succeeds only when it did.
+  const migrated = new Set();
+  const markCallers = (rel) => {
+    for (const c of callersOf(rel)) {
+      if (migrated.has(key(c.wf, c.job.name))) continue;
+      migrated.add(key(c.wf, c.job.name));
+      markCallers(c.wf.rel);
+    }
+  };
+  if (appliers.length === 1) {
+    migrated.add(key(appliers[0].wf, appliers[0].id));
+    markCallers(appliers[0].wf.rel);
+  }
+  /** Every job a job transitively WAITS FOR: its `needs:` inside its workflow, and the
+   *  `needs:` of every job that calls that workflow. A calling job itself is NOT one: the
+   *  job runs inside it, so a sibling of the applier would otherwise "need" the migration
+   *  through the call that encloses them both. */
+  const ancestors = (wf, id) => {
+    const needed = new Set();
+    const visited = new Set();
+    const walk = (w, j) => {
+      if (visited.has(key(w, j))) return;
+      visited.add(key(w, j));
+      for (const n of w.jobs.get(j)?.needs ?? []) {
+        needed.add(key(w, n));
+        walk(w, n);
+      }
+      for (const c of callersOf(w.rel)) walk(c.wf, c.job.name);
+    };
+    walk(wf, id);
+    return needed;
+  };
+
+  // The jobs that deploy a binding config to production.
+  const deployers = [];
+  const deployedConfigs = new Set();
+  const legDir = /^\$\{\{\s*matrix\.[A-Za-z_][A-Za-z0-9_-]*\.dir\s*\}\}$/;
+  for (const wf of workflows) {
+    for (const [id, job] of wf.jobs) {
+      const dirs = new Set();
+      for (const s of workflowSteps(job)) {
+        const cmd = isWranglerAction(s) ? commandOf(s) : norm(s.run?.text);
+        if (/--env\b|--dry-run\b/.test(cmd)) continue;
+        const wd = norm(s.with.get('workingDirectory')?.value ?? '');
+        if (isWranglerAction(s) && /^deploy\b/.test(cmd)) {
+          for (const c of configs) {
+            if (wd === c || (legDir.test(wd) && entries.some((e) => e.dir === c))) dirs.add(c);
+          }
+        }
+        const project = cmd.match(/\bpages deploy\b.*--project-name[= ]([A-Za-z0-9][A-Za-z0-9-]*)/)?.[1];
+        if (project) for (const c of configs) if (c === `tooling/sites/${project}`) dirs.add(c);
+      }
+      for (const c of dirs) {
+        deployedConfigs.add(c);
+        deployers.push(`${key(wf, id)} (${c})`);
+        if (migrated.size === 0) continue; // the applier finding above already names it
+        // The applier deploying what it just migrated, in one job, is ordered by its own steps.
+        const up = ancestors(wf, id);
+        if (key(wf, id) !== key(appliers[0].wf, appliers[0].id) && ![...up].some((n) => migrated.has(n))) {
+          const callers = callersOf(wf.rel).map((x) => key(x.wf, x.job.name));
+          problems.push(
+            `${key(wf, id)} deploys ${c}, whose wrangler.jsonc binds ${PLATFORM_DB_BINDING}, and does not transitively need ` +
+              `${[...migrated].join(' or ')} — the job that migrates platform_db. It can go live on a database without the ` +
+              `schema it reads (row O-APP-WORKERS-DEPLOY-BEFORE-THE-MIGRATION). Add that job to the \`needs:\` of ` +
+              `${callers.length ? callers.join(', ') : `\`${id}\``}.`,
+          );
+        }
+      }
+    }
+  }
+  for (const c of configs) {
+    if (!deployedConfigs.has(c)) {
+      problems.push(
+        `${c}/wrangler.jsonc binds ${PLATFORM_DB_BINDING} and no workflow job deploys it to production that this limb can ` +
+          'read (a wrangler deploy in that directory or a matrix leg of it, or a `pages deploy --project-name=<name>` for ' +
+          'tooling/sites/<name>). Either the deploy moved out of this reader\'s sight, or the config is dead.',
+      );
+    }
+  }
+  return { problems, deployers, applier: appliers.length === 1 ? key(appliers[0].wf, appliers[0].id) : null };
+}
+
 function main() {
   const files = workflowFiles();
   if (files.length === 0) {
@@ -668,8 +825,20 @@ function main() {
   problems.push(...judgeLegUnits(units, matrix.entries));
 
   // Limb 4.
-  const wm = judgeWorkerMatrix(parseAllWorkflows(REPO_ROOT), matrix.entries);
+  const parsed = parseAllWorkflows(REPO_ROOT);
+  const wm = judgeWorkerMatrix(parsed, matrix.entries);
   problems.push(...wm.problems);
+
+  // Limb 5.
+  const dbConfigs = platformDbConfigs(REPO_ROOT);
+  if (dbConfigs.length === 0) {
+    problems.push(
+      `COVERAGE LOST: no wrangler.jsonc under ${BINDING_CONFIG_DIRS.join(' or ')} binds ${PLATFORM_DB_BINDING}, so limb 5 ` +
+        'would grade no deploy. The binding moved, or the reader stopped finding it.',
+    );
+  }
+  const order = judgePlatformDbOrder(parsed, dbConfigs, matrix.entries);
+  problems.push(...order.problems);
 
   // Limb 3.
   const imports = judgeImports(REPO_ROOT, units);
@@ -713,6 +882,11 @@ function main() {
     `ok  limb 4 — ${matrix.entries.length} app Worker leg(s) (${matrix.entries.map((e) => e.worker).join(', ')}), read from ` +
       `worker-set.mjs, each graded in ${wm.jobs.join(', ')}: its unit claims its tree, and npm ci → migrations (where its ` +
       'Worker migrates a D1) → live-SQL check → the vars deploy, the leg\'s only one → smoke → record.',
+  );
+  console.log(
+    `ok  limb 5 — ${dbConfigs.length} config(s) bind ${PLATFORM_DB_BINDING} (${dbConfigs.join(', ')}); ${order.deployers.length} ` +
+      `production deploy job(s) of them (${order.deployers.join('; ')}), each transitively needing ${order.applier}, the one job ` +
+      'that migrates it.',
   );
 }
 

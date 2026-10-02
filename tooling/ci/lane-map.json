@@ -240,7 +240,8 @@
       "catalog/bundles.json",
       "extensions/catalog/extensions.json",
       "tooling/channel-register.json",
-      ".github/workflows/deploy-workers.yml"
+      ".github/workflows/deploy-workers.yml",
+      ".github/workflows/migrate-platform-db.yml"
     ],
     "edge-shield": [
       "services/edge-shield/**",

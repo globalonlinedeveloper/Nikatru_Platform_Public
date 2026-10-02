@@ -199,6 +199,7 @@ import { decodeRgba, encodeRgba, PngUnreadable } from '../store/png-codec.mjs';
 // two readings of "does this capture leak the account" would eventually differ,
 // and the disagreement would be silent.
 import { scanCaptureSuite, selfTestAccountAddressDetector, SUITE_FILE, DESKTOP_DEVICES } from '../store/capture-suite-scan.mjs';
+import { screensChangedSince, watchedPaths } from '../store/capture-provenance.mjs';
 // 🔴 THE THING THE HEADER USED TO SAY COULD NOT BE SEEN — see THE INK limb at
 // the end of this file, and that module's header for the measurement table that
 // chose its threshold. It is a module for the same reason png-codec.mjs is one:
@@ -226,13 +227,19 @@ import { backgroundTasksNote, relaunchSingleThreaded } from './single-threaded-r
 const relaunched = relaunchSingleThreaded(import.meta.url, process.argv.slice(2), coverageLost);
 if (relaunched !== null) process.exit(relaunched);
 
-const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+// `--for-submission` and `--channel <id>` (repeatable) scope the submission
+// limb; the first other argument is the root. A flag must never be read as one.
+const ARGS = process.argv.slice(2);
+const FOR_SUBMISSION = ARGS.includes('--for-submission');
+const SUBMIT_CHANNELS = ARGS.flatMap((a, i) => (a === '--channel' && ARGS[i + 1] ? [ARGS[i + 1]] : []));
+const POSITIONAL = ARGS.filter((a, i) => !a.startsWith('--') && ARGS[i - 1] !== '--channel');
+const ROOT = resolve(POSITIONAL[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 /** No argument means CI's own invocation against the real repository, where a
  *  capture suite MUST exist. A caller pointing this at a fixture root is a
  *  different, weaker situation — most fixtures model a listing tree and no app
  *  source — and it says so out loud rather than failing every fixture. The same
  *  split assert-guard-coverage.mjs makes, for the same reason. */
-const scanningRealRepo = process.argv[2] === undefined;
+const scanningRealRepo = POSITIONAL[0] === undefined;
 const REGISTER = 'tooling/channel-register.json';
 const APPS = 'catalog/apps.json';
 
@@ -1154,6 +1161,7 @@ const INK_RULE = 'storeMetadataContract.inkRule';
 
 let inkFramesJudged = 0;
 let inkFramesRefused = 0;
+let inkCalibratedAhead = 0;
 let inkSelfTest = null;
 const inkReadings = [];
 {
@@ -1449,21 +1457,42 @@ const inkReadings = [];
     };
 
     // ── per class: calibrate, then judge the run ─────────────────────────────
+    // 🔴 A CLASS IS CALIBRATED WHETHER OR NOT ITS FRAMES HAVE ARRIVED (2026-10-01,
+    // O-STORE-SCREENSHOTS). Until then a class with no frames printed "its
+    // calibration was not needed" and never opened its directory, so the five
+    // classes declared ahead of the first iOS, macOS, Windows and Snap captures
+    // would have met their calibration sets for the first time inside the
+    // capture job — the one place a missing or non-separating set costs a
+    // dispatch. The set is checked here, on every run, before any frame needs it.
+    // Classes sharing a directory at one geometry share one reading.
+    const calCache = new Map();
     for (const { key, cls, byApp, sized } of judged) {
       if (!sized) continue;
-      if (byApp.size === 0) {
-        prints.push(`NO INK FRAMES: class "${key}" is declared and no frame of it could be read, so its calibration was not needed.`);
-        continue;
+      const cacheKey = `${cls.calibration}@${cls.lw}x${cls.lh}@${cls.dpr}`;
+      if (!calCache.has(cacheKey)) {
+        const got = calibrationOf(cls);
+        calCache.set(
+          cacheKey,
+          got.lost ? got : { ...got, served: removedInkRunMedian(got.served, cls.lw), glyphless: removedInkRunMedian(got.glyphless, cls.lw), pages: got.served.length },
+        );
       }
-      const cal = calibrationOf(cls);
+      const cal = calCache.get(cacheKey);
       if (cal.lost) {
-        inkLost.push(`${key}: ${cal.lost}`);
+        inkLost.push(`${key}: ${cal.lost}${byApp.size === 0 ? ' No frame of it was read; the capture that brings them would be judged against nothing.' : ''}`);
         continue;
       }
-      const served = removedInkRunMedian(cal.served, cls.lw);
-      const glyphless = removedInkRunMedian(cal.glyphless, cls.lw);
+      const { served, glyphless } = cal;
       const c = calibrate(served, glyphless);
-      const calLine = `calibration ${cls.calibration}/ (${cal.served.length} page(s)): served median ${served}, glyphless median ${glyphless}, separation ${c.separation.toFixed(2)}x`;
+      const calLine = `calibration ${cls.calibration}/ (${cal.pages} page(s)): served median ${served}, glyphless median ${glyphless}, separation ${c.separation.toFixed(2)}x`;
+      if (byApp.size === 0) {
+        if (c.usable) {
+          inkCalibratedAhead++;
+          prints.push(`NO INK FRAMES YET: class "${key}" is declared and calibrated — ${calLine}, floor ${c.floor.toFixed(6)} — and no frame of it was read. Its first capture is judged against this floor.`);
+        } else {
+          problems.push(`class "${key}": the calibration set does not separate — ${calLine}, and ${INK_RULE}.minSeparation needs >= ${minSeparation}x. No frame of it was read; a capture judged against this set would pass a glyphless run or fail a correct one. Re-capture it with tooling/store/capture-ink-calibration.mjs; do not lower minSeparation.`);
+        }
+        continue;
+      }
       if (!c.usable) {
         problems.push(
           glyphless > 0
@@ -1630,6 +1659,131 @@ if (assetsDeclared && assetsChecked === 0) {
   ]);
 }
 
+// ── --for-submission: the set shows the screens in this tree ────────────────
+// ⏱ 2026-10-01, row O-STORE-SCREENSHOTS. Every
+// limb above asks whether a set is a compliant listing; none asked whether it
+// shows the app as it is. The Play sets captured 2026-09-22 passed all of them
+// after #1061, 35da94b2 and b1f933ef redrew the four screens they show, because
+// CAPTURE.json named no commit. capture-play-screenshots.mjs now records
+// `capturedSha`, and this limb, run before a set is uploaded, refuses:
+//
+//   a set whose CAPTURE.json has no capturedSha              -> FAIL
+//   a set captured from a tree with uncommitted screen edits -> FAIL
+//   a frame no capture-suite screen resolves                 -> FAIL
+//   a watched screen path changed since capturedSha          -> FAIL   (stale)
+//   capturedSha not comparable in this clone                 -> COVERAGE LOST
+//   --for-submission and NO set checked                      -> COVERAGE LOST
+//
+// "Changed since" is content, not ancestry — capture-provenance.mjs says why
+// a squash-merge repository needs that. It is a FLAG and not an every-push
+// limb on purpose: a redesign PR must be able to land before its recapture,
+// and the recapture is its own dispatch. What must not happen is an UPLOAD of
+// the old set, and this is the check run before one.
+let submissionChecked = 0;
+if (FOR_SUBMISSION) {
+  const rule = contract.screenProvenance;
+  const lost = [];
+  // Collected apart from `problems` so that a COVERAGE LOST ending this limb
+  // still prints, above it, every set it DID find stale.
+  const findings = [];
+  if (!rule || typeof rule !== 'object' || !Array.isArray(rule.alsoWatched) || typeof rule.source !== 'string') {
+    coverageLost([
+      `--for-submission: ${REGISTER} declares no \`storeMetadataContract.screenProvenance\` with \`alsoWatched\` and a \`source\`.`,
+      'Without it a set is judged against its screens\' own folders only, and a redesign landing in the shared',
+      'widgets or the design system — which is where b1f933ef landed — would read fresh.',
+    ]);
+  }
+  const unknownChannels = SUBMIT_CHANNELS.filter((c) => !withGraphics.some((r) => r.id === c));
+  if (unknownChannels.length > 0) {
+    findings.push(`--for-submission --channel ${unknownChannels.join(', ')}: no channel of that id declares graphic requirements in ${REGISTER}, so nothing could be checked for it.`);
+  }
+  for (const row of withGraphics) {
+    if (SUBMIT_CHANNELS.length > 0 && !SUBMIT_CHANNELS.includes(row.id)) continue;
+    const g = contract.perChannel[row.id].graphicAssets;
+    const template = row.storeMetadataDir;
+    if (typeof template !== 'string' || !template.includes('{app}')) continue;
+    const dirs = new Set();
+    for (const [name, spec] of Object.entries(g.screenshots?.deviceTypeCoverage?.sets ?? {})) {
+      if (name !== '_why' && spec && typeof spec.dir === 'string') dirs.add(spec.dir);
+    }
+    if (g.screenshots) dirs.add(g.screenshots.dir ?? 'screenshots');
+    if (g.derivedScreenshots?.dir) dirs.add(g.derivedScreenshots.dir);
+    for (const app of apps) {
+      if (typeof app.slug !== 'string' || app.slug === '') continue;
+      for (const sub of [...dirs].sort()) {
+        const dir = posix.join(template.replace('{app}', app.slug), sub);
+        if (!isDir(dir)) continue;
+        const frames = listDir(abs(dir)).filter((f) => /\.(png|jpe?g)$/i.test(f)).sort();
+        if (frames.length === 0) continue;
+        const recordRel = posix.join(dir, 'CAPTURE.json');
+        let record = null;
+        try {
+          record = JSON.parse(read(recordRel)?.toString('utf8') ?? 'null');
+        } catch {
+          record = null;
+        }
+        if (record === null || typeof record !== 'object') {
+          findings.push(`--for-submission: ${dir}/ holds ${frames.length} frame(s) and no readable CAPTURE.json, so nothing says which commit they show.`);
+          continue;
+        }
+        submissionChecked++;
+        const sha = record.capturedSha;
+        if (typeof sha !== 'string' || sha === '') {
+          findings.push(
+            `--for-submission: ${recordRel} records no capturedSha, so nothing says which commit its ${frames.length} frame(s) show. Every set captured before 2026-10-01 is in this state, and the Play sets of 2026-09-22 predate the screens they show (#1061 aa1fa424, 35da94b2, b1f933ef). Re-capture with store-screenshots.yml; a derived set inherits the value from its source by re-deriving.`,
+          );
+          continue;
+        }
+        if (Array.isArray(record.capturedTreeDirty) && record.capturedTreeDirty.length > 0) {
+          findings.push(`--for-submission: ${recordRel} was captured from a tree with uncommitted changes under the screens it shows (${record.capturedTreeDirty.slice(0, 5).join(', ')}), so no commit holds what its frames show. Re-capture from a clean tree.`);
+          continue;
+        }
+        const { paths, unresolved, suitePresent } = watchedPaths({
+          root: ROOT,
+          app: app.slug,
+          frameNames: frames.map((f) => f.replace(/\.(png|jpe?g)$/i, '')),
+          rule,
+        });
+        if (!suitePresent) {
+          lost.push(`${dir}: the capture suite of ${app.slug} is absent, so no frame resolves to the screen it shows and no path could be watched.`);
+          continue;
+        }
+        if (unresolved.length > 0) {
+          findings.push(`--for-submission: ${dir}/ holds ${unresolved.map((n) => `${n}.png`).join(', ')}, which no \`captureFrame\` in the capture suite names, so nothing says which screen they show or whether it changed.`);
+          continue;
+        }
+        const v = screensChangedSince({ root: ROOT, sha, paths });
+        if (v.verdict === 'unknown') {
+          lost.push(`${dir}: ${v.why}.`);
+        } else if (v.verdict === 'stale') {
+          findings.push(
+            `--for-submission: ${dir}/ is STALE — captured at ${sha.slice(0, 12)} (${record.capturedAt ?? 'no capturedAt'}), and ${v.changed.length} file(s) under the screens it shows changed since: ${v.changed.slice(0, 8).join(', ')}${v.changed.length > 8 ? ', …' : ''}. Its frames show screens this tree no longer draws. Re-capture before uploading.`,
+          );
+        } else {
+          console.log(`ok   SUBMISSION — ${dir}/: ${frames.length} frame(s) captured at ${sha.slice(0, 12)}, and nothing under ${paths.join(', ')} has changed since.`);
+        }
+      }
+    }
+  }
+  const surface = () => {
+    if (findings.length === 0) return;
+    console.error('');
+    for (const f of findings) console.error(`FAIL ${f}`);
+  };
+  if (lost.length > 0) {
+    surface();
+    coverageLost(['--for-submission: these sets could not be compared with the tree, so their freshness is unknown, not established.', ...lost]);
+  }
+  if (submissionChecked === 0) {
+    surface();
+    coverageLost([
+      `--for-submission${SUBMIT_CHANNELS.length ? ` --channel ${SUBMIT_CHANNELS.join(', ')}` : ''}: ZERO committed sets were checked.`,
+      'A submission check that found nothing to check has certified nothing; the frames are not where the register says.',
+    ]);
+  }
+  problems.push(...findings);
+}
+
 // ── report ──────────────────────────────────────────────────────────────────
 if (prints.length) {
   console.log('');
@@ -1694,7 +1848,8 @@ if (problems.length) {
         `carrying glyph-shaped strokes lost ${inkSelfTest.withText} of its ink to the glyph filter, the same layout with none ` +
         `lost ${inkSelfTest.without}. ${inkFramesJudged} committed frame(s) judged per device class, each at its CSS ` +
         'width, against a floor computed this run from that class\'s calibration frames, each calibration held to ' +
-        `>= ${inkSelfTest.minSeparation}x separation.`,
+        `>= ${inkSelfTest.minSeparation}x separation.` +
+        (inkCalibratedAhead > 0 ? ` ${inkCalibratedAhead} class(es) with no frame yet calibrated ahead of their first capture.` : ''),
     );
     const tightest = inkReadings.reduce((t, r) => (t === null || r.headroom < t.headroom ? r : t), null);
     if (tightest !== null) {

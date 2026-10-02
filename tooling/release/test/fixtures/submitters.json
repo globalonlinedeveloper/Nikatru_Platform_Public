@@ -1,0 +1,182 @@
+{
+  "_why": [
+    "RECORDED FIXTURES for tooling/release/test/submitters.contract.test.mjs: one good listing record and one artifact per store channel that has a code submitter (tooling/ports/channels.json). The values are shaped like the real trees (apps/{app}/store/<channel>, extensions/Extension/{tool}/store/<store>) and are not read from them, so a dry run here depends on no file outside this one and the register.",
+    "A binary field (a .png) is a placeholder string: validate() grades presence, never pixels — the pixel checks are assert-store-metadata.mjs's and check-store-metadata.mjs's.",
+    "The contract test removes each REQUIRED field in turn (the register's storeMetadataContract, or contracts/store/vocabulary.js for an extension row) and requires validate() to name it, so a field added to the contract without one here reddens the good-record limb first."
+  ],
+  "channels": {
+    "android-play": {
+      "good": {
+        "app": "subscriptiontracker",
+        "fields": {
+          "README.md": "# Listing tree (fixture)\n",
+          "title.txt": "Subscription Tracker",
+          "short-description.txt": "Every subscription, its renewal date and its cost, in one place.",
+          "long-description.txt": "Track every subscription you pay for, see what renews next, and decide what to keep.",
+          "category.txt": "Finance",
+          "privacy-policy-url.txt": "https://nikatru.com/subscriptiontracker/privacy",
+          "support-url.txt": "https://nikatru.com/subscriptiontracker/support",
+          "screenshots/README.md": "Screenshots are captured by the screenshot lane.\n",
+          "data-safety.json": "{\"dataCollected\": []}",
+          "content-rating.json": "{\"rating\": \"everyone\"}",
+          "ads-declaration.json": "{\"containsAds\": false}",
+          "feature-graphic.png": "<binary: 1024x500 png>",
+          "store-icon-512.png": "<binary: 512x512 png>",
+          "release-notes.txt": "First release."
+        }
+      },
+      "artifact": {
+        "app": "subscriptiontracker",
+        "path": "build/app/outputs/bundle/release/app-release.aab"
+      }
+    },
+    "ios-appstore": {
+      "good": {
+        "app": "subscriptiontracker",
+        "fields": {
+          "README.md": "# Listing tree (fixture)\n",
+          "title.txt": "Subscription Tracker",
+          "short-description.txt": "Every subscription, its renewal date and its cost, in one place.",
+          "long-description.txt": "Track every subscription you pay for, see what renews next, and decide what to keep.",
+          "category.txt": "Finance",
+          "privacy-policy-url.txt": "https://nikatru.com/subscriptiontracker/privacy",
+          "support-url.txt": "https://nikatru.com/subscriptiontracker/support",
+          "screenshots/README.md": "Screenshots are captured by the screenshot lane.\n",
+          "subtitle.txt": "Know what renews next",
+          "keywords.txt": "subscriptions,renewals,budget",
+          "promotional-text.txt": "See every renewal before it charges.",
+          "privacy-manifest.json": "{\"NSPrivacyTracking\": false}",
+          "age-rating.json": "{\"rating\": \"4+\"}",
+          "terms-of-use-url.txt": "https://nikatru.com/subscriptiontracker/terms"
+        }
+      },
+      "artifact": {
+        "app": "subscriptiontracker",
+        "path": "build/ios/ipa/subscriptiontracker.ipa"
+      }
+    },
+    "macos-appstore": {
+      "good": {
+        "app": "subscriptiontracker",
+        "fields": {
+          "README.md": "# Listing tree (fixture)\n",
+          "title.txt": "Subscription Tracker",
+          "short-description.txt": "Every subscription, its renewal date and its cost, in one place.",
+          "long-description.txt": "Track every subscription you pay for, see what renews next, and decide what to keep.",
+          "category.txt": "Finance",
+          "privacy-policy-url.txt": "https://nikatru.com/subscriptiontracker/privacy",
+          "support-url.txt": "https://nikatru.com/subscriptiontracker/support",
+          "screenshots/README.md": "Screenshots are captured by the screenshot lane.\n",
+          "subtitle.txt": "Know what renews next",
+          "keywords.txt": "subscriptions,renewals,budget",
+          "promotional-text.txt": "See every renewal before it charges.",
+          "terms-of-use-url.txt": "https://nikatru.com/subscriptiontracker/terms"
+        }
+      },
+      "artifact": {
+        "app": "subscriptiontracker",
+        "path": "build/macos/Build/Products/Release/subscriptiontracker.pkg"
+      }
+    },
+    "windows-store": {
+      "good": {
+        "app": "subscriptiontracker",
+        "fields": {
+          "README.md": "# Listing tree (fixture)\n",
+          "title.txt": "Subscription Tracker",
+          "short-description.txt": "Every subscription, its renewal date and its cost, in one place.",
+          "long-description.txt": "Track every subscription you pay for, see what renews next, and decide what to keep.",
+          "category.txt": "Finance",
+          "privacy-policy-url.txt": "https://nikatru.com/subscriptiontracker/privacy",
+          "support-url.txt": "https://nikatru.com/subscriptiontracker/support",
+          "screenshots/README.md": "Screenshots are captured by the screenshot lane.\n",
+          "search-terms.txt": "subscriptions\nrenewals\nbudget",
+          "age-rating.json": "{\"iarc\": \"3+\"}"
+        }
+      },
+      "artifact": {
+        "app": "subscriptiontracker",
+        "path": "build/windows/x64/runner/Release/subscriptiontracker.msix"
+      }
+    },
+    "linux-snap": {
+      "good": {
+        "app": "subscriptiontracker",
+        "fields": {
+          "README.md": "# Listing tree (fixture)\n",
+          "title.txt": "Subscription Tracker",
+          "short-description.txt": "Every subscription, its renewal date and its cost, in one place.",
+          "long-description.txt": "Track every subscription you pay for, see what renews next, and decide what to keep.",
+          "category.txt": "Finance",
+          "privacy-policy-url.txt": "https://nikatru.com/subscriptiontracker/privacy",
+          "support-url.txt": "https://nikatru.com/subscriptiontracker/support",
+          "screenshots/README.md": "Screenshots are captured by the screenshot lane.\n",
+          "snap-name.txt": "subscriptiontracker",
+          "license.txt": "Proprietary"
+        }
+      },
+      "artifact": {
+        "app": "subscriptiontracker",
+        "path": "subscriptiontracker_1.0.0_amd64.snap"
+      }
+    },
+    "chrome-webstore": {
+      "good": {
+        "tool": "fullshot",
+        "fields": {
+          "title.txt": "FullShot",
+          "short-description.txt": "Capture the whole page, a region or the visible screen.",
+          "long-description.txt": "FullShot captures a full web page, a region of it, or what is on screen, and saves it on this device.",
+          "category.txt": "Productivity",
+          "privacy-policy-url.txt": "https://nikatru.com/fullshot/privacy",
+          "support-url.txt": "https://nikatru.com/fullshot/support",
+          "screenshots/README.md": "Screenshots are captured by the extension lane.\n"
+        }
+      },
+      "artifact": {
+        "tool": "fullshot",
+        "path": "release-assets/fullshot-chromium.zip"
+      }
+    },
+    "edge-addons": {
+      "good": {
+        "tool": "fullshot",
+        "fields": {
+          "title.txt": "FullShot",
+          "short-description.txt": "Capture the whole page, a region or the visible screen.",
+          "long-description.txt": "FullShot captures a full web page, a region of it, or what is on screen, and saves it on this device.",
+          "category.txt": "Productivity",
+          "privacy-policy-url.txt": "https://nikatru.com/fullshot/privacy",
+          "support-url.txt": "https://nikatru.com/fullshot/support",
+          "screenshots/README.md": "Screenshots are captured by the extension lane.\n"
+        }
+      },
+      "artifact": {
+        "tool": "fullshot",
+        "path": "release-assets/fullshot-chromium.zip"
+      }
+    },
+    "amo": {
+      "good": {
+        "tool": "fullshot",
+        "fields": {
+          "title.txt": "FullShot",
+          "short-description.txt": "Capture the whole page, a region or the visible screen.",
+          "long-description.txt": "FullShot captures a full web page, a region of it, or what is on screen, and saves it on this device.",
+          "category.txt": "Productivity",
+          "privacy-policy-url.txt": "https://nikatru.com/fullshot/privacy",
+          "support-url.txt": "https://nikatru.com/fullshot/support",
+          "screenshots/README.md": "Screenshots are captured by the extension lane.\n"
+        },
+        "geckoId": {
+          "manifest": "fullshot@nikatru.com",
+          "confirmed": "fullshot@nikatru.com"
+        }
+      },
+      "artifact": {
+        "tool": "fullshot",
+        "path": "release-assets/unpacked-firefox"
+      }
+    }
+  }
+}

@@ -297,6 +297,21 @@ class AuthFailure implements Exception {
   /// recorded, so the gate that asked stays shut and says why.
   static const String notRecorded = 'consent_not_recorded';
 
+  /// GoTrue's codes when a signed-in password change came without the current
+  /// password, or with a wrong one (`security_update_password_require_current_
+  /// password`, on for this project — see `AuthRepository.updatePassword`).
+  static const String currentPasswordRequired = 'current_password_required';
+  static const String currentPasswordInvalid = 'current_password_invalid';
+
+  /// GoTrue's codes for a refused captcha and for too many requests — neither
+  /// says anything about the password typed (review of #1129, finding 7).
+  static const String captchaFailed = 'captcha_failed';
+
+  /// GoTrue's code for a password sign-in with the wrong password — the ONE
+  /// refusal that may be told as "that password is not right".
+  static const String invalidCredentials = 'invalid_credentials';
+  static const String overRequestRateLimit = 'over_request_rate_limit';
+
   /// The [weakPassword] reasons GoTrue sends (`internal/api/password.go`).
   static const String reasonLength = 'length';
   static const String reasonCharacters = 'characters';
