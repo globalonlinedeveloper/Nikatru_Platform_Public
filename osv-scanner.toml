@@ -48,3 +48,17 @@
 id = "GHSA-86w9-cpqp-85rv"
 ignoreUntil = 2026-10-15T00:00:00Z
 reason = "node-forge <=1.4.0 has no patched release (2026-10-01); transitive devDependency of web-ext in tooling/web-ext (CI-only Firefox lint and AMO signer); in no shipped package"
+
+# ⏱ 2026-10-02 22:59Z (lane fix-native-oauth-return-and-deletion, #1142): CI run 37074594926 went red on
+# GHSA-vfj7-8cjw-p6xm, which touched no file of that PR — main reds on it too, the same daily-scan class as the entry above.
+# braces <= 3.0.3, stack-exhaustion denial of service through deeply nested patterns (high).
+# NO PATCHED RELEASE EXISTS (3.0.3 is the newest on npm; OSV lists last_affected 3.0.3), so it cannot be moved today.
+# Exposure: a TRANSITIVE devDependency in sites/_shared ONLY — @11ty/eleventy -> chokidar 3.6.0 -> braces, the site
+# build's file watcher, expanding the site's OWN glob patterns at build time. It is in no app, Worker or extension
+# package, and no user-supplied pattern ever reaches it.
+# Fix when braces publishes one: `npm update braces --prefix sites/_shared` (or an eleventy/chokidar bump), and delete
+# this entry in the same commit. The expiry re-reddens the lane if that has not happened.
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2026-10-16T00:00:00Z
+reason = "braces <=3.0.3 has no patched release (2026-10-02); transitive devDependency of @11ty/eleventy (chokidar) in sites/_shared, expanding the site's own build globs; in no shipped package"
