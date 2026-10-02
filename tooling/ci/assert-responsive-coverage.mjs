@@ -731,9 +731,13 @@ const REQUIRED_COVERAGE = [
     // measured` and `— 33 file(s)`.
     // ⏱ 2026-10-01 · club apply-st on ST-N6 (#1080): read off the merged tree —
     // `33 surface(s) reachable, 33 measured` and `— 34 file(s)`.
-    surfaces: 33,
-    widthTestFiles: 34,
-    coveredSurfaces: 33,
+    // ⏱ RAISED 2026-10-01 · ST-SETTINGS (SE-03) on club apply-st: 33 → 34
+    // surfaces and covered, 34 → 35 width files — the chassis DevicesSection
+    // at all three classes and 200 % text (test/devices_section_test.dart).
+    // Read off the merged tree: `34 surface(s) reachable, 34 measured`, `— 35 file(s)`.
+    surfaces: 34,
+    widthTestFiles: 35,
+    coveredSurfaces: 34,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens every stamped ' +
       'app inherits, each measured at all three window classes',
