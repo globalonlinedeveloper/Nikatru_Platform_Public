@@ -32,7 +32,7 @@
 //   3. every `const NAME = <number>` in services/*/src/ is annotated
 //      `@ceiling <id> lte` (arithmetic CHECKED) or `@ceiling none — <reason>`;
 //      an over-ceiling value FAILS unless it declares `@ceiling-exceeds`
-//   4. every `.batch(` call site is named in `batchCallSites`, in BOTH
+//   4. every `.batch(` call site (and every `batchIdempotent(` call) is named in `batchCallSites`, in BOTH
 //      directions — a stale entry makes the accounting look complete
 //   5. the deployed configs: cron count, D1 database count, KV namespace count
 //      and every rate-limiter `period`, against their sourced ceilings
@@ -592,7 +592,10 @@ const foundSites = new Set();
 for (const file of sourceFiles) {
   const text = read(file);
   if (text === null) continue;
-  if (/\.batch\s*\(/.test(stripTsComments(text))) foundSites.add(file);
+  // ⏱ 2026-10-01 (services-027): a call with type arguments (`db.batch<T>(`) is a
+  // batch too, and so is a call to the kit's `batchIdempotent(` — the batch it
+  // sends is the CALLER's statement list, so the caller is the site to account.
+  if (/\.batch\s*(?:<[^<>()]*>)?\s*\(|\bbatchIdempotent\s*\(/.test(stripTsComments(text))) foundSites.add(file);
 }
 if (foundSites.size === 0) {
   coverageLost([

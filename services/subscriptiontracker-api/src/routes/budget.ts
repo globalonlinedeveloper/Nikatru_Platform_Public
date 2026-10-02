@@ -4,7 +4,7 @@
 
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import { allRows, firstRow, nowIso, uuid } from '../lib/d1';
+import { allRows, batchIdempotent, firstRow, nowIso, uuid } from '../lib/d1';
 import { CURRENCY, MAX_PRICE } from './subscriptions';
 
 const app = new Hono<AppEnv>();
@@ -368,7 +368,10 @@ app.put('/', async (c) => {
            updated_at = excluded.updated_at
          RETURNING currency`,
       ).bind(userId, monthlyBudget, ts);
-  const [stored] = (await c.env.APP_DB.batch([
+  // `batchIdempotent` retries a transient reset (services-027): every statement
+  // here is an upsert, the DELETE, or an INSERT of an id resolved above, after
+  // that DELETE — so the whole batch run twice leaves what it leaves once.
+  const [stored] = (await batchIdempotent(c.env.APP_DB, [
     upsert,
     c.env.APP_DB.prepare(
       'DELETE FROM budget_categories WHERE user_id = ?',

@@ -189,6 +189,7 @@
       "services/subscriptiontracker-api/**",
       "services/_shared/**",
       "services/platform/src/lib/mor/contract.ts",
+      "contracts/entitlement/*.js",
       ".github/workflows/deploy-workers.yml"
     ],
     "nikatru-site": [

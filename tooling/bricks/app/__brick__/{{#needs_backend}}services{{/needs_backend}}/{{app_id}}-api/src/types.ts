@@ -58,7 +58,8 @@ export interface Env {
  * `index.ts` mounts the erasure route behind [erasureAuth], which has no secret
  * in scope at all.
  */
-export type TokenAssurance = 'asymmetric' | 'symmetric';
+import type { TokenAssurance } from '../../_shared/src/auth-middleware';
+export type { TokenAssurance }; // declared once, beside the boundary that sets it
 
 // Per-request variables set by middleware.
 export interface Variables {
