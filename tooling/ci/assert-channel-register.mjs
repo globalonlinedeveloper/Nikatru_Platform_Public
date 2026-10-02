@@ -147,12 +147,17 @@ import { windowsIdentityOf, WINDOWS_STORE, WINDOWS_RECORD_FIELDS } from './read-
 import { lanesOfSurface } from './tag-owner.mjs';
 import { ARTIFACT_FORMATS } from '../../contracts/store/vocabulary.js';
 import { appWorkerMatrix } from './worker-set.mjs';
-const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
+import { PUBLIC_REACH, REAL_SUBMISSION_FLAG, isNativeRow } from './submit-preconditions.mjs';
+// ⏱ 2026-10-01 — the repo root is the first argument that is not a flag, so `--for-submission=<row>`
+// (below) can ride beside it. It was `process.argv[2]`, and no caller passed a flag.
+const ARGS = process.argv.slice(2);
+const POSITIONAL = ARGS.filter((a) => !a.startsWith('--'));
+const ROOT = resolve(POSITIONAL[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 /** No argument means CI's own invocation against the real repository, where the
  *  Android row MUST exist. A fixture root is a weaker situation and says so
  *  (section 9) instead of quietly accepting a register with nothing to check.
  *  Same idiom, same reason, as assert-android-target-sdk.mjs. */
-const scanningRealRepo = process.argv[2] === undefined;
+const scanningRealRepo = POSITIONAL[0] === undefined;
 const REGISTER = 'tooling/channel-register.json';
 const APPS = 'catalog/apps.json';
 const VERSIONS = 'tooling/versions.json';
@@ -174,6 +179,91 @@ function coverageLost(lines) {
   // ⏱ 2026-09-15 — exit 2, not 1: COVERAGE LOST is "did not check enough to be evidence", never a
   // finding (AGENTS.md exit-code convention; O-EXIT2-CONVENTION-GAP). This helper exited 1 until today.
   process.exit(2);
+}
+
+// ── --for-submission=<row>: a build that cannot sign in reaches no public step ──
+// ⏱ 2026-10-01 · O-SUBMIT-LANES-IGNORE-NATIVE-AUTH (SYN-R1, C-04). §6c-ii below holds
+// `nativeAuth` against `served`, and nothing held it against a SUBMISSION: no submit lane,
+// submit script or SUBMIT_PRECONDITIONS entry read it, so a confirmed Windows dispatch
+// committed for certification a build the register says cannot sign anybody in. This mode
+// is that gate, and every submit lane runs it (limb 3 of assert-publish-steps-guarded.mjs,
+// from tooling/ci/submit-preconditions.mjs):
+//
+//   node tooling/ci/assert-channel-register.mjs --for-submission=<row> [--real-submission] [repoRoot]
+//
+//   · without --real-submission, a dry run: it PRINTS what a real submission would be refused
+//     and exits 0, because a rehearsal publishes nothing;
+//   · with it, on a row whose `nativeAuth` is not true: exit 1 when the submission reaches the
+//     public (submit-preconditions.mjs PUBLIC_REACH — the Windows certification commit, a Snap
+//     candidate or stable release, Play production), exit 0 on any other step. Android's
+//     sign-in is proven by an internal-track upload, so a blanket refusal would deadlock it;
+//   · a row the register does not declare, a row that is not native, or a native row with no
+//     PUBLIC_REACH entry ⇒ COVERAGE LOST (exit 2): the lane asked about a submission this gate
+//     cannot place.
+// It runs this check alone; none of the sections below.
+const SUBMIT_ARG = ARGS.find((a) => a === '--for-submission' || a.startsWith('--for-submission='));
+if (SUBMIT_ARG !== undefined) forSubmission(SUBMIT_ARG.includes('=') ? SUBMIT_ARG.slice(SUBMIT_ARG.indexOf('=') + 1).trim() : '');
+
+function forSubmission(id) {
+  const ROW_ID = 'O-SUBMIT-LANES-IGNORE-NATIVE-AUTH';
+  const real = ARGS.includes(REAL_SUBMISSION_FLAG);
+  if (id === '') {
+    coverageLost([
+      '--for-submission was given without a channel: pass --for-submission=<channel id>, e.g. --for-submission=windows-store.',
+      'The gate refuses one store\'s public step, so it has to be told which store.',
+    ]);
+  }
+  const raw = read(REGISTER);
+  if (raw === null) coverageLost([`${REGISTER} does not exist, so there is no row "${id}" to ask whether its build can sign in.`]);
+  let reg;
+  try {
+    reg = JSON.parse(raw);
+  } catch (e) {
+    coverageLost([`${REGISTER} is not valid JSON — ${e.message}`]);
+  }
+  const row = (Array.isArray(reg?.channels) ? reg.channels : []).find((c) => c?.id === id);
+  if (row === undefined) {
+    coverageLost([`--for-submission names channel "${id}", which ${REGISTER} does not declare.`, 'A gate asked about a row nobody declared has nothing to grade.']);
+  }
+  if (!isNativeRow(reg, row)) {
+    coverageLost([
+      `channel "${id}" is not a native row (surface "${row.surface}", kind "${row.kind}"): it ships no Flutter build that signs anybody in,`,
+      `so \`nativeAuth\` asks it nothing. A lane that runs this gate for it was pointed at the wrong row (${ROW_ID}).`,
+    ]);
+  }
+  const reach = Object.hasOwn(PUBLIC_REACH, id) ? PUBLIC_REACH[id] : null;
+  if (reach === null) {
+    coverageLost([
+      `channel "${id}" is a native row, and tooling/ci/submit-preconditions.mjs PUBLIC_REACH carries no entry for it.`,
+      'Which of its submission steps reach the public is undeclared, so this gate can neither refuse the public one',
+      `nor leave the others open. Declare the entry there (${ROW_ID}).`,
+    ]);
+  }
+  const target = reach.env === null ? '' : (process.env[reach.env] ?? '').trim();
+  const step = reach.env === null ? reach.step : target === '' ? `${reach.env} unset: ${reach.unset}` : `${reach.env}=${JSON.stringify(target)}`;
+  const reachesPublic = reach.env === null || (target !== '' && reach.reaches(target));
+  const done = (line) => {
+    console.log(line);
+    console.log(`\nassert-channel-register --for-submission=${id}: ok`);
+    process.exit(0);
+  };
+  if (row.nativeAuth === true) done(`ok   ${id}: nativeAuth is true, so a build for this row can sign in and ${reach.step} is open [${ROW_ID}]`);
+  const state = `nativeAuth is ${JSON.stringify(row.nativeAuth ?? null)}: the register says a native build for this row cannot complete email sign-in, sign-up and recovery`;
+  if (!real) {
+    done(
+      `⬜ DRY RUN — ${id}: ${state}. A REAL submission (${REAL_SUBMISSION_FLAG}) would be refused at ${reach.step}; ` +
+        `a rehearsal publishes nothing, so it is not refused here [${ROW_ID}].`,
+    );
+  }
+  if (!reachesPublic) {
+    done(`ok   ${id}: ${state}, and this real submission reaches no public step (${step}). Only ${reach.step} is refused [${ROW_ID}].`);
+  }
+  console.error('');
+  console.error(`FAIL ${id}: REAL SUBMISSION REACHES THE PUBLIC WITH A BUILD THAT CANNOT SIGN IN — ${reach.step} (${step}).`);
+  console.error(`     ${state}, so this store would list an app that refuses its own users.`);
+  console.error(`     Flip \`nativeAuth\` on ${REGISTER} row "${id}" on OBSERVED evidence — a native build signing in — first (${ROW_ID}).`);
+  console.error(`\nassert-channel-register --for-submission=${id}: FAILED`);
+  process.exit(1);
 }
 
 /** The signing-key vocabulary is DERIVED from the register below, never declared
