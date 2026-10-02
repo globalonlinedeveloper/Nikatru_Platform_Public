@@ -1691,7 +1691,7 @@ jobs:
       - run: echo gate
   ${job}:
     needs: gate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy-web.yml
 `;
 
@@ -1763,7 +1763,7 @@ describe('check-prod-provenance — a workflow_call-only lane is read in its cal
     );
     assert.match(
       r.stdout,
-      /release lane · served · deploy-web\.yml: 2 completed run\(s\) \(listed in deploy-web\.yml \+ ci\.yml; run host ci\.yml job `deploy-web`, branch=main&event=push\)/,
+      /release lane · served · deploy-web\.yml: 2 completed run\(s\) \(listed in deploy-web\.yml \+ ci\.yml; run host ci\.yml job `deploy-web`, branch=main\)/,
     );
   });
 
@@ -1837,7 +1837,7 @@ describe('check-prod-provenance — a workflow_call-only lane is read in its cal
       kind: 'submission',
       workflow: 'submit-play.yml',
       runWorkflows: ['submit-play.yml', 'ci.yml'],
-      host: { workflow: 'ci.yml', callJob: 'submit-play', filter: 'branch=main&event=push' },
+      host: { workflow: 'ci.yml', callJob: 'submit-play', filter: 'branch=main' },
       channels: ['android-play'],
       environments: [ENV],
     };

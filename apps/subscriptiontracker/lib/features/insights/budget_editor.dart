@@ -22,6 +22,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../core/format/category_label.dart';
@@ -69,11 +70,24 @@ class BudgetEditor extends ConsumerStatefulWidget {
   static const Key saveButton = Key('budget.editor.save');
   static Key capField(String category) => Key('budget.editor.cap.$category');
 
+  /// The "Pro" chip over the category caps — a button to the paywall where
+  /// this build sells, a plain label where it does not.
+  static const Key proChip = Key('budget.editor.proChip');
+
   @override
   ConsumerState<BudgetEditor> createState() => _BudgetEditorState();
 }
 
 class _BudgetEditorState extends ConsumerState<BudgetEditor> {
+  /// Closes the sheet and opens the paywall. The router is read BEFORE the pop,
+  /// while this context is still mounted; a test that pumps the editor without
+  /// a router gets the pop alone.
+  void _openPaywall() {
+    final GoRouter? router = GoRouter.maybeOf(context);
+    Navigator.of(context).maybePop();
+    router?.go('/paywall');
+  }
+
   late final TextEditingController _amount;
   late final Map<String, TextEditingController> _caps;
   bool _saving = false;
@@ -265,7 +279,21 @@ class _BudgetEditorState extends ConsumerState<BudgetEditor> {
                       ),
                     ),
                   ),
-                  if (capsLocked) ProChip(label: l10n.proBadge),
+                  // ⏱ 2026-10-01 · MO-07: the chip is the way to what it
+                  // marks. Where this build sells it closes the sheet and
+                  // opens the paywall with `router.go`, which REPLACES the
+                  // location (as every other paywall entry does), so the
+                  // paywall's own back control is the way out, not a pop to
+                  // Insights; where it cannot sell, it stays a label rather
+                  // than a dead button.
+                  if (capsLocked)
+                    ProChip(
+                      key: BudgetEditor.proChip,
+                      label: l10n.proBadge,
+                      onPressed: ref.watch(sellingEnabledProvider)
+                          ? _openPaywall
+                          : null,
+                    ),
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -374,12 +402,36 @@ class _BudgetEditorState extends ConsumerState<BudgetEditor> {
 /// The small "Pro" marker on a part of a screen that a plan unlocks: the
 /// scheme's secondary container pair, the ramp's 12 px label.
 class ProChip extends StatelessWidget {
-  const ProChip({super.key, required this.label});
+  const ProChip({super.key, required this.label, this.onPressed});
 
   final String label;
 
+  /// Opens what the chip marks a way to — the paywall. Null draws a label, not
+  /// a button: a control that does nothing is worse than no control.
+  final VoidCallback? onPressed;
+
   @override
   Widget build(BuildContext context) {
+    final Widget chip = _chip(context);
+    final VoidCallback? tap = onPressed;
+    if (tap == null) return chip;
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: tap,
+        customBorder: const StadiumBorder(),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minWidth: kMinInteractiveDimension,
+            minHeight: kMinInteractiveDimension,
+          ),
+          child: Center(widthFactor: 1, child: chip),
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme scheme = theme.colorScheme;
     return DecoratedBox(

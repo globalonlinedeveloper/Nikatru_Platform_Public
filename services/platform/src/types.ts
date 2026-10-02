@@ -2,10 +2,10 @@
 // Shared types for the platform Worker. Keep Env in sync with wrangler.jsonc.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The shape of a Cloudflare Rate Limiting binding, as this Worker uses it. */
-export interface RateLimiterBinding {
-  limit(opts: { key: string }): Promise<{ success: boolean }>;
-}
+/** The shape of a Cloudflare Rate Limiting binding. Declared once, beside the
+ *  limiter that reads it (services/_shared/src/rate-limit.ts). */
+import type { RateLimiterBinding } from '../../_shared/src/rate-limit';
+export type { RateLimiterBinding };
 
 /** Worker bindings + environment. Names must match wrangler.jsonc bindings. */
 export interface Env {
@@ -134,6 +134,23 @@ export interface Env {
    * PKCE S256 verifier, not the limiter.
    */
   EXT_TOKEN_CEILING_LIMITER?: RateLimiterBinding;
+
+  /**
+   * ⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED. The server-derived ceiling for POST
+   * /v1/checkout, keyed `edge:<colo>:<asn>`. Optional and fails OPEN, like the
+   * other edge ceilings — the route's fail-CLOSED bound is the per-user bucket
+   * below, because every accepted request mints a Paddle transaction that can be
+   * canceled but never deleted.
+   */
+  CHECKOUT_CEILING_LIMITER?: RateLimiterBinding;
+
+  /**
+   * ⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED. The per-USER bucket for POST
+   * /v1/checkout, keyed `checkout:<sub>` on the VERIFIED subject (the route sits
+   * behind platformAuth). It FAILS CLOSED (`strictRateLimit`): an absent binding
+   * is a 503, never an admit, because the thing it bounds is undeletable.
+   */
+  CHECKOUT_USER_LIMITER?: RateLimiterBinding;
 
   /**
    * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The per-user ceiling on the four

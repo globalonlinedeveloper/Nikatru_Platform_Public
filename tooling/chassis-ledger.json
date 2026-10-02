@@ -184,7 +184,7 @@
     },
     {
       "path": "lib/features/monetization/manage_plan_screen.dart",
-      "lines": 269,
+      "lines": 265,
       "verdict": "MOVES",
       "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 245 -> 183 brick lines, 155 package lines, callSiteDelta -62. The smallest shrink of the four, and the reason is stated rather than hidden: five of this screen's labels (`managePlanTitle`, `plan{Active,Inactive}`, `cancelPlan`, `restorePurchasesHint`) and two of its four outcome sentences live in the APP's `.arb`, not in ChassisLocalizations, so they cross the seam as parameters. `.requestCancellation()` stays (assert-screen-set:289 and the register's own reachability pattern), as do `_restore` and the hoisted ProviderContainer. ⏱ RE-MEASURED 2026-09-25 (O-STORE-RESTORE-ASKS-ONLY-THE-SERVER): 183 -> 269, by assert-chassis-ledger. `_restore` now calls `restorePurchasesOf(rail)`, then re-reads the entitlement through a hoisted container; when the store was asked it waits through `_converge` (the paywall's `EntitlementConvergence.awaitUnlock`, bounded), and `_restoreMessage` picks one of three restore sentences from the app's `.arb`. All of that is `nikatru_purchases` and Riverpod, which the package declares neither of, so it stays in the adapter. totals.lines 18598 -> 18699 with the two `.arb` rows below.",
       "target": "packages/chassis_screens/lib/monetization/manage_plan_screen.dart",
@@ -830,21 +830,21 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "package.json",
-      "lines": 27,
+      "lines": 28,
       "verdict": "STAYS",
       "why": "Per-app Worker manifest; each Worker runs its own npm ci in its own directory, which is the measured reason services/_shared can carry no bare import."
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "package-lock.json",
-      "lines": 3088,
+      "lines": 3091,
       "verdict": "STAYS",
       "why": "Per-app Worker lockfile, resolved from package.json by `npm install --package-lock-only --ignore-scripts` and rendered with its name as {{app_id}}-api, so a stamped Worker's first install (provision-backend step [1], `npm ci`) is a tree OSV-Scanner reads here before any app is stamped. assert-renovate-reach.mjs holds its packages[\"\"] to package.json. Added 2026-09-26, O-SERVICE-KIT-UNBUILT (E-a1)."
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/index.ts",
-      "lines": 193,
+      "lines": 190,
       "verdict": "STAYS",
       "why": "Per-app route table and the erasureAuth mount. assert-deploy-triggers-deploy reads the import graph from here."
     },
@@ -873,12 +873,54 @@
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+      "path": "src/lib/body.ts",
+      "lines": 4,
+      "verdict": "STAYS",
+      "why": "ADDED 2026-10-01 (rv2 SYN-S2, services-009/018). A per-Worker CARRIER, not a body: one line of code, `export * from '../../../_shared/src/body'`, like src/lib/health.ts beside it. The body cap the live Workers grew (read at most N bytes BEFORE parsing). It STAYS because test/chassis-wiring.test.ts RE_EXPORTS holds this exact path to be a pointer, and services/platform/test/twinned-worker-modules.test.ts holds a stamped Worker's src/lib twins to the one home. NO callSiteDelta: nothing shrank - the template was born without this hardening."
+    },
+    {
+      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+      "path": "src/lib/validate.ts",
+      "lines": 4,
+      "verdict": "STAYS",
+      "why": "ADDED 2026-10-01 (rv2 SYN-S2, services-009/018). A per-Worker CARRIER, not a body: one line of code, `export * from '../../../_shared/src/validate'`, like src/lib/health.ts beside it. The leaf validation primitives a route's validate(body) is built from. It STAYS because test/chassis-wiring.test.ts RE_EXPORTS holds this exact path to be a pointer, and services/platform/test/twinned-worker-modules.test.ts holds a stamped Worker's src/lib twins to the one home. NO callSiteDelta: nothing shrank - the template was born without this hardening."
+    },
+    {
+      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+      "path": "src/lib/rate-limit.ts",
+      "lines": 5,
+      "verdict": "STAYS",
+      "why": "ADDED 2026-10-01 (rv2 SYN-S2, services-009/018). A per-Worker CARRIER, not a body: one line of code, `export * from '../../../_shared/src/rate-limit'`, like src/lib/health.ts beside it. The fail-open and fail-closed limiters and the server-derived edge key. It STAYS because test/chassis-wiring.test.ts RE_EXPORTS holds this exact path to be a pointer, and services/platform/test/twinned-worker-modules.test.ts holds a stamped Worker's src/lib twins to the one home. NO callSiteDelta: nothing shrank - the template was born without this hardening."
+    },
+    {
+      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+      "path": "src/lib/request-id.ts",
+      "lines": 4,
+      "verdict": "STAYS",
+      "why": "ADDED 2026-10-01 (rv2 SYN-S2, services-009/018). A per-Worker CARRIER, not a body: one line of code, `export * from '../../../_shared/src/request-id'`, like src/lib/health.ts beside it. The correlation-id middleware src/index.ts mounts first. It STAYS because test/chassis-wiring.test.ts RE_EXPORTS holds this exact path to be a pointer, and services/platform/test/twinned-worker-modules.test.ts holds a stamped Worker's src/lib twins to the one home. NO callSiteDelta: nothing shrank - the template was born without this hardening."
+    },
+    {
+      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+      "path": "test/mount-auth.test.ts",
+      "lines": 74,
+      "verdict": "STAYS",
+      "why": "ADDED 2026-10-01 (services-012). Per-app by construction: it drives THIS Worker's real app (its route table, its index.ts mounting) through the kit's supabaseAuth/erasureAuth, using the shared helper services/_shared/test/mount-auth.ts. Until it existed no test in a stamped Worker's suite executed either boundary."
+    },
+    {
+      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+      "path": "test/wiring.test.ts",
+      "lines": 89,
+      "verdict": "STAYS",
+      "why": "ADDED 2026-10-01 (services-018/033). Per-app by construction: the request-id mounting, onError reaching the sink with this Worker's name, and the dependencies THIS Worker's /v1/health probes - the wiring the live Workers each test for themselves. The modules' own cases run from services/_shared/test."
+    },
+    {
+      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/middleware/auth.ts",
-      "lines": 310,
+      "lines": 35,
       "verdict": "MOVES",
-      "why": "[ADR 067] decision 2 / unit worker-shared-chassis, LEDGERED 2026-09-07 by unit app-shell - MEASURED: 287 -> 258 lines, callSiteDelta -29. A PARTIAL move, and the refusal is measured rather than a shortcut: the DECIDING moved to services/_shared/src/auth.ts (the ES256 pin, the twice-corrected isKeySetUnavailable predicate, JWKS_KV_KEY, JWKS_TTL_SECONDS, bearer, and the refusal to treat an empty JWKS document as a usable cache), while the jose/hono plumbing and the shared-secret fallback stay here because nothing under services/_shared may carry a bare import - each Worker runs its own npm ci in its own directory, and aliasing round it silently changes which build of jose is verified. RE-MEASURED 2026-09-25 (AUTH-REVOKE-AT-WORKERS): 262 -> 310, the sessionRevoked carrier and its check in supabaseAuth (both paths) and erasureAuth; the refuse-or-admit decision itself is revocationRefusal in services/_shared/src/auth.ts, so the carrier holds only the KV read and the fail-open log lines.",
-      "target": "services/_shared/src/auth.ts",
-      "callSiteDelta": -29
+      "why": "[ADR 067] decision 2 / unit worker-shared-chassis, LEDGERED 2026-09-07 by unit app-shell - MEASURED: 287 -> 258 lines, callSiteDelta -29. A PARTIAL move, and the refusal is measured rather than a shortcut: the DECIDING moved to services/_shared/src/auth.ts (the ES256 pin, the twice-corrected isKeySetUnavailable predicate, JWKS_KV_KEY, JWKS_TTL_SECONDS, bearer, and the refusal to treat an empty JWKS document as a usable cache), while the jose/hono plumbing and the shared-secret fallback stay here because nothing under services/_shared may carry a bare import - each Worker runs its own npm ci in its own directory, and aliasing round it silently changes which build of jose is verified. RE-MEASURED 2026-09-25 (AUTH-REVOKE-AT-WORKERS): 262 -> 310, the sessionRevoked carrier and its check in supabaseAuth (both paths) and erasureAuth; the refuse-or-admit decision itself is revocationRefusal in services/_shared/src/auth.ts, so the carrier holds only the KV read and the fail-open log lines. MOVED WHOLE 2026-10-01 (rv2 SYN-S2, services-012): 310 -> 35, callSiteDelta -275. services/_shared became a package declaring jose (installed by each Worker's postinstall, `npm ci --prefix ../_shared`), so the plumbing that stayed here for want of a node_modules - the remote JWKS getter, the KV warm, the cached-key-set fallback, the HS256 fallback, sessionRevoked and both middlewares - now lives once in services/_shared/src/auth-middleware.ts. This file re-exports it and keeps the ONE line that names SUPABASE_JWT_SECRET: the `supabaseAuthWith` binding.",
+      "target": "services/_shared/src/auth-middleware.ts",
+      "callSiteDelta": -275
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
@@ -934,7 +976,7 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/types.ts",
-      "lines": 85,
+      "lines": 86,
       "verdict": "STAYS",
       "why": "Per-app Env bindings - APP_DB and this app's own vars."
     },
@@ -955,7 +997,7 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "test/chassis-wiring.test.ts",
-      "lines": 88,
+      "lines": 94,
       "verdict": "STAYS",
       "why": "The one test a stamped Worker owns: its src/lib/* files must stay RE-EXPORTS of the one home, and its erasure route must derive rather than list tables. Everything else worth testing is the chassis suite, which runs here too."
     },
