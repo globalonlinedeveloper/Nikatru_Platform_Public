@@ -1,0 +1,2062 @@
+diff --git a/.github/workflows/ops-watch.yml b/.github/workflows/ops-watch.yml
+index 13d7461d..d54ca82a 100644
+--- a/.github/workflows/ops-watch.yml
++++ b/.github/workflows/ops-watch.yml
+@@ -151,6 +151,30 @@ jobs:
+           fi
+           exit "$code"
+ 
++      # why (2026-10-01, PB-27): Box B and Box C config is applied over SSH and
++      # re-vendored by hand, and nothing compared the two. Each box's cron posts
++      # the hashes of its live compose, override and tunnel config to the
++      # platform Worker (box-scoped secret, then D1); this READS that table and
++      # compares it with tooling/ops/box-config-vendored.json. CI never SSHes in.
++      # why: a STEP in this job, for the reason the name-clearance step below gives.
++      - name: Each box's live config is the vendored config
++        if: ${{ !cancelled() }}
++        env:
++          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
++          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
++        run: |
++          set +e
++          node tooling/ops/check-box-config-drift.mjs
++          code=$?
++          set -e
++          if [ "$code" -eq 2 ]; then
++            # NO BACKTICKS ANYWHERE IN THESE STRINGS (see the step above).
++            echo "::error title=Box config drift is UNKNOWN — nothing was compared::The box_config_manifest table could not be read, or tooling/ops/box-config-vendored.json carries an entry with no vendored hash. NOTHING was judged, and that is never a pass. The step log names what could not be read."
++          elif [ "$code" -eq 1 ]; then
++            echo "::error title=A box's live config is not the vendored config, or the box stopped reporting::A hash differs, a declared file is missing or undeclared, or a box has not posted inside its window. The step log names the box and the file. Re-vendor the live file (and refresh the register) or put the vendored file back on the box; the box cron is tooling/ops/boxes/post-config-manifest.sh."
++          fi
++          exit "$code"
++
+       # why: the 30-day ceiling on apps/*/name-clearance.json, read DAILY and OFF
+       # the pull-request path. ci.yml runs this guard without `--execute` on
+       # purpose: every record shares a birthday, and a gate that refuses every
+diff --git a/docs/design/auth-sessions.md b/docs/design/auth-sessions.md
+index b261b1ff..3599a967 100644
+--- a/docs/design/auth-sessions.md
++++ b/docs/design/auth-sessions.md
+@@ -42,18 +42,18 @@ the token.
+ Every Worker verifies ES256 locally, against a JWKS cached in KV, and then reads three things. None of
+ them is the session:
+ 
+-- `services/_shared/src/auth.ts:92-96` — `verifyOptions`: `issuer`, `audience: 'authenticated'`,
++- `services/_shared/src/auth.ts:124-128` — `verifyOptions`: `issuer`, `audience: 'authenticated'`,
+   `algorithms: ['ES256']`. `:57` `JWKS_KV_KEY = 'supabase_jwks'`, `:75` `JWKS_TTL_SECONDS = 600`.
+ - ⏱ 2026-10-01: the verifying moved whole to `services/_shared/src/auth-middleware.ts` (the kit every
+-  Worker binds). `:164` `jwtVerify(token, remoteJwks(…), opts)`, with the KV fallback at `:175`.
++  Worker binds). `:184` `jwtVerify(token, remoteJwks(…), opts)`, with the KV fallback at `:200`.
+ - `services/platform/src/middleware/auth.ts:248` verifies through the kit with no fallback; after that,
+   `:253` requires a string `payload.sub`, `:263` sets `userId`, `:269` sets `userEmail`, and `:270`
+   sets `authRecency` from `amr`.
+-- The app Workers' boundaries, `services/_shared/src/auth-middleware.ts:315-330` (`supabaseAuthWith`)
+-  and `:371-386` (`erasureAuth`): the same three reads, `sub`, `email` and `authRecencyOf(payload)`.
++- The app Workers' boundaries, `services/_shared/src/auth-middleware.ts:340-355` (`supabaseAuthWith`)
++  and `:396-411` (`erasureAuth`): the same three reads, `sub`, `email` and `authRecencyOf(payload)`.
+ 
+ Nothing anywhere reads `payload.session_id` or `payload.iat`. The `session_id` that does appear in
+-`services/` (`services/platform/src/routes/events.ts:269`, `services/platform/src/types.ts:985`) is the
++`services/` (`services/platform/src/routes/events.ts:269`, `services/platform/src/types.ts:996`) is the
+ analytics envelope's own field and is unrelated.
+ 
+ **No Worker can reach Postgres.** The bindings are D1, KV, R2, a service binding and rate limits. A grep for
+@@ -96,8 +96,8 @@ none of the tokens they refused can still be alive.
+ 
+ - **Added cost per request: one KV `get`.** Note what already happens: `platformAuth` calls
+   `void warmCache(c.env)`, which does a `JWKS_CACHE.get` on **every** authenticated request
+-  (⏱ 2026-10-01: now the kit's `warmJwksCache`, `services/_shared/src/auth-middleware.ts:110`, called at
+-  `:209` and `:365`, by every Worker). So this is a second read per request, not the first. Against
++  (⏱ 2026-10-01: now the kit's `warmJwksCache`, `services/_shared/src/auth-middleware.ts:120`, called at
++  `:234` and `:390`, by every Worker). So this is a second read per request, not the first. Against
+   `kv.readsPerDay` in `tooling/ceilings.json` (Free: 100,000 per account per day), two reads per request
+   caps authenticated requests at roughly half that before KV reads run out, shared with `CONFIG_KV`.
+   That is the real price of this option. Measure it with the dashboard reading `ceilings.json` already
+diff --git a/services/_shared/src/auth-middleware.ts b/services/_shared/src/auth-middleware.ts
+index e3e5d203..dfcdf30c 100644
+--- a/services/_shared/src/auth-middleware.ts
++++ b/services/_shared/src/auth-middleware.ts
+@@ -53,10 +53,12 @@
+ import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from 'jose';
+ import {
+   JWKS_KV_KEY,
++  JWKS_LKG_KV_KEY,
+   JWKS_TTL_SECONDS,
+   authRecencyOf,
+   bearer,
+   isKeySetUnavailable,
++  lastKnownGoodNeedsWrite,
+   revocationKey,
+   revocationRefusal,
+   usableJwksDocument,
+@@ -103,6 +105,14 @@ export function remoteJwks(supabaseUrl: string): JWTVerifyGetKey {
+  * miss: KV Free allows 1,000 writes/day account-wide (`tooling/ceilings.json` →
+  * `kv.writesPerDay`), and a cache that re-put on every cold isolate would spend
+  * that budget on itself.
++ *
++ * ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES. The same successful fetch
++ * also keeps the LAST-KNOWN-GOOD copy ([JWKS_LKG_KV_KEY], no expiry) equal to
++ * what the server publishes: it is read, and re-put only when the fetched set
++ * differs (`lastKnownGoodNeedsWrite`), so a rotation replaces it and a steady
++ * key set spends no write. That read is the warm path deciding whether to write,
++ * never a verification: only `verifyAsymmetric`'s outage branch verifies
++ * against it.
+  */
+ export async function warmJwksCache(supabaseUrl: string, jwksCache: KVNamespace | undefined): Promise<void> {
+   try {
+@@ -110,9 +120,13 @@ export async function warmJwksCache(supabaseUrl: string, jwksCache: KVNamespace
+     if (await jwksCache.get(JWKS_KV_KEY)) return; // still warm
+     const res = await fetch(`${supabaseUrl}/auth/v1/.well-known/jwks.json`);
+     if (!res.ok) return;
+-    await jwksCache.put(JWKS_KV_KEY, await res.text(), {
++    const body = await res.text();
++    await jwksCache.put(JWKS_KV_KEY, body, {
+       expirationTtl: JWKS_TTL_SECONDS,
+     });
++    if (lastKnownGoodNeedsWrite(body, await jwksCache.get(JWKS_LKG_KV_KEY))) {
++      await jwksCache.put(JWKS_LKG_KV_KEY, body);
++    }
+   } catch {
+     // Non-fatal by construction: verification still works via jose's own fetch.
+   }
+@@ -136,11 +150,17 @@ export async function warmJwksCache(supabaseUrl: string, jwksCache: KVNamespace
+  * a PUBLIC document, so caching it adds no secret to this scope. The parse and
+  * the empty-key-set refusal are `usableJwksDocument` in auth.ts; only the
+  * key-set construction, which needs `jose`, is here.
++ *
++ * `kvKey` names WHICH copy: the 10-minute one (the default) or the
++ * last-known-good one ([JWKS_LKG_KV_KEY]) — the same parse, the same refusals.
+  */
+-export async function localSetFromCache(jwksCache: KVNamespace | undefined): Promise<JWTVerifyGetKey | null> {
++export async function localSetFromCache(
++  jwksCache: KVNamespace | undefined,
++  kvKey: typeof JWKS_KV_KEY | typeof JWKS_LKG_KV_KEY = JWKS_KV_KEY,
++): Promise<JWTVerifyGetKey | null> {
+   try {
+     if (!jwksCache) return null;
+-    const doc = usableJwksDocument(await jwksCache.get(JWKS_KV_KEY));
++    const doc = usableJwksDocument(await jwksCache.get(kvKey));
+     if (doc === null) return null;
+     return createLocalJWKSet(doc as Parameters<typeof createLocalJWKSet>[0]);
+   } catch {
+@@ -169,8 +189,13 @@ export async function verifyAsymmetric(token: string, supabaseUrl: string, jwksC
+     // the two cannot drift into a weaker one an attacker reaches by making the
+     // JWKS endpoint unreachable. A bad token still fails here and now.
+     if (!isKeySetUnavailable(err)) throw err;
+-    const local = await localSetFromCache(jwksCache);
+-    // No usable cache ⇒ behave exactly as before: rethrow, fail closed.
++    // ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES. The 10-minute copy
++    // first; the last-known-good copy ONLY when that one is unusable (expired,
++    // empty or corrupt). Never both against one token: a usable 10-minute copy
++    // is the newer set, so a `kid` it lacks has been rotated out and the
++    // ERR_JWKS_NO_MATCHING_KEY it raises below is the answer.
++    const local = (await localSetFromCache(jwksCache)) ?? (await localSetFromCache(jwksCache, JWKS_LKG_KV_KEY));
++    // No usable copy at all ⇒ behave exactly as before: rethrow, fail closed.
+     if (!local) throw err;
+     const { payload } = await jwtVerify(token, local, opts);
+     return payload;
+diff --git a/services/_shared/src/auth.ts b/services/_shared/src/auth.ts
+index db9a1424..0d2bab7d 100644
+--- a/services/_shared/src/auth.ts
++++ b/services/_shared/src/auth.ts
+@@ -74,6 +74,38 @@ export const JWKS_KV_KEY = 'supabase_jwks';
+  */
+ export const JWKS_TTL_SECONDS = 600; // 10 minutes
+ 
++/**
++ * ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES (PB-13) — THE LAST-KNOWN-GOOD
++ * KEY SET, under its own KV key beside [JWKS_KV_KEY].
++ *
++ * The 10-minute copy above is the only thing a Worker could verify against once
++ * Box C stopped answering, and it expires on a timer that only a SUCCESSFUL fetch
++ * renews. So about ten minutes into a Box C outage every authenticated request
++ * 401'd, although every access token in flight was still valid and its signing
++ * key had not changed. (The shield's 24 h stale entry, #1096, does not reach
++ * here: the Workers' own JWKS reads are same-zone subrequests that skip it.)
++ *
++ * The LKG copy is the same public document with NO expiry. It is:
++ *   · WRITTEN by the warm path after a successful fetch, whenever the fetched
++ *     set differs from the one stored ([lastKnownGoodNeedsWrite]) — so a fetched
++ *     set always replaces it, and an unchanged one costs no KV write;
++ *   · READ for verification ONLY when the key set could not be obtained
++ *     ([isKeySetUnavailable]) AND the 10-minute copy is unusable. A usable
++ *     10-minute copy is the newer set, and a token whose `kid` it lacks is
++ *     refused without a second bite at an older one.
++ *
++ * 🔴 WHY NO EXPIRY IS SAFE. It holds PUBLIC keys, verified through the same
++ * [verifyOptions] (ES256, issuer, audience, `exp`), so it can only ever admit a
++ * token Supabase signed and that has not expired. An access token lives at most
++ * `jwt_exp` (3600 s, tooling/mail-transport.json), and a refresh needs Box C — so
++ * in an outage the LKG carries signed-in calls for as long as their tokens live,
++ * and then nothing. A rotation replaces it on the next good fetch.
++ *
++ * KV writes (`tooling/ceilings.json` → `kv.writesPerDay`): one per CHANGE of the
++ * published key set, which is a rotation — not one per expiry.
++ */
++export const JWKS_LKG_KV_KEY = 'supabase_jwks_lkg';
++
+ /**
+  * 🔴 THE VERIFY OPTIONS ARE DECLARED ONCE AND SHARED BY EVERY PATH, AND THAT IS
+  * THE WHOLE SAFETY ARGUMENT FOR EVERY FALLBACK BUILT ON THEM.
+@@ -186,6 +218,29 @@ export function usableJwksDocument(cached: string | null): { keys: unknown[] } |
+   }
+ }
+ 
++/**
++ * Should a body the JWKS endpoint just answered 200 with replace the stored
++ * last-known-good copy ([JWKS_LKG_KV_KEY])?
++ *
++ * TRUE when the body IS a key-set document — a JSON object with a `keys` array —
++ * and differs from what is stored. An EMPTY `keys` array still replaces: it is
++ * what the server now publishes, and a stale LKG must never outlive the set that
++ * superseded it (rotation wins; [usableJwksDocument] then refuses the empty copy
++ * on the read, so the outage path fails closed). A body that is NOT a key-set
++ * document (an HTML error page answered 200, a truncated read) is not a set and
++ * leaves the stored copy alone.
++ */
++export function lastKnownGoodNeedsWrite(fetched: string, stored: string | null): boolean {
++  try {
++    const parsed = JSON.parse(fetched) as unknown;
++    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
++    if (!Array.isArray((parsed as { keys?: unknown }).keys)) return false;
++  } catch {
++    return false;
++  }
++  return fetched !== stored;
++}
++
+ // ─────────────────────────────────────────────────────────────────────────────
+ // ⏱ 2026-09-16 · O-APP-API-DELETE-NO-RECENCY — THE RECENT-SIGN-IN RULE FOR
+ // ACCOUNT DELETION, IN ONE PLACE.
+diff --git a/services/_shared/test/auth-core.test.ts b/services/_shared/test/auth-core.test.ts
+index 4024c89e..a5761b75 100644
+--- a/services/_shared/test/auth-core.test.ts
++++ b/services/_shared/test/auth-core.test.ts
+@@ -1,9 +1,11 @@
+ import { describe, it, expect } from 'vitest';
+ import {
+   JWKS_KV_KEY,
++  JWKS_LKG_KV_KEY,
+   JWKS_TTL_SECONDS,
+   bearer,
+   isKeySetUnavailable,
++  lastKnownGoodNeedsWrite,
+   usableJwksDocument,
+   verifyOptions,
+   CLOCK_SKEW_SECONDS,
+@@ -151,6 +153,48 @@ describe('the KV constants', () => {
+     expect(86400 / JWKS_TTL_SECONDS).toBeLessThan(1000 * 0.2);
+     expect(JWKS_TTL_SECONDS).toBeGreaterThan(60);
+   });
++
++  it('keep the last-known-good copy under its OWN key, never the 10-minute one', () => {
++    // One key for both would let the 10-minute expiry delete the LKG, which is
++    // the outage O-JWKS-FALLBACK-LIVES-TEN-MINUTES exists to end.
++    expect(JWKS_LKG_KV_KEY).toBe('supabase_jwks_lkg');
++    expect(JWKS_LKG_KV_KEY).not.toBe(JWKS_KV_KEY);
++  });
++});
++
++// ─────────────────────────────────────────────────────────────────────────────
++// ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES — when a fetched body replaces
++// the last-known-good copy. Rotation wins; a body that is not a key set never
++// replaces it; an unchanged set costs no write.
++// ─────────────────────────────────────────────────────────────────────────────
++
++describe('lastKnownGoodNeedsWrite — a fetched set always replaces the LKG', () => {
++  const A = JSON.stringify({ keys: [{ kid: 'k1', kty: 'EC' }] });
++  const B = JSON.stringify({ keys: [{ kid: 'k2', kty: 'EC' }] });
++
++  it('writes when nothing is stored yet', () => {
++    expect(lastKnownGoodNeedsWrite(A, null)).toBe(true);
++  });
++
++  it('writes a ROTATED set over the old one', () => {
++    expect(lastKnownGoodNeedsWrite(B, A)).toBe(true);
++  });
++
++  it('spends no write when the published set is unchanged', () => {
++    expect(lastKnownGoodNeedsWrite(A, A)).toBe(false);
++  });
++
++  it('an EMPTY published set still replaces the LKG — a stale set must not outlive its successor', () => {
++    expect(lastKnownGoodNeedsWrite('{"keys":[]}', A)).toBe(true);
++    // …and the read path then refuses it, so the outage path fails closed.
++    expect(usableJwksDocument('{"keys":[]}')).toBeNull();
++  });
++
++  it('a body that is not a key-set document never replaces it', () => {
++    for (const body of ['<html>502</html>', '', 'null', '[]', '{}', '{"keys":{}}', '{"keys":"x"}', '{"ke']) {
++      expect(lastKnownGoodNeedsWrite(body, A), body).toBe(false);
++    }
++  });
+ });
+ 
+ // ─────────────────────────────────────────────────────────────────────────────
+diff --git a/services/platform/.dev.vars.example b/services/platform/.dev.vars.example
+index 625104ea..eedca8b7 100644
+--- a/services/platform/.dev.vars.example
++++ b/services/platform/.dev.vars.example
+@@ -64,3 +64,11 @@ RAZORPAY_WEBHOOK_SECRET=
+ # sandbox destination sets `sandbox` HERE so a sandbox notification can never be
+ # written with a live provider_environment.
+ MONEY_ENVIRONMENT=sandbox
++
++# ⏱ 2026-10-01 · PB-27 — POST /v1/ops/box-manifest (src/routes/box-manifest.ts).
++# ONE SECRET PER BOX: each box's config-hash cron authenticates with its own, so
++# a box can write only its own row. The same value sits on that box only, in the
++# root-only file tooling/ops/boxes/post-config-manifest.sh reads. Absent, that
++# box's posts answer 503. Deploy: `wrangler secret put <NAME>`, never a var.
++BOX_MANIFEST_SECRET_BOXB=
++BOX_MANIFEST_SECRET_BOXC=
+diff --git a/services/platform/README.md b/services/platform/README.md
+index 6b2c92dd..058ac6de 100644
+--- a/services/platform/README.md
++++ b/services/platform/README.md
+@@ -33,6 +33,7 @@ build when the two disagree, so this table cannot silently fall behind again.
+ | GET, POST | `/v1/reminders/unsubscribe` | **the token in `?t=`** | One-click unsubscribe from a reminder email (RFC 8058); GET changes nothing |
+ | POST, DELETE | `/v1/calendar/feed` | Supabase JWT | Mint/rotate or revoke a private calendar feed (ST-R2) |
+ | GET | `/v1/calendar/<token>.ics` | **the token is the capability** | The feed; `?download=1` for a download |
++| POST | `/v1/ops/box-manifest` | **a secret scoped to one box** | A box's cron reports the hashes of its live config (PB-27); no CORS |
+ 
+ Three properties of that table are load-bearing and are asserted, not assumed:
+ 
+diff --git a/services/platform/migrations/0024_box_config_manifest.sql b/services/platform/migrations/0024_box_config_manifest.sql
+new file mode 100644
+index 00000000..b1cf4f64
+--- /dev/null
++++ b/services/platform/migrations/0024_box_config_manifest.sql
+@@ -0,0 +1,29 @@
++-- ─────────────────────────────────────────────────────────────────────────────
++-- 0024_box_config_manifest.sql — WHAT EACH BOX SAYS ITS LIVE CONFIG IS
++-- (PB-27, O-JWKS-FALLBACK-LIVES-TEN-MINUTES folds O-BOX-CONFIG-OUTSIDE-THE-LANE).
++--
++-- Applies to the SHARED platform_db (services/platform is the sole applier):
++--   wrangler d1 migrations apply PLATFORM_DB --local    (or --remote)
++--
++-- Box B and Box C have their config applied over SSH and re-vendored by hand,
++-- and nothing compared the live files with the vendored copies. Each box now
++-- runs a cron (tooling/ops/boxes/post-config-manifest.sh) that hashes its live
++-- compose, override and tunnel config and POSTs the hashes to
++-- POST /v1/ops/box-manifest (src/routes/box-manifest.ts), authenticated with a
++-- secret scoped to that ONE box. tooling/ops/check-box-config-drift.mjs reads
++-- this table from ops-watch and compares it with the vendored hashes.
++--
++-- ONE ROW PER BOX, replaced whole on every post: a file that disappears from
++-- the box disappears from the manifest, so "the box stopped sending X" is as
++-- visible as "X changed". Hashes only — never a file's content.
++--
++--   box        'boxb' | 'boxc' (the route's closed set)
++--   manifest   JSON: {"<logical name>": "<sha256 hex>", ...}
++--   posted_at  the SERVER's time of the post, ISO-8601 TEXT (0017's header
++--              records why never INTEGER); the reader's staleness limb reads it.
++-- ─────────────────────────────────────────────────────────────────────────────
++CREATE TABLE IF NOT EXISTS box_config_manifest (
++  box       TEXT PRIMARY KEY,
++  manifest  TEXT NOT NULL,
++  posted_at TEXT NOT NULL
++);
+diff --git a/services/platform/src/index.ts b/services/platform/src/index.ts
+index 68b1d40a..010fe7ee 100644
+--- a/services/platform/src/index.ts
++++ b/services/platform/src/index.ts
+@@ -73,6 +73,7 @@ import sessions from './routes/sessions';
+ import nativeAuth from './routes/native-auth';
+ import reminders from './routes/reminders';
+ import calendar from './routes/calendar';
++import boxManifest from './routes/box-manifest';
+ import { scheduled } from './scheduled';
+ 
+ const app = new Hono<AppEnv>();
+@@ -367,6 +368,11 @@ app.use('/v1/reminders/prefs', platformAuth);
+ app.route('/v1', reminders);
+ app.use('/v1/calendar/feed', platformAuth);
+ app.route('/v1', calendar);
++// ⏱ 2026-10-01 · PB-27 — A BOX REPORTS ITS LIVE CONFIG HASHES (routes/box-manifest.ts).
++// 🔴 NO `platformAuth` HERE, DELIBERATELY: the caller is a box's cron, not a
++// user. The route authenticates the bearer against the secret of the ONE box the
++// body names, and middleware/cors.ts refuses `Origin` on `/v1/ops/`.
++app.route('/v1', boxManifest);
+ 
+ app.notFound((c) => c.json({ error: 'not_found' }, 404));
+ // [pipeline 11]E-8 — an unhandled error REACHES A SINK, not just the log.
+diff --git a/services/platform/src/middleware/cors.ts b/services/platform/src/middleware/cors.ts
+index 19bf1649..ca826b63 100644
+--- a/services/platform/src/middleware/cors.ts
++++ b/services/platform/src/middleware/cors.ts
+@@ -26,8 +26,10 @@ export * from '../../../_shared/src/cors';
+ // (routes/native-auth.ts, POST /v1/auth/native/<app>/<op>). Every browser request
+ // there, and every preflight, is a 403 with no CORS header; services/_shared/src/cors.ts
+ // says why. test/cors.test.ts declares those endpoints no-CORS, with the reason.
++// ⏱ 2026-10-01 · PB-27: `/v1/ops/` too — POST /v1/ops/box-manifest is a box's
++// cron reporting config hashes (routes/box-manifest.ts); no browser calls it.
+ export const corsMiddleware = cors({
+   scope: 'every-app',
+   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+-  refuseBrowsersOn: ['/v1/auth/native/'],
++  refuseBrowsersOn: ['/v1/auth/native/', '/v1/ops/'],
+ });
+diff --git a/services/platform/src/routes/box-manifest.ts b/services/platform/src/routes/box-manifest.ts
+new file mode 100644
+index 00000000..f3361602
+--- /dev/null
++++ b/services/platform/src/routes/box-manifest.ts
+@@ -0,0 +1,122 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// box-manifest.ts — POST /v1/ops/box-manifest: a box reports the HASHES of its
++// live config, so drift from the vendored copies is read, not guessed.
++//
++// PB-27 (O-JWKS-FALLBACK-LIVES-TEN-MINUTES folds O-BOX-CONFIG-OUTSIDE-THE-LANE).
++// Box B and Box C have their compose, override and tunnel config applied over
++// SSH and re-vendored by hand, and nothing compared the live files with the
++// vendored copies. The box pushes; CI never SSHes in:
++//   box cron (tooling/ops/boxes/post-config-manifest.sh)
++//     → this route (one row per box, migrations/0024_box_config_manifest.sql)
++//     → tooling/ops/check-box-config-drift.mjs in ops-watch, against the
++//       vendored hashes in tooling/ops/box-config-vendored.json.
++//
++// ── 🔴 AUTHENTICATED BY A SECRET SCOPED TO ONE BOX ───────────────────────────
++// `Authorization: Bearer <secret>`, compared with the secret of the box the
++// body NAMES (BOX_MANIFEST_SECRET_BOXB / _BOXC, `wrangler secret put`). Box B's
++// secret cannot write Box C's row: a box that is compromised can lie about its
++// own config, which is the limit of any self-report, and nothing else. The
++// comparison is over SHA-256 digests with `timingSafeEqual`, so neither the
++// length nor a prefix of the secret is timed out of it. A box whose secret is
++// not configured answers 503 BEFORE the body is read, as the money webhooks do.
++//
++// ── WHAT IT ACCEPTS ──────────────────────────────────────────────────────────
++//   { "box": "boxc", "files": { "<logical name>": "<64 lowercase hex>", … } }
++// Logical names are short slugs ("compose", "override", "tunnel"), never a
++// path; a hash is a sha256. Nothing else is stored, and a file's content never
++// leaves the box. NO CORS: a browser has no business here, so
++// middleware/cors.ts refuses `Origin` on the `/v1/ops/` prefix.
++// ─────────────────────────────────────────────────────────────────────────────
++import { Hono } from 'hono';
++import type { AppEnv } from '../types';
++import { nowIso, run } from '../lib/d1';
++import { readBoundedBody } from '../lib/body';
++import { bearer } from '../../../_shared/src/auth';
++import { isPlainObject } from '../../../_shared/src/validate';
++
++const boxManifest = new Hono<AppEnv>();
++
++/** The boxes that report, and the Worker secret each one authenticates with.
++ *  A box not named here has no row to write. */
++export const BOX_SECRET_ENV = {
++  boxb: 'BOX_MANIFEST_SECRET_BOXB',
++  boxc: 'BOX_MANIFEST_SECRET_BOXC',
++} as const;
++export type BoxId = keyof typeof BOX_SECRET_ENV;
++
++/**
++ * @ceiling none — a request-shape bound on a box's self-report, not a platform
++ * resource. 32 files × (64-char name + 64-char hash + JSON punctuation) is well
++ * under it; anything larger is not a manifest.
++ */
++export const BOX_MANIFEST_MAX_BYTES = 8_192;
++/** @ceiling none — a request-shape bound, the file count one manifest may carry. */
++export const BOX_MANIFEST_MAX_FILES = 32;
++
++const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
++const SHA256 = /^[0-9a-f]{64}$/;
++
++const isBox = (v: unknown): v is BoxId => typeof v === 'string' && Object.hasOwn(BOX_SECRET_ENV, v);
++
++/** The manifest's `files`, validated and key-sorted, or null. */
++export function parseBoxFiles(v: unknown): Record<string, string> | null {
++  if (!isPlainObject(v)) return null;
++  const entries = Object.entries(v);
++  if (entries.length === 0 || entries.length > BOX_MANIFEST_MAX_FILES) return null;
++  for (const [name, hash] of entries) {
++    if (!NAME.test(name) || typeof hash !== 'string' || !SHA256.test(hash)) return null;
++  }
++  return Object.fromEntries(entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) as Record<string, string>;
++}
++
++/** Constant-time equality of two secrets, over their SHA-256 digests so the
++ *  compared buffers are always the same length. */
++async function sameSecret(given: string, expected: string): Promise<boolean> {
++  const enc = new TextEncoder();
++  const [a, b] = await Promise.all([
++    crypto.subtle.digest('SHA-256', enc.encode(given)),
++    crypto.subtle.digest('SHA-256', enc.encode(expected)),
++  ]);
++  return crypto.subtle.timingSafeEqual(new Uint8Array(a), new Uint8Array(b));
++}
++
++boxManifest.post('/ops/box-manifest', async (c) => {
++  const log = `[box-manifest] rid=${c.get('requestId') ?? '-'}`;
++  const read = await readBoundedBody(c.req.raw, BOX_MANIFEST_MAX_BYTES);
++  if (!read.ok) return c.json({ error: read.error }, read.status);
++  let body: unknown;
++  try {
++    body = JSON.parse(read.text);
++  } catch {
++    return c.json({ error: 'bad_json' }, 400);
++  }
++  if (!isPlainObject(body) || !isBox(body.box)) return c.json({ error: 'unknown_box' }, 400);
++  const box = body.box;
++
++  const expected = c.env[BOX_SECRET_ENV[box]];
++  if (typeof expected !== 'string' || expected === '') {
++    console.error(`${log} box=${box} refused: ${BOX_SECRET_ENV[box]} is not configured`);
++    return c.json({ error: 'not_configured' }, 503);
++  }
++  const given = bearer(c.req.header('Authorization') ?? '');
++  if (given === null || !(await sameSecret(given, expected))) {
++    console.warn(`${log} box=${box} refused: the bearer is not this box's secret`);
++    return c.json({ error: 'unauthorized' }, 401);
++  }
++
++  const files = parseBoxFiles(body.files);
++  if (files === null) return c.json({ error: 'bad_manifest' }, 400);
++
++  // An upsert of the whole row: re-sending the same post changes nothing, so the
++  // kit's transient retry is safe here.
++  await run(
++    c.env.PLATFORM_DB.prepare(
++      `INSERT INTO box_config_manifest (box, manifest, posted_at) VALUES (?, ?, ?)
++       ON CONFLICT(box) DO UPDATE SET manifest = excluded.manifest, posted_at = excluded.posted_at`,
++    ).bind(box, JSON.stringify(files), nowIso()),
++  );
++  console.log(`${log} box=${box} files=${Object.keys(files).length} recorded`);
++  return c.body(null, 204);
++});
++
++export default boxManifest;
+diff --git a/services/platform/src/types.ts b/services/platform/src/types.ts
+index f220642e..805a90da 100644
+--- a/services/platform/src/types.ts
++++ b/services/platform/src/types.ts
+@@ -340,6 +340,17 @@ export interface Env {
+   RAZORPAY_KEY_SECRET?: string;
+   /** The webhook signing secret. `wrangler secret put`, NEVER a var. */
+   RAZORPAY_WEBHOOK_SECRET?: string;
++  /**
++   * ⏱ 2026-10-01 · PB-27. The secrets POST /v1/ops/box-manifest
++   * (src/routes/box-manifest.ts) authenticates each box's config-hash report
++   * with — ONE PER BOX, so a box can write only its own row. The same value sits
++   * on that box only, in a root-only file the cron reads
++   * (tooling/ops/boxes/post-config-manifest.sh). Absent, that box's posts answer
++   * 503 before the body is read. `wrangler secret put`, NEVER a var.
++   */
++  BOX_MANIFEST_SECRET_BOXB?: string;
++  /** Box C's half of the pair above. `wrangler secret put`, NEVER a var. */
++  BOX_MANIFEST_SECRET_BOXC?: string;
+   SUPABASE_URL: string;
+   /**
+    * OPTIONAL comma-separated list of Supabase project URLs the nightly cron keeps
+diff --git a/services/platform/test/auth.test.ts b/services/platform/test/auth.test.ts
+index 7dadd97e..9492d613 100644
+--- a/services/platform/test/auth.test.ts
++++ b/services/platform/test/auth.test.ts
+@@ -86,6 +86,9 @@ let appBody: unknown = null;
+  *  the real thing. */
+ let jwksThrows = false;
+ let rotatedJwk: Record<string, unknown>;
++/** The private half of `rotatedJwk` (`test-key-2`), so a test can mint a token
++ *  the ROTATED set verifies. */
++let rotatedKey: CryptoKey;
+ /** When set, the JWKS endpoint ANSWERS, badly — the shape a Cloudflare Tunnel
+  *  with no origin behind it actually returns, and the likeliest real outage.
+  *  jose turns a non-200 into a BARE `JOSEError` (`ERR_JOSE_GENERIC`), which is a
+@@ -110,6 +113,7 @@ beforeAll(async () => {
+   // so a token minted under `test-key-1` finds no match in the fresh key set.
+   const rotated = await generateKeyPair('ES256', { extractable: true });
+   rotatedJwk = { ...(await exportJWK(rotated.publicKey)), alg: 'ES256', kid: 'test-key-2' };
++  rotatedKey = rotated.privateKey;
+ 
+   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+     const url = String(input);
+@@ -195,10 +199,16 @@ function revocationKv(records: Record<string, unknown> = {}, { throws = false }
+ 
+ async function token(
+   claims: Record<string, unknown>,
+-  { issuer = ISSUER, audience = 'authenticated', key = null as CryptoKey | null, alg = 'ES256' } = {},
++  {
++    issuer = ISSUER,
++    audience = 'authenticated',
++    key = null as CryptoKey | null,
++    alg = 'ES256',
++    kid = 'test-key-1',
++  } = {},
+ ) {
+   let t = new SignJWT(claims)
+-    .setProtectedHeader({ alg, kid: alg === 'ES256' ? 'test-key-1' : undefined })
++    .setProtectedHeader({ alg, kid: alg === 'ES256' ? kid : undefined })
+     .setIssuedAt()
+     .setExpirationTime('1h')
+     .setAudience(audience);
+@@ -457,6 +467,150 @@ describe('platformAuth SURVIVES a JWKS outage without widening what it accepts',
+   });
+ });
+ 
++/**
++ * ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES (PB-13). THE 10-MINUTE COPY
++ * EXPIRES IN AN OUTAGE, AND THE LAST-KNOWN-GOOD COPY IS WHAT IS LEFT.
++ *
++ * The KV copy above expires on a timer only a successful fetch renews, so about
++ * ten minutes into a Box C outage every case in the block above stops applying
++ * and every authenticated request 401s, while every access token in flight is
++ * still valid. The first case below is the RED one: it is 401 without the LKG.
++ * The others hold what the LKG must not widen.
++ *
++ * A Map-backed KV, so what the warm path WRITES is asserted from the store, not
++ * from a spy's say-so. Each case has its own SUPABASE_URL: jose's remote set is
++ * memoised per URL for the life of the module (see `harness`).
++ */
++describe('platformAuth: the LAST-KNOWN-GOOD key set carries signed-in calls through a long JWKS outage', () => {
++  const LKG = 'supabase_jwks_lkg';
++  const SHORT = 'supabase_jwks';
++  function mapKv(seed: Record<string, unknown> = {}) {
++    const store = new Map<string, string>(Object.entries(seed).map(([k, v]) => [k, JSON.stringify(v)]));
++    const reads: string[] = [];
++    const puts: Array<{ key: string; ttl: number | undefined }> = [];
++    const kv = {
++      get: async (key: string) => {
++        reads.push(key);
++        return store.get(key) ?? null;
++      },
++      put: async (key: string, value: string, opts?: { expirationTtl?: number }) => {
++        puts.push({ key, ttl: opts?.expirationTtl });
++        store.set(key, value);
++      },
++    } as unknown as KVNamespace;
++    return { kv, store, reads, puts };
++  }
++  const tokenFor = (url: string, opts: { key?: CryptoKey; kid?: string } = {}) =>
++    token({ sub: 'user-a' }, { issuer: `${url}/auth/v1`, ...opts });
++
++  it('🔴 RED WITHOUT IT: JWKS down + the 10-minute copy EXPIRED + a valid token ⇒ 200 from the LKG', async () => {
++    const URL_ = 'https://lkg-outage.test';
++    const { kv } = mapKv({ [LKG]: { keys: [publicJwk] } }); // the 10-minute copy has expired: absent
++    const h = harness({ kv, supabaseUrl: URL_ });
++    jwksThrows = true;
++    const res = await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`);
++    expect(res.status).toBe(200);
++    expect(((await res.json()) as { userId: string }).userId).toBe('user-a');
++  });
++
++  it('…and through the shape a dead tunnel returns (a non-200), too', async () => {
++    const URL_ = 'https://lkg-tunnel.test';
++    const { kv } = mapKv({ [LKG]: { keys: [publicJwk] } });
++    const h = harness({ kv, supabaseUrl: URL_ });
++    jwksStatus = 530;
++    expect((await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status).toBe(200);
++  });
++
++  it('🔴 a token whose kid is in NEITHER set still 401s', async () => {
++    const URL_ = 'https://lkg-unknown-kid.test';
++    const { kv } = mapKv({ [LKG]: { keys: [publicJwk] } });
++    const h = harness({ kv, supabaseUrl: URL_ });
++    jwksThrows = true;
++    const res = await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_, { key: foreignKey, kid: 'test-key-9' })}`);
++    expect(res.status).toBe(401);
++  });
++
++  it('🔴 a foreign key under a KNOWN kid still 401s against the LKG — it is the same verify', async () => {
++    const URL_ = 'https://lkg-foreign.test';
++    const { kv } = mapKv({ [LKG]: { keys: [publicJwk] } });
++    const h = harness({ kv, supabaseUrl: URL_ });
++    jwksThrows = true;
++    expect((await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_, { key: foreignKey })}`)).status).toBe(401);
++  });
++
++  it('🔴 a USABLE 10-minute copy wins: a kid it lacks is NOT retried against the older LKG', async () => {
++    // The 10-minute copy is the newer set (it holds the rotated key); the LKG is
++    // stale (a write that failed). A token under the rotated-out kid must 401.
++    const URL_ = 'https://lkg-short-wins.test';
++    const { kv } = mapKv({ [SHORT]: { keys: [rotatedJwk] }, [LKG]: { keys: [publicJwk] } });
++    const h = harness({ kv, supabaseUrl: URL_ });
++    jwksThrows = true;
++    expect((await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status).toBe(401);
++  });
++
++  it('an EMPTY or corrupt LKG is no LKG: fail closed', async () => {
++    for (const [i, lkg] of [{ keys: [] }, '{not json'].entries()) {
++      const URL_ = `https://lkg-unusable-${i}.test`;
++      const { kv, store } = mapKv();
++      store.set(LKG, typeof lkg === 'string' ? lkg : JSON.stringify(lkg));
++      const h = harness({ kv, supabaseUrl: URL_ });
++      jwksThrows = true;
++      expect((await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status, String(i)).toBe(401);
++    }
++  });
++
++  it('a good fetch WRITES the LKG (no expiry) beside the 10-minute copy, and an unchanged set is not re-put', async () => {
++    const URL_ = 'https://lkg-write.test';
++    const { kv, store, puts } = mapKv();
++    const h = harness({ kv, supabaseUrl: URL_ });
++    expect((await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status).toBe(200);
++    await vi.waitFor(() => expect(store.get(LKG)).toBe(JSON.stringify({ keys: [publicJwk] })));
++    expect(puts.find((p) => p.key === LKG)?.ttl).toBeUndefined();
++    expect(puts.find((p) => p.key === SHORT)?.ttl).toBe(600);
++    // The 10-minute copy expires; the next good fetch publishes the SAME set.
++    store.delete(SHORT);
++    const before = puts.length;
++    expect((await harness({ kv, supabaseUrl: URL_ }).get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status).toBe(200);
++    await vi.waitFor(() => expect(store.has(SHORT)).toBe(true));
++    await new Promise((r) => setTimeout(r, 0));
++    expect(puts.slice(before).map((p) => p.key)).toEqual([SHORT]);
++  });
++
++  it('🔴 ROTATION WINS: a rotated set replaces the LKG on the next good fetch, and the retired key then 401s in an outage', async () => {
++    const URL_ = 'https://lkg-rotation.test';
++    const { kv, store } = mapKv({ [LKG]: { keys: [publicJwk] } });
++    // A good fetch that publishes the ROTATED set (the 10-minute copy is absent).
++    const h = harness({ kv, supabaseUrl: URL_ });
++    jwksRotated = true;
++    await h.get('/v1/whoami', `Bearer ${await tokenFor(URL_, { key: rotatedKey, kid: 'test-key-2' })}`);
++    await vi.waitFor(() => expect(store.get(LKG)).toBe(JSON.stringify({ keys: [rotatedJwk] })));
++    // Box C goes down and the 10-minute copy expires: only the LKG is left.
++    store.delete(SHORT);
++    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 11 * 60 * 1000 }); // past jose's own cache window
++    try {
++      const out = harness({ kv, supabaseUrl: URL_ });
++      jwksThrows = true;
++      expect((await out.get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status, 'retired key').toBe(401);
++      const live = harness({ kv, supabaseUrl: URL_ });
++      jwksThrows = true;
++      expect(
++        (await live.get('/v1/whoami', `Bearer ${await tokenFor(URL_, { key: rotatedKey, kid: 'test-key-2' })}`)).status,
++        'rotated key',
++      ).toBe(200);
++    } finally {
++      vi.useRealTimers();
++    }
++  });
++
++  it('the LKG is never read on the happy path (a reachable JWKS and a warm 10-minute copy)', async () => {
++    const URL_ = 'https://lkg-happy.test';
++    const { kv, reads } = mapKv({ [SHORT]: { keys: [publicJwk] }, [LKG]: { keys: [publicJwk] } });
++    expect((await harness({ kv, supabaseUrl: URL_ }).get('/v1/whoami', `Bearer ${await tokenFor(URL_)}`)).status).toBe(200);
++    await new Promise((r) => setTimeout(r, 0));
++    expect(reads).not.toContain(LKG);
++  });
++});
++
+ describe('platformAuth ACCEPTS only a real ES256 token from THIS project', () => {
+   it('accepts a valid ES256 token and exposes sub + email', async () => {
+     const res = await harness().get('/v1/whoami', `Bearer ${await token({ sub: 'user-a', email: 'a@test.dev' })}`);
+diff --git a/services/platform/test/box-manifest.test.ts b/services/platform/test/box-manifest.test.ts
+new file mode 100644
+index 00000000..214bae26
+--- /dev/null
++++ b/services/platform/test/box-manifest.test.ts
+@@ -0,0 +1,155 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// POST /v1/ops/box-manifest — PB-27. A box reports the hashes of its live
++// config; the row it writes is what tooling/ops/check-box-config-drift.mjs reads.
++//
++// What must hold, each asserted against the REAL migrated schema (harness.ts
++// applies migrations/0024_box_config_manifest.sql):
++//   · a box's own secret writes that box's row, and only that box's row;
++//   · Box B's secret cannot write Box C's row (the secret is BOX-scoped);
++//   · an unconfigured box answers 503 before anything is read or written;
++//   · a malformed manifest writes nothing;
++//   · a re-post REPLACES the row whole, so a file the box stopped sending is gone;
++//   · it is mounted on the real app, and a browser gets no CORS there.
++// ─────────────────────────────────────────────────────────────────────────────
++import { describe, it, expect } from 'vitest';
++import { app as realApp } from '../src/index';
++import { BOX_MANIFEST_MAX_FILES, parseBoxFiles } from '../src/routes/box-manifest';
++import type { AppEnv } from '../src/types';
++import { realPlatformDb, type RealDb } from './harness';
++
++const SECRET_B = 'box-b-secret-for-tests-only';
++const SECRET_C = 'box-c-secret-for-tests-only';
++const H = (c: string) => c.repeat(64);
++
++function env(db: RealDb, extra: Record<string, unknown> = {}) {
++  return {
++    PLATFORM_DB: db,
++    BOX_MANIFEST_SECRET_BOXB: SECRET_B,
++    BOX_MANIFEST_SECRET_BOXC: SECRET_C,
++    ...extra,
++  } as unknown as AppEnv['Bindings'];
++}
++
++async function post(db: RealDb, body: unknown, { secret = SECRET_C as string | null, envExtra = {}, headers = {} } = {}) {
++  const res = await realApp.request(
++    'http://x/v1/ops/box-manifest',
++    {
++      method: 'POST',
++      headers: {
++        'Content-Type': 'application/json',
++        ...(secret === null ? {} : { Authorization: `Bearer ${secret}` }),
++        ...headers,
++      },
++      body: typeof body === 'string' ? body : JSON.stringify(body),
++    },
++    env(db, envExtra),
++  );
++  return res;
++}
++
++const rows = (db: RealDb) =>
++  db.db.prepare('SELECT box, manifest, posted_at FROM box_config_manifest ORDER BY box').all() as Array<{
++    box: string;
++    manifest: string;
++    posted_at: string;
++  }>;
++
++const GOOD_C = { box: 'boxc', files: { tunnel: H('c'), compose: H('a'), override: H('b') } };
++
++describe('POST /v1/ops/box-manifest', () => {
++  it("records a box's manifest under its own secret, key-sorted, stamped with the server's time", async () => {
++    const db = realPlatformDb();
++    const res = await post(db, GOOD_C);
++    expect(res.status).toBe(204);
++    const [row] = rows(db);
++    expect(row.box).toBe('boxc');
++    expect(row.manifest).toBe(JSON.stringify({ compose: H('a'), override: H('b'), tunnel: H('c') }));
++    expect(Number.isNaN(Date.parse(row.posted_at))).toBe(false);
++  });
++
++  it("🔴 Box B's secret cannot write Box C's row — the secret is scoped to ONE box", async () => {
++    const db = realPlatformDb();
++    const res = await post(db, GOOD_C, { secret: SECRET_B });
++    expect(res.status).toBe(401);
++    expect(rows(db)).toEqual([]);
++  });
++
++  it('a missing or wrong bearer is 401 and writes nothing', async () => {
++    const db = realPlatformDb();
++    expect((await post(db, GOOD_C, { secret: null })).status).toBe(401);
++    expect((await post(db, GOOD_C, { secret: 'nope' })).status).toBe(401);
++    expect((await post(db, GOOD_C, { secret: `${SECRET_C}x` })).status).toBe(401);
++    expect(rows(db)).toEqual([]);
++  });
++
++  it('a box whose secret is not configured answers 503 and writes nothing', async () => {
++    const db = realPlatformDb();
++    const res = await post(db, GOOD_C, { envExtra: { BOX_MANIFEST_SECRET_BOXC: undefined } });
++    expect(res.status).toBe(503);
++    expect(rows(db)).toEqual([]);
++  });
++
++  it('a box outside the closed set is refused before any secret is consulted', async () => {
++    const db = realPlatformDb();
++    for (const box of ['boxa', 'BOXC', '', 'constructor', 'toString', null]) {
++      expect((await post(db, { ...GOOD_C, box })).status, String(box)).toBe(400);
++    }
++    expect(rows(db)).toEqual([]);
++  });
++
++  it('a malformed manifest is 400 and writes nothing', async () => {
++    const db = realPlatformDb();
++    const bad: unknown[] = [
++      { box: 'boxc' },
++      { box: 'boxc', files: {} },
++      { box: 'boxc', files: [] },
++      { box: 'boxc', files: { compose: 'abc' } },
++      { box: 'boxc', files: { compose: H('A') } },
++      { box: 'boxc', files: { '../etc/passwd': H('a') } },
++      { box: 'boxc', files: { 'Compose File': H('a') } },
++      '{not json',
++    ];
++    for (const b of bad) expect((await post(db, b)).status, JSON.stringify(b)).toBe(400);
++    expect(rows(db)).toEqual([]);
++  });
++
++  it('a re-post REPLACES the row whole — a file the box stopped sending is gone from it', async () => {
++    const db = realPlatformDb();
++    expect((await post(db, GOOD_C)).status).toBe(204);
++    expect((await post(db, { box: 'boxc', files: { compose: H('d') } })).status).toBe(204);
++    const all = rows(db);
++    expect(all).toHaveLength(1);
++    expect(JSON.parse(all[0].manifest)).toEqual({ compose: H('d') });
++  });
++
++  it('both boxes keep their own rows', async () => {
++    const db = realPlatformDb();
++    expect((await post(db, GOOD_C)).status).toBe(204);
++    expect((await post(db, { box: 'boxb', files: { compose: H('e') } }, { secret: SECRET_B })).status).toBe(204);
++    expect(rows(db).map((r) => r.box)).toEqual(['boxb', 'boxc']);
++  });
++
++  it('an over-size body is 413', async () => {
++    const db = realPlatformDb();
++    const res = await post(db, JSON.stringify({ box: 'boxc', files: { compose: H('a') }, pad: 'x'.repeat(9_000) }));
++    expect(res.status).toBe(413);
++    expect(rows(db)).toEqual([]);
++  });
++
++  it('a browser request (one carrying Origin) is refused with no CORS grant', async () => {
++    const db = realPlatformDb();
++    const res = await post(db, GOOD_C, { headers: { Origin: 'https://nikatru.com' } });
++    expect(res.status).toBe(403);
++    expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
++    expect(rows(db)).toEqual([]);
++  });
++});
++
++describe('parseBoxFiles', () => {
++  it('caps the file count', () => {
++    const many = Object.fromEntries(Array.from({ length: BOX_MANIFEST_MAX_FILES + 1 }, (_, i) => [`f${i}`, H('a')]));
++    expect(parseBoxFiles(many)).toBeNull();
++    const max = Object.fromEntries(Array.from({ length: BOX_MANIFEST_MAX_FILES }, (_, i) => [`f${i}`, H('a')]));
++    expect(parseBoxFiles(max)).not.toBeNull();
++  });
++});
+diff --git a/services/platform/test/cors.test.ts b/services/platform/test/cors.test.ts
+index 63d37654..87b05ce1 100644
+--- a/services/platform/test/cors.test.ts
++++ b/services/platform/test/cors.test.ts
+@@ -144,6 +144,12 @@ describe('preflight allows every method a MOUNTED route answers — derived, not
+         'GoTrue with the service-role bearer. A web page must not be able to use that door: web sign-in keeps ' +
+         'Turnstile at GoTrue, and the route refuses any request carrying Origin.',
+     },
++    {
++      prefix: '/v1/ops/',
++      why:
++        'PB-27 (routes/box-manifest.ts): a box cron reports its live config hashes here, authenticated with a ' +
++        'secret scoped to that one box. No browser has any business on it, so it grants no CORS at all.',
++    },
+   ];
+   const isNoCors = (path: string) => NO_CORS.some((n) => path.startsWith(n.prefix));
+   const noCorsEndpoints = endpoints.filter((e) => isNoCors(e.path));
+@@ -161,6 +167,7 @@ describe('preflight allows every method a MOUNTED route answers — derived, not
+     for (const op of ['token', 'signup', 'recover', 'resend']) {
+       expect(noCorsEndpoints).toContainEqual({ method: 'POST', path: `/v1/auth/native/:app/${op}` });
+     }
++    expect(noCorsEndpoints).toContainEqual({ method: 'POST', path: '/v1/ops/box-manifest' });
+   });
+ 
+   it('every no-CORS route is REFUSED at preflight, from a listed origin, with no allow-origin', async () => {
+diff --git a/services/platform/test/harness.ts b/services/platform/test/harness.ts
+index a307d508..f042ef02 100644
+--- a/services/platform/test/harness.ts
++++ b/services/platform/test/harness.ts
+@@ -57,6 +57,7 @@ import reminders0020 from '../migrations/0020_reminders.sql?raw';
+ import extLinkFloor0021 from '../migrations/0021_ext_link_floor.sql?raw';
+ import nativeAttest0022 from '../migrations/0022_native_attest.sql?raw';
+ import providerTokenEncryption0023 from '../migrations/0023_provider_token_encryption.sql?raw';
++import boxConfigManifest0024 from '../migrations/0024_box_config_manifest.sql?raw';
+ 
+ type SQLValue = string | number | bigint | null | Uint8Array;
+ 
+@@ -123,6 +124,9 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
+   // encrypted at rest: `token_ct` and `token_key_id` on provider_tokens. ADD
+   // COLUMN, so ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
+   providerTokenEncryption0023,
++  // ⏱ 2026-10-01 · PB-27 — what each box says its live config hashes are
++  // (routes/box-manifest.ts).
++  boxConfigManifest0024,
+ ];
+ 
+ /**
+@@ -174,6 +178,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
+   reminders0020,
+   // 0022 is CREATE TABLE / CREATE INDEX IF NOT EXISTS only — it replays.
+   nativeAttest0022,
++  // 0024 is one CREATE TABLE IF NOT EXISTS — it replays.
++  boxConfigManifest0024,
+ ];
+ 
+ // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a
+diff --git a/services/platform/test/migrations-replay.test.ts b/services/platform/test/migrations-replay.test.ts
+index cf324dc1..7849ef7e 100644
+--- a/services/platform/test/migrations-replay.test.ts
++++ b/services/platform/test/migrations-replay.test.ts
+@@ -199,6 +199,8 @@ describe('platform_db migrations re-apply cleanly', () => {
+       // of the copy into `provider_tokens`; ⏱ 2026-09-30 the provider-token
+       // backfill re-runs that copy and empties its tokens (migration 0023).
+       'apple_provider_tokens',
++      // 0024 — what each box says its live config hashes are (PB-27).
++      'box_config_manifest',
+       // 0009 — the bundle purchase ([ADR 057]). Four tables, and the list is
+       // spelled out here rather than counted so a migration silently dropped
+       // from PLATFORM_MIGRATIONS is visible as a NAME and not as an arithmetic
+diff --git a/services/subscriptiontracker-api/test/auth.test.ts b/services/subscriptiontracker-api/test/auth.test.ts
+index 2f37ea41..f60373c6 100644
+--- a/services/subscriptiontracker-api/test/auth.test.ts
++++ b/services/subscriptiontracker-api/test/auth.test.ts
+@@ -419,6 +419,67 @@ describe('the JWKS outage does NOT downgrade this boundary to a shared secret',
+     expect(res.status).toBe(200);
+     expect(await res.json()).toEqual({ userId: 'user-a', assurance: 'asymmetric' });
+   });
++
++  // ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES (PB-13). The cached copy
++  // above expires ten minutes after the last good fetch, and in a Box C outage
++  // there is no good fetch. The LAST-KNOWN-GOOD copy (`supabase_jwks_lkg`, no
++  // expiry) is what is left — and on THIS Worker its absence is not only a 401:
++  // with a legacy secret configured, the request falls to HS256. So the
++  // assertion is `assurance`, as in the first case of this block.
++  const lkgOnlyKv = (lkg: unknown) =>
++    ({
++      get: async (k: string) =>
++        k === 'supabase_jwks_lkg' ? (typeof lkg === 'string' ? lkg : JSON.stringify(lkg)) : null,
++      put: async () => undefined,
++    }) as unknown as KVNamespace;
++
++  it('🔴 RED WITHOUT THE LKG: unreachable + the 10-minute copy EXPIRED => 200 and STILL asymmetric', async () => {
++    const url = 'https://outage-lkg.test';
++    mode = 'down';
++    const res = await api({ kv: lkgOnlyKv({ keys: [publicJwk] }), url, secret: null })(
++      `Bearer ${await es256(url)}`,
++    );
++    expect(res.status).toBe(200);
++    expect(await res.json()).toEqual({ userId: 'user-a', assurance: 'asymmetric' });
++  });
++
++  it('🔴 the LKG keeps a long outage off the HS256 path when a legacy secret IS configured', async () => {
++    const url = 'https://outage-lkg-secret.test';
++    mode = 'down';
++    const res = await api({ kv: lkgOnlyKv({ keys: [publicJwk] }), url })(`Bearer ${await es256(url)}`);
++    expect(res.status).toBe(200);
++    expect(await res.json()).toEqual({ userId: 'user-a', assurance: 'asymmetric' });
++  });
++
++  it('ERASURE survives a long outage through the LKG, with no secret in scope', async () => {
++    const url = 'https://outage-lkg-erase.test';
++    mode = 'down';
++    const res = await api({ kv: lkgOnlyKv({ keys: [publicJwk] }), url, middleware: erasureAuth, secret: null })(
++      `Bearer ${await es256(url)}`,
++    );
++    expect(res.status).toBe(200);
++    expect(await res.json()).toEqual({ userId: 'user-a', assurance: 'asymmetric' });
++  });
++
++  it('the LKG does NOT widen — a FOREIGN ES256 key is still 401 against it', async () => {
++    const url = 'https://outage-lkg-foreign.test';
++    mode = 'down';
++    const res = await api({ kv: lkgOnlyKv({ keys: [publicJwk] }), url, secret: null })(
++      `Bearer ${await es256(url, { signer: foreignKey })}`,
++    );
++    expect(res.status).toBe(401);
++  });
++
++  it('a usable 10-minute copy WINS over the LKG: a kid it lacks is 401, not retried against the older set', async () => {
++    const url = 'https://outage-lkg-short-wins.test';
++    mode = 'down';
++    const kv = {
++      get: async (k: string) => JSON.stringify({ keys: [k === 'supabase_jwks_lkg' ? publicJwk : rotatedJwk] }),
++      put: async () => undefined,
++    } as unknown as KVNamespace;
++    const res = await api({ kv, url, secret: null })(`Bearer ${await es256(url)}`);
++    expect(res.status).toBe(401);
++  });
+ });
+ 
+ /**
+diff --git a/services/subscriptiontracker-api/wrangler.jsonc b/services/subscriptiontracker-api/wrangler.jsonc
+index 5aca59f8..8547e740 100644
+--- a/services/subscriptiontracker-api/wrangler.jsonc
++++ b/services/subscriptiontracker-api/wrangler.jsonc
+@@ -225,7 +225,7 @@
+       ],
+       "kv_namespaces": [
+         // why: REQUIRED — src/types.ts:17 (the kit's warmJwksCache checks for it since
+-        // 2026-10-01, _shared/src/auth-middleware.ts:109). Its own namespace: production's holds
++        // 2026-10-01, _shared/src/auth-middleware.ts:119). Its own namespace: production's holds
+         // the same public keys and would work, but a production id in a
+         // sandbox block is the shape this block exists to keep out.
+         { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" }
+diff --git a/tooling/capability-register.json b/tooling/capability-register.json
+index 1d38f6e0..8d10d6bb 100644
+--- a/tooling/capability-register.json
++++ b/tooling/capability-register.json
+@@ -407,6 +407,8 @@
+       "judgement call."
+     ],
+     "API_BASE_URL": "our own subscriptiontracker-api Worker",
++    "BOX_MANIFEST_SECRET_BOXB": "OUR OWN shared secret between Box B's config-hash cron (tooling/ops/boxes/post-config-manifest.sh) and POST /v1/ops/box-manifest on the platform Worker (services/platform/src/routes/box-manifest.ts, PB-27). No external system is behind it: both ends are ours, and it authenticates only that one box's row of hashes. Added 2026-10-01.",
++    "BOX_MANIFEST_SECRET_BOXC": "OUR OWN shared secret between Box C's config-hash cron and POST /v1/ops/box-manifest — see BOX_MANIFEST_SECRET_BOXB; one per box, so a box can write only its own row. Added 2026-10-01.",
+     "E2E_APP_ID": "OUR OWN test-harness fact, and no external system is behind it: the workspace app id the e2e lane drives (e2e.yml's `matrix.app`, the value its steps already export as the E2E_APP_ID environment variable to tooling/e2e/backend.mjs). The brick's stamped integration_test/app_test.dart (10b, O-BRICK-STAMPS-NO-E2E-SUITE) reads it as a compile-time define and refuses a binary whose AppConfig.appId differs, so a lane that drives the wrong app, or passes none, fails at the suite's first expect; there is no default. It reaches only the `flutter drive` DEBUG build on the runner: no store lane, no `deploy-web.yml` build and no release build passes it. Measured at main 80cffc6c: e2e.yml's `flutter drive` does not pass `--dart-define=E2E_APP_ID` yet, so the row's two-leg e2e confirm needs that line first.",
+     "E2E_EXPECT_CAPTCHA_GATE": "OUR OWN test-harness fact, and no external system is behind it: the literal string `yes` or `no`, saying whether the auth stack the live E2E run signs in against — the hosted Supabase project (`no`) or the self-hosted GoTrue on Box C (`yes`) — refuses a password sign-in at the captcha first. Both stacks are ours; the only third party either involves is Cloudflare Turnstile, which has its own vendor row above. It is derived by `.github/workflows/e2e.yml` (tooling/e2e/derive_expectation.mjs) from the run's SUPABASE_URL, reaches only the `flutter drive` DEBUG build served to a headless Chrome on the runner, and selects which wrong-password copy `apps/subscriptiontracker/integration_test/app_test.dart` expects. It reaches no shipping binary: no store lane, no `deploy-web.yml` build and no release build passes it, and with the define absent every test fails at its start — there is no default. It replaced E2E_AUTH_TARGET on 2026-09-25.",
+     "E2E_EXPECT_WORKERS_TRUST": "OUR OWN test-harness fact, and no external system is behind it: the literal string `yes` or `no`, saying whether the deployed Workers — ours — trust the issuer the live E2E run signs in against, i.e. whether its SUPABASE_URL is tooling/platform-register.json vars.SUPABASE_URL. It is derived by `.github/workflows/e2e.yml` (tooling/e2e/derive_expectation.mjs), reaches only the `flutter drive` DEBUG build on the runner, and selects whether `apps/subscriptiontracker/integration_test/app_test.dart` walks the app or asserts the one-issuer refusal (401), because the Workers trust exactly one issuer. It reaches no shipping binary, and with the define absent every test fails at its start — there is no default. It replaced E2E_AUTH_TARGET on 2026-09-25.",
+diff --git a/tooling/ceilings.json b/tooling/ceilings.json
+index d81bb270..abb60d34 100644
+--- a/tooling/ceilings.json
++++ b/tooling/ceilings.json
+@@ -337,7 +337,7 @@
+       "sourceText": "Writes to different keys: 1,000 writes per day (Free) / Unlimited (Paid)",
+       "verifiedOn": "2026-08-01",
+       "ambiguity": "None.",
+-      "note": "🔴 THE TIGHT ONE, AND THE ONE A CACHE WARMER CAN EXHAUST. A JWKS cache that re-put on every miss rather than on every expiry would spend this in minutes under cold-isolate churn. JWKS_TTL_SECONDS is derived from this row for exactly that reason: at one write per TTL expiry, 600s gives at most 144 writes/day per namespace. ⏱ 2026-09-25 · SESSION_REVOKED is written ONLY by services/platform/src/routes/sessions.ts, one put per sign-out (two at most, on a retried failure), behind SESSIONS_LIMITER (5 per minute per account). Nothing writes it until the client half ships; at that point a write is a deliberate human action, not a cache fill."
++      "note": "🔴 THE TIGHT ONE, AND THE ONE A CACHE WARMER CAN EXHAUST. A JWKS cache that re-put on every miss rather than on every expiry would spend this in minutes under cold-isolate churn. JWKS_TTL_SECONDS is derived from this row for exactly that reason: at one write per TTL expiry, 600s gives at most 144 writes/day per namespace. ⏱ 2026-10-01 · O-JWKS-FALLBACK-LIVES-TEN-MINUTES: the last-known-good copy (`supabase_jwks_lkg`, no expiry) is re-put only when a fetched key set DIFFERS from the stored one (`lastKnownGoodNeedsWrite`, services/_shared/src/auth.ts), i.e. once per key rotation, and costs at most one extra READ per fetch. ⏱ 2026-09-25 · SESSION_REVOKED is written ONLY by services/platform/src/routes/sessions.ts, one put per sign-out (two at most, on a retried failure), behind SESSIONS_LIMITER (5 per minute per account). Nothing writes it until the client half ships; at that point a write is a deliberate human action, not a cache fill."
+     },
+     {
+       "id": "kv.namespacesPerAccount",
+diff --git a/tooling/ci/assert-analytics-contract.mjs b/tooling/ci/assert-analytics-contract.mjs
+index 4e9d32db..08722e22 100644
+--- a/tooling/ci/assert-analytics-contract.mjs
++++ b/tooling/ci/assert-analytics-contract.mjs
+@@ -745,6 +745,14 @@ const WIRE_CONTRACTS = [
+     absentFromDart: '/v1/calendar/',
+     absentCall: 'get',
+   },
++  // ⏱ 2026-10-01 · PB-27 — a box's config-hash report (services/platform/src/routes/box-manifest.ts).
++  {
++    id: 'box-manifest',
++    kind: 'gap',
++    reason:
++      'NO APP CLIENT, BY CONSTRUCTION — the caller is each box\'s own cron, tooling/ops/boxes/post-config-manifest.sh, which posts `{box, files: {<logical name>: <sha256>}}` with a secret scoped to that box and reads only the status (204, or 4xx/503). The wire is pinned on both sides outside Dart: services/platform/test/box-manifest.test.ts for the route and tooling/ci/test/box-config-drift.test.mjs for the body the script sends.',
++    absentFromDart: '/v1/ops/',
++  },
+   // ⏱ 2026-09-28 · ST-I3 — the ECB rate table (services/platform/src/routes/fx.ts).
+   // A gap because the TRANSPORT ships with its first consumer, not here; the
+   // payload is already held on both sides by one vector, which is stronger than
+diff --git a/tooling/ci/test/analytics-contract.test.mjs b/tooling/ci/test/analytics-contract.test.mjs
+index 6fd9be3a..eafcdd52 100644
+--- a/tooling/ci/test/analytics-contract.test.mjs
++++ b/tooling/ci/test/analytics-contract.test.mjs
+@@ -710,7 +710,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
+   // The numbers are PINNED rather than derived on purpose — a derived count
+   // agrees with any register, including one that quietly stopped enumerating —
+   // so they move in the same change as the routes that moved them.
+-  test('PASSES on the real tree: 37 routes, 19 pinned, 18 printed gaps', () => {
++  test('PASSES on the real tree: 38 routes, 19 pinned, 19 printed gaps', () => {
+     const r = run(makeRepo());
+     assert.equal(r.code, 0, r.out);
+     assert.match(r.out, /wire health — deploy-smoke fields/);
+@@ -748,7 +748,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
+     assert.match(r.out, /GAP {2}wire fx-latest/);
+     // ⏱ 2026-09-28: ST-T7b 10 -> 14 pinned (four native credential routes), then ST-T4b 14 -> 17 (the two prefs routes and the feed mint); 23 -> 16 gaps.
+     // ⏱ 2026-09-30 (ADR no.NNN): 35 -> 37 routes, 17 -> 19 pinned — the two attestation endpoints arrive as `sdk` pins with their client.
+-    assert.match(r.out, /37 shared route\(s\) from tooling\/platform-register\.json: 19 pinned, 18 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
++    assert.match(r.out, /38 shared route\(s\) from tooling\/platform-register\.json: 19 pinned, 19 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT). ⏱ 2026-10-01 (PB-27): 37 -> 38 routes, 18 -> 19 gaps, POST /v1/ops/box-manifest.
+     // ⏱ 2026-09-28 (ST-N1): 29 -> 33 routes, 19 -> 23 gaps with the four /v1/auth/native routes, gaps until ST-T7b ships their client.
+     // ⏱ 2026-09-28 (ST-T7b): 10 -> 14 pinned, 23 -> 19 gaps — the client shipped,
+     // so the four gaps became `sdk` pins (gotrue-dart's own wire, pinned at its base).
+@@ -1180,7 +1180,8 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
+     // ⏱ 2026-09-28 (ST-T4b): 13 -> 16 pinned, 19 -> 16 gaps (the prefs routes and the feed mint), on top of ST-T7b below.
+     // ⏱ 2026-09-30 (EXA-11): 16 -> 18 gaps, the two /v1/ext/devices routes.
+     // ⏱ 2026-09-30 (ADR no.NNN): 16 -> 18 pinned, the two attestation endpoints.
+-    assert.match(r.out, /18 pinned, 18 printed gap/); // ⏱ 2026-09-28 (ST-T7b): 9 -> 13 pinned, 23 -> 19 gaps, the four native credential routes became sdk pins. ⏱ 2026-09-28: 11 -> 18 gaps, the seven ST-T4a reminder routes. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
++    // ⏱ 2026-10-01 (PB-27): 18 -> 19 gaps, POST /v1/ops/box-manifest (a box's cron, no app client).
++    assert.match(r.out, /18 pinned, 19 printed gap/); // ⏱ 2026-09-28 (ST-T7b): 9 -> 13 pinned, 23 -> 19 gaps, the four native credential routes became sdk pins. ⏱ 2026-09-28: 11 -> 18 gaps, the seven ST-T4a reminder routes. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
+   });
+ 
+   test('FAILS when the brick drops a key the server still requires', () => {
+diff --git a/tooling/ci/test/box-config-drift.test.mjs b/tooling/ci/test/box-config-drift.test.mjs
+new file mode 100644
+index 00000000..c328fa84
+--- /dev/null
++++ b/tooling/ci/test/box-config-drift.test.mjs
+@@ -0,0 +1,192 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// box-config-drift.test.mjs — tooling/ops/check-box-config-drift.mjs (PB-27) and
++// the box-side half that feeds it, tooling/ops/boxes/post-config-manifest.sh.
++//
++// 🔴 THE RED CONTROL THE BRIEF NAMES: a fixture manifest with ONE changed hash
++// exits 1. Its green control — the same fixture with no change — exits 0, so the
++// red is the change and not the harness. Then each other limb on the pure judge,
++// and the box script driven against a stub `curl` so what it SENDS is asserted
++// without a network.
++// ─────────────────────────────────────────────────────────────────────────────
++import { test, describe } from 'node:test';
++import assert from 'node:assert/strict';
++import { spawnSync } from 'node:child_process';
++import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
++import { join, dirname, resolve } from 'node:path';
++import { tmpdir } from 'node:os';
++import { createHash } from 'node:crypto';
++import { fileURLToPath } from 'node:url';
++
++import { judgeDrift, readRegister, REGISTER_REL } from '../../ops/check-box-config-drift.mjs';
++
++const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
++const REPO = resolve(CI_DIR, '..', '..');
++const SCRIPT = join(REPO, 'tooling/ops/check-box-config-drift.mjs');
++// Each fixture by its full path, so assert-no-dead-files resolves every one of them.
++const FIX_REGISTER = join(REPO, 'tooling/ops/fixtures/box-config-drift/register.json');
++const FIX_CLEAN = join(REPO, 'tooling/ops/fixtures/box-config-drift/manifest-clean.json');
++const FIX_ONE_CHANGED = join(REPO, 'tooling/ops/fixtures/box-config-drift/manifest-one-changed.json');
++const FIX_ABSENT = join(REPO, 'tooling/ops/fixtures/box-config-drift/does-not-exist.json');
++const NOW = '2026-10-01T12:00:00Z';
++
++const run = (...args) => spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', timeout: 60_000 });
++const H = (c) => c.repeat(64);
++
++describe('check-box-config-drift.mjs — the CLI over fixtures', () => {
++  test('GREEN CONTROL: the clean fixture manifest exits 0', () => {
++    const r = run('--register', FIX_REGISTER, '--manifest', FIX_CLEAN, '--now', NOW);
++    assert.equal(r.status, 0, r.stderr);
++    assert.match(r.stdout, /live config is the vendored config/);
++  });
++
++  test('🔴 RED CONTROL: a fixture manifest with ONE changed hash exits 1, naming the file', () => {
++    const r = run('--register', FIX_REGISTER, '--manifest', FIX_ONE_CHANGED, '--now', NOW);
++    assert.equal(r.status, 1, r.stdout + r.stderr);
++    assert.match(r.stderr, /boxc\/override: DRIFT/);
++    assert.doesNotMatch(r.stderr, /boxc\/compose|boxc\/tunnel|boxb/);
++  });
++
++  test('the SHIPPED register with no vendored hash yet is COVERAGE LOST (2), never a pass', () => {
++    const r = run('--manifest', FIX_CLEAN, '--now', NOW);
++    const reg = JSON.parse(readFileSync(join(REPO, REGISTER_REL), 'utf8'));
++    const unmeasured = Object.values(reg.boxes).some((b) => Object.values(b.files).some((f) => f.sha256 === null));
++    // Once every hash is refreshed from the corpus the shipped register stops being
++    // LOST; this case then asserts what it should: the fixture's hashes are not the
++    // real ones, so the real register reads the fixture as drift.
++    assert.equal(r.status, unmeasured ? 2 : 1, r.stderr);
++  });
++
++  test('an unreadable manifest source is COVERAGE LOST (2)', () => {
++    const r = run('--register', FIX_REGISTER, '--manifest', FIX_ABSENT, '--now', NOW);
++    assert.equal(r.status, 2);
++    assert.match(r.stderr, /COVERAGE LOST — box_config_manifest could not be read/);
++  });
++
++  test('with no fixture and no Cloudflare credentials, D1 is not read and it exits 2', () => {
++    const r = spawnSync(process.execPath, [SCRIPT, '--register', FIX_REGISTER, '--now', NOW], {
++      encoding: 'utf8',
++      timeout: 60_000,
++      env: { ...process.env, CLOUDFLARE_API_TOKEN: '', CLOUDFLARE_ACCOUNT_ID: '' },
++    });
++    assert.equal(r.status, 2);
++    assert.match(r.stderr, /CLOUDFLARE_API_TOKEN/);
++  });
++});
++
++describe('judgeDrift — every limb', () => {
++  const register = { maxPostAgeHours: 50, boxes: { boxc: { files: { compose: { sha256: H('a') }, tunnel: { sha256: H('b') } } } } };
++  const nowMs = Date.parse(NOW);
++  const row = (manifest, posted_at = '2026-10-01T05:00:00Z') => ({ box: 'boxc', manifest: JSON.stringify(manifest), posted_at });
++
++  test('clean', () => {
++    assert.deepEqual(judgeDrift(register, [row({ compose: H('a'), tunnel: H('b') })], nowMs).findings, []);
++  });
++  test('NO ROW — the box never posted', () => {
++    assert.match(judgeDrift(register, [], nowMs).findings.join('\n'), /boxc: NO ROW/);
++  });
++  test('STALE — the cron stopped', () => {
++    const f = judgeDrift(register, [row({ compose: H('a'), tunnel: H('b') }, '2026-09-28T00:00:00Z')], nowMs).findings;
++    assert.match(f.join('\n'), /boxc: STALE — the newest post is 84\.0h old/);
++  });
++  test('MISSING — a declared file the box no longer sends', () => {
++    assert.match(judgeDrift(register, [row({ compose: H('a') })], nowMs).findings.join('\n'), /boxc\/tunnel: MISSING/);
++  });
++  test('UNDECLARED — a file the box sends that nobody vendored', () => {
++    const f = judgeDrift(register, [row({ compose: H('a'), tunnel: H('b'), extra: H('c') })], nowMs).findings;
++    assert.match(f.join('\n'), /boxc\/extra: UNDECLARED/);
++  });
++  test('a manifest that is not a JSON object is a finding, not a crash', () => {
++    const f = judgeDrift(register, [{ box: 'boxc', manifest: '{nope', posted_at: '2026-10-01T05:00:00Z' }], nowMs).findings;
++    assert.match(f.join('\n'), /not a JSON object/);
++  });
++});
++
++describe('readRegister', () => {
++  test('a box with no declared file, and a null hash, are each LOST', () => {
++    const dir = mkdtempSync(join(tmpdir(), 'box-reg-'));
++    try {
++      const p = join(dir, 'r.json');
++      writeFileSync(p, JSON.stringify({ maxPostAgeHours: 50, boxes: { boxb: { files: {} }, boxc: { files: { compose: { sha256: null } } } } }));
++      const lost = readRegister(p).lost.join('\n');
++      assert.match(lost, /boxb declares no file/);
++      assert.match(lost, /boxc\/compose carries no vendored sha256/);
++    } finally {
++      rmSync(dir, { recursive: true, force: true });
++    }
++  });
++  test('no box at all is LOST', () => {
++    const dir = mkdtempSync(join(tmpdir(), 'box-reg-'));
++    try {
++      const p = join(dir, 'r.json');
++      writeFileSync(p, JSON.stringify({ maxPostAgeHours: 50, boxes: {} }));
++      assert.match(readRegister(p).lost.join('\n'), /declares no box/);
++    } finally {
++      rmSync(dir, { recursive: true, force: true });
++    }
++  });
++});
++
++describe('post-config-manifest.sh — what the box SENDS (a stub curl, no network)', { skip: process.platform === 'win32' }, () => {
++  const BOX_SCRIPT = join(REPO, 'tooling/ops/boxes/post-config-manifest.sh');
++
++  function world({ status = '204', listExtra = '' } = {}) {
++    const dir = mkdtempSync(join(tmpdir(), 'box-sh-'));
++    const compose = join(dir, 'docker-compose.yml');
++    writeFileSync(compose, 'services: {}\n');
++    const secret = join(dir, 'secret');
++    writeFileSync(secret, 'the-box-secret');
++    writeFileSync(join(dir, 'conf'), `BOX=boxc\nENDPOINT=https://platform.example.test/v1/ops/box-manifest\nSECRET_FILE=${secret}\n`);
++    writeFileSync(join(dir, 'list'), `# logical path\ncompose ${compose}\n${listExtra}`);
++    // The stub records its argv and the header file's content, then prints the status.
++    const bin = join(dir, 'bin');
++    spawnSync('mkdir', [bin]);
++    writeFileSync(
++      join(bin, 'curl'),
++      `#!/bin/sh\nprintf '%s\\n' "$@" > "${dir}/argv"\nfor a in "$@"; do case "$a" in @*) cat "\${a#@}" > "${dir}/hdr";; esac; done\nprintf '${status}'\n`,
++    );
++    chmodSync(join(bin, 'curl'), 0o755);
++    const go = () =>
++      spawnSync('sh', [BOX_SCRIPT], {
++        encoding: 'utf8',
++        timeout: 60_000,
++        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, BOX_MANIFEST_CONF: join(dir, 'conf'), BOX_MANIFEST_FILES: join(dir, 'list') },
++      });
++    return { dir, compose, go, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
++  }
++
++  test('posts {box, files:{name: sha256}} with the secret in a HEADER FILE, never in argv', () => {
++    const w = world();
++    try {
++      const r = w.go();
++      assert.equal(r.status, 0, r.stderr);
++      const argv = readFileSync(join(w.dir, 'argv'), 'utf8');
++      const sum = createHash('sha256').update(readFileSync(w.compose)).digest('hex');
++      assert.ok(argv.includes(JSON.stringify({ box: 'boxc', files: { compose: sum } })), argv);
++      assert.ok(!argv.includes('the-box-secret'), 'the secret reached curl argv');
++      assert.equal(readFileSync(join(w.dir, 'hdr'), 'utf8'), 'Authorization: Bearer the-box-secret\n');
++    } finally {
++      w.cleanup();
++    }
++  });
++
++  test('a refusal from the Worker exits 1', () => {
++    const w = world({ status: '401' });
++    try {
++      assert.equal(w.go().status, 1);
++    } finally {
++      w.cleanup();
++    }
++  });
++
++  test('a LISTED file that is missing exits 2 and sends nothing — never a silently shorter manifest', () => {
++    const w = world({ listExtra: 'tunnel /nonexistent/cloudflared/config.yml\n' });
++    try {
++      const r = w.go();
++      assert.equal(r.status, 2);
++      assert.match(r.stderr, /listed file 'tunnel' is missing/);
++      assert.throws(() => readFileSync(join(w.dir, 'argv')));
++    } finally {
++      w.cleanup();
++    }
++  });
++});
+diff --git a/tooling/ci/test/coverage-manifest.json b/tooling/ci/test/coverage-manifest.json
+index 7cb110ed..d1abd4cc 100644
+--- a/tooling/ci/test/coverage-manifest.json
++++ b/tooling/ci/test/coverage-manifest.json
+@@ -137,6 +137,9 @@
+   "bounded-spawn.test.mjs":
+     9,
+ 
++  "box-config-drift.test.mjs":
++    16,
++
+   "brick-drivers.test.mjs":
+     5,
+ 
+diff --git a/tooling/ci/test/e2e-auth-target.test.mjs b/tooling/ci/test/e2e-auth-target.test.mjs
+index 922ed026..2b7f8949 100644
+--- a/tooling/ci/test/e2e-auth-target.test.mjs
++++ b/tooling/ci/test/e2e-auth-target.test.mjs
+@@ -76,7 +76,7 @@ function tokenWithPayload(payload) {
+ }
+ 
+ /** The shape the live stacks are supposed to mint: `iss` = SUPABASE_URL +
+- *  `/auth/v1`, byte for byte, which is what services/_shared/src/auth.ts:93
++ *  `/auth/v1`, byte for byte, which is what services/_shared/src/auth.ts:125
+  *  hands `jwtVerify`. Set once the loopback port is known. */
+ let goodToken;
+ 
+diff --git a/tooling/ci/test/ops-register.test.mjs b/tooling/ci/test/ops-register.test.mjs
+index f6504c14..754eb993 100644
+--- a/tooling/ci/test/ops-register.test.mjs
++++ b/tooling/ci/test/ops-register.test.mjs
+@@ -6435,20 +6435,23 @@ describe('INV3 · a duty is judged by the unit that performs it — the pure hal
+       'Read the heartbeat table from OUTSIDE Cloudflare',
+       'Live D1 still runs every statement the Workers send it',
+       "Judge whether the analytics rail's silence is a FAULT",
++      // ⏱ 2026-10-01 · PB-27 — the box config drift reader (tooling/ops/check-box-config-drift.mjs).
++      "Each box's live config is the vendored config",
+       'Every name-clearance record is inside its 30-day ceiling',
+       // ⏱ 2026-09-30 [rv2-security-004] — the daily OSV scan of main, steps rather than a job (the replay's request ceiling).
+       'Install OSV-Scanner (version and digest from tooling/versions.json)',
+       'Known-vulnerable dependencies on main (canary, floor, then the tree)',
+     ]);
+-    assert.deepEqual(named.map((s) => s.runsGuard), [true, false, false, false, false, false, false]);
++    assert.deepEqual(named.map((s) => s.runsGuard), [true, false, false, false, false, false, false, false]);
+     // ⏱ 2026-09-23 — this pinned `null`, the defect itself: with no condition the
+     // heartbeat read was SKIPPED in every red register run (O-OPS-WATCH-HEARTBEAT-
+     // READER-SKIPPED). It now runs whatever the register concluded.
+     assert.match(named[1].cond, /!cancelled\(\)/, 'O-OPS-WATCH-HEARTBEAT-READER-SKIPPED: the heartbeat reader must carry !cancelled()');
+     assert.match(named[2].cond, /!cancelled\(\)/);
+-    assert.match(named[4].cond, /!cancelled\(\)/, 'the name-clearance ceiling must be read after a red register too');
+-    assert.match(named[5].cond, /!cancelled\(\)[\s\S]*github\.event\.schedule == '30 7 \* \* \*'[\s\S]*inputs\.dependency_advisories/, 'the OSV install runs after a red register, on its own daily slot or a named dispatch input (trap ci-55)');
+-    assert.match(named[6].cond, /!cancelled\(\)[\s\S]*steps\.osv\.outcome == 'success'/, 'the OSV scan runs whenever its install succeeded');
++    assert.match(named[4].cond, /!cancelled\(\)/, 'the box config drift reader must run after a red register too');
++    assert.match(named[5].cond, /!cancelled\(\)/, 'the name-clearance ceiling must be read after a red register too');
++    assert.match(named[6].cond, /!cancelled\(\)[\s\S]*github\.event\.schedule == '30 7 \* \* \*'[\s\S]*inputs\.dependency_advisories/, 'the OSV install runs after a red register, on its own daily slot or a named dispatch input (trap ci-55)');
++    assert.match(named[7].cond, /!cancelled\(\)[\s\S]*steps\.osv\.outcome == 'success'/, 'the OSV scan runs whenever its install succeeded');
+     assert.equal(describeUnit({ workflow: 'w.yml', unit: RUN_UNIT }), 'the whole w.yml run');
+   });
+ 
+diff --git a/tooling/ci/test/prod-provenance-databases.test.mjs b/tooling/ci/test/prod-provenance-databases.test.mjs
+index c8b6995b..6fd6b569 100644
+--- a/tooling/ci/test/prod-provenance-databases.test.mjs
++++ b/tooling/ci/test/prod-provenance-databases.test.mjs
+@@ -175,7 +175,7 @@ describe('the real tree: every database the register\'s Workers own, and only th
+     const platformMigrations = readdirSync(join(REPO, 'services/platform/migrations')).filter((f) => f.endsWith('.sql')).length;
+     assert.match(
+       r.stdout,
+-      new RegExp(`MONITOR · \\[pipeline B-17\\] · platform_db: 29 table\\(s\\) enumerated from services/platform/migrations \\(${platformMigrations} migration file\\(s\\)\\), 0 row\\(s\\) · 2 exempt table\\(s\\), not queried\\n`), // ⏱ 2026-09-30 (ADR no.NNN): 26 -> 29 tables and 1 -> 2 exempt, 0022 (native_attest_counters is exempt). ⏱ 2026-09-30: ext_link_floor is exempt (EXA-11).
++      new RegExp(`MONITOR · \\[pipeline B-17\\] · platform_db: 30 table\\(s\\) enumerated from services/platform/migrations \\(${platformMigrations} migration file\\(s\\)\\), 0 row\\(s\\) · 3 exempt table\\(s\\), not queried\\n`), // ⏱ 2026-09-30 (ADR no.NNN): 26 -> 29 tables and 1 -> 2 exempt, 0022 (native_attest_counters is exempt). ⏱ 2026-09-30: ext_link_floor is exempt (EXA-11). ⏱ 2026-10-01: 29 -> 30 tables and 2 -> 3 exempt, 0024 (box_config_manifest is exempt, PB-27).
+     );
+     // ⏱ 2026-09-28 · the same for subscriptiontracker_db, whose literal `2` went
+     // stale with 0003_subscription_model.sql. The table count stays pinned.
+@@ -184,10 +184,10 @@ describe('the real tree: every database the register\'s Workers own, and only th
+       r.stdout,
+       new RegExp(`MONITOR · \\[pipeline B-17\\] · subscriptiontracker_db: 7 table\\(s\\) enumerated from services/subscriptiontracker-api/migrations \\(${appMigrations} migration file\\(s\\)\\), 0 row\\(s\\) · 7 exempt table\\(s\\), not queried`),
+     );
+-    assert.match(r.stdout, /MONITOR · \[pipeline B-17\] · 2 database\(s\) walked \(platform_db, subscriptiontracker_db\): 36 table\(s\), 0 row\(s\)/); // ⏱ 2026-09-30: 35 -> 36, 0006 adds idempotency_keys (AB-O2-02, #1075). ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 31 -> 32, 0021 ext_link_floor (EXA-11). ⏱ 2026-09-29: 29 -> 31, 0005 adds categories + price_change. ⏱ 2026-09-28: 26 -> 29 and platform_db 22 -> 25, 0020's three reminder tables (ST-T4a).
++    assert.match(r.stdout, /MONITOR · \[pipeline B-17\] · 2 database\(s\) walked \(platform_db, subscriptiontracker_db\): 37 table\(s\), 0 row\(s\)/); // ⏱ 2026-10-01: 36 -> 37, 0024 box_config_manifest (PB-27). ⏱ 2026-09-30: 35 -> 36, 0006 adds idempotency_keys (AB-O2-02, #1075). ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 31 -> 32, 0021 ext_link_floor (EXA-11). ⏱ 2026-09-29: 29 -> 31, 0005 adds categories + price_change. ⏱ 2026-09-28: 26 -> 29 and platform_db 22 -> 25, 0020's three reminder tables (ST-T4a).
+     assert.match(r.stdout, /subscriptiontracker_db migration ledger: NOT READ \(fixture mode, no --schema-file\)/);
+     assert.match(r.stdout, /⬜ {2}payment_history {10}exempt — not queried {3}\[no marker · exempt\]/);
+-    assert.match(r.stdout, /9 exempt table\(s\) were not queried, and say so above/); // ⏱ 2026-09-30: 8 -> 9, idempotency_keys (AB-O2-02, #1075). ⏱ 2026-09-30 (ADR no.NNN): 7 -> 8, native_attest_counters. ⏱ 2026-09-30: 6 -> 7, ext_link_floor (EXA-11).
++    assert.match(r.stdout, /10 exempt table\(s\) were not queried, and say so above/); // ⏱ 2026-09-30: 8 -> 9, idempotency_keys (AB-O2-02, #1075). ⏱ 2026-09-30 (ADR no.NNN): 7 -> 8, native_attest_counters. ⏱ 2026-09-30: 6 -> 7, ext_link_floor (EXA-11). ⏱ 2026-10-01: 9 -> 10, box_config_manifest (PB-27).
+   });
+ 
+   test('the gate prints both databases', () => {
+diff --git a/tooling/ci/test/prod-provenance.test.mjs b/tooling/ci/test/prod-provenance.test.mjs
+index 88ab1d68..467f04f8 100644
+--- a/tooling/ci/test/prod-provenance.test.mjs
++++ b/tooling/ci/test/prod-provenance.test.mjs
+@@ -157,7 +157,7 @@ describe('assert-prod-provenance — the gate limb', () => {
+   test('the real tree passes, and says out loud that it has not seen production', () => {
+     const r = spawnSync(process.execPath, [GATE, REPO], { cwd: REPO, encoding: 'utf8' });
+     assert.equal(r.status, 0, r.stdout + r.stderr);
+-    assert.match(r.stdout, /29 table\(s\) enumerated/); // ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 25 -> 26, 0021 ext_link_floor (EXA-11). ⏱ 2026-09-18: 18 -> 19, 0013 content_reports (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: 19 -> 20, 0016 provider_tokens (O-GOOGLE-SIGN-IN-NOT-BUILT). ⏱ 2026-09-25: 20 -> 22, 0017 ext_codes + ext_devices (O-EXTENSION-ACCOUNT-CHECK-UNBUILT). ⏱ 2026-09-28: 22 -> 25, 0020 reminder_prefs + reminder_sent + reminder_feed (ST-T4a).
++    assert.match(r.stdout, /30 table\(s\) enumerated/); // ⏱ 2026-10-01 (PB-27): 29 -> 30, 0024 box_config_manifest. ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 25 -> 26, 0021 ext_link_floor (EXA-11). ⏱ 2026-09-18: 18 -> 19, 0013 content_reports (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: 19 -> 20, 0016 provider_tokens (O-GOOGLE-SIGN-IN-NOT-BUILT). ⏱ 2026-09-25: 20 -> 22, 0017 ext_codes + ext_devices (O-EXTENSION-ACCOUNT-CHECK-UNBUILT). ⏱ 2026-09-28: 22 -> 25, 0020 reminder_prefs + reminder_sent + reminder_feed (ST-T4a).
+     assert.match(r.stdout, /HAS NOT LOOKED AT PRODUCTION/);
+     assert.match(r.stdout, /MONITOR/);
+   });
+@@ -554,7 +554,7 @@ describe('check-prod-provenance — the monitor limb', () => {
+     const r = run({});
+     assert.equal(r.status, 0, r.stdout + r.stderr);
+     assert.match(r.stdout, /THIS IS A MONITOR, NOT A GATE/);
+-    assert.match(r.stdout, /29 table\(s\) enumerated/); // ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 25 -> 26, 0021 ext_link_floor (EXA-11). ⏱ 2026-09-18: 18 -> 19, 0013 content_reports (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: 19 -> 20, 0016 provider_tokens (O-GOOGLE-SIGN-IN-NOT-BUILT). ⏱ 2026-09-25: 20 -> 22, 0017 ext_codes + ext_devices (O-EXTENSION-ACCOUNT-CHECK-UNBUILT). ⏱ 2026-09-28: 22 -> 25, 0020 reminder_prefs + reminder_sent + reminder_feed (ST-T4a).
++    assert.match(r.stdout, /30 table\(s\) enumerated/); // ⏱ 2026-10-01 (PB-27): 29 -> 30, 0024 box_config_manifest. ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 25 -> 26, 0021 ext_link_floor (EXA-11). ⏱ 2026-09-18: 18 -> 19, 0013 content_reports (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: 19 -> 20, 0016 provider_tokens (O-GOOGLE-SIGN-IN-NOT-BUILT). ⏱ 2026-09-25: 20 -> 22, 0017 ext_codes + ext_devices (O-EXTENSION-ACCOUNT-CHECK-UNBUILT). ⏱ 2026-09-28: 22 -> 25, 0020 reminder_prefs + reminder_sent + reminder_feed (ST-T4a).
+   });
+ 
+   test('the real production consent row resolves — it is a shipped build, not residue', () => {
+@@ -851,7 +851,7 @@ describe('check-prod-provenance — a table its migration has not reached yet',
+   test('a ledger that records names WITHOUT `.sql` reads the same', () => {
+     const r = run({ schemaJson: schema({ migrations: FILES.map((f) => f.replace(/\.sql$/, '')) }) });
+     assert.equal(r.status, 0, r.stdout + r.stderr);
+-    assert.match(r.stdout, /29 of 29 table\(s\) present · 0 not yet migrated/); // ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 25 -> 26, 0021 (EXA-11). ⏱ 2026-09-28: 22 -> 25, 0020 (ST-T4a).
++    assert.match(r.stdout, /30 of 30 table\(s\) present · 0 not yet migrated/); // ⏱ 2026-10-01 (PB-27): 29 -> 30, 0024 box_config_manifest. ⏱ 2026-09-30 (ADR no.NNN): +3, 0022 native_attest_redeemed + native_attest_keys + native_attest_counters. ⏱ 2026-09-30: 25 -> 26, 0021 (EXA-11). ⏱ 2026-09-28: 22 -> 25, 0020 (ST-T4a).
+   });
+ 
+   test('5 · THE INCIDENT REPLAY: ext_devices absent, 0017 absent, #930 merged hours before: ⬜ and exit 0', () => {
+diff --git a/tooling/enforcement-index.json b/tooling/enforcement-index.json
+index 1831ba15..be32074a 100644
+--- a/tooling/enforcement-index.json
++++ b/tooling/enforcement-index.json
+@@ -3693,6 +3693,16 @@
+     "references": [],
+     "state": "WIRED"
+   },
++  {
++    "claims": [],
++    "invokedBy": [
++      ".github/workflows/ops-watch.yml#heartbeats"
++    ],
++    "kind": "script",
++    "ref": "tooling/ops/check-box-config-drift.mjs",
++    "references": [],
++    "state": "WIRED"
++  },
+   {
+     "claims": [],
+     "invokedBy": [
+diff --git a/tooling/guard-yield.json b/tooling/guard-yield.json
+index 06438a49..d1a807f1 100644
+--- a/tooling/guard-yield.json
++++ b/tooling/guard-yield.json
+@@ -3636,6 +3636,11 @@
+       "firstSeen": "2026-09-25",
+       "evidence": []
+     },
++    "tooling/ops/check-box-config-drift.mjs": {
++      "catches": 0,
++      "firstSeen": "2026-10-01",
++      "evidence": []
++    },
+     "tooling/ops/check-code-scanning-age.mjs": {
+       "catches": 0,
+       "firstSeen": "2026-09-29",
+diff --git a/tooling/legal/data-inventory.json b/tooling/legal/data-inventory.json
+index d86e4153..6123de80 100644
+--- a/tooling/legal/data-inventory.json
++++ b/tooling/legal/data-inventory.json
+@@ -825,6 +825,25 @@
+       },
+       "note": "The policy version in this table is what tooling/ci/assert-policy-archive.mjs exists to keep resolvable: a record citing 2026-07-26 is worth exactly our ability to still serve the 2026-07-26 bytes."
+     },
++    {
++      "id": "table:platform_db.box_config_manifest",
++      "kind": "d1-table",
++      "name": "box_config_manifest",
++      "personalData": false,
++      "holds": "⏱ 2026-10-01 · PB-27. One row per box (`boxb`, `boxc`): the sha256 of each of that box's live config files under a logical name (compose, override, tunnel) and the server's time of the post. Written by POST /v1/ops/box-manifest from the box's own cron. Hashes only — no file content, no user data of any kind.",
++      "retention": {
++        "kind": "keep",
++        "reason": "At most one row per box, replaced whole on every post, so the table cannot grow past the box count. It is the live side of the drift comparison tooling/ops/check-box-config-drift.mjs makes; deleting it by age would read as a box that stopped reporting."
++      },
++      "erasure": {
++        "kind": "no-personal-data",
++        "reason": "A box name, config-file hashes and a timestamp. No user id, no install id, nothing that is about anybody."
++      },
++      "writtenBy": [
++        "services/platform/migrations/0024_box_config_manifest.sql",
++        "services/platform/src/routes/box-manifest.ts"
++      ]
++    },
+     {
+       "id": "table:platform_db.cron_heartbeat",
+       "kind": "d1-table",
+diff --git a/tooling/ops/box-config-vendored.json b/tooling/ops/box-config-vendored.json
+new file mode 100644
+index 00000000..aa7feb27
+--- /dev/null
++++ b/tooling/ops/box-config-vendored.json
+@@ -0,0 +1,28 @@
++{
++  "$comment": [
++    "PB-27 — the VENDORED hash of every box config file a box reports (tooling/ops/boxes/post-config-manifest.sh),",
++    "read by tooling/ops/check-box-config-drift.mjs in ops-watch against platform_db.box_config_manifest.",
++    "`vendored` is the file's path inside the private corpus checkout; `sha256` is that file's hash, written ONLY by",
++    "`node tooling/ops/check-box-config-drift.mjs --refresh-vendored <corpus dir>` — never typed. A null `sha256` is",
++    "COVERAGE LOST (exit 2), never a pass. The logical names are the first column of each box's",
++    "/etc/nikatru/box-manifest.files; a file a box posts that is not declared here is a finding (UNDECLARED).",
++    "`maxPostAgeHours`: the box cron runs daily, so two missed runs plus slack."
++  ],
++  "maxPostAgeHours": 50,
++  "boxes": {
++    "boxb": {
++      "files": {
++        "compose": { "vendored": null, "sha256": null },
++        "override": { "vendored": null, "sha256": null },
++        "tunnel": { "vendored": null, "sha256": null }
++      }
++    },
++    "boxc": {
++      "files": {
++        "compose": { "vendored": null, "sha256": null },
++        "override": { "vendored": null, "sha256": null },
++        "tunnel": { "vendored": null, "sha256": null }
++      }
++    }
++  }
++}
+diff --git a/tooling/ops/boxes/post-config-manifest.sh b/tooling/ops/boxes/post-config-manifest.sh
+new file mode 100644
+index 00000000..6fb46c1b
+--- /dev/null
++++ b/tooling/ops/boxes/post-config-manifest.sh
+@@ -0,0 +1,92 @@
++#!/bin/sh
++# ─────────────────────────────────────────────────────────────────────────────
++# post-config-manifest.sh — RUNS ON A BOX (Box B, Box C), from cron. Hashes the
++# box's LIVE compose, override and tunnel config and POSTs the hashes to the
++# platform Worker, so drift from the vendored copies is READ, not guessed.
++#
++# PB-27 (O-JWKS-FALLBACK-LIVES-TEN-MINUTES folds O-BOX-CONFIG-OUTSIDE-THE-LANE).
++# The box pushes; CI never SSHes in. The chain:
++#   this script → POST /v1/ops/box-manifest (services/platform/src/routes/box-manifest.ts)
++#   → platform_db.box_config_manifest (migrations/0024_box_config_manifest.sql)
++#   → tooling/ops/check-box-config-drift.mjs in ops-watch, against
++#     tooling/ops/box-config-vendored.json.
++#
++# ── WHAT IT SENDS, AND WHAT IT NEVER SENDS ───────────────────────────────────
++# One sha256 per file, under a LOGICAL name ("compose", "override", "tunnel").
++# Never a file's content, never a path, never the secret on a command line
++# (curl reads the Authorization header from a file, so it is not in `ps`).
++# It writes NOTHING on the box: the box config stays applied by hand.
++#
++# ── CONFIG: two root-only files, installed by the lead (box operations) ─────
++#   /etc/nikatru/box-manifest.conf      shell assignments:
++#       BOX=boxc                                    # boxb | boxc
++#       ENDPOINT=https://platform.nikatru.com/v1/ops/box-manifest
++#       SECRET_FILE=/etc/nikatru/box-manifest.secret  # mode 0600, the box's secret only
++#   /etc/nikatru/box-manifest.files     one `<logical name> <absolute path>` per line;
++#                                       `#` comments and blank lines are skipped.
++#   Override either with BOX_MANIFEST_CONF / BOX_MANIFEST_FILES (the tests do).
++#
++# ── INSTALL (cron.d, once a day, offset from the backup window) ──────────────
++#   install -m 0755 post-config-manifest.sh /usr/local/sbin/nikatru-post-config-manifest
++#   echo '17 5 * * * root /usr/local/sbin/nikatru-post-config-manifest >>/var/log/nikatru-box-manifest.log 2>&1' \
++#     > /etc/cron.d/nikatru-box-manifest
++#   Read back the first post: run it by hand once and look for `HTTP 204`.
++#
++# Exit: 0 posted (HTTP 204); 1 the Worker refused the post; 2 could not build or
++# send a manifest (a listed file missing, no config, no secret, no network).
++# A LISTED FILE THAT IS MISSING IS NOT SKIPPED: exit 2 with its logical name,
++# because a manifest without it would read on the Worker as "the box stopped
++# having that file" — which the reader then reports as drift, the right answer
++# for a box, the wrong one for a typo here.
++# ─────────────────────────────────────────────────────────────────────────────
++set -eu
++
++CONF="${BOX_MANIFEST_CONF:-/etc/nikatru/box-manifest.conf}"
++LIST="${BOX_MANIFEST_FILES:-/etc/nikatru/box-manifest.files}"
++
++fail() { echo "box-manifest: $*" >&2; exit 2; }
++
++[ -r "$CONF" ] || fail "no config at $CONF"
++# shellcheck disable=SC1090
++. "$CONF"
++[ -n "${BOX:-}" ] || fail "BOX is not set in $CONF"
++[ -n "${ENDPOINT:-}" ] || fail "ENDPOINT is not set in $CONF"
++[ -n "${SECRET_FILE:-}" ] && [ -r "$SECRET_FILE" ] || fail "SECRET_FILE is not set or not readable"
++[ -r "$LIST" ] || fail "no file list at $LIST"
++case "$BOX" in boxb|boxc) ;; *) fail "BOX must be boxb or boxc, got '$BOX'" ;; esac
++
++hash_of() {
++  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
++  else shasum -a 256 "$1" | cut -d' ' -f1
++  fi
++}
++
++files=""
++count=0
++while IFS= read -r line || [ -n "$line" ]; do
++  case "$line" in ''|'#'*) continue ;; esac
++  name=$(printf '%s\n' "$line" | awk '{print $1}')
++  path=$(printf '%s\n' "$line" | awk '{print $2}')
++  printf '%s' "$name" | grep -Eq '^[a-z0-9][a-z0-9._-]{0,63}$' || fail "bad logical name '$name' in $LIST"
++  [ -n "$path" ] || fail "no path for '$name' in $LIST"
++  [ -f "$path" ] || fail "listed file '$name' is missing on this box"
++  sum=$(hash_of "$path")
++  files="${files}${files:+,}\"${name}\":\"${sum}\""
++  count=$((count + 1))
++done < "$LIST"
++[ "$count" -gt 0 ] || fail "$LIST lists no file"
++
++body="{\"box\":\"${BOX}\",\"files\":{${files}}}"
++
++# The header goes through a 0600 temp file, so the secret is never an argument.
++umask 077
++hdr=$(mktemp)
++trap 'rm -f "$hdr"' EXIT
++printf 'Authorization: Bearer %s\n' "$(cat "$SECRET_FILE")" > "$hdr"
++
++status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
++  -X POST -H "@$hdr" -H 'Content-Type: application/json' \
++  --data "$body" "$ENDPOINT") || fail "the POST did not complete"
++
++echo "box-manifest: box=$BOX files=$count HTTP $status"
++[ "$status" = "204" ] || exit 1
+diff --git a/tooling/ops/check-box-config-drift.mjs b/tooling/ops/check-box-config-drift.mjs
+new file mode 100644
+index 00000000..0648048f
+--- /dev/null
++++ b/tooling/ops/check-box-config-drift.mjs
+@@ -0,0 +1,259 @@
++#!/usr/bin/env node
++// ─────────────────────────────────────────────────────────────────────────────
++// check-box-config-drift.mjs — is each box's LIVE config the config we vendored?
++//
++// PB-27 (O-JWKS-FALLBACK-LIVES-TEN-MINUTES folds O-BOX-CONFIG-OUTSIDE-THE-LANE).
++// Box B's and Box C's compose, override and tunnel config is applied over SSH
++// and re-vendored by hand, and until this reader nothing compared the two: a
++// hand edit on a box that never reached the vendored copy was invisible until a
++// rebuild from the vendored copy quietly undid it.
++//
++// ── THE CHAIN, AND WHY THE BOX PUSHES ────────────────────────────────────────
++//   tooling/ops/boxes/post-config-manifest.sh (a cron ON the box)
++//     → POST /v1/ops/box-manifest (services/platform/src/routes/box-manifest.ts),
++//       authenticated with a secret scoped to that one box
++//     → platform_db.box_config_manifest (one row per box, replaced whole)
++//     → THIS reader, in ops-watch, against tooling/ops/box-config-vendored.json.
++// CI never SSHes into a box: a CI credential that can log into a box is a
++// bigger exposure than the drift it would find. Hashes only travel; content
++// never leaves the box.
++//
++// ── WHAT IS RED ──────────────────────────────────────────────────────────────
++// Exit 1 (a finding), per box the register declares:
++//   · NO ROW          the box has never posted (the cron is not installed, or
++//                     cannot reach the Worker);
++//   · STALE           its newest post is older than `maxPostAgeHours` — the cron
++//                     stopped, so the row describes a past box;
++//   · DRIFT           a declared file's live hash is not the vendored hash;
++//   · MISSING         a declared file is absent from the box's post;
++//   · UNDECLARED      the box posted a file the register does not declare.
++// Exit 2 (COVERAGE LOST — deliberately not a pass): the register is unreadable
++// or declares no box, an entry carries no vendored hash yet, or D1 could not be
++// read. 2 beats 1, as in check-heartbeats.mjs; every finding is still printed.
++//
++// ── THE VENDORED HASHES ──────────────────────────────────────────────────────
++// The vendored copies live in the private corpus, which no CI job can read, so
++// the register holds their sha256 and the PATH each was taken from. Refresh it
++// from a checkout of the corpus with
++//     node tooling/ops/check-box-config-drift.mjs --refresh-vendored <corpus dir>
++// which rewrites only the `sha256` fields, from the files the `vendored` paths name.
++//
++// Usage:
++//   node tooling/ops/check-box-config-drift.mjs                    # reads D1
++//   node tooling/ops/check-box-config-drift.mjs --manifest <file>  # a fixture: [{box, manifest, posted_at}]
++//   [--register <file>] [--now <ISO>]
++// Env (the D1 read): CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
++// ─────────────────────────────────────────────────────────────────────────────
++import { createHash } from 'node:crypto';
++import { existsSync, readFileSync, writeFileSync } from 'node:fs';
++import { dirname, join, resolve } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { parseJsonc } from './check-heartbeats.mjs';
++import { CouldNotLook, classifyThrown, isTransientStatus, readWithBoundedRetry, retryAfterMs, transientLook } from './bounded-retry.mjs';
++
++const HERE = dirname(fileURLToPath(import.meta.url));
++const ROOT = resolve(HERE, '..', '..');
++export const REGISTER_REL = 'tooling/ops/box-config-vendored.json';
++const PLATFORM_WRANGLER_REL = 'services/platform/wrangler.jsonc';
++const SHA256 = /^[0-9a-f]{64}$/;
++
++function flag(name) {
++  const i = process.argv.indexOf(name);
++  return i === -1 ? null : (process.argv[i + 1] ?? null);
++}
++
++/** `abcdef123456…` — enough to tell two hashes apart in a log line. */
++const short = (h) => (typeof h === 'string' ? `${h.slice(0, 12)}…` : String(h));
++
++/**
++ * The register, validated. Returns `{ boxes, maxPostAgeHours }` or `{ lost }`.
++ * A box with no declared file, or a file whose `sha256` is null, is LOST: a
++ * reader that compared against nothing would print "no drift".
++ */
++export function readRegister(abs) {
++  let reg;
++  try {
++    reg = JSON.parse(readFileSync(abs, 'utf8'));
++  } catch (e) {
++    return { lost: [`COVERAGE LOST — the register ${abs} could not be read (${e.message})`] };
++  }
++  const lost = [];
++  const maxPostAgeHours = reg?.maxPostAgeHours;
++  if (!Number.isFinite(maxPostAgeHours) || maxPostAgeHours <= 0) lost.push('COVERAGE LOST — the register carries no positive maxPostAgeHours');
++  const boxes = reg?.boxes && typeof reg.boxes === 'object' ? reg.boxes : {};
++  if (Object.keys(boxes).length === 0) lost.push('COVERAGE LOST — the register declares no box');
++  for (const [box, decl] of Object.entries(boxes)) {
++    const files = decl?.files && typeof decl.files === 'object' ? decl.files : {};
++    if (Object.keys(files).length === 0) lost.push(`COVERAGE LOST — ${box} declares no file`);
++    for (const [name, f] of Object.entries(files)) {
++      if (!SHA256.test(f?.sha256 ?? '')) {
++        lost.push(`COVERAGE LOST — ${box}/${name} carries no vendored sha256 yet (refresh it with --refresh-vendored from the corpus)`);
++      }
++    }
++  }
++  return { boxes, maxPostAgeHours, lost };
++}
++
++/**
++ * THE JUDGEMENT, pure. `rows` are D1's (or a fixture's) `{box, manifest,
++ * posted_at}`; `manifest` is the JSON text the route stored (an object is
++ * accepted too, for fixtures). Returns `{ findings, ok }` — lines, never a value
++ * beyond a short hash.
++ */
++export function judgeDrift(register, rows, nowMs) {
++  const findings = [];
++  const ok = [];
++  const byBox = new Map();
++  for (const r of rows ?? []) if (r && typeof r.box === 'string') byBox.set(r.box, r);
++  for (const [box, decl] of Object.entries(register.boxes)) {
++    const row = byBox.get(box);
++    if (!row) {
++      findings.push(`${box}: NO ROW — the box has never posted its config hashes (is the cron installed, and can it reach the Worker?)`);
++      continue;
++    }
++    const postedMs = Date.parse(row.posted_at);
++    const ageH = (nowMs - postedMs) / 3_600_000;
++    if (!Number.isFinite(postedMs)) {
++      findings.push(`${box}: STALE — its post carries no readable posted_at (${JSON.stringify(row.posted_at)})`);
++    } else if (ageH > register.maxPostAgeHours) {
++      findings.push(`${box}: STALE — the newest post is ${ageH.toFixed(1)}h old, past ${register.maxPostAgeHours}h; the cron has stopped, so the row describes a past box`);
++    }
++    let live;
++    try {
++      live = typeof row.manifest === 'string' ? JSON.parse(row.manifest) : row.manifest;
++    } catch {
++      live = null;
++    }
++    if (!live || typeof live !== 'object' || Array.isArray(live)) {
++      findings.push(`${box}: its stored manifest is not a JSON object`);
++      continue;
++    }
++    const declared = decl.files ?? {};
++    for (const [name, f] of Object.entries(declared)) {
++      if (!SHA256.test(f?.sha256 ?? '')) continue; // reported as LOST by readRegister
++      if (!Object.hasOwn(live, name)) findings.push(`${box}/${name}: MISSING — declared, and absent from the box's post`);
++      else if (live[name] !== f.sha256) findings.push(`${box}/${name}: DRIFT — live ${short(live[name])} ≠ vendored ${short(f.sha256)} (${f.vendored ?? 'no vendored path'})`);
++      else ok.push(`${box}/${name}: live = vendored ${short(f.sha256)}`);
++    }
++    for (const name of Object.keys(live)) {
++      if (!Object.hasOwn(declared, name)) findings.push(`${box}/${name}: UNDECLARED — the box posts a file the register does not declare`);
++    }
++  }
++  return { findings, ok };
++}
++
++/** platform_db's id, from the wrangler config of the Worker that owns its migrations. */
++function platformDbId() {
++  const cfg = parseJsonc(readFileSync(join(ROOT, PLATFORM_WRANGLER_REL), 'utf8'));
++  return (cfg.d1_databases ?? []).find((d) => d.migrations_dir)?.database_id ?? null;
++}
++
++async function readRows() {
++  const token = process.env.CLOUDFLARE_API_TOKEN;
++  const account = process.env.CLOUDFLARE_ACCOUNT_ID;
++  if (!token || !account) throw new CouldNotLook('CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not both in the environment — cannot read box_config_manifest');
++  const db = platformDbId();
++  if (!db) throw new CouldNotLook(`${PLATFORM_WRANGLER_REL} has no D1 binding carrying migrations_dir`);
++  const url = `https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${db}/query`;
++  // 🔴 A POST THAT IS A READ (the D1 HTTP API takes SELECTs by POST), so a
++  // re-send changes nothing — the same decision check-heartbeats.mjs records.
++  return readWithBoundedRetry(async (_attempt, { signal }) => {
++    let res;
++    try {
++      res = await fetch(url, {
++        method: 'POST',
++        signal,
++        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
++        body: JSON.stringify({ sql: 'SELECT box, manifest, posted_at FROM box_config_manifest', params: [] }),
++      });
++    } catch (e) {
++      throw classifyThrown(e, `the D1 API did not answer (${e?.name ?? 'error'}: ${e?.message ?? e})`);
++    }
++    if (!res.ok) {
++      const line = `the D1 API returned ${res.status}`;
++      throw isTransientStatus(res.status) ? transientLook(line, { retryAfterMs: retryAfterMs(res) }) : new CouldNotLook(line);
++    }
++    let body;
++    try {
++      body = await res.json();
++    } catch (e) {
++      throw classifyThrown(e, `the D1 API response was not JSON (${e.message})`);
++    }
++    if (body?.success !== true) throw new CouldNotLook(`the D1 API reported failure: ${JSON.stringify(body?.errors ?? body).slice(0, 300)}`);
++    const rows = body?.result?.[0]?.results;
++    if (!Array.isArray(rows)) throw new CouldNotLook('the D1 API response carried no results array');
++    return rows;
++  });
++}
++
++/** Rewrite each entry's `sha256` from the vendored file its `vendored` path names. */
++function refreshVendored(registerAbs, corpusDir) {
++  const reg = JSON.parse(readFileSync(registerAbs, 'utf8'));
++  const problems = [];
++  for (const [box, decl] of Object.entries(reg.boxes ?? {})) {
++    for (const [name, f] of Object.entries(decl.files ?? {})) {
++      const abs = typeof f.vendored === 'string' ? join(corpusDir, f.vendored) : null;
++      if (!abs || !existsSync(abs)) {
++        problems.push(`${box}/${name}: vendored path ${JSON.stringify(f.vendored)} does not exist under ${corpusDir}`);
++        continue;
++      }
++      f.sha256 = createHash('sha256').update(readFileSync(abs)).digest('hex');
++    }
++  }
++  if (problems.length) {
++    for (const p of problems) console.error(`✗ ${p}`);
++    return 2;
++  }
++  writeFileSync(registerAbs, `${JSON.stringify(reg, null, 2)}\n`);
++  console.log(`✓ ${registerAbs} refreshed from ${corpusDir}`);
++  return 0;
++}
++
++// ⚠️ `process.exitCode` and return, NEVER `process.exit()` (check-heartbeats.mjs
++// records why: exiting while a fetch handle closes aborts Node on Windows).
++async function main() {
++  const registerAbs = resolve(flag('--register') ?? join(ROOT, REGISTER_REL));
++  const corpus = flag('--refresh-vendored');
++  if (corpus) {
++    process.exitCode = refreshVendored(registerAbs, resolve(corpus));
++    return;
++  }
++  const nowFlag = flag('--now');
++  const nowMs = nowFlag ? Date.parse(nowFlag) : Date.now();
++  if (Number.isNaN(nowMs)) {
++    console.error(`✗ COVERAGE LOST — --now is not a parseable date: ${nowFlag}`);
++    process.exitCode = 2;
++    return;
++  }
++  const register = readRegister(registerAbs);
++  if (!register.boxes) {
++    for (const l of register.lost) console.error(`✗ ${l}`);
++    process.exitCode = 2;
++    return;
++  }
++
++  let rows;
++  const fixture = flag('--manifest');
++  try {
++    rows = fixture ? JSON.parse(readFileSync(resolve(fixture), 'utf8')) : await readRows();
++    if (!Array.isArray(rows)) throw new CouldNotLook('the manifest rows are not an array');
++  } catch (e) {
++    console.error(`✗ COVERAGE LOST — box_config_manifest could not be read: ${e?.message ?? e}`);
++    for (const l of register.lost) console.error(`✗ ${l}`);
++    process.exitCode = 2;
++    return;
++  }
++
++  const { findings, ok } = judgeDrift(register, rows, nowMs);
++  for (const l of ok) console.log(`✓ ${l}`);
++  for (const l of findings) console.error(`✗ ${l}`);
++  for (const l of register.lost) console.error(`✗ ${l}`);
++  if (register.lost.length) process.exitCode = 2;
++  else if (findings.length) process.exitCode = 1;
++  else {
++    console.log(`✓ every declared box posted within ${register.maxPostAgeHours}h, and its live config is the vendored config`);
++    process.exitCode = 0;
++  }
++}
++
++if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+diff --git a/tooling/ops/fixtures/box-config-drift/manifest-clean.json b/tooling/ops/fixtures/box-config-drift/manifest-clean.json
+new file mode 100644
+index 00000000..161c8349
+--- /dev/null
++++ b/tooling/ops/fixtures/box-config-drift/manifest-clean.json
+@@ -0,0 +1,12 @@
++[
++  {
++    "box": "boxb",
++    "manifest": "{\"compose\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
++    "posted_at": "2026-10-01T05:17:02.000Z"
++  },
++  {
++    "box": "boxc",
++    "manifest": "{\"compose\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"override\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"tunnel\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"}",
++    "posted_at": "2026-10-01T05:17:04.000Z"
++  }
++]
+diff --git a/tooling/ops/fixtures/box-config-drift/manifest-one-changed.json b/tooling/ops/fixtures/box-config-drift/manifest-one-changed.json
+new file mode 100644
+index 00000000..9a81143d
+--- /dev/null
++++ b/tooling/ops/fixtures/box-config-drift/manifest-one-changed.json
+@@ -0,0 +1,12 @@
++[
++  {
++    "box": "boxb",
++    "manifest": "{\"compose\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
++    "posted_at": "2026-10-01T05:17:02.000Z"
++  },
++  {
++    "box": "boxc",
++    "manifest": "{\"compose\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"override\": \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\", \"tunnel\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"}",
++    "posted_at": "2026-10-01T05:17:04.000Z"
++  }
++]
+diff --git a/tooling/ops/fixtures/box-config-drift/register.json b/tooling/ops/fixtures/box-config-drift/register.json
+new file mode 100644
+index 00000000..6e5334c8
+--- /dev/null
++++ b/tooling/ops/fixtures/box-config-drift/register.json
+@@ -0,0 +1,32 @@
++{
++  "$comment": [
++    "Fixture register for tooling/ci/test/box-config-drift.test.mjs \u2014 fake hashes, no real box."
++  ],
++  "maxPostAgeHours": 50,
++  "boxes": {
++    "boxb": {
++      "files": {
++        "compose": {
++          "vendored": "boxes/boxb/docker-compose.yml",
++          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
++        }
++      }
++    },
++    "boxc": {
++      "files": {
++        "compose": {
++          "vendored": "boxes/boxc/docker-compose.yml",
++          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
++        },
++        "override": {
++          "vendored": "boxes/boxc/docker-compose.override.yml",
++          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
++        },
++        "tunnel": {
++          "vendored": "boxes/boxc/cloudflared/config.yml",
++          "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
++        }
++      }
++    }
++  }
++}
+diff --git a/tooling/ops/register.json b/tooling/ops/register.json
+index a95d1ceb..bfcabc7f 100644
+--- a/tooling/ops/register.json
++++ b/tooling/ops/register.json
+@@ -4877,6 +4877,28 @@
+       ],
+       "source": "verified"
+     },
++    {
++      "id": "retention.d1.platform_db.box_config_manifest",
++      "kind": "retention",
++      "store": "d1:platform_db:box_config_manifest",
++      "what": "⏱ 2026-10-01 · PB-27. One row per box (`boxb`, `boxc`): the sha256 of each live config file the box's cron reports (tooling/ops/boxes/post-config-manifest.sh) and the server's time of the post. Written by POST /v1/ops/box-manifest (services/platform/src/routes/box-manifest.ts); read by tooling/ops/check-box-config-drift.mjs in ops-watch. No user data.",
++      "rule": "keep",
++      "keepWhy": "At most one row per box (PRIMARY KEY box, a closed set of two the route enforces), replaced whole on every post, so the table cannot outgrow the box count. Its freshness is the drift reader's STALE limb (`maxPostAgeHours` in tooling/ops/box-config-vendored.json), not a timer here; deleting a row by age would read as a box that stopped reporting.",
++      "detector": "tooling/ci/assert-retention-coverage.mjs — the store set is ENUMERATED from wrangler bindings and migrations, so a store cannot leave the domain by having no rule.",
++      "response": "n/a",
++      "cadence": "365d",
++      "mechanism": {
++        "substrate": "cloudflare-d1",
++        "anchor": "services/platform/migrations/0024_box_config_manifest.sql",
++        "record": "the table itself",
++        "failingValue": "not applicable to a reasoned keep",
++        "readBy": "tooling/ci/assert-retention-coverage.mjs"
++      },
++      "accessProviders": [
++        "cloudflare"
++      ],
++      "source": "verified"
++    },
+     {
+       "id": "retention.d1.platform_db.native_attest_counters",
+       "kind": "retention",
+diff --git a/tooling/platform-register.json b/tooling/platform-register.json
+index b3282b2c..034fbb63 100644
+--- a/tooling/platform-register.json
++++ b/tooling/platform-register.json
+@@ -442,7 +442,7 @@
+       "path": "/v1/health",
+       "auth": "public",
+       "owningFile": "services/platform/src/index.ts",
+-      "purpose": "Deploy verification AND dependency health. Answers `{ ok, status, app, version, build, time, checks }` after probing PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`), CONFIG_KV (a `get` of a key that does not exist), the Supabase JWKS and — ⏱ 2026-09-30 — the provider-token key TOKEN_ENC_KEY_V1 (`token_encryption_key`: set, 32 bytes, and an AES-GCM round trip; no I/O), each through a per-isolate memoised reading (services/_shared/src/health.ts); HTTP 200 even when `ok` is false, by design, so the judgement stays with the reader. ⚠️ CORRECTED 2026-09-10 — this field described a vars-only answer that touched no dependency, for as long as the probes had existed (services/platform/src/index.ts:150-196).",
++      "purpose": "Deploy verification AND dependency health. Answers `{ ok, status, app, version, build, time, checks }` after probing PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`), CONFIG_KV (a `get` of a key that does not exist), the Supabase JWKS and — ⏱ 2026-09-30 — the provider-token key TOKEN_ENC_KEY_V1 (`token_encryption_key`: set, 32 bytes, and an AES-GCM round trip; no I/O), each through a per-isolate memoised reading (services/_shared/src/health.ts); HTTP 200 even when `ok` is false, by design, so the judgement stays with the reader. ⚠️ CORRECTED 2026-09-10 — this field described a vars-only answer that touched no dependency, for as long as the probes had existed (services/platform/src/index.ts:151-197).",
+       "unconsumedReason": "🔄 CORRECTED 2026-08-06 — IT HAS A MACHINE CONSUMER AND HAS FOR SOME TIME. `tooling/ops/post-deploy-smoke.mjs` fetches this route from `deploy-workers.yml` (twice, both Workers) and joins the deploy to a build through the `build` field; `deploy-web.yml` smokes it too. The previous text — \"no programmatic client by design … the honest state is zero clients\" — was true when written and false at head, and it PRINTED GREEN every run because limb 2 only reports unconsumed reasons rather than checking them. [4]B-14 now pins the field set the smoke joins on.",
+       "noLimiterReason": "It DOES I/O — one D1 read, one KV read and one JWKS subrequest — and what bounds it is not a limiter but the MEMO: every probe is a per-isolate reading with a TTL (services/_shared/src/health.ts, READING_TTL_MS = 5 s for D1 and KV, JWKS_READING_TTL_MS for the JWKS fetch), so an unauthenticated flood buys at most one dependency fan-out per TTL per isolate — a bound health.ts states as (isolates × 1 per TTL), deliberately not as a global one — and every other request costs the Worker invocation itself, which the account-wide request ceiling already bounds. A limiter here would spend a Rate Limiting namespace to protect a memoised read. ⚠️ CORRECTED 2026-09-10: from the day the probes landed this field claimed the handler touched neither D1, nor KV, nor the network, and limb 4 of assert-platform-register.mjs printed it green because it checked only that a reason was PRESENT; limb 4b now refuses that claim over a handler that probes. [4]B-13"
+     },
+@@ -748,6 +748,16 @@
+       "purpose": "⏱ 2026-09-28 · ST-R2. The private calendar feed, `/v1/calendar/<token>.ics`: RFC 5545 (services/platform/src/lib/ics.ts — CRLF, 75-octet folding, escaping, stable UIDs, a VALARM at the lead days), one all-day VEVENT per live subscription on the date src/renewals.ts `rollForward` gives. `?download=1` adds an attachment disposition. PUBLIC because the token IS the capability — Google, Apple and Microsoft fetch it from their own servers with no session of ours. A malformed, unknown or revoked token is 404. Behind REMINDERS_CEILING_LIMITER, keyed on the edge.",
+       "unconsumedReason": "Consumed by CALENDAR SERVICES (Google Calendar, Apple Calendar, Outlook) subscribing to the URL, and by a browser downloading it; the URL is handed out by POST /v1/calendar/feed, whose client ships in ST-T4b."
+     },
++    {
++      "id": "box-manifest",
++      "method": "POST",
++      "path": "/v1/ops/box-manifest",
++      "auth": "public",
++      "owningFile": "services/platform/src/routes/box-manifest.ts",
++      "purpose": "⏱ 2026-10-01 · PB-27 (O-JWKS-FALLBACK-LIVES-TEN-MINUTES folds O-BOX-CONFIG-OUTSIDE-THE-LANE). A box (Box B, Box C) reports the sha256 of its LIVE compose, override and tunnel config, under logical names, so tooling/ops/check-box-config-drift.mjs can compare it with the vendored copies from ops-watch without CI ever SSHing into a box. No JWT: the bearer is compared, over SHA-256 digests with timingSafeEqual, with the secret of the ONE box the body names (BOX_MANIFEST_SECRET_BOXB / _BOXC), so a box can write only its own row; an unconfigured box answers 503 before the body is read. One platform_db.box_config_manifest row per box (migration 0024), replaced whole. Hashes only — no file content reaches the Worker. No `Origin` (403): middleware/cors.ts grants the `/v1/ops/` prefix no CORS.",
++      "noLimiterReason": "Nothing an unauthenticated caller can reach costs more than the Worker invocation itself, which the account-wide request ceiling already bounds: the body is cut off at BOX_MANIFEST_MAX_BYTES (8 KiB) before it is parsed, a box name outside the closed set is a 400 before any secret is consulted, and a wrong bearer is a 401 after two SHA-256 digests over strings of at most that size — no D1, KV or subrequest happens on any refused path. The ONE D1 write (an upsert of one row) is reachable only with that box's own secret, and its honest caller posts once a day. A limiter here would spend a Rate Limiting namespace to protect two digests.",
++      "unconsumedReason": "NO CLIENT IN THIS REPO'S APPS, BY CONSTRUCTION — the caller is each box's own cron, tooling/ops/boxes/post-config-manifest.sh, installed on the box by the lead. Pinned server-side by services/platform/test/box-manifest.test.ts and read back by tooling/ops/check-box-config-drift.mjs."
++    },
+     {
+       "id": "native-auth-token",
+       "method": "POST",
+diff --git a/tooling/prod-provenance.json b/tooling/prod-provenance.json
+index 6ef1e299..8a556bba 100644
+--- a/tooling/prod-provenance.json
++++ b/tooling/prod-provenance.json
+@@ -236,6 +236,10 @@
+           "resolver": "extension-catalogue",
+           "reason": "⏱ 2026-09-24 · O-EXTENSION-ACCOUNT-CHECK-UNBUILT. NO app_version COLUMN AND NO app_id: rows are written by POST /v1/ext/token from a code whose `product` was already checked at mint, so the marker is `product`, resolved against the extension catalogue exactly as ext_codes is. The credential is stored only as a SHA-256 and is never read by a monitor."
+         },
++        "box_config_manifest": {
++          "resolver": "exempt",
++          "reason": "⏱ 2026-10-01 · PB-27. NO app_version COLUMN AND NO OTHER MARKER: 0024_box_config_manifest.sql gives this table `box`, `manifest` and `posted_at` — one row per box, replaced whole by POST /v1/ops/box-manifest, which a box's own cron calls with a secret scoped to that box (services/platform/src/routes/box-manifest.ts). `box` is a closed set of two the route enforces, `manifest` is sha256 hashes of box config files and `posted_at` is the server's instant; no row is written by an app, a build or a live verification, and none names a build, an app or a money world a resolver could check. So it is exempt; a marker column added later re-opens this rule."
++        },
+         "ext_link_floor": {
+           "resolver": "exempt",
+           "reason": "⏱ 2026-09-30 · EXA-11. NO app_version COLUMN AND NO OTHER MARKER: 0021_ext_link_floor.sql gives this table `user_id`, `not_before`, `recovery_session` and `updated_at` — a per-account singleton written by POST /v1/sessions/revoke-all and by the recovery door in middleware/auth.ts from the authenticated session. `user_id` is a Supabase subject this database cannot resolve, `not_before` and `updated_at` are server instants, and `recovery_session` is a GoTrue session id; none names a build, an app, a money world or a closed set a resolver could check. So it is exempt; a marker column added later re-opens this rule."

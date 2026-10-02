@@ -1,0 +1,2566 @@
+diff --git a/services/_shared/src/auth-middleware.ts b/services/_shared/src/auth-middleware.ts
+index e3e5d203..07c52490 100644
+--- a/services/_shared/src/auth-middleware.ts
++++ b/services/_shared/src/auth-middleware.ts
+@@ -63,6 +63,7 @@ import {
+   verifyOptions,
+   type AuthRecency,
+ } from './auth';
++import type { KvStore } from './ports/kv';
+ 
+ /** How a token was verified. 'symmetric' exists ONLY on an app Worker's
+  *  permissive boundary bound with a legacy secret, and every erasure route
+@@ -104,7 +105,7 @@ export function remoteJwks(supabaseUrl: string): JWTVerifyGetKey {
+  * `kv.writesPerDay`), and a cache that re-put on every cold isolate would spend
+  * that budget on itself.
+  */
+-export async function warmJwksCache(supabaseUrl: string, jwksCache: KVNamespace | undefined): Promise<void> {
++export async function warmJwksCache(supabaseUrl: string, jwksCache: KvStore | undefined): Promise<void> {
+   try {
+     if (!jwksCache) return;
+     if (await jwksCache.get(JWKS_KV_KEY)) return; // still warm
+@@ -137,7 +138,7 @@ export async function warmJwksCache(supabaseUrl: string, jwksCache: KVNamespace
+  * the empty-key-set refusal are `usableJwksDocument` in auth.ts; only the
+  * key-set construction, which needs `jose`, is here.
+  */
+-export async function localSetFromCache(jwksCache: KVNamespace | undefined): Promise<JWTVerifyGetKey | null> {
++export async function localSetFromCache(jwksCache: KvStore | undefined): Promise<JWTVerifyGetKey | null> {
+   try {
+     if (!jwksCache) return null;
+     const doc = usableJwksDocument(await jwksCache.get(JWKS_KV_KEY));
+@@ -158,7 +159,7 @@ export async function localSetFromCache(jwksCache: KVNamespace | undefined): Pro
+  * property of the SIGNATURE — checkable by reading four lines — rather than a
+  * claim about the body that a later edit could quietly falsify.
+  */
+-export async function verifyAsymmetric(token: string, supabaseUrl: string, jwksCache?: KVNamespace): Promise<JWTPayload> {
++export async function verifyAsymmetric(token: string, supabaseUrl: string, jwksCache?: KvStore): Promise<JWTPayload> {
+   const opts = verifyOptions(supabaseUrl);
+   try {
+     const { payload } = await jwtVerify(token, remoteJwks(supabaseUrl), opts);
+@@ -201,7 +202,7 @@ export const NO_SYMMETRIC_FALLBACK: SymmetricFallback = Object.freeze({ legacyHs
+ export async function verifySupabaseToken(
+   token: string,
+   supabaseUrl: string,
+-  jwksCache: KVNamespace | undefined,
++  jwksCache: KvStore | undefined,
+   fallback: SymmetricFallback,
+ ): Promise<{ payload: JWTPayload; assurance: TokenAssurance }> {
+   try {
+@@ -243,7 +244,7 @@ export async function verifySupabaseToken(
+  * Takes the ONE binding it needs, not `Env` — the `localSetFromCache` rule.
+  */
+ export async function sessionRevoked(
+-  revoked: KVNamespace | undefined,
++  revoked: KvStore | undefined,
+   sub: string,
+   payload: Record<string, unknown>,
+   logPrefix: string,
+@@ -271,8 +272,8 @@ export async function sessionRevoked(
+ /** The bindings the two boundaries read. Each carrier's `Env` satisfies it. */
+ export interface AuthBindings {
+   readonly SUPABASE_URL: string;
+-  readonly JWKS_CACHE?: KVNamespace;
+-  readonly SESSION_REVOKED?: KVNamespace;
++  readonly JWKS_CACHE?: KvStore;
++  readonly SESSION_REVOKED?: KvStore;
+   readonly APP_ID?: string;
+ }
+ 
+diff --git a/services/_shared/src/geo.ts b/services/_shared/src/geo.ts
+new file mode 100644
+index 00000000..a95963b8
+--- /dev/null
++++ b/services/_shared/src/geo.ts
+@@ -0,0 +1,55 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// geo.ts — REQUEST GEOGRAPHY, IN ONE HELPER. THE ONLY MODULE THAT READS `.cf`.
++//
++// ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage). `request.cf`
++// is Cloudflare's per-request object: the edge PoP that terminated the
++// connection, the network it came from, and a coarse location — all derived by
++// the edge from the transport, never from a header the caller wrote. It was read
++// by hand in three modules (the edge-ceiling key, the events row's coarse geo and
++// the request log's colo), each with its own guard against a missing or odd
++// value. It is read HERE now, and assert-ports limb 10 refuses a `.cf` read in
++// any other module under services/*/src: a second runtime answers this one
++// function, not three call sites.
++//
++// 🔴 USED ONLY WHERE IT WAS USED. The edge-ceiling key (colo + asn), the events
++// row (country, region, city) and the request log (colo). Never for choosing a
++// payment rail — that is the channel register's answer, ruled (Q2) — and never
++// `country` for anything that decides money: it is where the edge saw the
++// connection, not where the buyer is.
++//
++// Each field is passed through only when the runtime gave it the type it
++// documents, and is otherwise ABSENT — the callers' own fallbacks (`-`, null,
++// undefined) are unchanged. `asn` is kept as given (a number in workerd), so the
++// edge key's own bound applies exactly as before.
++// ─────────────────────────────────────────────────────────────────────────────
++
++/** What the edge knows about where a request came from. Every field may be absent. */
++export interface RequestGeo {
++  /** ISO 3166-1 alpha-2, as the edge saw the connection. */
++  country?: string;
++  region?: string;
++  city?: string;
++  /** The edge PoP (IATA code) that terminated the connection. */
++  colo?: string;
++  /** The autonomous system the connection came from. */
++  asn?: number | string;
++}
++
++/** The geography of `req`, from the runtime's per-request object. Never throws. */
++export function requestGeo(req: Request): RequestGeo {
++  const cf = (req as Request & { cf?: unknown }).cf;
++  if (typeof cf !== 'object' || cf === null) return {};
++  const raw = cf as Record<string, unknown>;
++  const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
++  const geo: RequestGeo = {};
++  const country = str(raw.country);
++  if (country !== undefined) geo.country = country;
++  const region = str(raw.region);
++  if (region !== undefined) geo.region = region;
++  const city = str(raw.city);
++  if (city !== undefined) geo.city = city;
++  const colo = str(raw.colo);
++  if (colo !== undefined) geo.colo = colo;
++  if (typeof raw.asn === 'number' || typeof raw.asn === 'string') geo.asn = raw.asn;
++  return geo;
++}
+diff --git a/services/_shared/src/ports/adapters/cloudflare.ts b/services/_shared/src/ports/adapters/cloudflare.ts
+new file mode 100644
+index 00000000..cd8ff560
+--- /dev/null
++++ b/services/_shared/src/ports/adapters/cloudflare.ts
+@@ -0,0 +1,35 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// adapters/cloudflare.ts — THE CLOUDFLARE ADAPTERS OF THE STORAGE PORTS, AND THE
++// ONLY MODULE OUTSIDE A `types.ts` THAT NAMES A CLOUDFLARE BINDING TYPE.
++//
++// ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage). The impl rows of
++// tooling/ports/{kv,objects,ratelimit}.json. Each function is the IDENTITY: the
++// binding already satisfies its port STRUCTURALLY, so nothing wraps the hot path
++// and nothing here runs per request. What each one buys is the COMPILE-TIME
++// proof — `tsc --noEmit` in every Worker that type-checks services/_shared/src
++// fails the day `@cloudflare/workers-types` drifts from the port — which is what
++// lets every `Env` declare its bindings as `KvStore`, `ObjectStore` and
++// `RateLimiter` and every handler see the port and nothing more.
++//
++// The binding types are ambient (`@cloudflare/workers-types`, each Worker's
++// `compilerOptions.types`); there is no import, so this module carries no bare
++// specifier (shared-home.test.ts).
++// ─────────────────────────────────────────────────────────────────────────────
++import type { KvStore } from '../kv';
++import type { ObjectStore } from '../objects';
++import type { RateLimiter } from '../ratelimit';
++
++/** tooling/ports/kv.json adapter `cloudflare-kv`. */
++export function cloudflareKv(binding: KVNamespace): KvStore {
++  return binding;
++}
++
++/** tooling/ports/objects.json adapter `cloudflare-r2`. */
++export function cloudflareR2(bucket: R2Bucket): ObjectStore {
++  return bucket;
++}
++
++/** tooling/ports/ratelimit.json adapter `cloudflare-ratelimit`. */
++export function cloudflareRateLimiter(binding: RateLimit): RateLimiter {
++  return binding;
++}
+diff --git a/services/_shared/src/ports/fakes/kv.ts b/services/_shared/src/ports/fakes/kv.ts
+new file mode 100644
+index 00000000..8ea9e5d8
+--- /dev/null
++++ b/services/_shared/src/ports/fakes/kv.ts
+@@ -0,0 +1,71 @@
++// fakes/kv.ts — an in-memory `KvStore`: a Map with TTL. tooling/ports/kv.json
++// adapter `memory`; passes the same conformance suite as the binding
++// (services/_shared/test/conformance/kv.ts). Never selectable in live.
++import type { KvListOptions, KvListPage, KvPutOptions, KvStore } from '../kv';
++
++/** The fake's page size when a list asks for none (KV's own is 1000). */
++// @ceiling none — a test double's default page, mirroring KV's own list page; it bounds an in-memory Map in a test, not a platform resource
++export const MEMORY_KV_PAGE = 1000;
++
++export interface MemoryKvOptions {
++  /** Milliseconds since the epoch; injectable so a test can expire a key. */
++  now?: () => number;
++}
++
++export interface MemoryKv extends KvStore {
++  /** Live (unexpired) keys, for assertions. */
++  readonly size: number;
++}
++
++export function memoryKv(options: MemoryKvOptions = {}): MemoryKv {
++  const now = options.now ?? (() => Date.now());
++  const rows = new Map<string, { value: string; expiresAt: number | null }>();
++
++  const live = (key: string): string | null => {
++    const row = rows.get(key);
++    if (!row) return null;
++    if (row.expiresAt !== null && row.expiresAt <= now()) {
++      rows.delete(key);
++      return null;
++    }
++    return row.value;
++  };
++
++  function get(key: string, type?: 'text'): Promise<string | null>;
++  function get<T = unknown>(key: string, type: 'json'): Promise<T | null>;
++  async function get(key: string, type: 'text' | 'json' = 'text'): Promise<unknown> {
++    const value = live(key);
++    if (value === null) return null;
++    return type === 'json' ? JSON.parse(value) : value;
++  }
++
++  return {
++    get,
++    async put(key: string, value: string, opts?: KvPutOptions): Promise<void> {
++      const ttl = opts?.expirationTtl;
++      if (ttl !== undefined && !(Number.isFinite(ttl) && ttl > 0)) throw new TypeError(`memoryKv: expirationTtl must be a positive number of seconds, got ${ttl}`);
++      rows.set(key, { value: String(value), expiresAt: ttl === undefined ? null : now() + ttl * 1000 });
++    },
++    async delete(key: string): Promise<void> {
++      rows.delete(key);
++    },
++    async list(opts: KvListOptions = {}): Promise<KvListPage> {
++      const prefix = opts.prefix ?? '';
++      const limit = opts.limit ?? MEMORY_KV_PAGE;
++      const names = [...rows.keys()].filter((k) => k.startsWith(prefix) && live(k) !== null).sort();
++      // The cursor is the last key served: stable across writes, opaque to the caller.
++      const after = opts.cursor ?? null;
++      const rest = after === null ? names : names.filter((k) => k > after);
++      const page = rest.slice(0, limit);
++      const complete = rest.length <= limit;
++      const keys = page.map((name) => {
++        const exp = rows.get(name)?.expiresAt;
++        return exp === null || exp === undefined ? { name } : { name, expiration: Math.floor(exp / 1000) };
++      });
++      return complete ? { keys, list_complete: true } : { keys, list_complete: false, cursor: page[page.length - 1] };
++    },
++    get size(): number {
++      return [...rows.keys()].filter((k) => live(k) !== null).length;
++    },
++  };
++}
+diff --git a/services/_shared/src/ports/fakes/objects.ts b/services/_shared/src/ports/fakes/objects.ts
+new file mode 100644
+index 00000000..dc093db7
+--- /dev/null
++++ b/services/_shared/src/ports/fakes/objects.ts
+@@ -0,0 +1,69 @@
++// fakes/objects.ts — an in-memory `ObjectStore`. tooling/ports/objects.json
++// adapter `memory`; passes the same conformance suite as the binding
++// (services/_shared/test/conformance/objects.ts). Never selectable in live.
++import type { ObjectBody, ObjectInfo, ObjectListOptions, ObjectListPage, ObjectPutOptions, ObjectStore, ObjectValue } from '../objects';
++
++/** The fake's page size when a list asks for none (R2's own is 1000). */
++// @ceiling none — a test double's default page, mirroring R2's own list page; it bounds an in-memory Map in a test, not a platform resource
++export const MEMORY_OBJECTS_PAGE = 1000;
++
++export interface MemoryObjects extends ObjectStore {
++  /** Stored keys, sorted, for assertions. */
++  keys(): string[];
++}
++
++async function bytesOf(value: ObjectValue): Promise<Uint8Array> {
++  if (typeof value === 'string') return new TextEncoder().encode(value);
++  if (value instanceof ArrayBuffer) return new Uint8Array(value.slice(0));
++  if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
++  return new Uint8Array(await new Response(value).arrayBuffer());
++}
++
++export function memoryObjects(options: { now?: () => number } = {}): MemoryObjects {
++  const now = options.now ?? (() => Date.now());
++  const rows = new Map<string, { bytes: Uint8Array; info: ObjectInfo }>();
++
++  const infoOf = (key: string): ObjectInfo | null => {
++    const row = rows.get(key);
++    return row ? { ...row.info, customMetadata: row.info.customMetadata ? { ...row.info.customMetadata } : undefined } : null;
++  };
++
++  return {
++    async put(key: string, value: ObjectValue, opts?: ObjectPutOptions): Promise<ObjectInfo> {
++      const bytes = await bytesOf(value);
++      const info: ObjectInfo = { key, size: bytes.byteLength, uploaded: new Date(now()) };
++      if (opts?.customMetadata) info.customMetadata = { ...opts.customMetadata };
++      rows.set(key, { bytes, info });
++      return infoOf(key) as ObjectInfo;
++    },
++    async get(key: string): Promise<ObjectBody | null> {
++      const row = rows.get(key);
++      const info = infoOf(key);
++      if (!row || !info) return null;
++      const copy = row.bytes.slice();
++      return {
++        ...info,
++        text: async () => new TextDecoder().decode(copy),
++        arrayBuffer: async () => copy.buffer.slice(copy.byteOffset, copy.byteOffset + copy.byteLength),
++      };
++    },
++    async head(key: string): Promise<ObjectInfo | null> {
++      return infoOf(key);
++    },
++    async delete(key: string): Promise<void> {
++      rows.delete(key);
++    },
++    async list(opts: ObjectListOptions = {}): Promise<ObjectListPage> {
++      const prefix = opts.prefix ?? '';
++      const limit = opts.limit ?? MEMORY_OBJECTS_PAGE;
++      const after = opts.cursor ?? null;
++      const names = [...rows.keys()].filter((k) => k.startsWith(prefix) && (after === null || k > after)).sort();
++      const page = names.slice(0, limit);
++      const objects = page.map((k) => infoOf(k) as ObjectInfo);
++      return names.length <= limit ? { objects, truncated: false } : { objects, truncated: true, cursor: page[page.length - 1] };
++    },
++    keys(): string[] {
++      return [...rows.keys()].sort();
++    },
++  };
++}
+diff --git a/services/_shared/src/ports/fakes/ratelimit.ts b/services/_shared/src/ports/fakes/ratelimit.ts
+new file mode 100644
+index 00000000..83dc5ca5
+--- /dev/null
++++ b/services/_shared/src/ports/fakes/ratelimit.ts
+@@ -0,0 +1,43 @@
++// fakes/ratelimit.ts — an in-memory `RateLimiter`: `budget` requests per key per
++// `periodSeconds`, a fixed window. tooling/ports/ratelimit.json adapter `memory`;
++// passes services/_shared/test/conformance/ratelimit.ts. Never selectable in live.
++import type { RateLimiter } from '../ratelimit';
++
++export interface MemoryRateLimiterOptions {
++  /** Requests admitted per key per period. */
++  budget: number;
++  /** The window, in seconds (Workers Rate Limiting allows 10 or 60). */
++  periodSeconds?: number;
++  /** Milliseconds since the epoch; injectable so a test can roll the window. */
++  now?: () => number;
++}
++
++export interface MemoryRateLimiter extends RateLimiter {
++  /** Every key asked about, in order, for assertions. */
++  readonly keys: readonly string[];
++}
++
++export function memoryRateLimiter(options: MemoryRateLimiterOptions): MemoryRateLimiter {
++  const { budget } = options;
++  if (!(Number.isInteger(budget) && budget >= 0)) throw new TypeError(`memoryRateLimiter: budget must be a non-negative integer, got ${budget}`);
++  const periodMs = (options.periodSeconds ?? 60) * 1000;
++  const now = options.now ?? (() => Date.now());
++  const windows = new Map<string, { start: number; count: number }>();
++  const keys: string[] = [];
++  return {
++    async limit({ key }: { key: string }): Promise<{ success: boolean }> {
++      keys.push(key);
++      const t = now();
++      let w = windows.get(key);
++      if (!w || t - w.start >= periodMs) {
++        w = { start: t, count: 0 };
++        windows.set(key, w);
++      }
++      w.count += 1;
++      return { success: w.count <= budget };
++    },
++    get keys(): readonly string[] {
++      return keys;
++    },
++  };
++}
+diff --git a/services/_shared/src/ports/kv.ts b/services/_shared/src/ports/kv.ts
+new file mode 100644
+index 00000000..4f3716ea
+--- /dev/null
++++ b/services/_shared/src/ports/kv.ts
+@@ -0,0 +1,65 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// ports/kv.ts — THE KEY-VALUE PORT. tooling/ports/kv.json is its registry;
++// tooling/ports/README.md is the standard.
++//
++// ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage). Every handler
++// that reads or writes CONFIG_KV, JWKS_CACHE, SESSION_REVOKED or SIGNUPS takes a
++// `KvStore`, never a `KVNamespace` (assert-ports limb 9). The Cloudflare binding
++// satisfies this interface STRUCTURALLY — no wrapper sits on the hot path; the
++// adapter module (adapters/cloudflare.ts) is a compile-time proof, not a shim.
++//
++// THE SURFACE IS WHAT THIS PORTFOLIO CALLS, AND NO MORE: a text or JSON read, a
++// string write with an optional TTL, a delete and a paged list. No metadata
++// write, no `cacheTtl`, no binary value — a new verb is added here deliberately,
++// with its conformance case, never reached for on the binding.
++//
++// ⚠️ NOT THE README'S OUTCOME SHAPE. KV is a cache and a revocation list, and
++// each caller already owns its failure policy at the call (sessionRevoked fails
++// OPEN, a revocation WRITE fails the request, the JWKS cache is best-effort).
++// So a read that cannot be served REJECTS, as the binding does, and the caller's
++// try/catch stays the one place its policy is written. A MISSING key is `null`,
++// never a throw — conformance case `missing-is-null`.
++//
++// Nothing durable lives in KV (tooling/capability-register.json → cloudflare →
++// exportPath): last-good config, a public JWKS document, short-lived revocation
++// records and rate counters. Its export duty is "rebuildable".
++// ─────────────────────────────────────────────────────────────────────────────
++
++/** Options a write may carry. `expirationTtl` is in SECONDS (KV's floor is 60). */
++export interface KvPutOptions {
++  expirationTtl?: number;
++}
++
++/** One page request. `limit` defaults to the store's own page size. */
++export interface KvListOptions {
++  prefix?: string | null;
++  cursor?: string | null;
++  limit?: number;
++}
++
++/** One listed key. `metadata` is whatever the store recorded, or absent. */
++export interface KvListKey {
++  name: string;
++  expiration?: number;
++  metadata?: unknown;
++}
++
++/** One page of keys; `cursor` is present while `list_complete` is false. */
++export interface KvListPage {
++  keys: KvListKey[];
++  list_complete: boolean;
++  cursor?: string;
++}
++
++/** The key-value port. A `KVNamespace` is one; `fakes/kv.ts` is another. */
++export interface KvStore {
++  /** The value as text, or null when the key is absent or expired. */
++  get(key: string, type?: 'text'): Promise<string | null>;
++  /** The value parsed as JSON, or null when absent. A value that is not JSON REJECTS. */
++  get<T = unknown>(key: string, type: 'json'): Promise<T | null>;
++  put(key: string, value: string, options?: KvPutOptions): Promise<void>;
++  /** Deleting an absent key is not an error. */
++  delete(key: string): Promise<void>;
++  /** Keys in lexicographic order, one page at a time. */
++  list(options?: KvListOptions): Promise<KvListPage>;
++}
+diff --git a/services/_shared/src/ports/objects.ts b/services/_shared/src/ports/objects.ts
+new file mode 100644
+index 00000000..149daa58
+--- /dev/null
++++ b/services/_shared/src/ports/objects.ts
+@@ -0,0 +1,74 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// ports/objects.ts — THE OBJECT-STORE PORT. tooling/ports/objects.json is its
++// registry; tooling/ports/README.md is the standard.
++//
++// ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage). The one writer
++// is the nightly off-vendor export (services/platform/src/backup/index.ts), which
++// takes an `ObjectStore`, never an `R2Bucket` (assert-ports limb 9). An R2 bucket
++// satisfies this interface STRUCTURALLY; adapters/cloudflare.ts proves it at
++// compile time and wraps nothing.
++//
++// THE EXIT IS ALREADY OPEN: R2 speaks the S3 API, so rclone reads the bucket
++// today and would copy it to any S3 store tomorrow. The `s3` adapter is declared
++// `draft` in the registry with that note and is deliberately not built — there
++// is no second store to point it at, and an unbuilt adapter costs nothing.
++//
++// Like ports/kv.ts, a failed call REJECTS and a missing object is `null`: the
++// backup run already turns every rejection into a red heartbeat row, and that
++// policy stays at the call.
++// ─────────────────────────────────────────────────────────────────────────────
++
++/** The bytes a write may carry. */
++export type ObjectValue = string | ArrayBuffer | ArrayBufferView | ReadableStream;
++
++/** HTTP metadata a write may carry. Only the content type is used here. */
++export interface ObjectHttpMetadata {
++  contentType?: string;
++}
++
++export interface ObjectPutOptions {
++  httpMetadata?: ObjectHttpMetadata;
++  /** Small string pairs kept beside the object (the backup's sha256 and counts). */
++  customMetadata?: Record<string, string>;
++}
++
++/** What `head`, `put` and `list` say about one object. */
++export interface ObjectInfo {
++  key: string;
++  /** Bytes. */
++  size: number;
++  uploaded: Date;
++  customMetadata?: Record<string, string>;
++}
++
++/** An object with its body. Read the body once. */
++export interface ObjectBody extends ObjectInfo {
++  text(): Promise<string>;
++  arrayBuffer(): Promise<ArrayBuffer>;
++}
++
++export interface ObjectListOptions {
++  prefix?: string;
++  cursor?: string;
++  limit?: number;
++}
++
++/** One page of objects; `cursor` is present while `truncated` is true. */
++export interface ObjectListPage {
++  objects: ObjectInfo[];
++  truncated: boolean;
++  cursor?: string;
++}
++
++/** The object-store port. An `R2Bucket` is one; `fakes/objects.ts` is another. */
++export interface ObjectStore {
++  put(key: string, value: ObjectValue, options?: ObjectPutOptions): Promise<ObjectInfo | null>;
++  /** The object, or null when the key is absent. */
++  get(key: string): Promise<ObjectBody | null>;
++  /** The object's info without its body, or null when absent. */
++  head(key: string): Promise<ObjectInfo | null>;
++  /** Deleting an absent key is not an error. */
++  delete(key: string): Promise<void>;
++  /** Objects in lexicographic key order, one page at a time. */
++  list(options?: ObjectListOptions): Promise<ObjectListPage>;
++}
+diff --git a/services/_shared/src/ports/ratelimit.ts b/services/_shared/src/ports/ratelimit.ts
+new file mode 100644
+index 00000000..0fcbc38f
+--- /dev/null
++++ b/services/_shared/src/ports/ratelimit.ts
+@@ -0,0 +1,27 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// ports/ratelimit.ts — THE RATE-LIMITER PORT. tooling/ports/ratelimit.json is its
++// registry; tooling/ports/README.md is the standard.
++//
++// ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage). The ~18
++// `*_LIMITER` bindings were already reached through ONE home,
++// services/_shared/src/rate-limit.ts (`withinRateLimit`, `strictRateLimit` and
++// the edge ceilings), against a structural `RateLimiterBinding`. This is that
++// interface promoted to a port: rate-limit.ts now re-exports it under its old
++// name, every carrier's `Env` names its limiters with it, and a Workers Rate
++// Limiting binding satisfies it STRUCTURALLY (adapters/cloudflare.ts proves it at
++// compile time; nothing wraps the hot path).
++//
++// The FAILURE POLICY IS NOT HERE. A limiter that is absent or rejects is the
++// caller's to answer — fail OPEN (`withinRateLimit`, the edge shield) or fail
++// CLOSED (`strictRateLimit`) — so `limit` rejects as the binding does, and the
++// port carries no outcome type that would let a third policy grow beside them.
++//
++// Stateless as far as an exit is concerned: the counters are a burst bound that
++// expires within one period, so nothing is exported on a switch.
++// ─────────────────────────────────────────────────────────────────────────────
++
++/** The rate-limiter port: one counted request against `key`. */
++export interface RateLimiter {
++  /** `success: false` = over budget for this period. */
++  limit(options: { key: string }): Promise<{ success: boolean }>;
++}
+diff --git a/services/_shared/src/rate-limit.ts b/services/_shared/src/rate-limit.ts
+index 370ea6b0..4aaf9077 100644
+--- a/services/_shared/src/rate-limit.ts
++++ b/services/_shared/src/rate-limit.ts
+@@ -31,11 +31,16 @@
+ // to not be used as an accurate accounting system". It bounds the burst per
+ // network, not the account-wide daily budget.
+ // ─────────────────────────────────────────────────────────────────────────────
++import { requestGeo } from './geo';
++import type { RateLimiter } from './ports/ratelimit';
++
+ /** A Cloudflare Rate Limiting binding (`ratelimits` in wrangler.jsonc). Each
+- *  carrier's `Env` names its own bindings with a type this one accepts. */
+-export interface RateLimiterBinding {
+-  limit(opts: { key: string }): Promise<{ success: boolean }>;
+-}
++ *  carrier's `Env` names its own bindings with a type this one accepts.
++ *
++ *  ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): the
++ *  interface is now the rate-limiter PORT, `RateLimiter` in ports/ratelimit.ts;
++ *  this name is kept so no carrier's import moves. */
++export type RateLimiterBinding = RateLimiter;
+ 
+ /** The subset of the Hono context these helpers need. Keeps them testable. */
+ export interface EdgeContext {
+@@ -46,11 +51,14 @@ export interface EdgeContext {
+  * `edge:<colo>:<asn>` from `request.cf`. A missing/hostile `cf` degrades to the
+  * single bucket `edge:-:-` — bounded, never per-request-unique, because a key
+  * that varies per request is the same thing as no ceiling at all.
++ *
++ * `request.cf` is read through `requestGeo` (geo.ts), the one module that reads
++ * it; the bounds below are this key's own and stay here.
+  */
+ export function edgeCeilingKey(c: EdgeContext): string {
+-  const cf = (c.req.raw as Request & { cf?: IncomingRequestCfProperties }).cf;
+-  const colo = typeof cf?.colo === 'string' && cf.colo.length <= 16 ? cf.colo : '-';
+-  const asnRaw = (cf as { asn?: unknown } | undefined)?.asn;
++  const geo = requestGeo(c.req.raw);
++  const colo = typeof geo.colo === 'string' && geo.colo.length <= 16 ? geo.colo : '-';
++  const asnRaw = geo.asn;
+   const asn =
+     typeof asnRaw === 'number' || (typeof asnRaw === 'string' && asnRaw.length <= 16)
+       ? String(asnRaw)
+@@ -97,7 +105,7 @@ const reportedAbsent = new Set<string>();
+  * only makes the two cases tellable apart after the fact.
+  */
+ export async function withinRateLimit(
+-  limiter: RateLimiterBinding | undefined,
++  limiter: RateLimiter | undefined,
+   key: string,
+   binding: string,
+ ): Promise<boolean> {
+@@ -130,7 +138,7 @@ export async function withinRateLimit(
+  * silence this parameter exists to end.
+  */
+ export function withinEdgeCeiling(
+-  limiter: RateLimiterBinding | undefined,
++  limiter: RateLimiter | undefined,
+   c: EdgeContext,
+   binding: string,
+ ): Promise<boolean> {
+@@ -158,7 +166,7 @@ export type StrictVerdict = 'within' | 'over' | 'unavailable';
+  * Neither line carries the key, which may be derived from an account.
+  */
+ export async function strictRateLimit(
+-  limiter: RateLimiterBinding | undefined,
++  limiter: RateLimiter | undefined,
+   key: string,
+   binding: string,
+ ): Promise<StrictVerdict> {
+@@ -183,7 +191,7 @@ export async function strictRateLimit(
+ 
+ /** The server-derived ceiling (`edgeCeilingKey`), FAILING CLOSED. See `strictRateLimit`. */
+ export function strictEdgeCeiling(
+-  limiter: RateLimiterBinding | undefined,
++  limiter: RateLimiter | undefined,
+   c: EdgeContext,
+   binding: string,
+ ): Promise<StrictVerdict> {
+diff --git a/services/_shared/test/conformance/check.ts b/services/_shared/test/conformance/check.ts
+new file mode 100644
+index 00000000..4475c8c1
+--- /dev/null
++++ b/services/_shared/test/conformance/check.ts
+@@ -0,0 +1,28 @@
++// check.ts — the assertions the port conformance suites share. No `vitest` and no
++// `node:` import, so a suite reads the same in every carrier that runs it.
++
++/** How a suite registers one scenario: vitest's `it`, or anything with its shape. */
++export type Register = (name: string, run: () => Promise<void>) => void;
++
++/** Throw unless `actual` and `expected` serialise identically. */
++export function same(actual: unknown, expected: unknown, what: string): void {
++  const a = JSON.stringify(actual);
++  const e = JSON.stringify(expected);
++  if (a !== e) throw new Error(`${what}: expected ${e}, got ${a}`);
++}
++
++/** Throw unless `promise` rejects. */
++export async function rejects(promise: Promise<unknown>, what: string): Promise<void> {
++  let threw = false;
++  try {
++    await promise;
++  } catch {
++    threw = true;
++  }
++  if (!threw) throw new Error(`${what}: expected a rejection, got a value`);
++}
++
++/** The runner's refusal when an adapter lacks what a scenario needs: never a skip. */
++export function missingFixture(port: string, adapter: string, scenario: string, need: string): Error {
++  return new Error(`${port} conformance: adapter \`${adapter}\` has no fixture for scenario \`${scenario}\` (${need}). A missing fixture is a failure, never a skip.`);
++}
+diff --git a/services/_shared/test/conformance/kv.ts b/services/_shared/test/conformance/kv.ts
+new file mode 100644
+index 00000000..1791e15e
+--- /dev/null
++++ b/services/_shared/test/conformance/kv.ts
+@@ -0,0 +1,136 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// conformance/kv.ts — WHAT ANY `KvStore` MUST DO. tooling/ports/kv.json names
++// this file as its suite and `runKvConformance` as the runner; each adapter's
++// conformance test CALLS the runner (assert-ports limb 6). Against the memory
++// fake it runs in every Worker's `npm test` (services/_shared/test/ports-kv.test.ts);
++// against the binding it is PENDING in the registry, because no Worker suite runs
++// on workerd.
++//
++// The scenarios are what this portfolio relies on: a missing key is null, not a
++// throw (sessionRevoked and the JWKS cache read a miss as "nothing there"); a
++// JSON read of a JSON value round-trips; a TTL expires (every revocation record
++// and the JWKS copy carry one); list pages by cursor and honours a prefix (the
++// nightly export walks every key that way).
++// ─────────────────────────────────────────────────────────────────────────────
++import type { KvStore } from '../../src/ports/kv';
++import { missingFixture, rejects, same, type Register } from './check';
++
++/** A fresh, empty store, and — where the adapter can — a way to move its clock. */
++export interface KvSubject {
++  store: KvStore;
++  /** Advance the store's clock by `ms`. Without it the TTL scenario FAILS. */
++  advance?: (ms: number) => void;
++}
++
++export interface KvFixture {
++  /** The registry's adapter id. */
++  adapter: string;
++  make(): KvSubject | Promise<KvSubject>;
++}
++
++interface Scenario {
++  name: string;
++  run(s: KvSubject, adapter: string): Promise<void>;
++}
++
++export const KV_SCENARIOS: readonly Scenario[] = [
++  {
++    name: 'missing-is-null',
++    async run({ store }) {
++      same(await store.get('absent'), null, 'text read of a missing key');
++      same(await store.get('absent', 'json'), null, 'json read of a missing key');
++    },
++  },
++  {
++    name: 'put-get-text',
++    async run({ store }) {
++      await store.put('k', 'v1');
++      same(await store.get('k'), 'v1', 'default (text) read');
++      same(await store.get('k', 'text'), 'v1', 'explicit text read');
++    },
++  },
++  {
++    name: 'put-get-json',
++    async run({ store }) {
++      const record = { before: 1700000000, sessions: ['a', 'b'] };
++      await store.put('rev:u', JSON.stringify(record));
++      same(await store.get('rev:u', 'json'), record, 'json read');
++    },
++  },
++  {
++    name: 'json-read-of-non-json-rejects',
++    async run({ store }) {
++      await store.put('bad', 'not json {');
++      await rejects(store.get('bad', 'json'), 'json read of a non-JSON value');
++    },
++  },
++  {
++    name: 'overwrite',
++    async run({ store }) {
++      await store.put('k', 'one');
++      await store.put('k', 'two');
++      same(await store.get('k'), 'two', 'the second write');
++    },
++  },
++  {
++    name: 'delete',
++    async run({ store }) {
++      await store.put('k', 'v');
++      await store.delete('k');
++      same(await store.get('k'), null, 'a deleted key');
++      await store.delete('never-written');
++      same(await store.get('never-written'), null, 'deleting an absent key is not an error');
++    },
++  },
++  {
++    name: 'ttl-expires',
++    async run({ store, advance }, adapter) {
++      if (!advance) throw missingFixture('kv', adapter, 'ttl-expires', 'advance');
++      await store.put('jwks', '{"keys":[]}', { expirationTtl: 60 });
++      await store.put('forever', 'x');
++      advance(59_000);
++      same(await store.get('jwks'), '{"keys":[]}', 'a key inside its TTL');
++      advance(2_000);
++      same(await store.get('jwks'), null, 'a key past its TTL');
++      same(await store.get('forever'), 'x', 'a key written without a TTL');
++      same((await store.list()).keys.map((k) => k.name), ['forever'], 'an expired key is not listed');
++    },
++  },
++  {
++    name: 'list-prefix-and-order',
++    async run({ store }) {
++      for (const k of ['p:c', 'p:a', 'q:z', 'p:b']) await store.put(k, k);
++      const page = await store.list({ prefix: 'p:' });
++      same(page.keys.map((k) => k.name), ['p:a', 'p:b', 'p:c'], 'prefixed keys, in order');
++      same(page.list_complete, true, 'one page holds them all');
++    },
++  },
++  {
++    name: 'list-paginates',
++    async run({ store }) {
++      const names = ['k1', 'k2', 'k3', 'k4', 'k5'];
++      for (const k of names) await store.put(k, k);
++      const seen: string[] = [];
++      let cursor: string | undefined;
++      let pages = 0;
++      for (;;) {
++        const page = await store.list({ limit: 2, cursor });
++        pages++;
++        seen.push(...page.keys.map((k) => k.name));
++        if (page.list_complete) break;
++        if (!page.cursor) throw new Error('an incomplete page carried no cursor');
++        cursor = page.cursor;
++        if (pages > 10) throw new Error('list did not terminate');
++      }
++      same(seen, names, 'every key, once, in order, across pages');
++      same(pages, 3, 'five keys at two a page');
++    },
++  },
++];
++
++/** Register every scenario for `fixture` with `it`. A scenario the fixture cannot serve FAILS. */
++export function runKvConformance(fixture: KvFixture, it: Register): void {
++  for (const sc of KV_SCENARIOS) {
++    it(`${fixture.adapter} · kv · ${sc.name}`, async () => sc.run(await fixture.make(), fixture.adapter));
++  }
++}
+diff --git a/services/_shared/test/conformance/objects.ts b/services/_shared/test/conformance/objects.ts
+new file mode 100644
+index 00000000..c2744d21
+--- /dev/null
++++ b/services/_shared/test/conformance/objects.ts
+@@ -0,0 +1,121 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// conformance/objects.ts — WHAT ANY `ObjectStore` MUST DO. tooling/ports/
++// objects.json names this file as its suite and `runObjectsConformance` as the
++// runner. Against the memory fake it runs in every Worker's `npm test`
++// (services/_shared/test/ports-objects.test.ts); against the bucket it is PENDING,
++// because no Worker suite runs on workerd.
++//
++// The scenarios are what the nightly export relies on: a missing object is null;
++// bytes round-trip exactly (the manifest's sha256 is of the stored bytes); the
++// custom metadata comes back; list pages by cursor (the retention sweep walks the
++// whole bucket that way); delete removes and an absent delete is not an error.
++// ─────────────────────────────────────────────────────────────────────────────
++import type { ObjectStore } from '../../src/ports/objects';
++import { same, type Register } from './check';
++
++export interface ObjectsFixture {
++  /** The registry's adapter id. */
++  adapter: string;
++  /** A fresh, empty store. */
++  make(): ObjectStore | Promise<ObjectStore>;
++}
++
++interface Scenario {
++  name: string;
++  run(store: ObjectStore): Promise<void>;
++}
++
++export const OBJECTS_SCENARIOS: readonly Scenario[] = [
++  {
++    name: 'missing-is-null',
++    async run(store) {
++      same(await store.get('absent'), null, 'get of a missing object');
++      same(await store.head('absent'), null, 'head of a missing object');
++    },
++  },
++  {
++    name: 'put-get-text',
++    async run(store) {
++      await store.put('manifests/latest.json', '{"complete":true}', { httpMetadata: { contentType: 'application/json' } });
++      const got = await store.get('manifests/latest.json');
++      if (!got) throw new Error('a written object read back as null');
++      same(got.key, 'manifests/latest.json', 'key');
++      same(await got.text(), '{"complete":true}', 'text body');
++      same(got.size, 17, 'size in bytes');
++    },
++  },
++  {
++    name: 'put-get-bytes',
++    async run(store) {
++      const bytes = new Uint8Array([0x1f, 0x8b, 0x08, 0x00, 0xff, 0x00, 0x7f]);
++      await store.put('kv/x/2026-10-01.json.gz', bytes.buffer.slice(0));
++      const got = await store.get('kv/x/2026-10-01.json.gz');
++      if (!got) throw new Error('a written object read back as null');
++      same([...new Uint8Array(await got.arrayBuffer())], [...bytes], 'the bytes, exactly');
++    },
++  },
++  {
++    name: 'custom-metadata-round-trips',
++    async run(store) {
++      await store.put('d1/a.json.gz', 'x', { customMetadata: { sha256: 'ab12', keys: '3', truncated: 'false' } });
++      const info = await store.head('d1/a.json.gz');
++      if (!info) throw new Error('head of a written object was null');
++      same(info.customMetadata, { sha256: 'ab12', keys: '3', truncated: 'false' }, 'custom metadata');
++      same(info.size, 1, 'size from head');
++    },
++  },
++  {
++    name: 'overwrite',
++    async run(store) {
++      await store.put('k', 'one');
++      await store.put('k', 'two');
++      same(await (await store.get('k'))?.text(), 'two', 'the second write');
++    },
++  },
++  {
++    name: 'delete',
++    async run(store) {
++      await store.put('k', 'v');
++      await store.delete('k');
++      same(await store.head('k'), null, 'a deleted object');
++      await store.delete('never-written');
++    },
++  },
++  {
++    name: 'list-prefix-and-order',
++    async run(store) {
++      for (const k of ['d1/b', 'kv/a', 'd1/a', 'manifests/latest.json']) await store.put(k, k);
++      const page = await store.list({ prefix: 'd1/' });
++      same(page.objects.map((o) => o.key), ['d1/a', 'd1/b'], 'prefixed keys, in order');
++      same(page.truncated, false, 'one page holds them all');
++    },
++  },
++  {
++    name: 'list-paginates',
++    async run(store) {
++      const keys = ['o1', 'o2', 'o3', 'o4', 'o5'];
++      for (const k of keys) await store.put(k, k);
++      const seen: string[] = [];
++      let cursor: string | undefined;
++      let pages = 0;
++      for (;;) {
++        const page = await store.list({ limit: 2, cursor });
++        pages++;
++        seen.push(...page.objects.map((o) => o.key));
++        if (!page.truncated) break;
++        if (!page.cursor) throw new Error('a truncated page carried no cursor');
++        cursor = page.cursor;
++        if (pages > 10) throw new Error('list did not terminate');
++      }
++      same(seen, keys, 'every object, once, in order, across pages');
++      same(pages, 3, 'five objects at two a page');
++    },
++  },
++];
++
++/** Register every scenario for `fixture` with `it`. */
++export function runObjectsConformance(fixture: ObjectsFixture, it: Register): void {
++  for (const sc of OBJECTS_SCENARIOS) {
++    it(`${fixture.adapter} · objects · ${sc.name}`, async () => sc.run(await fixture.make()));
++  }
++}
+diff --git a/services/_shared/test/conformance/ratelimit.ts b/services/_shared/test/conformance/ratelimit.ts
+new file mode 100644
+index 00000000..758993be
+--- /dev/null
++++ b/services/_shared/test/conformance/ratelimit.ts
+@@ -0,0 +1,89 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// conformance/ratelimit.ts — WHAT ANY `RateLimiter` MUST DO. tooling/ports/
++// ratelimit.json names this file as its suite and `runRateLimitConformance` as
++// the runner. Against the memory fake it runs in every Worker's `npm test`
++// (services/_shared/test/ports-ratelimit.test.ts); against the binding it is
++// PENDING — no Worker suite runs on workerd, and the binding is per-colo and
++// eventually consistent, so an over-budget answer there is not deterministic.
++//
++// The one property every caller relies on: a limiter OVER BUDGET answers
++// `success: false`. Within budget it answers true, and keys are counted apart
++// (the edge ceiling's `edge:<colo>:<asn>` buckets must not share a budget).
++// ─────────────────────────────────────────────────────────────────────────────
++import type { RateLimiter } from '../../src/ports/ratelimit';
++import { missingFixture, same, type Register } from './check';
++
++export interface RateLimitSubject {
++  limiter: RateLimiter;
++  /** Advance the limiter's clock by `ms`. Without it the window scenario FAILS. */
++  advance?: (ms: number) => void;
++  /** The period the limiter was made with, in seconds. */
++  periodSeconds: number;
++}
++
++export interface RateLimitFixture {
++  /** The registry's adapter id. */
++  adapter: string;
++  /** A fresh limiter admitting `budget` requests per key per period. */
++  make(budget: number): RateLimitSubject | Promise<RateLimitSubject>;
++}
++
++interface Scenario {
++  name: string;
++  run(fixture: RateLimitFixture): Promise<void>;
++}
++
++const answers = async (limiter: RateLimiter, key: string, n: number): Promise<boolean[]> => {
++  const out: boolean[] = [];
++  for (let i = 0; i < n; i++) out.push((await limiter.limit({ key })).success);
++  return out;
++};
++
++export const RATELIMIT_SCENARIOS: readonly Scenario[] = [
++  {
++    name: 'within-budget-succeeds',
++    async run(f) {
++      const { limiter } = await f.make(3);
++      same(await answers(limiter, 'edge:SIN:13335', 3), [true, true, true], 'three requests on a budget of three');
++    },
++  },
++  {
++    name: 'over-budget-fails',
++    async run(f) {
++      const { limiter } = await f.make(2);
++      same(await answers(limiter, 'global:auth-credential', 4), [true, true, false, false], 'the third and fourth on a budget of two');
++    },
++  },
++  {
++    name: 'zero-budget-refuses-the-first',
++    async run(f) {
++      const { limiter } = await f.make(0);
++      same(await answers(limiter, 'k', 1), [false], 'a budget of zero');
++    },
++  },
++  {
++    name: 'keys-are-counted-apart',
++    async run(f) {
++      const { limiter } = await f.make(1);
++      same(await answers(limiter, 'edge:SIN:1', 2), [true, false], 'key one, over budget');
++      same(await answers(limiter, 'edge:BOM:2', 1), [true], 'key two keeps its own budget');
++    },
++  },
++  {
++    name: 'the-window-rolls',
++    async run(f) {
++      const { limiter, advance, periodSeconds } = await f.make(1);
++      if (!advance) throw missingFixture('ratelimit', f.adapter, 'the-window-rolls', 'advance');
++      same(await answers(limiter, 'k', 2), [true, false], 'inside one period');
++      advance(periodSeconds * 1000);
++      same(await answers(limiter, 'k', 1), [true], 'the next period');
++    },
++  },
++];
++
++/** Register every scenario for `fixture` with `it`. A scenario the fixture cannot serve FAILS. */
++export function runRateLimitConformance(fixture: RateLimitFixture, it: Register): void {
++  for (const sc of RATELIMIT_SCENARIOS) {
++    it(`${fixture.adapter} · ratelimit · ${sc.name}`, async () => sc.run(fixture));
++  }
++}
+diff --git a/services/_shared/test/geo.test.ts b/services/_shared/test/geo.test.ts
+new file mode 100644
+index 00000000..1ccf2d1b
+--- /dev/null
++++ b/services/_shared/test/geo.test.ts
+@@ -0,0 +1,39 @@
++import { describe, it, expect } from 'vitest';
++import { requestGeo } from '../src/geo';
++
++// ─────────────────────────────────────────────────────────────────────────────
++// geo.test.ts — requestGeo, the one reader of `request.cf` (assert-ports limb
++// 10). Each field passes through only with the type the runtime documents; a
++// missing or odd `cf` is an empty answer, never a throw.
++// ─────────────────────────────────────────────────────────────────────────────
++
++const req = (cf: unknown) => Object.assign(new Request('https://x.test/'), { cf });
++
++describe('requestGeo', () => {
++  it('reads country, region, city, colo and asn from request.cf', () => {
++    expect(requestGeo(req({ country: 'IN', region: 'Tamil Nadu', city: 'Chennai', colo: 'MAA', asn: 13335 }))).toEqual({
++      country: 'IN',
++      region: 'Tamil Nadu',
++      city: 'Chennai',
++      colo: 'MAA',
++      asn: 13335,
++    });
++  });
++
++  it('a request without cf is an empty answer', () => {
++    expect(requestGeo(new Request('https://x.test/'))).toEqual({});
++    expect(requestGeo(req(null))).toEqual({});
++    expect(requestGeo(req('MAA'))).toEqual({});
++  });
++
++  it('a field of the wrong type is ABSENT, not coerced', () => {
++    const g = requestGeo(req({ country: 7, colo: { x: 1 }, asn: true, city: 'Pune' }));
++    expect(g).toEqual({ city: 'Pune' });
++    expect('country' in g).toBe(false);
++  });
++
++  it('asn is kept as the runtime gave it, so the edge key applies its own bound', () => {
++    expect(requestGeo(req({ asn: '64512' })).asn).toBe('64512');
++    expect(requestGeo(req({ asn: 64512 })).asn).toBe(64512);
++  });
++});
+diff --git a/services/_shared/test/ports-kv.test.ts b/services/_shared/test/ports-kv.test.ts
+new file mode 100644
+index 00000000..bfdceea0
+--- /dev/null
++++ b/services/_shared/test/ports-kv.test.ts
+@@ -0,0 +1,58 @@
++import { describe, it, expect } from 'vitest';
++import { memoryKv } from '../src/ports/fakes/kv';
++import { KV_SCENARIOS, runKvConformance } from './conformance/kv';
++
++// ─────────────────────────────────────────────────────────────────────────────
++// ports-kv.test.ts — tooling/ports/kv.json adapter `memory`: the fake passes the
++// KV conformance suite. The binding's own run is PENDING in the registry (no
++// Worker suite runs on workerd); this file is what makes the suite real.
++// ─────────────────────────────────────────────────────────────────────────────
++
++describe('kv port — the memory fake passes the conformance suite', () => {
++  runKvConformance(
++    {
++      adapter: 'memory',
++      make: () => {
++        let t = 1_700_000_000_000;
++        return { store: memoryKv({ now: () => t }), advance: (ms: number) => void (t += ms) };
++      },
++    },
++    it,
++  );
++});
++
++describe('kv conformance — the runner can fail', () => {
++  const collect = () => {
++    const cases = new Map<string, () => Promise<void>>();
++    return { cases, it: (name: string, run: () => Promise<void>) => void cases.set(name, run) };
++  };
++
++  it('registers every scenario', () => {
++    const c = collect();
++    runKvConformance({ adapter: 'x', make: () => ({ store: memoryKv() }) }, c.it);
++    expect(c.cases.size).toBe(KV_SCENARIOS.length);
++  });
++
++  it('🔴 an adapter with no clock FAILS the TTL scenario — a missing fixture is never a skip', async () => {
++    const c = collect();
++    runKvConformance({ adapter: 'no-clock', make: () => ({ store: memoryKv() }) }, c.it);
++    await expect(c.cases.get('no-clock · kv · ttl-expires')!()).rejects.toThrow(/no fixture for scenario `ttl-expires`/);
++  });
++
++  it('🔴 a store that throws on a missing key fails `missing-is-null`', async () => {
++    const c = collect();
++    const store = memoryKv();
++    const throwing = { ...store, get: async () => { throw new Error('KV GET failed: 404'); } };
++    runKvConformance({ adapter: 'throws', make: () => ({ store: throwing as typeof store }) }, c.it);
++    await expect(c.cases.get('throws · kv · missing-is-null')!()).rejects.toThrow(/404/);
++  });
++
++  it('🔴 a store that ignores the TTL fails `ttl-expires`', async () => {
++    const c = collect();
++    let t = 0;
++    const store = memoryKv({ now: () => t });
++    const ignoresTtl = { ...store, put: (k: string, v: string) => store.put(k, v) };
++    runKvConformance({ adapter: 'no-ttl', make: () => ({ store: ignoresTtl as typeof store, advance: (ms: number) => void (t += ms) }) }, c.it);
++    await expect(c.cases.get('no-ttl · kv · ttl-expires')!()).rejects.toThrow(/a key past its TTL/);
++  });
++});
+diff --git a/services/_shared/test/ports-objects.test.ts b/services/_shared/test/ports-objects.test.ts
+new file mode 100644
+index 00000000..02ad36b3
+--- /dev/null
++++ b/services/_shared/test/ports-objects.test.ts
+@@ -0,0 +1,42 @@
++import { describe, it, expect } from 'vitest';
++import { memoryObjects } from '../src/ports/fakes/objects';
++import { OBJECTS_SCENARIOS, runObjectsConformance } from './conformance/objects';
++
++// ─────────────────────────────────────────────────────────────────────────────
++// ports-objects.test.ts — tooling/ports/objects.json adapter `memory`: the fake
++// passes the object-store conformance suite. The bucket's own run is PENDING in
++// the registry (no Worker suite runs on workerd).
++// ─────────────────────────────────────────────────────────────────────────────
++
++describe('objects port — the memory fake passes the conformance suite', () => {
++  runObjectsConformance({ adapter: 'memory', make: () => memoryObjects() }, it);
++});
++
++describe('objects conformance — the runner can fail', () => {
++  const collect = () => {
++    const cases = new Map<string, () => Promise<void>>();
++    return { cases, it: (name: string, run: () => Promise<void>) => void cases.set(name, run) };
++  };
++
++  it('registers every scenario', () => {
++    const c = collect();
++    runObjectsConformance({ adapter: 'x', make: () => memoryObjects() }, c.it);
++    expect(c.cases.size).toBe(OBJECTS_SCENARIOS.length);
++  });
++
++  it('🔴 a store whose list never truncates fails `list-paginates`', async () => {
++    const c = collect();
++    const real = memoryObjects();
++    const unpaged = { ...real, list: (o?: { prefix?: string }) => real.list({ prefix: o?.prefix }) };
++    runObjectsConformance({ adapter: 'unpaged', make: () => unpaged }, c.it);
++    await expect(c.cases.get('unpaged · objects · list-paginates')!()).rejects.toThrow(/five objects at two a page/);
++  });
++
++  it('🔴 a store that drops custom metadata fails `custom-metadata-round-trips`', async () => {
++    const c = collect();
++    const real = memoryObjects();
++    const forgetful = { ...real, put: (k: string, v: string) => real.put(k, v) };
++    runObjectsConformance({ adapter: 'forgetful', make: () => forgetful as typeof real }, c.it);
++    await expect(c.cases.get('forgetful · objects · custom-metadata-round-trips')!()).rejects.toThrow(/custom metadata/);
++  });
++});
+diff --git a/services/_shared/test/ports-ratelimit.test.ts b/services/_shared/test/ports-ratelimit.test.ts
+new file mode 100644
+index 00000000..cf3c7d75
+--- /dev/null
++++ b/services/_shared/test/ports-ratelimit.test.ts
+@@ -0,0 +1,68 @@
++import { describe, it, expect, vi, afterEach } from 'vitest';
++import { memoryRateLimiter } from '../src/ports/fakes/ratelimit';
++import { strictRateLimit, withinRateLimit } from '../src/rate-limit';
++import { RATELIMIT_SCENARIOS, runRateLimitConformance } from './conformance/ratelimit';
++
++// ─────────────────────────────────────────────────────────────────────────────
++// ports-ratelimit.test.ts — tooling/ports/ratelimit.json adapter `memory`: the
++// fake passes the rate-limiter conformance suite, and the kit's two policies
++// (src/rate-limit.ts) answer through the PORT exactly as they do through the
++// binding: over budget is `false` / 'over'. The binding's own run is PENDING in
++// the registry (no Worker suite runs on workerd).
++// ─────────────────────────────────────────────────────────────────────────────
++
++afterEach(() => {
++  vi.restoreAllMocks();
++});
++
++describe('ratelimit port — the memory fake passes the conformance suite', () => {
++  runRateLimitConformance(
++    {
++      adapter: 'memory',
++      make: (budget) => {
++        let t = 0;
++        return { limiter: memoryRateLimiter({ budget, periodSeconds: 60, now: () => t }), advance: (ms: number) => void (t += ms), periodSeconds: 60 };
++      },
++    },
++    it,
++  );
++});
++
++describe('ratelimit conformance — the runner can fail', () => {
++  const collect = () => {
++    const cases = new Map<string, () => Promise<void>>();
++    return { cases, it: (name: string, run: () => Promise<void>) => void cases.set(name, run) };
++  };
++
++  it('registers every scenario', () => {
++    const c = collect();
++    runRateLimitConformance({ adapter: 'x', make: (budget) => ({ limiter: memoryRateLimiter({ budget }), periodSeconds: 60 }) }, c.it);
++    expect(c.cases.size).toBe(RATELIMIT_SCENARIOS.length);
++  });
++
++  it('🔴 a limiter that always admits fails `over-budget-fails`', async () => {
++    const c = collect();
++    runRateLimitConformance({ adapter: 'open', make: () => ({ limiter: { limit: async () => ({ success: true }) }, periodSeconds: 60 }) }, c.it);
++    await expect(c.cases.get('open · ratelimit · over-budget-fails')!()).rejects.toThrow(/budget of two/);
++  });
++
++  it('🔴 an adapter with no clock FAILS the window scenario — never a skip', async () => {
++    const c = collect();
++    runRateLimitConformance({ adapter: 'no-clock', make: (budget) => ({ limiter: memoryRateLimiter({ budget }), periodSeconds: 60 }) }, c.it);
++    await expect(c.cases.get('no-clock · ratelimit · the-window-rolls')!()).rejects.toThrow(/no fixture for scenario `the-window-rolls`/);
++  });
++});
++
++describe("the kit's policies over the port", () => {
++  it('withinRateLimit (fail-open) answers false once the limiter is over budget', async () => {
++    const limiter = memoryRateLimiter({ budget: 1 });
++    await expect(withinRateLimit(limiter, 'k', 'PORT_LIMITER')).resolves.toBe(true);
++    await expect(withinRateLimit(limiter, 'k', 'PORT_LIMITER')).resolves.toBe(false);
++  });
++
++  it("strictRateLimit (fail-closed) answers 'over' once the limiter is over budget", async () => {
++    const limiter = memoryRateLimiter({ budget: 1 });
++    await expect(strictRateLimit(limiter, 'k', 'PORT_LIMITER')).resolves.toBe('within');
++    await expect(strictRateLimit(limiter, 'k', 'PORT_LIMITER')).resolves.toBe('over');
++  });
++});
+diff --git a/services/edge-shield/test/ratelimit-port.test.ts b/services/edge-shield/test/ratelimit-port.test.ts
+new file mode 100644
+index 00000000..e1aec66d
+--- /dev/null
++++ b/services/edge-shield/test/ratelimit-port.test.ts
+@@ -0,0 +1,38 @@
++import { describe, expect, it } from 'vitest';
++import { memoryRateLimiter } from '../../_shared/src/ports/fakes/ratelimit';
++import type { RateLimiter } from '../../_shared/src/ports/ratelimit';
++import { admit } from '../src/limit';
++import type { Env, RateLimiterBinding } from '../src/types';
++
++// ─────────────────────────────────────────────────────────────────────────────
++// ratelimit-port.test.ts — THE SHIELD'S LIMITERS ARE THE RATE-LIMITER PORT.
++//
++// ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage). The shield's
++// `RateLimiterBinding` (src/types.ts) stays declared in its own source ON
++// PURPOSE: an import from services/_shared in src/ would make this Worker a kit
++// CARRIER (services/_shared/test/carrier-parity.test.ts), and its own
++// JWKS_TTL_SECONDS — the edge cache's 300 s bound (LEAD RULING SHIELD-R1 §5), not
++// the kit's 600 s KV TTL — would then read as a copy of a kit export. So the
++// proof that the two are ONE surface lives here, where tsc (`test/**/*.ts` is in
++// this Worker's tsconfig) checks it in BOTH directions: the day either side
++// grows a member the other lacks, `npm run typecheck` is red.
++// ─────────────────────────────────────────────────────────────────────────────
++
++type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
++const sameSurface: Same<RateLimiterBinding, RateLimiter> = true;
++
++describe("the shield's limiter is the rate-limiter port", () => {
++  it('the two types are one surface (checked by tsc, both directions)', () => {
++    expect(sameSurface).toBe(true);
++  });
++
++  it('a limiter over budget refuses the request — through the port fake', async () => {
++    const limiter = memoryRateLimiter({ budget: 2 });
++    const env: Env = { AUTH_CREDENTIAL_GLOBAL_LIMITER: limiter };
++    expect(await admit('auth-credential', env)).toBeNull();
++    expect(await admit('auth-credential', env)).toBeNull();
++    const refused = await admit('auth-credential', env);
++    expect(refused?.status).toBe(429);
++    expect(limiter.keys).toEqual(['global:auth-credential', 'global:auth-credential', 'global:auth-credential']);
++  });
++});
+diff --git a/services/platform/src/backup/dump.ts b/services/platform/src/backup/dump.ts
+index 508a6747..1b25877e 100644
+--- a/services/platform/src/backup/dump.ts
++++ b/services/platform/src/backup/dump.ts
+@@ -69,6 +69,7 @@
+ // handful of terms (measured, services/_shared/src/erasure.ts) — the scalar
+ // subqueries of columnsOf are not a compound SELECT.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { KvStore } from '../../../_shared/src/ports/kv';
+ 
+ /**
+  * Rows read from ONE table per read round, at most.
+@@ -156,7 +157,7 @@ export const SQL_FUNCTION_ARGS = 32;
+ export const MAX_STATEMENT_BYTES = 90_000;
+ 
+ /**
+- * Keys listed per `KVNamespace.list()` call — the vendor's own page size.
++ * Keys listed per `KvStore.list()` call — the vendor's own page size.
+  *
+  * @ceiling none — this is the KV list API's maximum page, not a cap this code
+  *   chooses. Asking for more returns 1000 anyway.
+@@ -805,7 +806,7 @@ export interface KvDumpResult {
+  * change that must be made deliberately here rather than absorbed.
+  */
+ export async function dumpKvNamespace(
+-  ns: KVNamespace,
++  ns: KvStore,
+   namespaceName: string,
+   maxKeys: number,
+   nowIso: string,
+diff --git a/services/platform/src/backup/index.ts b/services/platform/src/backup/index.ts
+index 0efaf622..0865bbe0 100644
+--- a/services/platform/src/backup/index.ts
++++ b/services/platform/src/backup/index.ts
+@@ -25,6 +25,8 @@
+ import { dumpD1Database, dumpKvNamespace, gzipAndDigest } from './dump';
+ import type { D1QueryPool } from './dump';
+ import { APP_KV, APP_TARGETS } from '../generated/app-targets';
++import type { KvStore } from '../../../_shared/src/ports/kv';
++import type { ObjectListPage, ObjectStore } from '../../../_shared/src/ports/objects';
+ 
+ /**
+  * The per-invocation D1 query budget this export may spend: ONE pool, shared by
+@@ -117,10 +119,10 @@ export const MAX_R2_DELETES_PER_RUN = 200;
+ export interface BackupEnv {
+   PLATFORM_DB: D1Database;
+   SUBSCRIPTIONTRACKER_DB: D1Database;
+-  CONFIG_KV: KVNamespace;
+-  JWKS_CACHE?: KVNamespace;
+-  SIGNUPS?: KVNamespace;
+-  BACKUPS_R2?: R2Bucket;
++  CONFIG_KV: KvStore;
++  JWKS_CACHE?: KvStore;
++  SIGNUPS?: KvStore;
++  BACKUPS_R2?: ObjectStore;
+ }
+ 
+ /** One line of the heartbeat this run writes. Same shape the other limbs use. */
+@@ -250,13 +252,13 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
+   }
+ 
+   // ── KV ────────────────────────────────────────────────────────────────────
+-  const namespaces: { name: string; ns: KVNamespace | undefined }[] = [
++  const namespaces: { name: string; ns: KvStore | undefined }[] = [
+     { name: 'platform-config', ns: env.CONFIG_KV },
+     { name: 'platform-jwks', ns: env.JWKS_CACHE },
+     { name: 'nikatru-signups', ns: env.SIGNUPS },
+     // Every app Worker's KV namespace the platform does not already bind (deduplicated by id; empty
+     // while every app shares the platform's JWKS_CACHE and SESSION_REVOKED) — GENERATED, as above.
+-    ...APP_KV.map((k) => ({ name: k.name, ns: (env as unknown as Record<string, KVNamespace | undefined>)[k.binding] })),
++    ...APP_KV.map((k) => ({ name: k.name, ns: (env as unknown as Record<string, KvStore | undefined>)[k.binding] })),
+   ];
+   for (const { name, ns } of namespaces) {
+     const key = `kv/${name}/${date}.json.gz`;
+@@ -329,7 +331,7 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
+     let cursor: string | undefined;
+     const doomed: string[] = [];
+     for (;;) {
+-      const listed: R2Objects = await bucket.list({ cursor, limit: 1000 });
++      const listed: ObjectListPage = await bucket.list({ cursor, limit: 1000 });
+       for (const o of listed.objects) {
+         if (o.key === 'manifests/latest.json') continue;
+         if (doomed.length >= MAX_R2_DELETES_PER_RUN) break;
+diff --git a/services/platform/src/fx.ts b/services/platform/src/fx.ts
+index b943f2fb..a4ca0c55 100644
+--- a/services/platform/src/fx.ts
++++ b/services/platform/src/fx.ts
+@@ -21,6 +21,7 @@
+ // publish is never better than yesterday's, so nothing here ever deletes one.
+ // ─────────────────────────────────────────────────────────────────────────────
+ import type { Env } from './types';
++import type { KvStore } from '../../_shared/src/ports/kv';
+ 
+ /** The ECB's daily reference-rate document: one `Cube time` and one
+  *  `Cube currency/rate` per quoted currency, units per ONE euro. */
+@@ -223,7 +224,7 @@ export async function refreshFxRates(
+   const nowMs = opts.nowMs ?? Date.now();
+   // Declared required in types.ts, but a deploy can still lack it; an unbound
+   // namespace is a failure row, never a throw that skips the rest of the chain.
+-  const kv = (env as unknown as { CONFIG_KV?: KVNamespace }).CONFIG_KV;
++  const kv = (env as unknown as { CONFIG_KV?: KvStore }).CONFIG_KV;
+   if (!kv) return { target: FX_TARGET, ok: false, detail: 'no CONFIG_KV binding: nowhere to keep the table' };
+ 
+   let last: FxTable | null = null;
+diff --git a/services/platform/src/lib/request-log.ts b/services/platform/src/lib/request-log.ts
+index 6776cdab..b921589e 100644
+--- a/services/platform/src/lib/request-log.ts
++++ b/services/platform/src/lib/request-log.ts
+@@ -26,6 +26,7 @@ import type { Context, Next } from 'hono';
+ import { matchedRoutes } from 'hono/route';
+ import type { AppEnv } from '../types';
+ import { reportablePath } from './error-sink';
++import { requestGeo } from '../../../_shared/src/geo';
+ 
+ /**
+  * The route patterns whose URL is a capability: the token IS the credential,
+@@ -120,10 +121,8 @@ export async function requestLog(c: Context<AppEnv>, next: Next): Promise<void>
+   } finally {
+     const route = routeOf(c);
+     if (!isCapabilityRoute(route, c.req.url)) {
+-      const colo = (c.req.raw as { cf?: { colo?: unknown } }).cf?.colo;
+-      console.log(
+-        requestLine(route, c.req.method, threw ? 500 : c.res.status, Date.now() - start, typeof colo === 'string' ? colo : null),
+-      );
++      const colo = requestGeo(c.req.raw).colo;
++      console.log(requestLine(route, c.req.method, threw ? 500 : c.res.status, Date.now() - start, colo ?? null));
+     }
+   }
+ }
+diff --git a/services/platform/src/routes/events.ts b/services/platform/src/routes/events.ts
+index 4fe58f8e..ab337452 100644
+--- a/services/platform/src/routes/events.ts
++++ b/services/platform/src/routes/events.ts
+@@ -3,6 +3,7 @@ import type { AnalyticsBatch, AnalyticsEvent, AppEnv, EdgeGeo } from '../types';
+ import { nowIso } from '../lib/d1';
+ import { readBoundedBody } from '../lib/body';
+ import { withinEdgeCeiling, withinRateLimit } from '../lib/edge-ceiling';
++import { requestGeo } from '../../../_shared/src/geo';
+ // ONE registry predicate for the whole Worker. `routes/config.ts`,
+ // `routes/entitlements.ts` and both write routes here now ask the same question
+ // of the same source — an app the shared server will answer for is one thing,
+@@ -115,15 +116,11 @@ export const MAX_CONSENT_BODY_BYTES = 8 * 1024;
+ 
+ const events = new Hono<AppEnv>();
+ 
+-/** Coarse geo from the `request.cf` object — never from a header. */
++/** Coarse geo from the `request.cf` object — never from a header. Read through
++ *  `requestGeo` (services/_shared/src/geo.ts), the one module that reads `.cf`. */
+ function edgeGeo(c: { req: { raw: Request } }): EdgeGeo {
+-  const cf = (c.req.raw as Request & { cf?: IncomingRequestCfProperties }).cf;
+-  if (!cf) return {};
+-  return {
+-    country: typeof cf.country === 'string' ? cf.country : undefined,
+-    region: typeof cf.region === 'string' ? cf.region : undefined,
+-    city: typeof cf.city === 'string' ? cf.city : undefined,
+-  };
++  const { country, region, city } = requestGeo(c.req.raw);
++  return { country, region, city };
+ }
+ 
+ const str = (v: unknown, max: number): string | null =>
+diff --git a/services/platform/src/routes/sessions.ts b/services/platform/src/routes/sessions.ts
+index b29cf543..aba97751 100644
+--- a/services/platform/src/routes/sessions.ts
++++ b/services/platform/src/routes/sessions.ts
+@@ -37,6 +37,7 @@
+ // ─────────────────────────────────────────────────────────────────────────────
+ import { Hono, type Context } from 'hono';
+ import type { AppEnv } from '../types';
++import type { KvStore } from '../../../_shared/src/ports/kv';
+ import { REVOCATION_TTL_SECONDS, revocationKey, withRevokedBefore, withRevokedSessions } from '../../../_shared/src/auth';
+ import { withinRateLimit } from '../lib/edge-ceiling';
+ import { raiseLinkFloor } from '../lib/ext-links';
+@@ -161,7 +162,7 @@ const rowId = (row: unknown): string | null => {
+  * KV failure — each caller decides what a failed write means for its route.
+  */
+ async function writeRevocation(
+-  kv: KVNamespace | undefined,
++  kv: KvStore | undefined,
+   sub: string,
+   next: (record: unknown, nowSeconds: number) => unknown,
+ ): Promise<void> {
+diff --git a/services/platform/src/types.ts b/services/platform/src/types.ts
+index f220642e..de49f71e 100644
+--- a/services/platform/src/types.ts
++++ b/services/platform/src/types.ts
+@@ -6,6 +6,15 @@
+  *  limiter that reads it (services/_shared/src/rate-limit.ts). */
+ import type { RateLimiterBinding } from '../../_shared/src/rate-limit';
+ export type { RateLimiterBinding };
++/** ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): every KV and
++ *  R2 binding is declared as its PORT, so no handler sees more of the binding
++ *  than the port carries. The Cloudflare binding satisfies each structurally —
++ *  services/_shared/src/ports/adapters/cloudflare.ts is the compile-time proof,
++ *  and assert-ports limb 9 refuses a `KVNamespace` / `R2Bucket` / `RateLimit`
++ *  type anywhere else. */
++import type { KvStore } from '../../_shared/src/ports/kv';
++import type { ObjectStore } from '../../_shared/src/ports/objects';
++export type { KvStore, ObjectStore };
+ 
+ /** Worker bindings + environment. Names must match wrangler.jsonc bindings. */
+ export interface Env {
+@@ -15,7 +24,7 @@ export interface Env {
+   SUBSCRIPTIONTRACKER_DB: D1Database;
+ 
+   // Edge-cached per-app config overrides (key: `config:<app>`).
+-  CONFIG_KV: KVNamespace;
++  CONFIG_KV: KvStore;
+ 
+   /**
+    * Warm cache for the Supabase JWKS document, so an ES256 verify does not fetch
+@@ -27,7 +36,7 @@ export interface Env {
+    * Verification never degrades to a weaker check — there is no fallback path
+    * (see middleware/auth.ts for why the HS256 one was deliberately not ported).
+    */
+-  JWKS_CACHE?: KVNamespace;
++  JWKS_CACHE?: KvStore;
+ 
+   /**
+    * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The revocation list: key
+@@ -42,7 +51,7 @@ export interface Env {
+    * hole; tooling/ci/assert-session-revocation.mjs reds a carrier whose config
+    * does not bind it.
+    */
+-  SESSION_REVOKED?: KVNamespace;
++  SESSION_REVOKED?: KvStore;
+ 
+   /**
+    * The signups namespace, bound for ONE reason: the nightly export
+@@ -58,7 +67,7 @@ export interface Env {
+    * Optional so a deploy without it still runs; the export then records the
+    * namespace as FAILED rather than skipping it silently.
+    */
+-  SIGNUPS?: KVNamespace;
++  SIGNUPS?: KvStore;
+ 
+   /**
+    * The one portfolio backup bucket. Written by the 02:30 cron only.
+@@ -66,7 +75,7 @@ export interface Env {
+    * Optional for the same reason as the KV bindings above: absence must produce a
+    * RED heartbeat row, not a build failure and not a green run that wrote nothing.
+    */
+-  BACKUPS_R2?: R2Bucket;
++  BACKUPS_R2?: ObjectStore;
+ 
+   /**
+    * Cost circuit breaker for /v1/events (G-12). The Rate Limiting binding, NOT
+diff --git a/services/subscriptiontracker-api/src/types.ts b/services/subscriptiontracker-api/src/types.ts
+index cb43b6a8..433d72de 100644
+--- a/services/subscriptiontracker-api/src/types.ts
++++ b/services/subscriptiontracker-api/src/types.ts
+@@ -1,4 +1,8 @@
+ import type { AuthRecency } from '../../_shared/src/auth';
++/** ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): the KV
++ *  bindings are declared as the KV PORT; the binding satisfies it structurally
++ *  (services/_shared/src/ports/adapters/cloudflare.ts). */
++import type { KvStore } from '../../_shared/src/ports/kv';
+ // ─────────────────────────────────────────────────────────────────────────────
+ // Shared types for the Worker. Keep the Env interface in sync with wrangler.jsonc.
+ // ─────────────────────────────────────────────────────────────────────────────
+@@ -14,13 +18,13 @@ export interface Env {
+   PLATFORM_DB: D1Database; // shared entitlements across the portfolio
+ 
+   // KV — caches the Supabase JWKS document
+-  JWKS_CACHE: KVNamespace;
++  JWKS_CACHE: KvStore;
+ 
+   // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. KV — the shared revocation list
+   // (`rev:<sub>`), READ ONLY here, by middleware/auth.ts; services/platform
+   // writes it. Optional: absence fails OPEN, and
+   // tooling/ci/assert-session-revocation.mjs reds a config that does not bind it.
+-  SESSION_REVOKED?: KVNamespace;
++  SESSION_REVOKED?: KvStore;
+ 
+   // 🔴 `EXPORTS: R2Bucket` WAS HERE and was removed on 2026-08-01 with the
+   // binding it typed ([4]B-18). It is worth naming why the TYPE had to go too:
+diff --git a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/types.ts b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/types.ts
+index d9c740e6..d54b3396 100644
+--- a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/types.ts
++++ b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/types.ts
+@@ -1,4 +1,8 @@
+ import type { AuthRecency } from '../../_shared/src/auth';
++/** ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): the KV
++ *  bindings are declared as the KV PORT; the binding satisfies it structurally
++ *  (services/_shared/src/ports/adapters/cloudflare.ts). */
++import type { KvStore } from '../../_shared/src/ports/kv';
+ import type { Context } from 'hono';
+ 
+ // Bindings from wrangler.jsonc. APP_DB is the ONLY per-app resource;
+@@ -8,12 +12,12 @@ import type { Context } from 'hono';
+ export interface Env {
+   APP_DB: D1Database;
+   PLATFORM_DB: D1Database;
+-  JWKS_CACHE: KVNamespace;
++  JWKS_CACHE: KvStore;
+   // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The shared revocation list
+   // (`rev:<sub>`), READ ONLY here, by middleware/auth.ts; services/platform
+   // writes it. Optional: absence fails OPEN, and
+   // tooling/ci/assert-session-revocation.mjs reds a config that does not bind it.
+-  SESSION_REVOKED?: KVNamespace;
++  SESSION_REVOKED?: KvStore;
+   APP_ID: string;
+   SUPABASE_URL: string;
+   API_VERSION: string;
+diff --git a/tooling/chassis-ledger.json b/tooling/chassis-ledger.json
+index d2832e7e..e36e8e26 100644
+--- a/tooling/chassis-ledger.json
++++ b/tooling/chassis-ledger.json
+@@ -964,9 +964,9 @@
+     {
+       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+       "path": "src/types.ts",
+-      "lines": 86,
++      "lines": 90,
+       "verdict": "STAYS",
+-      "why": "Per-app Env bindings - APP_DB and this app's own vars."
++      "why": "Per-app Env bindings - APP_DB and this app's own vars. ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): 86 -> 90, re-measured by assert-chassis-ledger — the KvStore port import and its three-line comment; JWKS_CACHE and SESSION_REVOKED are declared as the KV port, as in services/subscriptiontracker-api."
+     },
+     {
+       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+diff --git a/tooling/ci/assert-ports.mjs b/tooling/ci/assert-ports.mjs
+index b0505fb4..e5b6e779 100644
+--- a/tooling/ci/assert-ports.mjs
++++ b/tooling/ci/assert-ports.mjs
+@@ -24,7 +24,9 @@
+ //   1 schema    every registry validates against port.schema.json, through the
+ //               small validator below that READS the schema (no second copy of
+ //               the shape lives here); no secret-shaped value and no e-mail
+-//               literal; the file name equals `port`. An empty or unreadable
++//               literal; the file name equals `port`. A `draft` adapter (declared,
++//               not built) may have an empty impl and, when its vendor is not
++//               chosen yet, `vendor: null`. An empty or unreadable
+ //               tooling/ports/ is COVERAGE LOST (exit 2) — a floor of zero ports
+ //               is met by an empty directory (vacuous-02).
+ //   2 symbols   every interface and impl symbol is DECLARED in its file, in
+@@ -57,6 +59,24 @@
+ //               C-8 seam.file equals its port's interface file, unless the
+ //               adapter declares that exact file as a `c8Seam` divergence
+ //               (printed).
++//               ⏱ 2026-10-01 · port-storage: ONE vendor, SEVERAL capabilities.
++//               A vendor may be the adapter of several ports (Cloudflare is KV,
++//               R2 and the rate limiters) — one adapter per port — and may ALSO
++//               keep one _non-port row only when that row names what is LEFT
++//               (`remaining`) and the train that ports it (`until`). A row with
++//               `remaining` for a vendor that is no adapter anywhere is stale.
++//   9 bindings  no module under services/*/src names a Cloudflare binding TYPE
++//               (`KVNamespace`, `R2Bucket` and its R2 types, `RateLimit`)
++//               outside a Worker's composition root (src/ports.ts), its
++//               `types.ts`, or services/_shared/src/ports/ (the ports, their
++//               fakes and adapters) — every handler takes the PORT type
++//               (C-CLOUDFLARE-BEHIND-AN-ADAPTER). The pattern must still match
++//               SOMETHING in the tree (the adapters name the types), else
++//               COVERAGE LOST: a pattern that matches nothing refuses nothing.
++//  10 geo       no module under services/*/src reads `.cf` (or names
++//               `IncomingRequestCfProperties`) except services/_shared/src/
++//               geo.ts, whose `requestGeo` is the one reader. geo.ts must itself
++//               still match the pattern, else COVERAGE LOST.
+ //
+ // Exit 0 green, 1 a finding, 2 COVERAGE LOST (every problem is one). The FIRST
+ // line names the deciding limb.
+@@ -67,7 +87,7 @@
+ import { existsSync, readFileSync, statSync } from 'node:fs';
+ import { extname, join, posix, resolve } from 'node:path';
+ import { fileURLToPath } from 'node:url';
+-import { stripSourceComments } from './text-reductions.mjs';
++import { stripSourceComments, stripStringLiterals } from './text-reductions.mjs';
+ import { listDir } from './tree-walk.mjs';
+ 
+ export const PORTS_DIR = 'tooling/ports';
+@@ -90,8 +110,35 @@ export const LIMB_NAMES = Object.freeze({
+   6: 'level',
+   7: 'fakes',
+   8: 'cross-register',
++  9: 'bindings',
++  10: 'geo',
+ });
+ 
++/** Limb 9: a Cloudflare binding TYPE, named in code (comments and strings stripped). */
++export const BINDING_TYPE_RE = /\b(?:KVNamespace\w*|R2(?:Bucket|Objects?|ObjectBody|PutOptions|ListOptions|HTTPMetadata)|RateLimit(?:Options|Outcome)?)\b/;
++/** Limb 10: a read of the runtime's per-request `cf` object, or its type. Matched on
++ *  comment- AND string-stripped code for the dot and destructuring forms, and on
++ *  comment-stripped code for the bracket form (whose name IS a string). */
++export const CF_READ_RE = /(?:\?\.|\.)\s*cf(?![\w$-])|\{[^{}]*(?<![\w$.-])cf(?![\w$-])[^{}]*\}\s*=(?!=)|\bIncomingRequestCfProperties\b/;
++export const CF_BRACKET_RE = /\[\s*(['"`])cf\1\s*\]/;
++/**
++ * The limb 9 and limb 10 matches in one TS module's text: the binding type it names and
++ * the `cf` read it makes, each null when absent. Comments never count; strings never
++ * count except the bracket form's own name. affected-guards.mjs selects this guard with
++ * it, so the selector and the guard cannot disagree about what a shape is.
++ */
++export function workerSourceShapes(text) {
++  const code = stripSourceComments(text, '.ts');
++  const bare = stripStringLiterals(code);
++  const binding = BINDING_TYPE_RE.exec(bare);
++  const cf = CF_READ_RE.exec(bare) ?? CF_BRACKET_RE.exec(code);
++  return { binding: binding ? binding[0] : null, cf: cf ? cf[0].trim() : null };
++}
++/** Limb 10's one permitted reader. */
++export const GEO_HOME = 'services/_shared/src/geo.ts';
++/** Limb 9's permitted homes under services/_shared. */
++export const PORTS_HOME = 'services/_shared/src/ports/';
++
+ // ── values a registry may never carry (rule: no secret value, no business-fact literal) ──
+ // Each shape is one a real credential or a PII literal takes; a registry names
+ // secrets and identity by NAME and by PATH, so none of these has a legitimate use.
+@@ -279,7 +326,7 @@ export function evaluate(root) {
+   const notes = [];
+   const find = (limb, msg) => findings.push({ limb, msg, lost: false });
+   const lost = (limb, msg) => findings.push({ limb, msg: `COVERAGE LOST — ${msg}`, lost: true });
+-  const result = { findings, waivers, notes, table: [], ports: [], vendorPort: new Map(), nonPort: new Map() };
++  const result = { findings, waivers, notes, table: [], ports: [], vendorPort: new Map(), vendorPorts: new Map(), nonPort: new Map() };
+ 
+   // ── limb 1 · schema and the set ──
+   let schema;
+@@ -313,10 +360,12 @@ export function evaluate(root) {
+       if (ids.has(a?.id)) find(1, `${rel} lists adapter \`${a?.id}\` twice.`);
+       ids.add(a?.id);
+       if (a?.status === 'fake' && a?.vendor !== null) find(1, `${rel} adapter \`${a.id}\` is a fake with vendor ${JSON.stringify(a.vendor)}; a fake has none.`);
+-      if (a?.status !== 'fake' && a?.vendor === null) find(1, `${rel} adapter \`${a.id}\` has vendor null but is not a fake.`);
++      if (a?.status !== 'fake' && a?.status !== 'draft' && a?.vendor === null) find(1, `${rel} adapter \`${a.id}\` has vendor null but is neither a fake nor a draft.`);
+       const impl = a?.impl ?? {};
+-      if (a?.status === 'external' ? !(impl.configAt && impl.verify) : !(impl.file && impl.symbol)) {
+-        find(1, `${rel} adapter \`${a?.id}\` impl must be ${a?.status === 'external' ? '{configAt, verify}' : '{file, symbol}'} for status ${a?.status}.`);
++      // A draft is declared and not built: an EMPTY impl is honest for it, a half one is not.
++      const unbuiltDraft = a?.status === 'draft' && isObj(impl) && Object.keys(impl).length === 0;
++      if (!unbuiltDraft && (a?.status === 'external' ? !(impl.configAt && impl.verify) : !(impl.file && impl.symbol))) {
++        find(1, `${rel} adapter \`${a?.id}\` impl must be ${a?.status === 'external' ? '{configAt, verify}' : a?.status === 'draft' ? '{file, symbol}, or {} while unbuilt,' : '{file, symbol}'} for status ${a?.status}.`);
+       }
+     }
+     for (const env of ['live', 'sandbox', 'test']) {
+@@ -333,6 +382,7 @@ export function evaluate(root) {
+     for (const v of forbiddenValues(nonPortDoc)) find(1, `${NON_PORT_REL} ${v.at} carries ${v.what}.`);
+     for (const r of nonPortDoc?.rows ?? []) {
+       if (('until' in r) === ('nonPort' in r)) find(1, `${NON_PORT_REL} row \`${r.vendor}\` must carry exactly one of \`until\` and \`nonPort\`.`);
++      if ('remaining' in r && !('until' in r)) find(1, `${NON_PORT_REL} row \`${r.vendor}\` names \`remaining\` surfaces without \`until\`: what is left of a ported vendor is waiting for a train, not deliberately never ported.`);
+     }
+   } catch (e) {
+     lost(8, `${NON_PORT_REL} could not be read or parsed (${e.message}); the cross-register limb has no non-port side.`);
+@@ -423,6 +473,31 @@ export function evaluate(root) {
+     notes.push(`limb 4 walked ${tsFiles.length} TS module(s), ${edges} relative import(s)`);
+   }
+ 
++  // ── limbs 9 and 10 · Cloudflare binding types and `.cf`, over the same walk ──
++  if (!tsFiles.length) {
++    lost(9, 'the walk read no TypeScript module under services/*/src, so "no handler names a binding type" would hold of nothing.');
++    lost(10, 'the walk read no TypeScript module under services/*/src, so "only geo.ts reads .cf" would hold of nothing.');
++  } else {
++    let bindingHomesMatched = 0;
++    let geoHomeMatched = false;
++    for (const f of tsFiles) {
++      const shape = workerSourceShapes(readFileSync(join(root, f), 'utf8'));
++      const worker = f.split('/')[1];
++      const bindingHome = f === `services/${worker}/${COMPOSITION_ROOT}` || f === `services/${worker}/src/types.ts` || f.startsWith(PORTS_HOME);
++      if (shape.binding) {
++        if (bindingHome) bindingHomesMatched++;
++        else find(9, `\`${f}\` names the Cloudflare binding type \`${shape.binding}\`. A handler takes the PORT (KvStore, ObjectStore, RateLimiter in ${PORTS_HOME}); only a composition root (services/<worker>/${COMPOSITION_ROOT}), a services/<worker>/src/types.ts or ${PORTS_HOME} may name the binding.`);
++      }
++      if (shape.cf) {
++        if (f === GEO_HOME) geoHomeMatched = true;
++        else find(10, `\`${f}\` reads the runtime's \`cf\` object (\`${shape.cf}\`). Request geography is \`requestGeo\` in ${GEO_HOME}, the one reader.`);
++      }
++    }
++    if (!bindingHomesMatched) lost(9, `the binding-type pattern matched nothing in ${tsFiles.length} module(s), not even in a types.ts or ${PORTS_HOME} — a pattern that matches nothing refuses nothing.`);
++    if (!geoHomeMatched) lost(10, `${GEO_HOME} ${tsFiles.includes(GEO_HOME) ? 'no longer matches the `.cf` pattern' : 'was not walked (moved or deleted)'}; with the one reader unseen, "nothing else reads .cf" is evidence of nothing.`);
++    notes.push(`limbs 9/10 read ${tsFiles.length} TS module(s): binding types in ${bindingHomesMatched} permitted home(s), .cf only in ${GEO_HOME}`);
++  }
++
+   // ── limb 5 · secrets ──
+   const sec = readSecretSources(root);
+   if (sec.lost) lost(5, sec.lost);
+@@ -510,23 +585,37 @@ export function evaluate(root) {
+     const all = new Map();
+     for (const id of capIds) all.set(id, new Set(['capability-register']));
+     for (const id of provIds) all.set(id, new Set([...(all.get(id) ?? []), 'provider-register']));
+-    const placed = new Map(); // vendor -> [where]
+-    const place = (v, where) => placed.set(v, [...(placed.get(v) ?? []), where]);
++    const placed = new Map(); // vendor -> { adapters: [{port, adapter}], rows: [row] }
++    const slot = (v) => { if (!placed.has(v)) placed.set(v, { adapters: [], rows: [] }); return placed.get(v); };
+     for (const { doc } of ports) {
+       for (const a of doc?.adapters ?? []) {
+         if (typeof a?.vendor !== 'string') continue;
+-        place(a.vendor, `${doc.port}/${a.id}`);
+-        result.vendorPort.set(a.vendor, { port: doc.port, adapter: a.id, earned: earnedOf.get(doc.port) ?? 0 });
++        slot(a.vendor).adapters.push({ port: doc.port, adapter: a.id });
++        const entry = { port: doc.port, adapter: a.id, earned: earnedOf.get(doc.port) ?? 0 };
++        if (!result.vendorPort.has(a.vendor)) result.vendorPort.set(a.vendor, entry);
++        result.vendorPorts.set(a.vendor, [...(result.vendorPorts.get(a.vendor) ?? []), entry]);
+       }
+     }
+     for (const r of nonPortDoc.rows ?? []) {
+-      place(r.vendor, `_non-port`);
++      slot(r.vendor).rows.push(r);
+       result.nonPort.set(r.vendor, r);
+     }
+     for (const [id, regs] of all) {
+-      const at = placed.get(id) ?? [];
+-      if (at.length === 0) find(8, `vendor \`${id}\` (${[...regs].join(', ')}) is no adapter's \`vendor\` and no ${NON_PORT_REL} row. Port it, or say in _non-port.json why not.`);
+-      else if (at.length > 1) find(8, `vendor \`${id}\` is placed ${at.length} times (${at.join(', ')}); exactly one adapter or one non-port row.`);
++      const at = placed.get(id) ?? { adapters: [], rows: [] };
++      const where = [...at.adapters.map((x) => `${x.port}/${x.adapter}`), ...at.rows.map(() => '_non-port')];
++      if (where.length === 0) { find(8, `vendor \`${id}\` (${[...regs].join(', ')}) is no adapter's \`vendor\` and no ${NON_PORT_REL} row. Port it, or say in _non-port.json why not.`); continue; }
++      const portsOf = at.adapters.map((x) => x.port);
++      const twiceInAPort = portsOf.filter((p, i) => portsOf.indexOf(p) !== i);
++      const row = at.rows[0];
++      if (at.rows.length > 1 || twiceInAPort.length) {
++        find(8, `vendor \`${id}\` is placed ${where.length} times (${where.join(', ')}); exactly one adapter per port, and at most one non-port row.`);
++      } else if (row && at.adapters.length && !(Array.isArray(row.remaining) && row.remaining.length && row.until)) {
++        find(8, `vendor \`${id}\` is placed ${where.length} times (${where.join(', ')}); a non-port row beside a vendor's adapters must name what is LEFT (\`remaining\`) and the train that ports it (\`until\`).`);
++      } else if (row && !at.adapters.length && 'remaining' in row) {
++        find(8, `${NON_PORT_REL} row \`${id}\` names \`remaining\` surfaces, but \`${id}\` is no adapter of any port: the row is the whole answer. Drop \`remaining\`.`);
++      } else if (row && at.adapters.length) {
++        notes.push(`limb 8: vendor ${id} is the adapter of ${portsOf.join(', ')}; what is left (${row.remaining.join(', ')}) until ${row.until}`);
++      }
+     }
+     for (const v of placed.keys()) {
+       if (!all.has(v)) find(8, `\`${v}\` is placed in tooling/ports/ but is in neither ${CAPABILITY_REGISTER} vendors nor ${PROVIDER_REGISTER} providers.`);
+@@ -558,7 +647,13 @@ export function evaluate(root) {
+ 
+ /** One printable line per vendor for C-8: its port and earned level, or why it has none. */
+ export function portLineFor(result, vendor) {
++  const many = result.vendorPorts?.get(vendor) ?? [];
+   const p = result.vendorPort.get(vendor);
++  if (many.length > 1 || (p && result.nonPort.get(vendor)?.remaining)) {
++    const rest = result.nonPort.get(vendor);
++    const lines = many.map((x) => `${x.port} (adapter ${x.adapter}, earned L${x.earned})`).join('; ');
++    return `port: ${lines}${rest?.remaining ? ` — the rest (${rest.remaining.join(', ')}) none yet, until ${rest.until}` : ''}`;
++  }
+   if (p) return `port: ${p.port} (adapter ${p.adapter}, earned L${p.earned})`;
+   const n = result.nonPort.get(vendor);
+   if (n) return n.nonPort ? 'port: none — deliberately not ported' : `port: none yet — until ${n.until}`;
+@@ -574,7 +669,7 @@ function main() {
+   if (deciding) {
+     console.error(`assert-ports: ${allLost ? 'COVERAGE LOST' : 'FAILED'} — limb ${deciding.limb} (${LIMB_NAMES[deciding.limb]}): ${deciding.msg.replace(/^COVERAGE LOST — /, '')}`);
+   } else {
+-    console.log(`assert-ports: ok — all 8 limbs green over ${r.table.length} port(s)`);
++    console.log(`assert-ports: ok — all ${Object.keys(LIMB_NAMES).length} limbs green over ${r.table.length} port(s)`);
+   }
+   if (r.table.length) {
+     console.log('\nport         claimed  earned  target');
+diff --git a/tooling/ci/test/coverage-manifest.json b/tooling/ci/test/coverage-manifest.json
+index 7cb110ed..03aa60f2 100644
+--- a/tooling/ci/test/coverage-manifest.json
++++ b/tooling/ci/test/coverage-manifest.json
+@@ -702,7 +702,7 @@
+     21,
+ 
+   "ports.test.mjs":
+-    40,
++    51,
+ 
+   "post-deploy-smoke.test.mjs":
+     157,
+diff --git a/tooling/ci/test/ports.test.mjs b/tooling/ci/test/ports.test.mjs
+index be856843..2d8ef777 100644
+--- a/tooling/ci/test/ports.test.mjs
++++ b/tooling/ci/test/ports.test.mjs
+@@ -66,7 +66,10 @@ function fixture({ ports = { widgets: port() }, nonPortRows = [{ vendor: 'other'
+   w('tooling/ports/_non-port.json', JSON.stringify(nonPort(nonPortRows), null, 2));
+   w('tooling/capability-register.json', JSON.stringify({ vendors: { _why: [], acme: { seam: { file: 'services/w/src/lib/contract.ts', symbol: 'WidgetPort' } } } }));
+   w('tooling/legal/provider-register.json', JSON.stringify({ providers: [{ id: 'acme' }, { id: 'other' }] }));
+-  w('services/w/src/types.ts', 'export interface Env {\n  ACME_SECRET?: string;\n  OTHER: string;\n}\n');
++  w('services/w/src/types.ts', 'export interface Env {\n  ACME_SECRET?: string;\n  OTHER: string;\n  CACHE?: KVNamespace;\n}\n');
++  // limb 10's one reader, and limb 9's binding type in a permitted home (types.ts above): each
++  // limb's pattern must still match SOMETHING, or it is coverage lost.
++  w('services/_shared/src/geo.ts', 'export function requestGeo(req: Request) {\n  return (req as Request & { cf?: { colo?: string } }).cf?.colo;\n}\n');
+   w('services/w/src/lib/contract.ts', 'export interface WidgetPort {\n  verify(): boolean;\n}\n');
+   w('services/w/src/lib/acme.ts', "import type { WidgetPort } from './contract';\nexport const acmeVerifier: WidgetPort = { verify: () => true };\n");
+   w('services/w/src/lib/fake.ts', "import type { WidgetPort } from './contract';\nexport const fakeWidget: WidgetPort = { verify: () => false };\n");
+@@ -203,7 +206,8 @@ describe('assert-ports — every limb reddens', () => {
+     assert.match(r.out, /no row of tooling\/worker-secrets\.json/);
+   });
+   it('limb 5: no interface Env anywhere is COVERAGE LOST', () => {
+-    const r = run(fixture({ files: { 'services/w/src/types.ts': 'export type X = 1;\n' } }));
++    // (a binding type stays in types.ts, so limb 9's own coverage holds and limb 5 is the one that decides)
++    const r = run(fixture({ files: { 'services/w/src/types.ts': 'export type X = KVNamespace;\n' } }));
+     assert.equal(r.code, 2, r.out);
+     assert.match(r.first, /^assert-ports: COVERAGE LOST — limb 5 \(secrets\): no `interface Env` member/);
+   });
+@@ -275,6 +279,94 @@ describe('assert-ports — every limb reddens', () => {
+     assert.equal(stale.code, 1, stale.out);
+     assert.match(stale.out, /Remove the stale waiver/);
+   });
++  it('limb 1: a DRAFT adapter may be unbuilt (empty impl) and vendorless; anything else may not', () => {
++    const draft = { ...adapter({ id: 'next', vendor: null, status: 'draft', impl: {} }) };
++    const ok = run(fixture({ ports: { widgets: port({ adapters: [...port().adapters, draft] }) } }));
++    assert.equal(ok.code, 0, ok.out);
++    const built = run(fixture({ ports: { widgets: port({ adapters: [...port().adapters, { ...draft, status: 'built' }] }) } }));
++    assert.equal(built.code, 1, built.out);
++    assert.match(built.first, /limb 1 \(schema\).*adapter `next` has vendor null but is neither a fake nor a draft/);
++    const half = run(fixture({ ports: { widgets: port({ adapters: [...port().adapters, { ...draft, impl: { file: 'services/w/src/lib/next.ts' } }] }) } }));
++    assert.equal(half.code, 1, half.out);
++    assert.match(half.out, /impl must be \{file, symbol\}, or \{\} while unbuilt/);
++  });
++  it('limb 8: ONE vendor may be the adapter of SEVERAL ports, with a non-port row for what is LEFT', () => {
++    const gizmos = port({
++      port: 'gizmos',
++      handTables: [],
++      adapters: [adapter({ id: 'acme-gizmo', impl: { file: 'services/w/src/lib/gizmo.ts', symbol: 'acmeGizmo' } }), port().adapters[1]],
++      selection: { by: 'single', source: null, default: { live: 'acme-gizmo', sandbox: 'acme-gizmo', test: 'fake' }, canary: null },
++    });
++    const files = { 'services/w/src/lib/gizmo.ts': "import type { WidgetPort } from './contract';\nexport const acmeGizmo: WidgetPort = { verify: () => true };\n" };
++    const rest = { vendor: 'acme', registers: ['provider-register'], reason: 'the rest of acme waits for its own train', until: 'port-x', remaining: ['the sql binding'] };
++    const nonPortRows = [{ vendor: 'other', registers: ['provider-register'], reason: 'a fixture vendor nobody ports', nonPort: true }, rest];
++    const ok = run(fixture({ ports: { widgets: port(), gizmos }, nonPortRows, files }));
++    assert.equal(ok.code, 0, ok.out);
++    assert.match(ok.out, /vendor acme is the adapter of gizmos, widgets; what is left \(the sql binding\) until port-x/);
++    assert.equal(portLineFor(evaluate(fixture({ ports: { widgets: port(), gizmos }, nonPortRows, files })), 'acme'),
++      'port: gizmos (adapter acme-gizmo, earned L2); widgets (adapter acme, earned L2) — the rest (the sql binding) none yet, until port-x');
++    // red: the same row without `remaining` is a vendor placed three times
++    const { remaining: _r, ...bare } = rest;
++    const noRest = run(fixture({ ports: { widgets: port(), gizmos }, nonPortRows: [nonPortRows[0], bare], files }));
++    assert.equal(noRest.code, 1, noRest.out);
++    assert.match(noRest.first, /limb 8 \(cross-register\): vendor `acme` is placed 3 times .*must name what is LEFT/);
++    // red: two adapters of ONE port for the same vendor
++    const twice = run(fixture({ ports: { widgets: port({ adapters: [adapter(), adapter({ id: 'acme-2' }), port().adapters[1]] }) } }));
++    assert.equal(twice.code, 1, twice.out);
++    assert.match(twice.out, /vendor `acme` is placed 2 times \(widgets\/acme, widgets\/acme-2\); exactly one adapter per port/);
++    // red: `remaining` on a vendor no port has an adapter for
++    const stale = run(fixture({ nonPortRows: [{ ...nonPortRows[0], nonPort: undefined, until: 'port-x', remaining: ['x'] }].map(({ nonPort: _n, ...r }) => r) }));
++    assert.equal(stale.code, 1, stale.out);
++    assert.match(stale.out, /row `other` names `remaining` surfaces, but `other` is no adapter of any port/);
++  });
++  it('limb 9: a handler typed with a Cloudflare binding type exits 1 and the first line names limb 9', () => {
++    const r = run(fixture({ files: { 'services/w/src/routes/h.ts': 'export async function h(kv: KVNamespace) {\n  return kv.get("k");\n}\n' } }));
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /limb 9 \(bindings\): `services\/w\/src\/routes\/h\.ts` names the Cloudflare binding type `KVNamespace`/);
++    for (const t of ['R2Bucket', 'R2Objects', 'RateLimit']) {
++      const x = run(fixture({ files: { 'services/w/src/routes/h.ts': `export const h = (b: ${t}) => b;\n` } }));
++      assert.equal(x.code, 1, `${t}: ${x.out}`);
++      assert.match(x.first, new RegExp(`limb 9 .*\`${t}\``));
++    }
++  });
++  it('limb 9: the composition root, a types.ts and services/_shared/src/ports/ may name it; a comment or a string is not a type', () => {
++    for (const rel of ['services/w/src/ports.ts', 'services/_shared/src/ports/adapters/cf.ts', 'services/v/src/types.ts']) {
++      const r = run(fixture({ files: { [rel]: 'export const adapt = (b: KVNamespace) => b;\n' } }));
++      assert.equal(r.code, 0, `${rel}: ${r.out}`);
++    }
++    const prose = run(fixture({ files: { 'services/w/src/routes/h.ts': '// never a KVNamespace here\nexport const why = "not an R2Bucket";\nexport const withinRateLimit = 1;\n' } }));
++    assert.equal(prose.code, 0, prose.out);
++  });
++  it('limb 9: a pattern that matches NOTHING in the tree is COVERAGE LOST (exit 2)', () => {
++    const r = run(fixture({ files: { 'services/w/src/types.ts': 'export interface Env {\n  ACME_SECRET?: string;\n  OTHER: string;\n}\n' } }));
++    assert.equal(r.code, 2, r.out);
++    assert.match(r.first, /COVERAGE LOST — limb 9 \(bindings\): the binding-type pattern matched nothing/);
++  });
++  it('limb 10: a `.cf` read outside geo.ts exits 1 — dot, optional chain, bracket and destructuring alike', () => {
++    for (const body of [
++      'export const c = (r: Request) => (r as any).cf?.colo;\n',
++      'export const c = (r: any) => r?.cf;\n',
++      "export const c = (r: any) => r['cf'];\n",
++      'export function c(r: any) {\n  const { cf } = r;\n  return cf;\n}\n',
++      'export type G = IncomingRequestCfProperties;\n',
++    ]) {
++      const r = run(fixture({ files: { 'services/w/src/routes/e.ts': body } }));
++      assert.equal(r.code, 1, `${body}${r.out}`);
++      assert.match(r.first, /limb 10 \(geo\): `services\/w\/src\/routes\/e\.ts` reads the runtime's `cf` object/);
++    }
++  });
++  it("limb 10: prose about request.cf, a 'cf-' header and a cf-named local are not reads", () => {
++    const r = run(fixture({ files: { 'services/w/src/routes/e.ts': "// keyed on request.cf\nexport const h = (n: string) => n.startsWith('cf-') || n === 'x.cf';\nexport const cf = 1;\n" } }));
++    assert.equal(r.code, 0, r.out);
++  });
++  it('limb 10: geo.ts gone (or no longer reading cf) is COVERAGE LOST (exit 2)', () => {
++    const gone = run(fixture({ files: { 'services/_shared/src/geo.ts': null } }));
++    assert.equal(gone.code, 2, gone.out);
++    assert.match(gone.first, /COVERAGE LOST — limb 10 \(geo\): services\/_shared\/src\/geo\.ts was not walked/);
++    const blind = run(fixture({ files: { 'services/_shared/src/geo.ts': 'export const requestGeo = () => ({});\n' } }));
++    assert.equal(blind.code, 2, blind.out);
++    assert.match(blind.first, /no longer matches the `\.cf` pattern/);
++  });
+   it('the exported reader gives C-8 its one line per vendor', () => {
+     const r = evaluate(fixture());
+     assert.equal(portLineFor(r, 'acme'), 'port: widgets (adapter acme, earned L2)');
+@@ -298,10 +390,46 @@ describe('assert-ports — on a copy of the REAL registries', () => {
+       'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart']) copy(rel);
+     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
+   });
+-  it('green control: payments, auth and telemetry each claim and earn L2', () => {
++  it('green control: payments, auth and telemetry each claim and earn L2; kv, objects and ratelimit claim, earn and target L2', () => {
+     const r = run(root);
+     assert.equal(r.code, 0, r.out);
+     for (const p of ['auth', 'payments', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
++    for (const p of ['kv', 'objects', 'ratelimit']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L2`));
++    assert.match(r.out, /vendor cloudflare is the adapter of kv, objects, ratelimit; what is left \(D1/);
++  });
++  it('red: a REAL handler re-typed KVNamespace reddens limb 9 (routes/sessions.ts)', () => {
++    const rel = join(root, 'services/platform/src/routes/sessions.ts');
++    const before = readFileSync(rel, 'utf8');
++    try {
++      assert.match(before, /kv: KvStore \| undefined/, 'the seam this mutation flips is still there');
++      writeFileSync(rel, before.replace('kv: KvStore | undefined', 'kv: KVNamespace | undefined'));
++      const r = run(root);
++      assert.equal(r.code, 1, r.out);
++      assert.match(r.first, /limb 9 \(bindings\): `services\/platform\/src\/routes\/sessions\.ts` names the Cloudflare binding type `KVNamespace`/);
++    } finally { writeFileSync(rel, before); }
++  });
++  it('red: the REAL events route reading request.cf directly again reddens limb 10', () => {
++    const rel = join(root, 'services/platform/src/routes/events.ts');
++    const before = readFileSync(rel, 'utf8');
++    try {
++      assert.match(before, /requestGeo\(c\.req\.raw\)/, 'the seam this mutation flips is still there');
++      writeFileSync(rel, before.replace('requestGeo(c.req.raw)', '((c.req.raw as Request & { cf?: IncomingRequestCfProperties }).cf ?? {})'));
++      const r = run(root);
++      assert.equal(r.code, 1, r.out);
++      assert.match(r.first, /limb 10 \(geo\): `services\/platform\/src\/routes\/events\.ts` reads the runtime's `cf` object/);
++    } finally { writeFileSync(rel, before); }
++  });
++  it("red: Cloudflare's non-port row without `remaining` reddens limb 8", () => {
++    const rel = join(root, 'tooling/ports/_non-port.json');
++    const before = readFileSync(rel, 'utf8');
++    try {
++      const doc = JSON.parse(before);
++      delete doc.rows.find((x) => x.vendor === 'cloudflare').remaining;
++      writeFileSync(rel, JSON.stringify(doc));
++      const r = run(root);
++      assert.equal(r.code, 1, r.out);
++      assert.match(r.first, /limb 8 \(cross-register\): vendor `cloudflare` is placed 4 times/);
++    } finally { writeFileSync(rel, before); }
+   });
+   it('red: deleting one vendor from _non-port.json reddens limb 8', () => {
+     const rel = join(root, 'tooling/ports/_non-port.json');
+@@ -343,7 +471,7 @@ describe('assert-ports — on a copy of the REAL registries', () => {
+ });
+ 
+ describe('affected-guards selects assert-ports by REGISTRY CONTENT', () => {
+-  it('a registry-named impl file, a registry, and a shared port module select it; an unnamed route does not', async () => {
++  it('a registry-named impl file, a registry, a shared port module and geo.ts select it; an unnamed route does not', async () => {
+     const { buildChecks, select, trackedTree } = await import('../../scripts/affected-guards.mjs');
+     const { checks, contentLost } = buildChecks(REPO, trackedTree(REPO));
+     assert.deepEqual(contentLost, []);
+@@ -352,6 +480,17 @@ describe('affected-guards selects assert-ports by REGISTRY CONTENT', () => {
+     assert.equal(picks('packages/telemetry/lib/src/noop_telemetry_client.dart'), true, 'named by telemetry.json impl.file');
+     assert.equal(picks('tooling/ports/payments.json'), true);
+     assert.equal(picks('services/_shared/src/ports/payments.ts'), true);
+-    assert.equal(picks('services/platform/src/routes/money.ts'), false, 'no registry names it');
++    assert.equal(picks('services/platform/src/routes/money.ts'), false, 'no registry names it, and it names no binding type and reads no .cf');
++    // limbs 9/10: the one .cf reader, and a module whose TEXT carries the shape
++    assert.equal(picks('services/_shared/src/geo.ts'), true, "limb 10's one reader");
++    assert.equal(picks('services/_shared/src/ports/adapters/cloudflare.ts'), true, 'a registry impl file that names the binding types');
++    assert.equal(picks('services/platform/src/routes/events.ts'), false, 'reads geography only through requestGeo');
++    // the content branch itself: a binding type or a `.cf` read in Worker source selects; prose and tests do not
++    const content = checks.find((c) => c.id === 'guard:assert-ports').subjects.find((x) => x.kind === 'content');
++    const route = 'services/platform/src/routes/x.ts';
++    assert.equal(content.test(route, 'export const f = (k: KVNamespace) => k;\n'), true);
++    assert.equal(content.test(route, 'export const f = (r: any) => r.cf?.country;\n'), true);
++    assert.equal(content.test(route, '// keyed on request.cf, never a KVNamespace\nexport const x = 1;\n'), false);
++    assert.equal(content.test('services/platform/test/x.test.ts', 'export const f = (r: any) => r.cf;\n'), false, 'a test is not Worker source');
+   });
+ });
+diff --git a/tooling/ports/README.md b/tooling/ports/README.md
+index 5a6dd893..6ac04230 100644
+--- a/tooling/ports/README.md
++++ b/tooling/ports/README.md
+@@ -11,7 +11,9 @@ This file is normative and stands alone: later trains read the standard from her
+ 
+ The first subjects, at their honest levels: `tooling/ports/payments.json` (inbound, `MoRWebhookVerifier`),
+ `tooling/ports/auth.json` (Dart `AuthRepository`) and `tooling/ports/telemetry.json` (Dart `TelemetryClient`), each
+-claiming L2 with target L3; every other vendor is placed in `tooling/ports/_non-port.json`.
++claiming L2 with target L3; every other vendor is placed in `tooling/ports/_non-port.json`. port-storage added
++`kv.json` (`KvStore`), `objects.json` (`ObjectStore`) and `ratelimit.json` (`RateLimiter`), each claiming and targeting
++L2: Cloudflare's KV, R2 and Rate Limiting bindings behind ports, with their conformance suites run against the fakes.
+ 
+ ## 1. Levels
+ 
+@@ -37,9 +39,9 @@ wherever the shape can hold it).
+ | `level.claimed` / `level.target` | 0–3. Claimed is checked against earned; target is where the trains are taking it. |
+ | `interface.ts` / `interface.dart` | `{file, symbols}` — either or both. Each symbol must be **declared** in the file (comment-stripped). |
+ | `adapters[].id` | The wire id: the value the selection names and the code keys on. |
+-| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. |
++| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake, or a `draft` whose vendor is not chosen yet (e.g. `objects.json`'s `s3`, the S3-API exit). |
+ | `adapters[].status` | `draft` · `built` · `live` · `standby` · `retired` · `fake` · `external`. |
+-| `adapters[].impl` | `{file, symbol}`; for `external` (e.g. a self-hosted GoTrue configured by env) `{configAt, verify}`. |
++| `adapters[].impl` | `{file, symbol}`; for `external` (e.g. a self-hosted GoTrue configured by env) `{configAt, verify}`; for an unbuilt `draft`, `{}`. |
+ | `adapters[].capabilities` | The port's own verbs (e.g. `verify`, `parse`, `cancel-api`). Capability verbs, never vendor nouns. |
+ | `adapters[].secrets` | Secret **names** only — rows of `tooling/worker-secrets.json` once it exists, until then members of a Worker's `interface Env`. |
+ | `adapters[].identity` | Field **paths** into `tooling/house-identity.json` (the entity source) that the vendor account carries. Never the values. |
+@@ -62,7 +64,9 @@ wherever the shape can hold it).
+ | `_why` | Prose: the honest state and its reasons. |
+ 
+ `tooling/ports/_non-port.json` (`$defs.nonPortRegister`) places every vendor that is **not** an adapter: each row a
+-`vendor`, the `registers` it is in, a `reason`, and exactly one of `until: <train>` or `nonPort: true`.
++`vendor`, the `registers` it is in, a `reason`, and exactly one of `until: <train>` or `nonPort: true`. One vendor may
++be the adapter of **several** ports (one adapter per port — Cloudflare is `kv`, `objects` and `ratelimit`); such a vendor
++keeps a row only for what is LEFT, naming those surfaces in `remaining` beside `until` (limb 8).
+ 
+ ### The rules
+ 
+@@ -78,6 +82,13 @@ wherever the shape can hold it).
+ ### TypeScript ports (Workers)
+ 
+ - The port lives in `services/_shared/src/ports/<port>.ts`: types and pure helpers only, **no vendor import**.
++- **A binding that already satisfies its port structurally is not wrapped.** Its adapter is the identity function in
++  `services/_shared/src/ports/adapters/<vendor>.ts` — the compile-time proof that the binding IS the port — and every
++  `Env` declares the binding as the PORT type. Outside a composition root, a `types.ts` and `services/_shared/src/ports/`,
++  no module names a Cloudflare binding type (`KVNamespace`, `R2Bucket` and its R2 types, `RateLimit`) — limb 9.
++- **Request geography is `requestGeo(req)`** (`services/_shared/src/geo.ts`), the one reader of `request.cf` — limb 10.
++  It is used only where it was used (the edge-ceiling key, the events row, the request log): never to choose a payment
++  rail, and never `country` for money.
+ - Capability verbs, never vendor nouns. **Outcomes, never throws across the port:**
+   `{ ok: true, ... } | { ok: false, kind: 'refused' | 'unavailable' | 'invalid' | 'timeout', retryable, detail }`.
+ - Capabilities are declared; secrets are named; **a missing secret fails closed** on money and auth.
+@@ -159,8 +170,9 @@ Where one of these appears as a vendor in a register, `_non-port.json` carries i
+ ## 8. The guard and the tool
+ 
+ `node tooling/ci/assert-ports.mjs` — exit 0 green, 1 a finding, 2 coverage lost; the first line names the deciding limb.
+-Limbs: 1 schema · 2 symbols · 3 waivers · 4 imports · 5 secrets · 6 level · 7 fakes · 8 cross-register. Every limb has a
+-recorded mutation in `tooling/ci/test/ports.test.mjs`.
++Limbs: 1 schema · 2 symbols · 3 waivers · 4 imports · 5 secrets · 6 level · 7 fakes · 8 cross-register · 9 bindings ·
++10 geo. Every limb has a recorded mutation in `tooling/ci/test/ports.test.mjs`; limbs 9 and 10 are also reddened on a copy
++of the real tree, and each is COVERAGE LOST when its pattern no longer matches its own permitted home.
+ 
+ `node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>]` —
+ one line per check, `PASS | FAIL | LOST C<n> <name>: <detail>`; exit 1 on any FAIL, 2 on any LOST, 0 only when all
+diff --git a/tooling/ports/_non-port.json b/tooling/ports/_non-port.json
+index 5d9ea543..8ffacbdd 100644
+--- a/tooling/ports/_non-port.json
++++ b/tooling/ports/_non-port.json
+@@ -5,7 +5,7 @@
+     "`until` names the train that will port it; `nonPort: true` marks one deliberately never ported (a platform authority, a store, a retired rail). A row carries exactly one of the two."
+   ],
+   "rows": [
+-    { "vendor": "cloudflare", "registers": ["capability-register", "provider-register"], "reason": "Config transport (KV), D1, R2 and the Worker bindings sit behind ConfigTransport and the shared D1 helpers, not yet behind a storage or SQL port.", "until": "port-storage" },
++    { "vendor": "cloudflare", "registers": ["capability-register", "provider-register"], "reason": "KV, R2 and the rate limiters are ported (tooling/ports/kv.json, objects.json, ratelimit.json; port-storage). What is left: the D1 binding, behind the shared D1 helpers and not yet a SQL port; the Workers runtime and Pages, the execution and hosting substrate (README section 7, deliberately not ported); and the nikatru.com zone.", "until": "port-sql", "remaining": ["D1 (PLATFORM_DB, SUBSCRIPTIONTRACKER_DB, APP_DB)", "Workers", "Pages", "the nikatru.com zone"] },
+     { "vendor": "cloudflare-turnstile", "registers": ["capability-register"], "reason": "The captcha is the platform's abuse authority for sign-up; a gate, not a replaceable service.", "nonPort": true },
+     { "vendor": "resend", "registers": ["capability-register", "provider-register"], "reason": "Every Resend fact lives in sendResendMail; the mail port and its suppression-list export arrive with port-mail.", "until": "port-mail" },
+     { "vendor": "github", "registers": ["capability-register"], "reason": "The workflow-dispatch call from the Worker cron (dispatchGithubWorkflows); the code host is ported by port-codehost.", "until": "port-codehost" },
+diff --git a/tooling/ports/kv.json b/tooling/ports/kv.json
+new file mode 100644
+index 00000000..13c4340f
+--- /dev/null
++++ b/tooling/ports/kv.json
+@@ -0,0 +1,116 @@
++{
++  "$schema": "./port.schema.json",
++  "port": "kv",
++  "level": {
++    "claimed": 2,
++    "target": 2
++  },
++  "interface": {
++    "ts": {
++      "file": "services/_shared/src/ports/kv.ts",
++      "symbols": [
++        "KvStore"
++      ]
++    }
++  },
++  "adapters": [
++    {
++      "id": "cloudflare-kv",
++      "vendor": "cloudflare",
++      "status": "live",
++      "impl": {
++        "file": "services/_shared/src/ports/adapters/cloudflare.ts",
++        "symbol": "cloudflareKv"
++      },
++      "capabilities": [
++        "get",
++        "put",
++        "delete",
++        "list",
++        "ttl"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "sandbox",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": null,
++      "exportDuty": "Nothing durable lives in KV: last-good app config, the public JWKS document, short-lived session-revocation records and rate counters — every one rebuildable from its source (the config documents, the identity server, a fresh sign-out). The nightly export still copies each namespace to R2 (services/platform/src/backup/index.ts). Cannot move: nothing that matters — KV has no bulk export, so a switch REBUILDS on the target rather than copying.",
++      "readAt": null,
++      "c8Seam": {
++        "file": "packages/core/lib/src/config/config_loader.dart",
++        "why": "tooling/capability-register.json records Cloudflare's C-8 seam as the client's ConfigTransport (the config the apps fetch). KV is one of several Cloudflare surfaces now behind its own port; the vendor's C-8 row is re-seated when its last surface, D1, is ported.",
++        "until": "port-sql"
++      }
++    },
++    {
++      "id": "memory",
++      "vendor": null,
++      "status": "fake",
++      "impl": {
++        "file": "services/_shared/src/ports/fakes/kv.ts",
++        "symbol": "memoryKv"
++      },
++      "capabilities": [
++        "get",
++        "put",
++        "delete",
++        "list",
++        "ttl"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "test"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": {
++        "file": "services/_shared/test/ports-kv.test.ts"
++      },
++      "exportDuty": "A test double: a Map with TTL that lives for one test. Nothing to export.",
++      "readAt": null
++    }
++  ],
++  "selection": {
++    "by": "environment",
++    "source": null,
++    "default": {
++      "live": "cloudflare-kv",
++      "sandbox": "cloudflare-kv",
++      "test": "memory"
++    },
++    "canary": null
++  },
++  "generated": false,
++  "handTables": [],
++  "conformance": {
++    "suite": {
++      "file": "services/_shared/test/conformance/kv.ts",
++      "runner": "runKvConformance"
++    },
++    "pending": [
++      {
++        "adapter": "cloudflare-kv",
++        "case": "the whole suite against the real binding: every Worker suite runs on Node under plain vitest (services/*/vitest.config.ts), not on workerd — no Miniflare, no @cloudflare/vitest-pool-workers — so the binding never meets the suite in CI; the structural proof is tsc over ports/adapters/cloudflare.ts",
++        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
++      }
++    ]
++  },
++  "switch": {
++    "runbook": "Private/runbooks/switch-vendor.md#kv",
++    "dryRun": "node tooling/ops/port-switch.mjs kv --to <adapter> --dry-run"
++  },
++  "_why": [
++    "CONFIG_KV, JWKS_CACHE, SESSION_REVOKED and SIGNUPS are declared as KvStore in every Worker's `interface Env`, and every handler — the auth plumbing in services/_shared/src/auth-middleware.ts included — takes a KvStore. The binding satisfies it STRUCTURALLY; cloudflareKv is the identity, kept as the compile-time proof (tsc reds the day the binding and the port drift). assert-ports limb 9 refuses a KVNamespace type anywhere else under services/*/src.",
++    "L2 claimed, L2 target: the selection is by environment (wrangler binds the namespace in live and sandbox; the memory fake serves tests), no caller imports an adapter, and one non-fake adapter is live. L3 would need a second REAL store and a switch runbook, and nothing durable lives here to justify one (tooling/capability-register.json cloudflare.exitPlan: \"Deliberately kept: nothing durable lives in KV\").",
++    "The conformance suite runs against the memory fake; against the binding it is PENDING, because no Worker suite runs on workerd. A missing key is null, not a throw; list pages; a TTL expires."
++  ]
++}
+diff --git a/tooling/ports/objects.json b/tooling/ports/objects.json
+new file mode 100644
+index 00000000..093bcf2c
+--- /dev/null
++++ b/tooling/ports/objects.json
+@@ -0,0 +1,142 @@
++{
++  "$schema": "./port.schema.json",
++  "port": "objects",
++  "level": {
++    "claimed": 2,
++    "target": 2
++  },
++  "interface": {
++    "ts": {
++      "file": "services/_shared/src/ports/objects.ts",
++      "symbols": [
++        "ObjectStore"
++      ]
++    }
++  },
++  "adapters": [
++    {
++      "id": "cloudflare-r2",
++      "vendor": "cloudflare",
++      "status": "live",
++      "impl": {
++        "file": "services/_shared/src/ports/adapters/cloudflare.ts",
++        "symbol": "cloudflareR2"
++      },
++      "capabilities": [
++        "put",
++        "get",
++        "head",
++        "delete",
++        "list"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "sandbox",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": null,
++      "exportDuty": "Leaves with us: every object — the nightly off-vendor export of D1 and KV, gzipped JSON lines that nothing but our own script parses, plus its manifests. Export: COPY WITH RCLONE — R2 speaks the S3 API, so `rclone copy` from the R2 remote to any S3-compatible remote moves the bucket today, and Box B already pulls every night's objects off-vendor. Cannot move: nothing.",
++      "readAt": null,
++      "c8Seam": {
++        "file": "packages/core/lib/src/config/config_loader.dart",
++        "why": "tooling/capability-register.json records Cloudflare's C-8 seam as the client's ConfigTransport (the config the apps fetch). R2 is one of several Cloudflare surfaces now behind its own port; the vendor's C-8 row is re-seated when its last surface, D1, is ported.",
++        "until": "port-sql"
++      }
++    },
++    {
++      "id": "s3",
++      "vendor": null,
++      "status": "draft",
++      "impl": {},
++      "capabilities": [
++        "put",
++        "get",
++        "head",
++        "delete",
++        "list"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "sandbox",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": null,
++      "exportDuty": "THE EXIT, DECLARED AND NOT BUILT. An ObjectStore over the S3 API (SigV4-signed fetch) would serve any S3-compatible store — R2 itself through its S3 endpoint included. It is not built because there is no second store to point it at; until one is chosen the exit is `rclone copy` between the two remotes, which needs no code here. Vendor null: no store has been chosen.",
++      "readAt": null
++    },
++    {
++      "id": "memory",
++      "vendor": null,
++      "status": "fake",
++      "impl": {
++        "file": "services/_shared/src/ports/fakes/objects.ts",
++        "symbol": "memoryObjects"
++      },
++      "capabilities": [
++        "put",
++        "get",
++        "head",
++        "delete",
++        "list"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "test"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": {
++        "file": "services/_shared/test/ports-objects.test.ts"
++      },
++      "exportDuty": "A test double: a Map of byte arrays that lives for one test. Nothing to export.",
++      "readAt": null
++    }
++  ],
++  "selection": {
++    "by": "environment",
++    "source": null,
++    "default": {
++      "live": "cloudflare-r2",
++      "sandbox": "cloudflare-r2",
++      "test": "memory"
++    },
++    "canary": null
++  },
++  "generated": false,
++  "handTables": [],
++  "conformance": {
++    "suite": {
++      "file": "services/_shared/test/conformance/objects.ts",
++      "runner": "runObjectsConformance"
++    },
++    "pending": [
++      {
++        "adapter": "cloudflare-r2",
++        "case": "the whole suite against the real binding: every Worker suite runs on Node under plain vitest (services/*/vitest.config.ts), not on workerd — no Miniflare, no @cloudflare/vitest-pool-workers — so the binding never meets the suite in CI; the structural proof is tsc over ports/adapters/cloudflare.ts",
++        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
++      }
++    ]
++  },
++  "switch": {
++    "runbook": "Private/runbooks/switch-vendor.md#objects",
++    "dryRun": "node tooling/ops/port-switch.mjs objects --to <adapter> --dry-run"
++  },
++  "_why": [
++    "BACKUPS_R2 is declared as ObjectStore in services/platform's `interface Env`, and its one writer — the nightly export, services/platform/src/backup/index.ts (BackupEnv) — takes an ObjectStore. An R2Bucket satisfies it STRUCTURALLY; cloudflareR2 is the identity, kept as the compile-time proof. assert-ports limb 9 refuses an R2Bucket (or R2Objects) type anywhere else under services/*/src.",
++    "L2 claimed, L2 target: selected by environment, no caller imports an adapter, one live adapter. The `s3` adapter is DRAFT on purpose — the exit is already open through rclone, so building it before a second store exists would be code with no subject.",
++    "The conformance suite runs against the memory fake; against the bucket it is PENDING, because no Worker suite runs on workerd."
++  ]
++}
+diff --git a/tooling/ports/port.schema.json b/tooling/ports/port.schema.json
+index 112c657a..6ed62fe5 100644
+--- a/tooling/ports/port.schema.json
++++ b/tooling/ports/port.schema.json
+@@ -205,6 +205,7 @@
+               "registers": { "type": "array", "minItems": 1, "items": { "enum": ["capability-register", "provider-register"] } },
+               "reason": { "type": "string", "minLength": 20 },
+               "until": { "$ref": "#/$defs/train" },
++              "remaining": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 2 }, "description": "Only for a vendor that is ALSO an adapter of some port: the surfaces still unported, beside `until`. assert-ports limb 8 refuses it on a vendor no port has an adapter for." },
+               "nonPort": { "const": true, "description": "Deliberately never ported (a platform authority, a store, a retired rail). Exactly one of `until` and `nonPort`." }
+             }
+           }
+diff --git a/tooling/ports/ratelimit.json b/tooling/ports/ratelimit.json
+new file mode 100644
+index 00000000..a871841d
+--- /dev/null
++++ b/tooling/ports/ratelimit.json
+@@ -0,0 +1,108 @@
++{
++  "$schema": "./port.schema.json",
++  "port": "ratelimit",
++  "level": {
++    "claimed": 2,
++    "target": 2
++  },
++  "interface": {
++    "ts": {
++      "file": "services/_shared/src/ports/ratelimit.ts",
++      "symbols": [
++        "RateLimiter"
++      ]
++    }
++  },
++  "adapters": [
++    {
++      "id": "cloudflare-ratelimit",
++      "vendor": "cloudflare",
++      "status": "live",
++      "impl": {
++        "file": "services/_shared/src/ports/adapters/cloudflare.ts",
++        "symbol": "cloudflareRateLimiter"
++      },
++      "capabilities": [
++        "limit"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "sandbox",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": null,
++      "exportDuty": "STATELESS: the counters are a per-colo burst bound that expires within its own period (10 or 60 seconds) and record nothing. Export: nothing. Cannot move: nothing — a switch is a config change, and the budgets are the `ratelimits` blocks of each wrangler.jsonc.",
++      "readAt": null,
++      "c8Seam": {
++        "file": "packages/core/lib/src/config/config_loader.dart",
++        "why": "tooling/capability-register.json records Cloudflare's C-8 seam as the client's ConfigTransport (the config the apps fetch). The Rate Limiting binding is one of several Cloudflare surfaces now behind its own port; the vendor's C-8 row is re-seated when its last surface, D1, is ported.",
++        "until": "port-sql"
++      }
++    },
++    {
++      "id": "memory",
++      "vendor": null,
++      "status": "fake",
++      "impl": {
++        "file": "services/_shared/src/ports/fakes/ratelimit.ts",
++        "symbol": "memoryRateLimiter"
++      },
++      "capabilities": [
++        "limit"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "test"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": {
++        "file": "services/_shared/test/ports-ratelimit.test.ts"
++      },
++      "exportDuty": "A test double: a fixed-window counter that lives for one test. Nothing to export.",
++      "readAt": null
++    }
++  ],
++  "selection": {
++    "by": "environment",
++    "source": null,
++    "default": {
++      "live": "cloudflare-ratelimit",
++      "sandbox": "cloudflare-ratelimit",
++      "test": "memory"
++    },
++    "canary": null
++  },
++  "generated": false,
++  "handTables": [],
++  "conformance": {
++    "suite": {
++      "file": "services/_shared/test/conformance/ratelimit.ts",
++      "runner": "runRateLimitConformance"
++    },
++    "pending": [
++      {
++        "adapter": "cloudflare-ratelimit",
++        "case": "the whole suite against the real binding: every Worker suite runs on Node under plain vitest (services/*/vitest.config.ts), not on workerd — no Miniflare, no @cloudflare/vitest-pool-workers — so the binding never meets the suite in CI; the structural proof is tsc over ports/adapters/cloudflare.ts",
++        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
++      }
++    ]
++  },
++  "switch": {
++    "runbook": "Private/runbooks/switch-vendor.md#ratelimit",
++    "dryRun": "node tooling/ops/port-switch.mjs ratelimit --to <adapter> --dry-run"
++  },
++  "_why": [
++    "Every `*_LIMITER` binding (services/platform, services/edge-shield) is declared as RateLimiterBinding, which is now the RateLimiter port re-exported by services/_shared/src/rate-limit.ts; the platform's limiters are reached only through that module's withinRateLimit / strictRateLimit / edge-ceiling helpers, and the edge shield's through its own fail-open `ask`. The failure policy stays with those callers; the port carries none.",
++    "L2 claimed, L2 target: selected by environment, no caller imports an adapter, one live adapter. A Workers Rate Limiting binding satisfies the port STRUCTURALLY; cloudflareRateLimiter is the identity, kept as the compile-time proof.",
++    "The conformance suite runs against the memory fake; against the binding it is PENDING, because no Worker suite runs on workerd (and the binding is per-colo and eventually consistent, so even there an over-budget answer is not deterministic)."
++  ]
++}
+diff --git a/tooling/scripts/affected-guards.mjs b/tooling/scripts/affected-guards.mjs
+index a7c391f4..cdbfb278 100644
+--- a/tooling/scripts/affected-guards.mjs
++++ b/tooling/scripts/affected-guards.mjs
+@@ -106,6 +106,7 @@ import { parseAllWorkflows, shellSegments, workflowSteps } from '../ci/workflow-
+ import { globToRegExp, readMap } from '../ci/lane-detect.mjs';
+ import { TEST_DIR_REL as SHARD_TEST_DIR } from '../ci/guard-test-shards.mjs';
+ import { classifyRed, detachedCheckout, removeCheckout } from './preflight.mjs';
++import { GEO_HOME, workerSourceShapes } from '../ci/assert-ports.mjs';
+ 
+ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+ /** The guard-tests shard planner, as a workflow names it. */
+@@ -681,8 +682,12 @@ export const CONTENT_SUBJECTS = Object.freeze([
+     // files, hand tables — and those paths live only in tooling/ports/*.json, which
+     // the guard reads as data (the static extraction's blind spot, header above). So
+     // the rule reads the same registries, by CONTENT, never a path list kept here.
++    // ⏱ 2026-10-01 · port-storage: limbs 9 and 10 made a SHAPE of Worker source a subject
++    // too — a Cloudflare binding type or a `.cf` read in any services/*/src module — so a
++    // change carrying one selects the guard, by the guard's OWN reduction (workerSourceShapes,
++    // imported, never restated), and so does any change to geo.ts, limb 10's one reader.
+     guard: 'tooling/ci/assert-ports.mjs',
+-    what: 'tooling/ports/**, services/_shared/src/ports/**, and every file a tooling/ports/*.json registry names',
++    what: 'tooling/ports/**, services/_shared/src/ports/**, every file a tooling/ports/*.json registry names, services/_shared/src/geo.ts, and any services/*/src module whose text names a Cloudflare binding type or reads `.cf`',
+     build(readSource, tree) {
+       const regs = (tree?.list ?? []).filter((f) => /^tooling\/ports\/[^/]+\.json$/.test(f) && !f.endsWith('/port.schema.json'));
+       if (!regs.length) throw new Error('tooling/ports/ holds no registry — the port guard\'s subjects cannot be read');
+@@ -699,7 +704,9 @@ export const CONTENT_SUBJECTS = Object.freeze([
+         if (typeof src === 'string') named.add(src.split('#')[0]);
+       }
+       if (!named.size) throw new Error('no tooling/ports/*.json registry names a file — the port guard\'s subjects cannot be read');
+-      return (path) => named.has(path) || path.startsWith('tooling/ports/') || path.startsWith('services/_shared/src/ports/');
++      const workerSource = /^services\/[^/]+\/src\/.+\.m?ts$/;
++      return (path, text) => named.has(path) || path.startsWith('tooling/ports/') || path.startsWith('services/_shared/src/ports/') || path === GEO_HOME ||
++        (workerSource.test(path) && (({ binding, cf }) => Boolean(binding || cf))(workerSourceShapes(text)));
+     },
+   },
+ ]);

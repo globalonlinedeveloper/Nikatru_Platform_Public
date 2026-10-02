@@ -1,0 +1,3440 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 73812ead..13495f5f 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -1547,6 +1547,25 @@ jobs:
+           cp -r apps/probeapi "$RUNNER_TEMP/probeapi-as-stamped"
+           dart format apps/probeapi
+           diff -ru "$RUNNER_TEMP/probeapi-as-stamped" apps/probeapi
++      # why: O-BRICK-HEALTH-HAS-NO-BUILD (rv2-services-010), the class fix. The apps=2 step above runs this guard
++      # BEFORE the backend stamp, so the stamped Worker's /v1/health was never in its subject, and a template that
++      # answered no `build` reached app #2's own CI first. Here the workspace holds the backend probe too, and the
++      # guard derives services/probeapi-api from apps/probeapi, so it must exit 0 with apps=3 in its log. The probe
++      # is registered first, offline, by provision-backend.mjs's own step [6] (`--register-only`): worker-set.mjs
++      # refuses a Worker directory with no register row, which would make the guard COVERAGE LOST, not a grade.
++      # The register is restored after, pass or fail: the probe is throwaway.
++      - name: The analytics contract grades the stamped backend Worker's health route (apps=3)
++        run: |
++          trap 'git checkout -- tooling/platform-register.json' EXIT
++          node tooling/scripts/provision-backend.mjs probeapi --register-only
++          set +e
++          node tooling/ci/assert-analytics-contract.mjs > "$RUNNER_TEMP/analytics-backend.log" 2>&1
++          code=$?
++          set -e
++          cat "$RUNNER_TEMP/analytics-backend.log"
++          echo "assert-analytics-contract exit: $code"
++          if [ "$code" -ne 0 ]; then echo "::error::assert-analytics-contract exited $code with the backend probe stamped"; exit 1; fi
++          if ! grep -qE 'ok apps=3([^0-9]|$)' "$RUNNER_TEMP/analytics-backend.log"; then echo "::error::assert-analytics-contract exited 0 without an apps=3 line; the stamped backend was not in its subject"; exit 1; fi
+       # why: O-APP-ID-FORM-UNVALIDATED (a). pre_gen applies contracts/app-id and
+       # throws, so mason exits non-zero having written NOTHING. `habit_tracker` is
+       # the id the old snake_case rule let through. Exit code alone is not the
+diff --git a/services/platform/wrangler.jsonc b/services/platform/wrangler.jsonc
+index 03c10d81..d3b066c6 100644
+--- a/services/platform/wrangler.jsonc
++++ b/services/platform/wrangler.jsonc
+@@ -558,13 +558,29 @@
+   // binding is optional and fails OPEN (src/types.ts:63), so an absent one is a
+   // sandbox with no breaker at all, not an error anyone would see.
+   //
+-  // NOT BOUND, each on purpose: JWKS_CACHE (optional, src/types.ts:30);
+-  // SIGNUPS and BACKUPS_R2 (optional, :46 and :54; only the nightly backup
+-  // cron reads them, src/backup/index.ts); SUBSCRIPTIONTRACKER_DB and the ERASURE_* services
+-  // (the nightly fan-out and account deletion — no cron runs here, and a
+-  // sandbox erasure relay into production's app Worker is the one direction
+-  // this block must not open); APP_ERASURE_ENDPOINTS for the same reason. No
+-  // secret is set here or anywhere in this file.
++  // ⏱ 2026-10-01 · EVERY TOP-LEVEL BINDING IS TWINNED HERE, ON A SANDBOX RESOURCE
++  // (rv2-services-022, row O-SANDBOX-ENV-DROPS-PRODUCTION-BINDINGS). This paragraph
++  // said "NOT BOUND, each on purpose" of JWKS_CACHE, SESSION_REVOKED, SIGNUPS,
++  // BACKUPS_R2, SUBSCRIPTIONTRACKER_DB, the ERASURE_* services and
++  // APP_ERASURE_ENDPOINTS, and the cost of that was a sandbox no E2E could learn
++  // anything from about the two flows that matter most: a sign-out-everywhere
++  // wrote no revocation (no SESSION_REVOKED) and an account deletion relayed
++  // nowhere and emptied no app database (no endpoints, no binding, no DB). Its one
++  // load-bearing reason — "a sandbox erasure relay into production's app Worker is
++  // the one direction this block must not open" — is met by the twins themselves:
++  // each points at a SANDBOX resource (the app's sandbox script, its sandbox
++  // database, sandbox namespaces and bucket), never production's, and
++  // tooling/store/capture-backend.mjs refuses a sandbox id, bucket or service name
++  // that any top level binds. The three per-app twins are RENDERED from each app
++  // Worker's own env.sandbox (tooling/scripts/render-platform-app-block.mjs, the
++  // sandbox-* regions); the namespaces and the bucket were created by
++  // tooling/scripts/provision-sandbox-twins.mjs (create only, idempotent), which
++  // wrote their ids here. tooling/ci/assert-platform-register.mjs limb 8 holds the
++  // set: every top-level binding name appears here, or the register says why not.
++  // Still no cron runs here (`crons: []`), so the nightly backup and fan-out never
++  // fire in the sandbox; their bindings exist so a route that reads them is tested
++  // against the same shape it meets in production. No secret is set here or
++  // anywhere in this file.
+   "env": {
+     "sandbox": {
+       "routes": [],
+@@ -595,8 +611,24 @@
+         // why: src/lib/native-attest/index.ts — a development-signed build's
+         // App Attest key carries the `appattestdevelop` AAGUID; only the
+         // sandbox accepts it. The top level never sets this.
+-        "APP_ATTEST_ALLOW_DEVELOPMENT": "true"
++        "APP_ATTEST_ALLOW_DEVELOPMENT": "true",
++        // why: src/routes/account.ts relays a deletion to each app's SANDBOX
++        // Worker at its workers.dev origin.
++        // ── GENERATED BEGIN sandbox-app-erasure-endpoints — tooling/scripts/render-platform-app-block.mjs from tooling/platform-register.json appWorkers; edit the register and re-render, never these lines ──
++        "APP_ERASURE_ENDPOINTS": "subscriptiontracker=https://subscriptiontracker-api-sandbox.nikatru.workers.dev"
++        // ── GENERATED END sandbox-app-erasure-endpoints ──
+       },
++      // why: the erasure retry (src/types.ts, [ADR 081]) reaches the app's
++      // SANDBOX script by Service Binding, never the production Worker.
++      "services": [
++        // ── GENERATED BEGIN sandbox-app-erasure-bindings — tooling/scripts/render-platform-app-block.mjs from tooling/platform-register.json appWorkers; edit the register and re-render, never these lines ──
++        {
++          "binding": "ERASURE_SUBSCRIPTIONTRACKER",
++          "service": "subscriptiontracker-api-sandbox",
++          "entrypoint": "ErasureEntrypoint"
++        }
++        // ── GENERATED END sandbox-app-erasure-bindings ──
++      ],
+       "d1_databases": [
+         {
+           // why: src/types.ts:13 and the /v1/health probe (src/index.ts:164).
+@@ -606,14 +638,45 @@
+           "database_name": "platform_db_sandbox",
+           "database_id": "ead92001-03e1-4f71-9b92-c64963a24925",
+           "migrations_dir": "migrations"
++        },
++        // why: each app's SANDBOX database, which a sandbox erasure empties and
++        // the fan-out reads by APP_TARGETS' binding name. The app Worker migrates it.
++        // ── GENERATED BEGIN sandbox-app-databases — tooling/scripts/render-platform-app-block.mjs from tooling/platform-register.json appWorkers; edit the register and re-render, never these lines ──
++        {
++          "binding": "SUBSCRIPTIONTRACKER_DB",
++          "database_name": "subscriptiontracker_db_sandbox",
++          "database_id": "4e7c7730-3dc7-4004-9895-403b17702b91"
+         }
++        // ── GENERATED END sandbox-app-databases ──
+       ],
+       "kv_namespaces": [
+         // why: REQUIRED — src/types.ts:18; src/routes/config.ts:77 reads it
+         // and /v1/health probes it (src/index.ts:175), so an absent binding
+         // 503s config and reports the Worker unhealthy.
+         // `platform-config-sandbox`, created 2026-09-24.
+-        { "binding": "CONFIG_KV", "id": "7ba3a916f8a5429091dec4a39284bffb" }
++        { "binding": "CONFIG_KV", "id": "7ba3a916f8a5429091dec4a39284bffb" },
++        // why: the stale-JWKS fallback (services/_shared/src/auth.ts) reads it
++        // when the JWKS endpoint cannot be reached. The SAME sandbox namespace
++        // services/subscriptiontracker-api's env.sandbox binds, as production's
++        // JWKS_CACHE is one namespace for the portfolio.
++        { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" },
++        // why: src/routes/sessions.ts WRITES the revocation list (`rev:<sub>`)
++        // and every sandbox Worker's auth reads it: without it a sandbox E2E
++        // cannot see a revoked session refused. `session-revoked-sandbox`,
++        // created by tooling/scripts/provision-sandbox-twins.mjs.
++        { "binding": "SESSION_REVOKED", "id": "00000000000000000000000000000000" },
++        // why: src/backup/index.ts exports it nightly (its only reader; no cron
++        // runs here). `signups-sandbox`, created by
++        // tooling/scripts/provision-sandbox-twins.mjs, so a sandbox backup run
++        // never reads production's waitlist.
++        { "binding": "SIGNUPS", "id": "00000000000000000000000000000000" }
++      ],
++      // why: src/backup/index.ts writes it (no cron runs here, so only a test
++      // or a hand-run reaches it). `nikatru-backups-sandbox`, created by
++      // tooling/scripts/provision-sandbox-twins.mjs: an unresolvable bucket
++      // binding fails the sandbox deploy, so the bucket exists first.
++      "r2_buckets": [
++        { "binding": "BACKUPS_R2", "bucket_name": "nikatru-backups-sandbox" }
+       ],
+       "ratelimits": [
+         {
+diff --git a/services/subscriptiontracker-api/wrangler.jsonc b/services/subscriptiontracker-api/wrangler.jsonc
+index 5aca59f8..2abdf177 100644
+--- a/services/subscriptiontracker-api/wrangler.jsonc
++++ b/services/subscriptiontracker-api/wrangler.jsonc
+@@ -228,7 +228,14 @@
+         // 2026-10-01, _shared/src/auth-middleware.ts:109). Its own namespace: production's holds
+         // the same public keys and would work, but a production id in a
+         // sandbox block is the shape this block exists to keep out.
+-        { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" }
++        { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" },
++        // why: src/middleware/auth.ts reads the revocation list (`rev:<sub>`) the
++        // platform's sandbox Worker writes on sign-out-everywhere. ⏱ 2026-10-01
++        // (rv2-services-022): absent until today, so a sandbox E2E could not see a
++        // revoked session refused here — the read fails OPEN without it. The
++        // SAME sandbox namespace services/platform's env.sandbox binds
++        // (`session-revoked-sandbox`, tooling/scripts/provision-sandbox-twins.mjs).
++        { "binding": "SESSION_REVOKED", "id": "00000000000000000000000000000000" }
+       ]
+     }
+   }
+diff --git a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/migrations/0001_init.sql b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/migrations/0001_init.sql
+index a4c6fcb4..53dff838 100644
+--- a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/migrations/0001_init.sql
++++ b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/migrations/0001_init.sql
+@@ -54,7 +54,10 @@ CREATE TABLE IF NOT EXISTS records (
+   -- client editing a row cannot silently destroy a newer client's fields.
+   forward_json     TEXT    NOT NULL DEFAULT '{}'
+ );
+-CREATE INDEX IF NOT EXISTS idx_records_user ON records (user_id);
++-- No `(user_id)` index of its own: both indexes below begin with user_id, so
++-- either answers `WHERE user_id = ?`, and a third would only be written on every
++-- row change. tooling/ci/check-migrations.mjs refuses an index that is a strict
++-- column-prefix of another on the same table (rv2-services-034).
+ -- THE pull index: "everything this user changed after seq N", in seq order.
+ CREATE INDEX IF NOT EXISTS idx_records_pull ON records (user_id, server_seq);
+ -- Bootstrap keyset pagination for a first full download.
+diff --git a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/index.ts b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/index.ts
+index 62f01eab..c19a6c78 100644
+--- a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/index.ts
++++ b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/index.ts
+@@ -52,11 +52,36 @@ app.use('*', corsMiddleware);
+ //                  rests on; when it is unreachable every authenticated route
+ //                  401s while the Worker itself is perfectly well.
+ //
+-// JWKS_CACHE is deliberately NOT probed. middleware/auth.ts warms it best-effort
+-// and `jose` fetches the JWKS itself, so a KV failure there costs latency on a
+-// cold isolate and nothing else. Reporting it would say `ok:false` for a fault no
+-// request can feel, and a check that cries about something harmless is one people
+-// stop reading.
++// JWKS_CACHE is deliberately NOT probed — but 🔴 THE REASON THIS TEMPLATE GAVE
++// WAS RETRACTED BY THE WORKER IT WAS EXTRACTED FROM, so read this rather than the
++// sentence it replaced (services/subscriptiontracker-api/src/index.ts carries the
++// same correction).
++//
++// It USED to say: "middleware/auth.ts warms it best-effort and `jose` fetches the
++// JWKS itself, so a KV failure there costs latency on a cold isolate and nothing
++// else." That is WRONG since the stale-JWKS fallback landed in the kit
++// (services/_shared/src/auth.ts): auth READS this cache on the failure
++// path, so when the JWKS endpoint cannot be reached the cached copy is what still
++// verifies tokens. A KV failure is then the difference between surviving an
++// identity-host outage and not — and, because `DELETE /v1/account` sits behind
++// the asymmetric-only `erasureAuth`, between erasure working and erasure stopping.
++//
++// ⚠️ IT IS STILL NOT PROBED, AND THE ARGUMENT IS CONDITIONAL, NOT ABSOLUTE. With
++// the JWKS endpoint healthy — the state `supabase_jwks` below asserts — a KV
++// failure costs only latency on a cold isolate, so reporting it would say
++// `ok:false` for a fault no request can feel, and a check that cries about
++// something harmless is one people stop reading. The cache matters only IN
++// CONJUNCTION WITH the endpoint being down, and that conjunction is already
++// visible: `supabase_jwks` goes unhealthy first. ➡️ If this Worker ever needs to
++// tell "degraded but surviving on the cache" from "healthy", THAT is the reading
++// to add — not a bare KV probe.
++//
++// ⏱ 2026-10-01 — `build` IS IN THE ANSWER, AND THE DEPLOY SMOKE JOINS ON IT
++// (rv2-services-010). It is `c.env.RELEASE` — the commit `deploy-workers.yml`
++// passes as `--var RELEASE:<sha>` — or null when none was passed. Without it the
++// smoke's `--field build` cannot tell "the Worker answered" from "the OLD Worker
++// answered", and tooling/ci/assert-analytics-contract.mjs fails this route in the
++// stamped app's own CI. test/health.test.ts pins the key set.
+ //
+ // Each read names a REAL TABLE rather than `SELECT 1`, so a database that is
+ // reachable but carries no schema — the "wrong D1 bound" deploy — fails too. No
+@@ -97,6 +122,7 @@ app.get('/v1/health', async (c) => {
+     status: report.status,
+     app: c.env.APP_ID,
+     version: c.env.API_VERSION,
++    build: c.env.RELEASE ?? null,
+     time: nowIso(),
+     checks: report.checks,
+   });
+diff --git a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/test/health.test.ts b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/test/health.test.ts
+new file mode 100644
+index 00000000..41854f49
+--- /dev/null
++++ b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/test/health.test.ts
+@@ -0,0 +1,66 @@
++import { describe, it, expect, vi, afterEach } from 'vitest';
++import { app } from '../src/index';
++
++// ─────────────────────────────────────────────────────────────────────────────
++// health.test.ts — THE KEYS `/v1/health` ANSWERS, pinned, through the REAL app.
++//
++// ⏱ 2026-10-01 · O-BRICK-HEALTH-HAS-NO-BUILD (rv2-services-010). The stamped
++// route answered `{ ok, status, app, version, time, checks }` — no `build` — so
++// the deploy smoke's `--field build` had nothing to join on, and
++// tooling/ci/assert-analytics-contract.mjs failed this route in the stamped app's
++// own CI. The live Worker this template was extracted from has answered `build`
++// since its deploy lane joined on it; services/subscriptiontracker-api/test/
++// health.test.ts is its twin. The set is asserted EXACTLY, both ways: a key
++// dropped is a smoke that cannot join, and a key added is a contract change the
++// deploy smoke should be told about.
++// ─────────────────────────────────────────────────────────────────────────────
++
++const BUILD = '4146d31c0ffee5eba11deadbeef0123456789abc';
++const CTX = { waitUntil: (p: Promise<unknown>) => void p, passThroughOnException: () => {} };
++const okDb = () => ({ prepare: () => ({ first: async () => ({ ok: 1 }) }) });
++
++function env(over: Record<string, unknown> = {}) {
++  return {
++    APP_DB: okDb(),
++    PLATFORM_DB: okDb(),
++    SUPABASE_URL: 'https://id.example.test',
++    APP_ID: '{{app_id}}',
++    API_VERSION: 'v1',
++    RELEASE: BUILD,
++    ...over,
++  };
++}
++
++async function health(e: Record<string, unknown>, now: number) {
++  // The route's probe cache lives for the isolate; each case reads at its own instant.
++  vi.spyOn(Date, 'now').mockReturnValue(now);
++  vi.stubGlobal('fetch', async () => Response.json({ keys: [{ kid: 'k' }] }));
++  const res = await app.fetch(new Request('https://api.example.test/v1/health'), e as never, CTX as never);
++  return { res, body: (await res.json()) as Record<string, unknown> };
++}
++
++afterEach(() => {
++  vi.unstubAllGlobals();
++  vi.restoreAllMocks();
++});
++
++describe('/v1/health answers the keys the deploy smoke joins on', () => {
++  it('🔴 the key set is exactly { app, build, checks, ok, status, time, version }', async () => {
++    const { res, body } = await health(env(), 2_000_000_000_000);
++    expect(res.status).toBe(200);
++    expect(Object.keys(body).sort()).toEqual(['app', 'build', 'checks', 'ok', 'status', 'time', 'version']);
++  });
++
++  it('🔴 `build` is the deployed RELEASE, verbatim — the value `--field build` compares', async () => {
++    const { body } = await health(env(), 2_000_003_600_000);
++    expect(body.build).toBe(BUILD);
++    expect(body.version).toBe('v1');
++    expect(body.app).toBe('{{app_id}}');
++  });
++
++  it('with no RELEASE passed, `build` is present and null — never absent, never "v1"', async () => {
++    const { body } = await health(env({ RELEASE: undefined }), 2_000_007_200_000);
++    expect(Object.hasOwn(body, 'build')).toBe(true);
++    expect(body.build).toBeNull();
++  });
++});
+diff --git a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/test/raw-modules.d.ts b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/test/raw-modules.d.ts
+new file mode 100644
+index 00000000..3a92a348
+--- /dev/null
++++ b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/test/raw-modules.d.ts
+@@ -0,0 +1,12 @@
++// Vite/Vitest's `?raw` import suffix, declared for `tsc --noEmit`.
++//
++// Mirrors services/subscriptiontracker-api/test/raw-modules.d.ts. It exists so a test can read
++// a file that ships with the Worker — the deployed wrangler.jsonc, the real
++// migrations — WITHOUT pulling @types/node into a Workers tsconfig whose `types`
++// array is deliberately just ["@cloudflare/workers-types"]. A Worker has no
++// `node:fs`, and widening the ambient types so a test can read a file would let
++// production code reach for APIs the runtime does not have.
++declare module '*?raw' {
++  const content: string;
++  export default content;
++}
+diff --git a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/test/wrangler-config.test.ts b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/test/wrangler-config.test.ts
+new file mode 100644
+index 00000000..bc0536dc
+--- /dev/null
++++ b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/test/wrangler-config.test.ts
+@@ -0,0 +1,154 @@
++import { describe, it, expect } from 'vitest';
++// `?raw` rather than node:fs — a Workers tsconfig has no node types on purpose.
++import raw from '../wrangler.jsonc?raw';
++
++// ─────────────────────────────────────────────────────────────────────────────
++// wrangler-config.test.ts — A STAMPED WORKER IS BORN WITH ITS SANDBOX.
++//
++// ⏱ 2026-10-01 · O-BRICK-WORKER-HAS-NO-SANDBOX-ENV (rv2-services-011). The
++// template declared no `env.sandbox`, and deploy-sandbox dropped such a Worker
++// without a word, so app #2 would have had no sandbox at all. This file holds the
++// block the template now stamps, on PARSED STRUCTURE (the config is mostly
++// comments, several of which name the strings looked for), in the stamped
++// Worker's own lane. services/subscriptiontracker-api/test/wrangler-config.test.ts
++// holds app #1's; tooling/ci/assert-platform-register.mjs limb 8 holds every
++// config's twins across the repository.
++// ─────────────────────────────────────────────────────────────────────────────
++
++/** JSONC → JSON. Comments stripped (string literals respected, so a `//` inside
++ *  a url survives) and trailing commas removed. */
++function parseJsonc(text: string): unknown {
++  let out = '';
++  let i = 0;
++  let inStr = false;
++  while (i < text.length) {
++    const c = text[i];
++    const c2 = text[i + 1];
++    if (inStr) {
++      if (c === '\\') {
++        out += c + (c2 ?? '');
++        i += 2;
++        continue;
++      }
++      if (c === '"') inStr = false;
++      out += c;
++      i++;
++      continue;
++    }
++    if (c === '"') {
++      inStr = true;
++      out += c;
++      i++;
++      continue;
++    }
++    if (c === '/' && c2 === '/') {
++      while (i < text.length && text[i] !== '\n') i++;
++      continue;
++    }
++    if (c === '/' && c2 === '*') {
++      i += 2;
++      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++;
++      i += 2;
++      continue;
++    }
++    out += c;
++    i++;
++  }
++  return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
++}
++
++interface D1Entry {
++  binding?: string;
++  database_name?: string;
++  database_id?: string;
++  migrations_dir?: string;
++}
++interface KvEntry {
++  binding?: string;
++  id?: string;
++}
++interface Block {
++  name?: string;
++  routes?: unknown[];
++  workers_dev?: boolean;
++  triggers?: { crons?: unknown[] };
++  vars?: Record<string, unknown>;
++  d1_databases?: D1Entry[];
++  kv_namespaces?: KvEntry[];
++  r2_buckets?: unknown[];
++  services?: unknown[];
++  env?: Record<string, Block>;
++}
++const cfg = parseJsonc(raw) as Block;
++const sandbox = cfg.env?.sandbox;
++
++const d1 = (b: Block | undefined, binding: string) => (b?.d1_databases ?? []).find((d) => d.binding === binding);
++const kv = (b: Block | undefined, binding: string) => (b?.kv_namespaces ?? []).find((k) => k.binding === binding);
++const bindingNames = (b: Block | undefined) => [
++  ...(b?.d1_databases ?? []).map((d) => `d1:${d.binding}`),
++  ...(b?.kv_namespaces ?? []).map((k) => `kv:${k.binding}`),
++  ...Object.keys(b?.vars ?? {}).map((v) => `var:${v}`),
++];
++
++describe('the parse itself reached the config', () => {
++  it('self-check — the top level binds APP_DB, PLATFORM_DB, JWKS_CACHE and SESSION_REVOKED', () => {
++    expect(cfg.name).toBe('{{app_id}}-api');
++    expect(bindingNames(cfg).sort()).toEqual(
++      expect.arrayContaining(['d1:APP_DB', 'd1:PLATFORM_DB', 'kv:JWKS_CACHE', 'kv:SESSION_REVOKED']),
++    );
++  });
++});
++
++describe('env.sandbox — declared, and off production', () => {
++  it('🔴 the template declares an `env.sandbox` block', () => {
++    expect(sandbox).toBeTypeOf('object');
++  });
++
++  it('🔴 it declares routes: [], workers_dev: true and no crons — wrangler would INHERIT each', () => {
++    expect(sandbox?.routes).toEqual([]);
++    expect(sandbox?.workers_dev).toBe(true);
++    expect(sandbox?.triggers?.crons).toEqual([]);
++  });
++
++  it('🔴 every top-level binding and var is twinned in it, by name', () => {
++    const twinned = new Set(bindingNames(sandbox));
++    const missing = bindingNames(cfg).filter((n) => !twinned.has(n));
++    expect(missing).toEqual([]);
++  });
++
++  it('🔴 APP_DB is the sandbox database, migrated from the same directory', () => {
++    expect(d1(sandbox, 'APP_DB')).toMatchObject({
++      database_name: '{{app_id}}_db_sandbox',
++      migrations_dir: d1(cfg, 'APP_DB')?.migrations_dir,
++    });
++  });
++
++  it('🔴 PLATFORM_DB is the SHARED sandbox database, which this Worker never migrates', () => {
++    const p = d1(sandbox, 'PLATFORM_DB');
++    expect(p?.database_name).toBe('platform_db_sandbox');
++    expect(p?.migrations_dir).toBeUndefined();
++  });
++
++  it('🔴 no sandbox id is a production id — a sandbox binding on a production store writes production', () => {
++    const top = new Set(
++      [...(cfg.d1_databases ?? []).map((d) => d.database_id), ...(cfg.kv_namespaces ?? []).map((k) => k.id)].filter(
++        (id) => typeof id === 'string' && !/^0+$/.test(id.replace(/-/g, '')),
++      ),
++    );
++    const sbx = [...(sandbox?.d1_databases ?? []).map((d) => d.database_id), ...(sandbox?.kv_namespaces ?? []).map((k) => k.id)];
++    expect(sbx.filter((id) => top.has(id))).toEqual([]);
++    expect(kv(sandbox, 'JWKS_CACHE')).toBeDefined();
++    expect(kv(sandbox, 'SESSION_REVOKED')).toBeDefined();
++  });
++
++  it('the identity project, the app id and the API version are production’s — the sandbox moves the stores, not the contract', () => {
++    for (const k of ['APP_ID', 'SUPABASE_URL', 'API_VERSION']) expect(sandbox?.vars?.[k]).toBe(cfg.vars?.[k]);
++  });
++
++  it('no R2 bucket and no service binding, at either level — the clone contract stamps neither', () => {
++    expect(cfg.r2_buckets).toBeUndefined();
++    expect(sandbox?.r2_buckets).toBeUndefined();
++    expect(cfg.services).toBeUndefined();
++    expect(sandbox?.services).toBeUndefined();
++  });
++});
+diff --git a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/wrangler.jsonc b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/wrangler.jsonc
+index ea35e656..f2ff1b7b 100644
+--- a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/wrangler.jsonc
++++ b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/wrangler.jsonc
+@@ -155,10 +155,77 @@
+   // ───────────────────────────────────────────────────────────────────────────
+   "routes": [
+     { "pattern": "{{app_id}}-api.nikatru.com", "custom_domain": true }
+-  ]
++  ],
+   // NO "r2_buckets" HERE ON PURPOSE. Object storage is ONE portfolio-wide
+   // bucket bound in `services/platform`, addressed with an `<app_id>/` key
+   // prefix. Stamping `{{app_id}}-exports` per app multiplied buckets, lifecycle
+   // rules and CORS policies by the number of apps in order to store the same
+   // kind of blob under a different name.
++
++  // ───────────────────────────────────────────────────────────────────────────
++  // 🧪 env.sandbox — A STAMPED WORKER IS BORN WITH ITS SANDBOX (rv2-services-011,
++  // row O-BRICK-WORKER-HAS-NO-SANDBOX-ENV).
++  //
++  // 🔴 THIS BLOCK WAS MISSING UNTIL 2026-10-01, and nothing said so: deploy-sandbox
++  // reads `worker-set.mjs --json --app-workers --env sandbox`, which DROPPED an app
++  // Worker with no `env.sandbox` without a word, so app #2 would have had no
++  // sandbox Worker, no sandbox database and no store capture, with every lane
++  // green. worker-set.mjs now refuses that Worker by name instead.
++  //
++  // It mirrors services/subscriptiontracker-api/wrangler.jsonc's own block, key
++  // for key. `wrangler deploy --env sandbox` deploys the script
++  // `{{app_id}}-api-sandbox`, which answers on its workers.dev host and nowhere
++  // else. EVERY KEY IS DECLARED; NONE IS LEFT TO INHERITANCE: wrangler inherits
++  // `routes`, `workers_dev` and `triggers` and does NOT inherit `vars`,
++  // `d1_databases` or `kv_namespaces`, so every top-level binding is twinned
++  // below (tooling/ci/assert-platform-register.mjs limb 8 holds that, both ways
++  // from the top level) and every id is a SANDBOX resource, never production's.
++  //
++  // THE IDS ARE WRITTEN BY THE SAME ONE COMMAND as the top level's:
++  //   node tooling/scripts/provision-backend.mjs {{app_id}}
++  // creates `{{app_id}}_db_sandbox` (`--location apac`, as above), writes its id
++  // into APP_DB here and applies the migrations to it, and copies the SHARED
++  // sandbox namespaces' ids from services/platform/wrangler.jsonc's env.sandbox
++  // (the clone contract: JWKS_CACHE and SESSION_REVOKED are portfolio-wide, in
++  // the sandbox as in production, so no per-app copy is ever created). The
++  // all-zeros placeholders are correct until it runs.
++  // ───────────────────────────────────────────────────────────────────────────
++  "env": {
++    "sandbox": {
++      "routes": [],
++      "workers_dev": true,
++      "triggers": { "crons": [] },
++      "vars": {
++        "APP_ID": "{{app_id}}",
++        // The SAME identity project as production: a sandbox caller signs in
++        // there, and src/middleware/auth.ts verifies against its JWKS.
++        "SUPABASE_URL": "https://auth-api.nikatru.com",
++        "API_VERSION": "v1",
++        "ALLOWED_ORIGINS": "https://nikatru.com"
++      },
++      "d1_databases": [
++        {
++          // PER-APP, and the sandbox's own: a capture's rows land here.
++          "binding": "APP_DB",
++          "database_name": "{{app_id}}_db_sandbox",
++          "database_id": "00000000-0000-0000-0000-000000000000",
++          "migrations_dir": "migrations"
++        },
++        {
++          // SHARED: the sandbox entitlements database, migrated by
++          // services/platform's own env.sandbox (the sole applier), so NO
++          // migrations_dir here, exactly as at the top level.
++          "binding": "PLATFORM_DB",
++          "database_name": "platform_db_sandbox",
++          "database_id": "ead92001-03e1-4f71-9b92-c64963a24925"
++        }
++      ],
++      "kv_namespaces": [
++        { "binding": "JWKS_CACHE", "id": "00000000000000000000000000000000" },
++        // The sandbox revocation list, written by the platform's sandbox Worker.
++        // Without it a sandbox E2E cannot see a revoked session refused.
++        { "binding": "SESSION_REVOKED", "id": "00000000000000000000000000000000" }
++      ]
++    }
++  }
+ }
+diff --git a/tooling/bricks/app/route-clients.json b/tooling/bricks/app/route-clients.json
+index 65fa8ec8..ae96a488 100644
+--- a/tooling/bricks/app/route-clients.json
++++ b/tooling/bricks/app/route-clients.json
+@@ -27,7 +27,7 @@
+       "method": "GET",
+       "path": "/v1/health",
+       "auth": "public",
+-      "purpose": "Deploy verification and dependency health for the stamped Worker. Answers `{ ok, status, app, version, time, checks }` after probing APP_DB (`SELECT 1 FROM records LIMIT 1`), PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`) and the Supabase JWKS, each through a per-isolate memoised reading (services/_shared/src/health.ts). Stamped from the brick's Worker template.",
++      "purpose": "Deploy verification and dependency health for the stamped Worker. Answers `{ ok, status, app, version, build, time, checks }` (`build` is the deployed RELEASE, the field the deploy smoke joins on) after probing APP_DB (`SELECT 1 FROM records LIMIT 1`), PLATFORM_DB (`SELECT 1 FROM entitlements LIMIT 1`) and the Supabase JWKS, each through a per-isolate memoised reading (services/_shared/src/health.ts). Stamped from the brick's Worker template.",
+       "client": {
+         "file": "tooling/ci/worker-set.mjs",
+         "expression": "/\\/health$/.test(String(x?.path ?? ''))",
+diff --git a/tooling/chassis-ledger.json b/tooling/chassis-ledger.json
+index d2832e7e..8b66edaf 100644
+--- a/tooling/chassis-ledger.json
++++ b/tooling/chassis-ledger.json
+@@ -811,7 +811,7 @@
+     {
+       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+       "path": "migrations/0001_init.sql",
+-      "lines": 61,
++      "lines": 64,
+       "verdict": "STAYS",
+       "why": "Per-app D1 schema. The provisioner applies it against THIS app's APP_DB."
+     },
+@@ -832,7 +832,7 @@
+     {
+       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+       "path": "src/index.ts",
+-      "lines": 190,
++      "lines": 216,
+       "verdict": "STAYS",
+       "why": "Per-app route table and the erasureAuth mount. assert-deploy-triggers-deploy reads the import graph from here."
+     },
+@@ -989,6 +989,27 @@
+       "verdict": "STAYS",
+       "why": "The one test a stamped Worker owns: its src/lib/* files must stay RE-EXPORTS of the one home, and its erasure route must derive rather than list tables. Everything else worth testing is the chassis suite, which runs here too."
+     },
++    {
++      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
++      "path": "test/health.test.ts",
++      "lines": 66,
++      "verdict": "STAYS",
++      "why": "ADDED 2026-10-01 (O-BRICK-HEALTH-HAS-NO-BUILD, rv2-services-010). Pins the exact key set /v1/health answers, `build` among them, through the REAL app: the deploy smoke joins on `build`, and the template answered none, so assert-analytics-contract.mjs failed the route in the stamped app's own CI. The twin of services/subscriptiontracker-api/test/health.test.ts's key assertions; what is pinned is THIS Worker's answer, which no shared test can hold."
++    },
++    {
++      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
++      "path": "test/wrangler-config.test.ts",
++      "lines": 154,
++      "verdict": "STAYS",
++      "why": "ADDED 2026-10-01 (O-BRICK-WORKER-HAS-NO-SANDBOX-ENV, rv2-services-011). Holds the stamped `env.sandbox` block on parsed structure in the Worker's own lane: declared, routes/workers_dev/crons explicit, every top-level binding twinned, the sandbox databases named, no production id. Per-Worker by nature: it reads this Worker's own wrangler.jsonc."
++    },
++    {
++      "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
++      "path": "test/raw-modules.d.ts",
++      "lines": 12,
++      "verdict": "STAYS",
++      "why": "ADDED 2026-10-01 with test/wrangler-config.test.ts. Declares Vite's `?raw` import for `tsc --noEmit`, so a test can read the shipped wrangler.jsonc without widening a Workers tsconfig to node types; the same declaration services/subscriptiontracker-api/test/ carries."
++    },
+     {
+       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+       "path": "test/cors.test.ts",
+@@ -999,7 +1020,7 @@
+     {
+       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+       "path": "wrangler.jsonc",
+-      "lines": 164,
++      "lines": 231,
+       "verdict": "STAYS",
+       "why": "Per-app Worker config: name, routes, D1 binding. Stamped, never shared."
+     },
+diff --git a/tooling/ci/assert-platform-register.mjs b/tooling/ci/assert-platform-register.mjs
+index 36c9cbbb..beabdfa2 100644
+--- a/tooling/ci/assert-platform-register.mjs
++++ b/tooling/ci/assert-platform-register.mjs
+@@ -1093,6 +1093,127 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+     edgeChecked++;
+   }
+ 
++  // ─────────────────────────────────────────────────────────────────────────────
++  // ── LIMB 8 · every ENVIRONMENT twins every top-level binding, or says why not ──
++  //
++  // ⏱ 2026-10-01 · rv2-services-022, row O-SANDBOX-ENV-DROPS-PRODUCTION-BINDINGS.
++  // Wrangler does NOT inherit a binding into an environment: `vars`, `d1_databases`,
++  // `kv_namespaces`, `r2_buckets`, `services` and `ratelimits` each start empty in an
++  // `env.<name>` block. So a binding the top level declares and an environment omits
++  // is simply ABSENT in that deploy, and every binding here is optional in code, so
++  // the absence fails open with no error. That is how the platform's sandbox ran with
++  // no SESSION_REVOKED, no SIGNUPS, no BACKUPS_R2, no app database, no erasure binding
++  // and no APP_ERASURE_ENDPOINTS — a sandbox in which an E2E could catch neither a
++  // revocation defect nor an erasure defect — and subscriptiontracker-api's sandbox
++  // with no SESSION_REVOKED, every guard green.
++  //
++  // THE RULE: for every config in `bindingSources.configs` and every block under its
++  // `env`, every top-level binding NAME (the BINDING_KEYS sections, `services` and
++  // each `vars` key) appears in that block's same section, or the register's
++  // `envBindingParity.exempt` names it with a reason. An exemption must stay TRUE:
++  // one naming a binding the block DOES declare, or one the top level does not, is
++  // itself a finding. And in a DEPLOYABLE config (under services/) an environment's
++  // D1 or KV id may not be the all-zeros placeholder: a twin in name only binds
++  // nothing, and `wrangler deploy --dry-run` passes on it. The brick template's
++  // placeholders are correct (tooling/scripts/provision-backend.mjs step [5s] writes
++  // them), so it is held to the names and not the ids.
++  // ─────────────────────────────────────────────────────────────────────────────
++  const parity = register.envBindingParity ?? null;
++  const parityExempt = new Map();
++  for (const row of Array.isArray(parity?.exempt) ? parity.exempt : []) {
++    if (typeof row?.config !== 'string' || typeof row?.env !== 'string' || typeof row?.section !== 'string' ||
++        typeof row?.name !== 'string' || typeof row?.why !== 'string' || row.why.trim().length < 20) {
++      problems.push(
++        `envBindingParity.exempt row ${JSON.stringify(row)} needs \`config\`, \`env\`, \`section\`, \`name\` and a \`why\` of a sentence. ` +
++          '[limb 8] An exemption without a reason is a waiver, and this register does not take waivers.',
++      );
++      continue;
++    }
++    parityExempt.set(`${rel(row.config)}\u0000${row.env}\u0000${row.section}\u0000${row.name}`, { row, used: false });
++  }
++  const PARITY_SECTIONS = [...BINDING_KEYS, ['services', 'binding']];
++  const bindingNamesOf = (block) => {
++    const out = [];
++    for (const [section, field] of PARITY_SECTIONS) {
++      for (const item of Array.isArray(block?.[section]) ? block[section] : []) {
++        if (typeof item?.[field] === 'string' && item[field]) out.push({ section, name: item[field] });
++      }
++    }
++    const vars = block?.vars;
++    if (vars && typeof vars === 'object' && !Array.isArray(vars)) for (const name of Object.keys(vars)) out.push({ section: 'vars', name });
++    return out;
++  };
++  const isZeroId = (id) => typeof id === 'string' && id !== '' && /^0+$/.test(id.replace(/-/g, ''));
++  let envBlocks = 0;
++  let twinsChecked = 0;
++  for (const cfgRel of onDiskConfigs) {
++    const cfg = parseJsonc(readFileSync(join(ROOT, cfgRel), 'utf8'), cfgRel);
++    const envs = cfg.env && typeof cfg.env === 'object' && !Array.isArray(cfg.env) ? Object.entries(cfg.env) : [];
++    const top = bindingNamesOf(cfg);
++    for (const [envName, block] of envs) {
++      envBlocks++;
++      const have = new Set(bindingNamesOf(block).map((b) => `${b.section}\u0000${b.name}`));
++      for (const b of top) {
++        const key = `${cfgRel}\u0000${envName}\u0000${b.section}\u0000${b.name}`;
++        const ex = parityExempt.get(key);
++        if (have.has(`${b.section}\u0000${b.name}`)) {
++          twinsChecked++;
++          if (ex) {
++            ex.used = true;
++            problems.push(
++              `${cfgRel} env.${envName} — \`${b.section}\` ${b.name} is declared there, and envBindingParity.exempt says it is not. ` +
++                '[limb 8] An exemption that outlived the state it described hides the next omission behind its name.',
++            );
++          }
++          continue;
++        }
++        if (ex) {
++          ex.used = true;
++          printed.push(`⚠  ${cfgRel} env.${envName} — \`${b.section}\` ${b.name} NOT TWINNED. ${ex.row.why}`);
++          continue;
++        }
++        problems.push(
++          `${cfgRel} env.${envName} — declares no \`${b.section}\` ${b.name}, which the top level binds. Wrangler does not inherit ` +
++            'a binding into an environment, and every binding fails open when absent, so this deploy runs without it and nothing ' +
++            'says so. [limb 8] Twin it on a resource of that environment, or add an envBindingParity.exempt row with the reason.',
++        );
++      }
++      if (cfgRel.startsWith('services/')) {
++        for (const d of Array.isArray(block?.d1_databases) ? block.d1_databases : []) {
++          if (isZeroId(d?.database_id)) {
++            problems.push(
++              `${cfgRel} env.${envName} — D1 ${d.binding} still carries the all-zeros placeholder. [limb 8] A twin in name only binds ` +
++                'nothing, and a dry run passes on it. tooling/scripts/provision-backend.mjs writes a stamped Worker\'s sandbox database id.',
++            );
++          }
++        }
++        for (const k of Array.isArray(block?.kv_namespaces) ? block.kv_namespaces : []) {
++          if (isZeroId(k?.id)) {
++            problems.push(
++              `${cfgRel} env.${envName} — KV ${k.binding} still carries the all-zeros placeholder. [limb 8] A twin in name only binds ` +
++                'nothing. Run `node tooling/scripts/provision-sandbox-twins.mjs --apply` (create only, idempotent): it creates the ' +
++                'sandbox namespace and writes its id here.',
++            );
++          }
++        }
++      }
++    }
++  }
++  for (const { row, used } of parityExempt.values()) {
++    if (!used) {
++      problems.push(
++        `envBindingParity.exempt names ${row.config} env.${row.env} \`${row.section}\` ${row.name}, and that config's top level does not ` +
++          'bind it (or the environment does not exist). [limb 8] Delete the row: it exempts nothing.',
++      );
++    }
++  }
++  if (parity !== null && envBlocks === 0) {
++    coverageLost([
++      `✗ COVERAGE LOST — the register declares envBindingParity, and none of the ${onDiskConfigs.length} wrangler config(s) declares an \`env\` block.`,
++      '  Limb 8 ranges over zero environments and cannot fail.',
++    ]);
++  }
++
+   if (problems.length) {
+     console.error(`✗ platform register — ${problems.length} problem(s):`);
+     for (const p of problems) console.error(`    ${p}`);
+@@ -1117,6 +1238,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+       `; ${declaredBindings.size} binding(s) across ${onDiskConfigs.length} wrangler config(s), ` +
+       `each with a resolved reader; ${sharedValues.length} shared value(s) compared ${sharedComparisons} ` +
+       `time(s) across those configs, all agreeing; ${edgeChecked} edge Worker(s) held to limb 7; ` +
++      `${envBlocks} environment block(s) twinning ${twinsChecked} top-level binding(s) (limb 8); ` +
+       `${printed.length} declared gap(s) printed above`,
+   );
+   if (brickRow) {
+diff --git a/tooling/ci/check-migrations.mjs b/tooling/ci/check-migrations.mjs
+index 4b3f4513..d140e750 100644
+--- a/tooling/ci/check-migrations.mjs
++++ b/tooling/ci/check-migrations.mjs
+@@ -51,7 +51,7 @@
+ import { existsSync, readFileSync, statSync } from 'node:fs';
+ import { posix } from 'node:path';
+ import { boundedGlob, listDir } from './tree-walk.mjs';
+-import { duplicateMigrationNumbers } from './migration-tables.mjs';
++import { createdIndexKeys, duplicateMigrationNumbers, redundantPrefixIndexes } from './migration-tables.mjs';
+ 
+ /** Migration sets under guard. The brick's is included: it is the schema every
+  *  future stamped app starts from, so a violation there scales to 50 apps.
+@@ -401,7 +401,74 @@ for (const dup of duplicateMigrationNumbers(files)) {
+   violations++;
+ }
+ 
++// ⏱ 2026-10-01 · NO INDEX THAT IS A STRICT COLUMN-PREFIX OF ANOTHER ON THE SAME TABLE
++// (rv2-services-034, row O-BRICK-REDUNDANT-USER-INDEX). Every query the short index
++// answers, the longer one answers too, and the short one is still written on every
++// row change. tooling/ci/migration-tables.mjs (redundantPrefixIndexes) says exactly
++// what is compared. The brick's `idx_records_user` was the finding, and it is gone
++// from the starter schema before app #2 is stamped from it.
++//
++// 🔴 THE THREE ROWS BELOW ARE KEPT, NOT FIXED, and the reason is the rule this file
++// enforces. Each index is in a migration already applied --remote to a live
++// database; removing it is a NEW migration that runs `DROP INDEX`, which this guard
++// allows, and that is a decision about live query plans (an owner's, with the
++// measurement), not a side effect of adding this limb. Each row must stay TRUE: a
++// row whose index is no longer a redundant prefix (dropped, or its covering index
++// gone) is itself a finding, so an exemption cannot outlive the state it names.
+ const approved = [];
++const keptIndexes = [];
++const KEPT_PREFIX_INDEXES = [
++  {
++    dir: 'services/platform/migrations',
++    index: 'idx_entitlements_user',
++    why: 'platform_db, applied --remote since 0001; covered by idx_entitlements_user_app. Dropping it is a new DROP INDEX migration under the additive-only rule, decided separately.',
++  },
++  {
++    dir: 'services/platform/migrations',
++    index: 'idx_bundle_grants_user',
++    why: 'platform_db, applied --remote since 0009; covered by idx_bundle_grants_user_live. Dropping it is a new DROP INDEX migration under the additive-only rule, decided separately.',
++  },
++  {
++    dir: 'services/subscriptiontracker-api/migrations',
++    index: 'idx_subscriptions_user',
++    why: 'subscriptiontracker_db, applied --remote since 0001; covered by idx_subscriptions_user_renewal and idx_subscriptions_user_category. Dropping it is a new DROP INDEX migration under the additive-only rule, decided separately.',
++  },
++];
++{
++  const read = files.map((f) => ({ path: f, text: readFileSync(f, 'utf8') }));
++  const found = redundantPrefixIndexes(read);
++  const created = createdIndexKeys(read);
++  const key = (dir, index) => `${dir}\u0000${index}`;
++  const kept = new Map(KEPT_PREFIX_INDEXES.map((k) => [key(k.dir, k.index), k]));
++  const usedKept = new Set();
++  for (const r of found) {
++    const cover = r.coveredBy.map((c) => `${c.index} (${c.columns.join(', ')})`).join(', ');
++    const k = kept.get(key(r.dir, r.index));
++    if (k) {
++      usedKept.add(key(r.dir, r.index));
++      keptIndexes.push(`${r.file}:${r.line}  ${r.index} — ${k.why}`);
++      continue;
++    }
++    console.error(
++      `${r.file}:${r.line}  REDUNDANT INDEX ${r.index} ON ${r.table} (${r.columns.join(', ')}) — a strict column-prefix of ${cover}.\n` +
++        '    Every lookup it serves, the longer index serves, and it is written on every row change. Delete it before it is applied;\n' +
++        '    an applied one is removed by a new `DROP INDEX` migration, which is a decision of its own.',
++    );
++    violations++;
++  }
++  for (const k of KEPT_PREFIX_INDEXES) {
++    // Stale = created there and no longer a redundant prefix (dropped by a later
++    // migration, or its covering index gone). A row naming an index this tree never
++    // created exempts nothing, so it is not this check's business.
++    if (usedKept.has(key(k.dir, k.index)) || !created.has(key(k.dir, k.index))) continue;
++    console.error(
++      `check-migrations.mjs KEPT_PREFIX_INDEXES names ${k.dir} ${k.index}, which is no longer a redundant prefix index there. ` +
++        'Delete the row: an exemption that outlived what it described hides the next finding behind its name.',
++    );
++    violations++;
++  }
++}
++
+ for (const file of files) {
+   const raw = readFileSync(file, 'utf8');
+   const rawLines = raw.split('\n');
+@@ -440,6 +507,10 @@ if (approved.length) {
+   console.log('⚠  destructive statements running under an explicit approval marker:');
+   for (const a of approved) console.log(`    ${a}`);
+ }
++if (keptIndexes.length) {
++  console.log('⚠  redundant prefix indexes KEPT on an applied schema (KEPT_PREFIX_INDEXES):');
++  for (const k of keptIndexes) console.log(`    ${k}`);
++}
+ 
+ if (violations > 0) {
+   console.error(
+diff --git a/tooling/ci/migration-tables.mjs b/tooling/ci/migration-tables.mjs
+index dca14d1e..8f4286c7 100644
+--- a/tooling/ci/migration-tables.mjs
++++ b/tooling/ci/migration-tables.mjs
+@@ -425,3 +425,145 @@ export function duplicateMigrationNumbers(paths) {
+     .sort((a, b) => (a.dir === b.dir ? (a.value < b.value ? -1 : a.value > b.value ? 1 : 0) : a.dir.localeCompare(b.dir)))
+     .map(({ dir, number, files }) => ({ dir, number, files }));
+ }
++
++// ─────────────────────────────────────────────────────────────────────────────
++// ⏱ 2026-10-01 · AN INDEX THAT IS A STRICT COLUMN-PREFIX OF ANOTHER IS DEAD WEIGHT
++// (rv2-services-034, row O-BRICK-REDUNDANT-USER-INDEX). The brick's starter schema
++// created `idx_records_user ON records (user_id)` beside `(user_id, server_seq)`
++// and `(user_id, id)`: SQLite answers every `WHERE user_id = ?` from either longer
++// index, so the short one bought nothing on read and cost a B-tree write on every
++// INSERT, UPDATE and DELETE — stamped into every app. tooling/ci/check-migrations.mjs
++// runs this over exactly the files it scans.
++//
++// What counts, stated so a green is not read as more than it is:
++//   · both sides are `CREATE [UNIQUE] INDEX … ON <table> (<columns>)` statements, in
++//     ONE migrations directory, net of a later `DROP INDEX` of the same name. A
++//     table's PRIMARY KEY or inline UNIQUE constraint is not compared;
++//   · the SHORTER index is redundant only when it is a plain index: a UNIQUE one
++//     enforces a constraint the longer cannot, and a partial one (`WHERE`) covers a
++//     different row set. A partial LONGER index cannot stand in for it either;
++//   · a column is its name with `ASC`/`DESC` dropped (SQLite walks a B-tree either
++//     way) and its `COLLATE` kept (a different collation answers different
++//     queries). An expression column is never a prefix of anything.
++// ─────────────────────────────────────────────────────────────────────────────
++
++const CREATE_INDEX =
++  /\bCREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w."`[\]]+)\s+ON\s+([\w."`[\]]+)\s*\(/gi;
++const DROP_INDEX = /\bDROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?([\w."`[\]]+)/gi;
++const unquoteIdent = (s) => String(s).replace(/["`[\]]/g, '').toLowerCase();
++/** Comments blanked, and SINGLE-quoted literals only: in SQL a double-quoted token
++ *  is an IDENTIFIER (`"user_id"`), so blanking it as stripStringLiterals does would
++ *  erase the very column names compared here. */
++const indexCode = (text) =>
++  stripSourceComments(String(text), '.sql').replace(/'(?:[^'\n]|'')*'/g, (m) => `'${' '.repeat(Math.max(0, m.length - 2))}'`);
++
++/** The text between the `(` at `open` and its matching `)`, or null. */
++function parenBody(code, open) {
++  let depth = 0;
++  for (let i = open; i < code.length; i++) {
++    if (code[i] === '(') depth++;
++    else if (code[i] === ')' && --depth === 0) return { body: code.slice(open + 1, i), end: i + 1 };
++  }
++  return null;
++}
++
++/** One index column as compared, or null for an expression column. */
++function indexColumn(part) {
++  const words = part.trim().replace(/\s+/g, ' ').split(' ');
++  if (words.length === 0 || words[0] === '' || /[()]/.test(part)) return null;
++  const kept = words.filter((w) => !/^(asc|desc)$/i.test(w));
++  return [unquoteIdent(kept[0]), ...kept.slice(1).map((w) => w.toLowerCase())].join(' ');
++}
++
++/** `${dir}\u0000${index}` for every index any `CREATE [UNIQUE] INDEX` in `files`
++ *  created, dropped later or not: what a KEPT row in check-migrations.mjs must name. */
++export function createdIndexKeys(files) {
++  const out = new Set();
++  for (const f of files) {
++    const p = String(f.path).replaceAll('\\', '/');
++    const cut = p.lastIndexOf('/');
++    const dir = cut === -1 ? '.' : p.slice(0, cut);
++    const code = indexCode(f.text);
++    CREATE_INDEX.lastIndex = 0;
++    let m;
++    while ((m = CREATE_INDEX.exec(code)) !== null) out.add(`${dir}\u0000${unquoteIdent(m[2])}`);
++  }
++  return out;
++}
++
++/**
++ * Every plain index that is a STRICT column-prefix of another index on the same
++ * table in the same migrations directory, as `[{ dir, table, index, columns, file,
++ * line, coveredBy: [{ index, columns, file }] }]`, sorted by dir, file and line.
++ * `files` is `[{ path, text }]`; the files of one directory are read in name order.
++ */
++export function redundantPrefixIndexes(files) {
++  const byDir = new Map();
++  for (const f of files) {
++    const p = String(f.path).replaceAll('\\', '/');
++    const cut = p.lastIndexOf('/');
++    const dir = cut === -1 ? '.' : p.slice(0, cut);
++    if (!byDir.has(dir)) byDir.set(dir, []);
++    byDir.get(dir).push({ path: p, text: String(f.text) });
++  }
++  const out = [];
++  for (const [dir, list] of byDir) {
++    list.sort((a, b) => a.path.localeCompare(b.path));
++    /** index name → { index, table, columns, unique, partial, file, line } */
++    const live = new Map();
++    for (const { path, text } of list) {
++      const code = indexCode(text);
++      const events = [];
++      CREATE_INDEX.lastIndex = 0;
++      let m;
++      while ((m = CREATE_INDEX.exec(code)) !== null) events.push({ at: m.index, kind: 'create', m });
++      DROP_INDEX.lastIndex = 0;
++      while ((m = DROP_INDEX.exec(code)) !== null) events.push({ at: m.index, kind: 'drop', m });
++      events.sort((a, b) => a.at - b.at);
++      for (const e of events) {
++        if (e.kind === 'drop') {
++          live.delete(unquoteIdent(e.m[1]));
++          continue;
++        }
++        const body = parenBody(code, e.m.index + e.m[0].length - 1);
++        if (!body) continue;
++        const columns = body.body.split(',').map(indexColumn);
++        if (columns.some((c) => c === null)) continue;
++        const tail = code.slice(body.end, code.indexOf(';', body.end) === -1 ? code.length : code.indexOf(';', body.end));
++        const name = unquoteIdent(e.m[2]);
++        live.set(name, {
++          index: name,
++          table: unquoteIdent(e.m[3]),
++          columns,
++          unique: Boolean(e.m[1]),
++          partial: /\bWHERE\b/i.test(tail),
++          file: path,
++          line: code.slice(0, e.at).split('\n').length,
++        });
++      }
++    }
++    const all = [...live.values()];
++    for (const short of all) {
++      if (short.unique || short.partial) continue;
++      const coveredBy = all.filter(
++        (long) =>
++          long !== short &&
++          long.table === short.table &&
++          !long.partial &&
++          long.columns.length > short.columns.length &&
++          short.columns.every((c, i) => long.columns[i] === c),
++      );
++      if (coveredBy.length === 0) continue;
++      out.push({
++        dir,
++        table: short.table,
++        index: short.index,
++        columns: short.columns,
++        file: short.file,
++        line: short.line,
++        coveredBy: coveredBy.map((l) => ({ index: l.index, columns: l.columns, file: l.file })).sort((a, b) => a.index.localeCompare(b.index)),
++      });
++    }
++  }
++  return out.sort((a, b) => a.dir.localeCompare(b.dir) || a.file.localeCompare(b.file) || a.line - b.line);
++}
+diff --git a/tooling/ci/test/capture-backend.test.mjs b/tooling/ci/test/capture-backend.test.mjs
+index dc4452e3..7e565f46 100644
+--- a/tooling/ci/test/capture-backend.test.mjs
++++ b/tooling/ci/test/capture-backend.test.mjs
+@@ -16,9 +16,12 @@ import assert from 'node:assert/strict';
+ import { join, dirname } from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ import { spawnSync } from 'node:child_process';
++import { readFileSync } from 'node:fs';
+ 
+ import {
+   CAPTURE_WORKERS,
++  REGISTER_REL,
++  captureWorkersOf,
+   CaptureBackendRefused,
+   assertCaptureDefines,
+   backendDefinesForRun,
+@@ -76,9 +79,15 @@ const fixture = () => ({
+   },
+ });
+ 
++/** The fixture's two Workers, as the register names them today. */
++const CAPTURE_WORKERS_FIXTURE = {
++  platform: 'services/platform/wrangler.jsonc',
++  'subscriptiontracker-api': 'services/subscriptiontracker-api/wrangler.jsonc',
++};
++
+ /** `read(repoRelativePath)` over a fixture, as JSONC with a comment in it. */
+ const reader = (f) => (rel) => {
+-  const worker = Object.entries(CAPTURE_WORKERS).find(([, p]) => p === rel)?.[0];
++  const worker = Object.entries(CAPTURE_WORKERS_FIXTURE).find(([, p]) => p === rel)?.[0];
+   if (!worker) throw new Error(`unexpected read of ${rel}`);
+   return `// fixture for ${worker}\n${JSON.stringify(f[worker], null, 2)}\n`;
+ };
+@@ -92,15 +101,78 @@ const refusedOn = (limb, re) => (e) => {
+ };
+ 
+ describe('capture-backend: the sandbox is computed from the wrangler configs', () => {
++  test('B0: the Worker set is the REGISTER\'s serving Worker and app Workers, never a literal and never an edge Worker', () => {
++    const reg = JSON.parse(readFileSync(join(REPO, REGISTER_REL), 'utf8'));
++    assert.deepEqual(CAPTURE_WORKERS, captureWorkersOf(reg));
++    assert.deepEqual(Object.keys(CAPTURE_WORKERS), [reg.servingWorker.name, ...reg.appWorkers.map((w) => w.name)]);
++    for (const e of reg.edgeWorkers ?? []) assert.equal(Object.hasOwn(CAPTURE_WORKERS, e.name), false, `${e.name} is an edge Worker`);
++    const two = captureWorkersOf({
++      servingWorker: { name: 'platform', config: 'services/platform/wrangler.jsonc' },
++      appWorkers: [
++        { name: 'subscriptiontracker-api', config: 'services/subscriptiontracker-api/wrangler.jsonc' },
++        { name: 'zzz-api', config: 'services\\zzz-api\\wrangler.jsonc' },
++      ],
++      edgeWorkers: [{ name: 'edge-shield', config: 'services/edge-shield/wrangler.jsonc' }],
++    });
++    assert.deepEqual(two, {
++      platform: 'services/platform/wrangler.jsonc',
++      'subscriptiontracker-api': 'services/subscriptiontracker-api/wrangler.jsonc',
++      'zzz-api': 'services/zzz-api/wrangler.jsonc',
++    });
++    assert.deepEqual(captureWorkersOf(null), {});
++  });
++
++  test('🔴 B0b: a two-app register whose app #2 has no env.sandbox is REFUSED by name — it is in the set now', () => {
++    const f = fixture();
++    const workers = { ...CAPTURE_WORKERS_FIXTURE, 'zzz-api': 'services/zzz-api/wrangler.jsonc' };
++    const read = (rel) => {
++      if (rel === 'services/zzz-api/wrangler.jsonc') {
++        return JSON.stringify({ name: 'zzz-api', routes: [{ pattern: 'zzz-api.example.com', custom_domain: true }] });
++      }
++      return reader(f)(rel);
++    };
++    assert.throws(() => sandboxBackend({ read, workers }), refusedOn('env-missing', /services\/zzz-api\/wrangler\.jsonc has no `env\.sandbox` block, so zzz-api/));
++    assert.throws(() => sandboxBackend({ read, workers: {} }), refusedOn('unreadable', /names no serving Worker `platform`/));
++  });
++
++  test('🔴 B0c: a sandbox bound to the PRODUCTION bucket or the production Worker by service binding is refused as id-reuse', () => {
++    const bucket = fixture();
++    bucket.platform.r2_buckets = [{ binding: 'BACKUPS_R2', bucket_name: 'nikatru-backups' }];
++    bucket.platform.env.sandbox.r2_buckets = [{ binding: 'BACKUPS_R2', bucket_name: 'nikatru-backups' }];
++    assert.throws(() => sandboxBackend({ read: reader(bucket) }), refusedOn('id-reuse', /r2:BACKUPS_R2 = nikatru-backups is also the platform top-level r2:BACKUPS_R2/));
++    const svc = fixture();
++    svc.platform.services = [{ binding: 'ERASURE_SUBSCRIPTIONTRACKER', service: 'subscriptiontracker-api', entrypoint: 'ErasureEntrypoint' }];
++    svc.platform.env.sandbox.services = [{ binding: 'ERASURE_SUBSCRIPTIONTRACKER', service: 'subscriptiontracker-api', entrypoint: 'ErasureEntrypoint' }];
++    assert.throws(() => sandboxBackend({ read: reader(svc) }), refusedOn('id-reuse', /service:ERASURE_SUBSCRIPTIONTRACKER = subscriptiontracker-api is also the platform top-level/));
++    // Green control: the same bindings on SANDBOX resources are accepted.
++    svc.platform.env.sandbox.services[0].service = 'subscriptiontracker-api-sandbox';
++    bucket.platform.env.sandbox.r2_buckets[0].bucket_name = 'nikatru-backups-sandbox';
++    assert.equal(sandboxBackend({ read: reader(svc) }).platform.sandboxIds['service:ERASURE_SUBSCRIPTIONTRACKER'], 'subscriptiontracker-api-sandbox');
++    assert.equal(sandboxBackend({ read: reader(bucket) }).platform.sandboxIds['r2:BACKUPS_R2'], 'nikatru-backups-sandbox');
++  });
++
+   test('B1: the REAL configs give the two -sandbox workers.dev hosts, the sandbox ids and the pin', () => {
+     const b = sandboxBackend();
+     assert.equal(b.platform.scriptName, 'platform-sandbox');
+     assert.equal(b.platform.sandboxHost, 'https://platform-sandbox.nikatru.workers.dev');
+     assert.equal(b['subscriptiontracker-api'].scriptName, 'subscriptiontracker-api-sandbox');
+     assert.equal(b['subscriptiontracker-api'].sandboxHost, 'https://subscriptiontracker-api-sandbox.nikatru.workers.dev');
+-    assert.deepEqual(b.platform.sandboxIds, {
++    // ⏱ 2026-10-01 (rv2-services-022): the two namespaces tooling/scripts/provision-sandbox-twins.mjs
++    // creates are not pinned by value here — their ids exist only once it has run, and limb 8 of
++    // assert-platform-register.mjs refuses the placeholder they carry until then. What IS pinned:
++    // each is a KV id, and the revocation list is ONE namespace across the two sandbox Workers.
++    const { 'kv:SESSION_REVOKED': revoked, 'kv:SIGNUPS': signups, ...platformPinned } = b.platform.sandboxIds;
++    const { 'kv:SESSION_REVOKED': apiRevoked, ...apiPinned } = b['subscriptiontracker-api'].sandboxIds;
++    assert.match(revoked, /^[0-9a-f]{32}$/);
++    assert.match(signups, /^[0-9a-f]{32}$/);
++    assert.equal(apiRevoked, revoked, 'the sandbox revocation list must be the one namespace the platform sandbox writes');
++    assert.deepEqual(platformPinned, {
+       'd1:PLATFORM_DB': 'ead92001-03e1-4f71-9b92-c64963a24925',
++      'd1:SUBSCRIPTIONTRACKER_DB': '4e7c7730-3dc7-4004-9895-403b17702b91',
+       'kv:CONFIG_KV': '7ba3a916f8a5429091dec4a39284bffb',
++      'kv:JWKS_CACHE': 'b2acb786d12f4e36b339dd19f8812bbe',
++      'r2:BACKUPS_R2': 'nikatru-backups-sandbox',
++      'service:ERASURE_SUBSCRIPTIONTRACKER': 'subscriptiontracker-api-sandbox',
+       'ratelimit:MONEY_CEILING_LIMITER': '1006',
+       'ratelimit:EVENTS_LIMITER': '1007',
+       'ratelimit:EVENTS_CEILING_LIMITER': '1008',
+@@ -115,7 +187,7 @@ describe('capture-backend: the sandbox is computed from the wrangler configs', (
+       'ratelimit:NATIVE_AUTH_INSTALL_LIMITER': '1024', // ⏱ 2026-09-29 · ADR no.NNN, key registration's ceiling.
+       'ratelimit:NATIVE_AUTH_PLAY_VERIFY_LIMITER': '1026', // ⏱ 2026-09-30 · ADR no.NNN, Play Integrity verifications' ceiling.
+     });
+-    assert.deepEqual(b['subscriptiontracker-api'].sandboxIds, {
++    assert.deepEqual(apiPinned, {
+       'd1:APP_DB': '4e7c7730-3dc7-4004-9895-403b17702b91',
+       'd1:PLATFORM_DB': 'ead92001-03e1-4f71-9b92-c64963a24925',
+       'kv:JWKS_CACHE': 'b2acb786d12f4e36b339dd19f8812bbe',
+diff --git a/tooling/ci/test/coverage-manifest.json b/tooling/ci/test/coverage-manifest.json
+index 7cb110ed..6ff17f62 100644
+--- a/tooling/ci/test/coverage-manifest.json
++++ b/tooling/ci/test/coverage-manifest.json
+@@ -168,7 +168,7 @@
+     28,
+ 
+   "capture-backend.test.mjs":
+-    12,
++    15,
+ 
+   "capture-fallback-fonts.test.mjs":
+     12,
+@@ -560,6 +560,9 @@
+   "migration-numbers.test.mjs":
+     8,
+ 
++  "migration-prefix-index.test.mjs":
++    12,
++
+   "modal-detection.test.mjs":
+     44,
+ 
+@@ -681,7 +684,7 @@
+     91,
+ 
+   "platform-register.test.mjs":
+-    107,
++    118,
+ 
+   "play-declarations.test.mjs":
+     180,
+@@ -756,7 +759,7 @@
+     12,
+ 
+   "provision-backend.test.mjs":
+-    28,
++    34,
+ 
+   "pseudonymity-firewall.test.mjs":
+     17,
+@@ -863,6 +866,9 @@
+   "sandbox-service-role.test.mjs":
+     5,
+ 
++  "sandbox-twins.test.mjs":
++    18,
++
+   "scan-dependencies.test.mjs":
+     25,
+ 
+@@ -1089,7 +1095,7 @@
+     11,
+ 
+   "worker-set.test.mjs":
+-    37,
++    40,
+ 
+   "worker-shared-modules.test.mjs":
+     13,
+diff --git a/tooling/ci/test/d1-fanout.test.mjs b/tooling/ci/test/d1-fanout.test.mjs
+index a88d5bcc..b39e34c6 100644
+--- a/tooling/ci/test/d1-fanout.test.mjs
++++ b/tooling/ci/test/d1-fanout.test.mjs
+@@ -79,7 +79,15 @@ const X_CONFIG = `{
+   ],
+   "kv_namespaces": [
+     { "binding": "JWKS_CACHE", "id": "bcfcb1618d1a4bfd8d02f87d3d21010d" }
+-  ]
++  ],
++  // ⏱ 2026-10-01 (rv2-services-011): the sandbox block the brick stamps, which the
++  // renderer's sandbox-* regions read.
++  "env": { "sandbox": {
++    "vars": { "APP_ID": "x" },
++    "d1_databases": [
++      { "binding": "APP_DB", "database_name": "x_db_sandbox", "database_id": "00000000-0000-4000-8000-0000000000fe", "migrations_dir": "migrations" }
++    ]
++  } }
+ }
+ `;
+ const X_FILES = {
+@@ -179,6 +187,21 @@ describe('render-platform-app-block.mjs — the per-app block is rendered from t
+     assert.equal(cfg.vars.APP_ERASURE_ENDPOINTS, 'subscriptiontracker=https://subscriptiontracker-api.nikatru.com,x=https://x-api.example.test');
+     assert.deepEqual(cfg.services.map((s) => s.binding), ['ERASURE_SUBSCRIPTIONTRACKER', 'ERASURE_X']);
+     assert.deepEqual(cfg.d1_databases.map((d) => d.binding), ['PLATFORM_DB', 'SUBSCRIPTIONTRACKER_DB', 'X_DB']);
++    // ⏱ 2026-10-01 (rv2-services-022): and every sandbox region, from x-api's own env.sandbox.
++    const sbx = cfg.env.sandbox;
++    assert.equal(
++      sbx.vars.APP_ERASURE_ENDPOINTS,
++      'subscriptiontracker=https://subscriptiontracker-api-sandbox.nikatru.workers.dev,x=https://x-api-sandbox.nikatru.workers.dev',
++    );
++    assert.deepEqual(sbx.services.map((x) => [x.binding, x.service]), [
++      ['ERASURE_SUBSCRIPTIONTRACKER', 'subscriptiontracker-api-sandbox'],
++      ['ERASURE_X', 'x-api-sandbox'],
++    ]);
++    assert.deepEqual(sbx.d1_databases.map((d) => [d.binding, d.database_name]), [
++      ['PLATFORM_DB', 'platform_db_sandbox'],
++      ['SUBSCRIPTIONTRACKER_DB', 'subscriptiontracker_db_sandbox'],
++      ['X_DB', 'x_db_sandbox'],
++    ]);
+     const mod = readFileSync(join(root, 'services/platform/src/generated/app-targets.ts'), 'utf8');
+     assert.match(mod, /\{ appId: 'x', dbBinding: 'X_DB', databaseName: 'x_db' \}/);
+     // x-api's JWKS_CACHE IS the platform's namespace (the same id): deduplicated, not a second store.
+@@ -219,6 +242,11 @@ describe('render-platform-app-block.mjs — the per-app block is rendered from t
+     const b = run(RENDER, ownKv);
+     assert.equal(b.code, 1, b.out);
+     assert.match(b.out, /binds KV namespace\(s\) the platform Worker does not: X_JWKS_CACHE \(0000000000000000000000000000000f\)/);
++    // ⏱ 2026-10-01 (rv2-services-011/-022): an app Worker with no env.sandbox is refused, never skipped.
++    const noSandbox = tree({ ...X_FILES, 'services/x-api/wrangler.jsonc': X_CONFIG.replace(/,\n  \/\/ ⏱ 2026-10-01[\s\S]*\} \}\n\}\n$/, '\n}\n'), 'tooling/platform-register.json': withXRow });
++    const d = run(RENDER, noSandbox);
++    assert.equal(d.code, 1, d.out);
++    assert.match(d.out, /appWorkers\[1\] \(x-api\): services\/x-api\/wrangler\.jsonc declares no `env\.sandbox`/);
+     const noMark = tree({ 'services/platform/wrangler.jsonc': swap('    // ── GENERATED END app-databases ──\n', '') });
+     const c = run(RENDER, noMark, '--check');
+     assert.equal(c.code, 1, c.out);
+diff --git a/tooling/ci/test/migration-prefix-index.test.mjs b/tooling/ci/test/migration-prefix-index.test.mjs
+new file mode 100644
+index 00000000..ca776212
+--- /dev/null
++++ b/tooling/ci/test/migration-prefix-index.test.mjs
+@@ -0,0 +1,184 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// migration-prefix-index.test.mjs — redundantPrefixIndexes (tooling/ci/migration-tables.mjs)
++// and the tooling/ci/check-migrations.mjs limb that runs it (⏱ 2026-10-01,
++// rv2-services-034, row O-BRICK-REDUNDANT-USER-INDEX): no index that is a strict
++// column-prefix of another on the same table. The brick's own `idx_records_user`
++// is the red control, run against the real check-migrations.mjs on a copy of the
++// tree with that line put back.
++//
++// Run:  node --test tooling/ci/test/migration-prefix-index.test.mjs
++// ─────────────────────────────────────────────────────────────────────────────
++import { describe, test, before, after } from 'node:test';
++import assert from 'node:assert/strict';
++import { spawnSync } from 'node:child_process';
++import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join, dirname } from 'node:path';
++import { createdIndexKeys, redundantPrefixIndexes } from '../migration-tables.mjs';
++
++const REPO = join(import.meta.dirname, '..', '..', '..');
++const BRICK_SQL = 'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/migrations/0001_init.sql';
++const at = (dir, name, text) => ({ path: `${dir}/${name}`, text });
++
++describe('redundantPrefixIndexes — what is compared', () => {
++  test('🔴 RED: (user_id) beside (user_id, seq) and (user_id, id) is one finding naming both covers', () => {
++    const got = redundantPrefixIndexes([
++      at('d', '0001.sql', `CREATE TABLE r (id TEXT PRIMARY KEY, user_id TEXT, seq INTEGER);
++CREATE INDEX IF NOT EXISTS idx_r_user ON r (user_id);
++CREATE INDEX IF NOT EXISTS idx_r_pull ON r (user_id, seq);
++CREATE INDEX IF NOT EXISTS idx_r_boot ON r (user_id, id);`),
++    ]);
++    assert.equal(got.length, 1);
++    assert.deepEqual(
++      { index: got[0].index, table: got[0].table, columns: got[0].columns, line: got[0].line, covers: got[0].coveredBy.map((c) => c.index) },
++      { index: 'idx_r_user', table: 'r', columns: ['user_id'], line: 2, covers: ['idx_r_boot', 'idx_r_pull'] },
++    );
++  });
++
++  test('🔴 RED: across two files of ONE directory, and with quoting, case and ASC/DESC differences', () => {
++    const got = redundantPrefixIndexes([
++      at('d', '0001.sql', 'CREATE INDEX "Idx_A" ON "t" ("a" ASC);\n'),
++      at('d', '0002.sql', 'create index idx_ab on T (A desc, b);\n'),
++    ]);
++    assert.deepEqual(got.map((g) => [g.index, g.file]), [['idx_a', 'd/0001.sql']]);
++  });
++
++  test('GREEN: equal column lists, a different first column, and a different table are not prefixes', () => {
++    assert.deepEqual(
++      redundantPrefixIndexes([
++        at('d', '0001.sql', `CREATE INDEX i1 ON t (a, b);
++CREATE INDEX i2 ON t (a, b);
++CREATE INDEX i3 ON t (b);
++CREATE INDEX i4 ON u (a);`),
++      ]),
++      [],
++    );
++  });
++
++  test('GREEN: a UNIQUE or partial short index enforces or covers something the longer does not', () => {
++    assert.deepEqual(
++      redundantPrefixIndexes([
++        at('d', '0001.sql', `CREATE UNIQUE INDEX u1 ON t (a);
++CREATE INDEX p1 ON t (b) WHERE b IS NOT NULL;
++CREATE INDEX l1 ON t (a, c);
++CREATE INDEX l2 ON t (b, c);`),
++      ]),
++      [],
++    );
++    // …and a partial LONGER index cannot stand in for a plain short one.
++    assert.deepEqual(redundantPrefixIndexes([at('d', '0001.sql', 'CREATE INDEX s ON t (a);\nCREATE INDEX l ON t (a, b) WHERE b > 0;\n')]), []);
++  });
++
++  test('GREEN: a COLLATE difference and an expression column are not the same column', () => {
++    assert.deepEqual(
++      redundantPrefixIndexes([at('d', '0001.sql', 'CREATE INDEX s ON t (a COLLATE NOCASE);\nCREATE INDEX l ON t (a, b);\nCREATE INDEX e ON t (lower(a));\nCREATE INDEX e2 ON t (lower(a), b);\n')]),
++      [],
++    );
++  });
++
++  test('GREEN: a later DROP INDEX removes the short index; two directories never mix', () => {
++    assert.deepEqual(
++      redundantPrefixIndexes([
++        at('d', '0001.sql', 'CREATE INDEX s ON t (a);\nCREATE INDEX l ON t (a, b);\n'),
++        at('d', '0002.sql', 'DROP INDEX IF EXISTS s;\n'),
++        at('e', '0001.sql', 'CREATE INDEX s ON t (a);\n'),
++        at('f', '0001.sql', 'CREATE INDEX l ON t (a, b);\n'),
++      ]),
++      [],
++    );
++  });
++
++  test('a CREATE INDEX inside a comment or a string is not an index', () => {
++    assert.deepEqual(
++      redundantPrefixIndexes([
++        at('d', '0001.sql', "-- CREATE INDEX s ON t (a);\nCREATE INDEX l ON t (a, b);\nINSERT INTO notes VALUES ('CREATE INDEX x ON t (a)');\n"),
++      ]),
++      [],
++    );
++    assert.deepEqual([...createdIndexKeys([at('d', '0001.sql', '-- CREATE INDEX s ON t (a);\nCREATE INDEX l ON t (a, b);\n')])], ['d\u0000l']);
++  });
++
++  test('the real tree: the brick has none, and the three kept on applied schemas are exactly what is found', () => {
++    const dirs = [
++      'services/platform/migrations',
++      'services/subscriptiontracker-api/migrations',
++      BRICK_SQL.slice(0, BRICK_SQL.lastIndexOf('/')),
++    ];
++    const files = [];
++    for (const d of dirs) {
++      const r = spawnSync('git', ['-C', REPO, 'ls-files', '--', d], { encoding: 'utf8' });
++      for (const f of r.stdout.trim().split('\n').filter((x) => x.endsWith('.sql'))) files.push({ path: f, text: readFileSync(join(REPO, f), 'utf8') });
++    }
++    assert.ok(files.length >= 25, `only ${files.length} migration file(s) read`);
++    assert.deepEqual(
++      redundantPrefixIndexes(files).map((g) => `${g.dir} ${g.index}`),
++      [
++        'services/platform/migrations idx_entitlements_user',
++        'services/platform/migrations idx_bundle_grants_user',
++        'services/subscriptiontracker-api/migrations idx_subscriptions_user',
++      ],
++    );
++  });
++});
++
++describe('check-migrations.mjs — the limb, on a copy of the real tree', () => {
++  let TMP;
++  before(() => { TMP = mkdtempSync(join(tmpdir(), 'nikatru-prefix-index-')); });
++  after(() => { rmSync(TMP, { recursive: true, force: true }); });
++  let seq = 0;
++  const COPIED = [
++    'services/platform/migrations',
++    'services/platform/wrangler.jsonc',
++    'services/subscriptiontracker-api/migrations',
++    'services/subscriptiontracker-api/wrangler.jsonc',
++    'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/migrations',
++    'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/wrangler.jsonc',
++  ];
++  function tree(edits = {}) {
++    const root = join(TMP, `t${seq++}`);
++    for (const rel of COPIED) {
++      mkdirSync(dirname(join(root, rel)), { recursive: true });
++      cpSync(join(REPO, rel), join(root, rel), { recursive: true });
++    }
++    for (const [rel, f] of Object.entries(edits)) writeFileSync(join(root, rel), f(readFileSync(join(root, rel), 'utf8')));
++    return root;
++  }
++  const run = (cwd) => {
++    const r = spawnSync(process.execPath, [join(REPO, 'tooling', 'ci', 'check-migrations.mjs')], { cwd, encoding: 'utf8', timeout: 60_000 });
++    return { code: r.status, out: `${r.stdout}${r.stderr}` };
++  };
++
++  test('GREEN control: the copied tree is clean, and the three kept indexes are PRINTED', () => {
++    const { code, out } = run(tree());
++    assert.equal(code, 0, out);
++    assert.match(out, /redundant prefix indexes KEPT on an applied schema[\s\S]*idx_entitlements_user[\s\S]*idx_bundle_grants_user[\s\S]*idx_subscriptions_user/);
++  });
++
++  test("🔴 RED CONTROL: the brick's idx_records_user put back is refused (exit 1), naming the line and both covering indexes", () => {
++    const root = tree({
++      [BRICK_SQL]: (t) => t.replace(
++        '-- THE pull index:',
++        'CREATE INDEX IF NOT EXISTS idx_records_user ON records (user_id);\n-- THE pull index:',
++      ),
++    });
++    const { code, out } = run(root);
++    assert.equal(code, 1, out);
++    assert.match(out, /0001_init\.sql:\d+ {2}REDUNDANT INDEX idx_records_user ON records \(user_id\) — a strict column-prefix of idx_records_boot \(user_id, id\), idx_records_pull \(user_id, server_seq\)/);
++  });
++
++  test('🔴 RED: a kept index dropped by a new migration makes its KEPT row stale, and the row is a finding', () => {
++    const root = tree();
++    writeFileSync(join(root, 'services/subscriptiontracker-api/migrations/0099_drop_redundant.sql'), 'DROP INDEX IF EXISTS idx_subscriptions_user;\n');
++    const { code, out } = run(root);
++    assert.equal(code, 1, out);
++    assert.match(out, /KEPT_PREFIX_INDEXES names services\/subscriptiontracker-api\/migrations idx_subscriptions_user, which is no longer a redundant prefix index there/);
++  });
++
++  test('🔴 RED: a NEW redundant index on an applied schema is not covered by the kept rows', () => {
++    const root = tree();
++    writeFileSync(join(root, 'services/platform/migrations/0099_new.sql'), 'CREATE INDEX IF NOT EXISTS idx_signups_x ON signups (signed_up_at, email);\nCREATE INDEX IF NOT EXISTS idx_signups_y ON signups (signed_up_at);\n');
++    const { code, out } = run(root);
++    assert.equal(code, 1, out);
++    assert.match(out, /REDUNDANT INDEX idx_signups_y ON signups \(signed_up_at\)/);
++  });
++});
+diff --git a/tooling/ci/test/platform-register.test.mjs b/tooling/ci/test/platform-register.test.mjs
+index 789228df..86a5f7b8 100644
+--- a/tooling/ci/test/platform-register.test.mjs
++++ b/tooling/ci/test/platform-register.test.mjs
+@@ -61,6 +61,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
+ 
+ const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+ const GUARD = join(CI_DIR, 'assert-platform-register.mjs');
++const REPO = resolve(CI_DIR, '..', '..');
+ 
+ let TMP;
+ before(() => { TMP = mkdtempSync(join(tmpdir(), 'nikatru-preg-')); });
+@@ -1906,3 +1907,125 @@ describe('assert-platform-register — limb 7, edge Workers', () => {
+     assert.match(out, /services\/edge-shield\/wrangler\.jsonc — `vars\.API_VERSION` is declared here, but the register's `absentFrom` says it is not/);
+   });
+ });
++
++// ─────────────────────────────────────────────────────────────────────────────
++// ⏱ 2026-10-01 · LIMB 8 (rv2-services-022, row O-SANDBOX-ENV-DROPS-PRODUCTION-BINDINGS).
++// Every env block twins every top-level binding name, or the register's
++// envBindingParity.exempt says why; no placeholder id in a deployable config's env.
++// ─────────────────────────────────────────────────────────────────────────────
++describe('assert-platform-register — limb 8, every environment twins the top level', () => {
++  const SANDBOX = {
++    routes: [],
++    workers_dev: true,
++    vars: { SUPABASE_URL: 'https://fixture.supabase.co', API_VERSION: 'v1' },
++    d1_databases: [{ binding: 'PLATFORM_DB', database_name: 'platform_db_sandbox', database_id: '22222222-2222-2222-2222-222222222222' }],
++    kv_namespaces: [{ binding: 'CONFIG_KV', id: 'k1sandbox' }],
++    ratelimits: [
++      { name: 'EVENTS_CEILING_LIMITER', namespace_id: '2002' },
++      { name: 'CONFIG_CEILING_LIMITER', namespace_id: '2003' },
++    ],
++  };
++  /** PLATFORM_CFG with `env.sandbox` = `edit(copy of SANDBOX)`. */
++  const withSandbox = (edit = (s) => s) =>
++    PLATFORM_CFG.replace(/\n\}$/, `\n  "env": { "sandbox": ${JSON.stringify(edit(structuredClone(SANDBOX)))} },\n}`);
++  const parityRegister = (exempt = []) => {
++    const reg = baseRegister();
++    reg.envBindingParity = { _why: ['fixture'], exempt };
++    return reg;
++  };
++  const files = (edit) => ({ 'services/platform/wrangler.jsonc': withSandbox(edit) });
++
++  test('GREEN: a sandbox twinning every top-level binding and var passes, and the count says what it checked', () => {
++    const { code, out } = run(tree({ register: parityRegister(), files: files() }));
++    assert.equal(code, 0, out);
++    assert.match(out, /1 environment block\(s\) twinning 6 top-level binding\(s\) \(limb 8\)/);
++  });
++
++  const missing = (edit, needle) => {
++    const { code, out } = run(tree({ register: parityRegister(), files: files(edit) }));
++    assert.equal(code, 1, out);
++    assert.match(out, needle);
++  };
++  test('🔴 RED: a sandbox missing a KV namespace fails (exit 1), naming it', () => {
++    missing((s) => ({ ...s, kv_namespaces: [] }), /env\.sandbox — declares no `kv_namespaces` CONFIG_KV, which the top level binds/);
++  });
++  test('🔴 RED: a sandbox missing a D1 database fails (exit 1), naming it', () => {
++    missing((s) => ({ ...s, d1_databases: [] }), /env\.sandbox — declares no `d1_databases` PLATFORM_DB/);
++  });
++  test('🔴 RED: a sandbox missing a ratelimit fails (exit 1), naming it', () => {
++    missing((s) => ({ ...s, ratelimits: s.ratelimits.slice(1) }), /env\.sandbox — declares no `ratelimits` EVENTS_CEILING_LIMITER/);
++  });
++  test('🔴 RED: a sandbox missing a var fails (exit 1), naming it', () => {
++    missing((s) => ({ ...s, vars: { SUPABASE_URL: s.vars.SUPABASE_URL } }), /env\.sandbox — declares no `vars` API_VERSION/);
++  });
++
++  test('🔴 RED: a top-level service binding and R2 bucket are twinned too', () => {
++    const cfg = withSandbox().replace(
++      '"routes": [{ "pattern"',
++      '"services": [{ "binding": "ERASURE_X", "service": "x-api" }],\n  "r2_buckets": [{ "binding": "BACKUPS_R2", "bucket_name": "b" }],\n  "routes": [{ "pattern"',
++    );
++    const reg = parityRegister();
++    reg.bindings.push({ binding: 'BACKUPS_R2', kind: 'r2_buckets', purpose: 'Backups.', readers: [], unreadReason: 'Fixture: the backup cron is not in this tree.' });
++    const { code, out } = run(tree({ register: reg, files: { 'services/platform/wrangler.jsonc': cfg } }));
++    assert.equal(code, 1, out);
++    assert.match(out, /env\.sandbox — declares no `services` ERASURE_X/);
++    assert.match(out, /env\.sandbox — declares no `r2_buckets` BACKUPS_R2/);
++  });
++
++  test('🔴 RED: a deployable config whose env KV or D1 id is the all-zeros placeholder fails — a twin in name only', () => {
++    const { code, out } = run(
++      tree({
++        register: parityRegister(),
++        files: files((s) => ({
++          ...s,
++          kv_namespaces: [{ binding: 'CONFIG_KV', id: '00000000000000000000000000000000' }],
++          d1_databases: [{ ...s.d1_databases[0], database_id: '00000000-0000-0000-0000-000000000000' }],
++        })),
++      }),
++    );
++    assert.equal(code, 1, out);
++    assert.match(out, /env\.sandbox — KV CONFIG_KV still carries the all-zeros placeholder[\s\S]*provision-sandbox-twins\.mjs --apply/);
++    assert.match(out, /env\.sandbox — D1 PLATFORM_DB still carries the all-zeros placeholder/);
++  });
++
++  test('an exemption with a reason passes and is PRINTED every run', () => {
++    const reg = parityRegister([
++      { config: 'services/platform/wrangler.jsonc', env: 'sandbox', section: 'vars', name: 'API_VERSION', why: 'Fixture: the sandbox answers no versioned route at all.' },
++    ]);
++    const { code, out } = run(tree({ register: reg, files: files((s) => ({ ...s, vars: { SUPABASE_URL: s.vars.SUPABASE_URL } })) }));
++    assert.equal(code, 0, out);
++    assert.match(out, /⚠ {2}services\/platform\/wrangler\.jsonc env\.sandbox — `vars` API_VERSION NOT TWINNED\. Fixture: the sandbox answers/);
++  });
++
++  test('🔴 RED: an exemption must stay TRUE — present in the block, naming nothing, or with no reason, each fails', () => {
++    const row = { config: 'services/platform/wrangler.jsonc', env: 'sandbox', section: 'vars', name: 'API_VERSION', why: 'Fixture: a reason that no longer describes the block.' };
++    const stale = run(tree({ register: parityRegister([row]), files: files() }));
++    assert.equal(stale.code, 1, stale.out);
++    assert.match(stale.out, /`vars` API_VERSION is declared there, and envBindingParity\.exempt says it is not/);
++    const nothing = run(tree({ register: parityRegister([{ ...row, name: 'NOT_A_VAR' }]), files: files() }));
++    assert.equal(nothing.code, 1, nothing.out);
++    assert.match(nothing.out, /envBindingParity\.exempt names services\/platform\/wrangler\.jsonc env\.sandbox `vars` NOT_A_VAR[\s\S]*Delete the row/);
++    const noWhy = run(tree({ register: parityRegister([{ ...row, why: 'x' }]), files: files((s) => ({ ...s, vars: { SUPABASE_URL: s.vars.SUPABASE_URL } })) }));
++    assert.equal(noWhy.code, 1, noWhy.out);
++    assert.match(noWhy.out, /needs `config`, `env`, `section`, `name` and a `why` of a sentence/);
++  });
++
++  test('COVERAGE LOST: the register declares envBindingParity and no config has an env block', () => {
++    const { code, out } = run(tree({ register: parityRegister() }));
++    assert.equal(code, 2, out);
++    assert.match(out, /COVERAGE LOST — the register declares envBindingParity, and none of the 1 wrangler config\(s\) declares an `env` block/);
++  });
++
++  test('the real tree: the three sandboxes are held, and only the not-yet-created twins can be red', () => {
++    const { code, out } = run(REPO);
++    // Until tooling/scripts/provision-sandbox-twins.mjs --apply has run, the only limb-8
++    // findings allowed are the placeholder ids it writes; every NAME must already be twinned.
++    assert.doesNotMatch(out, /env\.sandbox — declares no /, out);
++    if (code !== 0) {
++      const problems = out.split('\n').filter((l) => /^ {4}\S/.test(l));
++      assert.ok(problems.length > 0 && problems.every((l) => /still carries the all-zeros placeholder/.test(l)), out);
++    } else {
++      assert.match(out, /3 environment block\(s\) twinning \d+ top-level binding\(s\) \(limb 8\)/);
++    }
++  });
++});
+diff --git a/tooling/ci/test/prod-provenance-databases.test.mjs b/tooling/ci/test/prod-provenance-databases.test.mjs
+index c8b6995b..11e22964 100644
+--- a/tooling/ci/test/prod-provenance-databases.test.mjs
++++ b/tooling/ci/test/prod-provenance-databases.test.mjs
+@@ -160,7 +160,9 @@ describe('the real tree: every database the register\'s Workers own, and only th
+       const text = readFileSync(join(REPO, rel), 'utf8');
+       for (const m of text.matchAll(/"database_name"\s*:\s*"([a-z_]+_sandbox)"/g)) sandboxNames.push(m[1]);
+     }
+-    assert.deepEqual(sandboxNames.sort(), ['platform_db_sandbox', 'platform_db_sandbox', 'subscriptiontracker_db_sandbox']);
++    // ⏱ 2026-10-01 (rv2-services-022): the platform's sandbox twins SUBSCRIPTIONTRACKER_DB too
++    // (rendered from the app Worker's own env.sandbox), so the app's sandbox database is named twice.
++    assert.deepEqual(sandboxNames.sort(), ['platform_db_sandbox', 'platform_db_sandbox', 'subscriptiontracker_db_sandbox', 'subscriptiontracker_db_sandbox']);
+     const walked = registeredD1Databases(REPO).databases.map((d) => d.name);
+     assert.equal(walked.includes('platform_db_sandbox'), false, 'env.sandbox of services/platform is walked');
+     assert.equal(walked.includes('subscriptiontracker_db_sandbox'), false, 'env.sandbox of services/subscriptiontracker-api is walked');
+diff --git a/tooling/ci/test/provision-backend.test.mjs b/tooling/ci/test/provision-backend.test.mjs
+index 71eda1ec..ef79b208 100644
+--- a/tooling/ci/test/provision-backend.test.mjs
++++ b/tooling/ci/test/provision-backend.test.mjs
+@@ -54,6 +54,9 @@ let seq = 0;
+ 
+ const PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
+ const PLATFORM_ID = '9d1c5c63-97fe-4f82-bc7d-f3fd22e9b351';
++const PLATFORM_SBX_ID = 'ead92001-03e1-4f71-9b92-c64963a24925';
++const SBX_JWKS = 'b2acb786d12f4e36b339dd19f8812bbe';
++const SBX_REVOKED = '5e55105e55105e55105e55105e55105e';
+ 
+ /** The stamped shape, comments and all — the comments matter, because a check
+  *  that grepped instead of parsing would read them. APP_DB first, as the brick
+@@ -75,16 +78,46 @@ const goodConfig = (appId) => `{
+       "database_name": "platform_db",
+       "database_id": "${PLATFORM_ID}"
+     }
+-  ]
++  ],
++  // ⏱ 2026-10-01 (rv2-services-011): the brick stamps a sandbox block too, and
++  // step [5s] writes its ids. Every binding name repeats here, which is the point.
++  "env": {
++    "sandbox": {
++      "d1_databases": [
++        { "binding": "APP_DB", "database_name": "${appId}_db_sandbox", "database_id": "${PLACEHOLDER}", "migrations_dir": "migrations" },
++        { "binding": "PLATFORM_DB", "database_name": "platform_db_sandbox", "database_id": "${PLATFORM_SBX_ID}" }
++      ],
++      "kv_namespaces": [
++        { "binding": "JWKS_CACHE", "id": "00000000000000000000000000000000" },
++        { "binding": "SESSION_REVOKED", "id": "00000000000000000000000000000000" }
++      ]
++    }
++  }
++}
++`;
++
++/** services/platform/wrangler.jsonc as far as step [5s] and --self-check read it:
++ *  the env.sandbox block where the shared sandbox namespace ids are recorded. */
++const platformConfig = ({ sessionRevoked = SBX_REVOKED } = {}) => `{
++  "name": "platform",
++  "env": { "sandbox": { "kv_namespaces": [
++    { "binding": "CONFIG_KV", "id": "7ba3a916f8a5429091dec4a39284bffb" },
++    { "binding": "JWKS_CACHE", "id": "${SBX_JWKS}" },
++    { "binding": "SESSION_REVOKED", "id": "${sessionRevoked}" }
++  ] } }
+ }
+ `;
+ 
+-function tree(appId, { config = goodConfig(appId) } = {}) {
++function tree(appId, { config = goodConfig(appId), platform = platformConfig() } = {}) {
+   const root = join(TMP, `r${seq++}`);
+   const p = join(root, 'services', `${appId}-api`, 'wrangler.jsonc');
+   mkdirSync(dirname(p), { recursive: true });
+   if (config !== null) writeFileSync(p, config);
+   else mkdirSync(dirname(p), { recursive: true });
++  if (platform !== null) {
++    mkdirSync(join(root, 'services', 'platform'), { recursive: true });
++    writeFileSync(join(root, 'services', 'platform', 'wrangler.jsonc'), platform);
++  }
+   return root;
+ }
+ 
+@@ -258,6 +291,7 @@ const BRICK_API = 'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/nee
+ const ROUTE_CLIENTS = 'tooling/bricks/app/route-clients.json';
+ const render = (rel, appId) => readFileSync(join(REPO, BRICK_API, rel), 'utf8').replaceAll('{{app_id}}', appId);
+ const LIVE_UUID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
++const SBX_UUID = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+ 
+ /** The service's own wrangler, faked: every call is appended to wrangler-calls.log. */
+ const FAKE_WRANGLER = `import { appendFileSync } from 'node:fs';
+@@ -266,7 +300,7 @@ import { fileURLToPath } from 'node:url';
+ const a = process.argv.slice(2);
+ appendFileSync(join(dirname(fileURLToPath(import.meta.url)), 'wrangler-calls.log'), a.join(' ') + '\\n');
+ const is = (...w) => w.every((x, i) => a[i] === x);
+-if (is('d1', 'info')) { console.log(JSON.stringify({ uuid: '${LIVE_UUID}' })); process.exit(0); }
++if (is('d1', 'info')) { console.log(JSON.stringify({ uuid: String(a[2]).endsWith('_sandbox') ? '${SBX_UUID}' : '${LIVE_UUID}' })); process.exit(0); }
+ if (is('d1', 'migrations', 'apply')) { console.log('applied'); process.exit(0); }
+ if (is('d1', 'execute')) { console.log(JSON.stringify([{ results: [{ name: 'd1_migrations' }, { name: 'records' }] }])); process.exit(0); }
+ console.error('fake wrangler: unexpected call ' + a.join(' '));
+@@ -312,6 +346,7 @@ function stampedTree(appId, { lockfile = true, wrangler = true, index = (s) => s
+     put(`${svc}/node_modules/wrangler/package.json`, '{ "type": "module" }\n');
+   }
+   put(ROUTE_CLIENTS, readFileSync(join(REPO, ROUTE_CLIENTS), 'utf8'));
++  put('services/platform/wrangler.jsonc', platformConfig());
+   put('tooling/platform-register.json', `${JSON.stringify(stampRegister(), null, 2)}\n`);
+   // Step [7]'s two files, copied from the REAL tree: the template row it copies is the
+   // real one, and the host row is spliced into the real, hand-formatted register.
+@@ -605,3 +640,84 @@ describe('E-a1 --check — every Worker directory has a register row', () => {
+     assert.match(out, /COVERAGE LOST — tooling\/legal\/data-inventory\.json is missing/);
+   });
+ });
++
++// ─────────────────────────────────────────────────────────────────────────────
++// ⏱ 2026-10-01 · rv2-services-010 / -011. `--register-only` (step [6] alone,
++// offline, for ci.yml's app-brick job), the sandbox half of `--self-check`, and the
++// live step [5s] that writes a stamped Worker's sandbox ids.
++// ─────────────────────────────────────────────────────────────────────────────
++describe('rv2-services-010/011 — --register-only, the sandbox self-check, and step [5s]', () => {
++  const sbxField = (root, section, binding, field) => {
++    const raw = readFileSync(join(root, 'services', 'probeapi-api', 'wrangler.jsonc'), 'utf8');
++    const strip = raw.replace(/^\s*\/\/.*$/gm, '').replace(/,(\s*[}\]])/g, '$1');
++    const cfg = JSON.parse(strip);
++    return (cfg.env.sandbox[section] ?? []).find((x) => x.binding === binding)?.[field];
++  };
++
++  test('--register-only writes the appWorkers row with NO credentials, NO wrangler and NO step [7] file', () => {
++    const root = stampedTree('probeapi');
++    const inv = readFileSync(join(root, INVENTORY), 'utf8');
++    const mon = readFileSync(join(root, MONITORS), 'utf8');
++    const { code, out } = run(root, 'probeapi', '--register-only');
++    assert.equal(code, 0, out);
++    assert.match(out, /\[6\] Writing probeapi-api's appWorkers row/);
++    assert.match(out, /--register-only: step \[6\] only\. No token, no install, no network/);
++    const reg = registerOf(root);
++    assert.deepEqual(reg.appWorkers.map((w) => w.name), ['probeapi-api']);
++    assert.deepEqual(reg.appWorkers[0].routes.map((r) => `${r.method} ${r.path}`), ['GET /v1/health', 'DELETE /v1/account']);
++    assert.deepEqual(wranglerCalls(root, 'probeapi'), [], 'wrangler ran under --register-only');
++    assert.equal(readFileSync(join(root, INVENTORY), 'utf8'), inv, 'step [7] wrote the inventory');
++    assert.equal(readFileSync(join(root, MONITORS), 'utf8'), mon, 'step [7] wrote the monitor register');
++    // …and it is the SAME step: a second run leaves the row as it is.
++    const again = run(root, 'probeapi', '--register-only');
++    assert.equal(again.code, 0, again.out);
++    assert.match(again.out, /already has a row \(probeapi-api\); left unchanged/);
++  });
++
++  test('🔴 RED: --self-check refuses a stamped config with NO env.sandbox — the brick as it was before 2026-10-01', () => {
++    const noSandbox = goodConfig('probeapi').replace(/,\n {2}\/\/ ⏱ 2026-10-01[\s\S]*\n\}\n$/, '\n}\n');
++    assert.ok(!noSandbox.includes('"env"'), 'fixture anchor: the env block is still there');
++    const { code, out } = run(tree('probeapi', { config: noSandbox }), 'probeapi', '--self-check');
++    assert.equal(code, 1, out);
++    assert.match(out, /declares no `env\.sandbox` block, so the Worker is born with no sandbox/);
++  });
++
++  test('🔴 RED: --self-check refuses a sandbox namespace the platform\'s env.sandbox does not record', () => {
++    const platform = platformConfig().replace(/,\n {4}\{ "binding": "SESSION_REVOKED"[^\n]*/, '');
++    const { code, out } = run(tree('probeapi', { platform }), 'probeapi', '--self-check');
++    assert.equal(code, 1, out);
++    assert.match(out, /env\.sandbox binds SESSION_REVOKED, which services\/platform\/wrangler\.jsonc env\.sandbox does not/);
++  });
++
++  test('the real brick template passes the sandbox half of --self-check against the real platform config', () => {
++    const root = tree('probeapi', { config: render('wrangler.jsonc', 'probeapi'), platform: readFileSync(join(REPO, 'services/platform/wrangler.jsonc'), 'utf8') });
++    const { code, out } = run(root, 'probeapi', '--self-check');
++    assert.equal(code, 0, out);
++    assert.match(out, /the sandbox patch rewrites env\.sandbox APP_DB\.database_id only/);
++    assert.match(out, /every shared sandbox namespace the stamp binds \(JWKS_CACHE, SESSION_REVOKED\)/);
++  });
++
++  test('step [5s] creates nothing shared: it writes the sandbox D1 id and COPIES the shared namespace ids, then migrates --env sandbox', () => {
++    const root = stampedTree('probeapi');
++    const { code, out } = provision(root, 'probeapi');
++    assert.equal(code, 0, out);
++    assert.match(out, /\[5s\] Ensuring the sandbox twin: D1 "probeapi_db_sandbox"/);
++    assert.equal(sbxField(root, 'd1_databases', 'APP_DB', 'database_id'), SBX_UUID);
++    assert.equal(sbxField(root, 'kv_namespaces', 'JWKS_CACHE', 'id'), SBX_JWKS);
++    assert.equal(sbxField(root, 'kv_namespaces', 'SESSION_REVOKED', 'id'), SBX_REVOKED);
++    const calls = wranglerCalls(root, 'probeapi');
++    assert.ok(calls.includes('d1 info probeapi_db_sandbox --json'), calls.join(' | '));
++    assert.ok(calls.includes('d1 migrations apply APP_DB --env sandbox --remote'), calls.join(' | '));
++    assert.ok(!calls.some((c) => /^kv\b/.test(c)), `step [5s] touched KV itself: ${calls.join(' | ')}`);
++    assert.ok(!calls.some((c) => /^(deploy|versions|secret)\b/.test(c)), `step [5s] must deploy nothing: ${calls.join(' | ')}`);
++  });
++
++  test('🔴 RED: step [5s] stops when the platform has not recorded a shared sandbox id yet (the twins script runs first)', () => {
++    const root = stampedTree('probeapi');
++    writeFileSync(join(root, 'services/platform/wrangler.jsonc'), platformConfig({ sessionRevoked: '0'.repeat(32) }));
++    const { code, out } = provision(root, 'probeapi');
++    assert.equal(code, 1, out);
++    assert.match(out, /records no id for the shared namespace SESSION_REVOKED[\s\S]*provision-sandbox-twins\.mjs --apply/);
++    assert.equal(registerOf(root).appWorkers.length, 0, 'the register row was written past a failed step [5s]');
++  });
++});
+diff --git a/tooling/ci/test/sandbox-twins.test.mjs b/tooling/ci/test/sandbox-twins.test.mjs
+new file mode 100644
+index 00000000..258a1ecd
+--- /dev/null
++++ b/tooling/ci/test/sandbox-twins.test.mjs
+@@ -0,0 +1,287 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// sandbox-twins.test.mjs — tooling/scripts/provision-sandbox-twins.mjs (create the
++// platform's missing sandbox namespaces and bucket, record their ids) and
++// tooling/scripts/wrangler-surgery.mjs (the structure-scoped writer both
++// provisioners use). ⏱ 2026-10-01, rv2-services-011 / -022.
++//
++// No network: the Cloudflare API is a fake handed to provision(), and the CLI cases
++// run with credentials stripped. What is held: create only, idempotent, sandbox
++// names only, a recorded id never overwritten, every write re-parse-verified and
++// confined to the one field, and the token never printed.
++//
++// Run:  node --test tooling/ci/test/sandbox-twins.test.mjs
++// ─────────────────────────────────────────────────────────────────────────────
++import { describe, test, before, after } from 'node:test';
++import assert from 'node:assert/strict';
++import { spawnSync } from 'node:child_process';
++import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join, dirname } from 'node:path';
++import { parseJsonc } from '../d1-stores.mjs';
++import {
++  TWINS,
++  declarationProblems,
++  placements,
++  provision,
++  credentials,
++  Refused,
++} from '../../scripts/provision-sandbox-twins.mjs';
++import {
++  bindingField,
++  isPlaceholderId,
++  setEnvBindingField,
++  topLevelEnvOffset,
++  SurgeryRefused,
++} from '../../scripts/wrangler-surgery.mjs';
++
++const REPO = join(import.meta.dirname, '..', '..', '..');
++const SCRIPT = join(REPO, 'tooling', 'scripts', 'provision-sandbox-twins.mjs');
++const PLATFORM = 'services/platform/wrangler.jsonc';
++const API = 'services/subscriptiontracker-api/wrangler.jsonc';
++
++let TMP;
++before(() => { TMP = mkdtempSync(join(tmpdir(), 'nikatru-sbx-twins-')); });
++after(() => { rmSync(TMP, { recursive: true, force: true }); });
++let seq = 0;
++
++/** A copy of every services/<dir> wrangler.jsonc as the tree holds them (the Worker set reads only those). */
++function tree() {
++  const root = join(TMP, `t${seq++}`);
++  for (const dir of ['platform', 'subscriptiontracker-api', 'edge-shield']) {
++    const rel = `services/${dir}/wrangler.jsonc`;
++    mkdirSync(dirname(join(root, rel)), { recursive: true });
++    cpSync(join(REPO, rel), join(root, rel));
++  }
++  mkdirSync(join(root, 'services', '_shared'), { recursive: true });
++  return root;
++}
++
++/** A fake Cloudflare: KV namespaces and R2 buckets in memory, every call recorded. */
++function fakeApi({ kv = [], r2 = [] } = {}) {
++  const calls = [];
++  let n = 0;
++  return {
++    calls,
++    kv,
++    r2,
++    kvNamespaces: async () => { calls.push('GET kv'); return [...kv]; },
++    createKv: async (title) => {
++      calls.push(`POST kv ${title}`);
++      const id = `${(++n).toString(16).padStart(2, '0')}`.padEnd(32, 'e');
++      kv.push({ id, title });
++      return { id, title };
++    },
++    r2Buckets: async () => { calls.push('GET r2'); return [...r2]; },
++    createR2: async (name) => { calls.push(`POST r2 ${name}`); r2.push({ name }); return { name }; },
++  };
++}
++const io = (root) => ({
++  read: (rel) => readFileSync(join(root, rel), 'utf8'),
++  write: (rel, text) => writeFileSync(join(root, rel), text),
++});
++const sbx = (root, rel, section, binding, field) =>
++  bindingField(parseJsonc(readFileSync(join(root, rel), 'utf8')), { env: 'sandbox', section, binding, field });
++
++describe('provision-sandbox-twins — the declaration', () => {
++  test('every twin is in the sandbox naming space, kv or r2, each binding once', () => {
++    assert.deepEqual(declarationProblems(), []);
++    assert.ok(TWINS.every((t) => t.name.endsWith('-sandbox')));
++  });
++
++  test('🔴 RED: a production-shaped name, an unknown kind and a doubled binding are each refused', () => {
++    const p = declarationProblems([
++      { kind: 'kv', name: 'session-revoked', binding: 'A' },
++      { kind: 'd1', name: 'x-sandbox', binding: 'B' },
++      { kind: 'kv', name: 'y-sandbox', binding: 'B' },
++    ]);
++    assert.equal(p.length, 3, p.join('\n'));
++    assert.match(p[0], /session-revoked: not in the sandbox naming space/);
++    assert.match(p[1], /kind d1 is neither kv nor r2/);
++    assert.match(p[2], /B: declared twice/);
++  });
++
++  test('the real tree: each twin lands in the configs whose env.sandbox binds it, and nowhere else', () => {
++    const got = placements(REPO).map((p) => `${p.twin.binding} → ${p.config}`).sort();
++    assert.deepEqual(got, [
++      `BACKUPS_R2 → ${PLATFORM}`,
++      `SESSION_REVOKED → ${PLATFORM}`,
++      `SESSION_REVOKED → ${API}`,
++      `SIGNUPS → ${PLATFORM}`,
++    ]);
++  });
++});
++
++describe('provision-sandbox-twins — plan, apply, and a second run', () => {
++  test('PLAN (no --apply) reads the account and creates and writes NOTHING', async () => {
++    const root = tree();
++    const before = readFileSync(join(root, PLATFORM), 'utf8');
++    const api = fakeApi();
++    const out = await provision({ root, api, apply: false, ...io(root) });
++    assert.deepEqual(api.calls, ['GET kv', 'GET r2']);
++    assert.deepEqual(out.writes, []);
++    assert.equal(readFileSync(join(root, PLATFORM), 'utf8'), before);
++  });
++
++  test('APPLY creates exactly the missing twins, writes ONE id per binding into every config, and changes nothing else', async () => {
++    const root = tree();
++    const beforeApi = parseJsonc(readFileSync(join(root, API), 'utf8'));
++    const api = fakeApi();
++    const out = await provision({ root, api, apply: true, ...io(root) });
++    assert.deepEqual(api.calls, ['GET kv', 'GET r2', 'POST kv session-revoked-sandbox', 'POST kv signups-sandbox', 'POST r2 nikatru-backups-sandbox']);
++    assert.deepEqual(out.writes.sort(), [PLATFORM, API].sort());
++    const revoked = api.kv.find((k) => k.title === 'session-revoked-sandbox').id;
++    assert.equal(sbx(root, PLATFORM, 'kv_namespaces', 'SESSION_REVOKED', 'id'), revoked);
++    assert.equal(sbx(root, API, 'kv_namespaces', 'SESSION_REVOKED', 'id'), revoked, 'ONE revocation namespace for both sandbox Workers');
++    assert.equal(sbx(root, PLATFORM, 'kv_namespaces', 'SIGNUPS', 'id'), api.kv.find((k) => k.title === 'signups-sandbox').id);
++    // Production is untouched, byte for byte in parse.
++    const afterApi = parseJsonc(readFileSync(join(root, API), 'utf8'));
++    assert.deepEqual({ ...afterApi, env: undefined }, { ...beforeApi, env: undefined });
++    assert.equal(bindingField(afterApi, { section: 'kv_namespaces', binding: 'SESSION_REVOKED', field: 'id' }), 'aa46ad5002874231931cc5dc5b6e2904');
++  });
++
++  test('IDEMPOTENT: a second run against the same account creates nothing and writes nothing', async () => {
++    const root = tree();
++    const api = fakeApi();
++    await provision({ root, api, apply: true, ...io(root) });
++    const snapshot = readFileSync(join(root, PLATFORM), 'utf8');
++    api.calls.length = 0;
++    const again = await provision({ root, api, apply: true, ...io(root) });
++    assert.deepEqual(api.calls, ['GET kv', 'GET r2']);
++    assert.deepEqual(again.writes, []);
++    assert.equal(readFileSync(join(root, PLATFORM), 'utf8'), snapshot);
++  });
++
++  test('an EXISTING namespace with the twin title is reused, never duplicated', async () => {
++    const root = tree();
++    const api = fakeApi({ kv: [{ id: 'abcdefabcdefabcdefabcdefabcdef01', title: 'session-revoked-sandbox' }], r2: [{ name: 'nikatru-backups-sandbox' }] });
++    await provision({ root, api, apply: true, ...io(root) });
++    assert.deepEqual(api.calls, ['GET kv', 'GET r2', 'POST kv signups-sandbox']);
++    assert.equal(sbx(root, API, 'kv_namespaces', 'SESSION_REVOKED', 'id'), 'abcdefabcdefabcdefabcdefabcdef01');
++  });
++
++  test('🔴 RED: a recorded id that differs from the account is NEVER overwritten — refused before any write', async () => {
++    const root = tree();
++    const t = readFileSync(join(root, API), 'utf8');
++    writeFileSync(join(root, API), setEnvBindingField(t, { env: 'sandbox', section: 'kv_namespaces', binding: 'SESSION_REVOKED', field: 'id', value: '1234567890abcdef1234567890abcdef' }));
++    const platformBefore = readFileSync(join(root, PLATFORM), 'utf8');
++    const api = fakeApi({ kv: [{ id: 'abcdefabcdefabcdefabcdefabcdef01', title: 'session-revoked-sandbox' }] });
++    await assert.rejects(
++      provision({ root, api, apply: true, ...io(root) }),
++      (e) => e instanceof Refused && /already names id #[0-9a-f]{8}, and the account's session-revoked-sandbox is #[0-9a-f]{8}[\s\S]*never overwrites/.test(e.message),
++    );
++    assert.equal(readFileSync(join(root, PLATFORM), 'utf8'), platformBefore, 'a refusal wrote a sibling config first');
++  });
++
++  test('🔴 RED: two namespaces with the twin title is a refusal, not a guess', async () => {
++    const root = tree();
++    const api = fakeApi({ kv: [{ id: 'a'.repeat(32), title: 'signups-sandbox' }, { id: 'b'.repeat(32), title: 'signups-sandbox' }] });
++    await assert.rejects(provision({ root, api, apply: true, ...io(root) }), /2 KV namespaces are titled signups-sandbox/);
++  });
++
++  test('🔴 RED: a twin no env.sandbox binds would be created for nothing — refused', async () => {
++    const root = tree();
++    const t = readFileSync(join(root, PLATFORM), 'utf8');
++    // In the env part only: the top level binds SIGNUPS too, earlier in the file.
++    const cut = topLevelEnvOffset(t);
++    writeFileSync(join(root, PLATFORM), t.slice(0, cut) + t.slice(cut).replace(/,(\s*(?:\/\/[^\n]*\n\s*)*)\{ "binding": "SIGNUPS", "id": "[0-9a-f]{32}" \}/, '$1'));
++    assert.equal(sbx(root, PLATFORM, 'kv_namespaces', 'SIGNUPS', 'id'), undefined, 'fixture anchor: SIGNUPS still bound');
++    await assert.rejects(provision({ root, api: fakeApi(), apply: true, ...io(root) }), /binds SIGNUPS, so signups-sandbox would be created for nothing/);
++  });
++});
++
++describe('provision-sandbox-twins — the CLI and the token', () => {
++  test('--list is offline and names every placement', () => {
++    const r = spawnSync(process.execPath, [SCRIPT, '--list'], { encoding: 'utf8', env: { PATH: process.env.PATH } });
++    assert.equal(r.status, 0, r.stderr);
++    assert.match(r.stdout, /kv session-revoked-sandbox +→ services\/subscriptiontracker-api\/wrangler\.jsonc env\.sandbox SESSION_REVOKED/);
++  });
++
++  // The CLI is never run without a flag here: on a machine holding the vault that is a
++  // real (read-only) account call. The credential refusal is credentials()'s case below.
++  test('an unknown flag is refused before any credential is read', () => {
++    const u = spawnSync(process.execPath, [SCRIPT, '--force'], { encoding: 'utf8', env: { PATH: process.env.PATH } });
++    assert.equal(u.status, 1);
++    assert.match(u.stderr, /unknown argument\(s\) --force/);
++  });
++
++  test('the vault is read IN-PROCESS: the two keys only, quotes stripped, from the main checkout', () => {
++    const root = join(TMP, `vault${seq++}`);
++    mkdirSync(join(root, '.claude'), { recursive: true });
++    assert.equal(spawnSync('git', ['-C', root, 'init', '-q']).status, 0);
++    writeFileSync(
++      join(root, '.claude', 'secrets.env'),
++      '# comment\nOTHER_SECRET=nope\nCLOUDFLARE_API_TOKEN="tok-from-vault"\nCLOUDFLARE_ACCOUNT_ID=\'acct-from-vault\'\n',
++    );
++    const got = credentials(root, {});
++    assert.deepEqual(got, { CLOUDFLARE_API_TOKEN: 'tok-from-vault', CLOUDFLARE_ACCOUNT_ID: 'acct-from-vault' });
++    assert.equal(Object.hasOwn(got, 'OTHER_SECRET'), false);
++    // The environment wins over the vault, key by key.
++    assert.equal(credentials(root, { CLOUDFLARE_API_TOKEN: 'env-tok' }).CLOUDFLARE_API_TOKEN, 'env-tok');
++    assert.throws(() => credentials(join(TMP, 'novault-nowhere'), {}), /not set in the environment and not found in/);
++  });
++
++  test('the script never prints a token: no `console.*(` line names it', () => {
++    const src = readFileSync(SCRIPT, 'utf8');
++    const printing = src.split('\n').filter((l) => /console\.(log|error)\(/.test(l) && /\btoken\b(?!:)/.test(l) && !/no token|never/.test(l));
++    assert.deepEqual(printing, []);
++  });
++});
++
++describe('wrangler-surgery — one field, by structure, proven by re-parse', () => {
++  const CFG = `{
++  // "env": { "sandbox": { "kv_namespaces": [ { "binding": "A", "id": "comment" } ] } }
++  "name": "w",
++  "kv_namespaces": [{ "binding": "A", "id": "prod-a" }, { "binding": "B", "id": "prod-b" }],
++  "env": {
++    "staging": {
++      "kv_namespaces": [{ "binding": "A", "id": "stg-a" }],
++      // A NESTED "sandbox" object, before the real one: only depth tells them apart.
++      "meta": { "sandbox": { "kv_namespaces": [{ "binding": "A", "id": "nested-a" }] } }
++    },
++    "sandbox": {
++      "vars": { "URL": "https://x//y" },
++      "kv_namespaces": [
++        { "binding": "A", "id": "${'0'.repeat(32)}" },
++        // { "binding": "B", "id": "commented-out" },
++        { "binding": "B", "id": "sbx-b" }
++      ]
++    }
++  }
++}
++`;
++  test('writes the named environment\'s entry only — not production, not another environment, not a comment', () => {
++    const out = setEnvBindingField(CFG, { env: 'sandbox', section: 'kv_namespaces', binding: 'A', field: 'id', value: 'NEW' });
++    const c = parseJsonc(out);
++    assert.equal(bindingField(c, { env: 'sandbox', section: 'kv_namespaces', binding: 'A', field: 'id' }), 'NEW');
++    assert.equal(bindingField(c, { section: 'kv_namespaces', binding: 'A', field: 'id' }), 'prod-a');
++    assert.equal(bindingField(c, { env: 'staging', section: 'kv_namespaces', binding: 'A', field: 'id' }), 'stg-a');
++    assert.equal(c.env.staging.meta.sandbox.kv_namespaces[0].id, 'nested-a', 'the nested look-alike was written');
++    assert.ok(out.includes('"id": "comment"') && out.includes('"commented-out"'), 'a comment was rewritten');
++    assert.equal(out.length, CFG.length - 32 + 3);
++  });
++
++  test('🔴 RED: an absent environment, section or binding, and a doubled binding, are refused', () => {
++    const at = (o) => () => setEnvBindingField(CFG, { section: 'kv_namespaces', field: 'id', value: 'x', ...o });
++    assert.throws(at({ env: 'prod', binding: 'A' }), (e) => e instanceof SurgeryRefused && /`env` declares no `prod` block/.test(e.message));
++    assert.throws(at({ env: 'sandbox', section: 'd1_databases', binding: 'A' }), /env\.sandbox declares no `d1_databases` array/);
++    assert.throws(at({ env: 'sandbox', binding: 'C' }), /0 entries are bound as C/);
++    const doubled = CFG.replace('{ "binding": "B", "id": "sbx-b" }', '{ "binding": "A", "id": "dup" }');
++    assert.throws(() => setEnvBindingField(doubled, { env: 'sandbox', section: 'kv_namespaces', binding: 'A', field: 'id', value: 'x' }), /2 entries are bound as A/);
++    assert.throws(() => setEnvBindingField('{ "name": "w" }', { env: 'sandbox', section: 'kv_namespaces', binding: 'A', field: 'id', value: 'x' }), /declares no top-level `env` object/);
++  });
++
++  test('topLevelEnvOffset is the TOP-LEVEL "env" key, never one in a comment or a nested block', () => {
++    const at = topLevelEnvOffset(CFG);
++    assert.equal(CFG.slice(at, at + 5), '"env"');
++    assert.ok(CFG.slice(0, at).includes('"prod-a"') && !CFG.slice(0, at).includes('"stg-a"'));
++    assert.equal(topLevelEnvOffset('{ "name": "w", "vars": { "env": {} } }'), '{ "name": "w", "vars": { "env": {} } }'.length);
++  });
++
++  test('isPlaceholderId: both placeholder spellings, and nothing else', () => {
++    assert.equal(isPlaceholderId('00000000-0000-0000-0000-000000000000'), true);
++    assert.equal(isPlaceholderId('0'.repeat(32)), true);
++    assert.equal(isPlaceholderId('b2acb786d12f4e36b339dd19f8812bbe'), false);
++    assert.equal(isPlaceholderId(''), false);
++    assert.equal(isPlaceholderId(undefined), false);
++  });
++});
+diff --git a/tooling/ci/test/worker-set.test.mjs b/tooling/ci/test/worker-set.test.mjs
+index 9692d22a..2df2c42a 100644
+--- a/tooling/ci/test/worker-set.test.mjs
++++ b/tooling/ci/test/worker-set.test.mjs
+@@ -17,7 +17,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync
+ import { join, dirname, resolve } from 'node:path';
+ import { tmpdir } from 'node:os';
+ import { fileURLToPath } from 'node:url';
+-import { workerSet, SERVICES_DIR, SHARED_DIR, WORKER_CONFIG } from '../worker-set.mjs';
++import { workerSet, deploySet, envRefusals, SERVICES_DIR, SHARED_DIR, WORKER_CONFIG } from '../worker-set.mjs';
+ import { parseWorkflow } from '../workflow-scan.mjs';
+ 
+ const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+@@ -227,20 +227,57 @@ describe('worker-set.mjs --for-deploy — the register, the committed lockfile a
+     const p = join(r, SERVICES_DIR, dir, WORKER_CONFIG);
+     writeFileSync(p, readFileSync(p, 'utf8').replace(/\}\n$/, `  "env": { "${name}": { "name": "w-${name}" } },\n}\n`));
+   };
+-  test('--env <name> keeps the entries whose config declares env.<name>, the rest dropped', () => {
+-    const r = deployTree({ workers: { platform: { migrated: ['PLATFORM_DB'] }, 'yyy-api': { migrated: ['APP_DB'] }, 'zzz-api': { migrated: ['APP_DB'] } },
++  // ⏱ 2026-10-01 — rv2-services-011 (O-BRICK-WORKER-HAS-NO-SANDBOX-ENV): an APP Worker
++  // with no env.<name> is a REFUSAL, not a drop. The case below used to assert the drop.
++  const twoApps = () =>
++    deployTree({ workers: { platform: { migrated: ['PLATFORM_DB'] }, 'yyy-api': { migrated: ['APP_DB'] }, 'zzz-api': { migrated: ['APP_DB'] } },
+       reg: register((g) => ({ ...g, appWorkers: [row('yyy-api'), row('zzz-api')] })) });
++  test('--env <name> keeps every app Worker that declares env.<name>; a serving Worker without one is left out', () => {
++    const r = twoApps();
++    withEnv(r, 'yyy-api', 'sandbox');
+     withEnv(r, 'zzz-api', 'sandbox');
+-    withEnv(r, 'platform', 'sandbox');
+     const j = cli('--for-deploy', '--json', '--app-workers', '--env', 'sandbox', r);
+     assert.equal(j.code, 0, j.out);
+-    assert.deepEqual(JSON.parse(j.stdout).map((x) => x.worker), ['zzz-api']);
++    assert.deepEqual(JSON.parse(j.stdout).map((x) => x.worker), ['yyy-api', 'zzz-api']);
+     const all = cli('--for-deploy', '--json', '--env', 'sandbox', r);
+     assert.equal(all.code, 0, all.out);
+-    assert.deepEqual(JSON.parse(all.stdout).map((x) => x.worker), ['platform', 'zzz-api']);
++    assert.deepEqual(JSON.parse(all.stdout).map((x) => x.worker), ['yyy-api', 'zzz-api']);
++    withEnv(r, 'platform', 'sandbox');
++    const both = cli('--for-deploy', '--json', '--env', 'sandbox', r);
++    assert.deepEqual(JSON.parse(both.stdout).map((x) => x.worker), ['platform', 'yyy-api', 'zzz-api']);
++  });
++
++  test('🔴 RED CONTROL: a two-app register where app #2 declares no env.sandbox is REFUSED (exit 1), naming it, with no set printed', () => {
++    const r = twoApps();
++    withEnv(r, 'zzz-api', 'sandbox');
++    withEnv(r, 'platform', 'sandbox');
++    for (const args of [['--app-workers'], []]) {
++      const j = cli('--for-deploy', '--json', ...args, '--env', 'sandbox', r);
++      assert.equal(j.code, 1, j.out);
++      assert.match(j.out, /FAIL worker-set --env sandbox: services\/yyy-api\/wrangler\.jsonc \(yyy-api\) is an app Worker and declares no `env\.sandbox` block/);
++      assert.doesNotMatch(j.out, /zzz-api\/wrangler\.jsonc \(zzz-api\) is an app Worker/);
++      assert.equal(j.stdout.trim(), '', 'a refused --env read still printed a set');
++    }
++  });
++
++  test('an environment no app Worker declares refuses every app Worker, never prints `[]`', () => {
++    const r = twoApps();
++    withEnv(r, 'yyy-api', 'sandbox');
++    withEnv(r, 'zzz-api', 'sandbox');
+     const none = cli('--for-deploy', '--json', '--app-workers', '--env', 'staging', r);
+-    assert.equal(none.code, 0, none.out);
+-    assert.deepEqual(JSON.parse(none.stdout), []);
++    assert.equal(none.code, 1, none.out);
++    assert.match(none.out, /services\/yyy-api\/wrangler\.jsonc \(yyy-api\)[^\n]*env\.staging/);
++    assert.match(none.out, /services\/zzz-api\/wrangler\.jsonc \(zzz-api\)[^\n]*env\.staging/);
++  });
++
++  test('envRefusals() is the module answer the CLI prints, and an edge or serving row is never in it', () => {
++    const r = twoApps();
++    withEnv(r, 'zzz-api', 'sandbox');
++    const d = deploySet(r);
++    assert.deepEqual(d.problems, []);
++    const refused = envRefusals(r, d, 'sandbox');
++    assert.equal(refused.length, 1);
++    assert.match(refused[0], /^services\/yyy-api\/wrangler\.jsonc \(yyy-api\)/);
+   });
+ 
+   test('the real tree: every app Worker the sandbox matrix gets declares env.sandbox, and there is at least one', () => {
+diff --git a/tooling/ci/worker-set.mjs b/tooling/ci/worker-set.mjs
+index 4cac6480..a5e0bfc8 100644
+--- a/tooling/ci/worker-set.mjs
++++ b/tooling/ci/worker-set.mjs
+@@ -80,12 +80,12 @@
+ //                 value deploy-workers.yml's `workers` job writes to `workers=`. The
+ //                 whole set is still checked first;
+ //   --env <name>  with --json only: the entries whose own wrangler.jsonc declares an
+-//                 `env.<name>` block, the rest dropped. deploy-sandbox.yml's `workers` job
+-//                 reads `--json --app-workers --env sandbox`, so a Worker with no sandbox
+-//                 block is never handed to `wrangler deploy --env sandbox` (which would
+-//                 otherwise be a question for wrangler, not this reader), and
+-//                 assert-release-provenance.mjs limb 2b resolves a sandbox leg's
+-//                 `workingDirectory` through envEntries(), the same answer;
++//                 `env.<name>` block. deploy-sandbox.yml's `workers` job reads
++//                 `--json --app-workers --env sandbox`, and assert-release-provenance.mjs
++//                 limb 2b resolves a sandbox leg's `workingDirectory` through envEntries(),
++//                 the same answer. An APP Worker without the block is REFUSED (exit 1,
++//                 naming it; envRefusals() below), never dropped; a serving or edge
++//                 Worker without one is still left out of the list;
+ //   with none of these, one directory name per line.
+ //
+ // ⏱ 2026-09-29 — `--env` (B-12, row O-SERVICE-KIT-UNBUILT). deploy-sandbox.yml was one
+@@ -94,10 +94,19 @@
+ // command; symbolication-proof.yml named the app on nine lines. Both were classified
+ // out of assert-release-lane-generic.mjs, so app #2 would have had no sandbox and
+ // nothing would have said so.
++//
++// ⏱ 2026-10-01 — AN APP WORKER WITH NO `env.<name>` IS A REFUSAL, NOT A DROP
++// (rv2-services-011, row O-BRICK-WORKER-HAS-NO-SANDBOX-ENV). `--env` used to filter
++// such a Worker out without a word, and the brick stamped none, so app #2's Worker
++// would have deployed to production and never to the sandbox, its store capture
++// would have had no API, and deploy-sandbox would have stayed green over the gap
++// it was built to close. Every app Worker is held to the same sandbox parity as app
++// #1's; the brick now stamps the block (its own test/wrangler-config.test.ts).
+ // Exit 0 = the set is non-empty, every directory under services/ is placed, and
+ //          (--for-deploy) every member holds.
+ // Exit 1 = a directory under services/ is neither `_shared` nor a Worker, or
+-//          (--for-deploy) a member fails the register, its lockfile or `dsnSecret`.
++//          (--for-deploy) a member fails the register, its lockfile or `dsnSecret`,
++//          or (--env <name>) an app Worker declares no `env.<name>` block.
+ // Exit 2 = COVERAGE LOST: no services/ directory, no Worker in it, or
+ //          (--for-deploy) no readable register or no git index to ask.
+ // ─────────────────────────────────────────────────────────────────────────────
+@@ -366,6 +375,22 @@ export function envEntries(root, entries, name) {
+   });
+ }
+ 
++/** Why each APP Worker entry of `d` (a deploySet() answer) is refused under
++ *  `--env <name>`: one line per app Worker whose own `${WORKER_CONFIG}` declares no
++ *  `env.<name>` block (or does not parse), in the set's order. Empty is the pass. */
++export function envRefusals(root, d, name) {
++  const app = appWorkerEntries(d);
++  const kept = new Set(envEntries(root, app, name).map((e) => e.dir));
++  return app
++    .filter((e) => !kept.has(e.dir))
++    .map(
++      (e) =>
++        `${e.dir}/${WORKER_CONFIG} (${e.worker}) is an app Worker and declares no \`env.${name}\` block. ` +
++        `A \`--env ${name}\` deploy would leave it out without a word: give it the block the brick stamps ` +
++        '(tooling/bricks/app/.../wrangler.jsonc env.sandbox), with its ids written by provision-backend.mjs.',
++    );
++}
++
+ /** `${{ matrix.<dimension>.<field> }}` naming a field of an appWorkerMatrix() entry —
+  *  the one shape a workflow reads a deploy-matrix leg in. Group 1 is the dimension,
+  *  group 2 the field. Global: callers use `matchAll` or reset `lastIndex`. */
+@@ -463,6 +488,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
+       console.error('\nworker-set: FAILED');
+       process.exit(1);
+     }
++    if (envName !== null) {
++      const refused = envRefusals(root, d, envName);
++      if (refused.length) {
++        console.error('');
++        for (const r of refused) console.error(`FAIL worker-set --env ${envName}: ${r}`);
++        console.error('\nworker-set: FAILED');
++        process.exit(1);
++      }
++    }
+     if (json) {
+       const picked = appOnly ? appWorkerEntries(d) : d.entries;
+       console.log(JSON.stringify(envName === null ? picked : envEntries(root, picked, envName)));
+diff --git a/tooling/enforcement-index.json b/tooling/enforcement-index.json
+index 1831ba15..cf32e882 100644
+--- a/tooling/enforcement-index.json
++++ b/tooling/enforcement-index.json
+@@ -227,6 +227,7 @@
+       "E-3"
+     ],
+     "invokedBy": [
++      ".github/workflows/ci.yml#app-brick",
+       ".github/workflows/ci.yml#guards-legal"
+     ],
+     "kind": "guard",
+diff --git a/tooling/platform-register.json b/tooling/platform-register.json
+index b3282b2c..a493a3b3 100644
+--- a/tooling/platform-register.json
++++ b/tooling/platform-register.json
+@@ -435,6 +435,26 @@
+       }
+     ]
+   },
++  "envBindingParity": {
++    "_why": [
++      "Read by tooling/ci/assert-platform-register.mjs limb 8 (2026-10-01, rv2-services-022, row O-SANDBOX-ENV-DROPS-PRODUCTION-BINDINGS).",
++      "Wrangler does not inherit a binding into an environment, and every binding fails open when absent, so an env block that omits",
++      "one the top level declares deploys WITHOUT it, silently. Limb 8 requires every top-level binding name (d1_databases, kv_namespaces,",
++      "r2_buckets, ratelimits, services, vars) in every env block of every config in bindingSources.configs, on a resource of that",
++      "environment. A row below is the ONLY way to leave one out: it names the config, the environment, the section and the name, with",
++      "the reason, and it is printed on every run. A row that stops being true (the block declares it, or the top level no longer does)",
++      "is itself a finding."
++    ],
++    "exempt": [
++      {
++        "config": "services/platform/wrangler.jsonc",
++        "env": "sandbox",
++        "section": "vars",
++        "name": "PROVIDER_TOKEN_PLAINTEXT_READS_UNTIL",
++        "why": "The plain-text read window exists only to migrate provider tokens written before encryption (services/platform/src/lib/provider-revoke.ts plaintextReadsOpen), and the decision to leave it out of the sandbox is recorded beside the top-level line (services/platform/wrangler.jsonc, #1104): the sandbox database never held plain text. Absent, the window is CLOSED, which is the state production reaches when its date passes."
++      }
++    ]
++  },
+   "routes": [
+     {
+       "id": "health",
+diff --git a/tooling/scripts/provision-backend.mjs b/tooling/scripts/provision-backend.mjs
+index 32aae474..b4089128 100644
+--- a/tooling/scripts/provision-backend.mjs
++++ b/tooling/scripts/provision-backend.mjs
+@@ -81,6 +81,7 @@
+ //   CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… \
+ //     node tooling/scripts/provision-backend.mjs <app_id> [--location apac] [--dry]
+ //   node tooling/scripts/provision-backend.mjs <app_id> --self-check
++//   node tooling/scripts/provision-backend.mjs <app_id> --register-only   (step [6] alone, offline)
+ //   node tooling/scripts/provision-backend.mjs --check
+ //
+ // Credentials are read from the ENVIRONMENT only; this script never opens
+@@ -125,12 +126,16 @@ import { parseJsonc as parseConfig } from '../ci/d1-sql-inventory.mjs';
+ // Step [7] and `--check`: the one D1 walk, and the one writer of a monitor-register host row.
+ import { ownedD1 } from '../ci/d1-stores.mjs';
+ import { REGISTER_REL as MONITOR_REGISTER, appendHostRow } from '../ops/monitor-register.mjs';
++// Step [5s] and `--self-check`: the structure-scoped writer of an env block's ids.
++import { bindingField, isPlaceholderId, setEnvBindingField, SurgeryRefused, topLevelEnvOffset } from './wrangler-surgery.mjs';
+ 
+ /** Step [6]'s source for every route's auth, purpose and client (see the header). */
+ const ROUTE_CLIENTS = 'tooling/bricks/app/route-clients.json';
+ /** Step [7]'s inventory, and the template row it copies. */
+ const INVENTORY = 'tooling/legal/data-inventory.json';
+ const TEMPLATE_STORE = 'd1:{{app_id}}_db';
++/** Step [5s]'s source for the SHARED sandbox namespace ids. */
++const PLATFORM_CONFIG = 'services/platform/wrangler.jsonc';
+ 
+ const PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
+ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+@@ -149,6 +154,20 @@ const VALID_HINTS = ['wnam', 'enam', 'weur', 'eeur', 'apac', 'oc'];
+  *  and the check would go on passing. [pipeline S-12r] (absent from origins.lock.json by construction — S-12r is a residual of S-12, raised by Private/pre-minimal-2026-09-08:plans/03-stamper-plan.md after the pipeline harvest was frozen) */
+ const APP_DB_BLOCK = /("binding"\s*:\s*"APP_DB"[\s\S]{0,400}?"database_id"\s*:\s*")([^"]+)(")/;
+ 
++/** ⏱ 2026-10-01 (rv2-services-011) — THE TOP LEVEL ONLY. The brick now stamps an
++ *  `env.sandbox` block, and every binding name repeats inside it, so `"binding":
++ *  "APP_DB"` occurs twice. Mutation-measured that day by this file's own test ("the
++ *  APP_DB block outgrows the scoping window"): with the top-level block padded past
++ *  400 characters, the unconfined pattern MATCHED THE SANDBOX ENTRY instead of
++ *  failing, so a live run would have written production's uuid into the sandbox
++ *  binding. Both the self-check and the live run therefore apply APP_DB_BLOCK to the
++ *  text before the top-level `"env"` key only (tooling/scripts/wrangler-surgery.mjs). */
++const topLevelOf = (text) => text.slice(0, topLevelEnvOffset(text));
++const patchAppDb = (text, id) => {
++  const cut = topLevelEnvOffset(text);
++  return text.slice(0, cut).replace(APP_DB_BLOCK, `$1${id}$3`) + text.slice(cut);
++};
++
+ const args = process.argv.slice(2);
+ const appId = args.find((a) => !a.startsWith('--'));
+ const dry = args.includes('--dry');
+@@ -266,6 +285,7 @@ const ROOT = resolve(process.cwd());
+ const svcDir = join(ROOT, 'services', `${appId}-api`);
+ const cfgPath = join(svcDir, 'wrangler.jsonc');
+ const dbName = `${appId}_db`;
++const cfgRel = `${SERVICES_DIR}/${appId}-api/${WORKER_CONFIG}`;
+ 
+ // READ ONCE (CodeQL #86): the config's bytes are taken here, instead of an existence check that
+ // the rewrite at the end of this script acted on. ENOENT/ENOTDIR are "no stamped backend";
+@@ -362,7 +382,7 @@ if (selfCheck) {
+     const platformIdBefore = idOf(before, 'PLATFORM_DB');
+     // Matched up here so the diagnostics below can say what the live patch WOULD
+     // have captured, rather than only that something is missing.
+-    const m = raw.match(APP_DB_BLOCK);
++    const m = topLevelOf(raw).match(APP_DB_BLOCK);
+ 
+     if (entryOf(before, 'APP_DB') === undefined) {
+       problems.push(
+@@ -411,7 +431,7 @@ if (selfCheck) {
+       const SYNTHETIC = '11111111-2222-4333-8444-555555555555';
+       let after;
+       try {
+-        after = parseJsonc(raw.replace(APP_DB_BLOCK, `$1${SYNTHETIC}$3`));
++        after = parseJsonc(patchAppDb(raw, SYNTHETIC));
+       } catch (e) {
+         problems.push(`the patch produced a config that no longer parses: ${e.message}`);
+       }
+@@ -434,6 +454,54 @@ if (selfCheck) {
+     }
+   }
+ 
++  // ⏱ 2026-10-01 (rv2-services-011) — STEP [5s]'S SURGERY, THE SAME WAY. The sandbox
++  // block repeats every binding name further down the file, so the write is scoped by
++  // structure (tooling/scripts/wrangler-surgery.mjs), and this proves it in memory:
++  // the sandbox APP_DB moves, and neither the top level nor the shared sandbox
++  // PLATFORM_DB does. Every shared namespace it binds must be one the platform's
++  // env.sandbox declares, since that is where step [5s] copies the id from.
++  if (before) {
++    const sbx = before.env?.sandbox;
++    const sbxId = bindingField(before, { env: 'sandbox', section: 'd1_databases', binding: 'APP_DB', field: 'database_id' });
++    if (!sbx || typeof sbx !== 'object') {
++      problems.push('the stamped config declares no `env.sandbox` block, so the Worker is born with no sandbox and deploy-sandbox refuses it.');
++    } else if (typeof sbxId !== 'string') {
++      problems.push('env.sandbox declares no APP_DB with a `database_id`, so step [5s] has nothing to write the sandbox database into.');
++    } else {
++      const SYNTHETIC_SBX = '66666666-7777-4888-8999-aaaaaaaaaaaa';
++      try {
++        const after = parseJsonc(
++          setEnvBindingField(raw, { env: 'sandbox', section: 'd1_databases', binding: 'APP_DB', field: 'database_id', value: SYNTHETIC_SBX }),
++        );
++        const moved = bindingField(after, { env: 'sandbox', section: 'd1_databases', binding: 'APP_DB', field: 'database_id' });
++        const top = idOf(after, 'APP_DB');
++        const sbxPlatform = bindingField(after, { env: 'sandbox', section: 'd1_databases', binding: 'PLATFORM_DB', field: 'database_id' });
++        if (moved !== SYNTHETIC_SBX) problems.push(`after the sandbox patch env.sandbox APP_DB.database_id is "${moved}", not the value written.`);
++        else if (top !== idOf(before, 'APP_DB') || sbxPlatform !== bindingField(before, { env: 'sandbox', section: 'd1_databases', binding: 'PLATFORM_DB', field: 'database_id' })) {
++          problems.push('the sandbox patch also moved the top-level APP_DB or the shared sandbox PLATFORM_DB.');
++        } else {
++          console.log('  ok  the sandbox patch rewrites env.sandbox APP_DB.database_id only (re-parsed)');
++        }
++      } catch (e) {
++        if (!(e instanceof SurgeryRefused)) throw e;
++        problems.push(`the sandbox patch was refused: ${e.message}`);
++      }
++      let platformSbx = null;
++      try {
++        platformSbx = parseJsonc(readFileSync(join(ROOT, PLATFORM_CONFIG), 'utf8')).env?.sandbox ?? null;
++      } catch (e) {
++        problems.push(`${PLATFORM_CONFIG} could not be read (${e.message}); step [5s] copies the shared sandbox namespace ids from it.`);
++      }
++      const shared = new Set((platformSbx?.kv_namespaces ?? []).map((k) => k.binding));
++      const orphan = (sbx.kv_namespaces ?? []).map((k) => k.binding).filter((b) => !shared.has(b));
++      if (platformSbx && orphan.length) {
++        problems.push(`env.sandbox binds ${orphan.join(', ')}, which ${PLATFORM_CONFIG} env.sandbox does not, so step [5s] has no shared id to copy.`);
++      } else if (platformSbx) {
++        console.log(`  ok  every shared sandbox namespace the stamp binds (${(sbx.kv_namespaces ?? []).map((k) => k.binding).join(', ')}) is one the platform's env.sandbox records`);
++      }
++    }
++  }
++
+   if (problems.length) {
+     console.error('\n✗ provision-backend --self-check FAILED:');
+     for (const p of problems) console.error(`    ${p}`);
+@@ -444,6 +512,21 @@ if (selfCheck) {
+   process.exit(0);
+ }
+ 
++// ─────────────────────────────────────────────────────────────────────────────
++// `--register-only` — step [6] ALONE: the register row, offline (no token, no
++// install, no network), then stop. ⏱ 2026-10-01 (rv2-services-010, the class fix):
++// ci.yml's app-brick job runs it on the throwaway backend probe so the guards that
++// read the Worker set (assert-analytics-contract.mjs through worker-set.mjs) see the
++// stamped Worker AS PROVISIONING WOULD REGISTER IT. Without a row, worker-set.mjs
++// refuses the unregistered directory and every reader of the deploy matrix is
++// COVERAGE LOST, so the stamped /v1/health could only ever be graded after app #2's
++// first provisioning, in app #2's own CI. The SAME function the full run calls.
++if (args.includes('--register-only')) {
++  writeRegisterRow();
++  console.log('\n✅ --register-only: step [6] only. No token, no install, no network; nothing created, patched or migrated.');
++  process.exit(0);
++}
++
+ for (const k of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) {
+   if (!process.env[k]) {
+     die([
+@@ -519,8 +602,7 @@ console.log(`    wrangler: ${WRANGLER}`);
+ let cfgText = readFileSync(cfgPath, 'utf8');
+ // The SAME constant `--self-check` exercises above — see its header for why it
+ // is not a second copy of the pattern.
+-const appDbBlock = APP_DB_BLOCK;
+-const m = cfgText.match(appDbBlock);
++const m = topLevelOf(cfgText).match(APP_DB_BLOCK);
+ if (!m) {
+   die([
+     '✗ could not find the APP_DB binding\'s `database_id` in the config.',
+@@ -535,31 +617,41 @@ if (current !== PLACEHOLDER && UUID.test(current)) {
+ 
+ // ── 2. create the database (idempotent) ──────────────────────────────────────
+ step(2, `Ensuring D1 database "${dbName}" exists (--location ${location})`);
+-let uuid = null;
+-const info = wrangler(['d1', 'info', dbName, '--json']);
+-if (info.code === 0) {
+-  try {
+-    uuid = JSON.parse(info.out.slice(info.out.indexOf('{'))).uuid ?? null;
+-  } catch { /* fall through to create */ }
+-}
+-if (uuid) {
+-  console.log(`    exists already → ${uuid}`);
+-} else if (dry) {
+-  console.log(`    [--dry] would run: wrangler d1 create ${dbName} --location ${location}`);
+-} else {
+-  const created = wrangler(['d1', 'create', dbName, '--location', location]);
++
++/** The uuid of D1 `name`, created with `--location` when it does not exist (or,
++ *  under --dry, null with the create printed). Hoisted: step [5s] ensures the
++ *  sandbox database with the same code. */
++function ensureDatabase(name) {
++  let id = null;
++  const info = wrangler(['d1', 'info', name, '--json']);
++  if (info.code === 0) {
++    try {
++      id = JSON.parse(info.out.slice(info.out.indexOf('{'))).uuid ?? null;
++    } catch { /* fall through to create */ }
++  }
++  if (id) {
++    console.log(`    exists already → ${id}`);
++    return id;
++  }
++  if (dry) {
++    console.log(`    [--dry] would run: wrangler d1 create ${name} --location ${location}`);
++    return null;
++  }
++  const created = wrangler(['d1', 'create', name, '--location', location]);
+   if (created.code !== 0) die([`✗ d1 create failed:`, created.out]);
+   const found = created.out.match(UUID.source.replace(/^\^|\$$/g, ''));
+-  uuid = found ? found[0] : null;
+-  if (!uuid) {
+-    const again = wrangler(['d1', 'info', dbName, '--json']);
++  id = found ? found[0] : null;
++  if (!id) {
++    const again = wrangler(['d1', 'info', name, '--json']);
+     try {
+-      uuid = JSON.parse(again.out.slice(again.out.indexOf('{'))).uuid ?? null;
++      id = JSON.parse(again.out.slice(again.out.indexOf('{'))).uuid ?? null;
+     } catch { /* handled below */ }
+   }
+-  if (!uuid) die(['✗ created the database but could not read its uuid back.', created.out]);
+-  console.log(`    created → ${uuid}`);
++  if (!id) die(['✗ created the database but could not read its uuid back.', created.out]);
++  console.log(`    created → ${id}`);
++  return id;
+ }
++const uuid = ensureDatabase(dbName);
+ 
+ if (dry) {
+   console.log('\n[--dry] stopping before any write. Nothing was created, patched or migrated.');
+@@ -571,7 +663,7 @@ step(3, `Patching APP_DB.database_id in wrangler.jsonc`);
+ if (current === uuid) {
+   console.log('    already correct; left unchanged (idempotent).');
+ } else {
+-  cfgText = cfgText.replace(appDbBlock, `$1${uuid}$3`);
++  cfgText = patchAppDb(cfgText, uuid);
+   writeFileSync(cfgPath, cfgText);
+   console.log(`    ${current} → ${uuid}`);
+ }
+@@ -605,8 +697,10 @@ if (tables.code !== 0) {
+   die(['', '✗ could not verify: the table query itself failed to run.', tables.out]);
+ }
+ if (liveUuid !== uuid) problems.push(`d1 info returned ${liveUuid}, config holds ${uuid}`);
+-if (readFileSync(cfgPath, 'utf8').includes(PLACEHOLDER)) {
+-  problems.push('the config still contains the all-zeros placeholder somewhere');
++// The TOP LEVEL here; the env.sandbox block's ids are step [5s]'s, which proves the
++// whole file placeholder-free once it has written them.
++if (isPlaceholderId(bindingField(parseConfig(readFileSync(cfgPath, 'utf8')), { section: 'd1_databases', binding: 'APP_DB', field: 'database_id' }))) {
++  problems.push('the top-level APP_DB still carries the all-zeros placeholder');
+ }
+ if (!/d1_migrations/.test(tables.out)) {
+   problems.push('no `d1_migrations` table — the migration did not land');
+@@ -619,8 +713,76 @@ if (problems.length) {
+ console.log(`    d1 info      → ${liveUuid}  (matches the config)`);
+ console.log(`    tables       → ${(tables.out.match(/"name":\s*"([a-z_]+)"/g) ?? []).length} present, including d1_migrations`);
+ 
++// ── 5s. the sandbox twin — the database, the shared namespaces, the migrations ──
++// ⏱ 2026-10-01 (rv2-services-011): the brick stamps an `env.sandbox` block whose ids
++// are placeholders. Its own database is created here exactly as the production one
++// was (--location, idempotent); the SHARED sandbox namespaces are never created per
++// app (the clone contract) — their ids are copied from services/platform's
++// env.sandbox, where tooling/scripts/provision-sandbox-twins.mjs recorded them. A
++// recorded id is never overwritten: a non-placeholder that differs is a refusal.
++step('5s', `Ensuring the sandbox twin: D1 "${dbName}_sandbox" and the shared sandbox namespaces`);
++{
++  const sbxDbName = `${dbName}_sandbox`;
++  const sbxUuid = ensureDatabase(sbxDbName);
++  let text = readFileSync(cfgPath, 'utf8');
++  const cfg = parseConfig(text);
++  const setOnce = (where, current, want, edit) => {
++    if (current === want) return;
++    if (current === undefined) die([`✗ ${cfgRel} ${where} is not declared; the brick stamps it. Re-stamp, or restore the block.`]);
++    if (!isPlaceholderId(current)) {
++      die([`✗ ${cfgRel} ${where} already names ${current}, and the one to bind is ${want}.`, '  A recorded id is never overwritten here; find out which is right.']);
++    }
++    try {
++      text = edit(text);
++    } catch (e) {
++      if (e instanceof SurgeryRefused) die([`✗ ${cfgRel}: ${e.message}`]);
++      throw e;
++    }
++    console.log(`    ${where}: ${current} → ${want}`);
++  };
++  setOnce(
++    'env.sandbox APP_DB.database_id',
++    bindingField(cfg, { env: 'sandbox', section: 'd1_databases', binding: 'APP_DB', field: 'database_id' }),
++    sbxUuid,
++    (t) => setEnvBindingField(t, { env: 'sandbox', section: 'd1_databases', binding: 'APP_DB', field: 'database_id', value: sbxUuid }),
++  );
++  let platformCfg;
++  try {
++    platformCfg = parseConfig(readFileSync(join(ROOT, PLATFORM_CONFIG), 'utf8'));
++  } catch (e) {
++    die([`✗ ${PLATFORM_CONFIG} could not be read (${e.message}); it is where the shared sandbox namespace ids are recorded.`]);
++  }
++  for (const k of cfg.env?.sandbox?.kv_namespaces ?? []) {
++    const want = bindingField(platformCfg, { env: 'sandbox', section: 'kv_namespaces', binding: k.binding, field: 'id' });
++    if (typeof want !== 'string' || want === '' || isPlaceholderId(want)) {
++      die([
++        `✗ ${PLATFORM_CONFIG} env.sandbox records no id for the shared namespace ${k.binding}.`,
++        '  Run `node tooling/scripts/provision-sandbox-twins.mjs --apply` first: it creates the sandbox namespaces and records them there.',
++      ]);
++    }
++    setOnce(`env.sandbox ${k.binding}.id`, k.id, want, (t) =>
++      setEnvBindingField(t, { env: 'sandbox', section: 'kv_namespaces', binding: k.binding, field: 'id', value: want }),
++    );
++  }
++  writeFileSync(cfgPath, text);
++  const sbxMig = wrangler(['d1', 'migrations', 'apply', 'APP_DB', '--env', 'sandbox', '--remote'], svcDir);
++  if (sbxMig.code !== 0) die(['✗ sandbox migrations apply failed:', sbxMig.out]);
++  const sbxInfo = wrangler(['d1', 'info', sbxDbName, '--json']);
++  let live = null;
++  try {
++    live = JSON.parse(sbxInfo.out.slice(sbxInfo.out.indexOf('{'))).uuid ?? null;
++  } catch { /* reported below */ }
++  if (live !== sbxUuid) die([`✗ PROVISIONED BUT NOT PROVEN: d1 info ${sbxDbName} returned ${live}, the config holds ${sbxUuid}.`]);
++  const after = parseConfig(readFileSync(cfgPath, 'utf8'));
++  const leftover = [after, after.env?.sandbox ?? {}].flatMap((b) => [
++    ...(b.d1_databases ?? []).map((d) => [d.binding, d.database_id]),
++    ...(b.kv_namespaces ?? []).map((k) => [k.binding, k.id]),
++  ]).filter(([, id]) => isPlaceholderId(id));
++  if (leftover.length) die([`✗ PROVISIONED BUT NOT PROVEN: ${cfgRel} still carries a placeholder id for ${leftover.map(([b]) => b).join(', ')}.`]);
++  console.log(`    ${sbxDbName} → ${live} (matches env.sandbox), migrations applied --env sandbox`);
++}
++
+ // ── 6. the register row — files only, it deploys nothing (see the header) ────
+-const cfgRel = `${SERVICES_DIR}/${appId}-api/${WORKER_CONFIG}`;
+ 
+ /** The `appWorkers` row for this Worker, or exit 1 naming why none can be written.
+  *  Its routes are the stamped entrypoint's mounts; each one's auth, purpose, client
+@@ -717,42 +879,49 @@ function appWorkerRow() {
+   };
+ }
+ 
+-step(6, `Writing ${appId}-api's appWorkers row into ${REGISTER}`);
+-const regPath = join(ROOT, REGISTER);
+-let register;
+-try {
+-  register = JSON.parse(readFileSync(regPath, 'utf8'));
+-} catch (e) {
+-  die([`✗ ${REGISTER} is missing or not JSON (${e.message}). The Worker is provisioned and has no register row.`]);
+-}
+-if (!Array.isArray(register.appWorkers)) die([`✗ ${REGISTER} has no \`appWorkers\` array to add the row to.`]);
+-const existing = register.appWorkers.find((w) => String(w?.config ?? '').replace(/\\/g, '/') === cfgRel);
+-if (existing) {
+-  console.log(`    ${cfgRel} already has a row (${existing.name}); left unchanged. assert-platform-register.mjs holds it to the tree.`);
+-} else {
+-  const row = appWorkerRow();
+-  register.appWorkers.push(row);
+-  const configs = register.bindingSources?.configs;
+-  if (Array.isArray(configs) && !configs.includes(cfgRel)) {
+-    configs.push(cfgRel);
+-    configs.sort();
+-  }
+-  writeFileSync(regPath, `${JSON.stringify(register, null, 2)}\n`);
+-  console.log(`    appWorkers[${register.appWorkers.length - 1}] ${row.name} → ${row.hosts.join(', ')}, dsnSecret ${row.dsnSecret}`);
+-  console.log(`    routes: ${row.routes.map((r) => `${r.method} ${r.path}`).join(' · ')}`);
+-  console.log(`    ${cfgRel} is named in bindingSources.configs.`);
+-}
+-// The crash-sink secret reaches deploy-workers.yml BY NAME, never `secrets: inherit`
+-// (lead ruling Q1, 2026-09-26; assert-worker-error-sink.mjs limb 5 fails either
+-// omission before merge). Printed, not written: the secret is the owner's to create
+-// (O-E1), and both lines land in the same change that creates it.
+-{
+-  const dsn = (existing ?? register.appWorkers[register.appWorkers.length - 1]).dsnSecret;
+-  console.log(`    O-E1 (owner): create the GitHub secret ${dsn}, then deliver it BY NAME, never \`secrets: inherit\`:`);
+-  console.log(`      .github/workflows/deploy-workers.yml, under on.workflow_call.secrets:   ${dsn}:  (with required: true)`);
+-  console.log(`      .github/workflows/ci.yml, in the deploy-workers: call's secrets:        ${dsn}: \${{ secrets.${dsn} }}`);
++/** Step [6]: the register row, files only. Hoisted so `--register-only` (above the
++ *  credential gate) runs the SAME code the full run does, never a copy of it. */
++function writeRegisterRow() {
++  step(6, `Writing ${appId}-api's appWorkers row into ${REGISTER}`);
++  const regPath = join(ROOT, REGISTER);
++  let register;
++  try {
++    register = JSON.parse(readFileSync(regPath, 'utf8'));
++  } catch (e) {
++    die([`✗ ${REGISTER} is missing or not JSON (${e.message}). The Worker is provisioned and has no register row.`]);
++  }
++  if (!Array.isArray(register.appWorkers)) die([`✗ ${REGISTER} has no \`appWorkers\` array to add the row to.`]);
++  const existing = register.appWorkers.find((w) => String(w?.config ?? '').replace(/\\/g, '/') === cfgRel);
++  if (existing) {
++    console.log(`    ${cfgRel} already has a row (${existing.name}); left unchanged. assert-platform-register.mjs holds it to the tree.`);
++  } else {
++    const row = appWorkerRow();
++    register.appWorkers.push(row);
++    const configs = register.bindingSources?.configs;
++    if (Array.isArray(configs) && !configs.includes(cfgRel)) {
++      configs.push(cfgRel);
++      configs.sort();
++    }
++    writeFileSync(regPath, `${JSON.stringify(register, null, 2)}\n`);
++    console.log(`    appWorkers[${register.appWorkers.length - 1}] ${row.name} → ${row.hosts.join(', ')}, dsnSecret ${row.dsnSecret}`);
++    console.log(`    routes: ${row.routes.map((r) => `${r.method} ${r.path}`).join(' · ')}`);
++    console.log(`    ${cfgRel} is named in bindingSources.configs.`);
++  }
++  // The crash-sink secret reaches deploy-workers.yml BY NAME, never `secrets: inherit`
++  // (lead ruling Q1, 2026-09-26; assert-worker-error-sink.mjs limb 5 fails either
++  // omission before merge). Printed, not written: the secret is the owner's to create
++  // (O-E1), and both lines land in the same change that creates it.
++  {
++    const dsn = (existing ?? register.appWorkers[register.appWorkers.length - 1]).dsnSecret;
++    console.log(`    O-E1 (owner): create the GitHub secret ${dsn}, then deliver it BY NAME, never \`secrets: inherit\`:`);
++    console.log(`      .github/workflows/deploy-workers.yml, under on.workflow_call.secrets:   ${dsn}:  (with required: true)`);
++    console.log(`      .github/workflows/ci.yml, in the deploy-workers: call's secrets:        ${dsn}: \${{ secrets.${dsn} }}`);
++  }
++  return { register, existing };
+ }
+ 
++const { register, existing } = writeRegisterRow();
++
+ // ── 7. the inventory row and the monitor host row — files only (see the header) ──
+ step(7, `Writing ${dbName}'s ${INVENTORY} row and ${appId}-api's ${MONITOR_REGISTER} host row(s)`);
+ const workerRow = register.appWorkers.find((w) => String(w?.config ?? '').replace(/\\/g, '/') === cfgRel);
+diff --git a/tooling/scripts/provision-sandbox-twins.mjs b/tooling/scripts/provision-sandbox-twins.mjs
+new file mode 100644
+index 00000000..cce8cda4
+--- /dev/null
++++ b/tooling/scripts/provision-sandbox-twins.mjs
+@@ -0,0 +1,302 @@
++#!/usr/bin/env node
++// ─────────────────────────────────────────────────────────────────────────────
++// provision-sandbox-twins.mjs — create the sandbox twins of the platform's
++// production KV namespaces and R2 bucket, and write their ids into every Worker
++// config whose env.sandbox binds them.
++//
++// ⏱ 2026-10-01 · rv2-services-022, row O-SANDBOX-ENV-DROPS-PRODUCTION-BINDINGS.
++// The platform's env.sandbox bound CONFIG_KV and nothing else of its kind, and
++// subscriptiontracker-api's had no SESSION_REVOKED, so a sandbox E2E could not
++// catch a revocation or an erasure defect. The configs now declare every twin
++// (tooling/ci/assert-platform-register.mjs limb 8 holds them both ways); the
++// three below did not exist in the account, so their entries carry the
++// all-zeros placeholder until THIS script creates them and writes the ids in.
++// Limb 8 refuses a placeholder in a deployable config, so the gate stays red
++// until it has run: a twin in name only is not a twin.
++//
++// The resources that already exist are NOT here: platform_db_sandbox,
++// subscriptiontracker_db_sandbox, platform-config-sandbox and the sandbox
++// JWKS_CACHE namespace were created 2026-09-23/24 and their ids are in the
++// configs; the sandbox erasure binding names the app's sandbox SCRIPT, which
++// deploy-sandbox.yml creates by deploying it.
++//
++// RULES, each enforced below rather than promised:
++//   · CREATE ONLY. Nothing is ever deleted, renamed or overwritten — in the
++//     account or in a config. A config entry already holding a real id that
++//     differs from the account's is a refusal (exit 1), not a rewrite.
++//   · IDEMPOTENT. Every resource is looked up by its exact name first; an
++//     existing one is reused. A second run creates nothing and writes nothing.
++//   · THE SANDBOX NAMING SPACE ONLY. Every name ends in `-sandbox`; the
++//     declaration is checked before any request is sent.
++//   · RECORD EACH ID. Every id is written into the configs at once, through
++//     tooling/scripts/wrangler-surgery.mjs (structure-scoped, re-parse-verified),
++//     and printed by name with a short hash, never the token.
++//
++// THE TOKEN. CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID from the
++// environment, or else read IN-PROCESS from the gitignored vault
++// `.claude/secrets.env` of the MAIN checkout (resolved through
++// `git rev-parse --git-common-dir`, so a worktree finds it): the two keys only,
++// quotes stripped (provision-backend.mjs's header says why both matter). The
++// token is never printed, logged or passed to a child process.
++//
++// Usage:
++//   node tooling/scripts/provision-sandbox-twins.mjs            # plan: read the account, print, write nothing
++//   node tooling/scripts/provision-sandbox-twins.mjs --apply    # create what is missing, write the ids
++//   node tooling/scripts/provision-sandbox-twins.mjs --list     # offline: the twins and the configs they land in
++// Exit 0 = done (or, plan, nothing refused) · 1 = a refusal · 2 = could not read the account or a config.
++// ─────────────────────────────────────────────────────────────────────────────
++import { existsSync, readFileSync, writeFileSync } from 'node:fs';
++import { createHash } from 'node:crypto';
++import { spawnSync } from 'node:child_process';
++import { dirname, isAbsolute, join, resolve } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { parseJsonc } from '../ci/d1-stores.mjs';
++import { workerSet, SERVICES_DIR, WORKER_CONFIG } from '../ci/worker-set.mjs';
++import { bindingField, isPlaceholderId, setEnvBindingField, SurgeryRefused } from './wrangler-surgery.mjs';
++
++/** The twins this script owns. `binding` is the name every env.sandbox uses. */
++export const TWINS = Object.freeze([
++  { kind: 'kv', name: 'session-revoked-sandbox', binding: 'SESSION_REVOKED', twinOf: 'SESSION_REVOKED (aa46ad5002874231931cc5dc5b6e2904)' },
++  { kind: 'kv', name: 'signups-sandbox', binding: 'SIGNUPS', twinOf: 'SIGNUPS (d73cf5ffd0fd4d8396012fccd15906ad)' },
++  { kind: 'r2', name: 'nikatru-backups-sandbox', binding: 'BACKUPS_R2', twinOf: 'BACKUPS_R2 (nikatru-backups)' },
++]);
++export const SANDBOX_ENV = 'sandbox';
++/** R2 placement, as D1's: a property of the spec, never of who ran the create. */
++export const R2_LOCATION = 'apac';
++
++export class Refused extends Error {
++  constructor(message, code = 1) {
++    super(message);
++    this.code = code;
++  }
++}
++
++/** Every refusal of the declaration itself, before any request is sent. */
++export function declarationProblems(twins = TWINS) {
++  const out = [];
++  const seen = new Set();
++  for (const t of twins) {
++    if (!/^[a-z0-9][a-z0-9-]*-sandbox$/.test(String(t.name))) out.push(`${t.name}: not in the sandbox naming space (\`<name>-sandbox\`).`);
++    if (t.kind !== 'kv' && t.kind !== 'r2') out.push(`${t.name}: kind ${t.kind} is neither kv nor r2.`);
++    if (seen.has(t.binding)) out.push(`${t.binding}: declared twice.`);
++    seen.add(t.binding);
++  }
++  return out;
++}
++
++/** Where each twin's id lands: `[{ twin, config, section, field, current }]` for
++ *  every Worker config under services/ whose env.sandbox binds the twin's binding. */
++export function placements(root, twins = TWINS) {
++  const set = workerSet(root);
++  if (set === null || set.workers.length === 0) throw new Refused(`no Worker directory under ${join(root, SERVICES_DIR)}.`, 2);
++  const out = [];
++  for (const dir of set.workers) {
++    const rel = `${SERVICES_DIR}/${dir}/${WORKER_CONFIG}`;
++    let cfg;
++    try {
++      cfg = parseJsonc(readFileSync(join(root, rel), 'utf8'));
++    } catch (e) {
++      throw new Refused(`${rel} does not parse (${e.message}).`, 2);
++    }
++    for (const twin of twins) {
++      const section = twin.kind === 'kv' ? 'kv_namespaces' : 'r2_buckets';
++      const field = twin.kind === 'kv' ? 'id' : 'bucket_name';
++      const current = bindingField(cfg, { env: SANDBOX_ENV, section, binding: twin.binding, field });
++      if (current === undefined) continue;
++      out.push({ twin, config: rel, section, field, current });
++    }
++  }
++  return out;
++}
++
++const shortHash = (s) => createHash('sha256').update(String(s)).digest('hex').slice(0, 8);
++
++/** The two credentials, from the environment or the main checkout's vault. Never printed. */
++export function credentials(root, env = process.env) {
++  const want = ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'];
++  const got = Object.fromEntries(want.map((k) => [k, env[k] ?? null]));
++  if (want.every((k) => got[k])) return got;
++  const common = spawnSync('git', ['-C', root, 'rev-parse', '--git-common-dir'], { encoding: 'utf8' });
++  const commonDir = common.status === 0 ? common.stdout.trim() : null;
++  const mainRoot = commonDir ? dirname(isAbsolute(commonDir) ? commonDir : resolve(root, commonDir)) : root;
++  const vault = join(mainRoot, '.claude', 'secrets.env');
++  if (existsSync(vault)) {
++    for (const line of readFileSync(vault, 'utf8').split('\n')) {
++      const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
++      if (!m || !want.includes(m[1]) || got[m[1]]) continue;
++      got[m[1]] = m[2].trim().replace(/^['"]/, '').replace(/['"]$/, '');
++    }
++  }
++  const missing = want.filter((k) => !got[k]);
++  if (missing.length) {
++    throw new Refused(`${missing.join(' and ')} not set in the environment and not found in ${vault}. Nothing was read or created.`);
++  }
++  return got;
++}
++
++/** A Cloudflare v4 API client over `fetchImpl`. Every call checks `success`. */
++export function cloudflare({ token, account, fetchImpl = globalThis.fetch }) {
++  const base = `https://api.cloudflare.com/client/v4/accounts/${account}`;
++  const call = async (method, path, body) => {
++    let res;
++    try {
++      res = await fetchImpl(`${base}${path}`, {
++        method,
++        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
++        body: body === undefined ? undefined : JSON.stringify(body),
++      });
++    } catch (e) {
++      throw new Refused(`${method} ${path} did not complete (${e.message}).`, 2);
++    }
++    let json = null;
++    try {
++      json = await res.json();
++    } catch {
++      /* reported below */
++    }
++    if (!res.ok || json?.success !== true) {
++      const errs = (json?.errors ?? []).map((x) => `${x.code} ${x.message}`).join('; ') || `HTTP ${res.status}`;
++      throw new Refused(`${method} ${path} was refused: ${errs}.`, 2);
++    }
++    return json;
++  };
++  return {
++    async kvNamespaces() {
++      const all = [];
++      for (let page = 1; page <= 50; page++) {
++        const j = await call('GET', `/storage/kv/namespaces?per_page=100&page=${page}`);
++        all.push(...(j.result ?? []));
++        if ((j.result ?? []).length < 100) return all;
++      }
++      throw new Refused('more than 5,000 KV namespaces; the listing was not read to its end.', 2);
++    },
++    async createKv(title) {
++      return (await call('POST', '/storage/kv/namespaces', { title })).result;
++    },
++    async r2Buckets() {
++      return (await call('GET', '/r2/buckets?per_page=1000')).result?.buckets ?? [];
++    },
++    async createR2(name) {
++      return (await call('POST', '/r2/buckets', { name, locationHint: R2_LOCATION })).result;
++    },
++  };
++}
++
++/**
++ * The run: resolve every twin against the account (creating it when `apply`),
++ * then write each id into its placements. Returns `{ writes, pending }` (the configs
++ * written, or under plan the ones that would be); `read`/`write` are `(rel) → text`
++ * and `(rel, text) → void`, injected so a test can hold the files in memory.
++ */
++export async function provision({ root, api, apply, read, write, log = () => {} }) {
++  const problems = declarationProblems();
++  if (problems.length) throw new Refused(`the twin declaration is refused: ${problems.join(' ')}`);
++  const where = placements(root);
++  for (const twin of TWINS) {
++    if (!where.some((p) => p.twin === twin)) {
++      throw new Refused(`no ${SERVICES_DIR}/*/${WORKER_CONFIG} env.${SANDBOX_ENV} binds ${twin.binding}, so ${twin.name} would be created for nothing.`);
++    }
++  }
++  const kv = await api.kvNamespaces();
++  const r2 = await api.r2Buckets();
++  const ids = new Map();
++  for (const twin of TWINS) {
++    if (twin.kind === 'kv') {
++      const hits = kv.filter((n) => n.title === twin.name);
++      if (hits.length > 1) throw new Refused(`${hits.length} KV namespaces are titled ${twin.name}; which one is the twin is not this script's guess.`);
++      if (hits.length === 1) {
++        ids.set(twin, hits[0].id);
++        log(`  exists   kv ${twin.name} → id #${shortHash(hits[0].id)}`);
++      } else if (apply) {
++        const made = await api.createKv(twin.name);
++        if (!made?.id || made.title !== twin.name) throw new Refused(`creating KV ${twin.name} returned no id for that title.`, 2);
++        ids.set(twin, made.id);
++        log(`  created  kv ${twin.name} → id #${shortHash(made.id)}  (twin of ${twin.twinOf})`);
++      } else {
++        log(`  would create kv ${twin.name}  (twin of ${twin.twinOf})`);
++      }
++    } else {
++      const hit = r2.find((b) => b.name === twin.name);
++      if (hit) {
++        ids.set(twin, twin.name);
++        log(`  exists   r2 ${twin.name}`);
++      } else if (apply) {
++        const made = await api.createR2(twin.name);
++        if (made?.name !== twin.name) throw new Refused(`creating R2 bucket ${twin.name} did not answer with that name.`, 2);
++        ids.set(twin, twin.name);
++        log(`  created  r2 ${twin.name} (location ${R2_LOCATION})  (twin of ${twin.twinOf})`);
++      } else {
++        log(`  would create r2 ${twin.name} (location ${R2_LOCATION})  (twin of ${twin.twinOf})`);
++      }
++    }
++  }
++  // Every refusal before any write: a half-recorded set is the state this avoids.
++  const edits = new Map();
++  for (const p of where) {
++    const id = ids.get(p.twin);
++    if (id === undefined) continue; // plan mode, not created
++    if (p.current === id) continue;
++    if (!isPlaceholderId(p.current) && p.current !== '') {
++      throw new Refused(
++        `${p.config} env.${SANDBOX_ENV} ${p.twin.binding} already names ${p.field} #${shortHash(p.current)}, and the account's ${p.twin.name} is #${shortHash(id)}. ` +
++          'This script never overwrites a recorded id: find out which is right, by hand.',
++      );
++    }
++    let text = edits.get(p.config) ?? read(p.config);
++    try {
++      text = setEnvBindingField(text, { env: SANDBOX_ENV, section: p.section, binding: p.twin.binding, field: p.field, value: id });
++    } catch (e) {
++      if (e instanceof SurgeryRefused) throw new Refused(`${p.config}: ${e.message}`);
++      throw e;
++    }
++    edits.set(p.config, text);
++  }
++  const writes = [];
++  for (const [rel, text] of edits) {
++    if (!apply) continue;
++    write(rel, text);
++    writes.push(rel);
++    log(`  wrote    ${rel}`);
++  }
++  if (!apply && edits.size) log(`  would write ${[...edits.keys()].join(', ')}`);
++  return { writes, pending: apply ? [] : [...edits.keys()] };
++}
++
++async function main(argv) {
++  const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
++  const apply = argv.includes('--apply');
++  const unknown = argv.filter((a) => !['--apply', '--list'].includes(a));
++  if (unknown.length) {
++    console.error(`✗ unknown argument(s) ${unknown.join(' ')}. Usage: provision-sandbox-twins.mjs [--apply | --list]`);
++    return 1;
++  }
++  try {
++    if (argv.includes('--list')) {
++      const problems = declarationProblems();
++      if (problems.length) throw new Refused(problems.join(' '));
++      for (const p of placements(root)) {
++        console.log(`  ${p.twin.kind} ${p.twin.name.padEnd(26)} → ${p.config} env.${SANDBOX_ENV} ${p.twin.binding}${isPlaceholderId(p.current) ? '  (placeholder: not yet created)' : ''}`);
++      }
++      return 0;
++    }
++    const { CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: account } = credentials(root);
++    console.log(`${apply ? 'APPLY' : 'PLAN (no --apply: nothing is created or written)'} — ${TWINS.length} sandbox twin(s), account #${shortHash(account)}`);
++    const out = await provision({
++      root,
++      api: cloudflare({ token, account }),
++      apply,
++      read: (rel) => readFileSync(join(root, rel), 'utf8'),
++      write: (rel, text) => writeFileSync(join(root, rel), text),
++      log: (l) => console.log(l),
++    });
++    console.log(apply ? `✅ done: ${out.writes.length} config(s) written. Nothing was deleted.` : '✅ plan only. Re-run with --apply.');
++    return 0;
++  } catch (e) {
++    if (!(e instanceof Refused)) throw e;
++    console.error(`✗ provision-sandbox-twins: ${e.code === 2 ? 'COVERAGE LOST — ' : ''}${e.message}`);
++    return e.code;
++  }
++}
++
++const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
++if (isMain) process.exitCode = await main(process.argv.slice(2));
+diff --git a/tooling/scripts/render-platform-app-block.mjs b/tooling/scripts/render-platform-app-block.mjs
+index 3710cae3..f8d74317 100644
+--- a/tooling/scripts/render-platform-app-block.mjs
++++ b/tooling/scripts/render-platform-app-block.mjs
+@@ -26,6 +26,15 @@
+ //       app-erasure-endpoints  the `APP_ERASURE_ENDPOINTS` var (`<app>=https://<first host>`)
+ //       app-erasure-bindings   one `ERASURE_<APP>` service binding per app Worker
+ //       app-databases          one `<APP>_DB` D1 binding per owned app database
++//     ⏱ 2026-10-01 (rv2-services-022) and the same three for the platform's
++//     `env.sandbox`, each from the app Worker's OWN `env.sandbox`:
++//       sandbox-app-erasure-endpoints  `<app>=https://<app script>-sandbox.<subdomain>.workers.dev`
++//       sandbox-app-erasure-bindings   `ERASURE_<APP>` → the app's SANDBOX script
++//       sandbox-app-databases          `<APP>_DB` → the D1 the app's env.sandbox owns
++//     so a sandbox account deletion relays to the sandbox app Worker and empties the
++//     sandbox app database — never production's, which the platform's sandbox could not
++//     reach before (it bound none of the three, so a sandbox E2E could not see an
++//     erasure defect at all). An app Worker with no `env.sandbox` is a refusal.
+ //     Everything outside the markers is the hand-written file, untouched.
+ //   · services/platform/src/generated/app-targets.ts: `APP_TARGETS` (the fan-out and the
+ //     backup's app databases) and `APP_KV` (each app Worker's KV namespaces the platform
+@@ -60,11 +69,19 @@ import { dirname, join, resolve } from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ import { parseJsonc, ownedD1 } from '../ci/d1-stores.mjs';
+ import { appIdOf, appsInScope, TARGET_DIRS } from '../ci/assert-auth-callbacks.mjs';
++import { WORKERS_DEV_SUBDOMAIN } from '../store/capture-backend.mjs';
+ 
+ export const REGISTER_REL = 'tooling/platform-register.json';
+ export const PLATFORM_CONFIG_REL = 'services/platform/wrangler.jsonc';
+ export const MODULE_REL = 'services/platform/src/generated/app-targets.ts';
+-export const REGIONS = ['app-erasure-endpoints', 'app-erasure-bindings', 'app-databases'];
++export const REGIONS = [
++  'app-erasure-endpoints',
++  'app-erasure-bindings',
++  'app-databases',
++  'sandbox-app-erasure-endpoints',
++  'sandbox-app-erasure-bindings',
++  'sandbox-app-databases',
++];
+ const RENDERER = 'tooling/scripts/render-platform-app-block.mjs';
+ 
+ export class Refusal extends Error {
+@@ -78,7 +95,8 @@ const upper = (appId) => appId.toUpperCase().replace(/-/g, '_');
+ 
+ /**
+  * The per-app rows for the tree at `root`:
+- * `[{ appId, worker, origin, db: {binding, databaseName, databaseId} | null, kv: [{binding, id}] }]`.
++ * `[{ appId, worker, origin, db: {binding, databaseName, databaseId} | null, kv: [{binding, id}],
++ *     sandbox: { worker, origin, db: {binding, databaseName, databaseId} | null } }]`.
+  */
+ export function appRows(root) {
+   const regAbs = join(root, REGISTER_REL);
+@@ -113,12 +131,35 @@ export function appRows(root) {
+     if (owned.length > 1) throw new Refusal(`${where}: ${rel} owns ${owned.length} D1 databases; the per-app block binds one per app.`);
+     const own = owned[0] ?? null;
+     if (own !== null && !own.databaseId) throw new Refusal(`${where}: ${rel} owns ${own.databaseName} with no database_id to bind it by.`);
++    // The sandbox twin, from the app Worker's own env.sandbox: its script is what
++    // `wrangler deploy --env sandbox` names it, and its database the one entry there
++    // that carries `migrations_dir` (the D1 it owns, as at the top level).
++    const sbx = cfg?.env?.sandbox;
++    if (sbx === null || typeof sbx !== 'object' || Array.isArray(sbx)) {
++      throw new Refusal(
++        `${where}: ${rel} declares no \`env.sandbox\`, so the platform's sandbox would have no erasure relay, service binding ` +
++          'or database twin for this app. Every app Worker carries the block the brick stamps.',
++      );
++    }
++    const sbxOwned = (Array.isArray(sbx.d1_databases) ? sbx.d1_databases : []).filter((d) => d && d.migrations_dir);
++    if (sbxOwned.length > 1) throw new Refusal(`${where}: ${rel} env.sandbox owns ${sbxOwned.length} D1 databases; the per-app block binds one per app.`);
++    if ((own === null) !== (sbxOwned.length === 0)) {
++      throw new Refusal(`${where}: ${rel} owns ${own === null ? 'no' : 'a'} D1 at the top level and ${sbxOwned.length ? 'one' : 'none'} in env.sandbox; the sandbox twins production's.`);
++    }
++    const sbxOwn = sbxOwned[0] ?? null;
++    if (sbxOwn !== null && !sbxOwn.database_id) throw new Refusal(`${where}: ${rel} env.sandbox owns ${sbxOwn.database_name} with no database_id to bind it by.`);
++    const sbxWorker = typeof sbx.name === 'string' && sbx.name ? sbx.name : `${cfg.name}-sandbox`;
+     rows.push({
+       appId,
+       worker: w.name,
+       origin: `https://${host}`,
+       db: own === null ? null : { binding: `${upper(appId)}_DB`, databaseName: own.databaseName, databaseId: own.databaseId },
+       kv: (Array.isArray(cfg?.kv_namespaces) ? cfg.kv_namespaces : []).map((k) => ({ binding: k.binding, id: k.id })),
++      sandbox: {
++        worker: sbxWorker,
++        origin: `https://${sbxWorker}.${WORKERS_DEV_SUBDOMAIN}.workers.dev`,
++        db: sbxOwn === null ? null : { binding: `${upper(appId)}_DB`, databaseName: sbxOwn.database_name, databaseId: sbxOwn.database_id },
++      },
+     });
+   }
+   return rows;
+@@ -151,6 +192,20 @@ const END = (region) => `// ── GENERATED END ${region} ──`;
+ /** The text between the markers of each region, indented as the region's BEGIN line is. */
+ export function regionTexts(rows, indent) {
+   const pad = (n) => ' '.repeat(n);
++  const sandboxRows = rows.map((r) => ({ ...r, ...r.sandbox }));
++  const prod = productionRegionTexts(rows, pad, indent);
++  const sbx = productionRegionTexts(sandboxRows, pad, indent);
++  return {
++    ...prod,
++    'sandbox-app-erasure-endpoints': sbx['app-erasure-endpoints'],
++    'sandbox-app-erasure-bindings': sbx['app-erasure-bindings'],
++    'sandbox-app-databases': sbx['app-databases'],
++  };
++}
++
++/** The three region bodies over `rows`. The sandbox regions are the same shapes over
++ *  each row's `sandbox` twin, so the two can never be rendered two ways. */
++function productionRegionTexts(rows, pad, indent) {
+   return {
+     'app-erasure-endpoints': `${pad(indent)}"APP_ERASURE_ENDPOINTS": "${rows.map((r) => `${r.appId}=${r.origin}`).join(',')}"`,
+     'app-erasure-bindings': rows
+diff --git a/tooling/scripts/wrangler-surgery.mjs b/tooling/scripts/wrangler-surgery.mjs
+new file mode 100644
+index 00000000..1c327f05
+--- /dev/null
++++ b/tooling/scripts/wrangler-surgery.mjs
+@@ -0,0 +1,174 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// wrangler-surgery.mjs — write ONE value into a wrangler.jsonc environment's
++// binding, and prove by re-parsing that nothing else moved.
++//
++// ⏱ 2026-10-01 (rv2-services-011, -022). Two scripts write resource ids into an
++// `env.<name>` block: tooling/scripts/provision-backend.mjs (a stamped Worker's
++// sandbox database and the shared sandbox namespaces) and
++// tooling/scripts/provision-sandbox-twins.mjs (the platform's sandbox namespaces).
++// provision-backend.mjs's own APP_DB_BLOCK regex is scoped by DISTANCE (the next
++// `database_id` within 400 characters of `"binding": "APP_DB"`), which is safe at
++// the top level only because APP_DB comes first; an environment repeats every
++// binding name further down the same file, so a distance-scoped pattern would
++// write the first match, which is production's. This module is scoped by
++// STRUCTURE instead: comments are blanked in place (offsets kept), the
++// environment's object, the section's array and the binding's object are each
++// found by matched brackets, and only the value's own bytes are replaced. Then
++// the whole file is parsed before and after, and the write is refused unless the
++// two parses differ in exactly that one field.
++//
++// Pure: text in, text out, no filesystem. Throws SurgeryRefused.
++// ─────────────────────────────────────────────────────────────────────────────
++import { stripSourceComments } from '../ci/text-reductions.mjs';
++import { parseJsonc } from '../ci/d1-stores.mjs';
++
++/** The id a template or an unprovisioned config carries until a script writes it. */
++export const D1_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
++export const KV_PLACEHOLDER = '00000000000000000000000000000000';
++/** True for either placeholder (all zeros, with or without dashes). */
++export const isPlaceholderId = (id) => typeof id === 'string' && id !== '' && /^0+$/.test(id.replace(/-/g, ''));
++
++export class SurgeryRefused extends Error {
++  constructor(message) {
++    super(message);
++    this.name = 'SurgeryRefused';
++  }
++}
++
++/** The index of the bracket that closes the one at `open`, in comment-blanked text. */
++function closing(code, open) {
++  const pair = { '{': '}', '[': ']' };
++  const stack = [];
++  for (let i = open; i < code.length; i++) {
++    const c = code[i];
++    if (c === '"') {
++      for (i++; i < code.length && code[i] !== '"'; i++) if (code[i] === '\\') i++;
++      continue;
++    }
++    if (c === '{' || c === '[') stack.push(pair[c]);
++    else if (c === '}' || c === ']') {
++      if (stack.pop() !== c) return -1;
++      if (stack.length === 0) return i;
++    }
++  }
++  return -1;
++}
++
++/** `[start, end]` of the value of `"key": <open>` directly inside [from, to), or null.
++ *  "Directly" means at depth 1 of that span, so a nested object's key never matches. */
++function keyedSpan(code, from, to, key, open) {
++  const re = new RegExp(`"${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\s*:\\s*\\${open}`, 'g');
++  re.lastIndex = from;
++  let m;
++  while ((m = re.exec(code)) !== null && m.index < to) {
++    if (depthAt(code, from, m.index) !== 1) continue;
++    const start = m.index + m[0].length - 1;
++    const end = closing(code, start);
++    if (end === -1 || end > to) return null;
++    return [start, end];
++  }
++  return null;
++}
++
++/** Bracket depth at `at`, counted from `from` (which is an opening bracket). */
++function depthAt(code, from, at) {
++  let depth = 0;
++  for (let i = from; i < at; i++) {
++    const c = code[i];
++    if (c === '"') {
++      for (i++; i < at && code[i] !== '"'; i++) if (code[i] === '\\') i++;
++      continue;
++    }
++    if (c === '{' || c === '[') depth++;
++    else if (c === '}' || c === ']') depth--;
++  }
++  return depth;
++}
++
++/** The parsed value at `env.<env>.<section>[binding=<binding>].<field>` (or the
++ *  top level when `env` is null), or undefined. `key` is the field naming the
++ *  binding: `binding`, or `name` for `ratelimits`. */
++export function bindingField(cfg, { env = null, section, binding, field, key = 'binding' }) {
++  const block = env === null ? cfg : cfg?.env?.[env];
++  const items = Array.isArray(block?.[section]) ? block[section] : [];
++  return items.find((i) => i?.[key] === binding)?.[field];
++}
++
++/**
++ * `text` with `env.<env>.<section>[<key>=<binding>].<field>` set to the string
++ * `value`. Throws SurgeryRefused when the environment, the section, the binding or
++ * the field is not there exactly once, when the field is not a string, or when the
++ * re-parsed result differs from the original anywhere but that one field.
++ */
++export function setEnvBindingField(text, { env, section, binding, field, value, key = 'binding' }) {
++  const where = `env.${env}.${section}[${binding}].${field}`;
++  const code = stripSourceComments(text, '.jsonc');
++  const rootOpen = code.indexOf('{');
++  const rootClose = rootOpen === -1 ? -1 : closing(code, rootOpen);
++  if (rootClose === -1) throw new SurgeryRefused(`${where}: the config has no top-level object.`);
++  const envSpan = keyedSpan(code, rootOpen, rootClose, 'env', '{');
++  if (!envSpan) throw new SurgeryRefused(`${where}: the config declares no top-level \`env\` object.`);
++  const named = keyedSpan(code, envSpan[0], envSpan[1], env, '{');
++  if (!named) throw new SurgeryRefused(`${where}: \`env\` declares no \`${env}\` block.`);
++  const arr = keyedSpan(code, named[0], named[1], section, '[');
++  if (!arr) throw new SurgeryRefused(`${where}: env.${env} declares no \`${section}\` array.`);
++  const hits = [];
++  for (let i = arr[0] + 1; i < arr[1]; i++) {
++    if (code[i] === '"') {
++      for (i++; i < arr[1] && code[i] !== '"'; i++) if (code[i] === '\\') i++;
++      continue;
++    }
++    if (code[i] !== '{') continue;
++    const end = closing(code, i);
++    if (end === -1) break;
++    const body = code.slice(i, end + 1);
++    if (new RegExp(`"${key}"\\s*:\\s*"${binding}"`).test(body)) hits.push([i, end]);
++    i = end;
++  }
++  if (hits.length !== 1) throw new SurgeryRefused(`${where}: ${hits.length} entries are bound as ${binding}; exactly one is required.`);
++  const [objStart, objEnd] = hits[0];
++  const fm = new RegExp(`"${field}"\\s*:\\s*"([^"\\\\]*)"`, 'g');
++  fm.lastIndex = objStart;
++  const found = [];
++  let m;
++  while ((m = fm.exec(code)) !== null && m.index < objEnd) found.push(m);
++  if (found.length !== 1) throw new SurgeryRefused(`${where}: the ${binding} entry carries ${found.length} string \`${field}\` fields; exactly one is required.`);
++  const valueStart = found[0].index + found[0][0].length - 1 - found[0][1].length;
++  const out = text.slice(0, valueStart) + String(value) + text.slice(valueStart + found[0][1].length);
++
++  // The proof: the two parses differ in that one field and nowhere else.
++  let before;
++  let after;
++  try {
++    before = parseJsonc(text);
++    after = parseJsonc(out);
++  } catch (e) {
++    throw new SurgeryRefused(`${where}: the config does not parse before or after the write (${e.message}).`);
++  }
++  const expected = structuredClone(before);
++  const item = expected.env[env][section].find((i) => i?.[key] === binding);
++  item[field] = String(value);
++  if (JSON.stringify(after) !== JSON.stringify(expected)) {
++    throw new SurgeryRefused(`${where}: the write changed something other than that field. Nothing was written.`);
++  }
++  return out;
++}
++
++/** The offset of the top-level `"env"` key in `text`, or `text.length` when there
++ *  is none. A pattern that must only ever see the TOP LEVEL (provision-backend.mjs's
++ *  APP_DB_BLOCK) is applied to `text.slice(0, topLevelEnvOffset(text))`: every
++ *  binding name repeats inside an environment, so an unconfined match can land on
++ *  the environment's entry and write production's id into it. */
++export function topLevelEnvOffset(text) {
++  const code = stripSourceComments(text, '.jsonc');
++  const rootOpen = code.indexOf('{');
++  const rootClose = rootOpen === -1 ? -1 : closing(code, rootOpen);
++  if (rootClose === -1) return text.length;
++  const re = /"env"\s*:\s*\{/g;
++  re.lastIndex = rootOpen;
++  let m;
++  while ((m = re.exec(code)) !== null && m.index < rootClose) {
++    if (depthAt(code, rootOpen, m.index) === 1) return m.index;
++  }
++  return text.length;
++}
+diff --git a/tooling/store/capture-backend.mjs b/tooling/store/capture-backend.mjs
+index 036a2699..a21bcb14 100644
+--- a/tooling/store/capture-backend.mjs
++++ b/tooling/store/capture-backend.mjs
+@@ -1,7 +1,7 @@
+ // ─────────────────────────────────────────────────────────────────────────────
+ // capture-backend.mjs — the backend a store capture drives, computed from the
+-// two Workers' wrangler.jsonc files, and the refusals that keep a capture off
+-// production.
++// registered Workers' wrangler.jsonc files, and the refusals that keep a capture
++// off production.
+ //
+ // Row O-STORE-CAPTURE-WRITES-UNATTRIBUTED-ROWS, first line: "Captures run
+ // against a non-production endpoint". Until this module the capture lane took
+@@ -18,14 +18,16 @@
+ // capture harness refuses to run a build that can reach an API unpinned.
+ //
+ // What this module refuses, each with a named limb:
+-//   · sandboxBackend() — a Worker config with no `env.sandbox`; an `env.sandbox`
++//   · sandboxBackend() — over EVERY Worker the register names (CAPTURE_WORKERS,
++//     the serving Worker and each app Worker; ⏱ 2026-10-01, was a two-entry
++//     literal): a Worker config with no `env.sandbox`; an `env.sandbox`
+ //     that does not declare `routes: []`, `workers_dev: true` and
+ //     `triggers.crons: []` explicitly (wrangler INHERITS those three keys from
+ //     the top level, so an absent one binds the production custom domain or a
+ //     production cron to the sandbox script); a sandbox script name equal to a
+ //     top-level script name (a `--env sandbox` deploy would replace production);
+-//     a sandbox D1, KV or ratelimit id that is empty or equal to any top-level
+-//     id in either config; and, for an app Worker (`<app>-api`), whatever
++//     a sandbox D1, KV, ratelimit, R2 or service-binding id that is empty or
++//     equal to any top-level id in any config; and, for an app Worker (`<app>-api`), whatever
+ //     tooling/e2e/backend.mjs refuses for `backendOf(<app>, { env: 'sandbox' })`
+ //     (limb `backend`): an `env.sandbox` without binding APP_DB or PLATFORM_DB,
+ //     or an APP_DB another app's sandbox also binds. A capture's purge resolves
+@@ -45,9 +47,9 @@
+ // capture signs in a throwaway user there, and only the two Workers move.
+ //
+ // CLI:  node tooling/store/capture-backend.mjs --print-host <worker>
+-// prints the sandbox origin of `platform` or `subscriptiontracker-api`, for
+-// deploy-sandbox.yml's smoke and the capture jobs' health preflight, so neither
+-// workflow spells a host out. Exit 0 printed; 1 refused; 2 a usage error.
++// prints the sandbox origin of any Worker CAPTURE_WORKERS names (`platform`, or an
++// app Worker such as `subscriptiontracker-api`), for deploy-sandbox.yml's smoke and
++// the capture jobs' health preflight, so neither workflow spells a host out. Exit 0 printed; 1 refused; 2 a usage error.
+ // ─────────────────────────────────────────────────────────────────────────────
+ import { readFileSync } from 'node:fs';
+ import { join, resolve, dirname } from 'node:path';
+@@ -58,13 +60,46 @@ import { backendOf, BackendRefused } from '../e2e/backend.mjs';
+ const HERE = dirname(fileURLToPath(import.meta.url));
+ const ROOT = resolve(join(HERE, '..', '..'));
+ 
+-/** The two Workers a capture binary reaches. Both are routed: the board a
+- *  capture photographs is written by subscriptiontracker-api, and the consent
+- *  answer and analytics go to platform. */
+-export const CAPTURE_WORKERS = Object.freeze({
+-  platform: 'services/platform/wrangler.jsonc',
+-  'subscriptiontracker-api': 'services/subscriptiontracker-api/wrangler.jsonc',
+-});
++/** Where the Worker set is declared: tooling/ci/worker-set.mjs's register. */
++export const REGISTER_REL = 'tooling/platform-register.json';
++
++/**
++ * `{ <worker name>: <config path> }` for the register's serving Worker and every
++ * `appWorkers` row, in that order. Never an `edgeWorkers` row: an edge Worker has
++ * no sandbox and no API a capture reaches.
++ *
++ * ⏱ 2026-10-01 · rv2-services-011 (row O-BRICK-WORKER-HAS-NO-SANDBOX-ENV). This was
++ * a literal naming platform and subscriptiontracker-api, so app #2's Worker was in
++ * no sandbox refusal here, and deploy-sandbox.yml's smoke (`--print-host <worker>`
++ * for each leg) answered a usage error for it. Read off the register instead, the
++ * same rows worker-set.mjs builds the deploy matrices from, so every registered
++ * app Worker is held to the sandbox refusals below from the day it is provisioned.
++ */
++export function captureWorkersOf(register) {
++  const out = {};
++  const add = (row) => {
++    if (typeof row?.name === 'string' && row.name && typeof row?.config === 'string' && row.config) {
++      out[row.name] = row.config.replace(/\\/g, '/');
++    }
++  };
++  add(register?.servingWorker);
++  for (const w of Array.isArray(register?.appWorkers) ? register.appWorkers : []) add(w);
++  return out;
++}
++
++const readRegister = () => {
++  try {
++    return JSON.parse(readFileSync(join(ROOT, REGISTER_REL), 'utf8'));
++  } catch {
++    return null;
++  }
++};
++
++/** The Workers a capture binary's backend is computed from: the serving Worker
++ *  (consent and analytics) and every app Worker (the board a capture photographs
++ *  is written by its app's own). An unreadable register yields `{}`, which
++ *  sandboxBackend() refuses as `unreadable`, never as an empty backend. */
++export const CAPTURE_WORKERS = Object.freeze(captureWorkersOf(readRegister()));
+ 
+ /** The account's workers.dev subdomain. A sandbox script has no custom domain
+  *  (`routes: []`), so this is the only place it answers. */
+@@ -105,12 +140,18 @@ export class CaptureBackendRefused extends Error {
+ 
+ const defaultRead = (rel) => readFileSync(join(ROOT, rel), 'utf8');
+ 
+-/** Binding → id for every D1, KV and ratelimit a config block declares. */
++/** Binding → id for every D1, KV, ratelimit, R2 bucket and service binding a
++ *  config block declares. ⏱ 2026-10-01 (rv2-services-022): R2 and services joined
++ *  when the platform's sandbox twinned BACKUPS_R2 and its erasure service binding,
++ *  so a sandbox bound to the production bucket, or to the production Worker by
++ *  service binding, is refused as `id-reuse` like a production database is. */
+ function idsOf(block) {
+   const ids = {};
+   for (const d of block?.d1_databases ?? []) ids[`d1:${d.binding}`] = d.database_id;
+   for (const k of block?.kv_namespaces ?? []) ids[`kv:${k.binding}`] = k.id;
+   for (const r of block?.ratelimits ?? []) ids[`ratelimit:${r.name}`] = r.namespace_id;
++  for (const b of block?.r2_buckets ?? []) ids[`r2:${b.binding}`] = b.bucket_name;
++  for (const v of block?.services ?? []) ids[`service:${v.binding}`] = v.service;
+   return ids;
+ }
+ 
+@@ -123,9 +164,15 @@ const workersDevOrigin = (script) => `https://${script}.${WORKERS_DEV_SUBDOMAIN}
+  * sandboxIds, productionIds, supabaseUrl }`. Throws CaptureBackendRefused on
+  * any of the refusals in the header.
+  */
+-export function sandboxBackend({ read = defaultRead } = {}) {
++export function sandboxBackend({ read = defaultRead, workers = CAPTURE_WORKERS } = {}) {
++  if (!Object.hasOwn(workers, 'platform')) {
++    throw new CaptureBackendRefused(
++      'unreadable',
++      `${REGISTER_REL} names no serving Worker \`platform\` (or could not be read), so no capture backend can be computed.`,
++    );
++  }
+   const parsed = [];
+-  for (const [worker, rel] of Object.entries(CAPTURE_WORKERS)) {
++  for (const [worker, rel] of Object.entries(workers)) {
+     let cfg;
+     try {
+       cfg = parseJsonc(read(rel));
+@@ -200,7 +247,7 @@ export function sandboxBackend({ read = defaultRead } = {}) {
+           appIds:
+             read === defaultRead
+               ? undefined
+-              : Object.keys(CAPTURE_WORKERS)
++              : Object.keys(workers)
+                   .filter((w) => w.endsWith('-api'))
+                   .map((w) => w.slice(0, -'-api'.length)),
+         });
+@@ -225,7 +272,7 @@ export function sandboxBackend({ read = defaultRead } = {}) {
+   return backend;
+ }
+ 
+-/** Every top-level D1 database id across both configs — what a capture purge
++/** Every top-level D1 database id across the configs — what a capture purge
+  *  must never be pointed at. */
+ export function productionD1Ids(backend) {
+   const ids = new Set();

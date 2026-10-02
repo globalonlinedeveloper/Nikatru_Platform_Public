@@ -1,0 +1,3284 @@
+diff --git a/apps/subscriptiontracker/lib/data/api/dio_api_client.dart b/apps/subscriptiontracker/lib/data/api/dio_api_client.dart
+index 68eae6df..b2bd9a5e 100644
+--- a/apps/subscriptiontracker/lib/data/api/dio_api_client.dart
++++ b/apps/subscriptiontracker/lib/data/api/dio_api_client.dart
+@@ -45,22 +45,68 @@ class DioApiClient implements ApiClient, IdempotentCreates {
+ 
+   static String _noCurrency() => Money.fallbackCurrencyCode;
+ 
++  /// Rows asked for per page of `GET /subscriptions?limit=` (keyset paging,
++  /// lane fix-st-api-bounds, rv2-services-008). The Worker serves at most 500.
++  static const int subscriptionsPageSize = 200;
++
++  /// The most pages one list read follows before it gives up. The Worker caps
++  /// an account at 500 rows, so 3 pages hold any account; a cursor that never
++  /// ends is a server fault, and a client that followed it would never return.
++  static const int _maxSubscriptionPages = 20;
++
++  /// The WHOLE list, page by page.
++  ///
++  /// 🔴 BOTH WIRE SHAPES ARE READ (lane fix-st-api-bounds). A Worker that pages
++  /// answers `?limit=` with `{items, next}` and this follows `next` until it is
++  /// null; a Worker deployed BEFORE paging ignores the query and answers the
++  /// bare array it always did, which is the whole list. Reading only the new
++  /// shape would break this build against the Worker as deployed, and reading
++  /// only the first page would silently drop every row past it.
+   @override
+   Future<List<Subscription>> getSubscriptions() async {
+-    final Object? data = await _rest.get('/subscriptions');
+-    return _rest.decode(
+-      data,
+-      (Object? b) => (b! as List<dynamic>)
+-          .map(
+-            (dynamic e) => Subscription.fromJson(
+-              e as Map<String, dynamic>,
+-              fallbackCurrencyCode: _currencyCode(),
+-            ),
+-          )
+-          .toList(),
++    final List<Subscription> out = <Subscription>[];
++    String? after;
++    for (int page = 0; page < _maxSubscriptionPages; page++) {
++      final String cursor = after == null
++          ? ''
++          : '&after=${Uri.encodeQueryComponent(after)}';
++      final Object? data = await _rest.get(
++        '/subscriptions?limit=$subscriptionsPageSize$cursor',
++      );
++      final ({List<Subscription> rows, String? next}) parsed = _rest.decode(
++        data,
++        (Object? b) {
++          if (b is List<dynamic>) {
++            return (rows: _subscriptionRows(b), next: null);
++          }
++          final Map<String, dynamic> m = b! as Map<String, dynamic>;
++          return (
++            rows: _subscriptionRows(m['items']! as List<dynamic>),
++            next: m['next'] as String?,
++          );
++        },
++      );
++      out.addAll(parsed.rows);
++      if (parsed.next == null) return out;
++      after = parsed.next;
++    }
++    throw ApiException(
++      0,
++      'Malformed response: GET /subscriptions paged past '
++      '$_maxSubscriptionPages pages',
++      malformed: true,
+     );
+   }
+ 
++  List<Subscription> _subscriptionRows(List<dynamic> rows) => rows
++      .map(
++        (dynamic e) => Subscription.fromJson(
++          e as Map<String, dynamic>,
++          fallbackCurrencyCode: _currencyCode(),
++        ),
++      )
++      .toList();
++
+   /// A one-shot create still carries a key: a lost response to it is then at
+   /// worst a missing row, never a duplicate one.
+   @override
+diff --git a/apps/subscriptiontracker/test/api_client_test.dart b/apps/subscriptiontracker/test/api_client_test.dart
+index 2b96ef07..c5306c57 100644
+--- a/apps/subscriptiontracker/test/api_client_test.dart
++++ b/apps/subscriptiontracker/test/api_client_test.dart
+@@ -35,6 +35,44 @@ class _FakeAdapter implements HttpClientAdapter {
+   }
+ }
+ 
++/// One list row as the Worker serves it.
++Map<String, dynamic> _row(String id, String name, double price) =>
++    <String, dynamic>{
++      'id': id,
++      'name': name,
++      'category': 'Streaming',
++      'price': price,
++      'cycle': 'monthly',
++      'next_renewal': '2026-08-01',
++    };
++
++/// Answers each request with the next body in [bodies], recording the request.
++class _PagedAdapter implements HttpClientAdapter {
++  _PagedAdapter(this.bodies);
++
++  final List<String> bodies;
++  final List<RequestOptions> requests = <RequestOptions>[];
++
++  @override
++  void close({bool force = false}) {}
++
++  @override
++  Future<ResponseBody> fetch(
++    RequestOptions options,
++    Stream<Uint8List>? requestStream,
++    Future<void>? cancelFuture,
++  ) async {
++    requests.add(options);
++    return ResponseBody.fromString(
++      bodies[requests.length - 1],
++      200,
++      headers: <String, List<String>>{
++        Headers.contentTypeHeader: <String>['application/json'],
++      },
++    );
++  }
++}
++
+ void main() {
+   test('attaches the bearer token and parses subscriptions', () async {
+     final _FakeAdapter adapter = _FakeAdapter(
+@@ -62,6 +100,49 @@ void main() {
+     expect(adapter.lastRequest!.headers['Authorization'], 'Bearer tok123');
+   });
+ 
++  // Lane fix-st-api-bounds (rv2-services-008): GET /subscriptions pages by
++  // keyset. The client asks with `?limit=`, follows `next`, and still reads a
++  // Worker that predates paging (the bare array above).
++  test(
++    'follows `next` across pages and asks with limit and the cursor',
++    () async {
++      final _PagedAdapter adapter = _PagedAdapter(<String>[
++        jsonEncode(<String, dynamic>{
++          'items': <dynamic>[_row('1', 'A', 9.0), _row('2', 'B', 8.0)],
++          'next': 'c-1',
++        }),
++        jsonEncode(<String, dynamic>{
++          'items': <dynamic>[_row('3', 'C', 7.0)],
++          'next': null,
++        }),
++      ]);
++      final DioApiClient client = DioApiClient(
++        baseUrl: 'https://example.test/v1',
++        tokenProvider: () async => null,
++        httpClient: Dio()..httpClientAdapter = adapter,
++      );
++      final List<Subscription> subs = await client.getSubscriptions();
++      expect(subs.map((Subscription s) => s.id), <String>['1', '2', '3']);
++      expect(adapter.requests, hasLength(2));
++      expect(adapter.requests[0].uri.queryParameters, <String, String>{
++        'limit': '${DioApiClient.subscriptionsPageSize}',
++      });
++      expect(adapter.requests[1].uri.queryParameters['after'], 'c-1');
++    },
++  );
++
++  test('a paged body without `items` is an ApiException, not a TypeError', () {
++    final DioApiClient client = DioApiClient(
++      baseUrl: 'https://example.test/v1',
++      tokenProvider: () async => null,
++      httpClient: Dio()
++        ..httpClientAdapter = _FakeAdapter(
++          jsonEncode(<String, dynamic>{'next': null}),
++        ),
++    );
++    expect(client.getSubscriptions(), throwsA(isA<ApiException>()));
++  });
++
+   test('maps error responses to ApiException', () {
+     final Dio dio = Dio()
+       ..httpClientAdapter = _FakeAdapter(
+diff --git a/apps/subscriptiontracker/test/old_server_compat_test.dart b/apps/subscriptiontracker/test/old_server_compat_test.dart
+index 466fee3c..48fa8213 100644
+--- a/apps/subscriptiontracker/test/old_server_compat_test.dart
++++ b/apps/subscriptiontracker/test/old_server_compat_test.dart
+@@ -78,7 +78,11 @@ class _DeployedServer implements HttpClientAdapter {
+       rows.add(row);
+       return _json(row, 201);
+     }
+-    if (options.method == 'GET' && options.path.endsWith('/subscriptions')) {
++    // Routed on the PATH, as the Worker routes: the deployed server ignores a
++    // query it does not know, so the paging client's `?limit=` (lane
++    // fix-st-api-bounds) gets the bare array — which the client reads whole.
++    if (options.method == 'GET' &&
++        options.uri.path.endsWith('/subscriptions')) {
+       return _json(rows, 200);
+     }
+     return _json(<String, dynamic>{'error': 'not_found'}, 404);
+diff --git a/contracts/README.md b/contracts/README.md
+index cecf9fdd..a94f5cda 100644
+--- a/contracts/README.md
++++ b/contracts/README.md
+@@ -44,6 +44,7 @@ single repository. The failure this directory prevents has happened here once.
+ | `fx/` | ST-I3's shared vector: `latest.v1.example.json` is the body of `GET /v1/fx/latest` (the ECB euro reference rates the platform Worker caches nightly) plus the conversions core must produce from it, to the minor unit. Hand-built rates, not any real day's fix | `services/platform/test/fx.test.ts` asserts the Worker stores and serves exactly `response` and re-derives every `conversions` row; `packages/core/test/money/fx_rates_test.dart` reads `response` into `FxTable` and asserts every row |
+ | `app-id/` | the APP ID rule — the pattern, the length bounds and the reserved words an `app_id` must meet before it becomes a Worker, a database, a DNS label, a Dart package and a store identity. See `app-id/README.md` | `tooling/scripts/provision-backend.mjs`, `tooling/ci/assert-store-identity.mjs` and `tooling/ci/assert-catalog-contract.mjs` import `app-id.js`; the brick's `pre_gen.dart` reads the generated `app-id.json` |
+ | `renewals/` | the RENEWAL RULE as data — `vectors.json`, the answers for `advance` and `rollForward` over every cadence (day, week, month, year; clamps, the 31st, leap days, carried anchors). See `renewals/README.md` | `services/platform/test/renewals.test.ts` (the nightly fan-out's `advance`/`rollForward`) and `packages/core/test/recurrence_schedule_test.dart` (`RecurrenceSchedule`, what every app shows) each iterate EVERY vector |
++| `currency/` | the ONE ISO 4217 table — `iso4217.js` (typed by the hand-written `contracts/currency/iso4217.d.ts`, which emits nothing), every code a price may carry and its minor-unit digits (lane fix-st-api-bounds, 2026-10-01: core's Money knew JPY and KWD only while the platform printed from ISO's full list, so a KRW plan mailed 100× too high) | `services/subscriptiontracker-api` imports it (a code not in it is a 400; `price_minor` must be `round(price × 10^digits)`), `services/platform/src/lib/reminders.ts` formats reminder prices with it, and `packages/core` reads the generated `lib/src/money/iso4217.g.dart` (`currency/generate-dart.mjs`) |
+ | `release.schema.json` | the shape of the `release.json` a GitHub Release carries: what was built, at which commit, with a version and a channel list PER ARTEFACT. There is deliberately no top-level version — one number across the portfolio would renumber FullShot the day the app ships, and a store refuses a version that goes backwards. `minSupported` on the app surface is the served floor, read from `services/platform/src/app-config-data.json` (the emitter refuses `--min-supported` there); the extension surface passes it | `tooling/ci/release-manifest.mjs --emit-release-json` writes the record, `tooling/ci/assert-release-json.mjs` grades it against the bytes and against `tooling/channel-register.json` |
+ 
+ ## Who reads what, and what stops it drifting
+@@ -63,6 +64,7 @@ single repository. The failure this directory prevents has happened here once.
+ | `renewals/vectors.json` ↔ `services/platform/src/renewals.ts` ↔ `packages/core/lib/src/dates/recurrence_schedule.dart` | both implementations' suites iterate every vector; flipping one expected date reds both | `services/platform` vitest (`ci.yml`), and the workspace gate's `melos run test` (`ci.yml` · workspace_gate) |
+ | `app-id/app-id.js` ↔ `app-id/app-id.json` ↔ its four callers ↔ `services/platform/src/config.ts` `APP_ID_PATTERN` ↔ the two app-yaml schemas and `release.schema.json` `unit` | `tooling/ci/assert-app-id-contract.mjs` — the JSON is what `app-id/generate.mjs` writes, every id the contract accepts passes the Worker's filter, each caller uses the contract and carries no app-id regex of its own, and each schema accepts no id the contract refuses | `ci.yml` · guards-store |
+ | `fx/latest.v1.example.json` ↔ the Worker's stored and served table ↔ core's `FxTable` | the two tests named in the `fx/` row above, reading the same file — no generator and no guard; a change one side makes alone is a red test on the other | `ci.yml` · `lane-workers` (lane-workers.yml, the Worker suites) and `workspace-gate` (`melos run test`) |
++| `currency/iso4217.js` ↔ `packages/core/lib/src/money/iso4217.g.dart` ↔ the two Workers that import it | `currency/generate-dart.mjs --check`, run with a red control by `tooling/ci/test/currency-table.test.mjs`, which also refuses a Worker or `money.dart` that restates a digit row | `ci.yml`'s `node --test "tooling/ci/test/*.test.mjs"` step |
+ | `release.json` ↔ the files beside it ↔ `tooling/channel-register.json` | `tooling/ci/assert-release-json.mjs` — eight limbs, both directions on the file set, and `--self-test` which breaks one thing at a time and requires the guard to name it | `build-platforms.yml` and `extensions.yml` on every release run (`--dir`), `ci.yml` · guards-store on every commit (`--self-test`); `tooling/ci/test/assert-release-json.test.mjs` on every PR EXECUTES each workflow's `--emit-release-json` step and grades what it would emit, so a lane passing a malformed value is red before a branch build. A step is found when it names the mode ANYWHERE (the emitter's own `has()` predicate, not "right after the script path"), and every line of `.github/` that names it must sit inside a step the test executed, or it is red |
+ 
+ **The platform Worker redeploys when the contract changes.** `contract.ts`
+diff --git a/contracts/currency/generate-dart.mjs b/contracts/currency/generate-dart.mjs
+new file mode 100644
+index 00000000..005f3242
+--- /dev/null
++++ b/contracts/currency/generate-dart.mjs
+@@ -0,0 +1,72 @@
++#!/usr/bin/env node
++// ─────────────────────────────────────────────────────────────────────────────
++// generate-dart.mjs — write the Dart view of the ISO 4217 table, or prove the
++// committed file still agrees with it.
++//
++//   node contracts/currency/generate-dart.mjs           rewrite the .g.dart
++//   node contracts/currency/generate-dart.mjs --check    exit 1 if it would change
++//
++// The same pattern as contracts/entitlement/generate-dart.mjs, for the same
++// reason: the Workers import `iso4217.js` itself, and Dart cannot import
++// JavaScript, so the only honest options are a hand-kept transcription (which
++// is what money.dart's two-entry map was, and it disagreed with the platform's
++// list — #1118 review finding 3) or a generated one. The output is COMMITTED:
++// packages/core has no codegen step, and a committed file makes a drift a diff.
++// No dependencies: plain node.
++// ─────────────────────────────────────────────────────────────────────────────
++import { readFileSync, writeFileSync } from 'node:fs';
++import { dirname, join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { MINOR_UNIT_DIGITS } from './iso4217.js';
++
++const HERE = dirname(fileURLToPath(import.meta.url));
++const ROOT = join(HERE, '..', '..');
++const REL = 'packages/core/lib/src/money/iso4217.g.dart';
++const OUT = join(ROOT, REL);
++const check = process.argv.includes('--check');
++
++const entries = Object.entries(MINOR_UNIT_DIGITS).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
++// A COVERAGE SELF-CHECK: an empty table renders as valid Dart and would make
++// every code "unknown" — every amount printed with two decimals, silently.
++if (entries.length < 150) {
++  console.error(`✗ COVERAGE LOST — iso4217.js exported ${entries.length} codes; ISO 4217 has more than 150.`);
++  console.error(`  ${REL} would be written short, and every missing code would read as two decimals.`);
++  process.exit(2);
++}
++for (const [code, digits] of entries) {
++  if (!/^[A-Z]{3}$/.test(code) || !Number.isInteger(digits) || digits < 0 || digits > 4) {
++    console.error(`✗ iso4217.js row ${code}: ${digits} is not a three-letter code with 0-4 minor digits.`);
++    process.exit(1);
++  }
++}
++
++const body = [
++  '// GENERATED by contracts/currency/generate-dart.mjs from contracts/currency/iso4217.js.',
++  '// Never hand-edit it: `node contracts/currency/generate-dart.mjs --check` fails on a diff.',
++  '',
++  '/// ISO 4217 minor-unit digits by alphabetic code — THE ONE TABLE, shared with',
++  '/// the subscriptiontracker-api Worker (which refuses a code not in it) and the',
++  '/// platform Worker (which prints reminder prices with it).',
++  'const Map<String, int> iso4217MinorUnitDigits = <String, int>{',
++  ...entries.map(([code, digits]) => `  '${code}': ${digits},`),
++  '};',
++  '',
++].join('\n');
++
++let current = null;
++try {
++  current = readFileSync(OUT, 'utf8');
++} catch {
++  current = null;
++}
++if (check) {
++  if (current !== body) {
++    console.error(`✗ ${REL} is not what contracts/currency/iso4217.js generates.`);
++    console.error('  Run `node contracts/currency/generate-dart.mjs` and commit the result.');
++    process.exit(1);
++  }
++  console.log(`✓ ${REL} matches iso4217.js (${entries.length} codes).`);
++  process.exit(0);
++}
++writeFileSync(OUT, body);
++console.log(`wrote ${REL} (${entries.length} codes).`);
+diff --git a/contracts/currency/iso4217.d.ts b/contracts/currency/iso4217.d.ts
+new file mode 100644
+index 00000000..063d4e4c
+--- /dev/null
++++ b/contracts/currency/iso4217.d.ts
+@@ -0,0 +1,12 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// iso4217.d.ts — the TypeScript view of iso4217.js. Hand-written, never
++// generated, and never compiled (the same shape as entitlement/contract.d.ts).
++// ─────────────────────────────────────────────────────────────────────────────
++
++export const MINOR_UNIT_DIGITS: Readonly<Record<string, number>>;
++
++export function isIso4217(code: unknown): code is string;
++
++export function minorUnitDigits(code: string): number | null;
++
++export function toMinorUnits(price: number, code: string): number | null;
+diff --git a/contracts/currency/iso4217.js b/contracts/currency/iso4217.js
+new file mode 100644
+index 00000000..d5053b24
+--- /dev/null
++++ b/contracts/currency/iso4217.js
+@@ -0,0 +1,83 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// iso4217.js — THE ONE ISO 4217 TABLE: every currency code a price may carry,
++// and how many minor-unit digits it has. Plain ES module, no build step.
++//
++// ⏱ 2026-10-01 · lane fix-st-api-bounds (rv2-services-030, and #1118 review
++// finding 3). There were three answers to "how many decimals does this currency
++// have", and they disagreed:
++//   · packages/core money.dart knew JPY 0 and KWD 3 and called everything else 2;
++//   · services/platform/src/lib/reminders.ts carried ISO's full exception list;
++//   · services/subscriptiontracker-api accepted ANY three letters (`ZZZ`) and
++//     never checked `price_minor` against `price`.
++// So a KRW plan written by the app as minor = price × 100 printed 100× too high
++// in reminder mail, and a BHD plan 10× too low. Now:
++//   · services/subscriptiontracker-api imports this file: a code not in it is a
++//     400, and `price_minor` must equal round(price × 10^digits);
++//   · services/platform's reminder formatter imports this file;
++//   · packages/core reads the GENERATED Dart view (generate-dart.mjs writes
++//     packages/core/lib/src/money/iso4217.g.dart; `--check` reds a drift).
++//
++// THE LIST: ISO 4217 List One, every code with a minor unit (the codes whose
++// minor unit ISO publishes as "N.A." — precious metals, XDR, XSU, XUA, the
++// bond-market units XBA-XBD, the test code XTS and XXX — are not money a
++// subscription is priced in, so they are absent and refused). Three codes ISO
++// has since replaced are KEPT so a device still set to one is not refused:
++// ANG (replaced by XCG, 2025), CUC (no longer circulating) and SLL (replaced by
++// SLE, 2023). HRK and ZWL are not: their successors (EUR, ZWG) are here and no
++// price is quoted in them any more.
++// ─────────────────────────────────────────────────────────────────────────────
++
++/** Minor-unit digits by ISO 4217 alphabetic code (upper case). Frozen. */
++export const MINOR_UNIT_DIGITS = Object.freeze({
++  AED: 2, AFN: 2, ALL: 2, AMD: 2, ANG: 2, AOA: 2, ARS: 2, AUD: 2, AWG: 2, AZN: 2,
++  BAM: 2, BBD: 2, BDT: 2, BGN: 2, BHD: 3, BIF: 0, BMD: 2, BND: 2, BOB: 2, BOV: 2,
++  BRL: 2, BSD: 2, BTN: 2, BWP: 2, BYN: 2, BZD: 2,
++  CAD: 2, CDF: 2, CHE: 2, CHF: 2, CHW: 2, CLF: 4, CLP: 0, CNY: 2, COP: 2, COU: 2,
++  CRC: 2, CUC: 2, CUP: 2, CVE: 2, CZK: 2,
++  DJF: 0, DKK: 2, DOP: 2, DZD: 2,
++  EGP: 2, ERN: 2, ETB: 2, EUR: 2,
++  FJD: 2, FKP: 2,
++  GBP: 2, GEL: 2, GHS: 2, GIP: 2, GMD: 2, GNF: 0, GTQ: 2, GYD: 2,
++  HKD: 2, HNL: 2, HTG: 2, HUF: 2,
++  IDR: 2, ILS: 2, INR: 2, IQD: 3, IRR: 2, ISK: 0,
++  JMD: 2, JOD: 3, JPY: 0,
++  KES: 2, KGS: 2, KHR: 2, KMF: 0, KPW: 2, KRW: 0, KWD: 3, KYD: 2, KZT: 2,
++  LAK: 2, LBP: 2, LKR: 2, LRD: 2, LSL: 2, LYD: 3,
++  MAD: 2, MDL: 2, MGA: 2, MKD: 2, MMK: 2, MNT: 2, MOP: 2, MRU: 2, MUR: 2, MVR: 2,
++  MWK: 2, MXN: 2, MXV: 2, MYR: 2, MZN: 2,
++  NAD: 2, NGN: 2, NIO: 2, NOK: 2, NPR: 2, NZD: 2,
++  OMR: 3,
++  PAB: 2, PEN: 2, PGK: 2, PHP: 2, PKR: 2, PLN: 2, PYG: 0,
++  QAR: 2,
++  RON: 2, RSD: 2, RUB: 2, RWF: 0,
++  SAR: 2, SBD: 2, SCR: 2, SDG: 2, SEK: 2, SGD: 2, SHP: 2, SLE: 2, SLL: 2, SOS: 2,
++  SRD: 2, SSP: 2, STN: 2, SVC: 2, SYP: 2, SZL: 2,
++  THB: 2, TJS: 2, TMT: 2, TND: 3, TOP: 2, TRY: 2, TTD: 2, TWD: 2, TZS: 2,
++  UAH: 2, UGX: 0, USD: 2, USN: 2, UYI: 0, UYU: 2, UYW: 4, UZS: 2,
++  VED: 2, VES: 2, VND: 0, VUV: 0,
++  WST: 2,
++  XAF: 0, XCD: 2, XCG: 2, XOF: 0, XPF: 0,
++  YER: 2,
++  ZAR: 2, ZMW: 2, ZWG: 2,
++});
++
++/** True when [code] is a code in the table, exactly as written (upper case). */
++export function isIso4217(code) {
++  return typeof code === 'string' && Object.hasOwn(MINOR_UNIT_DIGITS, code);
++}
++
++/** The minor-unit digits of [code] (upper case), or null for a code not in the table. */
++export function minorUnitDigits(code) {
++  return isIso4217(code) ? MINOR_UNIT_DIGITS[code] : null;
++}
++
++/**
++ * The exact minor-unit count a decimal [price] is in [code]: round(price × 10^digits),
++ * or null for a code not in the table. The ONE rounding rule: the ST API checks
++ * a client's `price_minor` against it, and core's `Money.fromMajorUnits` is the
++ * same arithmetic (`(major * 10^digits).round()`).
++ */
++export function toMinorUnits(price, code) {
++  const digits = minorUnitDigits(code);
++  return digits === null ? null : Math.round(price * 10 ** digits);
++}
+diff --git a/packages/core/lib/nikatru_core.dart b/packages/core/lib/nikatru_core.dart
+index 5adb4f1b..a8a3668e 100644
+--- a/packages/core/lib/nikatru_core.dart
++++ b/packages/core/lib/nikatru_core.dart
+@@ -47,6 +47,7 @@ export 'src/config/observed_feature_flags.dart';
+ export 'src/config/version_gate.dart';
+ export 'src/models/entitlement.dart';
+ export 'src/money/fx_rates.dart';
++export 'src/money/iso4217.g.dart';
+ export 'src/money/money.dart';
+ export 'src/money/money_bag.dart';
+ export 'src/money/money_format.dart';
+diff --git a/packages/core/lib/src/content/service_catalogue.dart b/packages/core/lib/src/content/service_catalogue.dart
+index af4d3e69..7c9db610 100644
+--- a/packages/core/lib/src/content/service_catalogue.dart
++++ b/packages/core/lib/src/content/service_catalogue.dart
+@@ -30,12 +30,12 @@
+ ///
+ /// A price key's code must be three upper-case letters AND a member of
+ /// [kServiceCatalogueCurrencies]. The list is deliberately SMALLER than ISO
+-/// 4217: it holds only codes whose minor-unit precision [Money] gets right
+-/// (every entry is two-decimal, except JPY at 0 and KWD at 3, which Money
+-/// declares). A code Money would mis-scale — KRW has no minor unit, Money
+-/// assumes two — would misprice by a factor of a hundred, so it is refused
+-/// here rather than shown wrong. Widen the list only together with Money's
+-/// precision table.
++/// 4217: it holds the codes the catalogue has been checked in (every entry is
++/// two-decimal, except JPY at 0 and KWD at 3). ⏱ 2026-10-01: [Money]'s
++/// precision now comes from the full ISO 4217 table
++/// (`contracts/currency/iso4217.js`), so a code such as KRW would no longer be
++/// mis-scaled — but widening THIS list is a content decision, made with the
++/// prices it admits, not a side effect of that table.
+ library;
+ 
+ import 'dart:convert';
+diff --git a/packages/core/lib/src/money/iso4217.g.dart b/packages/core/lib/src/money/iso4217.g.dart
+new file mode 100644
+index 00000000..686e09c9
+--- /dev/null
++++ b/packages/core/lib/src/money/iso4217.g.dart
+@@ -0,0 +1,176 @@
++// GENERATED by contracts/currency/generate-dart.mjs from contracts/currency/iso4217.js.
++// Never hand-edit it: `node contracts/currency/generate-dart.mjs --check` fails on a diff.
++
++/// ISO 4217 minor-unit digits by alphabetic code — THE ONE TABLE, shared with
++/// the subscriptiontracker-api Worker (which refuses a code not in it) and the
++/// platform Worker (which prints reminder prices with it).
++const Map<String, int> iso4217MinorUnitDigits = <String, int>{
++  'AED': 2,
++  'AFN': 2,
++  'ALL': 2,
++  'AMD': 2,
++  'ANG': 2,
++  'AOA': 2,
++  'ARS': 2,
++  'AUD': 2,
++  'AWG': 2,
++  'AZN': 2,
++  'BAM': 2,
++  'BBD': 2,
++  'BDT': 2,
++  'BGN': 2,
++  'BHD': 3,
++  'BIF': 0,
++  'BMD': 2,
++  'BND': 2,
++  'BOB': 2,
++  'BOV': 2,
++  'BRL': 2,
++  'BSD': 2,
++  'BTN': 2,
++  'BWP': 2,
++  'BYN': 2,
++  'BZD': 2,
++  'CAD': 2,
++  'CDF': 2,
++  'CHE': 2,
++  'CHF': 2,
++  'CHW': 2,
++  'CLF': 4,
++  'CLP': 0,
++  'CNY': 2,
++  'COP': 2,
++  'COU': 2,
++  'CRC': 2,
++  'CUC': 2,
++  'CUP': 2,
++  'CVE': 2,
++  'CZK': 2,
++  'DJF': 0,
++  'DKK': 2,
++  'DOP': 2,
++  'DZD': 2,
++  'EGP': 2,
++  'ERN': 2,
++  'ETB': 2,
++  'EUR': 2,
++  'FJD': 2,
++  'FKP': 2,
++  'GBP': 2,
++  'GEL': 2,
++  'GHS': 2,
++  'GIP': 2,
++  'GMD': 2,
++  'GNF': 0,
++  'GTQ': 2,
++  'GYD': 2,
++  'HKD': 2,
++  'HNL': 2,
++  'HTG': 2,
++  'HUF': 2,
++  'IDR': 2,
++  'ILS': 2,
++  'INR': 2,
++  'IQD': 3,
++  'IRR': 2,
++  'ISK': 0,
++  'JMD': 2,
++  'JOD': 3,
++  'JPY': 0,
++  'KES': 2,
++  'KGS': 2,
++  'KHR': 2,
++  'KMF': 0,
++  'KPW': 2,
++  'KRW': 0,
++  'KWD': 3,
++  'KYD': 2,
++  'KZT': 2,
++  'LAK': 2,
++  'LBP': 2,
++  'LKR': 2,
++  'LRD': 2,
++  'LSL': 2,
++  'LYD': 3,
++  'MAD': 2,
++  'MDL': 2,
++  'MGA': 2,
++  'MKD': 2,
++  'MMK': 2,
++  'MNT': 2,
++  'MOP': 2,
++  'MRU': 2,
++  'MUR': 2,
++  'MVR': 2,
++  'MWK': 2,
++  'MXN': 2,
++  'MXV': 2,
++  'MYR': 2,
++  'MZN': 2,
++  'NAD': 2,
++  'NGN': 2,
++  'NIO': 2,
++  'NOK': 2,
++  'NPR': 2,
++  'NZD': 2,
++  'OMR': 3,
++  'PAB': 2,
++  'PEN': 2,
++  'PGK': 2,
++  'PHP': 2,
++  'PKR': 2,
++  'PLN': 2,
++  'PYG': 0,
++  'QAR': 2,
++  'RON': 2,
++  'RSD': 2,
++  'RUB': 2,
++  'RWF': 0,
++  'SAR': 2,
++  'SBD': 2,
++  'SCR': 2,
++  'SDG': 2,
++  'SEK': 2,
++  'SGD': 2,
++  'SHP': 2,
++  'SLE': 2,
++  'SLL': 2,
++  'SOS': 2,
++  'SRD': 2,
++  'SSP': 2,
++  'STN': 2,
++  'SVC': 2,
++  'SYP': 2,
++  'SZL': 2,
++  'THB': 2,
++  'TJS': 2,
++  'TMT': 2,
++  'TND': 3,
++  'TOP': 2,
++  'TRY': 2,
++  'TTD': 2,
++  'TWD': 2,
++  'TZS': 2,
++  'UAH': 2,
++  'UGX': 0,
++  'USD': 2,
++  'USN': 2,
++  'UYI': 0,
++  'UYU': 2,
++  'UYW': 4,
++  'UZS': 2,
++  'VED': 2,
++  'VES': 2,
++  'VND': 0,
++  'VUV': 0,
++  'WST': 2,
++  'XAF': 0,
++  'XCD': 2,
++  'XCG': 2,
++  'XOF': 0,
++  'XPF': 0,
++  'YER': 2,
++  'ZAR': 2,
++  'ZMW': 2,
++  'ZWG': 2,
++};
+diff --git a/packages/core/lib/src/money/money.dart b/packages/core/lib/src/money/money.dart
+index 7fe58b46..ddad2f64 100644
+--- a/packages/core/lib/src/money/money.dart
++++ b/packages/core/lib/src/money/money.dart
+@@ -1,3 +1,5 @@
++import 'iso4217.g.dart';
++
+ /// Thrown when two amounts in DIFFERENT currencies are added, subtracted or
+ /// compared as if they were the same unit.
+ ///
+@@ -100,20 +102,21 @@ class Money implements Comparable<Money> {
+     'CAD': r'C$',
+   };
+ 
+-  /// Decimal places per currency. ISO 4217 is NOT uniform — the yen has none
+-  /// and the Kuwaiti dinar has three — so a hardcoded division by a hundred
+-  /// misprices a yen plan by a factor of a hundred. Two is the default and
+-  /// covers everything these apps sell today.
+-  static const Map<String, int> _minorUnitDigits = <String, int>{
+-    'JPY': 0,
+-    'KWD': 3,
+-  };
+-
+-  /// The default, named so the two lookups below read as one rule.
++  /// Decimal places per currency. ISO 4217 is NOT uniform — the yen and the won
++  /// have none and the Kuwaiti and Bahraini dinars have three — so a hardcoded
++  /// division by a hundred misprices a yen plan by a factor of a hundred.
++  ///
++  /// ⏱ 2026-10-01 · #1118 review finding 3. This was a two-entry map (JPY 0,
++  /// KWD 3) while the platform Worker printed reminder prices from ISO's full
++  /// list, so a KRW plan written here as won × 100 mailed 100× too high and a
++  /// BHD plan 10× too low. It now reads [iso4217MinorUnitDigits], GENERATED
++  /// from `contracts/currency/iso4217.js` — the table the subscriptiontracker
++  /// Worker validates `price_minor` against and the platform Worker formats
++  /// with. A code not in it (never a real currency) still reads as two.
+   static const int defaultMinorUnitDigits = 2;
+ 
+   static int minorUnitDigitsFor(String code) =>
+-      _minorUnitDigits[code] ?? defaultMinorUnitDigits;
++      iso4217MinorUnitDigits[code] ?? defaultMinorUnitDigits;
+ 
+   /// The symbol for [code], or null when there is none. NULL IS A REAL ANSWER
+   /// and callers must render the code instead: a wrong symbol on a real charge
+diff --git a/packages/core/test/money_test.dart b/packages/core/test/money_test.dart
+index 6286a486..2168289b 100644
+--- a/packages/core/test/money_test.dart
++++ b/packages/core/test/money_test.dart
+@@ -22,6 +22,38 @@ void main() {
+       expect(const Money(500, 'KWD').plainFormat(), 'KWD 0.500');
+     });
+ 
++    // ⏱ 2026-10-01 · #1118 review finding 3. The table was JPY and KWD only, so
++    // the won and the Bahraini dinar read as two decimals here while the
++    // platform's reminder mail read them as ISO says: a KRW plan written as
++    // won × 100 mailed 100× too high, a BHD plan 10× too low. Both now come from
++    // contracts/currency/iso4217.js, as the Workers' do.
++    test('KRW round-trips with no minor unit (ISO 4217, the shared table)', () {
++      expect(Money.minorUnitDigitsFor('KRW'), 0);
++      final Money m = Money.fromMajorUnits(14900, 'KRW');
++      expect(m.minorUnits, 14900);
++      expect(m.plainFormat(), 'KRW 14900');
++      expect(Money.fromMajorUnits(m.minorUnits, 'KRW'), m);
++    });
++
++    test(
++      'BHD round-trips with three minor digits (ISO 4217, the shared table)',
++      () {
++        expect(Money.minorUnitDigitsFor('BHD'), 3);
++        final Money m = Money.fromMajorUnits(2.5, 'BHD');
++        expect(m.minorUnits, 2500);
++        expect(m.plainFormat(), 'BHD 2.500');
++        expect(Money.tryParseMajor('2.500', 'BHD'), m);
++      },
++    );
++
++    test('the table is the generated full ISO list, not a hand-kept pair', () {
++      // contracts/currency/generate-dart.mjs refuses to write fewer than 150.
++      expect(iso4217MinorUnitDigits.length, greaterThan(150));
++      expect(iso4217MinorUnitDigits['CLF'], 4);
++      expect(iso4217MinorUnitDigits['VND'], 0);
++      expect(iso4217MinorUnitDigits['OMR'], 3);
++    });
++
+     test('an unknown code renders as the CODE, never a guessed symbol', () {
+       expect(Money.symbolFor('ZZZ'), isNull);
+       expect(const Money(499, 'ZZZ').plainFormat(), 'ZZZ 4.99');
+diff --git a/services/platform/src/lib/reminders.ts b/services/platform/src/lib/reminders.ts
+index 415a5bc1..32f66578 100644
+--- a/services/platform/src/lib/reminders.ts
++++ b/services/platform/src/lib/reminders.ts
+@@ -38,6 +38,7 @@ import { sendResendMail } from './report-notify';
+ import { sha256Hex } from '../middleware/ext-device-auth';
+ import { catalogueApp } from './catalog';
+ import { parseReminderDays } from '../../../_shared/src/reminder-days';
++import { minorUnitDigits } from '../../../../contracts/currency/iso4217.js';
+ 
+ /**
+  * [ADR 029] §2 — everything a machine sends leaves Resend from mail.nikatru.com,
+@@ -300,23 +301,18 @@ export function dueReminder(
+ }
+ 
+ /**
+- * ISO 4217 minor-unit digits for the currencies whose exponent is NOT two — the
+- * yen has none and the Kuwaiti dinar has three, so a fixed two decimals misprints
+- * both. Every code not listed is two, ISO's own majority.
++ * The minor-unit digits of an ISO 4217 code (upper case), from THE ONE table,
++ * contracts/currency/iso4217.js — the table subscriptiontracker-api checks a
++ * written `price_minor` against and packages/core's Money writes it with.
+  *
+- * TODO(lane fix-st-api-bounds): that lane adds the shared ISO 4217 table under
+- * contracts/; once it lands, read it here and delete this map.
++ * ⏱ 2026-10-01 · lane fix-st-api-bounds (#1118 review finding 3). This was a
++ * map of its own, ISO's full exception list, while core's Money knew only JPY
++ * and KWD: the app wrote a KRW plan as won × 100 and this printed it 100× too
++ * high, a BHD plan 10× too low. A code not in the table (never a real
++ * currency; the API refuses one since this lane) prints with two.
+  */
+-const MINOR_DIGITS_NOT_TWO: Readonly<Record<string, number>> = {
+-  BIF: 0, CLP: 0, DJF: 0, GNF: 0, ISK: 0, JPY: 0, KMF: 0, KRW: 0, PYG: 0, RWF: 0,
+-  UGX: 0, UYI: 0, VND: 0, VUV: 0, XAF: 0, XOF: 0, XPF: 0,
+-  BHD: 3, IQD: 3, JOD: 3, KWD: 3, LYD: 3, OMR: 3, TND: 3,
+-  CLF: 4, UYW: 4,
+-};
+-
+-/** The minor-unit digits of an ISO 4217 code (upper case). */
+ export function minorDigits(code: string): number {
+-  return Object.hasOwn(MINOR_DIGITS_NOT_TWO, code) ? MINOR_DIGITS_NOT_TWO[code] : 2;
++  return minorUnitDigits(code) ?? 2;
+ }
+ 
+ /** An exact minor-unit count as its decimal string: (1999, 2) → "19.99", (500, 0) → "500". */
+diff --git a/services/platform/test/currency-table.test.ts b/services/platform/test/currency-table.test.ts
+new file mode 100644
+index 00000000..b001887a
+--- /dev/null
++++ b/services/platform/test/currency-table.test.ts
+@@ -0,0 +1,42 @@
++import { describe, it, expect } from 'vitest';
++import { minorDigits, priceLabel } from '../src/lib/reminders';
++import { MINOR_UNIT_DIGITS, toMinorUnits } from '../../../contracts/currency/iso4217.js';
++
++// ─────────────────────────────────────────────────────────────────────────────
++// THE REMINDER PRICE READS THE ONE ISO 4217 TABLE (lane fix-st-api-bounds,
++// #1118 review finding 3).
++//
++// This Worker printed reminder prices from a map of its own while
++// packages/core's Money wrote them from a two-entry one, so the two halves of
++// one amount disagreed for every currency outside JPY and KWD: a KRW plan
++// written as won × 100 mailed 100× too high, a BHD plan 10× too low. Both now
++// read contracts/currency/iso4217.js; these are the round trips through the
++// write rule (toMinorUnits — what subscriptiontracker-api checks `price_minor`
++// against) and back out through the mail's label.
++// ─────────────────────────────────────────────────────────────────────────────
++
++describe('reminder prices use the shared ISO 4217 table', () => {
++  it('KRW: no minor unit — 14900 won is written as 14900 and printed as 14900', () => {
++    const minor = toMinorUnits(14900, 'KRW');
++    expect(minor).toBe(14900);
++    expect(priceLabel(14900, 'KRW', minor)).toBe('KRW 14900');
++    expect(priceLabel(14900, 'KRW', null)).toBe('KRW 14900');
++  });
++
++  it('BHD: three minor digits — 2.5 dinar is written as 2500 and printed as 2.500', () => {
++    const minor = toMinorUnits(2.5, 'BHD');
++    expect(minor).toBe(2500);
++    expect(priceLabel(2.5, 'BHD', minor)).toBe('BHD 2.500');
++    expect(priceLabel(2.5, 'BHD', null)).toBe('BHD 2.500');
++  });
++
++  it('every code the table holds is the digits this formatter prints with', () => {
++    const codes = Object.keys(MINOR_UNIT_DIGITS);
++    expect(codes.length).toBeGreaterThan(150);
++    for (const code of codes) expect(minorDigits(code), code).toBe(MINOR_UNIT_DIGITS[code]);
++  });
++
++  it('a code outside the table still prints, with two digits', () => {
++    expect(minorDigits('ZZZ')).toBe(2);
++  });
++});
+diff --git a/services/subscriptiontracker-api/README.md b/services/subscriptiontracker-api/README.md
+index 493d408b..f8098ba3 100644
+--- a/services/subscriptiontracker-api/README.md
++++ b/services/subscriptiontracker-api/README.md
+@@ -27,13 +27,12 @@ all six Flutter targets. Auth is **Supabase** — the Worker verifies Supabase J
+ | Method | Path | Auth | Purpose |
+ |---|---|---|---|
+ | GET | `/v1/health` | none | Liveness / deploy verification |
+-| GET | `/v1/subscriptions` | Supabase JWT | List subscriptions (price desc); hides soft-deleted rows and purges those past 30 days (a failed purge is reported to GlitchTip; the list still loads) |
+-| POST | `/v1/subscriptions` | Supabase JWT | Create subscription; an optional `Idempotency-Key` (header, or the `idempotency_key` query parameter) makes a retry answer the first row (`src/lib/idempotency.ts`) |
++| GET | `/v1/subscriptions` | Supabase JWT | List subscriptions (price desc); hides soft-deleted rows and purges those past 30 days (a failed purge is reported to GlitchTip; the list still loads). Bounded: the bare array is `LIMIT` the per-account row cap (500); `?limit=N&after=<cursor>` is keyset-paged as `{items, next}` |
++| POST | `/v1/subscriptions` | Supabase JWT | Create subscription; an optional `Idempotency-Key` (header, or the `idempotency_key` query parameter) makes a retry answer the first row (`src/lib/idempotency.ts`); 409 `limit_reached` at 500 rows per account (removed rows count until purged) |
+ | GET | `/v1/subscriptions/:id` | Supabase JWT | One subscription + payment_history + price_history |
+ | PATCH | `/v1/subscriptions/:id` | Supabase JWT | Update fields — incl. `status` paused/cancelled and `deleted_at` (soft delete; `null` restores); a price edit logs a `price_change` row read from the row in the same batch; a dateless cancel is dated today only on the transition into `cancelled`, and `{cancelled_on: null}` alone keeps a cancelled row's date; a removed row is a 404 to everything but `{deleted_at: null}` (restore) and `{deleted_at: <any>}` alone (a repeat removal: 200, the first stamp kept, as `DELETE`) |
+ | DELETE | `/v1/subscriptions/:id` | Supabase JWT | Soft delete (sets `deleted_at`; restorable for 30 days, then purged with its history) |
+ | POST | `/v1/subscriptions/:id/payments` | Supabase JWT | Record a manual payment (`source: manual`); `paid_on` is 2000-01-01 to tomorrow (UTC); takes the same optional `Idempotency-Key`: a retry answers the payment as recorded, 409 `idempotency_in_progress` while the first attempt runs, 422 for the key with another body or subscription, 410 once the subscription is removed |
+-| GET | `/v1/renewals?withinDays=7` | Supabase JWT | Upcoming renewals + `days_left` |
+ | GET | `/v1/budget` | Supabase JWT | Monthly budget + category caps |
+ | PUT | `/v1/budget` | Supabase JWT | Upsert budget + caps (a cap may name its `category_id`) |
+ | GET | `/v1/categories` | Supabase JWT | Built-in categories (stable ids) + the user's own |
+@@ -43,6 +42,16 @@ all six Flutter targets. Auth is **Supabase** — the Worker verifies Supabase J
+ | GET | `/v1/entitlements` | Supabase JWT | `is_pro` + `granted_via` + entitlements (+ `bundle` when a live grant exists) for this app — THE ONE reader, `services/_shared/src/entitlement-read.ts`, byte-identical to the shared host's answer |
+ | DELETE | `/v1/account` | **ES256/JWKS only** | Erase this user from every user-owned table in `subscriptiontracker_db` |
+ 
++**Every route above but `/v1/health` (lane fix-st-api-bounds, 2026-10-01):** a write
++(non-GET) is limited per verified account by the `WRITE_LIMITER` binding — 120 a minute,
++then 429 `rate_limited` with `Retry-After: 60` (`src/middleware/write-limit.ts`); a body is
++read under a cap derived from the route's field bounds (≈ 32 KB for a subscription,
++≈ 132 KB for a budget), else 413 `body_too_large` (`src/lib/json-body.ts`); a date is
++1970-01-01 to 2100-12-31; a currency is an ISO 4217 code in `contracts/currency/iso4217.js`,
++and `price_minor` must equal `round(price × 10^digits)` in it. Every one is a refusal with
++no row written; `test/bounds.test.ts`, `test/write-limit.test.ts` and
++`test/mount-auth.test.ts` (an unauthenticated request through the real app) hold them.
++
+ ### ⚠️ Served ahead of their screens (2026-09-29)
+ 
+ `POST /v1/subscriptions/:id/payments`, `price_history` and `/v1/categories` are the API
+@@ -53,6 +62,12 @@ has sent those writes since #1045.
+ 
+ ### ⚠️ `GET /v1/renewals` and `GET /v1/entitlements` are SERVED AND UNCONSUMED
+ 
++⏱ **2026-10-01 · `GET /v1/renewals` IS REMOVED (rv2-services-023, lane
++fix-st-api-bounds)** — the route, its mount, `test/renewals.test.ts`, its tenancy case and
++its `tooling/platform-register.json` row, in one change. It had no caller since 2026-08-25,
++and the reminders it would have fed are `services/platform`'s. What follows is the record
++as it stood; `GET /v1/entitlements` is unchanged.
++
+ **`GET /v1/renewals` — nothing in this repository calls it.** `ApiClient`
+ (`apps/subscriptiontracker/lib/data/api/api_client.dart`) declares no renewals method at all —
+ the app's "Upcoming renewals" surface derives its list client-side from
+@@ -342,8 +357,8 @@ now a choice, kept because one place to look beats a Worker per job:
+    past-due `next_renewal` forward one cycle (monthly/yearly), inserting a
+    `payment_history` row per crossed charge, over each app's bound `APP_DB`.
+ 
+-The renewals HTTP read endpoint (`GET /v1/renewals`) still lives here — served,
+-and with no in-repo client; see the note under the API surface table above.
++The renewals HTTP read endpoint (`GET /v1/renewals`) was removed on 2026-10-01
++(rv2-services-023): it had no client. See the note under the API surface table above.
+ 
+ ## Clone for the next app
+ 
+diff --git a/services/subscriptiontracker-api/src/index.ts b/services/subscriptiontracker-api/src/index.ts
+index cea0ca86..d78a8b91 100644
+--- a/services/subscriptiontracker-api/src/index.ts
++++ b/services/subscriptiontracker-api/src/index.ts
+@@ -4,7 +4,8 @@
+ //
+ //   PUBLIC   GET    /v1/health              — no auth (deploy verification)
+ //   ES256    DELETE /v1/account             — erasure. ASYMMETRIC-ONLY (see below)
+-//   AUTH     *      /v1/subscriptions ...   — Supabase JWT required
++//   AUTH     *      /v1/subscriptions ...   — Supabase JWT required; writes
++//                                             per-account rate limited
+ //
+ // ── 🔴 TWO AUTH BOUNDARIES ON ONE WORKER, AND THE DIFFERENCE IS THE POINT ────
+ // `supabaseAuth` verifies ES256 against Supabase's public JWKS and, if that
+@@ -36,9 +37,9 @@ import { reportWorkerError, requestSinkContext } from './lib/error-sink';
+ import { corsMiddleware } from './middleware/cors';
+ import { requestId } from './lib/request-id';
+ import { supabaseAuth, erasureAuth } from './middleware/auth';
++import { writeLimit } from './middleware/write-limit';
+ import account from './routes/account';
+ import subscriptions from './routes/subscriptions';
+-import renewals from './routes/renewals';
+ import budget from './routes/budget';
+ import categories from './routes/categories';
+ import entitlements from './routes/entitlements';
+@@ -184,8 +185,16 @@ app.route('/v1', account);
+ // ── Protected: everything else under /v1 requires a valid Supabase JWT ────────
+ const api = new Hono<AppEnv>();
+ api.use('*', supabaseAuth);
++// ⏱ 2026-10-01 · rv2-services-008: every WRITE, per verified account, AFTER the
++// token is verified (its key is the subject `supabaseAuth` set) and before any
++// route reads a body. See middleware/write-limit.ts.
++api.use('*', writeLimit);
+ api.route('/subscriptions', subscriptions);
+-api.route('/renewals', renewals);
++// ⏱ 2026-10-01 · rv2-services-023: `GET /v1/renewals` is GONE. It had no caller
++// in any language since 2026-08-25 (tooling/platform-register.json printed so
++// on every run); the app computes upcoming renewals from the list it holds, and
++// the nightly reminders are services/platform's. Removed with its test, its
++// tenancy case and its register row.
+ api.route('/budget', budget);
+ api.route('/categories', categories);
+ api.route('/entitlements', entitlements);
+diff --git a/services/subscriptiontracker-api/src/lib/idempotency.ts b/services/subscriptiontracker-api/src/lib/idempotency.ts
+index 74c8504f..2654a270 100644
+--- a/services/subscriptiontracker-api/src/lib/idempotency.ts
++++ b/services/subscriptiontracker-api/src/lib/idempotency.ts
+@@ -64,6 +64,7 @@
+ import type { Context, MiddlewareHandler } from 'hono';
+ import type { AppEnv } from '../types';
+ import { firstRow, nowIso, run } from './d1';
++import { jsonBody } from './json-body';
+ 
+ export const IDEMPOTENCY_HEADER = 'Idempotency-Key';
+ 
+@@ -150,7 +151,13 @@ async function sha256Hex(text: string): Promise<string> {
+  * never starts with a bare name, so no body of one route hashes like another's.
+  */
+ function requestHash(c: Context<AppEnv>, scope: IdempotentScope, body: unknown): Promise<string> {
+-  if (scope === CREATE_SCOPE) return sha256Hex(canonical(body));
++  // 🔴 BY NAME, NOT BY OBJECT IDENTITY (review of #1121, nit 1). `scope ===
++  // CREATE_SCOPE` sent an equal literal `{ name: 'create' }` down the prefixed
++  // branch, so a route mounted with one would hash every create differently and
++  // production's existing claims would answer 422 to their own retries. The
++  // name is what namespaces the derived id too (`idempotentRowId`), so it is the
++  // one thing that may decide the hash.
++  if (scope.name === CREATE_SCOPE.name) return sha256Hex(canonical(body));
+   return sha256Hex(`${scope.name}\n${scope.target?.(c) ?? ''}\n${canonical(body)}`);
+ }
+ 
+@@ -188,12 +195,10 @@ export function idempotentCreate(
+         400,
+       );
+     }
+-    let body: unknown;
+-    try {
+-      body = await c.req.json();
+-    } catch {
+-      return next(); // the handler answers invalid_json; nothing is claimed
+-    }
++    // Read through lib/json-body.ts: the route's `boundedJson` already read the body
++    // under its cap and answered a malformed one (invalid_json, nothing
++    // claimed), so this hashes exactly the value the handler will validate.
++    const body = jsonBody(c);
+     const userId = c.get('userId');
+     const db = c.env.APP_DB;
+     const bodyHash = await requestHash(c, scope, body);
+diff --git a/services/subscriptiontracker-api/src/lib/json-body.ts b/services/subscriptiontracker-api/src/lib/json-body.ts
+new file mode 100644
+index 00000000..512b1213
+--- /dev/null
++++ b/services/subscriptiontracker-api/src/lib/json-body.ts
+@@ -0,0 +1,69 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// json-body.ts — EVERY JSON BODY THIS WORKER READS IS READ BOUNDED, ONCE.
++//
++// ⏱ 2026-10-01 · lane fix-st-api-bounds (rv2-services-025). Every write route
++// here began with `await c.req.json()`, which materialises the WHOLE body in the
++// isolate before any check runs, so one signed-in caller could push the isolate
++// past its memory limit with one request — a silent runtime kill that takes
++// every other request on that isolate with it. The bound is the kit's
++// `readBoundedBody` (services/_shared/src/body.ts: Content-Length as an early
++// reject, the stream itself budgeted), and the caps are DERIVED from the
++// MAX_* bounds of the route that owns the body, beside those bounds.
++//
++// 🔴 ONE READ, AHEAD OF THE IDEMPOTENCY CLAIM. `idempotentCreate` hashes the
++// body before the handler runs, so the cap must be in front of it or the claim
++// would read the body unbounded first. `boundedJson` reads and parses once and
++// both read the parsed value through `jsonBody`.
++//
++// 🔴 `jsonBody` THROWS WHEN NO BOUNDED READ RAN. It used to be possible to read
++// a body with `c.req.json()` anywhere; a route mounted without `boundedJson`
++// now fails loudly (a 500 the error sink reports) instead of quietly reading an
++// unbounded body.
++//
++// NOT named `body.ts`: that name is the kit's shared home, and a carrier of it
++// must be exactly a re-export (services/platform/test/twinned-worker-modules
++// .test.ts). This is a Hono middleware ON TOP of the kit's reader, so it imports
++// `readBoundedBody` rather than restating it.
++// ─────────────────────────────────────────────────────────────────────────────
++import type { Context, MiddlewareHandler } from 'hono';
++import type { AppEnv } from '../types';
++import { readBoundedBody } from '../../../_shared/src/body';
++
++export { readBoundedBody };
++
++/** A body this wide in characters is at most 4 × as many UTF-8 bytes.
++ *  @ceiling none — a property of UTF-8 (RFC 3629), not a platform resource. */
++export const UTF8_MAX_BYTES_PER_CHAR = 4;
++
++/** What `boundedJson` parsed, per request. */
++const parsed = new WeakMap<Request, unknown>();
++
++/**
++ * Read the body bounded to [maxBytes] and parse it as JSON, or answer:
++ *   · 413 `body_too_large` — over the cap, declared (Content-Length) or actual;
++ *   · 400 `bad_content_length` / `bad_body` — a malformed header or a broken stream;
++ *   · 400 `invalid_json` — the answer every route here gave a bad body before.
++ * Nothing downstream runs on any of those, so no row is written.
++ */
++export function boundedJson(maxBytes: number): MiddlewareHandler<AppEnv> {
++  return async (c, next) => {
++    const read = await readBoundedBody(c.req.raw, maxBytes);
++    if (!read.ok) return c.json({ error: read.error, ...(read.status === 413 ? { max_bytes: maxBytes } : {}) }, read.status);
++    let value: unknown;
++    try {
++      value = JSON.parse(read.text);
++    } catch {
++      return c.json({ error: 'invalid_json' }, 400);
++    }
++    parsed.set(c.req.raw, value);
++    await next();
++  };
++}
++
++/** The body `boundedJson` parsed for this request. Throws if none ran (see the header). */
++export function jsonBody(c: Context<AppEnv>): unknown {
++  if (!parsed.has(c.req.raw)) {
++    throw new Error('jsonBody: this route read a body without boundedJson in front of it');
++  }
++  return parsed.get(c.req.raw);
++}
+diff --git a/services/subscriptiontracker-api/src/middleware/write-limit.ts b/services/subscriptiontracker-api/src/middleware/write-limit.ts
+new file mode 100644
+index 00000000..097fd2a2
+--- /dev/null
++++ b/services/subscriptiontracker-api/src/middleware/write-limit.ts
+@@ -0,0 +1,50 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// write-limit.ts — THE PER-ACCOUNT WRITE LIMITER (rv2-services-008).
++//
++// ⏱ 2026-10-01 · lane fix-st-api-bounds. This Worker had no `ratelimits`
++// binding at all, so one signed-in account could write as fast as it could
++// send: the burst half of "one account fills subscriptiontracker_db" (the
++// per-user row cap in routes/subscriptions.ts is the total half).
++//
++// 🔴 KEYED ON THE VERIFIED SUBJECT, NEVER ON THE CALLER'S INPUT. Mounted AFTER
++// `supabaseAuth` in src/index.ts, so `userId` is the `sub` of a token this
++// Worker verified; a key taken from a header or the body could be varied per
++// request, which is the same as no limit (services/_shared/src/rate-limit.ts).
++// The key is never logged.
++//
++// Writes only: GET, HEAD and OPTIONS pass. A read writes no row, and the list
++// is bounded by the row cap and keyset paging instead.
++//
++// ⚖️ IT FAILS OPEN (the kit's `withinRateLimit`), DELIBERATELY. This limiter
++// fronts a user's own data, and refusing every save because Cloudflare's limiter
++// hiccuped is worse than the burst it would have stopped; the row cap still
++// holds without it. A binding that is ABSENT is logged once per isolate, and
++// test/wrangler-config.test.ts asserts the deployed config declares it in both
++// environments, so "no limiter" cannot ship quietly.
++// ─────────────────────────────────────────────────────────────────────────────
++import type { MiddlewareHandler } from 'hono';
++import type { AppEnv } from '../types';
++import { withinRateLimit } from '../../../_shared/src/rate-limit';
++
++/** The `ratelimits[].name` in wrangler.jsonc, top level and env.sandbox. */
++export const WRITE_LIMITER_BINDING = 'WRITE_LIMITER';
++
++/**
++ * Seconds a refused write is told to wait: the binding's `period` (60 s), the
++ * longest the counter can take to free a slot.
++ *
++ * @ceiling none — a Retry-After hint, equal to the limiter's own period.
++ */
++export const WRITE_RETRY_AFTER_SECONDS = 60;
++
++const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
++
++export const writeLimit: MiddlewareHandler<AppEnv> = async (c, next) => {
++  if (READS.has(c.req.method)) return next();
++  const admitted = await withinRateLimit(c.env.WRITE_LIMITER, `st:${c.get('userId')}`, WRITE_LIMITER_BINDING);
++  if (!admitted) {
++    c.header('Retry-After', String(WRITE_RETRY_AFTER_SECONDS));
++    return c.json({ error: 'rate_limited', retry_after: WRITE_RETRY_AFTER_SECONDS }, 429);
++  }
++  await next();
++};
+diff --git a/services/subscriptiontracker-api/src/routes/budget.ts b/services/subscriptiontracker-api/src/routes/budget.ts
+index aa37208c..f2cb4c39 100644
+--- a/services/subscriptiontracker-api/src/routes/budget.ts
++++ b/services/subscriptiontracker-api/src/routes/budget.ts
+@@ -5,7 +5,8 @@
+ import { Hono } from 'hono';
+ import type { AppEnv } from '../types';
+ import { allRows, batchIdempotent, firstRow, nowIso, uuid } from '../lib/d1';
+-import { CURRENCY, MAX_PRICE } from './subscriptions';
++import { MAX_PRICE, currencyCode } from './subscriptions';
++import { UTF8_MAX_BYTES_PER_CHAR, boundedJson, jsonBody } from '../lib/json-body';
+ 
+ const app = new Hono<AppEnv>();
+ 
+@@ -58,6 +59,19 @@ const MAX_NAME_LENGTH = 120;
+  *  headroom is for the hex ids 0002_schema_debt.sql backfilled legacy rows with.
+  *  An input shape, not a platform resource. */
+ const MAX_ID_LENGTH = 64;
++/**
++ * The most bytes a PUT / body may be (rv2-services-025), DERIVED from the bounds
++ * above: MAX_CATEGORIES entries, each a name at its cap in the widest UTF-8 (4
++ * bytes a character), an `id` and a `category_id` at theirs, and 64 bytes for a
++ * cap and the keys and punctuation; plus 1 KB for the budget and its currency.
++ * ≈ 132 KB for a full 200-category budget. Anything larger cannot validate, so
++ * it is refused (413 body_too_large) before it is read whole.
++ *
++ * @ceiling none — a request-size bound derived from the shape bounds above; the
++ * memory it protects is the isolate's, and 132 KB is far inside it.
++ */
++export const BUDGET_BODY_MAX_BYTES =
++  MAX_CATEGORIES * (UTF8_MAX_BYTES_PER_CHAR * MAX_NAME_LENGTH + 2 * MAX_ID_LENGTH + 64) + 1024;
+ 
+ type ValidatedCategory = { id: string | null; name: string; cap: number; categoryId: string | null };
+ /** `currency` as the body sent it: ABSENT leaves the stored code alone, `null`
+@@ -95,11 +109,10 @@ function validate(body: unknown): Validated {
+   }
+ 
+   // ── THE BUDGET'S CURRENCY (0007) ──────────────────────────────────────────
+-  // ⚠️ THE MINIMAL VALID-CODE CHECK, NOT THE ISO 4217 SET: three letters,
+-  // stored upper case — the rule subscriptions.ts `CURRENCY` applies to a
+-  // subscription's currency, imported so the two cannot disagree. Checking
+-  // membership of the assigned set is lane fix-st-api-bounds' contracts table;
+-  // when it lands, both routes move to it together.
++  // ✅ A CODE IN THE ISO 4217 TABLE (contracts/currency/iso4217.js), stored
++  // upper case — subscriptions.ts `currencyCode`, the rule a subscription's
++  // currency meets, imported so the two cannot disagree. ⏱ 2026-10-01 · lane
++  // fix-st-api-bounds (rv2-services-030): it was three letters, so `ZZZ` passed.
+   //
+   // ABSENT IS NOT NULL. The app's BudgetInfo.toJson sends `currency` only when
+   // it KNOWS the budget's unit, and omits it for a figure that arrived bare —
+@@ -110,10 +123,10 @@ function validate(body: unknown): Validated {
+   if (raw.currency !== undefined) {
+     if (raw.currency === null) {
+       currency = { set: true, value: null };
+-    } else if (typeof raw.currency !== 'string' || !CURRENCY.test(raw.currency)) {
+-      return { ok: false, detail: 'currency must be a three-letter ISO 4217 code, e.g. INR, or null' };
+     } else {
+-      currency = { set: true, value: raw.currency.toUpperCase() };
++      const code = currencyCode(raw.currency);
++      if (code === null) return { ok: false, detail: 'currency must be an ISO 4217 currency code, e.g. INR, or null' };
++      currency = { set: true, value: code };
+     }
+   }
+ 
+@@ -245,15 +258,11 @@ app.get('/', async (c) => {
+   });
+ });
+ 
+-// PUT / — upsert monthly_budget and replace the category set.
+-app.put('/', async (c) => {
++// PUT / — upsert monthly_budget and replace the category set. The body is read
++// BOUNDED (lib/json-body.ts): over BUDGET_BODY_MAX_BYTES is a 413 and nothing runs.
++app.put('/', boundedJson(BUDGET_BODY_MAX_BYTES), async (c) => {
+   const userId = c.get('userId');
+-  let body: unknown;
+-  try {
+-    body = await c.req.json();
+-  } catch {
+-    return c.json({ error: 'invalid_json' }, 400);
+-  }
++  const body = jsonBody(c);
+ 
+   // ── VALIDATE FIRST — nothing below this line may touch a row otherwise ──────
+   const checked = validate(body);
+@@ -291,20 +300,37 @@ app.put('/', async (c) => {
+   //     so a cap keyed by id survives a rename that changed the name;
+   //   · a cap that sends only a name — the shipped app — is matched by name,
+   //     a built-in first; a name no category has keeps no id, as before.
+-  const existing = await allRows<CategoryRow & { kind: 'cap' | 'category'; builtin: number | null }>(
++  //
++  // ── …AND IT FINDS THE SENT ids ANOTHER ACCOUNT HOLDS (rv2-services-026) ────
++  // `idx_budget_categories_id` (0002_schema_debt.sql) is UNIQUE across EVERY
++  // user, so a caller who sent an id another account's cap already has failed
++  // the INSERT inside the batch: a rolled-back 500, on every save, for as long
++  // as the client kept round-tripping that id. A third arm reads which of the
++  // sent ids someone else holds (`json_each`, so the id list binds no
++  // placeholders); each is treated as ABSENT — resolved by name, else a new
++  // uuid — and the other account's row is never touched. Still ONE statement.
++  const sentIds = categories.flatMap((cat) => (cat.id === null ? [] : [cat.id]));
++  const existing = await allRows<CategoryRow & { kind: 'cap' | 'category' | 'foreign'; builtin: number | null }>(
+     c.env.APP_DB.prepare(
+       `SELECT 'cap' AS kind, id, name, cap, category_id, NULL AS builtin
+          FROM budget_categories WHERE user_id = ?
+        UNION ALL
+        SELECT 'category' AS kind, id, name, NULL AS cap, NULL AS category_id, builtin
+-         FROM categories WHERE user_id IS NULL OR user_id = ?`,
+-    ).bind(userId, userId),
++         FROM categories WHERE user_id IS NULL OR user_id = ?
++       UNION ALL
++       SELECT 'foreign' AS kind, id, NULL AS name, NULL AS cap, NULL AS category_id, NULL AS builtin
++         FROM budget_categories
++        WHERE user_id IS NOT ? AND id IN (SELECT value FROM json_each(?))`,
++    ).bind(userId, userId, userId, JSON.stringify(sentIds)),
+   );
++  const foreignIds = new Set<string>();
+   const idByName = new Map<string, string>();
+   const nameByCategory = new Map<string, string>();
+   const categoryByName = new Map<string, string>();
+   for (const row of existing) {
+-    if (row.kind === 'cap') {
++    if (row.kind === 'foreign') {
++      if (row.id) foreignIds.add(row.id);
++    } else if (row.kind === 'cap') {
+       if (row.id) idByName.set(row.name, row.id);
+     } else {
+       nameByCategory.set(row.id as string, row.name);
+@@ -336,7 +362,8 @@ app.put('/', async (c) => {
+       return c.json({ error: 'invalid_body', detail: `two caps resolve to the category "${name}"` }, 400);
+     }
+     names.add(name);
+-    resolved.push({ id: cat.id ?? idByName.get(name) ?? uuid(), name, cap: cat.cap, category_id: categoryId });
++    const sent = cat.id !== null && !foreignIds.has(cat.id) ? cat.id : null;
++    resolved.push({ id: sent ?? idByName.get(name) ?? uuid(), name, cap: cat.cap, category_id: categoryId });
+   }
+ 
+   // ── ONE BATCH = ONE IMPLICIT TRANSACTION ───────────────────────────────────
+diff --git a/services/subscriptiontracker-api/src/routes/categories.ts b/services/subscriptiontracker-api/src/routes/categories.ts
+index 4f74cd5b..ef3da5ec 100644
+--- a/services/subscriptiontracker-api/src/routes/categories.ts
++++ b/services/subscriptiontracker-api/src/routes/categories.ts
+@@ -21,6 +21,7 @@ import { Hono } from 'hono';
+ import type { AppEnv, Category } from '../types';
+ import { allRows, firstRow, nowIso, run, uuid } from '../lib/d1';
+ import { isBoundedString, isPlainObject } from '../lib/validate';
++import { UTF8_MAX_BYTES_PER_CHAR, boundedJson, jsonBody } from '../lib/json-body';
+ 
+ const app = new Hono<AppEnv>();
+ 
+@@ -35,6 +36,13 @@ const MAX_NAME = 120;
+  * MAX_CATEGORIES, and sits at that same 200.
+  */
+ const MAX_OWN = 200;
++/**
++ * The most bytes a POST / or PATCH /:id body may be (rv2-services-025): `{name}`
++ * at MAX_NAME in the widest UTF-8, plus 1 KB. Read bounded (lib/json-body.ts).
++ *
++ * @ceiling none — a request-size bound derived from MAX_NAME.
++ */
++export const CATEGORY_BODY_MAX_BYTES = UTF8_MAX_BYTES_PER_CHAR * MAX_NAME + 1024;
+ /**
+  * The most statements any `.batch()` on this router sends: a rename and a
+  * delete are three each (the category, its subscriptions, its cap). FIXED BY
+@@ -96,14 +104,9 @@ app.get('/', async (c) => {
+ });
+ 
+ // POST / — a category of the user's own.
+-app.post('/', async (c) => {
++app.post('/', boundedJson(CATEGORY_BODY_MAX_BYTES), async (c) => {
+   const userId = c.get('userId');
+-  let body: unknown;
+-  try {
+-    body = await c.req.json();
+-  } catch {
+-    return c.json({ error: 'invalid_json' }, 400);
+-  }
++  const body = jsonBody(c);
+   const checked = nameOf(body);
+   if (!checked.ok) return c.json({ error: 'invalid_body', detail: checked.detail }, 400);
+   if (await clash(c.env.APP_DB, userId, checked.name, null)) {
+@@ -128,15 +131,10 @@ app.post('/', async (c) => {
+ 
+ // PATCH /:id — rename one of the user's own. The id, and so every cap and
+ // subscription that points at it, stays.
+-app.patch('/:id', async (c) => {
++app.patch('/:id', boundedJson(CATEGORY_BODY_MAX_BYTES), async (c) => {
+   const userId = c.get('userId');
+   const id = c.req.param('id');
+-  let body: unknown;
+-  try {
+-    body = await c.req.json();
+-  } catch {
+-    return c.json({ error: 'invalid_json' }, 400);
+-  }
++  const body = jsonBody(c);
+   const checked = nameOf(body);
+   if (!checked.ok) return c.json({ error: 'invalid_body', detail: checked.detail }, 400);
+ 
+diff --git a/services/subscriptiontracker-api/src/routes/renewals.ts b/services/subscriptiontracker-api/src/routes/renewals.ts
+deleted file mode 100644
+index 0a19db22..00000000
+--- a/services/subscriptiontracker-api/src/routes/renewals.ts
++++ /dev/null
+@@ -1,107 +0,0 @@
+-// ─────────────────────────────────────────────────────────────────────────────
+-// /v1/renewals — subscriptions renewing within N days, ascending, with days_left.
+-// ─────────────────────────────────────────────────────────────────────────────
+-
+-import { Hono } from 'hono';
+-import type { AppEnv, Subscription } from '../types';
+-import { allRows, todayYmd } from '../lib/d1';
+-import { serializeSubscription } from './subscriptions';
+-
+-const app = new Hono<AppEnv>();
+-
+-/** Whole-day difference between two 'YYYY-MM-DD' dates (b - a), UTC. */
+-function daysBetween(a: string, b: string): number {
+-  const ms =
+-    Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`);
+-  return Math.round(ms / 86_400_000);
+-}
+-
+-// ─────────────────────────────────────────────────────────────────────────────
+-// `withinDays` had a FLOOR and no CEILING: `Math.max(0, Math.trunc(Number(raw)))`
+-// clamps the bottom and lets the top run to 1e308. The window is then turned into
+-// a date — `new Date(today + withinDays * 86_400_000).toISOString()` — and past
+-// roughly 1e11 days that Date is Invalid and `.toISOString()` THROWS a RangeError,
+-// which index.ts serves as a generic 500. `?withinDays=1e15` is a one-character
+-// typo away from a normal request, so this needs no attacker.
+-//
+-// A bound also has to exist for the query to mean anything: `next_renewal <= ?`
+-// with a year-275760 upper bound is "every row this user has", which is not a
+-// renewals view.
+-//
+-// Default (absent or empty) stays 7. Anything present but unusable is a 400 that
+-// NAMES the problem rather than a silent coercion to 0 or 7 — a garbage window
+-// answered with a plausible-looking list is the same class of quiet wrongness
+-// the rest of this change is about.
+-// ─────────────────────────────────────────────────────────────────────────────
+-
+-/** ~10 years. Far past any renewal horizon; bounds the date arithmetic.
+- *  @ceiling none — bounds a QUERY WINDOW in days, not a platform resource. The
+- *  route issues one SELECT regardless of the window's width, so no Cloudflare
+- *  ceiling moves with this number. */
+-const MAX_WITHIN_DAYS = 3660;
+-/** @ceiling none — a default for the same window; same reasoning. */
+-const DEFAULT_WITHIN_DAYS = 7;
+-
+-// GET /?withinDays=7
+-app.get('/', async (c) => {
+-  const userId = c.get('userId');
+-  const withinDaysRaw = c.req.query('withinDays');
+-
+-  let withinDays = DEFAULT_WITHIN_DAYS;
+-  if (withinDaysRaw !== undefined && withinDaysRaw !== '') {
+-    const n = Number(withinDaysRaw);
+-    if (!Number.isFinite(n)) {
+-      return c.json(
+-        { error: 'invalid_query', detail: 'withinDays must be a number' },
+-        400,
+-      );
+-    }
+-    const days = Math.trunc(n);
+-    if (days < 0 || days > MAX_WITHIN_DAYS) {
+-      return c.json(
+-        {
+-          error: 'invalid_query',
+-          detail: `withinDays must be between 0 and ${MAX_WITHIN_DAYS}`,
+-        },
+-        400,
+-      );
+-    }
+-    withinDays = days;
+-  }
+-
+-  const today = todayYmd();
+-  const until = new Date(Date.parse(`${today}T00:00:00Z`) + withinDays * 86_400_000)
+-    .toISOString()
+-    .slice(0, 10);
+-
+-  // ⏱ 2026-09-29 · ST-E3 (round-2 F04): only a row that will actually be
+-  // CHARGED is due. A paused, cancelled or soft-deleted row is not, so it gets
+-  // no reminder — the same two filters the platform fan-out charges by. The set
+-  // is spelled out as SQL literals (tooling/ci/assert-d1-sql-inventory.mjs R3)
+-  // and test/lifecycle.test.ts holds it to subscriptions.ts CHARGING_STATUSES.
+-  const rows = await allRows<Subscription>(
+-    c.env.APP_DB.prepare(
+-      `SELECT * FROM subscriptions
+-         WHERE user_id = ?
+-           AND next_renewal IS NOT NULL
+-           AND next_renewal >= ?
+-           AND next_renewal <= ?
+-           AND deleted_at IS NULL
+-           AND status IN ('active', 'trialing')
+-         ORDER BY next_renewal ASC`,
+-    ).bind(userId, today, until),
+-  );
+-
+-  // The row is serialized by the SAME function /v1/subscriptions uses. This
+-  // file used to spell the fourteen keys out a second time, so a column 0003
+-  // added would have reached one endpoint and not the other — a reminder
+-  // carrying no currency is ST-C1's defect again.
+-  const out = rows.map((row) => ({
+-    ...serializeSubscription(row),
+-    days_left: row.next_renewal ? daysBetween(today, row.next_renewal) : null,
+-  }));
+-
+-  return c.json(out);
+-});
+-
+-export default app;
+diff --git a/services/subscriptiontracker-api/src/routes/subscriptions.ts b/services/subscriptiontracker-api/src/routes/subscriptions.ts
+index 4903e4e7..6e2b9eeb 100644
+--- a/services/subscriptiontracker-api/src/routes/subscriptions.ts
++++ b/services/subscriptiontracker-api/src/routes/subscriptions.ts
+@@ -20,6 +20,8 @@ import {
+   type Invalid,
+ } from '../lib/validate';
+ import { visibleCategory } from './categories';
++import { UTF8_MAX_BYTES_PER_CHAR, boundedJson, jsonBody } from '../lib/json-body';
++import { isIso4217, toMinorUnits } from '../../../../contracts/currency/iso4217.js';
+ import {
+   MAX_REMINDERS,
+   MAX_REMINDER_DAY,
+@@ -32,8 +34,10 @@ const app = new Hono<AppEnv>();
+ /**
+  * DB row -> API JSON (0/1 `unused` becomes a real boolean).
+  *
+- * Exported because /v1/renewals serves the same rows: two serializers for one
+- * row is how the 0003 columns would have reached one endpoint and not the other.
++ * Exported for the tests that read a row the way the wire does. (GET
++ * /v1/renewals served the same rows through it until that route was removed,
++ * rv2-services-023: one serializer per row is how the 0003 columns reached
++ * every endpoint at once.)
+  *
+  * 🔴 EVERY KEY BELOW `updated_at` IS ADDITIVE. A client that predates 0003
+  * ignores them (Subscription.fromJson reads named keys), and `price` and `cycle`
+@@ -107,7 +111,7 @@ export function serializeSubscription(row: Subscription) {
+ //   · `{"cycle":"weekly"}` — violates the `CHECK (cycle IN ('monthly','yearly'))`
+ //     in 0001_init.sql, so the DATABASE rejected it as a 500 rather than the
+ //     route rejecting it as a 400.
+-//   · `{"next_renewal":"soon"}` — accepted and stored. /v1/renewals compares
++//   · `{"next_renewal":"soon"}` — accepted and stored. The renewal readers compare
+ //     next_renewal as a STRING, so the row silently never appears in any renewal
+ //     window: a subscription the user is still paying for, invisible forever.
+ //   · unbounded strings — a megabyte `usage_note` per row, per user.
+@@ -179,6 +183,63 @@ const MAX_NOTICE_DAYS = 365;
+ /** @ceiling none — a VALUE bound: "your share of N", N people at most. */
+ const MAX_SHARE_DENOMINATOR = 100;
+ 
++/**
++ * The most bytes a POST / or PATCH /:id body may be (rv2-services-025),
++ * DERIVED from the column widths above: every free-text column at its cap in
++ * the widest UTF-8 (4 bytes a character), plus 8 KB for the keys, numbers,
++ * dates, enums, the reminder list and JSON's punctuation. ≈ 32 KB. A larger body
++ * cannot be a valid subscription, so it is refused before it is read whole.
++ *
++ * @ceiling none — a request-size bound derived from column widths; the memory
++ * it protects is the isolate's, and 32 KB is far inside it.
++ */
++export const SUBSCRIPTION_BODY_MAX_BYTES =
++  UTF8_MAX_BYTES_PER_CHAR *
++    (MAX_NAME + MAX_CATEGORY + MAX_PLAN + MAX_GLYPH + MAX_NOTE + MAX_NOTES + MAX_RAIL_HOLDER +
++      MAX_SHARED_WITH + MAX_SERVICE_ID + MAX_CANCEL_URL + MAX_CATEGORY_ID) +
++  8 * 1024;
++/**
++ * The most bytes a POST /:id/payments body may be: `{amount, paid_on, currency}`
++ * is under 100 bytes, so 1 KB is generous.
++ *
++ * @ceiling none — a request-size bound; see SUBSCRIPTION_BODY_MAX_BYTES.
++ */
++export const PAYMENT_BODY_MAX_BYTES = 1024;
++
++/**
++ * THE PER-USER ROW CAP (rv2-services-008). How many subscriptions rows — live
++ * AND soft-deleted, because a removed row holds its storage until
++ * `purgeExpired` — one account may have.
++ *
++ * 🔴 WHY ANY CAP. Nothing bounded what one signed-in account could write:
++ * a script with one valid token could fill subscriptiontracker_db toward D1's
++ * per-database size ceiling and break every user's writes and the nightly
++ * fan-out. The rate limiter (middleware/write-limit.ts) bounds the BURST; this
++ * bounds the TOTAL.
++ *
++ * WHY 500 (a product call, delegated to the lead of fix-st-api-bounds): a person
++ * tracks tens of subscriptions — the app's own seed has a handful, and a heavy
++ * user well under a hundred. 500 is five times a generous 100, so no real user
++ * meets it, and at the ~8 KB worst-case row (the widths above) it holds one
++ * account to ≈ 4 MB. The live per-user maximum is to be MEASURED before merge
++ * (`SELECT MAX(n) FROM (SELECT COUNT(*) AS n FROM subscriptions GROUP BY
++ * user_id)`) and this re-based if it is within 5× of it.
++ *
++ * It also bounds GET /: the unpaged list's LIMIT is this number, so it can
++ * never truncate a list the cap admitted.
++ *
++ * @ceiling none — a per-user row count, a product bound; each request writes
++ * at most one row.
++ */
++export const MAX_SUBSCRIPTIONS_PER_USER = 500;
++/**
++ * The largest page GET /?limit= serves (keyset paging). The client pages with
++ * its own smaller `limit`; this only refuses an absurd one.
++ *
++ * @ceiling none — rows per response, bounded by MAX_SUBSCRIPTIONS_PER_USER.
++ */
++export const MAX_PAGE = MAX_SUBSCRIPTIONS_PER_USER;
++
+ /** The closed sets 0003 deliberately did NOT put in a CHECK (see its header):
+  *  a new member here is a code change, where in SQL it would be a rebuild. */
+ const STATUSES = ['active', 'trialing', 'paused', 'cancelled'] as const;
+@@ -190,7 +251,9 @@ const STATUSES = ['active', 'trialing', 'paused', 'cancelled'] as const;
+  * The readers that must skip them, and do:
+  *   · the platform fan-out (services/platform/src/renewals.ts) charges only
+  *     these two statuses and `deleted_at IS NULL` (#1045);
+- *   · /v1/renewals (./renewals.ts) filters on the same two, from here.
++ *   · the platform's reminder read (services/platform/src/lib/reminders.ts
++ *     `isLive`) keeps the same two. (GET /v1/renewals did too, until it was
++ *     removed with no caller, rv2-services-023.)
+  * GET / still LISTS a paused or cancelled row — it stays, with its history —
+  * and hides only a deleted one.
+  */
+@@ -243,9 +306,21 @@ const RAILS = [
+ ] as const;
+ const CYCLE_UNITS = ['day', 'week', 'month', 'year'] as const;
+ 
+-/** ISO 4217 is three letters; stored upper case, as the client reads it.
+- *  Exported so routes/budget.ts checks a budget's currency by the same rule. */
+-export const CURRENCY = /^[A-Za-z]{3}$/;
++/**
++ * A currency as a body may send it: an ISO 4217 code in the ONE table,
++ * contracts/currency/iso4217.js, in either case. Answers the code upper case —
++ * stored so, because Subscription.readPrice upper-cases what it reads and 'inr'
++ * would be a second spelling of one currency — or null for anything else.
++ *
++ * ⏱ 2026-10-01 · rv2-services-030. This was `/^[A-Za-z]{3}$/`, so `ZZZ` was
++ * stored as a currency and every reader had to guess its decimals. Exported so
++ * routes/budget.ts and POST /:id/payments check a currency by the same rule.
++ */
++export function currencyCode(v: unknown): string | null {
++  if (typeof v !== 'string' || !/^[A-Za-z]{3}$/.test(v)) return null;
++  const code = v.toUpperCase();
++  return isIso4217(code) ? code : null;
++}
+ /** A catalogue key: lower-case, no spaces, nothing a URL or a file path would
+  *  need to escape. */
+ const SERVICE_ID = /^[a-z0-9][a-z0-9._-]*$/;
+@@ -309,6 +384,21 @@ const DATE_COLUMNS: ReadonlyArray<Column> = [
+   'trial_ends_on',
+   'cancelled_on',
+ ];
++/**
++ * The window every DATE_COLUMNS value must fall in, inclusive.
++ *
++ * ⏱ 2026-10-01 · rv2-services-031. A real calendar date was the whole rule, so
++ * 0000-01-01 to 9999-12-31 were all accepted, and the nightly fan-out
++ * (services/platform/src/renewals.ts) rolls a past-due `next_renewal` forward to
++ * today writing one payment row per crossing: a `0206-05-01` typed for
++ * `2026-05-01` back-filled history from the year 206. No subscription the app
++ * tracks started before the Unix epoch or renews after this century.
++ *
++ * @ceiling none — a VALUE bound on a date column, not a platform resource.
++ */
++export const EARLIEST_DATE = '1970-01-01';
++/** @ceiling none — see EARLIEST_DATE. */
++export const LATEST_DATE = '2100-12-31';
+ 
+ /**
+  * The legacy `cycle` a cadence means: 'monthly' for every 1 month, 'yearly' for
+@@ -383,8 +473,8 @@ function validate(body: unknown): ValidatedSubscription {
+     if (v === undefined) continue;
+     if (v === null) {
+       fields[col] = null;
+-    } else if (!isCalendarDate(v)) {
+-      return invalid(`${col} must be a real calendar date as YYYY-MM-DD`);
++    } else if (!isCalendarDateBetween(v, EARLIEST_DATE, LATEST_DATE)) {
++      return invalid(`${col} must be a real calendar date as YYYY-MM-DD, ${EARLIEST_DATE} to ${LATEST_DATE}`);
+     } else {
+       fields[col] = v;
+     }
+@@ -422,12 +512,10 @@ function validate(body: unknown): ValidatedSubscription {
+   if (currency !== undefined) {
+     if (currency === null) {
+       fields.currency = null;
+-    } else if (typeof currency !== 'string' || !CURRENCY.test(currency)) {
+-      return invalid('currency must be a three-letter ISO 4217 code, e.g. INR');
+     } else {
+-      // Upper-cased because Subscription.readPrice upper-cases what it reads;
+-      // storing 'inr' would make two spellings of one currency.
+-      fields.currency = currency.toUpperCase();
++      const code = currencyCode(currency);
++      if (code === null) return invalid('currency must be an ISO 4217 currency code, e.g. INR');
++      fields.currency = code;
+     }
+   }
+ 
+@@ -481,7 +569,7 @@ function validate(body: unknown): ValidatedSubscription {
+   const deletedAt = body.deleted_at;
+   if (deletedAt !== undefined) {
+     // ⏱ 2026-09-29 · ST-E3 (round-2 F03): SOFT DELETE, WRITABLE. A row with
+-    // `deleted_at` set leaves GET /, /v1/renewals and the platform fan-out, and
++    // `deleted_at` set leaves GET /, the reminders and the platform fan-out, and
+     // `null` brings it back (the app's Undo). It is kept, history and all, for
+     // SOFT_DELETE_PURGE_DAYS, then `purgeExpired` removes the two together.
+     //
+@@ -739,6 +827,16 @@ function checkExactAmount(body: Record<string, unknown>, fields: Fields): Invali
+   ) {
+     return invalid('price_minor must be sent with a price and a currency: the three describe one amount');
+   }
++  // ⏱ 2026-10-01 · rv2-services-030: the three must describe ONE amount. It was
++  // never checked, so `{price: 6.49, currency: 'JPY', price_minor: 649}` was
++  // stored, and Subscription.readPrice (which prefers the exact form) showed
++  // ¥649 for a ¥6 plan. The rule is the shared table's: round(price × 10^digits).
++  const expected = toMinorUnits(fields.price as number, fields.currency as string);
++  if (expected !== minor) {
++    return invalid(
++      `price_minor must be price in ${String(fields.currency)}'s minor units: ${String(fields.price)} is ${String(expected)}, not ${minor}`,
++    );
++  }
+   fields.price_minor = minor;
+   return null;
+ }
+@@ -773,8 +871,34 @@ async function purgeExpired(db: D1Database, userId: string): Promise<void> {
+ 
+ // GET / — list, most expensive first. A soft-deleted row is not listed; a
+ // paused or cancelled one is (it stays, with its history — ST-E3).
++//
++// ⏱ 2026-10-01 · rv2-services-008 — BOUNDED, IN TWO SHAPES.
++//   · NO `limit` (every client before this change): the bare array it always
++//     was, LIMIT MAX_SUBSCRIPTIONS_PER_USER. The row cap admits no more rows than
++//     that per user (live and removed together), so this LIMIT can never cut a
++//     list short — a bare LIMIT below the cap would have truncated silently.
++//   · `?limit=N[&after=<cursor>]`: KEYSET paging, `{ items, next }`. `next` is
++//     the opaque cursor of the last row served, or null on the last page. The
++//     order is the list's own — price DESC (NULL last), then id — and the cursor
++//     carries both, so a row inserted or edited between two pages is neither
++//     served twice nor skipped by an OFFSET that moved under it.
+ app.get('/', async (c) => {
+   const userId = c.get('userId');
++  const limitRaw = c.req.query('limit');
++  const afterRaw = c.req.query('after');
++  let page: { limit: number; after: Cursor | null } | null = null;
++  if (limitRaw !== undefined) {
++    const limit = Number(limitRaw);
++    if (!/^[0-9]+$/.test(limitRaw) || !Number.isSafeInteger(limit) || limit < 1 || limit > MAX_PAGE) {
++      return c.json({ error: 'invalid_query', detail: `limit must be a whole number, 1 to ${MAX_PAGE}` }, 400);
++    }
++    const after = afterRaw === undefined || afterRaw === '' ? null : decodeCursor(afterRaw);
++    if (after === undefined) return c.json({ error: 'invalid_query', detail: 'after is not a cursor this API issued' }, 400);
++    page = { limit, after };
++  } else if (afterRaw !== undefined) {
++    return c.json({ error: 'invalid_query', detail: 'after needs a limit' }, 400);
++  }
++
+   // BEST-EFFORT: housekeeping must never take the user's list down. A purge
+   // that fails is retried on the next list; the rows it would have removed stay
+   // soft-deleted, which is the safe side of the failure.
+@@ -785,26 +909,93 @@ app.get('/', async (c) => {
+   // on every list for a month looked exactly like one that worked. It goes to
+   // the Worker's one error sink with the context `app.onError` sends — built by
+   // the same `requestSinkContext`, not a copy of it — under `waitUntil` so the
+-  // list is not held open behind it.
+-  try {
+-    await purgeExpired(c.env.APP_DB, userId);
+-  } catch (err) {
+-    console.error(`[purgeExpired] rid=${c.get('requestId') ?? '-'}`, err);
+-    const report = reportWorkerError(err, requestSinkContext('subscriptiontracker-api', c), c.env);
++  // list is not held open behind it. Only the FIRST page purges: a later page
++  // is the same list read further.
++  if (page === null || page.after === null) {
+     try {
+-      c.executionCtx.waitUntil(report);
+-    } catch {
+-      void report;
++      await purgeExpired(c.env.APP_DB, userId);
++    } catch (err) {
++      console.error(`[purgeExpired] rid=${c.get('requestId') ?? '-'}`, err);
++      const report = reportWorkerError(err, requestSinkContext('subscriptiontracker-api', c), c.env);
++      try {
++        c.executionCtx.waitUntil(report);
++      } catch {
++        void report;
++      }
+     }
+   }
++
++  if (page === null) {
++    const rows = await allRows<Subscription>(
++      c.env.APP_DB.prepare(
++        `SELECT * FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL
++          ORDER BY price DESC LIMIT ${MAX_SUBSCRIPTIONS_PER_USER}`,
++      ).bind(userId),
++    );
++    return c.json(rows.map(serializeSubscription));
++  }
++
++  // `price IS NULL` sorts LAST (as ORDER BY price DESC already did), so the key
++  // is (has a price, price, id): a NULL-price row's first part is 0, after every 1.
++  const SORT = 'CASE WHEN price IS NULL THEN 0 ELSE 1 END';
++  const where = page.after === null
++    ? ''
++    : page.after.p === null
++      ? `AND price IS NULL AND id > ?`
++      : `AND (price IS NULL OR price < ? OR (price = ? AND id > ?))`;
++  const binds: unknown[] =
++    page.after === null ? [] : page.after.p === null ? [page.after.id] : [page.after.p, page.after.p, page.after.id];
+   const rows = await allRows<Subscription>(
+     c.env.APP_DB.prepare(
+-      'SELECT * FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL ORDER BY price DESC',
+-    ).bind(userId),
++      `SELECT * FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL ${where}
++        ORDER BY ${SORT} DESC, price DESC, id ASC LIMIT ?`,
++    ).bind(userId, ...binds, page.limit + 1),
+   );
+-  return c.json(rows.map(serializeSubscription));
++  const more = rows.length > page.limit;
++  const items = more ? rows.slice(0, page.limit) : rows;
++  const last = items[items.length - 1];
++  return c.json({
++    items: items.map(serializeSubscription),
++    next: more && last ? encodeCursor({ p: last.price, id: last.id }) : null,
++  });
+ });
+ 
++/** A keyset position: the last row's price (NULL sorts last) and id. */
++interface Cursor {
++  p: number | null;
++  id: string;
++}
++
++/** base64url of `[price, id]` — opaque to the client, which only echoes it. */
++function encodeCursor(c: Cursor): string {
++  const bytes = new TextEncoder().encode(JSON.stringify([c.p, c.id]));
++  let bin = '';
++  for (const b of bytes) bin += String.fromCharCode(b);
++  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
++}
++
++/** The cursor [raw] encodes, or undefined for anything this API did not issue. */
++function decodeCursor(raw: string): Cursor | undefined {
++  if (raw.length > 512 || !/^[A-Za-z0-9_-]+$/.test(raw)) return undefined;
++  try {
++    const bin = atob(raw.replace(/-/g, '+').replace(/_/g, '/'));
++    const v: unknown = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (ch) => ch.charCodeAt(0))));
++    if (!Array.isArray(v) || v.length !== 2) return undefined;
++    const [p, id] = v as [unknown, unknown];
++    if (!(p === null || isFiniteNumber(p)) || !isBoundedString(id, 64) || id === '') return undefined;
++    return { p, id };
++  } catch {
++    return undefined;
++  }
++}
++
++// Every body this router reads is read BOUNDED, once, ahead of the
++// Idempotency-Key claim that hashes it (rv2-services-025, lib/json-body.ts). A body
++// over the cap is a 413 `body_too_large` and nothing below runs.
++app.post('/', boundedJson(SUBSCRIPTION_BODY_MAX_BYTES));
++app.patch('/:id', boundedJson(SUBSCRIPTION_BODY_MAX_BYTES));
++app.post('/:id/payments', boundedJson(PAYMENT_BODY_MAX_BYTES));
++
+ // POST / with an Idempotency-Key: a repeat is answered with the row the first
+ // attempt made (AB-O2-02). See lib/idempotency.ts.
+ app.post(
+@@ -828,12 +1019,7 @@ app.post(
+ // POST / — create.
+ app.post('/', async (c) => {
+   const userId = c.get('userId');
+-  let body: unknown;
+-  try {
+-    body = await c.req.json();
+-  } catch {
+-    return c.json({ error: 'invalid_json' }, 400);
+-  }
++  const body = jsonBody(c);
+ 
+   // ── VALIDATE FIRST — nothing below this line may touch a row otherwise ──────
+   const checked = validate(body);
+@@ -856,7 +1042,12 @@ app.post('/', async (c) => {
+   // `status` and the share pair are NOT NULL DEFAULT in 0003; they are bound
+   // with those same defaults because a named column bound to NULL is a
+   // constraint failure, not a default.
+-  await run(
++  //
++  // 🔴 THE ROW CAP IS IN THE INSERT, NOT A READ BEFORE IT (rv2-services-008).
++  // `INSERT … SELECT … WHERE (SELECT COUNT(*) …) < cap` is ONE statement, so two
++  // creates racing at cap − 1 cannot both pass a count read ahead of them. It
++  // writes no row at the cap (`changes = 0`), which is the 409 below.
++  const inserted = await run(
+     c.env.APP_DB.prepare(
+       `INSERT INTO subscriptions
+          (id, user_id, name, category, price, cycle, next_renewal, plan, glyph,
+@@ -865,9 +1056,10 @@ app.post('/', async (c) => {
+           status, trial_ends_on, cancelled_on, deleted_at, notes, service_id,
+           cancel_url, rail, rail_holder, reminder_days, shared_with,
+           share_numerator, share_denominator, category_id, notice_days)
+-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+-               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+-               ?, ?)`,
++       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
++              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
++              ?, ?
++        WHERE (SELECT COUNT(*) FROM subscriptions WHERE user_id = ?) < ?`,
+     ).bind(
+       id,
+       userId,
+@@ -903,13 +1095,37 @@ app.post('/', async (c) => {
+       f.share_denominator ?? 1,
+       f.category_id ?? null,
+       f.notice_days ?? null,
++      userId,
++      MAX_SUBSCRIPTIONS_PER_USER,
+     ),
+   );
+ 
++  // ── THE READ-BACK IS THE CALLER'S ROW, OR THE CREATE FAILED (rv2-services-029)
++  // It selected by id alone, so the tenancy of the answer rested on nobody else
++  // ever holding that id. Now it is `AND user_id = ?`, like every other read.
+   const row = await firstRow<Subscription>(
+-    c.env.APP_DB.prepare('SELECT * FROM subscriptions WHERE id = ?').bind(id),
++    c.env.APP_DB.prepare('SELECT * FROM subscriptions WHERE id = ? AND user_id = ?').bind(id, userId),
+   );
+-  return c.json(row ? serializeSubscription(row) : { error: 'not_found' }, 201);
++  const meta = inserted.meta as { changes?: number; duplicate_of_committed_attempt?: boolean };
++  if (!row) {
++    // No row: the cap held it back (`changes = 0` and NOT `run`'s "a retry met
++    // the row the first attempt committed"), or the read-back missed a row this
++    // request did write — never a 201 carrying `{error}`.
++    if ((meta.changes ?? 0) === 0 && meta.duplicate_of_committed_attempt !== true) {
++      return c.json(
++        {
++          error: 'limit_reached',
++          detail: `at most ${MAX_SUBSCRIPTIONS_PER_USER} subscriptions per account, removed ones included until they are purged`,
++          limit: MAX_SUBSCRIPTIONS_PER_USER,
++        },
++        409,
++      );
++    }
++    throw new Error('POST /v1/subscriptions: the read-back found no row for the id this request inserted');
++  }
++  // A row with `changes = 0` is the first attempt's, committed before a reset
++  // whose retry then met the cap or the key: the create DID happen.
++  return c.json(serializeSubscription(row), 201);
+ });
+ 
+ // GET /:id — one subscription (must be owned, and not removed) + its history.
+@@ -1045,12 +1261,7 @@ app.post(
+ app.post('/:id/payments', async (c) => {
+   const userId = c.get('userId');
+   const id = c.req.param('id');
+-  let body: unknown;
+-  try {
+-    body = await c.req.json();
+-  } catch {
+-    return c.json({ error: 'invalid_json' }, 400);
+-  }
++  const body = jsonBody(c);
+   if (!isPlainObject(body)) {
+     return c.json({ error: 'invalid_body', detail: 'body must be a JSON object' }, 400);
+   }
+@@ -1074,8 +1285,9 @@ app.post('/:id/payments', async (c) => {
+       400,
+     );
+   }
+-  if (currency !== undefined && currency !== null && (typeof currency !== 'string' || !CURRENCY.test(currency))) {
+-    return c.json({ error: 'invalid_body', detail: 'currency must be a three-letter ISO 4217 code, e.g. INR' }, 400);
++  const code = currency === undefined || currency === null ? null : currencyCode(currency);
++  if (currency !== undefined && currency !== null && code === null) {
++    return c.json({ error: 'invalid_body', detail: 'currency must be an ISO 4217 currency code, e.g. INR' }, 400);
+   }
+ 
+   // A payment against a row that is not yours, or that you removed, is a 404:
+@@ -1094,7 +1306,7 @@ app.post('/:id/payments', async (c) => {
+     amount,
+     paid_at: `${paidOn}T00:00:00Z`,
+     updated_at: nowIso(),
+-    currency: typeof currency === 'string' ? currency.toUpperCase() : sub.currency,
++    currency: code ?? sub.currency,
+     source: MANUAL_SOURCE,
+   };
+   await run(
+@@ -1120,13 +1332,7 @@ app.post('/:id/payments', async (c) => {
+ app.patch('/:id', async (c) => {
+   const userId = c.get('userId');
+   const id = c.req.param('id');
+-
+-  let body: unknown;
+-  try {
+-    body = await c.req.json();
+-  } catch {
+-    return c.json({ error: 'invalid_json' }, 400);
+-  }
++  const body = jsonBody(c);
+ 
+   // ── VALIDATE BEFORE THE OWNERSHIP READ ─────────────────────────────────────
+   // Order matters for the CALLER, not for safety: a bad value that only failed
+diff --git a/services/subscriptiontracker-api/src/types.ts b/services/subscriptiontracker-api/src/types.ts
+index cb43b6a8..f1d7a2b9 100644
+--- a/services/subscriptiontracker-api/src/types.ts
++++ b/services/subscriptiontracker-api/src/types.ts
+@@ -22,6 +22,12 @@ export interface Env {
+   // tooling/ci/assert-session-revocation.mjs reds a config that does not bind it.
+   SESSION_REVOKED?: KVNamespace;
+ 
++  // ⏱ 2026-10-01 · rv2-services-008. The per-account write limiter
++  // (`ratelimits` in wrangler.jsonc), read by middleware/write-limit.ts and keyed
++  // on the verified subject. Optional: absence fails OPEN and is logged once
++  // per isolate; test/wrangler-config.test.ts asserts both environments bind it.
++  WRITE_LIMITER?: RateLimiterBinding;
++
+   // 🔴 `EXPORTS: R2Bucket` WAS HERE and was removed on 2026-08-01 with the
+   // binding it typed ([4]B-18). It is worth naming why the TYPE had to go too:
+   // assert-vendor-portability.mjs derives its surface set from the UNION of this
+@@ -78,6 +84,7 @@ export interface Env {
+  * `src/routes/account.ts` refuses anything that is not `'asymmetric'`.
+  */
+ import type { TokenAssurance } from '../../_shared/src/auth-middleware';
++import type { RateLimiterBinding } from '../../_shared/src/rate-limit';
+ export type { TokenAssurance }; // declared once, beside the boundary that sets it
+ 
+ /**
+diff --git a/services/subscriptiontracker-api/test/bounds.test.ts b/services/subscriptiontracker-api/test/bounds.test.ts
+new file mode 100644
+index 00000000..9beec362
+--- /dev/null
++++ b/services/subscriptiontracker-api/test/bounds.test.ts
+@@ -0,0 +1,338 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// WHAT ONE ACCOUNT CAN WRITE AND READ IS BOUNDED — lane fix-st-api-bounds.
++//
++//   · rv2-services-025  a body is read under a cap derived from the MAX_* bounds;
++//   · rv2-services-031  a date is inside 1970-01-01..2100-12-31;
++//   · rv2-services-030  a currency is in the ONE ISO 4217 table and `price_minor`
++//                       is `price` in that currency's minor units;
++//   · rv2-services-008  a per-account row cap, enforced in the INSERT, and a
++//                       bounded, keyset-paged GET /;
++//   · rv2-services-029  the POST and PATCH read-backs are the caller's own row.
++//
++// Every case runs against the REAL migrations on a real SQL engine, and every
++// refusal also asserts that NO ROW was written.
++// ─────────────────────────────────────────────────────────────────────────────
++import { describe, it, expect, beforeEach } from 'vitest';
++import subscriptions, {
++  MAX_SUBSCRIPTIONS_PER_USER,
++  PAYMENT_BODY_MAX_BYTES,
++  SUBSCRIPTION_BODY_MAX_BYTES,
++} from '../src/routes/subscriptions';
++import { realAppDb, asUser, SqliteD1 } from './harness';
++
++const U = 'user-a';
++type Row = Record<string, unknown>;
++
++let db: SqliteD1;
++let subs: ReturnType<typeof asUser>;
++
++beforeEach(() => {
++  db = realAppDb();
++  subs = asUser(subscriptions, '/v1/subscriptions', { APP_DB: db as never });
++});
++
++const post = (body: unknown, headers: Record<string, string> = {}) =>
++  subs(U, '/v1/subscriptions', { method: 'POST', body, headers });
++const count = () => Number(db.rows('SELECT COUNT(*) AS n FROM subscriptions')[0].n);
++
++describe('rv2-services-025 — a body is read under a cap, before it is parsed', () => {
++  it('the caps are derived and near the brief’s figures (≈ 32 KB, payments 1 KB)', () => {
++    expect(SUBSCRIPTION_BODY_MAX_BYTES).toBeGreaterThan(24 * 1024);
++    expect(SUBSCRIPTION_BODY_MAX_BYTES).toBeLessThanOrEqual(40 * 1024);
++    expect(PAYMENT_BODY_MAX_BYTES).toBe(1024);
++  });
++
++  it('🔴 Content-Length 200000 is a 413 body_too_large and no row', async () => {
++    const res = await post('{"name":"x"}', { 'Content-Length': '200000' });
++    expect(res.status).toBe(413);
++    expect(await res.json()).toMatchObject({ error: 'body_too_large' });
++    expect(count()).toBe(0);
++  });
++
++  it('a body over the cap with NO honest Content-Length is 413 too (the stream is budgeted)', async () => {
++    const big = JSON.stringify({ name: 'x', notes: 'n'.repeat(SUBSCRIPTION_BODY_MAX_BYTES) });
++    const res = await post(big);
++    expect(res.status).toBe(413);
++    expect(count()).toBe(0);
++  });
++
++  it('a body with every text column at its cap in 4-byte characters is NOT refused by the cap', async () => {
++    const wide = (n: number) => '😀'.repeat(n / 2); // 2 UTF-16 units, 4 UTF-8 bytes
++    const res = await post({
++      name: wide(200),
++      category: wide(120),
++      plan: wide(200),
++      glyph: wide(32),
++      usage_note: wide(1000),
++      notes: wide(2000),
++      rail_holder: wide(120),
++      shared_with: wide(200),
++    });
++    expect(res.status).toBe(201);
++  });
++
++  it('PATCH and POST /:id/payments are capped too', async () => {
++    const id = ((await (await post({ name: 'x', price: 1 })).json()) as Row).id as string;
++    const patch = await subs(U, `/v1/subscriptions/${id}`, {
++      method: 'PATCH',
++      body: '{}',
++      headers: { 'Content-Length': '200000' },
++    });
++    expect(patch.status).toBe(413);
++    const pay = await subs(U, `/v1/subscriptions/${id}/payments`, {
++      method: 'POST',
++      body: { amount: 1, paid_on: '2026-09-01', pad: 'p'.repeat(PAYMENT_BODY_MAX_BYTES) },
++    });
++    expect(pay.status).toBe(413);
++    expect(db.rows('SELECT id FROM payment_history')).toEqual([]);
++  });
++
++  it('a malformed body is still the invalid_json it always was', async () => {
++    const res = await post('{not json');
++    expect(res.status).toBe(400);
++    expect(await res.json()).toEqual({ error: 'invalid_json' });
++  });
++});
++
++describe('rv2-services-031 — a date is inside 1970-01-01..2100-12-31', () => {
++  for (const date of ['0001-01-01', '9999-12-31', '0206-05-01', '1969-12-31', '2101-01-01']) {
++    it(`🔴 next_renewal ${date} is a 400 and no row`, async () => {
++      const res = await post({ name: 'x', next_renewal: date });
++      expect(res.status).toBe(400);
++      expect(((await res.json()) as Row).detail).toContain('1970-01-01 to 2100-12-31');
++      expect(count()).toBe(0);
++    });
++  }
++
++  it('every date column is bounded, not only next_renewal', async () => {
++    for (const col of ['first_charge_on', 'trial_ends_on', 'cancelled_on']) {
++      expect((await post({ name: 'x', [col]: '9999-12-31' })).status, col).toBe(400);
++    }
++    expect(count()).toBe(0);
++  });
++
++  it('the edges themselves are accepted', async () => {
++    expect((await post({ name: 'x', next_renewal: '1970-01-01' })).status).toBe(201);
++    expect((await post({ name: 'y', next_renewal: '2100-12-31' })).status).toBe(201);
++  });
++});
++
++describe('rv2-services-030 — one ISO 4217 table, and price_minor is price', () => {
++  it('🔴 currency ZZZ is a 400 and no row', async () => {
++    const res = await post({ name: 'x', price: 1, currency: 'ZZZ' });
++    expect(res.status).toBe(400);
++    expect(((await res.json()) as Row).detail).toContain('ISO 4217');
++    expect(count()).toBe(0);
++  });
++
++  it('🔴 {price: 6.49, currency: JPY, price_minor: 649} is a 400 (JPY has no minor unit)', async () => {
++    const res = await post({ name: 'x', price: 6.49, currency: 'JPY', price_minor: 649 });
++    expect(res.status).toBe(400);
++    expect(((await res.json()) as Row).detail).toContain('price_minor');
++    expect(count()).toBe(0);
++  });
++
++  it('the agreeing amounts are accepted: JPY 649, KRW 14900, BHD 2.5 → 2500, USD 19.99 → 1999', async () => {
++    for (const body of [
++      { price: 649, currency: 'JPY', price_minor: 649 },
++      { price: 14900, currency: 'KRW', price_minor: 14900 },
++      { price: 2.5, currency: 'BHD', price_minor: 2500 },
++      { price: 19.99, currency: 'usd', price_minor: 1999 },
++    ]) {
++      expect((await post({ name: 'x', ...body })).status, JSON.stringify(body)).toBe(201);
++    }
++  });
++
++  it('KRW written the two-decimal way (won × 100) is refused — the 100× mail defect', async () => {
++    expect((await post({ name: 'x', price: 14900, currency: 'KRW', price_minor: 1490000 })).status).toBe(400);
++    expect(count()).toBe(0);
++  });
++
++  it('a PATCH is checked by the same rule', async () => {
++    const id = ((await (await post({ name: 'x' })).json()) as Row).id as string;
++    const res = await subs(U, `/v1/subscriptions/${id}`, {
++      method: 'PATCH',
++      body: { price: 2.5, currency: 'BHD', price_minor: 250 },
++    });
++    expect(res.status).toBe(400);
++    const pay = await subs(U, `/v1/subscriptions/${id}/payments`, {
++      method: 'POST',
++      body: { amount: 1, paid_on: '2026-09-01', currency: 'ZZZ' },
++    });
++    expect(pay.status).toBe(400);
++  });
++});
++
++/** Fill U's rows to [n] directly, bypassing the route (the cap is what is under test). */
++function fill(n: number, deleted = false) {
++  const stmt = db.db.prepare(
++    "INSERT INTO subscriptions (id, user_id, name, price, deleted_at) VALUES (?, ?, ?, ?, ?)",
++  );
++  for (let i = 0; i < n; i++) {
++    stmt.run(`fill-${String(i).padStart(4, '0')}`, U, `s${i}`, i % 7, deleted && i === 0 ? '2026-09-01T00:00:00Z' : null);
++  }
++}
++
++describe('rv2-services-008 — the per-account row cap', () => {
++  it(`the cap is ${MAX_SUBSCRIPTIONS_PER_USER}`, () => {
++    expect(MAX_SUBSCRIPTIONS_PER_USER).toBe(500);
++  });
++
++  it('🔴 a POST at the cap is 409 limit_reached and writes no row', async () => {
++    fill(MAX_SUBSCRIPTIONS_PER_USER);
++    const res = await post({ name: 'one too many' });
++    expect(res.status).toBe(409);
++    expect(await res.json()).toMatchObject({ error: 'limit_reached', limit: MAX_SUBSCRIPTIONS_PER_USER });
++    expect(count()).toBe(MAX_SUBSCRIPTIONS_PER_USER);
++  });
++
++  it('one below the cap is still a 201, and that is the last', async () => {
++    fill(MAX_SUBSCRIPTIONS_PER_USER - 1);
++    expect((await post({ name: 'last' })).status).toBe(201);
++    expect((await post({ name: 'over' })).status).toBe(409);
++  });
++
++  it('a removed row counts until it is purged (it still holds its storage)', async () => {
++    fill(MAX_SUBSCRIPTIONS_PER_USER, true);
++    expect((await post({ name: 'x' })).status).toBe(409);
++  });
++
++  it('the cap is PER ACCOUNT: another user at zero is not refused', async () => {
++    fill(MAX_SUBSCRIPTIONS_PER_USER);
++    expect((await subs('user-b', '/v1/subscriptions', { method: 'POST', body: { name: 'x' } })).status).toBe(201);
++  });
++
++  it('a keyed create at the cap releases its claim, so a retry after a removal succeeds', async () => {
++    fill(MAX_SUBSCRIPTIONS_PER_USER);
++    expect((await post({ name: 'x' }, { 'Idempotency-Key': 'cap-key-0001' })).status).toBe(409);
++    expect(db.rows("SELECT key FROM idempotency_keys WHERE key = 'cap-key-0001'")).toEqual([]);
++    db.db.prepare("DELETE FROM subscriptions WHERE id = 'fill-0000'").run();
++    expect((await post({ name: 'x' }, { 'Idempotency-Key': 'cap-key-0001' })).status).toBe(201);
++  });
++});
++
++describe('rv2-services-008 — GET / is bounded, and pages by keyset', () => {
++  it('no `limit`: the bare array every older client reads, most expensive first', async () => {
++    fill(5);
++    const res = await subs(U, '/v1/subscriptions');
++    const list = (await res.json()) as Row[];
++    expect(Array.isArray(list)).toBe(true);
++    expect(list.map((r) => r.price)).toEqual([4, 3, 2, 1, 0]);
++  });
++
++  it('the unpaged list holds a full account: the LIMIT is the cap, so it never truncates', async () => {
++    fill(MAX_SUBSCRIPTIONS_PER_USER);
++    expect(((await (await subs(U, '/v1/subscriptions')).json()) as Row[]).length).toBe(MAX_SUBSCRIPTIONS_PER_USER);
++  });
++
++  it('🔴 the unpaged list is BOUNDED: an account over the cap (rows from before it) reads at most the cap', async () => {
++    fill(MAX_SUBSCRIPTIONS_PER_USER + 3);
++    expect(((await (await subs(U, '/v1/subscriptions')).json()) as Row[]).length).toBe(MAX_SUBSCRIPTIONS_PER_USER);
++  });
++
++  it('?limit pages the WHOLE list exactly once, in list order, NULL prices last', async () => {
++    fill(23);
++    db.db.prepare("UPDATE subscriptions SET price = NULL WHERE id IN ('fill-0003', 'fill-0011')").run();
++    const all = ((await (await subs(U, '/v1/subscriptions')).json()) as Row[]).map((r) => r.id);
++    const seen: unknown[] = [];
++    let after: string | null = null;
++    let pages = 0;
++    do {
++      const q: string = `/v1/subscriptions?limit=4${after ? `&after=${after}` : ''}`;
++      const page = (await (await subs(U, q)).json()) as { items: Row[]; next: string | null };
++      expect(page.items.length).toBeLessThanOrEqual(4);
++      seen.push(...page.items.map((r) => r.id));
++      after = page.next;
++      pages++;
++    } while (after !== null && pages < 20);
++    expect(pages).toBe(6);
++    expect(new Set(seen).size).toBe(23);
++    expect(seen.slice(-2).sort()).toEqual(['fill-0003', 'fill-0011']);
++    // Same rows as the unpaged list; the order within one price is by id.
++    expect([...seen].sort()).toEqual([...all].sort());
++  });
++
++  it('a row edited between pages is neither served twice nor skipped', async () => {
++    fill(6);
++    const first = (await (await subs(U, '/v1/subscriptions?limit=3')).json()) as { items: Row[]; next: string };
++    // A row on page 2 moves ABOVE the cursor: an OFFSET would now skip a row.
++    db.db.prepare("UPDATE subscriptions SET price = 99 WHERE id = 'fill-0000'").run();
++    const second = (await (await subs(U, `/v1/subscriptions?limit=3&after=${first.next}`)).json()) as {
++      items: Row[];
++    };
++    const ids = [...first.items, ...second.items].map((r) => r.id);
++    expect(new Set(ids).size).toBe(ids.length);
++  });
++
++  it('a bad limit or cursor is a 400 naming it', async () => {
++    for (const q of ['limit=0', 'limit=501', 'limit=2.5', 'limit=abc', 'limit=3&after=%%%', 'limit=3&after=eyJ4IjoxfQ', 'after=abc']) {
++      const res = await subs(U, `/v1/subscriptions?${q}`);
++      expect(res.status, q).toBe(400);
++      expect(((await res.json()) as Row).error, q).toBe('invalid_query');
++    }
++  });
++
++  it('a page never carries another account’s rows', async () => {
++    fill(3);
++    await subs('user-b', '/v1/subscriptions', { method: 'POST', body: { name: 'B only', price: 2 } });
++    const page = (await (await subs(U, '/v1/subscriptions?limit=50')).json()) as { items: Row[]; next: null };
++    expect(page.items.map((r) => r.user_id)).toEqual([U, U, U]);
++    expect(page.next).toBeNull();
++  });
++});
++
++/** APP_DB whose read-back of a subscription row by id comes back EMPTY — the
++ *  write itself goes through. */
++function readBackMisses(real: SqliteD1) {
++  return new Proxy(real, {
++    get(target, prop, receiver) {
++      if (prop !== 'prepare') return Reflect.get(target, prop, receiver);
++      return (sql: string) => {
++        const stmt = target.prepare(sql);
++        if (!/^SELECT \* FROM subscriptions WHERE id = \? AND user_id = \?$/.test(sql.trim())) return stmt;
++        return {
++          bind: (...args: unknown[]) => {
++            const bound = stmt.bind(...args);
++            return Object.assign(Object.create(Object.getPrototypeOf(bound)), bound, { first: async () => null });
++          },
++        };
++      };
++    },
++  });
++}
++
++describe('rv2-services-029 — the read-backs are the caller’s own row', () => {
++  it('🔴 PATCH whose read-back finds nothing is a 404, never a 200 carrying {error}', async () => {
++    const id = ((await (await post({ name: 'x' })).json()) as Row).id as string;
++    const stubbed = asUser(subscriptions, '/v1/subscriptions', { APP_DB: readBackMisses(db) as never });
++    const res = await stubbed(U, `/v1/subscriptions/${id}`, { method: 'PATCH', body: { name: 'y' } });
++    expect(res.status).toBe(404);
++    expect(await res.json()).toEqual({ error: 'not_found' });
++  });
++
++  it('POST whose read-back finds nothing is a 500, never a 201 carrying {error}', async () => {
++    const stubbed = asUser(subscriptions, '/v1/subscriptions', { APP_DB: readBackMisses(db) as never });
++    const res = await stubbed(U, '/v1/subscriptions', { method: 'POST', body: { name: 'x' } });
++    expect(res.status).toBe(500);
++  });
++
++  it('both read-backs carry `AND user_id = ?` (the predicate is in the SQL, not only in the id)', async () => {
++    const seen: string[] = [];
++    const spy = new Proxy(db, {
++      get(target, prop, receiver) {
++        if (prop !== 'prepare') return Reflect.get(target, prop, receiver);
++        return (sql: string) => {
++          seen.push(sql.replace(/\s+/g, ' ').trim());
++          return target.prepare(sql);
++        };
++      },
++    });
++    const s = asUser(subscriptions, '/v1/subscriptions', { APP_DB: spy as never });
++    const id = ((await (await s(U, '/v1/subscriptions', { method: 'POST', body: { name: 'x' } })).json()) as Row)
++      .id as string;
++    await s(U, `/v1/subscriptions/${id}`, { method: 'PATCH', body: { name: 'y' } });
++    const reads = seen.filter((q) => q.startsWith('SELECT * FROM subscriptions WHERE id = ?'));
++    expect(reads.length).toBeGreaterThanOrEqual(2);
++    for (const q of reads) expect(q).toContain('AND user_id = ?');
++  });
++});
+diff --git a/services/subscriptiontracker-api/test/budget.test.ts b/services/subscriptiontracker-api/test/budget.test.ts
+index 69ad2636..c03a0511 100644
+--- a/services/subscriptiontracker-api/test/budget.test.ts
++++ b/services/subscriptiontracker-api/test/budget.test.ts
+@@ -17,7 +17,7 @@
+ // a batch back — so a mock would report this route healthy either way.
+ // ─────────────────────────────────────────────────────────────────────────────
+ import { describe, it, expect } from 'vitest';
+-import budget from '../src/routes/budget';
++import budget, { BUDGET_BODY_MAX_BYTES } from '../src/routes/budget';
+ import { realAppDb, asUser } from './harness';
+ 
+ const A = 'user-a';
+@@ -343,6 +343,10 @@ describe('PUT /v1/budget — the budget carries its currency', () => {
+     ['currency is blank', ''],
+     ['currency has a digit', 'US1'],
+     ['currency is an object', { code: 'INR' }],
++    // ⏱ 2026-10-01 · rv2-services-030: three letters is not enough — the code
++    // must be in contracts/currency/iso4217.js.
++    ['currency is three letters ISO 4217 never assigned', 'ZZZ'],
++    ['currency is a code with no minor unit (XAU, gold)', 'XAU'],
+   ];
+   for (const [label, currency] of badCurrencies) {
+     it(`400s when ${label}, writing nothing`, async () => {
+@@ -472,3 +476,37 @@ describe('PUT /v1/budget — a rejected body must not destroy the stored set', (
+     );
+   });
+ });
++
++// ⏱ 2026-10-01 · rv2-services-025 (lane fix-st-api-bounds). The body is read
++// under a cap derived from MAX_CATEGORIES and the per-field widths, BEFORE it is
++// parsed: an oversized PUT used to be materialised whole in the isolate first.
++describe('PUT /v1/budget — the body is read under a cap', () => {
++  it('the cap fits a full 200-category budget (≈ 128 KB) and no more than ~2× it', () => {
++    expect(BUDGET_BODY_MAX_BYTES).toBeGreaterThan(120 * 1024);
++    expect(BUDGET_BODY_MAX_BYTES).toBeLessThan(256 * 1024);
++  });
++
++  it('🔴 Content-Length 200000 is a 413 body_too_large, and the stored set survives', async () => {
++    const { db, call } = setup();
++    await call(A, '/v1/budget', { method: 'PUT', body: SEED });
++    const res = await call(A, '/v1/budget', {
++      method: 'PUT',
++      body: '{"categories":[]}',
++      headers: { 'Content-Length': '200000' },
++    });
++    expect(res.status).toBe(413);
++    expect(await res.json()).toMatchObject({ error: 'body_too_large' });
++    expect(caps(db)).toEqual(['Music:20', 'Video:35']);
++  });
++
++  it('a full 200-category budget at the widest names is accepted', async () => {
++    const { call } = setup();
++    const categories = Array.from({ length: 200 }, (_, i) => ({
++      name: `${String(i).padStart(3, '0')}${'😀'.repeat(58)}`,
++      cap: 1,
++      id: `id-${String(i).padStart(3, '0')}-${'x'.repeat(56)}`,
++    }));
++    const res = await call(A, '/v1/budget', { method: 'PUT', body: { monthly_budget: 1, categories } });
++    expect(res.status).toBe(200);
++  });
++});
+diff --git a/services/subscriptiontracker-api/test/idempotency.test.ts b/services/subscriptiontracker-api/test/idempotency.test.ts
+index 692453b7..4dd25c8b 100644
+--- a/services/subscriptiontracker-api/test/idempotency.test.ts
++++ b/services/subscriptiontracker-api/test/idempotency.test.ts
+@@ -8,7 +8,11 @@
+ // ─────────────────────────────────────────────────────────────────────────────
+ import { describe, it, expect, beforeEach } from 'vitest';
+ import subscriptions from '../src/routes/subscriptions';
+-import { idempotentRowId } from '../src/lib/idempotency';
++import { Hono } from 'hono';
++import type { AppEnv } from '../src/types';
++import { SUBSCRIPTION_BODY_MAX_BYTES } from '../src/routes/subscriptions';
++import { boundedJson } from '../src/lib/json-body';
++import { CREATE_SCOPE, idempotentCreate, idempotentRowId } from '../src/lib/idempotency';
+ import { realAppDb, asUser } from './harness';
+ 
+ const BODY = {
+@@ -205,3 +209,45 @@ describe('POST /v1/subscriptions — Idempotency-Key', () => {
+     expect(await count('user-a')).toBe(0);
+   });
+ });
++
++// ⏱ 2026-10-01 · review of #1121, nit 1. `requestHash` chose the create's hash
++// by OBJECT IDENTITY (`scope === CREATE_SCOPE`), so a route mounted with an
++// equal literal `{ name: 'create' }` hashed every body down the prefixed branch
++// — and every claim already in production's ledger would answer 422 to its own
++// retry through it. Red control: restore `scope === CREATE_SCOPE` and this is
++// 422 idempotency_key_reused.
++describe('the create scope is chosen by NAME, not by object identity', () => {
++  it('🔴 a claim made by POST / is replayed (200) through a route mounted with an equal literal scope', async () => {
++    const first = await post('user-a', CLIENT_ID);
++    expect(first.status).toBe(201);
++    const made = (await first.json()) as { id: string };
++
++    const literal = new Hono<AppEnv>();
++    literal.post(
++      '/',
++      boundedJson(SUBSCRIPTION_BODY_MAX_BYTES),
++      idempotentCreate(
++        async (c, id) => {
++          const row = db.rows('SELECT id FROM subscriptions WHERE id = ? AND user_id = ?', id, c.get('userId'))[0];
++          return row ? c.json(row, 200) : null;
++        },
++        { name: 'create' }, // structurally equal to CREATE_SCOPE, a different object
++      ),
++      (c) => c.json({ error: 'the handler must not run on a replay' }, 500),
++    );
++    const viaLiteral = asUser(literal, '/v1/subscriptions', { APP_DB: db as never });
++    const again = await viaLiteral('user-a', '/v1/subscriptions', {
++      method: 'POST',
++      body: BODY,
++      headers: { 'Idempotency-Key': CLIENT_ID },
++    });
++    expect(again.status, 'an equal literal must hash as the create does').toBe(200);
++    expect(((await again.json()) as { id: string }).id).toBe(made.id);
++  });
++
++  it('…and the derived row id agrees: it is keyed by the scope NAME too', async () => {
++    expect(await idempotentRowId('user-a', CLIENT_ID, { name: 'create' })).toBe(
++      await idempotentRowId('user-a', CLIENT_ID, CREATE_SCOPE),
++    );
++  });
++});
+diff --git a/services/subscriptiontracker-api/test/lifecycle.test.ts b/services/subscriptiontracker-api/test/lifecycle.test.ts
+index 4b5980db..e54eb0c3 100644
+--- a/services/subscriptiontracker-api/test/lifecycle.test.ts
++++ b/services/subscriptiontracker-api/test/lifecycle.test.ts
+@@ -7,10 +7,9 @@
+ // Every test below FAILS on main 454dd415 (the red control): the status and
+ // deleted_at PATCHes return 400, and DELETE leaves no row to restore.
+ // ─────────────────────────────────────────────────────────────────────────────
+-import renewalsSrc from '../src/routes/renewals.ts?raw';
++import renewalsSrc from '../../platform/src/renewals.ts?raw';
+ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+ import { recomputeRenewals } from '../../platform/src/renewals';
+-import renewals from '../src/routes/renewals';
+ import subscriptions, {
+   CHARGING_STATUSES,
+   MAX_BATCH_STATEMENTS,
+@@ -24,12 +23,10 @@ type Row = Record<string, unknown>;
+ 
+ let db: SqliteD1;
+ let subs: ReturnType<typeof asUser>;
+-let ren: ReturnType<typeof asUser>;
+ 
+ beforeEach(() => {
+   db = realAppDb();
+   subs = asUser(subscriptions, '/v1/subscriptions', { APP_DB: db as never });
+-  ren = asUser(renewals, '/v1/renewals', { APP_DB: db as never });
+ });
+ 
+ const inDays = (days: number) =>
+@@ -46,11 +43,22 @@ async function create(body: Row = {}): Promise<string> {
+ const patch = (id: string, body: Row) => subs(U, `/v1/subscriptions/${id}`, { method: 'PATCH', body });
+ const listIds = async () =>
+   ((await (await subs(U, '/v1/subscriptions')).json()) as Row[]).map((r) => r.id);
++// "Due" as the platform fan-out charges: a CHARGING_STATUSES row that is not
++// removed. It read this Worker's GET /v1/renewals until that route was removed
++// (rv2-services-023, lane fix-st-api-bounds); 'the charging set is ONE set'
++// below holds these literals to the fan-out's own, and 'the platform fan-out
++// charges neither…' runs the fan-out itself.
+ const dueIds = async () =>
+-  ((await (await ren(U, '/v1/renewals?withinDays=30')).json()) as Row[]).map((r) => r.id);
++  db
++    .rows(
++      `SELECT id FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL
++         AND status IN (${CHARGING_STATUSES.map((s) => `'${s}'`).join(', ')}) ORDER BY id`,
++      U,
++    )
++    .map((r) => r.id);
+ 
+ describe('F04 — Pause and Mark cancelled are accepted, and stop the row being due', () => {
+-  it('PATCH {status: paused} is 200; the row stays listed and leaves /v1/renewals', async () => {
++  it('PATCH {status: paused} is 200; the row stays listed and is no longer due', async () => {
+     const id = await create();
+     expect(await dueIds()).toEqual([id]);
+     const res = await patch(id, { status: 'paused' });
+@@ -115,9 +123,11 @@ describe('every batch on this router is within MAX_BATCH_STATEMENTS (tooling/cei
+ });
+ 
+ describe('the charging set is ONE set', () => {
+-  it('/v1/renewals spells out exactly CHARGING_STATUSES', () => {
+-    // renewals.ts writes the set as SQL literals (a D1 statement may not
+-    // interpolate it); this keeps the literals and the constant from drifting.
++  it('the platform fan-out spells out exactly CHARGING_STATUSES', () => {
++    // services/platform/src/renewals.ts writes the set as SQL literals (a D1
++    // statement may not interpolate it); this keeps the literals and the
++    // constant from drifting. (It read this Worker's GET /v1/renewals until
++    // that route was removed, rv2-services-023.)
+     const src = renewalsSrc;
+     const set = /status IN \(([^)]*)\)/.exec(src)?.[1];
+     expect(set, 'renewals.ts no longer filters on status').toBeDefined();
+@@ -126,7 +136,7 @@ describe('the charging set is ONE set', () => {
+ });
+ 
+ describe('F03 — soft delete: PATCH {deleted_at} hides the row, null brings it back', () => {
+-  it('is 200, and GET / plus /v1/renewals omit the row', async () => {
++  it('is 200, and GET / and the due set omit the row', async () => {
+     const id = await create();
+     const res = await patch(id, { deleted_at: new Date().toISOString() });
+     expect(res.status, "main answers 400: 'deleted_at cannot be set yet'").toBe(200);
+diff --git a/services/subscriptiontracker-api/test/mount-auth.test.ts b/services/subscriptiontracker-api/test/mount-auth.test.ts
+new file mode 100644
+index 00000000..6ebd6be2
+--- /dev/null
++++ b/services/subscriptiontracker-api/test/mount-auth.test.ts
+@@ -0,0 +1,93 @@
++import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
++import { app } from '../src/index';
++import type { AppEnv } from '../src/types';
++import { TEST_ENV, realAppDb, realPlatformDb, type SqliteD1 } from './harness';
++import { anonymousNotRefused, es256Issuer, jwksFetch, type Through } from '../../_shared/test/mount-auth';
++import { mountedEndpoints, probePath } from '../../_shared/test/preflight';
++
++// ─────────────────────────────────────────────────────────────────────────────
++// mount-auth.test.ts — AN UNAUTHENTICATED REQUEST THROUGH THE REAL APP.
++//
++// ⏱ 2026-10-01 · rv2-services-024 (lane fix-st-api-bounds). Every route suite
++// here mounts its router behind the harness's stub (`asUser`, an X-Test-User
++// header), and tenancy.test.ts's "refuses a caller with no identity" case
++// asserts THAT STUB's 401. So no pre-merge test sent a request with no
++// credential, or a bad one, through `src/index.ts` as it is mounted: a data
++// route mounted on `app` instead of the `api` group (behind no `supabaseAuth`)
++// would have been green in every suite. This drives the REAL app, with the
++// endpoint set DERIVED from `app.routes` (the kit's `mount-auth` over
++// `mountedEndpoints`), so a route added later is covered by existing.
++//
++// Red control (run at authoring): `app.route('/v1/subscriptions', subscriptions)`
++// added ahead of the erasure mount in src/index.ts → both tests red, naming
++// `GET /v1/subscriptions answered 500 to a caller with no credential` (the
++// route ran with no `userId`) and every other subscriptions endpoint.
++// ─────────────────────────────────────────────────────────────────────────────
++
++const PUBLIC = [{ method: 'GET', path: '/v1/health' }];
++/** Floor on the derived set: a route table that stopped being read cannot pass empty. */
++const MIN_GUARDED = 12;
++
++let appDb: SqliteD1;
++let platformDb: SqliteD1;
++
++beforeEach(async () => {
++  appDb = realAppDb();
++  platformDb = realPlatformDb();
++  const { jwks } = await es256Issuer();
++  vi.stubGlobal('fetch', jwksFetch(TEST_ENV.SUPABASE_URL, jwks));
++  vi.spyOn(console, 'warn').mockImplementation(() => {});
++  vi.spyOn(console, 'error').mockImplementation(() => {});
++});
++
++afterEach(() => {
++  vi.unstubAllGlobals();
++  vi.restoreAllMocks();
++});
++
++const env = () =>
++  ({ ...TEST_ENV, APP_DB: appDb, PLATFORM_DB: platformDb }) as unknown as AppEnv['Bindings'];
++
++const through: Through = (path, init) =>
++  app.request(path, { ...init, body: init.method === 'GET' || init.method === 'HEAD' ? undefined : '{"name":"x"}' }, env());
++
++/** Every row in every table of APP_DB: an anonymous request may change none of them. */
++const rowCount = () =>
++  appDb
++    .rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'")
++    .reduce((n, t) => n + Number(appDb.rows(`SELECT COUNT(*) AS n FROM "${String(t.name)}"`)[0].n), 0);
++
++describe('every route that is not public refuses a caller with no credential, through the real app', () => {
++  it('derived from app.routes: everything but GET /v1/health answers 401, and nothing is written', async () => {
++    const before = rowCount();
++    expect(await anonymousNotRefused(app.routes, through, PUBLIC, MIN_GUARDED)).toEqual([]);
++    expect(rowCount()).toBe(before);
++  });
++
++  it('…and so does `Authorization: Bearer invalid`, on every guarded endpoint', async () => {
++    const before = rowCount();
++    const guarded = mountedEndpoints(app.routes).filter(
++      (e) => e.method !== 'OPTIONS' && !PUBLIC.some((p) => p.method === e.method && p.path === e.path),
++    );
++    expect(guarded.length).toBeGreaterThanOrEqual(MIN_GUARDED);
++    const wrong: string[] = [];
++    for (const e of guarded) {
++      const res = await app.request(
++        probePath(e.path),
++        {
++          method: e.method,
++          headers: { Authorization: 'Bearer invalid', 'Content-Type': 'application/json' },
++          body: e.method === 'GET' ? undefined : '{"name":"x"}',
++        },
++        env(),
++      );
++      if (res.status !== 401) wrong.push(`${e.method} ${e.path} answered ${res.status}`);
++    }
++    expect(wrong).toEqual([]);
++    expect(rowCount()).toBe(before);
++  });
++
++  it('the removed GET /v1/renewals is not mounted (rv2-services-023)', () => {
++    expect(mountedEndpoints(app.routes).some((e) => e.path.startsWith('/v1/renewals'))).toBe(false);
++  });
++});
+diff --git a/services/subscriptiontracker-api/test/payment-idempotency.test.ts b/services/subscriptiontracker-api/test/payment-idempotency.test.ts
+index 5f99ee2c..093f94e2 100644
+--- a/services/subscriptiontracker-api/test/payment-idempotency.test.ts
++++ b/services/subscriptiontracker-api/test/payment-idempotency.test.ts
+@@ -266,6 +266,23 @@ describe('POST /v1/subscriptions/:id/payments — Idempotency-Key', () => {
+     expect(payments()).toHaveLength(0);
+   });
+ 
++  // ⏱ 2026-10-01 · review of #1121, nit 2 (kills mutation R3c). The purge case
++  // above deletes the payment AND its subscription, so it answers 410 from the
++  // missing PAYMENT and never reaches the `parent_id == null` limb. Here ONLY
++  // the subscriptions row goes (an erasure or a purge racing the history
++  // delete): the payment row is still there, and the replay must still be 410 —
++  // never a 200 reporting a payment under a subscription that no longer exists.
++  it('🔴 only the subscriptions row deleted (the payment stays): the replay is 410', async () => {
++    const id = await create();
++    expect((await pay(id, CLIENT_ID)).status).toBe(201);
++    db.prepare('DELETE FROM subscriptions WHERE id = ?').bind(id).run();
++    expect(payments()).toHaveLength(1);
++    const gone = await pay(id, CLIENT_ID);
++    expect(gone.status).toBe(410);
++    expect(((await gone.json()) as Row).error).toBe('idempotent_create_gone');
++    expect(payments()).toHaveLength(1);
++  });
++
+   it('a refused payment releases its claim, so the corrected retry can record it', async () => {
+     const id = await create();
+     expect((await pay(id, CLIENT_ID, { amount: -1, paid_on: '2026-09-20' })).status).toBe(400);
+diff --git a/services/subscriptiontracker-api/test/renewals.test.ts b/services/subscriptiontracker-api/test/renewals.test.ts
+deleted file mode 100644
+index 43164f07..00000000
+--- a/services/subscriptiontracker-api/test/renewals.test.ts
++++ /dev/null
+@@ -1,133 +0,0 @@
+-// ─────────────────────────────────────────────────────────────────────────────
+-// GET /v1/renewals?withinDays=N — THE WINDOW HAS TO BE BOUNDED AT BOTH ENDS.
+-//
+-// It had a floor and no ceiling: `Math.max(0, Math.trunc(Number(raw)))`. The
+-// value then becomes a date —
+-//   `new Date(todayMs + withinDays * 86_400_000).toISOString()`
+-// — and past ~1e11 days that Date is Invalid and `.toISOString()` THROWS a
+-// RangeError, which index.ts serves as a generic 500. `?withinDays=1e15` is one
+-// keystroke away from a normal request.
+-//
+-// A ceiling is also what makes the query mean anything: `next_renewal <= ?` with
+-// a year-275760 bound is "every row this user has", not a renewals view.
+-// ─────────────────────────────────────────────────────────────────────────────
+-import { describe, it, expect, beforeEach } from 'vitest';
+-import renewals from '../src/routes/renewals';
+-import subscriptions from '../src/routes/subscriptions';
+-import { todayYmd } from '../src/lib/d1';
+-import { realAppDb, asUser } from './harness';
+-
+-const U = 'user-a';
+-
+-let db: ReturnType<typeof realAppDb>;
+-let rens: ReturnType<typeof asUser>;
+-let subs: ReturnType<typeof asUser>;
+-
+-beforeEach(() => {
+-  db = realAppDb();
+-  rens = asUser(renewals, '/v1/renewals', { APP_DB: db as never });
+-  subs = asUser(subscriptions, '/v1/subscriptions', { APP_DB: db as never });
+-});
+-
+-/** Relative to the route's OWN notion of today (`todayYmd`), not a second
+- *  independent `Date.now()` — otherwise a run straddling UTC midnight seeds
+- *  against one day and queries against the next, and the window tests flake. */
+-const ymd = (daysFromNow: number) =>
+-  new Date(Date.parse(`${todayYmd()}T00:00:00Z`) + daysFromNow * 86_400_000)
+-    .toISOString()
+-    .slice(0, 10);
+-
+-async function seed(name: string, inDays: number) {
+-  const res = await subs(U, '/v1/subscriptions', {
+-    method: 'POST',
+-    body: { name, price: 5, next_renewal: ymd(inDays) },
+-  });
+-  expect(res.status).toBe(201);
+-}
+-
+-const names = async (query = '') => {
+-  const res = await rens(U, `/v1/renewals${query}`);
+-  return {
+-    status: res.status,
+-    list: res.status === 200
+-      ? ((await res.json()) as Array<{ name: string }>).map((r) => r.name)
+-      : [],
+-  };
+-};
+-
+-describe('withinDays is bounded ABOVE — the missing ceiling', () => {
+-  for (const bad of ['1e15', '1e308', '100000000000', '3661', '999999999']) {
+-    it(`400s on withinDays=${bad} instead of 500ing on an Invalid Date`, async () => {
+-      const res = await rens(U, `/v1/renewals?withinDays=${bad}`);
+-      expect(res.status, bad).toBe(400);
+-      expect(await res.json()).toHaveProperty('error', 'invalid_query');
+-    });
+-  }
+-
+-  it('the unbounded value really did throw before the ceiling existed', () => {
+-    // Pins WHY the bound is where it is: without it the route reached this
+-    // expression, and this is what it did. If Date ever grows a wider range this
+-    // fails and the bound can be revisited deliberately.
+-    const todayMs = Date.parse(`${todayYmd()}T00:00:00Z`);
+-    expect(() => new Date(todayMs + 1e15 * 86_400_000).toISOString()).toThrow(
+-      RangeError,
+-    );
+-  });
+-
+-  it('accepts the boundary value 3660 and rejects 3661', async () => {
+-    expect((await rens(U, '/v1/renewals?withinDays=3660')).status).toBe(200);
+-    expect((await rens(U, '/v1/renewals?withinDays=3661')).status).toBe(400);
+-  });
+-});
+-
+-describe('withinDays is bounded BELOW and shaped', () => {
+-  it('400s on a negative window rather than silently flooring it to 0', async () => {
+-    const res = await rens(U, '/v1/renewals?withinDays=-5');
+-    expect(res.status).toBe(400);
+-  });
+-
+-  for (const bad of ['abc', 'NaN', 'Infinity', '7d']) {
+-    it(`400s on withinDays=${bad}`, async () => {
+-      expect((await rens(U, `/v1/renewals?withinDays=${bad}`)).status).toBe(400);
+-    });
+-  }
+-});
+-
+-describe('the window still works — the guard did not just break the route', () => {
+-  it('defaults to 7 days when absent or empty', async () => {
+-    await seed('Soon', 3);
+-    await seed('Later', 30);
+-    expect((await names()).list).toEqual(['Soon']);
+-    expect((await names('?withinDays=')).list).toEqual(['Soon']);
+-  });
+-
+-  it('honours an explicit window, ascending by date', async () => {
+-    await seed('Soon', 3);
+-    await seed('Later', 30);
+-    expect((await names('?withinDays=60')).list).toEqual(['Soon', 'Later']);
+-  });
+-
+-  it('withinDays=0 is today only', async () => {
+-    await seed('Today', 0);
+-    await seed('Tomorrow', 1);
+-    expect((await names('?withinDays=0')).list).toEqual(['Today']);
+-  });
+-
+-  it('a fractional window truncates rather than 400ing', async () => {
+-    await seed('Soon', 3);
+-    await seed('Later', 30);
+-    expect((await names('?withinDays=3.9')).list).toEqual(['Soon']);
+-  });
+-
+-  it('reports days_left for each row', async () => {
+-    await seed('Soon', 3);
+-    const res = await rens(U, '/v1/renewals?withinDays=10');
+-    const [row] = (await res.json()) as Array<{ days_left: number }>;
+-    expect(row.days_left).toBe(3);
+-  });
+-
+-  it('the maximum window returns rows far out, not an error', async () => {
+-    await seed('Distant', 3000);
+-    expect((await names('?withinDays=3660')).list).toEqual(['Distant']);
+-  });
+-});
+diff --git a/services/subscriptiontracker-api/test/subscription-model.test.ts b/services/subscriptiontracker-api/test/subscription-model.test.ts
+index 87a00666..3a3a9076 100644
+--- a/services/subscriptiontracker-api/test/subscription-model.test.ts
++++ b/services/subscriptiontracker-api/test/subscription-model.test.ts
+@@ -6,7 +6,7 @@
+ // Three questions, each against the REAL migrations on a real SQL engine:
+ //
+ //   1. THE CONTRACT. A non-USD, weekly, trialing row goes in through POST and
+-//      comes back — from POST, GET /:id, GET / and /v1/renewals — carrying
++//      comes back — from POST, GET /:id and GET / — carrying
+ //      exactly what was sent. Before 0003 the Worker dropped `currency` and
+ //      `price_minor`, so ₹649 came back as a bare 649 and the client read it as
+ //      $649.00 (the audit's B21/D5/D18).
+@@ -19,7 +19,6 @@
+ // ─────────────────────────────────────────────────────────────────────────────
+ import { describe, it, expect, beforeEach } from 'vitest';
+ import { recomputeRenewals } from '../../platform/src/renewals';
+-import renewals from '../src/routes/renewals';
+ import subscriptions from '../src/routes/subscriptions';
+ import { todayYmd } from '../src/lib/d1';
+ import init0001 from '../migrations/0001_init.sql?raw';
+@@ -129,14 +128,6 @@ describe('THE CONTRACT — a non-USD, weekly, trialing row round-trips', () => {
+     expect({ ...patched, updated_at: null }).toEqual({ ...created, updated_at: null });
+   });
+ 
+-  it('/v1/renewals serves the same model keys, plus days_left', async () => {
+-    await create(INR_WEEKLY_TRIAL);
+-    const rens = asUser(renewals, '/v1/renewals', { APP_DB: db as never });
+-    const out = (await (await rens(U, '/v1/renewals?withinDays=7')).json()) as Row[];
+-    expect(out).toHaveLength(1);
+-    expect(out[0]).toMatchObject({ ...EXPECTED_MODEL_KEYS, days_left: 3 });
+-  });
+-
+   it('stores what it serves: the DB row holds the exact amount, the unit and a NULL legacy cycle', async () => {
+     await create(INR_WEEKLY_TRIAL);
+     const [row] = db.rows(
+@@ -317,7 +308,7 @@ describe('the write rules that span keys', () => {
+       { cycle_every: 366, cycle_unit: 'day' },
+       { share_numerator: 100, share_denominator: 100 },
+       { reminder_days: [0, 365, 30, 7, 1] },
+-      { price: 1_000_000_000, price_minor: 10_000_000_000_000, currency: 'KWD' },
++      { price: 1_000_000_000, price_minor: 10_000_000_000_000, currency: 'CLF' },
+       { deleted_at: null },
+       { cancel_url: 'http://example.com/cancel' },
+       { status: 'active', cancelled_on: '2026-09-28' },
+diff --git a/services/subscriptiontracker-api/test/tenancy.test.ts b/services/subscriptiontracker-api/test/tenancy.test.ts
+index 235191db..6338acf6 100644
+--- a/services/subscriptiontracker-api/test/tenancy.test.ts
++++ b/services/subscriptiontracker-api/test/tenancy.test.ts
+@@ -18,7 +18,6 @@
+ import { describe, it, expect, beforeEach } from 'vitest';
+ import subscriptions from '../src/routes/subscriptions';
+ import budget from '../src/routes/budget';
+-import renewals from '../src/routes/renewals';
+ import { realAppDb, asUser } from './harness';
+ 
+ const A = 'user-a';
+@@ -164,17 +163,51 @@ describe('budget rows are scoped to the owner', () => {
+   });
+ });
+ 
+-describe('renewals are scoped to the owner', () => {
+-  it('user B’s upcoming renewals never include user A’s subscriptions', async () => {
+-    const rens = asUser(renewals, '/v1/renewals', { APP_DB: db as never });
+-    const soon = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+-    await subs(A, '/v1/subscriptions', {
+-      method: 'POST',
+-      body: { name: 'Netflix', price: 9.99, next_renewal: soon },
++// ⏱ 2026-10-01 · rv2-services-023: 'renewals are scoped to the owner' stood
++// here and went with GET /v1/renewals, which had no caller and was removed.
++
++describe('a budget category id is never shared across accounts (rv2-services-026)', () => {
++  it('🔴 B PUTs with A’s category id: 200 with a NEW id, and A’s row is unchanged', async () => {
++    const putA = await budgets(A, '/v1/budget', {
++      method: 'PUT',
++      body: { monthly_budget: 500, categories: [{ name: 'Music', cap: 20 }] },
++    });
++    expect(putA.status).toBe(200);
++    const aId = ((await putA.json()) as { categories: Array<{ id: string }> }).categories[0].id;
++    const before = db.rows('SELECT user_id, name, cap, id FROM budget_categories WHERE id = ?', aId);
++
++    // idx_budget_categories_id is UNIQUE across every user: before this change
++    // B's INSERT of aId failed inside the batch and the save was a 500.
++    const putB = await budgets(B, '/v1/budget', {
++      method: 'PUT',
++      body: { monthly_budget: 10, categories: [{ id: aId, name: 'Games', cap: 5 }] },
++    });
++    expect(putB.status, 'a cross-tenant id collision is a 500 without the json_each read').toBe(200);
++    const bId = ((await putB.json()) as { categories: Array<{ id: string }> }).categories[0].id;
++    expect(bId).not.toBe(aId);
++    expect(db.rows('SELECT name, cap, id FROM budget_categories WHERE user_id = ?', B)).toEqual([
++      { name: 'Games', cap: 5, id: bId },
++    ]);
++    expect(db.rows('SELECT user_id, name, cap, id FROM budget_categories WHERE id = ?', aId)).toEqual(before);
++  });
++
++  it('B keeps the id of B’s own same-named cap when the sent one is A’s', async () => {
++    const aId = (
++      (await (
++        await budgets(A, '/v1/budget', { method: 'PUT', body: { categories: [{ name: 'Music', cap: 20 }] } })
++      ).json()) as { categories: Array<{ id: string }> }
++    ).categories[0].id;
++    const bOwn = (
++      (await (
++        await budgets(B, '/v1/budget', { method: 'PUT', body: { categories: [{ name: 'Games', cap: 5 }] } })
++      ).json()) as { categories: Array<{ id: string }> }
++    ).categories[0].id;
++    const res = await budgets(B, '/v1/budget', {
++      method: 'PUT',
++      body: { categories: [{ id: aId, name: 'Games', cap: 6 }] },
+     });
+-    const res = await rens(B, '/v1/renewals');
+     expect(res.status).toBe(200);
+-    expect(JSON.stringify(await res.json())).not.toContain('Netflix');
++    expect(((await res.json()) as { categories: Array<{ id: string }> }).categories[0].id).toBe(bOwn);
+   });
+ });
+ 
+diff --git a/services/subscriptiontracker-api/test/wrangler-config.test.ts b/services/subscriptiontracker-api/test/wrangler-config.test.ts
+index 731a500b..c402225d 100644
+--- a/services/subscriptiontracker-api/test/wrangler-config.test.ts
++++ b/services/subscriptiontracker-api/test/wrangler-config.test.ts
+@@ -1,6 +1,8 @@
+ import { describe, it, expect } from 'vitest';
+ // `?raw` rather than node:fs — a Workers tsconfig has no node types on purpose.
+ import raw from '../wrangler.jsonc?raw';
++import platformRaw from '../../platform/wrangler.jsonc?raw';
++import edgeShieldRaw from '../../edge-shield/wrangler.jsonc?raw';
+ 
+ // ─────────────────────────────────────────────────────────────────────────────
+ // The DEPLOYED half of this Worker's configuration.
+@@ -70,10 +72,17 @@ interface D1Entry {
+   database_id?: string;
+   migrations_dir?: string;
+ }
++interface RateLimit {
++  name?: string;
++  namespace_id?: unknown;
++  simple?: { limit?: unknown; period?: unknown };
++}
+ const cfg = parseJsonc(raw) as {
+   name?: string;
+   vars?: Record<string, unknown>;
+   d1_databases?: D1Entry[];
++  ratelimits?: RateLimit[];
++  env?: { sandbox?: { ratelimits?: RateLimit[] } };
+ };
+ 
+ describe('the parse itself reached the config', () => {
+@@ -194,3 +203,41 @@ describe('the clone contract this Worker is the template for', () => {
+     }
+   });
+ });
++
++// ⏱ 2026-10-01 · rv2-services-008 (lane fix-st-api-bounds). The per-account
++// write limiter fails OPEN when its binding is absent (the kit's
++// withinRateLimit), so deleting this block would leave every unit test green
++// and every account unbounded. Wrangler does not inherit `ratelimits` into an
++// environment, so the sandbox needs its own.
++describe('ratelimits.WRITE_LIMITER — the per-account write bound, in BOTH environments', () => {
++  const where = [
++    ['the top level', cfg.ratelimits],
++    ['env.sandbox', cfg.env?.sandbox?.ratelimits],
++  ] as const;
++  for (const [label, list] of where) {
++    it(`${label} binds WRITE_LIMITER: 120 per 60 s`, () => {
++      const e = (list ?? []).find((r) => r.name === 'WRITE_LIMITER');
++      expect(e, `${label} has no WRITE_LIMITER: every write is unbounded`).toBeDefined();
++      expect(e!.simple).toEqual({ limit: 120, period: 60 });
++      expect(String(e!.namespace_id)).toMatch(/^[0-9]+$/);
++    });
++  }
++
++  it('the two namespaces differ (a sandbox capture must not spend production’s budget)', () => {
++    const top = (cfg.ratelimits ?? []).find((r) => r.name === 'WRITE_LIMITER');
++    const sandbox = (cfg.env?.sandbox?.ratelimits ?? []).find((r) => r.name === 'WRITE_LIMITER');
++    expect(String(top?.namespace_id)).toBe('1027');
++    expect(String(sandbox?.namespace_id)).toBe('1028');
++  });
++
++  it('no other Worker in this repo uses either namespace id (they are account-wide)', () => {
++    // services/platform holds 1001-1026; services/edge-shield is the other Worker.
++    for (const [name, text] of [
++      ['services/platform', platformRaw],
++      ['services/edge-shield', edgeShieldRaw],
++    ] as const) {
++      expect(text, `${name}: the read reached nothing`).toContain('"name"');
++      expect(text, name).not.toMatch(/"namespace_id"\s*:\s*"(1027|1028)"/);
++    }
++  });
++});
+diff --git a/services/subscriptiontracker-api/test/write-limit.test.ts b/services/subscriptiontracker-api/test/write-limit.test.ts
+new file mode 100644
+index 00000000..fb3e7db0
+--- /dev/null
++++ b/services/subscriptiontracker-api/test/write-limit.test.ts
+@@ -0,0 +1,115 @@
++import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
++import { app } from '../src/index';
++import type { AppEnv } from '../src/types';
++import { TEST_ENV, realAppDb, realPlatformDb, type SqliteD1 } from './harness';
++import { es256Issuer, goTrueClaims, jwksFetch } from '../../_shared/test/mount-auth';
++import { WRITE_LIMITER_BINDING, WRITE_RETRY_AFTER_SECONDS } from '../src/middleware/write-limit';
++
++// ─────────────────────────────────────────────────────────────────────────────
++// THE PER-ACCOUNT WRITE LIMITER, THROUGH THE REAL APP (rv2-services-008).
++//
++// Driven through src/index.ts with a real ES256 token, so what is under test is
++// the MOUNT — after `supabaseAuth`, keyed on the subject it verified — not the
++// middleware on its own. The limiter is a stub of the Rate Limiting binding's
++// one method; the deployed binding is asserted by test/wrangler-config.test.ts.
++//
++// Red control (run at authoring): `api.use('*', writeLimit)` removed from
++// src/index.ts → the first test answers 201 and writes the row.
++// ─────────────────────────────────────────────────────────────────────────────
++
++const SUB = 'user-limited';
++
++let appDb: SqliteD1;
++let token: string;
++let keys: string[];
++
++// ONE issuer for the file: the kit caches the JWKS per isolate, so a key minted
++// per test would be verified against the first test's cached document.
++const issuer = es256Issuer();
++
++beforeEach(async () => {
++  appDb = realAppDb();
++  keys = [];
++  const { jwks, sign } = await issuer;
++  vi.stubGlobal('fetch', jwksFetch(TEST_ENV.SUPABASE_URL, jwks));
++  token = await sign(goTrueClaims(TEST_ENV.SUPABASE_URL, SUB));
++  vi.spyOn(console, 'warn').mockImplementation(() => {});
++});
++
++afterEach(() => {
++  vi.unstubAllGlobals();
++  vi.restoreAllMocks();
++});
++
++const limiter = (success: boolean) => ({
++  async limit({ key }: { key: string }) {
++    keys.push(key);
++    return { success };
++  },
++});
++
++const call = (method: string, path: string, success: boolean | undefined, body?: unknown) =>
++  app.request(
++    path,
++    {
++      method,
++      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
++      body: body === undefined ? undefined : JSON.stringify(body),
++    },
++    {
++      ...TEST_ENV,
++      APP_DB: appDb,
++      PLATFORM_DB: realPlatformDb(),
++      ...(success === undefined ? {} : { WRITE_LIMITER: limiter(success) }),
++    } as unknown as AppEnv['Bindings'],
++  );
++
++const rows = () => appDb.rows('SELECT id FROM subscriptions');
++
++describe('WRITE_LIMITER bounds every write, per verified account', () => {
++  it('🔴 over the limit: POST is 429 with Retry-After, and no row is written', async () => {
++    const res = await call('POST', '/v1/subscriptions', false, { name: 'Netflix', price: 9.99 });
++    expect(res.status).toBe(429);
++    expect(res.headers.get('Retry-After')).toBe(String(WRITE_RETRY_AFTER_SECONDS));
++    expect(await res.json()).toMatchObject({ error: 'rate_limited' });
++    expect(rows()).toEqual([]);
++  });
++
++  it('is keyed on the VERIFIED subject, never on anything the caller sends', async () => {
++    await call('POST', '/v1/subscriptions', true, { name: 'Netflix', price: 9.99, user_id: 'someone-else' });
++    expect(keys).toEqual([`st:${SUB}`]);
++  });
++
++  it('within the limit: POST is 201 and the row is written', async () => {
++    const res = await call('POST', '/v1/subscriptions', true, { name: 'Netflix', price: 9.99 });
++    expect(res.status).toBe(201);
++    expect(rows()).toHaveLength(1);
++  });
++
++  it('PATCH, PUT and DELETE are limited too; a GET is not asked about at all', async () => {
++    expect((await call('PATCH', '/v1/subscriptions/x', false, { name: 'n' })).status).toBe(429);
++    expect((await call('PUT', '/v1/budget', false, { monthly_budget: 1 })).status).toBe(429);
++    expect((await call('DELETE', '/v1/subscriptions/x', false)).status).toBe(429);
++    keys = [];
++    expect((await call('GET', '/v1/subscriptions', false)).status).toBe(200);
++    expect(keys, 'a read must not spend the write budget').toEqual([]);
++  });
++
++  it('an anonymous write is a 401 from supabaseAuth BEFORE the limiter is asked', async () => {
++    const res = await app.request(
++      '/v1/subscriptions',
++      { method: 'POST', body: '{}' },
++      { ...TEST_ENV, APP_DB: appDb, PLATFORM_DB: realPlatformDb(), WRITE_LIMITER: limiter(false) } as unknown as AppEnv['Bindings'],
++    );
++    expect(res.status).toBe(401);
++    expect(keys).toEqual([]);
++  });
++
++  it('an ABSENT binding fails open and says so once (the kit’s withinRateLimit)', async () => {
++    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
++    expect((await call('POST', '/v1/subscriptions', undefined, { name: 'A' })).status).toBe(201);
++    expect((await call('POST', '/v1/subscriptions', undefined, { name: 'B' })).status).toBe(201);
++    const lines = err.mock.calls.filter((c) => String(c[0]).includes(WRITE_LIMITER_BINDING));
++    expect(lines.length).toBeLessThanOrEqual(1);
++  });
++});
+diff --git a/services/subscriptiontracker-api/wrangler.jsonc b/services/subscriptiontracker-api/wrangler.jsonc
+index 5aca59f8..6e27c579 100644
+--- a/services/subscriptiontracker-api/wrangler.jsonc
++++ b/services/subscriptiontracker-api/wrangler.jsonc
+@@ -89,6 +89,30 @@
+     { "binding": "SESSION_REVOKED", "id": "aa46ad5002874231931cc5dc5b6e2904" }
+   ],
+ 
++  // ⏱ 2026-10-01 · rv2-services-008 (lane fix-st-api-bounds). THE PER-ACCOUNT
++  // WRITE LIMITER. Until this block nothing bounded how fast one signed-in
++  // account could write. Read by src/middleware/write-limit.ts, mounted after
++  // `supabaseAuth` on every non-GET, keyed `st:<verified sub>` — never a header,
++  // never the body. Over the limit is a 429 with Retry-After: 60.
++  //
++  // 120 writes a minute per account: a person saves a few edits a minute, and
++  // an offline outbox replaying a backlog, or a CSV import, is ~2 a second — it
++  // meets the limit only on a very large import, and the outbox retries a 429.
++  // `period` is 60, one of tooling/ceilings.json's ratelimit.allowedPeriods.
++  // FAILS OPEN (the kit's withinRateLimit): the per-user row cap in
++  // src/routes/subscriptions.ts holds without it.
++  //
++  // namespace_id 1027: a namespace_id is ACCOUNT-WIDE, and services/platform
++  // holds 1001-1026 (top level and its env.sandbox); env.sandbox below is 1028.
++  // test/wrangler-config.test.ts asserts this block in both environments.
++  "ratelimits": [
++    {
++      "name": "WRITE_LIMITER",
++      "namespace_id": "1027",
++      "simple": { "limit": 120, "period": 60 }
++    }
++  ],
++
+   // ───────────────────────────────────────────────────────────────────────────
+   // [pipeline B-15] THE ROUTE THIS WORKER HAS ANSWERED ON SINCE LAUNCH, FINALLY
+   // WRITTEN DOWN.
+@@ -184,14 +208,16 @@
+   //
+   // No secrets: auth is ES256 through the project's JWKS
+   // (services/_shared/src/auth.ts); SUPABASE_JWT_SECRET and GLITCHTIP_DSN are
+-  // optional. No ratelimits, services or R2: the top level binds none.
++  // optional. No services or R2: the top level binds none. `ratelimits` IS
++  // declared below, because wrangler does not inherit it and an absent limiter
++  // fails open.
+   "env": {
+     "sandbox": {
+       "routes": [],
+       "workers_dev": true,
+       "triggers": { "crons": [] },
+       "vars": {
+-        // why: src/index.ts:156 reports it; every log line names the app by it.
++        // why: src/index.ts:158 reports it; every log line names the app by it.
+         "APP_ID": "subscriptiontracker",
+         // why: the SAME identity project as production (D1 identity option
+         // (a)). A capture signs in as the e2e user, and src/middleware/auth.ts
+@@ -229,6 +255,16 @@
+         // the same public keys and would work, but a production id in a
+         // sandbox block is the shape this block exists to keep out.
+         { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" }
++      ],
++      // why: src/middleware/write-limit.ts reads it on every write, as at the top
++      // level. Its OWN namespace_id (1028), so a capture's writes never spend
++      // production's per-account budget; same limit and period.
++      "ratelimits": [
++        {
++          "name": "WRITE_LIMITER",
++          "namespace_id": "1028",
++          "simple": { "limit": 120, "period": 60 }
++        }
+       ]
+     }
+   }
+diff --git a/tooling/capability-register.json b/tooling/capability-register.json
+index 1d38f6e0..680a2cf4 100644
+--- a/tooling/capability-register.json
++++ b/tooling/capability-register.json
+@@ -445,6 +445,7 @@
+     "NATIVE_AUTH_UNATTESTED_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1021; sandbox 1023) for the native sign-in ops that carry the UNATTESTED install-key kind (Windows, Linux, macOS outside the Mac App Store), keyed `edge:<colo>:<asn>` — never an IP. Not a vendor surface — the same Workers Rate Limiting binding under `cloudflare`, FAILING CLOSED; far tighter than NATIVE_AUTH_EDGE_LIMITER because that channel proves nothing about the binary. Added 2026-09-29, ADR no.NNN (native sign-in serves only attested app installs).",
+     "NATIVE_AUTH_INSTALL_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1022; sandbox 1024) for POST /v1/auth/native/:app/attest/install (key registration, every kind), keyed `edge:<colo>:<asn>`. Not a vendor surface; FAILS CLOSED. Added 2026-09-29, ADR no.NNN (native sign-in serves only attested app installs).",
+     "NATIVE_AUTH_ATTEST_KINDS": "OUR OWN flag: the attestation kinds the native sign-in route accepts. No external system is behind it. Absent or empty accepts none — every native op is refused. ⏱ 2026-09-30 (review of #1070): production lists only the server-verified kinds (app-attest, play-integrity), the sandbox none, and install-key is structurally confined to the password grant (KIND_OPS). Added 2026-09-29, ADR no.NNN (native sign-in serves only attested app installs).",
++    "WRITE_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1027; sandbox 1028) for every WRITE on subscriptiontracker-api's /v1 group (rv2-services-008, lane fix-st-api-bounds), keyed `st:<verified sub>` after supabaseAuth — never a header, the body or an IP. Not a vendor surface — the same Workers Rate Limiting binding under `cloudflare`, its own namespace so one account's burst spends no other route's budget. FAILS OPEN (the per-account row cap holds without it). Added 2026-10-01.",
+     "NATIVE_AUTH_PLAY_VERIFY_LIMITER": "OUR OWN Cloudflare rate-limit namespace (1025; sandbox 1026) for Play Integrity verifications on the native sign-in route, spent before a decode is asked of Google, keyed `edge:<colo>:<asn>` — never an IP. Not a vendor surface — the same Workers Rate Limiting binding under `cloudflare`; FAILS CLOSED. Added 2026-09-30, ADR no.NNN (native sign-in serves only attested app installs).",
+     "NATIVE_ATTEST_CHALLENGE_KEY": "OUR OWN secret: the HMAC-SHA256 key native sign-in challenges are signed with, so issuing one writes no row. Random bytes we generate, no external system behind it; absent or short, the native route answers 503. Added 2026-09-30, ADR no.NNN (native sign-in serves only attested app installs).",
+     "TOKEN_ENC_KEY_V1": "OUR OWN secret: the AES-256-GCM key (key id v1) the provider refresh tokens in platform_db.provider_tokens are sealed with at rest (services/platform/src/lib/token-crypto.ts, migration 0023). 32 random bytes, standard base64, put by the owner with `wrangler secret put TOKEN_ENC_KEY_V1`; no external system behind it and held in no file or backup, which is what makes an R2 backup carry ciphertext only. Absent or malformed FAILS CLOSED: a token store answers 503, a revoke is blocked, the nightly provider_token_backfill is red and /v1/health reports token_encryption_key not ok. Added 2026-09-30, review round 2 (security).",
+diff --git a/tooling/ci/lane-map.json b/tooling/ci/lane-map.json
+index 6c91c897..39847432 100644
+--- a/tooling/ci/lane-map.json
++++ b/tooling/ci/lane-map.json
+@@ -40,6 +40,8 @@
+         "contracts/entitlement/*.js",
+         "contracts/entitlement/*.d.ts",
+         "contracts/entitlement/*.json",
++        "contracts/currency/*.js",
++        "contracts/currency/*.d.ts",
+         "extensions/catalog/extensions.json",
+         "packages/core/lib/src/analytics/analytics.dart",
+         "tooling/channel-register.json",
+@@ -186,6 +188,7 @@
+       "services/subscriptiontracker-api/**",
+       "services/_shared/**",
+       "contracts/entitlement/*.js",
++      "contracts/currency/*.js",
+       ".github/workflows/deploy-workers.yml"
+     ],
+     "nikatru-site": [
+@@ -231,6 +234,7 @@
+       "catalog/apps.json",
+       "contracts/entitlement/*.js",
+       "contracts/entitlement/*.json",
++      "contracts/currency/*.js",
+       "catalog/bundles.json",
+       "extensions/catalog/extensions.json",
+       "tooling/channel-register.json",
+diff --git a/tooling/ci/test/coverage-manifest.json b/tooling/ci/test/coverage-manifest.json
+index 7cb110ed..9c7bfcc8 100644
+--- a/tooling/ci/test/coverage-manifest.json
++++ b/tooling/ci/test/coverage-manifest.json
+@@ -263,6 +263,9 @@
+   "credential-origin.test.mjs":
+     33,
+ 
++  "currency-table.test.mjs":
++    4,
++
+   "d1-bindings.test.mjs":
+     9,
+ 
+diff --git a/tooling/ci/test/currency-table.test.mjs b/tooling/ci/test/currency-table.test.mjs
+new file mode 100644
+index 00000000..f838e084
+--- /dev/null
++++ b/tooling/ci/test/currency-table.test.mjs
+@@ -0,0 +1,70 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// currency-table.test.mjs — THE ONE ISO 4217 TABLE STAYS ONE TABLE.
++//
++// ⏱ 2026-10-01 · lane fix-st-api-bounds (rv2-services-030, #1118 review
++// finding 3). contracts/currency/iso4217.js is read by subscriptiontracker-api
++// (a code not in it is a 400; `price_minor` is checked against its digits) and
++// by services/platform's reminder formatter, both by import; packages/core
++// reads the GENERATED Dart view. This holds the three together:
++//   · the committed .g.dart is exactly what generate-dart.mjs writes (green
++//     control on the REAL tree), and a hand-edit to it reds (red control);
++//   · each Worker imports the table and carries no digit map of its own — the
++//     platform's own map is how the two halves disagreed in the first place.
++// ─────────────────────────────────────────────────────────────────────────────
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { spawnSync } from 'node:child_process';
++import { readFileSync, writeFileSync } from 'node:fs';
++import { dirname, join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { MINOR_UNIT_DIGITS, isIso4217, minorUnitDigits, toMinorUnits } from '../../../contracts/currency/iso4217.js';
++
++const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
++const GEN = join(ROOT, 'contracts', 'currency', 'generate-dart.mjs');
++const DART = join(ROOT, 'packages', 'core', 'lib', 'src', 'money', 'iso4217.g.dart');
++
++const check = () => spawnSync(process.execPath, [GEN, '--check'], { encoding: 'utf8' });
++
++test('green control: the committed Dart table is what iso4217.js generates', () => {
++  const r = check();
++  assert.equal(r.status, 0, r.stderr);
++});
++
++test('red control: a hand-edited Dart table is refused by --check', () => {
++  const original = readFileSync(DART, 'utf8');
++  try {
++    writeFileSync(DART, original.replace("'KRW': 0,", "'KRW': 2,"));
++    assert.notEqual(readFileSync(DART, 'utf8'), original, 'the mutation did not land: this control proves nothing');
++    const r = check();
++    assert.equal(r.status, 1, 'a drifted Dart table must red');
++  } finally {
++    writeFileSync(DART, original);
++  }
++});
++
++test('the table is ISO’s, with the exponents the round trips depend on', () => {
++  assert.ok(Object.keys(MINOR_UNIT_DIGITS).length > 150);
++  assert.equal(minorUnitDigits('KRW'), 0);
++  assert.equal(minorUnitDigits('BHD'), 3);
++  assert.equal(minorUnitDigits('CLF'), 4);
++  assert.equal(minorUnitDigits('USD'), 2);
++  assert.equal(isIso4217('ZZZ'), false);
++  assert.equal(isIso4217('XAU'), false, 'a code with no minor unit is not a price currency');
++  assert.equal(toMinorUnits(6.49, 'JPY'), 6);
++  assert.equal(toMinorUnits(19.99, 'USD'), 1999);
++  assert.equal(toMinorUnits(2.5, 'BHD'), 2500);
++});
++
++test('both Workers import the table and carry no digit map of their own', () => {
++  for (const rel of [
++    'services/subscriptiontracker-api/src/routes/subscriptions.ts',
++    'services/platform/src/lib/reminders.ts',
++  ]) {
++    const src = readFileSync(join(ROOT, rel), 'utf8');
++    assert.match(src, /from '(\.\.\/)+contracts\/currency\/iso4217\.js'/, `${rel} does not import the table`);
++    assert.doesNotMatch(src, /\bKWD\s*:\s*3\b/, `${rel} restates a minor-digit row`);
++  }
++  const dart = readFileSync(join(ROOT, 'packages', 'core', 'lib', 'src', 'money', 'money.dart'), 'utf8');
++  assert.match(dart, /iso4217MinorUnitDigits\[code\]/, 'money.dart does not read the generated table');
++  assert.doesNotMatch(dart, /'KWD'\s*:\s*3/, 'money.dart restates a minor-digit row');
++});
+diff --git a/tooling/platform-register.json b/tooling/platform-register.json
+index b3282b2c..29ac5d3c 100644
+--- a/tooling/platform-register.json
++++ b/tooling/platform-register.json
+@@ -166,11 +166,11 @@
+           "path": "/v1/subscriptions",
+           "auth": "required",
+           "owningFile": "services/subscriptiontracker-api/src/routes/subscriptions.ts",
+-          "purpose": "Every subscription owned by the verified user, newest renewal first. Scoped by the token's user_id, never by a body value.",
++          "purpose": "Every subscription owned by the verified user, most expensive first. Scoped by the token's user_id, never by a body value. ⏱ 2026-10-01 · rv2-services-008: BOUNDED — with no `limit` it is the bare array, LIMIT the per-account row cap (500), so it never truncates a list the cap admitted; with `?limit=N&after=<cursor>` it is keyset-paged as `{items, next}`.",
+           "client": {
+             "file": "apps/subscriptiontracker/lib/data/api/dio_api_client.dart",
+-            "expression": "_rest.get('/subscriptions')",
+-            "note": "The real call inside `getSubscriptions()`, at the assignment — not the class doc comment, which is stripped before matching."
++            "expression": "'/subscriptions?limit=$subscriptionsPageSize$cursor'",
++            "note": "The real call inside `getSubscriptions()`, at the assignment — not the class doc comment, which is stripped before matching. It follows `next` page by page, and reads a pre-paging Worker's bare array whole."
+           }
+         },
+         {
+@@ -234,15 +234,6 @@
+           "purpose": "The user records a payment by hand (ST-R5, round-2 X06: mark as paid). Writes one payment_history row with `source` = manual against a subscription the user owns and has not removed; ownership is in the SQL, so a foreign or removed id is a 404.",
+           "unconsumedReason": "⏱ 2026-09-29: SERVED AHEAD OF ITS BUTTON. The API half of ST-R5 landed first on purpose (fix-rv2-st-api-lifecycle); the \"Mark as paid\" control is drawn by the design train dw1 (D5-3), which adds the client call. Until then nothing in the app issues this request."
+         },
+-        {
+-          "id": "subscriptiontracker-renewals",
+-          "method": "GET",
+-          "path": "/v1/renewals",
+-          "auth": "required",
+-          "owningFile": "services/subscriptiontracker-api/src/routes/renewals.ts",
+-          "purpose": "The upcoming-renewals list for the verified user, computed server-side over a window. Mounted at index.ts:87 behind `supabaseAuth`, 108 lines, with its own test file.",
+-          "unconsumedReason": "🔴 NOTHING IN THIS REPO CALLS IT, AND THAT IS THE FINDING THIS ENTRY EXISTS TO STOP BEING INVISIBLE. Measured 2026-08-25 across every language and every root in the repo, with the /v1 prefix removed after that exact mistake once produced a false negative: apps/subscriptiontracker/lib/data/api/api_client.dart declares NINE methods and none is renewals; dio_api_client.dart issues NINE requests and none is to /renewals; packages/api_client has no renewals transport; and every bare-word `renewals` hit outside services/ is a UI string, a feature flag, the platform cron fan-out (services/platform/src/scheduled.ts, which writes subscriptiontracker_db DIRECTLY through the SUBSCRIPTIONTRACKER_DB binding and never over HTTP), or a test. The app computes its upcoming-renewal list locally from the subscriptions it already holds. ⚠️ IT IS NOT DELETED, AND DELETION IS NOT THIS ITEM’S CALL: it is a plausible sync-era surface, deletion is the irreversible half, and the register’s whole purpose is that an unconsumed capability is a PRINTED fact rather than a silence. Give it a client or remove it deliberately — but from now on the choice is on the screen every CI run."
+-        },
+         {
+           "id": "subscriptiontracker-budget-get",
+           "method": "GET",
+@@ -858,7 +849,6 @@
+       "readers": [
+         "services/subscriptiontracker-api/src/routes/subscriptions.ts",
+         "services/subscriptiontracker-api/src/routes/budget.ts",
+-        "services/subscriptiontracker-api/src/routes/renewals.ts",
+         "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts"
+       ]
+     },
+@@ -1056,6 +1046,15 @@
+         "services/edge-shield/src/classify.ts"
+       ]
+     },
++    {
++      "binding": "WRITE_LIMITER",
++      "kind": "ratelimits",
++      "scope": "per-app",
++      "purpose": "⏱ 2026-10-01 · rv2-services-008 (lane fix-st-api-bounds). subscriptiontracker-api's per-ACCOUNT write limiter: every non-GET under /v1, mounted after supabaseAuth and keyed `st:<verified sub>` — never a header or the body. `simple: { limit: 120, period: 60 }`; over it is a 429 with Retry-After: 60. FAILS OPEN (the kit's withinRateLimit): the per-user row cap in routes/subscriptions.ts bounds the total without it, and test/wrangler-config.test.ts asserts the binding in both environments. Its OWN namespace (1027; the sandbox's is 1028).",
++      "readers": [
++        "services/subscriptiontracker-api/src/middleware/write-limit.ts"
++      ]
++    },
+     {
+       "binding": "REMINDERS_CEILING_LIMITER",
+       "kind": "ratelimits",

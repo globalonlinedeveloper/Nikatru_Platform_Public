@@ -1,0 +1,3053 @@
+diff --git a/services/_shared/src/d1.ts b/services/_shared/src/d1.ts
+index a31e83df..3739bd70 100644
+--- a/services/_shared/src/d1.ts
++++ b/services/_shared/src/d1.ts
+@@ -34,8 +34,16 @@
+ // step.
+ //
+ // 🔴 services/_shared MAY HOLD NO BARE IMPORT. Its header states the measured
+-// reason in full; this file obeys it by importing nothing at all.
++// reason in full; this file obeys it by importing nothing but the SQL port's
++// TYPES, a sibling module.
++//
++// ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql). The helpers below
++// take the SQL PORT (ports/sql.ts), never a `D1Database`: a D1 binding satisfies
++// it structurally, and so does the node:sqlite engine (ports/fakes/sql.ts). The
++// classification keeps D1's name and D1's words, because the port is D1-shaped
++// and its wording is what workerd throws; ports/sql.ts re-exports it.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb, SqlResult, SqlStatement } from './ports/sql';
+ 
+ /** 🔴 NARROW BY CONSTRUCTION, BECAUSE A BROAD RETRY IS WORSE THAN NONE. Only the
+  *  messages Cloudflare documents as transient are retried. A constraint
+@@ -122,13 +130,13 @@ export async function withD1Retry<T>(
+ 
+ /** Return all rows of a prepared statement, typed as T[].
+  *  A read is idempotent, so a transient reset is retried unconditionally. */
+-export async function allRows<T = Record<string, unknown>>(stmt: D1PreparedStatement): Promise<T[]> {
++export async function allRows<T = Record<string, unknown>>(stmt: SqlStatement): Promise<T[]> {
+   const { results } = await withD1Retry(() => stmt.all<T>());
+   return results ?? [];
+ }
+ 
+ /** Return the first row of a prepared statement, or null. A read, so retried. */
+-export async function firstRow<T = Record<string, unknown>>(stmt: D1PreparedStatement): Promise<T | null> {
++export async function firstRow<T = Record<string, unknown>>(stmt: SqlStatement): Promise<T | null> {
+   return (await withD1Retry(() => stmt.first<T>())) ?? null;
+ }
+ 
+@@ -159,7 +167,7 @@ export async function firstRow<T = Record<string, unknown>>(stmt: D1PreparedStat
+  *  the earlier attempt did. Reporting 1 would claim a write this invocation did
+  *  not perform. No caller reads `meta` today, and if one starts, 0 is the honest
+  *  number. */
+-export async function run(stmt: D1PreparedStatement): Promise<D1Result> {
++export async function run(stmt: SqlStatement): Promise<SqlResult> {
+   let sawTransient = false;
+   try {
+     return await withD1Retry(() => stmt.run(), {
+@@ -173,7 +181,7 @@ export async function run(stmt: D1PreparedStatement): Promise<D1Result> {
+         success: true,
+         results: [],
+         meta: { changes: 0, duplicate_of_committed_attempt: true },
+-      } as unknown as D1Result;
++      } as SqlResult;
+     }
+     throw err;
+   }
+@@ -202,9 +210,9 @@ export async function run(stmt: D1PreparedStatement): Promise<D1Result> {
+  *  committed rows has broken the contract above, and surfacing that is the honest
+  *  answer: the conflict names a caller to fix, not a write that succeeded. */
+ export async function batchIdempotent<T = unknown>(
+-  db: D1Database,
+-  statements: D1PreparedStatement[],
+-): Promise<D1Result<T>[]> {
++  db: SqlDb,
++  statements: SqlStatement[],
++): Promise<SqlResult<T>[]> {
+   return withD1Retry(() => db.batch<T>(statements));
+ }
+ 
+diff --git a/services/_shared/src/entitlement-read.ts b/services/_shared/src/entitlement-read.ts
+index f42f4b4e..b336ea45 100644
+--- a/services/_shared/src/entitlement-read.ts
++++ b/services/_shared/src/entitlement-read.ts
+@@ -91,12 +91,13 @@
+ // SAME expected bytes (services/_shared/test/entitlement-parity.ts) against
+ // their own carrier — neither suite imports the other Worker.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb, SqlStatement } from './ports/sql';
+ 
+ /** What a carrier hands the reader. Every member is the carrier's own plumbing. */
+ export interface EntitlementReadDeps {
+-  readonly db: D1Database;
++  readonly db: SqlDb;
+   /** The carrier's `allRows` — the transient-D1 retry lives with the carrier. */
+-  readonly allRows: <T>(stmt: D1PreparedStatement) => Promise<T[]>;
++  readonly allRows: <T>(stmt: SqlStatement) => Promise<T[]>;
+   /** The carrier's copy of the two-value money vocabulary ('live' | 'sandbox'). */
+   readonly isMoneyEnvironment: (v: unknown) => boolean;
+   /** Whether `id` is a product this deploy may answer for. */
+diff --git a/services/_shared/src/erasure.ts b/services/_shared/src/erasure.ts
+index 528bf8e2..12ed7b8a 100644
+--- a/services/_shared/src/erasure.ts
++++ b/services/_shared/src/erasure.ts
+@@ -32,6 +32,7 @@
+ // ⚠️ NO BARE IMPORT HERE. See the header of health.ts for the measurement behind
+ // that rule; this module imports one sibling, by relative path, and nothing else.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from './ports/sql';
+ import { allRows, withD1Retry } from './d1';
+ 
+ /** Tables SQLite/D1 own, which must never be a delete target even if some future
+@@ -83,7 +84,7 @@ const PLAIN_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_$]*$/;
+  * round trips, whatever the table count. The SQLITE_AUTH rule is per STATEMENT,
+  * and no batched statement names sqlite_master.
+  */
+-async function everyColumn(db: D1Database): Promise<Array<{ table: string; column: string }>> {
++async function everyColumn(db: SqlDb): Promise<Array<{ table: string; column: string }>> {
+   const listed = await allRows<{ name: string }>(
+     db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`),
+   );
+@@ -122,7 +123,7 @@ const REFERENCES = (column: string): boolean =>
+   column.endsWith('_user_id') && column.length > '_user_id'.length && PLAIN_IDENTIFIER.test(column);
+ 
+ export async function columnsMatching(
+-  db: D1Database,
++  db: SqlDb,
+   match: (column: string) => boolean,
+ ): Promise<Array<{ table: string; column: string }>> {
+   return (await everyColumn(db)).filter((hit) => match(hit.column));
+@@ -132,7 +133,7 @@ export async function columnsMatching(
+  * Every table in the bound database that carries a `user_id` column — the rows
+  * that ARE this person's, and must be deleted.
+  */
+-export async function userOwnedTables(db: D1Database): Promise<string[]> {
++export async function userOwnedTables(db: SqlDb): Promise<string[]> {
+   const hits = await columnsMatching(db, OWNS);
+   return hits.map((h) => h.table);
+ }
+@@ -146,7 +147,7 @@ export async function userOwnedTables(db: D1Database): Promise<string[]> {
+  * subtraction somebody could forget.
+  */
+ export async function userReferencingColumns(
+-  db: D1Database,
++  db: SqlDb,
+ ): Promise<Array<{ table: string; column: string }>> {
+   return columnsMatching(db, REFERENCES);
+ }
+@@ -167,7 +168,7 @@ export type ErasureTargets = {
+  * deletion path calls THIS; the two single-set functions stay for their other
+  * readers.
+  */
+-export async function erasureTargets(db: D1Database): Promise<ErasureTargets> {
++export async function erasureTargets(db: SqlDb): Promise<ErasureTargets> {
+   const all = await everyColumn(db);
+   return {
+     tables: all.filter((hit) => OWNS(hit.column)).map((hit) => hit.table),
+@@ -201,7 +202,7 @@ export async function erasureTargets(db: D1Database): Promise<ErasureTargets> {
+  * its own words; this is the line a future caller that forgets cannot get past.
+  */
+ export async function eraseTargets(
+-  db: D1Database,
++  db: SqlDb,
+   userId: string,
+   targets: ErasureTargets,
+ ): Promise<{ deleted: Record<string, number>; unlinked: Record<string, number> }> {
+diff --git a/services/_shared/src/ports/adapters/cloudflare.ts b/services/_shared/src/ports/adapters/cloudflare.ts
+index cd8ff560..c701102c 100644
+--- a/services/_shared/src/ports/adapters/cloudflare.ts
++++ b/services/_shared/src/ports/adapters/cloudflare.ts
+@@ -11,6 +11,9 @@
+ // lets every `Env` declare its bindings as `KvStore`, `ObjectStore` and
+ // `RateLimiter` and every handler see the port and nothing more.
+ //
++// ⏱ 2026-10-02 · port-sql: the D1 binding joins them as `SqlDb`
++// (tooling/ports/sql.json adapter `d1`), on the same terms.
++//
+ // The binding types are ambient (`@cloudflare/workers-types`, each Worker's
+ // `compilerOptions.types`); there is no import, so this module carries no bare
+ // specifier (shared-home.test.ts).
+@@ -18,6 +21,7 @@
+ import type { KvStore } from '../kv';
+ import type { ObjectStore } from '../objects';
+ import type { RateLimiter } from '../ratelimit';
++import type { SqlDb } from '../sql';
+ 
+ /** tooling/ports/kv.json adapter `cloudflare-kv`. */
+ export function cloudflareKv(binding: KVNamespace): KvStore {
+@@ -33,3 +37,8 @@ export function cloudflareR2(bucket: R2Bucket): ObjectStore {
+ export function cloudflareRateLimiter(binding: RateLimit): RateLimiter {
+   return binding;
+ }
++
++/** tooling/ports/sql.json adapter `d1`. */
++export function cloudflareD1(binding: D1Database): SqlDb {
++  return binding;
++}
+diff --git a/services/_shared/src/ports/fakes/sql.ts b/services/_shared/src/ports/fakes/sql.ts
+new file mode 100644
+index 00000000..27545489
+--- /dev/null
++++ b/services/_shared/src/ports/fakes/sql.ts
+@@ -0,0 +1,203 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// fakes/sql.ts — THE SQL PORT OVER `node:sqlite`: A REAL ENGINE, NOT A DOUBLE.
++// tooling/ports/sql.json adapter `sqlite` (test and sandbox, never live); it
++// passes the same conformance suite as the binding is held to
++// (services/_shared/test/conformance/sql.ts).
++//
++// ⏱ 2026-10-02 · port-sql. PROMOTED, not written: this is services/platform's
++// test-harness `RealDb` (ported 2026-08-01 from subscriptiontracker-api's
++// `SqliteD1`, [pipeline B-9]), moved here verbatim in behaviour so both Worker
++// harnesses import ONE engine. Each harness keeps its migration list and
++// re-exports this class under its old name for one PR.
++//
++// 🔴 WHY A REAL ENGINE REPLACED `class FakeDb`. A recorder that answers
++// `{ changes: 1 }` to everything cannot tell an INSERT naming a column no
++// migration created from a correct one, proves `ON CONFLICT … DO NOTHING` by
++// grep rather than by two rows becoming one, cannot show "the route wrote zero
++// rows", and never exercises `batch()` being ONE TRANSACTION.
++//
++// EXECUTES AND RECORDS, IN ONE OBJECT, ON PURPOSE. Some suites assert WHAT SQL
++// a route chose (the conflict clause, the exact bound tuple) and WHAT LANDED
++// (row counts, dedup, rollback), often in the same test; one object grading one
++// execution cannot disagree with itself.
++//
++// 🔴 NO BARE IMPORT (services/_shared/test/shared-home.test.ts), so `node:sqlite`
++// is reached through `process.getBuiltinModule`, LAZILY in the constructor — a
++// Worker bundle never constructs this, and Vite's builtin list does not know
++// the module ("Failed to load url sqlite"). Its surface is declared below,
++// structurally, rather than imported.
++//
++// What it does NOT model, and the registry says so: D1's authorizer (a
++// statement D1 refuses with SQLITE_AUTH, this engine accepts —
++// tooling/ops/check-d1-accepts-live-sql.mjs is the live answer), D1's limits
++// (tooling/ceilings.json) and the transient Durable Object reset (injected by
++// a test, never produced by this engine).
++// ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb, SqlResult, SqlStatement } from '../sql';
++
++/** A value node:sqlite binds. */
++export type SqliteValue = string | number | bigint | null | Uint8Array;
++
++/** The part of node:sqlite's `StatementSync` this engine and its callers use. */
++export interface SqliteStatementSync {
++  all(...params: SqliteValue[]): Array<Record<string, unknown>>;
++  get(...params: SqliteValue[]): Record<string, unknown> | undefined;
++  run(...params: SqliteValue[]): { changes: number | bigint; lastInsertRowid: number | bigint };
++  /** The result columns a statement WOULD return — empty for a write. */
++  columns(): Array<{ name: string }>;
++}
++
++/** The part of node:sqlite's `DatabaseSync` this engine and its callers use. */
++export interface SqliteDatabaseSync {
++  exec(sql: string): void;
++  prepare(sql: string): SqliteStatementSync;
++  close(): void;
++}
++
++type SqliteCtor = new (path: string) => SqliteDatabaseSync;
++
++function sqliteCtor(): SqliteCtor {
++  const proc = (globalThis as unknown as { process?: { getBuiltinModule?(id: 'node:sqlite'): { DatabaseSync: SqliteCtor } } }).process;
++  const mod = proc?.getBuiltinModule?.('node:sqlite');
++  if (!mod) throw new Error('fakes/sql: node:sqlite is not available — this engine runs under Node (tests, the dry run), never in a Worker');
++  return mod.DatabaseSync;
++}
++
++/**
++ * One prepared statement over node:sqlite. `bind` returns a NEW statement, as
++ * D1's does — the events route binds ONE prepared statement up to 100 times and
++ * batches the results, so a `bind` that mutated in place would collapse the
++ * whole batch onto the last row and every per-row assertion would still pass.
++ */
++export class SqliteStatement implements SqlStatement {
++  constructor(
++    private readonly owner: SqliteDb,
++    private readonly sql: string,
++    private readonly params: unknown[] = [],
++  ) {}
++
++  bind(...params: unknown[]): SqliteStatement {
++    this.owner.bound.push(params);
++    return new SqliteStatement(this.owner, this.sql, params);
++  }
++
++  private args(): SqliteValue[] {
++    return this.params.map((p) => {
++      if (p === undefined) {
++        // D1 rejects undefined binds (D1_TYPE_ERROR). node:sqlite throws too;
++        // this makes the message recognisable in a failing test.
++        throw new TypeError('D1_TYPE_ERROR: undefined is not a supported bind value');
++      }
++      if (typeof p === 'boolean') return p ? 1 : 0;
++      return p as SqliteValue;
++    });
++  }
++
++  /** Runs a write against the real engine. Kept separate so `run` can reuse it. */
++  exec(): SqlResult<never> {
++    const r = this.owner.db.prepare(this.sql).run(...this.args());
++    return { results: [], meta: { changes: Number(r.changes) } };
++  }
++
++  /**
++   * What ONE statement contributes to a `batch()` answer — D1's shape, not a
++   * convenient subset of it.
++   *
++   * ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS. MEASURED against workerd's own D1
++   * through a Worker's wrangler.jsonc binding (getPlatformProxy): a batch of
++   * SELECTs answers one result per statement, IN ORDER, each carrying its rows;
++   * a write answers `results: []` with `meta.changes`. `columns()` decides which,
++   * so no SQL is pattern-matched.
++   */
++  batchResult(): SqlResult {
++    const stmt = this.owner.db.prepare(this.sql);
++    if (stmt.columns().length > 0) return { results: stmt.all(...this.args()), meta: { changes: 0 } };
++    const r = stmt.run(...this.args());
++    return { results: [], meta: { changes: Number(r.changes) } };
++  }
++
++  async all<T = Record<string, unknown>>(): Promise<SqlResult<T>> {
++    return { results: this.owner.db.prepare(this.sql).all(...this.args()) as T[], meta: { changes: 0 } };
++  }
++
++  async first<T = Record<string, unknown>>(): Promise<T | null> {
++    return (this.owner.db.prepare(this.sql).get(...this.args()) as T) ?? null;
++  }
++
++  async run<T = Record<string, unknown>>(): Promise<SqlResult<T>> {
++    if (this.owner.throwOnWrite) throw new Error('d1 down');
++    return this.exec();
++  }
++}
++
++/**
++ * The SQL port over node:sqlite, which ALSO records every prepared statement and
++ * every bound tuple. `batch` is ONE transaction, as D1's is.
++ */
++export class SqliteDb implements SqlDb {
++  readonly db: SqliteDatabaseSync;
++  /** Every SQL string the caller asked to prepare, in order. */
++  readonly sql: string[] = [];
++  /** Every bound tuple, in order. Index `n` is the nth `.bind(...)` call. */
++  readonly bound: unknown[][] = [];
++  /** Total statements handed to `batch()`, summed across calls. */
++  batched = 0;
++  /**
++   * Force the DB layer to fail. A route must answer 503 and the CLIENT must
++   * keep its batch — a 200 here would lose the events. Named `throwOnWrite`
++   * rather than `throwOnBatch`: /v1/consent writes with `.run()`, not `.batch()`,
++   * and a flag that only covered one of the two write paths is a flag whose name
++   * over-promises.
++   */
++  throwOnWrite = false;
++
++  /** A fresh in-memory database with `schema` (each a whole migration) applied, in order. */
++  constructor(schema: readonly string[] = [], path = ':memory:') {
++    const Ctor = sqliteCtor();
++    this.db = new Ctor(path);
++    for (const sql of schema) this.db.exec(sql);
++  }
++
++  prepare(sql: string): SqliteStatement {
++    this.sql.push(sql);
++    return new SqliteStatement(this, sql);
++  }
++
++  async batch<T = unknown>(statements: SqlStatement[]): Promise<SqlResult<T>[]> {
++    if (this.throwOnWrite) throw new Error('d1 down');
++    for (const s of statements) {
++      if (!(s instanceof SqliteStatement)) throw new TypeError('D1_TYPE_ERROR: batch() takes statements prepared on this database');
++    }
++    this.batched += statements.length;
++    this.db.exec('BEGIN');
++    try {
++      const out: SqlResult<T>[] = [];
++      for (const s of statements as SqliteStatement[]) out.push(s.batchResult() as SqlResult<T>);
++      this.db.exec('COMMIT');
++      return out;
++    } catch (err) {
++      this.db.exec('ROLLBACK');
++      throw err;
++    }
++  }
++
++  /** Direct read, bypassing the Worker — for asserting what actually landed. */
++  rows(sql: string, ...params: SqliteValue[]): Array<Record<string, unknown>> {
++    return this.db.prepare(sql).all(...params);
++  }
++
++  /**
++   * `SELECT COUNT(*)` as a number. "Wrote zero rows" is a QUERY rather than an
++   * inference from which methods the route happened to call, so the query gets
++   * a first-class helper.
++   */
++  count(table: string, where = '1=1', ...params: SqliteValue[]): number {
++    const row = this.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`).get(...params);
++    return Number((row as { n: number }).n);
++  }
++}
++
++/** tooling/ports/sql.json adapter `sqlite`: a fresh engine with `schema` applied. */
++export function sqliteDb(schema: readonly string[] = []): SqliteDb {
++  return new SqliteDb(schema);
++}
+diff --git a/services/_shared/src/ports/sql.ts b/services/_shared/src/ports/sql.ts
+new file mode 100644
+index 00000000..3a53d01d
+--- /dev/null
++++ b/services/_shared/src/ports/sql.ts
+@@ -0,0 +1,75 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// ports/sql.ts — THE SQL PORT. tooling/ports/sql.json is its registry;
++// tooling/ports/README.md is the standard.
++//
++// ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql), the D1 limb.
++// Every handler, route, lib and middleware that reads or writes PLATFORM_DB,
++// SUBSCRIPTIONTRACKER_DB or APP_DB takes a `SqlDb`, never a `D1Database`
++// (assert-ports limb 9). The Cloudflare binding satisfies this interface
++// STRUCTURALLY — no wrapper sits on the hot path; adapters/cloudflare.ts is a
++// compile-time proof, not a shim. The second engine is fakes/sql.ts: the
++// `node:sqlite` engine every Worker suite already ran its SQL through.
++//
++// THE SURFACE IS WHAT THIS PORTFOLIO CALLS, AND NO MORE, derived 2026-10-02 from
++// every `.prepare(` site of services/*/src and the brick's Worker: `prepare`,
++// `bind`, `first()` (never `first(column)`), `all`, `run` and `batch`. No `raw`,
++// no `exec`, no `dump`, no `withSession` — nothing calls them, so a second engine
++// owes none of them. A result carries `results` and `meta.changes`, the two
++// fields any caller reads. A new verb is added here deliberately, with its
++// conformance case (services/_shared/test/conformance/sql.ts), never reached for
++// on the binding.
++//
++// ⚠️ NOT THE README'S OUTCOME SHAPE, for the reason ports/kv.ts gives: a
++// statement that fails REJECTS, as the binding does, and each caller's
++// try/catch (and `withD1Retry` below) stays the one place its policy is
++// written. The rejection is CLASSIFIED by the predicates re-exported at the
++// foot of this file, and their wording is workerd's: the engine behind the port
++// must reject in words they read the same way (conformance cases
++// `unique-violation-is-classified` and `deterministic-error-is-not-retried`).
++//
++// THE SQL IS PLAIN SQLITE, and so is every migration (services/*/migrations).
++// The nightly export (services/platform/src/backup/) writes every table as
++// gzipped JSON lines to R2; `node tooling/ops/port-switch.mjs sql --to sqlite
++// --dry-run --export <file>` replays the migrations and loads one such export
++// into a node:sqlite file, so the export duty is rehearsed, not asserted.
++// ─────────────────────────────────────────────────────────────────────────────
++
++/** What a statement's `meta` carries. `changes` is the one field a caller reads;
++ *  an engine may add its own (D1 adds timing and size fields). */
++export interface SqlMeta {
++  changes: number;
++  [field: string]: unknown;
++}
++
++/** The answer to `all`, `run` and each statement of a `batch`: the rows the
++ *  statement returned (none for a write) and its meta. */
++export interface SqlResult<T = unknown> {
++  results: T[];
++  meta: SqlMeta;
++}
++
++/** One prepared statement. `bind` returns a NEW statement — one prepared
++ *  statement bound many times in a single batch is how the events route and the
++ *  budget replace write — and an `undefined` bind REJECTS (D1_TYPE_ERROR). */
++export interface SqlStatement {
++  bind(...values: unknown[]): SqlStatement;
++  /** The first row, or null when there is none. */
++  first<T = Record<string, unknown>>(): Promise<T | null>;
++  all<T = Record<string, unknown>>(): Promise<SqlResult<T>>;
++  run<T = Record<string, unknown>>(): Promise<SqlResult<T>>;
++}
++
++/** The SQL port. A `D1Database` is one; `fakes/sql.ts` is another. */
++export interface SqlDb {
++  prepare(query: string): SqlStatement;
++  /** ONE implicit transaction: every statement commits, or none does. One
++   *  result per statement, in order. */
++  batch<T = unknown>(statements: SqlStatement[]): Promise<SqlResult<T>[]>;
++}
++
++// The error classification and the retry are the port's, and their one home
++// stays services/_shared/src/d1.ts, whose header holds the production stack
++// trace that named the transient reset and the caller contracts `run` and
++// `batchIdempotent` rest on. Re-exported here so a caller of the port reaches
++// them from the port.
++export { isTransientD1Error, isUniqueViolation, withD1Retry, batchIdempotent } from '../d1';
+diff --git a/services/_shared/test/conformance/sql.ts b/services/_shared/test/conformance/sql.ts
+new file mode 100644
+index 00000000..ee31ab56
+--- /dev/null
++++ b/services/_shared/test/conformance/sql.ts
+@@ -0,0 +1,226 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// conformance/sql.ts — WHAT ANY `SqlDb` MUST DO. tooling/ports/sql.json names
++// this file as its suite and `runSqlConformance` as the runner; each adapter's
++// conformance test CALLS the runner (assert-ports limb 6). Against the sqlite
++// engine (ports/fakes/sql.ts) it runs in every Worker's `npm test`
++// (services/_shared/test/ports-sql.test.ts). Against the D1 binding it is
++// PENDING in the registry: no Worker suite runs on workerd (no Miniflare, no
++// @cloudflare/vitest-pool-workers), so D1's own answer is the live check
++// tooling/ops/check-d1-accepts-live-sql.mjs, which grades statement SHAPES and
++// none of the scenarios below.
++//
++// The scenarios are what this portfolio relies on: prepare, bind, first, all,
++// run and batch answer in D1's shape; `bind` returns a NEW statement (the events
++// route and the budget replace bind one statement many times in one batch); an
++// `undefined` bind is REFUSED (D1_TYPE_ERROR) and writes nothing; the engine's
++// own UNIQUE failure is CLASSIFIED as one (`run`'s retry rests on it); a
++// transient reset is retried and the engine's own deterministic failure is NOT;
++// and `batch` is ATOMIC — one failing statement rolls the rest back.
++//
++// 🔴 THE ERROR WORDING (trap auth-01). The classifier reads WORDS, so a case that
++// stubs an error proves only what its stub says. The transient case therefore
++// injects workerd's production wire text VERBATIM (services/_shared/src/d1.ts
++// header, the GlitchTip event of 2026-08-29), and the unique and deterministic
++// cases classify the ENGINE'S OWN rejection — never a hand-made one. The
++// classifier's negative cases stay in services/_shared/test/d1-retry.test.ts.
++// ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb, SqlResult, SqlStatement } from '../../src/ports/sql';
++import { isTransientD1Error, isUniqueViolation, withD1Retry } from '../../src/ports/sql';
++import { missingFixture, same, type Register } from './check';
++
++/** The schema every scenario runs against, one statement per migration. */
++export const SQL_CONFORMANCE_SCHEMA: readonly string[] = [
++  'CREATE TABLE items (id TEXT PRIMARY KEY, n INTEGER NOT NULL, note TEXT)',
++];
++
++/** The production message of a D1 Durable Object reset, as workerd threw it —
++ *  the FULL wire text, not the substring the classifier looks for. */
++export const D1_TRANSIENT_WIRE_TEXT = 'D1_ERROR: D1 DB storage operation exceeded timeout which caused object to be reset.';
++
++/** A fresh database with SQL_CONFORMANCE_SCHEMA applied. */
++export interface SqlSubject {
++  db: SqlDb;
++}
++
++export interface SqlFixture {
++  /** The registry's adapter id. */
++  adapter: string;
++  /** A fresh database with `schema` applied, in order. */
++  make(schema: readonly string[]): SqlSubject | Promise<SqlSubject>;
++}
++
++interface Scenario {
++  name: string;
++  run(s: SqlSubject, adapter: string): Promise<void>;
++}
++
++/** The rejection `op` produces — thrown synchronously (at `bind`) or as a rejected promise. */
++async function rejection(op: () => Promise<unknown>, what: string): Promise<unknown> {
++  try {
++    await op();
++  } catch (err) {
++    return err;
++  }
++  throw new Error(`${what}: expected a rejection, got a value`);
++}
++
++const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
++
++async function count(db: SqlDb): Promise<number> {
++  const row = await db.prepare('SELECT COUNT(*) AS c FROM items').first<{ c: number }>();
++  return Number(row?.c);
++}
++
++const insert = (db: SqlDb, id: unknown, n: unknown): SqlStatement => db.prepare('INSERT INTO items (id, n) VALUES (?, ?)').bind(id, n);
++
++/**
++ * A view of `db` whose next `times` statement executions (or batches) reject with
++ * workerd's transient wire text, BEFORE reaching the engine; every later one is
++ * the engine. The counter is on the view, not the statement, because
++ * `withD1Retry` re-invokes the SAME statement.
++ */
++export function withTransientResets(db: SqlDb, times: number): { db: SqlDb; injected: () => number } {
++  let left = times;
++  let injected = 0;
++  const strike = (): void => {
++    if (left > 0) {
++      left--;
++      injected++;
++      throw new Error(D1_TRANSIENT_WIRE_TEXT);
++    }
++  };
++  const inner = new WeakMap<object, SqlStatement>();
++  const wrap = (stmt: SqlStatement): SqlStatement => {
++    const view: SqlStatement = {
++      bind: (...values: unknown[]) => wrap(stmt.bind(...values)),
++      first: async <T>() => (strike(), stmt.first<T>()),
++      all: async <T>() => (strike(), stmt.all<T>()),
++      run: async <T>() => (strike(), stmt.run<T>()),
++    };
++    inner.set(view, stmt);
++    return view;
++  };
++  return {
++    db: {
++      prepare: (sql: string) => wrap(db.prepare(sql)),
++      batch: async <T>(statements: SqlStatement[]): Promise<SqlResult<T>[]> => {
++        strike();
++        return db.batch<T>(statements.map((s) => inner.get(s) ?? s));
++      },
++    },
++    injected: () => injected,
++  };
++}
++
++export const SQL_SCENARIOS: readonly Scenario[] = [
++  {
++    name: 'prepare-bind-first',
++    async run({ db }) {
++      await insert(db, 'a', 1).run();
++      same(await db.prepare('SELECT id, n FROM items WHERE id = ?').bind('a').first(), { id: 'a', n: 1 }, 'first() of a bound read');
++      same(await db.prepare('SELECT id FROM items WHERE id = ?').bind('absent').first(), null, 'first() of no row is null');
++    },
++  },
++  {
++    name: 'all-returns-rows',
++    async run({ db }) {
++      for (const [id, n] of [['b', 2], ['a', 1], ['c', 3]] as const) await insert(db, id, n).run();
++      const r = await db.prepare('SELECT id, n FROM items WHERE n >= ? ORDER BY id').bind(2).all<{ id: string; n: number }>();
++      same(r.results, [{ id: 'b', n: 2 }, { id: 'c', n: 3 }], 'all() answers every matching row, in the order asked');
++      same((await db.prepare('SELECT id FROM items WHERE n > 99').all()).results, [], 'all() of no row is an empty array');
++    },
++  },
++  {
++    name: 'run-reports-changes',
++    async run({ db }) {
++      for (const id of ['a', 'b', 'c']) await insert(db, id, 1).run();
++      const r = await db.prepare('UPDATE items SET n = n + 1 WHERE id <> ?').bind('a').run();
++      same(r.meta.changes, 2, 'run() meta.changes of an UPDATE that touched two rows');
++      same(Array.isArray(r.results), true, 'run() carries a results array');
++      same((await db.prepare('DELETE FROM items WHERE id = ?').bind('absent').run()).meta.changes, 0, 'a DELETE of nothing changes nothing');
++    },
++  },
++  {
++    name: 'bind-returns-a-new-statement',
++    async run({ db }) {
++      const stmt = db.prepare('INSERT INTO items (id, n) VALUES (?, ?)');
++      await db.batch([stmt.bind('a', 1), stmt.bind('b', 2)]);
++      same((await db.prepare('SELECT id, n FROM items ORDER BY id').all()).results, [{ id: 'a', n: 1 }, { id: 'b', n: 2 }], 'one statement bound twice wrote two rows');
++    },
++  },
++  {
++    name: 'batch-answers-in-order',
++    async run({ db }) {
++      const out = await db.batch([insert(db, 'a', 1), insert(db, 'b', 2), db.prepare('SELECT id FROM items ORDER BY id')]);
++      same(out.length, 3, 'one result per statement');
++      same(out.map((r) => r.meta.changes).slice(0, 2), [1, 1], 'each write reports its own change');
++      same(out[2].results, [{ id: 'a' }, { id: 'b' }], 'a batched read answers its rows, after the writes before it');
++    },
++  },
++  {
++    name: 'undefined-bind-is-refused',
++    async run({ db }) {
++      const err = await rejection(() => db.prepare('INSERT INTO items (id, n, note) VALUES (?, ?, ?)').bind('a', 1, undefined).run(), 'a run with an undefined bind');
++      if (!/D1_TYPE_ERROR/.test(message(err))) throw new Error(`an undefined bind must be refused as D1_TYPE_ERROR, got: ${message(err)}`);
++      same(await count(db), 0, 'the refused statement wrote nothing');
++    },
++  },
++  {
++    name: 'unique-violation-is-classified',
++    async run({ db }) {
++      await insert(db, 'a', 1).run();
++      const err = await rejection(() => insert(db, 'a', 2).run(), 'a second insert of the same primary key');
++      same(isUniqueViolation(err), true, `the engine's own UNIQUE failure is a unique violation (${message(err)})`);
++      same(isTransientD1Error(err), false, `the engine's own UNIQUE failure is never transient (${message(err)})`);
++      same(await db.prepare('SELECT n FROM items WHERE id = ?').bind('a').first(), { n: 1 }, 'the first row stands');
++    },
++  },
++  {
++    name: 'transient-error-is-retried',
++    async run({ db }) {
++      await insert(db, 'a', 1).run();
++      const flaky = withTransientResets(db, 1);
++      const retried: unknown[] = [];
++      const row = await withD1Retry(() => flaky.db.prepare('SELECT n FROM items WHERE id = ?').bind('a').first(), { delayMs: 0, onRetry: (e) => void retried.push(e) });
++      same(flaky.injected(), 1, 'the reset was injected');
++      same(retried.length, 1, 'the reset was retried once');
++      same(row, { n: 1 }, 'the retry answered from the engine');
++      const batchFlaky = withTransientResets(db, 1);
++      await withD1Retry(() => batchFlaky.db.batch([insert(batchFlaky.db, 'b', 2)]), { delayMs: 0 });
++      same(await count(db), 2, 'a batch struck by a reset is re-sent whole, once');
++    },
++  },
++  {
++    name: 'deterministic-error-is-not-retried',
++    async run({ db }) {
++      let attempts = 0;
++      const err = await rejection(
++        () => withD1Retry(() => (attempts++, db.prepare('SELECT nope FROM items').all()), { delayMs: 0, attempts: 3 }),
++        'a statement naming a column the schema does not have',
++      );
++      same(attempts, 1, `the engine's own deterministic failure is sent once, never retried (${message(err)})`);
++      same(isTransientD1Error(err), false, `the engine's own deterministic failure is not transient (${message(err)})`);
++    },
++  },
++  {
++    name: 'batch-is-atomic',
++    async run({ db }) {
++      await insert(db, 'a', 1).run();
++      const err = await rejection(() => db.batch([insert(db, 'b', 2), db.prepare('UPDATE items SET n = 9 WHERE id = ?').bind('a'), insert(db, 'a', 3)]), 'a batch whose last statement collides');
++      same(isUniqueViolation(err), true, `the batch failed on its collision (${message(err)})`);
++      same(await count(db), 1, 'the insert before the failing statement was rolled back');
++      same(await db.prepare('SELECT n FROM items WHERE id = ?').bind('a').first(), { n: 1 }, 'the update before the failing statement was rolled back');
++    },
++  },
++];
++
++/** Register every scenario for `fixture` with `it`. A fixture that cannot make a database FAILS every scenario. */
++export function runSqlConformance(fixture: SqlFixture, it: Register): void {
++  for (const sc of SQL_SCENARIOS) {
++    it(`${fixture.adapter} · sql · ${sc.name}`, async () => {
++      const subject = await fixture.make(SQL_CONFORMANCE_SCHEMA);
++      if (!subject?.db) throw missingFixture('sql', fixture.adapter, sc.name, 'a database with the conformance schema');
++      return sc.run(subject, fixture.adapter);
++    });
++  }
++}
+diff --git a/services/_shared/test/ports-sql.test.ts b/services/_shared/test/ports-sql.test.ts
+new file mode 100644
+index 00000000..21479d05
+--- /dev/null
++++ b/services/_shared/test/ports-sql.test.ts
+@@ -0,0 +1,137 @@
++import { describe, it, expect } from 'vitest';
++import { SqliteDb, SqliteStatement, sqliteDb } from '../src/ports/fakes/sql';
++import type { SqlResult, SqlStatement } from '../src/ports/sql';
++import { SQL_SCENARIOS, runSqlConformance } from './conformance/sql';
++
++// ─────────────────────────────────────────────────────────────────────────────
++// ports-sql.test.ts — tooling/ports/sql.json adapter `sqlite`: the node:sqlite
++// engine every Worker suite runs its SQL through passes the SQL conformance
++// suite. The D1 binding's own run is PENDING in the registry (no Worker suite
++// runs on workerd); this file is what makes the suite real, and the block below
++// is what makes it able to FAIL.
++// ─────────────────────────────────────────────────────────────────────────────
++
++describe('sql port — the sqlite engine passes the conformance suite', () => {
++  runSqlConformance({ adapter: 'sqlite', make: (schema) => ({ db: sqliteDb(schema) }) }, it);
++});
++
++describe('sql conformance — the runner can fail', () => {
++  const collect = () => {
++    const cases = new Map<string, () => Promise<void>>();
++    return { cases, it: (name: string, run: () => Promise<void>) => void cases.set(name, run) };
++  };
++
++  it('registers every scenario', () => {
++    const c = collect();
++    runSqlConformance({ adapter: 'x', make: (schema) => ({ db: sqliteDb(schema) }) }, c.it);
++    expect(c.cases.size).toBe(SQL_SCENARIOS.length);
++  });
++
++  it('🔴 a fixture that makes no database FAILS — a missing fixture is never a skip', async () => {
++    const c = collect();
++    runSqlConformance({ adapter: 'none', make: () => ({}) as never }, c.it);
++    await expect(c.cases.get('none · sql · prepare-bind-first')!()).rejects.toThrow(/no fixture for scenario `prepare-bind-first`/);
++  });
++
++  it('🔴 an engine whose batch is NOT atomic fails `batch-is-atomic`', async () => {
++    // The mutation the brief names: every statement runs on its own, no BEGIN, no ROLLBACK.
++    class NonAtomic extends SqliteDb {
++      override async batch<T = unknown>(statements: SqlStatement[]): Promise<SqlResult<T>[]> {
++        const out: SqlResult<T>[] = [];
++        for (const s of statements) out.push((s as SqliteStatement).batchResult() as SqlResult<T>);
++        return out;
++      }
++    }
++    const c = collect();
++    runSqlConformance({ adapter: 'non-atomic', make: (schema) => ({ db: new NonAtomic(schema) }) }, c.it);
++    await expect(c.cases.get('non-atomic · sql · batch-is-atomic')!()).rejects.toThrow(/rolled back/);
++    // …and only that scenario: the mutation is caught by the case that names it.
++    await expect(c.cases.get('non-atomic · sql · batch-answers-in-order')!()).resolves.toBeUndefined();
++  });
++
++  it('🔴 an engine that binds `undefined` as NULL fails `undefined-bind-is-refused`', async () => {
++    const lenient = (schema: readonly string[]) => {
++      const db = sqliteDb(schema);
++      const prepare = db.prepare.bind(db);
++      db.prepare = (sql: string) => {
++        const stmt = prepare(sql);
++        const bind = stmt.bind.bind(stmt);
++        stmt.bind = (...values: unknown[]) => bind(...values.map((v) => (v === undefined ? null : v)));
++        return stmt;
++      };
++      return { db };
++    };
++    const c = collect();
++    runSqlConformance({ adapter: 'lenient', make: lenient }, c.it);
++    await expect(c.cases.get('lenient · sql · undefined-bind-is-refused')!()).rejects.toThrow(/expected a rejection/);
++  });
++
++  it('🔴 an engine whose `bind` mutates in place fails `bind-returns-a-new-statement`', async () => {
++    const inPlace = (schema: readonly string[]) => {
++      const db = sqliteDb(schema);
++      const prepare = db.prepare.bind(db);
++      db.prepare = (sql: string) => {
++        const stmt = prepare(sql);
++        // Every bind overwrites the one statement's parameters and hands it back.
++        stmt.bind = (...values: unknown[]) => ((stmt as unknown as { params: unknown[] }).params = values, stmt);
++        return stmt;
++      };
++      return { db };
++    };
++    const c = collect();
++    runSqlConformance({ adapter: 'in-place', make: inPlace }, c.it);
++    // Both batched executions carry the LAST tuple, so the second collides with the first.
++    await expect(c.cases.get('in-place · sql · bind-returns-a-new-statement')!()).rejects.toThrow(/UNIQUE constraint failed|wrote two rows/);
++  });
++
++  it('🔴 an engine that words every failure as a reset fails `deterministic-error-is-not-retried`', async () => {
++    const resets = (schema: readonly string[]) => {
++      const db = sqliteDb(schema);
++      const prepare = db.prepare.bind(db);
++      db.prepare = (sql: string) => {
++        const stmt = prepare(sql);
++        const all = stmt.all.bind(stmt);
++        stmt.all = async <T>() => {
++          try {
++            return await all<T>();
++          } catch {
++            throw new Error('D1_ERROR: Network connection lost.');
++          }
++        };
++        return stmt;
++      };
++      return { db };
++    };
++    const c = collect();
++    runSqlConformance({ adapter: 'resets', make: resets }, c.it);
++    await expect(c.cases.get('resets · sql · deterministic-error-is-not-retried')!()).rejects.toThrow(/never retried/);
++  });
++
++  it('🔴 an engine whose UNIQUE failure is worded as something else fails `unique-violation-is-classified`', async () => {
++    const reworded = (schema: readonly string[]) => {
++      const db = sqliteDb(schema);
++      const prepare = db.prepare.bind(db);
++      db.prepare = (sql: string) => {
++        const stmt = prepare(sql);
++        const bind = stmt.bind.bind(stmt);
++        stmt.bind = (...values: unknown[]) => {
++          const bound = bind(...values);
++          const run = bound.run.bind(bound);
++          bound.run = async <T>() => {
++            try {
++              return await run<T>();
++            } catch {
++              throw new Error('write failed');
++            }
++          };
++          return bound;
++        };
++        return stmt;
++      };
++      return { db };
++    };
++    const c = collect();
++    runSqlConformance({ adapter: 'reworded', make: reworded }, c.it);
++    await expect(c.cases.get('reworded · sql · unique-violation-is-classified')!()).rejects.toThrow(/is a unique violation/);
++  });
++});
+diff --git a/services/platform/src/backup/dump.ts b/services/platform/src/backup/dump.ts
+index 1b25877e..dd9711da 100644
+--- a/services/platform/src/backup/dump.ts
++++ b/services/platform/src/backup/dump.ts
+@@ -69,6 +69,7 @@
+ // handful of terms (measured, services/_shared/src/erasure.ts) — the scalar
+ // subqueries of columnsOf are not a compound SELECT.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ import type { KvStore } from '../../../_shared/src/ports/kv';
+ 
+ /**
+@@ -425,7 +426,7 @@ function columnsOf(reads: readonly string[]): string {
+  * spends 0 and reports `truncated`, which is RED.
+  */
+ export async function dumpD1Database(
+-  db: D1Database,
++  db: SqlDb,
+   databaseName: string,
+   queryBudget: number | D1QueryPool,
+   nowIso: string,
+diff --git a/services/platform/src/backup/index.ts b/services/platform/src/backup/index.ts
+index 0865bbe0..386544aa 100644
+--- a/services/platform/src/backup/index.ts
++++ b/services/platform/src/backup/index.ts
+@@ -22,6 +22,7 @@
+ // next Drive sync. And `retentionSweep` DELETES at 06:00 — taking the copy
+ // BEFORE the sweep means the archive holds the night the sweep is about to prune.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ import { dumpD1Database, dumpKvNamespace, gzipAndDigest } from './dump';
+ import type { D1QueryPool } from './dump';
+ import { APP_KV, APP_TARGETS } from '../generated/app-targets';
+@@ -117,8 +118,8 @@ export const MAX_R2_DELETES_PER_RUN = 200;
+ 
+ /** The bindings this export needs. A subset of `Env`, named so it can be faked. */
+ export interface BackupEnv {
+-  PLATFORM_DB: D1Database;
+-  SUBSCRIPTIONTRACKER_DB: D1Database;
++  PLATFORM_DB: SqlDb;
++  SUBSCRIPTIONTRACKER_DB: SqlDb;
+   CONFIG_KV: KvStore;
+   JWKS_CACHE?: KvStore;
+   SIGNUPS?: KvStore;
+@@ -197,8 +198,8 @@ export async function runBackup(env: BackupEnv, nowMs: number = Date.now()): Pro
+   // ⏱ 2026-09-26 (O-BACKUP-AND-FANOUT-SETS-HAND-LISTED): platform_db, then every app database the
+   // register's app Workers own — src/generated/app-targets.ts, GENERATED by
+   // tooling/scripts/render-platform-app-block.mjs. A named binding `env` lacks is a failed row, never a skip.
+-  const bound = env as unknown as Record<string, D1Database | undefined>;
+-  const databases: { name: string; db: D1Database | undefined }[] = [
++  const bound = env as unknown as Record<string, SqlDb | undefined>;
++  const databases: { name: string; db: SqlDb | undefined }[] = [
+     { name: 'platform_db', db: env.PLATFORM_DB },
+     ...APP_TARGETS.map((t) => ({ name: t.databaseName, db: bound[t.dbBinding] })),
+   ];
+diff --git a/services/platform/src/lib/erasure-ledger.ts b/services/platform/src/lib/erasure-ledger.ts
+index 18b758a0..c69fe28c 100644
+--- a/services/platform/src/lib/erasure-ledger.ts
++++ b/services/platform/src/lib/erasure-ledger.ts
+@@ -12,6 +12,7 @@
+ // deletes every table with a `user_id` column, and a ledger named that way would
+ // delete its own order mid-erasure. The migration's header says it at length.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ 
+ /** What an app's `ErasureEntrypoint` answers (services/subscriptiontracker-api
+  *  src/erasure-entrypoint.ts). Counts only; the subject is never echoed. */
+@@ -111,7 +112,7 @@ export interface PendingOrder {
+  * Due immediately: the first retry is the next cron run.
+  */
+ export async function recordPendingErasure(
+-  db: D1Database,
++  db: SqlDb,
+   o: { subjectRef: string; appId: string; nowIso: string; reason: string },
+ ): Promise<string> {
+   const orderId = crypto.randomUUID();
+@@ -134,12 +135,12 @@ export async function recordPendingErasure(
+ }
+ 
+ /** The synchronous path reached the app after all: any open order for it is moot. */
+-export async function clearPendingErasure(db: D1Database, subjectRef: string, appId: string): Promise<void> {
++export async function clearPendingErasure(db: SqlDb, subjectRef: string, appId: string): Promise<void> {
+   await db.prepare('DELETE FROM pending_erasures WHERE subject_ref = ? AND app_id = ?').bind(subjectRef, appId).run();
+ }
+ 
+ /** Unconfirmed orders whose next attempt is due, oldest first, at most `limit`. */
+-export async function dueOrders(db: D1Database, nowIso: string, limit: number): Promise<PendingOrder[]> {
++export async function dueOrders(db: SqlDb, nowIso: string, limit: number): Promise<PendingOrder[]> {
+   const res = await db
+     .prepare(
+       `SELECT order_id, subject_ref, app_id, created_at, attempts, next_attempt_at, confirmed_at
+@@ -153,7 +154,7 @@ export async function dueOrders(db: D1Database, nowIso: string, limit: number):
+   return res.results ?? [];
+ }
+ 
+-export async function markConfirmed(db: D1Database, orderId: string, nowIso: string): Promise<void> {
++export async function markConfirmed(db: SqlDb, orderId: string, nowIso: string): Promise<void> {
+   await db
+     .prepare(
+       'UPDATE pending_erasures SET confirmed_at = ?, last_attempt_at = ?, attempts = attempts + 1, last_error = NULL WHERE order_id = ?',
+@@ -163,7 +164,7 @@ export async function markConfirmed(db: D1Database, orderId: string, nowIso: str
+ }
+ 
+ export async function markFailed(
+-  db: D1Database,
++  db: SqlDb,
+   o: { orderId: string; attempts: number; nowMs: number; error: string },
+ ): Promise<void> {
+   const now = new Date(o.nowMs).toISOString();
+@@ -177,7 +178,7 @@ export async function markFailed(
+ }
+ 
+ /** Subjects every one of whose orders is confirmed — ready for the identity step. */
+-export async function subjectsReadyForIdentity(db: D1Database, limit: number): Promise<string[]> {
++export async function subjectsReadyForIdentity(db: SqlDb, limit: number): Promise<string[]> {
+   const res = await db
+     .prepare(
+       `SELECT subject_ref FROM pending_erasures
+@@ -191,12 +192,12 @@ export async function subjectsReadyForIdentity(db: D1Database, limit: number): P
+ }
+ 
+ /** The subject's erasure is complete: its orders are deleted (the retention bound). */
+-export async function closeSubject(db: D1Database, subjectRef: string): Promise<void> {
++export async function closeSubject(db: SqlDb, subjectRef: string): Promise<void> {
+   await db.prepare('DELETE FROM pending_erasures WHERE subject_ref = ?').bind(subjectRef).run();
+ }
+ 
+ /** Unconfirmed orders older than `cutoffIso` — the stuck set the heartbeat turns RED. */
+-export async function stuckOrderCount(db: D1Database, cutoffIso: string): Promise<number> {
++export async function stuckOrderCount(db: SqlDb, cutoffIso: string): Promise<number> {
+   const row = await db
+     .prepare('SELECT COUNT(*) AS n FROM pending_erasures WHERE confirmed_at IS NULL AND created_at < ?')
+     .bind(cutoffIso)
+diff --git a/services/platform/src/lib/ext-links.ts b/services/platform/src/lib/ext-links.ts
+index 02067f74..545e0f81 100644
+--- a/services/platform/src/lib/ext-links.ts
++++ b/services/platform/src/lib/ext-links.ts
+@@ -33,6 +33,7 @@
+ //
+ // Every instant here is ISO-8601 TEXT, as 0017_ext_devices.sql requires.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ 
+ /**
+  * A link nobody has used for 30 days is dead. The extension checks at most once
+@@ -97,7 +98,7 @@ export function predatesFloor(authAt: string | null | undefined, notBefore: stri
+  * means.
+  */
+ export async function raiseLinkFloor(
+-  db: D1Database,
++  db: SqlDb,
+   userId: string,
+   nowIso: string,
+   recoverySession?: string,
+@@ -120,7 +121,7 @@ export async function raiseLinkFloor(
+ }
+ 
+ /** The account's floor, or null. Throws on a D1 failure. */
+-export async function linkFloorOf(db: D1Database, userId: string): Promise<string | null> {
++export async function linkFloorOf(db: SqlDb, userId: string): Promise<string | null> {
+   const row = await db
+     .prepare('SELECT not_before FROM ext_link_floor WHERE user_id = ?')
+     .bind(userId)
+diff --git a/services/platform/src/lib/mor/bundle-store.ts b/services/platform/src/lib/mor/bundle-store.ts
+index f1ede262..5baab11d 100644
+--- a/services/platform/src/lib/mor/bundle-store.ts
++++ b/services/platform/src/lib/mor/bundle-store.ts
+@@ -34,6 +34,7 @@
+ // does it — the union read denies a row from the other world, and a row with no
+ // world at all.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../../_shared/src/ports/sql';
+ import { nowIso } from '../d1';
+ import type { MoneyEnvironment } from './contract';
+ 
+@@ -104,7 +105,7 @@ export interface VerifiedGrant {
+ }
+ 
+ export interface BundleStoreDeps {
+-  db: D1Database;
++  db: SqlDb;
+   /** From configuration, never from the payload. [5]M-12 */
+   environment: MoneyEnvironment;
+ }
+diff --git a/services/platform/src/lib/mor/cancel-on-delete.ts b/services/platform/src/lib/mor/cancel-on-delete.ts
+index e763cb8d..9d1d871e 100644
+--- a/services/platform/src/lib/mor/cancel-on-delete.ts
++++ b/services/platform/src/lib/mor/cancel-on-delete.ts
+@@ -20,6 +20,7 @@
+ //     does not block: the store bills its own account, which the deletion does
+ //     not touch. Telling the person so is the delete dialog's copy (client).
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../../_shared/src/ports/sql';
+ import { nowIso } from '../d1';
+ import { isMoneyEnvironment } from './contract';
+ import { cancelPaddleSubscription } from './paddle-cancel';
+@@ -42,7 +43,7 @@ export type CancelBeforeDeleteOutcome =
+  * (the route answers it before anything is erased).
+  */
+ export async function cancelBillingBeforeDelete(
+-  db: D1Database,
++  db: SqlDb,
+   userId: string,
+   paddleApiKey: string | undefined,
+ ): Promise<CancelBeforeDeleteOutcome> {
+diff --git a/services/platform/src/lib/mor/store.ts b/services/platform/src/lib/mor/store.ts
+index 36811819..6e90f62b 100644
+--- a/services/platform/src/lib/mor/store.ts
++++ b/services/platform/src/lib/mor/store.ts
+@@ -20,6 +20,7 @@
+ // clause below, in SQL, so there is no read-modify-write window between two
+ // concurrent deliveries in which the check could be true for both.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb, SqlStatement } from '../../../../_shared/src/ports/sql';
+ import { nowIso } from '../d1';
+ import {
+   type DecisionOutcome,
+@@ -42,7 +43,7 @@ import {
+ export const MONEY_ENTITLEMENT = 'pro';
+ 
+ export interface MoneyStoreDeps {
+-  db: D1Database;
++  db: SqlDb;
+   /** From configuration, never from the payload — see contract.ts. */
+   environment: MoneyEnvironment;
+   nowMs: number;
+@@ -208,7 +209,7 @@ export function isUnconcluded(s: DerivationState): boolean {
+ 
+ /** The stored row's derivation stamp, or null when no such row exists. */
+ export async function derivationStateOf(
+-  db: D1Database,
++  db: SqlDb,
+   n: Pick<NormalizedNotification, 'provider' | 'eventId'>,
+ ): Promise<DerivationState | null> {
+   const row = await db
+@@ -232,7 +233,7 @@ export interface StoredNotification {
+  * test/money-rederive.test.ts asserts the two agree on every state.
+  */
+ export async function unconcludedNotifications(
+-  db: D1Database,
++  db: SqlDb,
+   sinceIso: string,
+   limit: number,
+ ): Promise<StoredNotification[]> {
+@@ -330,7 +331,7 @@ async function resolveAccount(
+ }
+ 
+ /** Paddle and Razorpay: the FIRST link wins, forever. Their bodies carry the checkout's metadata. */
+-const firstLinkWinsInsert = (db: D1Database): D1PreparedStatement =>
++const firstLinkWinsInsert = (db: SqlDb): SqlStatement =>
+   db.prepare(`INSERT INTO provider_accounts
+      (provider, provider_subscription_id, app_id, user_id, linked_at, linked_from_event_id, linked_occurred_at)
+    VALUES (?,?,?,?,?,?,?)
+@@ -348,7 +349,7 @@ const firstLinkWinsInsert = (db: D1Database): D1PreparedStatement =>
+  *     event's time. A live owner is never displaced by a notice; the caller
+  *     refuses that case as `owner_change_on_live_subscription`.
+  */
+-const revenuecatLinkUpsert = (db: D1Database): D1PreparedStatement =>
++const revenuecatLinkUpsert = (db: SqlDb): SqlStatement =>
+   db.prepare(`INSERT INTO provider_accounts
+      (provider, provider_subscription_id, app_id, user_id, linked_at, linked_from_event_id, linked_occurred_at)
+    VALUES (?,?,?,?,?,?,?)
+diff --git a/services/platform/src/lib/native-attest/index.ts b/services/platform/src/lib/native-attest/index.ts
+index ea699d84..355c413f 100644
+--- a/services/platform/src/lib/native-attest/index.ts
++++ b/services/platform/src/lib/native-attest/index.ts
+@@ -41,6 +41,7 @@
+ // server config is missing is 503; a challenge is burned by the first request
+ // that presents it, pass or fail.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb, SqlResult, SqlStatement } from '../../../../_shared/src/ports/sql';
+ import type { Env } from '../../types';
+ import { b64url, fromB64, fromB64url, sha256 } from './bytes';
+ import { appleRootDer, verifyAssertion, verifyAttestation } from './app-attest';
+@@ -194,9 +195,9 @@ const iso = (ms: number) => new Date(ms).toISOString();
+ export const NATIVE_ATTEST_BATCH_STATEMENTS = 2;
+ 
+ /** The one batch shape: prune what has expired, then write — atomically. Answers the write's result. */
+-async function pruneThenWrite<T = unknown>(db: D1Database, prune: D1PreparedStatement, write: D1PreparedStatement): Promise<D1Result<T> | undefined> {
+-  const statements: [D1PreparedStatement, D1PreparedStatement] = [prune, write];
+-  const results = (await db.batch(statements)) as D1Result<T>[];
++async function pruneThenWrite<T = unknown>(db: SqlDb, prune: SqlStatement, write: SqlStatement): Promise<SqlResult<T> | undefined> {
++  const statements: [SqlStatement, SqlStatement] = [prune, write];
++  const results = (await db.batch(statements)) as SqlResult<T>[];
+   return results[NATIVE_ATTEST_BATCH_STATEMENTS - 1];
+ }
+ 
+@@ -265,7 +266,7 @@ export async function redeemChallenge(env: Env, app: string, challenge: string,
+  * Adds one to today's counter for `scope` and answers the new total. Every call
+  * first deletes the previous days' rows, so the table holds one UTC day.
+  */
+-export async function bumpDailyCounter(db: D1Database, scope: string, now: number): Promise<number> {
++export async function bumpDailyCounter(db: SqlDb, scope: string, now: number): Promise<number> {
+   const day = iso(now).slice(0, 10);
+   const bumped = await pruneThenWrite<{ calls: number }>(
+     db,
+@@ -370,7 +371,7 @@ export async function verifyOp(
+ }
+ 
+ /** A VERIFIED key's daily budget (NATIVE_ATTEST_OPS_PER_KEY_PER_DAY), counted only once its proof has passed. */
+-async function withinKeyBudget(db: D1Database, app: string, keyId: string, now: number): Promise<Outcome> {
++async function withinKeyBudget(db: SqlDb, app: string, keyId: string, now: number): Promise<Outcome> {
+   return (await bumpDailyCounter(db, `key:${app}:${keyId}`, now)) > NATIVE_ATTEST_OPS_PER_KEY_PER_DAY
+     ? overBudget('daily calls for this key')
+     : { ok: true };
+diff --git a/services/platform/src/lib/platform-erasure.ts b/services/platform/src/lib/platform-erasure.ts
+index eb7350a8..57a2dbad 100644
+--- a/services/platform/src/lib/platform-erasure.ts
++++ b/services/platform/src/lib/platform-erasure.ts
+@@ -12,6 +12,7 @@
+ //   ·  user_id   → the row IS this person's        → DELETE the row
+ //   · *_user_id  → the row REFERENCES this person  → NULL the column
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ import { erasureTargets, eraseTargets, type ErasureTargets } from '../../../_shared/src/erasure';
+ 
+ export type PlatformErasureResult =
+@@ -22,7 +23,7 @@ export type PlatformErasureResult =
+ // round trips) and the write is `eraseTargets` (one batch, one transaction), both
+ // from the shared home. What stays HERE is this Worker's own envelope and its own
+ // words for the refusals. A thrown write still propagates, exactly as before.
+-export async function erasePlatformRows(db: D1Database, userId: string): Promise<PlatformErasureResult> {
++export async function erasePlatformRows(db: SqlDb, userId: string): Promise<PlatformErasureResult> {
+   let targets: ErasureTargets;
+   try {
+     targets = await erasureTargets(db);
+@@ -75,7 +76,7 @@ export type SignupPurgeOutcome =
+   | { kind: 'failed'; why: string };
+ 
+ export async function purgeVerifiedSignups(
+-  db: D1Database,
++  db: SqlDb,
+   supabaseUrl: string | undefined,
+   serviceRoleKey: string,
+   userId: string,
+diff --git a/services/platform/src/lib/provider-revoke.ts b/services/platform/src/lib/provider-revoke.ts
+index dda4dea3..c22a9ec7 100644
+--- a/services/platform/src/lib/provider-revoke.ts
++++ b/services/platform/src/lib/provider-revoke.ts
+@@ -71,6 +71,7 @@
+ // 2026-09-30, only while the plain-text window is open — [backfillProviderTokens]
+ // re-runs 0016's copy out of it and then empties each row's token.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ import type { Env } from '../types';
+ import { APPLE_REVOKE_STEP, GOOGLE_REVOKE_STEP } from './erasure-ledger';
+ import { CURRENT_TOKEN_KEY_ID, decryptToken, encryptToken, tokenKey } from './token-crypto';
+@@ -463,7 +464,7 @@ export async function backfillProviderTokens(env: TokenStoreEnv, nowMs: number =
+ }
+ 
+ /** Forget one provider's token — after its revoke settled. */
+-export async function dropProviderToken(db: D1Database, subjectRef: string, provider: ProviderName): Promise<void> {
++export async function dropProviderToken(db: SqlDb, subjectRef: string, provider: ProviderName): Promise<void> {
+   await db.prepare('DELETE FROM provider_tokens WHERE subject_ref = ? AND provider = ?').bind(subjectRef, provider).run();
+ }
+ 
+@@ -477,7 +478,7 @@ export async function dropProviderToken(db: D1Database, subjectRef: string, prov
+  * `provider_tokens` copy — would outlive the erasure until the later migration
+  * drops the table. That migration removes this line.
+  */
+-export async function dropProviderTokens(db: D1Database, subjectRef: string): Promise<void> {
++export async function dropProviderTokens(db: SqlDb, subjectRef: string): Promise<void> {
+   await db.prepare('DELETE FROM provider_tokens WHERE subject_ref = ?').bind(subjectRef).run();
+   await db.prepare('DELETE FROM apple_provider_tokens WHERE subject_ref = ?').bind(subjectRef).run();
+ }
+diff --git a/services/platform/src/lib/reminders.ts b/services/platform/src/lib/reminders.ts
+index 415a5bc1..b623069a 100644
+--- a/services/platform/src/lib/reminders.ts
++++ b/services/platform/src/lib/reminders.ts
+@@ -30,6 +30,7 @@
+ // key, a missing binding or no targets at all is ok=0 with the reason — the
+ // renewals fan-out's rule (src/scheduled.ts `renewalsFanOut`).
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ import type { AppTarget, Env } from '../types';
+ import { rollForward } from '../renewals';
+ import { allRows, firstRow } from './d1';
+@@ -217,7 +218,7 @@ export function isLive(row: Record<string, unknown>): boolean {
+ 
+ /** Every live subscription of `userIds`, read USER_CHUNK accounts at a time.
+  *  The ids travel as ONE JSON parameter, so a chunk's size binds no placeholders. */
+-export async function readLiveSubscriptions(db: D1Database, userIds: readonly string[]): Promise<LiveSubscription[]> {
++export async function readLiveSubscriptions(db: SqlDb, userIds: readonly string[]): Promise<LiveSubscription[]> {
+   const out: LiveSubscription[] = [];
+   for (let i = 0; i < userIds.length; i += USER_CHUNK) {
+     const chunk = userIds.slice(i, i + USER_CHUNK);
+@@ -453,7 +454,7 @@ interface Pending {
+  * The ledger prune: `reminder_sent` rows whose `due_on` is more than
+  * REMINDER_SENT_RETENTION_DAYS behind today, at most MAX_PRUNE_PER_RUN per run.
+  */
+-async function pruneLedger(db: D1Database, today: string): Promise<number> {
++async function pruneLedger(db: SqlDb, today: string): Promise<number> {
+   const cutoff = addDays(today, -REMINDER_SENT_RETENTION_DAYS);
+   const res = await db
+     .prepare(
+@@ -465,7 +466,7 @@ async function pruneLedger(db: D1Database, today: string): Promise<number> {
+ }
+ 
+ /** Digests already sent today, portfolio-wide — one unsubscribe hash per digest. */
+-async function digestsSentSince(db: D1Database, dayStart: string): Promise<number> {
++async function digestsSentSince(db: SqlDb, dayStart: string): Promise<number> {
+   const row = await firstRow<{ n: number }>(
+     db.prepare('SELECT COUNT(DISTINCT unsubscribe_hash) AS n FROM reminder_sent WHERE sent_at >= ?').bind(dayStart),
+   );
+@@ -473,7 +474,7 @@ async function digestsSentSince(db: D1Database, dayStart: string): Promise<numbe
+ }
+ 
+ /** Build every opted-in person's pending digest for one app. */
+-async function pendingFor(env: Env, target: AppTarget, db: D1Database, today: string): Promise<{ optedIn: number; pending: Pending[] }> {
++async function pendingFor(env: Env, target: AppTarget, db: SqlDb, today: string): Promise<{ optedIn: number; pending: Pending[] }> {
+   const prefs = await allRows<{ user_id: string; lead_days: number }>(
+     env.PLATFORM_DB.prepare(
+       'SELECT user_id, lead_days FROM reminder_prefs WHERE app_id = ? AND email_opt_in = 1 ORDER BY user_id',
+diff --git a/services/platform/src/lib/report-notify.ts b/services/platform/src/lib/report-notify.ts
+index a7503093..f1474270 100644
+--- a/services/platform/src/lib/report-notify.ts
++++ b/services/platform/src/lib/report-notify.ts
+@@ -29,6 +29,7 @@
+ // user-written text flows to Resend, and the privacy notice's account of what
+ // Resend holds (email addresses, for auth mail) stays true.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ 
+ /** [ADR 029] §2 — the alert local-part on the pooled machine-mail subdomain. */
+ export const REPORT_NOTICE_FROM = 'Nikatru reports <alerts@mail.nikatru.com>';
+@@ -110,7 +111,7 @@ export function utcDayStart(iso: string): string {
+  * the caller runs it under `waitUntil`, after the user already has their answer.
+  */
+ export async function notifyReport(
+-  db: D1Database,
++  db: SqlDb,
+   apiKey: string | undefined,
+   report: ReportNotice,
+   fetchImpl: typeof fetch = fetch,
+@@ -172,7 +173,7 @@ export async function notifyReport(
+ /** Undo THIS claim (its own stamp, nothing later), so the report reads un-noticed
+  *  again. Never throws: a release that fails leaves the report stamped, which
+  *  under-uses the day's cap rather than overshooting it. */
+-async function releaseClaim(db: D1Database, id: string, claimedAt: string): Promise<void> {
++async function releaseClaim(db: SqlDb, id: string, claimedAt: string): Promise<void> {
+   try {
+     await db.prepare('UPDATE content_reports SET notified_at = NULL WHERE id = ? AND notified_at = ?').bind(id, claimedAt).run();
+   } catch (err) {
+diff --git a/services/platform/src/renewals.ts b/services/platform/src/renewals.ts
+index 0343f52d..cd3b2293 100644
+--- a/services/platform/src/renewals.ts
++++ b/services/platform/src/renewals.ts
+@@ -3,6 +3,7 @@
+ // scheduler's per-app fan-out. The date math is a PURE core (unit tested); the
+ // D1 pass wraps it. Generic over any app DB with subscriptions + payment_history.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb, SqlStatement } from '../../_shared/src/ports/sql';
+ import type { Subscription } from './types';
+ import { allRows, nowIso, todayYmd, uuid } from './lib/d1';
+ 
+@@ -193,7 +194,7 @@ export const RENEWAL_SOURCE = 'renewal';
+  * broken database must not take the rest of the fan-out down with it.
+  */
+ export async function recomputeRenewals(
+-  db: D1Database,
++  db: SqlDb,
+   appId: string,
+ ): Promise<{ ok: boolean; detail: string }> {
+   const today = todayYmd();
+@@ -280,7 +281,7 @@ export async function recomputeRenewals(
+        VALUES (${paymentCols.map(() => '?').join(', ')})`,
+     );
+ 
+-    const ops: D1PreparedStatement[] = [];
++    const ops: SqlStatement[] = [];
+     let rolled = 0;
+     let skipped = 0;
+     for (const sub of due) {
+diff --git a/services/platform/src/routes/entitlements.ts b/services/platform/src/routes/entitlements.ts
+index 99473847..a7aae7a3 100644
+--- a/services/platform/src/routes/entitlements.ts
++++ b/services/platform/src/routes/entitlements.ts
+@@ -62,6 +62,7 @@
+ // it cannot compare. `undefined` is dropped by JSON serialisation, so the key is
+ // ABSENT rather than null when no grant exists ([ADR 057] §6 — additive only).
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ import { Hono } from 'hono';
+ import type { AppEnv } from '../types';
+ import { allRows } from '../lib/d1';
+@@ -76,7 +77,7 @@ import {
+ const entitlements = new Hono<AppEnv>();
+ 
+ /** The reader's dependencies, all of them this Worker's own plumbing. */
+-const readerDeps = (db: D1Database): EntitlementReadDeps => ({
++const readerDeps = (db: SqlDb): EntitlementReadDeps => ({
+   db,
+   allRows,
+   isMoneyEnvironment,
+diff --git a/services/platform/src/routes/money.ts b/services/platform/src/routes/money.ts
+index 76d93783..e6222046 100644
+--- a/services/platform/src/routes/money.ts
++++ b/services/platform/src/routes/money.ts
+@@ -44,6 +44,7 @@
+ // a shared secret in a header proves the sender knows a string, while an HMAC
+ // over the body proves THIS BODY came from the holder of that string.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ import { Hono } from 'hono';
+ import type { AppEnv } from '../types';
+ import { readBoundedBody } from '../lib/body';
+@@ -66,7 +67,7 @@ const money = new Hono<AppEnv>();
+  * config.ts says why); the one-time price map is the checkout's; the mint is the
+  * receipt route's.
+  */
+-export function grantDepsFor(db: D1Database, environment: MoneyEnvironment, nowMs: number): GrantDeps {
++export function grantDepsFor(db: SqlDb, environment: MoneyEnvironment, nowMs: number): GrantDeps {
+   return {
+     db,
+     environment,
+diff --git a/services/platform/src/routes/receipts.ts b/services/platform/src/routes/receipts.ts
+index 04191754..472c71e1 100644
+--- a/services/platform/src/routes/receipts.ts
++++ b/services/platform/src/routes/receipts.ts
+@@ -49,6 +49,7 @@
+ // and for no id that appeared in a request body. That is the same reason
+ // /v1/checkout is authenticated ([ADR 044] §6).
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ import { Hono } from 'hono';
+ import type { AppEnv } from '../types';
+ import { readBoundedBody } from '../lib/body';
+@@ -114,7 +115,7 @@ interface ReceiptBody {
+ 
+ /** The members of one pinned feature-set version, from the PINNED tables. */
+ async function membersOf(
+-  db: D1Database,
++  db: SqlDb,
+   name: string,
+   version: number,
+ ): Promise<string[]> {
+@@ -137,7 +138,7 @@ async function membersOf(
+  * register edit to rewrite an already-minted version's membership.
+  */
+ async function pinFeatureSet(
+-  db: D1Database,
++  db: SqlDb,
+   name: string,
+   version: number,
+   products: readonly string[],
+@@ -207,7 +208,7 @@ async function pinFeatureSet(
+  * has no such row; the caller answers 503 with nothing written.
+  */
+ export async function mintFeatureSetFromRegister(
+-  db: D1Database,
++  db: SqlDb,
+   featureSet: string,
+   version: number,
+   register: readonly BundleRegisterRow[] = BUNDLE_ROWS,
+@@ -260,7 +261,7 @@ export function extendExpiry(expiresAt: string | null, days: number): string | n
+  * funded by us for a term the customer keeps.
+  */
+ async function supersededPerAppPeriodEnd(
+-  db: D1Database,
++  db: SqlDb,
+   userId: string,
+   environment: MoneyEnvironment,
+   products: readonly string[],
+diff --git a/services/platform/src/routes/reminders.ts b/services/platform/src/routes/reminders.ts
+index 5e57de5a..e8aa2032 100644
+--- a/services/platform/src/routes/reminders.ts
++++ b/services/platform/src/routes/reminders.ts
+@@ -25,6 +25,7 @@
+ // Per app: `app_id` must be an app this Worker fans reminders out to (it has an
+ // app database in the generated target list), not merely a known app.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ import { Hono } from 'hono';
+ import type { AppEnv } from '../types';
+ import { firstRow, nowIso, run } from '../lib/d1';
+@@ -142,7 +143,7 @@ function page(title: string, body: string): string {
+ }
+ 
+ /** Which (account, app) a token names, or null. Refuses a malformed token before any read. */
+-async function tokenOwner(db: D1Database, token: string | undefined): Promise<{ user_id: string; app_id: string } | null> {
++async function tokenOwner(db: SqlDb, token: string | undefined): Promise<{ user_id: string; app_id: string } | null> {
+   if (typeof token !== 'string' || !TOKEN_SHAPE.test(token)) return null;
+   return firstRow<{ user_id: string; app_id: string }>(
+     db.prepare('SELECT user_id, app_id FROM reminder_sent WHERE unsubscribe_hash = ? LIMIT 1').bind(await sha256Hex(token)),
+diff --git a/services/platform/src/scheduled.ts b/services/platform/src/scheduled.ts
+index 4619c129..976ad0bd 100644
+--- a/services/platform/src/scheduled.ts
++++ b/services/platform/src/scheduled.ts
+@@ -14,6 +14,7 @@
+ // silently stopped, and every extra scheduler is another thing to notice. State
+ // it as a choice, so nobody re-derives a constraint that has been paid off.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../_shared/src/ports/sql';
+ import type { AppTarget, Env } from './types';
+ import { recomputeRenewals } from './renewals';
+ import { runBackup } from './backup';
+@@ -98,7 +99,7 @@ import { EXT_LINK_IDLE_DAYS, EXT_LINK_MAX_AGE_DAYS } from './lib/ext-links';
+  *  A binding the module names and `env` lacks comes back `db: undefined`: the fan-out records it as a failed row, never a skip.
+  *  `env` is read by the binding's NAME, so it is indexed as a record. */
+ export function appTargets(env: Env): AppTarget[] {
+-  return APP_TARGETS.map((t) => ({ appId: t.appId, db: (env as unknown as Record<string, D1Database | undefined>)[t.dbBinding] as D1Database }));
++  return APP_TARGETS.map((t) => ({ appId: t.appId, db: (env as unknown as Record<string, SqlDb | undefined>)[t.dbBinding] as SqlDb }));
+ }
+ 
+ /**
+diff --git a/services/platform/src/types.ts b/services/platform/src/types.ts
+index de49f71e..3d835153 100644
+--- a/services/platform/src/types.ts
++++ b/services/platform/src/types.ts
+@@ -13,15 +13,20 @@ export type { RateLimiterBinding };
+  *  and assert-ports limb 9 refuses a `KVNamespace` / `R2Bucket` / `RateLimit`
+  *  type anywhere else. */
+ import type { KvStore } from '../../_shared/src/ports/kv';
++/** ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql): the D1 bindings
++ *  are declared as the SQL PORT; the binding satisfies it structurally
++ *  (services/_shared/src/ports/adapters/cloudflare.ts `cloudflareD1`), and
++ *  assert-ports limb 9 refuses a `D1Database` type in any handler. */
++import type { SqlDb } from '../../_shared/src/ports/sql';
+ import type { ObjectStore } from '../../_shared/src/ports/objects';
+ export type { KvStore, ObjectStore };
+ 
+ /** Worker bindings + environment. Names must match wrangler.jsonc bindings. */
+ export interface Env {
+   // SHARED entitlements DB (platform is the sole migrations applier).
+-  PLATFORM_DB: D1Database;
++  PLATFORM_DB: SqlDb;
+   // Per-app DBs bound for the nightly renewals fan-out. Add one per app.
+-  SUBSCRIPTIONTRACKER_DB: D1Database;
++  SUBSCRIPTIONTRACKER_DB: SqlDb;
+ 
+   // Edge-cached per-app config overrides (key: `config:<app>`).
+   CONFIG_KV: KvStore;
+@@ -1067,5 +1072,5 @@ export interface Subscription {
+ /** One app the nightly scheduler fans out to. */
+ export interface AppTarget {
+   appId: string;
+-  db: D1Database;
++  db: SqlDb;
+ }
+diff --git a/services/platform/test/harness.ts b/services/platform/test/harness.ts
+index a307d508..ed62f7f2 100644
+--- a/services/platform/test/harness.ts
++++ b/services/platform/test/harness.ts
+@@ -35,7 +35,7 @@
+ // tests keep passing after a migration changed the tree — and platform_db is the
+ // one database the whole portfolio shares, so that drift is every app's.
+ // ─────────────────────────────────────────────────────────────────────────────
+-import type { DatabaseSync as DatabaseSyncCtor } from 'node:sqlite';
++import { SqliteDb } from '../../_shared/src/ports/fakes/sql';
+ import entitlements0001 from '../migrations/0001_entitlements.sql?raw';
+ import analytics0002 from '../migrations/0002_analytics.sql?raw';
+ import cronHeartbeat0003 from '../migrations/0003_cron_heartbeat.sql?raw';
+@@ -58,8 +58,6 @@ import extLinkFloor0021 from '../migrations/0021_ext_link_floor.sql?raw';
+ import nativeAttest0022 from '../migrations/0022_native_attest.sql?raw';
+ import providerTokenEncryption0023 from '../migrations/0023_provider_token_encryption.sql?raw';
+ 
+-type SQLValue = string | number | bigint | null | Uint8Array;
+-
+ /**
+  * platform_db's migration set, IN APPLICATION ORDER, exactly as
+  * `wrangler d1 migrations apply PLATFORM_DB` would apply it.
+@@ -176,154 +174,20 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
+   nativeAttest0022,
+ ];
+ 
+-// `node:sqlite` is fetched through `process.getBuiltinModule` rather than a
+-// static import: Vite's builtin list does not yet know the module, so
+-// `import ... from 'node:sqlite'` fails to resolve at transform time ("Failed to
+-// load url sqlite"). This bypasses module resolution entirely and needs no
+-// vitest config. The TYPES still come from the ambient declaration in
+-// node-sqlite.d.ts, so this stays type-checked.
+-type DatabaseSync = DatabaseSyncCtor;
+-const SqliteCtor = (
+-  globalThis as unknown as {
+-    process: {
+-      getBuiltinModule(id: 'node:sqlite'): {
+-        DatabaseSync: new (path: string) => DatabaseSync;
+-      };
+-    };
+-  }
+-).process.getBuiltinModule('node:sqlite').DatabaseSync;
+-
+ /**
+- * D1PreparedStatement over node:sqlite. `bind` returns a NEW statement, as D1's
+- * does — the events route binds ONE prepared statement up to 100 times and
+- * batches the results, so a `bind` that mutated in place would collapse the
+- * whole batch onto the last row and every per-row assertion would still pass.
+- */
+-class SqliteStatement {
+-  constructor(
+-    private readonly owner: RealDb,
+-    private readonly sql: string,
+-    private readonly params: unknown[] = [],
+-  ) {}
+-
+-  bind(...params: unknown[]): SqliteStatement {
+-    this.owner.bound.push(params);
+-    return new SqliteStatement(this.owner, this.sql, params);
+-  }
+-
+-  private args(): SQLValue[] {
+-    return this.params.map((p) => {
+-      if (p === undefined) {
+-        // D1 rejects undefined binds (D1_TYPE_ERROR). node:sqlite throws too;
+-        // this makes the message recognisable in a failing test.
+-        throw new TypeError('D1_TYPE_ERROR: undefined is not a supported bind value');
+-      }
+-      if (typeof p === 'boolean') return p ? 1 : 0;
+-      return p as SQLValue;
+-    });
+-  }
+-
+-  /** Runs against the real engine. Kept internal so `run` can reuse it. */
+-  exec(): { meta: { changes: number } } {
+-    const r = this.owner.db.prepare(this.sql).run(...this.args());
+-    return { meta: { changes: r.changes } };
+-  }
+-
+-  /**
+-   * What ONE statement contributes to a `batch()` answer — D1's shape, not a
+-   * convenient subset of it.
+-   *
+-   * ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS. `batch` used to push `exec()`,
+-   * which carries `meta` and NO `results`, because every batch this harness had
+-   * seen was a write. The erasure walk now sends its schema reads as a batch, and
+-   * against the old shape every read came back empty — 44 tests red on a harness
+-   * that was lying, not on the code. MEASURED against workerd's own D1 through
+-   * this Worker's wrangler.jsonc binding (getPlatformProxy), 2026-09-18: a batch
+-   * of SELECTs answers one result per statement, IN ORDER, each carrying its
+-   * rows; a write answers `results: []` with `meta.changes`. So a row-returning
+-   * statement returns its rows here, and a write returns `[]` beside its count.
+-   * `columns()` decides which, so no SQL is pattern-matched.
+-   */
+-  batchResult(): { results: unknown[]; meta: { changes: number } } {
+-    const stmt = this.owner.db.prepare(this.sql);
+-    if (stmt.columns().length > 0) return { results: stmt.all(...this.args()), meta: { changes: 0 } };
+-    const r = stmt.run(...this.args());
+-    return { results: [], meta: { changes: Number(r.changes) } };
+-  }
+-
+-  async all<T = Record<string, unknown>>(): Promise<{ results: T[] }> {
+-    return { results: this.owner.db.prepare(this.sql).all(...this.args()) as T[] };
+-  }
+-
+-  async first<T = Record<string, unknown>>(): Promise<T | null> {
+-    return (this.owner.db.prepare(this.sql).get(...this.args()) as T) ?? null;
+-  }
+-
+-  async run(): Promise<{ meta: { changes: number } }> {
+-    if (this.owner.throwOnWrite) throw new Error('d1 down');
+-    return this.exec();
+-  }
+-}
+-
+-/**
+- * D1Database over node:sqlite, which ALSO records every prepared statement and
+- * every bound tuple. `batch` is ONE transaction, as D1's is.
++ * The engine: platform_db's migrations over node:sqlite, executing AND
++ * recording, `batch` ONE transaction.
++ *
++ * ⏱ 2026-10-02 · port-sql. The engine that lived here is PROMOTED to
++ * services/_shared/src/ports/fakes/sql.ts — tooling/ports/sql.json adapter
++ * `sqlite`, held to the SQL port's conformance suite — so this Worker and
++ * subscriptiontracker-api run ONE engine, not two copies. `RealDb` stays here
++ * for one PR, under its old name and with its old default schema, so no test
++ * file had to change its import.
+  */
+-export class RealDb {
+-  readonly db: DatabaseSync;
+-  /** Every SQL string the route asked to prepare, in order. */
+-  readonly sql: string[] = [];
+-  /** Every bound tuple, in order. Index `n` is the nth `.bind(...)` call. */
+-  readonly bound: unknown[][] = [];
+-  /** Total statements handed to `batch()`, summed across calls. */
+-  batched = 0;
+-  /**
+-   * Force the DB layer to fail. The route must answer 503 and the CLIENT must
+-   * keep its batch — a 200 here would lose the events. Named `throwOnWrite`
+-   * rather than `throwOnBatch`: /v1/consent writes with `.run()`, not `.batch()`,
+-   * and a flag that only covered one of the two write paths is a flag whose name
+-   * over-promises.
+-   */
+-  throwOnWrite = false;
+-
++export class RealDb extends SqliteDb {
+   constructor(schema: readonly string[] = PLATFORM_MIGRATIONS) {
+-    this.db = new SqliteCtor(':memory:');
+-    for (const sql of schema) this.db.exec(sql);
+-  }
+-
+-  prepare(sql: string): SqliteStatement {
+-    this.sql.push(sql);
+-    return new SqliteStatement(this, sql);
+-  }
+-
+-  async batch(statements: SqliteStatement[]): Promise<unknown[]> {
+-    if (this.throwOnWrite) throw new Error('d1 down');
+-    this.batched += statements.length;
+-    this.db.exec('BEGIN');
+-    try {
+-      const out: unknown[] = [];
+-      for (const s of statements) out.push(s.batchResult());
+-      this.db.exec('COMMIT');
+-      return out;
+-    } catch (err) {
+-      this.db.exec('ROLLBACK');
+-      throw err;
+-    }
+-  }
+-
+-  /** Direct read, bypassing the Worker — for asserting what actually landed. */
+-  rows(sql: string, ...params: SQLValue[]): Array<Record<string, unknown>> {
+-    return this.db.prepare(sql).all(...params);
+-  }
+-
+-  /**
+-   * `SELECT COUNT(*)` as a number. The whole point of this harness is that
+-   * "wrote zero rows" is a QUERY rather than an inference from which methods the
+-   * route happened to call, so the query gets a first-class helper.
+-   */
+-  count(table: string, where = '1=1', ...params: SQLValue[]): number {
+-    const row = this.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`).get(...params);
+-    return Number((row as { n: number }).n);
++    super(schema);
+   }
+ }
+ 
+diff --git a/services/platform/test/sql-export-replay-module.d.ts b/services/platform/test/sql-export-replay-module.d.ts
+new file mode 100644
+index 00000000..eb94bd47
+--- /dev/null
++++ b/services/platform/test/sql-export-replay-module.d.ts
+@@ -0,0 +1,13 @@
++// tooling/ops/sql-export-replay.mjs, declared for `tsc --noEmit` — the reason is
++// smoke-module.d.ts's: this Worker's `types` is ["@cloudflare/workers-types"]
++// alone, so a plain JS import from outside the package is TS7016. The test runs
++// the SHIPPED replay over the SHIPPED dump; this file only gives it a shape.
++declare module '*/sql-export-replay.mjs' {
++  export const EXPORT_GENERATORS: ReadonlySet<string>;
++  export function readExportFile(path: string): string;
++  export function replayExport(args: { root: string; jsonl: string }): {
++    verdict: 'PASS' | 'FAIL' | 'LOST';
++    detail: string;
++    lines: string[];
++  };
++}
+diff --git a/services/platform/test/sql-export-replay.test.ts b/services/platform/test/sql-export-replay.test.ts
+new file mode 100644
+index 00000000..030a41be
+--- /dev/null
++++ b/services/platform/test/sql-export-replay.test.ts
+@@ -0,0 +1,82 @@
++import { describe, it, expect } from 'vitest';
++import { realPlatformDb } from './harness';
++import { D1_DUMP_GENERATOR, dumpD1Database } from '../src/backup/dump';
++import { EXPORT_GENERATORS, replayExport } from '../../../tooling/ops/sql-export-replay.mjs';
++
++// ─────────────────────────────────────────────────────────────────────────────
++// sql-export-replay.test.ts — THE SQL PORT'S EXPORT DUTY, ON THE REAL DUMP.
++//
++// ⏱ 2026-10-02 · port-sql. `node tooling/ops/port-switch.mjs sql --to sqlite
++// --dry-run --export <file>` (check C9) loads one nightly export into a
++// node:sqlite file built from the migrations and compares the table list and
++// the row counts. This file feeds it what the nightly job WRITES — the shipped
++// `dumpD1Database` over platform_db's real migrations — rather than a
++// hand-made export: a change to the dump's format meets this test. Then it
++// reddens it: a table missing from the export, a table no migration
++// creates, and a row short of its table's count each FAIL.
++//
++// Seeded rows are synthetic heartbeat rows; nothing here is a user's.
++// ─────────────────────────────────────────────────────────────────────────────
++
++// `import.meta.url` is Vite's at run time; this Worker's types (workers-types alone) do not declare it.
++const REPO = decodeURIComponent(new URL('../../../', (import.meta as unknown as { url: string }).url).pathname);
++
++type Line = { kind: string; table?: string; rows?: number; tables?: number; [k: string]: unknown };
++
++async function realExport(): Promise<Line[]> {
++  const db = realPlatformDb();
++  db.db.exec(
++    "INSERT INTO cron_heartbeat (job, target, ok, detail, ran_at) VALUES ('nightly-export', 'platform_db', 1, NULL, '2026-10-01T02:30:00Z'), ('nightly-export', 'platform_db', 0, 'x', '2026-10-02T02:30:00Z')",
++  );
++  const dump = await dumpD1Database(db, 'platform_db', 1000, '2026-10-02T02:30:00Z');
++  expect(dump.truncated).toBe(false);
++  return dump.jsonl.split('\n').filter(Boolean).map((l) => JSON.parse(l) as Line);
++}
++
++const text = (lines: Line[]) => lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
++
++describe('sql export dry run — one export, the migrations, a node:sqlite file', () => {
++  it('reads the format the nightly job writes', () => {
++    expect(EXPORT_GENERATORS.has(D1_DUMP_GENERATOR)).toBe(true);
++  });
++
++  it('green: the real dump of the migrated database replays, table for table and row for row', async () => {
++    const r = replayExport({ root: REPO, jsonl: text(await realExport()) });
++    expect(r.verdict, r.lines.join('\n')).toBe('PASS');
++    expect(r.detail).toMatch(/platform_db: \d+ migration\(s\) of services\/platform\/migrations replayed; \d+ table\(s\) and \d+ row\(s\) match the export/);
++    expect(r.lines.some((l) => /cron_heartbeat\s+2 row\(s\)/.test(l))).toBe(true);
++  });
++
++  it('🔴 an export MISSING a table the migrations create FAILS, naming it', async () => {
++    const lines = (await realExport()).filter((l) => l.table !== 'signups');
++    const end = lines[lines.length - 1];
++    end.tables = (end.tables ?? 0) - 1;
++    const r = replayExport({ root: REPO, jsonl: text(lines) });
++    expect(r.verdict).toBe('FAIL');
++    expect(r.lines).toContain('    FAIL table `signups` is created by the migrations and is missing from the export');
++  });
++
++  it('🔴 an export carrying a table NO migration creates FAILS, naming it', async () => {
++    const lines = await realExport();
++    lines.splice(1, 0, { kind: 'schema', table: 'ghost_rows', sql: 'CREATE TABLE ghost_rows (id TEXT)' }, { kind: 'table-end', table: 'ghost_rows', rows: 0, truncated: false });
++    const r = replayExport({ root: REPO, jsonl: text(lines) });
++    expect(r.verdict).toBe('FAIL');
++    expect(r.detail).toMatch(/table `ghost_rows` is in the export and no migration in services\/platform\/migrations creates it/);
++  });
++
++  it('🔴 a row short of its table-end FAILS with both numbers', async () => {
++    const lines = await realExport();
++    const i = lines.findIndex((l) => l.kind === 'row' && l.table === 'cron_heartbeat');
++    lines.splice(i, 1);
++    const r = replayExport({ root: REPO, jsonl: text(lines) });
++    expect(r.verdict).toBe('FAIL');
++    expect(r.lines).toContain('    FAIL table `cron_heartbeat` ends at 2 row(s) and the export holds 1');
++  });
++
++  it('🔴 a cut-off export (no end line) is refused before anything replays', async () => {
++    const lines = (await realExport()).slice(0, -1);
++    const r = replayExport({ root: REPO, jsonl: text(lines) });
++    expect(r.verdict).toBe('FAIL');
++    expect(r.detail).toMatch(/no end line/);
++  });
++});
+diff --git a/services/subscriptiontracker-api/src/lib/erase-subject.ts b/services/subscriptiontracker-api/src/lib/erase-subject.ts
+index 5cd7d9f3..4463b381 100644
+--- a/services/subscriptiontracker-api/src/lib/erase-subject.ts
++++ b/services/subscriptiontracker-api/src/lib/erase-subject.ts
+@@ -21,6 +21,7 @@
+ // after the first attempt actually landed (the response was lost) must not read
+ // as a failure, or the ledger would retry it forever.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ import { erasureTargets, eraseTargets, type ErasureTargets } from '../../../_shared/src/erasure';
+ 
+ export type EraseSubjectResult =
+@@ -30,7 +31,7 @@ export type EraseSubjectResult =
+ // ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS: the walk is `erasureTargets` (two
+ // round trips) and the write is `eraseTargets` (one batch, one transaction), both
+ // from the shared home. This file keeps its envelope, its refusals and its words.
+-export async function eraseSubjectRows(db: D1Database, userId: string): Promise<EraseSubjectResult> {
++export async function eraseSubjectRows(db: SqlDb, userId: string): Promise<EraseSubjectResult> {
+   if (typeof userId !== 'string' || userId.length === 0) {
+     return { ok: false, error: 'account_deletion_failed', reason: 'no subject to erase' };
+   }
+diff --git a/services/subscriptiontracker-api/src/routes/categories.ts b/services/subscriptiontracker-api/src/routes/categories.ts
+index 4f74cd5b..c4b70238 100644
+--- a/services/subscriptiontracker-api/src/routes/categories.ts
++++ b/services/subscriptiontracker-api/src/routes/categories.ts
+@@ -17,6 +17,7 @@
+ // an old client and a new one alike.
+ // ─────────────────────────────────────────────────────────────────────────────
+ 
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ import { Hono } from 'hono';
+ import type { AppEnv, Category } from '../types';
+ import { allRows, firstRow, nowIso, run, uuid } from '../lib/d1';
+@@ -65,14 +66,14 @@ function nameOf(body: unknown): { ok: true; name: string } | { ok: false; detail
+ }
+ 
+ /** The category this user may use under [id]: a built-in, or one of their own. */
+-export function visibleCategory(db: D1Database, userId: string, id: string) {
++export function visibleCategory(db: SqlDb, userId: string, id: string) {
+   return firstRow<Category>(
+     db.prepare('SELECT * FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)').bind(id, userId),
+   );
+ }
+ 
+ /** Another category (not [exceptId]) this user already sees under [name]. */
+-function clash(db: D1Database, userId: string, name: string, exceptId: string | null) {
++function clash(db: SqlDb, userId: string, name: string, exceptId: string | null) {
+   return firstRow<{ id: string }>(
+     db
+       .prepare(
+diff --git a/services/subscriptiontracker-api/src/routes/subscriptions.ts b/services/subscriptiontracker-api/src/routes/subscriptions.ts
+index 4903e4e7..58c866a1 100644
+--- a/services/subscriptiontracker-api/src/routes/subscriptions.ts
++++ b/services/subscriptiontracker-api/src/routes/subscriptions.ts
+@@ -7,6 +7,7 @@
+ // The Idempotency-Key half of POST / (AB-O2-02) and of POST /:id/payments; see
+ // lib/idempotency.ts.
+ import { PAYMENT_SCOPE, idempotentCreate, reservedCreateId } from '../lib/idempotency';
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ import { Hono, type Context } from 'hono';
+ import type { AppEnv, Payment, PriceChange, Subscription } from '../types';
+ import { allRows, firstRow, nowIso, run, todayYmd, uuid } from '../lib/d1';
+@@ -575,7 +576,7 @@ function validate(body: unknown): ValidatedSubscription {
+  *     free text it always was, with no id;
+  *   · null clears both.
+  */
+-async function resolveCategory(db: D1Database, userId: string, f: Fields): Promise<Invalid | null> {
++async function resolveCategory(db: SqlDb, userId: string, f: Fields): Promise<Invalid | null> {
+   if (f.category_id !== undefined) {
+     if (f.category_id === null) {
+       f.category = null;
+@@ -754,7 +755,7 @@ function checkExactAmount(body: Record<string, unknown>, fields: Fields): Invali
+  * no one else's rows; a user who never opens the app again keeps their removed
+  * rows until they do, or until erasure takes everything.
+  */
+-async function purgeExpired(db: D1Database, userId: string): Promise<void> {
++async function purgeExpired(db: SqlDb, userId: string): Promise<void> {
+   const cutoff = new Date(Date.now() - SOFT_DELETE_PURGE_DAYS * 86_400_000).toISOString();
+   const expired =
+     'SELECT id FROM subscriptions WHERE user_id = ? AND deleted_at IS NOT NULL AND deleted_at < ?';
+diff --git a/services/subscriptiontracker-api/src/types.ts b/services/subscriptiontracker-api/src/types.ts
+index 433d72de..36d06240 100644
+--- a/services/subscriptiontracker-api/src/types.ts
++++ b/services/subscriptiontracker-api/src/types.ts
+@@ -3,6 +3,11 @@ import type { AuthRecency } from '../../_shared/src/auth';
+  *  bindings are declared as the KV PORT; the binding satisfies it structurally
+  *  (services/_shared/src/ports/adapters/cloudflare.ts). */
+ import type { KvStore } from '../../_shared/src/ports/kv';
++/** ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql): the D1 bindings
++ *  are declared as the SQL PORT; the binding satisfies it structurally
++ *  (services/_shared/src/ports/adapters/cloudflare.ts `cloudflareD1`), and
++ *  assert-ports limb 9 refuses a `D1Database` type in any handler. */
++import type { SqlDb } from '../../_shared/src/ports/sql';
+ // ─────────────────────────────────────────────────────────────────────────────
+ // Shared types for the Worker. Keep the Env interface in sync with wrangler.jsonc.
+ // ─────────────────────────────────────────────────────────────────────────────
+@@ -14,8 +19,8 @@ import type { KvStore } from '../../_shared/src/ports/kv';
+  */
+ export interface Env {
+   // D1 databases
+-  APP_DB: D1Database; // per-app data (subscriptions, budgets, ...)
+-  PLATFORM_DB: D1Database; // shared entitlements across the portfolio
++  APP_DB: SqlDb; // per-app data (subscriptions, budgets, ...)
++  PLATFORM_DB: SqlDb; // shared entitlements across the portfolio
+ 
+   // KV — caches the Supabase JWKS document
+   JWKS_CACHE: KvStore;
+diff --git a/services/subscriptiontracker-api/test/harness.ts b/services/subscriptiontracker-api/test/harness.ts
+index cc389bf7..96a9510c 100644
+--- a/services/subscriptiontracker-api/test/harness.ts
++++ b/services/subscriptiontracker-api/test/harness.ts
+@@ -19,7 +19,6 @@
+ // schema under test is the schema that ships. Inlining a copy here would let the
+ // tests keep passing after a migration changed the tree.
+ // ─────────────────────────────────────────────────────────────────────────────
+-import type { DatabaseSync as DatabaseSyncCtor } from 'node:sqlite';
+ import { Hono } from 'hono';
+ import init0001 from '../migrations/0001_init.sql?raw';
+ import init0002 from '../migrations/0002_schema_debt.sql?raw';
+@@ -30,113 +29,17 @@ import init0006 from '../migrations/0006_idempotency_keys.sql?raw';
+ import init0007 from '../migrations/0007_budget_currency.sql?raw';
+ import type { AppEnv } from '../src/types';
+ 
+-type SQLValue = string | number | bigint | null | Uint8Array;
+-
+-// `node:sqlite` is fetched through `process.getBuiltinModule` rather than a
+-// static import: Vite's builtin list does not yet know the module, so
+-// `import ... from 'node:sqlite'` fails to resolve at transform time ("Failed to
+-// load url sqlite"). This bypasses module resolution entirely and needs no
+-// vitest config. The TYPES still come from the ambient declaration in
+-// node-sqlite.d.ts, so this stays type-checked.
+-type DatabaseSync = DatabaseSyncCtor;
+-const SqliteCtor = (
+-  globalThis as unknown as {
+-    process: {
+-      getBuiltinModule(id: 'node:sqlite'): {
+-        DatabaseSync: new (path: string) => DatabaseSync;
+-      };
+-    };
+-  }
+-).process.getBuiltinModule('node:sqlite').DatabaseSync;
+-
+-/** D1PreparedStatement over node:sqlite. `bind` returns a NEW statement, as D1's
+- *  does — budget.ts binds one prepared statement many times in a single batch. */
+-class SqliteStatement {
+-  constructor(
+-    private readonly db: DatabaseSync,
+-    private readonly sql: string,
+-    private readonly params: unknown[] = [],
+-  ) {}
+-
+-  bind(...params: unknown[]): SqliteStatement {
+-    return new SqliteStatement(this.db, this.sql, params);
+-  }
+-
+-  private args(): SQLValue[] {
+-    return this.params.map((p) => {
+-      if (p === undefined) {
+-        // D1 rejects undefined binds (D1_TYPE_ERROR). node:sqlite throws too;
+-        // this makes the message recognisable in a failing test.
+-        throw new TypeError('D1_TYPE_ERROR: undefined is not a supported bind value');
+-      }
+-      if (typeof p === 'boolean') return p ? 1 : 0;
+-      return p as SQLValue;
+-    });
+-  }
+-
+-  async all<T = Record<string, unknown>>(): Promise<{ results: T[] }> {
+-    return { results: this.db.prepare(this.sql).all(...this.args()) as T[] };
+-  }
+-
+-  async first<T = Record<string, unknown>>(): Promise<T | null> {
+-    return (this.db.prepare(this.sql).get(...this.args()) as T) ?? null;
+-  }
+-
+-  async run(): Promise<{ meta: { changes: number } }> {
+-    const r = this.db.prepare(this.sql).run(...this.args());
+-    return { meta: { changes: r.changes } };
+-  }
+-
+-  /**
+-   * What ONE statement contributes to a `batch()` answer — D1's shape.
+-   *
+-   * ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS. `batch` used to push `run()`,
+-   * which carries `meta` and NO `results`, because every batch here was a write.
+-   * The erasure walk now batches its schema reads. MEASURED against workerd's own
+-   * D1 (getPlatformProxy over the Worker's wrangler.jsonc binding), 2026-09-18: a
+-   * batched SELECT answers its rows, in order; a write answers `results: []` with
+-   * `meta.changes`. `columns()` decides which, so no SQL is pattern-matched. Same
+-   * change as services/platform/test/harness.ts.
+-   */
+-  batchResult(): { results: unknown[]; meta: { changes: number } } {
+-    const stmt = this.db.prepare(this.sql);
+-    if (stmt.columns().length > 0) return { results: stmt.all(...this.args()), meta: { changes: 0 } };
+-    const r = stmt.run(...this.args());
+-    return { results: [], meta: { changes: Number(r.changes) } };
+-  }
+-}
+-
+-/** D1Database over node:sqlite. `batch` is ONE transaction, as D1's is. */
+-export class SqliteD1 {
+-  readonly db: DatabaseSync;
+-
+-  constructor(schema: string[]) {
+-    this.db = new SqliteCtor(':memory:');
+-    for (const sql of schema) this.db.exec(sql);
+-  }
+-
+-  prepare(sql: string): SqliteStatement {
+-    return new SqliteStatement(this.db, sql);
+-  }
+-
+-  async batch(statements: SqliteStatement[]): Promise<unknown[]> {
+-    this.db.exec('BEGIN');
+-    try {
+-      const out: unknown[] = [];
+-      for (const s of statements) out.push(s.batchResult());
+-      this.db.exec('COMMIT');
+-      return out;
+-    } catch (err) {
+-      this.db.exec('ROLLBACK');
+-      throw err;
+-    }
+-  }
+-
+-  /** Direct read, bypassing the Worker — for asserting what actually landed. */
+-  rows(sql: string, ...params: SQLValue[]): Array<Record<string, unknown>> {
+-    return this.db.prepare(sql).all(...params);
+-  }
+-}
++/**
++ * The engine: node:sqlite with the migrations applied, `batch` ONE transaction.
++ *
++ * ⏱ 2026-10-02 · port-sql. The engine that lived here is PROMOTED to
++ * services/_shared/src/ports/fakes/sql.ts — tooling/ports/sql.json adapter
++ * `sqlite`, held to the SQL port's conformance suite — and is the same engine
++ * services/platform's harness runs. Re-exported under its old name for one PR,
++ * so no test file had to change its import.
++ */
++import { SqliteDb } from '../../_shared/src/ports/fakes/sql';
++export { SqliteDb as SqliteD1 };
+ 
+ /**
+  * subscriptiontracker_db's migration set, IN APPLICATION ORDER, exactly as
+@@ -153,8 +56,8 @@ export const SUBLY_MIGRATIONS: readonly string[] = [init0001, init0002, init0003
+ /** APP_DB with subscriptiontracker's real migrations applied, in order. `extraSchema` is for
+  *  tests that need to force a DB-level failure the route cannot pre-empt (a
+  *  trigger, say) in order to observe transaction behaviour. */
+-export function realAppDb(extraSchema: string[] = []): SqliteD1 {
+-  return new SqliteD1([...SUBLY_MIGRATIONS, ...extraSchema]);
++export function realAppDb(extraSchema: string[] = []): SqliteDb {
++  return new SqliteDb([...SUBLY_MIGRATIONS, ...extraSchema]);
+ }
+ 
+ /**
+@@ -189,8 +92,8 @@ export const ENTITLEMENTS_SCHEMA = platformEntitlements;
+ import { PLATFORM_MIGRATIONS } from '../../platform/test/harness';
+ export { PLATFORM_MIGRATIONS };
+ 
+-export function realPlatformDb(): SqliteD1 {
+-  return new SqliteD1([...PLATFORM_MIGRATIONS]);
++export function realPlatformDb(): SqliteDb {
++  return new SqliteDb([...PLATFORM_MIGRATIONS]);
+ }
+ 
+ /** Records every prepared SQL string and every bound argument list. */
+diff --git a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/lib/erase-subject.ts b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/lib/erase-subject.ts
+index c9ca7582..6cf75940 100644
+--- a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/lib/erase-subject.ts
++++ b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/lib/erase-subject.ts
+@@ -17,6 +17,7 @@
+ // two sets are disjoint by construction. Idempotent: a second erasure of an
+ // erased person deletes nothing and is success.
+ // ─────────────────────────────────────────────────────────────────────────────
++import type { SqlDb } from '../../../_shared/src/ports/sql';
+ import { erasureTargets, eraseTargets, type ErasureTargets } from '../../../_shared/src/erasure';
+ 
+ export type EraseSubjectResult =
+@@ -27,7 +28,7 @@ export type EraseSubjectResult =
+ // round trips) and the write is `eraseTargets` (one batch, one transaction, with
+ // the transient retry every copy now shares — this brick had it and the live
+ // Workers did not). This file keeps its envelope, its refusals and its words.
+-export async function eraseSubjectRows(db: D1Database, userId: string): Promise<EraseSubjectResult> {
++export async function eraseSubjectRows(db: SqlDb, userId: string): Promise<EraseSubjectResult> {
+   if (typeof userId !== 'string' || userId.length === 0) {
+     return { ok: false, error: 'account_deletion_failed', reason: 'no subject to erase' };
+   }
+diff --git a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/types.ts b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/types.ts
+index d54b3396..3d14aa4d 100644
+--- a/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/types.ts
++++ b/tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/types.ts
+@@ -3,6 +3,11 @@ import type { AuthRecency } from '../../_shared/src/auth';
+  *  bindings are declared as the KV PORT; the binding satisfies it structurally
+  *  (services/_shared/src/ports/adapters/cloudflare.ts). */
+ import type { KvStore } from '../../_shared/src/ports/kv';
++/** ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql): the D1 bindings
++ *  are declared as the SQL PORT; the binding satisfies it structurally
++ *  (services/_shared/src/ports/adapters/cloudflare.ts `cloudflareD1`), and
++ *  assert-ports limb 9 refuses a `D1Database` type in any handler. */
++import type { SqlDb } from '../../_shared/src/ports/sql';
+ import type { Context } from 'hono';
+ 
+ // Bindings from wrangler.jsonc. APP_DB is the ONLY per-app resource;
+@@ -10,8 +15,8 @@ import type { Context } from 'hono';
+ // There is deliberately no R2 binding: object storage is one portfolio bucket
+ // bound in `services/platform` and keyed by an `<app_id>/` prefix.
+ export interface Env {
+-  APP_DB: D1Database;
+-  PLATFORM_DB: D1Database;
++  APP_DB: SqlDb;
++  PLATFORM_DB: SqlDb;
+   JWKS_CACHE: KvStore;
+   // ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. The shared revocation list
+   // (`rev:<sub>`), READ ONLY here, by middleware/auth.ts; services/platform
+diff --git a/tooling/chassis-ledger.json b/tooling/chassis-ledger.json
+index e36e8e26..389bac96 100644
+--- a/tooling/chassis-ledger.json
++++ b/tooling/chassis-ledger.json
+@@ -950,9 +950,9 @@
+     {
+       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+       "path": "src/lib/erase-subject.ts",
+-      "lines": 51,
++      "lines": 52,
+       "verdict": "STAYS",
+-      "why": "ADR 081 (2026-09-15): this app Worker APP_DB erasure walk, shared by the public route and the retry entrypoint."
++      "why": "ADR 081 (2026-09-15): this app Worker APP_DB erasure walk, shared by the public route and the retry entrypoint. ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql): 51 -> 52, re-measured by assert-chassis-ledger — the SqlDb port import; the walk takes the SQL port, as in services/subscriptiontracker-api."
+     },
+     {
+       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+@@ -964,9 +964,9 @@
+     {
+       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+       "path": "src/types.ts",
+-      "lines": 90,
++      "lines": 95,
+       "verdict": "STAYS",
+-      "why": "Per-app Env bindings - APP_DB and this app's own vars. ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): 86 -> 90, re-measured by assert-chassis-ledger — the KvStore port import and its three-line comment; JWKS_CACHE and SESSION_REVOKED are declared as the KV port, as in services/subscriptiontracker-api."
++      "why": "Per-app Env bindings - APP_DB and this app's own vars. ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): 86 -> 90, re-measured by assert-chassis-ledger — the KvStore port import and its three-line comment; JWKS_CACHE and SESSION_REVOKED are declared as the KV port, as in services/subscriptiontracker-api. ⏱ 2026-10-02 · port-sql: 90 -> 95, re-measured by assert-chassis-ledger — the SqlDb port import and its four-line comment; APP_DB and PLATFORM_DB are declared as the SQL port, as in services/subscriptiontracker-api."
+     },
+     {
+       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
+diff --git a/tooling/ci/assert-d1-sql-inventory.mjs b/tooling/ci/assert-d1-sql-inventory.mjs
+index 5c9f3cc5..3662b471 100644
+--- a/tooling/ci/assert-d1-sql-inventory.mjs
++++ b/tooling/ci/assert-d1-sql-inventory.mjs
+@@ -65,6 +65,8 @@ import { join, resolve } from 'node:path';
+ import {
+   MEASURED_CAUSE,
+   REJECTED_FIXTURE,
++  SHARED_SRC,
++  fakeEngineFiles,
+   holePlaceholder,
+   identifierRole,
+   inventoryFile,
+@@ -156,8 +158,11 @@ const toolingFiles = TOOLING_DIRS.flatMap((d) => sourceFilesUnder(ROOT, d));
+ // said so rather than letting four statements slip out of the scan. A file that
+ // builds a statement for a production database belongs here whether or not it is
+ // deployed on its own.
+-const SHARED_DIRS = ['services/_shared/src'];
+-const sharedFiles = SHARED_DIRS.flatMap((d) => sourceFilesUnder(ROOT, d));
++const SHARED_DIRS = [SHARED_SRC];
++// ⏱ 2026-10-02 · port-sql: a port's registered FAKE engine is not Worker code and
++// sends nothing to D1 (d1-sql-inventory.mjs `fakeEngineFiles`); printed below.
++const fakeEngines = fakeEngineFiles(ROOT);
++const sharedFiles = SHARED_DIRS.flatMap((d) => sourceFilesUnder(ROOT, d)).filter((f) => !fakeEngines.has(f));
+ if (sharedFiles.length === 0) {
+   coverageLost([
+     `not one source file was found under ${SHARED_DIRS.join(', ')}.`,
+@@ -500,6 +505,10 @@ console.log(
+   `    ${constrained} interpolated-identifier statement(s) sit in a file that constrains the identifier, and the ` +
+     `cause sentence is pinned in all ${CAUSE_SITES.length} places it is explained`,
+ );
++console.log(
++  `    ⬜ ${fakeEngines.size} registered fake engine(s) outside the domain by derivation (tooling/ports/*.json ` +
++    `\`status: fake\`, imported by no Worker — assert-ports limb 4): ${[...fakeEngines].join(', ') || 'none'}`,
++);
+ console.log(
+   `    ⬜ ${skipped.length} file(s) carry the negative-control fixture and are outside R1 by derivation ` +
+     `(they name ${MECHANISM}): ${skipped.join(', ')}`,
+diff --git a/tooling/ci/assert-ports.mjs b/tooling/ci/assert-ports.mjs
+index e5b6e779..0269daf0 100644
+--- a/tooling/ci/assert-ports.mjs
++++ b/tooling/ci/assert-ports.mjs
+@@ -66,7 +66,8 @@
+ //               (`remaining`) and the train that ports it (`until`). A row with
+ //               `remaining` for a vendor that is no adapter anywhere is stale.
+ //   9 bindings  no module under services/*/src names a Cloudflare binding TYPE
+-//               (`KVNamespace`, `R2Bucket` and its R2 types, `RateLimit`)
++//               (`KVNamespace`, `R2Bucket` and its R2 types, `RateLimit`, and
++//               — port-sql, 2026-10-02 — `D1Database` and its D1 types)
+ //               outside a Worker's composition root (src/ports.ts), its
+ //               `types.ts`, or services/_shared/src/ports/ (the ports, their
+ //               fakes and adapters) — every handler takes the PORT type
+@@ -114,8 +115,12 @@ export const LIMB_NAMES = Object.freeze({
+   10: 'geo',
+ });
+ 
+-/** Limb 9: a Cloudflare binding TYPE, named in code (comments and strings stripped). */
+-export const BINDING_TYPE_RE = /\b(?:KVNamespace\w*|R2(?:Bucket|Objects?|ObjectBody|PutOptions|ListOptions|HTTPMetadata)|RateLimit(?:Options|Outcome)?)\b/;
++/** Limb 9: a Cloudflare binding TYPE, named in code (comments and strings stripped).
++ *  ⏱ 2026-10-02 · port-sql: the D1 types joined, so a handler typed `D1Database`
++ *  (or a statement typed `D1PreparedStatement`) reddens as a `KVNamespace` does.
++ *  `\b` on both sides, so an identifier that merely CONTAINS one (`dumpD1Database`)
++ *  is not a type. */
++export const BINDING_TYPE_RE = /\b(?:KVNamespace\w*|R2(?:Bucket|Objects?|ObjectBody|PutOptions|ListOptions|HTTPMetadata)|RateLimit(?:Options|Outcome)?|D1(?:Database(?:Session)?|PreparedStatement|Result|Response|Meta|ExecResult))\b/;
+ /** Limb 10: a read of the runtime's per-request `cf` object, or its type. Matched on
+  *  comment- AND string-stripped code for the dot and destructuring forms, and on
+  *  comment-stripped code for the bracket form (whose name IS a string). */
+@@ -486,7 +491,7 @@ export function evaluate(root) {
+       const bindingHome = f === `services/${worker}/${COMPOSITION_ROOT}` || f === `services/${worker}/src/types.ts` || f.startsWith(PORTS_HOME);
+       if (shape.binding) {
+         if (bindingHome) bindingHomesMatched++;
+-        else find(9, `\`${f}\` names the Cloudflare binding type \`${shape.binding}\`. A handler takes the PORT (KvStore, ObjectStore, RateLimiter in ${PORTS_HOME}); only a composition root (services/<worker>/${COMPOSITION_ROOT}), a services/<worker>/src/types.ts or ${PORTS_HOME} may name the binding.`);
++        else find(9, `\`${f}\` names the Cloudflare binding type \`${shape.binding}\`. A handler takes the PORT (KvStore, ObjectStore, RateLimiter, SqlDb in ${PORTS_HOME}); only a composition root (services/<worker>/${COMPOSITION_ROOT}), a services/<worker>/src/types.ts or ${PORTS_HOME} may name the binding.`);
+       }
+       if (shape.cf) {
+         if (f === GEO_HOME) geoHomeMatched = true;
+diff --git a/tooling/ci/d1-sql-inventory.mjs b/tooling/ci/d1-sql-inventory.mjs
+index e646966e..f159029d 100644
+--- a/tooling/ci/d1-sql-inventory.mjs
++++ b/tooling/ci/d1-sql-inventory.mjs
+@@ -596,6 +596,43 @@ export function parseJsonc(text) {
+  */
+ export const SHARED_SRC = 'services/_shared/src';
+ 
++/** The port registries `fakeEngineFiles` reads. */
++export const PORTS_DIR = 'tooling/ports';
++
++/**
++ * ⏱ 2026-10-02 · port-sql. THE SHARED-HOME FILES THAT NEVER SEND A STATEMENT TO
++ * D1, DERIVED FROM THE PORT REGISTRIES, NEVER LISTED HERE.
++ *
++ * A port's fakes live in services/_shared/src/ports/fakes/ (tooling/ports/
++ * README.md), so the SQL port's `sqlite` adapter — the node:sqlite engine the
++ * Worker suites and the export dry run run their SQL through — sits in the shared
++ * home this inventory attributes to every Worker. It is not Worker code: no
++ * services/<w>/src module may import an adapter's impl.file (assert-ports limb 4)
++ * and a fake is never selectable in live (limb 7). Its `.prepare(sql)` takes the
++ * CALLER's statement, and every caller's statement is already read at the call
++ * site, so grading the engine's plumbing as if it were a route would be a finding
++ * about nothing.
++ *
++ * The set is every `status: "fake"` adapter's `impl.file` under SHARED_SRC in
++ * tooling/ports/*.json. A registry that cannot be read contributes nothing, so
++ * the failure mode is the loud one: the fake is scanned and reddens R2.
++ */
++export function fakeEngineFiles(root) {
++  const out = new Set();
++  const dir = join(root, ...PORTS_DIR.split('/'));
++  if (!existsSync(dir)) return out;
++  for (const f of listDir(dir)) {
++    if (!f.endsWith('.json') || f === 'port.schema.json' || f.startsWith('_')) continue;
++    let doc;
++    try { doc = JSON.parse(readFileSync(join(dir, f), 'utf8')); } catch { continue; }
++    for (const a of Array.isArray(doc?.adapters) ? doc.adapters : []) {
++      const file = a?.impl?.file;
++      if (a?.status === 'fake' && typeof file === 'string' && file.startsWith(`${SHARED_SRC}/`)) out.add(file);
++    }
++  }
++  return out;
++}
++
+ /**
+  * THE DOMAIN, DERIVED FROM THE DEPLOYABLE CONFIGS.
+  *
+@@ -619,6 +656,7 @@ export function inventoryServices(root) {
+   const servicesDir = join(root, 'services');
+   const out = [];
+   if (!existsSync(servicesDir)) return out;
++  const fakes = fakeEngineFiles(root);
+   for (const e of listDir(servicesDir, { withFileTypes: true })) {
+     if (!e.isDirectory()) continue;
+     const cfgPath = join(servicesDir, e.name, 'wrangler.jsonc');
+@@ -638,7 +676,7 @@ export function inventoryServices(root) {
+         id: d.database_id,
+         owns: typeof d.migrations_dir === 'string',
+       }));
+-    const files = [...sourceFilesUnder(root, SHARED_SRC), ...sourceFilesUnder(root, `services/${e.name}/src`)];
++    const files = [...sourceFilesUnder(root, SHARED_SRC).filter((f) => !fakes.has(f)), ...sourceFilesUnder(root, `services/${e.name}/src`)];
+     const statements = [];
+     const unparsed = [];
+     let compositions = 0;
+diff --git a/tooling/ci/test/coverage-manifest.json b/tooling/ci/test/coverage-manifest.json
+index 03aa60f2..fcc5065b 100644
+--- a/tooling/ci/test/coverage-manifest.json
++++ b/tooling/ci/test/coverage-manifest.json
+@@ -273,7 +273,7 @@
+     12,
+ 
+   "d1-sql-inventory.test.mjs":
+-    57,
++    59,
+ 
+   "darwin-inputs.test.mjs":
+     13,
+@@ -699,10 +699,10 @@
+     62,
+ 
+   "port-switch.test.mjs":
+-    21,
++    27,
+ 
+   "ports.test.mjs":
+-    51,
++    53,
+ 
+   "post-deploy-smoke.test.mjs":
+     157,
+diff --git a/tooling/ci/test/d1-fanout.test.mjs b/tooling/ci/test/d1-fanout.test.mjs
+index a88d5bcc..751b90e9 100644
+--- a/tooling/ci/test/d1-fanout.test.mjs
++++ b/tooling/ci/test/d1-fanout.test.mjs
+@@ -119,8 +119,8 @@ describe('assert-d1-fanout.mjs — every owned D1 is backed up, bound, and (an a
+   test('🔴 the fan-out stops reading the generated module: the app database is missing from the fan-out, named', () => {
+     const root = tree({
+       'services/platform/src/scheduled.ts': swap(
+-        'return APP_TARGETS.map((t) => ({ appId: t.appId, db: (env as unknown as Record<string, D1Database | undefined>)[t.dbBinding] as D1Database }));',
+-        "return [{ appId: 'subscriptiontracker', db: (env as unknown as Record<string, D1Database | undefined>)['SUBSCRIPTIONTRACKER_DB'] as D1Database }];",
++        'return APP_TARGETS.map((t) => ({ appId: t.appId, db: (env as unknown as Record<string, SqlDb | undefined>)[t.dbBinding] as SqlDb }));',
++        "return [{ appId: 'subscriptiontracker', db: (env as unknown as Record<string, SqlDb | undefined>)['SUBSCRIPTIONTRACKER_DB'] as SqlDb }];",
+       ),
+     });
+     const r = run(GUARD, root);
+diff --git a/tooling/ci/test/d1-sql-inventory.test.mjs b/tooling/ci/test/d1-sql-inventory.test.mjs
+index cd0c260e..c251afc3 100644
+--- a/tooling/ci/test/d1-sql-inventory.test.mjs
++++ b/tooling/ci/test/d1-sql-inventory.test.mjs
+@@ -78,6 +78,9 @@ function realTree() {
+   // The ONE HOME both Workers inline ([ADR 067] decision 2); its statements are
+   // every Worker's statements, so the trimmed copy carries it too.
+   cpSync(join(REPO, SHARED_SRC), join(root, SHARED_SRC), { recursive: true });
++  // ⏱ 2026-10-02 · port-sql: the port registries, so the shared home's registered
++  // FAKE engines are derived out of the domain here exactly as in the real tree.
++  cpSync(join(REPO, 'tooling', 'ports'), join(root, 'tooling', 'ports'), { recursive: true });
+   for (const d of ['tooling/e2e', 'tooling/ops', 'tooling/scripts']) {
+     // SOURCE ONLY. The guard reads .ts/.js/.mjs; copying tooling/ops wholesale
+     // dragged register.json (200 kB) into every one of the ~25 tree copies below
+@@ -623,6 +626,45 @@ describe('the shared home is every Worker\'s src/ — 2026-09-10, the ONE entitl
+     }
+   });
+ 
++  // ⏱ 2026-10-02 · port-sql: a port's registered FAKE engine sits in the shared home
++  // (services/_shared/src/ports/fakes/) and sends nothing to D1; its plumbing
++  // `.prepare(sql)` is derived out of the domain by the registry, never by a list.
++  const ENGINE = `${SHARED_SRC}/ports/fakes/engine.ts`;
++  function withEngine(status) {
++    const root = domain();
++    mkdirSync(join(root, ...SHARED_SRC.split('/'), 'ports', 'fakes'), { recursive: true });
++    writeFileSync(join(root, ...ENGINE.split('/')), 'export const run = (db: any, sql: string) => db.prepare(sql).all();\n');
++    mkdirSync(join(root, 'tooling', 'ports'), { recursive: true });
++    writeFileSync(join(root, 'tooling', 'ports', 'sql.json'), JSON.stringify({ port: 'sql', adapters: [{ id: 'engine', status, impl: { file: ENGINE, symbol: 'run' } }] }));
++    return root;
++  }
++
++  test('a registered fake engine in the shared home is outside the domain — its plumbing prepare is no statement', () => {
++    const root = withEngine('fake');
++    try {
++      const [w] = inventoryServices(root);
++      assert.ok(!w.files.includes(ENGINE), `files: ${w.files.join(', ')}`);
++      assert.deepEqual(w.unparsed, []);
++      assert.equal(w.statements.length, 2, 'the Worker\'s own statement and the shared reader are still read');
++    } finally {
++      rmSync(root, { recursive: true, force: true });
++    }
++  });
++
++  test('🔴 the same file NOT registered as a fake is in the domain, and its hidden prepare is reported', () => {
++    // The control: only the registry's `status: fake` takes a file out. A built
++    // adapter, or an unregistered helper in the same directory, is Worker code.
++    const root = withEngine('built');
++    try {
++      const [w] = inventoryServices(root);
++      assert.ok(w.files.includes(ENGINE));
++      assert.equal(w.unparsed.length, 1, JSON.stringify(w.unparsed));
++      assert.equal(w.unparsed[0].file, ENGINE);
++    } finally {
++      rmSync(root, { recursive: true, force: true });
++    }
++  });
++
+   test('🔴 without the attribution the shared statement is inventoried by NOBODY — the silent loss this exists for', () => {
+     // The control for the case above: the same domain with no shared home
+     // yields exactly one statement, so the count of two above is the shared
+diff --git a/tooling/ci/test/port-switch.test.mjs b/tooling/ci/test/port-switch.test.mjs
+index d6ca8bfb..d30627d4 100644
+--- a/tooling/ci/test/port-switch.test.mjs
++++ b/tooling/ci/test/port-switch.test.mjs
+@@ -6,7 +6,8 @@
+ // margin check over a copy of the REAL fee, channel and price registers.
+ import { describe, it, before } from 'node:test';
+ import assert from 'node:assert/strict';
+-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
++import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
++import { gzipSync } from 'node:zlib';
+ import { tmpdir } from 'node:os';
+ import { dirname, join, resolve } from 'node:path';
+ import { spawnSync } from 'node:child_process';
+@@ -222,3 +223,69 @@ describe('port-switch — margin over a copy of the REAL registers', () => {
+     assert.deepEqual(feeFor(paddle, 'paddle', 3499, cells).cells, ['paddle-checkout']);
+   });
+ });
++
++// ⏱ 2026-10-02 · port-sql — C9, the export dry run, over the REAL sql.json and the
++// REAL migrations. The export here is built at test time from the migrations in
++// the dump's JSON-lines shape, so this block grades the TOOL (flags, gzip, exit
++// codes, the deciding line); services/platform/test/sql-export-replay.test.ts
++// feeds the replay the shipped dumpD1Database's own output.
++describe('port-switch sql — C9 replays one export into node:sqlite', () => {
++  let dir;
++  const exportOf = (database, migDir, { dropTable = null } = {}) => {
++    const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
++    const db = new DatabaseSync(':memory:');
++    for (const f of readdirSync(join(REPO, migDir)).filter((x) => x.endsWith('.sql')).sort()) db.exec(readFileSync(join(REPO, migDir, f), 'utf8'));
++    if (database === 'platform_db') db.exec("INSERT INTO cron_heartbeat (job, target, ok, detail, ran_at) VALUES ('nightly-export', 'platform_db', 1, NULL, '2026-10-02T02:30:00Z')");
++    const tables = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().filter((t) => t.name !== dropTable);
++    const lines = [{ kind: 'meta', database, exportedAt: '2026-10-02T02:30:00Z', generator: 'platform-worker-backup/2' }];
++    let rows = 0;
++    for (const t of tables) lines.push({ kind: 'schema', table: t.name, sql: t.sql });
++    for (const t of tables) {
++      const data = db.prepare(`SELECT * FROM "${t.name}" ORDER BY rowid`).all();
++      for (const d of data) lines.push({ kind: 'row', table: t.name, data: { ...d } });
++      lines.push({ kind: 'table-end', table: t.name, rows: data.length, truncated: false });
++      rows += data.length;
++    }
++    lines.push({ kind: 'end', tables: tables.length, rows, truncated: false, queries: 3 });
++    db.close();
++    return lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
++  };
++  const write = (name, text, gz = true) => {
++    const file = join(dir, name);
++    writeFileSync(file, gz ? gzipSync(Buffer.from(text)) : text);
++    return file;
++  };
++  before(() => { dir = mkdtempSync(join(tmpdir(), 'sql-export-')); });
++
++  it('green control: a gzipped platform_db export replays — every check PASS, exit 0', () => {
++    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--env', 'sandbox', '--export', write('platform_db.jsonl.gz', exportOf('platform_db', 'services/platform/migrations'))]);
++    assert.equal(r.code, 0, r.out);
++    assert.match(r.first, /^port-switch: PASS — all 9 checks pass/);
++    assert.match(r.out, /PASS  C9 replay: platform_db: \d+ migration\(s\) of services\/platform\/migrations replayed; \d+ table\(s\) and \d+ row\(s\) match the export/);
++    assert.match(r.out, /cron_heartbeat\s+1 row\(s\)/);
++  });
++  it('…and so does subscriptiontracker_db, found by the wrangler config that owns its migrations, uncompressed', () => {
++    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--env', 'sandbox', '--export', write('st.jsonl', exportOf('subscriptiontracker_db', 'services/subscriptiontracker-api/migrations'), false)]);
++    assert.equal(r.code, 0, r.out);
++    assert.match(r.out, /PASS  C9 replay: subscriptiontracker_db: \d+ migration\(s\) of services\/subscriptiontracker-api\/migrations replayed/);
++  });
++  it('red: an export MISSING a table is FAIL (exit 1), and the first line names C9 and the table', () => {
++    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--env', 'sandbox', '--export', write('missing.jsonl.gz', exportOf('platform_db', 'services/platform/migrations', { dropTable: 'signups' }))]);
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /^port-switch: FAIL — C9 replay: platform_db: 1 mismatch\(es\) — first: table `signups` is created by the migrations and is missing from the export/);
++  });
++  it('LOST: no --export is exit 2 — the export duty unrehearsed is never a pass', () => {
++    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--env', 'sandbox']);
++    assert.equal(r.code, 2, r.out);
++    assert.match(r.first, /^port-switch: LOST — C9 replay: no --export <file>/);
++  });
++  it('the sqlite engine is never a live target (C1), export or not', () => {
++    const r = run(['sql', '--to', 'sqlite', '--dry-run', '--export', write('live.jsonl.gz', exportOf('platform_db', 'services/platform/migrations'))]);
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /^port-switch: FAIL — C1 target: `sqlite` is a fake; a fake is never selectable in live/);
++  });
++  it('--export belongs to the sql port alone', () => {
++    assert.match(parseArgs(['payments', '--to', 'paddle', '--dry-run', '--export', 'x.gz']).error, /--export is for sql/);
++    assert.equal(parseArgs(['sql', '--to', 'sqlite', '--dry-run', '--export', 'x.gz']).export, 'x.gz');
++  });
++});
+diff --git a/tooling/ci/test/ports.test.mjs b/tooling/ci/test/ports.test.mjs
+index 2d8ef777..2f6e991c 100644
+--- a/tooling/ci/test/ports.test.mjs
++++ b/tooling/ci/test/ports.test.mjs
+@@ -323,7 +323,7 @@ describe('assert-ports — every limb reddens', () => {
+     const r = run(fixture({ files: { 'services/w/src/routes/h.ts': 'export async function h(kv: KVNamespace) {\n  return kv.get("k");\n}\n' } }));
+     assert.equal(r.code, 1, r.out);
+     assert.match(r.first, /limb 9 \(bindings\): `services\/w\/src\/routes\/h\.ts` names the Cloudflare binding type `KVNamespace`/);
+-    for (const t of ['R2Bucket', 'R2Objects', 'RateLimit']) {
++    for (const t of ['R2Bucket', 'R2Objects', 'RateLimit', 'D1Database', 'D1PreparedStatement', 'D1Result']) {
+       const x = run(fixture({ files: { 'services/w/src/routes/h.ts': `export const h = (b: ${t}) => b;\n` } }));
+       assert.equal(x.code, 1, `${t}: ${x.out}`);
+       assert.match(x.first, new RegExp(`limb 9 .*\`${t}\``));
+@@ -334,7 +334,7 @@ describe('assert-ports — every limb reddens', () => {
+       const r = run(fixture({ files: { [rel]: 'export const adapt = (b: KVNamespace) => b;\n' } }));
+       assert.equal(r.code, 0, `${rel}: ${r.out}`);
+     }
+-    const prose = run(fixture({ files: { 'services/w/src/routes/h.ts': '// never a KVNamespace here\nexport const why = "not an R2Bucket";\nexport const withinRateLimit = 1;\n' } }));
++    const prose = run(fixture({ files: { 'services/w/src/routes/h.ts': '// never a KVNamespace or a D1Database here\nexport const why = "not an R2Bucket";\nexport const withinRateLimit = 1;\nexport const dumpD1Database = (db: SqlDb) => db;\n' } }));
+     assert.equal(prose.code, 0, prose.out);
+   });
+   it('limb 9: a pattern that matches NOTHING in the tree is COVERAGE LOST (exit 2)', () => {
+@@ -390,12 +390,37 @@ describe('assert-ports — on a copy of the REAL registries', () => {
+       'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart']) copy(rel);
+     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
+   });
+-  it('green control: payments, auth and telemetry each claim and earn L2; kv, objects and ratelimit claim, earn and target L2', () => {
++  it('green control: payments, auth, telemetry and sql each claim and earn L2; kv, objects and ratelimit claim, earn and target L2', () => {
+     const r = run(root);
+     assert.equal(r.code, 0, r.out);
+-    for (const p of ['auth', 'payments', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
++    for (const p of ['auth', 'payments', 'telemetry', 'sql']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
+     for (const p of ['kv', 'objects', 'ratelimit']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L2`));
+-    assert.match(r.out, /vendor cloudflare is the adapter of kv, objects, ratelimit; what is left \(D1/);
++    assert.match(r.out, /vendor cloudflare is the adapter of kv, objects, ratelimit, sql; what is left \(Workers, Pages, the nikatru\.com zone\)/);
++    // port-sql: the D1 adapter's scenarios are named as pending, never hidden.
++    assert.match(r.out, /PENDING sql\/d1: batch-is-atomic/);
++  });
++  it('red: a REAL handler re-typed D1Database reddens limb 9 (lib/erasure-ledger.ts)', () => {
++    const rel = join(root, 'services/platform/src/lib/erasure-ledger.ts');
++    const before = readFileSync(rel, 'utf8');
++    try {
++      assert.match(before, /clearPendingErasure\(db: SqlDb,/, 'the seam this mutation flips is still there');
++      writeFileSync(rel, before.replace('clearPendingErasure(db: SqlDb,', 'clearPendingErasure(db: D1Database,'));
++      const r = run(root);
++      assert.equal(r.code, 1, r.out);
++      assert.match(r.first, /limb 9 \(bindings\): `services\/platform\/src\/lib\/erasure-ledger\.ts` names the Cloudflare binding type `D1Database`/);
++    } finally { writeFileSync(rel, before); }
++  });
++  it('red: sql claiming L3 while D1 has pending scenarios reddens limb 6', () => {
++    const rel = join(root, 'tooling/ports/sql.json');
++    const before = readFileSync(rel, 'utf8');
++    try {
++      const doc = JSON.parse(before);
++      doc.level.claimed = 3;
++      writeFileSync(rel, JSON.stringify(doc));
++      const r = run(root);
++      assert.equal(r.code, 1, r.out);
++      assert.match(r.first, /limb 6 \(level\): tooling\/ports\/sql\.json claims L3 and earns L2: 1 conformant adapter\(s\)/);
++    } finally { writeFileSync(rel, before); }
+   });
+   it('red: a REAL handler re-typed KVNamespace reddens limb 9 (routes/sessions.ts)', () => {
+     const rel = join(root, 'services/platform/src/routes/sessions.ts');
+@@ -428,7 +453,7 @@ describe('assert-ports — on a copy of the REAL registries', () => {
+       writeFileSync(rel, JSON.stringify(doc));
+       const r = run(root);
+       assert.equal(r.code, 1, r.out);
+-      assert.match(r.first, /limb 8 \(cross-register\): vendor `cloudflare` is placed 4 times/);
++      assert.match(r.first, /limb 8 \(cross-register\): vendor `cloudflare` is placed 5 times/);
+     } finally { writeFileSync(rel, before); }
+   });
+   it('red: deleting one vendor from _non-port.json reddens limb 8', () => {
+diff --git a/tooling/ops/port-switch.mjs b/tooling/ops/port-switch.mjs
+index 57f71b8b..21923cf5 100644
+--- a/tooling/ops/port-switch.mjs
++++ b/tooling/ops/port-switch.mjs
+@@ -5,6 +5,7 @@
+ //
+ //   node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run
+ //        [--env live|sandbox|test] [--from <adapter>] [--root <repoRoot>]
++//        [--export <file>]   (port `sql` only)
+ //
+ //   <port>      a tooling/ports/<port>.json registry.
+ //   --to        the adapter id the port would switch to.
+@@ -14,6 +15,8 @@
+ //   --from      the adapter being replaced; default: selection.default[env],
+ //               or — for a port selected per channel — every adapter that
+ //               serves a channel today.
++//   --export    port `sql` only: ONE nightly D1 export (gzipped JSON lines,
++//               services/platform/src/backup/), given locally — never fetched.
+ //
+ // One line per check, `PASS | FAIL | LOST  C<n> <name>: <detail>`, after ONE
+ // first line that names the check deciding the exit (the shape of
+@@ -23,7 +26,7 @@
+ //           or the invocation was refused;
+ //   exit 0  every check PASS.
+ //
+-// The eight:
++// The eight, and for `sql` a ninth:
+ //   C1 target     the target row exists, carries the environment, and is not a
+ //                 `fake` for live
+ //   C2 status     its status (draft and retired cannot take traffic)
+@@ -40,6 +43,12 @@
+ //                 cells × services/platform/src/app-config-data.json prices.
+ //                 LOST when a cell is missing or unapplicable. A switch that
+ //                 lowers the net is printed as such: its ADR must say why.
++//   C9 replay     port `sql` only (⏱ 2026-10-02, port-sql): the --export file is
++//                 loaded into a node:sqlite file built from the migrations of the
++//                 database it names, and its table list and row counts are
++//                 compared (tooling/ops/sql-export-replay.mjs). Each mismatch is
++//                 a FAIL; no --export is LOST — the export duty unrehearsed is
++//                 not a pass.
+ //
+ // It reads registries and nothing else: no network, no vault, no credential.
+ // ─────────────────────────────────────────────────────────────────────────────
+@@ -50,9 +59,12 @@ import { fileURLToPath } from 'node:url';
+ import { readSecretSources, callsRunner, declares } from '../ci/assert-ports.mjs';
+ import { stripSourceComments } from '../ci/text-reductions.mjs';
+ import { readRegister, plan, netAfterFee, feeCurrencyProblem, FEE_REGISTER, CHANNEL_REGISTER } from '../catalog/render-rail-prices.mjs';
++import { readExportFile, replayExport } from './sql-export-replay.mjs';
+ 
+ export const NO_VALUE_FLAGS = new Set(['--dry-run']);
+-export const VALUE_FLAGS = new Set(['--to', '--env', '--from', '--root']);
++export const VALUE_FLAGS = new Set(['--to', '--env', '--from', '--root', '--export']);
++/** The ports whose dry run replays an export (C9). */
++export const EXPORT_REPLAY_PORTS = new Set(['sql']);
+ export const HOUSE_IDENTITY = 'tooling/house-identity.json';
+ export const WORKER_SECRETS_TOOL = 'tooling/ops/worker-secrets.mjs';
+ const ENVS = new Set(['live', 'sandbox', 'test']);
+@@ -61,7 +73,7 @@ const money = (minor) => `${minor < 0 ? '-' : ''}${Math.trunc(Math.abs(minor) /
+ 
+ /** Parse argv. Every flag is declared; a no-value flag never eats the next argument (shell-13). */
+ export function parseArgs(argv) {
+-  const out = { port: null, to: null, env: 'live', from: null, root: null, dryRun: false };
++  const out = { port: null, to: null, env: 'live', from: null, root: null, export: null, dryRun: false };
+   const positional = [];
+   for (let i = 0; i < argv.length; i++) {
+     const a = argv[i];
+@@ -82,6 +94,7 @@ export function parseArgs(argv) {
+   if (!out.dryRun) return { error: '--dry-run is required: this tool only ever rehearses a switch, and says so on the command line' };
+   if (!out.to) return { error: '--to <adapter> is required' };
+   if (!ENVS.has(out.env)) return { error: `--env must be live, sandbox or test, not ${JSON.stringify(out.env)}` };
++  if (out.export !== null && !EXPORT_REPLAY_PORTS.has(out.port)) return { error: `--export is for ${[...EXPORT_REPLAY_PORTS].join(', ')}; the ${out.port} port has no export to replay` };
+   return out;
+ }
+ 
+@@ -272,7 +285,21 @@ export function run(opts) {
+   // C8
+   const m = margin(root, doc, target, current);
+   add(8, 'margin', m.verdict, m.detail);
+-  return finish(checks, m.lines);
++  // C9 — the export duty, rehearsed (port `sql`)
++  const extra = [...m.lines];
++  if (EXPORT_REPLAY_PORTS.has(opts.port)) {
++    if (!opts.export) add(9, 'replay', 'LOST', 'no --export <file>: the nightly export was not replayed, so the export duty is unrehearsed');
++    else {
++      let text = null;
++      try { text = readExportFile(resolve(root, opts.export)); } catch (e) { add(9, 'replay', 'LOST', `${opts.export} could not be read (${e.message})`); }
++      if (text !== null) {
++        const r = replayExport({ root, jsonl: text });
++        add(9, 'replay', r.verdict, r.detail);
++        extra.push(...r.lines);
++      }
++    }
++  }
++  return finish(checks, extra);
+ }
+ 
+ function finish(checks, extra = []) {
+@@ -290,7 +317,7 @@ function main() {
+   const opts = parseArgs(process.argv.slice(2));
+   if (opts.error) {
+     console.error(`port-switch: REFUSED — ${opts.error}`);
+-    console.error('usage: node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>] [--root <dir>]');
++    console.error('usage: node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>] [--root <dir>] [--export <file>]');
+     process.exit(2);
+   }
+   const { code, out } = run(opts);
+diff --git a/tooling/ops/sql-export-replay.mjs b/tooling/ops/sql-export-replay.mjs
+new file mode 100644
+index 00000000..19a24936
+--- /dev/null
++++ b/tooling/ops/sql-export-replay.mjs
+@@ -0,0 +1,167 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// sql-export-replay.mjs — THE SQL PORT'S EXPORT DUTY, REHEARSED: one nightly
++// D1 export, loaded into a node:sqlite file built from the migrations alone.
++//
++// ⏱ 2026-10-02 · port-sql (O-CLOUDFLARE-BINDINGS-SCATTERED). tooling/ports/
++// sql.json says what leaves with us is "the nightly R2 export plus the
++// migrations". This is the check that the two together ARE the database:
++//
++//   1. read ONE export a person was given locally — the gzipped JSON lines
++//      services/platform/src/backup/dump.ts writes (`meta`, `schema`, `index`,
++//      `row`, `table-end`, `end`). Never fetched: no network, no credential, no
++//      R2 call. A cut-off or truncated export is refused before anything runs;
++//   2. find the migrations of the database it names — the wrangler config that
++//      OWNS it (`migrations_dir`, tooling/ci/d1-stores.mjs) — and replay them,
++//      in file order, into a FRESH node:sqlite file in the OS temp directory,
++//      deleted afterwards;
++//   3. compare the TABLE LIST — every table the export carries must be one the
++//      migrations create, and every table the migrations create must be in the
++//      export — and load every row into the replayed schema;
++//   4. compare the ROW COUNTS — each table's `table-end` against COUNT(*) of
++//      what loaded.
++//
++// Every mismatch is a FAIL line, naming the table and the two numbers. It is
++// READ-ONLY with respect to the repository and the export, and it prints counts
++// and table names only — never a row (they are users').
++//
++// Rows load as the restore loads them (dump.ts d1RestoreStatements): INSERT OR
++// REPLACE in rowid order with foreign keys OFF, `{"$blob": base64}` back to
++// bytes. So a row dumped twice under a re-inserted TEXT key loads ONCE, and its
++// table counts one short of its `table-end` — reported as a FAIL with that
++// reason named, because a replay that cannot tell it from a lost row must not
++// call it a pass.
++// ─────────────────────────────────────────────────────────────────────────────
++import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { gunzipSync } from 'node:zlib';
++import { ownedD1Stores } from '../ci/d1-stores.mjs';
++
++/** The dump formats this replay reads: services/platform/src/backup/dump.ts
++ *  RESTORABLE_GENERATORS (D1_DUMP_GENERATOR is the newest). */
++export const EXPORT_GENERATORS = new Set(['platform-worker-backup/1', 'platform-worker-backup/2']);
++/** Tables the engine or the platform keeps for itself; never part of either side. */
++const INTERNAL = (name) => name.startsWith('sqlite_') || name.startsWith('_cf_') || name === 'd1_migrations';
++const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
++
++/** The export's text: gunzipped when it carries the gzip magic, else as written. */
++export function readExportFile(path) {
++  const buf = readFileSync(path);
++  return (buf[0] === 0x1f && buf[1] === 0x8b ? gunzipSync(buf) : buf).toString('utf8');
++}
++
++/** One dumped value as SQLite binds it — dump.ts decodeD1DumpValue. */
++function decode(value) {
++  if (value === null || typeof value === 'string' || typeof value === 'number') return value;
++  if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 1 && typeof value.$blob === 'string') {
++    return new Uint8Array(Buffer.from(value.$blob, 'base64'));
++  }
++  throw new Error(`a dumped value is neither a string, a number, null nor a {"$blob"} marker: ${typeof value}`);
++}
++
++function sqliteCtor() {
++  const mod = process.getBuiltinModule?.('node:sqlite');
++  if (!mod?.DatabaseSync) throw new Error(`node:sqlite is not available in node ${process.version}`);
++  return mod.DatabaseSync;
++}
++
++/**
++ * Replay one export. Returns `{verdict: 'PASS'|'FAIL'|'LOST', detail, lines}`:
++ * `lines` holds one `FAIL …` per mismatch and one count line per table.
++ */
++export function replayExport({ root, jsonl }) {
++  const lines = [];
++  let parsed;
++  try {
++    parsed = jsonl.split('\n').filter((l) => l.length > 0).map((l) => JSON.parse(l));
++  } catch (e) {
++    return { verdict: 'LOST', detail: `the export is not JSON lines (${e.message})`, lines };
++  }
++  const meta = parsed[0];
++  if (meta?.kind !== 'meta' || !EXPORT_GENERATORS.has(meta.generator)) {
++    return { verdict: 'LOST', detail: `not a D1 export this replay reads: its first line is ${JSON.stringify(meta?.kind === 'meta' ? meta.generator : meta?.kind)}`, lines };
++  }
++  const end = parsed[parsed.length - 1];
++  if (end?.kind !== 'end') return { verdict: 'FAIL', detail: `${meta.database}: the export has no end line — it was cut off`, lines };
++  if (end.truncated) return { verdict: 'FAIL', detail: `${meta.database}: the export says it was TRUNCATED — it is missing rows by its own account`, lines };
++
++  let owned;
++  try {
++    owned = ownedD1Stores(root, (msg) => { throw new Error(msg.join(' ')); }).owned.filter((o) => o.databaseName === meta.database);
++  } catch (e) {
++    return { verdict: 'LOST', detail: `the wrangler configs could not be read (${e.message})`, lines };
++  }
++  if (owned.length !== 1) {
++    return { verdict: 'LOST', detail: `${owned.length} wrangler config(s) own \`${meta.database}\` (a d1_databases entry with migrations_dir); the replay needs exactly one`, lines };
++  }
++  const { migrationsDir, files } = owned[0];
++  const migrations = files.map((f) => f.file).sort();
++
++  const exported = new Map(); // table -> { rows (row lines), ended (table-end rows) }
++  for (const l of parsed) {
++    if (l.kind === 'schema' && !INTERNAL(l.table)) exported.set(l.table, { rows: 0, ended: null });
++  }
++  for (const l of parsed) {
++    if (l.kind === 'row' && exported.has(l.table)) exported.get(l.table).rows++;
++    if (l.kind === 'table-end' && exported.has(l.table)) exported.get(l.table).ended = l.rows;
++  }
++
++  const dir = mkdtempSync(join(tmpdir(), 'sql-export-replay-'));
++  const DatabaseSync = sqliteCtor();
++  const db = new DatabaseSync(join(dir, 'replay.sqlite'));
++  try {
++    for (const f of migrations) {
++      try {
++        db.exec(readFileSync(join(root, migrationsDir, f), 'utf8'));
++      } catch (e) {
++        return { verdict: 'FAIL', detail: `${migrationsDir}/${f} does not replay on a fresh database (${e.message})`, lines };
++      }
++    }
++    const replayed = new Set(
++      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((r) => r.name).filter((n) => !INTERNAL(n)),
++    );
++    const fails = [];
++    for (const t of [...exported.keys()].sort()) {
++      if (!replayed.has(t)) fails.push(`table \`${t}\` is in the export and no migration in ${migrationsDir} creates it`);
++    }
++    for (const t of [...replayed].sort()) {
++      if (!exported.has(t)) fails.push(`table \`${t}\` is created by the migrations and is missing from the export`);
++    }
++    db.exec('PRAGMA foreign_keys = OFF');
++    const loadFailed = new Set();
++    for (const l of parsed) {
++      if (l.kind !== 'row' || !replayed.has(l.table) || loadFailed.has(l.table)) continue;
++      const names = Object.keys(l.data ?? {});
++      const bad = [l.table, ...names].find((n) => !SAFE_IDENTIFIER.test(n));
++      if (bad) { fails.push(`table \`${l.table}\`: ${JSON.stringify(bad)} is not a plain identifier`); loadFailed.add(l.table); continue; }
++      try {
++        db.prepare(`INSERT OR REPLACE INTO "${l.table}" (${names.map((n) => `"${n}"`).join(', ')}) VALUES (${names.map(() => '?').join(', ')})`)
++          .run(...names.map((n) => decode(l.data[n])));
++      } catch (e) {
++        fails.push(`table \`${l.table}\`: a row does not load into the replayed schema (${e.message})`);
++        loadFailed.add(l.table);
++      }
++    }
++    let rows = 0;
++    for (const t of [...exported.keys()].sort()) {
++      const x = exported.get(t);
++      if (x.ended === null) { fails.push(`table \`${t}\` has no table-end line in the export`); continue; }
++      if (x.ended !== x.rows) { fails.push(`table \`${t}\` ends at ${x.ended} row(s) and the export holds ${x.rows}`); continue; }
++      if (!replayed.has(t) || loadFailed.has(t)) continue;
++      const n = Number(db.prepare(`SELECT COUNT(*) AS n FROM "${t}"`).get().n);
++      rows += n;
++      if (n !== x.ended) fails.push(`table \`${t}\`: the export counts ${x.ended} row(s) and ${n} loaded (a row dumped twice under a re-inserted key loads once; anything else is a lost row)`);
++      else lines.push(`    ${t.padEnd(36)} ${String(n).padStart(8)} row(s)`);
++    }
++    for (const f of fails) lines.push(`    FAIL ${f}`);
++    if (fails.length) return { verdict: 'FAIL', detail: `${meta.database}: ${fails.length} mismatch(es) — first: ${fails[0]}`, lines };
++    return {
++      verdict: 'PASS',
++      detail: `${meta.database}: ${migrations.length} migration(s) of ${migrationsDir} replayed; ${exported.size} table(s) and ${rows} row(s) match the export (read-only; nothing was switched)`,
++      lines,
++    };
++  } finally {
++    db.close();
++    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
++  }
++}
+diff --git a/tooling/ports/README.md b/tooling/ports/README.md
+index 6ac04230..29d756a6 100644
+--- a/tooling/ports/README.md
++++ b/tooling/ports/README.md
+@@ -14,6 +14,10 @@ The first subjects, at their honest levels: `tooling/ports/payments.json` (inbou
+ claiming L2 with target L3; every other vendor is placed in `tooling/ports/_non-port.json`. port-storage added
+ `kv.json` (`KvStore`), `objects.json` (`ObjectStore`) and `ratelimit.json` (`RateLimiter`), each claiming and targeting
+ L2: Cloudflare's KV, R2 and Rate Limiting bindings behind ports, with their conformance suites run against the fakes.
++port-sql added `sql.json` (`SqlDb`), claiming L2 with target L3: the D1 binding behind a D1-shaped port, its second
++engine the `node:sqlite` engine every Worker suite already ran its SQL through (`fakes/sql.ts`), one conformance suite,
++and an export dry run (`port-switch.mjs sql --export`). D1's own conformance is the credentialled live check, so its
++scenarios are listed `pending` and L3 waits on a workerd-backed run of the suite.
+ 
+ ## 1. Levels
+ 
+@@ -47,7 +51,7 @@ wherever the shape can hold it).
+ | `adapters[].identity` | Field **paths** into `tooling/house-identity.json` (the entity source) that the vendor account carries. Never the values. |
+ | `adapters[].environments` | Which of `test`, `sandbox`, `live` it may serve. A fake never lists `live`. |
+ | `adapters[].cost` | `feeCells` — `tooling/catalog/fee-register.json` cell ids applied per sale; `unit` — `{usd, per, asOf, verify}` or null. |
+-| `adapters[].conformance` | `{file}` — the adapter's test that **calls** the suite's runner; null until it exists. |
++| `adapters[].conformance` | `{file, kind?}` — the adapter's test that **calls** the suite's runner; null until it exists. `kind: live` marks a credentialled check against the vendor's real service instead (e.g. `sql.json`'s `d1`): it calls no runner, never counts toward L3, and the scenarios it cannot run are listed in `conformance.pending`. |
+ | `adapters[].exportDuty` | What leaves with us, what must be exported, what cannot move. |
+ | `adapters[].readAt` | `{url, on}` — the vendor page the adapter's facts were read from, and when; null if none was read. |
+ | `adapters[].c8Seam` | Optional, a **declared, printed** divergence: the vendor's C-8 `seam.file` is not this port's interface. Names the C-8 file exactly, with `why` and `until`. |
+@@ -85,7 +89,8 @@ keeps a row only for what is LEFT, naming those surfaces in `remaining` beside `
+ - **A binding that already satisfies its port structurally is not wrapped.** Its adapter is the identity function in
+   `services/_shared/src/ports/adapters/<vendor>.ts` — the compile-time proof that the binding IS the port — and every
+   `Env` declares the binding as the PORT type. Outside a composition root, a `types.ts` and `services/_shared/src/ports/`,
+-  no module names a Cloudflare binding type (`KVNamespace`, `R2Bucket` and its R2 types, `RateLimit`) — limb 9.
++  no module names a Cloudflare binding type (`KVNamespace`, `R2Bucket` and its R2 types, `RateLimit`, `D1Database` and
++  its D1 types) — limb 9.
+ - **Request geography is `requestGeo(req)`** (`services/_shared/src/geo.ts`), the one reader of `request.cf` — limb 10.
+   It is used only where it was used (the edge-ceiling key, the events row, the request log): never to choose a payment
+   rail, and never `country` for money.
+@@ -177,3 +182,9 @@ of the real tree, and each is COVERAGE LOST when its pattern no longer matches i
+ `node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>]` —
+ one line per check, `PASS | FAIL | LOST C<n> <name>: <detail>`; exit 1 on any FAIL, 2 on any LOST, 0 only when all
+ pass. Without `--dry-run` it refuses. Tests: `tooling/ci/test/port-switch.test.mjs`.
++
++For `sql` it takes `--export <file>`: ONE nightly D1 export (gzipped JSON lines, `services/platform/src/backup/`), given
++locally and never fetched. Check C9 replays the migrations of the database it names into a `node:sqlite` file and
++compares the table list and the row counts (`tooling/ops/sql-export-replay.mjs`); each mismatch is a FAIL, and no
++`--export` is LOST. E.g. `node tooling/ops/port-switch.mjs sql --to sqlite --dry-run --env sandbox --export
++platform_db.jsonl.gz`.
+diff --git a/tooling/ports/_non-port.json b/tooling/ports/_non-port.json
+index 8ffacbdd..216dbe28 100644
+--- a/tooling/ports/_non-port.json
++++ b/tooling/ports/_non-port.json
+@@ -5,7 +5,7 @@
+     "`until` names the train that will port it; `nonPort: true` marks one deliberately never ported (a platform authority, a store, a retired rail). A row carries exactly one of the two."
+   ],
+   "rows": [
+-    { "vendor": "cloudflare", "registers": ["capability-register", "provider-register"], "reason": "KV, R2 and the rate limiters are ported (tooling/ports/kv.json, objects.json, ratelimit.json; port-storage). What is left: the D1 binding, behind the shared D1 helpers and not yet a SQL port; the Workers runtime and Pages, the execution and hosting substrate (README section 7, deliberately not ported); and the nikatru.com zone.", "until": "port-sql", "remaining": ["D1 (PLATFORM_DB, SUBSCRIPTIONTRACKER_DB, APP_DB)", "Workers", "Pages", "the nikatru.com zone"] },
++    { "vendor": "cloudflare", "registers": ["capability-register", "provider-register"], "reason": "KV, R2, the rate limiters and D1 are ported (tooling/ports/kv.json, objects.json, ratelimit.json; port-storage — and sql.json; port-sql). What is left is the substrate README section 7 keeps: the Workers runtime and Pages, the execution and hosting substrate, and the nikatru.com zone. Kept on a train only because the vendor's one C-8 seam (ConfigTransport) is still to be re-seated across its four ports.", "until": "port-c8-cloudflare", "remaining": ["Workers", "Pages", "the nikatru.com zone"] },
+     { "vendor": "cloudflare-turnstile", "registers": ["capability-register"], "reason": "The captcha is the platform's abuse authority for sign-up; a gate, not a replaceable service.", "nonPort": true },
+     { "vendor": "resend", "registers": ["capability-register", "provider-register"], "reason": "Every Resend fact lives in sendResendMail; the mail port and its suppression-list export arrive with port-mail.", "until": "port-mail" },
+     { "vendor": "github", "registers": ["capability-register"], "reason": "The workflow-dispatch call from the Worker cron (dispatchGithubWorkflows); the code host is ported by port-codehost.", "until": "port-codehost" },
+diff --git a/tooling/ports/port.schema.json b/tooling/ports/port.schema.json
+index 6ed62fe5..62c4f891 100644
+--- a/tooling/ports/port.schema.json
++++ b/tooling/ports/port.schema.json
+@@ -161,7 +161,10 @@
+           "type": ["object", "null"],
+           "additionalProperties": false,
+           "required": ["file"],
+-          "properties": { "file": { "$ref": "#/$defs/path" } }
++          "properties": {
++            "file": { "$ref": "#/$defs/path" },
++            "kind": { "enum": ["suite", "live"], "description": "`suite` (the default when absent): a test that CALLS the port's runner. `live`: a credentialled check against the vendor's real service, run outside CI; it calls no runner, so it never counts toward L3, and the scenarios it cannot run are listed in conformance.pending." }
++          }
+         },
+         "exportDuty": { "type": "string", "minLength": 20 },
+         "readAt": {
+diff --git a/tooling/ports/sql.json b/tooling/ports/sql.json
+new file mode 100644
+index 00000000..acf9ea06
+--- /dev/null
++++ b/tooling/ports/sql.json
+@@ -0,0 +1,170 @@
++{
++  "$schema": "./port.schema.json",
++  "port": "sql",
++  "level": {
++    "claimed": 2,
++    "target": 3
++  },
++  "interface": {
++    "ts": {
++      "file": "services/_shared/src/ports/sql.ts",
++      "symbols": [
++        "SqlDb",
++        "SqlStatement",
++        "SqlResult"
++      ]
++    }
++  },
++  "adapters": [
++    {
++      "id": "d1",
++      "vendor": "cloudflare",
++      "status": "live",
++      "impl": {
++        "file": "services/_shared/src/ports/adapters/cloudflare.ts",
++        "symbol": "cloudflareD1"
++      },
++      "capabilities": [
++        "prepare",
++        "bind",
++        "first",
++        "all",
++        "run",
++        "batch"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "sandbox",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": {
++        "file": "tooling/ops/check-d1-accepts-live-sql.mjs",
++        "kind": "live"
++      },
++      "exportDuty": "Leaves with us: every row of every table. The nightly export (services/platform/src/backup/) writes each D1 database to R2 as gzipped JSON lines — its schema, every row in rowid order, its indexes — and the schema is the plain-SQL migrations in services/platform/migrations and services/subscriptiontracker-api/migrations, so a target REPLAYS the migrations and LOADS the export; `node tooling/ops/port-switch.mjs sql --to sqlite --dry-run --env sandbox --export <file>` rehearses exactly that, read-only. Cannot move: D1-specific limits only, which a new host must match or exceed — tooling/ceilings.json d1.queriesPerInvocation, d1.maxBoundParametersPerQuery, d1.maxDatabaseSize, d1.storagePerAccount, d1.databasesPerAccount and d1.rowsWrittenPerDay — and D1's authorizer, whose refusals tooling/ops/check-d1-accepts-live-sql.mjs measures.",
++      "readAt": null,
++      "c8Seam": {
++        "file": "packages/core/lib/src/config/config_loader.dart",
++        "why": "tooling/capability-register.json records Cloudflare's C-8 seam as the client's ConfigTransport — the client's seam onto the Worker host, the substrate README section 7 keeps. D1 was the last Cloudflare surface the kv, objects and ratelimit registries waited on (their c8Seam until: port-sql); with four Cloudflare ports and one C-8 seam per vendor, re-seating it is a cross-register decision this train records and does not take.",
++        "until": "port-c8-cloudflare"
++      }
++    },
++    {
++      "id": "sqlite",
++      "vendor": null,
++      "status": "fake",
++      "impl": {
++        "file": "services/_shared/src/ports/fakes/sql.ts",
++        "symbol": "sqliteDb"
++      },
++      "capabilities": [
++        "prepare",
++        "bind",
++        "first",
++        "all",
++        "run",
++        "batch"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "test",
++        "sandbox"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": {
++        "file": "services/_shared/test/ports-sql.test.ts"
++      },
++      "exportDuty": "An engine, not a store of record: node:sqlite in memory for one test, or one local file for the export dry run. Nothing of ours lives in it, so nothing to export; it is the TARGET the dry run loads an export into.",
++      "readAt": null
++    }
++  ],
++  "selection": {
++    "by": "environment",
++    "source": null,
++    "default": {
++      "live": "d1",
++      "sandbox": "d1",
++      "test": "sqlite"
++    },
++    "canary": null
++  },
++  "generated": false,
++  "handTables": [],
++  "conformance": {
++    "suite": {
++      "file": "services/_shared/test/conformance/sql.ts",
++      "runner": "runSqlConformance"
++    },
++    "pending": [
++      {
++        "adapter": "d1",
++        "case": "prepare-bind-first — first() of a bound read, and null for no row. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
++        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
++      },
++      {
++        "adapter": "d1",
++        "case": "all-returns-rows — all() answers every matching row in the order asked, [] for none. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
++        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
++      },
++      {
++        "adapter": "d1",
++        "case": "run-reports-changes — run() meta.changes counts the rows a write touched. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
++        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
++      },
++      {
++        "adapter": "d1",
++        "case": "bind-returns-a-new-statement — one statement bound twice in one batch writes two rows. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
++        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
++      },
++      {
++        "adapter": "d1",
++        "case": "batch-answers-in-order — one result per batched statement, a read answering its rows. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
++        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
++      },
++      {
++        "adapter": "d1",
++        "case": "undefined-bind-is-refused — an undefined bind is refused as D1_TYPE_ERROR and writes nothing. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
++        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
++      },
++      {
++        "adapter": "d1",
++        "case": "unique-violation-is-classified — D1's own UNIQUE failure reads as isUniqueViolation and never as transient. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
++        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
++      },
++      {
++        "adapter": "d1",
++        "case": "transient-error-is-retried — a reset worded as workerd words it is retried once by withD1Retry. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
++        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
++      },
++      {
++        "adapter": "d1",
++        "case": "deterministic-error-is-not-retried — D1's own deterministic failure is sent once. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
++        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
++      },
++      {
++        "adapter": "d1",
++        "case": "batch-is-atomic — one failing statement rolls the whole batch back. Not run against D1: no Worker suite runs on workerd, and D1's conformance file is the live check, which runs no scenario",
++        "row": "O-CLOUDFLARE-BINDINGS-SCATTERED"
++      }
++    ]
++  },
++  "switch": {
++    "runbook": "Private/runbooks/switch-vendor.md#sql",
++    "dryRun": "node tooling/ops/port-switch.mjs sql --to <adapter> --dry-run"
++  },
++  "_why": [
++    "PLATFORM_DB, SUBSCRIPTIONTRACKER_DB and APP_DB are declared as SqlDb in every Worker's `interface Env` (and the brick's), and every handler, route, lib and middleware — the shared helpers in services/_shared/src/d1.ts, erasure.ts and entitlement-read.ts included — takes a SqlDb or a SqlStatement. The binding satisfies the port STRUCTURALLY; cloudflareD1 is the identity, kept as the compile-time proof (tsc reds the day the binding and the port drift). assert-ports limb 9 refuses a D1Database, D1PreparedStatement or D1Result type anywhere else under services/*/src.",
++    "The surface is what the code calls, derived from every `.prepare(` site: prepare, bind, first(), all, run, batch. No raw, exec, dump or withSession — nothing calls them.",
++    "L2 claimed, L3 target. The selection is by environment (wrangler binds D1 in live and sandbox; the sqlite engine serves tests), no caller imports an adapter, and one non-fake adapter is live. The conformance suite runs against the sqlite engine — the node:sqlite engine every Worker suite already ran its SQL through, promoted from services/platform/test/harness.ts — in every Worker's npm test. Against D1 every scenario is PENDING: no Worker suite runs on workerd, and D1's conformance file is the credentialled live check (kind `live`), which proves D1 ACCEPTS the statements this repository sends and runs none of the scenarios. L3 needs a second adapter with zero pending: a workerd-backed run (Miniflare or the vitest pool) of the same suite would earn it.",
++    "Export duty: the nightly R2 export plus the migrations. A Postgres exit is a dialect question (the switch runbook), not a code change behind this port."
++  ]
++}
