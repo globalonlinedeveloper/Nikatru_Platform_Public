@@ -366,7 +366,7 @@
           "web": {
             "suite": "web",
             "anchors": [
-              "debugPrint('NK_E2E step=sign-in via=form')"
+              "e2eLine(binding, 'NK_E2E step=sign-in via=form')"
             ]
           }
         },
@@ -1091,7 +1091,7 @@
           "skip": {
             "suite": "web",
             "anchors": [
-              "debugPrint(kWebFlowsPendingLine)",
+              "e2eLine(binding, kWebFlowsPendingLine)",
               "if (pendingFlows != 'run') {"
             ]
           }

@@ -28,6 +28,7 @@ import 'package:dio/dio.dart' show Dio, Options, Response;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
@@ -64,6 +65,24 @@ const String kCoreFlowPendingLine =
 /// changed-flow walk is skipped and SAID, never silently absent.
 const String kWebFlowsPendingLine =
     'NK_E2E step=flows outcome=pending row=O-E2E-CORE-FLOW-LEGS-PENDING';
+
+/// Prints [line] AND records it in `reportData` under `e2e_lines`, which
+/// test_driver/integration_test.dart prints HOST-SIDE into the tee'd drive log.
+///
+/// 🔬 E2E 36994942854 (c30850ff): the web walk passed and the run went red at
+/// `sign_in_via.mjs --grade` — "the drive printed no sign-in line at all". On
+/// web a `debugPrint` lands in the BROWSER console, which nothing copies to the
+/// drive log (consent.dart `publishConsent` measured the same for the consent
+/// id), so every `NK_E2E` line the graders read must travel this way.
+void e2eLine(IntegrationTestWidgetsFlutterBinding binding, String line) {
+  debugPrint(line);
+  binding.reportData ??= <String, dynamic>{};
+  final Object? prior = binding.reportData!['e2e_lines'];
+  binding.reportData!['e2e_lines'] = <String>[
+    if (prior is List) ...prior.whereType<String>(),
+    line,
+  ];
+}
 
 /// The notification-tap leg's lines: the host taps the notification titled
 /// [kTapProofTitle] once the suite prints [kAwaitNotificationMarker].

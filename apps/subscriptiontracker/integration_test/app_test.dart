@@ -1466,9 +1466,9 @@ void main() {
       await tester.tap(find.byKey(E2EKeys.loginSubmit));
       // GoTrue sign-in; the router then lands the session on Home.
       await pumpFor(tester, const Duration(seconds: 10));
-      debugPrint('NK_E2E step=sign-in via=form');
+      e2eLine(binding, 'NK_E2E step=sign-in via=form');
     } else {
-      debugPrint('NK_E2E step=sign-in via=harness-token');
+      e2eLine(binding, 'NK_E2E step=sign-in via=harness-token');
     }
 
     // Every screen past this point reads or writes through the deployed
@@ -2032,7 +2032,7 @@ void main() {
     // hit-testable). Skipped and SAID, so main's nightly cannot go red on a
     // leg not yet proven; tooling/e2e-leg-register.json grades each pending.
     if (pendingFlows != 'run') {
-      debugPrint(kWebFlowsPendingLine);
+      e2eLine(binding, kWebFlowsPendingLine);
     } else {
       // EDIT a price, read it back — on B, which survives to verify_row.
       await openRowOnHome(tester, pumpFor, subNameB);
@@ -2133,7 +2133,8 @@ void main() {
         scrollable: scrollableWithin(find.byType(SettingsScreen)).first,
       );
       await pumpFor(tester, const Duration(seconds: 4));
-      debugPrint(
+      e2eLine(
+        binding,
         'NK_E2E step=export rows=${exported.length} name=$subNameB '
         'price=8.88',
       );

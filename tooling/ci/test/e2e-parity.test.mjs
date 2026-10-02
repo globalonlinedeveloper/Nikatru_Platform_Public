@@ -245,6 +245,19 @@ describe('the native driver reads the device leg back', () => {
     const out = `${form}\n${CORE_FLOW_PENDING_LINE}`;
     assert.match(readProof(out, { callback: false, coreFlow: true }).join('\n'), /skipped the flows this run asked it to walk/);
   });
+  // 🔬 E2E 36994942854: the web walk passed and sign_in_via --grade found no
+  // sign-in line — a browser `debugPrint` never reaches the drive log. Every
+  // NK_E2E line the web suite emits goes through e2eLine (reportData → the
+  // host driver's stdout), and the driver prints `e2e_lines`.
+  test('🔴 the web suite emits no NK_E2E line through debugPrint alone', () => {
+    const scan = (src) => [...src.matchAll(/debugPrint\(\s*'NK_E2E[^']*'/g)].length;
+    const suite = readFileSync(join(REPO, IT, 'app_test.dart'), 'utf8');
+    assert.equal(scan(suite), 0);
+    assert.ok(/e2eLine\(binding, 'NK_E2E step=sign-in via=form'\)/.test(suite));
+    assert.equal(scan("debugPrint('NK_E2E step=sign-in via=form');"), 1, 'the scan must catch the shape that went red');
+    const driver = readFileSync(join(REPO, 'apps/subscriptiontracker/test_driver/integration_test.dart'), 'utf8');
+    assert.match(driver, /data\?\['e2e_lines'\]/);
+  });
   test('the driver and the Dart steps print the SAME pending line', () => {
     const dart = readFileSync(join(REPO, IT, 'flow_steps.dart'), 'utf8');
     const m = /const String kCoreFlowPendingLine =\s*'([^']+)';/.exec(dart);
