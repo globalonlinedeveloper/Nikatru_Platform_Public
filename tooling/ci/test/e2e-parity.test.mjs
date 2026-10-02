@@ -103,6 +103,40 @@ describe('limb FLOWS — every flow, a leg or an equivalent on every target', ()
     rmSync(root, { recursive: true, force: true });
     assert.equal(r.status, 2);
   });
+  // ⏱ 2026-10-02 · lead ruling on #1143: a flow with no leg waits in
+  // `flows.pending`, owned by a row and printed every run.
+  test('green control: the pending sign-up flow is printed with its row', () => {
+    const root = realTree();
+    const r = run(root);
+    rmSync(root, { recursive: true, force: true });
+    assert.equal(r.status, 0, r.stderr);
+    // The row id is read from the register, not written here: a test file is no
+    // place to cite a row.
+    const pending = JSON.parse(readFileSync(join(REPO, REGISTER), 'utf8')).flows.pending;
+    const row = pending.find((p) => p.id === 'sign-up-check-inbox').row.split(' ')[0];
+    assert.match(row, /^O-[A-Z0-9-]+$/);
+    assert.ok(r.stdout.includes(`flow "sign-up-check-inbox" has NO leg on any target yet — pending under ${row}`), r.stdout);
+  });
+  test('🔴 a pending flow with no row exits 1', () => {
+    const root = realTree();
+    editRegister(root, (r) => {
+      r.flows.pending[0].row = 'the lead will decide';
+    });
+    const r = run(root);
+    rmSync(root, { recursive: true, force: true });
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /pending flow "sign-up-check-inbox" names no register row/);
+  });
+  test('🔴 a flow both walked and pending exits 1', () => {
+    const root = realTree();
+    editRegister(root, (r) => {
+      r.flows.pending.push({ id: 'edit-price', row: r.flows.pending[0].row, why: ['dup'] });
+    });
+    const r = run(root);
+    rmSync(root, { recursive: true, force: true });
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /flows\.pending carries a flow with no id, or one already in flows\.list or pending \("edit-price"\)/);
+  });
 });
 
 describe('the native driver reads the device leg back', () => {

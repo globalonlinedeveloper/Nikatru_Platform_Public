@@ -713,6 +713,24 @@ for (const flow of flowList) {
     );
   }
 }
+// ⏱ 2026-10-02 · lead ruling on #1143: a user flow with NO leg yet is declared in
+// `flows.pending`, never left out — each names the register row that owns it
+// and why it waits, and is PRINTED every run. A pending flow that is also in
+// `list` is a finding (it is either walked or it waits), and so is one with no
+// row: a wait nobody owns is a silent skip with paperwork.
+const flowPending = Array.isArray(reg.flows?.pending) ? reg.flows.pending : [];
+for (const p of flowPending) {
+  const id = p?.id;
+  if (typeof id !== 'string' || id === '' || seenFlows.has(id)) {
+    problems.push(`flows.pending carries a flow with no id, or one already in flows.list or pending (${JSON.stringify(id ?? null)}).`);
+    continue;
+  }
+  seenFlows.add(id);
+  const row = /^O-[A-Z0-9]+(?:-[A-Z0-9]+)+/.exec(typeof p.row === 'string' ? p.row : '')?.[0];
+  if (!row) problems.push(`pending flow "${id}" names no register row (\`row\`: an O- id) — a wait nobody owns is a silent skip.`);
+  else if (!Array.isArray(p.why) || p.why.join('').trim() === '') problems.push(`pending flow "${id}" has no written \`why\`.`);
+  else notes.push(`⬜ flow "${id}" has NO leg on any target yet — pending under ${row}: ${p.asks ?? ''}`.trimEnd());
+}
 
 // THE EQUALITY, STATED. It follows from the per-leg checks above, and it is
 // computed and printed anyway: the two numbers are what N-6 actually asks for,
@@ -757,5 +775,5 @@ console.log(
     `every app of the workspace set carries integration_test/app_test.dart (apps=${APP_SET.length}); ` +
     `${definesRead.size} E2E_ define(s) the suites read, every one passed by ${wfRel}; ` +
     `${nativeTargets.length} native catalog target(s), each leg run or declared equivalent; ` +
-    `${flowList.length} user flow(s) × ${flowTargets.length} target(s): ${flowLegs} leg(s) anchored, ${flowEquivalents} declared equivalent(s)`,
+    `${flowList.length} user flow(s) × ${flowTargets.length} target(s): ${flowLegs} leg(s) anchored, ${flowEquivalents} declared equivalent(s); ${flowPending.length} pending with a row`,
 );

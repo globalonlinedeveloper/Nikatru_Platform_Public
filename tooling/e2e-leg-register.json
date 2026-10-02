@@ -393,7 +393,8 @@
               "A desktop's e-mail sign-in is the system-browser hand-off (#1133 part A: the client and the Worker's mint/exchange), and",
               "no app screen opens it until that work's PR B lands; the in-app form on a desktop goes to the native route, which",
               "production refuses without an attestation kind it lists (install-key is not listed). The leg runs the refusal probe and",
-              "opens the app on the harness token (--sign-in token); the form itself is the web leg's. Re-grade when PR B lands."
+              "opens the app on the harness token (--sign-in token); the form itself is the web leg's. Accepted as declared by the",
+              "lead ruling on #1143 (2026-10-02) until #1133's PR B lands; re-grade then."
             ]
           },
           "windows": {
@@ -402,7 +403,8 @@
               "A desktop's e-mail sign-in is the system-browser hand-off (#1133 part A: the client and the Worker's mint/exchange), and",
               "no app screen opens it until that work's PR B lands; the in-app form on a desktop goes to the native route, which",
               "production refuses without an attestation kind it lists (install-key is not listed). The leg runs the refusal probe and",
-              "opens the app on the harness token (--sign-in token); the form itself is the web leg's. Re-grade when PR B lands."
+              "opens the app on the harness token (--sign-in token); the form itself is the web leg's. Accepted as declared by the",
+              "lead ruling on #1143 (2026-10-02) until #1133's PR B lands; re-grade then."
             ]
           },
           "linux": {
@@ -411,7 +413,8 @@
               "A desktop's e-mail sign-in is the system-browser hand-off (#1133 part A: the client and the Worker's mint/exchange), and",
               "no app screen opens it until that work's PR B lands; the in-app form on a desktop goes to the native route, which",
               "production refuses without an attestation kind it lists (install-key is not listed). The leg runs the refusal probe and",
-              "opens the app on the harness token (--sign-in token); the form itself is the web leg's. Re-grade when PR B lands."
+              "opens the app on the harness token (--sign-in token); the form itself is the web leg's. Accepted as declared by the",
+              "lead ruling on #1143 (2026-10-02) until #1133's PR B lands; re-grade then."
             ]
           }
         }
@@ -959,6 +962,18 @@
             ]
           }
         }
+      }
+    ],
+    "pending": [
+      {
+        "id": "sign-up-check-inbox",
+        "asks": "a person signs up on web and reaches /check-inbox; the admin API confirms the address and the person then signs in",
+        "row": "O-E2E-SIGNUP-CHECK-INBOX-HAS-NO-LEG (absent from open.json on 2026-10-02: a NEW row the lead registers)",
+        "why": [
+          "⏱ 2026-10-02 · lead ruling on #1143: OUT of train st-e2e-parity. No suite walks sign-up -> /check-inbox -> admin",
+          "confirm -> sign-in on any target yet; the lead moves the leg into the queued lane e2e-settings-account. Declared",
+          "here, not left out, so assert-e2e-legs prints it every run until a leg replaces this entry."
+        ]
       }
     ]
   }
