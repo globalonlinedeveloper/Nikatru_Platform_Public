@@ -623,6 +623,9 @@ const WIRE_CONTRACTS = [
     reason:
       'NO CLIENT YET, AND IT IS A STATE RATHER THAN A CONSTRUCTION: the sessions list ships in the web PR after this Worker deploys. There is no released client of ours to break. The answer is `{sessions:[{id, current, createdAt, lastActiveAt, device}]}`, pinned by services/platform/test/sessions.test.ts until a client reads it.',
     absentFromDart: '/v1/sessions',
+    // ⏱ 2026-10-02 · scoped to a GET, because revoke-all's client (below)
+    // builds `/v1/sessions/revoke-all`, which contains this path.
+    absentCall: 'get',
   },
   {
     id: 'sessions-revoke',
@@ -630,13 +633,31 @@ const WIRE_CONTRACTS = [
     reason:
       'NO CLIENT YET: requestSessionRevocation ships in the web PR after this Worker deploys. Success is a 204 with no body; each refusal is a status with `{error}` (404 not_found, 409 current_session, 429 rate_limited, 503 sessions_unavailable), so what that PR pins is the status set.',
     absentFromDart: '/v1/sessions/',
+    // ⏱ 2026-10-02 · scoped to a DELETE, for the reason sessions-list is.
+    absentCall: 'delete',
   },
   {
+    // ⏱ 2026-10-02 · AB-A4-01 — the client arrived: "Log out of all devices" and
+    // a password reset call it (packages/api_client requestWorkerSessionRevocation,
+    // wired as SupabaseAuthRepository(revokeAtWorkers:)). No request body; success
+    // is a 204 with no body; a refusal is a status the client throws on. The ONE
+    // key it reads is `d1Pending` (EXA-11: 200 {d1Pending: true} means every token
+    // IS refused but the extension link floor was not written, and the client
+    // must retry) — so that key is the pin.
     id: 'sessions-revoke-all',
-    kind: 'gap',
-    reason:
-      'NO CLIENT YET: sign-out-everywhere ships in the web PR after this Worker deploys. No request body; success is a 204 with no body, and a refusal is a status with `{error}` (429 rate_limited, 503 revocation_unavailable). ⏱ 2026-09-30 · EXA-11: ONE MORE ANSWER, AND IT IS A RETRY — 200 {d1Pending: true} means every token IS refused but the browser-extension link floor could not be written; the client MUST treat it as \"retry\", never as done.',
-    absentFromDart: '/v1/sessions/revoke-all',
+    kind: 'body',
+    server: 'services/platform/src/routes/sessions.ts',
+    client: {
+      file: 'packages/api_client/lib/src/session_revocation_request.dart',
+      member: 'Future<void> requestWorkerSessionRevocation(',
+      reader: 'body',
+    },
+    /** Not every answer carries it (a 204 has no body), so nothing is required of both. */
+    requiredBoth: [],
+    clientOnly: {},
+    serverOnly: {
+      sessions: 'GET /v1/sessions in the same file answers the list; no client reads it yet (the sessions-list gap).',
+    },
   },
   {
     id: 'sessions-revoke-others',
@@ -1613,6 +1634,10 @@ function dartMemberBody(src, marker) {
   if (!params) return null;
   let i = params.end + 1;
   while (i < src.length && /\s/.test(src[i])) i++;
+  // ⏱ 2026-10-02 — an `async` (or `async*` / `sync*`) member: the body follows
+  // the modifier. Without this an async client function read as "no member".
+  const modifier = /^(?:async\*?|sync\*)\s*/.exec(src.slice(i, i + 8));
+  if (modifier) i += modifier[0].length;
   if (src[i] === '{') {
     const body = balanced(src, i);
     return body ? body.body : null;
@@ -1640,8 +1665,12 @@ function dartMemberBody(src, marker) {
 /** The map keys a Dart member SUBSCRIPTS — `j['app_id']`. This is what a
  *  released client actually depends on: a field it never reads cannot break it,
  *  and a field it reads that stops arriving breaks it silently, in the field. */
+// ⏱ 2026-10-02 · AB-A4-01 — camelCase keys too. The revoke-all client reads
+// `body['d1Pending']`, the key the platform Worker answers; a lower-snake-only
+// reader saw no subscript at all and refused the pin as "reads nothing". A wider
+// reader only adds keys to compare, so no pin can go greener by it.
 const dartSubscripts = (body, reader) => [
-  ...new Set([...body.matchAll(new RegExp(`\\b${reader}\\s*\\[\\s*'([a-z_][a-z0-9_]*)'\\s*\\]`, 'g'))].map((m) => m[1])),
+  ...new Set([...body.matchAll(new RegExp(`\\b${reader}\\s*\\[\\s*'([A-Za-z_][A-Za-z0-9_]*)'\\s*\\]`, 'g'))].map((m) => m[1])),
 ];
 
 /** Every .dart file under the declared roots. */

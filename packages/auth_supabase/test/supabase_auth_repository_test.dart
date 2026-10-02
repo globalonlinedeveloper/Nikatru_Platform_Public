@@ -1302,6 +1302,98 @@ void main() {
       expect(g.resendCaptchaTokens, <String?>[null]);
     });
   });
+
+  // ⏱ 2026-10-02 · AB-A4-01 — GoTrue's global sign-out and a new password end
+  // REFRESH tokens only; the access token another device holds kept working at
+  // both Workers for up to an hour, because nothing called the Workers'
+  // POST /v1/sessions/revoke-all. The adapter now does, through
+  // `revokeAtWorkers`, and these pin the order and the failure.
+  group('AB-A4-01 · the Workers are told before GoTrue, and a failure is said', () {
+    final DateTime now = DateTime.utc(2026, 8, 1, 12);
+    sb.Session live() =>
+        _session('live', expiry: now.add(const Duration(hours: 1)));
+
+    test('🔴 log out of all devices: revoke-all is sent BEFORE the GoTrue global sign-out', () async {
+      final List<String> order = <String>[];
+      final _FakeGoTrue g = _FakeGoTrue(session: live(), onSignOut: () => order.add('gotrue'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        revokeAtWorkers: () async => order.add('workers'),
+      );
+
+      await auth.signOut(scope: core.SignOutScope.global);
+
+      expect(order, <String>['workers', 'gotrue'],
+          reason: 'after GoTrue signs this device out there is no token left to tell the Workers with');
+      expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.global]);
+    });
+
+    test('🔴 the Workers cannot be told: an AuthFailure, and NOTHING is signed out', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: live());
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        revokeAtWorkers: () async => throw StateError('503 revocation_unavailable'),
+      );
+
+      await expectLater(
+        auth.signOut(scope: core.SignOutScope.global),
+        throwsA(isA<core.AuthFailure>().having(
+          (core.AuthFailure e) => e.message,
+          'message',
+          contains('still signed in on every device'),
+        )),
+      );
+      expect(g.signOutScopes, isEmpty, reason: 'a swallowed failure would report a sign-out the Workers never saw');
+      expect(auth.currentUser, isNotNull);
+    });
+
+    test('the ordinary Log out never calls the Workers', () async {
+      int calls = 0;
+      final _FakeGoTrue g = _FakeGoTrue(session: live());
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        clock: () => now,
+        revokeAtWorkers: () async => calls++,
+      );
+
+      await auth.signOut();
+
+      expect(calls, 0);
+      expect(g.signOutScopes, <sb.SignOutScope>[sb.SignOutScope.local]);
+    });
+
+    test('🔴 a new password: revoke-all after the password is set, then THIS session is refreshed', () async {
+      final List<String> order = <String>[];
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        revokeAtWorkers: () async => order.add('workers:${g.passwordsSet.length}:${g.refreshCalls}'),
+      );
+
+      await auth.updatePassword(newPassword: 'correct-horse-battery');
+
+      expect(order, <String>['workers:1:0'], reason: 'told after the password is set and before the refresh');
+      expect(g.refreshCalls, 1, reason: 'revoke-all refuses this device\'s token too; the refreshed one passes');
+    });
+
+    test('🔴 a new password and the Workers cannot be told: the refusal SAYS the password is set', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(
+        client: g,
+        revokeAtWorkers: () async => throw StateError('offline'),
+      );
+
+      await expectLater(
+        auth.updatePassword(newPassword: 'correct-horse-battery'),
+        throwsA(isA<core.AuthFailure>()
+            .having((core.AuthFailure e) => e.code, 'code', SupabaseAuthRepository.sessionsNotRevokedCode)
+            .having((core.AuthFailure e) => e.message, 'message', contains('new password is set'))),
+      );
+      expect(g.passwordsSet, <String>['correct-horse-battery']);
+    });
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1318,6 +1410,7 @@ class _FakeGoTrue extends sb.GoTrueClient {
     this.refreshFailure,
     this.hold,
     this.updateUserError,
+    this.onSignOut,
     this.signOutFailure = false,
     this.signUpError,
     this.signInError,
@@ -1353,6 +1446,9 @@ class _FakeGoTrue extends sb.GoTrueClient {
   /// What `updateUser` throws instead of succeeding — the SERVER's refusal
   /// (a weak password, a reused one), which the seam has to remap.
   final sb.AuthException? updateUserError;
+
+  /// Called first in [signOut], so a test can see what ran before it.
+  final void Function()? onSignOut;
 
   int refreshCalls = 0;
   int signOutCalls = 0;
@@ -1491,6 +1587,7 @@ class _FakeGoTrue extends sb.GoTrueClient {
 
   @override
   Future<void> signOut({sb.SignOutScope scope = sb.SignOutScope.local}) async {
+    onSignOut?.call();
     signOutCalls++;
     signOutScopes.add(scope);
     session = null;

@@ -282,6 +282,10 @@ const LIMB5_FILES = [
   'packages/core/test/money/fx_rates_test.dart',
   'packages/api_client/lib/src/dio_fx_transport.dart',
   'packages/core/lib/src/money/fx_rates.dart',
+  // ⏱ 2026-10-02 · AB-A4-01: the revoke-all body pin — the route that answers
+  // `d1Pending`, and the one client that reads it.
+  'services/platform/src/routes/sessions.ts',
+  'packages/api_client/lib/src/session_revocation_request.dart',
 ];
 
 const realFiles = () =>
@@ -722,7 +726,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
   // The numbers are PINNED rather than derived on purpose — a derived count
   // agrees with any register, including one that quietly stopped enumerating —
   // so they move in the same change as the routes that moved them.
-  test('PASSES on the real tree: 39 routes, 21 pinned, 18 printed gaps', () => {
+  test('PASSES on the real tree: 39 routes, 22 pinned, 17 printed gaps', () => {
     const r = run(makeRepo());
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /wire health — deploy-smoke fields/);
@@ -763,7 +767,9 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-09-30 (ADR no.NNN): 35 -> 37 routes, 17 -> 19 pinned — the two attestation endpoints arrive as `sdk` pins with their client.
     // ⏱ 2026-10-01: 37 -> 39 routes, 19 -> 20 pinned, 18 -> 19 gaps — the desktop hand-off: the exchange an sdk pin, the mint (plain JS caller) a gap.
     // ⏱ 2026-10-01 · club apply-st on main: + fx-latest's vector pin — 20 -> 21 pinned, 19 -> 18 gaps.
-    assert.match(r.out, /39 shared route\(s\) from tooling\/platform-register\.json: 21 pinned, 18 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
+    // ⏱ 2026-10-02 (AB-A4-01): 20 -> 21 pinned, 19 -> 18 gaps — POST /v1/sessions/revoke-all is a body pin now that log-out-all calls it.
+    // ⏱ 2026-10-02 · both on one tree: 20 -> 22 pinned, 19 -> 17 gaps.
+    assert.match(r.out, /39 shared route\(s\) from tooling\/platform-register\.json: 22 pinned, 17 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
     // ⏱ 2026-09-28 (ST-N1): 29 -> 33 routes, 19 -> 23 gaps with the four /v1/auth/native routes, gaps until ST-T7b ships their client.
     // ⏱ 2026-09-28 (ST-T7b): 10 -> 14 pinned, 23 -> 19 gaps — the client shipped,
     // so the four gaps became `sdk` pins (gotrue-dart's own wire, pinned at its base).
@@ -1233,7 +1239,9 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-09-30 (ADR no.NNN): 16 -> 18 pinned, the two attestation endpoints.
     // ⏱ 2026-10-01: 18 -> 19 pinned, 18 -> 19 gaps — the hand-off exchange (sdk pin) and its mint (gap).
     // ⏱ 2026-10-01 · club apply-st on main: + fx-latest's vector pin — 19 -> 20 pinned, 19 -> 18 gaps.
-    assert.match(r.out, /20 pinned, 18 printed gap/); // ⏱ 2026-09-28 (ST-T7b): 9 -> 13 pinned, 23 -> 19 gaps, the four native credential routes became sdk pins. ⏱ 2026-09-28: 11 -> 18 gaps, the seven ST-T4a reminder routes. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
+    // ⏱ 2026-10-02 (AB-A4-01): 19 -> 20 pinned, 19 -> 18 gaps — revoke-all became a body pin.
+    // ⏱ 2026-10-02 · both on one tree: 19 -> 21 pinned, 19 -> 17 gaps.
+    assert.match(r.out, /21 pinned, 17 printed gap/); // ⏱ 2026-09-28 (ST-T7b): 9 -> 13 pinned, 23 -> 19 gaps, the four native credential routes became sdk pins. ⏱ 2026-09-28: 11 -> 18 gaps, the seven ST-T4a reminder routes. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
   });
 
   test('FAILS when the brick drops a key the server still requires', () => {
