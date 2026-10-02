@@ -59,8 +59,10 @@
 //               earned · target prints on every run.
 //   7 fakes     a `fake` never lists `live`, and selection.default.live is never one.
 //   8 cross     every capability-register vendor key (minus `_`-keys) and every
-//               provider-register provider id is EXACTLY ONE adapter's `vendor`
-//               or one tooling/ports/_non-port.json row; and a ported vendor's
+//               provider-register provider id is the `vendor` of adapters of
+//               EXACTLY ONE port, or one tooling/ports/_non-port.json row (two
+//               adapters of one port may share a vendor — boxes.json's two
+//               Hostinger boxes are one placement, printed together); and a ported vendor's
 //               C-8 seam.file equals its port's interface file, unless the
 //               adapter declares that exact file as a `c8Seam` divergence
 //               (printed). A vendor behind two adapters of ONE port (mail's
@@ -624,8 +626,9 @@ export function evaluate(root) {
       for (const a of doc?.adapters ?? []) {
         if (typeof a?.vendor !== 'string') continue;
         // One placement per port: a vendor behind two adapters of the same port
-        // (an HTTP API and an SMTP relay) is still one vendor in one port.
-        if (inPort.has(a.vendor)) continue;
+        // (an HTTP API and an SMTP relay; two boxes at one provider) is still one
+        // vendor in one port.
+        if (inPort.has(a.vendor)) { result.vendorPort.get(a.vendor).adapter += `, ${a.id}`; continue; }
         inPort.add(a.vendor);
         place(a.vendor, `${doc.port}/${a.id}`);
         result.vendorPort.set(a.vendor, { port: doc.port, adapter: a.id, earned: earnedOf.get(doc.port) ?? 0 });
@@ -638,7 +641,7 @@ export function evaluate(root) {
     for (const [id, regs] of all) {
       const at = placed.get(id) ?? [];
       if (at.length === 0) find(8, `vendor \`${id}\` (${[...regs].join(', ')}) is no adapter's \`vendor\` and no ${NON_PORT_REL} row. Port it, or say in _non-port.json why not.`);
-      else if (at.length > 1) find(8, `vendor \`${id}\` is placed ${at.length} times (${at.join(', ')}); exactly one adapter or one non-port row.`);
+      else if (at.length > 1) find(8, `vendor \`${id}\` is placed ${at.length} times (${at.join(', ')}); exactly one port's adapters or one non-port row.`);
     }
     for (const v of placed.keys()) {
       if (!all.has(v)) find(8, `\`${v}\` is placed in tooling/ports/ but is in neither ${CAPABILITY_REGISTER} vendors nor ${PROVIDER_REGISTER} providers.`);

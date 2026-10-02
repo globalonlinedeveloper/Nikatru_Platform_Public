@@ -140,6 +140,9 @@
   "bounded-spawn.test.mjs":
     9,
 
+  "boxes.test.mjs":
+    47,
+
   "brick-drivers.test.mjs":
     5,
 
@@ -720,7 +723,7 @@
     37,
 
   "ports.test.mjs":
-    69,
+    73,
 
   "post-deploy-smoke.test.mjs":
     157,

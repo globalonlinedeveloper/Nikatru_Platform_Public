@@ -24,7 +24,8 @@
       "minProperties": 1,
       "properties": {
         "ts": { "$ref": "#/$defs/symbols" },
-        "dart": { "$ref": "#/$defs/symbols" }
+        "dart": { "$ref": "#/$defs/symbols" },
+        "js": { "$ref": "#/$defs/symbols", "description": "A node module (.mjs) in tooling/: the interface of a port whose adapters are operated, not imported by a Worker or an app (boxes)." }
       }
     },
     "adapters": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/adapter" } },

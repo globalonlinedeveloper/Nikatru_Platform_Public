@@ -276,6 +276,18 @@ describe('assert-ports — every limb reddens', () => {
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /vendor `acme` is placed 2 times/);
   });
+  it('limb 8: two adapters of ONE port may share a vendor (two boxes at one provider) — one placement, printed together', () => {
+    const twin = port({ adapters: [adapter(), adapter({ id: 'acme-two' }), port().adapters[1]] });
+    const r = run(fixture({ ports: { widgets: twin } }));
+    assert.equal(r.code, 0, r.out);
+    assert.equal(portLineFor(evaluate(fixture({ ports: { widgets: twin } })), 'acme'), 'port: widgets (adapter acme, acme-two, earned L2)');
+  });
+  it('limb 8: …but the same vendor behind adapters of TWO ports is still placed twice', () => {
+    const other = port({ port: 'gadgets', adapters: [adapter({ id: 'acme-g' })], selection: { by: 'single', source: null, default: { live: 'acme-g', sandbox: 'acme-g', test: null }, canary: null }, handTables: [], switch: { runbook: 'Private/runbooks/switch-vendor.md#gadgets', dryRun: 'node tooling/ops/port-switch.mjs gadgets --to <adapter> --dry-run' } });
+    const r = run(fixture({ ports: { widgets: port(), gadgets: other } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /vendor `acme` is placed 2 times \(gadgets\/acme-g, widgets\/acme\)/);
+  });
   it('limb 8: a row with both `until` and `nonPort` exits 1', () => {
     const r = run(fixture({ nonPortRows: [{ vendor: 'other', registers: ['provider-register'], reason: 'a fixture vendor nobody ports', nonPort: true, until: 'port-x' }] }));
     assert.equal(r.code, 1, r.out);
@@ -369,15 +381,17 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       // port-pay-client: the client half's seams, adapters and conformance tests (limb 10).
       'packages/purchases/lib', 'packages/purchases/test/conformance', 'packages/billing_revenuecat/lib', 'packages/billing_revenuecat/test/revenuecat_bridge_conformance_test.dart',
       // the channels port: the contract, its submitters and the conformance file that calls the runner
-      'tooling/release', 'extensions/scripts/publish-cws.mjs', 'extensions/scripts/publish-edge.mjs', 'extensions/scripts/publish-amo.mjs']) copy(rel);
+      'tooling/release', 'extensions/scripts/publish-cws.mjs', 'extensions/scripts/publish-edge.mjs', 'extensions/scripts/publish-amo.mjs',
+      // the boxes port: the declarations and the module that reads them (port-boxes)
+      'tooling/boxes', 'tooling/ops/box-declaration.mjs', 'tooling/ops/check-box-declared.mjs']) copy(rel);
     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
   });
-  it('green control: payments and mail claim and earn L3; auth and telemetry claim and earn L2; channels claims L2 and earns L3', () => {
+  it('green control: payments and mail claim and earn L3; auth, telemetry and boxes claim and earn L2; channels claims L2 and earns L3', () => {
     const r = run(root);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /payments\s+L3\s+L3\s+L3/);
     assert.match(r.out, /mail\s+L3\s+L3\s+L3/);
-    for (const p of ['auth', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
+    for (const p of ['auth', 'boxes', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
     assert.match(r.out, /limb 3: services\/platform\/src\/generated\/ports\.ts matches tooling\/ports\/payments\.json/);
     assert.match(r.out, /PENDING payments\/revenuecat: refund reversed or dispute won restores \(O-REVENUECAT-VERIFIER\)/);
     assert.match(r.out, /payments\/client\s+L3\s+L3\s+L3/);
@@ -485,6 +499,31 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     const r = mutateChannels((d) => { d.candidates[0].submittable = true; });
     assert.equal(r.code, 1, r.out);
     assert.match(r.first, /limb 1 \(schema\): tooling\/ports\/channels\.json \$\.candidates\[0\]\.submittable: must be false/);
+  });
+  it('red: hostinger placed back in _non-port.json beside the boxes port reddens limb 8', () => {
+    const rel = join(root, 'tooling/ports/_non-port.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.rows.push({ vendor: 'hostinger', registers: ['provider-register'], reason: 'the pre-port-boxes row, put back', until: 'port-boxes' });
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 8 \(cross-register\): vendor `hostinger` is placed 2 times \(boxes\/boxb, _non-port\)/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: a box interface symbol that is not declared un-earns L2 for boxes (limb 2)', () => {
+    const rel = join(root, 'tooling/ports/boxes.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.interface.js.symbols.push('readBoxNowhere');
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 2 \(symbols\).*`readBoxNowhere` is not declared in `tooling\/ops\/box-declaration\.mjs`/);
+      assert.match(r.out, /boxes\s+L2\s+L0/);
+    } finally { writeFileSync(rel, before); }
   });
   it('red: deleting one vendor from _non-port.json reddens limb 8', () => {
     const rel = join(root, 'tooling/ports/_non-port.json');

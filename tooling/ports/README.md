@@ -24,6 +24,12 @@ Resend-shaped.
 `node tooling/kit/new-channel.mjs --id <id> --dry-run` prints the three. Its switch is not a margin switch between
 rails: `port-switch.mjs`'s C8 has no fee model for moving a channel, and prints LOST rather than a guess.
 
+`tooling/ports/boxes.json` (port-boxes) makes each box an adapter: its declaration is `tooling/boxes/<box>.json`, its
+role is selected one box per role by `tooling/boxes/roles.json`, it is read back by
+`tooling/ops/check-box-declared.mjs` and its move is rehearsed by `tooling/ops/box-move.mjs --dry-run`, the box
+equivalent of §4's phase 3. Backup destinations and their restore drills are `tooling/boxes/backups.json` and
+`tooling/ops/restore-drill.mjs`.
+
 ## 1. Levels
 
 | Level | Means | Earned when (assert-ports limb 6) |
@@ -46,9 +52,9 @@ wherever the shape can hold it).
 | `$schema` | `./port.schema.json`. |
 | `port` | The capability; equals the file name. |
 | `level.claimed` / `level.target` | 0–3. Claimed is checked against earned; target is where the trains are taking it. |
-| `interface.ts` / `interface.dart` | `{file, symbols}` — either or both. Each symbol must be **declared** in the file (comment-stripped). |
+| `interface.ts` / `interface.dart` / `interface.js` | `{file, symbols}` — at least one. Each symbol must be **declared** in the file (comment-stripped). `js` is a node module under `tooling/` for a port that is operated rather than imported (the boxes). |
 | `adapters[].id` | The wire id: the value the selection names and the code keys on. |
-| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. |
+| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. Two adapters of ONE port may share a vendor (two boxes at one provider); two ports may not. |
 | `adapters[].status` | `draft` · `built` · `live` · `standby` · `retired` · `fake` · `external`. |
 | `adapters[].impl` | `{file, symbol}`; for `external` (e.g. a self-hosted GoTrue configured by env) `{configAt, verify}`. |
 | `adapters[].outbound` | Optional `{file, symbol, modules}` — the adapter's outbound half (e.g. `RailOutbound`) and its further private modules. Limb 2 holds the symbol declared; limb 4 protects `file` and every `modules` path exactly as it protects `impl.file`. |
