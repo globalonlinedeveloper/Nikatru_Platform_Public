@@ -188,12 +188,16 @@ describe('worker-shared-modules — against the real tree', () => {
     }
   });
 
-  test('R2 middleware/auth.ts is NOT a delegation — it keeps its own plumbing', () => {
-    // `services/_shared/src/auth.ts` holds the DECIDING only; each Worker keeps
-    // the jose/hono plumbing, because nothing under services/_shared may carry a
-    // bare import. If this ever starts answering `{ target }`, a Worker's auth
-    // boundary was emptied and the guards that read it must be re-pointed with
-    // the same care.
+  test('R2 middleware/auth.ts is NOT a delegation — it is a BINDING that names the secret', () => {
+    // ⏱ 2026-10-01: the jose plumbing moved whole to
+    // services/_shared/src/auth-middleware.ts (services/_shared declares `jose`
+    // since then), and each Worker's middleware/auth.ts binds it: platform calls
+    // the kit's verifier with no fallback, the app Worker passes its legacy
+    // secret to `supabaseAuthWith` and re-exports `erasureAuth` by name. The
+    // secret is still NAMED here, which is where assert-erasure-reach limb 3 reads
+    // it — so this must keep answering null. If it ever answers `{ target }`, the
+    // boundary was emptied into the kit and the guards that read it must be
+    // re-pointed with the same care.
     for (const worker of ['platform', 'subscriptiontracker-api']) {
       assert.equal(sharedHomeOf(REPO, `services/${worker}/src/middleware/auth.ts`), null);
     }

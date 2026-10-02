@@ -2,7 +2,18 @@ import { describe, it, expect } from 'vitest';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // shared-home.test.ts — THE ONE RULE THAT MAKES `services/_shared/` WORK AT ALL:
-// nothing in it may carry a BARE import.
+// nothing in it may carry a BARE import — except a module LISTED below as needing
+// one, importing a package `services/_shared/package.json` DECLARES.
+//
+// ⏱ 2026-10-01 · rv2 SYN-S2 (services-012).
+// services/_shared became a package (`@nikatru/worker-kit`) that declares `jose`,
+// and each Worker installs its dependencies into services/_shared/node_modules
+// (`npm ci --prefix ../_shared`, the Worker's postinstall — npm does not install a
+// `file:` link's own dependencies). That is what let the auth plumbing move here
+// whole (src/auth-middleware.ts). The measurement below is still the rule for
+// everything else: a module that needs no dependency must not grow one, because
+// a bare import of an UNDECLARED package resolves for nobody, and a module that
+// needs no dependency is one every carrier can read without installing anything.
 //
 // 🔴 THIS IS A MEASURED CONSTRAINT, NOT HOUSE STYLE. Node, tsc and esbuild all
 // resolve a bare specifier by walking up from the FILE that writes it, and there
@@ -49,7 +60,7 @@ const nodeProcess = (
       getBuiltinModule(id: 'node:fs'): {
         existsSync(p: string): boolean;
         readFileSync(p: string, enc: 'utf8'): string;
-        readdirSync(p: string): string[];
+        readdirSync(p: string, o: { withFileTypes: true }): Array<{ name: string; isDirectory(): boolean; isFile(): boolean }>;
       };
     };
   }
@@ -73,11 +84,33 @@ function repoRoot(): string {
 const ROOT = repoRoot();
 const SHARED_SRC = `${ROOT}/services/_shared/src`;
 
-/** Every `.ts` under the shared home, derived from the tree. */
-const modules: string[] = fs
-  .readdirSync(SHARED_SRC)
-  .filter((f) => f.endsWith('.ts'))
-  .sort();
+/** Every `.ts` under the shared home, derived from the tree, as a path relative
+ *  to it. RECURSIVE since 2026-10-01: `src/ports/` and `src/ports/fakes/` are
+ *  reserved for the port trains, and a module there must meet the same rule. */
+function tsUnder(dir: string, prefix = ''): string[] {
+  const out: string[] = [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === 'node_modules') continue;
+    if (e.isDirectory()) out.push(...tsUnder(`${dir}/${e.name}`, `${prefix}${e.name}/`));
+    else if (e.isFile() && e.name.endsWith('.ts')) out.push(`${prefix}${e.name}`);
+  }
+  return out;
+}
+const modules: string[] = tsUnder(SHARED_SRC).sort();
+
+/** Collapse `.` and `..` segments of a forward-slash relative path; null when it
+ *  climbs above its root. */
+function within(path: string): string | null {
+  const out: string[] = [];
+  for (const seg of path.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') {
+      if (out.length === 0) return null;
+      out.pop();
+    } else out.push(seg);
+  }
+  return out.join('/');
+}
 
 /** Floor. Three modules live here today (auth, error-sink, health); a reader
  *  that finds none would iterate nothing and print a clean tree. */
@@ -97,7 +130,33 @@ function specifiersOf(source: string): string[] {
 
 const isRelative = (spec: string): boolean => spec.startsWith('./') || spec.startsWith('../');
 
-describe('services/_shared is dependency-free', () => {
+/** The modules that NEED a dependency, and the packages each may import. Every
+ *  other module stays dependency-free. A package named here must also be declared
+ *  in services/_shared/package.json `dependencies`, or no install provides it. */
+const DEPENDENT_MODULES: Readonly<Record<string, readonly string[]>> = {
+  'auth-middleware.ts': ['jose'],
+};
+
+/** The specifiers that climb out of the home and PREDATE this limb: named, not
+ *  forgiven. Each row is checked in both directions (a row whose import is gone
+ *  fails as stale), so the list can only shrink; a new escape is never a new row. */
+const KNOWN_ESCAPES: Readonly<Record<string, readonly string[]>> = {
+  // #1127 (port-pay-core) re-exports the normalized MoR vocabulary from the
+  // platform carrier, whose lib/mor/contract.ts its header names as that
+  // vocabulary's home. Moving it is a payments change, not a kit move.
+  'ports/payments.ts': ['../../../platform/src/lib/mor/contract'],
+};
+
+/** `dependencies` of services/_shared/package.json — what `npm ci --prefix ../_shared` installs. */
+const declaredDependencies: string[] = Object.keys(
+  (JSON.parse(fs.readFileSync(`${ROOT}/services/_shared/package.json`, 'utf8')) as { dependencies?: Record<string, string> })
+    .dependencies ?? {},
+);
+
+/** The package a bare specifier names: `jose` of `jose/jwt/verify`, `@a/b` of `@a/b/c`. */
+const packageOf = (spec: string): string => spec.split('/').slice(0, spec.startsWith('@') ? 2 : 1).join('/');
+
+describe('services/_shared is dependency-free except where it declares otherwise', () => {
   it('the scan still finds the shared modules', () => {
     expect(
       modules.length,
@@ -105,18 +164,36 @@ describe('services/_shared is dependency-free', () => {
     ).toBeGreaterThanOrEqual(MIN_SHARED_MODULES);
   });
 
-  it('no module carries a BARE import', () => {
+  it('every listed dependent module exists and imports only declared packages', () => {
+    const problems: string[] = [];
+    for (const [m, packages] of Object.entries(DEPENDENT_MODULES)) {
+      if (!modules.includes(m)) problems.push(`DEPENDENT_MODULES names ${m}, which is not a module under ${SHARED_SRC} — a stale row.`);
+      for (const pkg of packages) {
+        if (!declaredDependencies.includes(pkg)) {
+          problems.push(
+            `${m} may import \`${pkg}\`, but services/_shared/package.json does not declare it, so ` +
+              '`npm ci --prefix ../_shared` installs nothing for it to resolve against.',
+          );
+        }
+      }
+    }
+    expect(problems, problems.join('\n\n')).toEqual([]);
+  });
+
+  it('no module carries a BARE import it is not listed for', () => {
     const offenders: string[] = [];
     for (const m of modules) {
       for (const spec of specifiersOf(fs.readFileSync(`${SHARED_SRC}/${m}`, 'utf8'))) {
         if (isRelative(spec)) continue;
+        if ((DEPENDENT_MODULES[m] ?? []).includes(packageOf(spec))) continue;
         offenders.push(
-          `services/_shared/src/${m} imports \`${spec}\`. There is no node_modules any carrier can reach ` +
-            'from here, so this resolves for nobody: `tsc --noEmit` fails with TS2307 and `wrangler deploy` ' +
-            'fails with "Could not resolve" — in BOTH Workers and in every app stamped from the brick. ' +
-            'Keep the dependency in the Worker and share only the decision (see src/auth.ts, which is ' +
-            'exactly that split). Do NOT reach for wrangler\'s suggested `alias`: it resolves a directory ' +
-            "and bypasses the package's `exports` conditions.",
+          `services/_shared/src/${m} imports \`${spec}\`, and DEPENDENT_MODULES does not list ${m} for ` +
+            `\`${packageOf(spec)}\`. A module that needs no dependency must not grow one; a package that is ` +
+            'not declared in services/_shared/package.json resolves for nobody (`tsc --noEmit` fails with ' +
+            'TS2307 and `wrangler deploy` with "Could not resolve", in every Worker and every stamped app). ' +
+            'Declare it there and list the module here, or keep the dependency in the Worker and share only ' +
+            "the decision. Do NOT reach for wrangler's suggested `alias`: it resolves a directory and " +
+            "bypasses the package's `exports` conditions.",
         );
       }
     }
@@ -131,19 +208,35 @@ describe('services/_shared is dependency-free', () => {
     for (const m of modules) {
       for (const spec of specifiersOf(fs.readFileSync(`${SHARED_SRC}/${m}`, 'utf8'))) {
         if (!isRelative(spec)) continue;
-        if (spec.includes('..')) {
+        const dir = m.includes('/') ? m.slice(0, m.lastIndexOf('/') + 1) : '';
+        const resolved = within(`${dir}${spec}`);
+        if (resolved === null) {
+          if ((KNOWN_ESCAPES[m] ?? []).includes(spec)) continue;
           broken.push(
             `services/_shared/src/${m} imports \`${spec}\`, which leaves the shared home. The one home cannot ` +
               'depend on one carrier.',
           );
           continue;
         }
-        const target = `${SHARED_SRC}/${spec.replace(/^\.\//, '')}`;
+        const target = `${SHARED_SRC}/${resolved}`;
         if (!fs.existsSync(target) && !fs.existsSync(`${target}.ts`)) {
           broken.push(`services/_shared/src/${m} imports \`${spec}\`, which is not a file.`);
         }
       }
     }
     expect(broken, broken.join('\n\n')).toEqual([]);
+  });
+
+  it('every KNOWN_ESCAPES row still names a real escape (the list can only shrink)', () => {
+    const stale: string[] = [];
+    for (const [m, specs] of Object.entries(KNOWN_ESCAPES)) {
+      const imported = modules.includes(m) ? specifiersOf(fs.readFileSync(`${SHARED_SRC}/${m}`, 'utf8')) : [];
+      for (const spec of specs) {
+        if (!imported.includes(spec)) {
+          stale.push(`KNOWN_ESCAPES names ${m} importing \`${spec}\`, which it no longer does — delete the row.`);
+        }
+      }
+    }
+    expect(stale, stale.join('\n\n')).toEqual([]);
   });
 });

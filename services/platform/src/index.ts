@@ -58,6 +58,7 @@ import {
 import { reportWorkerError } from './lib/error-sink';
 import { probeTokenKey } from './lib/token-crypto';
 import { corsMiddleware } from './middleware/cors';
+import { requestId } from './lib/request-id';
 import { platformAuth } from './middleware/auth';
 import { entitlementsAuth } from './middleware/ext-device-auth';
 import providerToken from './routes/provider-token';
@@ -83,13 +84,9 @@ const app = new Hono<AppEnv>();
 
 // One line per request: the route PATTERN, status, ms, colo (lib/request-log.ts).
 app.use('*', requestLog);
-// Correlation id: stamp/propagate + echo.
-app.use('*', async (c, next) => {
-  const rid = c.req.header('x-request-id') ?? crypto.randomUUID();
-  c.set('requestId', rid);
-  c.header('x-request-id', rid);
-  await next();
-});
+// Correlation id: stamp/propagate + echo. The caller's id is kept only when it is
+// a plain token (services/_shared/src/request-id.ts); anything else is replaced.
+app.use('*', requestId);
 
 app.use('*', corsMiddleware);
 
