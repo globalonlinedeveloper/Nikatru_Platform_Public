@@ -135,7 +135,7 @@
     "message": "دسته‌ای"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "ارتقا به FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "تنظیمات"
@@ -441,10 +441,10 @@
     "message": "مستقیم به یادداشت‌گذاری می‌رود (فقط برای عکس‌های تک‌قسمتی)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "میان‌برهای تک‌کلیدی در ویرایشگر"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "کلیدهای حروف ابزار را انتخاب می‌کنند، + و - بزرگ‌نمایی و کوچک‌نمایی می‌کنند، ? فهرست کلیدها را نشان می‌دهد. وقتی خاموش باشد، فقط زمانی کار می‌کنند که تصویر فوکوس داشته باشد."
   },
   "optionsTheme": {
     "message": "پوسته"
@@ -1247,7 +1247,7 @@
     "message": "جا شود"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "بزرگ‌نمایی $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1256,28 +1256,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "قرمز"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "کهربایی"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "سبز"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "آبی"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "بنفش"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "صورتی"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "سیاه"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "سفید"
   },
   "editorZoomTipToHundred": {
     "message": "جا شده در پنجره — برای ٪۱۰۰ کلیک کنید"
@@ -2026,7 +2026,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ کل ناحیهٔ قابل مشاهده را ثبت می‌کند",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2049,10 +2049,10 @@
     "message": "فروشگاه وب کروم اجازه نمی‌دهد افزونه‌ها صفحه‌هایش را بخوانند، بنابراین این صفحه قابل ثبت نیست."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons اجازه نمی‌دهد افزونه‌ها صفحه‌هایش را بخوانند، بنابراین این صفحه قابل ثبت نیست."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) اجازه نمی‌دهد افزونه‌ها صفحه‌هایش را بخوانند، بنابراین این صفحه قابل ثبت نیست."
   },
   "errRestrictedGeneric": {
     "message": "این صفحه توسط مرورگر محافظت می‌شود و قابل ثبت نیست."
