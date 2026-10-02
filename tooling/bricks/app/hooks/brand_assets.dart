@@ -112,7 +112,10 @@ List<String> writeNativeIconSources({
   // Play), and every smaller one is a downscale of it. Opaque because the App
   // Store REJECTS an icon with an alpha channel (ITMS-90717) — an icon that
   // uploads and then fails validation remotely is the worst place to learn it.
-  final master = '${iconDir.path}/app_icon.png';
+  // NAMED `app_icon_1024.png`, the portfolio's one name for it: render-splash,
+  // render-linux-icons and render-play-graphics read the master by that name, so
+  // a stamp that wrote any other one could derive no splash and no Linux icon.
+  final master = '${iconDir.path}/app_icon_1024.png';
   File(master).writeAsBytesSync(
     _renderIcon(size: 1024, bg: bg, fg: fg, cells: cells, markFraction: 0.72),
   );

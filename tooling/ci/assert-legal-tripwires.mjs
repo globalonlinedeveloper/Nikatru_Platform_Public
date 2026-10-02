@@ -207,6 +207,21 @@ for (const d of duties) {
   }
 }
 
+// ── LIMB 3b · a `withdrawn` row names the decision that withdrew it ─────────
+// ⏱ 2026-10-01 — rv2-newproduct-007. A duty can stop being able to arise because a locked
+// decision of ours removed its trigger (ADR no.068: no app targets children). The row stays, so the
+// withdrawal is READ rather than remembered — and it is only as good as the decision it names. A row
+// withdrawn on nobody's say-so is a duty quietly dropped, the exact decay this matrix exists to stop.
+for (const d of duties) {
+  if (d.status !== 'withdrawn') continue;
+  if (typeof d.decisionRecord !== 'string' || d.decisionRecord.trim() === '') {
+    problems.push(
+      `duty ${JSON.stringify(d.id)} is \`withdrawn\` and names no \`decisionRecord\`. Only a locked decision can ` +
+        'withdraw a duty; without one the row reads as settled when somebody merely stopped tracking it.',
+    );
+  }
+}
+
 // ── LIMB 4 · COULD-NOT-ESTABLISH may not carry a citation ───────────────────
 let unestablished = 0;
 for (const d of duties) {

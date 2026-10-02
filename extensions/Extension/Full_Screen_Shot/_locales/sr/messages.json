@@ -135,7 +135,7 @@
     "message": "Групно"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Надоградите на FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Подешавања"
@@ -441,10 +441,10 @@
     "message": "Одмах прелази на обележавање (само за снимке из једног дела)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Пречице једним тастером у уређивачу"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Тастери са словима бирају алатку, + и - зумирају, ? приказује листу тастера. Када је искључено, раде само док је слика у фокусу."
   },
   "optionsTheme": {
     "message": "Тема"
@@ -1274,7 +1274,7 @@
     "message": "Уклопи"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Зум $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1283,28 +1283,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Црвена"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Ћилибарна"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Зелена"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Плава"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Љубичаста"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Ружичаста"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Црна"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Бела"
   },
   "editorZoomTipToHundred": {
     "message": "Уклопљено у прозор — кликните за 100%"
@@ -2131,7 +2131,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ снима целу видљиву област",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2154,10 +2154,10 @@
     "message": "Chrome Web Store не дозвољава екстензијама да читају његове странице, па ова страница не може да се сними."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons не дозвољава екстензијама да читају његове странице, па ова страница не може да се сними."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) не дозвољава екстензијама да читају његове странице, па ова страница не може да се сними."
   },
   "errRestrictedGeneric": {
     "message": "Ову страницу штити прегледач и не може да се сними."

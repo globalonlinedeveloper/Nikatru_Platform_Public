@@ -89,7 +89,8 @@
     "partial": "some limbs are built and the row says which are not.",
     "not-started": "nothing built. The row's trigger is what makes it surface at the right moment.",
     "owner-gated": "blocked on a decision or an account only the owner can supply. PRINTS every run, never fails the build.",
-    "watching": "no duty today; the row exists so the trigger is written down instead of remembered."
+    "watching": "no duty today; the row exists so the trigger is written down instead of remembered.",
+    "withdrawn": "a LOCKED decision of ours removed what would trigger it, and `decisionRecord` names that decision (assert-legal-tripwires fails a withdrawn row that names none). The row stays so the withdrawal is read, not remembered; its trigger is the day that decision is superseded."
   },
 
   "verificationKinds": {
@@ -344,10 +345,11 @@
       "id": "children-surface-before-a-kids-app",
       "requirement": "K-16",
       "duty": "No app is offered to children without the surface a children's audience requires.",
-      "status": "partial",
-      "trigger": "The day an app is scheduled with a children's audience, or the day a store listing selects a children's category. Both are declarations somebody makes; neither happens by accident.",
-      "verification": "in-tree",
-      "note": "BUILT 2026-08-07 — the REFUSAL, not the surface. brick.yaml declares `audience` and hooks/pre_gen.dart refuses `audience: children` atomically. 🔴 THE VERDICT IS READ FROM THIS ROW RATHER THAN HARDCODED: the hook requires this row to be `implemented` AND to name an `artefact` that is really on disk, so the day somebody builds the surface and files it here the stamp starts accepting a kids app, with nobody having to remember to unblock it — and equally, a status flipped to `implemented` without an artefact that exists cannot buy a pass. THIS ROW DELIBERATELY CARRIES NO `artefact`: naming pre_gen.dart here would let the thing doing the refusing be mistaken for the surface being refused about. NOT BUILT: the surface itself. privacy.html today states a bare 'under the age of 13 (or the minimum age required in your country)'. Whether that number is right for a declared market depends on the market's own threshold, and the guard must assert CONSISTENCY WITH THE DECLARED MARKET ROW rather than hardcode a number — see the COULD-NOT-ESTABLISH row below. The audience var itself is [8]INC-9, in stage 3's files."
+      "status": "withdrawn",
+      "trigger": "The day ADR no.068 is superseded. Until then no app is offered to children at all, so the surface this duty waits for is never built: hooks/pre_gen.dart refuses `audience: children` unconditionally, citing ADR no.068, and brick.yaml no longer offers it.",
+      "verification": "decision",
+      "decisionRecord": "Private/decisions/068-no-nikatru-app-targets-children.md — LOCKED 2026-09-05: no NIKATRU app, extension or site targets children; the audience floor is 18, and age gates are never built.",
+      "note": "WITHDRAWN 2026-10-01 by ADR no.068 (rv2-newproduct-007). Built 2026-08-07 as a refusal READ FROM THIS ROW: pre_gen.dart accepted a children's audience the day this row turned `implemented` with an artefact on disk. ADR no.068 rules that day out, so the refusal no longer reads this row and cannot be unblocked by editing it. The row stays so the withdrawal is read rather than remembered."
     },
     {
       "id": "dpdp-childrens-age-threshold",

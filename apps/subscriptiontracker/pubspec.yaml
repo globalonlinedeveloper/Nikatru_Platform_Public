@@ -429,7 +429,10 @@ msix_config:
   # DIFFERENT build from the one the upload proves.
   build_windows: false
   architecture: x64
-  languages: en-us
+  # ⏱ 2026-10-01 · one language-REGION per arb in lib/l10n/ (C-18); MSIX's
+  # Resource Language wants the region, gen-l10n does not carry one.
+  # tooling/ci/assert-bundle-locales.mjs fails when this and the arbs disagree.
+  languages: en-us, hi-in, ta-in
   capabilities: internetClient
   output_path: build/windows/msix
   output_name: subscriptiontracker
