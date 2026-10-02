@@ -201,6 +201,22 @@ void main() {
       );
     });
 
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): the EXPANDED class. With no
+    // pitch served the paywall is the 480 pane at every width, and 1024 is
+    // past the 840 two-column threshold that only a pitch opens.
+    testWidgets('at 1024 (expanded) the paywall is still 480', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(
+        tester,
+        kExpanded,
+        const PaywallScreen(),
+        overrides: _moneyOverrides(),
+      );
+      expect(offeredWidth(tester, inPane(ListView)), AppBreakpoints.pane);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('at 1920 the paywall is still 480, not a wall of card', (
       WidgetTester tester,
     ) async {

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 // `?raw` rather than node:fs — a Workers tsconfig has no node types on purpose.
 import raw from '../wrangler.jsonc?raw';
 import platformRaw from '../../platform/wrangler.jsonc?raw';
+import zoneRuleRaw from '../../../tooling/edge-ratelimit-rule.json?raw';
 import { AUTH_HOST, CLASSES, INTAKE_HOST, type ShieldClass } from '../src/classify';
 import { failOpenSeen } from '../src/limit';
 
@@ -100,7 +101,7 @@ describe('the deployed edge-shield config', () => {
 
   it('declares the global limiter of EVERY class, with the period the refusal’s Retry-After promises', () => {
     const classes = Object.keys(CLASSES) as ShieldClass[];
-    expect(classes.length).toBe(4);
+    expect(classes.length).toBe(6);
     const wanted = new Set<string>();
     for (const cls of classes) {
       const name = bindingOf(cls);
@@ -120,6 +121,32 @@ describe('the deployed edge-shield config', () => {
     // (tooling/edge-ratelimit-rule.json), never a binding here.
     for (const name of byName.keys()) expect(name).not.toMatch(/_IP_|CLIENT/);
     expect(rl.length).toBe(Object.keys(CLASSES).length);
+  });
+
+  it('🔴 each credential class has its OWN cap, and none the zone rule covers is fillable by fewer than 10 addresses at its per-IP rate (SYN-A2 / PB-01)', () => {
+    // A global cap is lockable by about cap ÷ the per-IP rate. The per-IP rate is
+    // the zone's one rate-limiting rule (tooling/edge-ratelimit-rule.json), which
+    // covers the sign-up/recover and factor paths, so this is the residual its
+    // _why records: 300/min ÷ 30/min = 10 addresses per colo, per covered class.
+    // auth-password is NOT covered: /auth/v1/token stays out of the zone rule
+    // (lead ruling on PR #1147, item 1 — a per-IP 429 on the refresh grant signs
+    // native users behind carrier-grade NAT out), so it only needs its own bucket.
+    const zone = JSON.parse(zoneRuleRaw) as { rules: Array<{ expression: string; ratelimit: { period: number; requests_per_period: number } }> };
+    expect(zone.rules).toHaveLength(1);
+    expect(zone.rules[0].expression).not.toContain('/auth/v1/token');
+    const { period, requests_per_period } = zone.rules[0].ratelimit;
+    const perIpPerMinute = (requests_per_period * 60) / period;
+    expect(perIpPerMinute).toBe(30);
+    const credential: ShieldClass[] = ['auth-password', 'auth-signup-recover', 'auth-factor'];
+    const names = credential.map(bindingOf);
+    expect(new Set(names).size, 'two credential classes read one binding').toBe(3);
+    expect(new Set(names.map((n) => String(byName.get(n)?.namespace_id))).size, 'two credential bindings share a namespace').toBe(3);
+    const covered: ShieldClass[] = ['auth-signup-recover', 'auth-factor'];
+    for (const n of covered.map(bindingOf)) {
+      const simple = byName.get(n)?.simple;
+      const perMinute = ((simple?.limit as number) * 60) / (simple?.period as number);
+      expect(perMinute / perIpPerMinute, `${n} is lockable by ${perMinute / perIpPerMinute} addresses per colo`).toBeGreaterThanOrEqual(10);
+    }
   });
 
   it('owns its namespace_ids: unique here, and used by no limiter of services/platform (they are account-wide)', () => {

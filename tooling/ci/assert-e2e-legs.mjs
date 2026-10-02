@@ -69,6 +69,12 @@
 // drive not called, or an `if:` naming a cron the workflow does not declare —
 // is a finding (exit 1), as is an anchor that stopped resolving.
 //
+// ── PER APP (⏱ 2026-10-01, rv2-newproduct-005, O-BRICK-STAMPS-NO-E2E-SUITE) ──
+// The six legs are `apps.<id>.legs` and every entry is graded against its own
+// suite, workflow and lib/; every finding names the app. Every app of the
+// workspace set needs an entry (exit 1 without one); the stamp writes it
+// (tooling/kit/stamp-shared.mjs). The native axis stays one app's,
+// `nativeTargets.app`.
 // ── limb FLOWS (⏱ 2026-10-01, train st-e2e-parity) ───────────────────────
 // Every user flow of the register's `flows.list` must have, on EVERY catalog
 // target (web included), a leg whose anchors resolve in its suite or the
@@ -111,9 +117,16 @@ const REQUIRED_LEGS = [
  *  `false` → it has SHIPPED; the excuse is dead and any leg still claiming it
  *            fails the build.
  *
- *  Each reads COMMENT-STRIPPED source, for the reason in this file's header. */
+ *  Each reads COMMENT-STRIPPED source, for the reason in this file's header.
+ *
+ *  ⏱ 2026-10-01 (rv2-newproduct-005): each predicate reads ONE app's sources —
+ *  `src.app` (its lib/), `src.suite` (its app_test.dart) and `src.e2eSurface`
+ *  (its suite plus the harness). A key spelled with `apps/{app}` serves every
+ *  app: a leg's `blockedBy` naming its own directory (`[5] apps/<id> sells
+ *  nothing`) resolves to it, and is evaluated over that app alone. */
+const APP_PLACEHOLDER = 'apps/{app}';
 const BLOCKERS_STILL_REAL = {
-  // apps/subscriptiontracker declares `PaywallConfig(enabled: false)` — the app sells nothing,
+  // The app declares `PaywallConfig(enabled: false)` — the app sells nothing,
   // so there is nothing to purchase, no entitlement to flip and no feature to
   // unlock. Three legs share this one blocker because they share one cause.
   //
@@ -121,7 +134,15 @@ const BLOCKERS_STILL_REAL = {
   // "no paywall widget appears anywhere" is satisfied by a typo, whereas this
   // line has to be edited to `true` by somebody switching the rail on — and on
   // that day all three legs stop being excusable in the same run.
-  '[5] apps/subscriptiontracker sells nothing': (src) => /PaywallConfig\(\s*enabled:\s*false/.test(src.subscriptiontracker),
+  '[5] apps/{app} sells nothing': (src) => /PaywallConfig\(\s*enabled:\s*false/.test(src.app),
+
+  // ⏱ 2026-10-01 · a STAMPED app's account-delete leg. The brick's suite signs in
+  // and opens the paywall; it walks no deletion, and the erasure half of the leg
+  // (verify_purged.mjs, delete_headless.mjs) is app #1's harness. The excuse is
+  // the app's OWN suite: the day it gains a delete-account step, this goes false
+  // and the leg must be promoted with anchors, not left excused.
+  '[7] apps/{app}/integration_test/app_test.dart walks no account deletion': (src) =>
+    !/delete_?account|deleteAccount|accountDeletion/i.test(src.suite),
 
   // 🔄 RESTATED 2026-08-04, AND THIS IS THE SECOND TIME THIS GUARD HAS KILLED ITS
   // OWN EXCUSE — which is the whole design working twice.
@@ -197,102 +218,33 @@ try {
   ]);
 }
 
-const legs = Array.isArray(reg.legs) ? reg.legs : [];
-const ids = legs.map((l) => l && l.id);
-const missing = REQUIRED_LEGS.filter((r) => !ids.includes(r));
-const extra = ids.filter((i) => !REQUIRED_LEGS.includes(i));
-if (missing.length || extra.length) {
-  coverageLost([
-    `${REGISTER_REL} does not declare N-6's six legs exactly.`,
-    ...(missing.length ? [`missing: ${missing.join(', ')}`] : []),
-    ...(extra.length ? [`unexpected: ${extra.join(', ')}`] : []),
-    'The requirement names six and only six. Trimming the list is how a coverage relationship becomes',
-    'a tautology — the four uncovered legs are exactly the ones it would be convenient to delete.',
-  ]);
-}
-
-// ── the app under test ──────────────────────────────────────────────────────
-// ⏱ 2026-09-25 (O-E2E-LANE-WIRED-TO-ONE-APP): the register is keyed by app,
-// `apps.<id>`. The legs above are still one app's six, so exactly one entry is
-// graded; any other count is COVERAGE LOST, never a guess at which app they mean.
+// ── the apps under test, each graded against its OWN suite ──────────────────
+// ⏱ 2026-09-25 (O-E2E-LANE-WIRED-TO-ONE-APP) the register was keyed by app, but
+// the six legs stayed one top-level list and exactly one entry was graded; a
+// second `apps.<id>` row was COVERAGE LOST. ⏱ 2026-10-01 (rv2-newproduct-005,
+// O-BRICK-STAMPS-NO-E2E-SUITE): the legs are `apps.<id>.legs`, and EVERY entry is
+// graded — its six legs, against its own suite, its own workflow and its own
+// lib/ — so a leg one app's suite proves is never credited to another, and every
+// finding names the app (`apps/<id>`). tooling/kit/stamp-shared.mjs writes a
+// stamped app's entry; the workspace-set limb below requires one per app.
 const appEntries =
   reg.apps && typeof reg.apps === 'object' && !Array.isArray(reg.apps) ? Object.entries(reg.apps) : [];
-if (appEntries.length !== 1) {
+if (appEntries.length === 0) {
   coverageLost([
-    `${REGISTER_REL} names ${appEntries.length} app(s) under \`apps\`; this guard grades exactly one.`,
-    "The six legs are one app's, anchored in one suite. With no app there is no suite to resolve them",
-    "against; with two, a leg one app's suite proves would be credited to the other.",
+    `${REGISTER_REL} names no app under \`apps\`.`,
+    "The six legs are each app's, anchored in its own suite. With no app there is no suite to resolve them against.",
   ]);
 }
-const [, E2E] = appEntries[0];
-
-// ── the suite under test ────────────────────────────────────────────────────
-const testRel = E2E?.test;
-if (typeof testRel !== 'string' || testRel.length === 0) {
-  coverageLost([`${REGISTER_REL} names no \`apps.<id>.test\`, so there is no suite to resolve anchors against.`]);
-}
-const testPath = join(ROOT, testRel);
-if (!existsSync(testPath)) {
+if (Object.hasOwn(reg, 'legs')) {
   coverageLost([
-    `the named E2E ${testRel} does not exist.`,
-    'Every anchor below would fail to resolve for the same reason, so the message would blame the',
-    'register for a missing file. Named separately so the real cause is the one printed.',
-  ]);
-}
-const suite = stripSourceComments(readFileSync(testPath, 'utf8'), '.dart');
-
-// RESOLVE, DO NOT MATCH. A file of comments is not a test suite: after stripping,
-// the source must still declare at least one real `testWidgets(`. Without this,
-// gutting app_test.dart down to its header would leave anchors unresolvable and
-// the failure would read as a register problem rather than as a deleted suite.
-if (!/\btestWidgets\s*\(/.test(suite)) {
-  coverageLost([
-    `${testRel} declares no \`testWidgets(\` once comments are stripped.`,
-    'The named E2E is not a suite any more. Anchors cannot be resolved against a file that runs',
-    'nothing, and a green nightly over it would prove only that Flutter started.',
+    `${REGISTER_REL} still carries a top-level \`legs\`.`,
+    'The legs are `apps.<id>.legs`, one set per app; a top-level list would be graded against no suite and read as coverage.',
   ]);
 }
 
-// The workflow must still be the one that runs this suite. The register names
-// both; if they have drifted, "the leg is proven nightly" is proven by nothing.
-const wfRel = E2E?.workflow;
-if (typeof wfRel !== 'string' || !existsSync(join(ROOT, wfRel))) {
-  coverageLost([
-    `${REGISTER_REL} names workflow ${JSON.stringify(wfRel)}, which does not exist.`,
-    'The legs below are only proven if something runs them on a schedule.',
-  ]);
-}
-const workflow = readFileSync(join(ROOT, wfRel), 'utf8')
-  .split('\n')
-  .filter((l) => !l.trim().startsWith('#'))
-  .join('\n');
-if (!workflow.includes(testRel.split('/').slice(-2).join('/'))) {
-  coverageLost([
-    `${wfRel} does not name ${testRel}.`,
-    'The register claims this workflow runs this suite. It does not, so every leg marked asserted is',
-    'proven by a test nothing schedules.',
-  ]);
-}
-
-// ── the blocker predicates' inputs ──────────────────────────────────────────
-// Read once, comment-stripped once, and handed to every predicate.
-const APP_DIR = E2E?.app ?? 'apps/subscriptiontracker';
-const readDartTree = (dir) => {
-  const out = [];
-  const walk = (d) => {
-    if (!existsSync(d)) return;
-    for (const e of listDir(d, { withFileTypes: true })) {
-      const p = join(d, e.name);
-      if (e.isDirectory()) walk(p);
-      else if (e.name.endsWith('.dart')) out.push(stripSourceComments(readFileSync(p, 'utf8'), '.dart'));
-    }
-  };
-  walk(join(ROOT, dir));
-  return out.join('\n');
-};
-
-/** THE E2E SURFACE — everything that could carry a delete-account step: the
- *  named integration suite plus the whole nightly harness under tooling/e2e/.
+/** THE E2E HARNESS — the nightly scripts under tooling/e2e/, read once. With an
+ *  app's suite it is that app's E2E SURFACE: everything that could carry a
+ *  delete-account step.
  *
  *  🔴 IT REPLACED A SERVER-SIDE PAIR (`no account route under
  *  services/subscriptiontracker-api/src/routes` AND `the platform route touches only
@@ -325,79 +277,164 @@ if (harnessFiles.length === 0) {
     'single most repeated failure.',
   ]);
 }
-const e2eSurface = [
-  suite,
-  ...harnessFiles.map((f) => stripSourceComments(readFileSync(join(harnessDir, f), 'utf8'), '.js')),
-].join('\n');
+const harness = harnessFiles.map((f) => stripSourceComments(readFileSync(join(harnessDir, f), 'utf8'), '.js'));
 
-const sources = {
-  subscriptiontracker: readDartTree(join(APP_DIR, 'lib')),
-  e2eSurface,
+const readDartTree = (dir) => {
+  const out = [];
+  const walk = (d) => {
+    if (!existsSync(d)) return;
+    for (const e of listDir(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name.endsWith('.dart')) out.push(stripSourceComments(readFileSync(p, 'utf8'), '.dart'));
+    }
+  };
+  walk(join(ROOT, dir));
+  return out.join('\n');
 };
-if (sources.subscriptiontracker.trim().length === 0) {
-  coverageLost([
-    `no Dart source was read under ${APP_DIR}/lib.`,
-    'Every blocker predicate below reads that tree, and a predicate over an empty string answers',
-    '"still blocked" for reasons that have nothing to do with the blocker. A scan over nothing prints',
-    'ok — this repo\'s single most repeated failure.',
-  ]);
-}
 
-// ── the equality ────────────────────────────────────────────────────────────
-let proven = 0;
-const asserted = [];
-const blocked = [];
-
-for (const leg of legs) {
-  if (leg.status === 'asserted') {
-    asserted.push(leg);
-    const anchors = Array.isArray(leg.anchors) ? leg.anchors : [];
-    if (anchors.length === 0) {
-      problems.push(
-        `\`${leg.id}\` is marked asserted with no anchors. An unanchored claim is exactly the "the record ` +
-          'names an E2E" acceptance that N-6 already had and that could not fail.',
-      );
-      continue;
-    }
-    const unresolved = anchors.filter((a) => !suite.includes(a));
-    if (unresolved.length) {
-      problems.push(
-        `\`${leg.id}\` claims to be asserted, but ${unresolved.length} of its ${anchors.length} anchor(s) ` +
-          `no longer resolve in ${testRel} (comment-stripped): ${unresolved.map((u) => JSON.stringify(u)).join(', ')}. ` +
-          'The register claims more coverage than the suite carries — either the suite lost the leg, or ' +
-          'the anchors were never what proved it.',
-      );
-      continue;
-    }
-    proven++;
-  } else if (leg.status === 'blocked') {
-    blocked.push(leg);
-    if (!leg.blockedBy) {
-      problems.push(`\`${leg.id}\` is BLOCKED with no \`blockedBy\`. An unexplained block is indistinguishable from work nobody did.`);
-      continue;
-    }
-    const stillReal = BLOCKERS_STILL_REAL[leg.blockedBy];
-    if (typeof stillReal !== 'function') {
-      problems.push(
-        `\`${leg.id}\` claims to be blocked by "${leg.blockedBy}", which has no predicate in ` +
-          'BLOCKERS_STILL_REAL. A blocker nothing evaluates is a sentence, and it would sit here looking ' +
-          'checked forever.',
-      );
-      continue;
-    }
-    if (!stillReal(sources)) {
-      problems.push(
-        `\`${leg.id}\` claims to be blocked by "${leg.blockedBy}", but that blocker has SHIPPED. ` +
-          'Cover the leg in the E2E or restate the block — otherwise the excuse outlives its reason.',
-      );
-    }
-  } else {
-    problems.push(
-      `\`${leg.id}\` has unknown status ${JSON.stringify(leg.status)} (expected asserted / blocked). ` +
-        'A third state is a third place for a leg to hide.',
-    );
+/** Grade one `apps.<id>` entry: its suite, its workflow, its six legs. */
+function gradeApp(id, E2E) {
+  const where = typeof E2E?.app === 'string' ? E2E.app : `apps/${id}`;
+  const lost = (lines) => coverageLost([`[${where}] ${lines[0]}`, ...lines.slice(1)]);
+  if (E2E?.app !== `apps/${id}`) {
+    lost([`${REGISTER_REL} apps.${id}.app is ${JSON.stringify(E2E?.app ?? null)}, not "apps/${id}".`, 'An entry grades the app it is keyed by.']);
   }
+
+  const legs = Array.isArray(E2E?.legs) ? E2E.legs : [];
+  const ids = legs.map((l) => l && l.id);
+  const missing = REQUIRED_LEGS.filter((r) => !ids.includes(r));
+  const extra = ids.filter((i) => !REQUIRED_LEGS.includes(i));
+  if (missing.length || extra.length) {
+    lost([
+      `${REGISTER_REL} apps.${id}.legs does not declare N-6's six legs exactly.`,
+      ...(missing.length ? [`missing: ${missing.join(', ')}`] : []),
+      ...(extra.length ? [`unexpected: ${extra.join(', ')}`] : []),
+      'The requirement names six and only six. Trimming the list is how a coverage relationship becomes',
+      'a tautology — the four uncovered legs are exactly the ones it would be convenient to delete.',
+    ]);
+  }
+
+  // ── the suite under test ──────────────────────────────────────────────────
+  const testRel = E2E?.test;
+  if (typeof testRel !== 'string' || testRel.length === 0) {
+    lost([`${REGISTER_REL} names no \`apps.${id}.test\`, so there is no suite to resolve anchors against.`]);
+  }
+  const testPath = join(ROOT, testRel);
+  if (!existsSync(testPath)) {
+    lost([
+      `the named E2E ${testRel} does not exist.`,
+      'Every anchor below would fail to resolve for the same reason, so the message would blame the',
+      'register for a missing file. Named separately so the real cause is the one printed.',
+    ]);
+  }
+  const suite = stripSourceComments(readFileSync(testPath, 'utf8'), '.dart');
+
+  // RESOLVE, DO NOT MATCH. A file of comments is not a test suite: after stripping,
+  // the source must still declare at least one real `testWidgets(`. Without this,
+  // gutting app_test.dart down to its header would leave anchors unresolvable and
+  // the failure would read as a register problem rather than as a deleted suite.
+  if (!/\btestWidgets\s*\(/.test(suite)) {
+    lost([
+      `${testRel} declares no \`testWidgets(\` once comments are stripped.`,
+      'The named E2E is not a suite any more. Anchors cannot be resolved against a file that runs',
+      'nothing, and a green nightly over it would prove only that Flutter started.',
+    ]);
+  }
+
+  // The workflow must still be the one that runs this suite. The register names
+  // both; if they have drifted, "the leg is proven nightly" is proven by nothing.
+  const wfRel = E2E?.workflow;
+  if (typeof wfRel !== 'string' || !existsSync(join(ROOT, wfRel))) {
+    lost([
+      `${REGISTER_REL} names workflow ${JSON.stringify(wfRel)}, which does not exist.`,
+      'The legs below are only proven if something runs them on a schedule.',
+    ]);
+  }
+  const workflow = readFileSync(join(ROOT, wfRel), 'utf8')
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('#'))
+    .join('\n');
+  if (!workflow.includes(testRel.split('/').slice(-2).join('/'))) {
+    lost([
+      `${wfRel} does not name ${testRel}.`,
+      'The register claims this workflow runs this suite. It does not, so every leg marked asserted is',
+      'proven by a test nothing schedules.',
+    ]);
+  }
+
+  // ── the blocker predicates' inputs: THIS app's ──────────────────────────────
+  const sources = { app: readDartTree(join(where, 'lib')), suite, e2eSurface: [suite, ...harness].join('\n') };
+  if (sources.app.trim().length === 0) {
+    lost([
+      `no Dart source was read under ${where}/lib.`,
+      'Every blocker predicate below reads that tree, and a predicate over an empty string answers',
+      '"still blocked" for reasons that have nothing to do with the blocker. A scan over nothing prints',
+      'ok — this repo\'s single most repeated failure.',
+    ]);
+  }
+
+  // ── the equality ──────────────────────────────────────────────────────────
+  let proven = 0;
+  const asserted = [];
+  const blocked = [];
+  const tag = `[${where}]`;
+  for (const leg of legs) {
+    if (leg.status === 'asserted') {
+      asserted.push(leg);
+      const anchors = Array.isArray(leg.anchors) ? leg.anchors : [];
+      if (anchors.length === 0) {
+        problems.push(
+          `${tag} \`${leg.id}\` is marked asserted with no anchors. An unanchored claim is exactly the "the record ` +
+            'names an E2E" acceptance that N-6 already had and that could not fail.',
+        );
+        continue;
+      }
+      const unresolved = anchors.filter((a) => !suite.includes(a));
+      if (unresolved.length) {
+        problems.push(
+          `${tag} \`${leg.id}\` claims to be asserted, but ${unresolved.length} of its ${anchors.length} anchor(s) ` +
+            `no longer resolve in ${testRel} (comment-stripped): ${unresolved.map((u) => JSON.stringify(u)).join(', ')}. ` +
+            'The register claims more coverage than the suite carries — either the suite lost the leg, or ' +
+            'the anchors were never what proved it.',
+        );
+        continue;
+      }
+      proven++;
+    } else if (leg.status === 'blocked') {
+      blocked.push(leg);
+      if (!leg.blockedBy) {
+        problems.push(`${tag} \`${leg.id}\` is BLOCKED with no \`blockedBy\`. An unexplained block is indistinguishable from work nobody did.`);
+        continue;
+      }
+      // A blocker that names THIS app's directory is keyed by `apps/{app}`, so one
+      // predicate serves every app and is evaluated over that app's own sources.
+      const stillReal = BLOCKERS_STILL_REAL[String(leg.blockedBy).split(where).join(APP_PLACEHOLDER)];
+      if (typeof stillReal !== 'function') {
+        problems.push(
+          `${tag} \`${leg.id}\` claims to be blocked by "${leg.blockedBy}", which has no predicate in ` +
+            'BLOCKERS_STILL_REAL. A blocker nothing evaluates is a sentence, and it would sit here looking ' +
+            'checked forever.',
+        );
+        continue;
+      }
+      if (!stillReal(sources)) {
+        problems.push(
+          `${tag} \`${leg.id}\` claims to be blocked by "${leg.blockedBy}", but that blocker has SHIPPED. ` +
+            'Cover the leg in the E2E or restate the block — otherwise the excuse outlives its reason.',
+        );
+      }
+    } else {
+      problems.push(
+        `${tag} \`${leg.id}\` has unknown status ${JSON.stringify(leg.status)} (expected asserted / blocked). ` +
+          'A third state is a third place for a leg to hide.',
+      );
+    }
+  }
+  return { id, where, E2E, legs, testRel, suite, wfRel, workflow, asserted, proven, blocked };
 }
+
+const graded = appEntries.map(([id, entry]) => gradeApp(id, entry));
 
 // ── every app in the workspace set carries the suite (10b) ──────────────────
 // ⏱ 2026-09-27 (O-BRICK-STAMPS-NO-E2E-SUITE, 10b). The legs above are one app's,
@@ -406,6 +443,9 @@ for (const leg of legs) {
 // app of tooling/ci/app-set.mjs's set by `E2E_APP_ID`. An app of the set without
 // it is a leg nobody can run for that app — exit 1, naming the file. An empty or
 // unreadable set is COVERAGE LOST.
+// ⏱ 2026-10-01 (rv2-newproduct-005): and every app of the set has an
+// `apps.<id>` entry, so its six legs are graded against that suite. Without one
+// the suite exists and nothing says which legs it proves — exit 1, naming the app.
 const APP_SET = requireAppSet(ROOT, 'assert-e2e-legs');
 for (const { dir } of APP_SET) {
   const rel = `${dir}/integration_test/app_test.dart`;
@@ -413,6 +453,12 @@ for (const { dir } of APP_SET) {
     problems.push(
       `${rel} is missing. ${dir} is in the workspace app set, and the e2e lane drives every app of the set ` +
         'with its own suite: without it this app has no e2e leg at all. The brick stamps one; restore it.',
+    );
+  }
+  if (!graded.some((g) => g.where === dir)) {
+    problems.push(
+      `[${dir}] is in the workspace app set and ${REGISTER_REL} has no \`apps.${dir.split('/').pop()}\` entry, so its six ` +
+        'golden-path legs are graded against no suite. The stamp writes it:  node tooling/kit/stamp-shared.mjs',
     );
   }
 }
@@ -426,7 +472,14 @@ for (const { dir } of APP_SET) {
 // so every stamped app's e2e would fail its first line with "passed no app at
 // all". The subject is every suite of the app set plus the brick's template,
 // comment-stripped; the passed set is the workflow's `--dart-define=NAME=`.
+// ⏱ 2026-10-01: an app's suite is held to ITS entry's workflow, and the brick's
+// template to every workflow an entry names (a stamped app is driven by one).
 const brickSuiteRel = 'tooling/bricks/app/__brick__/apps/{{app_id}}/integration_test/app_test.dart';
+const workflowText = new Map(graded.map((g) => [g.wfRel, g.workflow]));
+const workflowsOf = (rel) => {
+  const g = graded.find((x) => rel === `${x.where}/integration_test/app_test.dart`);
+  return g ? [g.wfRel] : [...workflowText.keys()];
+};
 const definesRead = new Map(); // name -> [suite rel]
 for (const rel of [...APP_SET.map(({ dir }) => `${dir}/integration_test/app_test.dart`), brickSuiteRel]) {
   const abs = join(ROOT, rel);
@@ -437,11 +490,14 @@ for (const rel of [...APP_SET.map(({ dir }) => `${dir}/integration_test/app_test
     if (!definesRead.get(m[1]).includes(rel)) definesRead.get(m[1]).push(rel);
   }
 }
-const definesPassed = new Set([...workflow.matchAll(/--dart-define=(E2E_[A-Z0-9_]+)=/g)].map((m) => m[1]));
+const definesPassedBy = new Map(
+  [...workflowText].map(([rel, text]) => [rel, new Set([...text.matchAll(/--dart-define=(E2E_[A-Z0-9_]+)=/g)].map((m) => m[1]))]),
+);
 for (const [name, readers] of [...definesRead.entries()].sort()) {
-  if (!definesPassed.has(name)) {
+  const unpassedBy = [...new Set(readers.flatMap(workflowsOf))].filter((w) => !definesPassedBy.get(w)?.has(name));
+  if (unpassedBy.length) {
     problems.push(
-      `${readers.join(', ')} read(s) --dart-define ${name}, and ${wfRel} never passes it: the suite would read '' ` +
+      `${readers.join(', ')} read(s) --dart-define ${name}, and ${unpassedBy.join(', ')} never passes it: the suite would read '' ` +
         'and run against an input nobody set. Pass it on the flutter drive line (and declare it in ' +
         'tooling/publishable-inputs.json), or stop reading it.',
     );
@@ -501,6 +557,17 @@ for (const t of Object.keys(declaredTargets)) {
     );
   }
 }
+
+// ⏱ 2026-10-01: the native axis is ONE app's, and the register names which —
+// `nativeTargets.app` — rather than this limb taking whichever entry came first.
+const NATIVE_APP = graded.find((g) => g.id === NT.app);
+if (!NATIVE_APP) {
+  coverageLost([
+    `${REGISTER_REL} nativeTargets.app is ${JSON.stringify(NT.app ?? null)}, which names no \`apps.<id>\` entry.`,
+    'The native legs and their web equivalents are one app\'s; without the app they are graded against nothing.',
+  ]);
+}
+const { legs, where: APP_DIR, testRel, suite } = NATIVE_APP;
 
 const legTargets = nativeTargets.filter((t) => NATIVE_LEGS.some((l) => declaredTargets[t][l] === 'leg'));
 const eqLegs = [...new Set(nativeTargets.flatMap((t) => NATIVE_LEGS.filter((l) => declaredTargets[t][l] === 'equivalent')))];
@@ -901,10 +968,12 @@ for (const p of flowPending) {
 // THE EQUALITY, STATED. It follows from the per-leg checks above, and it is
 // computed and printed anyway: the two numbers are what N-6 actually asks for,
 // and a relationship nobody prints is one nobody can audit from a log.
-if (proven !== asserted.length) {
-  problems.push(
-    `leg equality broken — ${asserted.length} leg(s) marked asserted, ${proven} proven by ${testRel}.`,
-  );
+for (const g of graded) {
+  if (g.proven !== g.asserted.length) {
+    problems.push(
+      `[${g.where}] leg equality broken — ${g.asserted.length} leg(s) marked asserted, ${g.proven} proven by ${g.testRel}.`,
+    );
+  }
 }
 
 if (problems.length) {
@@ -916,30 +985,36 @@ if (problems.length) {
   process.exit(1);
 }
 
-if (blocked.length) {
+for (const g of graded) {
+  if (g.blocked.length === 0) continue;
   notes.push(
-    `⬜ ${blocked.length} of ${REQUIRED_LEGS.length} golden-path leg(s) are NOT proven by the nightly. ` +
+    `⬜ [${g.where}] ${g.blocked.length} of ${REQUIRED_LEGS.length} golden-path leg(s) are NOT proven by the nightly. ` +
       'Each blocker is re-evaluated every run, so the excuse cannot outlive its reason:',
   );
-  for (const l of blocked) notes.push(`   · ${l.id} — ${l.blockedBy} (declared ${l.declaredOn ?? 'undated'})`);
+  for (const l of g.blocked) notes.push(`   · ${l.id} — ${l.blockedBy} (declared ${l.declaredOn ?? 'undated'})`);
 }
 notes.push(
-  `⬜ the money legs are web only, by policy, dated ${E2E?.declaredOn ?? 'undated'} — Apple 3.1.1 / Play billing make a web ` +
+  `⬜ the money legs are web only, by policy, dated ${NATIVE_APP.E2E?.declaredOn ?? 'undated'} — Apple 3.1.1 / Play billing make a web ` +
     'checkout structurally invalid as the unlock path on iOS and Android. (Guideline numbers COULD-NOT-ESTABLISH — ' +
     'carried from research, not re-read.)',
 );
 notes.push(
   `⬜ native targets (${nativeTargets.join(', ')}): ${legTargets.length} run the anonymous/sign-in legs in ` +
     `${NT.workflow} job \`${NT.job}\` on ${nativeJobCrons.join(', ') || 'no named cron'}; account delete is declared ` +
-    `proven on web (${eqLegs.join(', ') || 'none'}), declared ${NT.declaredOn ?? 'undated'}.`,
+    `proven on web (${eqLegs.join(', ') || 'none'}), declared ${NT.declaredOn ?? 'undated'} — graded for ${APP_DIR} (nativeTargets.app).`,
 );
 for (const n of notes) console.log(n);
 
 console.log(
-  `ok  e2e legs — ${asserted.length} of ${REQUIRED_LEGS.length} golden-path leg(s) claimed asserted and ` +
-    `${proven} proven by ${testRel} (equality holds); ${blocked.length} blocked with a live blocker; ` +
-    `every app of the workspace set carries integration_test/app_test.dart (apps=${APP_SET.length}); ` +
-    `${definesRead.size} E2E_ define(s) the suites read, every one passed by ${wfRel}; ` +
+  `ok  e2e legs — ${graded
+    .map(
+      (g) =>
+        `[${g.where}] ${g.asserted.length} of ${REQUIRED_LEGS.length} golden-path leg(s) claimed asserted and ` +
+        `${g.proven} proven by ${g.testRel} (equality holds); ${g.blocked.length} blocked with a live blocker`,
+    )
+    .join('; ')}; ` +
+    `every app of the workspace set carries integration_test/app_test.dart and an apps.<id> entry (apps=${APP_SET.length}); ` +
+    `${definesRead.size} E2E_ define(s) the suites read, every one passed by ${[...workflowText.keys()].join(', ')}; ` +
     `${nativeTargets.length} native catalog target(s), each leg run or declared equivalent; ` +
-    `${flowList.length} user flow(s) × ${flowTargets.length} target(s): ${flowLegs} leg(s) anchored, ${parkedLegs.length} parked, ${flowEquivalents} declared equivalent(s); ${flowPending.length} pending with a row`,
+    `${flowList.length} user flow(s) × ${flowTargets.length} target(s) for ${APP_DIR}: ${flowLegs} leg(s) anchored, ${parkedLegs.length} parked, ${flowEquivalents} declared equivalent(s); ${flowPending.length} pending with a row`,
 );

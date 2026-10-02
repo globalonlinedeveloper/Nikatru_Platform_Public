@@ -77,6 +77,40 @@ function addWorkspaceApp(root, id, { suite }) {
   if (suite) writeFileSync(join(root, 'apps', id, 'integration_test', 'app_test.dart'), 'void main() {}\n');
 }
 
+/** Stamps `apps/<id>` the way the brick does, as far as this guard reads it: the
+ *  workspace entry, the brick's suite and the brick's providers (its paywall
+ *  declaration), mustache left in place except the package name. */
+const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
+function addStampedApp(root, id) {
+  addWorkspaceApp(root, id, { suite: false });
+  const put = (rel, text) => {
+    mkdirSync(dirname(join(root, rel)), { recursive: true });
+    writeFileSync(join(root, rel), text);
+  };
+  put(`apps/${id}/integration_test/app_test.dart`, readFileSync(join(REPO, BRICK_APP, 'integration_test/app_test.dart'), 'utf8').replaceAll('{{app_id.snakeCase()}}', id));
+  put(`apps/${id}/lib/state/providers.dart`, readFileSync(join(REPO, BRICK_APP, 'lib/state/providers.dart'), 'utf8'));
+}
+
+/** Runs the stamp's e2e step over a tree copy, as post_gen does after mason. */
+async function stampE2e(root) {
+  const { planE2eEntries } = await import('../../kit/stamp-shared.mjs');
+  const plan = planE2eEntries(root, { today: '2026-10-01' });
+  assert.deepEqual(plan.lost, []);
+  writeFileSync(join(root, REGISTER), plan.after);
+  return plan;
+}
+
+/** Like withTree, for a mutation that awaits. */
+async function withTreeAsync(mutate, fn) {
+  const root = realTree();
+  try {
+    await mutate(root);
+    fn(spawnSync(process.execPath, [GUARD, root], { cwd: REPO, encoding: 'utf8' }));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 const readReg = (root) => JSON.parse(readFileSync(join(root, REGISTER), 'utf8'));
 const writeReg = (root, reg) => writeFileSync(join(root, REGISTER), JSON.stringify(reg, null, 2));
 
@@ -211,7 +245,7 @@ describe('the equality — a claim the suite does not carry', () => {
     withTree(
       (root) => {
         const reg = readReg(root);
-        reg.legs.find((l) => l.id === 'account-delete-purges').anchors = [
+        reg.apps.subscriptiontracker.legs.find((l) => l.id === 'account-delete-purges').anchors = [
           "shot('20-account-deleted')",
           'E2EKeys.aKeyNobodyEverWrote',
         ];
@@ -230,7 +264,7 @@ describe('the equality — a claim the suite does not carry', () => {
     withTree(
       (root) => {
         const reg = readReg(root);
-        reg.legs.find((l) => l.id === 'anonymous').anchors = [];
+        reg.apps.subscriptiontracker.legs.find((l) => l.id === 'anonymous').anchors = [];
         writeReg(root, reg);
       },
       (r) => {
@@ -289,7 +323,7 @@ describe('a blocked leg`s excuse is itself checked', () => {
    *  demotion, and the only input under which the v3 predicate still runs. */
   const demoteDeleteLeg = (root) => {
     const reg = readReg(root);
-    const leg = reg.legs.find((l) => l.id === 'account-delete-purges');
+    const leg = reg.apps.subscriptiontracker.legs.find((l) => l.id === 'account-delete-purges');
     leg.status = 'blocked';
     leg.blockedBy = '[7] no e2e step exercises the erasure route against the deployed API';
     delete leg.anchors;
@@ -387,7 +421,7 @@ describe('a blocked leg`s excuse is itself checked', () => {
     withTree(
       (root) => {
         const reg = readReg(root);
-        delete reg.legs.find((l) => l.id === 'feature-unlock').blockedBy;
+        delete reg.apps.subscriptiontracker.legs.find((l) => l.id === 'feature-unlock').blockedBy;
         writeReg(root, reg);
       },
       (r) => {
@@ -401,7 +435,7 @@ describe('a blocked leg`s excuse is itself checked', () => {
     withTree(
       (root) => {
         const reg = readReg(root);
-        reg.legs.find((l) => l.id === 'feature-unlock').blockedBy = 'because reasons';
+        reg.apps.subscriptiontracker.legs.find((l) => l.id === 'feature-unlock').blockedBy = 'because reasons';
         writeReg(root, reg);
       },
       (r) => {
@@ -415,7 +449,7 @@ describe('a blocked leg`s excuse is itself checked', () => {
     withTree(
       (root) => {
         const reg = readReg(root);
-        reg.legs.find((l) => l.id === 'feature-unlock').status = 'probably-fine';
+        reg.apps.subscriptiontracker.legs.find((l) => l.id === 'feature-unlock').status = 'probably-fine';
         writeReg(root, reg);
       },
       (r) => {
@@ -453,7 +487,7 @@ describe('coverage self-checks', () => {
     withTree(
       (root) => {
         const reg = readReg(root);
-        reg.legs = reg.legs.filter((l) => l.id !== 'feature-unlock');
+        reg.apps.subscriptiontracker.legs = reg.apps.subscriptiontracker.legs.filter((l) => l.id !== 'feature-unlock');
         writeReg(root, reg);
       },
       (r) => {
@@ -467,7 +501,7 @@ describe('coverage self-checks', () => {
     withTree(
       (root) => {
         const reg = readReg(root);
-        reg.legs.push({ id: 'vibes', status: 'asserted', anchors: ['void main('] });
+        reg.apps.subscriptiontracker.legs.push({ id: 'vibes', status: 'asserted', anchors: ['void main('] });
         writeReg(root, reg);
       },
       (r) => {
@@ -545,12 +579,15 @@ describe('coverage self-checks', () => {
   });
 
   // ── 10b: every app of the workspace set carries integration_test/app_test.dart ──
-  test('GREEN — a second workspace app WITH its suite passes, and the ok line says apps=2', () => {
+  // ⏱ 2026-10-01 (rv2-newproduct-005): …and an `apps.<id>` entry. This case was
+  // GREEN until today: a second app's suite existed and nothing graded a leg of it.
+  test('a second workspace app WITH its suite but NO apps.<id> entry is exit 1, naming the app', () => {
     withTree(
       (root) => addWorkspaceApp(root, 'second', { suite: true }),
       (r) => {
-        assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
-        assert.match(r.stdout, /every app of the workspace set carries integration_test\/app_test\.dart \(apps=2\)/);
+        assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+        assert.match(r.stderr, /\[apps\/second\] is in the workspace app set and tooling\/e2e-leg-register\.json has no `apps\.second` entry/);
+        assert.match(r.stderr, /node tooling\/kit\/stamp-shared\.mjs/);
       },
     );
   });
@@ -752,6 +789,117 @@ describe('limb NATIVE — every native catalog target has a leg or a declared eq
       assert.equal(r.status, 1, r.stdout + r.stderr);
       assert.match(r.stderr, /offlineRead/);
     });
+  });
+});
+
+// ⏱ 2026-10-01 · rv2-newproduct-005 (O-BRICK-STAMPS-NO-E2E-SUITE). The six legs
+// are graded PER APP, each against its own suite. Before this, a second
+// `apps.<id>` entry made this guard COVERAGE LOST, and without one a stamped
+// app's legs were asserted against no suite. Each case is the real tree plus a
+// brick-stamped `apps/probe`, the app the brick's CI probe stamps.
+describe('per app — a stamped app is graded against its OWN suite', () => {
+  test('the stamp writes the probe\'s entry: green, and the ok line grades both apps', async () => {
+    await withTreeAsync(
+      async (root) => {
+        addStampedApp(root, 'probe');
+        const plan = await stampE2e(root);
+        assert.deepEqual(plan.added, ['probe']);
+        assert.equal(readReg(root).apps.probe.userTables, undefined, 'the stamp invented backend tables');
+      },
+      (r) => {
+        assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+        assert.match(r.stdout, /\[apps\/subscriptiontracker\] 3 of 6 golden-path leg\(s\) claimed asserted and 3 proven/);
+        assert.match(r.stdout, /\[apps\/probe\] 2 of 6 golden-path leg\(s\) claimed asserted and 2 proven by apps\/probe\/integration_test\/app_test\.dart/);
+        assert.match(r.stdout, /account-delete-purges — \[7\] apps\/probe\/integration_test\/app_test\.dart walks no account deletion/);
+        assert.match(r.stdout, /apps\.<id> entry \(apps=2\)/);
+      },
+    );
+  });
+
+  // 🔴 THE RED CONTROL THE FINDING NAMES.
+  test('🔴 the probe\'s entry with one anchor removed from ITS app_test.dart is red, naming apps/probe', async () => {
+    await withTreeAsync(
+      async (root) => {
+        addStampedApp(root, 'probe');
+        await stampE2e(root);
+        const p = join(root, 'apps/probe/integration_test/app_test.dart');
+        const before = readFileSync(p, 'utf8');
+        const after = before.replace('expect(find.byType(HomeScreen), findsWidgets);', '');
+        assert.notEqual(after, before);
+        writeFileSync(p, after);
+      },
+      (r) => {
+        assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+        assert.match(
+          r.stderr,
+          /\[apps\/probe\] `sign-in` claims to be asserted, but 1 of its 2 anchor\(s\) no longer resolve in apps\/probe\/integration_test\/app_test\.dart/,
+        );
+        assert.doesNotMatch(r.stderr, /\[apps\/subscriptiontracker\]/);
+      },
+    );
+  });
+
+  test('🔴 a blocker is evaluated over THAT app: the probe switching its paywall on kills only ITS excuse', async () => {
+    await withTreeAsync(
+      async (root) => {
+        addStampedApp(root, 'probe');
+        await stampE2e(root);
+        const p = join(root, 'apps/probe/lib/state/providers.dart');
+        const before = readFileSync(p, 'utf8');
+        const after = before.replace('PaywallConfig(enabled: false)', 'PaywallConfig(enabled: true)');
+        assert.notEqual(after, before);
+        writeFileSync(p, after);
+      },
+      (r) => {
+        assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+        assert.match(r.stderr, /\[apps\/probe\] `purchase-sandbox` claims to be blocked by "\[5\] apps\/probe sells nothing", but that blocker has SHIPPED/);
+        assert.doesNotMatch(r.stderr, /\[apps\/subscriptiontracker\] `purchase-sandbox`/);
+      },
+    );
+  });
+
+  test('🔴 a leg credited to another app\'s blocker has no predicate: exit 1', async () => {
+    await withTreeAsync(
+      async (root) => {
+        addStampedApp(root, 'probe');
+        await stampE2e(root);
+        const reg = readReg(root);
+        reg.apps.probe.legs.find((l) => l.id === 'feature-unlock').blockedBy = '[5] apps/subscriptiontracker sells nothing';
+        writeReg(root, reg);
+      },
+      (r) => {
+        assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
+        assert.match(r.stderr, /\[apps\/probe\] `feature-unlock` claims to be blocked by "\[5\] apps\/subscriptiontracker sells nothing", which has no predicate/);
+      },
+    );
+  });
+
+  test('a top-level `legs` list again is COVERAGE LOST (2)', () => {
+    withTree(
+      (root) => {
+        const reg = readReg(root);
+        reg.legs = reg.apps.subscriptiontracker.legs;
+        writeReg(root, reg);
+      },
+      (r) => {
+        assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+        assert.match(r.stderr, /still carries a top-level `legs`/);
+      },
+    );
+  });
+
+  test('the stamp is idempotent: a second run over a stamped tree adds nothing', async () => {
+    const root = realTree();
+    try {
+      addStampedApp(root, 'probe');
+      await stampE2e(root);
+      const { planE2eEntries } = await import('../../kit/stamp-shared.mjs');
+      const again = planE2eEntries(root);
+      assert.deepEqual(again.added, []);
+      assert.equal(again.after, again.before);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

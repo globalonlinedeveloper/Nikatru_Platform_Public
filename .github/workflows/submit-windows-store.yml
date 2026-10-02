@@ -97,16 +97,6 @@ jobs:
           set -euo pipefail
           node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" >> "$GITHUB_OUTPUT"
           echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
-      # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
-      - name: Name clearance holds for windows-store (owner HELD or PROVEN-FREE)
-        run: node tooling/ci/assert-name-clearance.mjs --for-submission=windows-store
-      # why: LEAD RULING 2026-09-26 22:00Z (O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED): the date the owner swore the app's
-      # Partner Center declarations (stores.windows-store.declaredOn) gates a REAL submission only. The dry run grades
-      # the record and prints NOT YET DECLARED; it never refuses on the date (no --real-submission here). bash: $APP.
-      - name: The app's Partner Center declarations are recorded (--for-submission)
-        shell: bash
-        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=windows-store --app "$APP"
       # why: the backend defines. Without them AppConfig.isBackendLive stays
       # false, every field is at its PLACEHOLDER, and the packaged .msix is the
       # DEMO build -- mock sign-in, seeded data, no crash sink. Graded by
@@ -189,6 +179,27 @@ jobs:
         # skipped the artifact would report the path healthy having never touched the one
         # output the channel accepts.
         run: node tooling/release/submit-windows-store.mjs --dry-run --app "${env:APP}"
+      # why: O-SUBMIT-DRY-RUN-GATES-BLIND-THE-REHEARSAL (AA-02): the gates below run AFTER the build, the packaging
+      # and the store dry run, so a red gate still fails this job and skips submit, but only once the .msix was rehearsed.
+      # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
+      # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
+      - name: Name clearance holds for windows-store (owner HELD or PROVEN-FREE)
+        run: node tooling/ci/assert-name-clearance.mjs --for-submission=windows-store
+      # why: LEAD RULING 2026-09-26 22:00Z (O-APP1-CONSOLE-DECLARATIONS-UNSUBMITTED): the date the owner swore the app's
+      # Partner Center declarations (stores.windows-store.declaredOn) gates a REAL submission only. The dry run grades
+      # the record and prints NOT YET DECLARED; it never refuses on the date (no --real-submission here). bash: $APP.
+      - name: The app's Partner Center declarations are recorded (--for-submission)
+        shell: bash
+        run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=windows-store --app "$APP"
+      # why: C-03. A missing screenshot set was fatal only on Play; Partner Center refuses a listing without one.
+      - name: The Microsoft Store screenshot set covers its declared device types
+        shell: bash
+        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=windows-store
+      # why: O-SUBMIT-LANES-IGNORE-NATIVE-AUTH. A dry run prints what a real submission of a build that cannot
+      # sign in would be refused, and never refuses; the submit job passes --real-submission.
+      - name: A build that cannot sign in is not committed for certification (windows-store)
+        shell: bash
+        run: node tooling/ci/assert-channel-register.mjs --for-submission=windows-store
       # why: the hand-off the submit job verifies, and the upload below reads the same
       # output, so the name is written once. Nothing runs between this hash and that
       # upload. bash, because pwsh is this runner's default.
@@ -311,6 +322,15 @@ jobs:
       - name: The app's Partner Center declarations are recorded (--for-submission)
         shell: bash
         run: node tooling/ci/assert-sworn-store-files.mjs --for-submission=windows-store --app "$APP" --real-submission
+      # why: C-03. A missing screenshot set was fatal only on Play; Partner Center refuses a listing without one.
+      - name: The Microsoft Store screenshot set covers its declared device types
+        shell: bash
+        run: node tooling/ci/assert-play-device-coverage.mjs --for-submission=windows-store
+      # why: O-SUBMIT-LANES-IGNORE-NATIVE-AUTH (C-04). This job commits the package for certification, a public step:
+      # refused while the register says the build cannot sign in, before the package is taken.
+      - name: A build that cannot sign in is not committed for certification (windows-store)
+        shell: bash
+        run: node tooling/ci/assert-channel-register.mjs --for-submission=windows-store --real-submission
       # why: THE DRY RUN'S PACKAGE, NOT A REBUILD (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT):
       # one compile and one msix:create per dispatch. The dry-run job read this package's
       # identity back straight after packaging it, and the sha256 below proves these are those
