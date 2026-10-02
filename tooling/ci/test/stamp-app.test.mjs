@@ -18,7 +18,11 @@
 //     own uncommitted edit included), and any OTHER tracked file it changes,
 //     the root pubspec.lock aside, fails the stamp by name — driven against a
 //     real throwaway git checkout;
-//   · the four post-conditions exist, in order, and a failing one makes the
+//   · after the root pub get, `dart run flutter_launcher_icons` runs from
+//     apps/<id> (O-BRICK-STAMPS-WEB-ONLY, D30) under the same tree keeper, and it
+//     owns NO tracked file: a run that rewrote the root lock from the
+//     subdirectory fails the stamp by name;
+//   · the five post-conditions exist, in order, and a failing one makes the
 //     exit non-zero;
 //   · no workflow stamps with a raw `mason make`: a stamp step that skips this
 //     file skips its post-conditions too. The one raw `mason make` a workflow
@@ -41,7 +45,7 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { appIdProblems } from '../../../contracts/app-id/app-id.js';
 import { PRODUCT_REGISTERS } from '../../../contracts/entitlement/bundle.js';
-import { planStamp, runStamp, REPO, REGEN, TAG_OWNER, APP_LICENCE_ROWS, STAMP_SHARED } from '../../kit/stamp-app.mjs';
+import { planStamp, runStamp, REPO, REGEN, TAG_OWNER, APP_LICENCE_ROWS, STAMP_SHARED, STAMP_NATIVE } from '../../kit/stamp-app.mjs';
 
 let ROOT;
 const GOOD = 'good-vars.json';
@@ -146,7 +150,7 @@ const pubGetWrites = (root, extra = () => {}) => (command) => {
 };
 
 describe('stamp-app.mjs — one command, and loud about what it left behind', () => {
-  test('mason get, mason make, the root pub get and the licence rows run in that order, all from the repo root', () => {
+  test('mason get, mason make, the root pub get, the launcher icons and the licence rows run in that order; only the icons run in the app', () => {
     const p = plan(['--vars', GOOD]);
     assert.deepEqual(p.problems, []);
     assert.deepEqual(
@@ -155,24 +159,27 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
         ['mason', 'get'],
         ['mason', 'make', 'app', '-c', GOOD, '-o', '.', '--on-conflict', 'overwrite'],
         ['flutter', 'pub', 'get'],
+        ['dart', 'run', 'flutter_launcher_icons'],
         [process.execPath, join(ROOT, ...APP_LICENCE_ROWS.split('/')), '--write', '--app', 'habittracker'],
       ],
     );
-    assert.deepEqual(p.steps.map((s) => s.cwd), [ROOT, ROOT, ROOT, ROOT]);
+    // flutter_launcher_icons reads ./pubspec.yaml, so it runs in the app; nothing else does.
+    assert.deepEqual(p.steps.map((s) => s.cwd), [ROOT, ROOT, ROOT, join(ROOT, 'apps', 'habittracker'), ROOT]);
   });
 
   test('on Windows every mason and flutter step is cmd.exe /d /s /c <tool>.bat with the same arguments', () => {
     const p = plan(['--vars', GOOD], { platform: 'win32' });
     assert.deepEqual(p.problems, []);
     assert.deepEqual(
-      p.steps.slice(0, 3).map((s) => [s.command, ...s.args]),
+      p.steps.slice(0, 4).map((s) => [s.command, ...s.args]),
       [
         ['cmd.exe', '/d', '/s', '/c', 'mason.bat', 'get'],
         ['cmd.exe', '/d', '/s', '/c', 'mason.bat', 'make', 'app', '-c', GOOD, '-o', '.', '--on-conflict', 'overwrite'],
         ['cmd.exe', '/d', '/s', '/c', 'flutter.bat', 'pub', 'get'],
+        ['cmd.exe', '/d', '/s', '/c', 'dart.bat', 'run', 'flutter_launcher_icons'],
       ],
     );
-    assert.equal(p.steps[3].command, process.execPath, 'the licence-row generator is node, spawned without a shell');
+    assert.equal(p.steps[4].command, process.execPath, 'the licence-row generator is node, spawned without a shell');
   });
 
   test('the licence rows are written only after the root pub get, and a failed pub get stops the stamp before them', () => {
@@ -199,7 +206,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
   test('NIKATRU_ALLOW_OVERWRITE=1 is set only by --overwrite, and an inherited one is stripped', () => {
     const without = plan(['--vars', GOOD], { env: { PATH: '/bin', NIKATRU_ALLOW_OVERWRITE: '1' } });
     assert.deepEqual(without.problems, []);
-    assert.equal(without.steps.length, 4);
+    assert.equal(without.steps.length, 5);
     assert.ok(without.steps.every((s) => !('NIKATRU_ALLOW_OVERWRITE' in s.env)), 'a stamp without --overwrite carries NIKATRU_ALLOW_OVERWRITE');
     assert.ok(without.steps.every((s) => s.env.PATH === '/bin'), 'the caller environment is not passed through');
 
@@ -240,7 +247,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     assert.match(noVars.problems.join('\n'), /--vars <file\.json> is required/);
   });
 
-  test('the post-conditions are the pubspec, regen.mjs, tag-owner.mjs, the licence rows and the shared files --check, in that order', () => {
+  test('the post-conditions are the pubspec, regen.mjs, tag-owner.mjs, the licence rows, the shared files --check and the native stamp --check, in that order', () => {
     const p = plan(['--vars', GOOD]);
     assert.deepEqual(p.problems, []);
     assert.deepEqual(
@@ -251,6 +258,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
         `node ${TAG_OWNER} --check`,
         `node ${APP_LICENCE_ROWS} --check --app habittracker`,
         `node ${STAMP_SHARED} --check`,
+        `node ${STAMP_NATIVE} --check --app habittracker`,
       ],
     );
     assert.equal(p.post[0].path, join(ROOT, 'apps', 'habittracker', 'pubspec.yaml'));
@@ -260,6 +268,8 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     // ⏱ 2026-10-01 (train P43): the bundle exclusion, the e2e entry and the auth
     // allow list post_gen writes outside apps/<id>/.
     assert.deepEqual(p.post[4].args, [join(ROOT, 'tooling', 'kit', 'stamp-shared.mjs'), '--check', '--root', ROOT]);
+    // ⏱ 2026-10-01 (O-BRICK-STAMPS-WEB-ONLY, D30): the five native folders the native stamp writes.
+    assert.deepEqual(p.post[5].args, [join(ROOT, 'tooling', 'kit', 'stamp-native.mjs'), '--check', '--app', 'habittracker']);
   });
 
   test('a stamp whose licence rows check red exits 1 and names the generator', () => {
@@ -282,7 +292,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     const red = runStamp(p, { run: regenFails, exists: () => true, tree: INERT, log: () => {}, error: (l) => errors.push(l) });
     assert.equal(red, 1);
     assert.match(errors.join('\n'), /1 post-condition\(s\) failed: node tooling\/sites\/regen\.mjs --check/);
-    assert.equal(calls.length, 8, `expected mason get, mason make, pub get, the --write and the four --check runs; got ${calls.join(' | ')}`);
+    assert.equal(calls.length, 10, `expected mason get, mason make, pub get, the launcher icons, the --write and the five --check runs; got ${calls.join(' | ')}`);
 
     const green = runStamp(p, { run: () => 0, exists: () => true, tree: INERT, log: () => {}, error: () => {} });
     assert.equal(green, 0);
@@ -324,9 +334,42 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     }
   });
 
-  test('only the root pub get is wrapped by the tracked-tree keeper', () => {
+  test('the root pub get and the launcher icons are wrapped by the tracked-tree keeper, the icons at the repo root owning nothing', () => {
     const p = plan(['--vars', GOOD]);
-    assert.deepEqual(p.steps.filter((s) => s.keepsTrackedTree).map((s) => s.label), ['flutter pub get (repo root)']);
+    assert.deepEqual(
+      p.steps.filter((s) => s.keepsTrackedTree).map((s) => s.label),
+      ['flutter pub get (repo root)', 'dart run flutter_launcher_icons (apps/habittracker)'],
+    );
+    const icons = p.steps[3];
+    assert.equal(icons.treeRoot, ROOT, 'the keeper must read the whole checkout, not the app directory');
+    assert.deepEqual(icons.owns, []);
+  });
+
+  test('🔴 RED CONTROL: a launcher-icons run that rewrites the root pubspec.lock fails the stamp, named, before the licence rows', () => {
+    const root = trackedTree();
+    try {
+      const ran = [];
+      const errors = [];
+      const pubGet = pubGetWrites(root);
+      const code = runStamp(planStamp({ argv: ['--vars', GOOD], root, platform: 'linux', env: {} }), {
+        run: (command, args) => {
+          ran.push([command, ...args].join(' '));
+          if (command === 'dart') {
+            writeFileSync(join(root, 'pubspec.lock'), 'packages: {re-resolved-from-the-app: 1}\n');
+            return 0;
+          }
+          return pubGet(command);
+        },
+        exists: () => true,
+        log: () => {},
+        error: (l) => errors.push(l),
+      });
+      assert.equal(code, 1);
+      assert.match(errors.join('\n'), /dart run flutter_launcher_icons \(apps\/habittracker\) left 1 tracked file\(s\) changed: pubspec\.lock\. No tracked file is its to write/);
+      assert.ok(!ran.some((r) => r.includes('gen-app-licence-rows')), `the generator ran after a stray write: ${ran.join(' | ')}`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('🔴 the analysis_options.yaml a root pub get rewrites are put back byte for byte — a person\'s own edit as they left it — and the lock is its to write', () => {

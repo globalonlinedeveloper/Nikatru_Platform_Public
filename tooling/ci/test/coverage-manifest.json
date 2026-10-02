@@ -969,13 +969,13 @@
     9,
 
   "stamp-app.test.mjs":
-    17,
+    18,
 
   "stamp-brand-assets.test.mjs":
     19,
 
   "stamp-chain-wiring.test.mjs":
-    5,
+    6,
 
   "stamp-channel.test.mjs":
     19,
@@ -983,14 +983,17 @@
   "stamp-identity.test.mjs":
     15,
 
+  "stamp-native.test.mjs":
+    26,
+
   "stamp-platforms.test.mjs":
-    30,
+    39,
 
   "stamp-properties.test.mjs":
     30,
 
   "stamp-text-fidelity.test.mjs":
-    41,
+    44,
 
   "stamp-wiring.test.mjs":
     20,

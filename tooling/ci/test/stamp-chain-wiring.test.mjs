@@ -12,6 +12,11 @@
 //     already carries the block `_writeMsixConfig` writes;
 //   · post_gen spawns no chain generator by its own path — tooling/sites/
 //     regen.mjs holds the order, and a second list here is how one drifts;
+//   · O-BRICK-STAMPS-WEB-ONLY (D30): its ONE other Process call is
+//     `_stampNativePlatforms`, which runs tooling/kit/stamp-native.mjs and
+//     nothing else, AFTER the brand assets (the splash and the Linux icons
+//     derive from the 1024 master they write) and BEFORE the chain (render.mjs
+//     writes the icon label into native files only where they exist);
 //   · a failure warns with its re-run line and returns: post_gen runs after the
 //     tree is written, so a throw leaves a half-stamped app.
 //
@@ -90,14 +95,31 @@ describe('post_gen.dart — the site chain runs once, last, and warns', () => {
     assert.ok(chain < at('Owner checklist'), 'the chain runs after the checklist is printed');
   });
 
-  test('post_gen spawns no chain generator by its own path: one Process call, and it runs regen.mjs', () => {
+  test('post_gen spawns no chain generator by its own path: two Process calls, the chain and the native stamp', () => {
     const spawns = CODE.match(/Process\.(run|runSync|start)\(/g) ?? [];
-    assert.equal(spawns.length, 1, `${POST_GEN} makes ${spawns.length} Process call(s); the one allowed is in _runSiteChain`);
+    assert.equal(spawns.length, 2, `${POST_GEN} makes ${spawns.length} Process call(s); the two allowed are in _runSiteChain and _stampNativePlatforms`);
     const chain = body('void _runSiteChain(');
     assert.match(chain, /Process\.runSync\(/);
+    const native = body('void _stampNativePlatforms(');
+    assert.match(native, /Process\.runSync\(/);
+    assert.match(native, /<String>\['tooling\/kit\/stamp-native\.mjs', '--app', id\]/);
+    const nativeOwn = ORDER.map((e) => e.script).filter((script) => native.includes(script));
+    assert.deepEqual(nativeOwn, [], '_stampNativePlatforms runs a chain generator; tooling/sites/regen.mjs runs them');
     const commands = chain.slice(chain.indexOf('const commands'), chain.indexOf('];') + 2);
     const own = ORDER.map((e) => e.script).filter((script) => commands.includes(script));
     assert.deepEqual(own, [], `_runSiteChain runs chain generator(s) itself; tooling/sites/regen.mjs runs them`);
+  });
+
+  test('run() stamps the native platforms once, after the brand assets and before the site chain', () => {
+    const run = body('void run(HookContext context)');
+    const calls = run.match(/_stampNativePlatforms\(context, id: id\)/g) ?? [];
+    assert.equal(calls.length, 1, `run() calls _stampNativePlatforms ${calls.length} time(s)`);
+    const native = run.indexOf('_stampNativePlatforms(context, id: id)');
+    assert.ok(run.indexOf('_writeBrandAssets(context,') < native, 'the native stamp runs before the 1024 master it derives the splash from exists');
+    assert.ok(native < run.indexOf('_runSiteChain(context, id: id)'), 'the native stamp runs after the chain, so render.mjs never wrote its native fields');
+    const fn = body('void _stampNativePlatforms(');
+    assert.doesNotMatch(fn, /\bthrow\b/);
+    assert.match(fn, /runInShell: Platform\.isWindows/);
   });
 
   test('_runSiteChain warns with the re-run line and returns; it never throws, and runs in a shell only on Windows', () => {

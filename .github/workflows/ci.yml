@@ -1353,7 +1353,9 @@ jobs:
   app-brick:
     name: App brick (stamp both variants + analyze + validate the clone contract)
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # why: 25, not 15. Since O-BRICK-STAMPS-WEB-ONLY (D30) each of the three stamps runs `flutter create`
+    # and the launcher icons, and the job installs the Linux toolchain and compiles the probe for linux.
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -1385,6 +1387,19 @@ jobs:
         run: |
           SEED=$(node -p "require('./tooling/bricks/app/_probe_vars.json').seed_hex")
           node --single-threaded tooling/ci/assert-stamp-brand-assets.mjs apps/probe --seed "$SEED"
+      # why: O-BRICK-STAMPS-WEB-ONLY (D30). The stamp writes android, ios, macos, windows and linux and brands
+      # them (tooling/kit/stamp-native.mjs, then the launcher icons). The guard that graded app #1 alone above now
+      # grades the probe's native icons, splash and Linux packaging too: the log must count 2 apps with a launch screen.
+      - name: The stamped probe's native platforms carry ITS icons and splash, not Flutter's
+        run: |
+          set +e
+          node --single-threaded tooling/ci/assert-launcher-icons.mjs > "$RUNNER_TEMP/launcher-stamped.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/launcher-stamped.log"
+          echo "assert-launcher-icons exit: $code"
+          if [ "$code" -ne 0 ]; then echo "::error::assert-launcher-icons exited $code on the stamped probe"; exit 1; fi
+          if ! grep -qF '2 app(s) ship a platform with a launch screen' "$RUNNER_TEMP/launcher-stamped.log"; then echo "::error::limb 8 did not grade the stamped probe's splash beside app #1's"; exit 1; fi
       # why: O-NEW-APP-IS-NOT-ONE-COMMAND, the probe. stamp-app.mjs's own
       # post-condition is regen.mjs --check, which compares only what ORDER lists:
       # drop a generator from ORDER and the stamp stops writing its output AND the
@@ -1625,6 +1640,22 @@ jobs:
         run: node tooling/ci/assert-input-contract.mjs
       - name: A stamped app claims only platforms it is built for
         run: node tooling/ci/assert-stamp-platforms.mjs
+      # why: O-BRICK-STAMPS-WEB-ONLY (D30), limb N3's red control, every run. With apps/probe/linux moved out, the
+      # probe is a workspace app build-platforms.yml would build for linux with no folder: assert-stamp-platforms
+      # must exit exactly 1 naming apps/probe; restored, 0.
+      - name: RED CONTROL — the probe without its linux/ folder is refused, naming apps/probe
+        run: |
+          mv apps/probe/linux "$RUNNER_TEMP/probe-linux"
+          set +e
+          node tooling/ci/assert-stamp-platforms.mjs > "$RUNNER_TEMP/native-red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/native-red.log"
+          echo "assert-stamp-platforms exit: $code"
+          mv "$RUNNER_TEMP/probe-linux" apps/probe/linux
+          if [ "$code" -ne 1 ]; then echo "::error::assert-stamp-platforms exited $code with apps/probe/linux removed; the red control requires exactly 1"; exit 1; fi
+          if ! grep -qF 'apps/probe is in the workspace app set and has no `linux/` folder' "$RUNNER_TEMP/native-red.log"; then echo "::error::assert-stamp-platforms exited 1 without naming apps/probe's missing linux/"; exit 1; fi
+          node tooling/ci/assert-stamp-platforms.mjs
       - name: Stamped app asserts its own chassis properties
         run: node tooling/ci/assert-stamp-properties.mjs
       - name: The stamped app carries a done-record, and its DoD items really run
@@ -1638,6 +1669,18 @@ jobs:
       - name: A fresh stamp really builds for web
         working-directory: apps/probe
         run: flutter build web --pwa-strategy=none --no-web-resources-cdn
+      # why: O-BRICK-STAMPS-WEB-ONLY (D30), the native probe build. Without it a stamp is proven native by file
+      # presence alone. Linux because this runner compiles it; build-platforms.yml compiles all five native
+      # targets for every workspace app. assert-stamp-platforms.mjs N2 fails a ci.yml without this step.
+      - name: Linux build deps for the native probe build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libsecret-1-dev libjsoncpp-dev libcurl4-openssl-dev
+      - name: A fresh stamp really builds natively (linux)
+        working-directory: apps/probe
+        run: flutter build linux --debug
       # 🔴 A STAMPED APP MUST SATISFY THE DEPLOY'S FONTS STEP ON THE DAY IT IS
       # STAMPED. deploy-web.yml builds every app with --no-web-resources-cdn and
       # then runs tooling/web/self-host-fallback-fonts.mjs, which REFUSES a bundle
