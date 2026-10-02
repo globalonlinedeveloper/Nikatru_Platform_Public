@@ -647,7 +647,7 @@
           "docs/platform/supabase/boxc/identity-log-retention.sh"
         ],
         "pattern": "RETAIN_DAYS=7\\n",
-        "why": "The request logs of the sign-in service (GoTrue and envoy on Box C) are cut daily and deleted at RETAIN_DAYS. ⚠️ This asserts the script in the tree says 7; the copy installed on the box is held to it only by its sha12 in the PR that installed it (902d41cd4412, 2026-10-02), and a later edit on the box is invisible here."
+        "why": "The request logs of the sign-in service (GoTrue and envoy on Box C) are cut daily and deleted at RETAIN_DAYS. ⚠️ This asserts the script in the tree says 7; the copy installed on the box is held to it only by its sha12 in the PR that installed it (902d41cd4412, 2026-10-02), and a later edit on the box is invisible here. ⏱ 2026-10-02 · review 1 of #1140: the script is now WATCHED (ops register duty.supabase-identity-log-retention, a heartbeat withheld on any failed step) and its revision's sha12 is 562fc372ff82, to replace the installed copy as a lead step."
       }
     },
     {

@@ -24,32 +24,67 @@
 # Reading an older line: `docker logs supabase-auth` shows only since the last
 # cut; earlier days are `zcat /var/log/nikatru-identity/supabase-auth-*.json.gz`.
 #
-# Installed in root's crontab (fields are IST, like every job on this box):
-#   10 4 * * * /opt/supabase/identity-log-retention.sh >> /var/log/nikatru-identity/run.log 2>&1
+# Installed in root's crontab (fields are IST, like every job on this box),
+# through the heartbeat wrapper every other Box C duty runs under, which POSTs
+# GlitchTip heartbeat monitor `Supabase identity log retention` ONLY when this
+# script exits 0 (tooling/ops/register.json, duty.supabase-identity-log-retention):
+#   10 4 * * * /opt/supabase/hb-run.sh identity-log-retention /opt/supabase/identity-log-retention.sh >> /var/log/nikatru-identity/run.log 2>&1
 # The live file is opened O_APPEND by dockerd, so truncating it is safe; lines
 # written between the copy and the truncate (milliseconds) are lost.
-set -eu
+#
+# ⏱ 2026-10-02 · review 1 of #1140, finding 4 — the published 7 days rests on
+# this job, so it is WATCHED, and one fault no longer stops the rest:
+#   - each container is cut and pruned on its own; a container `docker inspect`
+#     cannot find (renamed or recreated by a compose change) is reported and
+#     skipped, and the others and the archive prune still run;
+#   - every step prints one `ok` or `FAIL` line, and any FAIL exits 1, so the
+#     wrapper withholds the beat and the monitor goes Down;
+#   - the end state is CHECKED, not assumed: an archive older than RETAIN_DAYS
+#     still present, or no archive for a container in the last 36 h, is a FAIL.
+set -u
 RETAIN_DAYS=7
-ARCH=/var/log/nikatru-identity
+# The archive directory; overridable for tooling/ci/test/identity-log-retention.test.mjs only.
+ARCH=${IDENTITY_LOG_ARCH:-/var/log/nikatru-identity}
+# 36 h: one missed daily run is a FAIL the next morning, not two days later.
+FRESH_MIN=$(( 36 * 60 ))
 umask 077
-mkdir -p "$ARCH"
+mkdir -p "$ARCH" || { echo "FAIL identity-log-retention: cannot create $ARCH"; exit 1; }
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 # Deleted when older than RETAIN_DAYS-1 days less an hour, so the daily run that
 # falls at that age removes it rather than the one a day later.
 maxmin=$(( (RETAIN_DAYS - 1) * 1440 - 60 ))
+failed=0
+fail() { echo "FAIL identity-log-retention $stamp $*"; failed=1; }
 
 for c in supabase-auth supabase-envoy; do
-  log=$(docker inspect -f '{{.LogPath}}' "$c" </dev/null)
-  [ -n "$log" ] || { echo "FATAL: no log path for $c" >&2; exit 1; }
+  log=$(docker inspect -f '{{.LogPath}}' "$c" </dev/null 2>/dev/null) || log=''
+  if [ -z "$log" ]; then
+    fail "$c: no log path (container missing or renamed); its log is NOT cut"
+    continue
+  fi
   if [ -s "$log" ]; then
     tmp="$ARCH/.$c-$stamp.json.gz.tmp"
-    gzip -c "$log" > "$tmp"
-    [ -s "$tmp" ] || { echo "FATAL: empty archive for $c" >&2; rm -f "$tmp"; exit 1; }
-    mv "$tmp" "$ARCH/$c-$stamp.json.gz"
-    truncate -s 0 "$log"
+    if gzip -c "$log" > "$tmp" && [ -s "$tmp" ] && mv "$tmp" "$ARCH/$c-$stamp.json.gz"; then
+      truncate -s 0 "$log" || fail "$c: archived but the live log was not emptied"
+    else
+      rm -f "$tmp"
+      fail "$c: archive not written; the live log is kept"
+    fi
   fi
-  find "$(dirname "$log")" -maxdepth 1 -name "$(basename "$log").*" -mmin +"$maxmin" -delete
+  find "$(dirname "$log")" -maxdepth 1 -name "$(basename "$log").*" -mmin +"$maxmin" -delete \
+    || fail "$c: docker size-rotations not pruned"
+  # Fresh: an archive of this container inside the last 36 h. Both containers
+  # log on every request and every health check, so a day with nothing to cut
+  # does not happen; no fresh archive means the cut has not been happening.
+  if [ -n "$(find "$ARCH" -maxdepth 1 -name "$c-*.json.gz" -mmin -"$FRESH_MIN" | head -n 1)" ]; then
+    echo "ok identity-log-retention $stamp $c: cut, newest archive inside 36 h"
+  else
+    fail "$c: no archive inside the last 36 h"
+  fi
 done
 
-find "$ARCH" -maxdepth 1 -name '*.json.gz' -mmin +"$maxmin" -delete
-echo "ok identity-log-retention $stamp archives=$(find "$ARCH" -maxdepth 1 -name '*.json.gz' | wc -l)"
+find "$ARCH" -maxdepth 1 -name '*.json.gz' -mmin +"$maxmin" -delete || fail "archive prune did not run"
+stale=$(find "$ARCH" -maxdepth 1 -name '*.json.gz' -mmin +"$(( RETAIN_DAYS * 1440 ))" | wc -l)
+[ "$stale" -eq 0 ] || fail "$stale archive(s) older than $RETAIN_DAYS days remain"
+echo "identity-log-retention $stamp done: failed=$failed archives=$(find "$ARCH" -maxdepth 1 -name '*.json.gz' | wc -l) stale=$stale"
+exit "$failed"
