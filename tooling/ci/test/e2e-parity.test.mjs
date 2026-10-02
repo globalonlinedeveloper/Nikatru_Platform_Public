@@ -192,6 +192,32 @@ describe('the native driver reads the device leg back', () => {
   });
 });
 
+// ⏱ 2026-10-02 · dispatch 36970477400: the drive step runs in apps/<app>, and a
+// root-relative `node tooling/e2e/sign_in_via.mjs` died MODULE_NOT_FOUND before
+// Chrome walked anything. Every step scoped to an app directory names a root
+// script from $GITHUB_WORKSPACE.
+/** PURE. `node tooling/…` calls inside steps whose working-directory is apps/<app>. */
+function rootScriptsInAppSteps(yml) {
+  const found = [];
+  for (const block of String(yml).split(/\n(?= {6}- (?:name|uses|id):)/)) {
+    if (!/\n\s+working-directory: apps\//.test(block)) continue;
+    for (const m of block.matchAll(/node\s+(tooling\/\S+)/g)) found.push(m[1]);
+  }
+  return found;
+}
+describe('a step run in an app directory reaches root scripts through the workspace', () => {
+  const yml = readFileSync(join(REPO, '.github/workflows/e2e.yml'), 'utf8');
+  test('e2e.yml: none is root-relative', () => {
+    assert.match(yml, /node "\$GITHUB_WORKSPACE\/tooling\/e2e\/sign_in_via\.mjs" --derive/);
+    assert.deepEqual(rootScriptsInAppSteps(yml), []);
+  });
+  test('🔴 the shape that failed dispatch 36970477400 is found', () => {
+    const bad = yml.replace('node "$GITHUB_WORKSPACE/tooling/e2e/sign_in_via.mjs" --derive', 'node tooling/e2e/sign_in_via.mjs --derive');
+    assert.notEqual(bad, yml);
+    assert.deepEqual(rootScriptsInAppSteps(bad), ['tooling/e2e/sign_in_via.mjs']);
+  });
+});
+
 describe('the web E2E signs in through the form when it can, and is graded on it', () => {
   test('derive: a pass TEST key or no gate is the form; a real key is the token; unset refuses', () => {
     assert.equal(deriveSignIn({ siteKey: '1x00000000000000000000AA', captchaGate: 'yes' }), 'form');

@@ -421,7 +421,8 @@ jobs:
           # why: EN-08 — how the full walk signs in, decided (never defaulted):
           # the form on a stack whose Turnstile key is an always-pass TEST key
           # or that has no gate, the harness token otherwise. Graded below.
-          sign_in="$(node tooling/e2e/sign_in_via.mjs --derive)"
+          # The step runs in apps/<app> (working-directory), so the root script is named from the workspace.
+          sign_in="$(node "$GITHUB_WORKSPACE/tooling/e2e/sign_in_via.mjs" --derive)"
           export "$sign_in"
           echo "$sign_in" >> "$GITHUB_ENV"
           # tee'd, not just printed: the step below turns the assertion into a
