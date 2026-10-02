@@ -4,7 +4,7 @@
   "@appTitle": {
     "description": "The application title shown in the OS task switcher."
   },
-  "plan": "Subscription",
+  "plan": "Pro",
   "@plan": {
     "description": "Settings section for the money rail. Upgrade and Manage sit side by side so cancelling is never buried deeper than subscribing (ROSCA)."
   },
@@ -12,15 +12,15 @@
   "@paywallGateMessage": {
     "description": "Shown in place of a gated surface. States a fact, never a countdown or a discount — the chassis knows neither."
   },
-  "managePlanTitle": "Manage subscription",
+  "managePlanTitle": "Manage plan",
   "@managePlanTitle": {
     "description": "App-bar title of the manage screen, and the settings entry that opens it."
   },
-  "planActive": "Your subscription is active",
+  "planActive": "Pro is active",
   "@planActive": {
     "description": "Reflects the SERVER's entitlement answer, not a local flag."
   },
-  "planInactive": "You do not have an active subscription",
+  "planInactive": "You are on the free plan",
   "@planInactive": {
     "description": "See subscriptionActive."
   },
@@ -40,11 +40,11 @@
   "@restoreCouldNotReachStore": {
     "description": "After Restore on a store build, when the store could not be asked or did not answer and the server shows no active plan. Not 'nothing found': the store was never checked."
   },
-  "cancelPlan": "Cancel subscription",
+  "cancelPlan": "Cancel Pro",
   "@cancelPlan": {
     "description": "Starts the cancellation. One tap from Manage, which is one tap from Settings — the same depth as Upgrade (ROSCA)."
   },
-  "cancelPlanConfirm": "This will end your subscription. You can subscribe again at any time.",
+  "cancelPlanConfirm": "This will end your Pro plan. You can buy it again at any time.",
   "@cancelPlanConfirm": {
     "description": "The confirmation body. States what happens and that it is reversible; makes no retention offer, because a cancel flow that bargains is the pattern ROSCA exists to stop."
   },

@@ -11,6 +11,7 @@
 //     docs/platform/supabase/email-templates ──auth-mail──▶ sites/nikatru/auth-mail/
 //     sites/_shared/_data/apps.json + rail + pages ──discovery──▶ sites/nikatru/
 //     catalog/apps.json + app.yaml ──well-known──▶ sites/nikatru/.well-known/
+//     sites/_shared/_data/apps.json + register + entity ──personal-site──▶ sites/rajasekarselvam/
 //
 // ── WHY AN ORDER, AND WHY IT LIVES HERE ─────────────────────────────────────
 // Each arrow above reads what an earlier one wrote. Run apps-data before render
@@ -65,6 +66,9 @@ export const ORDER = Object.freeze([
   Object.freeze({ id: 'auth-mail', script: 'tooling/sites/gen-auth-mail.mjs', kind: 'check' }),
   Object.freeze({ id: 'discovery', script: 'tooling/sites/generate-discovery.mjs', kind: 'git-dated' }),
   Object.freeze({ id: 'well-known', script: 'tooling/sites/generate-well-known.mjs', kind: 'plan' }),
+  // The founder's site has no build step (Cloudflare Pages serves the root as committed), so
+  // its generated spans are COMMITTED and compared like any 'check' entry. After apps-data.
+  Object.freeze({ id: 'personal-site', script: 'tooling/sites/generate-personal-site.mjs', kind: 'check' }),
 ]);
 
 /** The file's bytes, or null when it cannot be read. Read once: the comparison

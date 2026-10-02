@@ -113,6 +113,9 @@
     "feature CODES, never copy: the app resolves each through its own catalogue and draws nothing for a code it has",
     "no words for (apps/subscriptiontracker/lib/state/money_providers.dart `paywallPitchProvider`). The lead's",
     "ruling D-11 sets them: sync is FREE (sign-in is mandatory), Pro is plan and save. `trial_copy` is ruling D-25:",
+    "⏱ 2026-10-01 · MO-07: the Pro codes name only what Pro DELIVERS today (ADR 101): `forecast` (the 12-month",
+    "forecast) and `caps` (category caps). `plan`/`save` named a pitch, and `save` (\"Find savings\") gated nothing.",
+    "A code joins this list in the PR that ships the feature it names.",
     "no trial is worded in the app until a store trial is configured, so it is served false while `trial_days`",
     "above still describes the web offering. None of the three is a price, and none may become one."
   ],
@@ -157,7 +160,7 @@
       "update_url": { "linux-snap": "https://snapcraft.io/nikatru-subscription-tracker" },
       "paywall": {
         "enabled": false,
-        "pro_features": ["plan", "save"],
+        "pro_features": ["forecast", "caps"],
         "free_features": ["track", "remind", "sync"],
         "trial_copy": false,
         "offerings": [

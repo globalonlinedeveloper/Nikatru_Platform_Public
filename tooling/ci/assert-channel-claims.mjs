@@ -59,12 +59,16 @@ import { join, resolve, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listDir } from './tree-walk.mjs';
 import { flutterAppChannel, undeclaredSurfaceLine } from './channel-surface.mjs';
+import { availabilityRow } from './channel-arming.mjs';
 
 const ROOT = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const SITES = join(ROOT, 'sites');
 const APPS_JSON = 'catalog/apps.json';
 const REGISTER = 'tooling/channel-register.json';
 const SIBLING = 'tooling/ci/check-site-integrity.mjs';
+/** True when this guard is scanning the repository it lives in (fixtures are elsewhere): a
+ *  root PERSONAL_ROOTS names may be absent from a fixture, never from the real tree. */
+const SCANNING_OWN_REPO_CLAIMS = (dirname(fileURLToPath(import.meta.url)) + sep).startsWith(ROOT + sep);
 
 const problems = [];
 const prints = [];
@@ -105,7 +109,35 @@ const REQUIRED_COVERAGE = [
   'sites/nikatru/site.webmanifest',
   'sites/nikatru/sitemap.xml',
   'sites/rajasekarselvam/sitemap.xml',
+  'sites/rajasekarselvam/index.html',
+  'sites/rajasekarselvam/llms.txt',
+  'sites/rajasekarselvam/site.webmanifest',
 ];
+
+/**
+ * ⏱ 2026-10-02 — THE ROOTS WHERE A PRODUCT CLAIM BLOCKS (rajasekarselvam.com audit, D1).
+ *
+ * The header's rule — prose PRINTS, because site copy is the owner's voice — held on
+ * the founder's site while it claimed published games, "download links for all six
+ * platforms" and "a live listing on every store" over a catalogue holding one web app
+ * live on 1 of 6 channels. Printed every run, it changed nothing: a print nobody acts
+ * on is the guard-that-cries-wolf in the other direction.
+ *
+ * So on these roots a claim is graded against the registers and BLOCKS when it says
+ * more than they hold. The copy there is short and the work list is generated
+ * (tooling/sites/generate-personal-site.mjs), so what is left for a person to write
+ * can be true without a fight. The three claim classes, each with what makes it true:
+ *   · a PLATFORM COUNT ("six platforms", "all six", or four+ platform names in a run)
+ *     — at least that many distinct platforms with a live channel for a live app;
+ *   · a STORE claim ("download links", "app store(s)", "every store", "store listing",
+ *     "live listing") — at least one live channel whose register `kind` is "store";
+ *   · a PRODUCT KIND ("game"/"games") — a live catalogue app whose app.yaml `category`
+ *     names games.
+ * sites/nikatru stays on the PRINT rule; its copy belongs to the nikatru lane.
+ */
+const PERSONAL_ROOTS = ['rajasekarselvam'];
+const STORE_CLAIM = /\bdownload\s+links?\b|\bapp\s+stores?\b|\bevery\s+store\b|\bstore\s+listings?\b|\blive\s+listings?\b/gi;
+const GAME_CLAIM = /\bgames?\b/gi;
 
 /**
  * 🔴 AN AFFORDANCE IS A PROMISE ONLY IF ITS DESTINATION IS REAL.
@@ -459,6 +491,25 @@ if (siteRoots.length < minSites) {
 }
 ok(`${siteRoots.length} deploy root(s) (${siteRoots.join(', ')}), floor ${minSites} read from ${SIBLING}`);
 
+// ── what the registers hold LIVE, for the personal roots' blocking limb ──────
+const channels = Array.isArray(register.channels) ? register.channels : [];
+const liveApps = apps.filter((a) => a && a.status === 'live');
+const liveChannelIds = new Set();
+for (const a of liveApps) for (const t of availabilityRow(channels, a.listings ?? {}).tiles) if (t.state === 'live') liveChannelIds.add(t.id);
+const liveChannelRows = channels.filter((c) => liveChannelIds.has(c.id));
+const livePlatforms = new Set(liveChannelRows.flatMap((c) => (Array.isArray(c.platforms) ? c.platforms : [])));
+const liveStores = liveChannelRows.filter((c) => c.kind === 'store').map((c) => c.id);
+const gameApps = liveApps.filter((a) => /^category:\s*["']?[^\n]*\bgames?\b/im.test(read(`apps/${a.slug}/app.yaml`) ?? ''));
+const holds = `the registers hold ${liveApps.length} live app(s), live on ${liveChannelIds.size} channel(s) ` +
+  `(${[...liveChannelIds].sort().join(', ') || 'none'}), covering ${livePlatforms.size} platform(s), ${liveStores.length} store channel(s) and ${gameApps.length} game(s)`;
+const personalMissing = PERSONAL_ROOTS.filter((r) => !siteRoots.includes(r));
+if (SCANNING_OWN_REPO_CLAIMS && personalMissing.length) {
+  coverageLost([
+    `PERSONAL_ROOTS names ${personalMissing.join(', ')}, which is not a deploy root under sites/.`,
+    'The blocking claims limb ranges over those roots; a root that vanished takes its copy out of it.',
+  ]);
+}
+
 // ── walk ─────────────────────────────────────────────────────────────────────
 function walk(dir, out = []) {
   let entries;
@@ -507,12 +558,30 @@ const rel = (abs) => relative(ROOT, abs).split(sep).join('/');
 let affordanceHits = 0;
 let placeholders = 0;
 let countClaims = 0;
+let personalFiles = 0;
 const exempted = [];
 
 for (const abs of files) {
   // RAW. No comment stripping. See the header — the comment is the payload.
   const text = readFileSync(abs, 'utf8');
   const where = rel(abs);
+
+  // ── PERSONAL_ROOTS — a product claim the registers do not hold — BLOCK ────
+  if (PERSONAL_ROOTS.some((r) => where.startsWith(`sites/${r}/`))) {
+    personalFiles++;
+    const block = (m, what) => problems.push(
+      `${where}:${lineOf(text, m.index)} claims "${m[0].replace(/\s+/g, ' ').trim()}" — ${what}, and ${holds}. ` +
+        'On this root a claim is graded, not printed (PERSONAL_ROOTS): say what is live, or let ' +
+        'tooling/sites/generate-personal-site.mjs say it from the catalogue.',
+    );
+    for (const m of text.matchAll(COUNT_CLAIM)) if (livePlatforms.size < 6) block(m, 'a count of six platforms');
+    for (const m of text.matchAll(ENUM_CLAIM)) {
+      const named = new Set((m[0].toLowerCase().match(new RegExp(`\\b${PLATFORM_NAME}\\b`, 'g')) ?? []));
+      if (named.size > livePlatforms.size) block(m, `${named.size} platforms named in a run`);
+    }
+    for (const m of text.matchAll(STORE_CLAIM)) if (liveStores.length === 0) block(m, 'a store or download claim');
+    for (const m of text.matchAll(GAME_CLAIM)) if (gameApps.length === 0) block(m, 'a game as a product kind');
+  }
 
   // ── [D-7] disqualified channels — BLOCK, wherever they appear ─────────────
   // Every TELL, not just the id. Proven necessary by mutation 2026-07-31: a
@@ -593,6 +662,9 @@ for (const abs of files) {
 }
 
 ok(`${files.length} public file(s) scanned RAW across ${siteRoots.length} root(s); ${affordanceHits} store/artifact affordance(s) seen, ${placeholders} of them template placeholders`);
+if (personalFiles > 0) {
+  ok(`${personalFiles} file(s) under ${PERSONAL_ROOTS.map((r) => `sites/${r}`).join(', ')} make no product claim the registers do not back — ${holds}`);
+}
 
 // An exemption is a decision not to fail, and a silent one is how a real store
 // URL rode a matching cue past this guard (review 2026-07-31). Same discipline
