@@ -184,9 +184,15 @@ Map<String, dynamic> _readArb(String relative) {
 /// ⏱ 2026-10-01 · train T20 (XP-06): Hindi is the third locale, for every
 /// stamped app at once. Each limb below ranges over THIS list, so Hindi is held
 /// to exactly what Tamil is held to. The files read are
-/// `lib/src/l10n/chassis_ta.arb` and `lib/src/l10n/chassis_hi.arb`
-/// (`_readArb` below builds the name from each code).
-const List<String> kTranslations = <String>['ta', 'hi'];
+/// `lib/src/l10n/chassis_<code>.arb` (`_readArb` below builds the name).
+///
+/// ⏱ 2026-10-02 · i18n pipeline: the list is the locale register's
+/// (tooling/i18n/locales.json, through the generated `kSupportedLocaleCodes`),
+/// never typed here.
+final List<String> kTranslations = <String>[
+  for (final String code in kSupportedLocaleCodes)
+    if (code != kSourceLocaleCode) code,
+];
 
 void main() {
   late Map<String, dynamic> en;
@@ -242,15 +248,6 @@ void main() {
     // Measured at 60b63fb9: these three, and only these, were identical.
     const Map<String, String> sameInBothLocales = <String, String>{
       'legalese': 'the copyright mark and the company name',
-      'languageEnglish':
-          'the language picker names each language in itself, so a reader '
-          'looking for English finds "English"',
-      'languageTamil':
-          'the language picker names each language in itself: "தமிழ்" is '
-          'Tamil written in Tamil, in both files',
-      'languageHindi':
-          'the language picker names each language in itself: "हिन्दी" is '
-          'Hindi written in Hindi, in every file (T20, XP-06)',
     };
     const List<String> unrecoverable = <String>[
       'updateRequiredTitle',

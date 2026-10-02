@@ -3498,7 +3498,21 @@ void main() {
       );
       expect(
         ChassisLocalizations.supportedLocales.map((Locale l) => l.languageCode),
-        containsAll(<String>['en', 'ta']),
+        // EXACTLY the locale register's supported set (tooling/i18n/locales.json):
+        // a registered language with no ARB here renders English behind a
+        // picker tile that offers it — the dead control this pins shut.
+        unorderedEquals(kSupportedLocaleCodes),
+      );
+    });
+
+    test('the app\'s OWN strings ship in every supported locale', () {
+      // The chassis picker offers every register row. This app's own ARB set
+      // decides its supportedLocales, so one language short here is a picker
+      // tile that silently renders English — the defect Hindi had in every
+      // stamped app until the brick gained app_hi.arb.
+      expect(
+        AppLocalizations.supportedLocales.map((Locale l) => l.languageCode),
+        unorderedEquals(kSupportedLocaleCodes),
       );
     });
 

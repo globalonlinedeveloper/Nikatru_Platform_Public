@@ -3170,7 +3170,10 @@ void main() {
       expect(AppLocalizations.supportedLocales.length, greaterThanOrEqualTo(2));
       expect(
         AppLocalizations.supportedLocales.map((Locale l) => l.languageCode),
-        containsAll(<String>['en', 'ta']),
+        // EXACTLY the locale register's supported set (tooling/i18n/locales.json):
+        // a registered language with no ARB here renders English behind a
+        // picker tile that offers it — the dead control this pins shut.
+        unorderedEquals(kSupportedLocaleCodes),
       );
     });
 

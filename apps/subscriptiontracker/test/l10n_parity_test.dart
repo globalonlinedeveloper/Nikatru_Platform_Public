@@ -40,6 +40,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show kSourceLocaleCode, kSupportedLocaleCodes;
 
 /// Arb keys, minus the `@…` metadata blocks and the `@@locale` header.
 Set<String> _messageKeys(Map<String, dynamic> arb) =>
@@ -172,10 +174,17 @@ Map<String, dynamic> _readArb(String relative) {
 /// Every translation the app ships, by locale — the template is `en`.
 ///
 /// ⏱ 2026-10-01 · train T20 (XP-06): Hindi is the third locale. Every limb
-/// below that compared en with ta now ranges over THIS map, so a locale added
-/// here is held to exactly what Tamil is held to, and one forgotten here is
-/// caught by 'the arb directory holds exactly these locales'.
-const List<String> kTranslations = <String>['ta', 'hi'];
+/// below that compared en with ta now ranges over THIS list, so a locale added
+/// is held to exactly what Tamil is held to.
+///
+/// ⏱ 2026-10-02 · i18n pipeline: the list is the locale register's
+/// (tooling/i18n/locales.json, through the generated `kSupportedLocaleCodes`),
+/// never typed here — so a language registered as supported without an
+/// `app_<code>.arb` fails 'the arb directory holds exactly …' below.
+final List<String> kTranslations = <String>[
+  for (final String code in kSupportedLocaleCodes)
+    if (code != kSourceLocaleCode) code,
+];
 
 void main() {
   late Map<String, dynamic> en;
@@ -261,12 +270,6 @@ void main() {
           'the letter on the brand tile beside the product name (ST-D10); it '
           'is the initial of the name, which is not translated either',
       'legalese': 'the copyright mark and the company name',
-      'languageEnglish':
-          'the language picker names each language in itself, so a reader '
-          'looking for English finds "English"',
-      'languageTamil':
-          'the language picker names each language in itself: "தமிழ்" is '
-          'Tamil written in Tamil, in both files',
       'versionFooter':
           'placeholders, a version mark and the copyright mark: no word in it '
           'to translate',
@@ -275,9 +278,6 @@ void main() {
       // ⏱ ST-D3 D3-5: a11yCategoryShare left with the donut; its successor.
       'a11yCategoryRowNoShare':
           'two placeholders and a colon: no word to translate',
-      'languageHindi':
-          'the language picker names each language in itself: "हिन्दी" is '
-          'Hindi written in Hindi, in every file (T20, XP-06)',
       'duplicateName':
           'a placeholder and "(2)": a copy\'s name is its original\'s with a '
           'number, which reads the same in every language (T20, AD-10)',

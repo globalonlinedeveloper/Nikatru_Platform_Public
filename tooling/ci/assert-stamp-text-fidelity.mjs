@@ -80,6 +80,7 @@
 import { readFileSync, existsSync, openSync, fstatSync, closeSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
 import { listDir } from './tree-walk.mjs';
+import { DEFAULT_ROOT, REGISTER_REL, loadRegister, supportedCodes } from '../i18n/locales.mjs';
 // The API base rule is the one every release build composes with (flutter-release-build.mjs),
 // so a stamped default and a shipped binary are graded against the same function.
 import { apiBaseUrl } from './flutter-release-build.mjs';
@@ -236,7 +237,15 @@ const jsonAt = (rel) => {
   }
 };
 
-for (const arb of ['app_en.arb', 'app_ta.arb']) {
+// Every supported locale of the register ships an app ARB, each carrying appTitle — read from the
+// stamped tree's own register when it has one, else from this checkout's (the stamp copies neither).
+let localeCodes;
+try {
+  localeCodes = supportedCodes(loadRegister(existsSync(join(ROOT, REGISTER_REL)) ? ROOT : DEFAULT_ROOT));
+} catch (e) {
+  lost(`the locale register could not be read (${e.message}), so the ARB set a stamp must carry is unknown.`);
+}
+for (const arb of localeCodes.map((c) => `app_${c}.arb`)) {
   const rel = join('lib', 'l10n', arb);
   const r = jsonAt(rel);
   if (r.missing) fail(`apps/${appId}/lib/l10n/${arb} is missing.`);

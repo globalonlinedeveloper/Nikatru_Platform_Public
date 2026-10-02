@@ -35,6 +35,24 @@ class _DirSource implements ContentPackSource {
   }
 }
 
+/// The SUPPORTED codes of the locale register (tooling/i18n/locales.json), in
+/// register order. core cannot import the design system's generated twin, so
+/// it reads the register itself — still never a typed list.
+List<String> _supportedLocales() {
+  for (final String root in <String>['../..', '.']) {
+    final File f = File('$root/tooling/i18n/locales.json');
+    if (!f.existsSync()) continue;
+    final Map<String, dynamic> reg =
+        jsonDecode(f.readAsStringSync()) as Map<String, dynamic>;
+    return <String>[
+      for (final dynamic row in reg['locales'] as List<dynamic>)
+        if ((row as Map<String, dynamic>)['status'] == 'supported')
+          row['code'] as String,
+    ];
+  }
+  fail('tooling/i18n/locales.json not found from ${Directory.current.path}');
+}
+
 Directory _bundledPack() {
   // `dart test` runs with the package root (packages/core) as cwd; melos may
   // run from the repo root. Try both and FAIL LOUDLY if neither holds the pack
@@ -124,7 +142,9 @@ void main() {
       expect(pack.manifest.contentHash, hasLength(64),
           reason: 'a bundled pack MAY omit its hash; this one must not, or '
               'the loader skipped the integrity check');
-      expect(pack.manifest.locales, <String>['en', 'ta']);
+      // Every supported locale of the register, so a Hindi reader of the
+      // catalogue never gets the English names.
+      expect(pack.manifest.locales, _supportedLocales());
     });
 
     test('its signature ALSO verifies against the test key it was built with',
@@ -185,13 +205,18 @@ void main() {
       }
     });
 
-    test('ta names are Tamil transliterations; a missing ta key falls back', () {
+    test('ta and hi names are transliterations; a missing locale falls back', () {
       final ServiceCatalogue ta =
           (ServiceCatalogue.fromPack(pack, locale: 'ta') as Ok<ServiceCatalogue>)
               .value;
       expect(ta.byId('netflix')!.name, isNot('Netflix'));
       expect(ta.byId('netflix')!.name, contains('நெட்'));
       expect(ta.entries.length, catalogue.entries.length);
+      final ServiceCatalogue hi =
+          (ServiceCatalogue.fromPack(pack, locale: 'hi') as Ok<ServiceCatalogue>)
+              .value;
+      expect(hi.byId('netflix')!.name, 'नेटफ़्लिक्स');
+      expect(hi.entries.length, catalogue.entries.length);
       // A locale the pack does not carry falls back to en, whole.
       final ServiceCatalogue fr =
           (ServiceCatalogue.fromPack(pack, locale: 'fr') as Ok<ServiceCatalogue>)

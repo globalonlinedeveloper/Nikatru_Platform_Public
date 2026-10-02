@@ -42,6 +42,8 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_design_system/nikatru_design_system.dart'
+    show kSupportedLocaleCodes;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/app.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
@@ -106,7 +108,7 @@ void main() {
       ('800x600 default @1.0', Size(800, 600), 1.0),
     ];
 
-    for (final String code in <String>['en', 'ta']) {
+    for (final String code in kSupportedLocaleCodes) {
       for (final (String label, Size size, double scale) in geometries) {
         testWidgets('[$code] $label — no overflow, and both answers reachable', (
           WidgetTester tester,

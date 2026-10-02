@@ -46,6 +46,7 @@ import { join, resolve, relative, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { visibleText } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
+import { REGISTER_REL, registerProblems, supportedCodes } from '../i18n/locales.mjs';
 
 const repoRoot = resolve(process.argv[2] ?? process.cwd());
 
@@ -164,7 +165,7 @@ for (const [version, locales] of archived) {
   }
   for (const [locale, snap] of locales) {
     if (!/^[a-z]{2}(-[A-Za-z]{2,8})*$/.test(locale)) {
-      problems.push(`${ARCHIVE_ROOT}/${version}/${locale}/ is not a locale tag. Expected e.g. "en", "ta", "pt-BR".`);
+      problems.push(`${ARCHIVE_ROOT}/${version}/${locale}/ is not a locale tag. Expected a tag such as en or pt-BR.`);
     }
     if (snap.declared !== version) {
       problems.push(
@@ -402,17 +403,26 @@ if (archived.size === 0) {
 // ⚠️ NOT A RE-IMPORT OF THE 22-LANGUAGE APP-UI PROGRAMME that this project
 // deliberately cut. The domain is the locale list the app ALREADY has — adding a
 // notice for a language we already ship, not adding languages.
+// ⏱ 2026-10-02 · i18n pipeline: the domain is the LOCALE REGISTER's supported
+// set (tooling/i18n/locales.json), no longer the brick's ARB folder. Read from
+// the brick, this limb saw en+ta while the shipped app spoke Hindi too, so the
+// Hindi 18+ clickwrap had no notice duty at all. The register is what every
+// app, the chassis and the brick are held to (assert-locale-register L3).
 {
-  const L10N_DIR = 'tooling/bricks/app/__brick__/apps/{{app_id}}/lib/l10n';
-  const l10nAbs = join(repoRoot, ...L10N_DIR.split('/'));
   let locales = [];
-  if (existsSync(l10nAbs)) {
-    locales = listDir(l10nAbs)
-      .map((f) => f.match(/^app_([A-Za-z0-9_-]+)\.arb$/)?.[1])
-      .filter((v) => typeof v === 'string')
-      .map((v) => v.replace(/_/g, '-'))
-      .sort();
+  let registerFault = null;
+  const regAbs = join(repoRoot, ...REGISTER_REL.split('/'));
+  if (existsSync(regAbs)) {
+    try {
+      const reg = JSON.parse(readFileSync(regAbs, 'utf8'));
+      const bad = registerProblems(reg);
+      if (bad.length) registerFault = bad.join('; ');
+      else locales = supportedCodes(reg).slice().sort();
+    } catch (e) {
+      registerFault = e.message;
+    }
   }
+  if (registerFault) problems.push(`${REGISTER_REL} is malformed (${registerFault}), so no locale's notice duty can be read.`);
   // Gated on `problems.length === 0` like the other coverage checks added in
   // this pass: coverageLost exits immediately, so firing it while a specific
   // fault is already recorded replaces the precise message with a vague one and
@@ -420,9 +430,9 @@ if (archived.size === 0) {
   // broken version-history walk was reported as a missing locale list.
   if (locales.length === 0 && problems.length === 0) {
     coverageLost(
-      `no locale resolved from ${L10N_DIR}/app_<locale>.arb.`,
-      'The app\'s own locale list IS the domain of this limb — it cannot be shrunk without deleting a',
-      "locale, and deleting one fails the brick's own supportedLocales.length >= 2 property test. Zero",
+      `no supported locale resolved from ${REGISTER_REL}.`,
+      'The supported locale list IS the domain of this limb — it cannot be shrunk without deleting a',
+      "locale, and deleting one fails every app's own supportedLocales property test. Zero",
       'locales means the derivation broke, and "every supported language has a notice" would then be',
       'vacuously true forever.',
     );
@@ -443,7 +453,7 @@ if (archived.size === 0) {
   }
   if (missing.length) {
     prints.push(
-      `NO NOTICE IN ${missing.join(', ')} (owner-gated, propose O-4) — the brick ships ${locales.length} locale(s) ` +
+      `NO NOTICE IN ${missing.join(', ')} (owner-gated, propose O-4) — the locale register ships ${locales.length} locale(s) ` +
         `(${locales.join(', ')}) and version ${published} of the notice exists in ${[...current.keys()].sort().join(', ') || 'none'}. ` +
         `A reader whose app is in ${missing[0]} is asked to consent to a document they were never offered in a ` +
         'language they read. PRINTED, NOT FAILED: an unreviewed machine translation of a statutory notice is itself ' +
@@ -453,7 +463,7 @@ if (archived.size === 0) {
     );
   } else {
     prints.push(
-      `PROMOTE ME: every locale the brick supports (${locales.join(', ')}) now has a notice for version ` +
+      `PROMOTE ME: every locale the register supports (${locales.join(', ')}) now has a notice for version ` +
         `${published}. The owner-gated print in this limb has nothing left to report — turn the missing-notice ` +
         'case into a build failure, so a NEW locale cannot ship without one.',
     );

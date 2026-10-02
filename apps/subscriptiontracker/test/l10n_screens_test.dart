@@ -34,7 +34,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
     show AuthProviders;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
-    show ChassisLocalizations;
+    show ChassisLocalizations, kSupportedLocaleCodes;
 import 'package:subscriptiontracker/app.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
@@ -177,7 +177,7 @@ Future<AppLocalizations> _load(String code) =>
 void main() {
   // ───────────────────────────────────────────────────────────────────────────
   group('the routed onboarding carousel speaks both locales', () {
-    for (final String code in <String>['en', 'ta']) {
+    for (final String code in kSupportedLocaleCodes) {
       testWidgets('[$code] the first slide and the two controls', (
         WidgetTester tester,
       ) async {
@@ -262,7 +262,7 @@ void main() {
 
   // ───────────────────────────────────────────────────────────────────────────
   group('the consent prompt speaks both locales', () {
-    for (final String code in <String>['en', 'ta']) {
+    for (final String code in kSupportedLocaleCodes) {
       testWidgets('[$code] title, body, privacy sentence and both buttons', (
         WidgetTester tester,
       ) async {
@@ -400,7 +400,7 @@ void main() {
 
   // ───────────────────────────────────────────────────────────────────────────
   group('login speaks both locales', () {
-    for (final String code in <String>['en', 'ta']) {
+    for (final String code in kSupportedLocaleCodes) {
       testWidgets('[$code] the sign-in face of the screen', (
         WidgetTester tester,
       ) async {

@@ -311,7 +311,7 @@ void main() {
     // its only effect was deleting the row from this app's list. Restoring any
     // of the three money figures, the date, or the congratulation turns a case
     // below red, in both shipped locales.
-    for (final String code in <String>['en', 'ta']) {
+    for (final String code in kSupportedLocaleCodes) {
       testWidgets('[$code] step 0 names the removal and no figure', (
         WidgetTester tester,
       ) async {

@@ -71,3 +71,6 @@ export 'src/platform/document_language.dart' show resolveAndLabelPage;
 // `AppLocalizations.localizationsDelegates` — neither replaces the other.
 export 'src/l10n/chassis_localizations.dart';
 export 'src/l10n/chassis_l10n_x.dart';
+// The locale register (tooling/i18n/locales.json), generated: the one list of
+// shipped languages every picker and parity test reads.
+export 'src/l10n/locale_register.g.dart';

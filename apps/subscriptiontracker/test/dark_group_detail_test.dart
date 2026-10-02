@@ -159,7 +159,7 @@ void main() {
   // SUBSCRIPTION DETAIL
   // ═══════════════════════════════════════════════════════════════════════════
   group('detail speaks the arb', () {
-    for (final String code in <String>['en', 'ta']) {
+    for (final String code in kSupportedLocaleCodes) {
       testWidgets('[$code] the eight visible strings come from l10n', (
         WidgetTester tester,
       ) async {
@@ -318,7 +318,7 @@ void main() {
       DateTime(today.year, today.month, today.day),
     ).crossings.last;
 
-    for (final String code in <String>['en', 'ta']) {
+    for (final String code in kSupportedLocaleCodes) {
       testWidgets('[$code] next charge is MMMd and history is yMMMd', (
         WidgetTester tester,
       ) async {
@@ -567,7 +567,7 @@ void main() {
   // IMPORT (`/import`) — the hub that replaced SCAN (ADR 077 §2.2, IM-01)
   // ═══════════════════════════════════════════════════════════════════════════
   group('import speaks the arb', () {
-    for (final String code in <String>['en', 'ta']) {
+    for (final String code in kSupportedLocaleCodes) {
       testWidgets('[$code] the hub: title, subtitle, paste, read', (
         WidgetTester tester,
       ) async {

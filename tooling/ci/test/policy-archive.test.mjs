@@ -31,7 +31,17 @@ const DART_SUBLY = join('apps', 'subscriptiontracker', 'lib', 'state', 'analytic
 const DART_BRICK = join('tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}', 'lib', 'state', 'providers.dart');
 /** The brick's ARB directory — the app's own locale list, and the domain of the
  *  [pipeline K-14] notice-per-locale limb. */
-const L10N = join('tooling', 'bricks', 'app', '__brick__', 'apps', '{{app_id}}', 'lib', 'l10n');
+const REGISTER = join('tooling', 'i18n', 'locales.json');
+
+/** A locale register holding [codes] as supported rows (status as given). */
+const register = (codes, status = 'supported') =>
+  JSON.stringify({
+    source: codes[0] ?? 'en',
+    locales: codes.map((code) => ({
+      code, name: code, nativeName: code, script: 'Latn', direction: 'ltr', pluralRules: 'one,other',
+      status, apple: code, android: code, msix: `${code}-x`, play: code,
+    })),
+  });
 
 let TMP;
 before(() => {
@@ -100,14 +110,12 @@ function repo({ versions = ['2026-07-26', '2026-08-01'], snapshots, workingVersi
     if (html === null) continue;
     write(root, join('sites', 'nikatru', 'legal', version, locale, 'privacy.html'), html);
   }
-  // [pipeline K-14] The app's OWN locale list is the domain of the notice-per-
-  // locale limb, and it is read from the brick's ARB files. Every fixture needs
-  // it: without one the limb is COVERAGE LOST, which is the correct answer for a
-  // tree that has lost its locale declarations and the wrong one for a fixture
-  // that never had any.
-  for (const locale of locales) {
-    write(root, join(L10N, `app_${locale}.arb`), `{ "@@locale": "${locale}" }\n`);
-  }
+  // [pipeline K-14] The supported locale list is the domain of the notice-per-
+  // locale limb, and it is read from the locale register (tooling/i18n/
+  // locales.json). Every fixture needs one: without it the limb is COVERAGE
+  // LOST, which is the correct answer for a tree that has lost its locale
+  // declarations and the wrong one for a fixture that never had any.
+  if (locales !== null) write(root, REGISTER, register(locales));
   return root;
 }
 
@@ -397,11 +405,32 @@ describe('assert-policy-archive — the notice-per-locale relation [pipeline K-1
     assert.match(r.stdout, /PROMOTE ME/);
   });
 
-  test('a tree that has lost its locale declarations is COVERAGE LOST', () => {
-    const root = repo({ locales: [] });
+  test('a tree that has lost its locale register is COVERAGE LOST', () => {
+    const root = repo({ locales: null });
     const r = run(root);
     assert.equal(r.status, 2);
-    assert.match(r.stderr, /no locale resolved from/);
+    assert.match(r.stderr, /no supported locale resolved from tooling\/i18n\/locales\.json/);
+  });
+
+  test('a malformed register FAILS naming it, rather than reading as no locales', () => {
+    const root = repo();
+    write(root, REGISTER, register([]));
+    const r = run(root);
+    assert.equal(r.status, 1, r.stderr + r.stdout);
+    assert.match(r.stderr, /locales\.json is malformed/);
+  });
+
+  test('the duty follows the REGISTER, not the brick: a pending row owes nothing yet', () => {
+    // The brick used to be the domain, and it said en+ta while the app spoke
+    // Hindi. Now a row is owed a notice exactly when it ships (supported).
+    const root = repo({ locales: ['en', 'ta'] });
+    const reg = JSON.parse(register(['en', 'ta', 'hi']));
+    reg.locales[2].status = 'pending';
+    write(root, REGISTER, JSON.stringify(reg));
+    const r = run(root);
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /NO NOTICE IN ta /);
+    assert.doesNotMatch(r.stdout, /NO NOTICE IN hi/);
   });
 
   test('a THIRD locale added to the app immediately owes a notice', () => {
@@ -410,6 +439,7 @@ describe('assert-policy-archive — the notice-per-locale relation [pipeline K-1
     const r = run(repo({ locales: ['en', 'ta', 'hi'] }));
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.match(r.stdout, /NO NOTICE IN hi, ta/);
+    assert.match(r.stdout, /notice locales — 3 supported \(en, hi, ta\)/);
   });
 });
 

@@ -1,0 +1,82 @@
+{
+  "$comment": [
+    "THE LOCALE REGISTER — the one list of the languages this factory ships. Every surface reads it:",
+    "the Settings pickers (through packages/design_system/lib/src/l10n/locale_register.g.dart), the parity",
+    "tests, the CI regeneration step, the notice-per-locale limb, the content pack, the store tooling and",
+    "every native manifest (iOS/macOS CFBundleLocalizations, Android locales_config, MSIX languages).",
+    "",
+    "tooling/ci/assert-locale-register.mjs fails on any hand-typed locale list outside this file, on an",
+    "ARB set or a native manifest that disagrees with it, and on a generated file that is not what this",
+    "file renders (`node tooling/ci/assert-locale-register.mjs --write` regenerates).",
+    "",
+    "Fields: code (BCP-47 language tag, as the ARB suffix and Flutter Locale use it) · name (English) ·",
+    "nativeName (shown in the language picker, in its own script) · script (ISO 15924) · direction",
+    "(ltr|rtl) · pluralRules (the CLDR cardinal categories the language uses, an id for the QA harness) ·",
+    "status (supported = shipped on every surface; pending = registered, not yet shipped anywhere) ·",
+    "apple / android / msix / play (the code each native or store surface spells it with).",
+    "",
+    "`pseudo` rows are TEST-ONLY locales. They never ship and never reach a picker: en-XA is accented and",
+    "about 40% longer than English (overflow), ar-XB is the same text laid out right-to-left (RTL).",
+    "",
+    "ADDING A LANGUAGE is a row here (status pending), its ARB files, then status supported; the guard",
+    "names every file that still disagrees. Which languages to add is an owner decision, not this file's."
+  ],
+  "source": "en",
+  "locales": [
+    {
+      "code": "en",
+      "name": "English",
+      "nativeName": "English",
+      "script": "Latn",
+      "direction": "ltr",
+      "pluralRules": "one,other",
+      "status": "supported",
+      "apple": "en",
+      "android": "en",
+      "msix": "en-us",
+      "play": "en-US"
+    },
+    {
+      "code": "ta",
+      "name": "Tamil",
+      "nativeName": "தமிழ்",
+      "script": "Taml",
+      "direction": "ltr",
+      "pluralRules": "one,other",
+      "status": "supported",
+      "apple": "ta",
+      "android": "ta",
+      "msix": "ta-in",
+      "play": "ta-IN"
+    },
+    {
+      "code": "hi",
+      "name": "Hindi",
+      "nativeName": "हिन्दी",
+      "script": "Deva",
+      "direction": "ltr",
+      "pluralRules": "one,other",
+      "status": "supported",
+      "apple": "hi",
+      "android": "hi",
+      "msix": "hi-in",
+      "play": "hi-IN"
+    }
+  ],
+  "pseudo": [
+    {
+      "code": "en-XA",
+      "name": "Pseudo (accented, expanded)",
+      "base": "en",
+      "direction": "ltr",
+      "expansion": 0.4
+    },
+    {
+      "code": "ar-XB",
+      "name": "Pseudo (right-to-left)",
+      "base": "en",
+      "direction": "rtl",
+      "expansion": 0.4
+    }
+  ]
+}

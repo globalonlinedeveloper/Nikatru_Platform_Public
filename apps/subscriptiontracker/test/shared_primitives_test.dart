@@ -561,7 +561,7 @@ void main() {
     // that DateTime(y, m, d) truncation would round differently.
     final DateTime now = DateTime(2026, 6, 15, 9, 30);
 
-    for (final String code in <String>['en', 'ta']) {
+    for (final String code in kSupportedLocaleCodes) {
       testWidgets('[$code] today / tomorrow / N days come from l10n', (
         WidgetTester tester,
       ) async {
