@@ -50,6 +50,7 @@ import {
   makeIo,
   parseHttp,
   proposals,
+  readRulings,
   run,
   validateLanes,
   windows,
@@ -158,6 +159,15 @@ describe('D1 — the definitions', () => {
     assert.equal(classOf('🟡 rename'), 'nit');
     assert.equal(classOf('🟣 old'), 'pre-existing');
     assert.equal(classOf('plain words'), 'untagged');
+  });
+
+  test('each rulings file contributes its own tagged findings; an untagged list item is prose', () => {
+    const md = join(FIX, 'reviews', 'rulings.md');
+    const json = join(FIX, 'reviews', 'rulings.json');
+    const only = (file) => ({ read: (f) => readFileSync(f, 'utf8'), list: () => [path.basename(file)] });
+    assert.deepEqual(readRulings(dirname(md), only(md)).map((f) => [f.class, f.pr]), [['correctness', 101], ['vacuous', 105]]);
+    assert.deepEqual(readRulings(dirname(json), only(json)).map((f) => [f.class, f.pr]), [['correctness', 107]]);
+    assert.equal(readRulings(dirname(md), quietIo()).length, 3);
   });
 
   test('the lane ledger is held to its schema and never carries an e-mail address', () => {
