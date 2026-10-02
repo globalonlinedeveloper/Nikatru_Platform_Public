@@ -2,7 +2,8 @@
   "$schema": "./port.schema.json#/$defs/nonPortRegister",
   "_why": [
     "Every vendor of tooling/capability-register.json `vendors` and every provider of tooling/legal/provider-register.json `providers` that is NOT an adapter of some tooling/ports/<capability>.json. tooling/ci/assert-ports.mjs limb 8 requires each id to be exactly one adapter's `vendor` or exactly one row here, so a vendor nobody placed fails the build.",
-    "`until` names the train that will port it; `nonPort: true` marks one deliberately never ported (a platform authority, a store, a retired rail). A row carries exactly one of the two."
+    "`until` names the train that will port it; `nonPort: true` marks one deliberately never ported (a platform authority, a store, a retired rail). A row carries exactly one of the two.",
+    "The nikatru.com zone (DNS records, WAF custom rules, Access apps, tunnel ingress) is DECLARED, NOT PORTED: tooling/edge/zone.json, read by tooling/ops/check-edge-zone.mjs, whose --export is the DNS-provider move's worklist."
   ],
   "rows": [
     { "vendor": "cloudflare", "registers": ["capability-register", "provider-register"], "reason": "Config transport (KV), D1, R2 and the Worker bindings sit behind ConfigTransport and the shared D1 helpers, not yet behind a storage or SQL port.", "until": "port-storage" },

@@ -353,6 +353,9 @@
   "edge-shield-probe.test.mjs":
     26,
 
+  "edge-zone.test.mjs":
+    21,
+
   "elf-page-alignment.test.mjs":
     23,
 

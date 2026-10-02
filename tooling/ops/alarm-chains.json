@@ -164,6 +164,20 @@
     "A host row with no monitor id yet prints as EXPECTED BUT ABSENT and does not fail, for the reason the asymmetry",
     "paragraphs above give: a canary red for the hours between provisioning and creation gets switched off."
   ],
+  "_accessGatesWatched": [
+    "⏱ 2026-10-01 · PB-19 (lane fix-edge-as-code, O-EDGE-CONFIG-NOT-DECLARED, folding O-ACCESS-GATES-UNWATCHED-BESZEL-LOGS).",
+    "The Access gates in front of beszel.nikatru.com and logs.nikatru.com had no reader: monitor 39 reads their ORIGINS",
+    "from inside Box B and says nothing about the gate. They are now watched from outside, the way monitor 18 `Studio",
+    "Access gate` watches studio.nikatru.com: tooling/ops/check-edge-zone.mjs asks GET / of each and requires HTTP 302",
+    "to *.cloudflareaccess.com, and reads the Access app list itself, both declared in tooling/edge/zone.json",
+    "(`cloudflare.access.apps[].probe`). It runs in ops-watch.yml's `edge-shield` job, whose failure reaches the",
+    "durable ops-watch issue through the `alert` job — that is the chain, and it is not a GlitchTip chain, so it is",
+    "not a row of expectedMonitors below.",
+    "",
+    "⬜ NOT DONE BY THAT CHANGE: a GlitchTip monitor per gate (the shape of 18: GET, expect 302) would page within",
+    "minutes instead of on the weekly slot. Creating one is a live write to the instance, so it belongs to the run",
+    "that applies the PB-15 Access apps; its id is added below in the same change, as 18's was."
+  ],
   "expectedMonitors": [
     {
       "id": 3,
