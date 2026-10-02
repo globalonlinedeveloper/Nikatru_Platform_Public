@@ -23,6 +23,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
@@ -30,6 +31,8 @@ import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ChassisL10nX, DataStateView, MonthGrid;
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
+import 'package:nikatru_chassis_screens/firstrun/setup_steps_view.dart'
+    show SetupStepsView;
 import 'package:nikatru_chassis_screens/shell/web_semantics.dart'
     show releaseWebSemantics;
 import 'package:subscriptiontracker/core/e2e_keys.dart';
@@ -963,6 +966,94 @@ void main() {
     return true;
   }
 
+  /// The add sheet's PICK step is up — asserted by its heading and its search,
+  /// with "Add by hand" offered.
+  ///
+  /// ⏱ 2026-10-02 · ST-T9 (AD-03, #1130). An ADD now opens on a pick step — a
+  /// search over the bundled catalogue, "Add by hand" and "Import instead" —
+  /// and the form that carries `E2EKeys.addName` / `addPrice` is one tap
+  /// further. E2E run 36951615260 failed `Bad state: No element` on
+  /// `addName` in both legs for exactly that.
+  Future<void> expectAddPickStep(WidgetTester tester, String what) async {
+    final Finder search = find.byKey(E2EKeys.addSearch);
+    expect(
+      await waitFor(tester, search, timeout: const Duration(seconds: 6)),
+      isTrue,
+      reason:
+          '$what did not open the add sheet on its pick step (no catalogue '
+          'search). On screen: ${onScreen(tester)}',
+    );
+    final AppLocalizations l10n = AppLocalizations.of(tester.element(search));
+    expect(
+      find.text(l10n.addSubscriptionTitle),
+      findsWidgets,
+      reason: 'the pick step has no "${l10n.addSubscriptionTitle}" heading',
+    );
+    expect(
+      find.text(l10n.addPickSearchLabel),
+      findsOneWidget,
+      reason:
+          'the pick step\'s search is not labelled '
+          '"${l10n.addPickSearchLabel}"',
+    );
+    expect(
+      find.byKey(E2EKeys.addByHand),
+      findsOneWidget,
+      reason: 'the pick step offers no "${l10n.addPickByHand}"',
+    );
+  }
+
+  /// "+" → the pick step → "Add by hand" → the form, ready to type into.
+  ///
+  /// The walk types a unique name and a price, which no catalogue pick
+  /// supplies, so it goes the way a user with an unlisted plan goes.
+  Future<void> openAddFormByHand(
+    WidgetTester tester,
+    String what, {
+    String? pickShot,
+  }) async {
+    await tester.tap(find.byKey(E2EKeys.fabAdd));
+    await pumpFor(tester, const Duration(seconds: 2));
+    await expectAddPickStep(tester, 'the "+" ($what)');
+    if (pickShot != null) await shot(pickShot);
+    await tapWhenHittable(
+      tester,
+      find.byKey(E2EKeys.addByHand),
+      'Add by hand ($what)',
+    );
+    expect(
+      await waitFor(tester, find.byKey(E2EKeys.addName)),
+      isTrue,
+      reason:
+          '"Add by hand" did not open the add form for $what. On screen: '
+          '${onScreen(tester)}',
+    );
+    await pumpFor(tester, const Duration(milliseconds: 500));
+  }
+
+  /// Swipes every SnackBar away, the way a user clears one.
+  ///
+  /// 🔴 A SNACKBAR WITH AN ACTION NEVER TIMES OUT: Flutter 3.47's
+  /// `SnackBar.persist` defaults to `action != null`, and #1130 gave pause
+  /// and remove an Undo (DE-09, DE-10). The messenger QUEUES, so a persistent
+  /// Undo stays current and every later SnackBar waits behind it — step 13's
+  /// removal would have shown 12c's PAUSE Undo, and tapping it would have
+  /// undone the wrong write.
+  Future<void> swipeAwaySnackBars(WidgetTester tester, String after) async {
+    final Finder bar = find.byType(SnackBar);
+    for (int i = 0; i < 6 && bar.evaluate().isNotEmpty; i++) {
+      await tester.fling(bar.first, const Offset(0, 300), 1500);
+      await pumpFor(tester, const Duration(milliseconds: 1500));
+    }
+    expect(
+      bar,
+      findsNothing,
+      reason:
+          'a SnackBar is still up after swiping it away ($after). On screen: '
+          '${onScreen(tester)}',
+    );
+  }
+
   /// The login screen, waited for rather than assumed — then asserted.
   ///
   /// Polls first because the route change is asynchronous and this is reached
@@ -1019,6 +1110,100 @@ void main() {
           'window expired. On screen: ${onScreen(tester)}',
     );
     expect(find.byType(AppShell), findsOneWidget);
+  }
+
+  /// Walks the after-sign-in setup IF it is showing, and says whether it was.
+  ///
+  /// ⏱ 2026-10-02 · ST-T9 (EN-18, #1130). Home sends a signed-in account whose
+  /// list loads EMPTY to `/setup` — three steps (home currency, reminder
+  /// channels, "pick what you pay for"), a full ROUTE, not a dialog — and the
+  /// account is marked seen when it finishes or skips, ONCE PER ACCOUNT
+  /// (`setupSeenProvider`, keyed by the account id in the device store). Every
+  /// leg here signs in a fresh admin-API user, so it meets the setup every run;
+  /// the first E2E after #1130 (run 36948740532) timed out on its step 1 in BOTH
+  /// legs because nothing here knew it existed.
+  ///
+  /// The suite VISITS every page, so this WALKS all three steps with Next,
+  /// accepting the defaults (nothing picked on step 3, so no row is added), and
+  /// asserts each step's heading from the arb before advancing. A setup that is
+  /// NOT shown (a returning account, a list that was not empty) is not a
+  /// failure — the same contract as [skipOnboardingIfShown] — and the landing
+  /// assertion after it is unchanged.
+  ///
+  /// 🔴 THE REDIRECT IS AFTER A FRAME, so "Home with the list loaded" can be
+  /// true for a moment before `/setup` replaces it. This waits for the setup's
+  /// advance button, and only gives up on it once Home has held its loaded list
+  /// for two seconds.
+  Future<bool> walkSetupIfShown(WidgetTester tester, String leg) async {
+    final Finder advance = find.byKey(SetupStepsView.advanceButton);
+    final int startedIn = testEpoch;
+    final DateTime end = DateTime.now().add(const Duration(seconds: 15));
+    DateTime? homeSince;
+    while (DateTime.now().isBefore(end) && advance.evaluate().isEmpty) {
+      await guardedPump(tester, startedIn, const Duration(milliseconds: 200));
+      if (listLoadedOnHome(tester)) {
+        homeSince ??= DateTime.now();
+        if (DateTime.now().difference(homeSince) > const Duration(seconds: 2)) {
+          break;
+        }
+      } else {
+        homeSince = null;
+      }
+    }
+    if (advance.evaluate().isEmpty) return false;
+
+    final AppLocalizations l10n = AppLocalizations.of(tester.element(advance));
+    final List<String> titles = <String>[
+      l10n.setupCurrencyTitle,
+      l10n.setupRemindersTitle,
+      l10n.setupPickTitle,
+    ];
+    for (int i = 0; i < titles.length; i++) {
+      final bool last = i == titles.length - 1;
+      expect(
+        await waitFor(tester, find.text(titles[i])),
+        isTrue,
+        reason:
+            '$leg: setup step ${i + 1} of ${titles.length} ("${titles[i]}") '
+            'never showed. On screen: ${onScreen(tester)}',
+      );
+      expectNothingCoveringTheApp('setup step ${i + 1}');
+      await shot('03s-setup-step-${i + 1}');
+      expect(
+        find.descendant(
+          of: advance,
+          matching: find.text(last ? l10n.setupFinish : l10n.setupNext),
+        ),
+        findsOneWidget,
+        reason:
+            '$leg: setup step ${i + 1} does not offer '
+            '"${last ? l10n.setupFinish : l10n.setupNext}". On screen: '
+            '${onScreen(tester)}',
+      );
+      // A ROUTE, not a dialog — but the step change animates, so settle the
+      // frame before the tap rather than tapping a control mid-transition.
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      await tapWhenHittable(
+        tester,
+        advance,
+        last ? l10n.setupFinish : l10n.setupNext,
+      );
+      await pumpFor(tester, const Duration(milliseconds: 600));
+    }
+    // Done saves the currency, marks the account seen and routes to Home,
+    // whose list is one more live Worker read.
+    expect(
+      await waitGone(tester, advance, timeout: const Duration(seconds: 12)),
+      isTrue,
+      reason:
+          '$leg: "${l10n.setupFinish}" did not leave the setup. On screen: '
+          '${onScreen(tester)}',
+    );
+    final DateTime homeBy = DateTime.now().add(const Duration(seconds: 12));
+    while (DateTime.now().isBefore(homeBy) && !listLoadedOnHome(tester)) {
+      await guardedPump(tester, startedIn, const Duration(milliseconds: 200));
+    }
+    return true;
   }
 
   /// The `E2E_EXPECT_WORKERS_TRUST=no` half of every Worker-dependent leg — a
@@ -1280,6 +1465,11 @@ void main() {
     // here is the suite's own proof that sign-in succeeded.
     final bool sawReacceptance = await acceptTermsIfShown(tester);
 
+    // ── 03s After-sign-in setup (ST-T9, EN-18) ───────────────────────────────
+    // A fresh account whose list loads empty meets it; see the helper.
+    final bool sawSetup = await walkSetupIfShown(tester, 'the full walk');
+    debugPrint('E2E full walk: after-sign-in setup shown = $sawSetup');
+
     // ── 03 Landing ───────────────────────────────────────────────────────────
     // ⏱ 2026-10-01 · IM-07 (ADR 077 §2.2): this was "03 Scan", a timed loader
     // the helper forced the walk onto and nothing in the app navigated to. A
@@ -1382,8 +1572,11 @@ void main() {
 
     // ── 10 Add-subscription sheet ────────────────────────────────────────────
     final String subName = 'E2E Probe ${DateTime.now().millisecondsSinceEpoch}';
-    await tester.tap(find.byKey(E2EKeys.fabAdd));
-    await pumpFor(tester, const Duration(seconds: 2));
+    await openAddFormByHand(
+      tester,
+      'the first subscription',
+      pickShot: '10p-add-pick',
+    );
     expect(find.text('Add subscription'), findsWidgets);
     await tester.enterText(find.byKey(E2EKeys.addName), subName);
     await tester.enterText(find.byKey(E2EKeys.addPrice), '12.34');
@@ -1409,6 +1602,56 @@ void main() {
           'read-back failed',
     );
     await shot('11-home-after-create');
+
+    // ── 11a Find (T8 · HO-03, SH-02): search for the plan just added, filter
+    // by status, and N opens the add sheet. Back to the top first: the search
+    // leads the list, and a lazy list does not build what it scrolled past.
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, 20000));
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    await tester.enterText(find.byKey(HomeScreen.searchFieldKey), subName);
+    await pumpFor(tester, const Duration(seconds: 1));
+    expect(
+      find.descendant(
+        of: find.byKey(HomeScreen.allKey),
+        matching: find.text(subName),
+      ),
+      findsOneWidget,
+      reason: 'searching for the plan just added did not list it',
+    );
+    await tester.enterText(find.byKey(HomeScreen.searchFieldKey), '');
+    // Esc leaves the field, so the shell's keys (N below) are live again —
+    // inside a field N types an n, by design.
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(HomeScreen.filterKey));
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    // A new plan is ACTIVE: filtered to Paused it is gone, to Active it is
+    // back.
+    await tester.tap(find.widgetWithText(FilterChip, 'Paused'));
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    expect(
+      find.descendant(
+        of: find.byKey(HomeScreen.allKey),
+        matching: find.text(subName),
+      ),
+      findsNothing,
+      reason: 'filtered to Paused, an active plan still listed',
+    );
+    await tester.tap(find.widgetWithText(FilterChip, 'Paused'));
+    await tester.tap(find.widgetWithText(FilterChip, 'Active'));
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    expect(find.text(subName), findsWidgets);
+    // Closing the chips clears them.
+    await tester.tap(find.byKey(HomeScreen.filterKey));
+    await pumpFor(tester, const Duration(milliseconds: 500));
+    // N — the shell's primary action — opens the add sheet; Cancel closes it.
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyN);
+    await pumpFor(tester, const Duration(seconds: 2));
+    // ST-T9: it opens on the pick step, as the "+" does.
+    await expectAddPickStep(tester, 'pressing N');
+    await tester.tap(find.byKey(E2EKeys.addCancel));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(find.byKey(E2EKeys.addSearch), findsNothing);
 
     // ── 11b Budget: the editor on Insights (ST-D3: no Budget tab) ────────────
     // Only now does Insights render its card stack (one subscription exists).
@@ -1469,49 +1712,142 @@ void main() {
     ); // sub name shown in the detail header
     await shot('12-detail');
 
-    // ── 13 Cancel/delete A (exercises DELETE /v1/subscriptions/:id) ───────────
+    // ── 12b Mark as paid (DE-04: POST /v1/subscriptions/:id/payments) ────────
+    // The amount is prefilled from the plan; Save posts ONE payment with ONE
+    // Idempotency-Key, and the history card gains its row.
     await scrollUntilFound(
       tester,
-      target: find.text('Remove'),
+      target: find.byKey(E2EKeys.detailMarkPaid),
       scrollable: find.byType(Scrollable),
-      what: 'the "Remove" button on the subscription detail sheet',
+      what: 'the "Mark as paid" action on the detail history heading',
       maxScrolls: 20,
       delta: 200,
     );
-    await tester.tap(find.text('Remove'));
+    await tester.ensureVisible(find.byKey(E2EKeys.detailMarkPaid));
+    await pumpFor(tester, const Duration(milliseconds: 300));
+    await tester.tap(find.byKey(E2EKeys.detailMarkPaid));
     await pumpFor(tester, const Duration(seconds: 2));
-    expect(find.text('Yes, remove'), findsOneWidget);
-    await tester.tap(find.text('Yes, remove'));
-    await pumpFor(tester, const Duration(seconds: 8)); // DELETE round-trip
+    expect(find.byKey(E2EKeys.markPaidAmount), findsOneWidget);
+    await tester.tap(find.byKey(E2EKeys.markPaidSave));
     expect(
-      find.text('Removed from your tracker'),
-      findsWidgets,
-      // Says what was LOOKED FOR and what was THERE INSTEAD, and asserts nothing
-      // about DELETE: a missing widget cannot tell a failed round-trip from a
-      // renamed string, a slow rebuild or a screen that never opened, and naming
-      // the wrong cause sends the next reader to the wrong system.
+      await waitFor(
+        tester,
+        find.text('Payment recorded'),
+        timeout: const Duration(seconds: 15),
+      ),
+      isTrue,
       reason:
-          'expected a "Removed from your tracker" text widget after confirming the '
-          'removal; it matched nothing 8s after tapping "Yes, remove"',
+          'no "Payment recorded" snackbar 15 s after Save: the POST to '
+          '/payments failed or never returned',
     );
-    await tester.tap(find.text('Done'));
-    await pumpFor(
-      tester,
-      const Duration(seconds: 4),
-    ); // sheet + detail pop → home
+    await shot('12b-marked-paid');
+
+    // ── 12c Pause → Resume (DE-09: asks once, Undo offered) ─────────────────
+    await tester.tap(find.byKey(E2EKeys.detailMoreOptions));
+    await pumpFor(tester, const Duration(seconds: 2));
+    await tester.tap(find.text('Pause'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    await tester.tap(find.byKey(E2EKeys.confirmYes));
+    await pumpFor(tester, const Duration(seconds: 5)); // PATCH round-trip
+    expect(
+      find.textContaining('Paused'),
+      findsWidgets,
+      reason: 'the header does not say Paused after confirming Pause',
+    );
+    await swipeAwaySnackBars(tester, 'pausing at 12c');
+    await tester.tap(find.byKey(E2EKeys.detailMoreOptions));
+    await pumpFor(tester, const Duration(seconds: 2));
+    await tester.tap(find.text('Resume'));
+    await pumpFor(tester, const Duration(seconds: 5));
+    expect(
+      find.textContaining('Paused'),
+      findsNothing,
+      reason: 'the header still says Paused after Resume',
+    );
+
+    // ── 12d Mark cancelled THROUGH THE STOP FLOW (DE-07) ────────────────────
+    // 🔴 BACK TO THE TOP FIRST. 12b scrolled DOWN to the history heading, and
+    // "Stop or remove" sits ABOVE it in a lazy list; `scrollUntilFound` only
+    // drags one way, so from there it could never come back to the button.
+    Future<void> scrollToStopOrRemove() async {
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, 20000));
+      await pumpFor(tester, const Duration(milliseconds: 500));
+      await scrollUntilFound(
+        tester,
+        target: find.byKey(E2EKeys.detailCancelPlan),
+        scrollable: find.byType(Scrollable),
+        what: 'the "Stop or remove" button on the subscription detail',
+        maxScrolls: 20,
+        delta: 200,
+      );
+      await tester.ensureVisible(find.byKey(E2EKeys.detailCancelPlan));
+      await pumpFor(tester, const Duration(milliseconds: 300));
+    }
+
+    await scrollToStopOrRemove();
+    await tester.tap(find.byKey(E2EKeys.detailCancelPlan));
+    await pumpFor(tester, const Duration(seconds: 2));
+    await tester.tap(find.byKey(E2EKeys.stopChoiceCancelled));
+    await pumpFor(tester, const Duration(seconds: 2));
+    await tester.tap(find.byKey(E2EKeys.stopItWorked));
+    await pumpFor(tester, const Duration(seconds: 5)); // PATCH round-trip
+    expect(
+      find.byKey(E2EKeys.stopDone),
+      findsOneWidget,
+      reason:
+          'the stop flow never reached "done" after "Yes, mark it cancelled"',
+    );
+    await tester.tap(find.byKey(E2EKeys.stopDone));
+    await pumpFor(tester, const Duration(seconds: 2));
+    expect(find.textContaining('Cancelled'), findsWidgets);
+    await shot('12d-marked-cancelled');
+
+    // ── 13 Remove → Undo → remove (DE-07 / DE-10: a soft delete, undoable) ──
+    Future<void> removeThroughStopFlow() async {
+      await scrollToStopOrRemove();
+      await tester.tap(find.byKey(E2EKeys.detailCancelPlan));
+      await pumpFor(tester, const Duration(seconds: 2));
+      await tester.tap(find.byKey(E2EKeys.stopChoiceRemove));
+      await pumpFor(tester, const Duration(seconds: 6)); // the write round-trip
+    }
+
+    await removeThroughStopFlow();
     expect(shellIndex(), 0);
+    expect(
+      find.byKey(E2EKeys.snackUndo),
+      findsOneWidget,
+      reason:
+          'no Undo on the removal snackbar: the soft delete is not undoable',
+    );
+    await tester.tap(find.byKey(E2EKeys.snackUndo));
+    await pumpFor(tester, const Duration(seconds: 6)); // PATCH deleted_at: null
+    await scrollUntilFound(
+      tester,
+      target: subFinder.first,
+      scrollable: find.byType(Scrollable),
+      what: 'the subscription Undo brought back, on Home',
+      maxScrolls: 40,
+    );
+
+    // And removed for good, which is what the CI verify step expects of A.
+    await tester.tap(subFinder.first);
+    await pumpFor(tester, const Duration(seconds: 3));
+    await removeThroughStopFlow();
+    expect(shellIndex(), 0);
+    // Past the snackbar's own life, so the Undo cannot be what is on screen.
+    await pumpFor(tester, const Duration(seconds: 6));
     expect(
       find.text(subName),
       findsNothing,
-      reason: 'Cancelled subscription still shows on Home — delete failed',
+      reason: 'Removed subscription still shows on Home — the removal failed',
     );
+    await swipeAwaySnackBars(tester, 'the removal at 13');
     await shot('13-after-cancel');
 
     // ── 14 Create a SECOND subscription (left in D1 for the CI verify+purge) ──
     final String subNameB =
         'E2E Probe B ${DateTime.now().millisecondsSinceEpoch}';
-    await tester.tap(find.byKey(E2EKeys.fabAdd));
-    await pumpFor(tester, const Duration(seconds: 2));
+    await openAddFormByHand(tester, 'the SECOND subscription');
     await tester.enterText(find.byKey(E2EKeys.addName), subNameB);
     await tester.enterText(find.byKey(E2EKeys.addPrice), '7.77');
     await pumpFor(tester, const Duration(milliseconds: 500));
@@ -1556,8 +1892,7 @@ void main() {
       return int.parse(t.split(' ').first);
     }
 
-    await tester.tap(find.byKey(E2EKeys.fabAdd));
-    await pumpFor(tester, const Duration(seconds: 2));
+    await openAddFormByHand(tester, 'the WEEKLY subscription');
     await tester.enterText(find.byKey(E2EKeys.addName), weeklyName);
     await tester.enterText(find.byKey(E2EKeys.addPrice), '2.50');
     // The cadence: the dropdown reads its value ("Monthly") until changed.
@@ -1628,7 +1963,11 @@ void main() {
     await tester.tap(find.byKey(E2EKeys.detailMoreOptions));
     await pumpFor(tester, const Duration(seconds: 1));
     await tester.tap(find.text('Pause'));
+    await pumpFor(tester, const Duration(seconds: 2));
+    // DE-09 (#1130): Pause asks once, as at 12c.
+    await tester.tap(find.byKey(E2EKeys.confirmYes));
     await pumpFor(tester, const Duration(seconds: 4)); // PATCH round-trip
+    await swipeAwaySnackBars(tester, 'pausing the weekly plan at 14c');
     await tester.tap(find.byKey(E2EKeys.detailBack));
     await pumpFor(tester, const Duration(seconds: 2));
     expect(shellIndex(), 0);
@@ -1654,6 +1993,7 @@ void main() {
     await tester.tap(find.text('Delete from tracker'));
     await pumpFor(tester, const Duration(seconds: 4));
     expect(shellIndex(), 0);
+    await swipeAwaySnackBars(tester, 'deleting the weekly plan at 14c');
 
     // ── 15 Settings: switch currency (client-state propagation) ──────────────
     await tester.tap(find.text('Settings'));
@@ -1890,14 +2230,17 @@ void main() {
     // the one that used to guess about exactly that.
     final bool sawReacceptance = await acceptTermsIfShown(tester);
 
+    // ST-T9 (EN-18): the delete-leg user is fresh too, so it meets the setup.
+    final bool sawSetup = await walkSetupIfShown(tester, 'the delete leg');
+    debugPrint('E2E delete leg: after-sign-in setup shown = $sawSetup');
+
     // ⏱ 2026-10-01 · IM-07: the delete leg lands on Home like the full walk;
     // see `expectLandedOnHome` for the evidence rules (2026-09-02).
     expectLandedOnHome(tester, 'the delete leg', sawReacceptance);
 
     // ── 18 Give the account something to lose ────────────────────────────────
     final String doomed = 'E2E Doomed ${DateTime.now().millisecondsSinceEpoch}';
-    await tester.tap(find.byKey(E2EKeys.fabAdd));
-    await pumpFor(tester, const Duration(seconds: 2));
+    await openAddFormByHand(tester, 'the doomed subscription');
     await tester.enterText(find.byKey(E2EKeys.addName), doomed);
     await tester.enterText(find.byKey(E2EKeys.addPrice), '3.21');
     await pumpFor(tester, const Duration(milliseconds: 500));

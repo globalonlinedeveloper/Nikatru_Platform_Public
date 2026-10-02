@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { cancelPathOf, renderPortsTs, renderCheck, PAYMENTS_REGISTRY, RENDERED_PORTS } from '../../ports/render.mjs';
+import { cancelPathOf, renderPortsTs, renderCheck, renderRailsDart, PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART } from '../../ports/render.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const TOOL = join(REPO, 'tooling', 'ports', 'render.mjs');
@@ -23,7 +23,7 @@ describe('render.mjs — the payments table', () => {
   let root;
   before(() => {
     root = mkdtempSync(join(tmpdir(), 'port-render-'));
-    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS]) {
+    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART]) {
       mkdirSync(dirname(join(root, rel)), { recursive: true });
       cpSync(join(REPO, rel), join(root, rel));
     }
@@ -80,8 +80,10 @@ describe('render.mjs — the payments table', () => {
   it('COVERAGE LOST: a generated path that exists but cannot be read is exit 2 in both modes, never a crash', () => {
     const scratch = mkdtempSync(join(tmpdir(), 'port-render-dir-'));
     try {
-      mkdirSync(join(scratch, 'tooling/ports'), { recursive: true });
-      cpSync(join(REPO, PAYMENTS_REGISTRY), join(scratch, PAYMENTS_REGISTRY));
+      for (const rel of [PAYMENTS_REGISTRY, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART]) {
+        mkdirSync(dirname(join(scratch, rel)), { recursive: true });
+        cpSync(join(REPO, rel), join(scratch, rel));
+      }
       mkdirSync(join(scratch, RENDERED_PORTS), { recursive: true });
       for (const args of [['--check', '--root', scratch], ['--root', scratch]]) {
         const r = run(args);
@@ -93,16 +95,89 @@ describe('render.mjs — the payments table', () => {
   it('green control: an ABSENT generated file is written (ENOENT is absence, not an error)', () => {
     const scratch = mkdtempSync(join(tmpdir(), 'port-render-new-'));
     try {
-      mkdirSync(join(scratch, 'tooling/ports'), { recursive: true });
-      cpSync(join(REPO, PAYMENTS_REGISTRY), join(scratch, PAYMENTS_REGISTRY));
+      for (const rel of [PAYMENTS_REGISTRY, CHANNEL_REGISTER, FEE_REGISTER]) {
+        mkdirSync(dirname(join(scratch, rel)), { recursive: true });
+        cpSync(join(REPO, rel), join(scratch, rel));
+      }
       const r = run(['--root', scratch]);
       assert.equal(r.code, 0, r.out);
       assert.match(r.out, /^ok {3}render — wrote services\/platform\/src\/generated\/ports\.ts/);
+      assert.match(r.out, /^ok {3}render — wrote packages\/purchases\/lib\/src\/generated\/rails\.dart/m);
       assert.equal(run(['--check', '--root', scratch]).code, 0);
     } finally { rmSync(scratch, { recursive: true, force: true }); }
   });
   it('refuses an unknown flag (exit 2)', () => {
     assert.equal(run(['--chek']).code, 2);
+  });
+});
+
+// ⏱ 2026-10-01 · port-pay-client: the DART target — the client's rail kind per app channel,
+// rendered from the channel register (and the store-billed rails payments.json derives).
+describe('render.mjs — the Dart rail map', () => {
+  let root;
+  before(() => {
+    root = mkdtempSync(join(tmpdir(), 'port-render-dart-'));
+    for (const rel of [PAYMENTS_REGISTRY, RENDERED_PORTS, CHANNEL_REGISTER, FEE_REGISTER, RENDERED_RAILS_DART]) {
+      mkdirSync(dirname(join(root, rel)), { recursive: true });
+      cpSync(join(REPO, rel), join(root, rel));
+    }
+  });
+  const sources = () => ({
+    channelDoc: JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8')),
+    doc: JSON.parse(readFileSync(join(root, PAYMENTS_REGISTRY), 'utf8')),
+    cells: JSON.parse(readFileSync(join(root, FEE_REGISTER), 'utf8')).cells,
+  });
+  it('green control: the committed map is the render, and names no vendor', () => {
+    const r = run(['--check', '--root', root]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /packages\/purchases\/lib\/src\/generated\/rails\.dart matches tooling\/channel-register\.json/);
+    const { channelDoc, doc, cells } = sources();
+    const { text } = renderRailsDart(channelDoc, doc, cells);
+    assert.match(text, /^ {2}'web': 'hosted',$/m, 'a hosted page is `hosted`, whichever vendor serves it');
+    assert.match(text, /^ {2}'android-play': 'play-billing',$/m);
+    assert.match(text, /^ {2}'apps-gov-in': 'none',$/m);
+    assert.doesNotMatch(text, /paddle|razorpay|revenuecat/i, 'the client names no payment vendor');
+    assert.doesNotMatch(text, /chrome-webstore/, 'an extension is sold from the Worker, never from Dart');
+  });
+  it('red: a register fixture moving windows-direct to none changes the generated map', () => {
+    const { channelDoc, doc, cells } = sources();
+    const before = renderRailsDart(channelDoc, doc, cells).text;
+    channelDoc.channels.find((c) => c.id === 'windows-direct').purchaseRail.rail = 'none';
+    const after = renderRailsDart(channelDoc, doc, cells).text;
+    assert.match(before, /^ {2}'windows-direct': 'hosted',$/m);
+    assert.match(after, /^ {2}'windows-direct': 'none',$/m);
+  });
+  it('red: that register edit, not re-rendered, exits 1 on --check', () => {
+    const rel = join(root, CHANNEL_REGISTER);
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const d = JSON.parse(before);
+      d.channels.find((c) => c.id === 'windows-direct').purchaseRail.rail = 'none';
+      writeFileSync(rel, JSON.stringify(d));
+      const r = run(['--check', '--root', root]);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /rails\.dart differs from its render at line \d+: have "  'windows-direct': 'hosted',", want "  'windows-direct': 'none',"/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: a hand edit of the Dart map exits 1', () => {
+    const rel = join(root, RENDERED_RAILS_DART);
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, before.replace("  'linux-snap': 'hosted',", "  'linux-snap': 'play-billing',"));
+      const r = run(['--check', '--root', root]);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /^FAIL render --check — .*rails\.dart differs from its render/m);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('the store-billed kinds are DERIVED: with no cancel-store adapter every channel would be hosted, so it is LOST', () => {
+    const { channelDoc, doc, cells } = sources();
+    for (const a of doc.adapters) a.capabilities = a.capabilities.filter((c) => c !== 'cancel-store');
+    assert.match(renderRailsDart(channelDoc, doc, cells).lost ?? '', /no store-billed rail was derived/);
+  });
+  it('COVERAGE LOST: a channel on a rail the dictionary does not define', () => {
+    const { channelDoc, doc, cells } = sources();
+    channelDoc.channels.find((c) => c.id === 'web').purchaseRail.rail = 'amazon-iap';
+    assert.match(renderRailsDart(channelDoc, doc, cells).lost ?? '', /takes rail `amazon-iap`, which purchaseRails\.rails does not define/);
   });
 });
 

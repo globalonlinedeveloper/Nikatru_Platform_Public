@@ -25,6 +25,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/core/format/money_format.dart';
 import 'package:subscriptiontracker/core/format/sub_math.dart';
@@ -143,6 +144,8 @@ Future<void> _pump(
   Brightness brightness,
   Widget home, {
   _Repo? repo,
+  String currency = 'USD',
+  List<Override> extra = const <Override>[],
   bool locked = true,
   DateTime Function()? now,
 }) async {
@@ -154,9 +157,10 @@ Future<void> _pump(
     overrides: <Override>[
       ...defaultWidthOverrides(),
       subscriptionRepositoryProvider.overrideWithValue(repo ?? _Repo()),
-      currencyCodeProvider.overrideWithValue('USD'),
+      currencyCodeProvider.overrideWithValue(currency),
       paywallLockedProvider.overrideWithValue(locked),
       if (now != null) nowProvider.overrideWithValue(now),
+      ...extra,
     ],
   );
   addTearDown(c.dispose);
@@ -267,6 +271,51 @@ void main() {
     }
   }
 
+  // ⏱ T12 (IN-06) · CONVERTED TOTALS: a rupee user with a dollar plan, at the
+  // contract vector's ECB rates (contracts/fx/latest.v1.example.json). Every
+  // tile is ONE rupee figure and the caption names the fix date.
+  for (final Brightness b in Brightness.values) {
+    testWidgets('Insights · converted · compact · ${b.name}', (
+      WidgetTester tester,
+    ) async {
+      final DateTime now = DateTime.now();
+      await _pump(
+        tester,
+        _classes['compact']!,
+        b,
+        const InsightsScreen(),
+        currency: 'INR',
+        repo: _Repo(
+          subs: <Subscription>[
+            Subscription(
+              id: 'h',
+              name: 'Hotstar',
+              category: 'Video',
+              price: const Money(64900, 'INR'),
+              cycle: BillingCycle.monthly,
+              nextRenewal: DateTime(now.year, now.month, now.day + 5),
+            ),
+            Subscription(
+              id: 'i',
+              name: 'iCloud',
+              category: 'Cloud',
+              price: const Money(1000, 'USD'),
+              cycle: BillingCycle.monthly,
+              nextRenewal: DateTime(now.year, now.month, now.day + 9),
+            ),
+          ],
+        ),
+        extra: <Override>[
+          fxTransportProvider.overrideWithValue(const _VectorFx()),
+        ],
+      );
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/insights_converted_compact_${b.name}.png'),
+      );
+    }, skip: !Platform.isLinux);
+  }
+
   group('one case per state', () {
     const Size phone = Size(420, 2400);
 
@@ -354,4 +403,20 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+}
+
+/// The contract vector's `response` (two of its rates), dated so the caption
+/// is the same on every run.
+class _VectorFx implements core.FxTransport {
+  const _VectorFx();
+
+  @override
+  Future<core.Result<Map<String, Object?>>> fetchLatest() async =>
+      const core.Result<Map<String, Object?>>.ok(<String, Object?>{
+        'source':
+            'Euro foreign exchange reference rates, European Central Bank',
+        'base': 'EUR',
+        'asOf': '2026-09-25',
+        'rates': <String, Object?>{'USD': 1.1732, 'INR': 103.987},
+      });
 }

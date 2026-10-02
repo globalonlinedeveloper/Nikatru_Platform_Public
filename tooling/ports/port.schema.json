@@ -121,6 +121,7 @@
         "dryRun": { "type": "string", "pattern": "^node tooling/ops/port-switch\\.mjs [a-z][a-z0-9-]* --to <adapter> --dry-run$" }
       }
     },
+    "client": { "$ref": "#/$defs/clientHalf" },
     "_why": { "$ref": "#/$defs/prose" }
   },
   "$defs": {
@@ -309,6 +310,89 @@
             "import": { "type": ["string", "null"], "minLength": 10, "description": "How it enters this adapter; null until the runbook names the method." }
           }
         }
+      }
+    },
+    "clientHalf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "seams", "adapters", "pending", "_why"],
+      "description": "Optional: the CLIENT (Dart) half of a port whose seams live in an app package (payments: PurchaseRail and IapBridge, port-pay-client). Its own level, earned by assert-ports limb 10 the way limb 6 earns the port's: each seam's suite runner declared in its file, every seam with two or more adapters (one may be a fake; never a draft or retired one) whose conformance test CALLS that runner with nothing pending, the port's switch runbook and the dry-run tool. Every class in packages/*/lib that implements a seam is one of `adapters` (derived, so a new rail cannot ship unregistered).",
+      "properties": {
+        "level": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["claimed", "target"],
+          "properties": {
+            "claimed": { "type": "integer", "minimum": 0, "maximum": 3 },
+            "target": { "type": "integer", "minimum": 0, "maximum": 3 }
+          }
+        },
+        "seams": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["interface", "suite"],
+            "properties": {
+              "interface": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "A symbol of interface.dart." },
+              "suite": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["file", "runner"],
+                "properties": {
+                  "file": { "$ref": "#/$defs/path" },
+                  "runner": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+                }
+              }
+            }
+          }
+        },
+        "adapters": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "seam", "status", "impl", "conformance"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+              "seam": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "The `seams[].interface` it implements." },
+              "status": { "enum": ["draft", "built", "live", "standby", "retired", "fake"] },
+              "impl": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["file", "symbol"],
+                "properties": {
+                  "file": { "$ref": "#/$defs/path" },
+                  "symbol": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+                }
+              },
+              "conformance": {
+                "type": ["object", "null"],
+                "additionalProperties": false,
+                "required": ["file"],
+                "properties": { "file": { "$ref": "#/$defs/path" } },
+                "description": "The adapter package's test that CALLS its seam's runner; null only with `waits`."
+              },
+              "waits": { "type": "string", "minLength": 20, "description": "Why an adapter with no conformance file waits (printed on every run). Required when `conformance` is null." }
+            }
+          }
+        },
+        "pending": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["adapter", "case", "row"],
+            "properties": {
+              "adapter": { "type": "string" },
+              "case": { "type": "string", "minLength": 3 },
+              "row": { "type": "string", "pattern": "^O-[A-Z0-9-]+$" }
+            }
+          }
+        },
+        "_why": { "$ref": "#/$defs/prose" }
       }
     },
     "nonPortRegister": {

@@ -112,7 +112,7 @@
        both prose files rather than quoting a raw total.
 
        And one thing those seven hits expose, in nobody's ownership this round:
-       nikatru/README.md:33 still lists `Projects/Nikatru_Storefront_Public/` as
+       nikatru/README.md#who-reads-this (then a line cite, `:33`) still lists `Projects/Nikatru_Storefront_Public/` as
        the live web-presence directory. Measured 2026-08-22, `ls Projects/`
        returns exactly four entries — Nikatru_Extensions_Private,
        Nikatru_Extensions_Public, Nikatru_Platform_Private and

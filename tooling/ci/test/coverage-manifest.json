@@ -24,7 +24,7 @@
     58,
 
   "analytics-contract.test.mjs":
-    80,
+    83,
 
   "analytics-liveness.test.mjs":
     28,
@@ -143,6 +143,9 @@
   "brick-drivers.test.mjs":
     5,
 
+  "brick-payment-fakes.test.mjs":
+    4,
+
   "built-artifact-pr-lane.test.mjs":
     27,
 
@@ -160,6 +163,9 @@
 
   "bundle-provenance.test.mjs":
     10,
+
+  "business-facts.test.mjs":
+    9,
 
   "capability-register-seams.test.mjs":
     27,
@@ -358,6 +364,9 @@
 
   "entitlement-contract.test.mjs":
     104,
+
+  "entity-change.test.mjs":
+    4,
 
   "erasure-reach.test.mjs":
     53,
@@ -702,13 +711,13 @@
     62,
 
   "port-render.test.mjs":
-    10,
+    16,
 
   "port-switch.test.mjs":
-    43,
+    37,
 
   "ports.test.mjs":
-    62,
+    64,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -767,6 +776,9 @@
   "pseudonymity-firewall.test.mjs":
     17,
 
+  "public-citations-brain.test.mjs":
+    9,
+
   "public-citations-ids.test.mjs":
     10,
 
@@ -786,7 +798,7 @@
     21,
 
   "purchase-path.test.mjs":
-    133,
+    136,
 
   "rail-prices.test.mjs":
     61,
@@ -976,6 +988,9 @@
 
   "start-here.test.mjs":
     9,
+
+  "stop-copy.test.mjs":
+    10,
 
   "store-audience.test.mjs":
     18,

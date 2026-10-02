@@ -58,6 +58,7 @@ import 'dart:ui' show CheckedState, Tristate;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nikatru_chassis_screens/firstrun/setup_steps_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:intl/date_symbols.dart' show DateSymbols;
@@ -76,7 +77,6 @@ import 'package:subscriptiontracker/core/format/sub_math.dart';
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
-import 'package:subscriptiontracker/data/seed/demo_data.dart';
 import 'package:subscriptiontracker/features/add/add_subscription_sheet.dart';
 import 'package:subscriptiontracker/features/auth/check_inbox_screen.dart';
 import 'package:subscriptiontracker/features/auth/legal_consent_fields.dart';
@@ -85,17 +85,19 @@ import 'package:subscriptiontracker/features/auth/reaccept_terms_screen.dart';
 import 'package:subscriptiontracker/features/auth/reset_password_screen.dart';
 import 'package:subscriptiontracker/features/auth/verify_email_screen.dart';
 import 'package:subscriptiontracker/features/calendar/calendar_screen.dart';
-import 'package:subscriptiontracker/features/cancel/cancel_sheet.dart';
+import 'package:subscriptiontracker/features/stop/stop_flow.dart';
 import 'package:subscriptiontracker/features/detail/subscription_detail_screen.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
 import 'package:subscriptiontracker/features/import/import_screen.dart';
 import 'package:subscriptiontracker/features/insights/budget_editor.dart';
 import 'package:subscriptiontracker/features/insights/insights_screen.dart';
+import 'package:subscriptiontracker/features/insights/share_month.dart';
 import 'package:subscriptiontracker/features/monetization/manage_plan_screen.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
 import 'package:subscriptiontracker/features/notifications/notifications_screen.dart';
 import 'package:subscriptiontracker/features/onboarding/onboarding_screen.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
+import 'package:subscriptiontracker/features/setup/setup_screen.dart';
 import 'package:subscriptiontracker/features/shared/due.dart';
 import 'package:subscriptiontracker/features/shared/widgets.dart';
 import 'package:subscriptiontracker/features/shell/app_shell.dart';
@@ -105,6 +107,7 @@ import 'package:subscriptiontracker/state/providers.dart';
 import 'package:subscriptiontracker/state/settings_controller.dart';
 import 'package:subscriptiontracker/state/subscriptions_controller.dart';
 
+import 'support/catalogue_fixture.dart';
 import 'support/width_harness.dart';
 
 // ─── the walk ────────────────────────────────────────────────────────────────
@@ -1107,7 +1110,14 @@ Future<ProviderContainer> pumpScreen(
 }) async {
   await sizeSurface(tester, size);
   final ProviderContainer c = ProviderContainer(
-    overrides: defaultWidthOverrides(),
+    overrides: <Override>[
+      ...defaultWidthOverrides(),
+      // ST-T9: the add sheet's pick step reads the catalogue; the bundled
+      // asset never finishes loading inside the fake-async zone.
+      serviceCatalogueProvider.overrideWith(
+        (Ref ref, String _) async => kFixtureCatalogue,
+      ),
+    ],
   );
   addTearDown(c.dispose);
   await tester.pumpWidget(
@@ -1180,8 +1190,12 @@ class _SignedInAuth extends core.AuthRepository {
 /// in the compact window class — flutter_test's 800×600 default resolves to
 /// `medium`, i.e. a RAIL, where the pill this file is about is not in the tree
 /// at all. Same rig and same reasons as `dark_group_home_test.dart`'s.
-Future<void> pumpShell(WidgetTester tester, {ThemeData? theme}) async {
-  await sizeSurface(tester, kPhone);
+Future<void> pumpShell(
+  WidgetTester tester, {
+  ThemeData? theme,
+  Size size = kPhone,
+}) async {
+  await sizeSurface(tester, size);
   final ProviderContainer c = ProviderContainer(
     overrides: <Override>[
       ...defaultWidthOverrides(),
@@ -1767,6 +1781,75 @@ void main() {
     });
   });
 
+  // ═══ TIER 1 · INSIGHTS › SHARE (T20, IN-12) ═══════════════════════════════
+  group('share a month · the sheet', () {
+    testWidgets('nothing on the share-a-month sheet is naked', (
+      WidgetTester tester,
+    ) async {
+      final GlobalKey tiles = GlobalKey();
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (BuildContext context) => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    RepaintBoundary(
+                      key: tiles,
+                      child: const SizedBox(height: 8),
+                    ),
+                    TextButton(
+                      onPressed: () => showShareMonthSheet(
+                        context,
+                        subs: const <Subscription>[],
+                        month: DateTime(2026, 9),
+                        tiles: tiles,
+                        export: (core.ExportFile _) async =>
+                            core.ExportOutcome.exported,
+                      ),
+                      child: const Text('open'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        // The modal scrim is stepped around by the property that identifies
+        // it (a dismiss action), as the budget editor's sweep argues.
+        final List<SemanticsNode> tappable = _nodes(tester)
+            .where(
+              (SemanticsNode n) =>
+                  n.getSemanticsData().hasAction(SemanticsAction.tap),
+            )
+            .toList();
+        final List<SemanticsNode> barrier = tappable
+            .where(
+              (SemanticsNode n) =>
+                  n.getSemanticsData().hasAction(SemanticsAction.dismiss),
+            )
+            .toList();
+        expect(barrier, hasLength(1));
+        final List<NakedControl> naked = tappable
+            .where(
+              (SemanticsNode n) =>
+                  !n.getSemanticsData().hasAction(SemanticsAction.dismiss),
+            )
+            .map(NakedControl.new)
+            .where((NakedControl n) => n.missesRole || n.missesName)
+            .toList();
+        // The picture and the CSV: two answers, each a named button.
+        expect(tappable.length - barrier.length, greaterThanOrEqualTo(2));
+        expect(naked, isEmpty, reason: naked.join(', '));
+        expect(nakedControls(tester), hasLength(1));
+      });
+    });
+  });
+
   // ═══ TIER 1 · IMPORT (`/import`, IM-01 — was SCAN, ADR 077 §2.2) ═══════════
   group('import · every control is named', () {
     testWidgets('nothing on the import hub is naked', (
@@ -1905,6 +1988,17 @@ void main() {
       await semantically(tester, () async {
         await pumpScreen(tester, const SubscriptionDetailScreen(id: '1'));
         expectNothingNaked(tester, 'detail', floor: 3);
+      });
+    });
+
+    // DE-07: the stop flow as a page (`/sub/:id/stop`) — its explicit back and
+    // its four answers, every one a named, announced control.
+    testWidgets('nothing on the stop page is naked', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, const StopScreen(id: '1'));
+        expectNothingNaked(tester, 'stop', floor: 5);
       });
     });
   });
@@ -3043,6 +3137,50 @@ void main() {
     });
   });
 
+  // ═══ TIER 1 · SETUP (after sign-in, ST-T9 EN-18) ══════════════════════════
+  group('setup · the after-sign-in steps', () {
+    testWidgets('nothing on any setup step is naked', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(tester, SetupScreen(now: () => DateTime(2026, 10, 1)));
+        await tester.pumpAndSettle();
+        // Step 1: the currency field, Skip and Next.
+        expectNothingNaked(tester, 'setup · currency', floor: 3);
+        await tester.tap(find.byKey(SetupStepsView.advanceButton));
+        await tester.pumpAndSettle();
+        // Step 2: Skip, Back, Next (+ the push switch where it can schedule).
+        expectNothingNaked(tester, 'setup · reminders', floor: 3);
+        await tester.tap(find.byKey(SetupStepsView.advanceButton));
+        await tester.pumpAndSettle();
+        // Step 3: the catalogue tiles beside Skip, Back and Done.
+        expectNothingNaked(tester, 'setup · pick', floor: 3 + 8);
+      });
+    });
+
+    testWidgets('every setup string AA, every tap target 48×48', (
+      WidgetTester tester,
+    ) async {
+      await semantically(tester, () async {
+        await pumpScreen(
+          tester,
+          SetupScreen(now: () => DateTime(2026, 10, 1)),
+          theme: appTheme(),
+          paintBackground: true,
+        );
+        await tester.pumpAndSettle();
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await tester.tap(find.byKey(SetupStepsView.advanceButton));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(SetupStepsView.advanceButton));
+        await tester.pumpAndSettle();
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      });
+    });
+  });
+
   // ═══ TIER 1 · ADD SHEET (modal) ═══════════════════════════════════════════
   group('add sheet · the quick-add grid and the cycle toggle', () {
     testWidgets('the POPULAR tiles announce the NAME, never the two-letter mark', (
@@ -3069,7 +3207,15 @@ void main() {
         await tester.pumpAndSettle();
 
         final List<String> labels = announced(tester);
-        for (final List<String> service in DemoData.popular) {
+        // ST-T9: the tiles are the catalogue's first eight for the region
+        // (`orderedFor`), each a [name, two-letter mark] pair as before.
+        final List<List<String>> popular = <List<String>>[
+          for (final core.ServiceEntry e
+              in kFixtureCatalogue.orderedFor('US').take(8))
+            <String>[e.name, Subscription.glyphFor(e.name).substring(0, 2)],
+        ];
+        expect(popular, hasLength(8));
+        for (final List<String> service in popular) {
           expect(
             labels,
             contains(service[0]),
@@ -3115,6 +3261,9 @@ void main() {
             ),
           );
           await tester.tap(find.text('open'));
+          await tester.pumpAndSettle();
+          // ST-T9: past the pick step to the form, by hand.
+          await tester.tap(find.byKey(E2EKeys.addByHand));
           await tester.pumpAndSettle();
           final AppLocalizations l10n = await _load('en');
 
@@ -3231,12 +3380,12 @@ void main() {
             )
             .toList();
         // The coverage floor, for [expectNothingNaked]'s reason: "nothing is
-        // naked" is also true of a sheet that failed to mount. 8 POPULAR tiles
-        // + name + price + 2 cycle arms + Cancel + Add = 14, and the tile count
-        // is READ rather than typed so the seed stays the thing that drives it.
+        // naked" is also true of a sheet that failed to mount. ST-T9: the add
+        // opens on its pick step — 8 POPULAR tiles + the search + Cancel +
+        // "Add by hand" = 11.
         expect(
           ours.length,
-          greaterThanOrEqualTo(DemoData.popular.length + 6),
+          greaterThanOrEqualTo(8 + 3),
           reason:
               'COVERAGE LOST — the add sheet offered only ${ours.length} of '
               'its own activatable node(s); the sweep below then ranges over '
@@ -3290,7 +3439,7 @@ void main() {
             body: Builder(
               builder: (BuildContext context) => Center(
                 child: TextButton(
-                  onPressed: () => showCancelSheet(context, sub),
+                  onPressed: () => showStopSheet(context, sub),
                   child: const Text('open'),
                 ),
               ),
@@ -3303,19 +3452,21 @@ void main() {
 
         // WHOSE plan. A confirmation that announces "Cancel?" and a price is a
         // confirmation a reader cannot check before destroying something.
-        expect(
-          announced(tester),
-          contains(l10n.cancelSubscriptionTitle(sub.name)),
-        );
+        expect(announced(tester), contains(l10n.stopChooseTitle(sub.name)));
 
+        // DE-07: a choice row announces its title AND its detail as one
+        // label, so a choice is found by the title it starts with.
         List<SemanticsData> named(String label) => _nodes(tester)
             .map((SemanticsNode n) => n.getSemanticsData())
-            .where((SemanticsData d) => d.label == label)
+            .where(
+              (SemanticsData d) =>
+                  d.label == label || d.label.startsWith('$label\n'),
+            )
             .toList();
 
         for (final String label in <String>[
-          l10n.keepPlan,
-          l10n.confirmCancel,
+          l10n.stopChoiceStop,
+          l10n.stopChoiceRemove,
         ]) {
           expect(
             named(label),
@@ -3339,24 +3490,23 @@ void main() {
           );
         }
 
-        await tester.tap(find.text(l10n.confirmCancel));
+        await tester.tap(find.byKey(E2EKeys.stopChoiceStop));
         await tester.pumpAndSettle();
 
-        // STEP 1 (ST-U3): a reader hears that the entry was REMOVED and that
-        // the provider is where a plan is cancelled — never a savings figure,
-        // which the sheet cannot know.
-        expect(announced(tester), contains(l10n.cancelledHeading));
+        // THE WALKTHROUGH (DE-07): a reader hears where the charge is stopped
+        // — at the provider — and the one way on, "Did it work?".
         expect(
           announced(tester),
-          contains(l10n.removeStep2Body),
-          reason: 'Found: ${announced(tester)}',
+          contains(l10n.stopWalkthroughTitle(sub.name)),
         );
         expect(
-          named(l10n.done).every((SemanticsData d) => d.announcesButton),
+          named(
+            l10n.stopDidItWork,
+          ).every((SemanticsData d) => d.announcesButton),
           isTrue,
           reason:
-              'Done is the only way off the success step; a reader who cannot '
-              'find it is stranded on a sheet with no exit',
+              '"Did it work?" is the only way on from the walkthrough; a '
+              'reader who cannot find it is stranded',
         );
       });
     });
@@ -3382,7 +3532,7 @@ void main() {
             body: Builder(
               builder: (BuildContext context) => Center(
                 child: TextButton(
-                  onPressed: () => showCancelSheet(context, sub),
+                  onPressed: () => showStopSheet(context, sub),
                   child: const Text('open'),
                 ),
               ),
@@ -3451,10 +3601,10 @@ void main() {
         // confirmation branch — the phase-dependent hole `scan`'s case records
         // one domain over. The sentinel is positive proof the branch arrived
         // rather than an assumption that the tap landed.
-        await tester.tap(find.text(l10n.confirmCancel));
+        await tester.tap(find.byKey(E2EKeys.stopChoiceStop));
         await tester.pumpAndSettle();
         expect(
-          find.text(l10n.cancelledHeading),
+          find.text(l10n.stopDidItWork),
           findsOneWidget,
           reason:
               'the confirmation never resolved, so the sweep below is about '
@@ -3944,7 +4094,7 @@ void main() {
             body: Builder(
               builder: (BuildContext context) => Center(
                 child: TextButton(
-                  onPressed: () => showCancelSheet(context, sub),
+                  onPressed: () => showStopSheet(context, sub),
                   child: const Text('open'),
                 ),
               ),
@@ -3956,24 +4106,37 @@ void main() {
         await tester.pumpAndSettle();
         final AppLocalizations l10n = await _load('en');
 
-        // Step 0 — 2 subjects: 'Keep it' and the destructive confirm.
-        await expectGuidelineHadSubjects(tester, 'the cancel sheet (step 0)');
+        // Step 0 (DE-07) — the four answers scroll with the question, and
+        // the guideline skips every target under a scrollable, so they are
+        // MEASURED BY RECT here: each is a named key, so this cannot pass
+        // over an empty set.
+        for (final Key k in <Key>[
+          E2EKeys.stopChoiceStop,
+          E2EKeys.stopChoicePause,
+          E2EKeys.stopChoiceCancelled,
+          E2EKeys.stopChoiceRemove,
+        ]) {
+          final Size size = tester.getSize(find.byKey(k));
+          expect(size.height, greaterThanOrEqualTo(48), reason: '$k height');
+          expect(size.width, greaterThanOrEqualTo(48), reason: '$k width');
+        }
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
 
         // 🔴 STEP 1 IS A DIFFERENT TREE, the naked sweep's reason verbatim: the
         // sheet swaps its whole Column on `_step`, so a control added to the
         // success branch is invisible to any sweep that only measured the
         // confirmation branch.
-        await tester.tap(find.text(l10n.confirmCancel));
+        await tester.tap(find.byKey(E2EKeys.stopChoiceStop));
         await tester.pumpAndSettle();
         expect(
-          find.text(l10n.cancelledHeading),
+          find.text(l10n.stopDidItWork),
           findsOneWidget,
           reason:
               'the confirmation never resolved, so the sweep below is about '
               'step 0 a second time',
         );
-        // Step 1 — 1 subject: Done, the only way off the success step.
+        // Step 1 — 1 subject: "Did it work?", the walkthrough's one way on,
+        // OUTSIDE the scroll view so the guideline inspects it.
         await expectGuidelineHadSubjects(tester, 'the cancel sheet (step 1)');
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
@@ -4512,7 +4675,11 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'detail',
-          covers: const <String>['Netflix', 'Payment history', 'Remove'],
+          covers: const <String>[
+            'Netflix',
+            'Payment history',
+            'Stop or remove',
+          ],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         // 20 strings, against the sweep above's 5 — a 4× widening on the screen
@@ -4542,7 +4709,10 @@ void main() {
       WidgetTester tester,
     ) async {
       await semantically(tester, () async {
-        await pumpShell(tester, theme: appTheme());
+        // TALL, as settings' sweep is: Home's search and decision sit above
+        // the Upcoming section now (HO-03/05), so on a phone-height surface
+        // the section this sweep names is below the fold, never measured.
+        await pumpShell(tester, theme: appTheme(), size: const Size(375, 3000));
         // 8 subjects. This case pumps the REAL router, so it attributes to
         // no single domain surface — the shape assert-a11y-coverage.mjs
         // already reports for the shell's other two families.
@@ -4796,6 +4966,9 @@ void main() {
         await pumpScreen(
           tester,
           const HomeScreen(),
+          // TALL: see the shell's sweep — the Upcoming section is below a
+          // phone's fold now that search and the decision lead (HO-03/05).
+          size: const Size(375, 3000),
           theme: appTheme(),
           paintBackground: true,
         );
@@ -4808,7 +4981,10 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'home',
-          covers: const <String>['Calendar', 'Upcoming renewals'],
+          // HO-04: the section link reads "{n} more" whenever the 30-day
+          // horizon holds more than four charges, so the seed's link is not
+          // the word "Calendar" any more; the two section headers are.
+          covers: const <String>['Upcoming renewals', 'All subscriptions'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         // 🔴 ONE NAMED EXEMPTION, AND IT IS AN OPEN DEFECT RATHER THAN A
@@ -4863,7 +5039,10 @@ void main() {
         await pumpScreen(
           tester,
           const SettingsScreen(),
-          size: const Size(375, 3000),
+          // ⏱ 2026-10-01 · club apply-st: 3000 -> 3600 — Settings carries the
+          // Categories row, quiet hours, the test reminder and Your data's
+          // Import, Back up and Restore together; Log out is the last row.
+          size: const Size(375, 3600),
           theme: appTheme(),
           paintBackground: true,
         );
@@ -5092,10 +5271,22 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'the edit sheet',
-          covers: const <String>['Edit subscription', 'Save'],
+          covers: const <String>['Edit subscription'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         await expectGuidelineHadSubjects(tester, 'the edit sheet');
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        // ⏱ ST-T9: the form grew (paid with, reminders, notice), so Save sits
+        // below the fold at 375×812 — swept again from the bottom, which also
+        // puts the new fields in front of both guidelines.
+        await tester.ensureVisible(find.byKey(E2EKeys.addSubmit));
+        await tester.pumpAndSettle();
+        await expectContrastHadSubjects(
+          tester,
+          'the edit sheet, scrolled to Save',
+          covers: const <String>['Save'],
+        );
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
       });
     });
@@ -5120,7 +5311,7 @@ void main() {
             body: Builder(
               builder: (BuildContext context) => Center(
                 child: TextButton(
-                  onPressed: () => showCancelSheet(context, sub),
+                  onPressed: () => showStopSheet(context, sub),
                   child: const Text('open'),
                 ),
               ),
@@ -5138,16 +5329,18 @@ void main() {
           tester,
           'the cancel sheet (step 0)',
           covers: const <String>[
-            'Remove Netflix from your tracker?',
-            'Yes, remove',
+            // DE-07: the four answers are rows whose title and detail merge
+            // into ONE node, which `find.text` cannot match, so the step's
+            // measured string is its question.
+            'What do you want to do with Netflix?',
           ],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
 
-        await tester.tap(find.text(l10n.confirmCancel));
+        await tester.tap(find.byKey(E2EKeys.stopChoiceStop));
         await tester.pumpAndSettle();
         expect(
-          find.text(l10n.cancelledHeading),
+          find.text(l10n.stopDidItWork),
           findsOneWidget,
           reason:
               'the confirmation never resolved, so the sweep below is about '
@@ -5159,7 +5352,7 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'the cancel sheet (step 1)',
-          covers: const <String>['Removed from your tracker', 'Done'],
+          covers: const <String>['Stop the charge for Netflix', 'Did it work?'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
       });
@@ -5173,6 +5366,9 @@ void main() {
         await pumpScreen(
           tester,
           const HomeScreen(),
+          // TALL: see the shell's sweep — the Upcoming section is below a
+          // phone's fold now that search and the decision lead (HO-03/05).
+          size: const Size(375, 3000),
           theme: appTheme(brightness: Brightness.dark),
           paintBackground: true,
         );
@@ -5198,7 +5394,10 @@ void main() {
         await expectContrastHadSubjects(
           tester,
           'home (dark)',
-          covers: const <String>['Calendar', 'Upcoming renewals'],
+          // HO-04: the section link reads "{n} more" whenever the 30-day
+          // horizon holds more than four charges, so the seed's link is not
+          // the word "Calendar" any more; the two section headers are.
+          covers: const <String>['Upcoming renewals', 'All subscriptions'],
         );
         await expectLater(tester, meetsGuideline(textContrastGuideline));
         // ⏱ 2026-09-28 · train ST-D1: Home's rows are `AppListRow`s now, so
@@ -5215,7 +5414,10 @@ void main() {
         await pumpScreen(
           tester,
           const SettingsScreen(),
-          size: const Size(375, 3000),
+          // ⏱ 2026-10-01 · club apply-st: 3000 -> 3600 — Settings carries the
+          // Categories row, quiet hours, the test reminder and Your data's
+          // Import, Back up and Restore together; Log out is the last row.
+          size: const Size(375, 3600),
           theme: appTheme(brightness: Brightness.dark),
           paintBackground: true,
         );

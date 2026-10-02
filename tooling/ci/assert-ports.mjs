@@ -78,6 +78,20 @@
 //               and when a stream names one, services/platform/src/generated/
 //               entity.ts is what tooling/ports/render-entity.mjs renders.
 //               No house identity, or no module scanned, is COVERAGE LOST.
+//  10 client    ⏱ 2026-10-01 · port-pay-client. A port's optional `client` half (the
+//               Dart seams an app package declares — payments: PurchaseRail and
+//               IapBridge). Each seam's suite runner is DECLARED in its file and
+//               each adapter's conformance test CALLS it (comment-stripped, never
+//               in the file that declares it, never an import: vacuous-10/11);
+//               every class in packages/*/lib that implements a seam is a
+//               registered client adapter (derived, so a rail cannot ship
+//               unregistered; none found is COVERAGE LOST); no app or package lib
+//               imports the shared fakes (lib/testing.dart); and the half's level
+//               is earned like limb 6's — two conformant adapters per seam with
+//               nothing pending, a runbook and the dry-run tool. Its row prints
+//               as `<port>/client`; a claim above it is a limb 6 finding.
+//               A Dart interface may be a LIBRARY file: limb 2 follows its
+//               relative `export` directives one level for the declaration.
 //
 // Exit 0 green, 1 a finding, 2 COVERAGE LOST (every problem is one). The FIRST
 // line names the deciding limb.
@@ -114,6 +128,7 @@ export const LIMB_NAMES = Object.freeze({
   7: 'fakes',
   8: 'cross-register',
   9: 'literals',
+  10: 'client',
 });
 
 // ── values a registry may never carry (rule: no secret value, no business-fact literal) ──
@@ -214,6 +229,45 @@ function readStripped(root, rel) {
   const abs = join(root, rel);
   if (!existsSync(abs)) return null;
   try { return stripSourceComments(readFileSync(abs, 'utf8'), extname(rel).toLowerCase()); } catch { return null; }
+}
+
+/**
+ * True when `symbol` is declared in the Dart LIBRARY at `rel`: in the file itself, or in a file
+ * it re-exports by a relative `export '…';` directive (one level — a library's public API is
+ * what it exports, and a seam package's library file is the interface its apps import).
+ */
+export function declaresInLibrary(root, rel, symbol) {
+  const src = readStripped(root, rel);
+  if (src === null) return false;
+  if (declares(src, symbol, '.dart')) return true;
+  for (const m of src.matchAll(/^\s*export\s+'([^':]+)'/gm)) {
+    const target = posix.normalize(posix.join(posix.dirname(rel), m[1]));
+    const t = readStripped(root, target);
+    if (t !== null && declares(t, symbol, '.dart')) return true;
+  }
+  return false;
+}
+
+/** Every `.dart` file under `relDir`, repo-relative. */
+function walkDart(root, relDir, out) {
+  let entries;
+  try { entries = listDir(join(root, relDir), { withFileTypes: true }); } catch { return; }
+  for (const e of entries) {
+    const rel = posix.join(relDir, e.name);
+    if (e.isDirectory()) walkDart(root, rel, out);
+    else if (e.name.endsWith('.dart')) out.push(rel);
+  }
+}
+
+/** The `lib/` directories of every Dart package and app: packages/<p>/lib, apps/<a>/lib. */
+function dartLibDirs(root) {
+  const out = [];
+  for (const top of ['packages', 'apps']) {
+    let dirs = [];
+    try { dirs = listDir(join(root, top), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name); } catch { /* none */ }
+    for (const d of dirs) if (existsSync(join(root, top, d, 'lib'))) out.push(`${top}/${d}/lib`);
+  }
+  return out;
 }
 
 /** A runner CALL, in comment-stripped source that does not declare it (vacuous-10/11). */
@@ -400,7 +454,8 @@ export function evaluate(root) {
       const src = readStripped(root, it.file);
       if (src === null) { find(2, `${rel} interface.${lang}.file \`${it.file}\` does not exist.`); interfaceOk = false; continue; }
       for (const s of it.symbols ?? []) {
-        if (!declares(src, s, extname(it.file))) { find(2, `${rel} interface.${lang} symbol \`${s}\` is not declared in \`${it.file}\`.`); interfaceOk = false; }
+        const ok = extname(it.file) === '.dart' ? declaresInLibrary(root, it.file, s) : declares(src, s, extname(it.file));
+        if (!ok) { find(2, `${rel} interface.${lang} symbol \`${s}\` is not declared in \`${it.file}\`${extname(it.file) === '.dart' ? ' or a file it exports' : ''}.`); interfaceOk = false; }
       }
     }
     symOk.set(doc.port, interfaceOk);
@@ -680,6 +735,103 @@ export function evaluate(root) {
       else if (r.code !== 0) lost(9, r.msg);
     }
   }
+  // ── limb 10 · the client (Dart) half ──
+  const clientPorts = ports.filter(({ doc }) => isObj(doc?.client));
+  if (clientPorts.length) {
+    const libFiles = [];
+    for (const d of dartLibDirs(root)) walkDart(root, d, libFiles);
+    if (!libFiles.length) lost(10, 'no Dart file was read under packages/*/lib or apps/*/lib, so "every seam implementation is a registered adapter" would hold of nothing.');
+    const libSrc = new Map(libFiles.map((f) => [f, readStripped(root, f) ?? '']));
+    for (const { rel, doc } of clientPorts) {
+      const c = doc.client;
+      const seams = new Map((c.seams ?? []).map((x) => [x.interface, x]));
+      const dartSymbols = new Set(doc?.interface?.dart?.symbols ?? []);
+      for (const name of seams.keys()) {
+        if (!dartSymbols.has(name)) find(10, `${rel} client seam \`${name}\` is not a symbol of interface.dart; a client seam is one of the port's declared Dart interfaces.`);
+      }
+      const runnerOk = new Map();
+      for (const [name, seam] of seams) {
+        const src = readStripped(root, seam.suite.file);
+        const ok = src !== null && declares(src, seam.suite.runner, '.dart');
+        runnerOk.set(name, ok);
+        if (!ok) find(10, `${rel} client seam \`${name}\`: the suite ${seam.suite.file} does not declare \`${seam.suite.runner}\`.`);
+      }
+      const pending = new Set((c.pending ?? []).map((p) => p.adapter));
+      for (const p of c.pending ?? []) notes.push(`PENDING ${doc.port}/client/${p.adapter}: ${p.case} (${p.row}) — blocks L3 for that adapter`);
+      const conformant = new Map([...seams.keys()].map((k) => [k, 0]));
+      const registered = new Set();
+      const ids = new Set();
+      for (const a of c.adapters ?? []) {
+        if (ids.has(a.id)) find(10, `${rel} client lists adapter \`${a.id}\` twice.`);
+        ids.add(a.id);
+        const seam = seams.get(a.seam);
+        if (!seam) { find(10, `${rel} client adapter \`${a.id}\` implements \`${a.seam}\`, which is no client seam.`); continue; }
+        const implSrc = readStripped(root, a.impl.file);
+        if (implSrc === null) find(10, `${rel} client adapter \`${a.id}\` impl.file \`${a.impl.file}\` does not exist.`);
+        else if (!declares(implSrc, a.impl.symbol, '.dart')) find(10, `${rel} client adapter \`${a.id}\` symbol \`${a.impl.symbol}\` is not declared in \`${a.impl.file}\`.`);
+        registered.add(`${a.impl.file}#${a.impl.symbol}`);
+        if (a.conformance === null) {
+          if (typeof a.waits !== 'string') find(10, `${rel} client adapter \`${a.id}\` has no conformance test and says nothing about why; \`waits\` names it.`);
+          else waivers.push(`${doc.port}/client/${a.id}: no conformance run — ${a.waits}`);
+          continue;
+        }
+        const testSrc = readStripped(root, a.conformance.file);
+        if (testSrc === null) { find(10, `${rel} client adapter \`${a.id}\` conformance file \`${a.conformance.file}\` does not exist.`); continue; }
+        if (!callsRunner(testSrc, seam.suite.runner, '.dart')) {
+          find(10, `${rel} client adapter \`${a.id}\`: \`${a.conformance.file}\` never CALLS \`${seam.suite.runner}\`. An import of the suite, or its name in a comment, runs nothing.`);
+          continue;
+        }
+        if (runnerOk.get(a.seam) && !pending.has(a.id) && a.status !== 'draft' && a.status !== 'retired') conformant.set(a.seam, conformant.get(a.seam) + 1);
+      }
+      // Derived: every class under packages/*/lib that implements a client seam is registered.
+      for (const name of seams.keys()) {
+        let found = 0;
+        const re = new RegExp(`\\bclass\\s+(\\w+)\\b[^{;]*?\\bimplements\\b([^{;]*)\\{`, 'g');
+        for (const [f, src] of libSrc) {
+          if (!f.startsWith('packages/')) continue;
+          for (const m of src.matchAll(re)) {
+            if (!new RegExp(`\\b${esc(name)}\\b`).test(m[2])) continue;
+            found++;
+            if (!registered.has(`${f}#${m[1]}`)) {
+              find(10, `${rel}: \`${m[1]}\` (${f}) implements the client seam \`${name}\` and is no client adapter. Register it — with the conformance test that calls the runner — or it ships ungraded.`);
+            }
+          }
+        }
+        if (libFiles.length && found === 0) lost(10, `${rel}: no class under packages/*/lib implements the client seam \`${name}\`; the derivation has stopped finding its subject.`);
+      }
+      // The shared fakes ship in no app: no lib imports lib/testing.dart (or lib/testing/).
+      const fakeLib = /^\s*(?:import|export)\s+'(?:package:nikatru_purchases\/testing(?:\.dart|\/[^']*)|(?:\.\.\/)+testing(?:\.dart|\/[^']*))'/m;
+      for (const [f, src] of libSrc) {
+        if (f === 'packages/purchases/lib/testing.dart' || f.startsWith('packages/purchases/lib/testing/')) continue;
+        if (fakeLib.test(src)) find(10, `${f} imports the shared payment fakes (nikatru_purchases/testing.dart) from a lib/ file. They depend on flutter_test and promise nothing a real rail does; only tests may import them.`);
+      }
+      // The half's earned level, as limb 6 earns the port's.
+      const claimed = c.level?.claimed ?? 0;
+      const target = c.level?.target ?? 0;
+      const why = [];
+      let earned = 0;
+      if (symOk.get(doc.port) && doc?.interface?.dart) earned = 1;
+      else why.push('interface.dart is not declared where the registry says');
+      const real = (c.adapters ?? []).filter((a) => a.status !== 'fake' && a.status !== 'retired' && a.status !== 'draft');
+      const selected = doc?.selection && (doc.selection.source !== null || doc.selection.default?.live || doc.selection.default?.sandbox);
+      if (earned === 1) {
+        if (!selected) why.push('no selection');
+        else if (!real.length) why.push('no built, non-fake client adapter');
+        else earned = 2;
+      }
+      if (earned === 2) {
+        const short = [...conformant].filter(([, n]) => n < 2);
+        if (short.length) why.push(`${short.map(([k, n]) => `${k}: ${n} conformant adapter(s)`).join(', ')}; L3 needs two per seam with zero pending`);
+        if (!doc?.switch?.runbook) why.push('no switch runbook');
+        if (!existsSync(join(root, 'tooling/ops/port-switch.mjs'))) why.push('no dry-run tool');
+        if (!why.length) earned = 3;
+      }
+      result.table.push({ port: `${doc.port}/client`, claimed, earned, target, why: earned < target ? why[0] ?? '' : '' });
+      if (claimed > earned) find(6, `${rel} client claims L${claimed} and earns L${earned}: ${why[0] ?? 'see above'}.`);
+      if (claimed > target) find(6, `${rel} client claims L${claimed} above its target L${target}.`);
+      notes.push(`limb 10: ${doc.port}/client — ${[...conformant].map(([k, n]) => `${k} ${n} conformant`).join(', ')}; ${libFiles.length} Dart lib file(s) scanned`);
+    }
+  }
   return result;
 }
 
@@ -701,11 +853,11 @@ function main() {
   if (deciding) {
     console.error(`assert-ports: ${allLost ? 'COVERAGE LOST' : 'FAILED'} — limb ${deciding.limb} (${LIMB_NAMES[deciding.limb]}): ${deciding.msg.replace(/^COVERAGE LOST — /, '')}`);
   } else {
-    console.log(`assert-ports: ok — all ${Object.keys(LIMB_NAMES).length} limbs green over ${r.table.length} port(s)`);
+    console.log(`assert-ports: ok — all ${Object.keys(LIMB_NAMES).length} limbs green over ${r.ports.length} port(s)`);
   }
   if (r.table.length) {
-    console.log('\nport         claimed  earned  target');
-    for (const t of r.table) console.log(`${t.port.padEnd(12)} L${t.claimed}       L${t.earned}      L${t.target}${t.why ? `   (below target: ${t.why})` : ''}`);
+    console.log('\nport             claimed  earned  target');
+    for (const t of r.table) console.log(`${t.port.padEnd(16)} L${t.claimed}       L${t.earned}      L${t.target}${t.why ? `   (below target: ${t.why})` : ''}`);
   }
   if (r.waivers.length) {
     console.log(`\n⬜ ${r.waivers.length} declared waiver(s), printed on every run:`);

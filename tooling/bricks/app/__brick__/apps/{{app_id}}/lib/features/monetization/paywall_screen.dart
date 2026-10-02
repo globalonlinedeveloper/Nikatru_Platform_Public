@@ -37,7 +37,7 @@ typedef _PaywallPhase = PaywallPhase;
 /// the no-rail case, which never reaches the opening state — gets the sentence
 /// that names neither the web nor a browser.
 PaywallCheckoutStyle _checkoutStyleOf(PurchaseRailKind kind) => switch (kind) {
-  PurchaseRailKind.paddle => PaywallCheckoutStyle.hosted,
+  PurchaseRailKind.hosted => PaywallCheckoutStyle.hosted,
   PurchaseRailKind.playBilling ||
   PurchaseRailKind.appleIap ||
   PurchaseRailKind.none => PaywallCheckoutStyle.store,

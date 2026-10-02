@@ -15,12 +15,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/theme/app_theme.dart';
 import 'package:subscriptiontracker/features/add/add_subscription_sheet.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
 
+import 'support/catalogue_fixture.dart';
 import 'support/width_harness.dart';
 
 /// The window the phone store set is captured at — `--browser-dimension=360x640@3`.
@@ -43,7 +45,7 @@ Future<void> _sizeSurface(WidgetTester tester, Size size) async {
 /// records against its identical host.
 Widget _host() {
   return ProviderScope(
-    overrides: defaultWidthOverrides(),
+    overrides: <Override>[...defaultWidthOverrides(), ...catalogueOverrides()],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
@@ -70,6 +72,9 @@ void main() {
       await _sizeSurface(tester, kStorePhone);
       await tester.pumpWidget(_host());
       await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      // ST-T9: an add opens on the pick step; the fold is the FORM's.
+      await tester.tap(find.byKey(E2EKeys.addByHand));
       await tester.pumpAndSettle();
 
       final Finder submit = find.byKey(E2EKeys.addSubmit);

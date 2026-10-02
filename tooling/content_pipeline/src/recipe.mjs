@@ -112,6 +112,16 @@ function checkValue(value, spec, path, problems) {
   return undefined;
 }
 
+/** Every problem [value] has against a schema of the subset [checkValue]
+ *  reads (type, required, properties, items, minItems, pattern, enum, const),
+ *  as strings — empty when it conforms. Exported for a recipe author's own
+ *  record schemas (examples/service-catalogue/service-facts.schema.json). */
+export function schemaProblems(value, schema, path = '$') {
+  const problems = [];
+  checkValue(value, schema, path, problems);
+  return problems;
+}
+
 /** Parse + validate. Returns the recipe; throws with every problem at once. */
 export function validateRecipe(recipe) {
   const problems = [];

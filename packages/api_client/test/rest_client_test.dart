@@ -222,16 +222,32 @@ void main() {
       client.decode(<dynamic>[1, 2], (Object? b) => (b! as List).length),
       2,
     );
-    // A wrong-shape parse throws ApiException(0, ...), not a raw TypeError.
+    // A wrong-shape parse throws a SERVER error, not a raw TypeError and not
+    // ApiException(0, ...) — 0 is the transport marker and reads as offline
+    // (SV-04).
     expect(
       () => client.decode(<String, dynamic>{}, (Object? b) => b! as List),
       throwsA(
-        isA<ApiException>().having(
-          (ApiException e) => e.statusCode,
-          'statusCode',
-          0,
-        ),
+        isA<ApiException>()
+            .having(
+              (ApiException e) => e.statusCode,
+              'statusCode',
+              RestClient.malformedStatus,
+            )
+            .having((ApiException e) => e.statusCode >= 500, 'a 5xx', isTrue)
+            .having((ApiException e) => e.malformed, 'malformed', isTrue)
+            .having((ApiException e) => e.isOffline, 'isOffline', isFalse),
       ),
     );
+  });
+
+  test('rebase moves later requests to the new base, in place', () {
+    final RestClient client = _client(
+      _FakeAdapter(jsonEncode(<String, dynamic>{})),
+    );
+    final String before = client.baseUrl;
+    client.rebase('https://moved.test/v1');
+    expect(client.baseUrl, 'https://moved.test/v1');
+    expect(client.baseUrl, isNot(before));
   });
 }

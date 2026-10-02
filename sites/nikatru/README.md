@@ -96,10 +96,11 @@ per store — a divergence here is a policy-mismatch finding a reviewer can see.
   evidence about production for anything the zone transforms** — caching headers were the last one
   (see `_headers`, the 2026-08-04 `browser_cache_ttl` note). Prove this class of fix by fetching
   `https://nikatru.com/…` after the merge, never the preview.
-- **Phone:** `+91 94984 98011`
-- **Registered address:** `7, RR Tower 4, Thiru Vi Ka Industrial Estate, SIDCO Industrial Estate,
-  Guindy, Chennai, Tamil Nadu, 600032, India` — see the superseded block below for why this spelling
-  and not `7th Floor`.
+- **Phone:** `entity.phone` in `tooling/house-identity.json`, printed by the FACT regions `phone-link` and
+  `phone-display` (`node tooling/entity/render.mjs`; tooling/entity/surfaces.json).
+- **Registered address:** `entity.registeredOffice` in `tooling/house-identity.json`, printed by the FACT
+  regions `office-lines` and `office-inline` — see the superseded block below for why the floor prints
+  as `7,` and not `7th Floor`.
 - **Public location (short form, still used where a city is all that fits):** `Chennai, Tamil Nadu, India`
 
 ### 🔄 SUPERSEDED 2026-09-09 — the postal address IS published, by owner ruling
@@ -123,7 +124,7 @@ geographic address of the headquarters and all branches, website details and cus
 details, **displayed** — reinforced commercially by the Razorpay merchant contract's website check.
 ⛔ Not the RBI circular clause 7.2; that was repealed 2025-09-15.
 
-**The published spelling is `7, RR Tower 4, …` and it is NOT to be "corrected" to `7th Floor`.**
+**The published spelling is `7, <building>, …` (`entity.registeredOffice.floor`) and it is NOT to be "corrected" to `7th Floor`.**
 One structured field, value `7`, printed three ways: `Floor No 7` on the GST certificate, `7th Floor`
 on the Udyam certificate, `7,` in the D&B record — and the D&B rendering is what the Play payments
 profile and Microsoft Partner Center hold, because confirming a D-U-N-S overwrites the profile to the

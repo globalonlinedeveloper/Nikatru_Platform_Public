@@ -29,6 +29,15 @@ dependencies:
   # major and must be re-reviewed on a bump.
   url_launcher: ^6.3.0
 
+  # The conformance suite and the shared fakes (lib/testing.dart,
+  # lib/testing/conformance.dart) are `package:test` groups that every adapter
+  # package's test CALLS — tooling/ports/README.md §3: each seam package exports
+  # its fake plus run<Seam>Conformance. An SDK dependency, so it wraps no vendor
+  # (adapter-set.mjs isThirdParty); nothing under lib/src imports it, so no app
+  # build links it.
+  flutter_test:
+    sdk: flutter
+
   # ⚠️ `intl` WAS HERE AND WAS REMOVED, and the reason is a real architectural
   # claim rather than dependency hygiene. `assert-package-boundaries.mjs` treats
   # every third-party dependency of an adapter package as WRAPPED BY IT — so
@@ -43,6 +52,4 @@ dev_dependencies:
   # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
   nikatru_lints:
     path: ../analysis
-  flutter_test:
-    sdk: flutter
   flutter_lints: ^6.0.0

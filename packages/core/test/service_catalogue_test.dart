@@ -141,9 +141,10 @@ void main() {
       expect(r.isOk, isTrue, reason: r.fold((_) => '', (Failure f) => f.message));
     });
 
-    test('holds a non-empty catalogue of at most 40 services', () {
-      expect(catalogue.entries, isNotEmpty);
-      expect(catalogue.entries.length, lessThanOrEqualTo(40));
+    // ST-T9 (AD-04): pack v2 is the market's floor — 150 or more services.
+    test('holds a catalogue of 150 to 600 services', () {
+      expect(catalogue.entries.length, greaterThanOrEqualTo(150));
+      expect(catalogue.entries.length, lessThanOrEqualTo(600));
       expect(catalogue.entries.map((ServiceEntry e) => e.id).toSet().length,
           catalogue.entries.length);
     });
@@ -212,8 +213,69 @@ void main() {
         'content pack: none available (offline, no bundled base)');
   });
 
+  // ST-T9 (AD-03): the pick step's search runs over THIS pack, offline.
+  group('search and region order over the PRODUCED pack', () {
+    late ServiceCatalogue catalogue;
+    setUpAll(() async {
+      final Result<ContentPack> r = await const ContentPackLoader()
+          .load(expectPackId: _appId, bundled: _DirSource(_bundledPack()));
+      final ContentPack pack = (r as Ok<ContentPack>).value;
+      catalogue = (ServiceCatalogue.fromPack(pack) as Ok<ServiceCatalogue>).value;
+    });
+
+    test('typing "hot" finds JioHotstar', () {
+      expect(catalogue.search('hot', region: 'IN').map((ServiceEntry e) => e.id),
+          contains('jiohotstar'));
+      expect(catalogue.search('HOT').first.id, 'jiohotstar');
+    });
+
+    test('an alias finds its service; nonsense finds nothing', () {
+      expect(catalogue.search('tata sky').single.id, 'tata_play');
+      expect(catalogue.search('zzzz-no-such-service'), isEmpty);
+    });
+
+    test('India first for IN: every India-only service precedes every US-only one',
+        () {
+      final List<String> ids =
+          catalogue.orderedFor('IN').map((ServiceEntry e) => e.id).toList();
+      expect(ids.indexOf('jiohotstar'), lessThan(ids.indexOf('netflix')));
+      expect(ids.indexOf('netflix'), lessThan(ids.indexOf('hulu')));
+      final List<String> us =
+          catalogue.orderedFor('US').map((ServiceEntry e) => e.id).toList();
+      expect(us.indexOf('hulu'), lessThan(us.indexOf('jiohotstar')));
+    });
+
+    test('v2 records carry aliases and a telecom category', () {
+      expect(catalogue.byId('jiohotstar')!.aliases, contains('hotstar'));
+      expect(catalogue.byId('airtel_postpaid')!.categoryId, 'telecom');
+      expect(catalogue.entries.every((ServiceEntry e) => e.logo == null), isTrue,
+          reason: 'no licensed mark ships in v2 (asset-register.json)');
+    });
+  });
+
   group('refusals — a pack the reader cannot read honestly is refused whole',
       () {
+    test('a v1 record with no aliases reads as none; a bad alias list is refused',
+        () async {
+      final ContentPack ok = await _memPack(<String, Map<String, String>>{
+        'en': _oneService(),
+      });
+      final Result<ServiceCatalogue> r = ServiceCatalogue.fromPack(ok);
+      expect((r as Ok<ServiceCatalogue>).value.entries.single.aliases, isEmpty);
+      final Map<String, Object?> facts =
+          jsonDecode(_facts('svc_a')) as Map<String, Object?>;
+      final ContentPack bad = await _memPack(<String, Map<String, String>>{
+        'en': <String, String>{
+          ..._oneService(),
+          'svc.svc_a.facts': jsonEncode(<String, Object?>{
+            ...facts,
+            'aliases': 'not-a-list',
+          }),
+        },
+      });
+      expect(_failure(ServiceCatalogue.fromPack(bad)), contains('aliases'));
+    });
+
     test('a valid price key round-trips through priceFor, exactly', () async {
       final ContentPack p = await _memPack(<String, Map<String, String>>{
         'en': _oneService(extra: <String, String>{

@@ -10,7 +10,7 @@
   ],
   "recipe_version": 1,
   "pack_id": "subscriptiontracker",
-  "pack_version": "1.0.0",
+  "pack_version": "2.0.0",
   "locales": [
     "en",
     "ta"
@@ -308,6 +308,1342 @@
     },
     {
       "id": "svc.cultpass.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.prime_video.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.prime_video.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.sun_nxt.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.sun_nxt.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.aha.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.aha.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hoichoi.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hoichoi.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.discovery_plus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.discovery_plus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.lionsgate_play.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.lionsgate_play.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.shemaroome.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.shemaroome.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.manorama_max.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.manorama_max.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.fancode.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.fancode.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.tata_play.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.tata_play.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.tata_play_binge.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.tata_play_binge.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.airtel_xstream_play.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.airtel_xstream_play.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.dish_tv.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.dish_tv.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.sun_direct.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.sun_direct.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.mubi.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.mubi.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.jio_postpaid.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.jio_postpaid.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.jio_prepaid.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.jio_prepaid.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.jiofiber.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.jiofiber.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.airtel_postpaid.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.airtel_postpaid.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.airtel_prepaid.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.airtel_prepaid.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.airtel_xstream_fiber.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.airtel_xstream_fiber.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.airtel_black.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.airtel_black.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.vi_postpaid.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.vi_postpaid.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.vi_prepaid.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.vi_prepaid.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.bsnl.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.bsnl.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.act_fibernet.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.act_fibernet.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hathway.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hathway.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.excitel.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.excitel.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.amazon_music.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.amazon_music.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.youtube_music.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.youtube_music.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hungama_music.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hungama_music.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.pocket_fm.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.pocket_fm.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.kuku_fm.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.kuku_fm.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.storytel.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.storytel.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.magzter_gold.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.magzter_gold.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.flipkart_vip.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.flipkart_vip.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.eazydiner_prime.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.eazydiner_prime.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.country_delight.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.country_delight.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.pharmeasy_plus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.pharmeasy_plus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.tata_1mg_care.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.tata_1mg_care.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.practo_plus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.practo_plus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.healthifyme.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.healthifyme.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.fittr.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.fittr.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.toi_plus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.toi_plus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.indian_express.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.indian_express.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.et_prime.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.et_prime.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.mint.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.mint.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.business_standard.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.business_standard.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.the_ken.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.the_ken.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.moneycontrol_pro.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.moneycontrol_pro.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.byjus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.byjus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.unacademy.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.unacademy.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.physics_wallah.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.physics_wallah.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.vedantu.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.vedantu.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.testbook_pass.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.testbook_pass.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.naukri_fastforward.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.naukri_fastforward.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.tallyprime.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.tallyprime.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.quick_heal.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.quick_heal.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.aisle.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.aisle.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.shaadi.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.shaadi.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.bharat_matrimony.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.bharat_matrimony.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.tamil_matrimony.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.tamil_matrimony.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.jeevansathi.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.jeevansathi.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.truecaller_premium.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.truecaller_premium.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.zoho_mail.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.zoho_mail.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.zoho_workplace.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.zoho_workplace.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.zoho_books.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.zoho_books.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.disney_plus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.disney_plus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hbo_max.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hbo_max.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.paramount_plus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.paramount_plus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.peacock.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.peacock.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.espn_plus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.espn_plus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.dazn.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.dazn.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.sling_tv.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.sling_tv.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.youtube_tv.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.youtube_tv.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.fubo.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.fubo.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.starz.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.starz.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.curiositystream.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.curiositystream.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.britbox.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.britbox.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.nebula.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.nebula.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.f1_tv.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.f1_tv.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.snapchat_plus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.snapchat_plus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.apple_one.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.apple_one.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.tidal.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.tidal.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.deezer.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.deezer.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.soundcloud_go.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.soundcloud_go.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.ea_play.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.ea_play.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.ubisoft_plus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.ubisoft_plus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.apple_arcade.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.apple_arcade.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.google_play_pass.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.google_play_pass.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.geforce_now.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.geforce_now.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.discord_nitro.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.discord_nitro.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.humble_choice.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.humble_choice.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.roblox_premium.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.roblox_premium.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.pcloud.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.pcloud.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.mega.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.mega.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.box.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.box.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.backblaze.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.backblaze.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.aws.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.aws.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.digitalocean.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.digitalocean.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.cloudflare.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.cloudflare.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.godaddy.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.godaddy.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hostinger.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hostinger.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.claude_pro.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.claude_pro.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.google_ai_pro.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.google_ai_pro.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.perplexity_pro.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.perplexity_pro.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.midjourney.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.midjourney.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.copilot_pro.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.copilot_pro.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.github_copilot.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.github_copilot.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.cursor.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.cursor.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.elevenlabs.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.elevenlabs.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.github.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.github.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.google_workspace.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.google_workspace.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.slack.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.slack.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.zoom.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.zoom.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.figma.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.figma.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.grammarly.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.grammarly.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.evernote.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.evernote.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.todoist.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.todoist.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.adobe_acrobat.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.adobe_acrobat.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.adobe_lightroom.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.adobe_lightroom.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.onepassword.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.onepassword.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.bitwarden.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.bitwarden.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.proton_unlimited.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.proton_unlimited.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.nordvpn.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.nordvpn.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.expressvpn.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.expressvpn.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.surfshark.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.surfshark.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.norton_360.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.norton_360.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.mcafee.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.mcafee.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.wix.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.wix.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.squarespace.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.squarespace.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.shopify.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.shopify.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.telegram_premium.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.telegram_premium.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.meta_verified.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.meta_verified.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.x_premium.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.x_premium.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.bumble.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.bumble.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hinge.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hinge.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.coursera_plus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.coursera_plus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.udemy_personal_plan.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.udemy_personal_plan.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.skillshare.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.skillshare.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.masterclass.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.masterclass.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.brilliant.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.brilliant.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.babbel.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.babbel.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.linkedin_learning.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.linkedin_learning.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.everand.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.everand.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.blinkist.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.blinkist.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.nytimes.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.nytimes.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.wsj.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.wsj.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.washington_post.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.washington_post.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.the_economist.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.the_economist.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.financial_times.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.financial_times.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.medium.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.medium.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.strava.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.strava.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.peloton_app.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.peloton_app.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.fitbit_premium.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.fitbit_premium.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.apple_fitness_plus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.apple_fitness_plus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.headspace.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.headspace.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.calm.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.calm.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.myfitnesspal.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.myfitnesspal.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.whoop.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.whoop.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.anytime_fitness.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.anytime_fitness.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.uber_one.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.uber_one.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.dashpass.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.dashpass.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.instacart_plus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.instacart_plus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hellofresh.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.hellofresh.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.walmart_plus.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.walmart_plus.facts",
+      "modality": "text"
+    },
+    {
+      "id": "svc.costco.name",
+      "modality": "text"
+    },
+    {
+      "id": "svc.costco.facts",
       "modality": "text"
     }
   ]

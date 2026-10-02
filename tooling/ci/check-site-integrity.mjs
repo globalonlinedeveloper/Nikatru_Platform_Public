@@ -64,6 +64,7 @@ import { lastmodFor, isGitRepo, isShallowRepo } from '../sites/lastmod.mjs';
 // ONE reading of which served files are MAIL BODIES rather than pages, shared with
 // the generator that writes them and the one that writes the sitemap.
 import { isAuthMailPath } from '../sites/gen-auth-mail.mjs';
+import { loadContext } from '../entity/facts.mjs';
 
 const repoRoot = process.argv[2] ?? process.cwd();
 const claimedRoots = process.argv.slice(3);
@@ -117,13 +118,14 @@ const MIN_LEGAL_TEXT_CHARS = 1000;
  *  and true in three separate hand-written documents, which is exactly why it
  *  needed asserting: nothing would have noticed a rewrite dropping it.
  *
- *  ⚠️ THIS CONSTANT IS A DECLARED FACT, and a declared fact inside a guard is a
- *  second source of truth. That is why it is checked against TWO independently
- *  authored pages below rather than one: a wrong value here fails loudly on both
- *  instead of quietly agreeing with the single page it was copied from. The
- *  business SSoT that would otherwise own it lives outside this (public)
- *  repository, so there is no in-tree file to derive it from. [pipeline K-2a] */
-const SELLER_LEGAL_NAME = 'Rajasekar Selvam';
+ *  ⏱ 2026-10-01: READ FROM THE ENTITY SOURCE (tooling/house-identity.json
+ *  `entity.legalName`, through tooling/entity/facts.mjs), no longer typed here.
+ *  Until then this was a declared fact inside a guard — a second source of truth —
+ *  because the business record lived outside this repository; the entity source
+ *  is its in-tree projection, compared with that record by
+ *  tooling/scripts/assert-business-facts.mjs. It is still checked against TWO
+ *  pages below rather than one. [pipeline K-2a] */
+const SELLER_LEGAL_NAME = loadContext().legalName;
 const MUST_NAME_SELLER = ['terms.html', 'privacy.html'];
 
 /** [12]W-3a — how the lastmod limb proves it is still scanning.
@@ -369,8 +371,8 @@ for (const { root, name } of SCANNING_OWN_REPO ? appFacingRoots : []) {
         `sites/${name}/${page} does not name ${JSON.stringify(SELLER_LEGAL_NAME)} anywhere in its visible text. ` +
           'NIKATRU is a trading name; a buyer, a store reviewer and a payment processor\'s seller verification all ' +
           'need the legal person behind the sale, and "who did I contract with" is the first question a refund ' +
-          'dispute asks. (If the proprietor\'s registered name has changed, SELLER_LEGAL_NAME in this file changes ' +
-          'with the pages, in the same commit.)',
+          'dispute asks. (The name is entity.legalName in tooling/house-identity.json; after a change there, ' +
+          'node tooling/entity/render.mjs re-renders both pages.)',
       );
     }
   }
