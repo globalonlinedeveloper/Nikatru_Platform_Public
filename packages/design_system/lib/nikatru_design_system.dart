@@ -71,3 +71,10 @@ export 'src/platform/document_language.dart' show resolveAndLabelPage;
 // `AppLocalizations.localizationsDelegates` — neither replaces the other.
 export 'src/l10n/chassis_localizations.dart';
 export 'src/l10n/chassis_l10n_x.dart';
+
+// ── THE LOCALE REGISTER (lane i18n-pipeline) ─────────────────────────────────
+// Generated from tooling/i18n/locales.json by tooling/i18n/locales.mjs. Every
+// language picker offers `kSupportedLocales` and every locale-looping test
+// loops `kSupportedLocaleCodes`; nothing types the list of languages by hand
+// (tooling/ci/assert-locale-register.mjs fails one that does).
+export 'src/l10n/locale_register.g.dart';

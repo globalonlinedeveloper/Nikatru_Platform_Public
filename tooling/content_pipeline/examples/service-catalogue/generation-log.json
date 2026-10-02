@@ -23,7 +23,7 @@
       "item_id": "svc.netflix.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.netflix.name"
@@ -41,7 +41,7 @@
       "item_id": "svc.amazon_prime.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.amazon_prime.name"
@@ -59,7 +59,7 @@
       "item_id": "svc.jiohotstar.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.jiohotstar.name"
@@ -77,7 +77,7 @@
       "item_id": "svc.spotify.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.spotify.name"
@@ -95,7 +95,7 @@
       "item_id": "svc.youtube_premium.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.youtube_premium.name"
@@ -113,7 +113,7 @@
       "item_id": "svc.apple_music.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.apple_music.name"
@@ -131,7 +131,7 @@
       "item_id": "svc.apple_tv_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.apple_tv_plus.name"
@@ -149,7 +149,7 @@
       "item_id": "svc.icloud_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.icloud_plus.name"
@@ -167,7 +167,7 @@
       "item_id": "svc.google_one.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.google_one.name"
@@ -185,7 +185,7 @@
       "item_id": "svc.sonyliv.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.sonyliv.name"
@@ -203,7 +203,7 @@
       "item_id": "svc.zee5.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.zee5.name"
@@ -221,7 +221,7 @@
       "item_id": "svc.jiosaavn.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.jiosaavn.name"
@@ -239,7 +239,7 @@
       "item_id": "svc.gaana.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.gaana.name"
@@ -257,7 +257,7 @@
       "item_id": "svc.audible.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.audible.name"
@@ -275,7 +275,7 @@
       "item_id": "svc.kindle_unlimited.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.kindle_unlimited.name"
@@ -293,7 +293,7 @@
       "item_id": "svc.microsoft_365.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.microsoft_365.name"
@@ -311,7 +311,7 @@
       "item_id": "svc.adobe_creative_cloud.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.adobe_creative_cloud.name"
@@ -329,7 +329,7 @@
       "item_id": "svc.canva.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.canva.name"
@@ -347,7 +347,7 @@
       "item_id": "svc.chatgpt_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.chatgpt_plus.name"
@@ -365,7 +365,7 @@
       "item_id": "svc.dropbox.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.dropbox.name"
@@ -383,7 +383,7 @@
       "item_id": "svc.notion.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.notion.name"
@@ -401,7 +401,7 @@
       "item_id": "svc.linkedin_premium.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.linkedin_premium.name"
@@ -419,7 +419,7 @@
       "item_id": "svc.duolingo.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.duolingo.name"
@@ -437,7 +437,7 @@
       "item_id": "svc.swiggy_one.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.swiggy_one.name"
@@ -455,7 +455,7 @@
       "item_id": "svc.zomato_gold.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.zomato_gold.name"
@@ -473,7 +473,7 @@
       "item_id": "svc.zepto_pass.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.zepto_pass.name"
@@ -491,7 +491,7 @@
       "item_id": "svc.times_prime.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.times_prime.name"
@@ -509,7 +509,7 @@
       "item_id": "svc.tinder.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.tinder.name"
@@ -527,7 +527,7 @@
       "item_id": "svc.xbox_game_pass.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.xbox_game_pass.name"
@@ -545,7 +545,7 @@
       "item_id": "svc.playstation_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.playstation_plus.name"
@@ -563,7 +563,7 @@
       "item_id": "svc.nintendo_switch_online.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.nintendo_switch_online.name"
@@ -581,7 +581,7 @@
       "item_id": "svc.crunchyroll.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.crunchyroll.name"
@@ -599,7 +599,7 @@
       "item_id": "svc.hulu.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.hulu.name"
@@ -617,7 +617,7 @@
       "item_id": "svc.the_hindu.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.the_hindu.name"
@@ -635,7 +635,7 @@
       "item_id": "svc.cultpass.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.cultpass.name"
@@ -653,7 +653,7 @@
       "item_id": "svc.prime_video.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.prime_video.name"
@@ -671,7 +671,7 @@
       "item_id": "svc.sun_nxt.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.sun_nxt.name"
@@ -689,7 +689,7 @@
       "item_id": "svc.aha.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.aha.name"
@@ -707,7 +707,7 @@
       "item_id": "svc.hoichoi.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.hoichoi.name"
@@ -725,7 +725,7 @@
       "item_id": "svc.discovery_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.discovery_plus.name"
@@ -743,7 +743,7 @@
       "item_id": "svc.lionsgate_play.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.lionsgate_play.name"
@@ -761,7 +761,7 @@
       "item_id": "svc.shemaroome.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.shemaroome.name"
@@ -779,7 +779,7 @@
       "item_id": "svc.manorama_max.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.manorama_max.name"
@@ -797,7 +797,7 @@
       "item_id": "svc.fancode.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.fancode.name"
@@ -815,7 +815,7 @@
       "item_id": "svc.tata_play.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.tata_play.name"
@@ -833,7 +833,7 @@
       "item_id": "svc.tata_play_binge.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.tata_play_binge.name"
@@ -851,7 +851,7 @@
       "item_id": "svc.airtel_xstream_play.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.airtel_xstream_play.name"
@@ -869,7 +869,7 @@
       "item_id": "svc.dish_tv.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.dish_tv.name"
@@ -887,7 +887,7 @@
       "item_id": "svc.sun_direct.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.sun_direct.name"
@@ -905,7 +905,7 @@
       "item_id": "svc.mubi.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.mubi.name"
@@ -923,7 +923,7 @@
       "item_id": "svc.jio_postpaid.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.jio_postpaid.name"
@@ -941,7 +941,7 @@
       "item_id": "svc.jio_prepaid.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.jio_prepaid.name"
@@ -959,7 +959,7 @@
       "item_id": "svc.jiofiber.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.jiofiber.name"
@@ -977,7 +977,7 @@
       "item_id": "svc.airtel_postpaid.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.airtel_postpaid.name"
@@ -995,7 +995,7 @@
       "item_id": "svc.airtel_prepaid.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.airtel_prepaid.name"
@@ -1013,7 +1013,7 @@
       "item_id": "svc.airtel_xstream_fiber.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.airtel_xstream_fiber.name"
@@ -1031,7 +1031,7 @@
       "item_id": "svc.airtel_black.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.airtel_black.name"
@@ -1049,7 +1049,7 @@
       "item_id": "svc.vi_postpaid.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.vi_postpaid.name"
@@ -1067,7 +1067,7 @@
       "item_id": "svc.vi_prepaid.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.vi_prepaid.name"
@@ -1085,7 +1085,7 @@
       "item_id": "svc.bsnl.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.bsnl.name"
@@ -1103,7 +1103,7 @@
       "item_id": "svc.act_fibernet.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.act_fibernet.name"
@@ -1121,7 +1121,7 @@
       "item_id": "svc.hathway.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.hathway.name"
@@ -1139,7 +1139,7 @@
       "item_id": "svc.excitel.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.excitel.name"
@@ -1157,7 +1157,7 @@
       "item_id": "svc.amazon_music.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.amazon_music.name"
@@ -1175,7 +1175,7 @@
       "item_id": "svc.youtube_music.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.youtube_music.name"
@@ -1193,7 +1193,7 @@
       "item_id": "svc.hungama_music.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.hungama_music.name"
@@ -1211,7 +1211,7 @@
       "item_id": "svc.pocket_fm.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.pocket_fm.name"
@@ -1229,7 +1229,7 @@
       "item_id": "svc.kuku_fm.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.kuku_fm.name"
@@ -1247,7 +1247,7 @@
       "item_id": "svc.storytel.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.storytel.name"
@@ -1265,7 +1265,7 @@
       "item_id": "svc.magzter_gold.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.magzter_gold.name"
@@ -1283,7 +1283,7 @@
       "item_id": "svc.flipkart_vip.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.flipkart_vip.name"
@@ -1301,7 +1301,7 @@
       "item_id": "svc.eazydiner_prime.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.eazydiner_prime.name"
@@ -1319,7 +1319,7 @@
       "item_id": "svc.country_delight.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.country_delight.name"
@@ -1337,7 +1337,7 @@
       "item_id": "svc.pharmeasy_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.pharmeasy_plus.name"
@@ -1355,7 +1355,7 @@
       "item_id": "svc.tata_1mg_care.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.tata_1mg_care.name"
@@ -1373,7 +1373,7 @@
       "item_id": "svc.practo_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.practo_plus.name"
@@ -1391,7 +1391,7 @@
       "item_id": "svc.healthifyme.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.healthifyme.name"
@@ -1409,7 +1409,7 @@
       "item_id": "svc.fittr.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.fittr.name"
@@ -1427,7 +1427,7 @@
       "item_id": "svc.toi_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.toi_plus.name"
@@ -1445,7 +1445,7 @@
       "item_id": "svc.indian_express.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.indian_express.name"
@@ -1463,7 +1463,7 @@
       "item_id": "svc.et_prime.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.et_prime.name"
@@ -1481,7 +1481,7 @@
       "item_id": "svc.mint.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.mint.name"
@@ -1499,7 +1499,7 @@
       "item_id": "svc.business_standard.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.business_standard.name"
@@ -1517,7 +1517,7 @@
       "item_id": "svc.the_ken.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.the_ken.name"
@@ -1535,7 +1535,7 @@
       "item_id": "svc.moneycontrol_pro.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.moneycontrol_pro.name"
@@ -1553,7 +1553,7 @@
       "item_id": "svc.byjus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.byjus.name"
@@ -1571,7 +1571,7 @@
       "item_id": "svc.unacademy.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.unacademy.name"
@@ -1589,7 +1589,7 @@
       "item_id": "svc.physics_wallah.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.physics_wallah.name"
@@ -1607,7 +1607,7 @@
       "item_id": "svc.vedantu.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.vedantu.name"
@@ -1625,7 +1625,7 @@
       "item_id": "svc.testbook_pass.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.testbook_pass.name"
@@ -1643,7 +1643,7 @@
       "item_id": "svc.naukri_fastforward.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.naukri_fastforward.name"
@@ -1661,7 +1661,7 @@
       "item_id": "svc.tallyprime.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.tallyprime.name"
@@ -1679,7 +1679,7 @@
       "item_id": "svc.quick_heal.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.quick_heal.name"
@@ -1697,7 +1697,7 @@
       "item_id": "svc.aisle.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.aisle.name"
@@ -1715,7 +1715,7 @@
       "item_id": "svc.shaadi.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.shaadi.name"
@@ -1733,7 +1733,7 @@
       "item_id": "svc.bharat_matrimony.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.bharat_matrimony.name"
@@ -1751,7 +1751,7 @@
       "item_id": "svc.tamil_matrimony.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.tamil_matrimony.name"
@@ -1769,7 +1769,7 @@
       "item_id": "svc.jeevansathi.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.jeevansathi.name"
@@ -1787,7 +1787,7 @@
       "item_id": "svc.truecaller_premium.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.truecaller_premium.name"
@@ -1805,7 +1805,7 @@
       "item_id": "svc.zoho_mail.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.zoho_mail.name"
@@ -1823,7 +1823,7 @@
       "item_id": "svc.zoho_workplace.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.zoho_workplace.name"
@@ -1841,7 +1841,7 @@
       "item_id": "svc.zoho_books.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.zoho_books.name"
@@ -1859,7 +1859,7 @@
       "item_id": "svc.disney_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.disney_plus.name"
@@ -1877,7 +1877,7 @@
       "item_id": "svc.hbo_max.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.hbo_max.name"
@@ -1895,7 +1895,7 @@
       "item_id": "svc.paramount_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.paramount_plus.name"
@@ -1913,7 +1913,7 @@
       "item_id": "svc.peacock.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.peacock.name"
@@ -1931,7 +1931,7 @@
       "item_id": "svc.espn_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.espn_plus.name"
@@ -1949,7 +1949,7 @@
       "item_id": "svc.dazn.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.dazn.name"
@@ -1967,7 +1967,7 @@
       "item_id": "svc.sling_tv.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.sling_tv.name"
@@ -1985,7 +1985,7 @@
       "item_id": "svc.youtube_tv.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.youtube_tv.name"
@@ -2003,7 +2003,7 @@
       "item_id": "svc.fubo.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.fubo.name"
@@ -2021,7 +2021,7 @@
       "item_id": "svc.starz.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.starz.name"
@@ -2039,7 +2039,7 @@
       "item_id": "svc.curiositystream.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.curiositystream.name"
@@ -2057,7 +2057,7 @@
       "item_id": "svc.britbox.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.britbox.name"
@@ -2075,7 +2075,7 @@
       "item_id": "svc.nebula.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.nebula.name"
@@ -2093,7 +2093,7 @@
       "item_id": "svc.f1_tv.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.f1_tv.name"
@@ -2111,7 +2111,7 @@
       "item_id": "svc.snapchat_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.snapchat_plus.name"
@@ -2129,7 +2129,7 @@
       "item_id": "svc.apple_one.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.apple_one.name"
@@ -2147,7 +2147,7 @@
       "item_id": "svc.tidal.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.tidal.name"
@@ -2165,7 +2165,7 @@
       "item_id": "svc.deezer.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.deezer.name"
@@ -2183,7 +2183,7 @@
       "item_id": "svc.soundcloud_go.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.soundcloud_go.name"
@@ -2201,7 +2201,7 @@
       "item_id": "svc.ea_play.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.ea_play.name"
@@ -2219,7 +2219,7 @@
       "item_id": "svc.ubisoft_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.ubisoft_plus.name"
@@ -2237,7 +2237,7 @@
       "item_id": "svc.apple_arcade.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.apple_arcade.name"
@@ -2255,7 +2255,7 @@
       "item_id": "svc.google_play_pass.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.google_play_pass.name"
@@ -2273,7 +2273,7 @@
       "item_id": "svc.geforce_now.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.geforce_now.name"
@@ -2291,7 +2291,7 @@
       "item_id": "svc.discord_nitro.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.discord_nitro.name"
@@ -2309,7 +2309,7 @@
       "item_id": "svc.humble_choice.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.humble_choice.name"
@@ -2327,7 +2327,7 @@
       "item_id": "svc.roblox_premium.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.roblox_premium.name"
@@ -2345,7 +2345,7 @@
       "item_id": "svc.pcloud.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.pcloud.name"
@@ -2363,7 +2363,7 @@
       "item_id": "svc.mega.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.mega.name"
@@ -2381,7 +2381,7 @@
       "item_id": "svc.box.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.box.name"
@@ -2399,7 +2399,7 @@
       "item_id": "svc.backblaze.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.backblaze.name"
@@ -2417,7 +2417,7 @@
       "item_id": "svc.aws.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.aws.name"
@@ -2435,7 +2435,7 @@
       "item_id": "svc.digitalocean.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.digitalocean.name"
@@ -2453,7 +2453,7 @@
       "item_id": "svc.cloudflare.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.cloudflare.name"
@@ -2471,7 +2471,7 @@
       "item_id": "svc.godaddy.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.godaddy.name"
@@ -2489,7 +2489,7 @@
       "item_id": "svc.hostinger.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.hostinger.name"
@@ -2507,7 +2507,7 @@
       "item_id": "svc.claude_pro.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.claude_pro.name"
@@ -2525,7 +2525,7 @@
       "item_id": "svc.google_ai_pro.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.google_ai_pro.name"
@@ -2543,7 +2543,7 @@
       "item_id": "svc.perplexity_pro.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.perplexity_pro.name"
@@ -2561,7 +2561,7 @@
       "item_id": "svc.midjourney.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.midjourney.name"
@@ -2579,7 +2579,7 @@
       "item_id": "svc.copilot_pro.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.copilot_pro.name"
@@ -2597,7 +2597,7 @@
       "item_id": "svc.github_copilot.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.github_copilot.name"
@@ -2615,7 +2615,7 @@
       "item_id": "svc.cursor.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.cursor.name"
@@ -2633,7 +2633,7 @@
       "item_id": "svc.elevenlabs.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.elevenlabs.name"
@@ -2651,7 +2651,7 @@
       "item_id": "svc.github.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.github.name"
@@ -2669,7 +2669,7 @@
       "item_id": "svc.google_workspace.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.google_workspace.name"
@@ -2687,7 +2687,7 @@
       "item_id": "svc.slack.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.slack.name"
@@ -2705,7 +2705,7 @@
       "item_id": "svc.zoom.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.zoom.name"
@@ -2723,7 +2723,7 @@
       "item_id": "svc.figma.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.figma.name"
@@ -2741,7 +2741,7 @@
       "item_id": "svc.grammarly.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.grammarly.name"
@@ -2759,7 +2759,7 @@
       "item_id": "svc.evernote.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.evernote.name"
@@ -2777,7 +2777,7 @@
       "item_id": "svc.todoist.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.todoist.name"
@@ -2795,7 +2795,7 @@
       "item_id": "svc.adobe_acrobat.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.adobe_acrobat.name"
@@ -2813,7 +2813,7 @@
       "item_id": "svc.adobe_lightroom.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.adobe_lightroom.name"
@@ -2831,7 +2831,7 @@
       "item_id": "svc.onepassword.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.onepassword.name"
@@ -2849,7 +2849,7 @@
       "item_id": "svc.bitwarden.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.bitwarden.name"
@@ -2867,7 +2867,7 @@
       "item_id": "svc.proton_unlimited.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.proton_unlimited.name"
@@ -2885,7 +2885,7 @@
       "item_id": "svc.nordvpn.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.nordvpn.name"
@@ -2903,7 +2903,7 @@
       "item_id": "svc.expressvpn.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.expressvpn.name"
@@ -2921,7 +2921,7 @@
       "item_id": "svc.surfshark.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.surfshark.name"
@@ -2939,7 +2939,7 @@
       "item_id": "svc.norton_360.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.norton_360.name"
@@ -2957,7 +2957,7 @@
       "item_id": "svc.mcafee.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.mcafee.name"
@@ -2975,7 +2975,7 @@
       "item_id": "svc.wix.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.wix.name"
@@ -2993,7 +2993,7 @@
       "item_id": "svc.squarespace.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.squarespace.name"
@@ -3011,7 +3011,7 @@
       "item_id": "svc.shopify.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.shopify.name"
@@ -3029,7 +3029,7 @@
       "item_id": "svc.telegram_premium.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.telegram_premium.name"
@@ -3047,7 +3047,7 @@
       "item_id": "svc.meta_verified.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.meta_verified.name"
@@ -3065,7 +3065,7 @@
       "item_id": "svc.x_premium.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.x_premium.name"
@@ -3083,7 +3083,7 @@
       "item_id": "svc.bumble.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.bumble.name"
@@ -3101,7 +3101,7 @@
       "item_id": "svc.hinge.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.hinge.name"
@@ -3119,7 +3119,7 @@
       "item_id": "svc.coursera_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.coursera_plus.name"
@@ -3137,7 +3137,7 @@
       "item_id": "svc.udemy_personal_plan.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.udemy_personal_plan.name"
@@ -3155,7 +3155,7 @@
       "item_id": "svc.skillshare.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.skillshare.name"
@@ -3173,7 +3173,7 @@
       "item_id": "svc.masterclass.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.masterclass.name"
@@ -3191,7 +3191,7 @@
       "item_id": "svc.brilliant.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.brilliant.name"
@@ -3209,7 +3209,7 @@
       "item_id": "svc.babbel.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.babbel.name"
@@ -3227,7 +3227,7 @@
       "item_id": "svc.linkedin_learning.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.linkedin_learning.name"
@@ -3245,7 +3245,7 @@
       "item_id": "svc.everand.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.everand.name"
@@ -3263,7 +3263,7 @@
       "item_id": "svc.blinkist.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.blinkist.name"
@@ -3281,7 +3281,7 @@
       "item_id": "svc.nytimes.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.nytimes.name"
@@ -3299,7 +3299,7 @@
       "item_id": "svc.wsj.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.wsj.name"
@@ -3317,7 +3317,7 @@
       "item_id": "svc.washington_post.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.washington_post.name"
@@ -3335,7 +3335,7 @@
       "item_id": "svc.the_economist.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.the_economist.name"
@@ -3353,7 +3353,7 @@
       "item_id": "svc.financial_times.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.financial_times.name"
@@ -3371,7 +3371,7 @@
       "item_id": "svc.medium.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.medium.name"
@@ -3389,7 +3389,7 @@
       "item_id": "svc.strava.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.strava.name"
@@ -3407,7 +3407,7 @@
       "item_id": "svc.peloton_app.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.peloton_app.name"
@@ -3425,7 +3425,7 @@
       "item_id": "svc.fitbit_premium.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.fitbit_premium.name"
@@ -3443,7 +3443,7 @@
       "item_id": "svc.apple_fitness_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.apple_fitness_plus.name"
@@ -3461,7 +3461,7 @@
       "item_id": "svc.headspace.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.headspace.name"
@@ -3479,7 +3479,7 @@
       "item_id": "svc.calm.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.calm.name"
@@ -3497,7 +3497,7 @@
       "item_id": "svc.myfitnesspal.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.myfitnesspal.name"
@@ -3515,7 +3515,7 @@
       "item_id": "svc.whoop.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.whoop.name"
@@ -3533,7 +3533,7 @@
       "item_id": "svc.anytime_fitness.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.anytime_fitness.name"
@@ -3551,7 +3551,7 @@
       "item_id": "svc.uber_one.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.uber_one.name"
@@ -3569,7 +3569,7 @@
       "item_id": "svc.dashpass.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.dashpass.name"
@@ -3587,7 +3587,7 @@
       "item_id": "svc.instacart_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.instacart_plus.name"
@@ -3605,7 +3605,7 @@
       "item_id": "svc.hellofresh.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.hellofresh.name"
@@ -3623,7 +3623,7 @@
       "item_id": "svc.walmart_plus.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.walmart_plus.name"
@@ -3641,7 +3641,7 @@
       "item_id": "svc.costco.name",
       "generator_model_id": "none/hand-authored",
       "generated_at": "2026-09-28",
-      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it.",
+      "prompt": "Record the service's brand name exactly as the service styles it; for ta, transliterate the brand into Tamil script rather than translating it; every other locale keeps the brand as styled.",
       "marking": "none",
       "marking_reason": "not model output — a person wrote it, so there is no generated-content marking duty to discharge",
       "review_verdict_ref": "review.jsonl#svc.costco.name"

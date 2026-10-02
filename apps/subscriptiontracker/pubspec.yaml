@@ -429,7 +429,7 @@ msix_config:
   # DIFFERENT build from the one the upload proves.
   build_windows: false
   architecture: x64
-  languages: en-us
+  languages: en-us, ta-in, hi-in
   capabilities: internetClient
   output_path: build/windows/msix
   output_name: subscriptiontracker

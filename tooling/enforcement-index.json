@@ -1361,6 +1361,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-chassis"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-locale-register.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "F-8"
     ],
@@ -2265,6 +2275,16 @@
     ],
     "kind": "guard",
     "ref": "tooling/ci/assert-rollup-lossless.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-chassis"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/assert-rtl-directional.mjs",
     "references": [],
     "state": "WIRED"
   },
@@ -3657,6 +3677,26 @@
     ],
     "kind": "script",
     "ref": "tooling/e2e/verify_row.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#workspace-gate"
+    ],
+    "kind": "script",
+    "ref": "tooling/i18n/locales.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-chassis"
+    ],
+    "kind": "script",
+    "ref": "tooling/i18n/translation-qa.mjs",
     "references": [],
     "state": "WIRED"
   },

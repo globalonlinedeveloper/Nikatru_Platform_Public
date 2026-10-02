@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show AuthFrame;
 
-import '../../l10n/app_localizations.dart';
+import '../../l10n/chassis_bridge.g.dart';
 import 'auth_panel.dart';
 import 'check_inbox_actions.dart';
 

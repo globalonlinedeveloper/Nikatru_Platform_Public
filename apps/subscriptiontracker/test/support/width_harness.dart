@@ -130,6 +130,8 @@ Future<void> pumpAt(
   Size size,
   Widget screen, {
   List<Override> overrides = const <Override>[],
+  Locale? locale,
+  List<LocalizationsDelegate<dynamic>>? localizationsDelegates,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -150,11 +152,19 @@ Future<void> pumpAt(
     UncontrolledProviderScope(
       container: c,
       child: MaterialApp(
-        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
-          ...AppLocalizations.localizationsDelegates,
-          ChassisLocalizations.delegate,
-        ],
-        supportedLocales: AppLocalizations.supportedLocales,
+        // [locale] + [localizationsDelegates] are the pseudo-locale seam
+        // (pseudo_locale_screens_test.dart): a pseudo locale is supported by no
+        // real delegate, so the caller hands in its own and the list is just it.
+        locale: locale,
+        localizationsDelegates:
+            localizationsDelegates ??
+            <LocalizationsDelegate<dynamic>>[
+              ...AppLocalizations.localizationsDelegates,
+              ChassisLocalizations.delegate,
+            ],
+        supportedLocales: localizationsDelegates == null || locale == null
+            ? AppLocalizations.supportedLocales
+            : <Locale>[locale],
         home: screen,
       ),
     ),

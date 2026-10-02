@@ -14,7 +14,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:subscriptiontracker/core/router.dart';
 import 'package:subscriptiontracker/features/auth/login_screen.dart';
 import 'package:subscriptiontracker/features/settings/settings_screen.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
 // Relocated 2026-08-12 out of `lib/data/auth/` — a test double under `lib/`

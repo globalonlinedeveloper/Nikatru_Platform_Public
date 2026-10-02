@@ -436,15 +436,21 @@ class SettingsView extends StatelessWidget {
                   onChanged: (String? code) => onLanguageChanged(code ?? ''),
                   child: Column(
                     children: <Widget>[
-                      // T20 (XP-06): हिन्दी joins the list; one tile per language.
-                      for (final (String code, String name)
-                          in <(String, String)>[
-                            ('', l10n.languageSystem),
-                            ('en', l10n.languageEnglish),
-                            ('ta', l10n.languageTamil),
-                            ('hi', l10n.languageHindi),
-                          ])
-                        RadioListTile<String>(value: code, title: Text(name)),
+                      RadioListTile<String>(
+                        value: '',
+                        title: Text(l10n.languageSystem),
+                      ),
+                      // One tile per SUPPORTED row of tooling/i18n/locales.json
+                      // (the generated kSupportedLocales), never a typed list.
+                      // A typed list offered Hindi in every stamped app whose
+                      // ARBs were en+ta — a control that silently rendered
+                      // English. assert-locale-register now fails an app, the
+                      // chassis or the brick missing a supported locale's ARB.
+                      for (final RegisteredLocale row in kSupportedLocales)
+                        RadioListTile<String>(
+                          value: row.code,
+                          title: Text(row.nativeName),
+                        ),
                     ],
                   ),
                 ),

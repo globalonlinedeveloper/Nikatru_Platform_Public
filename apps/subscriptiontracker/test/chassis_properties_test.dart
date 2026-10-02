@@ -49,7 +49,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 // [pipeline C-11] buildAppTheme + AppThemeX, for the brand-seed property.
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:subscriptiontracker/app.dart';
-import 'package:subscriptiontracker/l10n/app_localizations.dart';
+import 'package:subscriptiontracker/l10n/chassis_bridge.g.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/core/e2e_keys.dart';
 import 'package:subscriptiontracker/core/router.dart';
@@ -3170,7 +3170,7 @@ void main() {
       expect(AppLocalizations.supportedLocales.length, greaterThanOrEqualTo(2));
       expect(
         AppLocalizations.supportedLocales.map((Locale l) => l.languageCode),
-        containsAll(<String>['en', 'ta']),
+        containsAll(kSupportedLocaleCodes),
       );
     });
 
