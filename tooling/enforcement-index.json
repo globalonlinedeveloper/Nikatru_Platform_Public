@@ -4463,6 +4463,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/sites/generate-personal-site.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 075"
     ],
@@ -4496,6 +4506,7 @@
   },
   {
     "claims": [
+      "ADR 023",
       "ADR 075",
       "O-7",
       "R-13"

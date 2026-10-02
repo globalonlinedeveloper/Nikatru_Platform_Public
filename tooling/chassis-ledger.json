@@ -772,7 +772,7 @@
     },
     {
       "path": "web/_headers",
-      "lines": 203,
+      "lines": 219,
       "verdict": "STAYS",
       "why": "Per-app web shell: headers, manifest and entry point are app-specific by construction."
     },
@@ -784,7 +784,7 @@
     },
     {
       "path": "web/index.html",
-      "lines": 60,
+      "lines": 63,
       "verdict": "STAYS",
       "why": "Per-app web shell: headers, manifest and entry point are app-specific by construction."
     },
@@ -793,6 +793,18 @@
       "lines": 35,
       "verdict": "STAYS",
       "why": "Per-app web shell: headers, manifest and entry point are app-specific by construction."
+    },
+    {
+      "path": "web/sw-register.js",
+      "lines": 82,
+      "verdict": "STAYS",
+      "why": "Per-app web shell: registers web/sw.js under the app's own scope ([ADR 023] as amended 2026-09-30). Flutter copies web/ into the bundle, so the file has to be in every app's web/; it carries no app-specific text and assert-web-cache-policy's suite holds it byte-identical to the app's."
+    },
+    {
+      "path": "web/sw.js",
+      "lines": 170,
+      "verdict": "STAYS",
+      "why": "Per-app web shell: the offline shell's network-first worker ([ADR 023] as amended 2026-09-30). It must be served from /<id>/sw.js to be scoped to /<id>/ without Service-Worker-Allowed, so it lives in each app's web/; it differs from the app's copy in APP_ID alone, and assert-web-cache-policy runs it."
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",

@@ -174,7 +174,7 @@
     10,
 
   "business-facts.test.mjs":
-    9,
+    13,
 
   "capability-register-seams.test.mjs":
     27,
@@ -213,7 +213,7 @@
     36,
 
   "channel-claims.test.mjs":
-    50,
+    55,
 
   "channel-register.test.mjs":
     375,
@@ -707,6 +707,9 @@
   "paywall-flip-ready.test.mjs":
     13,
 
+  "personal-site.test.mjs":
+    20,
+
   "plan-deploy.test.mjs":
     36,
 
@@ -954,7 +957,7 @@
     32,
 
   "site-integrity.test.mjs":
-    109,
+    122,
 
   "site-set.test.mjs":
     6,
@@ -966,7 +969,7 @@
     14,
 
   "smoke-web-artifact.test.mjs":
-    30,
+    34,
 
   "snap-submission.test.mjs":
     48,
@@ -1113,7 +1116,7 @@
     9,
 
   "web-cache-policy.test.mjs":
-    90,
+    109,
 
   "web-drive-stages-fonts.test.mjs":
     5,
