@@ -93,6 +93,14 @@ ledger Deployment it re-promoted instead; the refusal prints its id.
 - **A record with no id.** A Deployment recorded before its deploy passed the
   Pages deployment id or Worker version id has nothing to re-promote, and is
   refused with that reason (RC11).
+- **A build under its unit's floor.** `tooling/ops/rollback-floors.json` names,
+  per unit, the first build that writes data the builds before it misread.
+  `rollback.mjs` asks GitHub's compare API whether the recorded commit is that
+  floor or a descendant of it, and refuses anything else (`behind`, `diverged`,
+  or an answer it cannot read), a dry run included. `platform`'s floor is
+  `117bd66e` (#1104, provider refresh tokens sealed at rest): an older build reads
+  a sealed row's `''` as a token, stores plain text again and can drop a user's
+  grant un-revoked (#1104 post-merge review, finding 1). Revert on main instead.
 
 ## The facts this rests on
 
