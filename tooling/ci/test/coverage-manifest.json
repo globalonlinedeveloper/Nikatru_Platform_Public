@@ -168,7 +168,7 @@
     10,
 
   "business-facts.test.mjs":
-    9,
+    13,
 
   "capability-register-seams.test.mjs":
     27,
@@ -207,7 +207,7 @@
     36,
 
   "channel-claims.test.mjs":
-    50,
+    55,
 
   "channel-register.test.mjs":
     368,
@@ -704,6 +704,9 @@
   "paywall-flip-ready.test.mjs":
     13,
 
+  "personal-site.test.mjs":
+    20,
+
   "plan-deploy.test.mjs":
     36,
 
@@ -951,7 +954,7 @@
     32,
 
   "site-integrity.test.mjs":
-    118,
+    122,
 
   "small-business-program.test.mjs":
     17,

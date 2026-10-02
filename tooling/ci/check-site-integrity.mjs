@@ -431,9 +431,17 @@ for (const { root, name } of SCANNING_OWN_REPO ? appFacingRoots : []) {
 // frozen bytes of superseded policies and their entire value is being the
 // document that was actually published; the statutory duty attaches to the live
 // page, not to the archive of a page nobody may now rely on.
+//
+// ⏱ 2026-10-02 — EVERY DEPLOY ROOT, not `appFacingRoots` only. The founder's
+// site (sites/rajasekarselvam, not app-facing) sits on a zone with the same
+// obfuscation on, and measured live that day its contact button served as
+// "[email protected]" linking to a Cloudflare interstitial that answers 404:
+// visitors without JavaScript, and crawlers, had no address at all. Rule 4(2) is
+// the nikatru reason; "a contact link that works without JavaScript" is the
+// reason for every root, so the limb walks them all.
 let emailOffChecks = 0;
 const EMAIL_OFF_REGION = /<!--\s*email_off\s*-->[\s\S]*?<!--\s*\/\s*email_off\s*-->/gi;
-for (const { root } of appFacingRoots) {
+for (const root of siteRoots) {
   for (const abs of htmlIn(root)) {
     const rel = relative(repoRoot, abs).replaceAll('\\', '/');
     if (rel.includes('/legal/')) continue;
@@ -445,12 +453,79 @@ for (const { root } of appFacingRoots) {
       problems.push(
         `${rel} carries ${unprotected.length} mailto: link(s) OUTSIDE an <!--email_off--> region ` +
           `(${[...new Set(unprotected)].sort().join(', ')}). Cloudflare Email Address Obfuscation will rewrite ` +
-          'them to "[email protected]" in the served HTML, so the customer-care address rule 4(2) of the ' +
-          'Consumer Protection (E-Commerce) Rules 2020 requires us to DISPLAY is absent from the bytes a crawler, ' +
-          'a reviewer with JavaScript off or a compliance scanner reads. Wrap the WHOLE anchor: ' +
+          'them to "[email protected]" in the served HTML, so the address (on an app-facing root, the ' +
+          'customer-care address rule 4(2) of the Consumer Protection (E-Commerce) Rules 2020 requires us to ' +
+          'DISPLAY) is absent from the bytes a crawler, a visitor with JavaScript off or a compliance scanner ' +
+          'reads, and the link opens a Cloudflare page that answers 404. Wrap the WHOLE anchor: ' +
           '<!--email_off--><a href="mailto:…">…</a><!--/email_off-->.',
       );
     }
+  }
+}
+
+// ── NO SERVED PAGE SHOWS AN UNFILLED TEMPLATE SLOT ───────────────────────────
+// ⏱ 2026-10-02 (rajasekarselvam.com audit, D2). `sites/rajasekarselvam/cv.html`
+// was a CV TEMPLATE — `[Job title] — [Company]`, `[Degree] — [Institution]`,
+// a yellow "TEMPLATE" banner — and it answered 200 at /cv to anyone who guessed
+// the URL. It was `noindex` and linked from nowhere, and every guard here treated
+// those two facts as making it harmless; a stranger with the URL still read a CV
+// with no history in it under the founder's name. A deploy root has no build
+// step, so every .html under it is served: a bracketed slot in its visible text
+// is a placeholder a visitor can read, whatever the robots tag says.
+//
+// The slot shape is a bracket around a capitalised word run (`[Job title]`,
+// `[APP NAME]`, `[Java / Spring — confirm]`). Measured over every tracked page
+// on 2026-10-02: no real page carries one; the only hits were cv.html and the
+// file named below.
+const PLACEHOLDER_SLOT = /\[[A-Z][A-Za-z]*(?:[ /&—-]+[A-Za-z]+)*\]/g;
+/** Served files that carry slots BY DESIGN, by name, with the reason. Audited below:
+ *  an entry whose file is gone, or has lost its noindex, fails. */
+const PLACEHOLDER_EXCUSED = new Map([
+  [
+    'sites/nikatru/apps/_template.html',
+    'the per-app landing template generate-discovery.mjs reads (NOT_GENERATED there); `[APP NAME]`/`[SLUG]` ' +
+      'are its instructions, it is noindex, and it is owned by the nikatru lane. It IS served at ' +
+      '/apps/_template — printed below every run so that stays visible until that lane moves it out of the root.',
+  ],
+]);
+let placeholderPages = 0;
+for (const root of siteRoots) {
+  for (const abs of htmlIn(root)) {
+    const rel = relative(repoRoot, abs).replaceAll('\\', '/');
+    if (rel.includes('/legal/') || isAuthMailPath(rel)) continue;
+    if (PLACEHOLDER_EXCUSED.has(rel)) continue;
+    placeholderPages++;
+    const slots = [...new Set(visibleText(readFileSync(abs, 'utf8')).match(PLACEHOLDER_SLOT) ?? [])];
+    if (slots.length) {
+      problems.push(
+        `${rel} shows ${slots.length} unfilled template slot(s) in its visible text (${slots.slice(0, 4).join(', ')}` +
+          `${slots.length > 4 ? ', …' : ''}). Every .html under a deploy root is served — noindex and "linked from ` +
+          'nowhere" keep it out of search, not out of reach. Fill it, or move it out of the deploy root and ' +
+          'redirect its URL (sites/rajasekarselvam/_redirects does this for /cv).',
+      );
+    }
+  }
+}
+for (const [rel] of PLACEHOLDER_EXCUSED) {
+  // Scoped to an entry whose DIRECTORY exists, as assert-discovery-surface.mjs scopes its
+  // PAGE_QUALITY_EXCLUDED audit: a fixture tree that models no apps/ directory has not lost
+  // the file, it does not model it. "Models" means the directory holds a PAGE: the
+  // screenshot fixture (writeShot) makes apps/shots/ with no page beside it, and a
+  // bare directory is not a tree that lost its template.
+  const abs = join(repoRoot, rel);
+  let pagesBeside = [];
+  try {
+    pagesBeside = listDir(dirname(abs)).filter((n) => n.endsWith('.html'));
+  } catch {
+    continue;
+  }
+  if (pagesBeside.length === 0) continue;
+  if (!existsSync(abs)) {
+    problems.push(`PLACEHOLDER_EXCUSED names ${rel}, which no longer exists. Delete the entry: an excuse that outlives its file is a hole for the next one.`);
+  } else if (!/<meta[^>]+name\s*=\s*["']robots["'][^>]*noindex/i.test(readFileSync(abs, 'utf8'))) {
+    problems.push(`${rel} is excused from the template-slot limb and has LOST its noindex, so a search result can now land a stranger on its placeholders.`);
+  } else {
+    prints.push(`SERVED TEMPLATE: ${rel} is reachable on its host with unfilled slots — ${PLACEHOLDER_EXCUSED.get(rel)}`);
   }
 }
 
@@ -703,7 +778,7 @@ for (const root of siteRoots) {
       const expected = lastmodFor(repoRoot, `sites/${name}/${page}`);
       if (e.lastmod !== expected) {
         problems.push(
-          `sites/${name}/sitemap.xml gives ${e.loc} lastmod ${e.lastmod}, and sites/${name}/${page} last changed ${expected} according to git. The sitemap's dates are a FUNCTION of the repository (tooling/sites/lastmod.mjs), not a field somebody keeps up to date by hand — a date a crawler cannot rely on is worse than none, because it is the signal that decides whether the page is re-fetched. Run \`node tooling/sites/generate-discovery.mjs\` for sites/nikatru; sites/rajasekarselvam has one URL and is edited by hand.`,
+          `sites/${name}/sitemap.xml gives ${e.loc} lastmod ${e.lastmod}, and sites/${name}/${page} last changed ${expected} according to git. The sitemap's dates are a FUNCTION of the repository (tooling/sites/lastmod.mjs), not a field somebody keeps up to date by hand — a date a crawler cannot rely on is worse than none, because it is the signal that decides whether the page is re-fetched. Run \`node tooling/sites/generate-discovery.mjs\` for sites/nikatru; for sites/rajasekarselvam, \`node tooling/sites/generate-personal-site.mjs\` re-dates its homepage when it rewrites it, and a hand edit to that page needs the date set by hand.`,
         );
       }
     }
@@ -1465,7 +1540,7 @@ if (SCANNING_OWN_REPO) {
   // would bury that under a report about the guard.
   if (emailOffChecks === 0 && missingBoundPages === 0) {
     lost.push(
-      'NO app-facing page contains a `mailto:` link at all, so the Cloudflare-obfuscation limb ranged over ' +
+      'NO served page contains a `mailto:` link at all, so the Cloudflare-obfuscation limb ranged over ' +
         'nothing. sites/nikatru publishes support@nikatru.com on eleven pages today; if the contact route stopped ' +
         'being a mailto: (a form, a JS handler), rule 4(2) still wants a readable address in the served bytes and ' +
         'this limb has stopped being the thing that checks for one.',
@@ -1784,7 +1859,10 @@ console.log(
   `    ${sellerNameChecks} commercial page(s) name the seller's legal person, not just the brand`,
 );
 console.log(
-  `    ${emailOffChecks} page(s) with a mailto: keep it inside <!--email_off-->, so the rule 4(2) contact address is in the served bytes without JavaScript`,
+  `    ${emailOffChecks} page(s) with a mailto: keep it inside <!--email_off-->, across every deploy root, so the contact address is in the served bytes without JavaScript`,
+);
+console.log(
+  `    ${placeholderPages} served page(s) show no unfilled template slot ([Job title]-style); ${PLACEHOLDER_EXCUSED.size} excused by name`,
 );
 console.log(
   `    ${shotsChecked} served product screenshot(s) match the bytes ${SHOTS_RECORD} records, each derived from a live store capture frame that is still on disk`,

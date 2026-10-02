@@ -1402,6 +1402,7 @@ jobs:
           node tooling/sites/gen-auth-mail.mjs
           node tooling/sites/generate-discovery.mjs
           node tooling/sites/generate-well-known.mjs
+          node tooling/sites/generate-personal-site.mjs
           node tooling/ci/tag-owner.mjs --write
           git diff --stat
           git diff --exit-code
