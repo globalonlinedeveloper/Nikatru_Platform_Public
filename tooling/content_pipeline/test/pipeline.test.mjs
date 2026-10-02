@@ -312,7 +312,21 @@ describe('the CLI, as an operator runs it', () => {
 describe('service-catalogue recipe (apps/subscriptiontracker bundled pack)', () => {
   const SC = join(REPO, 'tooling', 'content_pipeline', 'examples', 'service-catalogue');
   const SC_RECIPE = join(SC, 'recipe.json');
-  const REQUIRED_FACTS = ['id', 'category', 'cycle', 'cancel_url', 'manage_play', 'manage_appstore', 'notice_days', 'regions'];
+  const REQUIRED_FACTS = ['id', 'category', 'cycle', 'cancel_url', 'manage_play', 'manage_appstore', 'notice_days', 'regions', 'aliases'];
+
+  // ST-T9 (AD-04) red control: the facts schema REFUSES a service with no
+  // category id, an unknown one, and a missing alias list — and accepts the
+  // committed Netflix record, so the refusal is about the field, not the file.
+  it('the facts schema rejects a service with no category id', async () => {
+    const { factsProblems } = await import('../examples/service-catalogue/make-recipe.mjs');
+    const good = JSON.parse(JSON.parse(readFileSync(join(SC, 'content', 'en.json'), 'utf8'))['svc.netflix.facts']);
+    assert.deepEqual(factsProblems(good), []);
+    const { category: _drop, ...noCategory } = good;
+    assert.match(factsProblems(noCategory).join('\n'), /category: required and absent/);
+    assert.match(factsProblems({ ...good, category: 'streaming' }).join('\n'), /category: "streaming" is not one of/);
+    const { aliases: _a, ...noAliases } = good;
+    assert.match(factsProblems(noAliases).join('\n'), /aliases: required and absent/);
+  });
 
   it('the committed recipe, shards, log and gates are exactly a render of make-recipe.mjs\'s table', async () => {
     const { drift } = await import('../examples/service-catalogue/make-recipe.mjs');
@@ -320,7 +334,7 @@ describe('service-catalogue recipe (apps/subscriptiontracker bundled pack)', () 
   });
 
   it('validates, builds with the TEST key, and loads as the subscriptiontracker pack', async () => {
-    const { CATEGORIES } = await import('../examples/service-catalogue/make-recipe.mjs');
+    const { CATEGORIES, factsProblems } = await import('../examples/service-catalogue/make-recipe.mjs');
     assert.equal(runCli('validate', '--recipe', SC_RECIPE).status, 0);
     const d = mkdtempSync(join(tmpdir(), 'nikatru-sc-'));
     try {
@@ -343,7 +357,12 @@ describe('service-catalogue recipe (apps/subscriptiontracker bundled pack)', () 
         assert.deepEqual(content[l], JSON.parse(readFileSync(join(SC, 'content', `${l}.json`), 'utf8')));
       }
       const ids = content.en['catalogue.services'].split(',');
-      assert.ok(ids.length > 0 && ids.length <= 40, `${ids.length} services — the scope is at most 40`);
+      // ST-T9 (AD-04): the scope moved from "at most 40" to the market's
+      // floor — 150 or more, India-first — and a ceiling that keeps the
+      // bundled pack an offline-sized asset.
+      assert.ok(ids.length >= 150 && ids.length <= 600, `${ids.length} services — the scope is 150..600`);
+      const inFirst = ids.slice(0, 20).map((id) => JSON.parse(content.en[`svc.${id}.facts`]).regions);
+      assert.ok(inFirst.filter((r) => r.includes('IN') || r.includes('*')).length === 20, 'the first rows are India-first');
       assert.equal(new Set(ids).size, ids.length, 'duplicate id in the index');
       assert.equal(content.ta['catalogue.services'], content.en['catalogue.services']);
       for (const l of ['en', 'ta']) {
@@ -360,6 +379,8 @@ describe('service-catalogue recipe (apps/subscriptiontracker bundled pack)', () 
           }
           assert.ok(Number.isInteger(facts.notice_days) && facts.notice_days >= 0);
           assert.ok(facts.regions.length > 0 && facts.regions.every((r) => r === '*' || /^[A-Z]{2}$/.test(r)));
+          assert.ok(Array.isArray(facts.aliases) && facts.aliases.every((a) => typeof a === 'string' && a === a.toLowerCase()));
+          assert.deepEqual(factsProblems(facts), [], `${l}/${id}: not a schema-valid facts record`);
         }
         // The Tamil names are transliterations, not copies of the English.
         if (l === 'ta') for (const id of ids) assert.notEqual(content.ta[`svc.${id}.name`], content.en[`svc.${id}.name`], id);

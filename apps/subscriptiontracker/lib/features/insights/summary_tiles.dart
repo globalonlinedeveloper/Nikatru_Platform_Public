@@ -18,6 +18,7 @@
 import 'package:flutter/material.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
+import '../../core/format/home_totals.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
 import '../../data/models/subscription.dart';
@@ -59,11 +60,18 @@ class SummaryTiles extends StatelessWidget {
     required this.subs,
     required this.money,
     required this.now,
+    this.totals = const HomeTotals(null, ''),
   });
 
   final List<Subscription> subs;
   final MoneyFormatter money;
   final DateTime now;
+
+  /// ⏱ T12 (IN-06): the fold into the home currency. Every figure that ADDS
+  /// rows goes through it; "Biggest" prints one plan's own charge and does not.
+  final HomeTotals totals;
+
+  static const Key savedKey = Key('insights.tile.saved');
 
   @override
   Widget build(BuildContext context) {
@@ -79,19 +87,21 @@ class SummaryTiles extends StatelessWidget {
       SummaryTile(
         key: const Key('insights.tile.month'),
         label: l10n.insightsPerMonthLabel,
-        figure: money.formatBagRounded(SubMath.totalMonthly(subs)),
+        figure: money.formatBagRounded(totals.of(SubMath.totalMonthly(subs))),
         caption: l10n.insightsOnAverage,
       ),
       SummaryTile(
         key: const Key('insights.tile.year'),
         label: l10n.insightsPerYearLabel,
-        figure: money.formatBagRounded(SubMath.totalYearly(subs)),
+        figure: money.formatBagRounded(totals.of(SubMath.totalYearly(subs))),
         caption: l10n.insightsActiveCount(charging.length),
       ),
       SummaryTile(
         key: const Key('insights.tile.next30'),
         label: l10n.insightsNext30Label,
-        figure: money.formatBagRounded(SubMath.dueWithin(subs, now, 30)),
+        figure: money.formatBagRounded(
+          totals.of(SubMath.dueWithin(subs, now, 30)),
+        ),
         caption: l10n.insightsChargeCount(dueCount),
       ),
       SummaryTile(
@@ -106,16 +116,43 @@ class SummaryTiles extends StatelessWidget {
         caption: ranked.isEmpty ? l10n.insightsNoneYet : ranked.first.name,
       ),
     ];
+    // IN-10 · WHAT CANCELLING SAVED: per cancelled row, its monthly share
+    // times the whole months since `cancelled_on`. Drawn only when something
+    // has been saved — a "₹0 saved" tile is a missing fact wearing a number.
+    final MoneyBag saved = SubMath.savedSinceCancelled(subs, now);
+    final int cancelledCount = subs
+        .where(
+          (Subscription s) =>
+              s.deletedAt == null &&
+              s.status == SubscriptionStatus.cancelled &&
+              s.cancelledOn != null &&
+              SubMath.wholeMonthsBetween(s.cancelledOn!, now) > 0,
+        )
+        .length;
+    final Widget? savedTile = saved.isEmpty
+        ? null
+        : SummaryTile(
+            key: savedKey,
+            label: l10n.insightsSavedLabel,
+            figure: money.formatBagRounded(totals.of(saved)),
+            caption: l10n.insightsSavedCaption(cancelledCount),
+          );
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        if (constraints.maxWidth >= kSummaryOneRowFrom) {
-          return _row(tiles);
-        }
+        final bool oneRow = constraints.maxWidth >= kSummaryOneRowFrom;
         return Column(
           children: <Widget>[
-            _row(tiles.sublist(0, 2)),
-            const SizedBox(height: AppSpacing.sm),
-            _row(tiles.sublist(2)),
+            if (oneRow)
+              _row(tiles)
+            else ...<Widget>[
+              _row(tiles.sublist(0, 2)),
+              const SizedBox(height: AppSpacing.sm),
+              _row(tiles.sublist(2)),
+            ],
+            if (savedTile != null) ...<Widget>[
+              const SizedBox(height: AppSpacing.sm),
+              savedTile,
+            ],
           ],
         );
       },

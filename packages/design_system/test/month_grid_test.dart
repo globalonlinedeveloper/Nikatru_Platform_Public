@@ -394,4 +394,36 @@ void main() {
       expect(t.labelSmall!.fontSize, greaterThanOrEqualTo(12));
     });
   });
+
+  group('T12 · a chosen week start and deadlines (CA-04, CA-05)', () {
+    testWidgets('a chosen Monday start overrides en\'s Sunday', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(
+        tester,
+        kPhone,
+        MonthGrid(month: kMonth, locale: 'en', firstDayOfWeek: 0),
+      );
+      // Tuesday the 1st is the SECOND column of a Monday week.
+      expect(columnOf(tester, 1), 1);
+    });
+
+    testWidgets('a trial ending on the 14th marks the 14th, in words', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle h = tester.ensureSemantics();
+      await pumpAt(
+        tester,
+        kPhone,
+        MonthGrid(
+          month: kMonth,
+          locale: 'en',
+          deadlines: const <int, String>{14: 'trial ends'},
+        ),
+      );
+      expect(find.bySemanticsLabel('14, trial ends'), findsOneWidget);
+      expect(find.bySemanticsLabel('13, trial ends'), findsNothing);
+      h.dispose();
+    });
+  });
 }

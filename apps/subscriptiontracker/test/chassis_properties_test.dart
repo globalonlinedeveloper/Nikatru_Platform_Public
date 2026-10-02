@@ -1724,8 +1724,10 @@ void main() {
         isNotNull,
         reason: 'the seam never signed anyone in',
       );
+      // The FORM, by its submit key — not "any TextField": Home has a search
+      // field of its own (HO-03).
       expect(
-        find.byType(TextField),
+        find.byKey(E2EKeys.loginSubmit),
         findsNothing,
         reason:
             'signed in, and STILL looking at the form they just completed — '
@@ -1746,14 +1748,15 @@ void main() {
         UncontrolledProviderScope(container: c, child: const SublyApp()),
       );
       await _turnsAndSettleRoute(tester);
-      expect(find.byType(TextField), findsNothing);
+      // The form by its submit key: Home has a search field (HO-03).
+      expect(find.byKey(E2EKeys.loginSubmit), findsNothing);
 
       await c.read(authRepositoryProvider).signOut();
       await _turnsAndSettleRoute(tester);
 
       expect(
-        find.byType(TextField),
-        findsWidgets,
+        find.byKey(E2EKeys.loginSubmit),
+        findsOneWidget,
         reason: 'the session ended and the user was left inside the app',
       );
     });

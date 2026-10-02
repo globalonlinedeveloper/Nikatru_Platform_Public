@@ -756,16 +756,33 @@ const WIRE_CONTRACTS = [
     absentCall: 'get',
   },
   // ⏱ 2026-09-28 · ST-I3 — the ECB rate table (services/platform/src/routes/fx.ts).
-  // A gap because the TRANSPORT ships with its first consumer, not here; the
-  // payload is already held on both sides by one vector, which is stronger than
-  // an envelope pin would be. `absentFromDart` fires the day a Dart transport
-  // builds the path, which is when this entry has to become a real pin.
+  // It was a gap until the TRANSPORT shipped with its first consumer, and its
+  // `absentFromDart` fired the day one did — as designed.
+  // ⏱ 2026-10-01 · club apply-st (T12, IN-06): THE GAP CLOSED AS A `vector` PIN.
+  // packages/api_client/lib/src/dio_fx_transport.dart builds the path and core's
+  // FxRatesLoader reads its answer through FxTable.tryFromJson. The route answers
+  // `c.json(table)` — a VALUE, not a literal — so a `body` pin has nothing to
+  // parse on the server side; what holds the wire instead is the ONE shared
+  // vector both ends' tests read. This kind grades what that leaves free to drift:
+  // either test letting go of the vector, the transport no longer building the
+  // path, the released reader subscripting a key the vector's `response` does
+  // not carry, and a `response` key no client reads that nobody declared.
   {
     id: 'fx-latest',
-    kind: 'gap',
-    reason:
-      'NO TRANSPORT YET, AND IT IS A STATE RATHER THAN A CONSTRUCTION: `FxRatesSource` (packages/api_client) and its provider land with the first consumer, the converted totals of ST-I1 and the ST-D Home/Insights screens, so nothing ships uncalled. What stands in for a pin meanwhile is contracts/fx/latest.v1.example.json: services/platform/test/fx.test.ts asserts the Worker stores and serves exactly its `response`, and packages/core/test/money/fx_rates_test.dart reads the same `response` into FxTable.tryFromJson and converts with it — every key a Dart reader subscripts is held by both sides already.',
-    absentFromDart: '/v1/fx',
+    kind: 'vector',
+    vector: 'contracts/fx/latest.v1.example.json',
+    readers: [
+      // The Worker test asserts the route stores and serves exactly `response`.
+      { file: 'services/platform/test/fx.test.ts', through: 'VECTOR.response' },
+      // The core test reads the same `response` through the released reader.
+      { file: 'packages/core/test/money/fx_rates_test.dart', through: 'FxTable.tryFromJson(' },
+    ],
+    transport: { file: 'packages/api_client/lib/src/dio_fx_transport.dart', marker: "'$_base/v1/fx/latest'" },
+    client: { file: 'packages/core/lib/src/money/fx_rates.dart', member: 'static FxTable? tryFromJson(', reader: 'j' },
+    serverOnly: {
+      sourceUrl: 'the ECB page an attribution could link to; the app prints the source NAME and the date, and links nowhere.',
+      fetchedAt: "when the nightly run fetched the table, for support; the app dates a conversion by `asOf`, the ECB's own reference day.",
+    },
   },
   // ⏱ 2026-09-28 · ST-N1 — the four captcha-free native credential routes
   // (services/platform/src/routes/native-auth.ts). They were gaps until ST-T7b
@@ -1957,6 +1974,87 @@ for (const contract of WIRE_CONTRACTS) {
     if (pinned) {
       wirePinned++;
       ok(`wire ${contract.id} — ${contract.sdk}'s own wire, pinned at its base: ${contract.client.file} + ${contract.client.test}`);
+    }
+    continue;
+  }
+
+  // ── ⏱ 2026-10-01 · ONE SHARED VECTOR, READ BY BOTH ENDS (fx-latest) ─────────
+  // See the `fx-latest` row. Every limb below has a failing input in
+  // tooling/ci/test/analytics-contract.test.mjs.
+  if (contract.kind === 'vector') {
+    if (!has(contract.vector)) coverageLost(`${contract.id}: its vector ${contract.vector} does not exist.`);
+    let response = null;
+    try {
+      response = JSON.parse(read(contract.vector)).response;
+    } catch (e) {
+      coverageLost(`${contract.id}: ${contract.vector} does not parse as JSON (${e.message}).`);
+    }
+    if (!response || typeof response !== 'object' || Array.isArray(response) || Object.keys(response).length === 0) {
+      coverageLost(`${contract.id}: ${contract.vector} carries no \`response\` object, so there is no wire to compare.`);
+    }
+    const served = new Set(Object.keys(response));
+    let allOk = true;
+    for (const r of contract.readers) {
+      if (!has(r.file)) coverageLost(`${contract.id}: the vector's reader ${r.file} does not exist.`);
+      const code = stripSourceComments(read(r.file), r.file.endsWith('.ts') ? '.ts' : '.dart');
+      if (!code.includes(contract.vector)) {
+        allOk = false;
+        fail(
+          `${contract.id} — ${r.file} no longer reads ${contract.vector}. One side letting go of the shared vector ` +
+            'is the drift this pin exists for: the other side would keep passing against a shape nobody serves.',
+        );
+      } else if (!code.includes(r.through)) {
+        allOk = false;
+        fail(`${contract.id} — ${r.file} reads the vector but no longer through \`${r.through}\`, so it grades nothing the wire reaches.`);
+      }
+    }
+    if (!has(contract.transport.file)) coverageLost(`${contract.id}: the transport ${contract.transport.file} does not exist.`);
+    if (!stripSourceComments(read(contract.transport.file), '.dart').includes(contract.transport.marker)) {
+      allOk = false;
+      fail(`${contract.id} — ${contract.transport.file} no longer builds \`${contract.transport.marker}\`: the released client calls some other path.`);
+    }
+    if (!has(contract.client.file)) coverageLost(`${contract.id}: the client reader ${contract.client.file} does not exist.`);
+    const body = dartMemberBody(stripSourceComments(read(contract.client.file), '.dart'), contract.client.member);
+    if (body === null) {
+      coverageLost(`${contract.id}: ${contract.client.file} no longer contains \`${contract.client.member}\`.`);
+    }
+    // The wire keys are camelCase (`asOf`), which the snake_case `dartSubscripts`
+    // above does not read; the same shape, any identifier.
+    const reads = new Set(
+      [...(body ?? '').matchAll(new RegExp(`\\b${contract.client.reader}\\s*\\[\\s*'([A-Za-z_][A-Za-z0-9_]*)'\\s*\\]`, 'g'))].map((m) => m[1]),
+    );
+    if (reads.size === 0) {
+      coverageLost(`${contract.id}: \`${contract.client.member}\` subscripts no key off \`${contract.client.reader}\`, so the client half is empty.`);
+    }
+    const unserved = [...reads].filter((k) => !served.has(k)).sort();
+    if (unserved.length) {
+      allOk = false;
+      fail(
+        `${contract.id} — the released client READS key(s) the vector's \`response\` does not carry: ${unserved.join(', ')}. ` +
+          `(${contract.client.file} vs ${contract.vector}.) The Worker test serves exactly \`response\`, so a key outside it ` +
+          'is a key no server sends.',
+      );
+    }
+    const readButServerOnly = Object.keys(contract.serverOnly).filter((k) => reads.has(k)).sort();
+    if (readButServerOnly.length) {
+      allOk = false;
+      fail(`${contract.id} — key(s) declared SERVER-ONLY are READ by the released client: ${readButServerOnly.join(', ')}.`);
+    }
+    const stray = [...served].filter((k) => !reads.has(k) && !(k in contract.serverOnly)).sort();
+    if (stray.length) {
+      allOk = false;
+      fail(
+        `${contract.id} — the vector's \`response\` carries key(s) no client reads and that are not declared server-only: ` +
+          `${stray.join(', ')}. Read it, or declare why the client never needs it.`,
+      );
+    }
+    if (allOk) {
+      wirePinned++;
+      ok(
+        `wire ${contract.id} — pinned by the shared vector ${contract.vector}: read by ` +
+          `${contract.readers.map((r) => r.file).join(' + ')}; client reads {${[...reads].sort().join(', ')}}, ` +
+          `${Object.keys(contract.serverOnly).length} declared server-only`,
+      );
     }
     continue;
   }

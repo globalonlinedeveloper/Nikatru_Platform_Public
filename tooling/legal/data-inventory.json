@@ -848,7 +848,7 @@
       "kind": "d1-table",
       "name": "subscriptions",
       "personalData": true,
-      "holds": "The subscriptions a Subly user tracks — service name, cost and its currency, cadence, renewal and first-charge dates, lifecycle status with trial-end and cancelled-on dates, a catalogue key, a cancel link, reminder days, and the user's own labels: notes, how the charge reaches them (`rail`, `rail_holder` — user-typed, e.g. \"Google Pay · HDFC ••4471\", never read from a bank and never a full card or account number) and who they share it with (`shared_with`, a label, not an account). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. The columns after `updated_at` are 0003_subscription_model.sql's ([ADR 077] §5). `category_id` (0005) names the row's category by id.",
+      "holds": "The subscriptions a Subly user tracks — service name, cost and its currency, cadence, renewal and first-charge dates, lifecycle status with trial-end and cancelled-on dates, a catalogue key, a cancel link, reminder days, and the user's own labels: notes, how the charge reaches them (`rail`, `rail_holder` — user-typed, e.g. \"Google Pay · HDFC ••4471\", never read from a bank and never a full card or account number) and who they share it with (`shared_with`, a label, not an account). USER-ENTERED CONTENT about the person's own finances, keyed on their user id. The columns after `updated_at` are 0003_subscription_model.sql's ([ADR 077] §5). `category_id` (0005) names the row's category by id. `tags` (0007) holds the user's own free-text labels for the row (\"family\", \"work\").",
       "retention": {
         "kind": "keep",
         "reason": "This is the user's own data and the entire point of the app; it exists until they delete it or delete their account. The in-app deletion control exists in BOTH trees and is asserted — the `account-deletion-works` coverage key on the brick, and tooling/ci/assert-deletion-control.mjs over apps/subscriptiontracker with no exemption ([ADR 027]) — and since 2026-08-04 that control REACHES THESE ROWS. See `erasure` below. A REMOVED subscription is SOFT-deleted first (ST-E3, `deleted_at`): hidden from every list and reminder and restorable for 30 days, then purged with its payment_history and price_change rows by services/subscriptiontracker-api/src/routes/subscriptions.ts `purgeExpired`, which runs on that user's next list."
@@ -862,7 +862,8 @@
         "services/subscriptiontracker-api/migrations/0001_init.sql",
         "services/subscriptiontracker-api/src/routes/subscriptions.ts",
         "services/subscriptiontracker-api/migrations/0003_subscription_model.sql",
-        "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql"
+        "services/subscriptiontracker-api/migrations/0005_lifecycle_history_categories.sql",
+        "services/subscriptiontracker-api/migrations/0009_tags.sql"
       ],
       "disclosure": {
         "page": "privacy.html",

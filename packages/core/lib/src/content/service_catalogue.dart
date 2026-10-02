@@ -23,8 +23,12 @@
 /// | `svc.<id>.price.<ISO>` | OPTIONAL decimal major units, e.g. `"649.00"` |
 ///
 /// `facts` is `{id, category, cycle, cancel_url, manage_play,
-/// manage_appstore, notice_days, regions}`. Its `id` must equal the key's —
-/// that is what catches a record copied under the wrong key.
+/// manage_appstore, notice_days, regions}`, plus — pack v2 (ST-T9) — an
+/// `aliases` list of search-only names and an optional `logo` asset id. Both
+/// are optional HERE so a v1 pack still reads; the v2 producer always writes
+/// `aliases` (examples/service-catalogue/service-facts.schema.json). Its `id`
+/// must equal the key's — that is what catches a record copied under the
+/// wrong key.
 ///
 /// ## Currency codes — the decision
 ///
@@ -49,7 +53,8 @@ import 'content_pack.dart';
 /// "other" bucket that silently absorbs a typo.
 const Set<String> kServiceCategories = <String>{
   'ai', 'books', 'cloud', 'dating', 'education', 'entertainment', //
-  'fitness', 'food', 'gaming', 'music', 'news', 'productivity', 'shopping',
+  'fitness', 'food', 'gaming', 'music', 'news', 'productivity', 'shopping', //
+  'telecom',
 };
 
 /// Currencies a catalogue price may be written in — see the library doc for
@@ -91,6 +96,8 @@ class ServiceEntry {
     required this.appStoreManageUrl,
     required this.noticeDays,
     required this.regions,
+    this.aliases = const <String>[],
+    this.logo,
     Map<String, Money> prices = const <String, Money>{},
   }) : _prices = prices;
 
@@ -124,6 +131,14 @@ class ServiceEntry {
   /// everywhere.
   final Set<String> regions;
 
+  /// Other names a person searches this service by (lower case, never
+  /// shown): an old brand, a short form, the product inside a bundle.
+  final List<String> aliases;
+
+  /// The manifest asset id of the service's licensed mark, or null — the app
+  /// then draws its initials. Pack v2 ships none.
+  final String? logo;
+
   final Map<String, Money> _prices;
 
   /// The catalogue's price in [currencyCode], or null when the pack carries
@@ -135,6 +150,18 @@ class ServiceEntry {
   /// Whether this service is offered in [region] (`*` = everywhere).
   bool availableIn(String region) =>
       regions.contains('*') || regions.contains(region.toUpperCase());
+
+  /// Whether [query] (already trimmed and lower-cased) names this service:
+  /// a substring of its display name, its id read as words, or an alias.
+  bool _matches(String query) {
+    if (name.toLowerCase().contains(query)) return true;
+    if (id.replaceAll('_', ' ').contains(query)) return true;
+    if (id.replaceAll('_', '').contains(query.replaceAll(' ', ''))) return true;
+    for (final String a in aliases) {
+      if (a.contains(query)) return true;
+    }
+    return false;
+  }
 }
 
 /// The typed catalogue: every [ServiceEntry] the pack's index lists, in index
@@ -150,6 +177,45 @@ class ServiceCatalogue {
   List<ServiceEntry> forRegion(String region) => entries
       .where((ServiceEntry e) => e.availableIn(region))
       .toList(growable: false);
+
+  /// Every entry, the ones [region] reaches FIRST (ST-T9, AD-03): services
+  /// that name [region] explicitly, then the everywhere ones, then the rest —
+  /// each group in index order. A null [region] is index order, which the
+  /// producer already writes India-first.
+  List<ServiceEntry> orderedFor(String? region) {
+    if (region == null || region.isEmpty) return entries;
+    final String r = region.toUpperCase();
+    final List<ServiceEntry> local = <ServiceEntry>[];
+    final List<ServiceEntry> global = <ServiceEntry>[];
+    final List<ServiceEntry> rest = <ServiceEntry>[];
+    for (final ServiceEntry e in entries) {
+      if (e.regions.contains(r)) {
+        local.add(e);
+      } else if (e.regions.contains('*')) {
+        global.add(e);
+      } else {
+        rest.add(e);
+      }
+    }
+    return List<ServiceEntry>.unmodifiable(
+        <ServiceEntry>[...local, ...global, ...rest]);
+  }
+
+  /// The entries [query] names, offline, in [orderedFor] order with names
+  /// that START with the query ahead of names that merely contain it. A
+  /// blank query is [orderedFor] itself.
+  List<ServiceEntry> search(String query, {String? region}) {
+    final List<ServiceEntry> ordered = orderedFor(region);
+    final String q = query.trim().toLowerCase();
+    if (q.isEmpty) return ordered;
+    final List<ServiceEntry> prefix = <ServiceEntry>[];
+    final List<ServiceEntry> other = <ServiceEntry>[];
+    for (final ServiceEntry e in ordered) {
+      if (!e._matches(q)) continue;
+      (e.name.toLowerCase().startsWith(q) ? prefix : other).add(e);
+    }
+    return List<ServiceEntry>.unmodifiable(<ServiceEntry>[...prefix, ...other]);
+  }
 
   /// The entry with [id], or null.
   ServiceEntry? byId(String id) {
@@ -278,6 +344,21 @@ class ServiceCatalogue {
         }
         regions.add(r);
       }
+      final Object? aliasesRaw = f['aliases'];
+      final List<String> aliases = <String>[];
+      if (aliasesRaw != null) {
+        if (aliasesRaw is! List) return refuse('"$id" aliases is not a list');
+        for (final Object? a in aliasesRaw) {
+          if (a is! String || a.trim().isEmpty) {
+            return refuse('"$id" alias "$a" is not a non-empty string');
+          }
+          aliases.add(a.toLowerCase());
+        }
+      }
+      final Object? logo = f['logo'];
+      if (logo != null && (logo is! String || logo.isEmpty)) {
+        return refuse('"$id" logo "$logo" is not an asset id');
+      }
       out.add(ServiceEntry(
         id: id,
         name: name,
@@ -288,6 +369,8 @@ class ServiceCatalogue {
         appStoreManageUrl: appStore,
         noticeDays: notice,
         regions: Set<String>.unmodifiable(regions),
+        aliases: List<String>.unmodifiable(aliases),
+        logo: logo as String?,
         prices: Map<String, Money>.unmodifiable(
             prices[id] ?? const <String, Money>{}),
       ));

@@ -10,6 +10,11 @@ import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
 import 'widgets.dart' show openExternalUrl;
 
+// ST-T9 (EN-18): the after-sign-in setup is the chassis step list; the app
+// screen hands it this app's three steps. Reached through this file, the one
+// recorded import of the chassis (tooling/chassis-parity.json `adopted`).
+export 'package:nikatru_chassis_screens/firstrun/setup_steps_view.dart'
+    show SetupStep, SetupStepsView;
 // ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST — the device-integrity pieces
 // lib/core/device_integrity.dart calls, re-exported like the others here.
 export 'package:nikatru_chassis_screens/integrity/device_integrity_gate.dart'

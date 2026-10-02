@@ -1,7 +1,8 @@
 import 'package:dio/dio.dart';
 
 /// Raised when an API call fails — carries the HTTP [statusCode] (0 for a
-/// transport-level error) and a human-readable [message].
+/// transport-level error, [RestClient.malformedStatus] for a 2xx whose body
+/// did not decode) and a human-readable [message].
 class ApiException implements Exception {
   ApiException(
     this.statusCode,
@@ -94,6 +95,20 @@ class RestClient {
   final Future<void> Function()? _onUnauthorized;
   final Dio _dio;
 
+  /// The base URL every request is sent to.
+  String get baseUrl => _dio.options.baseUrl;
+
+  /// Points every LATER request at [baseUrl], in place.
+  ///
+  /// 🔴 WHY A CLIENT IS MOVED AND NOT REBUILT (HO-10). An app learns its API
+  /// base from a runtime config document that resolves AFTER the first frame.
+  /// Rebuilding the client on that resolve rebuilt everything that held it —
+  /// the repository, the list — and a cold launch read the list twice. A
+  /// request already in flight keeps the URL it was sent to.
+  void rebase(String baseUrl) {
+    if (_dio.options.baseUrl != baseUrl) _dio.options.baseUrl = baseUrl;
+  }
+
   /// GET [path] → the decoded JSON body.
   Future<dynamic> get(String path) => _send(() => _dio.get<dynamic>(path));
 
@@ -162,9 +177,21 @@ class RestClient {
     return _send(() => _dio.delete<dynamic>(path));
   }
 
+  /// The status a malformed 2xx is reported with: [ApiException.statusCode]
+  /// of an answer that arrived and could not be read.
+  ///
+  /// 🔴 A SERVER ERROR, NEVER 0 (SV-04). It was `ApiException(0, ...)`, and 0
+  /// is this client's transport marker — so every reader that asks the status
+  /// ("is this offline?") told the user to check their connection about a
+  /// server that had answered. 502 is HTTP's own name for "the upstream sent
+  /// an invalid response", and it is a 5xx, so a screen picks its
+  /// server-problem sentence without knowing this case exists.
+  static const int malformedStatus = 502;
+
   /// Map a successful response [body] through [parse], converting any
   /// parse/shape failure into an [ApiException] — so a malformed 2xx body
-  /// surfaces the same way as a transport error, not as a raw `TypeError`.
+  /// surfaces as a SERVER error ([malformedStatus], `malformed: true`), never
+  /// as a raw `TypeError` and never as a transport (offline) error.
   /// Domain clients wrap their `fromJson`/casts in this so callers can rely on a
   /// single `ApiException` failure contract. Transport errors are already mapped
   /// by the request methods above.
@@ -174,7 +201,11 @@ class RestClient {
     } on ApiException {
       rethrow;
     } catch (e) {
-      throw ApiException(0, 'Malformed response: $e', malformed: true);
+      throw ApiException(
+        malformedStatus,
+        'Malformed response: $e',
+        malformed: true,
+      );
     }
   }
 

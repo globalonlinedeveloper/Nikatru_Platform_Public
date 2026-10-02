@@ -63,7 +63,7 @@ licence exposure and make no marking claim they cannot support.
 
 ## The second recipe is a pack an app SHIPS
 
-`examples/service-catalogue/` (ST-X5) is the Subscription Tracker's service catalogue: 35 hand-authored
+`examples/service-catalogue/` (ST-X5) is the Subscription Tracker's service catalogue: 202 hand-authored (pack v2, ST-T9; 35 in v1)
 services, India-first plus global, in `en` and `ta` — each one's category, default cycle, cancel page,
 Play and App Store manage links, notice days and regions. Facts, not copy ([ADR 019]'s 🟢 tier), and no
 prices: a price enters only with the public page it was read from and the date it was read. Its

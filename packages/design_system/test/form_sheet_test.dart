@@ -117,23 +117,35 @@ Future<void> _open(
 void main() {
   group('AppFormSheet — per window class', () {
     for (final Size size in <Size>[kPhone, kTablet, kDesktop]) {
-      testWidgets('at ${size.width.toInt()}: capped at 640, action reachable', (
-        WidgetTester tester,
-      ) async {
-        await _open(tester, size);
-        expect(tester.takeException(), isNull);
-        final Rect sheet = tester.getRect(find.byType(AppFormSheet));
-        expect(sheet.width, math.min(size.width, 640));
-        expect(
-          sheet.height,
-          lessThanOrEqualTo(size.height * AppFormSheet.maxHeightFraction),
-        );
-        await tester.ensureVisible(find.byKey(const Key('submit')));
-        await tester.pumpAndSettle();
-        final Rect submit = tester.getRect(find.byKey(const Key('submit')));
-        expect(submit.bottom, lessThanOrEqualTo(size.height));
-        expect(submit.height, AppFormActions.height);
-      });
+      // ⏱ ST-T9 (AD-09, D6-6): from AppFormSheet.dialogMinWidth up the form
+      // is a dialog capped at dialogMaxWidth; below it, M3's 640 sheet cap.
+      final bool dialog = size.width >= AppFormSheet.dialogMinWidth;
+      testWidgets(
+        'at ${size.width.toInt()}: ${dialog ? 'a dialog capped at '
+                  '${AppFormSheet.dialogMaxWidth.toInt()}' : 'capped at 640'}, '
+        'action reachable',
+        (WidgetTester tester) async {
+          await _open(tester, size);
+          expect(tester.takeException(), isNull);
+          final Rect sheet = tester.getRect(find.byType(AppFormSheet));
+          expect(find.byType(Dialog), dialog ? findsOneWidget : findsNothing);
+          expect(
+            sheet.width,
+            dialog
+                ? lessThanOrEqualTo(AppFormSheet.dialogMaxWidth)
+                : math.min(size.width, 640),
+          );
+          expect(
+            sheet.height,
+            lessThanOrEqualTo(size.height * AppFormSheet.maxHeightFraction),
+          );
+          await tester.ensureVisible(find.byKey(const Key('submit')));
+          await tester.pumpAndSettle();
+          final Rect submit = tester.getRect(find.byKey(const Key('submit')));
+          expect(submit.bottom, lessThanOrEqualTo(size.height));
+          expect(submit.height, AppFormActions.height);
+        },
+      );
     }
 
     testWidgets('320 wide at a 2.0 text scale lays out without overflow', (
