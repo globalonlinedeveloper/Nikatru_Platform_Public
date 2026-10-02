@@ -79,6 +79,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { listDir } from './tree-walk.mjs';
 import { delegationOf as resolveChassisDelegation } from './chassis-delegation.mjs';
 import { MONEY_PROVIDERS } from './money-wiring.mjs';
+import { parseStoreListingChannels, updateExitFindings } from './update-exit.mjs';
 import { join, relative } from 'node:path';
 
 const repo = process.cwd();
@@ -340,6 +341,8 @@ const PLATFORM_CONFIG_DATA = 'services/platform/src/app-config-data.json';
 // define (or inherits the brick's `defaultValue`), so "equals the compile-time
 // default" is a question with one answer per channel, not one answer.
 const CHANNEL_REGISTER = 'tooling/channel-register.json';
+// …and the client's half of how each channel's wall exits (O-FORCE-UPDATE-VERSION-READ-UNPROVEN).
+const UPDATE_EXIT_DART = 'packages/core/lib/src/config/update_exit.dart';
 // The stamped Worker's half of G2. Only present on a needs_backend stamp; the
 // mustache section IS the directory name on disk, so this path resolves in the
 // brick source even though it vanishes from a client-only stamp.
@@ -759,14 +762,30 @@ function checkUpdateDestinationIsRepointable() {
   // with null served it opens the company home page instead of that store's
   // listing. A store channel going live is a reviewed event, and "what does the
   // wall open?" is a question that should be answered at exactly that moment.
-  const isDeferred = (d) => typeof d === 'object' && d !== null;
-  const liveNonWeb = channels
-    .filter((row) => row?.kind !== 'web' && (row?.served === true || !isDeferred(row?.deferral)))
-    .map((row) => ({
-      id: row?.id,
-      text: `${row?.id ?? '<unnamed row>'} (kind=${row?.kind ?? 'none'}, served=${row?.served === true}, ` +
-        `deferral=${isDeferred(row?.deferral) ? 'declared' : 'none'})`,
-    }));
+  // ⏱ 2026-10-01 · O-FORCE-UPDATE-VERSION-READ-UNPROVEN: the rule above is kept and WIDENED. A row
+  // is graded when it is live OR ARMED (`submittable` + a lane, channel-arming.mjs's definition), and
+  // by how its wall exits — see tooling/ci/update-exit.mjs, which owns the rules. The client half of
+  // "how its wall exits" is `kStoreListingChannels` in UPDATE_EXIT_DART, read here so the two cannot
+  // disagree about which channel opens a store listing.
+  let storeListing;
+  try {
+    storeListing = parseStoreListingChannels(readFileSync(join(repo, UPDATE_EXIT_DART), 'utf8'));
+  } catch (e) {
+    fail(`COVERAGE LOST — [10]D-8: ${UPDATE_EXIT_DART} unreadable: ${e.message}`);
+    return;
+  }
+  if (storeListing === null) {
+    fail(
+      `COVERAGE LOST — [10]D-8: no \`kStoreListingChannels\` set could be read out of ${UPDATE_EXIT_DART}, so ` +
+        'which channel may be served null (its wall opens the store listing) is unknown.',
+    );
+    return;
+  }
+  const unknownListing = [...storeListing].filter((id) => !channels.some((row) => row?.id === id));
+  if (unknownListing.length) {
+    fail(`[10]D-8: ${UPDATE_EXIT_DART} kStoreListingChannels names ${unknownListing.join(', ')}, which ${CHANNEL_REGISTER} does not declare.`);
+  }
+  const graded = new Set();
   let nullServed = 0;
   let compared = 0;
   for (const appId of apps) {
@@ -784,19 +803,13 @@ function checkUpdateDestinationIsRepointable() {
     }
     // PER CHANNEL (O-UPDATE-FLOOR-HAS-NO-CHANNEL): each channel is judged on the value IT is served.
     const served = servedByChannel(defaults, own, 'update_url', channels);
-    const nullLive = liveNonWeb.filter((row) => typeof served.get(row.id) !== 'string');
-    if (nullLive.length > 0) {
-      fail(
-        `[10]D-8: ${PLATFORM_CONFIG_DATA} serves '${appId}' an update_url of null while ` +
-          `${CHANNEL_REGISTER} carries ${nullLive.length} live non-web channel(s) — ${nullLive.map((r) => r.text).join('; ')}. ` +
-          'A channel is live here when it is `served: true` or when nothing defers it, and such a ' +
-          'channel has no store reload to fall back on: config `min_supported_version` → ' +
-          '`ForceUpdateGate` → `update_url` is the only way its users are ever told to update, and a ' +
-          'null destination leaves the wall opening the compiled-in fallback with no way to repoint ' +
-          "it. Serve a real update_url to that channel, or record the channel's deferral in the " +
-          'register — live and null cannot both be true.',
-      );
-    }
+    let snapName = null;
+    try {
+      snapName = readFileSync(join(repo, 'apps', appId, 'store', 'linux-snap', 'snap-name.txt'), 'utf8').trim() || null;
+    } catch { /* absent: update-exit.mjs reports COVERAGE LOST only if a snap row is graded */ }
+    const verdict = updateExitFindings({ rows: channels, served, appId, storeListing, snapName });
+    for (const line of verdict.fail) fail(line);
+    for (const g of verdict.graded) graded.add(g);
     if ([...served.values()].some((v) => typeof v !== 'string')) nullServed++;
     for (const [id, base] of compiledByChannel) {
       const value = served.get(id);
@@ -819,9 +832,9 @@ function checkUpdateDestinationIsRepointable() {
   // a build failure above.
   ok(
     `[10]D-8 update destination: ${compiledByChannel.size} channel(s) × ${apps.length} served app(s) — ` +
-      `${compared} comparison(s), ${nullServed} app(s) serve null, ${liveNonWeb.length} live non-web ` +
-      `channel(s) (the wall keeps its compiled-in fallback, tolerated only while that second number ` +
-      `is 0 — derived from ${CHANNEL_REGISTER}'s \`served\`/\`deferral\`, not asserted here)` +
+      `${compared} comparison(s), ${nullServed} app(s) serve null, ${graded.size} live non-web channel(s) ` +
+      `(served, armed or undeferred), each graded by how its wall exits [${[...graded].join('; ')}] — derived from ` +
+      `${CHANNEL_REGISTER}'s \`served\`/\`submittable\`/\`lane\`/\`deferral\` and ${UPDATE_EXIT_DART}, not asserted here` +
       `${probeUrl ? `; the probe injects '${probeUrl}', distinct from every channel's default` : ''}`,
   );
 }
@@ -1483,10 +1496,30 @@ const REQUIRED_COVERAGE = [
     group: /group\(\s*'property: update-url-resolved-from-config'/,
     sources: [
       { file: APP_ROOT, re: /ref\.watch\(appConfigProvider\)\.value\?\.updateUrl\s*\?\?/, what: 'app.dart must RESOLVE the destination at runtime and fall back to the define — dropping the runtime half restores the circular kill-switch, and dropping the fallback leaves the button with nowhere to go while config is unresolved' },
-      { file: APP_ROOT, re: /onUpdate:\s*\(\)\s*=>\s*_openUpdate\(updateUrl\)/, what: 'the BUTTON must be wired to the resolved value — wiring it to AppConfig.updateUrl leaves the resolution above computed and unused, which reads as a working feature in review' },
+      { file: APP_ROOT, re: /onUpdate:\s*\(\)\s*=>\s*_openUpdate\((?:ref,\s*)?updateUrl\)/, what: 'the BUTTON must be wired to the resolved value (`ref` beside it reaches the store-listing exit, O-FORCE-UPDATE-VERSION-READ-UNPROVEN) — wiring it to AppConfig.updateUrl leaves the resolution above computed and unused, which reads as a working feature in review' },
       { file: PLATFORM_TYPES, re: /^\s*update_url:\s*string \| null;/m, what: 'the wire contract must carry the key, or there is nothing for the client to resolve and the runtime branch is unreachable in production' },
     ],
     why: 'a force-update wall whose destination is frozen at build time cannot be repointed by the builds that need it most, which is the whole reason the kill-switch exists',
+  },
+  {
+    // ── [pipeline 10]D-8 · A FLOOR RAISED AFTER LAUNCH WALLS THE RUNNING APP ──
+    //
+    // O-FORCE-UPDATE-VERSION-READ-UNPROVEN, folding O-WEB-KILL-SWITCH-LAUNCH-ONLY.
+    // `appConfigProvider` resolved once, at launch, so a raised floor reached a
+    // web tab only when it was reopened. The anchor is the RE-READ: the brick
+    // hands `NikatruApp` the config invalidation as `onConfigRefresh`, which the
+    // chassis runs on a resume and on a timer (`listenForConfigRefresh`). The
+    // alternation is apps/subscriptiontracker's shape — it predates the shell
+    // and mounts the same listener with `refreshConfigWhileMounted`; it is
+    // graded only for its floor (EXEMPT_APPS). The property raises the served floor after launch
+    // and requires the wall on resume and on the timer. Red control, run on a
+    // real stamp: `onConfigRefresh: () {}` fails all three cases.
+    key: 'floor-rereads-after-launch',
+    group: /group\(\s*'property: floor-rereads-after-launch'/,
+    sources: [
+      { file: APP_ROOT, re: /(?:onConfigRefresh:|refreshConfigWhileMounted\(\s*onRefresh:)\s*\(\)\s*=>\s*ref\.invalidate\(appConfigProvider\)/, what: 'the app root must re-read the config on resume and on a timer — without it a floor raised after launch never walls a running app, and a web tab is the app that never relaunches' },
+    ],
+    why: 'a kill-switch read once at launch is off for every session already open, which on web is nearly all of them',
   },
   {
     key: 'legal-reacceptance-gated',

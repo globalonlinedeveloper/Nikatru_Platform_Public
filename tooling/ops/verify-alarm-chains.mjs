@@ -49,6 +49,13 @@
 // box, which is the very single point of failure E-9b is about. It becomes
 // automatable when GLITCHTIP_TOKEN is a repository secret (OWNER_QUEUE S-8).
 // Until then it is a command, and SESSION_BOOTSTRAP step 7 is where it is run.
+// ⏱ CORRECTED 2026-10-01 (PB-24), the paragraph above left standing: it has been
+// stale since S-8 closed (GLITCHTIP_TOKEN became a repository secret 2026-08-11,
+// docs/ci/ops-watch.md). This runs in .github/workflows/ops-watch.yml's
+// `glitchtip` job on every scheduled and dispatched run — still never in a PR's
+// CI, so the reasoning about builds holds. "The Oracle box" is Box B since
+// 2026-09-02. And a Box B outage is no longer delivered only from Box B: the
+// platform Worker mails it itself (alarm-chains.json `ownerPage`).
 //
 // Usage:
 //   GLITCHTIP_TOKEN=…  node tooling/ops/verify-alarm-chains.mjs
@@ -58,7 +65,8 @@
 // committed, echoed or printed. Nothing below ever prints its value.
 //
 // Exit 0 = every chain resolves to a recipient and has been watched delivering.
-// Exit 1 = a broken chain.
+// Exit 1 = a broken chain — and, since 2026-10-01 (PB-16), a delivery observation
+//          older than OBSERVATION_MAX_AGE_DAYS (tooling/ops/monitor-register.mjs).
 // Exit 2 = no token supplied, or the API could not be reached, authorised or read
 //          (those were exit 1 until 2026-09-11) — a DIFFERENT exit code from "broken" on purpose,
 //          so "I could not look" can never be read as "I looked and it was fine".
@@ -79,7 +87,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifyThrown, transientLook, isTransientStatus, isSafeMethod, retryAfterMs, readWithBoundedRetry } from './bounded-retry.mjs';
-import { REGISTER_REL, expectedMonitors } from './monitor-register.mjs';
+import { REGISTER_REL, expectedMonitors, observationAgeProblems, OBSERVATION_MAX_AGE_DAYS } from './monitor-register.mjs';
 import { CredentialOriginRefused, credentialOrigin, GLITCHTIP_ORIGIN } from './credential-origin.mjs';
 
 // 🔴 `process.exit()` IS BANNED IN THIS FILE, AND IT IS A BUG FIX. Calling it
@@ -120,6 +128,16 @@ try {
 } catch (e) {
   if (!(e instanceof CredentialOriginRefused)) throw e;
   console.error(`⬜ GLITCHTIP_URL: ${e.message}. The live instance was NOT contacted — exit 2.`);
+  process.exit(2); // safe: this runs BEFORE any fetch, so no undici handle is open
+}
+
+// ⏱ 2026-10-01 (PB-16) — the day limb C ages observations against.
+// `ALARM_CHAINS_TODAY` exists for the tests' dated cases only, the convention
+// assert-channel-register.mjs set with CHANNEL_REGISTER_TODAY; malformed is exit 2
+// before any request.
+const TODAY = process.env.ALARM_CHAINS_TODAY ?? new Date().toISOString().slice(0, 10);
+if (!/^\d{4}-\d{2}-\d{2}$/.test(TODAY)) {
+  console.error(`⬜ ALARM_CHAINS_TODAY is ${JSON.stringify(TODAY)}, not YYYY-MM-DD, so no observation could be aged. Exit 2.`);
   process.exit(2); // safe: this runs BEFORE any fetch, so no undici handle is open
 }
 
@@ -398,6 +416,9 @@ async function check() {
       );
     }
   }
+  // ⏱ 2026-10-01 (PB-16) — …and watched RECENTLY. A record past the ceiling is
+  // history, not evidence: see observationAgeProblems.
+  problems.push(...observationAgeProblems(m.chainsObserved, hosting, TODAY));
 
   // Print what was covered, not just what failed. A check whose only output is
   // silence teaches the next reader nothing about its reach.
@@ -564,6 +585,17 @@ async function selfTest() {
     m.chainsObserved.ops = { date: '2026-08-05', evidence: '' };
     writeFileSync(LEDGER, JSON.stringify(m, null, 2));
     await expectRed('limb C: a dated observation carrying no evidence is caught');
+  } finally {
+    writeFileSync(LEDGER, original);
+  }
+
+  // C3 — ⏱ 2026-10-01 (PB-16): a real delivery record, one day past the age ceiling.
+  try {
+    const m = JSON.parse(original);
+    const old = new Date(Date.parse(`${TODAY}T00:00:00Z`) - (OBSERVATION_MAX_AGE_DAYS + 1) * 86_400_000).toISOString().slice(0, 10);
+    m.chainsObserved.ops = { ...m.chainsObserved.ops, date: old };
+    writeFileSync(LEDGER, JSON.stringify(m, null, 2));
+    await expectRed(`limb C: an observation older than ${OBSERVATION_MAX_AGE_DAYS} days is caught`);
   } finally {
     writeFileSync(LEDGER, original);
   }

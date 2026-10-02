@@ -1413,6 +1413,78 @@ async function deleteAllData() {
 }
 
 /* ---------------- message router ---------------- */
+/* WHO IS ALLOWED TO TALK TO THIS ROUTER (O-FULLSHOT-ROUTER-TRUSTS-ANY-SENDER).
+
+   senderIsOurs and tabIdFor are templates/tool/background.js's, ported as they
+   stand. Until they were, this router checked no sender at all, and FullShot is
+   the case the template's comment predicts: it injects content scripts into
+   pages it does not control, and holds an optional <all_urls> grant. So
+   DATA_DELETE_ALL, a BATCH_START url list the queue never re-validates, and a
+   START_CAPTURE of any tabId were all honoured from inside an arbitrary page.
+
+     sender.id      the extension that sent it. The browser sets it; a page cannot.
+     sender.url     for an extension page it must be under our own origin.
+     sender.tab     when the sender IS a tab, the tab is derived, never claimed.
+
+   Refused senders are not answered at all. A refusal that answers is a probe
+   that succeeded. */
+function senderIsOurs(sender) {
+  if (!sender) return false;
+  // A message from one of our own pages or our own content scripts always
+  // carries our id. Anything else is somebody else's extension.
+  if (sender.id !== chrome.runtime.id) return false;
+  // An extension PAGE additionally has to be one of ours. A content script's
+  // sender.url is the page's, so this only applies when there is no tab.
+  if (!sender.tab && sender.url) {
+    let base = '';
+    try { base = chrome.runtime.getURL(''); } catch (_) { base = ''; }
+    if (base && String(sender.url).indexOf(base) !== 0) return false;
+  }
+  return true;
+}
+
+/* Which tab a case is allowed to act on. When the sender IS a tab, that tab is
+   the answer and msg.tabId is ignored — a content script cannot nominate a
+   different tab. Only an extension page (no sender.tab) may name one, because
+   an extension page is us. */
+function tabIdFor(msg, sender) {
+  if (sender && sender.tab && sender.tab.id != null) return sender.tab.id;
+  return msg && msg.tabId != null ? msg.tabId : null;
+}
+
+/* THE PART THE TEMPLATE DOES NOT NEED YET AND FULLSHOT DOES. senderIsOurs()
+   passes our own content scripts — they carry our id — and a content script is
+   exactly the context a hostile page shares a renderer with. So the types only
+   our PAGES send (popup, options, batch) are refused from anything that is not
+   one: a sender whose url is under our own origin. A content script's url is
+   the page's, and no content script runs on an extension page, so this holds
+   whether or not the page sits in a tab (options_page and batch.html both do).
+   It fails closed: no readable base, no page.
+
+   Logged as a WARNING, not an error, on purpose. console.error in this worker
+   means "a failure the person is also told about", and test/background-sim
+   holds every one to that; a refused sender is the guard working, the person
+   did nothing, and telling anybody — the page included — is the probe. */
+const PAGE_ONLY = new Set([
+  'BATCH_START', 'DIAGNOSTIC_BUNDLE', 'DATA_STATUS', 'DATA_SWEEP', 'DATA_DELETE_ALL', 'START_CAPTURE'
+]);
+function senderIsOurPage(sender) {
+  let base = '';
+  try { base = chrome.runtime.getURL(''); } catch (_) { base = ''; }
+  return !!(base && sender && sender.url && String(sender.url).indexOf(base) === 0);
+}
+function senderMayAsk(msg, sender) {
+  if (!senderIsOurs(sender)) {
+    console.warn('FullShot refused a message from a foreign sender:', sender && sender.id);
+    return false;
+  }
+  const type = msg && msg.type;
+  if (PAGE_ONLY.has(type) && !senderIsOurPage(sender)) {
+    console.warn('FullShot refused a page-only message from outside its pages:', type);
+    return false;
+  }
+  return true;
+}
 
 /* Is `sender` one of this extension's own pages (the popup, an options or
    result page) — never a content script, whose sender.url is the web page's? */
@@ -1424,6 +1496,7 @@ function fromOwnPage(sender) {
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, respond) => {
+  if (!senderMayAsk(msg, sender)) return false;   // no answer at all, and the channel is not held open
   /* The note is one surface, this is the other: whatever the router answers with
      goes on screen in the popup as it stands (popup/popup.js:72), and some of
      those answers are built out of a raw exception. One wrapper here means no
@@ -1514,7 +1587,8 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
         }
 
         case 'START_CAPTURE': {
-          const tab = await chrome.tabs.get(msg.tabId);
+          // tabIdFor, not msg.tabId: a page that IS a tab captures itself.
+          const tab = await chrome.tabs.get(tabIdFor(msg, sender));
           if ((msg.startDelay || 0) > 0) {
             /* THE ANSWER COMES EARLY BUT NOT BLIND (R-20). The popup must not be
                held open through a three-second countdown, which is why this arm

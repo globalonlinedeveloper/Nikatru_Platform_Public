@@ -92,7 +92,15 @@
       "workers.cronTriggersPerAccount's `value` is the Workers Paid 250 (the plan read live by the parent",
       "on 2026-09-24 about 07:55Z), adopted because the hourly stuck-run cron is a sixth trigger. Every",
       "OTHER row's `value` is still the FREE number, so the sentence above now holds for every row but",
-      "that one. `verifiedOn` is untouched: the vendor page was not re-read."
+      "that one. `verifiedOn` is untouched: the vendor page was not re-read.",
+      "",
+      "⏱ APPENDED 2026-10-01 (O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED): FIVE MORE ROWS CARRY THE PAID NUMBER,",
+      "adopted row by row, each re-read from the vendor page that day: d1.queriesPerInvocation 50 -> 1,000,",
+      "workers.subrequestsToCloudflareServices 1,000 -> 10,000, workers.externalSubrequests 50 -> 10,000,",
+      "d1.maxDatabaseSize 500 MB -> 10 GB, d1.storagePerAccount 5 GB -> 1 TB. NOT adopted: d1.databasesPerAccount,",
+      "for the [ADR 020] reason above (its own note says so). Rows whose paidValue is null or equal to the Free",
+      "value had nothing to adopt. So the sentence 'every OTHER row's value is still the FREE number' now holds only",
+      "for d1.databasesPerAccount among the rows with a distinct paid magnitude."
     ],
     "note": "Cloudflare publishes Free and Paid side by side on the same pages. Where both exist, the row records the FREE value in `value` and the paid one in `paidValue`, so an upgrade is a one-line edit rather than a re-research."
   },
@@ -203,7 +211,7 @@
   "ceilings": [
     {
       "id": "d1.queriesPerInvocation",
-      "value": 50,
+      "value": 1000,
       "paidValue": 1000,
       "unit": "queries",
       "scope": "per-invocation",
@@ -214,9 +222,9 @@
       ],
       "source": "https://developers.cloudflare.com/d1/platform/limits/",
       "sourceText": "Queries per Worker invocation: 1000 (Workers Paid) / 50 (Free)",
-      "verifiedOn": "2026-08-01",
+      "verifiedOn": "2026-10-01",
       "ambiguity": "🔴 UNRESOLVED, AND IT IS THE ARITHMETIC THAT MATTERS: the docs do NOT state whether a `D1Database.batch([s1..sN])` spends ONE query or N. The limits page states the 50 without qualifying batches; the Workers Binding API page for `batch()` describes it purely as a latency optimisation and never mentions a quota; the D1 pricing page mentions batches only for ROW counting. Neither reading can be cited. Every derivation from this row therefore takes the WORST-CASE reading — one statement = one query — because the other direction fails only in production, on the shared database every app depends on. Resolving it needs miniflare/`wrangler dev` against real D1 or a live probe; until then this sentence is the honest state and the caps below are conservative on purpose.",
-      "note": "Do NOT confuse this with the Workers subrequest limit. That is a separate, differently-sourced ceiling (workers.subrequestsToCloudflareServices, 1,000 on Free) and citing it as a rebuttal to the 50 is wrong: the 50 is D1-specific."
+      "note": "Do NOT confuse this with the Workers subrequest limit. That is a separate, differently-sourced ceiling (workers.subrequestsToCloudflareServices, 1,000 on Free) and citing it as a rebuttal to the 50 is wrong: the 50 is D1-specific. ⏱ APPENDED 2026-10-01 (O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED): `value` moved 50 -> 1000, this row's recorded `paidValue`, because the account is on Workers Paid (planOfRecord.cloudflare) and the per-firing statement sums in services/platform/test/scheduled-crons.test.ts are compared against this row. The vendor page was RE-READ for this edit on 2026-10-01 (its markdown at https://developers.cloudflare.com/d1/platform/limits/index.md), so `verifiedOn` moved with it. Every cap annotated `@ceiling d1.queriesPerInvocation lte` is now checked against 1,000; MAX_ERASURE_RETRIES_PER_RUN and MAX_REDERIVE_PER_RUN came DOWN in the same change, because their measured per-item costs passed 1,000 even alone."
     },
     {
       "id": "d1.databasesPerAccount",
@@ -233,11 +241,11 @@
       "sourceText": "Databases per account: 50,000 (Workers Paid) / 10 (Free)",
       "verifiedOn": "2026-08-01",
       "ambiguity": "None. The count is unambiguous and is checked against the deployed configs by limb 5.",
-      "note": "THIS is why an app's own backend is OPT-IN rather than the default ([ADR 020]). platform_db is one of the ten, so the portfolio can stand up NINE per-app databases on Free before the eleventh app is refused — and the brick's `{{app_id}}_db` means every backend stamp spends one."
+      "note": "THIS is why an app's own backend is OPT-IN rather than the default ([ADR 020]). platform_db is one of the ten, so the portfolio can stand up NINE per-app databases on Free before the eleventh app is refused — and the brick's `{{app_id}}_db` means every backend stamp spends one. ⏱ 2026-10-01 (O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED): DELIBERATELY NOT ADOPTED when five sibling rows took their Paid value. This number is the recorded reason for [ADR 020]'s client-only default (planOfRecord.changedNote: 'Revisiting it is an ADR, not an edit'), so moving it is that ADR's decision, not a ceilings edit."
     },
     {
       "id": "d1.maxDatabaseSize",
-      "value": 524288000,
+      "value": 10737418240,
       "paidValue": 10737418240,
       "unit": "bytes",
       "scope": "per-database",
@@ -248,13 +256,13 @@
       ],
       "source": "https://developers.cloudflare.com/d1/platform/limits/",
       "sourceText": "Maximum database size: 10 GB (Workers Paid) / 500 MB (Free)",
-      "verifiedOn": "2026-08-01",
+      "verifiedOn": "2026-10-01",
       "ambiguity": "None in the number. What IS unresolved is whether deleting rows RECLAIMS the space it counts — `cloudflare/workerd#1618` reports it does not, and the limits and pricing pages are both silent. That is [4]B-7's reclamation drill, not this row's business; recorded here so nobody derives a retention rule from this number believing deletion moves it.",
-      "note": "500 MB × 10^6 is decimal, not 2^29. Recorded in BYTES so the comparison is exact; Cloudflare writes '500 MB' and this file takes the binary reading (500 × 1024 × 1024 = 524,288,000) deliberately, because it is the SMALLER of the two candidate values and a ceiling read too generously is a ceiling that does not bind."
+      "note": "500 MB × 10^6 is decimal, not 2^29. Recorded in BYTES so the comparison is exact; Cloudflare writes '500 MB' and this file takes the binary reading (500 × 1024 × 1024 = 524,288,000) deliberately, because it is the SMALLER of the two candidate values and a ceiling read too generously is a ceiling that does not bind. ⏱ APPENDED 2026-10-01 (O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED): `value` moved 524288000 -> 10737418240, this row's recorded `paidValue`, because the account is on Workers Paid (planOfRecord.cloudflare) and the per-firing statement sums in services/platform/test/scheduled-crons.test.ts are compared against this row. The vendor page was RE-READ for this edit on 2026-10-01 (its markdown at https://developers.cloudflare.com/d1/platform/limits/index.md), so `verifiedOn` moved with it. The binary reading is kept for the same reason the note gives for 500 MB: 10 x 1024^3 is the smaller candidate."
     },
     {
       "id": "d1.storagePerAccount",
-      "value": 5368709120,
+      "value": 1099511627776,
       "paidValue": 1099511627776,
       "unit": "bytes",
       "scope": "per-account",
@@ -265,9 +273,9 @@
       ],
       "source": "https://developers.cloudflare.com/d1/platform/limits/",
       "sourceText": "Maximum storage per account: 1 TB (Workers Paid) / 5 GB (Free)",
-      "verifiedOn": "2026-08-01",
+      "verifiedOn": "2026-10-01",
       "ambiguity": "None.",
-      "note": "🔴 THIS IS THE CEILING THAT BINDS FIRST AT SCALE, and it is the arithmetic B-7 turns on. 5 GB across the whole account divided by a 50-app portfolio is ~100 MB per database — FIVE TIMES TIGHTER than the 500 MB per-database limit above. So splitting `events` onto its own database protects the per-database ceiling while doing nothing at all for this one; only a retention rule bounds this. That is exactly why the owner's 2026-07-27 decision was BOTH, and neither substitutes for the other."
+      "note": "🔴 THIS IS THE CEILING THAT BINDS FIRST AT SCALE, and it is the arithmetic B-7 turns on. 5 GB across the whole account divided by a 50-app portfolio is ~100 MB per database — FIVE TIMES TIGHTER than the 500 MB per-database limit above. So splitting `events` onto its own database protects the per-database ceiling while doing nothing at all for this one; only a retention rule bounds this. That is exactly why the owner's 2026-07-27 decision was BOTH, and neither substitutes for the other. ⏱ APPENDED 2026-10-01 (O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED): `value` moved 5368709120 -> 1099511627776, this row's recorded `paidValue`, because the account is on Workers Paid (planOfRecord.cloudflare) and the per-firing statement sums in services/platform/test/scheduled-crons.test.ts are compared against this row. The vendor page was RE-READ for this edit on 2026-10-01 (its markdown at https://developers.cloudflare.com/d1/platform/limits/index.md), so `verifiedOn` moved with it."
     },
     {
       "id": "d1.rowsWrittenPerDay",
@@ -319,7 +327,7 @@
       "sourceText": "Reads: 100,000 reads per day (Free) / Unlimited (Paid)",
       "verifiedOn": "2026-08-01",
       "ambiguity": "None in the number. `paidValue: null` here means UNLIMITED on paid, which is what the page says — it does not mean unsourced; a row is only treated as unsourced when `value` itself is null.",
-      "note": "Shared by EVERY app's launch path (config resolution) and every authenticated request (the JWKS warm cache). The 300s edge cache on GET /config/:app is what keeps this off the floor — but the query string is part of the cache key, so `?cb=<random>` misses deliberately and unboundedly. CONFIG_CEILING_LIMITER is the bound on that. ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS: 🔴 SESSION_REVOKED IS NOW THE LARGEST READER — every authenticated request on every Worker reads `rev:<sub>` once, after the token verifies, with NO cacheTtl and NO per-isolate memo (a cached \"not revoked\" would re-admit a signed-out token for the cache's life), and a get of an absent key is assumed to count as a read. On the free plan that would leave roughly (100,000 − config and JWKS reads) authenticated requests a day, portfolio-wide; the account is on Workers Paid since 2026-09-03 (`cloudflare: workers-paid` in this file), where this row is UNLIMITED (`paidValue: null`), so there is no floor to reach and the cost is billed reads. NOT MEASURED — the first week's KV read count after deploy is a dashboard read at this row's `where`, and a cache that re-admits revoked sessions is never the answer to it."
+      "note": "Shared by EVERY app's launch path (config resolution) and every authenticated request (the JWKS warm cache). The 300s edge cache on GET /config/:app is what keeps this off the floor — but the query string is part of the cache key, so `?cb=<random>` misses deliberately and unboundedly. CONFIG_CEILING_LIMITER is the bound on that. ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS: 🔴 SESSION_REVOKED IS NOW THE LARGEST READER — every authenticated request on every Worker reads `rev:<sub>` once, after the token verifies, with NO cacheTtl and NO per-isolate memo (a cached \"not revoked\" would re-admit a signed-out token for the cache's life), and a get of an absent key is assumed to count as a read. On the free plan that would leave roughly (100,000 − config and JWKS reads) authenticated requests a day, portfolio-wide; the account is on Workers Paid since 2026-09-03 (`cloudflare: workers-paid` in this file), where this row is UNLIMITED (`paidValue: null`), so there is no floor to reach and the cost is billed reads. NOT MEASURED — the first week's KV read count after deploy is a dashboard read at this row's `where`, and a cache that re-admits revoked sessions is never the answer to it. ⏱ 2026-10-01 (O-WORKER-RESPONSES-NOT-EDGE-CACHED): 'the 300s edge cache on GET /config/:app' DID NOT EXIST until this date — a custom-domain Worker runs in front of the CDN cache, and two consecutive GETs measured that day carried no `cf-cache-status` and no `age`. The route (and GET /v1/fx/latest) now call the Cache API themselves (services/platform/src/lib/edge-cache.ts), keyed on the path plus `?channel=` only, so `?cb=<random>` no longer misses."
     },
     {
       "id": "kv.writesPerDay",
@@ -447,7 +455,7 @@
     },
     {
       "id": "workers.subrequestsToCloudflareServices",
-      "value": 1000,
+      "value": 10000,
       "paidValue": 10000,
       "unit": "subrequests",
       "scope": "per-invocation",
@@ -459,14 +467,14 @@
         "JWKS_CACHE"
       ],
       "source": "https://developers.cloudflare.com/workers/platform/limits/",
-      "sourceText": "Workers on the free plan remain limited to 50 external subrequests and 1,000 subrequests to Cloudflare services per invocation.",
-      "verifiedOn": "2026-08-01",
+      "sourceText": "Subrequests to internal services: 1,000 (Free) / Matches configured limit (default 10,000) (Paid)",
+      "verifiedOn": "2026-10-01",
       "ambiguity": "None in the number, but see the note — this row is here to be DISTINGUISHED from d1.queriesPerInvocation, not to be derived from.",
-      "note": "⚠️ DO NOT DERIVE A D1 CAP FROM THIS. A D1 query IS a Cloudflare-service subrequest, so both ceilings apply and the SMALLER one binds: 50, not 1,000. Citing the 1,000 to justify a batch of 100 has been the wrong answer twice in this corpus, which is why the two rows sit next to each other with this sentence between them."
+      "note": "⚠️ DO NOT DERIVE A D1 CAP FROM THIS. A D1 query IS a Cloudflare-service subrequest, so both ceilings apply and the SMALLER one binds: 50, not 1,000. Citing the 1,000 to justify a batch of 100 has been the wrong answer twice in this corpus, which is why the two rows sit next to each other with this sentence between them. ⏱ APPENDED 2026-10-01 (O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED): `value` moved 1000 -> 10000, this row's recorded `paidValue`, because the account is on Workers Paid (planOfRecord.cloudflare) and the per-firing statement sums in services/platform/test/scheduled-crons.test.ts are compared against this row. The vendor page was RE-READ for this edit on 2026-10-01 (its markdown at https://developers.cloudflare.com/workers/platform/limits/index.md), so `verifiedOn` moved with it. ⚠️ The note's rule above still binds: a D1 query is also a Cloudflare-service subrequest, so for D1 the SMALLER of the two rows binds — now 1,000 (d1.queriesPerInvocation), not 10,000."
     },
     {
       "id": "workers.externalSubrequests",
-      "value": 50,
+      "value": 10000,
       "paidValue": 10000,
       "unit": "subrequests",
       "scope": "per-invocation",
@@ -474,10 +482,10 @@
         "triggers.crons"
       ],
       "source": "https://developers.cloudflare.com/workers/platform/limits/",
-      "sourceText": "Subrequests: 50/request (Free) / 10,000 (up to 10M) (Paid)",
-      "verifiedOn": "2026-08-01",
+      "sourceText": "Subrequests per invocation: 50 (Free) / 10,000 (up to 10M) (Paid)",
+      "verifiedOn": "2026-10-01",
       "ambiguity": "None.",
-      "note": "Binds the nightly scheduler's Supabase keep-alive fan-out: every project URL in SUPABASE_KEEPALIVE_URLS is one external `fetch`. At one identity project today this is nowhere near the limit; at 50 it would be the ceiling that stops the fan-out, not D1."
+      "note": "Binds the nightly scheduler's Supabase keep-alive fan-out: every project URL in SUPABASE_KEEPALIVE_URLS is one external `fetch`. At one identity project today this is nowhere near the limit; at 50 it would be the ceiling that stops the fan-out, not D1. ⏱ APPENDED 2026-10-01 (O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED): `value` moved 50 -> 10000, this row's recorded `paidValue`, because the account is on Workers Paid (planOfRecord.cloudflare) and the per-firing statement sums in services/platform/test/scheduled-crons.test.ts are compared against this row. The vendor page was RE-READ for this edit on 2026-10-01 (its markdown at https://developers.cloudflare.com/workers/platform/limits/index.md), so `verifiedOn` moved with it."
     },
     {
       "id": "ratelimit.allowedPeriods",

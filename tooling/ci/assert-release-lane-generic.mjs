@@ -527,6 +527,18 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'tooling/ops/register.json. [ADR 067] decision 4.',
   ],
   [
+    // ⏱ 2026-10-02 · the same reason as codeql.yml's, restated: this map is read
+    // one entry at a time. time-travel.yml re-runs suites other lanes own; the
+    // stamped Worker it tests is the brick's `probeapi` fixture, not a workspace app.
+    'time-travel.yml',
+    'runs every unit\'s existing test suites weekly with the clock moved forward (NIKATRU_TEST_NOW), so a ' +
+      'date fuse fires there and not on every pull request. It builds no app, produces no release artefact ' +
+      'and names no workspace app id: the one stamped Worker it tests is the brick\'s `probeapi` fixture. ' +
+      'R-1 quantifies over the workspace APP set, so grading it would add a lane to the denominator that no ' +
+      'change could ever move. Owned by stage 14 ops through `duty.freshness.time-travel` in ' +
+      'tooling/ops/register.json (page-only). [ADR 067] decision 4.',
+  ],
+  [
     // Same reasoning as codeql.yml immediately above, restated rather than
     // cross-referenced: a classification that points at a neighbour is one that
     // outlives the neighbour's deletion, and this map is read one entry at a
