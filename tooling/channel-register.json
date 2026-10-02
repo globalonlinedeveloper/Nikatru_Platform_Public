@@ -1351,7 +1351,13 @@
       "every environment only when its row says so. The warning above still holds: this records where a",
       "credential is MEANT to live and holds the workflows to it; where GitHub actually stores the value",
       "is an owner setting, read back by listing secret names, never by the guard. Moving a credential",
-      "into an environment is a one-field edit here, and every job that still reads it outside goes red."
+      "into an environment is a one-field edit here, and every job that still reads it outside goes red.",
+      "⏱ 2026-10-02 · `productionData` (read | write | none) is each row's reach into PRODUCTION user data:",
+      "D1, R2 and KV production stores, the auth database, or a webhook secret that can forge a write into",
+      "them. assert-channel-register limb 8d refuses any row that is not `none` in a job a pull request can",
+      "run, as it refuses a publishing or signing secret (#1095 review, findings 1 and 2), and every",
+      "service-, publishing- or runtime-credential row must declare it. Cloudflare scopes a D1 token to the",
+      "ACCOUNT, not to one database, so even a read-only D1 token reads every production table."
     ],
     "kinds": {
       "publishing-credential": "authenticates an upload or deploy to a distribution channel. It authorises PUBLISHING; it is not key material any artifact is signed with — the channel either re-signs (MS Store, Snap) or holds the signing key itself (Play App Signing).",
@@ -1360,55 +1366,85 @@
       "github-provided": "issued by GitHub per run. Nobody declares, rotates or custodies it, so it has no signing-identity dimension at all.",
       "runtime-secret": "a secret CI hands to a deployed surface as that surface's own encrypted secret (e.g. `wrangler pages secret put`, through stdin). The deployed code reads it at request time; it authenticates CI to nothing, enters no artifact and signs nothing."
     },
+    "signingScope": {
+      "_why": [
+        "⏱ 2026-10-02 · train P17 (security-001 part 6), lane fix-secrets-scope-readback. Limb 8c graded the nonSigning rows' scopes",
+        "and never the SIGNING secrets: an ANDROID_* upload key, an APPLE_*_P12* certificate or a provisioning profile could be read",
+        "by any env-less job with every guard green. assert-channel-register 8c rule (e) now holds every read whose name matches",
+        "`match` to a job bound to `environment`, or to a job this block licenses by name in `repositoryFallback` until its date.",
+        "The three fallbacks are today's env-less signing jobs. store-publish carries a REQUIRED REVIEWER, so binding the main",
+        "build to it would pause every build for a person; the owner's choice is that, or a signing environment with a main-only",
+        "branch policy and no reviewer (`moveStep`). Every fallback expires on #1095's move date; after it the read FAILS."
+      ],
+      "match": ["^ANDROID_", "^APPLE_[A-Z0-9_]*P12", "PROVISIONING"],
+      "environment": "store-publish",
+      "storedAt": "repository",
+      "moveStep": "Owner (a GitHub setting): create the signing environment (or reuse store-publish), copy the ANDROID_* and APPLE_* signing secrets into it with `gh secret set --env`, bind the three jobs below to it, then delete the repository copies and remove each fallback.",
+      "repositoryFallback": [
+        { "job": ".github/workflows/build-platforms.yml#linux_web_android", "until": "2026-11-30", "why": "The main build signs the Android release bundle with the upload key on every push; binding it to store-publish would add a required reviewer to every build." },
+        { "job": ".github/workflows/build-platforms.yml#apple", "until": "2026-11-30", "why": "The main build signs the iOS and macOS builds with the distribution certificates and profiles; same reviewer cost as the Android job." },
+        { "job": ".github/workflows/submit-play.yml#dry-run", "until": "2026-11-30", "why": "The Play rehearsal builds and signs the exact bundle the submit job uploads, so the submit job can verify its sha256; it uploads nothing." }
+      ]
+    },
     "nonSigning": [
       {
         "name": "SUPABASE_URL",
         "kind": "build-config",
+        "productionData": "none",
         "why": "Project endpoint, --dart-define. Public in every shipped client; held as a secret only to keep the project ref out of the public tree."
       },
       {
         "name": "SUPABASE_ANON_KEY",
         "kind": "build-config",
+        "productionData": "none",
         "why": "The PUBLISHABLE key. It ships inside every client binary by design and is bounded by row-level security, not by secrecy."
       },
       {
         "name": "SUPABASE_PROJECT_REF",
         "kind": "build-config",
+        "productionData": "none",
         "why": "Project identifier used by the ops-watch lane to address the right project. An identifier, not an authenticator."
       },
       {
         "name": "GLITCHTIP_DSN",
         "kind": "build-config",
+        "productionData": "none",
         "why": "Crash-sink ingest URL, --dart-define. A DSN is a write-only ingest credential that ships in the client; it authorises no read and signs nothing."
       },
       {
         "name": "SUPABASE_SERVICE_ROLE_KEY",
         "kind": "service-credential",
+        "productionData": "write",
         "why": "Bypasses row-level security, so it is a real secret — but it authenticates CI to the database (e2e seeding, screenshot fixtures). It never touches an artifact and no build target signs with it."
       },
       {
         "name": "SELFHOSTED_SUPABASE_URL",
         "kind": "build-config",
+        "productionData": "none",
         "why": "The SELF-HOSTED GoTrue endpoint on Box C (auth-api.nikatru.com, [ADR 080]), read by e2e.yml's `selfhosted` target. Same class as SUPABASE_URL and for the same reason: a URL, not a credential, held as a secret only so the address is not restated in the public tree. It replaced BOXA_SUPABASE_URL on 2026-09-25, when the `boxa` target became `selfhosted`; what a run against it expects is derived from the URL and tooling/platform-register.json, not from the target name."
       },
       {
         "name": "SELFHOSTED_SUPABASE_ANON_KEY",
         "kind": "build-config",
+        "productionData": "none",
         "why": "Box C's anon key, the `selfhosted` half of SUPABASE_ANON_KEY. It ships inside every client the same way and is bounded by row-level security rather than by secrecy. It replaced BOXA_SUPABASE_ANON_KEY on 2026-09-25."
       },
       {
         "name": "SELFHOSTED_SUPABASE_SERVICE_ROLE_KEY",
         "kind": "service-credential",
+        "productionData": "write",
         "why": "Box C's service-role key, the `selfhosted` half of SUPABASE_SERVICE_ROLE_KEY, on exactly the same terms: it bypasses row-level security so it is a real secret, it authenticates CI to the identity stack for e2e provisioning and teardown, it never touches an artifact and no build target signs with it. 🔴 IT IS ALSO THE KEY THAT BYPASSES THE TURNSTILE GATE (auth-cutover.md §4.7), which is why the harness — and never the browser — is the only thing that holds it. It replaced BOXA_SUPABASE_SERVICE_ROLE_KEY on 2026-09-25."
       },
       {
         "name": "SUPABASE_PAT",
         "kind": "service-credential",
+        "productionData": "write",
         "why": "Supabase management-API token used by the ops-watch lane to read project health. Operates the project; signs nothing."
       },
       {
         "name": "CLOUDFLARE_API_TOKEN",
         "kind": "publishing-credential",
+        "productionData": "write",
         "why": "Deploys the web channel and the Workers. The web row's keyKind is `none` for exactly this reason: Cloudflare serves our bytes under Cloudflare's certificate, so there is no identity of ours in the path — losing this token costs a rotation, not a channel.",
         "environment": ["production", "sandbox"],
         "storedAt": "repository",
@@ -1422,33 +1458,39 @@
       {
         "name": "CLOUDFLARE_ACCOUNT_ID",
         "kind": "build-config",
+        "productionData": "none",
         "why": "Account identifier that scopes the Cloudflare tokens. Not itself an authenticator; kept as a secret to avoid publishing the account id. ⏱ RE-KINDED 2026-09-30 from publishing-credential to build-config (rv2-security-001), on the ground SNAPCRAFT_STORE_CREDENTIALS_EXPIRES was re-kinded on: an identifier authenticates nothing, and the pull_request-reachable guards that read D1 with CLOUDFLARE_READ_TOKEN need it beside the token."
       },
       {
         "name": "CLOUDFLARE_READ_TOKEN",
         "kind": "service-credential",
-        "why": "A READ-ONLY Cloudflare token (rv2-security-001): D1 read, Pages read, Workers scripts read, zone DNS / rulesets read (the WAF custom-rule phase included), Access: Apps and Policies Read (tooling/ops/check-edge-zone.mjs, added to the owner's mint list 2026-10-01 by lane fix-edge-as-code), Turnstile read, analytics read (including ZONE Analytics Read on nikatru.com, which ops-watch.yml's JWKS error-rate step needs for GraphQL httpRequestsAdaptiveGroups) — no edit scope of any kind. It is the only Cloudflare token a pull_request-reachable job may hold (ci.yml `guards-platform`: the ops register's D1 heartbeat probe and the nightly-proof freshness guard), and ops-watch.yml's readers prefer it over CLOUDFLARE_API_TOKEN. It deploys nothing and signs nothing; a PR author who exfiltrates it can read what the guards read."
+        "productionData": "read",
+        "why": "A READ-ONLY Cloudflare token (rv2-security-001): D1 read, Pages read, Workers scripts read, zone DNS / rulesets read (the WAF custom-rule phase included), Access: Apps and Policies Read (tooling/ops/check-edge-zone.mjs, added to the owner's mint list 2026-10-01 by lane fix-edge-as-code), Turnstile read, analytics read (including ZONE Analytics Read on nikatru.com, which ops-watch.yml's JWKS error-rate step needs for GraphQL httpRequestsAdaptiveGroups) — no edit scope of any kind. It deploys nothing and signs nothing, BUT D1 read is account-scoped: it can SELECT every row of every production database, user and consent rows included (#1095 review, finding 2), so it is `productionData: read` and no pull_request-reachable job holds it (limb 8d). Its readers are ci.yml's post-gate `live-reads` job (a push to main, after ci-gate: the ops register's D1 heartbeat probe and the nightly-proof timer limb) and ops-watch.yml's scheduled readers, which prefer it over CLOUDFLARE_API_TOKEN."
       },
       {
         "name": "CLOUDFLARE_D1_TOKEN",
         "kind": "service-credential",
+        "productionData": "write",
         "why": "A D1-EDIT-ONLY Cloudflare token (rv2-security-001) for the jobs that seed, verify and purge live e2e rows (e2e.yml, native-auth-proof.yml, store-screenshots.yml) and for ops-watch.yml's D1 statement-acceptance reader, which executes guarded writes. No Workers, Pages or DNS scope, so it cannot deploy. Read only by scheduled or dispatched jobs, never by a pull_request-reachable one."
       },
       {
         "name": "SUBSCRIBE_RATE_LIMIT_SALT",
         "kind": "runtime-secret",
+        "productionData": "none",
         "why": "The HMAC key sites/nikatru/functions/api/subscribe.js keys its per-IP rate-limit counter with, so the counter never holds a reversible fingerprint of an address. deploy-web.yml's `site` job puts it on the nikatru-apex Pages project through stdin (row O-APEX-SITE-DEPLOYS-OUTSIDE-THE-PIPELINE, D3a). It signs no artifact and authenticates CI to nothing; rotating it resets only one-hour counters."
       },
       {
         "name": "PLAY_SERVICE_ACCOUNT_JSON",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "🔴 THE DISTINCTION THIS ENTRY EXISTS TO MAKE. This authorises an UPLOAD to the Play Console; the four ANDROID_* names on the android-play row are what SIGNS the bundle. Losing this is a rotation in the Google Cloud console. Losing the upload key is a request to Google to reset it, and losing the app-signing key Play holds would be unrecoverable — which is why only one of the two sets is signing material.",
         "environment": null,
-        "repositoryWhy": "Read outside every environment by submit-play.yml `dry-run` (the rehearsal's read of the Play edit it validates against; it uploads nothing) and by ops-watch.yml `glitchtip` (tooling/ops/verify-free-api-scope.mjs proves the account is still powerless on GCP). Kept at repository level on 2026-09-25 (O-STORE-SECRETS-REACH-THE-DRY-RUN: the moved set was not widened); moving it is this field plus those two reads."
+        "repositoryWhy": "Read outside every environment by submit-play.yml `dry-run`, which opens NO Play edit and calls no Google API: tooling/release/submit-play.mjs --dry-run only checks the key's SHAPE (it parses, carries the required fields, and is `type: service_account`), so a malformed key fails in the rehearsal and not at submission (⏱ 2026-10-02, AA-25: this field said the dry run read a Play edit, and it never did; kept here rather than moved into store-publish, whose required reviewer would then gate every rehearsal); and by ops-watch.yml `glitchtip` (tooling/ops/verify-free-api-scope.mjs proves the account is still powerless on GCP). Kept at repository level on 2026-09-25 (O-STORE-SECRETS-REACH-THE-DRY-RUN: the moved set was not widened); moving it is this field plus those two reads."
       },
       {
         "name": "APP_STORE_CONNECT_PRIVATE_KEY",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "An App Store Connect API key. It signs the JWT that authenticates the upload — NOT the artifact. The Apple identity that signs a build is a distribution certificate, and `ios-appstore.signing.identity` is null because NO DISTRIBUTION CERTIFICATE HAS BEEN ISSUED. Corrected 2026-09-08: the account is ACTIVE (App Store Connect answered HTTP 200; OWNER_QUEUE A-4 closed 2026-08-31) and GET /v1/certificates returned an EMPTY set, so the certificate is issuable through the ASC API today. When that certificate arrives it belongs on the row as signing material, not here.",
         "environment": null,
         "repositoryWhy": "Read outside every environment by submit-appstore.yml `dry-run`, by apple-expiry-write.yml `write` and by ops-watch.yml `glitchtip` (tooling/ops/check-apple-signing-expiry.mjs reads the certificate and profile expiries through the ASC API). Kept at repository level on 2026-09-25 (O-STORE-SECRETS-REACH-THE-DRY-RUN: the moved set was not widened); moving it is this field plus those three reads."
@@ -1456,6 +1498,7 @@
       {
         "name": "APP_STORE_CONNECT_KEY_ID",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "Names which ASC API key the private key above is. An identifier.",
         "environment": null,
         "repositoryWhy": "An identifier read beside APP_STORE_CONNECT_PRIVATE_KEY by the same env-less jobs: submit-appstore.yml `dry-run`, apple-expiry-write.yml `write` and ops-watch.yml `glitchtip`."
@@ -1463,6 +1506,7 @@
       {
         "name": "APP_STORE_CONNECT_ISSUER_ID",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "The ASC issuer the key belongs to. An identifier.",
         "environment": null,
         "repositoryWhy": "An identifier read beside APP_STORE_CONNECT_PRIVATE_KEY by the same env-less jobs: submit-appstore.yml `dry-run`, apple-expiry-write.yml `write` and ops-watch.yml `glitchtip`."
@@ -1470,6 +1514,7 @@
       {
         "name": "MS_STORE_CLIENT_ID",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "Partner Center Azure AD application id used to submit the .msix. The windows-store row's keyKind is `none` because the Store re-signs the package, so nothing in this path is key material of ours.",
         "environment": null,
         "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the three ids, and without the client secret beside it the id authenticates nothing."
@@ -1477,6 +1522,7 @@
       {
         "name": "MS_STORE_CLIENT_SECRET",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "The credential half of the Partner Center application above. Authorises submission; the Store still re-signs.",
         "environment": "store-publish",
         "storedAt": "repository",
@@ -1485,6 +1531,7 @@
       {
         "name": "MS_STORE_TENANT_ID",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "Azure AD tenant the Partner Center application lives in. An identifier.",
         "environment": null,
         "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the three ids, and the tenant id authenticates nothing on its own."
@@ -1492,6 +1539,7 @@
       {
         "name": "MS_STORE_SELLER_ID",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "The Partner Center SELLER id — which ACCOUNT `msstore reconfigure` configures against, passed as `--sellerId`. An identifier, not key material: the windows-store row's keyKind stays `none` because the Store re-signs the package. Added 2026-09-09, when the lane stopped passing only three of Microsoft's four account parameters. ⚠️ This account has carried TWO seller ids differing by three digits; the retired one authenticates against nothing and looks entirely plausible in a log, so the live value is read from Private/runbooks/store-submission-windows.md and never from memory.",
         "environment": null,
         "repositoryWhy": "An identifier the env-less submit-windows-store.yml `dry-run` job still receives: the rehearsal presence-checks the three ids, and a seller id authenticates nothing on its own."
@@ -1499,6 +1547,8 @@
       {
         "name": "SNAPCRAFT_STORE_CREDENTIALS",
         "kind": "publishing-credential",
+        "productionData": "none",
+        "firstDue": "2026-11-30",
         "why": "Exported `snapcraft` store credentials. The linux-snap row's keyKind is `none` because Canonical signs the binary — this authorises the upload and nothing else.",
         "environment": "store-publish",
         "storedAt": "repository",
@@ -1507,11 +1557,13 @@
       {
         "name": "SNAPCRAFT_STORE_CREDENTIALS_EXPIRES",
         "kind": "build-config",
+        "productionData": "none",
         "why": "The ISO 8601 date passed to `snapcraft export-login --expires` when SNAPCRAFT_STORE_CREDENTIALS was issued. It is a DATE and not a secret in the ordinary sense; it is held beside the credential because tooling/release/submit-snap.mjs refuses to parse the exported blob (its internal format is documented on no page fetched, the same reason `snapcraft whoami` output is not parsed) and an expiry nobody records is an expiry nobody finds out about until a release is in flight. Authorises nothing on its own and signs nothing. ⏱ RE-KINDED 2026-09-25 from publishing-credential to build-config (O-STORE-SECRETS-REACH-THE-DRY-RUN): a date authenticates nothing, and it stays at repository level on purpose, because the env-less submit-snap.yml `dry-run` job reads it to warn before the credential lapses while the credential itself is readable only in the store-publish job."
       },
       {
         "name": "AMO_JWT_ISSUER",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "The addons.mozilla.org API key (JWT issuer) web-ext passes as --api-key. Mozilla holds the signing key for this channel and signs what we upload, so this authorises a SUBMISSION and signs nothing.",
         "environment": null,
         "repositoryWhy": "Read outside every environment by extensions.yml `store-key-keepalive`, the scheduled job that exercises the AMO key so a dead one is found before a release, beside the store-publish job's own read. EXT-3's ruling keeps the extension store secrets at repository level (design-ext-3.md: \"Secrets stay at repository level\")."
@@ -1519,6 +1571,7 @@
       {
         "name": "AMO_JWT_SECRET",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "The addons.mozilla.org API secret (JWT secret) web-ext passes as --api-secret. Pairs with AMO_JWT_ISSUER; same reasoning, and it is not signing material for the same reason.",
         "environment": null,
         "repositoryWhy": "Read outside every environment by extensions.yml `store-key-keepalive`, the scheduled job that exercises the AMO key pair so a dead one is found before a release, beside the store-publish job's own read. EXT-3's ruling keeps the extension store secrets at repository level (design-ext-3.md: \"Secrets stay at repository level\"), so this *_SECRET name is outside an environment by decision, not by default."
@@ -1526,6 +1579,7 @@
       {
         "name": "CWS_SERVICE_ACCOUNT_JSON",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "The Google service-account key JSON the Chrome Web Store lane authenticates with, by the JWT-bearer grant. REPLACED CWS_CLIENT_ID + CWS_CLIENT_SECRET + CWS_REFRESH_TOKEN on 2026-09-09: https://developer.chrome.com/docs/webstore/service-accounts (fetched that day) documents service accounts for this API -- the account email is added in the Developer Dashboard under Account, and \"you can only add one service account to your publisher\". The refresh-token shape was a stale assumption, not a requirement, and it gave this repository a second way of authenticating to Google beside the Play lane's PLAY_SERVICE_ACCOUNT_JSON; there is now one. The Chrome Web Store re-signs the uploaded zip and owns the extension key, so this authorises a SUBMISSION and signs nothing. Account nikatru-free-api@nikatru-platform.iam.gserviceaccount.com, project nikatru-platform -- the same account [ADR 033] keeps powerless on GCP, measured by tooling/ops/verify-free-api-scope.mjs. ⚠ A minted token proves the KEY works, NOT that it is linked to the publisher: measured 2026-09-09, `:fetchStatus` answers an identical 403 for the real and a bogus publisher id while a bogus token answers 401, so with zero items in the account linkage is unreadable from the API and remains an owner console step.",
         "environment": null,
         "repositoryWhy": "Read outside every environment by extensions.yml `cws-token-keepalive`, the scheduled job that mints a token so a disabled key is found before a release, beside the store-publish job's own read. EXT-3's ruling keeps the extension store secrets at repository level (design-ext-3.md: \"Secrets stay at repository level\")."
@@ -1533,6 +1587,7 @@
       {
         "name": "CWS_PUBLISHER_ID",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "The publisher id the Chrome Web Store v2 API path carries between `publishers/` and `items/`, read from the Developer Dashboard under Publisher -> Settings. It exists in this list because the v2 path documented at https://developer.chrome.com/docs/webstore/using-api (fetched 2026-09-07) needs it and the older v1.1 path did not; a guessed publisher id would address somebody else's account. Identifies a publisher, signs nothing.",
         "environment": null,
         "repositoryWhy": "No env-less job reads it today: only extensions.yml `store-publish` does. It stays at repository level with the other extension store secrets by EXT-3's ruling (design-ext-3.md: \"Secrets stay at repository level\"), and it is a publisher identifier that authenticates nothing on its own."
@@ -1540,6 +1595,7 @@
       {
         "name": "EDGE_CLIENT_ID",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "The Partner Center client id sent as the X-ClientID header by the Edge Add-ons v1.1 API. Partner Center re-signs the uploaded package and issues the product id, so nothing of ours signs this artifact.",
         "environment": null,
         "repositoryWhy": "Read outside every environment by extensions.yml `store-key-keepalive`, which exercises the Edge key so a dead one is found before a release, beside the store-publish job's own read. EXT-3's ruling keeps the extension store secrets at repository level."
@@ -1547,6 +1603,7 @@
       {
         "name": "EDGE_API_KEY",
         "kind": "publishing-credential",
+        "productionData": "none",
         "why": "The Partner Center API key sent as `Authorization: ApiKey <key>` by the Edge Add-ons v1.1 API. It authorises an upload and a publish; it is not a code-signing key, which is a property of the channel rather than a choice.",
         "environment": null,
         "repositoryWhy": "Read outside every environment by extensions.yml `store-key-keepalive`, which exercises the Edge key so a dead one is found before a release, beside the store-publish job's own read. EXT-3's ruling keeps the extension store secrets at repository level (design-ext-3.md: \"Secrets stay at repository level\")."
@@ -1554,46 +1611,61 @@
       {
         "name": "GITHUB_TOKEN",
         "kind": "github-provided",
+        "productionData": "none",
         "why": "Minted by GitHub for the run. Not declared, not rotated, not custodied by us — it has no signing-identity dimension to enumerate."
+      },
+      {
+        "name": "SECRETS_READ_TOKEN",
+        "kind": "service-credential",
+        "productionData": "none",
+        "why": "⏱ 2026-10-02 · train P17. A read-only GitHub token (fine-grained: this repository, Secrets read and Environments read, nothing else) that lets ops-watch.yml's Monday code-scanning-age job list secret NAMES per scope for tooling/ops/check-secret-scopes.mjs; GITHUB_TOKEN cannot list secrets. The API returns names and dates, never a value, so it reads no secret and writes nothing. OWNER-MINTED: until it exists the read-back is `unreadable` inside its ceiling (--unreadable-until 2026-11-30), and the lead's twice-daily ops check runs the same script with the lead's gh."
       },
       {
         "name": "GH_BILLING_TOKEN",
         "kind": "service-credential",
+        "productionData": "none",
         "why": "🔴 READS THE ACCOUNT'S ACTIONS BILLING LEDGER, WHICH GITHUB_TOKEN CANNOT. tooling/ci/assert-runner-budget.mjs asks GET /users/{owner}/settings/billing/usage how much Actions capacity this ACCOUNT is consuming, because quota exhaustion is one of the ways a scheduled workflow turns off silently and the freshness guards notice that up to 14 days later. The billing endpoints are ACCOUNT-scoped while GITHUB_TOKEN is an installation token scoped to one repository, so `actions: read` has no plan dimension to grant — a classic PAT needs `user`, a fine-grained one needs the account-level \"Plan\" read permission. It authenticates CI to a GitHub account surface it operates on and never enters an artifact, which is exactly what SUPABASE_PAT is classified as one entry over. It signs nothing. ⬜ DECLARED AHEAD OF ITS LANE ON PURPOSE (2026-08-08): [9]R-3 limb 2 makes this register a CEILING on what a workflow may name, so the increment that wires the ops-watch job would FAIL on an undeclared name — this entry is what lets the YAML land as a reviewable one-line change instead. Until it does, the guard prints `DECLARED SECRET NO WORKFLOW NAMES` on every run, which is the register's own convention for a classification that is ahead of its consumer."
       },
       {
         "name": "GLITCHTIP_TOKEN",
         "kind": "service-credential",
+        "productionData": "none",
         "why": "🔴 NOT THE SAME THING AS `GLITCHTIP_DSN`, WHICH IS ALREADY DECLARED FIVE ENTRIES UP AS build-config, AND THE DIFFERENCE IS THE WHOLE CLASSIFICATION. A DSN is a write-only INGEST credential that ships inside every client binary by design — anyone holding it can post an event and read nothing. This is an API token that READS AND WRITES the GlitchTip instance's configuration: tooling/ops/verify-monitors.mjs compares tooling/monitor-register.json to the live monitors, and verify-alarm-chains.mjs proves each of those monitors can still reach a mailbox. It authenticates CI to a backend service it operates on, never enters an artifact and signs nothing — the same classification SUPABASE_PAT carries three entries up, for the same reason. ⚠️ AND THE READ HALF IS NOT THE RISK; the write half is: this token's API is FULL-REPLACE PUT, and on 2026-08-11 echoing a monitor's own representation back detached all nine monitors from their projects — i.e. from every alert recipient — under nine consecutive HTTP 200s ([ADR 043], amended). A credential that can silently disarm the entire alarm chain is a real secret, which is precisely why it is classified here rather than left to look like the DSN it is named after. It became a repository secret at 2026-08-11T16:55:34Z, closing OWNER_QUEUE S-8, and .github/workflows/ops-watch.yml names it in the `glitchtip` job — the lane whose four checks were session-only until then."
       },
       {
         "name": "RENOVATE_TOKEN",
         "kind": "service-credential",
+        "productionData": "none",
         "why": "🔴 A GITHUB PAT, AND THE POINT OF IT IS THAT IT IS *NOT* GITHUB_TOKEN. .github/workflows/renovate.yml runs Renovate self-hosted across both public repositories (the Mend-hosted App was uninstalled by the owner on 2026-09-03, and two Renovates on one repository open competing branches for the same upgrade). Renovate must push branches and open pull requests, and a pull request opened with the ambient GITHUB_TOKEN does not trigger `on: pull_request` workflows — so its PRs would arrive with NO CI AT ALL in a repository whose entire discipline is that a merge is gated on ci-gate. A separate identity is therefore load-bearing, not stylistic. It authenticates CI to a GitHub surface it operates on, never enters an artifact and signs nothing — the same classification GH_BILLING_TOKEN carries one entry up, for the same reason. ⚠️ IT IS THE MOST POWERFUL SECRET IN THIS LIST BY BLAST RADIUS: contents+PR write on two repositories, and a classic PAT cannot be narrowed below account scope — which is why RENOVATE_REPOSITORIES names both repositories explicitly instead of using `autodiscover`, so a token wider than intended still cannot widen what the bot touches. ⚠️ AND IT DOES NOT MAKE ANYTHING MORE PRIVATE: both repositories are PUBLIC, so moving off the hosted App bought no confidentiality — we accepted custody of a token and one more supply-chain surface in exchange for running the bot on infrastructure we already trust. Recorded here so the next reader does not mistake this entry for a security improvement it is not."
       },
       {
         "name": "REVENUECAT_WEBHOOK_SIGNING_SECRET",
         "kind": "service-credential",
+        "productionData": "write",
         "why": "The RevenueCat webhook SIGNING secret that services/platform's revenuecatVerifier (services/platform/src/lib/mor/revenuecat.ts, `secretEnvVar`) uses to check the X-RevenueCat-Webhook-Signature HMAC on POST /v1/money/revenuecat. It authenticates the VENDOR to our Worker rather than CI to a service, so no kind here fits exactly; service-credential is the nearest (a backend secret that never enters an artifact and signs nothing shipped). DECLARED AHEAD OF ITS LANE, as the BOXA_* rows were: added 2026-09-16 (O-REVENUECAT-VERIFIER leg c), when no workflow names it and no repository secret of this name exists. It is a Worker secret, set with `wrangler secret put` today; the day deploy-workers.yml's platform job lists it under `secrets:` (as it does SUPABASE_ANON_KEY), this row is what keeps that lane green. It is NOT the retired REVENUECAT_WEBHOOK_SECRET, the bearer string the legacy subscriptiontracker-api route compared — RevenueCat issues the signing secret separately and shows it once."
       },
       {
         "name": "RAZORPAY_KEY_ID",
         "kind": "service-credential",
+        "productionData": "none",
         "why": "The Razorpay API key id, the identifying half of the key pair the India rail's checkout creator will authenticate to Razorpay with ([ADR 076] §10, [ADR 094]). NOTHING READS IT YET: the creator is a later increment of O-RAZORPAY-CHECKOUT-ADAPTER, and `Env.RAZORPAY_KEY_ID` in services/platform/src/types.ts declares the name ahead of it. It authenticates our Worker to a backend service it operates on, never enters an artifact and signs nothing. DECLARED AHEAD OF ITS LANE, as REVENUECAT_WEBHOOK_SIGNING_SECRET was: added 2026-09-24 (O-RAZORPAY-CHECKOUT-ADAPTER), when no workflow names it and no repository secret of this name exists. It is a Worker secret, set with `wrangler secret put`; the owner pastes it through the vault one-command."
       },
       {
         "name": "RAZORPAY_KEY_SECRET",
         "kind": "service-credential",
+        "productionData": "write",
         "why": "The secret half of the Razorpay API key pair RAZORPAY_KEY_ID names, for the same checkout creator ([ADR 076] §10, [ADR 094]). NOTHING READS IT YET, for the same reason: the creator is a later increment of O-RAZORPAY-CHECKOUT-ADAPTER and `Env.RAZORPAY_KEY_SECRET` declares the name ahead of it. It authenticates our Worker to a backend service, never enters an artifact and signs nothing. DECLARED AHEAD OF ITS LANE: added 2026-09-24 (O-RAZORPAY-CHECKOUT-ADAPTER), when no workflow names it and no repository secret of this name exists. It is a Worker secret, set with `wrangler secret put`; the owner pastes it through the vault one-command."
       },
       {
         "name": "RAZORPAY_WEBHOOK_SECRET",
         "kind": "service-credential",
+        "productionData": "write",
         "why": "The Razorpay webhook SIGNING secret that services/platform's razorpayVerifier (services/platform/src/lib/mor/razorpay.ts, `secretEnvVar`) uses to check the X-Razorpay-Signature HMAC on POST /v1/money/razorpay. It authenticates the VENDOR to our Worker rather than CI to a service, so no kind here fits exactly; service-credential is the nearest, as it is for REVENUECAT_WEBHOOK_SIGNING_SECRET. DECLARED AHEAD OF ITS LANE: added 2026-09-24 (O-RAZORPAY-CHECKOUT-ADAPTER), when no workflow names it and no repository secret of this name exists; until the owner pastes it through the vault one-command the route answers 503. It is a Worker secret, set with `wrangler secret put`; the day deploy-workers.yml's platform job lists it under `secrets:`, this row is what keeps that lane green. tooling/ci/assert-money-config.mjs requires a row here for every registered rail's destination secret."
       },
       {
         "name": "PADDLE_NOTIFICATION_SECRET",
         "kind": "service-credential",
+        "productionData": "write",
         "why": "Paddle's per-destination notification secret that services/platform's paddleVerifier (services/platform/src/lib/mor/paddle.ts, `secretEnvVar`) uses to check the Paddle-Signature HMAC on POST /v1/money/paddle. Same classification as REVENUECAT_WEBHOOK_SIGNING_SECRET, for the same reason: it authenticates the VENDOR to our Worker, never enters an artifact and signs nothing. It is a Worker secret, set with `wrangler secret put`, and no workflow names it. It had no row until 2026-09-24 because nothing required one: tooling/ci/assert-money-config.mjs now requires a row here for every registered rail's destination secret (O-RAZORPAY-CHECKOUT-ADAPTER), and this rail's was the one missing. PADDLE_API_KEY is a checkout credential rather than a destination secret, and gets its row with the checkout creators."
       }
     ]

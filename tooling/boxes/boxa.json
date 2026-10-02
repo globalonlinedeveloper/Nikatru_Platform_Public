@@ -1,0 +1,26 @@
+{
+  "box": "boxa",
+  "_why": [
+    "BOX A — the Oracle Cloud VM and its tenancy. Wiped of the platform on 2026-09-24 (the auth stack moved to Box C) and kept for non-platform use; the tenancy's Object Storage holds the encrypted third copy of the restic repositories (duty.restic-third-copy, [ADR 060]), which is the role this box holds: `backup-leg`.",
+    "O-BOXA-TRACKED-COPIES-UNGUARDED found a tracked copy of this box's state that omitted what the box runs. This declaration is the copy, and tooling/ops/check-box-declared.mjs is its guard: anything running that is not declared here is drift (exit 1).",
+    "The declaration is deliberately near-empty: since 2026-09-24 the platform runs nothing on this VM. The one sanctioned exception before the move was a Beszel agent bound to the WireGuard address (tooling/monitor-register.json `_notInThisRegister`); whether it still runs is the first read-back's to say. A field the public tree does not state is null and is reported UNREAD (LOST)."
+  ],
+  "roles": ["backup-leg"],
+  "provider": { "vendor": "oracle-cloud", "plan": "pay-as-you-go", "product": "Compute VM and Object Storage (ap-mumbai-1)" },
+  "cost": { "source": "Private/platform-state/identity.json", "vendorId": "oracle-cloud", "why": "Cited by vendor id, never copied: CI cannot read Private, so box-move grades the cost delta LOST there." },
+  "spec": { "cpu": null, "ramGiB": null, "diskGiB": null, "asOf": "2026-10-01", "verify": "check-box-declared.mjs reads nproc, free -b and df -B1 /; the shape is not stated in the public tree" },
+  "ssh": { "hostEnv": "BOXA_SSH_HOST", "userEnv": "BOXA_SSH_USER", "keyEnv": "BOXA_SSH_KEY", "portEnv": "BOXA_SSH_PORT", "sudoEnv": "BOXA_SSH_SUDO" },
+  "cronTz": { "value": null, "measuredOn": null, "by": "timedatectl", "cite": "tooling/ops/register.json#duty.supabase-dump", "carried": "Box A ran Asia/Kolkata on 2026-09-06; after the wipe nothing in the public tree says what it runs now" },
+  "services": [],
+  "units": ["cron", "ssh"],
+  "volumes": [],
+  "backupSets": ["restic-third-copy"],
+  "hostnames": [],
+  "tunnel": null,
+  "monitors": [41],
+  "crons": [],
+  "allowLists": [],
+  "_toConfirm": [
+    "Read back on the first run and fill: the timezone, the shape (nproc, RAM, disk), every running unit and any container. If the Beszel agent still runs here, declare it in `units` or retire it — an undeclared one is drift."
+  ]
+}

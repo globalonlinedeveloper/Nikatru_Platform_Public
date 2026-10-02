@@ -43,6 +43,15 @@ Future<void> main() async {
         // exportConsentAnonId.
         stdout.writeln('$kConsentAnonIdToken=$anonId');
       }
+      // The suite's `NK_E2E` lines (flow_steps.dart `e2eLine`): printed in the
+      // browser, they never reach this log, and sign_in_via.mjs --grade and
+      // verify_export_csv.mjs read them here (E2E 36994942854).
+      final Object? lines = data?['e2e_lines'];
+      if (lines is List) {
+        for (final Object? line in lines) {
+          if (line is String) stdout.writeln(line);
+        }
+      }
       await writeResponseData(data);
     },
     // 🔴 ON A RED RUN TOO, AND THAT IS THE POINT OF SETTING IT. The default is

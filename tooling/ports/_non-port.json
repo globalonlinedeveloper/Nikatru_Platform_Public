@@ -18,8 +18,6 @@
     { "vendor": "lemon-squeezy", "registers": ["provider-register"], "reason": "A retired rail ([ADR 039] D4): no adapter exists and none will be built; kept in the provider register for disclosure history.", "nonPort": true },
     { "vendor": "sign-in-with-apple", "registers": ["provider-register"], "reason": "A federated identity provider reached THROUGH the auth adapter; the platform authority for its own accounts.", "nonPort": true },
     { "vendor": "sign-in-with-google", "registers": ["provider-register"], "reason": "A federated identity provider reached THROUGH the auth adapter; the platform authority for its own accounts.", "nonPort": true },
-    { "vendor": "hostinger", "registers": ["provider-register"], "reason": "Hosts the self-hosted GlitchTip box; the boxes are ported by port-boxes.", "until": "port-boxes" },
-    { "vendor": "oracle-cloud", "registers": ["provider-register"], "reason": "Box A, the always-free VM; the boxes are ported by port-boxes.", "until": "port-boxes" },
     { "vendor": "sentry-cdn", "registers": ["provider-register"], "reason": "The CDN the Sentry browser SDK would load from; a delivery path of the telemetry adapter, placed by port-telemetry.", "until": "port-telemetry" },
     { "vendor": "google-gstatic", "registers": ["provider-register"], "reason": "Static content delivery (fonts, platform scripts) the web build references; content delivery, not a capability with an adapter.", "nonPort": true }
   ]

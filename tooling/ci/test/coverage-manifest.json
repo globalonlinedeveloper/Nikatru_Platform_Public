@@ -140,6 +140,9 @@
   "bounded-spawn.test.mjs":
     9,
 
+  "boxes.test.mjs":
+    47,
+
   "brick-drivers.test.mjs":
     5,
 
@@ -207,7 +210,7 @@
     50,
 
   "channel-register.test.mjs":
-    357,
+    367,
 
   "channel-surface.test.mjs":
     7,
@@ -223,6 +226,9 @@
 
   "check-jwks-error-rate.test.mjs":
     23,
+
+  "check-secret-scopes.test.mjs":
+    15,
 
   "chrome-raster.test.mjs":
     1,
@@ -335,8 +341,11 @@
   "e2e-legs.test.mjs":
     46,
 
+  "e2e-parity.test.mjs":
+    37,
+
   "e2e-proof-fresh.test.mjs":
-    67,
+    71,
 
   "e2e-purge-retry.test.mjs":
     15,
@@ -605,6 +614,9 @@
   "native-symbol-upload.test.mjs":
     26,
 
+  "new-channel.test.mjs":
+    8,
+
   "new-product-plan.test.mjs":
     41,
 
@@ -668,6 +680,9 @@
   "ops-watch-readers.test.mjs":
     13,
 
+  "osv-scan-due.test.mjs":
+    7,
+
   "package-boundaries.test.mjs":
     33,
 
@@ -720,7 +735,7 @@
     37,
 
   "ports.test.mjs":
-    64,
+    73,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -864,7 +879,7 @@
     4,
 
   "rollback.test.mjs":
-    37,
+    44,
 
   "rollup-lossless.test.mjs":
     52,
@@ -1086,7 +1101,7 @@
     42,
 
   "web-cache-policy.test.mjs":
-    86,
+    90,
 
   "web-drive-stages-fonts.test.mjs":
     5,
@@ -1111,6 +1126,12 @@
 
   "worker-routes.test.mjs":
     11,
+
+  "worker-secrets-declared.test.mjs":
+    20,
+
+  "worker-secrets-tool.test.mjs":
+    24,
 
   "worker-set.test.mjs":
     37,
