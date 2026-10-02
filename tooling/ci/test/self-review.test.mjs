@@ -354,3 +354,51 @@ describe('D3 — three proposals, never applied', () => {
     assert.ok(!isEntry(undefined, 'C:\\repo\\x.mjs', w));
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The fixtures are public-repo content, so the secret scan reads them. Their
+// synthetic job IDs were once 12-digit numbers starting 3, which IS the
+// nikatru-india-aadhaar shape: CI's gitleaks fired 16 times on responses.json.
+// The fix is the fixture, never an allowlist entry. This reads the rule from
+// the REAL .gitleaks.toml (not a copy, so a rule change is followed) and runs
+// it over every fixture file, line by line.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('the fixtures stay outside the secret scan', () => {
+  const FIXTURES = join(REPO_ROOT, 'tooling', 'review', 'fixtures');
+  const GITLEAKS = join(REPO_ROOT, '.gitleaks.toml');
+
+  function aadhaarRule() {
+    const toml = readFileSync(GITLEAKS, 'utf8');
+    const at = toml.indexOf('id = "nikatru-india-aadhaar"');
+    assert.ok(at >= 0, '.gitleaks.toml no longer has the nikatru-india-aadhaar rule');
+    const m = /^regex = '''(.*)'''$/m.exec(toml.slice(at));
+    assert.ok(m, 'the nikatru-india-aadhaar rule has no regex line');
+    return new RegExp(m[1]);
+  }
+
+  function filesUnder(dir) {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? filesUnder(join(dir, e.name)) : [join(dir, e.name)]);
+  }
+
+  test('the rule read from .gitleaks.toml still fires on the old job-ID shape (liveness)', () => {
+    const re = aadhaarRule();
+    // Built from 4-digit pieces so this file is not itself a finding.
+    const old = ['3650', '0000', '0031'].join('');
+    assert.ok(re.test(`     "id": ${old},`), 'the rule must match the old fixture line, or the next test proves nothing');
+    assert.ok(!re.test(`     "id": 1${old.slice(1)},`), 'an ID starting 1 is outside the rule');
+  });
+
+  test('no line of any fixture under tooling/review/fixtures matches nikatru-india-aadhaar', () => {
+    const re = aadhaarRule();
+    const files = filesUnder(FIXTURES);
+    assert.ok(files.length >= 4, `expected the fixture files, found ${files.length}`);
+    const hits = [];
+    for (const f of files) {
+      readFileSync(f, 'utf8').split(/\r?\n/).forEach((line, i) => {
+        if (re.test(line)) hits.push(`${path.relative(REPO_ROOT, f)}:${i + 1}`);
+      });
+    }
+    assert.deepEqual(hits, [], `gitleaks nikatru-india-aadhaar would fire on:\n  ${hits.join('\n  ')}`);
+  });
+});
