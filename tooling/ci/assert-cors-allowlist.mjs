@@ -41,6 +41,14 @@
 //         that one app's origin. The app is found by DIRECTORY NAME, so a new app
 //         that brings its own Worker is covered without editing this file:
 //         provision-backend.mjs step [6] writes its row with `cors: "own-app"`.
+//   • ⏱ 2026-10-01 (rv2-newproduct-010, O-CORS-PREVIEW-ORIGIN-HAND-LISTED): each
+//     row's `origin` — the app's Cloudflare Pages preview origin, which
+//     tooling/app-yaml/render.mjs writes from app.yaml `hosts.pagesOrigin` — is a
+//     second DERIVED origin, required wherever that app's `url` origin is. It was
+//     a hand EXTRAS entry here and a hand value in both Worker configs, so app
+//     #2's preview build was refused by every Worker until someone remembered
+//     both. A row with no `origin` is a finding: the catalogue contract requires
+//     one, and without it the preview origin cannot be derived.
 //   • Anything else listed in a config must appear in EXTRAS with a reason. An
 //     origin the catalogue does not justify and nobody wrote a reason for is a
 //     hand-addition, and that is the drift this guard exists to stop.
@@ -86,25 +94,19 @@ const BINDING_REL = 'src/middleware/cors.ts';
  */
 const EXTRAS = {
   platform: [
-    {
-      origin: 'https://subscriptiontracker-7qg.pages.dev',
-      why: 'the app’s Cloudflare Pages preview domain AFTER the slug rename. deploy-web.yml deploys with --project-name=<directory>, so `apps/subscriptiontracker` deploys to a new project; its subdomain was read back from the Pages API (the bare `subscriptiontracker.pages.dev` is a third party’s). A preview host has no business in the public catalogue. (The PRE-rename origin `subly-9cp.pages.dev` left both Workers and this list on 2026-09-11, the NARROW step of widen, cut over, narrow; re-adding it is refused as unjustified.)',
-    },
+    // NOTE: no *.pages.dev entry. Each app's Pages preview origin is DERIVED from
+    // its catalogue row's `origin` (rv2-newproduct-010); an EXTRAS entry for one
+    // would be the second, hand-kept copy that change retired.
     {
       origin: 'http://localhost:3000',
       why: 'the local Subly web dev server (.claude/launch.json). It fetches config.nikatru.com cross-origin from the browser, and this Worker has NO localhost regex, so the origin must be listed explicitly.',
     },
   ],
-  'subscriptiontracker-api': [
-    {
-      origin: 'https://subscriptiontracker-7qg.pages.dev',
-      why: 'the post-rename Cloudflare Pages preview domain — mirrors services/platform, and read back from the Pages API rather than derived from the id.',
-    },
-    // NOTE: no localhost entry. This per-app Worker allows localhost by regex
-    // (a recorded trade — the `flutter drive -d web-server` harness picks a
-    // random port), so listing it here would assert something the config does
-    // not need to carry.
-  ],
+  // NOTE: no localhost entry for an own-app Worker. A per-app Worker allows
+  // localhost by regex (a recorded trade — the `flutter drive -d web-server`
+  // harness picks a random port), so listing it here would assert something the
+  // config does not need to carry. Its Pages preview origin is derived, like the
+  // shared Worker's.
 };
 
 /** Strip line and block comments outside string literals, drop trailing commas,
@@ -191,7 +193,26 @@ for (const row of catalogue) {
     badRows.push(`✗ apps.json row "${slug}" has an unparseable \`url\`: ${row.url}`);
     continue;
   }
-  apps.push({ slug, origin });
+  // The Pages preview origin: the row's `origin`, written by render.mjs from
+  // app.yaml `hosts.pagesOrigin`. An origin and nothing more — a path, or a
+  // non-https scheme, is not something a browser sends as `Origin`.
+  let preview = null;
+  if (typeof row?.origin !== 'string' || row.origin === '') {
+    badRows.push(`✗ apps.json row "${slug}" has no \`origin\`, so its Pages preview origin cannot be derived.`);
+  } else {
+    let parsed = null;
+    try {
+      parsed = new URL(row.origin);
+    } catch {
+      parsed = null;
+    }
+    if (parsed === null || parsed.protocol !== 'https:' || parsed.origin !== row.origin) {
+      badRows.push(`✗ apps.json row "${slug}" has an \`origin\` that is not a bare https origin: ${row.origin}`);
+    } else {
+      preview = parsed.origin;
+    }
+  }
+  apps.push({ slug, origin, preview });
 }
 
 const catalogueOrigins = [...new Set(apps.map((a) => a.origin))];
@@ -369,20 +390,19 @@ for (const { service, path, where } of configs) {
     continue;
   }
 
+  /** An app's derived requirements: its public origin, then its Pages preview origin. */
+  const requiredOf = (a, because) => [
+    { origin: a.origin, why: `apps.json declares "${a.slug}" at ${a.origin}; ${because}` },
+    ...(a.preview === null
+      ? []
+      : [{ origin: a.preview, why: `apps.json declares "${a.slug}"'s Pages preview origin ${a.preview} (\`origin\`); ${because}` }]),
+  ];
   let required;
   if (scope === 'every-app') {
-    required = apps.map((a) => ({
-      origin: a.origin,
-      why: `apps.json declares "${a.slug}" at ${a.origin}; ${service} is shared by every app`,
-    }));
+    required = apps.flatMap((a) => requiredOf(a, `${service} is shared by every app`));
   } else if (owner) {
     perAppWorkers++;
-    required = [
-      {
-        origin: owner.origin,
-        why: `apps.json declares "${owner.slug}" at ${owner.origin}, and services/${service} is that app's own Worker`,
-      },
-    ];
+    required = requiredOf(owner, `services/${service} is that app's own Worker`);
   } else {
     problems.push(
       `✗ ${where} — ${REGISTER_REL} ${entry.field} says \`cors: "own-app"\`, and no app in\n` +

@@ -483,10 +483,19 @@ describe('a stamped Worker must be able to run a test', () => {
 });
 
 describe('the guard itself', () => {
-  test('no arguments fails loudly rather than passing vacuously', () => {
+  // ⏱ 2026-10-01 — exit 2, not 1 (rv2-newproduct-019). A call with no app to grade checked
+  // nothing, so it is COVERAGE LOST: an argument dropped from a CI line read as a
+  // clone-contract defect in apps/ that did not exist (AGENTS.md exit-code rule).
+  test('no arguments is COVERAGE LOST (exit 2), not a finding and not a pass', () => {
     const r = run(TMP);
-    assert.equal(r.status, 1);
-    assert.match(r.stderr, /pass --client <app> and\/or --backend <app>/);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /^✗ COVERAGE LOST — assert-clone-contract: pass --client <app> and\/or --backend <app>/);
+  });
+
+  test('a flag with no value is COVERAGE LOST too — `--client` alone names no app', () => {
+    const r = run(TMP, '--client');
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /COVERAGE LOST/);
   });
 
   test('COVERAGE: a scan that reaches almost nothing is "broken", not "clean"', () => {
