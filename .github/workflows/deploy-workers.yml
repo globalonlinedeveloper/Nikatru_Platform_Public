@@ -6,7 +6,10 @@ name: Deploy workers
 on:
   # why: RUNS ONLY AS ci.yml's `deploy-workers` CALL JOB, after ci-gate, on a push to
   # main ([ADR 095] §4). ci-gate is a `needs:` of the call, so it has passed before
-  # `d1 migrations apply --remote`, which is irreversible, can start. There is no
+  # `d1 migrations apply --remote`, which is irreversible, can start. So has ci.yml's
+  # `platform-db-migrate` (migrate-platform-db.yml): platform_db is migrated BEFORE any
+  # job here deploys a Worker that reads it (row O-APP-WORKERS-DEPLOY-BEFORE-THE-MIGRATION).
+  # There is no
   # push trigger, paths list, dispatch or detect job: each job's plan step decides
   # from its own unit in tooling/ci/lane-map.json deployUnits, and
   # tooling/ci/assert-deploy-triggers-deploy.mjs grades those units (this file, and
@@ -245,17 +248,10 @@ jobs:
       - run: npm ci
         if: steps.plan.outputs.deploy == 'true'
         working-directory: services/platform
-      # why: MIGRATIONS BEFORE DEPLOY — see the app-worker job. platform is the
-      # SOLE applier of platform_db migrations.
-      - name: Apply PLATFORM_DB migrations (before deploy)
-        if: steps.plan.outputs.deploy == 'true'
-        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: '4.143.0'   # why: package.json says ^4.0.0, which floats. [F-2]
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: services/platform
-          command: d1 migrations apply PLATFORM_DB --remote
+      # why: NO PLATFORM_DB MIGRATION HERE ANY MORE (PB-03). It ran here, after every app
+      # Worker had gone live on a platform_db without its schema; ci.yml's
+      # platform-db-migrate (migrate-platform-db.yml) applies it once, before this whole
+      # file, on the same commit and the same plan.
       # why: [pipeline K-7] see the app-worker job. This Worker binds each app's
       # database as well as platform_db, so the check executes against every one — a
       # route reads the databases it reads, not the ones its Worker binds.
@@ -328,8 +324,8 @@ jobs:
     # why: LEAD RULINGS SHIELD-R1..R3, row O-BOXES-UNSHIELDED-FROM-SPIKES. The edge
     # in front of Box C's auth and Box B's crash intake (services/edge-shield). It
     # binds two ZONE routes on deploy, so a deploy is what puts it in path, and the
-    # smoke below is what proves it got there. No migrations, no vars, no secret:
-    # the Worker reads none. Then the zone's per-IP credential rule
+    # smoke below is what proves it got there. No migrations and no secret; its one
+    # var is RELEASE, which it echoes as its header. Then the zone's per-IP credential rule
     # (tooling/edge-ratelimit-rule.json) is applied, because SHIELD-R3 moved the
     # per-IP limit out of the Worker and into Cloudflare's own rule.
     # docs/ci/deploy-workers.md has the section.
@@ -364,8 +360,9 @@ jobs:
         if: steps.plan.outputs.deploy == 'true'
         working-directory: services/edge-shield
       # why: ONE deploy, the action's command stated rather than defaulted — see the
-      # platform job for what a second, unqualified deploy once cost. Nothing rides
-      # it: the Worker has no var and no secret.
+      # platform job for what a second, unqualified deploy once cost. The one var is
+      # RELEASE, the SHA the Worker echoes as x-nikatru-shield (row
+      # O-EDGE-SHIELD-SMOKE-NOT-JOINED-TO-SHA); it has no secret.
       - uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         if: steps.plan.outputs.deploy == 'true'
         id: deploy
@@ -374,14 +371,15 @@ jobs:
           wranglerVersion: '4.143.0'   # why: package.json says ^4.0.0, which floats. [F-2]
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: services/edge-shield
-          command: deploy
-      # why: THE SMOKE IS "IS IT IN PATH", because the shield has no health route of
-      # its own and must not grow one on either box's host. The same probe
-      # ops-watch runs daily: both routes answer with x-nikatru-shield: 1, or
-      # this job is red. Exit 2 (a probe never answered) is red too.
-      - name: Smoke — the shield is in path on both routes
+          command: deploy --var RELEASE:${{ github.sha }}
+      # why: THE SMOKE IS "IS THIS COMMIT IN PATH", because the shield has no health
+      # route of its own and must not grow one on either box's host. The probe
+      # ops-watch runs, joined to this commit: both routes answer with
+      # x-nikatru-shield: <this SHA>, or this job is red — a shield in path at an
+      # older commit is red too. Exit 2 (a probe never answered) is red as well.
+      - name: Smoke — this commit's shield is in path on both routes
         if: steps.plan.outputs.deploy == 'true'
-        run: node tooling/ops/check-edge-shield.mjs --settle
+        run: node tooling/ops/check-edge-shield.mjs --settle --expect-release ${{ github.sha }}
       # why: LEAD RULING SHIELD-R3 — the per-IP limit on the credential paths is the
       # nikatru.com zone's rate-limiting rule, declared in tooling/edge-ratelimit-rule.json
       # and written HERE, never by hand. One PUT of the http_ratelimit phase (all or

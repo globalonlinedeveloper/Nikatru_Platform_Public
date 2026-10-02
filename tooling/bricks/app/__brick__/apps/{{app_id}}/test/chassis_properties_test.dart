@@ -2463,6 +2463,10 @@ void main() {
       await tester.tap(tile);
       await _turns(tester);
       await tester.enterText(find.byType(TextField).first, 'Ada Lovelace');
+      // ⏱ 2026-10-01 · SE-05: Save is DISABLED for an empty name, and this
+      // account has none, so the button enables on the frame after the typing
+      // — the frame a person always gets between typing and tapping.
+      await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await _turns(tester, 20);
 

@@ -108,7 +108,7 @@
     72,
 
   "assert-deploy-triggers-deploy.test.mjs":
-    34,
+    44,
 
   "assert-frames-carry-text.test.mjs":
     11,
@@ -351,7 +351,7 @@
     16,
 
   "edge-shield-probe.test.mjs":
-    18,
+    26,
 
   "elf-page-alignment.test.mjs":
     23,
@@ -540,7 +540,7 @@
     13,
 
   "listing-assets-ink.test.mjs":
-    25,
+    44,
 
   "listing-assets.test.mjs":
     100,
@@ -654,7 +654,7 @@
     116,
 
   "ops-register.test.mjs":
-    435,
+    439,
 
   "ops-status.test.mjs":
     53,
@@ -672,7 +672,7 @@
     25,
 
   "pages-deployments.test.mjs":
-    108,
+    111,
 
   "pages-origin.test.mjs":
     26,
@@ -762,7 +762,7 @@
     30,
 
   "prod-provenance.test.mjs":
-    152,
+    154,
 
   "propagate-versions.test.mjs":
     15,
@@ -861,7 +861,7 @@
     4,
 
   "rollback.test.mjs":
-    25,
+    37,
 
   "rollup-lossless.test.mjs":
     52,

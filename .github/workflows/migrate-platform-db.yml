@@ -1,0 +1,96 @@
+name: Migrate PLATFORM_DB
+
+# Everything this file does, and every rule it has to obey, is in
+# docs/ci/deploy-workers.md ("PLATFORM_DB migrates before every deploy that reads it").
+# Only `# why:` lines live here.
+
+on:
+  # why: RUNS ONLY AS ci.yml's `platform-db-migrate` CALL JOB, after ci-gate, on a push to
+  # main ([ADR 095] §4), and BEFORE both deploy calls (row
+  # O-APP-WORKERS-DEPLOY-BEFORE-THE-MIGRATION, PB-03). platform_db is read by every app
+  # Worker (entitlements), the platform Worker and the apex site's Function, and until
+  # this file the platform job applied its migrations LAST, after every app Worker had
+  # gone live. So the schema expands here, once, and deploy-workers and deploy-web each
+  # `needs` this call: no code that reads platform_db goes live before its migrations.
+  # tooling/ci/assert-deploy-triggers-deploy.mjs limb 5 holds that every job deploying a
+  # config that binds PLATFORM_DB transitively needs this job.
+  workflow_call:
+    # why: NAMED, NOT INHERITED — a name the call forgets fails at startup.
+    secrets:
+      # why: NOT required (rv2-security-001), as in deploy-workers.yml: the job is bound to
+      # `production`, whose ENVIRONMENT secret of this name GitHub resolves first.
+      CLOUDFLARE_API_TOKEN:
+        required: false
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+
+concurrency:
+  group: platform-db-migrate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # why: plan → npm ci → the PLATFORM_DB migrations → the live-SQL check, each after
+  # the plan says the platform unit publishes on this commit. platform is the SOLE
+  # applier of platform_db migrations, and this is the one job that applies them.
+  # No job-level `if:` — this is a post-gate callee, and a skipped job there would
+  # read as green (assert-green-means-ran A9).
+  migrate:
+    name: Apply PLATFORM_DB migrations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # why: see deploy-workers.yml's app-worker job — alone, this line fails open; the ref
+    # check below is the refusal.
+    environment: production
+    # why: the plan reads the platform unit's ledger; nothing here records a Deployment.
+    permissions:
+      contents: read
+      deployments: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # why: the plan reads ancestry and a diff against the live SHA, which a
+          # depth-1 clone does not hold; plan-deploy.mjs exits 1 on a shallow clone.
+          fetch-depth: 0
+      # why: ONLY main MIGRATES, CHECKED BEFORE ANYTHING ELSE RUNS (row
+      # O-DEPLOY-IS-NOT-ONE-GATED-LANE, limb 2) — before the irreversible migrations.
+      - name: Refuse any ref but main
+        run: node tooling/ci/assert-deploy-ref.mjs --allow main
+      # why: the platform unit's plan, the one deploy-workers.yml's platform job runs on
+      # the same commit against the same ledger: a commit that touches none of its
+      # deployUnits globs (migrations live under services/platform/) migrates nothing.
+      - name: Plan from the Deployment ledger
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tooling/ci/plan-deploy.mjs platform
+      - uses: ./.github/actions/setup-node
+        if: steps.plan.outputs.deploy == 'true'
+      - run: npm ci
+        if: steps.plan.outputs.deploy == 'true'
+        working-directory: services/platform
+      # why: MIGRATIONS BEFORE DEPLOY. The schema standard is additive-only, so new
+      # columns are harmless to code that predates them; deploying code that reads a
+      # column the database lacks is an outage. Expand, then deploy.
+      - name: Apply PLATFORM_DB migrations (before every deploy that reads it)
+        if: steps.plan.outputs.deploy == 'true'
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: '4.143.0'   # why: package.json says ^4.0.0, which floats. [F-2]
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: services/platform
+          command: d1 migrations apply PLATFORM_DB --remote
+      # why: [pipeline K-7] a statement's legality is a property of the ENGINE, so the
+      # SQL this repository sends is executed against the live databases, the migrated
+      # platform_db among them, before any deploy that sends it. Blocking, and exit 2
+      # ("could not look") blocks too.
+      - name: The deployed SQL is SQL live D1 will run
+        if: steps.plan.outputs.deploy == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tooling/ops/check-d1-accepts-live-sql.mjs

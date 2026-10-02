@@ -31,6 +31,7 @@ import '../../core/e2e_keys.dart';
 import '../../core/router/gates.dart' show afterSignInDestination;
 import '../../l10n/app_localizations.dart';
 import '../../state/providers.dart';
+import '../account/email_change_sign_out.dart';
 import '../shared/widgets.dart';
 import 'auth_panel.dart';
 import 'legal_consent_fields.dart';
@@ -489,6 +490,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       // is the one surface the outcome is readable on. [ADR 027]
       notices: <Widget>[
         const _AccountDeletionNotice(),
+        const _EmailChangedNotice(),
         _AuthArrivalNotice(
           onResendConfirmation: _loading ? null : _resendConfirmation,
         ),
@@ -876,6 +878,60 @@ class _AuthArrivalNotice extends ConsumerWidget {
                 ref.read(failedAuthArrivalProvider.notifier).state = null,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// ADR 059 decision 2: the account's address changed and this device was
+/// signed out (`EmailChangeSignOut`) — with every other device, or, when the
+/// global revoke did not go through, WITHOUT them, and then it says so and
+/// how to finish. Said here, the screen that sign-out lands on, until
+/// dismissed or the next sign-in; a live region, like the deletion outcome.
+class _EmailChangedNotice extends ConsumerWidget {
+  const _EmailChangedNotice();
+
+  static const Key text = Key('emailChangedSignedOutNotice');
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final EmailChangeSignOutNotice? notice = ref.watch(
+      emailChangeSignedOutProvider,
+    );
+    if (notice == null) return const SizedBox.shrink();
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final ThemeData theme = Theme.of(context);
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              notice == EmailChangeSignOutNotice.everywhere
+                  ? l10n.emailChangedSignedOut
+                  : l10n.emailChangedOthersStillSignedIn,
+              key: text,
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () =>
+                    ref.read(emailChangeSignedOutProvider.notifier).state =
+                        null,
+                child: Text(l10n.dismiss),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
