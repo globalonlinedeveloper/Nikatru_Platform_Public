@@ -36,6 +36,7 @@ import { deleteIdentity, erasePlatformRows, purgeVerifiedSignups } from './lib/p
 import { runReminderMail } from './lib/reminders';
 import { refreshFxRates } from './fx';
 import { backfillProviderTokens, dropProviderTokens, providerOfRevokeStep, revokeProviderToken } from './lib/provider-revoke';
+import { pageFlaggedRows, pageOnConsecutiveMiss, type PageRow } from './lib/owner-page';
 import {
   runOpsWatchdogChecks,
   scanStuckRuns,
@@ -183,6 +184,12 @@ async function recordHeartbeat(
  * D1 is not on Box B either. The alert sink matters as much as the prober: ntfy
  * and GlitchTip are both ON Box B, so neither can carry news of Box B being down.
  *
+ * ⏱ 2026-10-01 · PB-02 — THAT SINK NOW EXISTS, AND THE CADENCE ABOVE WAS THE
+ * CRON'S, NOT THIS LIMB'S. Until today this probe ran on the nightly firing only,
+ * and its rows reached a human through nothing but the ops-watch issue. It now
+ * runs on every 6-hourly firing, and a target ok=0 on two consecutive firings
+ * mails the owner straight from this Worker (lib/owner-page.ts), once per outage.
+ *
  * ⚠️ IT ASSERTS REACHABILITY, NOT HEALTH, and the distinction is deliberate. Any
  * HTTP answer at all - including a 401 from Vaultwarden, which is the correct
  * response to an unauthenticated GET - proves the tunnel and the host are up. Only
@@ -202,7 +209,11 @@ export function boxbTargets(env: Env): string[] {
 }
 
 export async function boxbReachability(env: Env): Promise<void> {
-  await recordHeartbeat(env, await probeReachability(boxbTargets(env)), BOXB_REACH_JOB);
+  const rows = await probeReachability(boxbTargets(env));
+  // [PB-02] The page leaves from here, not from Box B - lib/owner-page.ts. It
+  // marks the rows, so it runs BEFORE they are recorded.
+  await pageOnConsecutiveMiss(env, BOXB_REACH_JOB, 'Box B', rows);
+  await recordHeartbeat(env, rows, BOXB_REACH_JOB);
 }
 
 /**
@@ -236,13 +247,17 @@ export async function boxaReachability(env: Env): Promise<void> {
     );
     return;
   }
-  await recordHeartbeat(env, await probeReachability(targets), BOXA_REACH_JOB);
+  // The not-configured row above never pages: it is not an outage, and it is
+  // ok=0 on every firing until the variable is set.
+  const rows = await probeReachability(targets);
+  await pageOnConsecutiveMiss(env, BOXA_REACH_JOB, 'the BOXA_REACH_URLS hosts', rows);
+  await recordHeartbeat(env, rows, BOXA_REACH_JOB);
 }
 
 /** One GET per URL; any HTTP answer is reachable, a 52x/53x or no answer is not.
  *  Shared by Box A and Box B so the two are graded by one rule. */
-async function probeReachability(targets: string[]): Promise<{ target: string; ok: boolean; detail: string }[]> {
-  const rows: { target: string; ok: boolean; detail: string }[] = [];
+async function probeReachability(targets: string[]): Promise<PageRow[]> {
+  const rows: PageRow[] = [];
   for (const url of targets) {
     try {
       const res = await fetch(url, {
@@ -2227,6 +2242,10 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   workflow: string;
   ref: string;
   everyHours?: number;
+  /** `workflow_dispatch` inputs sent with the dispatch. Each must be declared
+   *  under the workflow's own `on.workflow_dispatch.inputs` - github-dispatch.test.ts
+   *  reads the real file, because GitHub answers 422 to an undeclared input. */
+  inputs?: Readonly<Record<string, string>>;
 }> = [
   // ⏱️ ONCE A DAY IS PLENTY. renovate.json confines PR creation to Mondays in
   // Asia/Kolkata, so extra firings evaluate the tree and exit in about a minute
@@ -2261,7 +2280,15 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // the workflow whose lateness froze the repository twice, and three duty rows
   // read its freshness against a 36h window. Firing it every 6h costs a cheap
   // read-only check and buys 30h of margin.
-  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'ops-watch.yml', ref: 'main' },
+  //
+  // ⏱ 2026-10-01 · PB-02 (patch 2). `unattended: 'true'` is the one input this
+  // dispatch sets, and ops-watch.yml's `alert` job reads it: nobody is watching
+  // a run the Worker fired, so its failure files the ops-watch issue exactly as a
+  // scheduled run's does. Until today that job ran on `schedule` alone, under a
+  // comment calling every workflow_dispatch failure "attended" - false since this
+  // Worker began dispatching ops-watch. A land-script or hand dispatch sends no
+  // input, so it stays attended.
+  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'ops-watch.yml', ref: 'main', inputs: { unattended: 'true' } },
   // ── PHASE 2, SECOND WORKFLOW, ADDED 2026-09-04 ───────────────────────────
   // 🔴 AND THIS ONE MOVES ITS EVIDENCE TOO, WHICH ops-watch.yml ABOVE DOES NOT.
   // `duty.workflow.e2e.yml` now reads a TWO-LIMB record: the cadence claim comes
@@ -2393,7 +2420,7 @@ export async function dispatchGithubWorkflows(env: Env): Promise<void> {
             'User-Agent': 'nikatru-platform-cron',
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ ref: t.ref }),
+          body: JSON.stringify(t.inputs ? { ref: t.ref, inputs: t.inputs } : { ref: t.ref }),
         },
       );
       // 🔴 204 IS THE ONLY SUCCESS, checked as a number rather than through
@@ -2617,6 +2644,10 @@ export async function opsWatchdogJob(
     return 'withheld';
   }
   rows.push({ target: '(watchdog)', ok: true, detail: `completed: ${rows.length} check row(s), ${rows.filter((r) => !r.ok).length} not ok` });
+  // [PB-10] A row carrying `page` (ops-watchdog.ts, the ops-watch freshness limb)
+  // mails the owner straight from here, once per streak - lib/owner-page.ts.
+  // Never throws, and runs before the record because it marks the row.
+  await pageFlaggedRows(env, OPS_WATCHDOG_JOB, 'PAGE: ops-watch has stopped completing runs on main', rows);
   await recordHeartbeat(env, rows, OPS_WATCHDOG_JOB);
   return sendHeartbeat(env.OPS_WATCHDOG_HEARTBEAT_URL, 'OPS_WATCHDOG_HEARTBEAT_URL');
 }
@@ -2812,10 +2843,17 @@ async function runFiring(event: ScheduledController | undefined, env: Env): Prom
     return;
   }
   // Every other cron but the nightly one is a MARGIN firing: the dispatcher,
-  // and nothing else. An unrecognised value falls through to the full handler
+  // the ops watchdog and (since 2026-10-01) the two reachability probes, and
+  // nothing else. An unrecognised value falls through to the full handler
   // — see NIGHTLY_CRON for why that is the safe direction. OPS_HOURLY_CRON never
   // arrives here: `scheduled` routes it to opsStuckRunsJob and returns.
   if (typeof event?.cron === 'string' && event.cron !== NIGHTLY_CRON) {
+    // ⏱ 2026-10-01 · PB-02. The two reachability probes ride this grid too, so
+    // "ok=0 on two consecutive firings" - the owner page's condition - is 12 h,
+    // not the 24-48 h a nightly-only probe gave. Read-only, bounded by 10 s per
+    // target, and ahead of the dispatcher as on the nightly firing.
+    await boxbReachability(env);
+    await boxaReachability(env);
     await dispatchGithubWorkflows(env);
     // Read-only, bounded by 10s per call. It cancels nothing since the stuck-run
     // check moved to OPS_HOURLY_CRON (2026-09-24).

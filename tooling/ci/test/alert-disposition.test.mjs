@@ -158,7 +158,13 @@ describe('[14]O-5 · LIMB A — structural, fails the build', () => {
 
   test('M3 the alert job stops being gated on failure()', () => {
     const root = tree();
-    write(root, OPSWATCH, read(root, OPSWATCH).replace("if: failure() && github.event_name == 'schedule'", "if: github.event_name == 'schedule'"));
+    // ⏱ 2026-10-01 (PB-02): the alert job's `if:` gained the platform Worker's unattended
+    // dispatch, so the literal this case replaced was gone and the mutation changed
+    // NOTHING — the guard reported clean on an unmutated file. It now asserts the edit landed.
+    const before = read(root, OPSWATCH);
+    const after = before.replace('if: failure() && (', 'if: (');
+    assert.notEqual(after, before, 'the mutation found no `if: failure() && (` to replace, so this case would test nothing');
+    write(root, OPSWATCH, after);
     caught(root, 'it is not gated on failure() — it is a digest, not an alarm');
   });
 

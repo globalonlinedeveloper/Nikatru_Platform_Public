@@ -1052,6 +1052,12 @@
         "down) travel in detail, never as ok=0, or a red main would freeze the queue that must merge its fix.",
         "Not-configured limbs (no GLITCHTIP_TOKEN / BOXA_REACH_URLS) ARE ok=0: set them before this deploys.",
         "",
+        "⏱ 2026-10-01 (PB-02): `boxb_reachability` and `boxa_reachability` MOVED TO THE DISPATCHER GRID. A target",
+        "ok=0 on two consecutive firings mails the owner straight from the Worker (services/platform/src/lib/owner-page.ts,",
+        "recipient is the entity support inbox, through the mail port; tooling/ops/alarm-chains.json `ownerPage`), the one page that does not leave from Box B; two",
+        "firings is 12 h on the grid where it was 24-48 h nightly. ops_watchdog gained the `ops-watch-freshness` target",
+        "(PB-10): main's newest completed ops-watch run older than 6 h is a FINDING row and the same direct page.",
+        "",
         "🔴 `ops_stuck_runs` KEEPS ITS OWN HOURLY CRON `15 * * * *`, added 2026-09-25 (O-OPS-WATCHDOG-STUCK-RUNS-HOURLY):",
         "the stuck-run check, moved OFF the 6-hourly dispatcher grid, because a run stuck for hours froze the queue",
         "while the grid could leave it unread for up to 6 h. Hourly is the finest cadence check-heartbeats.mjs",
@@ -1102,10 +1108,16 @@
           "0 18 * * *"
         ],
         "boxb_reachability": [
-          "0 6 * * *"
+          "0 0 * * *",
+          "0 6 * * *",
+          "0 12 * * *",
+          "0 18 * * *"
         ],
         "boxa_reachability": [
-          "0 6 * * *"
+          "0 0 * * *",
+          "0 6 * * *",
+          "0 12 * * *",
+          "0 18 * * *"
         ],
         "ops_watchdog": [
           "0 0 * * *",
@@ -1791,7 +1803,7 @@
         "anchor": ".github/workflows/ops-watch.yml",
         "record": "GitHub Actions run history + the reused issue titled 'Scheduled duty is not reporting healthy'",
         "failingValue": "conclusion = failure on event = schedule, which opens/comments the issue",
-        "readBy": "the alert job in ops-watch.yml; disposition is a human closing the issue",
+        "readBy": "the alert job in ops-watch.yml; disposition is a human closing the issue. ⏱ 2026-10-01 (PB-10): its FRESHNESS is read off GitHub by services/platform/src/ops-watchdog.ts — the `ops-watch-freshness` row on every 6-hourly firing, a FINDING past 6 h and a direct owner page (services/platform/src/lib/owner-page.ts)",
         "recordQuery": {
           "reader": "github-run-history",
           "workflow": "ops-watch.yml",
@@ -1810,12 +1822,12 @@
           "headBranch": "main"
         }
       },
-      "freshnessGap": "🔴 NOTHING WATCHES THE WATCHER'S ABSENCE. This workflow FAILING is loud — its alert job opens a durable issue. This workflow silently ceasing to run is not: GitHub disables scheduled workflows in public repositories after a long inactive stretch, and a dead cron here looks exactly like a portfolio with nothing wrong. The two existing freshness readers (assert-platform-proof-fresh.mjs, assert-e2e-proof-fresh.mjs) both read the GitHub Actions API from inside CI, which is the same provider — acceptable for a build proof, circular for the alarm chain's own liveness. Closing it needs an absence signal hosted somewhere else, and the mechanism already proven in this portfolio is a GlitchTip heartbeat (the backup chain's), which needs a monitor created in the GlitchTip console: OWNER_QUEUE S-8. Printed on every run, never blocking, because it cannot be discharged from this repository. Declared 2026-08-03. ✅ PARTLY ANSWERED 2026-09-03, AND THE PART THAT MOVED IS THE TRIGGER, NOT THE EVIDENCE. services/platform/src/scheduled.ts now dispatches this workflow from the Cloudflare cron as well (GITHUB_DISPATCH_TARGETS), so it no longer depends on GitHub's scheduler to RUN — which is the half that froze this repository for ~18h on 2026-08-10 and ~46h on 2026-09-02. ⚠️ BUT THIS ROW STILL READS `event=schedule`, and it must until the timer claim moves, because a dispatched run arrives as `event=workflow_dispatch` and that is INDISTINGUISHABLE FROM A HAND-PRESS: accepting it here would make freshness green on somebody being awake, the exact failure assert-platform-proof-fresh.mjs names in its own header (\"counting manual runs is what let a never-firing cron look healthy\"). So the 12 `schedule:` slots STAY, and services/platform/test/github-dispatch.test.ts fails the build if a dispatched workflow that any row still reads this way loses them. ⬜ WHAT CLOSES IT PROPERLY: the timer claim comes from the `cron_heartbeat` row the dispatcher writes (a record only the timer can write), and this reader drops to OUTCOME only — newest successful run with an explicit `head_branch === main`, because the `event=schedule` filter is ALSO what silently guaranteed the branch.",
+      "freshnessGap": "🔴 NOTHING WATCHES THE WATCHER'S ABSENCE. This workflow FAILING is loud — its alert job opens a durable issue. This workflow silently ceasing to run is not: GitHub disables scheduled workflows in public repositories after a long inactive stretch, and a dead cron here looks exactly like a portfolio with nothing wrong. The two existing freshness readers (assert-platform-proof-fresh.mjs, assert-e2e-proof-fresh.mjs) both read the GitHub Actions API from inside CI, which is the same provider — acceptable for a build proof, circular for the alarm chain's own liveness. Closing it needs an absence signal hosted somewhere else, and the mechanism already proven in this portfolio is a GlitchTip heartbeat (the backup chain's), which needs a monitor created in the GlitchTip console: OWNER_QUEUE S-8. Printed on every run, never blocking, because it cannot be discharged from this repository. Declared 2026-08-03. ✅ PARTLY ANSWERED 2026-09-03, AND THE PART THAT MOVED IS THE TRIGGER, NOT THE EVIDENCE. services/platform/src/scheduled.ts now dispatches this workflow from the Cloudflare cron as well (GITHUB_DISPATCH_TARGETS), so it no longer depends on GitHub's scheduler to RUN — which is the half that froze this repository for ~18h on 2026-08-10 and ~46h on 2026-09-02. ⚠️ BUT THIS ROW STILL READS `event=schedule`, and it must until the timer claim moves, because a dispatched run arrives as `event=workflow_dispatch` and that is INDISTINGUISHABLE FROM A HAND-PRESS: accepting it here would make freshness green on somebody being awake, the exact failure assert-platform-proof-fresh.mjs names in its own header (\"counting manual runs is what let a never-firing cron look healthy\"). So the 12 `schedule:` slots STAY, and services/platform/test/github-dispatch.test.ts fails the build if a dispatched workflow that any row still reads this way loses them. ⬜ WHAT CLOSES IT PROPERLY: the timer claim comes from the `cron_heartbeat` row the dispatcher writes (a record only the timer can write), and this reader drops to OUTCOME only — newest successful run with an explicit `head_branch === main`, because the `event=schedule` filter is ALSO what silently guaranteed the branch. ⏱ 2026-10-01 (PB-10, O-OPS-WATCH-GRADES-ITS-OWN-FRESHNESS) — ANSWERED, appended rather than rewritten: `mechanism.readBy` now names services/platform/src/ops-watchdog.ts, which grades the age of main's newest completed ops-watch run on every 6-hourly Cloudflare firing (ceiling 6 h) and pages the owner itself, off GitHub and off Box B. OWNER_QUEUE S-8 retires for this duty with no GlitchTip console step; [14]O-10 now counts this row as read.",
       "absenceWatcher": {
         "substrate": "(none)",
         "what": "NOTHING. This is the row [14]O-4 was written from, and it is the only row in the register whose own guard already prints the sentence on every single run.",
         "ownerGated": true,
-        "gap": "🔴 NOTHING WATCHES THE WATCHER'S ABSENCE — and it is a strictly worse gap than the two rows above, because this workflow IS the absence watcher for duty.platform-cron. Its FAILING is loud (the alert job opens the durable issue THIS ROW declares in mechanism.record, matched on title and never on number; observed 2026-08-04, and again 2026-08-12 run 31584600130). Its silently ceasing to run is not: GitHub disables scheduled workflows in inactive public repositories, and unlike build-platforms.yml and e2e.yml there is no push-triggered reader holding this cadence at all — see this row's own freshnessGap, which the [14]O-10 limb has been printing since 2026-08-03. Closing it needs an absence signal hosted on a second provider, and the mechanism is already proven twice in this portfolio: an hourly poster plus a GlitchTip heartbeat monitor WITH MARGIN (the laptop chain's monitor 6, and the Oracle box's monitor 16 at 3h against an hourly post). Both halves of that need a monitor created in the GlitchTip console: OWNER_QUEUE S-8. The declaration is what this increment can build; the monitor is not."
+        "gap": "🔴 NOTHING WATCHES THE WATCHER'S ABSENCE — and it is a strictly worse gap than the two rows above, because this workflow IS the absence watcher for duty.platform-cron. Its FAILING is loud (the alert job opens the durable issue THIS ROW declares in mechanism.record, matched on title and never on number; observed 2026-08-04, and again 2026-08-12 run 31584600130). Its silently ceasing to run is not: GitHub disables scheduled workflows in inactive public repositories, and unlike build-platforms.yml and e2e.yml there is no push-triggered reader holding this cadence at all — see this row's own freshnessGap, which the [14]O-10 limb has been printing since 2026-08-03. Closing it needs an absence signal hosted on a second provider, and the mechanism is already proven twice in this portfolio: an hourly poster plus a GlitchTip heartbeat monitor WITH MARGIN (the laptop chain's monitor 6, and the Oracle box's monitor 16 at 3h against an hourly post). Both halves of that need a monitor created in the GlitchTip console: OWNER_QUEUE S-8. The declaration is what this increment can build; the monitor is not. ⏱ 2026-10-01 (PB-10) — A WATCHER ON A SECOND PROVIDER NOW EXISTS, and it is not a GlitchTip monitor: the platform Worker's `ops-watch-freshness` limb (services/platform/src/ops-watchdog.ts) on Cloudflare, paging by Resend directly (tooling/ops/alarm-chains.json `ownerPage`). `substrate` stays `(none)` and `ownerGated` true until its first forced page is OBSERVED and recorded — a watcher nobody has watched deliver is a declaration, which is the line this row has always drawn."
       },
       "accessProviders": [
         "github",

@@ -124,6 +124,61 @@ describe('the declared targets are safe by construction', () => {
   });
 });
 
+describe('⏱ 2026-10-01 · PB-02 — the Worker\'s ops-watch dispatch is UNATTENDED, and says so', () => {
+  /** The workflow's `on.workflow_dispatch.inputs` names, read from the real file
+   *  by indentation: the trigger block's own keys sit two spaces under `inputs:`. */
+  const dispatchInputs = (yml: string): Map<string, string> => {
+    const lines = yml.split('\n');
+    const at = lines.findIndex((l) => /^ {4}inputs:\s*$/.test(l));
+    const out = new Map<string, string>();
+    if (at === -1) return out;
+    let current = '';
+    for (const l of lines.slice(at + 1)) {
+      if (/^\S/.test(l) || /^ {2}\S/.test(l) || /^ {4}\S/.test(l)) break; // left the inputs block
+      const name = /^ {6}([A-Za-z0-9_-]+):\s*$/.exec(l);
+      if (name) { current = name[1]; out.set(current, ''); continue; }
+      const type = /^ {8}type:\s*(\S+)/.exec(l);
+      if (type && current) out.set(current, type[1]);
+    }
+    return out;
+  };
+  const OPS_WATCH = WORKFLOWS['../../../.github/workflows/ops-watch.yml'];
+
+  it('🔴 the ops-watch target sends `unattended: true`, and no other target sends an input', () => {
+    const ops = GITHUB_DISPATCH_TARGETS.find((t) => t.workflow === 'ops-watch.yml');
+    expect(ops?.inputs).toEqual({ unattended: 'true' });
+    for (const t of GITHUB_DISPATCH_TARGETS) if (t !== ops) expect(t.inputs, `${t.workflow} sends an input`).toBeUndefined();
+  });
+
+  it('🔴 every input a target sends is DECLARED by its workflow — GitHub answers 422 to one that is not', () => {
+    expect(dispatchInputs(OPS_WATCH).size, 'no workflow_dispatch inputs read from ops-watch.yml — this check would be vacuous').toBeGreaterThan(0);
+    for (const t of GITHUB_DISPATCH_TARGETS) {
+      const declared = dispatchInputs(WORKFLOWS[`../../../.github/workflows/${t.workflow}`] ?? '');
+      for (const name of Object.keys(t.inputs ?? {})) {
+        expect(declared.has(name), `${t.workflow} declares no workflow_dispatch input \`${name}\``).toBe(true);
+      }
+    }
+    expect(dispatchInputs(OPS_WATCH).get('unattended')).toBe('boolean');
+  });
+
+  it('🔴 ops-watch.yml\'s alert job runs on a schedule OR on a dispatch carrying `unattended`', () => {
+    const alert = OPS_WATCH.slice(OPS_WATCH.indexOf('\n  alert:\n'));
+    const cond = /^ {4}if:\s*(.+)$/m.exec(alert)?.[1] ?? '';
+    expect(cond).toContain("github.event_name == 'schedule'");
+    expect(cond).toContain("github.event_name == 'workflow_dispatch' && inputs.unattended");
+  });
+
+  it('the request body carries the inputs beside the ref', async () => {
+    const db = realPlatformDb();
+    const seen = stubFetch(204);
+    await dispatchGithubWorkflows(envWith(db, 'tok'));
+    const ops = seen.find((s) => s.url.endsWith('/actions/workflows/ops-watch.yml/dispatches'));
+    expect(JSON.parse(String(ops?.init.body))).toEqual({ ref: 'main', inputs: { unattended: 'true' } });
+    const renovate = seen.find((s) => s.url.endsWith('/actions/workflows/renovate.yml/dispatches'));
+    expect(JSON.parse(String(renovate?.init.body))).toEqual({ ref: 'main' });
+  });
+});
+
 describe('a dispatch that is accepted', () => {
   it('writes ok=1 with the workflow and ref in the detail', async () => {
     const db = realPlatformDb();

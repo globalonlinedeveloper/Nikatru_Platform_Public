@@ -6,6 +6,8 @@ import {
   NIGHTLY_CRON,
   BACKUP_CRON,
   BACKUP_JOB,
+  BOXA_REACH_JOB,
+  BOXB_REACH_JOB,
   GITHUB_DISPATCH_JOB,
   OPS_WATCHDOG_JOB,
   OPS_HOURLY_CRON,
@@ -112,10 +114,15 @@ describe('the nightly cron is a real one, and the others are margin firings', ()
     // [O-LAPTOP-ROUTINES-DIE-OVERNIGHT] The ops watchdog rides the dispatcher's
     // grid, so it keeps exactly the same crons.
     expect(WATCHED[OPS_WATCHDOG_JOB]).toEqual(grid);
+    // ⏱ 2026-10-01 · PB-02: so do the two reachability probes, whose two consecutive
+    // ok=0 firings page the owner - 12 h on the grid, 24-48 h on the nightly cron alone.
+    expect(WATCHED[BOXB_REACH_JOB]).toEqual(grid);
+    expect(WATCHED[BOXA_REACH_JOB]).toEqual(grid);
     expect(WATCHED[BACKUP_JOB]).toEqual([BACKUP_CRON]);
     expect(WATCHED[OPS_STUCK_RUNS_JOB]).toEqual([OPS_HOURLY_CRON]);
+    const onGrid = new Set([GITHUB_DISPATCH_JOB, OPS_WATCHDOG_JOB, BOXB_REACH_JOB, BOXA_REACH_JOB]);
     for (const [job, jobCrons] of Object.entries(WATCHED)) {
-      if (job === GITHUB_DISPATCH_JOB || job === OPS_WATCHDOG_JOB || job === BACKUP_JOB || job === OPS_STUCK_RUNS_JOB) continue;
+      if (onGrid.has(job) || job === BACKUP_JOB || job === OPS_STUCK_RUNS_JOB) continue;
       expect(jobCrons, `${job} must keep only the nightly cron`).toEqual([NIGHTLY_CRON]);
     }
     // And every declared cron is kept by someone — the half check-heartbeats.mjs
@@ -164,9 +171,10 @@ async function runScheduled(cron: string | undefined) {
 }
 
 describe('which limbs run is decided by which cron fired', () => {
-  it('🔴 EVERY margin firing writes ONLY the dispatcher and the ops watchdog — the sweep does not run four times a day', async () => {
+  it('🔴 EVERY margin firing writes ONLY the dispatcher, the ops watchdog and the two probes — the sweep does not run four times a day', async () => {
+    // ⏱ 2026-10-01 · PB-02: the two reachability probes joined the grid (their two-in-a-row page).
     for (const c of CRONS.filter((x) => x !== NIGHTLY_CRON && x !== BACKUP_CRON && x !== OPS_HOURLY_CRON)) {
-      expect(await runScheduled(c), `margin cron ${c}`).toEqual([GITHUB_DISPATCH_JOB, OPS_WATCHDOG_JOB].sort());
+      expect(await runScheduled(c), `margin cron ${c}`).toEqual([GITHUB_DISPATCH_JOB, OPS_WATCHDOG_JOB, BOXB_REACH_JOB, BOXA_REACH_JOB].sort());
     }
   });
 
@@ -211,7 +219,7 @@ describe('which limbs run is decided by which cron fired', () => {
     // The risk moved rather than vanished (a typo now means the nightly limbs
     // never run), and THAT risk has a test: `NIGHTLY_CRON is a cron the deployed
     // config actually declares`. The old direction had no such check available.
-    expect(await runScheduled('7 7 7 7 7')).toEqual([GITHUB_DISPATCH_JOB, OPS_WATCHDOG_JOB].sort());
+    expect(await runScheduled('7 7 7 7 7')).toEqual([GITHUB_DISPATCH_JOB, OPS_WATCHDOG_JOB, BOXB_REACH_JOB, BOXA_REACH_JOB].sort());
   });
 
   it('a firing with NO cron at all still runs everything — only a STRING can be a margin firing', async () => {

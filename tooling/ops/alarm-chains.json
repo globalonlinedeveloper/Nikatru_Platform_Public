@@ -28,6 +28,24 @@
     "on a throwaway project called 'TEMP alarm-chain selftest'."
   ],
   "org": "nikatru",
+  "ownerPage": {
+    "_why": [
+      "⏱ 2026-10-01 — THE ONE PAGE PATH THAT DOES NOT LEAVE FROM BOX B (PB-02, the owner-page row this train opens;",
+      "ADR draft `owner-page-never-depends-on-the-watched-box`, recorded by the next Private pass).",
+      "Every other page in this file leaves from Box B: the GlitchTip monitors, the alert evaluation, its Resend",
+      "relay and ntfy. So the platform Worker (Cloudflare) sends THIS one itself, straight to Resend over HTTPS,",
+      "through the mail port's `reports` stream (RESEND_API_KEY, which it already holds) — services/platform/src/lib/owner-page.ts. It fires on (a) a",
+      "boxb_reachability or boxa_reachability target ok=0 on two consecutive 6-hourly firings, and (b) the",
+      "ops_watchdog `ops-watch-freshness` row finding main's newest completed ops-watch run older than 6 h.",
+      "⏱ 2026-10-02 · NO ADDRESS LIVES HERE. The recipient is the published support inbox (`supportEmail` in",
+      "tooling/house-identity.json, rendered into src/generated/entity.ts), which Workspace receives — off Box B",
+      "([ADR 029] §1), the inbox GlitchTip's email recipient delivers to (chainsObserved below). The From is the",
+      "`reports` stream's `alerts@` sender on the pooled subdomain ([ADR 029] §2), which the mail port sets.",
+      "The drafted block carried both as copies; they moved to the entity source, their one home, when the mail",
+      "port landed (test/owner-page.test.ts fails on an address literal in the module).",
+      "⬜ NOT YET OBSERVED DELIVERING: its first forced page records the Resend message id in chainsObserved."
+    ]
+  },
   "_expectedMonitorsWhy": [
     "🔴 KEYED BY `id`, NEVER BY `name` — 2026-09-03, after a 46-hour production freeze.",
     "This list used to be `expectedMonitorNames`. Moving GlitchTip from the Oracle box to the",
@@ -162,7 +180,10 @@
     "and ensure-monitors.mjs writes its monitor id onto that row after creating it; with host ids also typed here, every",
     "new Worker would need a second hand edit in this file, and the canary would miss the monitor of whoever forgot it.",
     "A host row with no monitor id yet prints as EXPECTED BUT ABSENT and does not fail, for the reason the asymmetry",
-    "paragraphs above give: a canary red for the hours between provisioning and creation gets switched off."
+    "paragraphs above give: a canary red for the hours between provisioning and creation gets switched off.",
+    "",
+    "⏱ 2026-10-01 (PB-12) — id 17 `Supabase auth chain` LEFT THIS LIST: it is now the auth-api.nikatru.com",
+    "row in tooling/monitor-register.json, which the canary reads (one place per id, the 2026-09-26 rule above)."
   ],
   "expectedMonitors": [
     {
@@ -176,10 +197,6 @@
     {
       "id": 16,
       "name": "GlitchTip backup chain"
-    },
-    {
-      "id": 17,
-      "name": "Supabase auth chain"
     },
     {
       "id": 18,
@@ -339,6 +356,18 @@
     "that matters most. That is [pipeline E-9b], it is owner-gated, and it is recorded as undecided in",
     "tooling/monitor-register.json → observability.spof. Do not read a green run of",
     "verify-alarm-chains.mjs as an answer to it.",
+    "",
+    "⏱ 2026-10-01 — APPENDED, NOTHING ABOVE REWRITTEN (PB-24). Two things in the paragraph above and in",
+    "requirement R11-02's heldReason, which carries the same sentence, are no longer the whole truth.",
+    "(1) A Box B LOSS IS DETECTED OFF BOX B, and has been since 2026-09-12: the platform Worker's",
+    "boxb_reachability rows. Until today their only delivery was the ops-watch issue, filed on",
+    "schedule-triggered runs alone. (2) THERE IS NOW ONE PAGE THAT DOES NOT LEAVE FROM THIS BOX: `ownerPage`",
+    "above — the Worker mails the owner itself on two consecutive ok=0 firings. What that narrows is the",
+    "DELIVERY half of E-9b for a Box B outage, and for whatever hosts BOXA_REACH_URLS names (the auth box's,",
+    "Box C since 2026-09-24, if it was repointed; its production value is not in this tree); it does not move",
+    "any GlitchTip monitor off the box,",
+    "and `observability.decidedOn` stays null until the owner records a decision. R11-02's verify changes in",
+    "the next Private pass, which names this block.",
     "",
     "⚠️ THIS PARAGRAPH SAID 'ONE ORACLE BOX' UNTIL 2026-09-03, and the correction is one word rather",
     "than a change of state. The box became the Hostinger box (Box B) on 2026-09-02 — the same move",

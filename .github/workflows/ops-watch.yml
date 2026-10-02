@@ -37,6 +37,12 @@ on:
         description: 'Also scan every tracked lockfile on main with OSV-Scanner (red while an advisory stands; off for post-merge dispatches)'
         type: boolean
         default: false
+      # why: the platform Worker's six-hourly dispatch sets this and nothing else does. Nobody watches that run,
+      # so its failure files the ops-watch issue as a scheduled run's does; land-script and hand dispatches leave it off.
+      unattended:
+        description: 'Set by the platform Worker cron only: nobody is watching this run, so a failure files the ops-watch issue (off for land-script and hand dispatches)'
+        type: boolean
+        default: false
   # why: TWELVE slots, and every gap was COMPUTED including the wrap past midnight --
   # a sorted list shows every gap except the circular one. GitHub delivers this
   # repository's scheduled runs 10.1% on time, so density is what buys the alarm
@@ -932,10 +938,11 @@ jobs:
     name: Open or refresh the ops-watch issue
     needs:
       [heartbeats, status, supabase-drift, prod-provenance, pages-deployments, runner-budget, glitchtip, edge-shield, failure-ledger, renovate-backlog, code-scanning-age, tech-currency]
-    # why: schedule only, and the issue is REUSED rather than reopened -- later
-    # failures arrive as comments and it is never closed automatically, so closing it
-    # is the acknowledgement that a human looked.
-    if: failure() && github.event_name == 'schedule'
+    # why: unattended runs only -- a schedule, or the platform Worker's dispatch, which sets
+    # `unattended` (2026-10-01; it ran on schedule alone while the Worker's runs went unfiled).
+    # The issue is REUSED rather than reopened -- later failures arrive as comments and it is
+    # never closed automatically, so closing it is the acknowledgement that a human looked.
+    if: failure() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.unattended))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

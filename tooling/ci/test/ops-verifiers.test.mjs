@@ -42,7 +42,8 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { compareProviders, declared } from '../../ops/verify-auth-providers.mjs';
-import { expectedMonitors } from '../../ops/monitor-register.mjs';
+import { expectedMonitors, observationAgeProblems, OBSERVATION_MAX_AGE_DAYS } from '../../ops/monitor-register.mjs';
+import { gradeConfirmationThreshold } from '../../ops/verify-monitors.mjs';
 import { KILL_MS, serveSilence, runBounded } from './fixtures/silent-server.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -356,25 +357,101 @@ describe('verify-monitors / verify-alarm-chains — the GlitchTip pair', () => {
       if (url.startsWith('/api/0/projects/' + org + '/zz-broken/alerts/')) return [200, []];
       return [404, { detail: 'Not found.' }];
     };
+    // ⏱ 2026-10-01 (PB-16): limb C now ages each observation, so the day is pinned to
+    // this slug's own record — otherwise the case turns red the day it ages past the
+    // ceiling, for a reason that has nothing to do with the alert read it is about.
+    const asOf = { ALARM_CHAINS_TODAY: ledger.chainsObserved[slug].date };
     const onlyUnread = await serve(answerWith({ monitors: [], projects: [] }));
     try {
-      const r = await runServed('verify-alarm-chains.mjs', glitchtipAt(onlyUnread.url));
+      const r = await runServed('verify-alarm-chains.mjs', { ...glitchtipAt(onlyUnread.url), ...asOf });
       assert.ok(onlyUnread.seen.some((x) => x.url.startsWith('/api/0/projects/' + org + '/' + slug + '/alerts/')), 'limb B never read an alert list:\n' + r.out);
       assert.ok(r.out.includes('ALERTS UNREADABLE: project ' + slug), r.out);
-      assert.doesNotMatch(r.out, /COVERAGE LOST: expected monitor|NO PROJECT|DANGLING PROJECT|NEVER OBSERVED/, 'the fixture tripped another limb, so the exit below would not come from the alert read');
+      assert.doesNotMatch(r.out, /COVERAGE LOST: expected monitor|NO PROJECT|DANGLING PROJECT|NEVER OBSERVED|STALE OBSERVATION/, 'the fixture tripped another limb, so the exit below would not come from the alert read');
       assert.equal(r.code, 2, r.out);
     } finally {
       await onlyUnread.close();
     }
     const withBroken = await serve(answerWith({ monitors: [{ id: 999999, name: 'fixture', projectID: 2 }], projects: [{ id: 2, slug: 'zz-broken', name: 'zz-broken' }] }));
     try {
-      const r = await runServed('verify-alarm-chains.mjs', glitchtipAt(withBroken.url));
+      const r = await runServed('verify-alarm-chains.mjs', { ...glitchtipAt(withBroken.url), ...asOf });
       assert.ok(r.out.includes('ALERTS UNREADABLE: project ' + slug), r.out);
       assert.match(r.out, /NO UPTIME RECIPIENT: project zz-broken/, r.out);
       assert.equal(r.code, 1, 'a chain that WAS read and is broken must still be exit 1:\n' + r.out);
     } finally {
       await withBroken.close();
     }
+  });
+
+  // ⏱ 2026-10-01 (PB-16) — limb C's age ceiling, through the REAL script against a served
+  // instance whose every other limb is green. The control is the same fixture on the
+  // observation's own date: exit 0. One day past the ceiling: exit 1, named.
+  test('🔴 verify-alarm-chains: an observation past the 30-day ceiling is exit 1; the same ledger inside it is exit 0', async () => {
+    const ledger = JSON.parse(readFileSync(join(OPS, 'alarm-chains.json'), 'utf8'));
+    const org = ledger.org;
+    const slug = Object.entries(ledger.chainsObserved ?? {}).find(([, o]) => o?.date && o?.evidence)?.[0];
+    assert.ok(slug, 'the ledger records no observed chain, so this fixture cannot be built');
+    const register = JSON.parse(readFileSync(join(REPO, 'tooling', 'monitor-register.json'), 'utf8'));
+    const union = expectedMonitors(register, ledger);
+    const monitors = union.expected.map((row) => ({ id: Number(row.id), name: row.name, projectID: 1 }));
+    const g = await serve((url) => {
+      if (url.startsWith('/api/0/organizations/' + org + '/monitors/')) return [200, monitors];
+      if (url.startsWith('/api/0/organizations/' + org + '/projects/')) return [200, [{ id: 1, slug, name: slug }]];
+      if (url.startsWith('/api/0/projects/' + org + '/' + slug + '/alerts/')) {
+        return [200, [{ uptime: true, quantity: 1, timespanMinutes: 1, alertRecipients: [{ id: 1 }] }]];
+      }
+      return [404, { detail: 'Not found.' }];
+    });
+    const observed = ledger.chainsObserved[slug].date;
+    const dayAfter = (n) => new Date(Date.parse(`${observed}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+    try {
+      const green = await runServed('verify-alarm-chains.mjs', { ...glitchtipAt(g.url), ALARM_CHAINS_TODAY: dayAfter(OBSERVATION_MAX_AGE_DAYS) });
+      assert.equal(green.code, 0, 'the control — the same fixture, on the ceiling day — must be green:\n' + green.out);
+      const red = await runServed('verify-alarm-chains.mjs', { ...glitchtipAt(g.url), ALARM_CHAINS_TODAY: dayAfter(OBSERVATION_MAX_AGE_DAYS + 1) });
+      assert.equal(red.code, 1, red.out);
+      assert.match(red.out, new RegExp(`STALE OBSERVATION: project ${slug}'s chain was last watched delivering on ${observed}, ${OBSERVATION_MAX_AGE_DAYS + 1} days ago`));
+    } finally {
+      await g.close();
+    }
+  });
+
+  test('verify-alarm-chains: a malformed ALARM_CHAINS_TODAY is exit 2 before any request', () => {
+    const { code, out } = run('verify-alarm-chains.mjs', { GLITCHTIP_TOKEN: 'fixture-token', GLITCHTIP_URL: CLOSED, ALARM_CHAINS_TODAY: '2026-1-1' });
+    assert.equal(code, 2, out);
+    assert.match(out, /ALARM_CHAINS_TODAY is "2026-1-1", not YYYY-MM-DD/);
+  });
+});
+
+describe('⏱ 2026-10-01 — the age and threshold rules, as pure functions', () => {
+  const OBS = { ops: { date: '2026-09-01', evidence: 'resend id x' }, quiet: { date: '2026-08-01', evidence: '' } };
+
+  test('observationAgeProblems: the ceiling day is fresh, one day past it is STALE', () => {
+    assert.deepEqual(observationAgeProblems(OBS, ['ops'], '2026-10-01'), []); // 30 days
+    const p = observationAgeProblems(OBS, ['ops'], '2026-10-02'); // 31 days
+    assert.equal(p.length, 1);
+    assert.match(p[0], /^STALE OBSERVATION: project ops's chain was last watched delivering on 2026-09-01, 31 days ago/);
+  });
+
+  test('observationAgeProblems: no record (or no evidence) is limb C\'s NEVER OBSERVED, not an age', () => {
+    assert.deepEqual(observationAgeProblems(OBS, ['quiet', 'absent'], '2027-01-01'), []);
+  });
+
+  test('observationAgeProblems: an undatable record is named, never passed', () => {
+    const p = observationAgeProblems({ ops: { date: 'last week', evidence: 'x' } }, ['ops'], '2026-10-01');
+    assert.match(p[0], /^UNDATABLE OBSERVATION: project ops/);
+  });
+
+  test('gradeConfirmationThreshold: a recorded threshold that matches is clean; one that moved is drift', () => {
+    const declared = { id: 11, confirmationThreshold: 2, confirmationThresholdVerifiedOn: '2026-08-05' };
+    assert.deepEqual(gradeConfirmationThreshold('platform.example', declared, { confirmationThreshold: 2 }), {});
+    const moved = gradeConfirmationThreshold('platform.example', declared, { confirmationThreshold: 1 });
+    assert.match(moved.problem, /monitor id 11 records confirmationThreshold 2 \(verified 2026-08-05\) and the live monitor carries 1/);
+    assert.match(gradeConfirmationThreshold('platform.example', declared, {}).problem, /carries null/);
+  });
+
+  test('gradeConfirmationThreshold: an unrecorded threshold is PRINTED with its live value, never failed', () => {
+    const r = gradeConfirmationThreshold('nikatru.example', { id: 4 }, { confirmationThreshold: 3 });
+    assert.equal(r.problem, undefined);
+    assert.match(r.unrecorded, /nikatru\.example — monitor 4 live confirmationThreshold 3, unrecorded/);
   });
 });
 
