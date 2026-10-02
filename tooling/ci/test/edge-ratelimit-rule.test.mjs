@@ -122,10 +122,9 @@ describe('the declared rule (tooling/edge-ratelimit-rule.json)', () => {
     }
   });
 
-  test('🔴 counts /auth/v1/token, every MFA factor path and /auth/v1/reauthenticate, so one address cannot fill a credential bucket (SYN-A2 / PB-01)', () => {
+  test('🔴 counts every MFA factor path and /auth/v1/reauthenticate, so one address cannot fill those credential buckets (SYN-A2 / PB-01)', () => {
     const counted = pathMatcher(rule.expression);
     for (const p of [
-      '/auth/v1/token',
       '/auth/v1/reauthenticate',
       '/auth/v1/factors/abc/verify',
       '/auth/v1/factors/0b6f2a1c-1d2e-4f50-8a9b-0c1d2e3f4a5b/challenge',
@@ -134,10 +133,21 @@ describe('the declared rule (tooling/edge-ratelimit-rule.json)', () => {
     ]) {
       assert.ok(counted(p), `${p} is not in the rule`);
     }
-    // The refresh grant is the same path: the Free plan cannot read the query. The
-    // cost is written beside the rule (_why, "THE REFRESH TRADE-OFF").
-    assert.ok(DECLARED_WHY.includes('THE REFRESH TRADE-OFF'), 'the refresh trade-off is not written down beside the rule');
     assert.ok(DECLARED_WHY.includes('THE RESIDUAL'), 'the residual is not written down beside the rule');
+  });
+
+  test('🔴 RED CONTROL: never counts /auth/v1/token — the refresh grant\'s path (lead ruling on PR #1147, item 1)', () => {
+    // The Free plan cannot read the query, so counting /token counts the refresh
+    // grant; gotrue-dart signs a native user out on a refresh 429, and behind
+    // carrier-grade NAT one address is many users. The reason sits beside the
+    // expression (`_expression_why`) and in _why.
+    const counted = pathMatcher(rule.expression);
+    for (const p of ['/auth/v1/token', '/auth/v1/token/', '/auth/v1/tokens']) {
+      assert.ok(!counted(p), `${p} is in the rule: a refresh-grant 429 signs native users out`);
+    }
+    assert.ok(!rule.expression.includes('/auth/v1/token'), 'the refresh-grant path appears in the expression');
+    assert.doesNotMatch(rule.expression, /starts_with\(http\.request\.uri\.path, "\/auth\/v1\/t/);
+    assert.match(String(rule._expression_why ?? ''), /carrier-grade NAT/, 'the reason is not written beside the expression');
   });
 
   test('🔴 never counts the rest of /auth/v1 — the reads a signed-in app makes all day, and the JWKS every verifier fetches', () => {

@@ -17,14 +17,14 @@
     "`provider`; the zone id is never written here, it is resolved by name at read time. Every DNS record is",
     "`{ name, type, content, ttl, proxied }` and `proxied` is the one Cloudflare-specific flag in it. The WAF rules,",
     "the rate-limit rule, the Access apps and the tunnel ingress have no neutral form and live under `cloudflare`.",
-    "So a DNS-provider move is `node tooling/ops/check-edge-zone.mjs --export`: the records in this shape plus the",
-    "list of what has no equivalent. tooling/ports/_non-port.json names the zone as declared, not ported.",
+    "So a DNS-provider move is `node tooling/ops/check-edge-zone.mjs --export <file>` (local only): the records in this",
+    "shape plus the list of what has no equivalent, written to <file> and never to a log. tooling/ports/_non-port.json names the zone as declared, not ported.",
     "",
-    "🔴 `null` MEANS NOT YET MEASURED, NEVER 'ANY VALUE'. A field written null is printed with its live value on",
-    "every run and is not compared; a field with a value is compared and its drift is exit 1. Nothing in this file",
+    "🔴 `null` MEANS NOT YET MEASURED, NEVER 'ANY VALUE'. A field written null is noted on every run (a record's",
+    "content as an 8-char sha256 only: the ops-watch log is public) and is not compared; a field with a value is compared and its drift is exit 1. Nothing in this file",
     "was read from the live zone in the lane that wrote it (it had no Cloudflare credential), so every value below",
-    "is one the repository already asserts elsewhere, cited per row, and every other value is null. The first",
-    "`--export` with CLOUDFLARE_READ_TOKEN fills them in a reviewed change; it never writes this file itself.",
+    "is one the repository already asserts elsewhere, cited per row, and every other value is null. The first local",
+    "`--export <file>` with CLOUDFLARE_READ_TOKEN fills them in a reviewed change; it never writes this file itself.",
     "",
     "⚠️ RECORDS NOT DECLARED ARE PRINTED, NOT FAILED, unless they break the one rule PB-05 is about: a proxiable",
     "record (A, AAAA, CNAME) that is DNS-only and is not in `dns.dnsOnly` is exit 1, declared or not. That is the",
@@ -70,7 +70,7 @@
         { "ref": null, "description": null, "action": null, "enabled": true },
         { "ref": null, "description": null, "action": null, "enabled": true }
       ],
-      "_why": "The zone's two WAF custom rules (PB-05), by ref. The count is the review's measurement; each ref, description and action is null until the first --export with CLOUDFLARE_READ_TOKEN (Zone WAF Read) prints them. A live phase with a different number of rules, a declared ref that is gone, or a declared field that moved is exit 1."
+      "_why": "The zone's two WAF custom rules (PB-05), by ref. The count is the review's measurement; each ref, description and action is null until the first live read with CLOUDFLARE_READ_TOKEN (Zone WAF Read) notes them. A live phase with a different number of rules, a declared ref that is gone, or a declared field that moved is exit 1."
     },
     "access": {
       "_why": [

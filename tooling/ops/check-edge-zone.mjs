@@ -32,13 +32,22 @@
 // (the date ci.yml gives #1095's own deferral) makes the API limbs print UNREADABLE and the
 // run go on with the unauthenticated probes; the day after the date that is exit 2.
 //
+// 🔴 THE LOG IS PUBLIC (lead ruling on PR #1147, item 3). This runs in the public repo's
+// ops-watch.yml, whose logs anyone can read, so the default output NEVER carries a record's
+// content or the name of a record nobody declared: it prints counts, and for each such record
+// an 8-char sha256 (`recordHash`) to match against a local export. Declared names are already
+// public in ZONE_FILE_REL. edge-zone.test.mjs holds it: the default output contains no content.
+//
 // Usage:  node tooling/ops/check-edge-zone.mjs [--cloudflare-read-pending-until YYYY-MM-DD] [--root <dir>]
-//         node tooling/ops/check-edge-zone.mjs --export     (the records in the provider-neutral
-//              shape plus what has no neutral equivalent — a DNS-provider move's worklist)
+//         node tooling/ops/check-edge-zone.mjs --export <file>   (LOCAL ONLY — refused under
+//              GitHub Actions: writes the records in the provider-neutral shape, with each one's
+//              hash, plus what has no neutral equivalent — a DNS-provider move's worklist — to
+//              <file>, and prints only how many it wrote)
 //
 // 🔴 `process.exit()` IS BANNED IN THIS FILE, as in its neighbours: set `process.exitCode`.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cf, readZoneRecords, CouldNotLook, MAX_PAGES, PAGE_SIZE } from './check-wildcard-dns.mjs';
@@ -57,6 +66,23 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export const ZONE_NAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
 const lc = (s) => (typeof s === 'string' ? s.toLowerCase() : s);
+
+/** PURE. A record's short public handle: the first 8 hex of sha256(name, type, content). */
+export function recordHash(r) {
+  return createHash('sha256').update(`${lc(r?.name ?? '')}\n${r?.type ?? ''}\n${r?.content ?? ''}`).digest('hex').slice(0, 8);
+}
+/** PURE. A value's short public handle, for a live field that must not reach the log. */
+const valueHash = (v) => createHash('sha256').update(JSON.stringify(v ?? null)).digest('hex').slice(0, 8);
+
+/** The file's text, or null when it is not there — one read, no exists-then-read. */
+function readIfThere(abs) {
+  try {
+    return readFileSync(abs, 'utf8');
+  } catch (err) {
+    if (err?.code === 'ENOENT') return null;
+    throw err;
+  }
+}
 const endOfDay = (d) => Date.parse(`${d}T23:59:59Z`);
 
 /** PURE. Every way the declaration is unusable; an empty list means it can be judged against. */
@@ -82,10 +108,16 @@ export function validateDeclaration(doc, { root = ROOT } = {}) {
   if (typeof rl?.file !== 'string') bad.push('`cloudflare.rateLimit.file` is missing');
   else {
     const abs = join(root, ...rl.file.split('/'));
-    if (!existsSync(abs)) bad.push(`\`cloudflare.rateLimit.file\` ${rl.file} does not exist`);
-    else {
+    let text = null;
+    try {
+      text = readIfThere(abs);
+      if (text === null) bad.push(`\`cloudflare.rateLimit.file\` ${rl.file} does not exist`);
+    } catch (err) {
+      bad.push(`\`cloudflare.rateLimit.file\` ${rl.file} could not be read (${err.code ?? err.message})`);
+    }
+    if (text !== null) {
       try {
-        const rule = JSON.parse(readFileSync(abs, 'utf8'));
+        const rule = JSON.parse(text);
         if (rule?.zone !== doc?.zone) bad.push(`${rl.file} names the zone ${JSON.stringify(rule?.zone)}, not ${doc?.zone}`);
         if (rule?.phase !== rl.phase) bad.push(`${rl.file} is the ${JSON.stringify(rule?.phase)} phase, not ${JSON.stringify(rl.phase)}`);
       } catch (err) {
@@ -122,10 +154,16 @@ export function validateDeclaration(doc, { root = ROOT } = {}) {
 /** The declaration, or CouldNotLook naming every problem in it. */
 export function loadDeclaration(root = ROOT) {
   const abs = join(root, ...ZONE_FILE_REL.split('/'));
-  if (!existsSync(abs)) throw new CouldNotLook(`${ZONE_FILE_REL} is not there, so there is nothing to compare the zone with`);
+  let text;
+  try {
+    text = readIfThere(abs);
+  } catch (err) {
+    throw new CouldNotLook(`${ZONE_FILE_REL} could not be read (${err.code ?? err.message})`);
+  }
+  if (text === null) throw new CouldNotLook(`${ZONE_FILE_REL} is not there, so there is nothing to compare the zone with`);
   let doc;
   try {
-    doc = JSON.parse(readFileSync(abs, 'utf8'));
+    doc = JSON.parse(text);
   } catch (err) {
     throw new CouldNotLook(`${ZONE_FILE_REL} is not JSON (${err.message})`);
   }
@@ -134,14 +172,17 @@ export function loadDeclaration(root = ROOT) {
   return doc;
 }
 
-/** PURE. DNS findings and notes for a live record list. */
+/** PURE. DNS findings and notes for a live record list. Neither ever carries a live record's
+ *  content or an undeclared record's name (the log is public): a hash stands in for each. */
 export function judgeDns(decl, records) {
   const findings = [];
   const notes = [];
   const dnsOnly = new Set(decl.dns.dnsOnly.map(lc));
+  const declaredNames = new Set(decl.dns.records.map((d) => lc(d.name)));
   for (const r of records) {
     if (PROXIABLE.includes(r?.type) && r?.proxied !== true && !dnsOnly.has(lc(r?.name))) {
-      findings.push(`DNS  ${r.name} ${r.type} -> ${r.content} is DNS-ONLY (proxied=${r.proxied === true}, id=${r.id}) and not in dns.dnsOnly: the origin's address is public and nothing at the edge is in front of it`);
+      const who = declaredNames.has(lc(r?.name)) ? `${r.name} ${r.type}` : `undeclared ${r.type} record sha256:${recordHash(r)}`;
+      findings.push(`DNS  ${who} is DNS-ONLY and not in dns.dnsOnly: the origin's address is public and nothing at the edge is in front of it (name and content: --export <file>, locally)`);
     }
   }
   const matched = new Set();
@@ -155,13 +196,14 @@ export function judgeDns(decl, records) {
     const r = live[0];
     if ((r.proxied === true) !== d.proxied) findings.push(`DNS  ${d.name} ${r.type} proxied=${r.proxied === true}, declared ${d.proxied}`);
     for (const k of ['content', 'ttl']) {
-      if (d[k] === null) notes.push(`${d.name} ${r.type} ${k} not declared; live: ${JSON.stringify(r[k])}`);
-      else if (r[k] !== d[k]) findings.push(`DNS  ${d.name} ${r.type} ${k} is ${JSON.stringify(r[k])}, declared ${JSON.stringify(d[k])}`);
+      const live = k === 'content' ? `sha256:${valueHash(r[k])}` : JSON.stringify(r[k]);
+      if (d[k] === null) notes.push(`${d.name} ${r.type} ${k} not declared; live: ${live}`);
+      else if (r[k] !== d[k]) findings.push(`DNS  ${d.name} ${r.type} ${k} is ${live}, declared ${JSON.stringify(d[k])}`);
     }
     if (d.type === null) notes.push(`${d.name} type not declared; live: ${r.type}`);
   }
   const undeclared = records.filter((r) => !matched.has(r));
-  if (undeclared.length) notes.push(`${undeclared.length} live record(s) are not declared (printed by --export): ${undeclared.map((r) => `${r.name} ${r.type}`).join(', ')}`);
+  if (undeclared.length) notes.push(`${undeclared.length} live record(s) are not declared (names and contents: --export <file>, locally): sha256 ${undeclared.map(recordHash).join(', ')}`);
   return { findings, notes };
 }
 
@@ -301,7 +343,7 @@ export function exportZone(decl, records) {
   return {
     provider: decl.provider,
     zone: decl.zone,
-    records: records.map((r) => ({ name: r.name, type: r.type, content: r.content, ttl: r.ttl, proxied: r.proxied === true })),
+    records: records.map((r) => ({ name: r.name, type: r.type, content: r.content, ttl: r.ttl, proxied: r.proxied === true, sha256: recordHash(r) })),
     noNeutralEquivalent: [
       `the proxied flag on ${records.filter((r) => r.proxied === true).length} record(s): the edge (TLS, WAF, rate limit, Access) in front of each`,
       `the rate-limit rule (${decl.cloudflare.rateLimit.file})`,
@@ -313,7 +355,7 @@ export function exportZone(decl, records) {
 }
 
 /** The whole check. Returns the exit code; prints its own lines. */
-export async function run({ root = ROOT, env = process.env, api = cf, fetchImpl = globalThis.fetch, sleep, now = Date.now(), pendingUntil = null, exportMode = false } = {}) {
+export async function run({ root = ROOT, env = process.env, api = cf, fetchImpl = globalThis.fetch, sleep, now = Date.now(), pendingUntil = null, exportFile = null, write = writeFileSync } = {}) {
   let decl;
   try {
     decl = loadDeclaration(root);
@@ -329,13 +371,23 @@ export async function run({ root = ROOT, env = process.env, api = cf, fetchImpl 
   const token = typeof env[TOKEN_ENV] === 'string' ? env[TOKEN_ENV].trim() : '';
   const accountId = typeof env.CLOUDFLARE_ACCOUNT_ID === 'string' ? env.CLOUDFLARE_ACCOUNT_ID.trim() : '';
 
-  if (exportMode) {
+  if (exportFile !== null) {
+    if (env.GITHUB_ACTIONS === 'true') {
+      console.error('✗ --export is LOCAL ONLY: it writes every record\'s name and content, and a runner\'s files are not where those belong.');
+      return 2;
+    }
+    if (typeof exportFile !== 'string' || exportFile === '' || exportFile.startsWith('--')) {
+      console.error('✗ --export needs a file to write to: --export <file>. The records never go to the log.');
+      return 2;
+    }
     if (!token) {
       console.error(`✗ COULD NOT LOOK — ${TOKEN_ENV} is not in the environment; --export reads the live zone.`);
       return 2;
     }
     try {
-      console.log(JSON.stringify(exportZone(decl, await readZoneRecords(decl.zone, token, api)), null, 2));
+      const x = exportZone(decl, await readZoneRecords(decl.zone, token, api));
+      write(resolve(exportFile), `${JSON.stringify(x, null, 2)}\n`, 'utf8');
+      console.log(`wrote ${x.records.length} record(s) to ${exportFile}`);
       return 0;
     } catch (err) {
       console.error(`✗ COULD NOT LOOK — ${err instanceof CouldNotLook ? err.message : `${err.name}: ${err.message}`}`);
@@ -401,9 +453,9 @@ export async function run({ root = ROOT, env = process.env, api = cf, fetchImpl 
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
-  const usage = 'Usage: node tooling/ops/check-edge-zone.mjs [--cloudflare-read-pending-until YYYY-MM-DD] [--export] [--root <dir>]';
-  const valued = ['--root', '--cloudflare-read-pending-until'];
-  const unknown = args.filter((a, i) => a.startsWith('--') && !valued.includes(a) && a !== '--export' && !valued.includes(args[i - 1]));
+  const usage = 'Usage: node tooling/ops/check-edge-zone.mjs [--cloudflare-read-pending-until YYYY-MM-DD] [--export <file>] [--root <dir>]';
+  const valued = ['--root', '--cloudflare-read-pending-until', '--export'];
+  const unknown = args.filter((a, i) => a.startsWith('--') && !valued.includes(a) && !valued.includes(args[i - 1]));
   if (unknown.length) {
     console.error(`✗ unknown flag ${unknown.join(', ')}. ${usage}`);
     process.exitCode = 2;
@@ -412,7 +464,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.exitCode = await run({
       root: val('--root') ? resolve(val('--root')) : ROOT,
       pendingUntil: val('--cloudflare-read-pending-until'),
-      exportMode: args.includes('--export'),
+      exportFile: val('--export'),
     });
   }
 }

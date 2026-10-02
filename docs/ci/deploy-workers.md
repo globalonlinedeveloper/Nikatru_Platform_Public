@@ -508,8 +508,9 @@ What differs from the app Workers and the platform, each on purpose:
   --apply` PUTs `tooling/edge-ratelimit-rule.json` as the nikatru.com `http_ratelimit` phase (all or
   nothing) and re-reads it; the job is red unless the zone then equals the file. The same ops-watch
   job compares the live rule with the file weekly (no `--apply`). The Free plan's rule reads the PATH
-  only, so since 2026-10-01 (PB-01) `/auth/v1/token` is in it WITH the refresh grant, which a 429 signs
-  out — the file's `_why` says when that bites and what closes it. The deploy token needs
+  only, so `/auth/v1/token` stays OUT of it (lead ruling on PR #1147): counting it would count the
+  refresh grant, whose 429 signs native users out — behind carrier-grade NAT, many at once. The file's
+  `_why` says what that leaves open. The deploy token needs
   Zone → Zone WAF → Edit on nikatru.com for the PUT; without it the step answers 2, red where it
   happened, and the live rule is left as it was.
 - **`rollback.yml` does not fit it yet.** tooling/ops/rollback.mjs smokes every service unit at

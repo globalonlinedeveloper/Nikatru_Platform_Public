@@ -24,6 +24,7 @@ import {
   judgeWaf,
   judgeProbe,
   exportZone,
+  recordHash,
   run,
 } from '../../ops/check-edge-zone.mjs';
 
@@ -181,7 +182,51 @@ describe('the drift reader (tooling/ops/check-edge-zone.mjs)', () => {
     const records = [...liveRecords(), { id: 'leak', name: 'origin.nikatru.com', type: 'A', content: '203.0.113.7', ttl: 1, proxied: false }];
     const { code, out } = await go({ api: cloudflare({ records }) });
     assert.equal(code, 1, out);
-    assert.match(out, /FAIL DNS {2}origin\.nikatru\.com A -> 203\.0\.113\.7 is DNS-ONLY/);
+    const leak = records.at(-1);
+    assert.match(out, new RegExp(`FAIL DNS {2}undeclared A record sha256:${recordHash(leak)} is DNS-ONLY`));
+    assert.ok(!out.includes('203.0.113.7') && !out.includes('origin.nikatru.com'), `the leaking record's content or name reached the log:\n${out}`);
+  });
+
+  test('🔴 RED CONTROL (item 3): the default output carries NO record content and no undeclared record name — the log is public', async () => {
+    // Every live record gets a content no declaration holds; three undeclared records
+    // (one of them DNS-only and proxiable, one a TXT) join them. Not one of those
+    // strings, nor an undeclared name, may reach the log, on green or on red.
+    const secret = (i) => `secret-content-${i}.tunnel.example`;
+    const records = [
+      ...liveRecords().map((r, i) => ({ ...r, content: secret(i) })),
+      { id: 'u1', name: 'hidden-one.nikatru.com', type: 'CNAME', content: 'hidden-target-1.example', ttl: 1, proxied: true },
+      { id: 'u2', name: 'hidden-two.nikatru.com', type: 'A', content: '198.51.100.23', ttl: 1, proxied: false },
+      { id: 'u3', name: 'hidden-three.nikatru.com', type: 'TXT', content: 'v=hidden-token-xyz', ttl: 1, proxied: false },
+    ];
+    const { code, out } = await go({ api: cloudflare({ records }) });
+    assert.equal(code, 1, out);
+    for (const r of records) {
+      assert.ok(!out.includes(r.content), `record content ${r.content} reached the log:\n${out}`);
+      if (r.id.startsWith('u')) {
+        assert.ok(!out.includes(r.name), `undeclared name ${r.name} reached the log:\n${out}`);
+        assert.ok(out.includes(recordHash(r)), `undeclared record ${r.id} is not counted by its hash:\n${out}`);
+      }
+    }
+    assert.match(out, /3 live record\(s\) are not declared/);
+  });
+
+  test('--export <file> writes every record (with its hash) to the file and only a count to the log; refused under GitHub Actions or with no file', async () => {
+    const written = [];
+    const write = (path, text) => written.push({ path, text });
+    const ok = await go({ exportFile: 'zone-export.json', write });
+    assert.equal(ok.code, 0, ok.out);
+    assert.equal(written.length, 1);
+    const x = JSON.parse(written[0].text);
+    assert.equal(x.records.length, liveRecords().length);
+    assert.equal(x.records[0].sha256, recordHash(liveRecords()[0]));
+    assert.match(ok.out, /^wrote \d+ record\(s\) to zone-export\.json$/m);
+    assert.ok(!ok.out.includes('origin.example'), ok.out);
+    const ci = await go({ exportFile: 'x.json', write, env: { ...ENV, GITHUB_ACTIONS: 'true' } });
+    assert.equal(ci.code, 2, ci.out);
+    assert.match(ci.out, /LOCAL ONLY/);
+    const none = await go({ exportFile: '', write });
+    assert.equal(none.code, 2, none.out);
+    assert.equal(written.length, 1, 'a refused export wrote a file');
   });
 
   test('🔴 RED CONTROL: an Access app missing → exit 1, naming the host left public', async () => {
@@ -271,10 +316,10 @@ describe('the drift reader (tooling/ops/check-edge-zone.mjs)', () => {
     assert.match(out, /PROBE {2}https:\/\/\w+\.nikatru\.com\/ never answered/);
   });
 
-  test('--export prints the records provider-neutral, plus what has no neutral equivalent', () => {
+  test('the export is the records provider-neutral, plus what has no neutral equivalent', () => {
     const x = exportZone(DECL, liveRecords());
     assert.equal(x.provider, 'cloudflare');
-    assert.deepEqual(Object.keys(x.records[0]), ['name', 'type', 'content', 'ttl', 'proxied']);
+    assert.deepEqual(Object.keys(x.records[0]), ['name', 'type', 'content', 'ttl', 'proxied', 'sha256']);
     assert.ok(x.noNeutralEquivalent.some((l) => /Access app\(s\)/.test(l)));
     assert.ok(x.noNeutralEquivalent.some((l) => /tunnel ingress/.test(l)));
   });

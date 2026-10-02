@@ -7,10 +7,10 @@
 // services/edge-shield keeps one GLOBAL cap per request class and never reads a
 // client address. The per-IP limit on the credential endpoints (GlitchTip's
 // login, GoTrue's sign-up/otp/recover/verify/magiclink/resend, and since
-// 2026-10-01 its /token, MFA factor and reauthenticate paths) is the nikatru.com
-// zone's own rate-limiting rule instead, declared in tooling/edge-ratelimit-rule.json.
-// That file says why each field is what it is — and what counting /auth/v1/token
-// by path costs the refresh grant on the Free plan.
+// 2026-10-01 its MFA factor and reauthenticate paths) is the nikatru.com zone's
+// own rate-limiting rule instead, declared in tooling/edge-ratelimit-rule.json.
+// That file says why each field is what it is — and why /auth/v1/token is not in
+// it: the Free plan would count the refresh grant, whose 429 signs users out.
 //
 // TWO MODES, ONE COMPARISON:
 //   (default)  READ the zone's `http_ratelimit` phase entrypoint and compare its

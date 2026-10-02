@@ -28,13 +28,16 @@
 // 🔴 NO PER-CLIENT LIMITER, AND NO CLIENT ADDRESS READ AT ALL (LEAD RULING
 // SHIELD-R3, 2026-09-26). The posture of ADR no.011 / ADR no.020 is that no
 // Worker reads a client-IP header, and tooling/ci/assert-glitchtip-no-ip.mjs
-// holds it for this Worker too. The per-IP limit on the CREDENTIAL paths (all
-// three classes, and so the refresh grant too: the Free plan cannot read the
-// query) is the nikatru.com zone's own rate-limiting rule instead, declared as
-// code in tooling/edge-ratelimit-rule.json and applied by deploy-workers.yml.
-// ⚠️ THE RESIDUAL: a global bucket is still lockable by about cap ÷ the per-IP
-// rate — 300/min ÷ 30/min = 10 addresses at the zone rule's limit, per colo, per
-// class. test/wrangler-config.test.ts holds that no credential cap falls below it.
+// holds it for this Worker too. The per-IP limit on the CREDENTIAL paths of
+// auth-signup-recover and auth-factor is the nikatru.com zone's own rate-limiting
+// rule instead, declared as code in tooling/edge-ratelimit-rule.json and applied
+// by deploy-workers.yml. /auth/v1/token is NOT in it (lead ruling on PR #1147):
+// the Free plan cannot read the query, so it would count the refresh grant, and a
+// refresh 429 signs a native user out — behind carrier-grade NAT, many at once.
+// ⚠️ THE RESIDUAL: a covered global bucket is still lockable by about cap ÷ the
+// per-IP rate — 300/min ÷ 30/min = 10 addresses at the zone rule's limit, per
+// colo; test/wrangler-config.test.ts holds both covered caps at or above it.
+// auth-password has no per-IP bound at the edge: one client can fill it alone.
 //
 // ⚠️ NOT EVERY PATH IS COUNTED, AND THE ONES THAT ARE NOT ARE NAMED:
 //   · OPTIONS, always — a refused CORS preflight turns the real request into an
