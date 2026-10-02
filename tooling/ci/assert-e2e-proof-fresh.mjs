@@ -931,6 +931,31 @@ async function main() {
       timerDeferred = pendingFlag;
     }
   }
+  // ⏱ 2026-10-02 · #1095 review finding 2 (lane fix-pr-token-scope). CLOUDFLARE_READ_TOKEN is
+  // account-scoped D1 READ — every production row — so no job a pull request can run holds it any
+  // more (assert-channel-register limb 8d, `productionData`). ci.yml's guards-platform therefore
+  // grades the OUTCOME record only, and says so on every run: `--timer-read-by-ops-watch` is a
+  // standing POLICY, not a deferral, so it has no date. The TIMER row is read on schedule by
+  // ops-watch.yml's `heartbeats` job (check-heartbeats.mjs), which holds the read token. Narrow:
+  //   · it cannot be combined with --cloudflare-read-pending-until (two reasons for one skip);
+  //   · with a Cloudflare token or a fixture present it skips nothing: the timer is read as before.
+  const timerByPolicy = process.argv.includes('--timer-read-by-ops-watch');
+  if (timerByPolicy && pendingFlag !== null) {
+    coverageLost('--timer-read-by-ops-watch and --cloudflare-read-pending-until were both given; a skipped TIMER limb has one stated reason, never two.');
+    return;
+  }
+  if (timerByPolicy) {
+    const tokenPresent = typeof process.env.CLOUDFLARE_API_TOKEN === 'string' && process.env.CLOUDFLARE_API_TOKEN.trim() !== '';
+    if (runsFile || tokenPresent) {
+      console.log(`note  --timer-read-by-ops-watch is set and ${runsFile ? 'fixture mode is on' : 'a Cloudflare token IS present'}, so the TIMER limb is read here as well.`);
+    } else {
+      timerDeferred = 'policy';
+    }
+  }
+  const timerSkipWhy =
+    timerDeferred === 'policy'
+      ? 'not read in this job BY POLICY: no job a pull request can run holds a production-data token (assert-channel-register limb 8d); ops-watch.yml\'s heartbeats job reads this row on schedule'
+      : `deferred until ${timerDeferred} by --cloudflare-read-pending-until (no Cloudflare token in this step)`;
 
   let read = null;
   let timerRows;
@@ -996,7 +1021,7 @@ async function main() {
   // printed none of it, so a stale page could not be told from a real gap.
   say(read ? describeRead(read, newestGreenOnBranch) : 'nothing was read — see the line above', 'READ    (GitHub run history) :', runVerdict.ok);
   if (runVerdict.stalePageCarried) console.log(runVerdict.stalePageCarried);
-  if (timerVerdict.deferred) {
+  if (timerVerdict.deferred && timerDeferred !== 'policy') {
     console.log(
       `::warning title=Nightly-proof TIMER limb NOT READ (deferred until ${timerDeferred})::CLOUDFLARE_READ_TOKEN is not set, ` +
         'so the D1 cron_heartbeat row was not read on this run and only the GitHub run history was graded. The owner mints ' +
@@ -1005,7 +1030,7 @@ async function main() {
   }
   say(
     timerVerdict.deferred
-      ? `NOT READ — deferred until ${timerDeferred} by --cloudflare-read-pending-until (no Cloudflare token in this step)`
+      ? `NOT READ — ${timerSkipWhy}`
       : timerVerdict.ok
       ? `${TIMER_TABLE} row for ${TIMER_JOB} -> ${TIMER_TARGET} at ${timerVerdict.ranAt}, ${timerVerdict.ageDays.toFixed(1)} day(s) old (ceiling ${MAX_AGE_DAYS})`
       : String(timerVerdict.reason),
@@ -1069,8 +1094,8 @@ async function main() {
   if (timerVerdict.deferred) {
     console.log(
       `ok  nightly golden-path proof: the OUTCOME record is fresh — green ${WORKFLOW} run ${runVerdict.runId} on ${BRANCH} is ` +
-        `${runVerdict.ageDays.toFixed(1)} day(s) old (ceiling ${MAX_AGE_DAYS}). The TIMER record was NOT READ (deferred until ` +
-        `${timerDeferred}), so this is ONE record, not the proof.`,
+        `${runVerdict.ageDays.toFixed(1)} day(s) old (ceiling ${MAX_AGE_DAYS}). The TIMER record was NOT READ (` +
+        `${timerSkipWhy}), so this is ONE record, not the proof.`,
     );
     return;
   }

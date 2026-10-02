@@ -1072,7 +1072,7 @@ describe('assert-web-cache-policy · the nikatru.com site CSP and its per-path o
   const DECL = {
     inScope: [{ site: 'sites/nikatru', why: 'fixture: served on the nikatru.com origin' }],
     outOfScope: [],
-    overrides: [{ site: 'sites/nikatru', path: '/ext/connect', why: 'fixture: the extension link page talks to auth' }],
+    overrides: [{ site: 'sites/nikatru', path: '/ext/connect', adds: { 'connect-src': ['https://auth-api.example'] }, why: 'fixture: the extension link page talks to auth' }],
   };
   const site = (headers, siteCsp = DECL, extra = {}) => run(fixture({ sites: { nikatru: headers, ...extra }, siteCsp }));
 
@@ -1141,7 +1141,7 @@ describe('assert-web-cache-policy · the nikatru.com site CSP and its per-path o
     // Each block carries a floored CSP, so the per-block limbs are all green; but a
     // request for /ext/connect matches both, and each detaches the other's value.
     const both = `${WITH_OVERRIDE}/ext/*\n  ! Content-Security-Policy\n  Content-Security-Policy: ${OVERRIDE_CSP}\n`;
-    const decl = { ...DECL, overrides: [...DECL.overrides, { site: 'sites/nikatru', path: '/ext/*', why: 'fixture: a second overlapping override' }] };
+    const decl = { ...DECL, overrides: [...DECL.overrides, { site: 'sites/nikatru', path: '/ext/*', adds: { 'connect-src': ['https://auth-api.example'] }, why: 'fixture: a second overlapping override' }] };
     const { code, out } = site(both, decl);
     assert.equal(code, 1, out);
     assert.match(out, /"\/ext\/connect" is served with NO Content-Security-Policy/);
@@ -1233,6 +1233,41 @@ describe('assert-web-cache-policy · the nikatru.com site CSP and its per-path o
     const { code, out } = site(realHeaders(), realDecl());
     assert.equal(code, 0, out);
     assert.match(out, /1 in-scope site\(s\), 3 policy line\(s\) floored, 2 declared per-path override/);
+  });
+
+  // ⏱ 2026-10-02 · #1095 review finding 3: `connect-src *` on /ext/connect exited 0. Every
+  // override directive is now bounded by the global line plus its declared `adds`.
+  test('🔴 FAILS on `connect-src *` in the override — the reproduced #1095 hole', () => {
+    const wide = WITH_OVERRIDE.replace("connect-src 'self' https://auth-api.example", 'connect-src *');
+    const { code, out } = site(wide);
+    assert.equal(code, 1, out);
+    assert.match(out, /\(the "\/ext\/connect" override\) connect-src admits \*, which neither the global \/\* policy nor the override's declared `adds\.connect-src`/);
+  });
+
+  test('🔴 FAILS on an origin the override adds without declaring it, and on a widened img-src', () => {
+    const { code, out } = site(WITH_OVERRIDE, { ...DECL, overrides: [{ ...DECL.overrides[0], adds: {} }] });
+    assert.equal(code, 1, out);
+    assert.match(out, /connect-src admits https:\/\/auth-api\.example/);
+    const img = site(WITH_OVERRIDE.replace(OVERRIDE_CSP, OVERRIDE_CSP.replace("img-src 'self' data:", "img-src 'self' data: https:")));
+    assert.equal(img.code, 1, img.out);
+    assert.match(img.out, /img-src admits https:/);
+  });
+
+  test('🔴 FAILS on a declared addition that is a wildcard or a bare scheme, never one origin', () => {
+    for (const bad of ['*', 'https:', 'https://*.example']) {
+      const { code, out } = site(WITH_OVERRIDE, { ...DECL, overrides: [{ ...DECL.overrides[0], adds: { 'connect-src': ['https://auth-api.example', bad] } }] });
+      assert.equal(code, 1, `${bad}: ${out}`);
+      assert.match(out, /declares `adds\.connect-src` .*each addition is ONE concrete https origin/);
+    }
+  });
+
+  test('🔴 …and `connect-src *` written into the REAL /ext/connect line goes RED', () => {
+    const real = realHeaders();
+    const wide = real.replace(/(\/ext\/connect[\s\S]*?connect-src )[^;]*;/, '$1*;');
+    assert.notEqual(wide, real, 'the real /ext/connect block has no connect-src; re-read this test');
+    const { code, out } = site(wide, realDecl());
+    assert.equal(code, 1, out);
+    assert.match(out, /\(the "\/ext\/connect" override\) connect-src admits \*/);
   });
 
   test('🔴 …and deleting the REAL /ext/connect CSP line while its detach stays goes RED', () => {
