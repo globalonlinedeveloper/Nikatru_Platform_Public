@@ -24,17 +24,27 @@ node tooling/review/self-review.mjs --out <dir> [--since ISO] [--until ISO] [--b
   `proposals.json` and its ETag cache under `--out` (or `--cache-dir`), and its one write seam
   refuses any other path. It never edits a queue, a brief, a register, guard-yield or the
   failed-run ledger.
-- **Privacy-minimal.** The report names PRs, jobs, workflows and lanes. It records no login and no
-  e-mail; a lane ledger carrying an e-mail address is refused.
+- **Privacy-minimal.** The report names PRs, jobs, workflows (by path) and lanes. It records no
+  login, no name and no e-mail; a lane ledger carrying an e-mail address is refused. Every API
+  answer is cut to the fields the report reads **the moment it is parsed** (`trimBody`), before it
+  is cached or kept: a runs page's `head_commit` (author and committer e-mails), `actor`,
+  `triggering_actor` and run **name** (`CI on PR #… by @…`), a PR's `user`, and a review comment's
+  author and text never reach `--out`, the cache or the report. A workflow is keyed by its `path`,
+  never a run name. A test plants all of these and scans every file under `--out`.
 
 ## first-push-green
 
 **Definition.** Over the PRs **opened** in the window: a PR counts green when the **first
 completed `ci-gate` check run** on its **first pushed head** concluded `success`, and red when it
-concluded anything else. Rate = green / (green + red). A PR whose first gate went red and a later
-gate on the **same SHA** went green (a re-run) is red here and also listed in
-`redThenGreenSameSha`, so the proposals price it once, as a flake. A PR with no ci.yml run, or
-whose gate has not completed, is listed under `excluded` and is in neither count.
+concluded anything else. A `cancelled` or `skipped` gate gave no verdict (a second push or an
+`edited` re-trigger cancels the first, ci.yml's `cancel-in-progress`): the first gate that did
+conclude is read, and a head whose every gate was cancelled or skipped is `superseded`. Rate =
+green / (green + red). A PR whose first gate went red and a later gate **of the same workflow run**
+(a re-run; the run id is read from the check run's `details_url`) went green is red here and also
+listed in `redThenGreenSameSha`, so the proposals price it once, as a flake. A green from another
+run on that SHA (an `edited` re-trigger) leaves the red on the change. A PR with no ci.yml run,
+whose gate has not completed, or whose gate was superseded is listed under `excluded` and is in
+neither count.
 
 **Source.** The pulls list (opened time); the Actions runs list (the PR's earliest ci.yml
 `pull_request` run gives the first head SHA — the run's PR is `pull_requests[0]`, else the one PR
@@ -79,19 +89,25 @@ rank `untagged`, `nit` or `pre-existing`.
 
 ## flaky
 
-**Definition.** The same job failing then passing **on the same head SHA**, per job name:
-(a) a run re-run (`run_attempt > 1`) in which one job name has a `failure`/`timed_out` attempt
-followed by a `success` attempt — the `ci-gate` aggregator is never the flake itself; and
-(b) two runs of one workflow on one head SHA, a red one then a green one. `reruns` is the sum of
-`run_attempt - 1` over the window's runs. Minutes lost are the wall minutes of the attempts before
-the last.
+**Definition.** The same job failing then passing **on rerun**: a run re-run (`run_attempt > 1`)
+in which one job name has a `failure`/`timed_out` attempt followed by a `success` attempt of the
+**same run**, on its one head SHA. The `ci-gate` aggregator is never the flake itself, and a run
+started by `schedule` or `workflow_dispatch` is a watcher: its red→green is the watched state
+recovering, never a flake. Two separate runs on one SHA are never a flake: measured on the week to
+2026-10-02, 13 of 14 such pairs were ops-watch's cron and dispatches (and an E2E dispatch) on an
+unchanged main SHA, and on a PR an `edited` re-trigger re-runs CI on the same head against a newer
+merge with main. `reruns` is the sum of `run_attempt - 1` over the window's runs. Minutes lost are
+the wall minutes of the attempts before the last. Instances are keyed by job name, and name their
+workflow by path.
 
 **Source.** The runs list; `actions/runs/<id>/jobs?filter=all` for every re-run in the window.
 
 **How it lies.** Per **job**, not per test: test names live in logs this script does not read
 (guard-yield and the failed-run ledger read them). A re-run that also failed and was abandoned
 for a new push is a red, not a flake. A deterministic failure "fixed" by a re-run after a base
-change reads as a flake.
+change reads as a flake (a re-run re-tests the same merge ref, so this needs main to change state
+under it, such as a red main going green). A flaky job in a cron or dispatch workflow is not counted
+(the watcher exclusion above); ops-watch's reds are priced under `mttr` instead.
 
 ## mttr
 
@@ -132,17 +148,34 @@ name unless its PRs are listed.
 
 ## The request budget, the cache and the rate limit
 
-`--budget N` (default 600) is a hard ceiling on requests **sent**, a 304 included; the request
-past it is not sent. The order is fixed — PRs, runs (a week per request, re-read a day at a time
-when a week passes GitHub's 1000-result list ceiling), re-run jobs, review comments, then ci-gate
-per first head for the window and then the trend weeks — so a stop is reproducible. Every GET
-carries the cached ETag; a 304 is served from the cache. `x-ratelimit-remaining` under
-`--rate-floor` (default 100), or a 403/429, stops the walk; the script never sleeps a quota out.
+`--budget N` (default 1500) is a hard ceiling on requests **sent**, a 304 and a retry included;
+the request past it is not sent. The default is sized from a **measured** real week
+(`MEASURED_WEEK` in the script: the requests one full run at the defaults sent for the week to
+its `asOf`), with at least 1.5× headroom; the test holds the two together and holds this paragraph
+to the script's number. Re-measure when the factory's volume moves.
 
-A stop writes a **partial** report: `partial: true` and `stopReason` (`budget`, `rate-limit`,
-`http`, `transport`, `list-ceiling`, or `workflow-moved` — ci.yml or ops-watch.yml has no run in
-the window, so it was renamed or moved and its metrics would be computed on nothing) in `report.json`, a PARTIAL banner on the first line of
-`report.md`, an empty `proposals.json`, exit 2. Never a silent full one.
+The order is fixed — PRs, runs (a week per request; a week whose first page reports more than
+GitHub's 1000-result list ceiling is not paged further but read a day at a time), re-run jobs,
+review comments, then ci-gate per first head for the window and then the trend weeks — so a stop
+is reproducible. Every GET carries the cached ETag; a 304 is served from the cache. A `5xx` is
+retried twice, each retry a request against the budget, before the walk stops with `http`.
+`x-ratelimit-remaining` under `--rate-floor` (default 100), a 429, or a 403 whose quota is spent
+(`x-ratelimit-remaining: 0`) or that carries `retry-after`, stops the walk with `rate-limit`; any
+other 403 (a permission refusal) is `http`. The script never sleeps a quota out.
+
+**The trend's ci-gate reads are best-effort.** A stop while reading a trend week's gates leaves
+the window whole: the report stays complete and still proposes, `trendStop` names the reason, and
+the trend weeks it did not reach show first-push-green `n/a`.
+
+Any other stop (an unexpected error included) writes an **INCOMPLETE** report: `status:
+"INCOMPLETE"`, `partial: true` and `stopReason` (`budget`, `rate-limit`, `http`, `transport`,
+`error`, `list-ceiling`, or `workflow-moved` — ci.yml or ops-watch.yml has no run in the window,
+so it was renamed or moved and its metrics would be computed on nothing) in `report.json`, an
+INCOMPLETE banner on the first line of `report.md`, every number that was measured, an empty
+`proposals.json`, exit 2. Never a silent full one, and never silently nothing.
+
+**The cache** (`<out>/.cache` unless `--cache-dir`) holds only trimmed bodies, never a raw
+answer; it is still a cache, so keep `.cache/` out of any commit.
 
 ## The proposals
 
@@ -171,6 +204,6 @@ failure-ledger slot of ops-watch.
 
 ## Exit
 
-`0` the report covers the whole window. `2` COVERAGE LOST: a partial report (written, and marked),
+`0` the report covers the whole window. `2` COVERAGE LOST: an INCOMPLETE report (written, and marked),
 or a refused input (an argument, a lane ledger off its schema or carrying an e-mail address, an
 unreadable reviews folder).

@@ -24,7 +24,8 @@
 //
 // ── WHAT IT WRITES, AND NOTHING ELSE ────────────────────────────────────────
 //   <out>/report.md, <out>/report.json, <out>/proposals.json, and the ETag cache
-//   under <out>/.cache (or --cache-dir). Every write goes through one `io` seam
+//   under <out>/.cache (or --cache-dir). The cache holds TRIMMED bodies (trimBody):
+//   never a raw API answer, never an e-mail address, a login or a name. Every write goes through one `io` seam
 //   that refuses a path outside --out (or the cache dir), so the script cannot
 //   edit a queue, a brief or a register: the three proposals are data for the
 //   lead, ranked by measured cost, and applying one is a person's decision.
@@ -32,17 +33,21 @@
 // ── THE REQUEST BUDGET ──────────────────────────────────────────────────────
 //   `--budget N` (default DEFAULT_BUDGET) is a HARD ceiling on requests SENT, a
 //   304 included. The request past it is not sent: collection stops, and the
-//   report is written PARTIAL — `partial: true`, `stopReason: "budget"` in
-//   report.json, a PARTIAL banner on report.md's first line, no proposals —
-//   and the exit is 2. Never a silent full report. Each response's
-//   x-ratelimit-remaining is read: under `--rate-floor` (default RATE_FLOOR), or
-//   a 403/429, stops the same way with `stopReason: "rate-limit"` and the reset
+//   report is written INCOMPLETE — `status: "INCOMPLETE"`, `partial: true`,
+//   `stopReason: "budget"` in report.json, an INCOMPLETE banner on report.md's
+//   first line, every number that WAS measured, no proposals — and the exit is
+//   2. Never a silent full report, and never silently nothing: a stop of any
+//   kind, an unexpected error included, still writes all three files. The
+//   trend's ci-gate reads are best-effort (collect, step 5): a stop there leaves
+//   the week complete. A 5xx is retried RETRY_5XX times, each retry counted. Each response's
+//   x-ratelimit-remaining is read: under `--rate-floor` (default RATE_FLOOR), a
+//   429, or a 403 carrying a spent quota or retry-after, stops the same way with `stopReason: "rate-limit"` and the reset
 //   time. The script never sleeps to wait a quota out.
 //   ETag: each GET carries If-None-Match from the cache; a 304 is served from it.
 //
 // ── EXIT ────────────────────────────────────────────────────────────────────
 //   0 = report written, every metric over the whole window.
-//   2 = COVERAGE LOST: partial (budget, rate limit, a list past its ceiling), or
+//   2 = COVERAGE LOST: INCOMPLETE (budget, rate limit, http, a list past its ceiling), or
 //       an input refused (bad argument, a lane ledger off its schema or carrying
 //       an e-mail address, an unreadable reviews dir). A partial report is still
 //       written, and says so on its first line.
@@ -69,7 +74,11 @@ const ROOT = path.resolve(HERE, '..', '..');
 export const YIELD_REL = 'tooling/guard-yield.json';
 export const CAUSES_REL = 'tooling/ops/failed-run-causes.json';
 export const DEFAULT_REPO = 'globalonlinedeveloper/Nikatru_Platform_Public';
-export const DEFAULT_BUDGET = 600;
+/** One real week, MEASURED, not estimated: the requests a full run at the defaults sent for the week to `asOf`
+ *  (`--until asOf`). DEFAULT_BUDGET is sized from it with headroom (the test holds it at 1.5× or more), so the
+ *  documented defaults complete a real week. Re-measure when the factory's volume moves. */
+export const MEASURED_WEEK = Object.freeze({ requests: 975, asOf: '2026-10-02' });
+export const DEFAULT_BUDGET = 1500;
 export const RATE_FLOOR = 100;
 export const DAY_MS = 86_400_000;
 export const WINDOW_DAYS = 7;
@@ -82,6 +91,10 @@ export const LIST_CEILING = 1000;
 const PER_PAGE = 100;
 const RED = new Set(['failure', 'timed_out']);
 const LOST = new Set(['failure', 'timed_out', 'cancelled', 'startup_failure']);
+/** A gate with one of these conclusions gave no verdict on the change (cancelled by a newer run, or skipped). */
+const SUPERSEDED = new Set(['cancelled', 'skipped']);
+/** Runs started by these events watch live state; a red→green between their attempts is the state, not a flake. */
+const WATCHER_EVENTS = new Set(['schedule', 'workflow_dispatch']);
 
 /** The metrics, in report order. docs/ops/self-review.md carries one `## <id>` section per entry. */
 export const METRICS = Object.freeze([
@@ -186,9 +199,59 @@ export function fixtureTransport(responses) {
   };
 }
 
-export function makeClient(transport, { budget = DEFAULT_BUDGET, rateFloor = RATE_FLOOR, cacheDir = null, io } = {}) {
+/** True when a 403 is GitHub's rate limit (quota spent, or a secondary limit's retry-after), not a permission
+ *  refusal: a "Resource not accessible" 403 is an `http` stop, never reported as a quota with a reset time. */
+export function isRateLimited(status, headers = {}) {
+  if (status === 429) return true;
+  if (status !== 403) return false;
+  return headers['retry-after'] !== undefined || (headers['x-ratelimit-remaining'] !== undefined && Number(headers['x-ratelimit-remaining']) === 0);
+}
+
+// ── DATA MINIMISATION ───────────────────────────────────────────────────────
+// Every body is cut to the fields the report reads THE MOMENT IT IS PARSED, before
+// it is cached or kept: a runs page carries head_commit (author and committer
+// e-mails), actor and triggering_actor (logins) and a run name that can carry a
+// login ("CI on PR #1 by @x"); a pulls page carries user; a review comment carries
+// its author and free text. None of that is a field below, so none of it reaches
+// --out, the cache or the report. An endpoint not listed keeps nothing.
+const pick = (o, keys) => (o && typeof o === 'object' ? Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]])) : null);
+const RUN_KEYS = ['id', 'path', 'event', 'head_branch', 'head_sha', 'status', 'conclusion', 'created_at', 'run_started_at', 'updated_at', 'run_attempt'];
+const PR_KEYS = ['number', 'created_at', 'updated_at', 'closed_at', 'merged_at'];
+const JOB_KEYS = ['id', 'name', 'head_sha', 'run_attempt', 'status', 'conclusion', 'started_at', 'completed_at'];
+const CHECK_KEYS = ['name', 'head_sha', 'status', 'conclusion', 'started_at', 'completed_at'];
+
+/** The run id of a check run, from its Actions details_url (`…/actions/runs/<id>/job/<job>`); null otherwise. */
+export function runIdOfCheck(c) {
+  const m = /\/actions\/runs\/(\d+)(?:\/|$)/.exec(String(c?.details_url ?? ''));
+  return m ? Number(m[1]) : (Number.isInteger(c?.runId) ? c.runId : null);
+}
+
+/** The body of one GET, cut to what the report reads. The path decides the shape. */
+export function trimBody(apiPath, body) {
+  const p = String(apiPath).split('?')[0];
+  if (/\/actions\/runs$/.test(p)) {
+    return { total_count: body?.total_count, workflow_runs: (body?.workflow_runs ?? []).map((r) => ({ ...pick(r, RUN_KEYS), pull_requests: (r.pull_requests ?? []).map((x) => ({ number: x?.number })) })) };
+  }
+  if (/\/actions\/runs\/\d+\/jobs$/.test(p)) return { total_count: body?.total_count, jobs: (body?.jobs ?? []).map((j) => pick(j, JOB_KEYS)) };
+  if (/\/commits\/[0-9a-f]{7,40}\/check-runs$/.test(p)) {
+    return { total_count: body?.total_count, check_runs: (body?.check_runs ?? []).map((c) => ({ ...pick(c, CHECK_KEYS), runId: runIdOfCheck(c) })) };
+  }
+  if (/\/pulls\/comments$/.test(p)) {
+    // The text is read for its class here and then dropped: a comment can quote an address or @-mention a person.
+    return (body ?? []).map((c) => ({ id: c?.id, in_reply_to_id: c?.in_reply_to_id ?? null, created_at: c?.created_at, pull_request_url: c?.pull_request_url, class: c?.class ?? classOf(c?.body) }));
+  }
+  if (/\/pulls$/.test(p)) return (body ?? []).map((x) => ({ ...pick(x, PR_KEYS), head: { ref: x?.head?.ref } }));
+  return null;
+}
+
+/** A 5xx is retried this many times (each retry a request against the budget) before the walk stops with `http`:
+ *  the jobs endpoint answers 502 on large `filter=all` pages routinely, and one of those ended a whole live run. */
+export const RETRY_5XX = 2;
+
+export function makeClient(transport, { budget = DEFAULT_BUDGET, rateFloor = RATE_FLOOR, cacheDir = null, io, trim = trimBody } = {}) {
   let sent = 0;
   let notModified = 0;
+  let retried = 0;
   let lastRate = null;
   let pendingStop = null;
   const key = (p) => `etag-${createHash('sha256').update(p).digest('hex').slice(0, 32)}.json`;
@@ -201,29 +264,37 @@ export function makeClient(transport, { budget = DEFAULT_BUDGET, rateFloor = RAT
     }
   };
   async function get(apiPath) {
-    if (sent >= budget) {
-      throw new BudgetStop('budget', `budget — ${sent} of ${budget} request(s) sent; GET ${apiPath} would be one more, so it was not sent`);
-    }
     const cached = readCache(apiPath);
-    sent += 1;
-    const r = transport(apiPath, cached?.etag ?? null);
+    let r;
+    for (let attempt = 0; ; attempt++) {
+      if (sent >= budget) {
+        throw new BudgetStop('budget', `budget — ${sent} of ${budget} request(s) sent; GET ${apiPath} would be one more, so it was not sent`);
+      }
+      sent += 1;
+      r = transport(apiPath, cached?.etag ?? null);
+      if (r.status >= 500 && r.status < 600 && attempt < RETRY_5XX) {
+        retried += 1;
+        continue;
+      }
+      break;
+    }
     const remaining = Number(r.headers['x-ratelimit-remaining']);
     const reset = Number(r.headers['x-ratelimit-reset']);
     if (Number.isFinite(remaining)) lastRate = { remaining, reset: Number.isFinite(reset) ? new Date(reset * 1000).toISOString() : null };
-    if (r.status === 403 || r.status === 429) {
+    if (isRateLimited(r.status, r.headers)) {
       throw new BudgetStop('rate-limit', `rate-limit — GET ${apiPath} answered ${r.status}${lastRate?.reset ? `; the quota resets at ${lastRate.reset}` : ''}${r.headers['retry-after'] ? `; retry-after ${r.headers['retry-after']}s` : ''}`);
     }
     let body;
     let headers = r.headers;
     if (r.status === 304 && cached) {
       notModified += 1;
-      body = cached.body;
+      body = trim(apiPath, cached.body);
       headers = { ...cached.headers, ...r.headers };
     } else if (r.status >= 200 && r.status < 300) {
-      body = r.body ? JSON.parse(r.body) : null;
+      body = trim(apiPath, r.body ? JSON.parse(r.body) : null);
       if (cacheDir && r.headers.etag) io.write(path.join(cacheDir, key(apiPath)), JSON.stringify({ etag: r.headers.etag, headers: { link: r.headers.link ?? null }, body }));
     } else {
-      throw new BudgetStop('http', `GET ${apiPath} answered ${r.status}`);
+      throw new BudgetStop('http', `GET ${apiPath} answered ${r.status}${r.status >= 500 ? ` after ${RETRY_5XX} retr${RETRY_5XX === 1 ? 'y' : 'ies'}` : ''}`);
     }
     if (Number.isFinite(remaining) && remaining < rateFloor) {
       // The answer in hand is kept; the NEXT request is the one refused.
@@ -249,7 +320,7 @@ export function makeClient(transport, { budget = DEFAULT_BUDGET, rateFloor = RAT
     }
     return { items: into, total };
   }
-  return { get: guardedGet, all, stats: () => ({ sent, notModified, budget, rate: lastRate }) };
+  return { get: guardedGet, all, stats: () => ({ sent, notModified, retried, budget, rate: lastRate }) };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -274,7 +345,7 @@ export function prOfRun(run, prs) {
   return hits.length === 1 ? hits[0].number : null;
 }
 
-export const emptyData = () => ({ prs: [], runs: [], gateBySha: {}, attemptJobs: {}, reviewComments: [], phases: [], capped: [] });
+export const emptyData = () => ({ prs: [], runs: [], gateBySha: {}, attemptJobs: {}, reviewComments: [], phases: [], capped: [], trendStop: null });
 
 /** De-duplicates the runs and names each ci.yml pull_request run's PR. Idempotent; safe over a partial read. */
 export function tagRuns(data) {
@@ -295,10 +366,12 @@ export async function collect(client, { repo, win, reviews = true }, data = empt
     into: data.prs,
   });
   data.phases.push('prs');
-  // 2. Runs, a week at a time; a week past the list ceiling is re-read a day at a time.
+  // 2. Runs, a week at a time; a week past the list ceiling is re-read a day at a time. Its first page says so
+  //    (total_count), so the rest of that week is never paged: the days are read instead.
+  const over = (b) => (b?.total_count ?? 0) > LIST_CEILING;
   for (let s = win.fetchSince; s < win.until; s += 7 * DAY_MS) {
     const e = Math.min(s + 7 * DAY_MS, win.until);
-    const week = await client.all(runsPath(s, e), (b) => b?.workflow_runs, { into: data.runs });
+    const week = await client.all(runsPath(s, e), (b) => (over(b) ? [] : b?.workflow_runs), { into: data.runs, last: over });
     if ((week.total ?? 0) <= LIST_CEILING) continue;
     for (let d = s; d < e; d += DAY_MS) {
       const day = await client.all(runsPath(d, Math.min(d + DAY_MS, e)), (x) => x?.workflow_runs, { into: data.runs });
@@ -321,9 +394,12 @@ export async function collect(client, { repo, win, reviews = true }, data = empt
   }
   data.phases.push('reviews');
   // 5. ci-gate on each PR's FIRST pushed head: the current window first, then the trend weeks newest first.
+  //    The trend's reads are BEST-EFFORT: a stop there (budget, rate limit, an http error) is kept in
+  //    data.trendStop, the weeks it did not reach show first-push-green n/a, and the current window, already
+  //    whole, still reports complete and still proposes. A stop before gate:current is a stop of the week.
   const order = [win.current, ...[...win.trend].reverse()];
   const done = new Set();
-  for (const [i, w] of order.entries()) {
+  const gate = async (w) => {
     for (const p of data.prs.filter((x) => inWin(x.created_at, w))) {
       const sha = firstHead(p.number, data.runs);
       if (!sha || done.has(sha)) continue;
@@ -331,7 +407,21 @@ export async function collect(client, { repo, win, reviews = true }, data = empt
       const { body } = await client.get(`${R}/commits/${sha}/check-runs?check_name=${GATE_CHECK}&filter=all&per_page=${PER_PAGE}`);
       data.gateBySha[sha] = (body?.check_runs ?? []).filter((c) => c.head_sha === sha);
     }
-    data.phases.push(i === 0 ? 'gate:current' : `gate:trend-${i}`);
+  };
+  for (const [i, w] of order.entries()) {
+    if (i === 0) {
+      await gate(w);
+      data.phases.push('gate:current');
+      continue;
+    }
+    try {
+      await gate(w);
+    } catch (e) {
+      if (!(e instanceof BudgetStop)) throw e;
+      data.trendStop = e;
+      break;
+    }
+    data.phases.push(`gate:trend-${i}`);
   }
   return data;
 }
@@ -360,10 +450,16 @@ export function firstPushGreen(data, w) {
       rows.push({ pr: p.number, sha, verdict: 'unread' });
       continue;
     }
-    const firstDone = checks.filter((c) => c.status === 'completed').sort((a, b) => ms(a.started_at) - ms(b.started_at))[0];
-    const verdict = !firstDone ? 'pending' : firstDone.conclusion === 'success' ? 'green' : 'red';
-    // Red first, then green on the SAME SHA: still red here (the definition), and also flaky.
-    const greenLater = verdict === 'red' && checks.some((c) => c.conclusion === 'success' && ms(c.started_at) > ms(firstDone.started_at));
+    const done = checks.filter((c) => c.status === 'completed').sort((a, b) => ms(a.started_at) - ms(b.started_at));
+    // A cancelled or skipped gate passed no verdict on the change: a second push or an `edited` re-trigger cancels
+    // the first (ci.yml's cancel-in-progress). The first gate that DID conclude is the one read; none is `superseded`.
+    const firstDone = done.find((c) => !SUPERSEDED.has(c.conclusion));
+    const verdict = !done.length ? 'pending' : !firstDone ? 'superseded' : firstDone.conclusion === 'success' ? 'green' : 'red';
+    // Red first, then green on the SAME SHA in a RE-RUN of the same workflow run: still red here (the definition),
+    // and priced as a flake. A green from another run on that SHA (an `edited` re-trigger, which also tests a newer
+    // merge with main) is not a re-run, so the red stays red on the change.
+    const rid = runIdOfCheck(firstDone);
+    const greenLater = verdict === 'red' && rid !== null && checks.some((c) => c.conclusion === 'success' && runIdOfCheck(c) === rid && ms(c.started_at) > ms(firstDone.started_at));
     rows.push({ pr: p.number, sha, verdict, greenLater });
   }
   const green = rows.filter((r) => r.verdict === 'green').length;
@@ -402,9 +498,14 @@ export function timeToMerge(data, w) {
 
 export function flaky(data, w) {
   const instances = [];
-  // (a) a re-run: one job name with a red attempt and a later green attempt on the run's one head SHA.
+  // ONLY a re-run: one job name with a red attempt and a later green attempt of the SAME run, on its one head SHA.
+  // Two separate runs on one SHA are never a flake here: on main they are ops-watch's schedule and dispatches
+  // watching a state recover (measured: 13 of 14 such pairs in a real week), and on a PR an `edited` re-trigger
+  // that also tests a newer merge with main.
   for (const [runId, jobs] of Object.entries(data.attemptJobs)) {
     const run = data.runs.find((r) => String(r.id) === runId);
+    // A watcher (cron or dispatch) re-run that turns green read the world again, and the world recovered.
+    if (WATCHER_EVENTS.has(run?.event)) continue;
     const byName = new Map();
     for (const j of jobs) {
       if (j.head_sha && run && j.head_sha !== run.head_sha) continue;
@@ -418,22 +519,8 @@ export function flaky(data, w) {
       const redIdx = js.findIndex((j) => RED.has(j.conclusion));
       if (redIdx !== -1 && js.slice(redIdx + 1).some((j) => j.conclusion === 'success')) {
         const lost = js.slice(0, js.length - 1).reduce((s, j) => s + minutes(j.started_at, j.completed_at), 0);
-        instances.push({ kind: 'rerun', workflow: run?.name ?? null, name, sha: run?.head_sha ?? null, runId: Number(runId), minutesLost: round(lost) });
+        instances.push({ kind: 'rerun', workflow: run?.path ?? null, name, sha: run?.head_sha ?? null, runId: Number(runId), minutesLost: round(lost) });
       }
-    }
-  }
-  // (b) two runs of one workflow on one head SHA: a red one, then a green one.
-  const groups = new Map();
-  for (const r of data.runs.filter((x) => inWin(x.created_at, w) && x.status === 'completed')) {
-    const k = `${r.path}|${r.head_sha}`;
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(r);
-  }
-  for (const rs of groups.values()) {
-    rs.sort((a, b) => ms(a.created_at) - ms(b.created_at));
-    const redIdx = rs.findIndex((r) => RED.has(r.conclusion));
-    if (redIdx !== -1 && rs.slice(redIdx + 1).some((r) => r.conclusion === 'success')) {
-      instances.push({ kind: 'same-sha', workflow: rs[0].name, name: rs[0].name, sha: rs[0].head_sha, runId: rs[redIdx].id, minutesLost: round(minutes(rs[redIdx].run_started_at, rs[redIdx].updated_at)) });
     }
   }
   const reruns = data.runs.filter((r) => inWin(r.created_at, w)).reduce((s, r) => s + Math.max(0, (r.run_attempt ?? 1) - 1), 0);
@@ -477,7 +564,7 @@ export function mttr(data, w) {
 export function ciMinutes(data, w) {
   const per = {};
   for (const r of data.runs.filter((x) => inWin(x.created_at, w) && x.status === 'completed')) {
-    const k = r.path || r.name;
+    const k = r.path || 'unknown';
     per[k] ??= { runs: 0, minutes: 0, lostMinutes: 0 };
     const m = minutes(r.run_started_at ?? r.created_at, r.updated_at);
     per[k].runs += 1;
@@ -698,10 +785,12 @@ export function buildReport(data, win, { lanes = [], rulings = [], ledgers = {},
   const report = {
     repo,
     window: { since: new Date(w.since).toISOString(), until: new Date(w.until).toISOString() },
+    status: stop || data.capped.length > 0 ? 'INCOMPLETE' : 'complete',
     partial: Boolean(stop) || data.capped.length > 0,
     stopReason: stop ? stop.reason : data.capped.length ? 'list-ceiling' : null,
     stopDetail: stop ? stop.message : data.capped.length ? data.capped.join('; ') : null,
     phasesComplete: data.phases,
+    trendStop: data.trendStop ? { reason: data.trendStop.reason, detail: data.trendStop.message } : null,
     requests: stats,
     ciCycleMinutes: ciCycleMinutes(data, w),
     firstPushRedMinutes: round(firstPushRedMinutes),
@@ -739,7 +828,7 @@ export function buildReport(data, win, { lanes = [], rulings = [], ledgers = {},
 
 export function renderMarkdown(r) {
   const L = [];
-  if (r.partial) L.push(`> **PARTIAL — ${r.stopReason}.** ${r.stopDetail} Phases complete: ${r.phasesComplete.join(', ') || 'none'}. Numbers below cover only what was read; no proposals are made from a partial week.`, '');
+  if (r.partial) L.push(`> **INCOMPLETE — ${r.stopReason}.** ${r.stopDetail} Phases complete: ${r.phasesComplete.join(', ') || 'none'}. Numbers below cover only what was read; no proposals are made from an incomplete week.`, '');
   L.push(`# Factory self-review — ${r.window.since.slice(0, 10)} to ${r.window.until.slice(0, 10)} (UTC)`, '');
   L.push(`Repo \`${r.repo}\` · requests ${r.requests.sent ?? 0}/${r.requests.budget ?? '?'} (${r.requests.notModified ?? 0} served by ETag) · one CI cycle = ${r.ciCycleMinutes} min (median ci.yml PR run). Definitions: docs/ops/self-review.md.`, '');
   const m = r.metrics;
@@ -759,13 +848,15 @@ export function renderMarkdown(r) {
   for (const l of m['cost-per-lane']) L.push(`- ${l.lane}: ${l.runs} run(s), ${l.ciMinutes} CI min (${l.lostMinutes} lost), ${l.reruns} rerun(s)${l.costUsd !== null ? `, $${l.costUsd}` : ''}${l.agentMinutes !== null ? `, ${l.agentMinutes} agent min` : ''}`);
   L.push('', '### CI minutes per workflow (wall clock)', '');
   for (const [k, v] of Object.entries(r.ciMinutesPerWorkflow).sort((a, b) => b[1].minutes - a[1].minutes)) L.push(`- ${k}: ${v.runs} run(s), ${v.minutes} min, ${v.lostMinutes} lost`);
-  L.push('', '## Trend (4 weeks, UTC)', '', '| week from | first-push-green % | merge median h | reruns | main red h | CI min | lost min |', '|---|---|---|---|---|---|---|');
+  L.push('', '## Trend (4 weeks, UTC)', '');
+  if (r.trendStop) L.push(`The trend's ci-gate reads stopped (${r.trendStop.reason}): ${r.trendStop.detail} First-push-green is n/a for the weeks it did not reach; the window above is whole.`, '');
+  L.push('| week from | first-push-green % | merge median h | reruns | main red h | CI min | lost min |', '|---|---|---|---|---|---|---|');
   for (const w of r.trend) L.push(`| ${w.since.slice(0, 10)} | ${w.firstPushGreen ?? 'n/a'} | ${w.mergeMedianHours ?? 'n/a'} | ${w.reruns} | ${w.mainRedHours} | ${w.ciMinutes} | ${w.lostMinutes} |`);
   const g = r.ledgers?.guardYield;
   const c = r.ledgers?.failedRunCauses;
   L.push('', '## Existing ledgers (read, not rewritten)', '', `- guard-yield: ${g ? `asOf ${g.asOf}, ${g.zeroCatch} zero-catch guard(s), ${g.unattributed} unattributed run(s)` : 'unreadable'}`, `- failed-run causes: ${c ? `${c.causes} cause(s) — ${Object.entries(c.byKind).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${v}`).join(', ')}` : 'unreadable'}`);
   L.push('', '## Top 3 proposals (never applied; proposals.json)', '');
-  if (!r.proposals.length) L.push(r.partial ? 'None: a partial week does not rank.' : 'None: nothing measured cost a minute.');
+  if (!r.proposals.length) L.push(r.partial ? 'None: an incomplete week does not rank.' : 'None: nothing measured cost a minute.');
   for (const p of r.proposals) L.push(`${p.priority}. **${p.lane}** (${p.costMinutes} min) — ${p.brief}`);
   return `${L.join('\n')}\n`;
 }
@@ -854,15 +945,15 @@ export async function run(argv, { transport = null, fs, now = Date.now(), log = 
   try {
     await collect(client, { repo: a.repo, win }, data);
   } catch (e) {
-    if (!(e instanceof BudgetStop)) throw e;
-    stop = e;
+    // Whatever stopped the walk, what was read is still written, under an INCOMPLETE banner.
+    stop = e instanceof BudgetStop ? e : new BudgetStop('error', `collection failed: ${e?.name ?? 'Error'} — ${String(e?.message ?? e).replace(/"[^"]*"/g, '"…"').slice(0, 200)}`);
   }
   const report = buildReport(data, win, { lanes, rulings, ledgers: readLedgers(io, root), stop, stats: client.stats(), repo: a.repo });
   io.write(path.join(out, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
   io.write(path.join(out, 'report.md'), renderMarkdown(report));
   io.write(path.join(out, 'proposals.json'), `${JSON.stringify(report.proposals, null, 2)}\n`);
   const f = report.metrics['first-push-green'];
-  log(`self-review ${report.window.since.slice(0, 10)}..${report.window.until.slice(0, 10)}: ${report.partial ? `PARTIAL (${report.stopReason})` : 'complete'}`);
+  log(`self-review ${report.window.since.slice(0, 10)}..${report.window.until.slice(0, 10)}: ${report.partial ? `INCOMPLETE (${report.stopReason})` : 'complete'}`);
   log(`  first-push-green ${f.rate ?? 'n/a'}% · reruns ${report.metrics.flaky.reruns} · main red ${report.metrics.mttr.main.redHours} h · requests ${client.stats().sent}/${a.budget}`);
   log(`  proposals: ${report.proposals.map((p) => p.lane).join(', ') || 'none'} → ${out}`);
   return report.partial ? 2 : 0;

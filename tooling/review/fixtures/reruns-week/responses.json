@@ -1,6 +1,6 @@
 {
  "_readme": [
-  "RECORDED-SHAPE GitHub REST responses for tooling/ci/test/self-review.test.mjs: a week (2026-09-24..2026-10-01 UTC) where re-runs dominate. Keys are the exact `gh api` paths self-review.mjs requests; values {status, headers, body}. #101 goes red on its first push; #103-#106 go green only on a re-run of the same SHA; main is red for one hour; #104 has an empty pull_requests list and is matched by branch."
+  "RECORDED-SHAPE GitHub REST responses for tooling/ci/test/self-review.test.mjs: a week (2026-09-24..2026-10-01 UTC) where re-runs dominate. Keys are the exact `gh api` paths self-review.mjs requests; values {status, headers, body}. #101 goes red on its first push; #103-#106 go green only on a re-run of the same SHA; main is red for one hour; #104 has an empty pull_requests list and is matched by branch. Each ci-gate check run carries its Actions details_url, whose run id is how a re-run (same run) is told from a re-trigger (another run)."
  ],
  "repos/globalonlinedeveloper/Nikatru_Platform_Public/pulls?state=all&sort=updated&direction=desc&per_page=100": {
   "status": 200,
@@ -706,7 +706,8 @@
      "status": "completed",
      "conclusion": "failure",
      "started_at": "2026-09-24T09:24:00Z",
-     "completed_at": "2026-09-24T09:25:00Z"
+     "completed_at": "2026-09-24T09:25:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000000/job/136500000090"
     }
    ]
   }
@@ -727,7 +728,8 @@
      "status": "completed",
      "conclusion": "success",
      "started_at": "2026-09-24T08:24:00Z",
-     "completed_at": "2026-09-24T08:25:00Z"
+     "completed_at": "2026-09-24T08:25:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000002/job/136500000091"
     }
    ]
   }
@@ -748,7 +750,8 @@
      "status": "completed",
      "conclusion": "failure",
      "started_at": "2026-09-25T08:24:00Z",
-     "completed_at": "2026-09-25T08:25:00Z"
+     "completed_at": "2026-09-25T08:25:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000003/job/136500000092"
     },
     {
      "name": "ci-gate",
@@ -756,7 +759,8 @@
      "status": "completed",
      "conclusion": "success",
      "started_at": "2026-09-25T08:49:00Z",
-     "completed_at": "2026-09-25T08:50:00Z"
+     "completed_at": "2026-09-25T08:50:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000003/job/136500000093"
     }
    ]
   }
@@ -777,7 +781,8 @@
      "status": "completed",
      "conclusion": "failure",
      "started_at": "2026-09-26T08:24:00Z",
-     "completed_at": "2026-09-26T08:25:00Z"
+     "completed_at": "2026-09-26T08:25:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000004/job/136500000094"
     },
     {
      "name": "ci-gate",
@@ -785,7 +790,8 @@
      "status": "completed",
      "conclusion": "success",
      "started_at": "2026-09-26T08:49:00Z",
-     "completed_at": "2026-09-26T08:50:00Z"
+     "completed_at": "2026-09-26T08:50:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000004/job/136500000095"
     }
    ]
   }
@@ -806,7 +812,8 @@
      "status": "completed",
      "conclusion": "failure",
      "started_at": "2026-09-27T08:24:00Z",
-     "completed_at": "2026-09-27T08:25:00Z"
+     "completed_at": "2026-09-27T08:25:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000005/job/136500000096"
     },
     {
      "name": "ci-gate",
@@ -814,7 +821,8 @@
      "status": "completed",
      "conclusion": "success",
      "started_at": "2026-09-27T08:49:00Z",
-     "completed_at": "2026-09-27T08:50:00Z"
+     "completed_at": "2026-09-27T08:50:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000005/job/136500000097"
     }
    ]
   }
@@ -835,7 +843,8 @@
      "status": "completed",
      "conclusion": "failure",
      "started_at": "2026-09-28T08:24:00Z",
-     "completed_at": "2026-09-28T08:25:00Z"
+     "completed_at": "2026-09-28T08:25:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000006/job/136500000098"
     },
     {
      "name": "ci-gate",
@@ -843,7 +852,8 @@
      "status": "completed",
      "conclusion": "success",
      "started_at": "2026-09-28T08:49:00Z",
-     "completed_at": "2026-09-28T08:50:00Z"
+     "completed_at": "2026-09-28T08:50:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000006/job/136500000099"
     }
    ]
   }
@@ -864,7 +874,8 @@
      "status": "completed",
      "conclusion": "success",
      "started_at": "2026-09-29T08:24:00Z",
-     "completed_at": "2026-09-29T08:25:00Z"
+     "completed_at": "2026-09-29T08:25:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000007/job/1365000000100"
     }
    ]
   }
@@ -885,7 +896,8 @@
      "status": "completed",
      "conclusion": "success",
      "started_at": "2026-09-24T08:24:00Z",
-     "completed_at": "2026-09-24T08:25:00Z"
+     "completed_at": "2026-09-24T08:25:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000008/job/1365000000101"
     }
    ]
   }
@@ -906,7 +918,8 @@
      "status": "completed",
      "conclusion": "success",
      "started_at": "2026-09-25T08:24:00Z",
-     "completed_at": "2026-09-25T08:25:00Z"
+     "completed_at": "2026-09-25T08:25:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000009/job/1365000000102"
     }
    ]
   }
@@ -927,7 +940,8 @@
      "status": "completed",
      "conclusion": "success",
      "started_at": "2026-09-18T09:24:00Z",
-     "completed_at": "2026-09-18T09:25:00Z"
+     "completed_at": "2026-09-18T09:25:00Z",
+     "details_url": "https://github.com/globalonlinedeveloper/Nikatru_Platform_Public/actions/runs/36500000010/job/1365000000103"
     }
    ]
   }

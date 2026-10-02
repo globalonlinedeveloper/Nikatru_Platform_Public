@@ -304,6 +304,16 @@ regexes = ['''^sb_publishable_[A-Za-z0-9_-]{20,}$''']
 # so the tree is clean; only that one commit in the PR's history still matches.
 # History is never rewritten here, so the hole is scoped to that sha and that
 # rule alone: the same value in any OTHER commit is still a finding.
+#
+# ⏳ IT NEED NOT SURVIVE THE SQUASH, AND IS DELETED AFTER IT. ci.yml's secret
+# scan reads the CHANGE's commits (merge-base..head on a PR, before..after on a
+# push to main), never the whole history. While #1159 is open its range holds
+# a3a058b7, so this entry is what keeps the PR's scan honest without a rewrite.
+# Squash-merged, main's push scans the one squash commit, whose diff is the
+# clean tree, and a3a058b7 is reachable from no ref any scan of main reads: the
+# entry then exempts nothing — protection that protects nothing, the same dead
+# shape deleted above. The first change after #1159 merges deletes this block
+# (a lead step on #1159); keeping it "for safety" is the thing this file refuses.
 [[allowlists]]
 description = "a3a058b7cab8: synthetic self-review fixture ids, replaced in a801347735b3 — lead ruling 2026-10-02"
 targetRules = ["nikatru-india-aadhaar"]

@@ -26,12 +26,14 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, cpSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  DEFAULT_BUDGET,
+  MEASURED_WEEK,
   METRICS,
   BudgetStop,
   buildReport,
@@ -51,7 +53,9 @@ import {
   parseHttp,
   proposals,
   readRulings,
+  renderMarkdown,
   run,
+  trimBody,
   validateLanes,
   windows,
 } from '../../review/self-review.mjs';
@@ -132,13 +136,24 @@ describe('D1 — the definitions', () => {
     assert.equal(flaky(allRed, WIN.current).instances.filter((i) => i.kind === 'rerun').length, 0);
   });
 
-  test('two runs of one workflow on one SHA, red then green, are a flake', () => {
-    const run = (id, conclusion, at) => ({ id, name: 'CI', path: '.github/workflows/ci.yml', head_sha: 'a'.repeat(40), head_branch: 'x', status: 'completed', conclusion, created_at: at, run_started_at: at, updated_at: at, run_attempt: 1 });
-    const fl = flaky({ runs: [run(1, 'failure', '2026-09-25T01:00:00Z'), run(2, 'success', '2026-09-25T02:00:00Z')], attemptJobs: {} }, WIN.current);
+  test('two RUNS on one SHA red then green are never a flake: watcher state changes and re-triggers are not', () => {
+    const run = (id, path, event, conclusion, at, branch = 'main') => ({ id, path, event, head_sha: 'a'.repeat(40), head_branch: branch, status: 'completed', conclusion, created_at: at, run_started_at: at, updated_at: at, run_attempt: 1 });
+    // ops-watch's cron red, then its next slot green on the same main SHA: the watched state recovered.
+    const watcher = [run(1, '.github/workflows/ops-watch.yml', 'schedule', 'failure', '2026-09-25T01:00:00Z'), run(2, '.github/workflows/ops-watch.yml', 'schedule', 'success', '2026-09-25T03:00:00Z')];
+    assert.equal(flaky({ runs: watcher, attemptJobs: {} }, WIN.current).instances.length, 0, 'an ops-watch schedule red→green on one main SHA is not a flake');
+    // a PR body edit after a red re-triggers ci.yml on the same head (and a newer merge with main): not a flake.
+    const retrigger = [run(3, '.github/workflows/ci.yml', 'pull_request', 'failure', '2026-09-25T01:00:00Z', 'lane/x'), run(4, '.github/workflows/ci.yml', 'pull_request', 'success', '2026-09-25T02:00:00Z', 'lane/x')];
+    assert.equal(flaky({ runs: retrigger, attemptJobs: {} }, WIN.current).instances.length, 0, 'an `edited` re-trigger is not a flake');
+    // a watcher RE-RUN that turns green read the world again: not a flake either.
+    const rerun = { ...run(5, '.github/workflows/ops-watch.yml', 'workflow_dispatch', 'success', '2026-09-25T01:00:00Z'), run_attempt: 2 };
+    const jobs = [1, 2].map((a) => ({ name: 'probe', head_sha: rerun.head_sha, run_attempt: a, conclusion: a === 1 ? 'failure' : 'success', started_at: '2026-09-25T01:00:00Z', completed_at: '2026-09-25T01:05:00Z' }));
+    assert.equal(flaky({ runs: [rerun], attemptJobs: { 5: jobs } }, WIN.current).instances.length, 0, 'a watcher re-run is the state, not a flake');
+    // positive control: the SAME job re-run red→green in the SAME pull_request run IS the flake.
+    const pr = { ...run(6, '.github/workflows/ci.yml', 'pull_request', 'success', '2026-09-25T01:00:00Z', 'lane/x'), run_attempt: 2 };
+    const fl = flaky({ runs: [pr], attemptJobs: { 6: jobs.map((j) => ({ ...j, head_sha: pr.head_sha })) } }, WIN.current);
     assert.equal(fl.instances.length, 1);
-    assert.equal(fl.instances[0].kind, 'same-sha');
-    const fl2 = flaky({ runs: [run(1, 'success', '2026-09-25T01:00:00Z'), run(2, 'failure', '2026-09-25T02:00:00Z')], attemptJobs: {} }, WIN.current);
-    assert.equal(fl2.instances.length, 0, 'green then red is a regression, not a flake');
+    assert.equal(fl.instances[0].kind, 'rerun');
+    assert.equal(fl.instances[0].workflow, '.github/workflows/ci.yml', 'a workflow is named by its path, never by a run name');
   });
 
   test('a red→green pair on main yields its duration, in UTC', async () => {
@@ -190,12 +205,15 @@ describe('D2 — the budget, the cache, the rate limit, the SHA', () => {
     const out = join(tmp(), 'out');
     const r = spawnSync(process.execPath, [SCRIPT, '--out', out, '--until', UNTIL, '--fixture', join(FIX, 'responses.json'), '--budget', '10'], { encoding: 'utf8' });
     assert.equal(r.status, 2, r.stdout + r.stderr);
-    assert.match(r.stdout, /PARTIAL \(budget\)/);
+    assert.match(r.stdout, /INCOMPLETE \(budget\)/);
     const rep = JSON.parse(readFileSync(join(out, 'report.json'), 'utf8'));
     assert.equal(rep.partial, true);
+    assert.equal(rep.status, 'INCOMPLETE');
+    // what WAS measured is still written: the PR list and the runs were read before the stop
+    assert.ok(rep.metrics['first-push-green'].opened > 0, 'an incomplete week still writes what it measured');
     assert.equal(rep.stopReason, 'budget');
     assert.equal(rep.requests.sent, 10);
-    assert.match(readFileSync(join(out, 'report.md'), 'utf8').split('\n')[0], /PARTIAL — budget/);
+    assert.match(readFileSync(join(out, 'report.md'), 'utf8').split('\n')[0], /INCOMPLETE — budget/);
     assert.deepEqual(JSON.parse(readFileSync(join(out, 'proposals.json'), 'utf8')), []);
   });
 
@@ -213,8 +231,34 @@ describe('D2 — the budget, the cache, the rate limit, the SHA', () => {
     await c.get('repos/a/b/pulls');
     await assert.rejects(c.get('repos/a/b/pulls?page=2'), (e) => e instanceof BudgetStop && e.reason === 'rate-limit');
     assert.equal(c.stats().sent, 1);
-    const c403 = makeClient(() => ({ status: 403, headers: {}, body: '{}' }), { io: quietIo() });
-    await assert.rejects(c403.get('repos/a/b/pulls'), (e) => e.reason === 'rate-limit');
+    const c403 = makeClient(() => ({ status: 403, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1790000000' } , body: '{}' }), { io: quietIo() });
+    await assert.rejects(c403.get('repos/a/b/pulls'), (e) => e.reason === 'rate-limit' && /resets at/.test(e.message));
+    const c403s = makeClient(() => ({ status: 403, headers: { 'retry-after': '60' }, body: '{}' }), { io: quietIo() });
+    await assert.rejects(c403s.get('repos/a/b/pulls'), (e) => e.reason === 'rate-limit');
+    const c429 = makeClient(() => ({ status: 429, headers: {}, body: '{}' }), { io: quietIo() });
+    await assert.rejects(c429.get('repos/a/b/pulls'), (e) => e.reason === 'rate-limit');
+  });
+
+  test('a 403 with no spent quota and no retry-after is a permission refusal (http), never `rate-limit`', async () => {
+    const tr = () => ({ status: 403, headers: { 'x-ratelimit-remaining': '4990' }, body: '{"message":"Resource not accessible by integration"}' });
+    const c = makeClient(tr, { io: quietIo() });
+    await assert.rejects(c.get('repos/a/b/pulls'), (e) => e instanceof BudgetStop && e.reason === 'http' && !/resets at/.test(e.message));
+  });
+
+  test('a 5xx is retried twice, each retry counted against the budget, then stops with `http`', async () => {
+    let n = 0;
+    const flaky502 = () => (++n === 1 ? { status: 502, headers: {}, body: '' } : { status: 200, headers: {}, body: '[]' });
+    const c = makeClient(flaky502, { io: quietIo() });
+    assert.deepEqual((await c.get('repos/a/b/pulls')).body, []);
+    assert.equal(c.stats().sent, 2);
+    assert.equal(c.stats().retried, 1);
+    const always = makeClient(() => ({ status: 502, headers: {}, body: '' }), { io: quietIo() });
+    await assert.rejects(always.get('repos/a/b/pulls'), (e) => e.reason === 'http' && /502 after 2 retries/.test(e.message));
+    assert.equal(always.stats().sent, 3);
+    // the retries are requests: a budget of 2 stops the second retry before it is sent
+    const tight = makeClient(() => ({ status: 502, headers: {}, body: '' }), { io: quietIo(), budget: 2 });
+    await assert.rejects(tight.get('repos/a/b/pulls'), (e) => e.reason === 'budget');
+    assert.equal(tight.stats().sent, 2);
   });
 
   test('a 304 is served from the ETag cache and still counts against the budget', async () => {
@@ -222,13 +266,13 @@ describe('D2 — the budget, the cache, the rate limit, the SHA', () => {
     const seen = [];
     const tr = (p, etag) => {
       seen.push(etag);
-      return etag === 'W/"e1"' ? { status: 304, headers: {}, body: '' } : { status: 200, headers: { etag: 'W/"e1"' }, body: '[{"n":1}]' };
+      return etag === 'W/"e1"' ? { status: 304, headers: {}, body: '' } : { status: 200, headers: { etag: 'W/"e1"' }, body: '[{"number":1,"head":{"ref":"x"}}]' };
     };
     const io = makeIo([dir]);
     const c1 = makeClient(tr, { cacheDir: dir, io });
-    assert.deepEqual((await c1.get('repos/a/b/pulls')).body, [{ n: 1 }]);
+    assert.deepEqual((await c1.get('repos/a/b/pulls')).body, [{ number: 1, head: { ref: 'x' } }]);
     const c2 = makeClient(tr, { cacheDir: dir, io, budget: 1 });
-    assert.deepEqual((await c2.get('repos/a/b/pulls')).body, [{ n: 1 }]);
+    assert.deepEqual((await c2.get('repos/a/b/pulls')).body, [{ number: 1, head: { ref: 'x' } }]);
     assert.deepEqual(seen, [null, 'W/"e1"']);
     assert.equal(c2.stats().notModified, 1);
     await assert.rejects(c2.get('repos/a/b/pulls'), (e) => e.reason === 'budget');
@@ -352,6 +396,150 @@ describe('D3 — three proposals, never applied', () => {
     assert.ok(isEntry('C:/repo/tooling/review/self-review.mjs', 'C:\\repo\\tooling\\review\\self-review.mjs', w));
     assert.ok(!isEntry('C:\\repo\\tooling\\review\\other.mjs', 'C:\\repo\\tooling\\review\\self-review.mjs', w));
     assert.ok(!isEntry(undefined, 'C:\\repo\\x.mjs', w));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Review 2026-10-02 of PR #1159 (lead ruling, items 1-6). Each block below is a
+// red control: it fails on the code the review read.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('R1 — the documented defaults complete a real week', () => {
+  test('the default budget is sized from the measured real week, with headroom', () => {
+    assert.ok(Number.isInteger(MEASURED_WEEK.requests) && MEASURED_WEEK.requests > 0);
+    assert.match(MEASURED_WEEK.asOf, /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(DEFAULT_BUDGET >= Math.ceil(MEASURED_WEEK.requests * 1.5), `DEFAULT_BUDGET ${DEFAULT_BUDGET} < 1.5 × the measured ${MEASURED_WEEK.requests}`);
+    const doc = readFileSync(DOC, 'utf8');
+    assert.ok(doc.includes(`(default ${DEFAULT_BUDGET})`), 'docs/ops/self-review.md states the default budget the script uses');
+  });
+
+  test('a budget that runs out in the TREND\'s gate reads still leaves the week complete, and it proposes', async () => {
+    const full = (await collected()).client.stats().sent;
+    const { data, stop } = await collected(full - 1);
+    assert.equal(stop, null, 'a stop in the trend is not a stop of the week');
+    assert.equal(data.trendStop?.reason, 'budget');
+    assert.ok(data.phases.includes('gate:current'));
+    const rep = buildReport(data, WIN, { repo: REPO, stats: {} });
+    assert.equal(rep.partial, false);
+    assert.equal(rep.status, 'complete');
+    assert.equal(rep.proposals.length, 3, 'the current window still proposes');
+    assert.equal(rep.trendStop.reason, 'budget');
+    assert.ok(rep.trend.some((t) => t.firstPushGreen === null), 'the trend week it did not reach reads n/a');
+    assert.match(renderMarkdown(rep), /trend's ci-gate reads stopped \(budget\)/);
+  });
+
+  test('an error that is not a stop still writes what was measured, marked INCOMPLETE', async () => {
+    const root = tmp();
+    let n = 0;
+    const tr = (p) => {
+      if (++n > 3) throw new TypeError('boom "with a quoted body someone@example.com"');
+      return fixtureTransport(RESPONSES)(p);
+    };
+    const out = join(root, 'out');
+    const code = await run(['--out', out, '--until', UNTIL], { transport: tr, log: () => {} });
+    assert.equal(code, 2);
+    const rep = JSON.parse(readFileSync(join(out, 'report.json'), 'utf8'));
+    assert.equal(rep.status, 'INCOMPLETE');
+    assert.equal(rep.stopReason, 'error');
+    assert.ok(!/@/.test(rep.stopDetail), 'the error text is quoted out, never copied in');
+    assert.deepEqual(JSON.parse(readFileSync(join(out, 'proposals.json'), 'utf8')), []);
+    assert.match(readFileSync(join(out, 'report.md'), 'utf8').split('\n')[0], /INCOMPLETE — error/);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('a week past the list ceiling is read one page, then by day — never paged in full first', async () => {
+    const seen = [];
+    const tr = (p) => {
+      seen.push(p);
+      if (/\/pulls\?/.test(p) || /\/pulls\/comments/.test(p)) return { status: 200, headers: {}, body: '[]' };
+      const m = /created=([^&]+)/.exec(p);
+      const [a, b] = decodeURIComponent(m[1]).split('..').map(Date.parse);
+      const week = b - a > 86_400_000;
+      const next = week ? `<https://api.github.com/${p}&page=2>; rel="next"` : '';
+      return { status: 200, headers: { link: next }, body: JSON.stringify({ total_count: week ? 1500 : 200, workflow_runs: [] }) };
+    };
+    const c = makeClient(tr, { io: quietIo() });
+    await collect(c, { repo: REPO, win: WIN });
+    const weekReads = seen.filter((p) => /actions\/runs\?/.test(p) && !/page=2/.test(p)).length;
+    assert.equal(seen.filter((p) => /page=2/.test(p)).length, 0, 'the over-ceiling week was paged before the day split');
+    assert.equal(weekReads, 4 + 4 * 7, 'one first page per week, then each of its seven days');
+  });
+});
+
+describe('R4 — a cancelled or skipped first gate gave no verdict', () => {
+  const sha = 'd'.repeat(40);
+  const data = (checks) => ({
+    prs: [{ number: 900, created_at: '2026-09-25T00:00:00Z', head: { ref: 'lane/z' } }],
+    runs: [{ id: 1, path: '.github/workflows/ci.yml', event: 'pull_request', head_sha: sha, head_branch: 'lane/z', created_at: '2026-09-25T00:01:00Z', pull_requests: [{ number: 900 }], _pr: 900 }],
+    gateBySha: { [sha]: checks },
+  });
+  const gate = (conclusion, at, run = 1) => ({ head_sha: sha, status: 'completed', conclusion, started_at: at, runId: run });
+  test('cancelled then green on the same SHA is green; cancelled alone is superseded, in neither count', () => {
+    const g = firstPushGreen(data([gate('cancelled', '2026-09-25T00:02:00Z'), gate('success', '2026-09-25T00:10:00Z', 2)]), WIN.current);
+    assert.equal(g.green, 1);
+    assert.equal(g.red, 0);
+    assert.deepEqual(g.redThenGreenSameSha, []);
+    const s = firstPushGreen(data([gate('cancelled', '2026-09-25T00:02:00Z'), gate('skipped', '2026-09-25T00:03:00Z', 2)]), WIN.current);
+    assert.deepEqual([s.green, s.red], [0, 0]);
+    assert.deepEqual(s.excluded, [{ pr: 900, verdict: 'superseded' }]);
+  });
+  test('red then green in ANOTHER run on that SHA (an `edited` re-trigger) stays red on the change; in the same run it is a re-run', () => {
+    const other = firstPushGreen(data([gate('failure', '2026-09-25T00:02:00Z', 1), gate('success', '2026-09-25T00:10:00Z', 2)]), WIN.current);
+    assert.deepEqual(other.redPrs, [900]);
+    assert.deepEqual(other.redThenGreenSameSha, []);
+    const same = firstPushGreen(data([gate('failure', '2026-09-25T00:02:00Z', 1), gate('success', '2026-09-25T00:10:00Z', 1)]), WIN.current);
+    assert.deepEqual(same.redThenGreenSameSha, [900]);
+  });
+});
+
+describe('R3 — no e-mail address, login or name under --out', () => {
+  test('a run over responses carrying e-mails, logins and a run name with a login writes none of them', () => {
+    const root = tmp();
+    const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+    const LOGIN = 'planted-login-x7';
+    const NAME = 'Planted Person';
+    const mail = 'planted.person@example.org';
+    const actor = { login: LOGIN, id: 1, html_url: `https://github.com/${LOGIN}` };
+    const planted = {};
+    for (const [k, v] of Object.entries(RESPONSES)) {
+      if (k === '_readme') continue;
+      let body = structuredClone(v.body);
+      if (body?.workflow_runs) {
+        body.workflow_runs = body.workflow_runs.map((r) => ({
+          ...r,
+          name: `CI on PR by @${LOGIN}`,
+          display_title: `fix by @${LOGIN}`,
+          actor,
+          triggering_actor: actor,
+          head_commit: { id: r.head_sha, message: `by ${NAME}`, author: { name: NAME, email: mail }, committer: { name: NAME, email: mail } },
+        }));
+      }
+      if (Array.isArray(body)) body = body.map((x) => ({ ...x, user: actor, ...(x.body !== undefined ? { body: `${x.body} cc @${LOGIN} <${mail}>` } : {}) }));
+      if (body?.jobs) body.jobs = body.jobs.map((j) => ({ ...j, runner_name: `${LOGIN}-runner`, workflow_name: `CI on PR by @${LOGIN}` }));
+      // every response carries an ETag, so every body is cached
+      planted[k] = { ...v, headers: { ...(v.headers ?? {}), etag: `W/"${k.length}"` }, body };
+    }
+    const fx = join(root, 'planted.json');
+    writeFileSync(fx, JSON.stringify(planted));
+    const out = join(root, 'out');
+    const r = spawnSync(process.execPath, [SCRIPT, '--out', out, '--until', UNTIL, '--fixture', fx], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const files = walk(out);
+    assert.ok(files.some((f) => f.includes(`${path.sep}.cache${path.sep}`)), 'the cache was written, so it was scanned');
+    assert.ok(files.length > 10);
+    for (const f of files) {
+      const text = readFileSync(f, 'utf8');
+      assert.ok(!EMAIL_RE.test(text), `${path.relative(out, f)} carries an e-mail address`);
+      assert.ok(!text.includes(LOGIN), `${path.relative(out, f)} carries a login`);
+      assert.ok(!text.includes(NAME), `${path.relative(out, f)} carries a name`);
+    }
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('trimBody keeps only the fields the report reads, and an unknown endpoint keeps nothing', () => {
+    const run = trimBody('repos/a/b/actions/runs?created=x', { total_count: 1, workflow_runs: [{ id: 1, path: 'p', name: 'n @x', head_commit: { author: { email: 'a@b.co' } }, actor: {}, pull_requests: [{ number: 3, url: 'u' }] }] });
+    assert.deepEqual(run, { total_count: 1, workflow_runs: [{ id: 1, path: 'p', pull_requests: [{ number: 3 }] }] });
+    assert.deepEqual(trimBody('repos/a/b/pulls/comments?x', [{ id: 1, body: '🔴 class: correctness by @x', user: { login: 'x' }, created_at: 't' }]), [{ id: 1, in_reply_to_id: null, created_at: 't', pull_request_url: undefined, class: 'correctness' }]);
+    assert.equal(trimBody('repos/a/b/issues', [{ user: { login: 'x' } }]), null);
   });
 });
 
