@@ -56,6 +56,11 @@ function realTree() {
   // limb NATIVE (AB-E2E-02): the target catalog and the native suite.
   cpSync(join(REPO, CHANNELS), join(root, CHANNELS));
   cpSync(join(REPO, NATIVE_SUITE), join(root, NATIVE_SUITE));
+  // limb FLOWS (st-e2e-parity): the suites' imported step files, where the flow anchors live.
+  cpSync(join(REPO, 'apps/subscriptiontracker/integration_test'), join(root, 'apps/subscriptiontracker/integration_test'), { recursive: true });
+  // limb FLOWS, the park (lead ruling on #1143): the dispatch-only proof workflow
+  // must default the parked legs to `skip` too.
+  cpSync(join(REPO, '.github/workflows/native-auth-proof.yml'), join(root, '.github/workflows/native-auth-proof.yml'));
   return root;
 }
 

@@ -3681,7 +3681,27 @@
       ".github/workflows/e2e.yml#e2e"
     ],
     "kind": "script",
+    "ref": "tooling/e2e/sign_in_via.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
     "ref": "tooling/e2e/verify_consent.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/e2e.yml#e2e"
+    ],
+    "kind": "script",
+    "ref": "tooling/e2e/verify_export_csv.mjs",
     "references": [],
     "state": "WIRED"
   },

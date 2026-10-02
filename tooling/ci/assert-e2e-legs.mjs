@@ -75,6 +75,11 @@
 // workspace set needs an entry (exit 1 without one); the stamp writes it
 // (tooling/kit/stamp-shared.mjs). The native axis stays one app's,
 // `nativeTargets.app`.
+// ── limb FLOWS (⏱ 2026-10-01, train st-e2e-parity) ───────────────────────
+// Every user flow of the register's `flows.list` must have, on EVERY catalog
+// target (web included), a leg whose anchors resolve in its suite or the
+// integration_test files it imports, or an equivalent `provenBy` a target the
+// flow has a leg on, with a written why. A gap is exit 1; no list is exit 2.
 //
 // Usage:  node tooling/ci/assert-e2e-legs.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
@@ -667,6 +672,211 @@ if (legTargets.length) {
   }
 }
 
+// ── limb FLOWS: every user flow, a leg or a declared equivalent on EVERY
+// target (⏱ 2026-10-01 · train st-e2e-parity, EN-07/EN-08/XP-02). The targets
+// are the catalog's — every platform of a `surface: app` channel, web included
+// — never listed in the register. A flow with neither a leg nor an equivalent
+// on a target is a finding (exit 1); an empty `flows.list` is COVERAGE LOST.
+// A leg's anchors resolve in its suite PLUS the integration_test files that
+// suite imports (the flow steps live in flow_steps.dart), comment-stripped.
+const flowTargets = [
+  ...new Set(
+    (Array.isArray(channels) ? channels : [])
+      .filter((c) => c && c.surface === 'app')
+      .flatMap((c) => (Array.isArray(c.platforms) ? c.platforms : [])),
+  ),
+].sort();
+const flowList = Array.isArray(reg.flows?.list) ? reg.flows.list : [];
+if (flowList.length === 0) {
+  coverageLost([
+    `${REGISTER_REL} names no \`flows.list\`.`,
+    'Feature parity quantifies over the user flows; with none named, no target is graded on any of them.',
+  ]);
+}
+const withImports = (rel) => {
+  const abs = join(ROOT, rel);
+  const readOrNull = (p) => {
+    try {
+      return readFileSync(p, 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  const raw = readOrNull(abs);
+  if (raw === null) return null;
+  const parts = [stripSourceComments(raw, '.dart')];
+  // The capture is a bare file name (no separator, no `..`), so the join stays
+  // in the suite's own directory.
+  for (const m of raw.matchAll(/^import\s+'([A-Za-z0-9_]+\.dart)';/gm)) {
+    const sib = readOrNull(join(dirname(abs), m[1]));
+    if (sib !== null) parts.push(stripSourceComments(sib, '.dart'));
+  }
+  return parts.join('\n');
+};
+const flowSuites = {
+  web: { rel: testRel, src: withImports(testRel) },
+  native: { rel: `${APP_DIR}/${NT.suite}`, src: typeof NT.suite === 'string' ? withImports(`${APP_DIR}/${NT.suite}`) : null },
+};
+let flowLegs = 0;
+let flowEquivalents = 0;
+// ⏱ 2026-10-02 · lead ruling on #1143: a leg red on its last dispatch is PARKED
+// (`status: pending`, `parkedBy`: a key of `flows.park.runs`), graded below.
+const flowPark = reg.flows?.park && typeof reg.flows.park === 'object' ? reg.flows.park : null;
+const parkRuns = flowPark?.runs && typeof flowPark.runs === 'object' ? flowPark.runs : {};
+const parkedLegs = [];
+const parkUsed = new Set();
+const transitivelyPending = [];
+const seenFlows = new Set();
+for (const flow of flowList) {
+  const id = flow?.id;
+  if (typeof id !== 'string' || id === '' || seenFlows.has(id)) {
+    problems.push(`flows.list carries a flow with no id, or a repeated one (${JSON.stringify(id ?? null)}).`);
+    continue;
+  }
+  seenFlows.add(id);
+  const fl = flow.legs && typeof flow.legs === 'object' ? flow.legs : {};
+  const fe = flow.equivalents && typeof flow.equivalents === 'object' ? flow.equivalents : {};
+  for (const t of [...Object.keys(fl), ...Object.keys(fe)]) {
+    if (!flowTargets.includes(t)) {
+      problems.push(`flow "${id}" declares "${t}", which no \`surface: app\` channel of ${CHANNELS_REL} ships to — a leg graded against nothing.`);
+    }
+  }
+  for (const t of flowTargets) {
+    const leg = fl[t];
+    const eq = fe[t];
+    if (leg && eq) {
+      problems.push(`flow "${id}" on ${t} is both a leg and an equivalent. One claim per target, or neither is checkable.`);
+      continue;
+    }
+    if (leg) {
+      const suite = flowSuites[leg.suite];
+      const anchors = Array.isArray(leg.anchors) ? leg.anchors : [];
+      if (!suite) {
+        problems.push(`flow "${id}" on ${t} names suite ${JSON.stringify(leg.suite ?? null)}; a leg runs in \`web\` or \`native\`.`);
+      } else if (suite.src === null) {
+        problems.push(`flow "${id}" on ${t}: the ${leg.suite} suite ${suite.rel} does not exist.`);
+      } else if (leg.suite === 'native' && t === 'web') {
+        problems.push(`flow "${id}" on web names the native suite; web is driven by ${testRel}.`);
+      } else if (leg.suite === 'web' && t !== 'web') {
+        problems.push(`flow "${id}" on ${t} names the web suite, which runs on web only.`);
+      } else if (anchors.length === 0) {
+        problems.push(`flow "${id}" on ${t} is a leg with no anchors — an unanchored claim cannot fail.`);
+      } else {
+        const miss = anchors.filter((a) => !suite.src.includes(a));
+        if (miss.length) {
+          problems.push(
+            `flow "${id}" on ${t}: ${miss.length} of ${anchors.length} anchor(s) no longer resolve in ${suite.rel} or what it imports ` +
+              `(comment-stripped): ${miss.map((m) => JSON.stringify(m)).join(', ')}.`,
+          );
+        } else if (leg.status === undefined) flowLegs++;
+        else if (leg.status !== 'pending') {
+          problems.push(`flow "${id}" on ${t} has status ${JSON.stringify(leg.status)}; a leg is proven (no status) or "pending".`);
+        } else if (typeof leg.parkedBy !== 'string' || !Object.hasOwn(parkRuns, leg.parkedBy)) {
+          problems.push(
+            `flow "${id}" on ${t} is pending, parked by ${JSON.stringify(leg.parkedBy ?? null)}, which is not a key of flows.park.runs — ` +
+              'a park with no red run and no failure behind it is a silent skip.',
+          );
+        } else if (parkRuns[leg.parkedBy]?.skip?.suite !== leg.suite) {
+          problems.push(`flow "${id}" on ${t} runs in the ${leg.suite} suite, and its park "${leg.parkedBy}" skips the ${parkRuns[leg.parkedBy]?.skip?.suite ?? 'no'} suite.`);
+        } else {
+          parkUsed.add(leg.parkedBy);
+          parkedLegs.push({ at: `${id}@${t}`, by: leg.parkedBy });
+        }
+      }
+      continue;
+    }
+    if (eq) {
+      const by = eq.provenBy;
+      if (typeof by !== 'string' || !fl[by] || by === t) {
+        problems.push(`flow "${id}" on ${t} is an equivalent \`provenBy\` ${JSON.stringify(by ?? null)}, which is not a target this flow has a LEG on.`);
+      } else if (!Array.isArray(eq.why) || eq.why.join('').trim() === '') {
+        problems.push(`flow "${id}" on ${t} is an equivalent with no written \`why\` — an equivalent nobody can disagree with is an excuse.`);
+      } else {
+        flowEquivalents++;
+        if (fl[by]?.status === 'pending') transitivelyPending.push(`${id}@${t} (by ${by})`);
+      }
+      continue;
+    }
+    problems.push(
+      `flow "${id}" has neither a leg nor a declared equivalent on ${t}. Feature parity: a flow ships on every target, ` +
+        `so ${REGISTER_REL} flows.list must say what walks it there (legs.${t}) or what proves it instead (equivalents.${t}).`,
+    );
+  }
+}
+// The park itself (lead ruling on #1143): every run a pending leg cites names
+// its run id and the failure VERBATIM; its skip SAYS so in the suite (anchors,
+// comment-stripped); the workflows default the switch to `skip` so main's
+// nightly never requires a parked leg; and a run nothing cites any more is
+// stale paperwork (un-park it). Paths are fixed workflow names, never joined
+// from input.
+if (parkedLegs.length || Object.keys(parkRuns).length) {
+  const parkRow = /^O-[A-Z0-9]+(?:-[A-Z0-9]+)+/.exec(typeof flowPark?.row === 'string' ? flowPark.row : '')?.[0];
+  if (!parkRow) problems.push('flows.park names no register row (`row`: an O- id) — parked legs nobody owns are a silent skip.');
+  for (const [key, run] of Object.entries(parkRuns)) {
+    if (!Number.isSafeInteger(run?.run) || run.run <= 0) problems.push(`flows.park.runs.${key} names no run id (\`run\`: the red dispatch).`);
+    if (!Array.isArray(run?.failure) || run.failure.join('').trim() === '') problems.push(`flows.park.runs.${key} quotes no failure (\`failure\`, verbatim from run ${run?.run ?? '?'}).`);
+    const sk = run?.skip;
+    const suite = flowSuites[sk?.suite];
+    const anchors = Array.isArray(sk?.anchors) ? sk.anchors : [];
+    if (!suite || suite.src === null || anchors.length === 0) {
+      problems.push(`flows.park.runs.${key} has no \`skip\` (a suite and anchors) — a park the suite does not SAY is a silent skip.`);
+    } else {
+      const miss = anchors.filter((a) => !suite.src.includes(a));
+      if (miss.length) problems.push(`flows.park.runs.${key}: skip anchor(s) ${miss.map((m) => JSON.stringify(m)).join(', ')} no longer resolve in ${suite.rel} (comment-stripped).`);
+    }
+    if (!parkUsed.has(key)) problems.push(`flows.park.runs.${key} (run ${run?.run ?? '?'}) is cited by no pending leg — un-parked legs leave no stale run behind.`);
+  }
+  const wfa = flowPark?.workflowAnchors && typeof flowPark.workflowAnchors === 'object' ? flowPark.workflowAnchors : {};
+  if (Object.keys(wfa).length === 0) problems.push('flows.park has no `workflowAnchors` — nothing shows the parked legs default to skipped on main.');
+  for (const [wf, list] of Object.entries(wfa)) {
+    if (!/^\.github\/workflows\/[A-Za-z0-9._-]+\.ya?ml$/.test(wf)) {
+      problems.push(`flows.park.workflowAnchors names ${JSON.stringify(wf)}, which is not a workflow file.`);
+      continue;
+    }
+    let text = null;
+    try {
+      text = readFileSync(join(ROOT, wf), 'utf8');
+    } catch {
+      text = null;
+    }
+    const a = Array.isArray(list) ? list : [];
+    if (text === null) problems.push(`flows.park.workflowAnchors: ${wf} does not exist.`);
+    else if (a.length === 0) problems.push(`flows.park.workflowAnchors: ${wf} has no anchors.`);
+    else {
+      const miss = a.filter((x) => !text.includes(x));
+      if (miss.length) problems.push(`flows.park.workflowAnchors: ${miss.map((m) => JSON.stringify(m)).join(', ')} no longer in ${wf} — the parked legs may now be required on main.`);
+    }
+  }
+  if (parkedLegs.length) {
+    notes.push(
+      `⬜ ${parkedLegs.length} flow leg(s) PARKED under ${parkRow ?? 'no row'} — skipped and said, not required on main, not graded proven: ` +
+        Object.entries(parkRuns)
+          .map(([k, r]) => `${k} (run ${r?.run}): ${parkedLegs.filter((l) => l.by === k).map((l) => l.at).join(', ')}`)
+          .join('; '),
+    );
+  }
+  if (transitivelyPending.length) notes.push(`⬜ ${transitivelyPending.length} equivalent(s) rest on a PARKED leg, so are pending with it: ${transitivelyPending.join(', ')}`);
+}
+
+// ⏱ 2026-10-02 · lead ruling on #1143: a user flow with NO leg yet is declared in
+// `flows.pending`, never left out — each names the register row that owns it
+// and why it waits, and is PRINTED every run. A pending flow that is also in
+// `list` is a finding (it is either walked or it waits), and so is one with no
+// row: a wait nobody owns is a silent skip with paperwork.
+const flowPending = Array.isArray(reg.flows?.pending) ? reg.flows.pending : [];
+for (const p of flowPending) {
+  const id = p?.id;
+  if (typeof id !== 'string' || id === '' || seenFlows.has(id)) {
+    problems.push(`flows.pending carries a flow with no id, or one already in flows.list or pending (${JSON.stringify(id ?? null)}).`);
+    continue;
+  }
+  seenFlows.add(id);
+  const row = /^O-[A-Z0-9]+(?:-[A-Z0-9]+)+/.exec(typeof p.row === 'string' ? p.row : '')?.[0];
+  if (!row) problems.push(`pending flow "${id}" names no register row (\`row\`: an O- id) — a wait nobody owns is a silent skip.`);
+  else if (!Array.isArray(p.why) || p.why.join('').trim() === '') problems.push(`pending flow "${id}" has no written \`why\`.`);
+  else notes.push(`⬜ flow "${id}" has NO leg on any target yet — pending under ${row}: ${p.asks ?? ''}`.trimEnd());
+}
+
 // THE EQUALITY, STATED. It follows from the per-leg checks above, and it is
 // computed and printed anyway: the two numbers are what N-6 actually asks for,
 // and a relationship nobody prints is one nobody can audit from a log.
@@ -717,5 +927,6 @@ console.log(
     .join('; ')}; ` +
     `every app of the workspace set carries integration_test/app_test.dart and an apps.<id> entry (apps=${APP_SET.length}); ` +
     `${definesRead.size} E2E_ define(s) the suites read, every one passed by ${[...workflowText.keys()].join(', ')}; ` +
-    `${nativeTargets.length} native catalog target(s), each leg run or declared equivalent`,
+    `${nativeTargets.length} native catalog target(s), each leg run or declared equivalent; ` +
+    `${flowList.length} user flow(s) × ${flowTargets.length} target(s) for ${APP_DIR}: ${flowLegs} leg(s) anchored, ${parkedLegs.length} parked, ${flowEquivalents} declared equivalent(s); ${flowPending.length} pending with a row`,
 );

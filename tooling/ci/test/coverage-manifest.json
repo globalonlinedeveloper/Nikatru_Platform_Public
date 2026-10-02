@@ -347,6 +347,9 @@
   "e2e-legs.test.mjs":
     52,
 
+  "e2e-parity.test.mjs":
+    37,
+
   "e2e-proof-fresh.test.mjs":
     71,
 
