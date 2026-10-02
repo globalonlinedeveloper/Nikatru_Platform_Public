@@ -305,13 +305,36 @@ describe('DELETE /v1/account on the APP Worker — a password-less account must 
     await refusedUntouched(`Bearer ${await apple(-3600)}`);
   });
 
-  it('a PASSWORD account is unaffected: an old sign-in still erases (the decision matches the platform)', async () => {
+  it('a PASSWORD-ONLY account is unaffected: an old sign-in still erases (the decision matches the platform)', async () => {
     const db = realAppDb();
     const tables = seedEveryTable(db);
     const t = await token({
       sub: SUBJECT,
+      app_metadata: { provider: 'email', providers: ['email'] },
+      amr: [{ method: 'password', timestamp: nowS() - 5 * 3600 }],
+    });
+    const res = await deployed(db)('/v1/account', { method: 'DELETE', authz: `Bearer ${t}` });
+    expect(res.status).toBe(200);
+    for (const table of tables) expect(rowsFor(db, table, SUBJECT)).toBe(0);
+  });
+
+  // ⏱ 2026-10-02 · #1142 review item 3 — a LINKED account is held to the same window here.
+  it('🔴 a LINKED account (email + apple) with a STALE sign-in is refused 403 reauth_required, every row intact', async () => {
+    const t = await token({
+      sub: SUBJECT,
       app_metadata: { provider: 'email', providers: ['email', 'apple'] },
       amr: [{ method: 'password', timestamp: nowS() - 5 * 3600 }],
+    });
+    await refusedUntouched(`Bearer ${t}`);
+  });
+
+  it('a LINKED account (email + google) that just re-proved erases', async () => {
+    const db = realAppDb();
+    const tables = seedEveryTable(db);
+    const t = await token({
+      sub: SUBJECT,
+      app_metadata: { provider: 'email', providers: ['email', 'google'] },
+      amr: [{ method: 'oauth', timestamp: nowS() - 30 }],
     });
     const res = await deployed(db)('/v1/account', { method: 'DELETE', authz: `Bearer ${t}` });
     expect(res.status).toBe(200);

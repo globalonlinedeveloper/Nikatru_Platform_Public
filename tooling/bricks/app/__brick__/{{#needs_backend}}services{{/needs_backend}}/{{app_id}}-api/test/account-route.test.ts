@@ -97,7 +97,7 @@ function mounted() {
     c.set('tokenAssurance', 'asymmetric');
     // A password account: `deletionRecencyRefusal` holds a password account to no
     // recency window at either end, so this context is admitted.
-    c.set('authRecency', { passwordless: false, lastAuthenticatedAt: null });
+    c.set('authRecency', { passwordless: false, linked: false, lastAuthenticatedAt: null });
     await next();
   });
   app.route('/v1/account', account);
