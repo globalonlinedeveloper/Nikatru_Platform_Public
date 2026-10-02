@@ -129,13 +129,13 @@
     100,
 
   "autopilot-issue-queue.test.mjs":
-    13,
+    18,
 
   "autopilot-queue-doc.test.mjs":
     2,
 
   "autopilot-queue-migrate.test.mjs":
-    9,
+    11,
 
   "availability.test.mjs":
     33,

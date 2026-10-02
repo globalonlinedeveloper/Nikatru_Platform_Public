@@ -6,26 +6,38 @@
 //   IQ2  the 60,000 split: exactly at the limit is one part, one over is two, every part
 //        fits, a surrogate pair is never cut, and a missing part refuses
 //   IQ3  a dep on an OPEN issue is unmet (and on one closed not-as-completed)
-//   IQ4  a `marker` dep is always unmet in the cloud
+//   IQ4  a `marker` dep is unknown (so unmet for launching) in the cloud, and met only
+//        through the laptop's `markersMet`
 //   IQ5  a PR dep is met by a merged head branch; a bad regex is unmet, not met
 //   IQ6  the LOWEST comment id wins even when it was posted second in wall time
 //   IQ7  a CLAIM by anyone but the repository owner is ignored
 //   IQ8  freshness: a PR updated 5 h ago keeps a 10 h claim fresh; 7 h with no PR is stale
-//   IQ9  RECLAIM resets the window (and wins it); RELEASE empties it
+//   IQ9  a valid RECLAIM (stale holder by the comments' clock, `previous=` names it, no
+//        launch record) resets the window and wins it; a holder's RELEASE empties it
 //   IQ10 nextReady: ready + unclaimed-or-stale + deps met, by priority then number
-//   IQ11 housekeepingPlan: merged → done + close; blocked ↔ ready; at most N ops
+//   IQ11 housekeepingPlan: merged → done + close; blocked ↔ ready; an unknown marker
+//        flips nothing (never undoes the laptop); at most N ops
 //   IQ12 claim(): two runners race through a fake API and exactly one wins; the loser
 //        YIELDs and drops its label
 //   IQ13 the REST layer sends the token only as the Authorization header, and no error
 //        message carries it
+//   IQ14 two claimants with the SAME runner id race: exactly one wins (by comment id)
+//   IQ15 an invalid RECLAIM — late (over a fresh reclaim), over a fresh claim, naming the
+//        wrong holder, or over a launched holder — is a plain claim and loses
+//   IQ16 nextReady and claim() agree on a stale lane: claim() RECLAIMs it and wins, once;
+//        a launched-stale lane is neither offered nor taken; a fresh one is refused unwritten
+//   IQ17 a migration stub is never flipped to `ready`, never offered, never launchable
+//   IQ18 fail closed: an issue without a comments array throws; free-text owner comments
+//        that start with a verb are not protocol lines
 //
 // Every lane name and prompt below is invented. Run:
 //   node --test "tooling/ci/test/autopilot-issue-queue.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CONTRACT, claim, claimFresh, claimWinner, createClient, depsMet, housekeepingPlan, joinPrompt,
-  nextReady, parseIssue, renderIssue, splitPrompt,
+  CONTRACT, MIGRATION_STUB_MARKER, MIGRATION_STUB_PROMPT, assertLaunchable, claim, claimFresh, claimState,
+  claimWinner, createClient, depsMet, housekeepingPlan, joinPrompt, nextReady, parseEvent, parseIssue,
+  renderIssue, splitPrompt,
 } from '../../autopilot/issue-queue.mjs';
 
 const OWNER = 'acme-owner';
@@ -109,9 +121,11 @@ test('IQ3 a dep on an open issue is unmet; closed-as-completed is met', () => {
   assert.equal(depsMet([], { closedIssues: [] }), true, 'no deps is met');
 });
 
-test('IQ4 a marker dep is always unmet in the cloud', () => {
+test('IQ4 a marker dep is unmet in the cloud, and met only through the laptop\'s markersMet', () => {
   const dep = [{ kind: 'marker', name: 'lwld-anything' }];
   assert.equal(depsMet(dep, { closedIssues: [1, 2, 3], mergedBranches: ['lwld-anything', 'anything'] }), false);
+  assert.equal(depsMet(dep, { markersMet: ['lwld-other'] }), false);
+  assert.equal(depsMet(dep, { markersMet: ['lwld-anything'] }), true, 'the laptop says the marker reads land exit=0');
 });
 
 test('IQ5 a PR dep is met by a merged head branch; a bad regex is unmet', () => {
@@ -153,19 +167,18 @@ test('IQ8 freshness: a PR updated 5 h ago is fresh; 7 h with no PR is stale', ()
   assert.equal(claimFresh([], hoursAgo(0), NOW, { owner: OWNER }), false, 'no claim is not a fresh claim');
 });
 
-test('IQ9 RECLAIM resets the window and wins it; RELEASE empties it', () => {
+test('IQ9 a valid RECLAIM resets the window and wins it; the holder\'s RELEASE empties it', () => {
   const comments = [
     c('CLAIM runner=cloud-a at=x nonce=aaaaaaaa', { id: 10, at: hoursAgo(10) }),
-    c('PROGRESS routine=trig_a', { id: 11, at: hoursAgo(9) }),
     c('RECLAIM previous=cloud-a runner=laptop at=x', { id: 12, at: hoursAgo(1) }),
     c('CLAIM runner=cloud-b at=x nonce=bbbbbbbb', { id: 13, at: hoursAgo(0.5) }),
   ];
   assert.equal(claimWinner(comments, { owner: OWNER }).runner, 'laptop', 'the RECLAIM holds its window over a later CLAIM');
-  assert.equal(claimFresh(comments.slice(0, 3), null, NOW, { owner: OWNER }), true, 'RECLAIM 1 h ago: fresh');
-  assert.equal(claimFresh(comments.slice(0, 2), null, NOW, { owner: OWNER }), false, 'control: without the RECLAIM it is stale');
-  // a second, newer RECLAIM decides a reclaim race
-  const race = [...comments.slice(0, 3), c('RECLAIM previous=cloud-a runner=cloud-c at=x', { id: 14 })];
-  assert.equal(claimWinner(race, { owner: OWNER }).runner, 'cloud-c');
+  assert.equal(claimWinner(comments, { owner: OWNER }).verb, 'RECLAIM');
+  assert.equal(claimFresh(comments.slice(0, 2), null, NOW, { owner: OWNER }), true, 'RECLAIM 1 h ago: fresh');
+  assert.equal(claimFresh(comments.slice(0, 1), null, NOW, { owner: OWNER }), false, 'control: without the RECLAIM it is stale');
+  assert.equal(claimWinner([c('RELEASE runner=cloud-b', { id: 15 }), ...comments], { owner: OWNER }).runner, 'laptop', 'a RELEASE before any claim does nothing');
+  assert.equal(claimWinner([...comments, c('RELEASE runner=cloud-b', { id: 19 })], { owner: OWNER }).runner, 'laptop', 'a non-holder cannot RELEASE');
   const released = [...comments, c('RELEASE runner=laptop', { id: 20 })];
   assert.equal(claimWinner(released, { owner: OWNER }), null);
   assert.equal(claimFresh(released, null, NOW, { owner: OWNER }), false);
@@ -204,6 +217,7 @@ test('IQ11 housekeepingPlan: merged → done + close; blocked ↔ ready; at most
     parsed(42, { deps: [{ kind: 'pr', regex: '^autopilot/lane-40$' }] }, ['cloud-lane', 'blocked']),
     parsed(43, { deps: [{ kind: 'marker', name: 'lwld-x' }] }, ['cloud-lane', 'ready']),
     parsed(44, {}, ['cloud-lane', 'ready']),
+    parsed(45, { deps: [{ kind: 'marker', name: 'lwld-y' }] }, ['cloud-lane', 'blocked']),
   ];
   const plan = housekeepingPlan(issues, [{ head: { ref: 'autopilot/lane-40' } }], { closedIssues: [], openPRs: [{ head: { ref: 'autopilot/lane-44' } }] });
   assert.deepEqual(plan.slice(0, 2), [
@@ -212,7 +226,10 @@ test('IQ11 housekeepingPlan: merged → done + close; blocked ↔ ready; at most
   ]);
   assert.ok(plan.some((o) => o.number === 42 && o.op === 'addLabel' && o.label === 'ready'), 'a met PR dep unblocks');
   assert.ok(!plan.some((o) => o.number === 41 && o.label === 'ready'), '#41 waits for #40 to be CLOSED, which this run only plans');
-  assert.ok(plan.some((o) => o.number === 43 && o.label === 'blocked'), 'a marker dep can never be ready in the cloud');
+  assert.ok(!plan.some((o) => o.number === 43 || o.number === 45), 'an unknown marker flips nothing: the cloud never undoes the laptop');
+  const laptopPlan = housekeepingPlan(issues, [], { closedIssues: [], markersMet: ['lwld-y'] });
+  assert.ok(laptopPlan.some((o) => o.number === 43 && o.label === 'blocked'), 'the laptop, which reads markers, blocks an unmet one');
+  assert.ok(laptopPlan.some((o) => o.number === 45 && o.label === 'ready'), 'and readies a met one');
   assert.ok(plan.some((o) => o.number === 44 && o.label === 'pr-open'));
   assert.equal(housekeepingPlan(issues, [{ head: { ref: 'autopilot/lane-40' } }], {}, { max: 1 }).length, 1);
 });
@@ -228,17 +245,37 @@ function fakeIssueApi(owner) {
     labels,
     addLabels: async (_n, ls) => ls.forEach((l) => labels.add(l)),
     removeLabel: async (_n, l) => labels.delete(l),
-    comment: async (_n, body) => { comments.push({ id: ++id, body, user: { login: owner }, created_at: new Date(NOW).toISOString() }); },
+    // Like the REST POST, the new comment comes back (with its id).
+    comment: async (_n, body) => { const cm = { id: ++id, body, user: { login: owner }, created_at: new Date(NOW).toISOString() }; comments.push(cm); return { ...cm }; },
     listComments: async () => [...comments],
   };
 }
 
+/** A promise every caller waits on until `n` callers have arrived. */
+function barrier(n) {
+  let arrived = 0;
+  let open;
+  const gate = new Promise((r) => { open = r; });
+  return async () => { if (++arrived >= n) open(); await gate; };
+}
+
+/** Two claims raced so both READ before either posts, and both post before either re-reads. */
+async function race(api, runnerA, runnerB, opts = {}) {
+  const readGate = barrier(2);
+  const settleGate = barrier(2);
+  const list = api.listComments;
+  let reads = 0;
+  api.listComments = async (n) => { const got = await list(n); if (++reads <= 2) await readGate(); return got; };
+  const o = { sleep: settleGate, now: () => new Date(NOW), ...opts };
+  const [a, b] = await Promise.all([claim(api, 1, runnerA, o), claim(api, 1, runnerB, o)]);
+  api.listComments = list;
+  return [a, b];
+}
+
 test('IQ12 claim(): a two-runner race has exactly one winner; the loser yields', async () => {
   const api = fakeIssueApi(OWNER);
-  // B's claim lands while A is settling — the race the settle exists for.
-  let bResult;
-  const aSleep = async () => { bResult = await claim(api, 1, 'cloud-b', { sleep: async () => {}, now: () => new Date(NOW) }); };
-  const aResult = await claim(api, 1, 'cloud-a', { sleep: aSleep, now: () => new Date(NOW) });
+  // Both read the issue unclaimed, both post, both settle: the race the settle exists for.
+  const [aResult, bResult] = await race(api, 'cloud-a', 'cloud-b');
   assert.equal(aResult.won, true, 'A posted first, so A holds the lowest id');
   assert.equal(bResult.won, false);
   assert.equal(bResult.winner.runner, 'cloud-a');
@@ -260,4 +297,92 @@ test('IQ13 the token goes only in the Authorization header, never into an error'
   assert.equal(seen[0].init.headers.authorization, `Bearer ${token}`);
   assert.ok(!seen[0].url.includes(token));
   assert.throws(() => createClient({ repo: 'not a repo' }), /owner\/name/);
+});
+
+test('IQ14 two claimants with the same runner id race: exactly one wins, by comment id', async () => {
+  const api = fakeIssueApi(OWNER);
+  const [a, b] = await race(api, CONTRACT.laptopRunner, CONTRACT.laptopRunner);
+  assert.deepEqual([a.won, b.won].sort(), [false, true], 'one dispatcher wins, not both');
+  assert.equal(api.comments.filter((x) => x.body.startsWith('CLAIM ')).length, 2);
+  assert.ok(api.labels.has('claimed:laptop'), 'the loser does not strip the label the winner shares');
+  const noId = { ...fakeIssueApi(OWNER), comment: async () => undefined };
+  await assert.rejects(claim(noId, 1, 'cloud-a', { sleep: async () => {}, now: () => new Date(NOW) }), /without an id/, 'no comment id: fail closed');
+});
+
+test('IQ15 an invalid RECLAIM is a plain claim and loses', async () => {
+  const stale = c('CLAIM runner=cloud-a at=x nonce=aaaaaaaa', { id: 100, at: hoursAgo(10) });
+  // late: A reclaimed (valid) and launched; B's RECLAIM, from the same stale read, lands after.
+  const late = [
+    stale,
+    c('RECLAIM previous=cloud-a runner=cloud-a2 at=x', { id: 101, at: hoursAgo(1) }),
+    c('PROGRESS routine=trig_a2', { id: 102, at: hoursAgo(0.9) }),
+    c('RECLAIM previous=cloud-a runner=cloud-b at=x', { id: 103, at: hoursAgo(0.5) }),
+  ];
+  assert.equal(claimWinner(late, { owner: OWNER }).runner, 'cloud-a2', 'a late RECLAIM does not evict a holder that launched');
+  const lateNoLaunch = late.filter((x) => x.id !== 102);
+  assert.equal(claimWinner(lateNoLaunch, { owner: OWNER }).runner, 'cloud-a2', 'nor one that reclaimed 30 min earlier');
+  const overFresh = [c('CLAIM runner=cloud-a at=x nonce=aaaaaaaa', { id: 110, at: hoursAgo(1.5) }), c('RECLAIM previous=cloud-a runner=cloud-b at=x', { id: 111, at: hoursAgo(0.5) })];
+  assert.equal(claimWinner(overFresh, { owner: OWNER }).runner, 'cloud-a', 'a RECLAIM over a 1-hour-old claim is not valid');
+  const wrongPrev = [stale, c('RECLAIM previous=somebody-else runner=cloud-b at=x', { id: 104, at: hoursAgo(1) })];
+  assert.equal(claimWinner(wrongPrev, { owner: OWNER }).runner, 'cloud-a', 'previous= must name the holder');
+  const launched = [stale, c('PROGRESS routine=trig_a', { id: 105, at: hoursAgo(9) }), c('RECLAIM previous=cloud-a runner=cloud-b at=x', { id: 106, at: hoursAgo(1) })];
+  assert.equal(claimWinner(launched, { owner: OWNER }).runner, 'cloud-a', 'a holder with a launch record is never reclaimed');
+  const st = claimState(launched.slice(0, 2), { owner: OWNER, now: NOW });
+  assert.deepEqual([st.fresh, st.launched, st.reclaimable], [false, true, false]);
+  // control: the same RECLAIM over the stale, never-launched holder is valid
+  assert.equal(claimWinner([stale, c('RECLAIM previous=cloud-a runner=cloud-b at=x', { id: 107, at: hoursAgo(1) })], { owner: OWNER }).runner, 'cloud-b');
+  // two concurrent valid reclaims of one holder: the lower id wins, as claims do
+  const both = [stale, c('RECLAIM previous=cloud-a runner=cloud-b at=x', { id: 108, at: hoursAgo(1) }), c('RECLAIM previous=cloud-a runner=cloud-c at=x', { id: 109, at: hoursAgo(1) })];
+  assert.equal(claimWinner(both, { owner: OWNER }).runner, 'cloud-b');
+});
+
+test('IQ16 nextReady and claim() agree on a stale lane', async () => {
+  const api = fakeIssueApi(OWNER);
+  api.comments.push({ id: 0, body: 'CLAIM runner=cloud-a at=x nonce=aaaaaaaa', user: { login: OWNER }, created_at: hoursAgo(10) });
+  const issue = parsed(50, {}, undefined, api.comments);
+  const [offered] = nextReady([issue], { owner: OWNER, now: NOW, closedIssues: [], mergedBranches: [], openPRs: [] });
+  assert.equal(offered?.number, 50, 'the stale-claimed lane is offered');
+  const [a, b] = await race(api, 'cloud-b', 'cloud-c', { prUpdatedAt: offered.prUpdatedAt });
+  assert.equal(a.won, true, 'claim() takes the stale lane by RECLAIM, without a caller-supplied holder');
+  assert.equal(b.won, false);
+  assert.match(api.comments[1].body, /^RECLAIM previous=cloud-a runner=cloud-b at=/);
+  assert.deepEqual(nextReady([parsed(50, {}, undefined, [...api.comments])], { owner: OWNER, now: NOW, openPRs: [] }), [], 'and it is not offered again');
+  // a fresh holder: claim() refuses without writing anything
+  const fresh = fakeIssueApi(OWNER);
+  fresh.comments.push({ id: 0, body: 'CLAIM runner=cloud-a at=x nonce=aaaaaaaa', user: { login: OWNER }, created_at: hoursAgo(1) });
+  const r = await claim(fresh, 1, 'cloud-b', { sleep: async () => {}, now: () => new Date(NOW) });
+  assert.deepEqual([r.won, r.posted, fresh.comments.length], [false, false, 1]);
+  // launched and stale: neither offered nor taken
+  const gone = fakeIssueApi(OWNER);
+  gone.comments.push({ id: 0, body: 'CLAIM runner=cloud-a at=x nonce=aaaaaaaa', user: { login: OWNER }, created_at: hoursAgo(10) },
+    { id: 1, body: 'PROGRESS routine=trig_a', user: { login: OWNER }, created_at: hoursAgo(9) });
+  assert.deepEqual(nextReady([parsed(51, {}, undefined, gone.comments)], { owner: OWNER, now: NOW, openPRs: [] }), []);
+  const g = await claim(gone, 1, 'cloud-b', { sleep: async () => {}, now: () => new Date(NOW) });
+  assert.deepEqual([g.won, g.posted, gone.comments.length], [false, false, 2]);
+});
+
+test('IQ17 a migration stub is never readied, offered or launchable', () => {
+  const stub = parsed(60, { deps: [{ kind: 'marker', name: MIGRATION_STUB_MARKER }], prompt: MIGRATION_STUB_PROMPT }, ['cloud-lane', 'blocked']);
+  assert.deepEqual(housekeepingPlan([stub], [], { markersMet: [MIGRATION_STUB_MARKER] }), [], 'housekeeping never flips a stub to ready');
+  const placeholderOnly = parsed(61, { prompt: MIGRATION_STUB_PROMPT }, ['cloud-lane', 'blocked']);
+  assert.deepEqual(housekeepingPlan([placeholderOnly], []), [], 'the placeholder prompt alone is enough to refuse');
+  const readied = parsed(62, { prompt: MIGRATION_STUB_PROMPT }, ['cloud-lane', 'ready']);
+  assert.deepEqual(nextReady([readied], { owner: OWNER, now: NOW, openPRs: [] }), [], 'a stub someone labelled ready is still not offered');
+  assert.throws(() => assertLaunchable(readied), /migration stub/);
+  assert.throws(() => assertLaunchable(parsed(63, { prompt: '  ' })), /empty/);
+  assert.equal(assertLaunchable(parsed(64)).number, 64, 'control: a real lane is launchable');
+  assert.equal(housekeepingPlan([parsed(65, {}, ['cloud-lane', 'blocked'])], []).length, 2, 'control: a real blocked lane with deps met is readied');
+});
+
+test('IQ18 fail closed on a missing comments array; free text is not a protocol line', () => {
+  const noComments = { ...parsed(70), comments: undefined };
+  assert.throws(() => nextReady([noComments], { owner: OWNER, now: NOW }), /no comments array/);
+  for (const body of ['PROGRESS looks slow, checking', 'RELEASE notes are up', 'CLAIM runner=x', 'YIELD runner=a extra', 'RECLAIM runner=b at=x', 'PROGRESS note=1']) {
+    assert.equal(parseEvent(c(body)), null, body);
+  }
+  const seven = [c('CLAIM runner=cloud-a at=x nonce=12345678', { at: hoursAgo(7) }), c('PROGRESS looks slow, checking', { at: hoursAgo(1) })];
+  assert.equal(claimFresh(seven, null, NOW, { owner: OWNER }), false, 'a free-text comment keeps no claim alive');
+  for (const body of ['CLAIM runner=laptop at=2026-10-02T12:00:00.000Z nonce=0a1b2c3d', 'YIELD runner=cloud-a', 'RELEASE runner=cloud-a', 'RECLAIM previous=cloud-a runner=laptop at=x', 'PROGRESS routine=trig_1 pr=12']) {
+    assert.ok(parseEvent(c(body)), `control: ${body}`);
+  }
 });

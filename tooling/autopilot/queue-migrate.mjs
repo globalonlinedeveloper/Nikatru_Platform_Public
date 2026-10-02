@@ -30,13 +30,20 @@
 // `ready` when every dep is met, else `blocked`.
 //
 // WRITES (--apply). Labels created idempotently; issues in TWO passes (create a
-// `blocked` stub, then edit to the final body once every `#N` is known); idempotent
+// stub, then edit to the final body once every `#N` is known); idempotent
 // by title, so a rerun updates and never duplicates; `--map-out` gets lane → issue.
 //
 // 🔴 THE SECRET GUARD. A body is refused when it holds any VALUE of `--vault` (compared
 // in memory; only the NAME is ever reported), a token-shaped string, or an un-rewritten
-// Windows user-profile path. 🔴 THE TARGET GUARD: --apply refuses a repo the API does
-// not report as private. Lane prompts are Private content.
+// Windows user-profile path. `--apply` without `--vault` is COVERAGE LOST (exit 2): the
+// vault comparison is the guard's strongest limb and is never silently skipped; a dry
+// run without it prints `vault: not compared`. 🔴 THE TARGET GUARD: --apply refuses a
+// repo the API does not report as private. Lane prompts are Private content.
+//
+// THE STUB. Pass 1's stub carries `blocked` but NOT `cloud-lane` (which every reader
+// requires), the placeholder prompt and an unmeetable `Depends on marker:
+// migration-in-progress (laptop)` line; housekeeping and nextReady refuse it as well.
+// So an interrupted or slow pass 2 can never launch a placeholder.
 //
 // Exit 0 = planned / applied. 1 = a finding: at least one item refused (the rest are
 // still planned/applied). 2 = COVERAGE LOST: bad flags, an unreadable input, no merged-PR
@@ -46,12 +53,11 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  CONTRACT, createClient, depMet, isOwner, renderIssue, splitPrompt, tokenFromEnv,
+  CONTRACT, MIGRATION_STUB_MARKER, MIGRATION_STUB_PROMPT, createClient, depMet, isOwner, renderIssue, splitPrompt, tokenFromEnv,
 } from './issue-queue.mjs';
 
 const VALUE_FLAGS = ['queue', 'prompts-dir', 'state', 'routines-dir', 'aliases', 'markers-dir', 'repo', 'vault', 'map-out', 'only', 'public-repo'];
 const MIN_VAULT_VALUE = 8;
-const STUB_PROMPT = '(migration in progress: this body is rewritten in the second pass)';
 
 class CoverageLost extends Error {}
 
@@ -126,7 +132,8 @@ const TOKEN_SHAPES = [
 /**
  * → the reasons a body is unsafe to publish, each naming a vault KEY or a shape,
  * never the matched text. Vault values shorter than MIN_VAULT_VALUE are not
- * compared (a one-character value matches every body) and are counted instead.
+ * compared (a one-character value matches every body); `vaultCoverage` counts them
+ * and main() prints that count in the plan.
  */
 export function secretFindings(body, vault = new Map()) {
   const out = [];
@@ -135,6 +142,13 @@ export function secretFindings(body, vault = new Map()) {
   }
   for (const [what, re] of TOKEN_SHAPES) if (re.test(body)) out.push(`holds ${what}`);
   return out;
+}
+
+/** → `{compared, tooShort}`: how many vault values secretFindings compares, and how many it cannot. */
+export function vaultCoverage(vault) {
+  let tooShort = 0;
+  for (const v of vault.values()) if (v.length < MIN_VAULT_VALUE) tooShort++;
+  return { compared: vault.size - tooShort, tooShort };
 }
 
 /** A dep path (Windows or POSIX) → its marker name: `lwld-x` from a `…\lwld-x.out` path. */
@@ -307,8 +321,8 @@ export async function applyPlan(client, plan, existing, { log = () => {} } = {})
   const numbers = new Map([...existing].map(([lane, e]) => [lane, e.number]));
   let created = 0;
   for (const l of plan.lanes.filter((x) => x.action === 'create')) {
-    const stub = renderIssue({ ...l.meta, deps: [], prompt: STUB_PROMPT });
-    const issue = await client.createIssue(stub.title, stub.body, ['cloud-lane', 'blocked']);
+    const stub = renderIssue({ ...l.meta, deps: [{ kind: 'marker', name: MIGRATION_STUB_MARKER }], prompt: MIGRATION_STUB_PROMPT });
+    const issue = await client.createIssue(stub.title, stub.body, ['blocked']);
     numbers.set(l.lane, issue.number);
     created++;
     log(`  created #${issue.number}  ${stub.title}`);
@@ -344,6 +358,7 @@ export async function main(argv, { env = process.env, fetchImpl = globalThis.fet
     const items = queueItems(readJson(o.queue, 'the queue'));
     if (!items.some((i) => i.cloud)) throw new CoverageLost(`the queue ${o.queue} holds no cloud:true item, so there is nothing to migrate (the wrong file?)`);
     const aliases = o.aliases ? readJson(o.aliases, 'the aliases file') : {};
+    if (o.apply && !o.vault) throw new CoverageLost('--apply needs --vault <KEY=VALUE file>: without it the secret guard cannot compare vault values, and a prompt quoting one would be published');
     let vault = new Map();
     if (o.vault) {
       try { vault = parseVault(readFileSync(o.vault, 'utf8')); } catch (e) { throw new CoverageLost(`the vault ${o.vault} is unreadable (${e.code ?? 'error'})`); }
@@ -376,6 +391,10 @@ export async function main(argv, { env = process.env, fetchImpl = globalThis.fet
       only: o.only ?? null,
     });
     log(`${o.apply ? 'APPLY' : 'DRY RUN'} → ${o.repo}`);
+    if (o.vault) {
+      const vc = vaultCoverage(vault);
+      log(`  vault: ${vc.compared} values compared · ${vc.tooShort} too short to compare (< ${MIN_VAULT_VALUE} characters)`);
+    } else log('  vault: not compared (no --vault; --apply refuses without it)');
     for (const l of plan.lanes) {
       const deps = l.deps.map((d) => (d.kind === 'lane' ? (existing.has(d.lane) ? `#${existing.get(d.lane).number}` : `#<${d.lane}>`) : d.kind === 'pr' ? `PR:${d.regex}` : `marker:${d.name}`));
       log(`  ${l.action.padEnd(7)} ${CONTRACT.titlePrefix}${l.lane}  labels=${l.labels.join(',')}  deps=[${deps.join(' ')}]`);

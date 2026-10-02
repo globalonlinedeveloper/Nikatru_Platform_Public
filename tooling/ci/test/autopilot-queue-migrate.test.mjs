@@ -18,6 +18,10 @@
 //   QM8  launched (a .routine) and already-merged lanes are skipped; no merged-PR facts
 //        and no token is COVERAGE LOST (exit 2); --only narrows to one lane
 //   QM9  Windows-safe by construction: no child_process, no shell, no shebang spawn
+//   QM10 --apply without --vault is COVERAGE LOST (exit 2) and writes nothing; a dry run
+//        says `vault: not compared`; with --vault the too-short values are counted
+//   QM11 a pass 2 that dies leaves stubs no reader launches: no `cloud-lane`, an
+//        unmeetable marker, and housekeeping / nextReady refuse them
 //
 // Every lane name and prompt is invented. Token-shaped strings are assembled at run time
 // so the repo's own secret scan never sees one in this file. Run:
@@ -29,14 +33,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { main, markerName, parseVault, secretFindings } from '../../autopilot/queue-migrate.mjs';
-import { CONTRACT, parseIssue } from '../../autopilot/issue-queue.mjs';
+import { CONTRACT, housekeepingPlan, nextReady, parseIssue } from '../../autopilot/issue-queue.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = 'acme-owner/queue-private';
 const OWNER = 'acme-owner';
 
 /** An in-memory GitHub for one private repo and one public repo's PRs. */
-function fakeGitHub({ isPrivate = true, mergedBranches = [] } = {}) {
+function fakeGitHub({ isPrivate = true, mergedBranches = [], failIssuePatch = false } = {}) {
   const st = { issues: [], comments: [], labels: [], nextIssue: 1, nextComment: 9000, requests: [] };
   const json = (status, body) => ({ ok: status < 300, status, text: async () => (body === undefined ? '' : JSON.stringify(body)) });
   const fetchImpl = async (url, init = {}) => {
@@ -79,6 +83,7 @@ function fakeGitHub({ isPrivate = true, mergedBranches = [] } = {}) {
       return paged(st.comments.filter((x) => x.issue === n));
     }
     if ((m = /^\/repos\/[^/]+\/[^/]+\/issues\/(\d+)$/.exec(p))) {
+      if (failIssuePatch) return json(502, { message: 'bad gateway' });
       const issue = st.issues.find((x) => x.number === Number(m[1]));
       if (body.body !== undefined) issue.body = body.body;
       if (body.labels) issue.labels = body.labels.map((name) => ({ name }));
@@ -90,7 +95,9 @@ function fakeGitHub({ isPrivate = true, mergedBranches = [] } = {}) {
 }
 
 /** A throwaway laptop tree: queue.json, prompts/, routines/, markers/. */
-function laptop({ items, prompts = {}, routines = [], markers = {}, aliases = null, vault = null, state = { mergedBranches: [] } }) {
+const INVENTED_VAULT = '# invented\nNOT_IN_ANY_PROMPT=invented-vault-value-0001\n';
+
+function laptop({ items, prompts = {}, routines = [], markers = {}, aliases = null, vault = INVENTED_VAULT, state = { mergedBranches: [] } }) {
   const root = mkdtempSync(join(tmpdir(), 'queue-migrate-'));
   const d = (x) => { const p = join(root, x); mkdirSync(p, { recursive: true }); return p; };
   const dirs = { prompts: d('prompts'), routines: d('routines'), markers: d('markers') };
@@ -288,4 +295,42 @@ test('QM9 laptop code spawns nothing: no child_process, no shell, no shebang', (
     assert.ok(!src.startsWith('#!'), `${f} has no shebang`);
     assert.ok(!/['"`][A-Za-z]:[\\/]/.test(src), `${f} hard-codes no drive path`);
   }
+});
+
+test('QM10 --apply without --vault is COVERAGE LOST; the plan says what the vault covered', async () => {
+  const t = laptop({ items: [item('any-lane')], prompts: { 'any-lane': 'P' }, vault: null });
+  const gh = fakeGitHub();
+  const r = await run([...t.args, '--apply'], { gh });
+  assert.equal(r.code, 2, r.out);
+  assert.match(r.out, /COVERAGE LOST — --apply needs --vault/);
+  assert.ok(!gh.st.requests.some((q) => q.method !== 'GET'), 'nothing written');
+  const dry = await run(t.args, { token: null });
+  assert.equal(dry.code, 0, dry.out);
+  assert.match(dry.out, /vault: not compared/);
+  const counted = laptop({ items: [item('any-lane')], prompts: { 'any-lane': 'P' }, vault: 'LONG=invented-long-value\nSHORT=ab\nTINY=x\n' });
+  assert.match((await run(counted.args, { token: null })).out, /vault: 1 values compared · 2 too short to compare/);
+});
+
+test('QM11 an interrupted pass 2 leaves stubs that no reader launches', async () => {
+  const t = laptop({ items: [item('stub-lane')], prompts: { 'stub-lane': 'Invented real prompt.' } });
+  const gh = fakeGitHub({ failIssuePatch: true });
+  const r = await run([...t.args, '--apply'], { gh });
+  assert.equal(r.code, 2, 'pass 2 failed');
+  const raw = gh.bodyOf('stub-lane');
+  assert.ok(raw, 'pass 1 created the stub');
+  assert.deepEqual(raw.labels.map((l) => l.name), ['blocked'], 'no cloud-lane label until pass 2');
+  const stub = { ...parseIssue(raw), comments: [] };
+  assert.ok(stub.deps.some((d) => d.kind === 'marker'), 'an unmeetable marker dep');
+  const asLane = { ...stub, labels: ['cloud-lane', 'blocked'] };
+  assert.deepEqual(housekeepingPlan([asLane], [], { markersMet: stub.deps.map((d) => d.name) }), [], 'never readied');
+  assert.deepEqual(nextReady([{ ...stub, labels: ['cloud-lane', 'ready'] }], { owner: OWNER, openPRs: [] }), [], 'never offered');
+  // the rerun finishes the job: the real body, and cloud-lane
+  const done = fakeGitHub();
+  done.st.issues.push(raw);
+  done.st.nextIssue = raw.number + 1;
+  assert.equal((await run([...t.args, '--apply'], { gh: done })).code, 0);
+  const fixed = parseIssue(done.bodyOf('stub-lane'));
+  assert.equal(fixed.prompt, 'Invented real prompt.');
+  assert.ok(fixed.labels.includes('cloud-lane') && fixed.labels.includes('ready'));
+  assert.deepEqual(fixed.deps, []);
 });
