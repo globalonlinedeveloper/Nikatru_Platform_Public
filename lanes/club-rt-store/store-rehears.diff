@@ -1,0 +1,2526 @@
+diff --git a/.github/workflows/build-platforms.yml b/.github/workflows/build-platforms.yml
+index b38e48d8..181e7597 100644
+--- a/.github/workflows/build-platforms.yml
++++ b/.github/workflows/build-platforms.yml
+@@ -145,7 +145,11 @@ jobs:
+           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+-        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} linux linux-appimage
++        # why linux-snap: the Linux store artifact is the .snap packed below; linux-appimage is deferred by
++        # ADR 015, so its channel define left this lane (review AA-04, O-LINUX-BUILD-STAMPED-AS-APPIMAGE).
++        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} linux linux-snap
++      # why KEPT while ADR 015 defers linux-appimage: it is this seam's only workflow invocation, and
++      # assert-guard-coverage.mjs refuses a tooling/ci file nothing runs. The row is unarmed, so it signs nothing.
+       - name: Prepare the AppImage signing key
+         env:
+           APPIMAGE_SIGNING_KEY_B64: ${{ secrets.APPIMAGE_SIGNING_KEY_B64 }}
+@@ -157,11 +161,43 @@ jobs:
+           --bundle apps/${{ matrix.app }}/build/linux/x64/release/bundle
+           --out "$RUNNER_TEMP/snapcraft-${{ matrix.app }}"
+           --version ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+-      - name: The generated recipe is complete and still derived from the tree
++      - name: The generated recipe is complete, still derived, and packable here
+         run: >
+           node tooling/ci/assert-snapcraft-generable.mjs
+           --emitted "$RUNNER_TEMP/snapcraft-${{ matrix.app }}/snap/snapcraft.yaml"
+           --app ${{ matrix.app }}
++          --pack-runner ubuntu-24.04
++      # why: the TRACK is tooling/versions.json snapcraft_track, the one submit-snap.yml packs with;
++      # assert-update-coverage.mjs refuses an install with no --channel read from it (review AA-04).
++      - name: Install snapcraft (the track tooling/versions.json pins)
++        run: |
++          set -euo pipefail
++          track="$(node -p "require('./tooling/versions.json').snapcraft_track")"
++          echo "snapcraft track ${track} (tooling/versions.json snapcraft_track)"
++          sudo snap install snapcraft --classic --channel "$track"
++      # why: the weekly proof packs the Linux STORE artifact, not only the bundle inside it (review AA-04):
++      # until 2026-10-01 a .snap was packed only by a dispatch of submit-snap.yml. No upload: nothing here
++      # reaches the store; the .snap is kept below as `store-<app>-linux-snap`, outside the release download.
++      - name: Pack the snap (no upload)
++        env:
++          APP: ${{ matrix.app }}
++        run: |
++          set -euo pipefail
++          project="${RUNNER_TEMP}/snapcraft-${APP}"
++          collected="${GITHUB_WORKSPACE}/apps/${APP}/build/linux/snap/${APP}.snap"
++          cd "$project"
++          sudo snapcraft pack --destructive-mode
++          count="$(find "$project" -maxdepth 1 -type f -name '*.snap' | wc -l)"
++          if [ "$count" -ne 1 ]; then
++            echo "FAIL snapcraft exited 0 and left ${count} .snap file(s) in ${project}; exactly one is required." >&2
++            find "$project" -maxdepth 1 -type f -name '*.snap' >&2
++            exit 1
++          fi
++          built="$(find "$project" -maxdepth 1 -type f -name '*.snap')"
++          mkdir -p "$(dirname "$collected")"
++          sudo mv "$built" "$collected"
++          sudo chown "$(id -u):$(id -g)" "$collected"
++          ls -l "$collected"
+       - name: Prepare the Android upload key
+         env:
+           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+@@ -409,6 +445,13 @@ jobs:
+             apps/${{ matrix.app }}/build/app/outputs/bundle/release/*.aab.channel.json
+           retention-days: 90
+           if-no-files-found: error
++      # why `store-`: the .snap is store-only (Canonical signs it at upload), so it stays outside the release job's `<app>-*` download — docs/ci/build-platforms.md §store-only.
++      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
++        with:
++          name: store-${{ matrix.app }}-linux-snap
++          path: apps/${{ matrix.app }}/build/linux/snap/${{ matrix.app }}.snap
++          retention-days: 90
++          if-no-files-found: error
+       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+         with:
+           name: ${{ matrix.app }}-linux-web-android-${{ env.ANDROID_SIGNING_POSTURE }}
+@@ -422,6 +465,11 @@ jobs:
+           node tooling/ci/assert-android-vapt-manifest.mjs
+           ${{ steps.agi_apk.outputs.apk }}
+           --app ${{ matrix.app }}
++      # why: apps.gov.in installs THIS .apk, a fourth build of its own — the .aab's 16 KB check never read it (review AA-23).
++      - name: The apps.gov.in .apk's native libraries are aligned for a 16 KB memory page
++        run: >
++          node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
++          ${{ steps.agi_apk.outputs.apk }}
+       # why: the listing media is derived from the Play set, never hand-edited — §apps-gov-in.
+       - name: The apps.gov.in listing media is still the derivation of the Play set
+         run: node --single-threaded tooling/ci/assert-apps-gov-in-media.mjs
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 73812ead..a345758e 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -459,6 +459,14 @@ jobs:
+         env:
+           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+         run: node --single-threaded tooling/ci/assert-platform-proof-fresh.mjs
++      # why: the four store dry runs' rehearsals, graded the same way (review AA-03): four run-history
++      # reads, each a page and possibly two cross-reads, so 6 minutes, not 3. Prints before 2026-10-21.
++      - name: The store dry runs are fresh
++        if: ${{ !cancelled() }}
++        timeout-minutes: 6
++        env:
++          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
++        run: node --single-threaded tooling/ci/assert-platform-proof-fresh.mjs --store-lanes
+       # why: CLOUDFLARE_READ_TOKEN, never the deploy token (rv2-security-001, limb 8d). The dated
+       # flag defers ONLY the D1 timer limb while that token does not exist yet, loudly; on
+       # 2026-10-21 an absent token is COVERAGE LOST again. Delete the flag once the token is minted.
+@@ -2184,6 +2192,11 @@ jobs:
+           node tooling/ci/assert-android-vapt-manifest.mjs
+           ${{ steps.agi_apk.outputs.apk }}
+           --app ${{ matrix.app }}
++      # why: apps.gov.in installs THIS .apk, a fourth build of its own — the .aab's 16 KB check never read it (review AA-23).
++      - name: The apps.gov.in .apk's native libraries are aligned for a 16 KB memory page
++        run: >
++          node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
++          ${{ steps.agi_apk.outputs.apk }}
+       # why debug: no key is in reach, so the .apk is debug-signed, and --posture debug
+       # is the posture that REQUIRES the debug signer; the permission, form and minSdk
+       # checks run in every posture.
+@@ -2322,7 +2335,7 @@ jobs:
+           echo "::notice title=FF-2 fail-fast::job '${RED_JOB}' is red and keeps its failure; '${GITHUB_JOB}' cancels the rest of run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT}), so every other job reads cancelled."
+           gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" || true
+ 
+-  # why: the Linux desktop bundle the linux-appimage row ships from, built on every PR.
++  # why: the Linux desktop bundle the linux-snap row ships from (it was stamped linux-appimage until 2026-10-01), built on every PR.
+   # Its twin is build-platforms.yml `linux_web_android`'s Build linux step, --obfuscate
+   # included. Row O-PR-LANE-BUILDS-ONLY-ANDROID-ARTIFACTS; docs/ci/build-platforms.md §PR lane.
+   linux-artifacts:
+@@ -2361,7 +2374,7 @@ jobs:
+       - name: Build linux
+         env:
+           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+-        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} linux linux-appimage --lane pr
++        run: node tooling/ci/flutter-release-build.mjs ${{ matrix.app }} linux linux-snap --lane pr
+       - name: Generate the snapcraft recipe
+         run: >
+           node tooling/release/generate-snapcraft.mjs
+diff --git a/.github/workflows/submit-appstore.yml b/.github/workflows/submit-appstore.yml
+index 5f0e1a27..5aa7b0c2 100644
+--- a/.github/workflows/submit-appstore.yml
++++ b/.github/workflows/submit-appstore.yml
+@@ -17,6 +17,13 @@ on:
+         required: true
+         type: string
+ 
++  # why: a WEEKLY rehearsal, the dry-run job only (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE): a
++  # dispatch-only dry run is graded by nobody between dispatches, and an armed store lane went weeks
++  # unrehearsed. The submit job reads github.event_name == 'workflow_dispatch', so a schedule never
++  # reaches a store; assert-platform-proof-fresh.mjs --store-lanes grades this run's age.
++  schedule:
++    - cron: '0 8 * * 2'   # Tuesdays 08:00 UTC
++
+ permissions:
+   contents: read
+   checks: read
+@@ -45,23 +52,37 @@ jobs:
+       # before it reads the set, and one outside the set naming the set; only then is it an output.
+       - name: The app input names one app of the workspace
+         id: app
++        # why: a SCHEDULED run has no input, so its app is the workspace set's ONLY app, read from the
++        # emitter, never written here; a set of more than one refuses (this lane rehearses one app per
++        # run, and a schedule that quietly picked one would leave the others unrehearsed and green).
+         env:
+           APP_INPUT: ${{ inputs.app }}
++          EVENT_NAME: ${{ github.event_name }}
+         run: |
+           set -euo pipefail
++          if [ "$EVENT_NAME" = schedule ]; then
++            apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
++            APP_INPUT="$(node -e 'const a = JSON.parse(process.argv[1]); if (a.length !== 1) { console.error(`FAIL a scheduled rehearsal takes the workspace set\x27s only app, and the set holds ${a.length}: ${a.join(", ")}. Give the dry-run job a matrix over the set.`); process.exit(1); } process.stdout.write(a[0]);' "$apps")"
++          fi
+           node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
+           echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
+ 
+   dry-run:
+     name: Validate the submission path
+     runs-on: macos-26
+-    timeout-minutes: 30
++    # why 45: a signed archive + export and a productbuild on top of the two compiles (review AA-18).
++    timeout-minutes: 45
+     needs: gate
+     # why: the job-level write scope the two record steps at the end need
+     # (O-APPLE-SUBMISSION-UNRECORDED); it replaces the workflow's grant for this job.
+     permissions:
+       contents: read
+       deployments: write
++    # why: the validated signed bytes, named and hashed for the owner's manual first upload (review C-07).
++    outputs:
++      artifact: ${{ steps.bytes.outputs.artifact }}
++      ipa_sha256: ${{ steps.bytes.outputs.ipa_sha256 }}
++      pkg_sha256: ${{ steps.bytes.outputs.pkg_sha256 }}
+     # why: the gate's checked output, never inputs.app. run: reads $APP; the fields no
+     # shell expands (artifact name and path) read the expression itself.
+     env:
+@@ -115,6 +136,12 @@ jobs:
+           sw_vers
+           xcodebuild -version
+           uname -m
++      # why: the floor the register declares for the two Apple rows, read off the runner's own Xcode before
++      # anything compiles with it (review AA-18): a rehearsal on an Xcode App Store Connect refuses is no rehearsal.
++      - name: The Xcode floor is met, not just declared
++        run: node tooling/ci/assert-xcode-floor.mjs
++      - name: Patch the SDK for flutter/flutter#188060 (macOS AOT abort)
++        run: python3 tooling/ci/patch-flutter-macos-aot.py "$FLUTTER_ROOT"
+       # why: the refusal path (O-BRICK-SELLS-NOTHING-IN-A-STORE): an app with no billing.mobileIap stops here,
+       # exit 1. The builds below read the key from the STATIC named secret this rail's apps declare (app.yaml
+       # billing.mobileIap.publicKeySecrets), never a `secrets[...]` index, which would hand this job every
+@@ -122,33 +149,75 @@ jobs:
+       - name: Resolve the app's store SDK key secret (apple-iap)
+         id: rc-key
+         run: node tooling/ci/store-key-secret.mjs --app "$APP" --rail apple-iap >> "$GITHUB_OUTPUT"
+-      # ⏱ RENAMED 2026-09-09. This step was called "unsigned — no distribution
+-      # certificate exists", and that reason stopped being true today: a
+-      # DISTRIBUTION certificate and an IOS_APP_STORE profile were issued through
+-      # the ASC API, and build-platforms.yml now emits a SIGNED .ipa with them.
+-      # This workflow deliberately does NOT: it ends at a refusal (see
+-      # tooling/release/submit-appstore.mjs, which refuses --submit by design),
+-      # so what it needs is a compile proof, not a signed artifact it must not
+-      # upload. The build stays unsigned because this lane must not submit — not
+-      # because nothing here could sign.
+-      - name: Build iOS (unsigned on purpose — this lane must never submit)
++      # ⏱ CHANGED 2026-10-01 (review AA-18 and C-07, O-APPLE-LANE-VALIDATES-NO-SIGNED-ARTIFACT). Both builds
++      # below were UNSIGNED BY CHOICE and the two dry runs passed --allow-missing-artifact, so this lane
++      # validated a listing and never the package: the owner's manual first upload had no validated signed
++      # .ipa or .pkg to take. The lane now SIGNS IN-LANE with the seam build-platforms.yml's apple job uses.
++      # This workflow is a declared submission workflow of both rows, so apple-signing.mjs refuses an
++      # absent or partial secret set on an armed row (signing-seam limb b) — a FAILED run, never an unsigned one.
++      # It still uploads nothing: tooling/release/submit-appstore.mjs refuses --submit by design.
++      - name: Prepare the Apple distribution identity
++        env:
++          APPLE_DIST_CERT_P12_BASE64: ${{ secrets.APPLE_DIST_CERT_P12_BASE64 }}
++          APPLE_DIST_CERT_PASSWORD: ${{ secrets.APPLE_DIST_CERT_PASSWORD }}
++          APPLE_PROVISIONING_PROFILES_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILES_BASE64 }}
++          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
++          APPLE_INSTALLER_CERT_P12_BASE64: ${{ secrets.APPLE_INSTALLER_CERT_P12_BASE64 }}
++        run: node tooling/ci/apple-signing.mjs --app "$APP" --channel ios-appstore --channel macos-appstore
++      # why: the rehearsal is of the SIGNED artifact or it is nothing. Should both rows ever be unarmed the seam
++      # would print a legal unsigned posture; this lane refuses it rather than validate a package it did not make.
++      - name: This rehearsal validates the signed artifact, so the posture must be release-signed
++        run: |
++          set -euo pipefail
++          if [ "${APPLE_SIGNING_POSTURE:-}" != release-signed ]; then
++            echo "::error title=Apple dry run::apple-signing.mjs exported posture '${APPLE_SIGNING_POSTURE:-(none)}', not release-signed. This lane rehearses the signed .ipa and .pkg; an unsigned build is no evidence about either."
++            exit 1
++          fi
++      # why: the same appended settings as build-platforms.yml's apple job — the Flutter templates ship
++      # AUTOMATIC signing with an empty team, and APPLE_TEAM_ID is a secret a tracked xcconfig would publish.
++      # Both spellings of the iOS identity: the template's `[sdk=iphoneos*]` setting outranks the plain one.
++      - name: Point the Xcode projects at the imported identity
++        working-directory: apps/${{ needs.gate.outputs.app }}
++        run: |
++          set -euo pipefail
++          {
++            echo ""
++            echo "CODE_SIGN_STYLE = Manual"
++            echo "DEVELOPMENT_TEAM = ${APPLE_TEAM_ID}"
++            echo "CODE_SIGN_IDENTITY = ${APPLE_DIST_IDENTITY}"
++            echo "CODE_SIGN_IDENTITY[sdk=iphoneos*] = ${APPLE_DIST_IDENTITY}"
++            echo "PROVISIONING_PROFILE_SPECIFIER = ${APPLE_IOS_PROFILE_NAME}"
++          } >> ios/Flutter/Release.xcconfig
++          {
++            echo ""
++            echo "CODE_SIGN_STYLE = Manual"
++            echo "DEVELOPMENT_TEAM = ${APPLE_TEAM_ID}"
++            echo "CODE_SIGN_IDENTITY = ${APPLE_DIST_IDENTITY}"
++            echo "PROVISIONING_PROFILE_SPECIFIER = ${APPLE_MACOS_PROFILE_NAME}"
++          } >> macos/Runner/Configs/Release.xcconfig
++      - name: The signing identity is reachable from this shell
++        run: |
++          set -euo pipefail
++          security list-keychains -d user
++          security find-identity -v "$APPLE_KEYCHAIN_PATH"
++      - name: Build macOS (signed by the imported identity)
+         env:
+           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+           REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+-        run: node tooling/ci/flutter-release-build.mjs "$APP" ios ios-appstore
+-      # Same correction as the iOS step above: unsigned BY CHOICE, not for want
+-      # of a certificate. A Mac Installer Distribution certificate exists too.
+-      - name: Build macOS (unsigned on purpose — this lane must never submit)
++        run: node tooling/ci/flutter-release-build.mjs "$APP" macos macos-appstore
++      # why: `flutter build ipa` archives and exports against the ExportOptions.plist apple-signing.mjs wrote;
++      # the same obfuscation flags as the build-platforms.yml apple job, so the symbols below are unchanged.
++      - name: Build iOS (signed archive + export)
+         env:
+           RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+           REVENUECAT_PUBLIC_KEY: ${{ secrets.REVENUECAT_PUBLIC_KEY_APPLE }}
+           GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+-        run: node tooling/ci/flutter-release-build.mjs "$APP" macos macos-appstore
++        run: node tooling/ci/flutter-release-build.mjs "$APP" ipa ios-appstore
+       # ⏱ CORRECTED 2026-09-07 (unit `symbols-everywhere`) — this comment used to
+       # end "Retained rather than sent to the crash sink because
+       # tooling/versions.json pins ONE glitchtip-cli binary and it is
+@@ -167,6 +236,33 @@ jobs:
+             apps/${{ needs.gate.outputs.app }}/build/symbols/macos
+           retention-days: 90
+           if-no-files-found: error
++      # why: a Mac App Store submission is a .pkg, signed by the INSTALLER certificate (a different one from
++      # the identity that signed the .app); `--component <app> /Applications` is the one productbuild mode
++      # the Mac App Store accepts. The path is the row's signing.seam.artifactGlob, the one
++      # tooling/release/submit-appstore.mjs reads.
++      - name: Package the macOS .pkg (Mac App Store)
++        working-directory: apps/${{ needs.gate.outputs.app }}
++        run: |
++          set -euo pipefail
++          app="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' | head -1)"
++          if [ -z "$app" ]; then
++            echo "::error title=pkg::no .app in build/macos/Build/Products/Release to package"
++            exit 1
++          fi
++          mkdir -p build/macos/pkg
++          out="build/macos/pkg/${APP}.pkg"
++          productbuild --component "$app" /Applications \
++            --sign "$APPLE_INSTALLER_IDENTITY" \
++            --keychain "$APPLE_KEYCHAIN_PATH" \
++            "$out"
++          ls -l "$out"
++      # why: nothing here trusts an exit code — the guard reads the signature, the profile, the entitlements and
++      # the Info.plist back out of the bytes the owner will upload (the build-platforms.yml apple job's PROVE step).
++      - name: PROVE the .ipa and .pkg are real and signed
++        run: >
++          node tooling/ci/assert-artifact-signed-apple.mjs
++          apps/${{ needs.gate.outputs.app }}/build/ios/ipa/*.ipa
++          apps/${{ needs.gate.outputs.app }}/build/macos/pkg/*.pkg
+       # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
+       # pins for this runner's OS, a bounded retry, and the binary's own --version held to the pin.
+       - name: Install glitchtip-cli (pinned by version AND by digest)
+@@ -199,17 +295,46 @@ jobs:
+           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+-        # why: --allow-missing-artifact here and NOT on the Windows lane. The builds above are
+-        # unsigned by choice until the signing seam lands in this lane, and --submit refuses,
+-        # so there is no signed .ipa to validate; the Windows dry run builds and packages a real
+-        # .msix first and must not be given this flag.
+-        run: node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app "$APP" --allow-missing-artifact
++        # why: NO --allow-missing-artifact (review AA-18, ⏱ 2026-10-01). The job signs and packages the .ipa
++        # and the .pkg first, so the script validates packages that exist on disk, as the Windows dry run does.
++        run: node tooling/release/submit-appstore.mjs --dry-run --channel ios-appstore --app "$APP"
+       - name: Dry-run the App Store submission (macOS)
+         env:
+           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+-        run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app "$APP" --allow-missing-artifact
++        run: node tooling/release/submit-appstore.mjs --dry-run --channel macos-appstore --app "$APP"
++      # why: the hand-off (review C-07). No submit job exists to take these bytes — the first App Store upload
++      # is the owner's, by hand — so the sha256 travels IN the artifact (SHA256SUMS, `shasum -a 256 -c` reads it)
++      # and as this job's outputs, and the owner uploads exactly the .ipa and .pkg this run validated.
++      - name: Hash the validated .ipa and .pkg for the owner's upload
++        id: bytes
++        env:
++          IPA_DIR: apps/${{ needs.gate.outputs.app }}/build/ios/ipa
++          PKG_DIR: apps/${{ needs.gate.outputs.app }}/build/macos/pkg
++        run: |
++          set -euo pipefail
++          ipa="$(find "$IPA_DIR" -maxdepth 1 -name '*.ipa' | head -1)"
++          pkg="${PKG_DIR}/${APP}.pkg"
++          [ -s "$ipa" ] && [ -s "$pkg" ] || { echo "::error title=Apple hand-off::the .ipa or the .pkg is missing or empty"; exit 1; }
++          ipa_sum="$(shasum -a 256 "$ipa" | cut -d ' ' -f 1)"
++          pkg_sum="$(shasum -a 256 "$pkg" | cut -d ' ' -f 1)"
++          mkdir -p "${RUNNER_TEMP}/apple-signed"
++          cp "$ipa" "$pkg" "${RUNNER_TEMP}/apple-signed/"
++          ( cd "${RUNNER_TEMP}/apple-signed" && shasum -a 256 ./*.ipa ./*.pkg > SHA256SUMS && shasum -a 256 -c SHA256SUMS )
++          echo "artifact=store-${APP}-apple-release-signed" >> "$GITHUB_OUTPUT"
++          echo "ipa_sha256=${ipa_sum}" >> "$GITHUB_OUTPUT"
++          echo "pkg_sha256=${pkg_sum}" >> "$GITHUB_OUTPUT"
++          echo "${ipa_sum}  ${ipa}"
++          echo "${pkg_sum}  ${pkg}"
++      # why `store-` and release-signed in the name: the submittable formats, validated above, for the owner's
++      # manual first upload (Private/runbooks/store-submission-apple.md); 90 days, as build-platforms.yml keeps them.
++      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
++        with:
++          name: ${{ steps.bytes.outputs.artifact }}
++          path: ${{ runner.temp }}/apple-signed
++          retention-days: 90
++          if-no-files-found: error
+       # why: this lane RECORDS, and is never declared dry-run-only (O-APPLE-SUBMISSION-UNRECORDED; parent
+       # decision): every run is recorded, and a rehearsal AS one — one record per channel it rehearsed,
+       # into "<app>-ios-appstore-dry-run" and "<app>-macos-appstore-dry-run", which no reader of the
+diff --git a/.github/workflows/submit-play.yml b/.github/workflows/submit-play.yml
+index 57b4bdfe..814a5954 100644
+--- a/.github/workflows/submit-play.yml
++++ b/.github/workflows/submit-play.yml
+@@ -38,6 +38,13 @@ on:
+         default: ''
+         type: string
+ 
++  # why: a WEEKLY rehearsal, the dry-run job only (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE): a
++  # dispatch-only dry run is graded by nobody between dispatches, and an armed store lane went weeks
++  # unrehearsed. The submit job reads github.event_name == 'workflow_dispatch', so a schedule never
++  # reaches a store; assert-platform-proof-fresh.mjs --store-lanes grades this run's age.
++  schedule:
++    - cron: '0 7 * * 2'   # Tuesdays 07:00 UTC
++
+ permissions:
+   contents: read
+   checks: read
+@@ -66,10 +73,18 @@ jobs:
+       # before it reads the set, and one outside the set naming the set; only then is it an output.
+       - name: The app input names one app of the workspace
+         id: app
++        # why: a SCHEDULED run has no input, so its app is the workspace set's ONLY app, read from the
++        # emitter, never written here; a set of more than one refuses (this lane rehearses one app per
++        # run, and a schedule that quietly picked one would leave the others unrehearsed and green).
+         env:
+           APP_INPUT: ${{ inputs.app }}
++          EVENT_NAME: ${{ github.event_name }}
+         run: |
+           set -euo pipefail
++          if [ "$EVENT_NAME" = schedule ]; then
++            apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
++            APP_INPUT="$(node -e 'const a = JSON.parse(process.argv[1]); if (a.length !== 1) { console.error(`FAIL a scheduled rehearsal takes the workspace set\x27s only app, and the set holds ${a.length}: ${a.join(", ")}. Give the dry-run job a matrix over the set.`); process.exit(1); } process.stdout.write(a[0]);' "$apps")"
++          fi
+           node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
+           echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
+ 
+@@ -209,11 +224,14 @@ jobs:
+         run: >
+           node --single-threaded tooling/ci/assert-elf-page-alignment.mjs
+           "apps/${APP}/build/app/outputs/bundle/release/app-release.aab"
+-      - name: Dry-run the Google Play submission
++      # why --touch-store (review AA-17): the rehearsal opens an edit, reads its tracks and DELETES it
++      # uncommitted, so it proves the key still authenticates and still sees the app; an absent secret
++      # FAILS it. Nothing is committed, so nothing a user or the console sees changes.
++      - name: Dry-run the Google Play submission (opens and deletes an uncommitted edit)
+         env:
+           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+           PLAY_TRACK: ${{ vars.PLAY_TRACK }}
+-        run: node tooling/release/submit-play.mjs --dry-run --app "$APP"
++        run: node tooling/release/submit-play.mjs --dry-run --touch-store --app "$APP"
+       # why: the hand-off the submit job verifies. The name carries the posture
+       # android-signing.mjs exported, which the submit job cannot recompute, so it
+       # travels as an output; the upload below reads the same output, so the name
+@@ -250,7 +268,9 @@ jobs:
+     needs: [gate, dry-run]
+     # why: a typed phrase, not a checkbox. This is the only job in the tree that
+     # uploads to a public store, and the dispatch default is dry-run-only.
+-    if: inputs.confirm == 'SUBMIT-TO-PLAY'
++    # why the event conjunct: this lane also runs on a schedule, which must never reach the store
++    # (assert-publish-steps-guarded limb (a)).
++    if: github.event_name == 'workflow_dispatch' && inputs.confirm == 'SUBMIT-TO-PLAY'
+     # why: this line is the owner-approval PAUSE (ADR 031 class A), and on its own it
+     # FAILS OPEN -- GitHub creates a referenced environment that does not exist, with
+     # no protection rules, and runs. So tooling/release/submit-play.mjs also reads the
+diff --git a/.github/workflows/submit-snap.yml b/.github/workflows/submit-snap.yml
+index 309dfabe..f6671ada 100644
+--- a/.github/workflows/submit-snap.yml
++++ b/.github/workflows/submit-snap.yml
+@@ -27,6 +27,13 @@ on:
+         default: ''
+         type: string
+ 
++  # why: a WEEKLY rehearsal, the dry-run job only (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE): a
++  # dispatch-only dry run is graded by nobody between dispatches, and an armed store lane went weeks
++  # unrehearsed. The submit job reads github.event_name == 'workflow_dispatch', so a schedule never
++  # reaches a store; assert-platform-proof-fresh.mjs --store-lanes grades this run's age.
++  schedule:
++    - cron: '0 8 * * 3'   # Wednesdays 08:00 UTC
++
+ permissions:
+   contents: read
+   checks: read
+@@ -55,10 +62,18 @@ jobs:
+       # before it reads the set, and one outside the set naming the set; only then is it an output.
+       - name: The app input names one app of the workspace
+         id: app
++        # why: a SCHEDULED run has no input, so its app is the workspace set's ONLY app, read from the
++        # emitter, never written here; a set of more than one refuses (this lane rehearses one app per
++        # run, and a schedule that quietly picked one would leave the others unrehearsed and green).
+         env:
+           APP_INPUT: ${{ inputs.app }}
++          EVENT_NAME: ${{ github.event_name }}
+         run: |
+           set -euo pipefail
++          if [ "$EVENT_NAME" = schedule ]; then
++            apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
++            APP_INPUT="$(node -e 'const a = JSON.parse(process.argv[1]); if (a.length !== 1) { console.error(`FAIL a scheduled rehearsal takes the workspace set\x27s only app, and the set holds ${a.length}: ${a.join(", ")}. Give the dry-run job a matrix over the set.`); process.exit(1); } process.stdout.write(a[0]);' "$apps")"
++          fi
+           node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
+           echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
+ 
+@@ -71,6 +86,11 @@ jobs:
+     permissions:
+       contents: read
+       deployments: write
++    # why: the submit job ships THIS job's .snap, not a repack of a rebuild, and checks it
++    # against this sha256 (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT, review AA-23), as submit-play.yml does.
++    outputs:
++      artifact: ${{ steps.bytes.outputs.artifact }}
++      sha256: ${{ steps.bytes.outputs.sha256 }}
+     # why: the gate's checked output, never inputs.app. run: reads $APP; the fields no
+     # shell expands (artifact name and path) read the expression itself.
+     env:
+@@ -158,8 +178,14 @@ jobs:
+           --emitted "$RUNNER_TEMP/snapcraft-${APP}/snap/snapcraft.yaml"
+           --app "$APP"
+           --pack-runner ubuntu-24.04
+-      - name: Install snapcraft
+-        run: sudo snap install snapcraft --classic
++      # why: the TRACK is the pin in tooling/versions.json (snapcraft_track), the one build-platforms.yml packs
++      # with; assert-update-coverage.mjs refuses an install with no --channel read from it (review AA-04).
++      - name: Install snapcraft (the track tooling/versions.json pins)
++        run: |
++          set -euo pipefail
++          track="$(node -p "require('./tooling/versions.json').snapcraft_track")"
++          echo "snapcraft track ${track} (tooling/versions.json snapcraft_track)"
++          sudo snap install snapcraft --classic --channel "$track"
+       - name: Pack the snap
+         run: |
+           set -euo pipefail
+@@ -191,9 +217,21 @@ jobs:
+         env:
+           SNAPCRAFT_STORE_CREDENTIALS_EXPIRES: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS_EXPIRES }}
+         run: node tooling/release/submit-snap.mjs --dry-run --app "$APP"
++      # why: the hand-off the submit job verifies, and the upload below reads the same output, so the
++      # name is written once. Nothing runs between this hash and that upload.
++      - name: Hand the submit job this snap's name and sha256
++        id: bytes
++        env:
++          SNAP: apps/${{ needs.gate.outputs.app }}/build/linux/snap/${{ needs.gate.outputs.app }}.snap
++        run: |
++          set -euo pipefail
++          sum="$(sha256sum "$SNAP" | cut -d ' ' -f 1)"
++          echo "artifact=${APP}-linux-snap" >> "$GITHUB_OUTPUT"
++          echo "sha256=${sum}" >> "$GITHUB_OUTPUT"
++          echo "${sum}  ${SNAP}"
+       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+         with:
+-          name: ${{ needs.gate.outputs.app }}-linux-snap
++          name: ${{ steps.bytes.outputs.artifact }}
+           path: apps/${{ needs.gate.outputs.app }}/build/linux/snap/${{ needs.gate.outputs.app }}.snap
+           retention-days: 7
+           if-no-files-found: error
+@@ -212,7 +250,9 @@ jobs:
+     timeout-minutes: 30
+     needs: [gate, dry-run]
+     # why: a typed phrase, not a checkbox, and the dispatch default is empty.
+-    if: inputs.confirm == 'SUBMIT-TO-SNAP-STORE'
++    # why the event conjunct: this lane also runs on a schedule, which must never reach the store
++    # (assert-publish-steps-guarded limb (a)).
++    if: github.event_name == 'workflow_dispatch' && inputs.confirm == 'SUBMIT-TO-SNAP-STORE'
+     # why: this line is the owner-approval PAUSE (ADR 031 class A), and on its own it
+     # FAILS OPEN -- GitHub creates a referenced environment that does not exist, with
+     # no protection rules, and runs. tooling/release/submit-snap.mjs therefore also
+@@ -276,107 +316,52 @@ jobs:
+               exit 1
+               ;;
+           esac
+-      - uses: ./.github/actions/setup-flutter
+-      - name: Linux build deps (the same list the Linux build lane installs)
+-        run: |
+-          set -euo pipefail
+-          deps="$(node tooling/release/generate-snapcraft.mjs --emit-build-deps)"
+-          echo "installing: ${deps}"
+-          sudo apt-get update
+-          sudo apt-get install -y ${deps}
+-      - name: Resolve the workspace
+-        run: flutter pub get --enforce-lockfile
+-      - name: Derive the release line from pubspec
+-        id: ver
+-        run: node tooling/ci/assert-app-versioning.mjs --emit "apps/${APP}" >> "$GITHUB_OUTPUT"
+       # why: O-SUBMIT-LANES-SKIP-PRECONDITION-GATES. A lane green over a name the owner has not HELD
+       # or proven free submits one nobody ruled on; limb 3 of assert-publish-steps-guarded.mjs.
+       - name: Name clearance holds for linux-snap (owner HELD or PROVEN-FREE)
+         run: node tooling/ci/assert-name-clearance.mjs --for-submission=linux-snap
+-      - name: Build linux
++      # why: THE DRY RUN'S SNAP, NOT A REPACK OF A REBUILD (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT, review
++      # AA-23): one compile and one `snapcraft pack` per dispatch. The dry-run job graded the recipe
++      # (assert-snapcraft-generable.mjs) and packed these bytes, and the sha256 below proves they are those
++      # bytes; submit-snap.mjs PG-5 reads both off that job. Retention is 7 days and there is no fallback.
++      - name: Take the dry-run job's snap
++        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
++        with:
++          name: ${{ needs.dry-run.outputs.artifact }}
++          path: apps/${{ needs.gate.outputs.app }}/build/linux/snap
++      # why: the value arrives through env:, never interpolated into run: (zizmor).
++      - name: The snap is the one the dry-run job hashed (sha256)
+         env:
+-          RELEASE_LINE: ${{ steps.ver.outputs.release_line }}
+-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+-          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
+-        run: node tooling/ci/flutter-release-build.mjs "$APP" linux linux-snap
+-      # ⏱ MOVED 2026-09-07 (unit `symbols-everywhere`) — this step used to sit
+-      # after `snapcraft pack`, which was already "BEFORE the upload, not after"
+-      # and is now earlier still: a pack failure is a step failure like any
+-      # other, and GitHub skips the rest of a failed job, so a mapping kept only
+-      # after the pack is a mapping the pack can take with it. It now sits
+-      # immediately after the build, ahead of every assertion and every network
+-      # call in this job. Same lesson, same source:
+-      # post-audit-obfuscation-and-symbols.md §9.3.
+-      # why: this is the only copy of the mapping for a snap that is about to
+-      # reach real users, and a rebuild produces a DIFFERENT one. 90 days, not
+-      # 7: this snap ships.
++          EXPECTED_SHA256: ${{ needs.dry-run.outputs.sha256 }}
++          SNAP: apps/${{ needs.gate.outputs.app }}/build/linux/snap/${{ needs.gate.outputs.app }}.snap
++        run: |
++          set -euo pipefail
++          if ! printf '%s' "$EXPECTED_SHA256" | grep -Eqx '[0-9a-f]{64}'; then
++            echo "FAIL the dry-run job's sha256 output is '${EXPECTED_SHA256}', not 64 hex digits: nothing to check the download against." >&2
++            exit 1
++          fi
++          printf '%s  %s\n' "$EXPECTED_SHA256" "$SNAP" | sha256sum --check --strict -
++      # why: the mapping of the snap above is the dry-run job's (same build), already in the crash sink
++      # from that job. Kept again here for 90 days, not 7, because this snap ships; BEFORE the upload,
++      # so a failed upload cannot skip it.
++      - name: Take the dry-run job's symbols for this snap
++        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
++        with:
++          name: symbols-${{ needs.gate.outputs.app }}-linux-snap-dry-run
++          path: apps/${{ needs.gate.outputs.app }}/build/symbols/linux
+       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+         with:
+           name: symbols-${{ needs.gate.outputs.app }}-linux-snap
+           path: apps/${{ needs.gate.outputs.app }}/build/symbols/linux
+           retention-days: 90
+           if-no-files-found: error
+-      # why: ONE code path on every lane (O-GLITCHTIP-CLI-INSTALLED-BY-HAND): the digest tooling/versions.json
+-      # pins for this runner's OS, a bounded retry, and the binary's own --version held to the pin.
+-      - name: Install glitchtip-cli (pinned by version AND by digest)
+-        run: node tooling/ci/install-pinned-tool.mjs glitchtip-cli --out "$RUNNER_TEMP"
+-      # why: BEFORE the store upload, for the same reason the artifact above is.
+-      # This snap reaches real users, so its mapping is the one that will
+-      # actually be needed. The 90-day artifact above is already written when
+-      # this runs, so a GlitchTip outage costs the sink copy and nothing else —
+-      # and it FAILS THE JOB rather than skipping, deliberately: a release that
+-      # goes to the Snap Store with no readable symbols is the state this unit
+-      # exists to stop. The wrapper names GLITCHTIP_TOKEN when it is absent. The project
+-      # is the ONE declaration, tooling/ops/glitchtip-project.json, never the app.
+-      - name: Upload the native debug symbols to GlitchTip
+-        env:
+-          SENTRY_AUTH_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
+-          GLITCHTIP_DSN: ${{ secrets.GLITCHTIP_DSN }}
++      # why: `snapcraft upload` is the transport, so the submit job still installs it, from the same track.
++      - name: Install snapcraft (the track tooling/versions.json pins)
+         run: |
+           set -euo pipefail
+-          gt_org="$(node -p "require('./tooling/ops/glitchtip-project.json').org")"
+-          gt_project="$(node -p "require('./tooling/ops/glitchtip-project.json').project")"
+-          node tooling/ops/upload-native-symbols.mjs \
+-            --cli "${RUNNER_TEMP}/glitchtip-cli" \
+-            --dir "apps/${APP}/build/symbols/linux" \
+-            --org "$gt_org" --project "$gt_project"
+-      - name: Generate the snapcraft recipe
+-        run: >
+-          node tooling/release/generate-snapcraft.mjs
+-          --app "$APP"
+-          --bundle "apps/${APP}/build/linux/x64/release/bundle"
+-          --out "$RUNNER_TEMP/snapcraft-${APP}"
+-          --version ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
+-      - name: The generated recipe is complete, still derived, and packable here
+-        run: >
+-          node tooling/ci/assert-snapcraft-generable.mjs
+-          --emitted "$RUNNER_TEMP/snapcraft-${APP}/snap/snapcraft.yaml"
+-          --app "$APP"
+-          --pack-runner ubuntu-24.04
+-      - name: Install snapcraft
+-        run: sudo snap install snapcraft --classic
+-      - name: Pack the snap
+-        run: |
+-          set -euo pipefail
+-          project="${RUNNER_TEMP}/snapcraft-${APP}"
+-          collected="${GITHUB_WORKSPACE}/apps/${APP}/build/linux/snap/${APP}.snap"
+-          cd "$project"
+-          sudo snapcraft pack --destructive-mode
+-          count="$(find "$project" -maxdepth 1 -type f -name '*.snap' | wc -l)"
+-          if [ "$count" -ne 1 ]; then
+-            echo "FAIL snapcraft exited 0 and left ${count} .snap file(s) in ${project}:" >&2
+-            find "$project" -maxdepth 1 -type f -name '*.snap' >&2
+-            echo "     Exactly one is required. Zero is a pack that produced nothing while reporting" >&2
+-            echo "     success; more than one means this step would have to choose which snap the" >&2
+-            echo "     channel submits, and a chooser with no stated rule picks silently." >&2
+-            exit 1
+-          fi
+-          built="$(find "$project" -maxdepth 1 -type f -name '*.snap')"
+-          mkdir -p "$(dirname "$collected")"
+-          sudo mv "$built" "$collected"
+-          sudo chown "$(id -u):$(id -g)" "$collected"
+-          ls -l "$collected"
++          track="$(node -p "require('./tooling/versions.json').snapcraft_track")"
++          echo "snapcraft track ${track} (tooling/versions.json snapcraft_track)"
++          sudo snap install snapcraft --classic --channel "$track"
+       # why: CONFIRM is the TYPED word, passed through -- a literal `--confirm` here made the
+       # script's own confirm check a tautology. Same shape as submit-play.yml.
+       - name: Upload to the Snap Store
+diff --git a/.github/workflows/submit-windows-store.yml b/.github/workflows/submit-windows-store.yml
+index 0d87094d..d3cf9a4d 100644
+--- a/.github/workflows/submit-windows-store.yml
++++ b/.github/workflows/submit-windows-store.yml
+@@ -27,6 +27,13 @@ on:
+         default: ''
+         type: string
+ 
++  # why: a WEEKLY rehearsal, the dry-run job only (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE): a
++  # dispatch-only dry run is graded by nobody between dispatches, and an armed store lane went weeks
++  # unrehearsed. The submit job reads github.event_name == 'workflow_dispatch', so a schedule never
++  # reaches a store; assert-platform-proof-fresh.mjs --store-lanes grades this run's age.
++  schedule:
++    - cron: '0 7 * * 3'   # Wednesdays 07:00 UTC
++
+ permissions:
+   contents: read
+   checks: read
+@@ -55,10 +62,18 @@ jobs:
+       # before it reads the set, and one outside the set naming the set; only then is it an output.
+       - name: The app input names one app of the workspace
+         id: app
++        # why: a SCHEDULED run has no input, so its app is the workspace set's ONLY app, read from the
++        # emitter, never written here; a set of more than one refuses (this lane rehearses one app per
++        # run, and a schedule that quietly picked one would leave the others unrehearsed and green).
+         env:
+           APP_INPUT: ${{ inputs.app }}
++          EVENT_NAME: ${{ github.event_name }}
+         run: |
+           set -euo pipefail
++          if [ "$EVENT_NAME" = schedule ]; then
++            apps="$(node tooling/ci/assert-release-lane-generic.mjs --emit-apps)"
++            APP_INPUT="$(node -e 'const a = JSON.parse(process.argv[1]); if (a.length !== 1) { console.error(`FAIL a scheduled rehearsal takes the workspace set\x27s only app, and the set holds ${a.length}: ${a.join(", ")}. Give the dry-run job a matrix over the set.`); process.exit(1); } process.stdout.write(a[0]);' "$apps")"
++          fi
+           node tooling/ci/assert-release-lane-generic.mjs --emit-apps --app "$APP_INPUT"
+           echo "app=${APP_INPUT}" >> "$GITHUB_OUTPUT"
+ 
+@@ -225,7 +240,9 @@ jobs:
+     timeout-minutes: 30
+     needs: [gate, dry-run]
+     # why: a typed phrase, not a checkbox, and the dispatch default is empty.
+-    if: inputs.confirm == 'SUBMIT-TO-MICROSOFT-STORE'
++    # why the event conjunct: this lane also runs on a schedule, which must never reach the store
++    # (assert-publish-steps-guarded limb (a)).
++    if: github.event_name == 'workflow_dispatch' && inputs.confirm == 'SUBMIT-TO-MICROSOFT-STORE'
+     # why: this line is the owner-approval PAUSE (ADR 031 class A), and on its own it
+     # FAILS OPEN -- GitHub creates a referenced environment that does not exist, with
+     # no protection rules, and runs. tooling/release/submit-windows-store.mjs therefore
+diff --git a/docs/ci/README.md b/docs/ci/README.md
+index 2ebcbdc8..7dc54f9f 100644
+--- a/docs/ci/README.md
++++ b/docs/ci/README.md
+@@ -444,11 +444,11 @@ The workflows read **49** secret names (`GITHUB_TOKEN` is not counted: GitHub is
+ | `ANDROID_KEY_ALIAS` | `build-platforms.yml`, `submit-play.yml` |
+ | `ANDROID_KEY_PASSWORD` | `build-platforms.yml`, `submit-play.yml` |
+ | `APPIMAGE_SIGNING_KEY_B64` | `build-platforms.yml` |
+-| `APPLE_DIST_CERT_P12_BASE64` | `build-platforms.yml` |
+-| `APPLE_DIST_CERT_PASSWORD` | `build-platforms.yml` |
+-| `APPLE_INSTALLER_CERT_P12_BASE64` | `build-platforms.yml` |
+-| `APPLE_PROVISIONING_PROFILES_BASE64` | `build-platforms.yml` |
+-| `APPLE_TEAM_ID` | `build-platforms.yml` |
++| `APPLE_DIST_CERT_P12_BASE64` | `build-platforms.yml`, `submit-appstore.yml` |
++| `APPLE_DIST_CERT_PASSWORD` | `build-platforms.yml`, `submit-appstore.yml` |
++| `APPLE_INSTALLER_CERT_P12_BASE64` | `build-platforms.yml`, `submit-appstore.yml` |
++| `APPLE_PROVISIONING_PROFILES_BASE64` | `build-platforms.yml`, `submit-appstore.yml` |
++| `APPLE_TEAM_ID` | `build-platforms.yml`, `submit-appstore.yml` |
+ | `APPSGOVIN_KEYSTORE_BASE64` | `build-platforms.yml` |
+ | `APPSGOVIN_KEYSTORE_PASSWORD` | `build-platforms.yml` |
+ | `APPSGOVIN_KEY_ALIAS` | `build-platforms.yml` |
+@@ -576,7 +576,7 @@ The tree uses **4** third-party actions and **10** GitHub-owned ones, read from
+ | `actions/cache/restore` | GitHub | `ci.yml` |
+ | `actions/cache/save` | GitHub | `ci.yml` |
+ | `actions/checkout` | GitHub | `apple-expiry-write.yml`, `build-platforms.yml`, `ci.yml`, `codeql.yml`, `deploy-sandbox.yml`, `deploy-web.yml`, `deploy-workers.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `lane-workers.yml`, `main-healthy.yml`, `mutation-proofs.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `ops-watch.yml`, `redeploy-stranded.yml`, `rollback.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `trufflehog.yml`, `update-goldens.yml` |
+-| `actions/download-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml`, `submit-windows-store.yml`, `update-goldens.yml` |
++| `actions/download-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `update-goldens.yml` |
+ | `actions/setup-java` | GitHub | `build-platforms.yml`, `ci.yml`, `submit-play.yml` |
+ | `actions/setup-node` | GitHub | `.github/actions/setup-node/action.yml` |
+ | `actions/upload-artifact` | GitHub | `build-platforms.yml`, `ci.yml`, `e2e.yml`, `extensions-ci.yml`, `extensions.yml`, `name-clearance.yml`, `native-auth-proof.yml`, `store-screenshots.yml`, `submit-appstore.yml`, `submit-play.yml`, `submit-snap.yml`, `submit-windows-store.yml`, `symbolication-proof.yml`, `update-goldens.yml` |
+@@ -840,10 +840,10 @@ naming the job it belonged to and the line it sat above.
+ | [`renovate.md`](renovate.md) | `.github/workflows/renovate.yml` | Renovate | `workflow_dispatch`, `schedule` | 1 |
+ | [`rollback.md`](rollback.md) | `.github/workflows/rollback.yml` | Rollback | `workflow_dispatch` | 1 |
+ | [`store-screenshots.md`](store-screenshots.md) | `.github/workflows/store-screenshots.yml` | Store screenshots | `workflow_dispatch` | 5 |
+-| [`submit-appstore.md`](submit-appstore.md) | `.github/workflows/submit-appstore.yml` | Store submit: Apple App Store | `workflow_dispatch` | 2 |
+-| [`submit-play.md`](submit-play.md) | `.github/workflows/submit-play.yml` | Store submit: Google Play | `workflow_dispatch` | 3 |
+-| [`submit-snap.md`](submit-snap.md) | `.github/workflows/submit-snap.yml` | Store submit: Snap Store | `workflow_dispatch` | 3 |
+-| [`submit-windows-store.md`](submit-windows-store.md) | `.github/workflows/submit-windows-store.yml` | Store submit: Microsoft Store | `workflow_dispatch` | 3 |
++| [`submit-appstore.md`](submit-appstore.md) | `.github/workflows/submit-appstore.yml` | Store submit: Apple App Store | `workflow_dispatch`, `schedule` | 2 |
++| [`submit-play.md`](submit-play.md) | `.github/workflows/submit-play.yml` | Store submit: Google Play | `workflow_dispatch`, `schedule` | 3 |
++| [`submit-snap.md`](submit-snap.md) | `.github/workflows/submit-snap.yml` | Store submit: Snap Store | `workflow_dispatch`, `schedule` | 3 |
++| [`submit-windows-store.md`](submit-windows-store.md) | `.github/workflows/submit-windows-store.yml` | Store submit: Microsoft Store | `workflow_dispatch`, `schedule` | 3 |
+ | [`symbolication-proof.md`](symbolication-proof.md) | `.github/workflows/symbolication-proof.yml` | Symbolication proof | `workflow_dispatch` | 2 |
+ | none | `.github/workflows/trufflehog.yml` | TruffleHog | `schedule`, `workflow_dispatch` | 1 |
+ | [`update-goldens.md`](update-goldens.md) | `.github/workflows/update-goldens.yml` | Update goldens | `workflow_dispatch` | 2 |
+diff --git a/docs/ci/submit-appstore.md b/docs/ci/submit-appstore.md
+index 56187063..6d04b21e 100644
+--- a/docs/ci/submit-appstore.md
++++ b/docs/ci/submit-appstore.md
+@@ -101,25 +101,37 @@ the id written to `$GITHUB_OUTPUT` as the job's `app` output.
+ shell expands (the symbols artifact's `name:` and `path:`) read
+ `${{ needs.gate.outputs.app }}` itself.
+ 
+-### above `timeout-minutes: 30`
++### above `timeout-minutes: 45`
+ 
+-30, and the number is headroom over a measurement rather than a neighbour:
+-run 32947213393 (2026-08-26) completed this job in 12m04s with all 12
+-steps green — iOS build 5m07s, macOS build 4m47s, no other step over 90s.
++⏱ 2026-10-01 (review AA-18): 45, not 30. The job now signs in-lane, so it
++adds a signed archive and export and a `productbuild` to the two compiles that
++run 32947213393 (2026-08-26) measured at 12m04s. No signed run of this job has
++been measured yet; build-platforms.yml's apple job, which does the same work,
++runs under its own 30-minute bound. Re-measure on the first green run.
+ 
+ ### before step **Toolchain under test**
+ 
+ When an Apple build breaks the first question is "what toolchain was
+ this?" — unrecoverable after the fact without this.
+ 
+-### before step **Build iOS (unsigned on purpose — this lane must never submit)**
++### before step **Prepare the Apple distribution identity**
+ 
+-UNSIGNED on purpose: this lane builds unsigned by choice until the signing seam
+-lands here, and `--submit` refuses (see the header). This proves the app still compiles
+-for both Apple platforms; it does not produce a submittable artifact and
+-nothing here pretends it does.
+-🔴 UNSIGNED IS NOT THE SAME AS UNCONFIGURED, and until 2026-08-04 both
+-steps were both. `AppConfig.isBackendLive` compares each define below
++⏱ 2026-10-01 (review AA-18 and C-07, O-APPLE-LANE-VALIDATES-NO-SIGNED-ARTIFACT).
++Until this date both builds were UNSIGNED BY CHOICE and both dry runs passed
++`--allow-missing-artifact`, so this lane validated a listing and never a package,
++and the owner's manual first upload had no validated signed .ipa or .pkg to take.
++The lane now signs with `tooling/ci/apple-signing.mjs`, the seam build-platforms.yml's
++apple job uses, packages the .pkg with `productbuild`, PROVES both with
++`assert-artifact-signed-apple.mjs`, drops the flag, and publishes the two files and
++their `SHA256SUMS` as `store-<app>-apple-release-signed`. This workflow is a declared
++submission workflow of both Apple rows, so an absent or partial secret set FAILS
++the run (signing-seam limb b); a non-release posture fails the step after it.
++`--submit` still refuses: nothing here uploads to App Store Connect.
++
++### before step **Build iOS (signed archive + export)**
++
++🔴 SIGNED IS NOT THE SAME AS CONFIGURED, and until 2026-08-04 both
++steps were unconfigured. `AppConfig.isBackendLive` compares each define below
+ against a PLACEHOLDER constant, so a build passing none of them resolves
+ `MockAuthRepository` and `SeedApiClient` — the artifact this submission
+ path validated was the DEMO build, with mock sign-in and seeded data, and
+@@ -148,6 +160,9 @@ id (`tooling/apple-provisioning.json`, read by apple-provisioning.mjs
+ `APP_STORE_CONNECT_*_APP_ID` secret is ONE record, the first app's, and a
+ second app's dry run would otherwise validate against it and pass. Per-app App
+ Store records are O-STORE-RECORDS-ARE-ONE-PER-CHANNEL's.
++⏱ 2026-10-01 (review AA-18): no `--allow-missing-artifact`. The job signs and
++packages first, so the script reads the .ipa and the .pkg at the row's
++`signing.seam.artifactGlob`, and an absent one FAILS the dry run.
+ 
+ ### before step **Dry-run the App Store submission (macOS)**
+ 
+diff --git a/docs/ci/submit-play.md b/docs/ci/submit-play.md
+index 07586056..7a9a823b 100644
+--- a/docs/ci/submit-play.md
++++ b/docs/ci/submit-play.md
+@@ -399,7 +399,14 @@ disturbing that. The signature answers "who signed this?"; this answers
+ upload, and this is the last point before the upload where the answer is
+ a fact about bytes rather than a claim about configuration.
+ 
+-### before step **Dry-run the Google Play submission**
++### before step **Dry-run the Google Play submission (opens and deletes an uncommitted edit)**
++
++⏱ 2026-10-01 (review AA-17, O-SUBMIT-DRY-RUNS-NEVER-TOUCH-THE-STORE): `--touch-store`. The
++rehearsal used to shape-check the service-account JSON and send nothing, so a revoked key or a
++lost app grant was found by the first real upload. It now mints a token, opens an edit
++(`edits.insert`), reads its tracks and DELETES it (`edits.delete`); no commit is reachable from
++that path. An absent `PLAY_SERVICE_ACCOUNT_JSON` FAILS it. Without the flag (a laptop, a test) a
++dry run still sends nothing.
+ 
+ ⚠️ PLAY_SERVICE_ACCOUNT_JSON is a PRIVATE KEY. The script parses it to
+ check its shape and never prints any part of it, including in the
+@@ -407,7 +414,7 @@ failure messages for a malformed value. In `--dry-run` its absence is a
+ printed gap; in `--submit` it is a hard stop, because nothing can
+ authenticate without it.
+ 
+-### in step **Dry-run the Google Play submission**, above `- uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1`
++### in step **Dry-run the Google Play submission (opens and deletes an uncommitted edit)**, above `- uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1`
+ 
+ The posture is in the NAME so a downloaded bundle carries its own answer
+ to "could this have been uploaded?". On this lane it is always
+diff --git a/docs/ci/submit-snap.md b/docs/ci/submit-snap.md
+index 718d537d..041fa76b 100644
+--- a/docs/ci/submit-snap.md
++++ b/docs/ci/submit-snap.md
+@@ -242,7 +242,12 @@ the launcher resolves inside the snap. Each carries the exact string
+ snapcraft failed with, so the next reader does not have to spend a runner
+ to find out what these limbs are for.
+ 
+-### before step **Install snapcraft**
++### before step **Install snapcraft (the track tooling/versions.json pins)**
++
++⏱ 2026-10-01 (review AA-04): the TRACK is `tooling/versions.json` `snapcraft_track`, read at run time;
++`assert-update-coverage.mjs` refuses an install with no `--channel` from it. Until this date the
++install took whatever the store's default track served that day.
++
+ 
+ ── PACK ────────────────────────────────────────────────────────────────
+ `--destructive-mode` builds on the host; see the header for why that is the
+@@ -359,101 +364,14 @@ refuses …" invents a record call for an environment named "refuses", in a
+ step that records nothing. Measured here 2026-08-26. A guard cannot tell a
+ mention from a call, so do not write one.
+ 
+-### before step **Resolve the workspace**
+-
+-apps/subscriptiontracker is a pub WORKSPACE member: resolution happens at the repo
+-root, not in the app directory.
+-
+-### before step **Derive the release line from pubspec**
+-
+-── [9]R-2 · THE RELEASE LINE, DERIVED, NEVER TYPED ─────────────────────
+-The same step build-platforms.yml and deploy-web.yml run, reading the same
+-pubspec with the same parser the guard uses. The recipe's `version` and the
+-binary's `--build-name` come from this one value: the Snap Store orders
+-revisions by the recipe's version, and a recipe versioned differently from
+-the binary it packages is two release lines wearing one name.
+-
+-### before step **Build linux**
+-
+-🔴 THE DEFINES ARE WHAT MAKE THIS A REAL BUILD RATHER THAN THE DEMO.
+-`AppConfig.isBackendLive` compares each of them against a PLACEHOLDER;
+-left unpassed, the .snap packed below would ship `MockAuthRepository` and
+-`SeedApiClient` — the exact state the Google Play lane was found in on
+-2026-08-04, with every check green. Graded by
+-tooling/ci/assert-store-build-config.mjs, which derives the required set
+-from `isBackendLive` and the lane from this row's `lane`/`submission`.
+-
+-RELEASE_CHANNEL is `linux-snap` and NOT `linux-appimage`, which is the one
+-place this job differs from build-platforms.yml's Linux build. That build
+-stamps `linux-appimage` because it is a build PROOF that no channel
+-consumes and the register names exactly one direct Linux download channel;
+-this one packs the artifact the Snap Store would take, so the closest true
+-answer here is the exact one. assert-channel-register.mjs §6b resolves the
+-value against a register row, so a typo cannot compile.
+-
+-### before step **Generate the snapcraft recipe**
+-
+-── the recipe, DERIVED from the bundle just built ───────────────────────
+-The same invocation build-platforms.yml makes, against the bundle this job
+-produced. The recipe is generated and never committed: a committed one is a
+-SECOND COPY of five facts that already have one home each — the snap name,
+-the summary, the description, the licence and the Linux binary identity.
+-`--out` IS the snapcraft project directory; `snap/snapcraft.yaml` is the
+-fixed path inside it, and `snapcraft` is run from there below.
+-
+-### before step **The generated recipe is complete, still derived, and packable here**
+-
+-A GENERATOR THAT HAS STOPPED READING THE TREE STILL WRITES A FILE. Same
+-step build-platforms.yml runs, plus the two questions only a job that is
+-about to PACK can ask: does the `base` match the host packing it, and does
+-`source:` resolve — from the project directory, which is how snapcraft
+-resolves it — to a directory holding this app's binary. Both are cheap here
+-and both are silent everywhere else: a wrong base produces a snap that
+-installs and misbehaves, and a `source` off by one `..` is still relative,
+-still free of host paths, and still points at nothing.
+-
+-✅ AND, SINCE THE FIRST DISPATCH, THE TWO RULES OF THE SNAP FORMAT ITSELF
+-that no amount of comparing the recipe to this tree could ever have caught:
+-the licence is an SPDX expression snapd accepts or the key is absent, and
+-the launcher resolves inside the snap. Each carries the exact string
+-snapcraft failed with, so the next reader does not have to spend a runner
+-to find out what these limbs are for.
+-
+-### before step **Install snapcraft**
+-
+-── PACK ────────────────────────────────────────────────────────────────
+-`--destructive-mode` builds on the host; see the header for why that is the
+-right choice on a runner whose release already matches the recipe's base.
+-✅ `sudo` is not caution: snapcraft's build-environment page (fetched
+-2026-08-09) states that a core22+ destructive-mode build needs root-level
+-permissions to install packages, snaps and repositories — which is exactly
+-what `stage-packages` makes it do.
+-
+-✅ THE FIRST DISPATCH (run 31294305898, 2026-08-09) PROVED THE MECHANISM,
+-and this note records it rather than leaving the claim aspirational. It
+-reached snapcraft's own validation, which means: the Flutter build, the
+-recipe generation, `--destructive-mode` on this runner, `plugin: dump`
+-ingesting a `source:` that points OUTSIDE the project directory, and
+-`stage-packages` resolving under snapcraft's own apt handling ALL WORK.
+-
+-🔴 WHAT IT REJECTED WAS THE RECIPE'S CONTENT, in two ways no check in this
+-repository could have seen, because every check compared the recipe to THE
+-TREE and none knew a rule of the snap FORMAT:
+-  · `cannot validate license "proprietary": unknown license: proprietary`
+-  · `Icon 'com.nikatru.subscriptiontracker' … not found in prime directory`
+-Both are fixed at their source in tooling/release/generate-snapcraft.mjs
+-(the `license:` key is omitted, and the launcher moved to `snap/gui/` with
+-an absolute `${SNAP}/meta/gui/…` icon path), and BOTH ARE NOW ASSERTED by
+-the step above — with the failing input recorded, so re-introducing either
+-reddens before a runner is spent rather than after a full Linux build.
++### before step **Take the dry-run job's snap**
+ 
+-🔴 THE OUTPUT NAME IS SNAPCRAFT'S, AND THE PATH THIS REPO COLLECTS IT AT IS
+-OURS. snapcraft writes `<name>_<version>_<arch>.snap`; submit-snap.mjs
+-validates `apps/<app>/build/linux/snap/<app>.snap`, a convention this
+-repository chose. So the file is MOVED rather than guessed at, and the move
+-refuses unless there is EXACTLY ONE candidate: zero means the pack produced
+-nothing while exiting 0, and two means this step would have to choose which
+-snap the channel submits, silently.
++⏱ 2026-10-01 (review AA-23, O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT): this job no longer builds,
++generates a recipe or packs. It takes the dry-run job's `.snap`, checks it against the sha256 that
++job emitted, re-keeps that job's symbols for 90 days, installs snapcraft from the same pinned track
++and uploads. `submit-snap.mjs` PG-5 reads the recipe guard and the pack off the dry-run job this one
++`needs`, because the sha256 check ties these bytes to it. Steps that used to run here (the build, the
++recipe, its grade, the pack) are documented under job `dry-run` above.
+ 
+ ### before step **Upload to the Snap Store**
+ 
+@@ -566,19 +484,13 @@ limb that refuses everything.
+ 
+ ---
+ 
+-## ⏱ 2026-09-25 — why `submit` still packs here, when Play and Windows no longer rebuild
+-
+-O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT moved `submit-play.yml` and `submit-windows-store.yml` onto
+-the dry-run job's bytes, checked by sha256. This lane was left as it is, on purpose:
+-`tooling/release/submit-snap.mjs` PG-5(c) REFUSES `--submit` unless the SAME job runs `snapcraft pack`
+-before it ("this job built the bytes it is sending"), and the change that moved the other two lanes
+-was not allowed to edit a submit script. So this job still builds and packs a second time per
+-dispatch.
++## ⏱ 2026-09-25 — why `submit` still packed here (RETIRED 2026-10-01)
+ 
+-`tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs` records this as its one exception and
+-reads it off `submit-snap.mjs` on every run: when PG-5(c) stops naming the pack, the test fails this
+-lane until it takes its dry run's `.snap` by sha256 too. The same-run sha256 hand-off is at least
+-the provenance PG-5(c) asks for; the script change is the open follow-up.
++Until 2026-10-01 this lane was the one exception to O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT:
++`tooling/release/submit-snap.mjs` PG-5(c) refused `--submit` unless the SAME job ran `snapcraft pack`.
++PG-5 now also accepts the run's dry-run job as the packer when the submit job checks that job's sha256
++before it submits (review AA-23), the submit job takes the dry run's `.snap`, and
++`tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs` grades this lane with no exception.
+ 
+ ---
+ 
+diff --git a/tooling/ci/android-signing.mjs b/tooling/ci/android-signing.mjs
+index bc463682..af3a34b6 100644
+--- a/tooling/ci/android-signing.mjs
++++ b/tooling/ci/android-signing.mjs
+@@ -264,6 +264,8 @@ const { lane, gap, mustSign } = releaseLane({
+   rows: [channel],
+   gitRef: (process.env.GITHUB_REF ?? '').trim(),
+   workflowRef: (process.env.GITHUB_WORKFLOW_REF ?? '').trim(),
++  // (c): the platform proof is a release lane for an armed row (review AA-28).
++  proofWorkflows: [register?.aggregatingJob?.workflow].filter((w) => typeof w === 'string'),
+   label: 'Android',
+ });
+ 
+diff --git a/tooling/ci/appimage-signing.mjs b/tooling/ci/appimage-signing.mjs
+index ab9717a2..a0facd6b 100644
+--- a/tooling/ci/appimage-signing.mjs
++++ b/tooling/ci/appimage-signing.mjs
+@@ -537,6 +537,8 @@ function main() {
+     rows: [channel],
+     gitRef: process.env.GITHUB_REF ?? '',
+     workflowRef: process.env.GITHUB_WORKFLOW_REF ?? '',
++    // (c): the platform proof is a release lane for an armed row (review AA-28).
++    proofWorkflows: [register?.aggregatingJob?.workflow].filter((w) => typeof w === 'string'),
+     label: 'AppImage',
+   });
+ 
+diff --git a/tooling/ci/apple-signing.mjs b/tooling/ci/apple-signing.mjs
+index 7267e137..d235eb99 100644
+--- a/tooling/ci/apple-signing.mjs
++++ b/tooling/ci/apple-signing.mjs
+@@ -1307,6 +1307,8 @@ function main() {
+     rows,
+     gitRef: process.env.GITHUB_REF ?? '',
+     workflowRef: process.env.GITHUB_WORKFLOW_REF ?? '',
++    // (c): the platform proof is a release lane for an armed row (review AA-28).
++    proofWorkflows: [register?.aggregatingJob?.workflow].filter((w) => typeof w === 'string'),
+     label: 'Apple',
+   });
+ 
+@@ -1334,8 +1336,9 @@ function main() {
+     // A release lane whose channels are NOT armed. Printed in full and not
+     // fatal: no lane in this repository emits an .ipa or a .pkg, so failing
+     // would block the release of five ready channels on an enrolment only the
+-    // owner can buy. Guarded by `lane.required`, so a branch push, a fork PR and
+-    // the weekly platform proof print exactly what they printed before.
++    // owner can buy. Guarded by `lane.required`, so a branch push and a fork PR
++    // print exactly what they printed before (the weekly platform proof is a
++    // release lane since 2026-10-01, limb (c) of signing-seam's releaseSignal).
+     if (lane.required) {
+       console.log('');
+       for (const l of unarmedGapLines({
+diff --git a/tooling/ci/assert-android-vapt-manifest.mjs b/tooling/ci/assert-android-vapt-manifest.mjs
+index de11151f..583d445a 100644
+--- a/tooling/ci/assert-android-vapt-manifest.mjs
++++ b/tooling/ci/assert-android-vapt-manifest.mjs
+@@ -59,6 +59,15 @@
+ //                      write permissions. MobSF prints it as "protected by a
+ //                      permission which is not defined in the analysed
+ //                      application" (row O-VAPT-V5-FOREIGN-PERMISSION)
++//   V7 target API      the BUILT <uses-sdk android:targetSdkVersion> is at or
++//                      above tooling/legal/duty-matrix.json
++//                      `play-target-api-level.enforced.targetSdkAtLeast`
++//                      (⏱ 2026-10-01, review AA-22: the floor was graded on the
++//                      Gradle source by assert-android-target-sdk.mjs and the
++//                      built value was only printed here, so a manifest merge or
++//                      a plugin raising nothing and lowering the target shipped
++//                      unseen). The number is read from the matrix, never typed
++//                      here; a matrix with no integer floor is COVERAGE LOST
+ //   V6 logging         not a manifest property, so it is checked where it is
+ //                      decided: `avoid_print` stays at severity error in the one
+ //                      inherited analysis_options.yaml, and the app's own
+@@ -194,6 +203,32 @@ if (!Number.isInteger(targetSdk)) {
+ }
+ const pkg = manifest.attrs.get('package');
+ 
++// ── V7 target API, against the duty matrix (review AA-22) ────────────────────
++const MATRIX_REL = 'tooling/legal/duty-matrix.json';
++const TARGET_DUTY = 'play-target-api-level';
++let targetFloor;
++try {
++  const matrix = JSON.parse(readFileSync(join(ROOT, MATRIX_REL), 'utf8'));
++  targetFloor = (matrix?.duties ?? []).find((d) => d?.id === TARGET_DUTY)?.enforced?.targetSdkAtLeast;
++} catch (e) {
++  coverageLost([
++    `${MATRIX_REL} could not be read under ${ROOT} (${e.message}).`,
++    `Item V7 compares the built targetSdkVersion with duty \`${TARGET_DUTY}\`; without the matrix it has no floor.`,
++  ]);
++}
++if (!Number.isInteger(targetFloor) || targetFloor <= 0) {
++  coverageLost([
++    `${MATRIX_REL} duty \`${TARGET_DUTY}\` carries no integer \`enforced.targetSdkAtLeast\` (got ${JSON.stringify(targetFloor ?? null)}).`,
++    'Item V7 would compare the built targetSdkVersion with nothing, and every manifest would pass it.',
++  ]);
++}
++if (targetSdk < targetFloor) {
++  problems.push(
++    `V7 target API — the built <uses-sdk android:targetSdkVersion> is ${targetSdk}, and ${MATRIX_REL} \`${TARGET_DUTY}\` ` +
++      `requires at least ${targetFloor}. Play refuses the upload; the Gradle source is not what ships, this manifest is.`,
++  );
++}
++
+ // ── the merged manifest's own <permission> declarations, which V5 reads ──────
+ // ⏱ 2026-09-23 · A permission this app does not DECLARE can be declared by any
+ // app installed before it; that app then holds it and reaches whatever it
+@@ -507,4 +542,4 @@ if (problems.length) {
+ }
+ 
+ console.log('');
+-console.log(`${NAME}: OK — V1 debuggable, V2 allowBackup, V3 cleartext, V4 secrets (${attrValuesScanned} value(s)), V5 exported (${exportedSeen.length} exported, each behind a platform or declared-signature permission, or the launcher), V6 logging`);
++console.log(`${NAME}: OK — V1 debuggable, V2 allowBackup, V3 cleartext, V4 secrets (${attrValuesScanned} value(s)), V5 exported (${exportedSeen.length} exported, each behind a platform or declared-signature permission, or the launcher), V6 logging, V7 target API ${targetSdk} >= ${targetFloor}`);
+diff --git a/tooling/ci/assert-channel-register.mjs b/tooling/ci/assert-channel-register.mjs
+index 86a917f9..970b6ac7 100644
+--- a/tooling/ci/assert-channel-register.mjs
++++ b/tooling/ci/assert-channel-register.mjs
+@@ -2469,6 +2469,18 @@ let releaseCensus;
+         'web SHIPS from deploy-web.yml#deploy-web (its lane). This build is the compile proof, not the deploy, ' +
+         'so the stamp is correct and the job is not the lane.',
+     },
++    // ⏱ 2026-10-01 — the weekly proof packs the Linux STORE artifact (review AA-04,
++    // O-LINUX-BUILD-STAMPED-AS-APPIMAGE). Its bundle used to be stamped linux-appimage,
++    // a channel ADR 015 defers, while the .snap it now packs is linux-snap's format.
++    {
++      workflow: '.github/workflows/build-platforms.yml',
++      job: 'linux_web_android',
++      channel: 'linux-snap',
++      why:
++        'the six-platform proof compiles the Linux bundle for the Snap Store and PACKS the .snap with the ' +
++        'recipe and the snapcraft track submit-snap.yml uses, uploading nothing. linux-snap SHIPS from ' +
++        'submit-snap.yml (its lane), so the stamp is correct and this job is the proof, not the lane.',
++    },
+     // ⏱ 2026-09-23 — the store-screenshot capture jobs (O-STORE-SCREENSHOTS). Each
+     // builds the app FOR a channel only to photograph it: the frames must show that
+     // channel's purchase rail, so the stamp is correct, and the binary is thrown
+diff --git a/tooling/ci/assert-platform-proof-fresh.mjs b/tooling/ci/assert-platform-proof-fresh.mjs
+index ace08959..0a2a742b 100644
+--- a/tooling/ci/assert-platform-proof-fresh.mjs
++++ b/tooling/ci/assert-platform-proof-fresh.mjs
+@@ -136,6 +136,7 @@
+ // build inside it. [pipeline 9]R-1 limb B.
+ //
+ // Usage:  node tooling/ci/assert-platform-proof-fresh.mjs
++//         node tooling/ci/assert-platform-proof-fresh.mjs --store-lanes   (the four store dry runs; see STORE_LANE_DEADLINE)
+ // ─────────────────────────────────────────────────────────────────────────────
+ import { readFileSync, existsSync } from 'node:fs';
+ import { spawnSync } from 'node:child_process';
+@@ -145,6 +146,7 @@ import { parseWorkflow, flutterBuilds, composerCallArgs, shellSegments, WORKFLOW
+ import { cronExpressions } from './assert-e2e-proof-fresh.mjs';
+ import { flutterAppChannel, undeclaredSurfaceLine } from './channel-surface.mjs';
+ import { anchoredRunRead, gradeUnion, describeRead } from './anchored-run-read.mjs';
++import { armingOf } from './channel-arming.mjs';
+ 
+ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+ const WORKFLOW = 'build-platforms.yml';
+@@ -960,7 +962,195 @@ export function gradeRunHistory(read, nowMs) {
+   return gradeUnion(read, (runs) => evaluateFreshness(runs, nowMs), newestScheduledGreen);
+ }
+ 
++// ── 🔴 THE STORE LANES' REHEARSALS, GRADED FOR AGE TOO (`--store-lanes`) ────────
++// ⏱ ADDED 2026-10-01 (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE). The four
++// submit-*.yml dry runs were dispatch-only and nothing graded their freshness:
++// the Apple and Windows lanes had run once ever and the Snap lane last passed
++// 2026-08-09, while every row they rehearse was ARMED. The same two pieces as the
++// six-platform proof above: each lane now runs its dry-run job on a weekly
++// `schedule:`, and THIS limb fails when an armed row's submission workflow has no
++// green run inside MAX_AGE_DAYS.
++//
++// THE SUBJECT IS DERIVED, NEVER LISTED: every row tooling/channel-arming.mjs
++// reports ARMED whose `submission.job` is `dry-run`, by its `submission.workflow`.
++// Zero such rows is COVERAGE LOST: an empty subject set is the green-over-nothing
++// shape. A lane with no readable weekly cron, or none at least as fast as the
++// ceiling, fails here before any run is read, for the reason the build-platforms
++// clause gives above.
++//
++// ANY successful run counts, a dispatch as much as a schedule: what this asks is
++// "did the rehearsal pass recently", and the submit job of a confirmed dispatch
++// runs only after the dry-run job passed. (The build-platforms clause above counts
++// only `schedule`, because it is ALSO the evidence that its timer is alive.)
++//
++// ⚠️ A DATED START, LOUDLY. The schedules land with this limb, and today three of
++// the four lanes are past the ceiling, so before STORE_LANE_DEADLINE a stale lane
++// PRINTS ⬜ and from it the same answer FAILS. Two weekly cycles fit before it.
++// Delete the date, not the limb, once every lane has rehearsed on its timer.
++//
++// Offline: `--store-lanes --store-runs-file <json> --now <iso>`, where the JSON
++// maps each workflow FILE NAME to a fixture in anchored-run-read's shapes.
++export const STORE_LANE_DEADLINE = '2026-10-21';
++
++/** The armed rows whose submission has a dry-run job, grouped by workflow:
++ *  `[{ workflow, rows: [id] }]`, in register order. Pure. */
++export function storeLaneSubjects(register) {
++  const by = new Map();
++  for (const row of register?.channels ?? []) {
++    if (!armingOf(row).armed) continue;
++    const sub = row?.submission;
++    if (typeof sub?.workflow !== 'string' || sub.job !== 'dry-run') continue;
++    if (!by.has(sub.workflow)) by.set(sub.workflow, []);
++    by.get(sub.workflow).push(row.id);
++  }
++  return [...by].map(([workflow, rows]) => ({ workflow, rows }));
++}
++
++/** One store lane's timer, read from its own file: `{ problem, crons, interval }`. */
++export function storeLaneSchedule(root, workflowRel) {
++  const wf = parseWorkflow(root, workflowRel);
++  if (!wf) return { problem: `${workflowRel} does not exist or could not be parsed, so the rehearsal of the rows it serves has no timer to read.` };
++  if (!wf.jobs.has('dry-run')) return { problem: `${workflowRel} has no \`dry-run\` job, and the register names that job as the rehearsal.` };
++  const header = wf.lines
++    .slice(0, wf.jobsAt === null || wf.jobsAt === -1 ? wf.lines.length : wf.jobsAt)
++    .map((l) => l.text)
++    .join('\n');
++  const crons = /^\s+schedule:\s*$/m.test(header) ? cronExpressions(header) : [];
++  if (crons.length === 0) {
++    return { problem: `${workflowRel} declares no \`schedule:\` cron, so its dry run runs only when somebody dispatches it, and ages unseen in between.` };
++  }
++  const interval = impliedIntervalDays(crons);
++  if (interval === null) return { problem: `${workflowRel} declares a cron this guard cannot read: [${crons.join(', ')}]. Use the 5-field numeric form.` };
++  if (interval >= MAX_AGE_DAYS) {
++    return { problem: `${workflowRel}'s schedule [${crons.join(', ')}] fires only every ${interval} day(s), and the ceiling is ${MAX_AGE_DAYS}: it cannot keep its rehearsal fresh.` };
++  }
++  return { problem: null, crons, interval };
++}
++
++/** The newest green run of one store lane, against the ceiling. Pure. */
++export function evaluateStoreLane(runs, nowMs, maxAgeDays = MAX_AGE_DAYS) {
++  if (!Array.isArray(runs)) return { ok: false, unreadable: true, reason: 'run list was not an array' };
++  const green = runs.filter((r) => r && r.conclusion === 'success' && !Number.isNaN(Date.parse(r.updated_at ?? '')));
++  if (green.length === 0) return { ok: false, reason: 'no successful run at all' };
++  const newest = green.reduce((a, b) => (Date.parse(b.updated_at) > Date.parse(a.updated_at) ? b : a));
++  const ageDays = (nowMs - Date.parse(newest.updated_at)) / 86_400_000;
++  return {
++    ok: ageDays <= maxAgeDays,
++    ageDays,
++    runId: newest.id,
++    event: newest.event ?? '(no event)',
++    reason: ageDays <= maxAgeDays ? null : `the newest green run ${newest.id} (${newest.event ?? 'no event'}) is ${ageDays.toFixed(1)} days old, ceiling ${maxAgeDays}`,
++  };
++}
++
++const newestGreen = (runs) => {
++  const g = (runs ?? []).filter((r) => r && r.conclusion === 'success' && !Number.isNaN(Date.parse(r.updated_at ?? '')));
++  return g.length ? g.reduce((a, b) => (Date.parse(b.updated_at) > Date.parse(a.updated_at) ? b : a)) : null;
++};
++
++async function storeLanesMain() {
++  const nowFlag = flag('--now');
++  const nowMs = nowFlag ? Date.parse(nowFlag) : Date.now();
++  if (Number.isNaN(nowMs)) {
++    fail(`--now is not a parseable date: ${nowFlag}`);
++    return;
++  }
++  let register;
++  try {
++    register = JSON.parse(readFileSync(join(ROOT, REGISTER_REL), 'utf8'));
++  } catch (e) {
++    lost(`${REGISTER_REL} could not be read (${e.message}), so the armed store rows have no source.`);
++    return;
++  }
++  const subjects = storeLaneSubjects(register);
++  if (subjects.length === 0) {
++    lost(`COVERAGE LOST — no ARMED row of ${REGISTER_REL} names a submission workflow with a \`dry-run\` job, so this limb would grade nothing and print ok.`);
++    return;
++  }
++  const fixtureFile = flag('--store-runs-file');
++  let fixtures = null;
++  if (fixtureFile) {
++    console.log('!!  OFFLINE FIXTURE MODE — --store-runs-file is set. This must NEVER appear in a real CI log.');
++    try {
++      fixtures = JSON.parse(readFileSync(fixtureFile, 'utf8'));
++    } catch (e) {
++      fail(`could not read fixture ${fixtureFile}: ${e.message}`);
++      return;
++    }
++  }
++  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
++  const repo = process.env.GITHUB_REPOSITORY || DEFAULT_REPO;
++  const enforced = nowMs >= Date.parse(`${STORE_LANE_DEADLINE}T00:00:00Z`);
++  let fresh = 0;
++  for (const { workflow, rows } of subjects) {
++    const file = workflow.split('/').pop();
++    const sched = storeLaneSchedule(ROOT, workflow);
++    if (sched.problem) {
++      fail(`store lane ${file} (armed: ${rows.join(', ')}) — ${sched.problem}`);
++      continue;
++    }
++    let read;
++    try {
++      if (fixtures !== null) {
++        if (!(file in fixtures)) throw new Error(`the fixture carries no run history for ${file}`);
++        read = await readStoreLaneHistory({ repo, file, fixture: fixtures[file], nowMs });
++      } else {
++        if (!token) throw new Error('no GITHUB_TOKEN / GH_TOKEN in the environment — cannot read run history, so this fails closed');
++        read = await readStoreLaneHistory({ repo, file, token, nowMs });
++      }
++    } catch (e) {
++      lost(`store lane ${file} — its run history could not be read: ${e.message}`);
++      continue;
++    }
++    console.log(`      READ    ${file} :  ${describeRead(read, newestGreen)}`);
++    const verdict = gradeUnion(read, (runs) => evaluateStoreLane(runs, nowMs), newestGreen);
++    if (verdict.stalePageCarried) console.log(verdict.stalePageCarried);
++    if (verdict.unreadable) {
++      lost(`store lane ${file} — run history unreadable: ${verdict.reason}`);
++      continue;
++    }
++    if (verdict.ok) {
++      fresh++;
++      console.log(
++        `ok  store lane ${file} (armed: ${rows.join(', ')}) — newest green run ${verdict.runId} (${verdict.event}) is ${verdict.ageDays.toFixed(1)} day(s) old ` +
++          `(ceiling ${MAX_AGE_DAYS}; schedule [${sched.crons.join(', ')}] every ${sched.interval} day(s))`,
++      );
++      continue;
++    }
++    const line = `store lane ${file} (armed: ${rows.join(', ')}) is not fresh — ${verdict.reason}. Its rows are armed, so the next real submission would run a path nobody has rehearsed since.`;
++    if (enforced) {
++      fail(line);
++      console.error(`      Remedy: fix what keeps its weekly dry run from going green; a dispatch (gh workflow run ${file} -f app=<id>) discharges it once.`);
++    } else {
++      console.log(`⬜  ${line}`);
++      console.log(`      PRINTED, NOT FAILED, until ${STORE_LANE_DEADLINE}: the weekly schedule landed with this limb. From that date this line FAILS.`);
++    }
++  }
++  if (!process.exitCode) {
++    console.log(`ok  store lanes — ${subjects.length} armed submission workflow(s) graded, ${fresh} fresh within ${MAX_AGE_DAYS} day(s)`);
++  }
++}
++
++/** The run-history read of one store lane, anchored as the six-platform one is. */
++export async function readStoreLaneHistory({ repo = DEFAULT_REPO, file, token = null, read = null, fixture = undefined, nowMs = Date.now(), retry = {} } = {}) {
++  return anchoredRunRead({
++    workflow: file,
++    url: `https://api.github.com/repos/${repo}/actions/workflows/${file}/runs?status=success&per_page=100`,
++    token,
++    read,
++    fixture,
++    nowMs,
++    what: `the successful-run history of ${file} in ${repo}`,
++    label: `${file} runs`,
++    retry,
++  });
++}
++
+ async function main() {
++  if (process.argv.includes('--store-lanes')) {
++    await storeLanesMain();
++    return;
++  }
+   const coverage = platformProofCoverage();
+   if (coverage.problem) {
+     // A composition that could not be read judged nothing: exit 2, not 1 (W37-R2).
+diff --git a/tooling/ci/assert-seams-wired.mjs b/tooling/ci/assert-seams-wired.mjs
+index d7446e81..9b7f5845 100644
+--- a/tooling/ci/assert-seams-wired.mjs
++++ b/tooling/ci/assert-seams-wired.mjs
+@@ -1269,8 +1269,12 @@ try {
+    *  ⏱ RE-BASED 18 → 16 on 2026-09-25 (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT), measured
+    *  on the C2 tree: 16 graded, and the two gone are exactly the builds C2 removed —
+    *  submit-play.yml#submit `flutter build appbundle` and submit-windows-store.yml#submit
+-   *  `flutter build windows`, whose jobs now ship their dry-run job's bytes. */
+-  const MIN_GRADED = 16;
++   *  `flutter build windows`, whose jobs now ship their dry-run job's bytes.
++   *
++   *  ⏱ RE-BASED 16 → 15 on 2026-10-01 (review AA-23, O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT),
++   *  measured on that tree: 15 graded, and the one gone is exactly the build that change removed —
++   *  submit-snap.yml#submit `flutter build linux`, whose job now ships its dry-run job's .snap. */
++  const MIN_GRADED = 15;
+   const DSN_QUESTION = 'whether its release builds must --dart-define GLITCHTIP_DSN';
+ 
+   let register = null;
+diff --git a/tooling/ci/assert-update-coverage.mjs b/tooling/ci/assert-update-coverage.mjs
+index 793e29b37d1723a12ed088738780acfcd106810c..ef7dd7fed0c4fc547aaf982778cdea90620ca386 100644
+GIT binary patch
+delta 2485
+zcmb7GU2o$=6cs`Osqlh?v^*emw;L&Tn~t*|0;%0>6-t1z-L%`3l~CN)6MNiD>&!%+
+zag(Tx%s=3v{01c6Kr8;xKJd&>;LbQs({2}um)MEs-nr-8bI;9h`R`Zn{lV(ru{4#b
+zBEwAe9YRPZhFl01bp#!TDUJ2EP?{!*axUPUrHV_TY7p~;ZAqb-&<dumyRr1TSO5F{
+z+*?^$f)#l4%b)P5{^-lKhxN7kLvT`d&e;f>&9(Xy4?iD0cHzy>zrw-yE$FnHdt3X>
+zZx3L*-8pFP?7(&hny|OshJ)Q*V$uaFizFzl2zXJA{bI|5wY4yzO7SoNozpX>VAQ9Y
+zVXdJ143w5Bt15_COtVCrbULNs87P*X<6$Z6v4~D;prm~#_9hcNV(cuLz%Z3Eh9O2N
+zpdzw|q+sT0@~Nyh;2IJtayB~^$}EW>lmiBFDhHrP5+WYQEJel^iXYHZB)?{}3JGUy
+zViMwITFQir6R)J4oGPqTQ63>Y9`*?wV0{G=AxDsK116^yU|;}Pc8=|d0G!~dz3Lem
+zdrwoY&YlHsajPL}0wbB8#fi;haZz0|tt`Sa9}F_35u;KNAn|>QQb~dWBZXIabAP+}
+z^-c?efnF!o*bqn=jTBN=l!!>z@kqioOKCC#f_$b7IFgLr2_-Te%HhP)fnZUWSaNhu
+zMaUxPO+d(=j3!ngdl?4G^L*CyIULQ#C{UW1%O|F)U{Se&iS?G)cqmhiccHef<#>Fs
+z-`skB{JixOG@yEm(dtGS6=x#UI22$8XYGGY&edPbm3$^>g_m>>H<kcmnSxW)(ly1_
+zz<@Y3EG*Uzo0}kTre4sY<GOHxkpMgf=e~F3lM}A{S<m-MB9!lSkG#WGpG@fHAgOpn
+zGo_uF=Ly4TyiRkGF>^o6h(P(Fq8iZADGJdsMYu!_v13lv7gZd2bJm_BSaXYpeaA6h
+zYrtJ-Je!qNrVC}nFq=6*QZ`Iz$Q;i($}fH8J|HU<uLjjJX#vFZdxmvit<E^|d)*^n
+z9Ih0<TYdYz84{Bofs||(c6MPItASVt4y*96hR`CmZa)da8aQrV(2E{c;3=L{#Adjh
+zr%RYP(S2w%8c=sp$~sF06wYbligp##*qGboCh5-2?OIK?$tJm;44Hg^qi*f!KBlfJ
+z%XJklFTu1i!hVf?&p`w3CG0Xp@8J=8+hvbwddZ>_=9ZnbN!+WK4?ey6hkTd^m5W=o
+zPp`+(^uSSbvKH*fSqK}Tu$-~&BxV~EBfjanc@xvXC8v@Lr;1H;r>?cH%EhbJerJ2P
+z-8tURTRT$-VAV>*$RzMF#~ox${lLt7<>H6VZkrVFc|36nPK?B}Byp$MLaEUe{I_fj
+z<L%kP53O;d<L8T(KO=Y`jYDQ4LXV(m1Pj$wafZ>#PS94$ftfFZ8!MnR|7*u*fL*bs
+z4<nqpnbGI(a(Ys&Sx#nZdrL@0cnbzFHd9|V^5&4w-M8ED)!}M)xq7(imumQ6OpMa6
+zUOv8ua`-sE*}Zwjh0g!j#)aE%eFKi^R1uENaS7}hv-hvv9+oSX@nxjGfIMGB#$}6L
+zu*fdJ)xEDi$^SzEW;<lKhxveQEGz{yLfTViVa^s!u^Mm>7&-LOmCALXNKo(!P|h*1
+zMBy$mhB!vE8-Jk*7h#e`OgVQ55vlqtzb*5-h_dUP!Z}U38Omab+67li2W{E>`6%|?
+c;#8QScsC0q_`IwgMPP(*LmjWTo`fI$3$VXB{{R30
+
+delta 18
+acmZ2EnQ>YDhE#*i>kS?=Z}zr};|2gxM+e0K
+
+diff --git a/tooling/ci/signing-seam.mjs b/tooling/ci/signing-seam.mjs
+index 386768db..de673637 100644
+--- a/tooling/ci/signing-seam.mjs
++++ b/tooling/ci/signing-seam.mjs
+@@ -70,12 +70,14 @@ export function decideSecretSet(names, values) {
+  *   (a) a TAG push — `gitRef` starting `refs/tags/`;
+  *   (b) the rows' DECLARED submission workflow — `workflowRef`'s PATH (the part
+  *       before `@`, so a branch name cannot change the answer) ending in one of
+- *       `submissionWorkflows`.
++ *       `submissionWorkflows`;
++ *   (c) the PLATFORM PROOF — the same path test against `proofWorkflows`, the
++ *       register's `aggregatingJob.workflow` (⏱ 2026-10-01, review AA-28).
+  *
+  * `blind` names each limb that could not contribute, so a narrowed derivation is
+  * printed rather than hidden. `label` is the adapter's word for its rows.
+  */
+-export function releaseSignal({ gitRef = '', workflowRef = '', submissionWorkflows = [], label } = {}) {
++export function releaseSignal({ gitRef = '', workflowRef = '', submissionWorkflows = [], proofWorkflows = [], label } = {}) {
+   if (typeof label !== 'string' || label.trim() === '') throw new TypeError('releaseSignal needs the label its messages name the rows by');
+   const reasons = [];
+   const blind = [];
+@@ -85,6 +87,21 @@ export function releaseSignal({ gitRef = '', workflowRef = '', submissionWorkflo
+ 
+   if (ref.startsWith('refs/tags/')) reasons.push(`the run is a TAG push (${ref})`);
+ 
++  // (c) ⏱ 2026-10-01 (review AA-28, O-WEEKLY-PROOF-ACCEPTS-UNSIGNED-ARMED-CHANNELS): the PLATFORM
++  // PROOF — the register's `aggregatingJob.workflow`, passed by the adapter — on any ref. Its weekly
++  // run is the evidence that every armed channel builds its store artifact; an unsigned build of an
++  // armed row went green there, so the proof certified an artifact no store would take. Matched on
++  // the PATH before `@`, as limb (b) is, so no branch name changes the answer.
++  if (wfRef !== '') {
++    const runningPath = wfRef.split('@')[0];
++    for (const w of new Set(proofWorkflows.filter((x) => typeof x === 'string' && x !== ''))) {
++      if (runningPath.endsWith(`/${w}`) || runningPath === w) {
++        reasons.push(`this is the platform proof (${w}), whose green run says every armed channel built its store artifact`);
++        break;
++      }
++    }
++  }
++
+   if (declared.length > 0 && wfRef !== '') {
+     const runningPath = wfRef.split('@')[0];
+     for (const w of new Set(declared)) {
+@@ -120,7 +137,7 @@ export function releaseSignal({ gitRef = '', workflowRef = '', submissionWorkflo
+  * Throws on no rows: every adapter exits COVERAGE LOST before this when its row
+  * is absent, and a verdict over zero rows is "nothing is armed", a pass.
+  */
+-export function releaseLane({ rows, gitRef = '', workflowRef = '', label } = {}) {
++export function releaseLane({ rows, gitRef = '', workflowRef = '', proofWorkflows = [], label } = {}) {
+   if (!Array.isArray(rows) || rows.length === 0 || rows.some((r) => r === null || typeof r !== 'object')) {
+     throw new TypeError('releaseLane needs the register rows the adapter serves — a verdict over none arms nothing');
+   }
+@@ -128,6 +145,7 @@ export function releaseLane({ rows, gitRef = '', workflowRef = '', label } = {})
+     gitRef,
+     workflowRef,
+     submissionWorkflows: rows.map((r) => r.submission?.workflow).filter((w) => typeof w === 'string'),
++    proofWorkflows,
+     label,
+   });
+   const gap = releaseGapVerdict(rows);
+diff --git a/tooling/ci/test/android-signing.test.mjs b/tooling/ci/test/android-signing.test.mjs
+index 6b584fbf..0192b2af 100644
+--- a/tooling/ci/test/android-signing.test.mjs
++++ b/tooling/ci/test/android-signing.test.mjs
+@@ -452,6 +452,33 @@ const FULL = () => ({
+ const ON_TAG = { GITHUB_REF: 'refs/tags/subscriptiontracker-v1.0.0' };
+ const ON_SUBMISSION_WF = { GITHUB_WORKFLOW_REF: `globalonlinedeveloper/repo/${SUBMIT_WF}@refs/heads/main` };
+ 
++// ⏱ 2026-10-01 (review AA-28): the weekly platform proof over an ARMED row must sign.
++describe('android-signing — the platform proof is a release lane for an armed row', () => {
++  const PROOF_RUN = {
++    GITHUB_REF: 'refs/heads/main',
++    GITHUB_WORKFLOW_REF: 'globalonlinedeveloper/repo/.github/workflows/build-platforms.yml@refs/heads/main',
++  };
++  const withProof = (root) => {
++    const f = join(root, 'tooling', 'channel-register.json');
++    const reg = JSON.parse(readFileSync(f, 'utf8'));
++    reg.aggregatingJob = { workflow: '.github/workflows/build-platforms.yml', job: 'all_platforms' };
++    writeFileSync(f, JSON.stringify(reg));
++    return root;
++  };
++
++  test('RED CONTROL: a proof run with the key block removed FAILS over the armed android-play row', () => {
++    const { r } = runPrepare(withProof(makeRoot({})), PROOF_RUN);
++    assert.equal(r.status, 1, out(r));
++    assert.match(out(r), /required because this is the platform proof \(\.github\/workflows\/build-platforms\.yml\)/);
++    assert.match(out(r), /this is a RELEASE lane/);
++  });
++
++  test('the same proof run over an UNARMED row stays a legal debug build proof', () => {
++    const { r } = runPrepare(withProof(makeRoot({ armed: false })), PROOF_RUN);
++    assert.equal(r.status, 0, out(r));
++  });
++});
++
+ describe('android-signing — a release lane is DERIVED, not declared in YAML', () => {
+   test('a TAG push requires signing, and says which signal decided it', () => {
+     const { r } = runPrepare(makeRoot({}), ON_TAG);
+diff --git a/tooling/ci/test/android-vapt-manifest.test.mjs b/tooling/ci/test/android-vapt-manifest.test.mjs
+index 736140e7..ea05dd6d 100644
+--- a/tooling/ci/test/android-vapt-manifest.test.mjs
++++ b/tooling/ci/test/android-vapt-manifest.test.mjs
+@@ -248,8 +248,13 @@ const failLines = (out) => out.split('\n').filter((l) => l.startsWith('FAIL '));
+ const GOOD_KT = 'package com.example.demo\n\nimport io.flutter.embedding.android.FlutterActivity\n\nclass MainActivity : FlutterActivity()\n';
+ const GOOD_ANALYSIS = 'analyzer:\n  errors:\n    avoid_print: error\n';
+ 
+-function fixture({ manifest = baseManifest(), axmlOpts, entries, kotlin = GOOD_KT, analysis = GOOD_ANALYSIS, dart = '', generated = null, git = true } = {}) {
++// V7's floor: the duty-matrix row the guard reads, written into each fixture root.
++// `null` writes a matrix with no such row; the default is the real floor's shape.
++function fixture({ manifest = baseManifest(), axmlOpts, entries, kotlin = GOOD_KT, analysis = GOOD_ANALYSIS, dart = '', generated = null, git = true, targetFloor = 36 } = {}) {
+   const dir = join(TMP, `r${seq++}`);
++  mkdirSync(join(dir, 'tooling', 'legal'), { recursive: true });
++  const duties = targetFloor === null ? [] : [{ id: 'play-target-api-level', enforced: { targetSdkAtLeast: targetFloor } }];
++  writeFileSync(join(dir, 'tooling', 'legal', 'duty-matrix.json'), JSON.stringify({ duties }));
+   const kt = join(dir, 'apps', 'demo', 'android', 'app', 'src', 'main', 'kotlin', 'com', 'example', 'demo');
+   mkdirSync(kt, { recursive: true });
+   if (kotlin !== null) writeFileSync(join(kt, 'MainActivity.kt'), kotlin);
+@@ -338,13 +343,29 @@ describe('assert-android-vapt-manifest', () => {
+   });
+ 
+   test('V3: an absent usesCleartextTraffic fails below targetSdk 28 and passes at 28', () => {
+-    const low = run(fixture({ manifest: baseManifest({ targetSdk: 27 }) }));
++    const low = run(fixture({ manifest: baseManifest({ targetSdk: 27 }), targetFloor: 21 }));
+     assert.equal(low.code, 1, low.out);
+     assert.match(low.out, /FAIL V3 cleartext — usesCleartextTraffic is absent and targetSdkVersion is 27/);
+-    const at = run(fixture({ manifest: baseManifest({ targetSdk: 28 }) }));
++    const at = run(fixture({ manifest: baseManifest({ targetSdk: 28 }), targetFloor: 21 }));
+     assert.equal(at.code, 0, at.out);
+   });
+ 
++  // ⏱ 2026-10-01 (review AA-22): the BUILT target, against the duty matrix's floor.
++  test('V7: a built targetSdkVersion below the duty-matrix floor fails, and at the floor passes', () => {
++    const low = run(fixture({ manifest: baseManifest({ targetSdk: 35 }) }));
++    assert.equal(low.code, 1, low.out);
++    assert.match(low.out, /FAIL V7 target API — the built <uses-sdk android:targetSdkVersion> is 35, and tooling\/legal\/duty-matrix\.json `play-target-api-level` requires at least 36/);
++    const at = run(fixture({ manifest: baseManifest({ targetSdk: 36 }) }));
++    assert.equal(at.code, 0, at.out);
++    assert.match(at.out, /V7 target API 36 >= 36/);
++  });
++
++  test('V7: a duty matrix with no play-target-api-level floor is COVERAGE LOST, not a pass', () => {
++    const { code, out } = run(fixture({ targetFloor: null }));
++    assert.equal(code, 2, out);
++    assert.match(out, /COVERAGE LOST — tooling\/legal\/duty-matrix\.json duty `play-target-api-level` carries no integer `enforced\.targetSdkAtLeast`/);
++  });
++
+   test('V4: a Google API key in a meta-data value fails', () => {
+     const md = el('meta-data', [A('name', 'com.google.android.geo.MAPS'), A('value', `AIza${'b'.repeat(35)}`)]);
+     const { code, out } = run(fixture({ manifest: baseManifest({ extraComponents: [md] }) }));
+@@ -368,7 +389,7 @@ describe('assert-android-vapt-manifest', () => {
+ 
+   test('V5: a service exported IMPLICITLY by its intent-filter fails', () => {
+     const svc = el('service', [A('name', 'io.plugin.Svc')], [el('intent-filter', [], [el('action', [A('name', 'io.plugin.BIND')])])]);
+-    const { code, out } = run(fixture({ manifest: baseManifest({ targetSdk: 30, app: { usesCleartextTraffic: false }, extraComponents: [svc] }) }));
++    const { code, out } = run(fixture({ manifest: baseManifest({ targetSdk: 30, app: { usesCleartextTraffic: false }, extraComponents: [svc] }), targetFloor: 21 }));
+     assert.equal(code, 1, out);
+     assert.match(out, /FAIL V5 exported — <service android:name="io\.plugin\.Svc"> is exported \(implicitly, by its intent-filter\)/);
+   });
+diff --git a/tooling/ci/test/apple-signing.test.mjs b/tooling/ci/test/apple-signing.test.mjs
+index b2447bce..d2c8c004 100644
+--- a/tooling/ci/test/apple-signing.test.mjs
++++ b/tooling/ci/test/apple-signing.test.mjs
+@@ -1441,6 +1441,31 @@ describe('apple-signing — the endings, run as a process', () => {
+   });
+ });
+ 
++// ⏱ 2026-10-01 (review AA-28, O-WEEKLY-PROOF-ACCEPTS-UNSIGNED-ARMED-CHANNELS): the brief's red control,
++// a build-platforms dispatch with the Apple env block removed, run as a process.
++describe('apple-signing — the platform proof over ARMED Apple rows must sign', () => {
++  const PROOF_RUN = { GITHUB_REF: 'refs/heads/feat/x', GITHUB_WORKFLOW_REF: 'globalonlinedeveloper/repo/.github/workflows/build-platforms.yml@refs/heads/feat/x' };
++  const withProof = (root) => {
++    const f = join(root, 'tooling', 'channel-register.json');
++    const reg = JSON.parse(readFileSync(f, 'utf8'));
++    reg.aggregatingJob = { workflow: '.github/workflows/build-platforms.yml', job: 'all_platforms' };
++    writeFileSync(f, JSON.stringify(reg));
++    return root;
++  };
++  const ARMED_LANE = { workflow: '.github/workflows/build-platforms.yml', job: 'apple' };
++
++  test('RED CONTROL: a build-platforms dispatch with the Apple env block removed FAILS', () => {
++    const { r } = runPrepare(withProof(makeRoot({ lane: ARMED_LANE })), PROOF_RUN);
++    assert.equal(r.status, 1, out(r));
++    assert.match(out(r), /required because this is the platform proof \(\.github\/workflows\/build-platforms\.yml\)/);
++  });
++
++  test('the same run over UNARMED Apple rows stays a legal unsigned build proof', () => {
++    const { r } = runPrepare(withProof(makeRoot()), PROOF_RUN);
++    assert.equal(r.status, 0, out(r));
++  });
++});
++
+ describe('apple-signing — a secret that is not what it claims to be', () => {
+   test('FAILS when the .p12 base64 does not round-trip', () => {
+     const { r } = runPrepare(makeRoot(), { ...FULL(), [ROLE_ENV.p12]: 'this is not base64 !!!' });
+diff --git a/tooling/ci/test/appstore-submission.test.mjs b/tooling/ci/test/appstore-submission.test.mjs
+index 9d195ab1..623ca5f4 100644
+--- a/tooling/ci/test/appstore-submission.test.mjs
++++ b/tooling/ci/test/appstore-submission.test.mjs
+@@ -465,15 +465,19 @@ describe('submit-appstore — both Apple channels are walkable, and --submit ref
+     // RE-PINNED 2026-09-26 (O-STORE-LANES-HARD-WIRE-ONE-APP): the certificate was issued on
+     // 2026-09-09, so "no distribution certificate" was the stale reason. The measured one:
+     // unsigned by choice until the signing seam lands in the lane, and --submit refuses.
+-    assert.match(out, /builds unsigned by choice until the signing seam lands in it, and --submit refuses/);
++    // RE-PINNED 2026-10-01 (review AA-18): the lane now signs in-lane and never passes the flag.
++    assert.match(out, /The submit-appstore\.yml lane never passes this flag: it signs and packages first/);
++    assert.doesNotMatch(out, /builds unsigned by choice/, 'the 2026-09-26 reason is gone with the unsigned lane');
+     assert.doesNotMatch(out, /needs a distribution certificate|returned an EMPTY set/, 'the stale reason is gone');
+     assert.doesNotMatch(out, /OWNER_QUEUE A-4 gates/, 'A-4 closed 2026-08-31');
+   });
+ 
++  // THE RED CONTROL of review AA-18: the lane's own dry run, with the artifact missing, FAILS.
+   test('the absent-artifact refusal gives the measured reason, not the stale one', () => {
+     const { code, out } = ios(tree());
+     assert.equal(code, 1, out);
+-    assert.match(out, /builds unsigned by choice until the signing seam lands in it, and --submit refuses, so pass --allow-missing-artifact/);
++    assert.match(out, /submit-appstore\.yml signs and packages it immediately before running this dry run/);
++    assert.doesNotMatch(out, /builds unsigned by choice/);
+     assert.doesNotMatch(out, /cannot be produced without a distribution certificate/);
+   });
+ 
+diff --git a/tooling/ci/test/coverage-manifest.json b/tooling/ci/test/coverage-manifest.json
+index 7cb110ed..6c00276e 100644
+--- a/tooling/ci/test/coverage-manifest.json
++++ b/tooling/ci/test/coverage-manifest.json
+@@ -33,13 +33,13 @@
+     4,
+ 
+   "android-signing.test.mjs":
+-    66,
++    68,
+ 
+   "android-target-sdk.test.mjs":
+     34,
+ 
+   "android-vapt-manifest.test.mjs":
+-    49,
++    51,
+ 
+   "app-address-shape.test.mjs":
+     32,
+@@ -84,7 +84,7 @@
+     19,
+ 
+   "apple-signing.test.mjs":
+-    125,
++    127,
+ 
+   "apps-gov-in-apk.test.mjs":
+     57,
+@@ -678,7 +678,7 @@
+     36,
+ 
+   "platform-proof-fresh.test.mjs":
+-    91,
++    102,
+ 
+   "platform-register.test.mjs":
+     107,
+@@ -690,7 +690,7 @@
+     61,
+ 
+   "play-submission.test.mjs":
+-    112,
++    117,
+ 
+   "policy-archive.test.mjs":
+     31,
+@@ -897,7 +897,7 @@
+     9,
+ 
+   "signing-seam.test.mjs":
+-    40,
++    44,
+ 
+   "signup-consent-shape.test.mjs":
+     34,
+@@ -927,7 +927,7 @@
+     30,
+ 
+   "snap-submission.test.mjs":
+-    48,
++    50,
+ 
+   "snapcraft-generable.test.mjs":
+     92,
+@@ -1014,7 +1014,7 @@
+     7,
+ 
+   "submit-lanes-take-dry-run-bytes.test.mjs":
+-    10,
++    11,
+ 
+   "supabase-templates.test.mjs":
+     48,
+@@ -1044,7 +1044,7 @@
+     26,
+ 
+   "update-coverage.test.mjs":
+-    35,
++    41,
+ 
+   "vacuity-a.test.mjs":
+     4,
+diff --git a/tooling/ci/test/glitchtip-project.test.mjs b/tooling/ci/test/glitchtip-project.test.mjs
+index 29914808..6d235ce1 100644
+--- a/tooling/ci/test/glitchtip-project.test.mjs
++++ b/tooling/ci/test/glitchtip-project.test.mjs
+@@ -95,8 +95,11 @@ describe('the repaired tree passes', () => {
+     // (O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT), eleven after, and the two gone are
+     // exactly the symbol uploads of submit-play.yml#submit and submit-windows-store.yml#submit,
+     // whose jobs now ship their dry-run job's bytes (its mapping went up from that job).
++    // ⏱ RE-BASED 11 → 10 on 2026-10-01 (review AA-23), measured on that tree: ten, and the one
++    // gone is exactly the symbol upload of submit-snap.yml#submit, whose job now ships its
++    // dry-run job's .snap (that job's upload carries the mapping).
+     const named = r.out.split('\n').filter((l) => /^\s+\S+\.ya?ml:\d+/.test(l));
+-    assert.ok(named.length >= 11, `only ${named.length} call site(s) named:\n${r.out}`);
++    assert.ok(named.length >= 10, `only ${named.length} call site(s) named:\n${r.out}`);
+   });
+ 
+   test('at least one call site actually reads the declaration in its own step', () => {
+diff --git a/tooling/ci/test/guards.test.mjs b/tooling/ci/test/guards.test.mjs
+index 4c3d58cb..ba0f24ee 100644
+--- a/tooling/ci/test/guards.test.mjs
++++ b/tooling/ci/test/guards.test.mjs
+@@ -2158,7 +2158,8 @@ describe('assert-workflow-hardening', () => {
+       // replacement is a substitution pattern and would eat the very braces
+       // under test.
+       const anchor = '          echo "installing: ${deps}"\n';
+-      assert.equal(REAL_SNAP.split(anchor).length - 1, 2, 'the run: body this case extends must still be there');
++      // ⏱ 2026-10-01: once, not twice — the submit job takes the dry run's .snap and installs no build deps.
++      assert.equal(REAL_SNAP.split(anchor).length - 1, 1, 'the run: body this case extends must still be there');
+       const shellier = REAL_SNAP.replace(
+         anchor,
+         () => `${anchor}          echo "\${SNAP_NAME:-subscriptiontracker}" "\${RUNNER_TEMP}/x" "\${#deps}"\n`,
+@@ -3796,7 +3797,9 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
+    *  because gradeDomain holds a stamp to the row's platforms; the four lane
+    *  builds plus CENSUS_FILL undeclared ones make the eighteen.
+    *  ⏱ 2026-09-25 — sixteen: MIN_GRADED re-based 18 → 16 when C2 removed the two
+-   *  submit-job rebuilds, so CENSUS_FILL is twelve. */
++   *  submit-job rebuilds, so CENSUS_FILL is twelve.
++   *  ⏱ 2026-10-01 — fifteen: re-based 16 → 15 when submit-snap.yml#submit stopped
++   *  rebuilding (review AA-23), so CENSUS_FILL is eleven. */
+   // ⏱ 2026-09-15 — lanes are scoped by the surface's DECLARED `flutterApp` (O-EXT-SURFACE-AXIS).
+   // ⏱ 2026-10-01 — every row carries a `crashSink` (O-CRASHSINK-DECLARATION-UNGRADED):
+   // the guard now fails a graded Flutter row that declares none, so a fixture row
+@@ -3826,9 +3829,9 @@ Future<void> _signOut(BuildContext context, WidgetRef ref, AppLocalizations l10n
+     '  </application>\n</manifest>\n';
+   const APP1_MANIFEST = 'apps/subscriptiontracker/android/app/src/main/AndroidManifest.xml';
+   /** The graded builds beyond the four lanes that bring the fixture's census to
+-   *  the guard's MIN_GRADED (16 since 2026-09-25; 18 before): the real tree's census
+-   *  grades 16, most of them in jobs no row names, which is the point of grading a census. */
+-  const CENSUS_FILL = 12;
++   *  the guard's MIN_GRADED (15 since 2026-10-01; 16 from 2026-09-25; 18 before): the real
++   *  tree's census grades 15, most of them in jobs no row names, which is the point of grading a census. */
++  const CENSUS_FILL = 11;
+   /** `count` web builds, one per job, in a workflow no row declares. */
+   const censusFill = (count) => {
+     const jobs = [];
+@@ -4236,7 +4239,7 @@ Future<void> main() async {
+       cwd: build('seams-census-shrunk', { fill: CENSUS_FILL - 1 }),
+     });
+     assert.equal(code, 2, out);
+-    assert.match(out, /the census graded only 15 release build\(s\) on a Flutter channel, fewer than the 16 that exist today/);
++    assert.match(out, /the census graded only 14 release build\(s\) on a Flutter channel, fewer than the 15 that exist today/);
+   });
+ 
+   // A lane naming a job that is gone is a register that has drifted from the
+@@ -4308,7 +4311,7 @@ Future<void> main() async {
+     });
+     assert.equal(code, 0, out);
+     assert.match(out, /NOT GRADED — \.github\/workflows\/deploy-web\.yml:13 \(job "preview", `flutter build web`\): a fixture preview build: deployed to a throwaway URL/);
+-    assert.match(out, /crash sink wired — 16 census-graded release build\(s\).*1 exempt build\(s\) named above/);
++    assert.match(out, /crash sink wired — 15 census-graded release build\(s\).*1 exempt build\(s\) named above/);
+   });
+ 
+   test('T5 · FAILS when a `#` on the build line puts the define behind a comment', () => {
+@@ -4340,7 +4343,7 @@ Future<void> main() async {
+       cwd: build('seams-exempt-below-floor', { register: JSON.stringify(exempted, null, 2) }),
+     });
+     assert.equal(code, 2, out);
+-    assert.match(out, /the census graded only 15 release build\(s\) on a Flutter channel, fewer than the 16 that exist today/);
++    assert.match(out, /the census graded only 14 release build\(s\) on a Flutter channel, fewer than the 15 that exist today/);
+     assert.match(out, /NOT GRADED — \.github\/workflows\/census-fill\.yml:8 \(job "fill_0", `flutter build web`\)/);
+   });
+ 
+diff --git a/tooling/ci/test/platform-proof-fresh.test.mjs b/tooling/ci/test/platform-proof-fresh.test.mjs
+index 7f080bb9..feac4078 100644
+--- a/tooling/ci/test/platform-proof-fresh.test.mjs
++++ b/tooling/ci/test/platform-proof-fresh.test.mjs
+@@ -38,6 +38,10 @@ import {
+   requiredTargets,
+   PLATFORM_BUILD_TARGETS,
+   PROOF_INPUT_PATHS,
++  storeLaneSubjects,
++  storeLaneSchedule,
++  evaluateStoreLane,
++  STORE_LANE_DEADLINE,
+ } from '../assert-platform-proof-fresh.mjs';
+ import { parseWorkflow } from '../workflow-scan.mjs';
+ import { workspaceApps } from '../app-set.mjs';
+@@ -1242,3 +1246,108 @@ describe('the PR #806 page and its cross-read, through the CLI (E2, E3, E6)', ()
+     assert.doesNotMatch(r.stdout, /STALE PAGE/);
+   });
+ });
++
++// ── ⏱ 2026-10-01 · the store lanes' rehearsals (review AA-03, O-STORE-DRY-RUNS-HAVE-NO-CADENCE) ──
++describe('--store-lanes: every armed row\'s submission workflow has a green dry run within 14 days', () => {
++  const AFTER = '2026-10-25T12:00:00Z';
++  const BEFORE = '2026-10-10T12:00:00Z';
++  const LANES = ['submit-play.yml', 'submit-appstore.yml', 'submit-windows-store.yml', 'submit-snap.yml'];
++  const storeFixture = (name, now, ages) => {
++    const at = (d) => new Date(Date.parse(now) - d * 86_400_000).toISOString();
++    const doc = {};
++    LANES.forEach((f, i) => {
++      doc[f] = ages[f] === null ? [] : [{ id: 900 + i, conclusion: 'success', status: 'completed', event: 'schedule', head_sha: HEAD_SHA, updated_at: at(ages[f] ?? 2), created_at: at(ages[f] ?? 2) }];
++    });
++    const file = join(TMP, name);
++    writeFileSync(file, JSON.stringify(doc));
++    return file;
++  };
++  const runStore = (file, now) => {
++    const env = { ...process.env };
++    delete env.GITHUB_TOKEN;
++    delete env.GH_TOKEN;
++    return spawnSync(process.execPath, [GUARD, '--store-lanes', '--store-runs-file', file, '--now', now], { cwd: REPO, encoding: 'utf8', env });
++  };
++
++  test('the subject set is DERIVED from the armed rows: the four submit lanes, Apple naming both its rows', () => {
++    const register = JSON.parse(readFileSync(join(REPO, 'tooling/channel-register.json'), 'utf8'));
++    const subjects = storeLaneSubjects(register);
++    assert.deepEqual(subjects.map((s) => s.workflow.split('/').pop()).sort(), [...LANES].sort());
++    assert.deepEqual(subjects.find((s) => s.workflow.endsWith('submit-appstore.yml')).rows, ['ios-appstore', 'macos-appstore']);
++  });
++
++  test('an UNARMED row is not a subject, and a register with none armed is COVERAGE LOST', () => {
++    const row = { id: 'x', served: false, submittable: false, lane: null, submission: { workflow: '.github/workflows/submit-x.yml', job: 'dry-run' } };
++    assert.deepEqual(storeLaneSubjects({ channels: [row] }), []);
++    assert.deepEqual(storeLaneSubjects({ channels: [{ ...row, served: true }] }), [{ workflow: '.github/workflows/submit-x.yml', rows: ['x'] }]);
++  });
++
++  test('every real lane declares a weekly cron the limb can read', () => {
++    for (const f of LANES) {
++      const s = storeLaneSchedule(REPO, `.github/workflows/${f}`);
++      assert.equal(s.problem, null, `${f}: ${s.problem}`);
++      assert.equal(s.interval, 7, f);
++    }
++  });
++
++  test('GREEN: every lane rehearsed within the ceiling passes', () => {
++    const r = runStore(storeFixture('store-fresh.json', AFTER, {}), AFTER);
++    assert.equal(r.status, 0, r.stdout + r.stderr);
++    assert.match(r.stdout, /ok  store lanes — 4 armed submission workflow\(s\) graded, 4 fresh within 14 day\(s\)/);
++  });
++
++  test('THE RED CONTROL: a 15-day-old dry run FAILS, naming the lane and its rows', () => {
++    const r = runStore(storeFixture('store-stale.json', AFTER, { 'submit-snap.yml': 15 }), AFTER);
++    assert.equal(r.status, 1, r.stdout + r.stderr);
++    assert.match(r.stderr, /FAIL  store lane submit-snap\.yml \(armed: linux-snap\) is not fresh — the newest green run 903 \(schedule\) is 15\.0 days old, ceiling 14/);
++  });
++
++  test('a lane with no green run at all FAILS', () => {
++    const r = runStore(storeFixture('store-none.json', AFTER, { 'submit-appstore.yml': null }), AFTER);
++    assert.equal(r.status, 1, r.stdout + r.stderr);
++    assert.match(r.stderr, /store lane submit-appstore\.yml \(armed: ios-appstore, macos-appstore\) is not fresh — no successful run at all/);
++  });
++
++  test(`before ${STORE_LANE_DEADLINE} the same stale lane PRINTS and does not fail — the dated start, stated`, () => {
++    const r = runStore(storeFixture('store-early.json', BEFORE, { 'submit-snap.yml': 15 }), BEFORE);
++    assert.equal(r.status, 0, r.stdout + r.stderr);
++    assert.match(r.stdout, /⬜  store lane submit-snap\.yml .* is not fresh/);
++    assert.match(r.stdout, new RegExp(`PRINTED, NOT FAILED, until ${STORE_LANE_DEADLINE}`));
++  });
++
++  test('a fixture missing a lane is COVERAGE LOST (exit 2), never a pass', () => {
++    const file = join(TMP, 'store-partial.json');
++    const fresh = new Date(Date.parse(AFTER) - 86_400_000).toISOString();
++    writeFileSync(file, JSON.stringify({ 'submit-play.yml': [{ id: 1, conclusion: 'success', event: 'schedule', head_sha: HEAD_SHA, updated_at: fresh, created_at: fresh }] }));
++    const r = runStore(file, AFTER);
++    assert.equal(r.status, 2, r.stdout + r.stderr);
++    assert.match(r.stderr, /store lane submit-appstore\.yml — its run history could not be read: the fixture carries no run history for submit-appstore\.yml/);
++  });
++
++  test('a lane whose schedule is removed FAILS before any run is read (mutation of the real file)', () => {
++    const root = join(TMP, 'store-unscheduled');
++    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
++    const real = readFileSync(join(REPO, '.github/workflows/submit-snap.yml'), 'utf8');
++    const cut = real.replace(/\n  schedule:\n    - cron: '[^']+'[^\n]*\n/, '\n');
++    assert.notEqual(cut, real, 'the mutation removed nothing');
++    writeFileSync(join(root, '.github/workflows/submit-snap.yml'), cut);
++    const s = storeLaneSchedule(root, '.github/workflows/submit-snap.yml');
++    assert.match(s.problem, /declares no `schedule:` cron, so its dry run runs only when somebody dispatches it/);
++  });
++
++  test('a fortnightly cron cannot keep a 14-day ceiling and FAILS', () => {
++    const root = join(TMP, 'store-slow');
++    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
++    const real = readFileSync(join(REPO, '.github/workflows/submit-play.yml'), 'utf8');
++    writeFileSync(join(root, '.github/workflows/submit-play.yml'), real.replace(/- cron: '0 7 \* \* 2'/, "- cron: '0 7 1,15 * *'"));
++    assert.match(storeLaneSchedule(root, '.github/workflows/submit-play.yml').problem, /cannot keep its rehearsal fresh|fires only every/);
++  });
++
++  test('evaluateStoreLane counts a dispatch as well as a schedule, and ignores a failure', () => {
++    const now = Date.parse(AFTER);
++    const at = (d) => new Date(now - d * 86_400_000).toISOString();
++    const v = evaluateStoreLane([{ id: 1, conclusion: 'failure', updated_at: at(1) }, { id: 2, conclusion: 'success', event: 'workflow_dispatch', updated_at: at(3) }], now);
++    assert.equal(v.ok, true);
++    assert.equal(v.runId, 2);
++  });
++});
+diff --git a/tooling/ci/test/play-submission.test.mjs b/tooling/ci/test/play-submission.test.mjs
+index 71d41716..a836d38b 100644
+--- a/tooling/ci/test/play-submission.test.mjs
++++ b/tooling/ci/test/play-submission.test.mjs
+@@ -1471,6 +1471,56 @@ describe('submit-play --submit — the Google Play Developer API edit lifecycle'
+ // ─────────────────────────────────────────────────────────────────────────────
+ // --sync-listing — the listing tree, pushed through an edit of its own (2026-10-01)
+ // ─────────────────────────────────────────────────────────────────────────────
++// ⏱ 2026-10-01 (review AA-17, O-SUBMIT-DRY-RUNS-NEVER-TOUCH-THE-STORE): the lane's rehearsal touches Play.
++describe('submit-play --dry-run --touch-store — an edit opened, read and deleted, never committed', () => {
++  const DRY_TOUCH = ['--dry-run', '--touch-store', '--app', 'subscriptiontracker', '--allow-missing-artifact'];
++  const SA = () => ({
++    PLAY_SERVICE_ACCOUNT_JSON: JSON.stringify({ type: 'service_account', client_email: 'nikatru-free-api@nikatru-platform.iam.gserviceaccount.com', private_key: KEYS.privateKey }),
++  });
++  const touch = async (env, apiOpts = {}) => {
++    const srv = await api(apiOpts);
++    try {
++      const r = await runAsync(tree(), { args: DRY_TOUCH, env: { PLAY_API_BASE_URL: srv.origin, PLAY_OAUTH_TOKEN_URL: `${srv.origin}/token`, ...env } });
++      return { ...r, calls: srv.calls };
++    } finally {
++      await srv.close();
++    }
++  };
++
++  test('THE RED CONTROL: an ABSENT service account FAILS the rehearsal, before any request', async () => {
++    const { code, out, calls } = await touch({});
++    assert.equal(code, 1, out);
++    assert.match(out, /SERVICE ACCOUNT NOT CONFIGURED — PLAY_SERVICE_ACCOUNT_JSON is absent.*--touch-store rehearses against Play itself/);
++    assert.deepEqual(calls, []);
++  });
++
++  test('GREEN: opens an edit, reads its tracks, DELETES it — and no commit is ever sent', async () => {
++    const { code, out, calls } = await touch(SA());
++    assert.equal(code, 0, out);
++    const edits = `/androidpublisher/v3/applications/${PACKAGE}/edits`;
++    assert.deepEqual(calls, ['POST /token', `POST ${edits}`, `GET ${edits}/${EDIT_ID}/tracks`, `DELETE ${edits}/${EDIT_ID}`]);
++    assert.ok(!calls.some((c) => /:commit|:validate|bundles|PUT /.test(c)), calls.join('\n'));
++    assert.match(out, /DRY RUN OK — an edit was opened, read and deleted uncommitted/);
++  });
++
++  test('a delete Play refuses FAILS the rehearsal: an abandoned edit blocks the next run', async () => {
++    const { code, out } = await touch(SA(), { failDelete: true });
++    assert.equal(code, 1, out);
++    assert.match(out, /FAIL the store rehearsal failed: edits\.delete/);
++  });
++
++  test('without --touch-store a dry run sends NOTHING, as before', () => {
++    const { code, out } = run(tree());
++    assert.equal(code, 0, out);
++    assert.match(out, /DRY RUN OK — nothing was sent to Google/);
++  });
++
++  test('THE LANE passes --touch-store on its dry run', () => {
++    const wf = readFileSync(join(REPO, '.github/workflows/submit-play.yml'), 'utf8');
++    assert.match(wf, /run: node tooling\/release\/submit-play\.mjs --dry-run --touch-store --app "\$APP"/);
++  });
++});
++
+ describe('submit-play --sync-listing — the repo listing tree becomes the Play record', () => {
+   const listed = { withListingAssets: true };
+   const SYNC = ['--sync-listing', '--app', 'subscriptiontracker'];
+diff --git a/tooling/ci/test/signing-seam.test.mjs b/tooling/ci/test/signing-seam.test.mjs
+index 99f390f5..5e47dbf8 100644
+--- a/tooling/ci/test/signing-seam.test.mjs
++++ b/tooling/ci/test/signing-seam.test.mjs
+@@ -138,6 +138,34 @@ describe('signing-seam · releaseSignal (the ref half)', () => {
+   });
+ });
+ 
++// ⏱ 2026-10-01 (review AA-28, O-WEEKLY-PROOF-ACCEPTS-UNSIGNED-ARMED-CHANNELS): limb (c).
++describe('signing-seam · the platform proof is a release lane (limb c)', () => {
++  const PROOF = '.github/workflows/build-platforms.yml';
++  const armed = { id: 'fixture-a', submittable: true, served: false, lane: LANE, submission: { workflow: SUB } };
++  const unarmed = { id: 'fixture-b', submittable: false, served: false, lane: null };
++
++  test('a run of the declared proof workflow, on ANY branch, is a release signal and says why', () => {
++    const s = releaseSignal({ workflowRef: `owner/repo/${PROOF}@refs/heads/feat/x`, submissionWorkflows: [SUB], proofWorkflows: [PROOF], label: 'Fixture' });
++    assert.equal(s.required, true);
++    assert.match(s.reasons[0], /^this is the platform proof \(\.github\/workflows\/build-platforms\.yml\)/);
++  });
++
++  test('RED CONTROL: over an ARMED row the proof must sign; over an unarmed row it need not', () => {
++    const ref = `owner/repo/${PROOF}@refs/heads/main`;
++    assert.equal(releaseLane({ rows: [armed], workflowRef: ref, proofWorkflows: [PROOF], label: 'Fixture' }).mustSign, true);
++    assert.equal(releaseLane({ rows: [unarmed], workflowRef: ref, proofWorkflows: [PROOF], label: 'Fixture' }).mustSign, false);
++  });
++
++  test('without the proof declared the same run is a build proof, as before — the register decides, not the file name', () => {
++    assert.equal(releaseLane({ rows: [armed], workflowRef: `owner/repo/${PROOF}@refs/heads/main`, label: 'Fixture' }).mustSign, false);
++  });
++
++  test('another workflow, or a branch NAMED after the proof, is not the proof', () => {
++    assert.equal(releaseSignal({ workflowRef: 'owner/repo/.github/workflows/ci.yml@refs/heads/main', proofWorkflows: [PROOF], label: 'Fixture' }).required, false);
++    assert.equal(releaseSignal({ workflowRef: `owner/repo/.github/workflows/ci.yml@refs/heads/${PROOF}`, proofWorkflows: [PROOF], label: 'Fixture' }).required, false);
++  });
++});
++
+ describe('signing-seam · releaseLane (the ref AND the register)', () => {
+   const armedRow = { id: 'fixture-a', submittable: true, served: false, lane: LANE, submission: { workflow: SUB } };
+   const unarmedRow = { id: 'fixture-b', submittable: true, served: false, lane: null, submission: { workflow: SUB } };
+diff --git a/tooling/ci/test/snap-submission.test.mjs b/tooling/ci/test/snap-submission.test.mjs
+index ea188d83..4c66a96e 100644
+--- a/tooling/ci/test/snap-submission.test.mjs
++++ b/tooling/ci/test/snap-submission.test.mjs
+@@ -257,6 +257,42 @@ describe('submit-snap — the submission path is walkable, and --submit refuses'
+     assert.doesNotMatch(out, /ghs-fixture/);
+   });
+ 
++  // ⏱ 2026-10-01 (review AA-23): PG-5 takes the dry-run job as the packer when the submit
++  // job checks that job's sha256 before it submits — and only then.
++  const handOffLane = (check) =>
++    'name: Submit\non:\n  workflow_dispatch:\njobs:\n' +
++    '  dry-run:\n    runs-on: ubuntu-24.04\n    steps:\n' +
++    '      - run: node tooling/ci/assert-snapcraft-generable.mjs\n' +
++    '      - run: snapcraft pack\n' +
++    '  submit:\n    runs-on: ubuntu-24.04\n    needs: [dry-run]\n    environment: store-publish\n    steps:\n' +
++    (check ? "      - run: printf '%s  %s\\n' \"$EXPECTED_SHA256\" \"$SNAP\" | sha256sum --check --strict -\n" : '') +
++    '      - run: node tooling/release/submit-snap.mjs --submit --app subscriptiontracker\n';
++  const submitWith = (lane) => {
++    const root = tree({ withArtifact: true });
++    mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
++    writeFileSync(join(root, '.github', 'workflows', 'submit-snap.yml'), lane);
++    return run(root, ['--submit', '--app', 'subscriptiontracker', '--confirm', 'SUBMIT-TO-SNAP-STORE', '--channel', 'latest/edge'], {
++      GITHUB_ACTIONS: 'true',
++      GITHUB_REPOSITORY: 'o/r',
++      GITHUB_TOKEN: 'ghs-fixture',
++      GITHUB_API_URL: 'http://127.0.0.1:9',
++    });
++  };
++
++  test('PG-5 · a submit job that checks the dry-run job\'s sha256 is shaped: that job graded and packed the bytes', () => {
++    const { code, out } = submitWith(handOffLane(true));
++    assert.equal(code, 1, out);
++    assert.match(out, /PG-5 lane shape — .*in the dry-run job whose sha256 it checks/);
++    assert.match(out, /FAIL PG-6 · could not reach/);
++  });
++
++  test('PG-5 · the same lane with NO sha256 check is refused: nothing ties the bytes to the job that packed them', () => {
++    const { code, out } = submitWith(handOffLane(false));
++    assert.equal(code, 1, out);
++    assert.match(out, /FAIL \.github\/workflows\/submit-snap\.yml job "submit" runs `--submit` and never runs `assert-snapcraft-generable\.mjs`/);
++    assert.doesNotMatch(out, /PG-5 lane shape — /);
++  });
++
+   test('FAILS when neither --dry-run nor --submit is given', () => {
+     const { code, out } = run(tree(), []);
+     assert.equal(code, 1, out);
+diff --git a/tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs b/tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs
+index 69de68ea..5984e610 100644
+--- a/tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs
++++ b/tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs
+@@ -25,13 +25,12 @@
+ //   (4) the job does not download an artifact whose name is that same job's output,
+ //       or the check runs after the download's consumer, the `--submit` step.
+ //
+-// ONE RECORDED EXCEPTION, AND IT RETIRES ITSELF: submit-snap.yml. Its script,
+-// tooling/release/submit-snap.mjs PG-5(c), REFUSES `--submit` unless the SAME job
+-// runs `snapcraft pack` before it ("this job built the bytes it is sending"), and the
+-// C2 brief forbids changing a submit script. The exception holds only while that
+-// script still carries the needle; delete PG-5(c) and this file starts failing the
+-// snap lane until it takes its dry run's bytes too. It is also held load-bearing:
+-// the exception fails if the snap submit job stops packing.
++// THE SNAP EXCEPTION RETIRED ITSELF ON 2026-10-01 (review AA-23). submit-snap.yml's
++// submit job packed its own .snap because tooling/release/submit-snap.mjs PG-5(c)
++// refused `--submit` otherwise. PG-5 now also accepts the run's dry-run job as the
++// packer when the submit job checks that job's sha256 first, and submit-snap.yml
++// takes its dry run's bytes like the other two lanes, so the domain has no
++// exception left and the machinery for one stays, empty, for the next lane.
+ //
+ // Run:  node --single-threaded --test tooling/ci/test/submit-lanes-take-dry-run-bytes.test.mjs
+ // ─────────────────────────────────────────────────────────────────────────────
+@@ -74,16 +73,7 @@ const NEEDS_OUTPUT = /^\$\{\{\s*needs\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs\.([A-Z
+ 
+ // The one exception. `needle` is read out of `script` on every run: gone, and the
+ // exception no longer applies.
+-const EXCEPTIONS = new Map([
+-  [
+-    `${WORKFLOW_DIR}/submit-snap.yml`,
+-    {
+-      script: 'tooling/release/submit-snap.mjs',
+-      needle: "const PACK_VERB = 'snapcraft pack';",
+-      why: 'submit-snap.mjs PG-5(c) refuses --submit unless the same job packs, and the C2 brief forbids editing a submit script',
+-    },
+-  ],
+-]);
++const EXCEPTIONS = new Map();
+ 
+ const segmentsOf = (step) => shellSegments(joinShellContinuations(step.run?.text ?? ''));
+ 
+@@ -183,11 +173,22 @@ describe('a confirmed submit job ships the dry-run job\'s bytes (O-SUBMIT-REBUIL
+     assert.deepEqual(blocking(graded), []);
+   });
+ 
+-  test('the snap exception is still load-bearing: its script demands the pack, and its submit job packs', () => {
++  test('submit-snap.yml#submit is graded with no exception, and takes its dry run\'s snap by sha256', () => {
+     const snap = gradeWorkflow(REPO, SNAP);
+     assert.equal(snap.length, 1, 'submit-snap.yml no longer has exactly one submitting job');
+-    assert.equal(snap[0].excepted, true, `${SNAP_SCRIPT} no longer carries ${EXCEPTIONS.get(SNAP).needle}: take the dry run's bytes in submit-snap.yml and delete the exception`);
+-    assert.ok(snap[0].findings.some((f) => /rebuilds: .*`snapcraft pack`/.test(f)), `submit-snap.yml#submit no longer packs, so the exception excuses nothing: delete it\n${snap[0].findings.join('\n')}`);
++    assert.equal(snap[0].excepted, false);
++    assert.deepEqual(snap[0].findings, []);
++  });
++
++  test('RC-SNAP FAILS when submit-snap.yml#submit packs its own snap again', () => {
++    const root = tree({
++      [SNAP]: once(
++        "      - name: Take the dry-run job's snap\n",
++        '      - name: Pack again\n        run: sudo snapcraft pack --destructive-mode\n      - name: Take the dry-run job\'s snap\n',
++      ),
++    });
++    const f = blocking(gradeTree(root));
++    assert.ok(f.some((x) => /submit-snap\.yml job "submit" rebuilds: .*`snapcraft pack`/.test(x)), f.join('\n'));
+   });
+ 
+   test('RC2 FAILS when submit-play.yml#submit builds the bundle again (the closes\' own control)', () => {
+@@ -257,10 +258,9 @@ describe('a confirmed submit job ships the dry-run job\'s bytes (O-SUBMIT-REBUIL
+     assert.match(f[0], /submit-play\.yml job "submit" downloads no artifact named by an output of job "dry-run"/);
+   });
+ 
+-  test('the snap exception EXPIRES when submit-snap.mjs stops demanding the pack', () => {
+-    const root = tree({ [SNAP_SCRIPT]: once("const PACK_VERB = 'snapcraft pack';", "const PACK_VERB = 'snapcraft  pack';") });
++  test('RC-SNAP-SHA FAILS when submit-snap.yml#submit stops checking the dry-run snap\'s sha256', () => {
++    const root = tree({ [SNAP]: once("printf '%s  %s\\n' \"$EXPECTED_SHA256\" \"$SNAP\" | sha256sum --check --strict -", 'true') });
+     const f = blocking(gradeTree(root));
+-    assert.ok(f.some((x) => /submit-snap\.yml job "submit" rebuilds: line \d+ runs `flutter build`/.test(x)), f.join('\n'));
+     assert.ok(f.some((x) => /submit-snap\.yml job "submit" runs --submit and checks no sha256/.test(x)), f.join('\n'));
+   });
+ });
+diff --git a/tooling/ci/test/update-coverage.test.mjs b/tooling/ci/test/update-coverage.test.mjs
+index 551c0807..bf2d4455 100644
+--- a/tooling/ci/test/update-coverage.test.mjs
++++ b/tooling/ci/test/update-coverage.test.mjs
+@@ -52,7 +52,7 @@ import { join, dirname, resolve } from 'node:path';
+ import { tmpdir } from 'node:os';
+ import { fileURLToPath } from 'node:url';
+ 
+-import { matchesPath, pinnedKeys, evaluate, candidatePaths } from '../assert-update-coverage.mjs';
++import { matchesPath, pinnedKeys, evaluate, candidatePaths, unpinnedSnapcraftInstalls } from '../assert-update-coverage.mjs';
+ 
+ const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+ const REPO = resolve(CI_DIR, '..', '..');
+@@ -511,3 +511,51 @@ describe('assert-update-coverage — the security scanners stay reachable by Ren
+     });
+   }
+ });
++
++// ⏱ 2026-10-01 (review AA-04/AA-23) — a workflow line installing snapcraft is a pin too.
++describe('the snapcraft track is a pin: every install reads tooling/versions.json snapcraft_track', () => {
++  const PINNED =
++    'steps:\n      - run: |\n          track="$(node -p "require(\'./tooling/versions.json\').snapcraft_track")"\n' +
++    '          sudo snap install snapcraft --classic --channel "$track"\n';
++  const files = (text) => new Map([['.github/workflows/submit-snap.yml', text]]);
++  const versions = { snapcraft_track: '9.x/stable' };
++
++  test('GREEN: an install with --channel from a variable, in a workflow that reads the key, passes', () => {
++    assert.deepEqual(unpinnedSnapcraftInstalls({ versions, fileContents: files(PINNED) }), []);
++  });
++
++  test('U15 · RED: an install with no --channel FAILS, naming the line', () => {
++    const e = unpinnedSnapcraftInstalls({ versions, fileContents: files('      - run: sudo snap install snapcraft --classic\n') });
++    assert.equal(e.length, 1, e.join('\n'));
++    assert.match(e[0], /\.github\/workflows\/submit-snap\.yml:1 installs snapcraft UNPINNED/);
++  });
++
++  test('U16 · RED: a LITERAL channel is a second copy of the pin, and FAILS', () => {
++    const e = unpinnedSnapcraftInstalls({ versions, fileContents: files('      - run: sudo snap install snapcraft --classic --channel 9.x/stable # snapcraft_track\n') });
++    assert.equal(e.length, 1, e.join('\n'));
++    assert.match(e[0], /UNPINNED/);
++  });
++
++  test('U17 · RED: an install while versions.json carries no track FAILS', () => {
++    const e = unpinnedSnapcraftInstalls({ versions: {}, fileContents: files(PINNED) });
++    assert.equal(e.length, 1, e.join('\n'));
++    assert.match(e[0], /`snapcraft_track` is null, not a `<major>\.x\/<risk>` track/);
++  });
++
++  test('a commented-out install is not an install, and a non-workflow file is not read', () => {
++    const m = new Map([
++      ['.github/workflows/a.yml', '      # sudo snap install snapcraft --classic\n'],
++      ['docs/x.yml', 'sudo snap install snapcraft --classic\n'],
++    ]);
++    assert.deepEqual(unpinnedSnapcraftInstalls({ versions: {}, fileContents: m }), []);
++  });
++
++  test('THE REAL TREE: every snapcraft install reads the pin', () => {
++    const v = JSON.parse(readFileSync(join(REPO, 'tooling/versions.json'), 'utf8'));
++    const m = new Map();
++    for (const f of ['build-platforms.yml', 'submit-snap.yml']) m.set(`.github/workflows/${f}`, readFileSync(join(REPO, '.github/workflows', f), 'utf8'));
++    assert.deepEqual(unpinnedSnapcraftInstalls({ versions: v, fileContents: m }), []);
++    const installs = [...m.values()].join('\n').match(/snap install snapcraft/g) ?? [];
++    assert.ok(installs.length >= 3, `expected the weekly proof and both snap jobs to install snapcraft, found ${installs.length}`);
++  });
++});
+diff --git a/tooling/enforcement-index.json b/tooling/enforcement-index.json
+index 1831ba15..574cb459 100644
+--- a/tooling/enforcement-index.json
++++ b/tooling/enforcement-index.json
+@@ -135,7 +135,8 @@
+       "R-3"
+     ],
+     "invokedBy": [
+-      ".github/workflows/build-platforms.yml#apple"
++      ".github/workflows/build-platforms.yml#apple",
++      ".github/workflows/submit-appstore.yml#dry-run"
+     ],
+     "kind": "guard",
+     "ref": "tooling/ci/apple-signing.mjs",
+@@ -331,7 +332,6 @@
+       ".github/workflows/submit-play.yml#dry-run",
+       ".github/workflows/submit-play.yml#submit",
+       ".github/workflows/submit-snap.yml#dry-run",
+-      ".github/workflows/submit-snap.yml#submit",
+       ".github/workflows/submit-windows-store.yml#dry-run"
+     ],
+     "kind": "guard",
+@@ -432,7 +432,8 @@
+     ],
+     "invokedBy": [
+       ".github/workflows/build-platforms.yml#apple",
+-      ".github/workflows/ci.yml#workspace-gate"
++      ".github/workflows/ci.yml#workspace-gate",
++      ".github/workflows/submit-appstore.yml#dry-run"
+     ],
+     "kind": "guard",
+     "ref": "tooling/ci/assert-artifact-signed-apple.mjs",
+@@ -2403,8 +2404,7 @@
+       ".github/workflows/build-platforms.yml#linux_web_android",
+       ".github/workflows/ci.yml#guards-store",
+       ".github/workflows/ci.yml#linux-artifacts",
+-      ".github/workflows/submit-snap.yml#dry-run",
+-      ".github/workflows/submit-snap.yml#submit"
++      ".github/workflows/submit-snap.yml#dry-run"
+     ],
+     "kind": "guard",
+     "ref": "tooling/ci/assert-snapcraft-generable.mjs",
+@@ -2818,7 +2818,8 @@
+       "C-6"
+     ],
+     "invokedBy": [
+-      ".github/workflows/build-platforms.yml#apple"
++      ".github/workflows/build-platforms.yml#apple",
++      ".github/workflows/submit-appstore.yml#dry-run"
+     ],
+     "kind": "guard",
+     "ref": "tooling/ci/assert-xcode-floor.mjs",
+@@ -3006,7 +3007,6 @@
+       ".github/workflows/submit-appstore.yml#dry-run",
+       ".github/workflows/submit-play.yml#dry-run",
+       ".github/workflows/submit-snap.yml#dry-run",
+-      ".github/workflows/submit-snap.yml#submit",
+       ".github/workflows/submit-windows-store.yml#dry-run"
+     ],
+     "kind": "guard",
+@@ -3082,7 +3082,6 @@
+       ".github/workflows/submit-appstore.yml#dry-run",
+       ".github/workflows/submit-play.yml#dry-run",
+       ".github/workflows/submit-snap.yml#dry-run",
+-      ".github/workflows/submit-snap.yml#submit",
+       ".github/workflows/submit-windows-store.yml#dry-run",
+       ".github/workflows/symbolication-proof.yml#prove",
+       ".github/workflows/trufflehog.yml#scan"
+@@ -4029,7 +4028,6 @@
+       ".github/workflows/submit-appstore.yml#dry-run",
+       ".github/workflows/submit-play.yml#dry-run",
+       ".github/workflows/submit-snap.yml#dry-run",
+-      ".github/workflows/submit-snap.yml#submit",
+       ".github/workflows/submit-windows-store.yml#dry-run",
+       ".github/workflows/symbolication-proof.yml#prove"
+     ],
+@@ -4126,8 +4124,7 @@
+     "invokedBy": [
+       ".github/workflows/build-platforms.yml#linux_web_android",
+       ".github/workflows/ci.yml#linux-artifacts",
+-      ".github/workflows/submit-snap.yml#dry-run",
+-      ".github/workflows/submit-snap.yml#submit"
++      ".github/workflows/submit-snap.yml#dry-run"
+     ],
+     "kind": "script",
+     "ref": "tooling/release/generate-snapcraft.mjs",
+diff --git a/tooling/release/submit-appstore.mjs b/tooling/release/submit-appstore.mjs
+index 2c4f4a71..627145ec 100644
+--- a/tooling/release/submit-appstore.mjs
++++ b/tooling/release/submit-appstore.mjs
+@@ -475,11 +475,11 @@ if (existsSync(abs(artifactRel))) {
+ } else if (ALLOW_MISSING_ARTIFACT) {
+   prints.push(
+     `NO SIGNED ARTIFACT — ${artifactRel} is not on disk and --allow-missing-artifact was passed, so the listing and the bundle identifier were validated and the package was not. ` +
+-      'The lane that runs this dry run builds unsigned by choice until the signing seam lands in it, and --submit refuses, so there is no signed package to read here.',
++      'The submit-appstore.yml lane never passes this flag: it signs and packages first. Off that lane there may be no signed package to read.',
+   );
+ } else {
+   problems.push(
+-    `${artifactRel} does not exist. The lane that runs this dry run builds unsigned by choice until the signing seam lands in it, and --submit refuses, so pass --allow-missing-artifact to validate the listing and identity alone (and say so in the output, which is what that flag does).`,
++    `${artifactRel} does not exist. .github/workflows/submit-appstore.yml signs and packages it immediately before running this dry run (since 2026-10-01, review AA-18), so a run reaching here from that lane means the signed build or the productbuild produced nothing while exiting 0. Pass --allow-missing-artifact only off that lane, to validate the listing and identity alone (and say so in the output, which is what that flag does).`,
+   );
+ }
+ 
+diff --git a/tooling/release/submit-play.mjs b/tooling/release/submit-play.mjs
+index 8646fcee..57c2745e 100644
+--- a/tooling/release/submit-play.mjs
++++ b/tooling/release/submit-play.mjs
+@@ -200,6 +200,11 @@ const SIGNATURE_GUARD = 'assert-artifact-signed.mjs';
+ const { flag, opt, root: ROOT, ok, step, abs, read, coverageLost, die, appOf } = submitCli('submit-play');
+ 
+ const DRY_RUN = flag('dry-run');
++// ⏱ 2026-10-01 (review AA-17, O-SUBMIT-DRY-RUNS-NEVER-TOUCH-THE-STORE): `--dry-run --touch-store` is the
++// lane's rehearsal. It REQUIRES the service account, then opens an edit, reads its tracks and DELETES it
++// uncommitted — the only proof a dry run can give that the key still authenticates and still sees the app.
++// Without the flag a dry run stays local (a laptop, a test) and sends nothing, as before.
++const TOUCH_STORE = flag('touch-store');
+ const SUBMIT = flag('submit');
+ /** ⏱ 2026-10-01 (lane prep-play-first-release). The third mode: push the repo's listing tree to
+  *  Play — text, contact details, graphics and screenshots — in an edit of its own. Measured that
+@@ -278,6 +283,12 @@ if (SYNC_LISTING) {
+   TOKEN_URL = loopbackOr('PLAY_OAUTH_TOKEN_URL', GOOGLE_TOKEN_URL);
+ }
+ 
++if (DRY_RUN && TOUCH_STORE) {
++  // The same loopback-only test seam: the rehearsal sends a bearer token, so it gets the same rule.
++  PLAY_BASE = loopbackOr('PLAY_API_BASE_URL', PLAY_API_ORIGIN);
++  TOKEN_URL = loopbackOr('PLAY_OAUTH_TOKEN_URL', GOOGLE_TOKEN_URL);
++}
++
+ if (SUBMIT) {
+   PLAY_BASE = loopbackOr('PLAY_API_BASE_URL', PLAY_API_ORIGIN);
+   TOKEN_URL = loopbackOr('PLAY_OAUTH_TOKEN_URL', GOOGLE_TOKEN_URL);
+@@ -896,6 +907,7 @@ if (saRaw === '') {
+   // authenticate without it.
+   const line = `SERVICE ACCOUNT NOT CONFIGURED — ${SA_ENV} is absent. The Play Developer account is verified (register accountStatus, 2026-08-04) and a Google Cloud service account was granted Admin on it (ADR 031), so this is now a WIRING gap rather than an account one: the key exists and the repository secret is what carries it into a job.`;
+   if (SUBMIT || SYNC_LISTING) problems.push(`${line} ${SUBMIT ? '--submit' : '--sync-listing'} cannot mint an access token without it.`);
++  else if (TOUCH_STORE) problems.push(`${line} --touch-store rehearses against Play itself and cannot authenticate without it: an absent secret is a FAILED rehearsal, never a skipped one.`);
+   else prints.push(line);
+ } else {
+   let sa = null;
+@@ -988,18 +1000,8 @@ if (problems.length) {
+   process.exit(1);
+ }
+ 
+-if (DRY_RUN) {
+-  console.log('');
+-  console.log('submit-play: DRY RUN OK — nothing was sent to Google.');
+-  console.log(`   Console-only steps that must happen first: ${channel.submission?.runbook ?? 'Private/runbooks/store-submission-android.md'}`);
+-  console.log('   ⬜ The 12-tester / 14-continuous-day closed test does NOT gate this account and never did.');
+-  console.log('      Google scopes that rule to "personal accounts created after November 13, 2023"');
+-  console.log('      (support.google.com/googleplay/android-developer/answer/14151465); NIKATRU is a verified');
+-  console.log('      ORGANIZATION account. A closed test is still good practice — it is simply not a gate.');
+-  console.log('   ⬜ What IS still true: the register keeps android-play `served: false`, and [10]D-9 has no');
+-  console.log('      submission record. Only an owner-approved dispatch of submit-play.yml can create one.');
+-  process.exit(0);
+-}
++// The dry run's verdict is printed further down, after the API helpers it may use exist
++// (`--touch-store`); a dry run without it reaches that block having sent nothing.
+ 
+ // ═════════════════════════════════════════════════════════════════════════════
+ // --submit · THE GOOGLE PLAY DEVELOPER API EDIT LIFECYCLE
+@@ -1080,6 +1082,58 @@ async function mintAccessToken(sa) {
+ const editsBase = `${PLAY_BASE}/androidpublisher/v3/applications/${encodeURIComponent(packageName)}/edits`;
+ const uploadBase = `${PLAY_BASE}/upload/androidpublisher/v3/applications/${encodeURIComponent(packageName)}/edits`;
+ 
++// ── --dry-run --touch-store · open an edit, read it, DELETE it (review AA-17) ──
++// edits.insert, edits.tracks.list and edits.delete, each sourced above (PRIMARY_SOURCES.editsInsert,
++// tracksList, editsDelete). NO commit is reachable from this function: an uncommitted edit changes
++// nothing users see, and `editsGuide` says an edit is not live until it is committed. The edit is
++// deleted on every path, success or failure, because an abandoned edit blocks the next run.
++async function rehearseEdit() {
++  let tok;
++  let edit = null;
++  try {
++    step('minting an access token (JWT-bearer, RS256) — the assertion and the token are never printed');
++    tok = await mintAccessToken(serviceAccount);
++    ok('access token — the service-account assertion was accepted');
++    step(`POST ${editsBase}  (edits.insert — a rehearsal edit, never committed)`);
++    edit = (await asJson(await request('edits.insert', 'POST', editsBase, { token: tok, headers: { 'content-type': 'application/json' }, body: '{}' }))).id;
++    if (typeof edit !== 'string' || edit === '') throw new Error('edits.insert returned no edit id.');
++    const tracks = (await asJson(await request('edits.tracks.list', 'GET', `${editsBase}/${edit}/tracks`, { token: tok }))).tracks ?? [];
++    if (!Array.isArray(tracks) || tracks.length === 0) {
++      throw new Error('edits.tracks.list returned ZERO tracks: this service account cannot see this app (a permissions grant, not a code fault).');
++    }
++    ok(`edit ${edit} opened and read — ${tracks.length} track(s) visible: ${tracks.map((t) => t.track).join(', ')}`);
++  } finally {
++    if (edit !== null) {
++      await request('edits.delete', 'DELETE', `${editsBase}/${edit}`, { token: tok, expect: [200, 204] });
++      ok(`edit ${edit} DELETED, uncommitted — nothing in the Play Console changed`);
++    }
++  }
++}
++
++if (DRY_RUN) {
++  if (TOUCH_STORE) {
++    try {
++      await rehearseEdit();
++    } catch (err) {
++      console.error('');
++      console.error(`FAIL the store rehearsal failed: ${REDACT(err.message)}`);
++      console.error('\nsubmit-play: FAILED');
++      process.exitCode = 1;
++    }
++  }
++  if (!process.exitCode) {
++    console.log('');
++    console.log(`submit-play: DRY RUN OK — ${TOUCH_STORE ? 'an edit was opened, read and deleted uncommitted; nothing was committed to Google.' : 'nothing was sent to Google.'}`);
++    console.log(`   Console-only steps that must happen first: ${channel.submission?.runbook ?? 'Private/runbooks/store-submission-android.md'}`);
++    console.log('   ⬜ The 12-tester / 14-continuous-day closed test does NOT gate this account and never did.');
++    console.log('      Google scopes that rule to "personal accounts created after November 13, 2023"');
++    console.log('      (support.google.com/googleplay/android-developer/answer/14151465); NIKATRU is a verified');
++    console.log('      ORGANIZATION account. A closed test is still good practice — it is simply not a gate.');
++    console.log('   ⬜ What IS still true: the register keeps android-play `served: false`, and [10]D-9 has no');
++    console.log('      submission record. Only an owner-approved dispatch of submit-play.yml can create one.');
++  }
++}
++
+ // ═════════════════════════════════════════════════════════════════════════════
+ // --sync-listing · THE REPO'S LISTING TREE, PUSHED TO PLAY IN AN EDIT OF ITS OWN
+ //
+diff --git a/tooling/release/submit-snap.mjs b/tooling/release/submit-snap.mjs
+index 1188b996..374ff0b9 100644
+--- a/tooling/release/submit-snap.mjs
++++ b/tooling/release/submit-snap.mjs
+@@ -352,6 +352,13 @@ if (SUBMIT) {
+   //       cannot tolerate is submitting a package some other run produced: there
+   //       is no signature on a .snap to compare (keyKind "none"), so provenance
+   //       here is "this job built the bytes it is sending" or it is nothing.
++  //   ⏱ 2026-10-01 (review AA-23, O-SUBMIT-REBUILDS-WHAT-THE-DRY-RUN-BUILT): (b)
++  //       and (c) are ALSO met by the run's own dry-run job, when the submit job
++  //       `needs` it and runs `sha256sum --check` on that job's bytes before the
++  //       submit step. The sha256 is the provenance a signature would have been:
++  //       "a job of THIS run graded and packed these exact bytes". Packing twice
++  //       per dispatch was a second, ungraded snap beside the one the dry run
++  //       validated, which is the defect, not the cure.
+   {
+     const registerPeek = read(REGISTER);
+     let subWorkflowRel = '.github/workflows/submit-snap.yml';
+@@ -390,6 +397,21 @@ if (SUBMIT) {
+         ]);
+       }
+       const submitAt = job.logical.find((l) => /submit-snap\.mjs/.test(l.text) && /--submit\b/.test(l.text));
++      // The hand-off: a sha256 check before the submit step, of bytes a job this one `needs` packed.
++      const checkAt = job.logical.find((l) => /sha256sum\s+--check\b/.test(l.text) && l.n < submitAt.n);
++      const producer = checkAt
++        ? (job.needs ?? []).map((n) => wf.jobs.get(n)).find((p) => p && [RECIPE_GUARD, PACK_VERB].every((x) => p.logical.some((l) => l.text.includes(x))))
++        : undefined;
++      if (producer) {
++        const order = [RECIPE_GUARD, PACK_VERB].map((x) => producer.logical.find((l) => l.text.includes(x)).n);
++        if (order[0] > order[1]) {
++          die([
++            `FAIL ${subWorkflowRel} job "${producer.name}" packs at line ${order[1]} BEFORE it grades the recipe at line ${order[0]}.`,
++            '     The bytes the submit job verifies were packed from a recipe nothing had graded yet.',
++          ]);
++        }
++        continue;
++      }
+       for (const [needle, why] of [
+         [
+           RECIPE_GUARD,
+@@ -412,7 +434,7 @@ if (SUBMIT) {
+         }
+       }
+     }
+-    ok(`PG-5 lane shape — ${subWorkflowRel} gates the submit job on an environment, and grades and packs before it sends`);
++    ok(`PG-5 lane shape — ${subWorkflowRel} gates the submit job on an environment, and grades and packs before it sends (in the job, or in the dry-run job whose sha256 it checks)`);
+   }
+ 
+   // ── PG-6 · the environment EXISTS and carries a REQUIRED REVIEWER ──────────
+diff --git a/tooling/versions.json b/tooling/versions.json
+index 3bf490df..aa68f4dc 100644
+--- a/tooling/versions.json
++++ b/tooling/versions.json
+@@ -577,6 +577,7 @@
+     "           v0.4.2`), so its customManager strips that prefix and this value never carries one."
+   ],
+   "msstore_cli": "0.4.3",
++  "snapcraft_track": "9.x/stable",
+ 
+   "runner_ubuntu": "ubuntu-24.04",
+   "runner_windows": "windows-2025",
+@@ -615,6 +616,10 @@
+     "that publishes production, declared here and advanced by nobody. It now has a customManager."
+   ],
+   "$updateExemptions": [
++    {
++      "key": "snapcraft_track",
++      "why": "A SNAP STORE TRACK, not a version series: `snap install snapcraft --classic --channel <track>` installs the newest revision on that track, so the pin holds the MAJOR (the pack format and its CLI) and lets point releases move, which is how the snap store means a track to be used. No datasource on https://docs.renovatebot.com/modules/datasource/ reads a snap store channel map. ADDED 2026-10-01 (review AA-04/AA-23): build-platforms.yml linux_web_android and submit-snap.yml both ran `snap install snapcraft --classic` with no channel, i.e. whatever the default track served that day; measured that day against api.snapcraft.io/v2/snaps/info/snapcraft, `stable` and `9.x/stable` both served 9.1.3 and `8.x/stable` 8.14.5, so this pin keeps what both lanes installed. tooling/ci/assert-update-coverage.mjs refuses a workflow line that installs snapcraft without `--channel` from a variable that this key fills. Advanced by the owner when a new snapcraft major is wanted, with a weekly proof behind it."
++    },
+     {
+       "key": "runner_ubuntu",
+       "why": "A GitHub Actions RUNNER IMAGE LABEL, not a package. Renovate's built-in github-actions manager DOES propose runner labels: Dependency Dashboard #417, read 2026-09-21, listed ubuntu 24.04 -> 26.04 under it. That proposal rewrites `runs-on:` and never this key, so it is red by construction; renovate.json disables it for the github-actions manager, and this key stays an owner decision. It is also not a version in the usual sense: see $runners_comment above, where windows-latest AND windows-2025 both migrated to a new Visual Studio under an unchanged pin. A bot bumping the label would not have caught that either. Advanced by the owner when an image family is retired, which fails loudly rather than silently."
