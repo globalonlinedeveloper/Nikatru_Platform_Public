@@ -233,7 +233,10 @@
           "type": ["object", "null"],
           "additionalProperties": false,
           "required": ["file"],
-          "properties": { "file": { "$ref": "#/$defs/path" } }
+          "properties": {
+            "file": { "$ref": "#/$defs/path" },
+            "kind": { "enum": ["suite", "live"], "description": "`suite` (the default when absent): a test that CALLS the port's runner. `live`: a credentialled check against the vendor's real service, run outside CI; it calls no runner, so it never counts toward L3, and the scenarios it cannot run are listed in conformance.pending." }
+          }
         },
         "exportDuty": { "type": "string", "minLength": 20 },
         "readAt": {

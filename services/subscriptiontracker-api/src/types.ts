@@ -3,6 +3,11 @@ import type { AuthRecency } from '../../_shared/src/auth';
  *  bindings are declared as the KV PORT; the binding satisfies it structurally
  *  (services/_shared/src/ports/adapters/cloudflare.ts). */
 import type { KvStore } from '../../_shared/src/ports/kv';
+/** ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql): the D1 bindings
+ *  are declared as the SQL PORT; the binding satisfies it structurally
+ *  (services/_shared/src/ports/adapters/cloudflare.ts `cloudflareD1`), and
+ *  assert-ports limb 9 refuses a `D1Database` type in any handler. */
+import type { SqlDb } from '../../_shared/src/ports/sql';
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared types for the Worker. Keep the Env interface in sync with wrangler.jsonc.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -14,8 +19,8 @@ import type { KvStore } from '../../_shared/src/ports/kv';
  */
 export interface Env {
   // D1 databases
-  APP_DB: D1Database; // per-app data (subscriptions, budgets, ...)
-  PLATFORM_DB: D1Database; // shared entitlements across the portfolio
+  APP_DB: SqlDb; // per-app data (subscriptions, budgets, ...)
+  PLATFORM_DB: SqlDb; // shared entitlements across the portfolio
 
   // KV — caches the Supabase JWKS document
   JWKS_CACHE: KvStore;

@@ -127,8 +127,8 @@ describe('assert-d1-fanout.mjs — every owned D1 is backed up, bound, and (an a
   test('🔴 the fan-out stops reading the generated module: the app database is missing from the fan-out, named', () => {
     const root = tree({
       'services/platform/src/scheduled.ts': swap(
-        'return APP_TARGETS.map((t) => ({ appId: t.appId, db: (env as unknown as Record<string, D1Database | undefined>)[t.dbBinding] as D1Database }));',
-        "return [{ appId: 'subscriptiontracker', db: (env as unknown as Record<string, D1Database | undefined>)['SUBSCRIPTIONTRACKER_DB'] as D1Database }];",
+        'return APP_TARGETS.map((t) => ({ appId: t.appId, db: (env as unknown as Record<string, SqlDb | undefined>)[t.dbBinding] as SqlDb }));',
+        "return [{ appId: 'subscriptiontracker', db: (env as unknown as Record<string, SqlDb | undefined>)['SUBSCRIPTIONTRACKER_DB'] as SqlDb }];",
       ),
     });
     const r = run(GUARD, root);

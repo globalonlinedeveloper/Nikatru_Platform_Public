@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AppTarget, Env } from './types';
 import type { KvStore } from '../../_shared/src/ports/kv';
+import type { SqlDb } from '../../_shared/src/ports/sql';
 import { recomputeRenewals } from './renewals';
 import { runBackup } from './backup';
 import { isMoneyEnvironment } from './lib/mor/contract';
@@ -100,7 +101,7 @@ import { EXT_LINK_IDLE_DAYS, EXT_LINK_MAX_AGE_DAYS } from './lib/ext-links';
  *  A binding the module names and `env` lacks comes back `db: undefined`: the fan-out records it as a failed row, never a skip.
  *  `env` is read by the binding's NAME, so it is indexed as a record. */
 export function appTargets(env: Env): AppTarget[] {
-  return APP_TARGETS.map((t) => ({ appId: t.appId, db: (env as unknown as Record<string, D1Database | undefined>)[t.dbBinding] as D1Database }));
+  return APP_TARGETS.map((t) => ({ appId: t.appId, db: (env as unknown as Record<string, SqlDb | undefined>)[t.dbBinding] as SqlDb }));
 }
 
 /**

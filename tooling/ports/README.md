@@ -16,7 +16,11 @@ The first subjects, at their honest levels: `tooling/ports/payments.json` (both 
 `TelemetryClient` at L3 (conformance suite `packages/telemetry/lib/testing.dart`) and the Worker half (`ErrorSink`,
 `Notifier` in `services/_shared/src/ports/telemetry.ts`) at L2. port-storage added `kv.json` (`KvStore`), `objects.json`
 (`ObjectStore`) and `ratelimit.json` (`RateLimiter`), each claiming and targeting L2: Cloudflare's KV, R2 and Rate
-Limiting bindings behind ports, with their conformance suites run against the fakes. Payments also carries its CLIENT half (`client`: the Dart
+Limiting bindings behind ports, with their conformance suites run against the fakes.
+port-sql added `sql.json` (`SqlDb`), claiming L2 with target L3: the D1 binding behind a D1-shaped port, its second
+engine the `node:sqlite` engine every Worker suite already ran its SQL through (`fakes/sql.ts`), one conformance suite,
+and an export dry run (`port-switch.mjs sql --export`). D1's own conformance is the credentialled live check, so its
+scenarios are listed `pending` and L3 waits on a workerd-backed run of the suite. Payments also carries its CLIENT half (`client`: the Dart
 `PurchaseRail` and `IapBridge` seams, at L3 since port-pay-client). `tooling/ports/mail.json` (TS `MailTransport`, port-mail) is at
 L3 as well: Resend and a fake conformant, an Amazon SES draft passing the same suite to prove the port is not
 Resend-shaped.
@@ -73,7 +77,7 @@ wherever the shape can hold it).
 | `adapters[].identity` | Field **paths** into `tooling/house-identity.json` (the entity source) that the vendor account carries. Never the values. |
 | `adapters[].environments` | Which of `test`, `sandbox`, `live` it may serve. A fake never lists `live`. Empty only for a `draft` or `retired` adapter: selectable nowhere. |
 | `adapters[].cost` | `feeCells` — `tooling/catalog/fee-register.json` cell ids applied per sale; `unit` — `{usd, per, asOf, verify}` or null. |
-| `adapters[].conformance` | `{file}` — the adapter's test that **calls** the suite's runner; null until it exists. |
+| `adapters[].conformance` | `{file, kind?}` — the adapter's test that **calls** the suite's runner; null until it exists. `kind: live` marks a credentialled check against the vendor's real service instead (e.g. `sql.json`'s `d1`): it calls no runner, never counts toward L3, and the scenarios it cannot run are listed in `conformance.pending`. |
 | `adapters[].exportDuty` | What leaves with us, what must be exported, what cannot move. |
 | `adapters[].readAt` | `{url, on}` — the vendor page the adapter's facts were read from, and when; null if none was read. |
 | `adapters[].delivery` | Mail only: `{rail, dnsNeeded, domainVerification, warming, suppression: {export, import}}` — the `tooling/mail-transport.json` rail whose `authRecords` it sends under (or, with none yet, the records to publish), the verification step, the warm-up, and how the suppression list leaves and enters it (null until the runbook names the method). Read by the mail dry run (C9–C14). |
@@ -121,7 +125,8 @@ keeps a row only for what is LEFT, naming those surfaces in `remaining` beside `
 - **A binding that already satisfies its port structurally is not wrapped.** Its adapter is the identity function in
   `services/_shared/src/ports/adapters/<vendor>.ts` — the compile-time proof that the binding IS the port — and every
   `Env` declares the binding as the PORT type. Outside a composition root, a `types.ts` and `services/_shared/src/ports/`,
-  no module names a Cloudflare binding type (`KVNamespace`, `R2Bucket` and its R2 types, `RateLimit`) — limb 9.
+  no module names a Cloudflare binding type (`KVNamespace`, `R2Bucket` and its R2 types, `RateLimit`, `D1Database` and
+  its D1 types) — limb 9.
 - **Request geography is `requestGeo(req)`** (`services/_shared/src/geo.ts`), the one reader of `request.cf` — limb 10.
   It is used only where it was used (the edge-ceiling key, the events row, the request log): never to choose a payment
   rail, and never `country` for money.
@@ -236,7 +241,11 @@ webhook URL to register and the secrets by name, C10 the price ids still to crea
 `purchaseRails` would change (a channel moves only to an adapter of its billing kind — a store-billed channel never to a web rail, a web-billed one never to a store biller — and C8 nets only what moves), and C12 the run-off note; each pending conformance case prints as its own `FAIL` line. For `telemetry` it adds C9 `plan`: the
 DSN of every app build per channel (compile time, so an app release each) and of every Worker (a redeploy), the symbol and
 source-map uploaders to re-run, the monitors to recreate from `tooling/monitor-register.json`, the owner-alert routes and
-the cost delta.
+the cost delta. For `sql` it takes `--export <file>`: ONE nightly D1 export (gzipped JSON lines,
+`services/platform/src/backup/`), given locally and never fetched. Its C9 replays the migrations of the database it names
+into a `node:sqlite` file and compares the table list and the row counts (`tooling/ops/sql-export-replay.mjs`); each
+mismatch is a FAIL, and no `--export` is LOST. E.g. `node tooling/ops/port-switch.mjs sql --to sqlite --dry-run --env
+sandbox --export platform_db.jsonl.gz`.
 
 `node tooling/ports/render.mjs [--check]` renders the tables code reads (today
 `services/platform/src/generated/ports.ts` from `payments.json`, and `packages/purchases/lib/src/generated/rails.dart`

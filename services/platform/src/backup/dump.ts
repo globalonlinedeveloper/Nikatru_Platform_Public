@@ -69,6 +69,7 @@
 // handful of terms (measured, services/_shared/src/erasure.ts) — the scalar
 // subqueries of columnsOf are not a compound SELECT.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import type { KvStore } from '../../../_shared/src/ports/kv';
 
 /**
@@ -425,7 +426,7 @@ function columnsOf(reads: readonly string[]): string {
  * spends 0 and reports `truncated`, which is RED.
  */
 export async function dumpD1Database(
-  db: D1Database,
+  db: SqlDb,
   databaseName: string,
   queryBudget: number | D1QueryPool,
   nowIso: string,

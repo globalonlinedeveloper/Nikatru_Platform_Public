@@ -44,6 +44,7 @@
 // a shared secret in a header proves the sender knows a string, while an HMAC
 // over the body proves THIS BODY came from the holder of that string.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { readBoundedBody } from '../lib/body';
@@ -66,7 +67,7 @@ const money = new Hono<AppEnv>();
  * config.ts says why); the one-time price map is the checkout's; the mint is the
  * receipt route's.
  */
-export function grantDepsFor(db: D1Database, environment: MoneyEnvironment, nowMs: number): GrantDeps {
+export function grantDepsFor(db: SqlDb, environment: MoneyEnvironment, nowMs: number): GrantDeps {
   return {
     db,
     environment,

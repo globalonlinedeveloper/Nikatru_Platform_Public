@@ -71,6 +71,7 @@
 // 2026-09-30, only while the plain-text window is open — [backfillProviderTokens]
 // re-runs 0016's copy out of it and then empties each row's token.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import type { Env } from '../types';
 import { APPLE_REVOKE_STEP, GOOGLE_REVOKE_STEP } from './erasure-ledger';
 import { CURRENT_TOKEN_KEY_ID, decryptToken, encryptToken, tokenKey } from './token-crypto';
@@ -463,7 +464,7 @@ export async function backfillProviderTokens(env: TokenStoreEnv, nowMs: number =
 }
 
 /** Forget one provider's token — after its revoke settled. */
-export async function dropProviderToken(db: D1Database, subjectRef: string, provider: ProviderName): Promise<void> {
+export async function dropProviderToken(db: SqlDb, subjectRef: string, provider: ProviderName): Promise<void> {
   await db.prepare('DELETE FROM provider_tokens WHERE subject_ref = ? AND provider = ?').bind(subjectRef, provider).run();
 }
 
@@ -477,7 +478,7 @@ export async function dropProviderToken(db: D1Database, subjectRef: string, prov
  * `provider_tokens` copy — would outlive the erasure until the later migration
  * drops the table. That migration removes this line.
  */
-export async function dropProviderTokens(db: D1Database, subjectRef: string): Promise<void> {
+export async function dropProviderTokens(db: SqlDb, subjectRef: string): Promise<void> {
   await db.prepare('DELETE FROM provider_tokens WHERE subject_ref = ?').bind(subjectRef).run();
   await db.prepare('DELETE FROM apple_provider_tokens WHERE subject_ref = ?').bind(subjectRef).run();
 }

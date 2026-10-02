@@ -5,6 +5,7 @@
 //
 //   node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run
 //        [--env live|sandbox|test] [--from <adapter>] [--root <repoRoot>]
+//        [--export <file>]   (port `sql` only)
 //
 //   <port>      a tooling/ports/<port>.json registry.
 //   --to        the adapter id the port would switch to.
@@ -14,6 +15,8 @@
 //   --from      the adapter being replaced; default: selection.default[env],
 //               or — for a port selected per channel — every adapter that
 //               serves a channel today.
+//   --export    port `sql` only: ONE nightly D1 export (gzipped JSON lines,
+//               services/platform/src/backup/), given locally — never fetched.
 //
 // One line per check, `PASS | FAIL | LOST  C<n> <name>: <detail>`, after ONE
 // first line that names the check deciding the exit (the shape of
@@ -23,7 +26,7 @@
 //           or the invocation was refused;
 //   exit 0  every check PASS.
 //
-// The eight:
+// The eight, and for `sql` a ninth:
 //   C1 target     the target row exists, carries the environment, and is not a
 //                 `fake` for live
 //   C2 status     its status (draft and retired cannot take traffic)
@@ -83,6 +86,12 @@
 //                 symbols, web source maps); the monitors to recreate from
 //                 tooling/monitor-register.json; and the owner-alert routes.
 //                 LOST when a source cannot be read or yields nothing.
+// A SQL switch adds one (port-sql, ⏱ 2026-10-02):
+//   C9  replay    the --export file is loaded into a node:sqlite file built from
+//                 the migrations of the database it names, and its table list and
+//                 row counts are compared (tooling/ops/sql-export-replay.mjs). Each
+//                 mismatch is a FAIL; no --export is LOST — the export duty
+//                 unrehearsed is not a pass.
 //
 // It reads registries and nothing else: no network, no vault, no credential.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,9 +103,12 @@ import { readSecretSources, callsRunner, declares } from '../ci/assert-ports.mjs
 import { stripSourceComments } from '../ci/text-reductions.mjs';
 import { readRegister, plan, netAfterFee, feeCurrencyProblem, FEE_REGISTER, CHANNEL_REGISTER, RAILS } from '../catalog/render-rail-prices.mjs';
 import { railsOf, billsThroughStore, storeBilledRails } from '../ports/render.mjs';
+import { readExportFile, replayExport } from './sql-export-replay.mjs';
 
 export const NO_VALUE_FLAGS = new Set(['--dry-run']);
-export const VALUE_FLAGS = new Set(['--to', '--env', '--from', '--root']);
+export const VALUE_FLAGS = new Set(['--to', '--env', '--from', '--root', '--export']);
+/** The ports whose dry run replays an export (C9). */
+export const EXPORT_REPLAY_PORTS = new Set(['sql']);
 export const HOUSE_IDENTITY = 'tooling/house-identity.json';
 export const WORKER_SECRETS_TOOL = 'tooling/ops/worker-secrets.mjs';
 const ENVS = new Set(['live', 'sandbox', 'test']);
@@ -105,7 +117,7 @@ const money = (minor) => `${minor < 0 ? '-' : ''}${Math.trunc(Math.abs(minor) / 
 
 /** Parse argv. Every flag is declared; a no-value flag never eats the next argument (shell-13). */
 export function parseArgs(argv) {
-  const out = { port: null, to: null, env: 'live', from: null, root: null, dryRun: false };
+  const out = { port: null, to: null, env: 'live', from: null, root: null, export: null, dryRun: false };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -126,6 +138,7 @@ export function parseArgs(argv) {
   if (!out.dryRun) return { error: '--dry-run is required: this tool only ever rehearses a switch, and says so on the command line' };
   if (!out.to) return { error: '--to <adapter> is required' };
   if (!ENVS.has(out.env)) return { error: `--env must be live, sandbox or test, not ${JSON.stringify(out.env)}` };
+  if (out.export !== null && !EXPORT_REPLAY_PORTS.has(out.port)) return { error: `--export is for ${[...EXPORT_REPLAY_PORTS].join(', ')}; the ${out.port} port has no export to replay` };
   return out;
 }
 
@@ -349,6 +362,19 @@ export function run(opts) {
     for (const a of current) extra.push(`    run-off ${a.id}: ${a.exportDuty}`);
   }
   if (isObj(doc.streams)) mailChecks(root, doc, target, current, add);
+  // C9 — the export duty, rehearsed (port `sql`)
+  if (EXPORT_REPLAY_PORTS.has(opts.port)) {
+    if (!opts.export) add(9, 'replay', 'LOST', 'no --export <file>: the nightly export was not replayed, so the export duty is unrehearsed');
+    else {
+      let text = null;
+      try { text = readExportFile(resolve(root, opts.export)); } catch (e) { add(9, 'replay', 'LOST', `${opts.export} could not be read (${e.message})`); }
+      if (text !== null) {
+        const r = replayExport({ root, jsonl: text });
+        add(9, 'replay', r.verdict, r.detail);
+        extra.push(...r.lines);
+      }
+    }
+  }
   // C9 — a port's own switch plan, when it has one (PORT_PLANS)
   const planFor = Object.hasOwn(PORT_PLANS, opts.port) ? PORT_PLANS[opts.port] : undefined;
   if (planFor) {
@@ -599,7 +625,7 @@ function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.error) {
     console.error(`port-switch: REFUSED — ${opts.error}`);
-    console.error('usage: node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>] [--root <dir>]');
+    console.error('usage: node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>] [--root <dir>] [--export <file>]');
     process.exit(2);
   }
   const { code, out } = run(opts);

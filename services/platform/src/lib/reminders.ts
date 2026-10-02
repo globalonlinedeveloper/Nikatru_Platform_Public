@@ -30,6 +30,7 @@
 // key, a missing binding or no targets at all is ok=0 with the reason — the
 // renewals fan-out's rule (src/scheduled.ts `renewalsFanOut`).
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import type { AppTarget, Env } from '../types';
 import { rollForward } from '../renewals';
 import { allRows, firstRow } from './d1';
@@ -221,7 +222,7 @@ export function isLive(row: Record<string, unknown>): boolean {
 
 /** Every live subscription of `userIds`, read USER_CHUNK accounts at a time.
  *  The ids travel as ONE JSON parameter, so a chunk's size binds no placeholders. */
-export async function readLiveSubscriptions(db: D1Database, userIds: readonly string[]): Promise<LiveSubscription[]> {
+export async function readLiveSubscriptions(db: SqlDb, userIds: readonly string[]): Promise<LiveSubscription[]> {
   const out: LiveSubscription[] = [];
   for (let i = 0; i < userIds.length; i += USER_CHUNK) {
     const chunk = userIds.slice(i, i + USER_CHUNK);
@@ -457,7 +458,7 @@ interface Pending {
  * The ledger prune: `reminder_sent` rows whose `due_on` is more than
  * REMINDER_SENT_RETENTION_DAYS behind today, at most MAX_PRUNE_PER_RUN per run.
  */
-async function pruneLedger(db: D1Database, today: string): Promise<number> {
+async function pruneLedger(db: SqlDb, today: string): Promise<number> {
   const cutoff = addDays(today, -REMINDER_SENT_RETENTION_DAYS);
   const res = await db
     .prepare(
@@ -469,7 +470,7 @@ async function pruneLedger(db: D1Database, today: string): Promise<number> {
 }
 
 /** Digests already sent today, portfolio-wide — one unsubscribe hash per digest. */
-async function digestsSentSince(db: D1Database, dayStart: string): Promise<number> {
+async function digestsSentSince(db: SqlDb, dayStart: string): Promise<number> {
   const row = await firstRow<{ n: number }>(
     db.prepare('SELECT COUNT(DISTINCT unsubscribe_hash) AS n FROM reminder_sent WHERE sent_at >= ?').bind(dayStart),
   );
@@ -477,7 +478,7 @@ async function digestsSentSince(db: D1Database, dayStart: string): Promise<numbe
 }
 
 /** Build every opted-in person's pending digest for one app. */
-async function pendingFor(env: Env, target: AppTarget, db: D1Database, today: string): Promise<{ optedIn: number; pending: Pending[] }> {
+async function pendingFor(env: Env, target: AppTarget, db: SqlDb, today: string): Promise<{ optedIn: number; pending: Pending[] }> {
   const prefs = await allRows<{ user_id: string; lead_days: number }>(
     env.PLATFORM_DB.prepare(
       'SELECT user_id, lead_days FROM reminder_prefs WHERE app_id = ? AND email_opt_in = 1 ORDER BY user_id',

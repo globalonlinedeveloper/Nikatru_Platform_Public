@@ -101,7 +101,8 @@
 //               and one that no longer calls the API is a stale row.
 //  12 bindings  ⏱ 2026-10-02 · port-storage. No module under services/*/src names
 //               a Cloudflare binding TYPE (`KVNamespace`, `R2Bucket` and its R2
-//               types, `RateLimit`) outside a Worker's composition root
+//               types, `RateLimit`, and — port-sql — `D1Database` and its D1
+//               types) outside a Worker's composition root
 //               (src/ports.ts), its `types.ts`, or services/_shared/src/ports/
 //               (the ports, their fakes and adapters) — every handler takes the
 //               PORT type. The pattern must still match SOMETHING in the tree
@@ -169,8 +170,12 @@ export const LIMB_NAMES = Object.freeze({
   13: 'geo',
 });
 
-/** Limb 12: a Cloudflare binding TYPE, named in code (comments and strings stripped). */
-export const BINDING_TYPE_RE = /\b(?:KVNamespace\w*|R2(?:Bucket|Objects?|ObjectBody|PutOptions|ListOptions|HTTPMetadata)|RateLimit(?:Options|Outcome)?)\b/;
+/** Limb 12: a Cloudflare binding TYPE, named in code (comments and strings stripped).
+ *  ⏱ 2026-10-02 · port-sql: the D1 types joined, so a handler typed `D1Database`
+ *  (or a statement typed `D1PreparedStatement`) reddens as a `KVNamespace` does.
+ *  `\b` on both sides, so an identifier that merely CONTAINS one (`dumpD1Database`)
+ *  is not a type. */
+export const BINDING_TYPE_RE = /\b(?:KVNamespace\w*|R2(?:Bucket|Objects?|ObjectBody|PutOptions|ListOptions|HTTPMetadata)|RateLimit(?:Options|Outcome)?|D1(?:Database(?:Session)?|PreparedStatement|Result|Response|Meta|ExecResult))\b/;
 /** Limb 13: a read of the runtime's per-request `cf` object, or its type. Matched on
  *  comment- AND string-stripped code for the dot and destructuring forms, and on
  *  comment-stripped code for the bracket form (whose name IS a string). */
@@ -646,7 +651,7 @@ export function evaluate(root) {
       const bindingHome = f === `services/${worker}/${COMPOSITION_ROOT}` || f === `services/${worker}/src/types.ts` || f.startsWith(PORTS_HOME);
       if (shape.binding) {
         if (bindingHome) bindingHomesMatched++;
-        else find(12, `\`${f}\` names the Cloudflare binding type \`${shape.binding}\`. A handler takes the PORT (KvStore, ObjectStore, RateLimiter in ${PORTS_HOME}); only a composition root (services/<worker>/${COMPOSITION_ROOT}), a services/<worker>/src/types.ts or ${PORTS_HOME} may name the binding.`);
+        else find(12, `\`${f}\` names the Cloudflare binding type \`${shape.binding}\`. A handler takes the PORT (KvStore, ObjectStore, RateLimiter, SqlDb in ${PORTS_HOME}); only a composition root (services/<worker>/${COMPOSITION_ROOT}), a services/<worker>/src/types.ts or ${PORTS_HOME} may name the binding.`);
       }
       if (shape.cf) {
         if (f === GEO_HOME) geoHomeMatched = true;

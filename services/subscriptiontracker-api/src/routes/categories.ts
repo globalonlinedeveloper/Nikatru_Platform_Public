@@ -17,6 +17,7 @@
 // an old client and a new one alike.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import { Hono } from 'hono';
 import type { AppEnv, Category } from '../types';
 import { allRows, firstRow, nowIso, run, uuid } from '../lib/d1';
@@ -65,14 +66,14 @@ function nameOf(body: unknown): { ok: true; name: string } | { ok: false; detail
 }
 
 /** The category this user may use under [id]: a built-in, or one of their own. */
-export function visibleCategory(db: D1Database, userId: string, id: string) {
+export function visibleCategory(db: SqlDb, userId: string, id: string) {
   return firstRow<Category>(
     db.prepare('SELECT * FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)').bind(id, userId),
   );
 }
 
 /** Another category (not [exceptId]) this user already sees under [name]. */
-function clash(db: D1Database, userId: string, name: string, exceptId: string | null) {
+function clash(db: SqlDb, userId: string, name: string, exceptId: string | null) {
   return firstRow<{ id: string }>(
     db
       .prepare(

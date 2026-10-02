@@ -7,6 +7,7 @@
 // The Idempotency-Key half of POST / (AB-O2-02) and of POST /:id/payments; see
 // lib/idempotency.ts.
 import { PAYMENT_SCOPE, idempotentCreate, reservedCreateId } from '../lib/idempotency';
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 import { Hono, type Context } from 'hono';
 import type { AppEnv, Payment, PriceChange, Subscription } from '../types';
 import { allRows, firstRow, nowIso, run, todayYmd, uuid } from '../lib/d1';
@@ -630,7 +631,7 @@ function validate(body: unknown): ValidatedSubscription {
  *     free text it always was, with no id;
  *   · null clears both.
  */
-async function resolveCategory(db: D1Database, userId: string, f: Fields): Promise<Invalid | null> {
+async function resolveCategory(db: SqlDb, userId: string, f: Fields): Promise<Invalid | null> {
   if (f.category_id !== undefined) {
     if (f.category_id === null) {
       f.category = null;
@@ -809,7 +810,7 @@ function checkExactAmount(body: Record<string, unknown>, fields: Fields): Invali
  * no one else's rows; a user who never opens the app again keeps their removed
  * rows until they do, or until erasure takes everything.
  */
-async function purgeExpired(db: D1Database, userId: string): Promise<void> {
+async function purgeExpired(db: SqlDb, userId: string): Promise<void> {
   const cutoff = new Date(Date.now() - SOFT_DELETE_PURGE_DAYS * 86_400_000).toISOString();
   const expired =
     'SELECT id FROM subscriptions WHERE user_id = ? AND deleted_at IS NOT NULL AND deleted_at < ?';

@@ -962,9 +962,9 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/lib/erase-subject.ts",
-      "lines": 51,
+      "lines": 52,
       "verdict": "STAYS",
-      "why": "ADR 081 (2026-09-15): this app Worker APP_DB erasure walk, shared by the public route and the retry entrypoint."
+      "why": "ADR 081 (2026-09-15): this app Worker APP_DB erasure walk, shared by the public route and the retry entrypoint. ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql): 51 -> 52, re-measured by assert-chassis-ledger — the SqlDb port import; the walk takes the SQL port, as in services/subscriptiontracker-api."
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
@@ -976,9 +976,9 @@
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",
       "path": "src/types.ts",
-      "lines": 90,
+      "lines": 95,
       "verdict": "STAYS",
-      "why": "Per-app Env bindings - APP_DB and this app's own vars. ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): 86 -> 90, re-measured by assert-chassis-ledger — the KvStore port import and its three-line comment; JWKS_CACHE and SESSION_REVOKED are declared as the KV port, as in services/subscriptiontracker-api."
+      "why": "Per-app Env bindings - APP_DB and this app's own vars. ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage): 86 -> 90, re-measured by assert-chassis-ledger — the KvStore port import and its three-line comment; JWKS_CACHE and SESSION_REVOKED are declared as the KV port, as in services/subscriptiontracker-api. ⏱ 2026-10-02 · port-sql: 90 -> 95, re-measured by assert-chassis-ledger — the SqlDb port import and its four-line comment; APP_DB and PLATFORM_DB are declared as the SQL port, as in services/subscriptiontracker-api."
     },
     {
       "root": "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api",

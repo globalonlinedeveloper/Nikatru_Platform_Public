@@ -13,15 +13,20 @@ export type { RateLimiterBinding };
  *  and assert-ports limb 9 refuses a `KVNamespace` / `R2Bucket` / `RateLimit`
  *  type anywhere else. */
 import type { KvStore } from '../../_shared/src/ports/kv';
+/** ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql): the D1 bindings
+ *  are declared as the SQL PORT; the binding satisfies it structurally
+ *  (services/_shared/src/ports/adapters/cloudflare.ts `cloudflareD1`), and
+ *  assert-ports limb 9 refuses a `D1Database` type in any handler. */
+import type { SqlDb } from '../../_shared/src/ports/sql';
 import type { ObjectStore } from '../../_shared/src/ports/objects';
 export type { KvStore, ObjectStore };
 
 /** Worker bindings + environment. Names must match wrangler.jsonc bindings. */
 export interface Env {
   // SHARED entitlements DB (platform is the sole migrations applier).
-  PLATFORM_DB: D1Database;
+  PLATFORM_DB: SqlDb;
   // Per-app DBs bound for the nightly renewals fan-out. Add one per app.
-  SUBSCRIPTIONTRACKER_DB: D1Database;
+  SUBSCRIPTIONTRACKER_DB: SqlDb;
 
   // Edge-cached per-app config overrides (key: `config:<app>`).
   CONFIG_KV: KvStore;
@@ -1137,5 +1142,5 @@ export interface Subscription {
 /** One app the nightly scheduler fans out to. */
 export interface AppTarget {
   appId: string;
-  db: D1Database;
+  db: SqlDb;
 }

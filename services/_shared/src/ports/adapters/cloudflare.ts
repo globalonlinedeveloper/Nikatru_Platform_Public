@@ -11,6 +11,9 @@
 // lets every `Env` declare its bindings as `KvStore`, `ObjectStore` and
 // `RateLimiter` and every handler see the port and nothing more.
 //
+// ⏱ 2026-10-02 · port-sql: the D1 binding joins them as `SqlDb`
+// (tooling/ports/sql.json adapter `d1`), on the same terms.
+//
 // The binding types are ambient (`@cloudflare/workers-types`, each Worker's
 // `compilerOptions.types`); there is no import, so this module carries no bare
 // specifier (shared-home.test.ts).
@@ -18,6 +21,7 @@
 import type { KvStore } from '../kv';
 import type { ObjectStore } from '../objects';
 import type { RateLimiter } from '../ratelimit';
+import type { SqlDb } from '../sql';
 
 /** tooling/ports/kv.json adapter `cloudflare-kv`. */
 export function cloudflareKv(binding: KVNamespace): KvStore {
@@ -31,5 +35,10 @@ export function cloudflareR2(bucket: R2Bucket): ObjectStore {
 
 /** tooling/ports/ratelimit.json adapter `cloudflare-ratelimit`. */
 export function cloudflareRateLimiter(binding: RateLimit): RateLimiter {
+  return binding;
+}
+
+/** tooling/ports/sql.json adapter `d1`. */
+export function cloudflareD1(binding: D1Database): SqlDb {
   return binding;
 }

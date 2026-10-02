@@ -19,7 +19,6 @@
 // schema under test is the schema that ships. Inlining a copy here would let the
 // tests keep passing after a migration changed the tree.
 // ─────────────────────────────────────────────────────────────────────────────
-import type { DatabaseSync as DatabaseSyncCtor } from 'node:sqlite';
 import { Hono } from 'hono';
 import init0001 from '../migrations/0001_init.sql?raw';
 import init0002 from '../migrations/0002_schema_debt.sql?raw';
@@ -32,113 +31,17 @@ import init0008 from '../migrations/0008_preferences.sql?raw';
 import init0009 from '../migrations/0009_tags.sql?raw';
 import type { AppEnv } from '../src/types';
 
-type SQLValue = string | number | bigint | null | Uint8Array;
-
-// `node:sqlite` is fetched through `process.getBuiltinModule` rather than a
-// static import: Vite's builtin list does not yet know the module, so
-// `import ... from 'node:sqlite'` fails to resolve at transform time ("Failed to
-// load url sqlite"). This bypasses module resolution entirely and needs no
-// vitest config. The TYPES still come from the ambient declaration in
-// node-sqlite.d.ts, so this stays type-checked.
-type DatabaseSync = DatabaseSyncCtor;
-const SqliteCtor = (
-  globalThis as unknown as {
-    process: {
-      getBuiltinModule(id: 'node:sqlite'): {
-        DatabaseSync: new (path: string) => DatabaseSync;
-      };
-    };
-  }
-).process.getBuiltinModule('node:sqlite').DatabaseSync;
-
-/** D1PreparedStatement over node:sqlite. `bind` returns a NEW statement, as D1's
- *  does — budget.ts binds one prepared statement many times in a single batch. */
-class SqliteStatement {
-  constructor(
-    private readonly db: DatabaseSync,
-    private readonly sql: string,
-    private readonly params: unknown[] = [],
-  ) {}
-
-  bind(...params: unknown[]): SqliteStatement {
-    return new SqliteStatement(this.db, this.sql, params);
-  }
-
-  private args(): SQLValue[] {
-    return this.params.map((p) => {
-      if (p === undefined) {
-        // D1 rejects undefined binds (D1_TYPE_ERROR). node:sqlite throws too;
-        // this makes the message recognisable in a failing test.
-        throw new TypeError('D1_TYPE_ERROR: undefined is not a supported bind value');
-      }
-      if (typeof p === 'boolean') return p ? 1 : 0;
-      return p as SQLValue;
-    });
-  }
-
-  async all<T = Record<string, unknown>>(): Promise<{ results: T[] }> {
-    return { results: this.db.prepare(this.sql).all(...this.args()) as T[] };
-  }
-
-  async first<T = Record<string, unknown>>(): Promise<T | null> {
-    return (this.db.prepare(this.sql).get(...this.args()) as T) ?? null;
-  }
-
-  async run(): Promise<{ meta: { changes: number } }> {
-    const r = this.db.prepare(this.sql).run(...this.args());
-    return { meta: { changes: r.changes } };
-  }
-
-  /**
-   * What ONE statement contributes to a `batch()` answer — D1's shape.
-   *
-   * ⏱ 2026-09-18 · O-ERASURE-WALK-ROUND-TRIPS. `batch` used to push `run()`,
-   * which carries `meta` and NO `results`, because every batch here was a write.
-   * The erasure walk now batches its schema reads. MEASURED against workerd's own
-   * D1 (getPlatformProxy over the Worker's wrangler.jsonc binding), 2026-09-18: a
-   * batched SELECT answers its rows, in order; a write answers `results: []` with
-   * `meta.changes`. `columns()` decides which, so no SQL is pattern-matched. Same
-   * change as services/platform/test/harness.ts.
-   */
-  batchResult(): { results: unknown[]; meta: { changes: number } } {
-    const stmt = this.db.prepare(this.sql);
-    if (stmt.columns().length > 0) return { results: stmt.all(...this.args()), meta: { changes: 0 } };
-    const r = stmt.run(...this.args());
-    return { results: [], meta: { changes: Number(r.changes) } };
-  }
-}
-
-/** D1Database over node:sqlite. `batch` is ONE transaction, as D1's is. */
-export class SqliteD1 {
-  readonly db: DatabaseSync;
-
-  constructor(schema: string[]) {
-    this.db = new SqliteCtor(':memory:');
-    for (const sql of schema) this.db.exec(sql);
-  }
-
-  prepare(sql: string): SqliteStatement {
-    return new SqliteStatement(this.db, sql);
-  }
-
-  async batch(statements: SqliteStatement[]): Promise<unknown[]> {
-    this.db.exec('BEGIN');
-    try {
-      const out: unknown[] = [];
-      for (const s of statements) out.push(s.batchResult());
-      this.db.exec('COMMIT');
-      return out;
-    } catch (err) {
-      this.db.exec('ROLLBACK');
-      throw err;
-    }
-  }
-
-  /** Direct read, bypassing the Worker — for asserting what actually landed. */
-  rows(sql: string, ...params: SQLValue[]): Array<Record<string, unknown>> {
-    return this.db.prepare(sql).all(...params);
-  }
-}
+/**
+ * The engine: node:sqlite with the migrations applied, `batch` ONE transaction.
+ *
+ * ⏱ 2026-10-02 · port-sql. The engine that lived here is PROMOTED to
+ * services/_shared/src/ports/fakes/sql.ts — tooling/ports/sql.json adapter
+ * `sqlite`, held to the SQL port's conformance suite — and is the same engine
+ * services/platform's harness runs. Re-exported under its old name for one PR,
+ * so no test file had to change its import.
+ */
+import { SqliteDb } from '../../_shared/src/ports/fakes/sql';
+export { SqliteDb as SqliteD1 };
 
 /**
  * subscriptiontracker_db's migration set, IN APPLICATION ORDER, exactly as
@@ -165,8 +68,8 @@ export const SUBLY_MIGRATIONS: readonly string[] = [
 /** APP_DB with subscriptiontracker's real migrations applied, in order. `extraSchema` is for
  *  tests that need to force a DB-level failure the route cannot pre-empt (a
  *  trigger, say) in order to observe transaction behaviour. */
-export function realAppDb(extraSchema: string[] = []): SqliteD1 {
-  return new SqliteD1([...SUBLY_MIGRATIONS, ...extraSchema]);
+export function realAppDb(extraSchema: string[] = []): SqliteDb {
+  return new SqliteDb([...SUBLY_MIGRATIONS, ...extraSchema]);
 }
 
 /**
@@ -201,8 +104,8 @@ export const ENTITLEMENTS_SCHEMA = platformEntitlements;
 import { PLATFORM_MIGRATIONS } from '../../platform/test/harness';
 export { PLATFORM_MIGRATIONS };
 
-export function realPlatformDb(): SqliteD1 {
-  return new SqliteD1([...PLATFORM_MIGRATIONS]);
+export function realPlatformDb(): SqliteDb {
+  return new SqliteDb([...PLATFORM_MIGRATIONS]);
 }
 
 /** Records every prepared SQL string and every bound argument list. */

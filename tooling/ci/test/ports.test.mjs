@@ -352,7 +352,7 @@ describe('assert-ports — every limb reddens', () => {
     const r = run(fixture({ files: { 'services/w/src/routes/h.ts': 'export async function h(kv: KVNamespace) {\n  return kv.get("k");\n}\n' } }));
     assert.equal(r.code, 1, r.out);
     assert.match(r.first, /limb 12 \(bindings\): `services\/w\/src\/routes\/h\.ts` names the Cloudflare binding type `KVNamespace`/);
-    for (const t of ['R2Bucket', 'R2Objects', 'RateLimit']) {
+    for (const t of ['R2Bucket', 'R2Objects', 'RateLimit', 'D1Database', 'D1PreparedStatement', 'D1Result']) {
       const x = run(fixture({ files: { 'services/w/src/routes/h.ts': `export const h = (b: ${t}) => b;\n` } }));
       assert.equal(x.code, 1, `${t}: ${x.out}`);
       assert.match(x.first, new RegExp(`limb 12 .*\`${t}\``));
@@ -363,7 +363,7 @@ describe('assert-ports — every limb reddens', () => {
       const r = run(fixture({ files: { [rel]: 'export const adapt = (b: KVNamespace) => b;\n' } }));
       assert.equal(r.code, 0, `${rel}: ${r.out}`);
     }
-    const prose = run(fixture({ files: { 'services/w/src/routes/h.ts': '// never a KVNamespace here\nexport const why = "not an R2Bucket";\nexport const withinRateLimit = 1;\n' } }));
+    const prose = run(fixture({ files: { 'services/w/src/routes/h.ts': '// never a KVNamespace or a D1Database here\nexport const why = "not an R2Bucket";\nexport const withinRateLimit = 1;\nexport const dumpD1Database = (db: SqlDb) => db;\n' } }));
     assert.equal(prose.code, 0, prose.out);
   });
   it('limb 12: a pattern that matches NOTHING in the tree is COVERAGE LOST (exit 2)', () => {
@@ -614,13 +614,39 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     for (const p of ['auth', 'boxes', 'telemetry', 'telemetry\\.ts']) assert.match(r.out, new RegExp(`^${p}\\s+L2\\s+L2\\s+L3`, 'm'));
     assert.match(r.out, /^telemetry\.dart\s+L3\s+L3\s+L3/m); // port-telemetry: the Dart half graded apart
     for (const p of ['kv', 'objects', 'ratelimit']) assert.match(r.out, new RegExp(`^${p}\\s+L2\\s+L2\\s+L2`, 'm')); // port-storage
-    assert.match(r.out, /vendor cloudflare is the adapter of kv, objects, ratelimit; what is left \(D1/);
+    assert.match(r.out, /^sql\s+L2\s+L2\s+L3/m); // port-sql
+    assert.match(r.out, /vendor cloudflare is the adapter of kv, objects, ratelimit, sql; what is left \(Workers, Pages, the nikatru\.com zone\)/);
+    // port-sql: the D1 adapter's scenarios are named as pending, never hidden.
+    assert.match(r.out, /PENDING sql\/d1: batch-is-atomic/);
     assert.match(r.out, /limb 3: services\/platform\/src\/generated\/ports\.ts matches tooling\/ports\/payments\.json/);
     assert.match(r.out, /PENDING payments\/revenuecat: refund reversed or dispute won restores \(O-REVENUECAT-VERIFIER\)/);
     assert.match(r.out, /payments\/client\s+L3\s+L3\s+L3/);
     assert.match(r.out, /limb 10: payments\/client — PurchaseRail 3 conformant, IapBridge 2 conformant/);
     assert.match(r.out, /channels\s+L2\s+L3\s+L3/);
     assert.match(r.out, /CANDIDATE channels\/indus-appstore \(Indus Appstore\): not submittable — \[ADR 076\] rider; commission UNREAD/);
+  });
+  it('red: a REAL handler re-typed D1Database reddens limb 12 (lib/erasure-ledger.ts)', () => {
+    const rel = join(root, 'services/platform/src/lib/erasure-ledger.ts');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      assert.match(before, /clearPendingErasure\(db: SqlDb,/, 'the seam this mutation flips is still there');
+      writeFileSync(rel, before.replace('clearPendingErasure(db: SqlDb,', 'clearPendingErasure(db: D1Database,'));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 12 \(bindings\): `services\/platform\/src\/lib\/erasure-ledger\.ts` names the Cloudflare binding type `D1Database`/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: sql claiming L3 while D1 has pending scenarios reddens limb 6', () => {
+    const rel = join(root, 'tooling/ports/sql.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.level.claimed = 3;
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 6 \(level\): tooling\/ports\/sql\.json claims L3 and earns L2: 1 conformant adapter\(s\)/);
+    } finally { writeFileSync(rel, before); }
   });
   // port-pay-client · MUTATE THE REAL TREE: RevenueCat's conformance test that imports the suite
   // but never CALLS the runner reddens limb 10, and the client half falls to L2 (IapBridge has one).
@@ -821,7 +847,7 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       writeFileSync(rel, JSON.stringify(doc));
       const r = run(root);
       assert.equal(r.code, 1, r.out);
-      assert.match(r.first, /limb 8 \(cross-register\): vendor `cloudflare` is placed 4 times/);
+      assert.match(r.first, /limb 8 \(cross-register\): vendor `cloudflare` is placed 5 times/);
     } finally { writeFileSync(rel, before); }
   });
   it('red: deleting one vendor from _non-port.json reddens limb 8', () => {

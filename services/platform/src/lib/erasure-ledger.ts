@@ -12,6 +12,7 @@
 // deletes every table with a `user_id` column, and a ledger named that way would
 // delete its own order mid-erasure. The migration's header says it at length.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { SqlDb } from '../../../_shared/src/ports/sql';
 
 /** What an app's `ErasureEntrypoint` answers (services/subscriptiontracker-api
  *  src/erasure-entrypoint.ts). Counts only; the subject is never echoed. */
@@ -111,7 +112,7 @@ export interface PendingOrder {
  * Due immediately: the first retry is the next cron run.
  */
 export async function recordPendingErasure(
-  db: D1Database,
+  db: SqlDb,
   o: { subjectRef: string; appId: string; nowIso: string; reason: string },
 ): Promise<string> {
   const orderId = crypto.randomUUID();
@@ -134,12 +135,12 @@ export async function recordPendingErasure(
 }
 
 /** The synchronous path reached the app after all: any open order for it is moot. */
-export async function clearPendingErasure(db: D1Database, subjectRef: string, appId: string): Promise<void> {
+export async function clearPendingErasure(db: SqlDb, subjectRef: string, appId: string): Promise<void> {
   await db.prepare('DELETE FROM pending_erasures WHERE subject_ref = ? AND app_id = ?').bind(subjectRef, appId).run();
 }
 
 /** Unconfirmed orders whose next attempt is due, oldest first, at most `limit`. */
-export async function dueOrders(db: D1Database, nowIso: string, limit: number): Promise<PendingOrder[]> {
+export async function dueOrders(db: SqlDb, nowIso: string, limit: number): Promise<PendingOrder[]> {
   const res = await db
     .prepare(
       `SELECT order_id, subject_ref, app_id, created_at, attempts, next_attempt_at, confirmed_at
@@ -153,7 +154,7 @@ export async function dueOrders(db: D1Database, nowIso: string, limit: number): 
   return res.results ?? [];
 }
 
-export async function markConfirmed(db: D1Database, orderId: string, nowIso: string): Promise<void> {
+export async function markConfirmed(db: SqlDb, orderId: string, nowIso: string): Promise<void> {
   await db
     .prepare(
       'UPDATE pending_erasures SET confirmed_at = ?, last_attempt_at = ?, attempts = attempts + 1, last_error = NULL WHERE order_id = ?',
@@ -163,7 +164,7 @@ export async function markConfirmed(db: D1Database, orderId: string, nowIso: str
 }
 
 export async function markFailed(
-  db: D1Database,
+  db: SqlDb,
   o: { orderId: string; attempts: number; nowMs: number; error: string },
 ): Promise<void> {
   const now = new Date(o.nowMs).toISOString();
@@ -177,7 +178,7 @@ export async function markFailed(
 }
 
 /** Subjects every one of whose orders is confirmed — ready for the identity step. */
-export async function subjectsReadyForIdentity(db: D1Database, limit: number): Promise<string[]> {
+export async function subjectsReadyForIdentity(db: SqlDb, limit: number): Promise<string[]> {
   const res = await db
     .prepare(
       `SELECT subject_ref FROM pending_erasures
@@ -191,12 +192,12 @@ export async function subjectsReadyForIdentity(db: D1Database, limit: number): P
 }
 
 /** The subject's erasure is complete: its orders are deleted (the retention bound). */
-export async function closeSubject(db: D1Database, subjectRef: string): Promise<void> {
+export async function closeSubject(db: SqlDb, subjectRef: string): Promise<void> {
   await db.prepare('DELETE FROM pending_erasures WHERE subject_ref = ?').bind(subjectRef).run();
 }
 
 /** Unconfirmed orders older than `cutoffIso` — the stuck set the heartbeat turns RED. */
-export async function stuckOrderCount(db: D1Database, cutoffIso: string): Promise<number> {
+export async function stuckOrderCount(db: SqlDb, cutoffIso: string): Promise<number> {
   const row = await db
     .prepare('SELECT COUNT(*) AS n FROM pending_erasures WHERE confirmed_at IS NULL AND created_at < ?')
     .bind(cutoffIso)
