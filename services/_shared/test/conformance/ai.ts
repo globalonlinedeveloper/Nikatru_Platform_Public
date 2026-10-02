@@ -49,7 +49,7 @@
 //                       reservation, never at zero
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AiAttempt, AiBeforeCall, AiCostModel, AiLimits, AiModelId, AiOutcome, AiProvider, AiRequest, AiReservationRequest, AiUsage } from '../../src/ports/ai';
-import { attemptsUsd, settle, worstCaseUsd } from '../../src/ports/ai';
+import { AI_MODEL_MAX_OUTPUT_TOKENS, attemptsUsd, settle, worstCaseUsd } from '../../src/ports/ai';
 import { buildEnvelope } from '../../src/error-sink';
 
 export const AI_SCENARIOS = [
@@ -144,6 +144,7 @@ export const CONFORMANCE_LIMITS: AiLimits = {
   prices: CONFORMANCE_PRICES,
   maxInputTokens: { import: CONFORMANCE_INPUT_CAP, review: null },
   fallbacks: { 'claude-opus-5-5': ['claude-opus-4-8', 'claude-opus-5'] },
+  maxOutputTokens: AI_MODEL_MAX_OUTPUT_TOKENS,
 };
 
 /**

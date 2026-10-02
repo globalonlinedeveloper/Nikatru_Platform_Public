@@ -208,12 +208,16 @@ export type AiCostModel = Readonly<Record<string, AiModelPrice>>;
  *   · maxInputTokens  per FEATURE, the input cap; null means no cap was set, and
  *                     every call for that feature is refused;
  *   · fallbacks       per model, the refusal-fallback chain the adapter sends
- *                     (each model priced; an empty chain sends none).
+ *                     (each model priced; an empty chain sends none);
+ *   · maxOutputTokens per model, the most `max_tokens` it accepts
+ *                     (AI_MODEL_MAX_OUTPUT_TOKENS in production); a model not
+ *                     listed accepts none, so a call that reaches it is refused.
  */
 export interface AiLimits {
   readonly prices: AiCostModel;
   readonly maxInputTokens: Readonly<Record<AiFeature, number | null>>;
   readonly fallbacks: Readonly<Record<string, readonly string[]>>;
+  readonly maxOutputTokens: Readonly<Record<string, number>>;
 }
 
 /** The USD a call cost, or null when the model is not priced (never a guess). */
@@ -254,6 +258,38 @@ export const IMAGE_TOKEN_CEILING = 4784;
  * @ceiling none — a safety margin in an input ESTIMATE, not a platform resource we spend.
  */
 export const REQUEST_OVERHEAD_TOKENS = 2048;
+/**
+ * The most output tokens each model a call may reach accepts as `max_tokens`
+ * (the claude-api skill, shared/models.md, cached 2026-09-25: 128K for Opus 5.5,
+ * Sonnet 5.5, Opus 5 and Opus 4.8; 64K for Haiku 4.5). A model not listed here
+ * accepts none: the call is refused, never sent with a guess.
+ *
+ * @ceiling none — the provider's own per-request maximum, checked before a reservation, not a platform resource we spend.
+ */
+export const AI_MODEL_MAX_OUTPUT_TOKENS: Readonly<Record<string, number>> = {
+  'claude-haiku-4-5': 64_000,
+  'claude-sonnet-5-5': 128_000,
+  'claude-opus-5-5': 128_000,
+  'claude-opus-4-8': 128_000,
+  'claude-opus-5': 128_000,
+};
+
+/**
+ * Why `maxOutputTokens` cannot price a reservation, or null when it can: a
+ * positive integer at or under the limit of EVERY model in the chain (the same
+ * `max_tokens` is sent to each fallback). 0, a negative, NaN, a fraction or one
+ * over the limit would hand the meter a zero, negative, NaN or wrong worst case.
+ */
+export function maxOutputTokensProblem(maxOutputTokens: number, attemptModels: readonly string[], limits: Readonly<Record<string, number>>): string | null {
+  if (!Number.isInteger(maxOutputTokens) || maxOutputTokens <= 0) return `maxOutputTokens ${String(maxOutputTokens)} is not a positive integer`;
+  for (const m of attemptModels) {
+    const limit = limits[m];
+    if (limit === undefined) return `no output limit is known for ${m}`;
+    if (maxOutputTokens > limit) return `maxOutputTokens ${maxOutputTokens} is over ${m}'s limit of ${limit}`;
+  }
+  return null;
+}
+
 const utf8Bytes = (s: string): number => new TextEncoder().encode(s).length;
 export function estimateInputTokens(request: AiRequest): number {
   return (
@@ -316,7 +352,8 @@ const NOTHING_RAN: AiBilling = { known: true, attempts: [] };
  * and its USD, or the outcome that sends nothing. In order:
  *   1. the feature has an input cap (none: refused);
  *   2. the requested model AND every fallback it may reach is priced (else refused —
- *      a model with no price can never be called);
+ *      a model with no price can never be called), and `maxOutputTokens` is a
+ *      positive integer within every one of their output limits (else refused);
  *   3. the input's conservative estimate is within the cap (else refused);
  *   4. a meter is wired (none is a refusal, never a free call), and it grants the
  *      worst case.
@@ -333,6 +370,8 @@ export async function reserveOrRefuse(
   const attemptModels = [request.model, ...(limits.fallbacks[request.model] ?? [])];
   const unpriced = attemptModels.filter((m) => !limits.prices[m]);
   if (unpriced.length) return refuse('invalid', `no price for ${unpriced.join(', ')}, so no call is made`);
+  const outputProblem = maxOutputTokensProblem(request.maxOutputTokens, attemptModels, limits.maxOutputTokens);
+  if (outputProblem) return refuse('invalid', `${outputProblem}, so no call is made`);
   const estimated = estimateInputTokens(request);
   if (estimated > cap) return refuse('invalid', `the input (about ${estimated} tokens, bounded) is over the ${request.feature} cap of ${cap}, so no call is made`);
   if (!beforeCall) return refuse('unavailable', 'no meter is wired (beforeCall), so no call is made');

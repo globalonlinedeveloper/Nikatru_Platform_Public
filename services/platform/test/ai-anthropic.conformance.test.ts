@@ -17,6 +17,12 @@
 // The carrier reads the request the SDK wrote, so a dropped field, a wrong model
 // or a leaked key fails here, never against the live API (this lane calls no
 // live model: fixtures and the stub only).
+//   · the claude-api skill, TypeScript README "Refusal Fallbacks" (cached
+//     2026-09-25, read 2026-10-02): "The header must be exactly
+//     `server-side-fallback-2026-06-01` for this array form; the newer
+//     `fallbacks: "default"` scalar form uses `server-side-fallback-2026-07-01`
+//     instead … pairing either header with the other form returns a 400." The
+//     carrier answers that 400 too (FALLBACK_HEADER_FOR_FORM below).
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   CONFORMANCE_LIMITS,
@@ -31,7 +37,7 @@ import {
   type AiHarness,
 } from '../../_shared/test/conformance/ai';
 import { settle, type AiBeforeCall, type AiLimits, type AiUsage } from '../../_shared/src/ports/ai';
-import { ANTHROPIC_FALLBACK_BETA, createAnthropicAi } from '../src/adapters/ai/anthropic';
+import { createAnthropicAi } from '../src/adapters/ai/anthropic';
 
 /** The key every harness is built with: a sentinel, never a real key. */
 const SENTINEL = 'sentinel-never-logged-sentinel-never-logged';
@@ -56,6 +62,24 @@ type Answer =
   | { readonly status: 400 | 429 | 500 | 529 }
   | 'unreachable'
   | 'hang';
+
+/**
+ * The reference's (form -> header) table, as LITERALS: never the adapter's
+ * constant, so a swapped constant fails here (review of #1136, mutation R12).
+ */
+const FALLBACK_HEADER_FOR_FORM = { array: 'server-side-fallback-2026-06-01', default: 'server-side-fallback-2026-07-01' } as const;
+
+/** The body's fallback form, or null when it sends none. */
+function fallbackForm(body: Record<string, unknown>): keyof typeof FALLBACK_HEADER_FOR_FORM | null {
+  if (Array.isArray(body.fallbacks)) return 'array';
+  if (body.fallbacks === 'default') return 'default';
+  return null;
+}
+
+/** The server-side-fallback beta the request carries, or null. */
+function fallbackHeader(headers: Headers): string | null {
+  return (headers.get('anthropic-beta') ?? '').split(',').map((b) => b.trim()).find((b) => b.startsWith('server-side-fallback-')) ?? null;
+}
 
 const ERROR_TYPE: Record<number, string> = { 400: 'invalid_request_error', 429: 'rate_limit_error', 500: 'api_error', 529: 'overloaded_error' };
 
@@ -104,12 +128,18 @@ function carrier(answers: Answer[]) {
     if (!MESSAGES_URL.test(req.url)) throw new Error(`unexpected URL ${req.url}`);
     const body = JSON.parse(await req.text()) as Record<string, unknown>;
     seen.push({ url: req.url, headers: req.headers, body });
+    const json = (o: unknown, status: number) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', 'request-id': 'req_fixture' } });
+    // The API pairs the beta header with the body form: either one alone, or the other form's header, is a 400.
+    const form = fallbackForm(body);
+    const header = fallbackHeader(req.headers);
+    if ((form === null) !== (header === null) || (form !== null && header !== FALLBACK_HEADER_FOR_FORM[form])) {
+      return json({ type: 'error', error: { type: 'invalid_request_error', message: 'fixture: fallback header and form disagree' }, request_id: 'req_fixture' }, 400);
+    }
     const a = answers[Math.min(seen.length - 1, answers.length - 1)];
     if (a === 'unreachable') throw new TypeError('fetch failed');
     if (a === 'hang') {
       return new Promise<Response>((_r, reject) => init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
     }
-    const json = (o: unknown, status: number) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', 'request-id': 'req_fixture' } });
     if (a.status !== 200) return json({ type: 'error', error: { type: ERROR_TYPE[a.status], message: 'fixture' }, request_id: 'req_fixture' }, a.status);
     return json(messageBody(String(body.model), a), 200);
   }) as typeof fetch;
@@ -203,7 +233,9 @@ describe("the Anthropic adapter's wire, as the SDK writes it", () => {
     const { fetchImpl, seen } = carrier([ROWS]);
     await build(fetchImpl, GRANT).complete(conformanceRequest('claude-opus-5-5'));
     expect(seen[0].body.fallbacks).toEqual([{ model: 'claude-opus-4-8' }, { model: 'claude-opus-5' }]);
-    expect(seen[0].headers.get('anthropic-beta')).toBe(ANTHROPIC_FALLBACK_BETA);
+    // The array form's header, from the reference's table — a literal, never the adapter's constant.
+    expect(fallbackForm(seen[0].body)).toBe('array');
+    expect(fallbackHeader(seen[0].headers)).toBe('server-side-fallback-2026-06-01');
     expect((seen[0].body.output_config as Record<string, unknown>).effort).toBe('medium');
     const low = carrier([ROWS]);
     await build(low.fetchImpl, GRANT).complete({ ...conformanceRequest('claude-opus-5-5'), effort: 'low' });
@@ -269,5 +301,34 @@ describe("the Anthropic adapter's wire, as the SDK writes it", () => {
     const pending = build(fetchImpl, GRANT).complete(conformanceRequest(), { signal: ctl.signal });
     setTimeout(() => ctl.abort(), 20);
     expect(await pending).toMatchObject({ ok: false, kind: 'timeout', retryable: false, billing: { known: false } });
+  });
+
+  it('🔴 the Opus 5.5 call with its fallback chain is ANSWERED by a carrier that refuses a mismatched header and form', async () => {
+    const { fetchImpl } = carrier([FALLBACK]);
+    expect(await build(fetchImpl, GRANT).complete(conformanceRequest('claude-opus-5-5'))).toMatchObject({ ok: true, servedModel: 'claude-opus-4-8' });
+  });
+
+  it("the carrier's table is the reference's: each header with the other form, or alone, is a 400", async () => {
+    const { fetchImpl } = carrier([ROWS]);
+    const post = (beta: string | null, fallbacks: unknown) =>
+      fetchImpl('https://api.anthropic.com/v1/messages?beta=true', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(beta ? { 'anthropic-beta': beta } : {}) },
+        body: JSON.stringify({ model: 'claude-opus-5-5', ...(fallbacks === undefined ? {} : { fallbacks }) }),
+      });
+    expect((await post('server-side-fallback-2026-06-01', [{ model: 'claude-opus-4-8' }])).status).toBe(200);
+    expect((await post('server-side-fallback-2026-07-01', 'default')).status).toBe(200);
+    expect((await post('server-side-fallback-2026-07-01', [{ model: 'claude-opus-4-8' }])).status).toBe(400);
+    expect((await post('server-side-fallback-2026-06-01', 'default')).status).toBe(400);
+    expect((await post(null, [{ model: 'claude-opus-4-8' }])).status).toBe(400);
+    expect((await post('server-side-fallback-2026-06-01', undefined)).status).toBe(400);
+  });
+
+  it('🔴 an error AFTER the request was handed to the SDK (an unparseable 200) is billing-unknown and settles at the reservation', async () => {
+    const garbled = (async () => new Response('not json', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+    const out = await build(garbled, GRANT).complete(conformanceRequest());
+    expect(out).toMatchObject({ ok: false, kind: 'invalid', billing: { known: false } });
+    expect(settle(CONFORMANCE_PRICES, out.reservedUsd ?? 0, out).chargeUsd).toBe(out.reservedUsd);
+    expect(out.reservedUsd ?? 0).toBeGreaterThan(0);
   });
 });

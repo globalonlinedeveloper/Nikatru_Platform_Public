@@ -113,7 +113,7 @@ describe('the ai conformance suite reddens', () => {
   });
 
   // ⏱ 2026-10-02 · review 1 of #1136: the spend limits and the meter.
-  const limitless = { prices: { ...CONFORMANCE_LIMITS.prices, 'claude-unpriced-fixture': CONFORMANCE_LIMITS.prices['claude-haiku-4-5'] }, maxInputTokens: { import: 10_000_000, review: 10_000_000 }, fallbacks: {} };
+  const limitless = { prices: { ...CONFORMANCE_LIMITS.prices, 'claude-unpriced-fixture': CONFORMANCE_LIMITS.prices['claude-haiku-4-5'] }, maxInputTokens: { import: 10_000_000, review: 10_000_000 }, fallbacks: {}, maxOutputTokens: { ...CONFORMANCE_LIMITS.maxOutputTokens, 'claude-unpriced-fixture': 64_000 } };
 
   it('🔴 an adapter that calls an UNPRICED model fails `unpriced-model`', async () => {
     const seen: AiReservationRequest[] = [];

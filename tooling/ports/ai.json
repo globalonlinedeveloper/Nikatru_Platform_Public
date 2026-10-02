@@ -220,7 +220,7 @@
       "adapter": "anthropic",
       "model": null,
       "effort": null,
-      "maxInputTokens": 8000,
+      "maxInputTokens": 24000,
       "candidates": ["claude-haiku-4-5", "claude-sonnet-5-5", "claude-opus-5-5"],
       "tokensPerCall": {
         "input": 3000,
@@ -229,7 +229,7 @@
         "asOf": "2026-10-02",
         "why": "DECLARED, not measured: a pasted receipt, statement or CSV page with the extraction instructions (about 3,000 tokens) and the subscription rows that come back (about 500). train-st-ai-customer-pays (T17) measures it and sets basis: measured."
       },
-      "why": "Turning a paste or a screenshot into subscription rows. The model is NULL until T17 measures the cheapest candidate that meets the import quality bar; until then aiFor('import') answers 'no model yet' and nothing can call a model. Its input cap, 8,000 tokens (bounded from bytes: ports/ai.ts estimateInputTokens), is what every call is reserved at; a bigger input is refused before the wire."
+      "why": "Turning a paste or a screenshot into subscription rows. The model is NULL until T17 measures the cheapest candidate that meets the import quality bar; until then aiFor('import') answers 'no model yet' and nothing can call a model. Its input cap, 24,000 tokens, is bounded from bytes (ports/ai.ts estimateInputTokens: 1 token per UTF-8 byte, the safe side) and sized so the declared call plus one screenshot fits: the 3,000 declared tokens at about 4 bytes per token (the claude-api skill: '100,000 characters (roughly 25,000 tokens)') are 12,000 bytes, a screenshot 4,784, the framing 2,048, leaving 5,168 for the schema (the sum is at services/platform/src/ports.ts AI_FEATURE_TABLE). It is what every call is reserved at; a bigger input is refused before the wire."
     },
     "review": {
       "adapter": "anthropic",

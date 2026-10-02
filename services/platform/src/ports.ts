@@ -46,6 +46,7 @@
 // The stub (services/_shared/src/ports/fakes/ai.ts) is never selected here.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AiBeforeCall, AiCostModel, AiEffort, AiFeature, AiLimits, AiModelId, AiProvider } from '../../_shared/src/ports/ai';
+import { AI_MODEL_MAX_OUTPUT_TOKENS } from '../../_shared/src/ports/ai';
 import type { MailSenders, MailStream, MailTransport } from '../../_shared/src/ports/mail';
 import { createAnthropicAi } from './adapters/ai/anthropic';
 import { createResendMail } from './adapters/mail/resend';
@@ -164,9 +165,21 @@ export function portFor(port: 'payments', environment: PortEnvironment): readonl
   return PAYMENTS_ADAPTERS.filter((a) => a.environments.includes(environment)).map((a) => a.id);
 }
 
-/** Per feature: the adapter, the model (null until T17 measures), its effort, and its INPUT CAP (null: every call refused). */
+/**
+ * Per feature: the adapter, the model (null until T17 measures), its effort, and its INPUT CAP (null: every call refused).
+ *
+ * The import cap, 24,000, admits the feature's DECLARED call plus one screenshot under the
+ * conservative bound (ports/ai.ts estimateInputTokens, 1 token per UTF-8 byte):
+ *   · the declared 3,000 input tokens (instructions + paste, ai.json tokensPerCall.input) as
+ *     text run about 4 bytes per token — "100,000 characters (roughly 25,000 tokens)", the
+ *     claude-api skill's managed-agents-tools.md, cached 2026-09-25 — so 12,000 bytes;
+ *   · one screenshot: IMAGE_TOKEN_CEILING, 4,784; the framing: REQUEST_OVERHEAD_TOKENS, 2,048;
+ *   · 18,832 so far, which leaves 5,168 bytes for the output schema.
+ * The bound stays 1 token per byte (a token never covers less than a byte), so a call's real
+ * input is never above the cap the reservation is priced at. test/ai-port.test.ts holds both sides.
+ */
 export const AI_FEATURE_TABLE: Readonly<Record<AiFeature, { adapter: 'anthropic'; model: AiModelId | null; effort: AiEffort | null; maxInputTokens: number | null }>> = {
-  import: { adapter: 'anthropic', model: null, effort: null, maxInputTokens: 8000 },
+  import: { adapter: 'anthropic', model: null, effort: null, maxInputTokens: 24000 },
   review: { adapter: 'anthropic', model: null, effort: null, maxInputTokens: null },
 };
 
@@ -192,6 +205,7 @@ export function aiLimits(): AiLimits {
     prices: AI_COST_MODEL,
     maxInputTokens: { import: AI_FEATURE_TABLE.import.maxInputTokens, review: AI_FEATURE_TABLE.review.maxInputTokens },
     fallbacks: AI_FALLBACKS,
+    maxOutputTokens: AI_MODEL_MAX_OUTPUT_TOKENS,
   };
 }
 

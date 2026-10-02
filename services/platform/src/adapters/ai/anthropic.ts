@@ -23,8 +23,13 @@
 //     cannot disable it and Sonnet 5.5 runs adaptive by default;
 //   · the server-side refusal fallback is sent as an EXPLICIT, PRICED chain from
 //     config (AiLimits.fallbacks, from tooling/ports/ai.json `cost.models.<m>.
-//     fallbacks`): `betas: ["server-side-fallback-2026-07-01"]`, `fallbacks:
-//     [{model}, …]`. Never `"default"`: its routing is server-side and "not
+//     fallbacks`): `betas: ["server-side-fallback-2026-06-01"]`, `fallbacks:
+//     [{model}, …]`. The header is paired with the BODY FORM: "The header must
+//     be exactly `server-side-fallback-2026-06-01` for this array form; the
+//     newer `fallbacks: "default"` scalar form uses `server-side-fallback-
+//     2026-07-01` instead … pairing either header with the other form returns
+//     a 400" (claude-api skill, TypeScript README "Refusal Fallbacks", cached
+//     2026-09-25, read 2026-10-02). Never `"default"`: its routing is server-side and "not
 //     published per model" (refusals-and-fallback, read 2026-10-02), so the
 //     models it reaches could not be priced before the call. A model whose chain
 //     is empty sends no fallback;
@@ -68,8 +73,12 @@ import {
   stoppedOutcome,
 } from '../../../../_shared/src/ports/ai';
 
-/** The beta that turns the server-side refusal fallback on. */
-export const ANTHROPIC_FALLBACK_BETA = 'server-side-fallback-2026-07-01';
+/**
+ * The beta that turns the server-side refusal fallback on, for the ARRAY form
+ * this adapter sends (`fallbacks: [{model}, …]`). `-2026-07-01` belongs only to
+ * the scalar `fallbacks: "default"` form, which this adapter never sends.
+ */
+export const ANTHROPIC_FALLBACK_BETA = 'server-side-fallback-2026-06-01';
 /** The models that take `output_config.effort` (Haiku 4.5 refuses the field). */
 export const EFFORT_MODELS: ReadonlySet<AiModelId> = new Set<AiModelId>(['claude-sonnet-5-5', 'claude-opus-5-5']);
 
@@ -125,6 +134,9 @@ export function createAnthropicAi(deps: AnthropicAiDeps): AiProvider {
       const chain = reserved.attemptModels.slice(1);
       let message: Anthropic.Beta.BetaMessage;
       let errors: Sdk['default'] | null = null;
+      // Set just before the request is handed to the SDK: an error before it means
+      // nothing left this Worker (nothing billed); one after it may have been billed.
+      let sent = false;
       try {
         const { default: AnthropicSdk } = await loadSdk();
         errors = AnthropicSdk;
@@ -135,6 +147,7 @@ export function createAnthropicAi(deps: AnthropicAiDeps): AiProvider {
           logLevel: 'off',
           ...(deps.fetchImpl ? { fetch: deps.fetchImpl } : {}),
         });
+        sent = true;
         message = await client.beta.messages.create(
           {
             model: request.model,
@@ -161,7 +174,7 @@ export function createAnthropicAi(deps: AnthropicAiDeps): AiProvider {
           options?.signal ? { signal: options.signal } : undefined,
         );
       } catch (err) {
-        return failureOf(errors, err, reserved);
+        return failureOf(errors, err, reserved, sent);
       }
       const usage = {
         inputTokens: message.usage.input_tokens,
@@ -207,10 +220,11 @@ function attemptsOf(message: Anthropic.Beta.BetaMessage, requested: string, topL
 /**
  * A thrown SDK error, as an outcome: by its TYPED class, never by its message.
  * An error the provider ANSWERED is not billed; no answer, or an error of no
- * known class after the reservation, is billing-unknown and settles at the
- * reservation.
+ * known class once the request was handed to the SDK (`sent`), is
+ * billing-unknown and settles at the reservation. An error BEFORE that (the SDK
+ * failed to load, the client failed to build) ran nothing: known, no attempts.
  */
-function failureOf(sdkClass: Sdk['default'] | null, err: unknown, reserved: { readonly id: string; readonly reserveUsd: number }): AiOutcome {
+function failureOf(sdkClass: Sdk['default'] | null, err: unknown, reserved: { readonly id: string; readonly reserveUsd: number }, sent: boolean): AiOutcome {
   if (sdkClass && (err instanceof sdkClass.APIUserAbortError || err instanceof sdkClass.APIConnectionError)) return aiNoAnswerOutcome(CARRIER, err, reserved.id, reserved.reserveUsd);
   if (sdkClass && err instanceof sdkClass.APIError && typeof err.status === 'number') return aiAnsweredOutcome(CARRIER, err.status, reserved.id, reserved.reserveUsd);
   const name = typeof err === 'object' && err !== null && 'name' in err ? String((err as { name: unknown }).name) : 'Error';
@@ -218,7 +232,7 @@ function failureOf(sdkClass: Sdk['default'] | null, err: unknown, reserved: { re
     ok: false,
     kind: 'invalid',
     retryable: false,
-    billing: { known: false },
+    billing: sent ? { known: false } : { known: true, attempts: [] },
     reservationId: reserved.id,
     reservedUsd: reserved.reserveUsd,
     detail: `${CARRIER}: the call could not be made (${name})`,

@@ -5,14 +5,17 @@ import { describe, expect, it } from 'vitest';
 import {
   IMAGE_TOKEN_CEILING,
   REQUEST_OVERHEAD_TOKENS,
+  AI_MODEL_MAX_OUTPUT_TOKENS,
   aiNoAnswerOutcome,
   attemptsUsd,
+  reserveOrRefuse,
   estimateInputTokens,
   settle,
   worstCaseUsd,
+  type AiBeforeCall,
   type AiOutcome,
 } from '../src/ports/ai';
-import { CONFORMANCE_PRICES, FALLBACK_ATTEMPTS, FALLBACK_CHARGE_USD, conformanceRequest } from './conformance/ai';
+import { CONFORMANCE_LIMITS, CONFORMANCE_PRICES, FALLBACK_ATTEMPTS, FALLBACK_CHARGE_USD, conformanceRequest } from './conformance/ai';
 
 describe('the input bound is an over-estimate from bytes', () => {
   it('counts UTF-8 bytes (never fewer than the tokens), the schema, a ceiling per image and the framing', () => {
@@ -71,5 +74,53 @@ describe('settling', () => {
   it('a refusal before the wire ran nothing and settles at zero', () => {
     const refused: AiOutcome = { ok: false, kind: 'invalid', retryable: false, billing: { known: true, attempts: [] }, detail: 'no cap' };
     expect(settle(CONFORMANCE_PRICES, 0, refused)).toEqual({ chargeUsd: 0, releaseUsd: 0, basis: 'attempts' });
+  });
+});
+
+describe('🔴 maxOutputTokens is checked before it prices a reservation', () => {
+  const run = async (model: 'claude-haiku-4-5' | 'claude-opus-5-5', maxOutputTokens: number) => {
+    let asked = 0;
+    const meter: AiBeforeCall = async () => {
+      asked++;
+      return { ok: true, id: 'r' };
+    };
+    const out = await reserveOrRefuse('fixture', meter, { ...conformanceRequest(model), maxOutputTokens }, CONFORMANCE_LIMITS);
+    return { out, asked };
+  };
+
+  it('0, a negative, NaN, a fraction and one over the model limit are each `invalid`, and the meter is never asked', async () => {
+    for (const [model, bad] of [
+      ['claude-haiku-4-5', 0],
+      ['claude-haiku-4-5', -1],
+      ['claude-haiku-4-5', Number.NaN],
+      ['claude-haiku-4-5', 1.5],
+      ['claude-haiku-4-5', AI_MODEL_MAX_OUTPUT_TOKENS['claude-haiku-4-5'] + 1],
+      ['claude-opus-5-5', AI_MODEL_MAX_OUTPUT_TOKENS['claude-opus-5-5'] + 1],
+    ] as const) {
+      const { out, asked } = await run(model, bad);
+      expect(out, `${model} ${bad}`).toMatchObject({ ok: false, kind: 'invalid', billing: { known: true, attempts: [] } });
+      expect(asked, `${model} ${bad}`).toBe(0);
+    }
+  });
+
+  it('the limits are the reference\'s: Haiku 4.5 64K, the rest 128K — and a value AT the limit is reserved', async () => {
+    expect(AI_MODEL_MAX_OUTPUT_TOKENS).toEqual({ 'claude-haiku-4-5': 64_000, 'claude-sonnet-5-5': 128_000, 'claude-opus-5-5': 128_000, 'claude-opus-4-8': 128_000, 'claude-opus-5': 128_000 });
+    for (const model of ['claude-haiku-4-5', 'claude-opus-5-5'] as const) {
+      const { out, asked } = await run(model, AI_MODEL_MAX_OUTPUT_TOKENS[model]);
+      expect(out).toMatchObject({ id: 'r' });
+      expect(asked).toBe(1);
+    }
+  });
+
+  it('a chain model with no known output limit is refused, never sent with a guess', async () => {
+    let asked = 0;
+    const meter: AiBeforeCall = async () => {
+      asked++;
+      return { ok: true, id: 'r' };
+    };
+    const limits = { ...CONFORMANCE_LIMITS, prices: { ...CONFORMANCE_PRICES, 'claude-new': CONFORMANCE_PRICES['claude-opus-5'] }, fallbacks: { 'claude-opus-5-5': ['claude-new'] } };
+    // claude-new is priced but has no output limit in CONFORMANCE_LIMITS.maxOutputTokens.
+    expect(await reserveOrRefuse('fixture', meter, conformanceRequest('claude-opus-5-5'), limits)).toMatchObject({ ok: false, kind: 'invalid', detail: 'fixture: no output limit is known for claude-new, so no call is made' });
+    expect(asked).toBe(0);
   });
 });

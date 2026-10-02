@@ -89,7 +89,8 @@
 //                 price per unit, so the money the channel leaves us is at least
 //                 AI_COST_MULTIPLE (4) times the cost (owner lock, 2026-10-01).
 //                 From tooling/catalog/fee-register.json, for a ONE-TIME pack,
-//                 C priced with input as cache writes, and the tax the HIGHEST
+//                 C priced with input as cache writes, at the DEAREST model of the
+//                 fallback chain (any of them can answer), and the tax the HIGHEST
 //                 in `taxRegions` so the floor holds in every region:
 //                   store rail      4C × (1 + top tax) / (1 − commission) — the
 //                                   highest commission cell of the rail (30%
@@ -482,6 +483,24 @@ export function callCostUsd(price, tokens) {
 }
 
 /**
+ * The USD one call costs on `model` WITH its refusal-fallback chain: any model in
+ * `[model, ...priced[model].fallbacks]` can answer it, so the call is priced at
+ * the DEAREST of them (review of #1136, ruling item 3b: Opus 5.5 at $4/$20 falls
+ * back to Opus 4.8 and Opus 5 at $5/$25). Returns {cost, pricedAt}, or {unpriced}
+ * naming a chain model `priced` lacks — never a guess.
+ */
+export function chainCallCostUsd(priced, model, tokens) {
+  const chain = [model, ...(Array.isArray(priced?.[model]?.fallbacks) ? priced[model].fallbacks : [])];
+  let best = null;
+  for (const m of chain) {
+    if (!isObj(priced?.[m])) return { unpriced: m };
+    const cost = callCostUsd(priced[m], tokens);
+    if (!best || cost > best.cost) best = { cost, pricedAt: m };
+  }
+  return best;
+}
+
+/**
  * The minimum price per unit of a ONE-TIME credit pack on a rail, so that what
  * the rail leaves us is at least AI_COST_MULTIPLE × `costUsd` IN EVERY REGION; or
  * {lost}. `taxRegions` is fee-register.json `taxRegions.rows`: a buyer's price can
@@ -557,10 +576,11 @@ export function aiChecks(root, doc, target, model, add) {
     if (!m) { lost16.push(`${f}: no model (features.${f}.model is unset until measured)`); continue; }
     if (!isObj(priced[m])) { add(16, 'features', 'FAIL', `${f}: model \`${m}\` is not priced by \`${target.id}\``); return lines; }
     if (!isObj(ft?.tokensPerCall)) { lost16.push(`${f}: no tokens per call (features.${f}.tokensPerCall is null until declared or measured)`); continue; }
-    const c = callCostUsd(priced[m], ft.tokensPerCall);
-    costs.push({ feature: f, model: m, tokens: ft.tokensPerCall, cost: c });
+    const c = chainCallCostUsd(priced, m, ft.tokensPerCall);
+    if (c.unpriced) { add(16, 'features', 'FAIL', `${f}: model \`${m}\` falls back to \`${c.unpriced}\`, which \`${target.id}\` does not price`); return lines; }
+    costs.push({ feature: f, model: m, pricedAt: c.pricedAt, tokens: ft.tokensPerCall, cost: c.cost });
   }
-  const costText = costs.map((c) => `${c.feature} on ${c.model}: ${c.tokens.input} in (priced as cache writes) + ${c.tokens.output} out (${c.tokens.basis}) = USD ${c.cost.toFixed(6)} per call`).join('; ');
+  const costText = costs.map((c) => `${c.feature} on ${c.model}${c.pricedAt !== c.model ? ` (priced at its dearest fallback, ${c.pricedAt})` : ''}: ${c.tokens.input} in (priced as cache writes) + ${c.tokens.output} out (${c.tokens.basis}) = USD ${c.cost.toFixed(6)} per call`).join('; ');
   if (lost16.length) add(16, 'features', 'LOST', `${lost16.join('; ')}${costText ? ` — priced: ${costText}` : ''}`);
   else add(16, 'features', 'PASS', costText);
   // C17
@@ -589,7 +609,7 @@ export function aiChecks(root, doc, target, model, add) {
   const lost17 = [];
   lines.push(`    minimum credit-pack price per unit (≥ ${AI_COST_MULTIPLE}× cost after the channel's cut), USD:`);
   for (const c of costs) {
-    lines.push(`      ${c.feature} — ${c.model}, cost USD ${c.cost.toFixed(6)} per call, ${AI_COST_MULTIPLE}× = ${(AI_COST_MULTIPLE * c.cost).toFixed(6)}`);
+    lines.push(`      ${c.feature} — ${c.model}${c.pricedAt !== c.model ? ` (priced at ${c.pricedAt})` : ''}, cost USD ${c.cost.toFixed(6)} per call, ${AI_COST_MULTIPLE}× = ${(AI_COST_MULTIPLE * c.cost).toFixed(6)}`);
     for (const row of rows) {
       const fl = creditFloor(row.rail, c.cost, isObj(cells) ? cells : {}, taxRegions);
       if (fl.lost) { lost17.push(`${c.feature}/${row.id}: ${fl.lost}`); lines.push(`        ${row.id.padEnd(18)} ${row.rail.padEnd(13)} LOST — ${fl.lost}`); continue; }

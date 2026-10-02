@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseArgs, feeFor, webhook, channelsChanging, storeBilledRails, canMoveTo, margin, callCostUsd, creditFloor } from '../../ops/port-switch.mjs';
+import { parseArgs, feeFor, webhook, channelsChanging, storeBilledRails, canMoveTo, margin, callCostUsd, chainCallCostUsd, creditFloor } from '../../ops/port-switch.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -531,12 +531,29 @@ describe('port-switch — an AI switch prices every feature and floors it per ch
     assert.match(creditFloor('razorpay', 0.025, FEES.cells, { HU: FEES.taxRegions.rows.HU }).lost, /no taxRegions\.rows\.IN/);
   });
 
+  it('🔴 a fallback chain is priced at its DEAREST model: the floor follows the fallback, not the requested model', () => {
+    const DEAR = { ...OPUS, inputUsdPerMTok: 5, outputUsdPerMTok: 25, cacheWriteUsdPerMTok: 6.25 };
+    const priced = { 'claude-opus-5-5': { ...OPUS, fallbacks: ['claude-opus-4-8'] }, 'claude-opus-4-8': DEAR };
+    // Opus 4.8: 3000 × 6.25 / 1e6 + 500 × 25 / 1e6 = 0.03125 (Opus 5.5 alone: 0.025).
+    assert.deepEqual(chainCallCostUsd(priced, 'claude-opus-5-5', DECLARED), { cost: 0.03125, pricedAt: 'claude-opus-4-8' });
+    assert.deepEqual(chainCallCostUsd({ 'claude-opus-5-5': OPUS }, 'claude-opus-5-5', DECLARED), { cost: 0.025, pricedAt: 'claude-opus-5-5' });
+    assert.deepEqual(chainCallCostUsd({ 'claude-opus-5-5': { ...OPUS, fallbacks: ['claude-x'] } }, 'claude-opus-5-5', DECLARED), { unpriced: 'claude-x' });
+    // Through the dry run: Apple 4 × 0.03125 × 1.27 / 0.7 = 0.226785… → 0.2268, not Opus 5.5's 0.1815.
+    const doc = aiPort();
+    doc.adapters[0].cost.models = priced;
+    const r = run(['ai', '--to', 'claude-opus-5-5', '--dry-run', '--root', aiFixture(doc)]);
+    assert.match(r.out, /import on claude-opus-5-5 \(priced at its dearest fallback, claude-opus-4-8\): .* = USD 0\.031250 per call/);
+    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.2268 per unit/);
+  });
+
   it("on the REAL registry: the AI dry run names T17's gaps — no tokens for review yet, and Play has no one-time cell", () => {
     const r = run(['ai', '--to', 'claude-opus-5-5', '--dry-run']);
     assert.equal(r.code, 2, r.out);
-    assert.match(r.out, /import on claude-opus-5-5: 3000 in \(priced as cache writes\) \+ 500 out \(declared\) = USD 0\.025000 per call/);
+    // Opus 5.5 falls back to Opus 4.8 and Opus 5 ($5/$25, cache write 6.25), so the call is priced there:
+    // C = 3000 × 6.25 / 1e6 + 500 × 25 / 1e6 = 0.01875 + 0.0125 = 0.03125; Apple 4C × 1.27 / 0.7 = 0.226785… → 0.2268.
+    assert.match(r.out, /import on claude-opus-5-5 \(priced at its dearest fallback, claude-opus-4-8\): 3000 in \(priced as cache writes\) \+ 500 out \(declared\) = USD 0\.031250 per call/);
     assert.match(r.out, /review: no tokens per call/);
-    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.1815 per unit/);
+    assert.match(r.out, /ios-appstore\s+apple-iap\s+≥ 0\.2268 per unit/);
     assert.match(r.out, /android-play\s+play-billing\s+LOST/);
   });
 });

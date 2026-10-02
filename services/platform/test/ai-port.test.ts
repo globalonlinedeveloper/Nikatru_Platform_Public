@@ -6,7 +6,7 @@
 // refused, with nothing sent.
 import { describe, expect, it } from 'vitest';
 import AI_RAW from '../../../tooling/ports/ai.json?raw';
-import { AI_FEATURES, AI_MODEL_CANDIDATES, costUsd } from '../../_shared/src/ports/ai';
+import { AI_FEATURES, AI_MODEL_CANDIDATES, costUsd, estimateInputTokens, reserveOrRefuse, type AiRequest } from '../../_shared/src/ports/ai';
 import { createStubAi } from '../../_shared/src/ports/fakes/ai';
 import { GRANT, conformanceRequest, CONFORMANCE_ROWS_TEXT } from '../../_shared/test/conformance/ai';
 import { createAnthropicAi } from '../src/adapters/ai/anthropic';
@@ -106,5 +106,33 @@ describe('aiFor — CUSTOMER-PAYS: no provider without a model, an input cap, a 
     } finally {
       row.model = saved;
     }
+  });
+});
+
+describe("🔴 the import cap admits the feature's own declared call, and nothing over it", () => {
+  // The declared call (ai.json features.import.tokensPerCall.input, 3,000 tokens of instructions
+  // and paste) at about 4 bytes per token — the ratio and its source are at src/ports.ts
+  // AI_FEATURE_TABLE — plus one screenshot, on the most expensive chain (Opus 5.5 and its fallbacks).
+  const declared = (extraBytes = 0): AiRequest => ({
+    ...conformanceRequest('claude-opus-5-5'),
+    system: 's'.repeat(2_000),
+    input: 'p'.repeat(10_000 + extraBytes),
+    images: [{ mediaType: 'image/png', base64: 'iVBORw0KGgo=' }],
+  });
+  const cap = AI_FEATURE_TABLE.import.maxInputTokens as number;
+
+  it('the declared call plus one screenshot is reserved', async () => {
+    expect(new TextEncoder().encode(declared().system + declared().input).length).toBe(3_000 * 4);
+    expect(estimateInputTokens(declared())).toBeLessThanOrEqual(cap);
+    expect(await reserveOrRefuse('fixture', GRANT, declared(), aiLimits())).toMatchObject({ id: 'reservation-1' });
+  });
+
+  it('one byte over the cap is refused before the meter', async () => {
+    const over = declared(cap - estimateInputTokens(declared()) + 1);
+    expect(estimateInputTokens(over)).toBe(cap + 1);
+    let asked = 0;
+    const out = await reserveOrRefuse('fixture', async () => { asked++; return { ok: true, id: 'r' }; }, over, aiLimits());
+    expect(out).toMatchObject({ ok: false, kind: 'invalid', billing: { known: true, attempts: [] } });
+    expect(asked).toBe(0);
   });
 });
