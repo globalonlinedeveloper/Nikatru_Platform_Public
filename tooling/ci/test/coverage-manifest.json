@@ -960,7 +960,7 @@
     14,
 
   "smoke-web-artifact.test.mjs":
-    30,
+    34,
 
   "snap-submission.test.mjs":
     48,
@@ -1101,7 +1101,7 @@
     42,
 
   "web-cache-policy.test.mjs":
-    90,
+    109,
 
   "web-drive-stages-fonts.test.mjs":
     5,
