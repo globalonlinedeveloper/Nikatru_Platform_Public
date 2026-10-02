@@ -135,18 +135,34 @@ Future<void> confirmSignInMethodChangeAtServer(RestClient client) async {
   try {
     await checkSignInMethodChange(client);
   } on ApiException catch (e) {
-    if (e.statusCode == 403) {
-      throw core.AuthFailure(
+    final core.AuthFailure? failure = signInMethodChangeFailureForStatus(
+      e.statusCode,
+      offline: e.isOffline,
+    );
+    if (failure != null) throw failure;
+    rethrow;
+  }
+}
+
+/// The route's STATUS SET is its wire contract: `assert-analytics-contract`
+/// (`account-identity-change`) parses the `case`s below against every status
+/// `identity-change.ts` answers, and 403 is its floor. `null` = rethrow as is.
+core.AuthFailure? signInMethodChangeFailureForStatus(
+  int status, {
+  required bool offline,
+}) {
+  switch (status) {
+    case 403:
+      return core.AuthFailure(
         'Sign in again to change how you sign in.',
         code: core.AuthFailure.reauthRequired,
       );
-    }
-    if (e.isOffline) {
-      throw core.AuthFailure(
-        'Could not reach the server.',
-        code: core.AuthFailure.network,
-      );
-    }
-    rethrow;
   }
+  if (offline) {
+    return core.AuthFailure(
+      'Could not reach the server.',
+      code: core.AuthFailure.network,
+    );
+  }
+  return null;
 }
