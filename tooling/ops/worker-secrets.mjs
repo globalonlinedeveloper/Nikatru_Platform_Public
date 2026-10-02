@@ -22,8 +22,10 @@
 //            live) is SKIPPED; --force always PUTs. `deploy` rows ride
 //            deploy-workers.yml and are never written here.
 //   generate <SECRET> [--worker W] [--dry-run]
-//            For a `generated` row: random bytes into the vault FIRST (a backup
-//            copy, append, read back), then the PUT. Refuses when the vault
+//            For a `generated` row: random bytes into the vault FIRST (the
+//            vault read once, the new text verified in memory, a backup of
+//            what was read, then ONE write: temp file + rename), then the PUT.
+//            Refuses when the vault
 //            already holds the key — that is a rotation, and the row's
 //            `rotation` says how (TOKEN_ENC_KEY_V1 must never be replaced).
 //
@@ -40,7 +42,7 @@
 // after fetch aborts in libuv (TRAPS: UV_HANDLE_CLOSING), so this only ever
 // sets process.exitCode.
 // ─────────────────────────────────────────────────────────────────────────────
-import { appendFileSync, copyFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -93,29 +95,63 @@ export function parseVault(text) {
   return map;
 }
 
-export function vaultPath(root) {
-  if (process.env.NIKATRU_VAULT) return process.env.NIKATRU_VAULT;
-  const own = join(root, '.claude', 'secrets.env');
-  if (existsSync(own)) return own;
+/** Where the vault may be, in order: $NIKATRU_VAULT alone, else <root>/.claude/secrets.env, then the main checkout's. */
+export function vaultCandidates(root) {
+  if (process.env.NIKATRU_VAULT) return [process.env.NIKATRU_VAULT];
+  const out = [join(root, '.claude', 'secrets.env')];
   const r = spawnSync('git', ['rev-parse', '--git-common-dir'], { cwd: root, encoding: 'utf8', timeout: 30_000 });
   if (r.status === 0 && r.stdout.trim()) {
     const common = r.stdout.trim();
-    const main = dirname(isAbsolute(common) ? common : resolve(root, common));
-    return join(main, '.claude', 'secrets.env');
+    out.push(join(dirname(isAbsolute(common) ? common : resolve(root, common)), '.claude', 'secrets.env'));
   }
-  return own;
+  return out;
+}
+
+// ⏱ 2026-10-02 · CodeQL #552 (js/file-system-race, high), PR #1135. `generate` read the vault,
+// then appended to it in a SECOND access, after an existsSync check on the same path: a file can
+// change between a check and the use that trusts it. Now the vault is read ONCE (no existence
+// check: a missing file is ENOENT from the read itself), the new text is built and verified IN
+// MEMORY, and it is written ONCE: a temp file beside the vault, renamed over it (atomic on one
+// volume). Nothing appends to the vault and nothing re-reads it.
+
+/** ONE read: the first candidate that reads is the vault. `{ path, text }`, or `{ path: null, tried }`. */
+export function readVault(root, read = readFileSync) {
+  const tried = [];
+  for (const path of vaultCandidates(root)) {
+    try {
+      return { path, text: read(path, 'utf8') };
+    } catch (e) {
+      if (e?.code !== 'ENOENT') throw e;
+      tried.push(path);
+    }
+  }
+  return { path: null, tried };
+}
+
+/** PURE. The vault text with `key` added, verified before anything is written. */
+export function withVaultKey(text, key, value) {
+  const next = `${text}${text.endsWith('\n') || !text.length ? '' : '\n'}${key}="${value}"\n`;
+  if (parseVault(next).get(key) !== value) throw new Refusal(`the new vault text does not hold ${key} as written; nothing was written, STOP before the Worker`, 1);
+  return next;
+}
+
+/** ONE write of the whole vault: a temp file created beside it (`wx`: never an existing file), then renamed over it. */
+export function writeVaultOnce(path, next, { write = writeFileSync, rename = renameSync } = {}) {
+  const tmp = `${path}.tmp-${process.pid}`;
+  write(tmp, next, { mode: 0o600, flag: 'wx' });
+  rename(tmp, path);
 }
 
 export function readLedger(path) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return {}; }
 }
 
-/** Atomic: write a temp file, re-read and parse it, then rename over (TRAPS ci-21). */
+/** Atomic: the JSON is validated in memory, written to a temp file, then renamed over (TRAPS ci-21). */
 export function writeLedger(path, ledger) {
   const text = `${JSON.stringify(ledger, null, 2)}\n`;
-  const tmp = `${path}.tmp`;
+  JSON.parse(text);
+  const tmp = `${path}.tmp-${process.pid}`;
   writeFileSync(tmp, text, { mode: 0o600 });
-  JSON.parse(readFileSync(tmp, 'utf8'));
   renameSync(tmp, path);
 }
 
@@ -183,10 +219,11 @@ class Refusal extends Error {
 async function run(opts) {
   const root = resolve(opts.root ?? DEFAULT_ROOT);
   const rows = loadManifest(root);
-  const vPath = vaultPath(root);
-  if (!existsSync(vPath)) throw new Refusal(`COVERAGE LOST — the vault ${vPath} does not exist; set NIKATRU_VAULT or run from a checkout that has .claude/`, 2);
-  let vaultText = readFileSync(vPath, 'utf8');
-  let vault = parseVault(vaultText);
+  const read = readVault(root);
+  if (!read.path) throw new Refusal(`COVERAGE LOST — the vault does not exist (${read.tried.join(', ')}); set NIKATRU_VAULT or run from a checkout that has .claude/`, 2);
+  const vPath = read.path;
+  const vaultText = read.text;
+  const vault = parseVault(vaultText);
   const c = creds(vault);
   if (!c) throw new Refusal('COVERAGE LOST — no CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN in the environment or the vault', 2);
   const ledgerPath = join(dirname(vPath), LEDGER_NAME);
@@ -266,12 +303,12 @@ async function run(opts) {
   const value = randomBytes(r.generate.bytes).toString(r.generate.encoding);
   if (opts.dryRun) { console.log(`DRY RUN — would add vault key ${r.vaultKey} (${r.generate.bytes} random bytes, ${r.generate.encoding}) and PUT ${r.worker}/${r.secret}`); return 0; }
   const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
-  copyFileSync(vPath, `${vPath}.pre-${r.vaultKey}-${stamp}Z`);
-  appendFileSync(vPath, `${vaultText.endsWith('\n') || !vaultText.length ? '' : '\n'}${r.vaultKey}="${value}"\n`);
-  vaultText = readFileSync(vPath, 'utf8');
-  vault = parseVault(vaultText);
-  if (vault.get(r.vaultKey) !== value) throw new Refusal(`the vault write of ${r.vaultKey} was not read back; STOP before the Worker`, 1);
-  console.log(`vault: ${r.vaultKey} added (${fingerprint(value)}); backup ${vPath}.pre-${r.vaultKey}-${stamp}Z`);
+  const backup = `${vPath}.pre-${r.vaultKey}-${stamp}Z`;
+  const next = withVaultKey(vaultText, r.vaultKey, value);
+  // The backup is the text this run READ, written from memory: no second read of the vault.
+  writeFileSync(backup, vaultText, { mode: 0o600, flag: 'wx' });
+  writeVaultOnce(vPath, next);
+  console.log(`vault: ${r.vaultKey} added (${fingerprint(value)}); backup ${backup}`);
   const put = await cf(c, 'PUT', `/workers/scripts/${encodeURIComponent(r.worker)}/secrets`, { name: r.secret, text: value, type: 'secret_text' });
   if (!put.ok) { console.log(`FAILED PUT ${r.worker}/${r.secret}: HTTP ${put.status} ${put.errors}. The vault holds it; re-send with \`sync --secret ${r.secret} --worker ${r.worker}\``); return 1; }
   ledger[`${r.worker}/${r.secret}`] = { sha256: sha256(value), vaultKey: r.vaultKey, at: new Date().toISOString() };

@@ -10,7 +10,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { decideSync, parseArgs, parseVault, fingerprint, sha256 } from '../../ops/worker-secrets.mjs';
+import { decideSync, parseArgs, parseVault, fingerprint, sha256, readVault, withVaultKey, writeVaultOnce } from '../../ops/worker-secrets.mjs';
+import { stripSourceComments } from '../text-reductions.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -48,6 +49,43 @@ describe('worker-secrets — decisions', () => {
     assert.ok(parseArgs(['check', '--adapter', 'x']).error);
     assert.ok(parseArgs(['sync', '--bogus']).error);
     assert.equal(parseArgs(['sync', '--secret', 'K', '--dry-run']).dryRun, true);
+  });
+});
+
+// ⏱ 2026-10-02 · CodeQL #552 (js/file-system-race, high) on PR #1135: `generate` checked the vault
+// with existsSync, read it, then APPENDED in a second access. The vault is now read once, the new
+// text built and verified in memory, and written ONCE (temp file + rename).
+describe('worker-secrets — the vault is read once and written once (CodeQL #552)', () => {
+  it('🔴 writeVaultOnce: exactly ONE write (a fresh temp file, `wx`) and ONE rename over the vault, with the new text', () => {
+    const writes = [];
+    const renames = [];
+    const next = withVaultKey('A="1"\nB="2"', 'NEW_KEY', 'v-123');
+    writeVaultOnce('/v/secrets.env', next, { write: (...a) => writes.push(a), rename: (...a) => renames.push(a) });
+    assert.equal(writes.length, 1, 'the vault content is written in one call');
+    assert.equal(writes[0][0], `/v/secrets.env.tmp-${process.pid}`);
+    assert.equal(writes[0][1], 'A="1"\nB="2"\nNEW_KEY="v-123"\n');
+    assert.deepEqual(writes[0][2], { mode: 0o600, flag: 'wx' });
+    assert.deepEqual(renames, [[`/v/secrets.env.tmp-${process.pid}`, '/v/secrets.env']]);
+    assert.equal(parseVault(writes[0][1]).get('NEW_KEY'), 'v-123');
+  });
+  it('withVaultKey verifies in memory before anything is written: a value the vault grammar would mangle refuses', () => {
+    assert.throws(() => withVaultKey('', 'K', 'a"b\nc'), /nothing was written/);
+  });
+  it('readVault: ONE read per candidate and no existence check; ENOENT moves on, any other error is thrown', () => {
+    const reads = [];
+    const root = REPO; // a git checkout: two candidates (its own .claude/, then the main checkout's)
+    const prev = process.env.NIKATRU_VAULT;
+    delete process.env.NIKATRU_VAULT;
+    try {
+      const r = readVault(root, (p) => { reads.push(p); if (reads.length === 1) throw Object.assign(new Error('no'), { code: 'ENOENT' }); return 'K="v"\n'; });
+      assert.equal(r.text, 'K="v"\n');
+      assert.equal(reads.length, 2, 'one read for the missing candidate, one for the vault, nothing else');
+      assert.throws(() => readVault(root, () => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); }), /denied/);
+    } finally { if (prev !== undefined) process.env.NIKATRU_VAULT = prev; }
+  });
+  it('🔴 the module has no appendFileSync, copyFileSync or existsSync in code (comments aside): no check-then-use, no second access', () => {
+    const src = stripSourceComments(readFileSync(TOOL, 'utf8'), '.mjs');
+    assert.doesNotMatch(src, /\b(appendFileSync|copyFileSync|existsSync)\b/);
   });
 });
 
