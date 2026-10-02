@@ -1,0 +1,64 @@
+{
+  "$schema": "./port.schema.json",
+  "port": "boxes",
+  "level": { "claimed": 2, "target": 3 },
+  "interface": {
+    "js": { "file": "tooling/ops/box-declaration.mjs", "symbols": ["BOX_FIELDS", "readAll", "validateAll", "diffDeclared"] }
+  },
+  "adapters": [
+    {
+      "id": "boxa",
+      "vendor": "oracle-cloud",
+      "status": "live",
+      "impl": { "file": "tooling/ops/check-box-declared.mjs", "symbol": "readBoxOverSsh" },
+      "capabilities": ["hold-backups"],
+      "secrets": [],
+      "identity": [],
+      "environments": ["live"],
+      "cost": { "feeCells": [], "unit": null },
+      "conformance": null,
+      "exportDuty": "Leaves with us: the encrypted third copy in the tenancy's Object Storage (a byte copy of /srv/restic, rebuilt from the other two repositories) and the VM's provider snapshot. Cannot move: the IP addresses, so every allow-list in tooling/boxes/boxa.json moves with the box (box-move C3).",
+      "readAt": null
+    },
+    {
+      "id": "boxb",
+      "vendor": "hostinger",
+      "status": "live",
+      "impl": { "file": "tooling/ops/check-box-declared.mjs", "symbol": "readBoxOverSsh" },
+      "capabilities": ["run-services", "serve-hostnames", "run-crons", "hold-backups"],
+      "secrets": [],
+      "identity": [],
+      "environments": ["live"],
+      "cost": { "feeCells": [], "unit": null },
+      "conformance": null,
+      "exportDuty": "Leaves with us: the volumes (restored from the sets in tooling/boxes/backups.json), the compose files, the env (from the vault; NAMES in tooling/boxes/boxb.json) and the provider snapshot. Cannot move: the IP addresses, so every allow-list in tooling/boxes/boxb.json moves with the box (box-move C3).",
+      "readAt": null
+    },
+    {
+      "id": "boxc",
+      "vendor": "hostinger",
+      "status": "live",
+      "impl": { "file": "tooling/ops/check-box-declared.mjs", "symbol": "readBoxOverSsh" },
+      "capabilities": ["run-services", "serve-hostnames", "run-crons"],
+      "secrets": [],
+      "identity": [],
+      "environments": ["live"],
+      "cost": { "feeCells": [], "unit": null },
+      "conformance": null,
+      "exportDuty": "Leaves with us: the volumes (the Postgres data and db-config, restored from supabase-auth-pg in tooling/boxes/backups.json), the compose files, the env (from the vault; NAMES in tooling/boxes/boxc.json) and the provider snapshot. auth.users ids move unchanged (README §5, Auth). Cannot move: the IP addresses, so every allow-list in tooling/boxes/boxc.json moves with the box (box-move C3).",
+      "readAt": null
+    }
+  ],
+  "selection": { "by": "single", "source": "tooling/boxes/roles.json#roles", "default": { "live": null, "sandbox": null, "test": null }, "canary": null },
+  "generated": false,
+  "handTables": [],
+  "conformance": { "suite": null, "pending": [] },
+  "switch": { "runbook": "Private/runbooks/switch-vendor.md#boxes", "dryRun": "node tooling/ops/port-switch.mjs boxes --to <adapter> --dry-run" },
+  "_why": [
+    "EACH BOX IS AN ADAPTER, AND EACH ROLE SELECTS ONE (row O-BOXES-NOT-DECLARED-AS-DATA). The port is 'a machine that holds a role' — auth, ops, backup-leg — and the selection is tooling/boxes/roles.json, one box per role (`by: single`), so `default` is null in every slot: the roles file is the whole answer.",
+    "The interface is the declaration reader tooling/ops/box-declaration.mjs, a node module (`interface.js`): a box is operated, never imported by a Worker or an app, so limb 4 has no import graph to walk for it. Every adapter's impl is the same SSH reader, tooling/ops/check-box-declared.mjs readBoxOverSsh, applied to that box's declaration tooling/boxes/<box>.json — the adapter differs by its data, not its code.",
+    "`secrets` is empty on purpose: limb 5 reads Worker secret names, and a box's secrets are the env of its own services, held in the vault and named per service in its declaration (box-move C6 prints them). `cost` cites nothing here: the box's cost is cited from Private platform-state/identity.json by vendorId in its declaration, and box-move C7 reads it where Private is readable.",
+    "boxb and boxc share the vendor `hostinger`; assert-ports limb 8 counts one placement per PORT, so two boxes at one provider are placed once.",
+    "L2, honestly: the selection is by config and no caller imports an adapter. L3 needs a conformance suite two adapters call — the read-back run green against two boxes' declarations is the candidate — and the switch dry run for a box is tooling/ops/box-move.mjs --from <box> --to <spec.json> --dry-run, which port-switch.mjs does not yet delegate to."
+  ]
+}
