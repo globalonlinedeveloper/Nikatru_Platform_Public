@@ -58,10 +58,10 @@ void main() {
       });
 
       test('a select and plain placeholders keep declared order', () {
-        final String s = l.paywallTermWithTrial('month', 7, 'week');
+        final String s = l.paywallTermMonthlyWithTrial(7, 'week');
         expect(
           s,
-          contains('month'),
+          contains('7-'),
           reason: 'a placeholder value is not accented',
         );
         expect(s, contains('7-ŵééķ'));
