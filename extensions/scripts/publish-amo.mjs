@@ -55,6 +55,8 @@ import { pathToFileURL } from 'node:url';
 import { laneVerdict, ArmingCoverageLost, REPO_ROOT } from './publish-arming.mjs';
 import { buildAmoMetadata, buildAmoListingAssets, PRIMARY_SOURCES as METADATA_SOURCES } from './amo-metadata.mjs';
 import { requireStorePublishEnvironment } from './lib/store-environment.mjs';
+import { storeSubmitter } from '../../tooling/release/submit-common.mjs';
+import * as vocabulary from '../../contracts/store/vocabulary.js';
 
 /** The pages this lane's flags and calls were read from. ⏱ 2026-09-29 (rv2
  *  EXL-12): three of these were cited in main() and defined nowhere, so the first
@@ -64,6 +66,39 @@ export const PRIMARY_SOURCES = Object.freeze({
   ...METADATA_SOURCES,
   webExtSign: 'https://extensionworkshop.com/documentation/develop/web-ext-command-reference/#web-ext-sign',
   webExtVersion: 'https://www.npmjs.com/package/web-ext',
+});
+
+/** addons.mozilla.org behind the one store contract (tooling/release/submit-common.mjs,
+ *  tooling/ports/channels.json). `plan` is what main() does on `--submit`, in order;
+ *  `upload` IS this script with `--submit`, arming and gate and all.
+ *  🔴 TRAPS stores-01: `gecko.id` is PERMANENT once AMO signs it, and changing it
+ *  publishes a DIFFERENT add-on. It is a value to CONFIRM, never to set: `validate`
+ *  refuses a record whose manifest id is not the confirmed one (publish/identity.json,
+ *  as publish-arming.mjs toolListingId() holds it), or that carries no confirmed id. */
+export const amoSubmitter = storeSubmitter({
+  channel: 'amo',
+  vocabulary,
+  script: 'extensions/scripts/publish-amo.mjs',
+  steps: (artifact) => [
+    { does: 'ask the register whether this channel is armed (publish-arming laneVerdict)', surface: 'local', call: 'tooling/channel-register.json', writes: false },
+    { does: 'read the "store-publish" environment back and require its reviewer', surface: 'api', call: 'GET https://api.github.com/repos/{owner}/{repo}/environments/store-publish', writes: false },
+    { does: 'build the listing payload the first submit carries (amo-metadata.mjs)', surface: 'local', call: 'amo-metadata.json', writes: false },
+    { does: `sign ${artifact?.path ?? 'the unpacked firefox tree'} on the listed channel — the gecko.id it carries is CONFIRMED, never set`, surface: 'cli', call: 'web-ext sign --channel listed --amo-metadata <amo-metadata.json>', writes: true },
+    { does: 'read the listing URL back', surface: 'api', call: `GET ${AMO_API}/addons/addon/{guid}/`, writes: false },
+    { does: 'upload the previews while the listing has none', surface: 'api', call: `POST ${AMO_API}/addons/addon/{guid}/previews/`, writes: true },
+    { does: 'set the privacy policy', surface: 'api', call: `PATCH ${AMO_API}/addons/addon/{guid}/`, writes: true },
+  ],
+  extraFindings: (record) => {
+    const id = record?.geckoId ?? {};
+    if (typeof id.confirmed !== 'string' || id.confirmed.trim() === '') {
+      return [{ field: 'geckoId.confirmed', message: 'no confirmed gecko.id: it is a value to CONFIRM against publish/identity.json, never to set (stores-01)' }];
+    }
+    if (id.manifest !== id.confirmed) {
+      return [{ field: 'geckoId.manifest', message: `the manifest's gecko.id ${JSON.stringify(id.manifest)} is not the confirmed ${JSON.stringify(id.confirmed)}; AMO fixes the id at first signing, so a changed one publishes a DIFFERENT add-on (stores-01)` }];
+    }
+    return [];
+  },
+  uploadArgv: (artifact) => ['--tool', artifact.tool, '--source-dir', artifact.path, '--submit'],
 });
 
 /** The island that holds the signer, repo-relative. */

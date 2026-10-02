@@ -241,7 +241,7 @@ export function run(opts) {
   else if (target.status === 'fake' && env === 'live') add(1, 'target', 'FAIL', `\`${target.id}\` is a fake; a fake is never selectable in live`);
   else if (!(target.environments ?? []).length) add(1, 'target', 'FAIL', `\`${target.id}\` is ${target.status} (status: ${target.status}) and lists no environment: no environment may select it`);
   else if (!(target.environments ?? []).includes(env)) add(1, 'target', 'FAIL', `\`${target.id}\` does not list the ${env} environment (${(target.environments ?? []).join(', ')})`);
-  else add(1, 'target', 'PASS', `\`${target.id}\` (vendor ${target.vendor ?? 'none — a fake'}) is a row of ${rel} for ${env}`);
+  else add(1, 'target', 'PASS', `\`${target.id}\` (${target.vendor ? `vendor ${target.vendor}` : typeof target.channel === 'string' ? `channel ${target.channel} — the store is that ${CHANNEL_REGISTER} row's` : 'vendor none — a fake'}) is a row of ${rel} for ${env}`);
   if (!target) return finish(checks);
 
   // C2

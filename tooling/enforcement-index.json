@@ -4341,6 +4341,7 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-dryrun",
       ".github/workflows/ci.yml#content-gate",
       ".github/workflows/ci.yml#guard-tests",
       ".github/workflows/extensions-ci.yml#core",

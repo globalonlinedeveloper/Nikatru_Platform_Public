@@ -2009,6 +2009,10 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/setup-node
+      # why: every store submitter (tooling/ports/channels.json) against the one dry-run
+      # contract, under a fetch and a spawn stub. App-independent, so each leg runs it once.
+      - name: Every store submitter passes the dry-run contract, with no network
+        run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/release/test/*.test.mjs"
       - name: The Microsoft Store submission path still walks (dry run)
         run: node tooling/release/submit-windows-store.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
       - name: The App Store submission path still walks — iOS (dry run)
