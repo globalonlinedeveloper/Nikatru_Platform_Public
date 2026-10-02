@@ -372,10 +372,13 @@
     48,
 
   "edge-ratelimit-rule.test.mjs":
-    16,
+    18,
 
   "edge-shield-probe.test.mjs":
     26,
+
+  "edge-zone.test.mjs":
+    24,
 
   "elf-page-alignment.test.mjs":
     23,
