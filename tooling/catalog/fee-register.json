@@ -112,5 +112,29 @@
       "verify": "grep -o 'with the 18% GST on the fee returning as input tax credit' tooling/legal/provider-register.json",
       "note": "Nikatru is the seller of record on the India web book, so the INR web price carries 18% GST that Nikatru remits; the GST on Razorpay's fee returns as input tax credit, so the fee is netted at its pre-GST rate. The rate is the decision's, not a fresh read of a tax-rate text."
     }
+  },
+  "taxRegions": {
+    "_why": [
+      "The consumption tax a buyer's price can carry, per region, for the AI credit-pack floor (tooling/ops/port-switch.mjs C17, review 1 of #1136).",
+      "A store remits the tax inside the price before it takes its commission, so a floor that must hold in EVERY region is computed at the HIGHEST rate here; the India web book (razorpay, seller of record) uses IN's. Read only by port-switch: the net sheet's `cells` are untouched.",
+      "Each row is {value, asOf, source, quote, verify} like a cell. Add a region before selling into one with a higher rate; the floor rises with it."
+    ],
+    "rows": {
+      "IN": {
+        "value": { "percentBps": 1800 },
+        "asOf": "2026-09-29",
+        "source": "[ADR 076] section 10.1 (the india-gst cell above)",
+        "quote": "Razorpay's real cost is 2% platform plus a 0.5% subscriptions add-on, with the 18% GST on the fee returning as input tax credit.",
+        "verify": "grep -o 'with the 18% GST on the fee returning as input tax credit' tooling/legal/provider-register.json"
+      },
+      "HU": {
+        "value": { "percentBps": 2700 },
+        "asOf": "2026-10-02",
+        "source": "https://www.vatupdate.com/2026/02/11/hungary-comprehensive-vat-country-guide-2026/",
+        "quote": "Hungary applies the highest standard VAT rate in the EU, at 27%.",
+        "verify": "curl -sL https://www.vatupdate.com/2026/02/11/hungary-comprehensive-vat-country-guide-2026/ | sed 's/<[^>]*>/ /g' | tr -s ' \\n' ' ' | grep -o -i 'standard VAT rate[^.]*27%'",
+        "note": "A secondary source: the European Commission's rates table (Taxes in Europe Database) did not render rates without a query on 2026-10-02. 27% is the highest standard VAT rate in the EU, and the highest consumption tax among the App Store storefronts this table is used for."
+      }
+    }
   }
 }
