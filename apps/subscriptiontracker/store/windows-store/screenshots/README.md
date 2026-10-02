@@ -71,3 +71,7 @@ There is **no app-specific icon**. `apps/subscriptiontracker/pubspec.yaml`'s
 fine for a submission: `[10]D-6` requires a distinct visual identity per app,
 precisely so fifty apps stamped from one brick do not reach the store looking
 identical.
+
+## ⏱ 2026-10-02 — not captured, and why
+
+Dispatched twice from branch `fix/store-screenshots-all-channels` (row O-STORE-SCREENSHOTS); both runs failed BUILDING the Windows binary, before any drive: sentry-native's CMake FetchContent clones crashpad's mini_chromium submodule under apps/subscriptiontracker/build/windows/x64/_deps, and the runner's checkout path makes it too long. Run 36952974887: the clone failed; run 36955804818: "cannot write keep file … Filename too long". That is a build-path fix (a shorter build root, or core.longpaths for the FetchContent clone), and after it this channel meets the same seeding step the macOS and Snap runs did. No frame is made by hand in its place.

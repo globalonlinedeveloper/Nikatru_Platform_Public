@@ -28,6 +28,7 @@ import 'package:nikatru_chassis_screens/monetization/paywall_screen.dart'
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
+import 'package:nikatru_purchases/testing.dart';
 import 'package:subscriptiontracker/features/monetization/manage_plan_screen.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
@@ -49,34 +50,19 @@ class _MemSecureStore implements core.SecureStore {
 }
 
 /// A hosted rail that sells one plan, and asks nobody for it.
-class _Rail implements PurchaseRail {
-  @override
-  PurchaseRailKind get railKind => PurchaseRailKind.paddle;
-
-  @override
-  List<Offering> get offerings => const <Offering>[
+FakePurchaseRail _rail() => FakePurchaseRail(
+  offerings: const <Offering>[
     Offering(
       productId: 'pro_monthly',
       amountMinor: 599,
       currencyCode: 'USD',
       term: OfferingTerm.month,
     ),
-  ];
-
-  @override
-  bool get canStartCheckout => true;
-
-  @override
-  Future<CheckoutStart> startCheckout(Offering offering) async =>
-      const CheckoutRefused(
-        CheckoutRefusal.notSignedIn,
-        detail: 'this test buys nothing',
-      );
-
-  @override
-  Future<CancellationOutcome> requestCancellation() async =>
-      CancellationOutcome.noActivePlan;
-}
+  ],
+  canStartCheckout: true,
+  refusal: CheckoutRefusal.notSignedIn,
+  refusalDetail: 'this test buys nothing',
+);
 
 /// A store rail whose store has not answered: its plans are still unknown.
 ///
@@ -140,7 +126,7 @@ List<Override> _money({
   secureStoreProvider.overrideWithValue(_MemSecureStore()),
   sellingEnabledProvider.overrideWithValue(selling),
   paywallPitchProvider.overrideWithValue(pitch),
-  purchaseRailProvider.overrideWithValue(rail ?? _Rail()),
+  purchaseRailProvider.overrideWithValue(rail ?? _rail()),
   if (offline) networkUnreachableProvider.overrideWith(_Unreachable.new),
   entitlementsProvider.overrideWith(
     (_) => entitlements?.call() ?? Future<core.Entitlements>.value(_free),

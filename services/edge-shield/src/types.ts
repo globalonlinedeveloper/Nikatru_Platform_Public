@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// The edge shield's bindings. Every one is a Workers Rate Limiting binding
+// The edge shield's bindings. Every one but RELEASE is a Workers Rate Limiting binding
 // declared in ../wrangler.jsonc, and every one is OPTIONAL here on purpose: an
 // absent binding FAILS OPEN (src/limit.ts), because the shield must never be the
 // reason sign-in or crash intake is down. test/wrangler-config.test.ts asserts
@@ -18,6 +18,9 @@ export interface RateLimiterBinding {
 }
 
 export interface Env {
+  /** The commit SHA, supplied at deploy time (`--var RELEASE:${{ github.sha }}`, never in
+   *  wrangler.jsonc) and echoed as the shield header's value (src/index.ts shieldMark). */
+  RELEASE?: string;
   AUTH_CREDENTIAL_GLOBAL_LIMITER?: RateLimiterBinding;
   AUTH_REFRESH_GLOBAL_LIMITER?: RateLimiterBinding;
   AUTH_OTHER_GLOBAL_LIMITER?: RateLimiterBinding;

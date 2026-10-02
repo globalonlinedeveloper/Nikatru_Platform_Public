@@ -148,7 +148,9 @@ describe('the real tree', () => {
       const known = r.stdout.split('\n').filter((l) => l.startsWith('known '));
       // 7 -> 3 on 2026-09-29: ST-T3b converted the add sheet's three Y2 sites and
       // the notifications Close, and deleted their rows (the list only shrinks).
-      assert.equal(known.length, 3, r.stdout);
+      // 3 -> 2 on 2026-10-01: ST-SETTINGS (SE-05) gave the delete-account
+      // password field its autofill hint and deleted its ST-Y3 row.
+      assert.equal(known.length, 2, r.stdout);
       for (const l of known) assert.match(l, /; owner [A-Z]\d+ — /);
       assert.match(r.stdout, /ST-Y2: 3 gesture detector\(s\), 0 without a tap callback, 3 in scope, 3 exempt/);
       // 10 -> 11 on 2026-10-01 (O-APPS-GOV-IN-VAPT-CHECKLIST): the chassis
@@ -157,7 +159,10 @@ describe('the real tree', () => {
       // copy and its two obscured boxes are gone — the app ADOPTS the chassis
       // ResetPasswordView, whose two boxes (now AuthField, still hinted) were
       // already counted. Read off the guard's own line.
-      assert.match(r.stdout, /ST-Y3: 9 obscured field\(s\), 1 without hints, all baselined/);
+      // 9 -> 11 and 1 -> 0 on 2026-10-01 (ST-SETTINGS, on st-entry): SE-02's
+      // change-e-mail/password dialog adds two obscured fields, both hinted;
+      // SE-05 hinted the last one, the delete-account password.
+      assert.match(r.stdout, /ST-Y3: 11 obscured field\(s\), 0 without hints, all baselined/);
     });
   });
 });

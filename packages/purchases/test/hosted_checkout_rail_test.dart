@@ -1,21 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
-
-/// Records what it was asked to open. The seam exists FOR this: a test cannot
-/// observe a real browser opening, so "the checkout opens" would be a claim
-/// nobody could check on any platform — which is how a paywall ships with a
-/// button that does nothing.
-class _RecordingLauncher implements CheckoutLauncher {
-  final List<Uri> opened = <Uri>[];
-  bool answer = true;
-
-  @override
-  Future<bool> open(Uri url) async {
-    opened.add(url);
-    return answer;
-  }
-}
+import 'package:nikatru_purchases/testing.dart';
 
 class _FakeCancellations implements core.CancellationTransport {
   _FakeCancellations(this.result);
@@ -71,7 +57,7 @@ HostedCheckoutRail _rail({
               ),
             ),
           ),
-      launcher: launcher ?? _RecordingLauncher(),
+      launcher: launcher ?? FakeCheckoutLauncher(),
       capabilities: PurchaseCapabilities.forChannel(channel),
     );
 
@@ -91,7 +77,7 @@ void main() {
       PurchaseChannel.linuxAppImage,
     ]) {
       test('${channel.registerId} opens the hosted checkout URL', () async {
-        final _RecordingLauncher launcher = _RecordingLauncher();
+        final FakeCheckoutLauncher launcher = FakeCheckoutLauncher();
         final HostedCheckoutRail rail = _rail(
           channel: channel,
           launcher: launcher,
@@ -119,7 +105,7 @@ void main() {
       PurchaseChannel.androidPlay,
     ]) {
       test('${channel.registerId} refuses with channelNotPermitted', () async {
-        final _RecordingLauncher launcher = _RecordingLauncher();
+        final FakeCheckoutLauncher launcher = FakeCheckoutLauncher();
         final CheckoutStart start = await _rail(
           channel: channel,
           launcher: launcher,
@@ -145,7 +131,7 @@ void main() {
         () async {
       // The state today: no seller account exists (OWNER_QUEUE A-1), so no
       // template can have been pasted out of a console that nobody has.
-      final _RecordingLauncher launcher = _RecordingLauncher();
+      final FakeCheckoutLauncher launcher = FakeCheckoutLauncher();
       final CheckoutStart start = await _rail(
         channel: PurchaseChannel.web,
         template: null,
@@ -160,7 +146,7 @@ void main() {
     test('NO account ⇒ notSignedIn, and the checkout never opens', () async {
       // [5]M-7. An unclaimed payment arising from an IN-APP purchase is a
       // defect, not a supported state — so the money never moves.
-      final _RecordingLauncher launcher = _RecordingLauncher();
+      final FakeCheckoutLauncher launcher = FakeCheckoutLauncher();
       final CheckoutStart start = await _rail(
         channel: PurchaseChannel.web,
         account: null,
@@ -173,7 +159,7 @@ void main() {
 
     test('the platform refusing to open is couldNotOpen, not success',
         () async {
-      final _RecordingLauncher launcher = _RecordingLauncher()..answer = false;
+      final FakeCheckoutLauncher launcher = FakeCheckoutLauncher()..answer = false;
       final CheckoutStart start = await _rail(
         channel: PurchaseChannel.web,
         launcher: launcher,

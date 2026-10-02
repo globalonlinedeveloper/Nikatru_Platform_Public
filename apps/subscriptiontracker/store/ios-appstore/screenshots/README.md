@@ -71,3 +71,7 @@ page calls it** — not after a name invented here.
 There is **no Subly-specific app icon**. `[10]D-6` requires a distinct visual
 identity per app, precisely so fifty apps stamped from one brick do not reach the
 store looking identical. That is unbuilt for every channel, not just this one.
+
+## ⏱ 2026-10-02 — not captured, and why
+
+Dispatched twice from branch `fix/store-screenshots-all-channels` (row O-STORE-SCREENSHOTS); run 36952989780 failed before the drive: the boot step read the register's device list through a here-string whose newline made the last simulator name invalid (fixed on this branch). Run 36955814987 booted both simulators and failed at the seeding step. On the second run every drive that got past sign-in signed in, skipped the after-sign-in setup, reached Home, and stopped in `addThroughSheet` (integration_test/store_screenshots_test.dart): "The add sheet did not open". Since #1130 the add FAB opens the catalogue pick step ("Search services | POPULAR | Netflix …") and the name field the suite types into is behind it, so the suite cannot seed the rows its frames show. The fix is in the suite (choose the custom entry from the pick step before typing), not in this directory. No frame is made by hand in its place.

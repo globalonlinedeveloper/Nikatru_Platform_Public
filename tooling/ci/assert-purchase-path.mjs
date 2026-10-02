@@ -1091,7 +1091,18 @@ const flat = (v) =>
   //                                          `false` from `canStartCheckout` and
   //                                          no launcher, so it cannot quietly
   //                                          start selling.
-  const RAIL_IMPLS = { HostedCheckoutRail: 'paddle', IapRail: 'store', UnavailablePurchaseRail: 'none' };
+  //
+  //   FakePurchaseRail → `fake`          — ADDED 2026-10-01 (port-pay-client).
+  //                                          The shared test fake in
+  //                                          lib/testing.dart. It ships in NO
+  //                                          app: assert-ports' client limb
+  //                                          refuses any app or package lib
+  //                                          importing that library, and it
+  //                                          passes the same conformance suite
+  //                                          as the two selling rails. Neither
+  //                                          limb (d) nor limb (e) grades it,
+  //                                          because no channel can select it.
+  const RAIL_IMPLS = { HostedCheckoutRail: 'hosted', IapRail: 'store', UnavailablePurchaseRail: 'none', FakePurchaseRail: 'fake' };
   const IAP_RAIL_FILE = 'packages/purchases/lib/src/iap_rail.dart';
   let premiseHolds = true;
   {
@@ -1466,41 +1477,51 @@ const flat = (v) =>
     // ── G4 (e) · THE DART RAIL-KIND MAP IS THE REGISTER'S, NOT A SECOND COPY ─
     //
     // [ADR 067] decision 7 added `ChassisBilling.railFor`, which picks a rail
-    // per channel — so the client now needs the register's `purchaseRail.rail`
-    // answer AT RUNTIME, and Dart cannot read a JSON register at runtime. The
-    // answer is mirrored in `PurchaseRailKind.forChannel`.
+    // per channel — so the client needs the register's `purchaseRail.rail`
+    // answer AT RUNTIME, and Dart cannot read a JSON register at runtime.
     //
-    // 🔴 A MIRROR WITH NOTHING COMPARING IT IS JUST A SECOND DECISION. Limb (d)
-    // above cannot see this one: it compares the register against the two
-    // BOOLEANS in the capability matrix, which answer "may this build open a
-    // HOSTED checkout" and are correctly `false` on `android-play` whether that
-    // channel takes `play-billing` or sells nothing at all. The rail NAME is a
-    // different fact, and getting it wrong is not a refusal — it is the build
-    // running the WRONG rail: a store sheet on a Paddle channel, or an external
-    // checkout inside a Play build, which is the anti-steering violation.
-    //
-    // Both directions, and the vocabulary is checked too: a rail name in the
-    // Dart enum that the register's `rails` dictionary does not define is a rail
-    // nobody decided.
+    // ⏱ 2026-10-01 · port-pay-client: THE ANSWER IS RENDERED, NOT TYPED. It
+    // lived in a `switch` in `PurchaseRailKind.forChannel` that this limb
+    // parsed; it is now `kChannelRailKind` in generated/rails.dart, rendered by
+    // tooling/ports/render.mjs (whose --check assert-ports limb 3 runs). This
+    // limb still compares that map with the register itself, both directions,
+    // so a render bug is a finding here and not only a stale file there:
+    //   · the kind file reads the rendered map and carries no per-channel
+    //     `case` (a switch that came back would be a second decision again);
+    //   · every app channel the enum knows has a kind in the map;
+    //   · a store rail and `none` are named by their register id; every other
+    //     rail renders `hosted` — WHICH vendor serves a hosted page is the
+    //     server's business — and `hosted` may stand only for a rail no kind
+    //     names, so a store channel rendered hosted is THE CLIENT OPENING THE
+    //     WRONG RAIL (an external checkout inside a store build);
+    //   · every kind but `hosted` is a rail the register's dictionary defines.
     // `premiseHolds` is not re-tested here: the enclosing G4 `if` above already
     // established it, and a condition that cannot be false reads as a guard that
     // is guarding something.
     {
       const KIND = 'packages/purchases/lib/src/purchase_rail_kind.dart';
+      const RENDERED = 'packages/purchases/lib/src/generated/rails.dart';
       const kindRaw = read(KIND);
-      if (kindRaw === null) {
+      const renderedRaw = read(RENDERED);
+      if (kindRaw === null || renderedRaw === null) {
         coverageLost(
-          `${KIND} does not exist, so the rail the client picks per channel was compared ` +
+          `${kindRaw === null ? KIND : RENDERED} does not exist, so the rail the client picks per channel was compared ` +
             'against nothing. `ChassisBilling.railFor` reads that map; the register is the decision it is ' +
-            'supposed to mirror.',
+            'supposed to mirror. Run node tooling/ports/render.mjs.',
         );
       } else {
         const kindCode = code(kindRaw);
-        // The enum's own register ids, parsed structurally — the same shape §A
-        // parses PurchaseChannel with.
-        const kindIds = new Set(
-          [...kindCode.matchAll(/^\s*([a-zA-Z]\w*)\('([^']+)'\)[,;]/gm)].map((m) => m[2]),
-        );
+        if (/case\s+PurchaseChannel\.\w+\s*:/.test(kindCode)) {
+          problems.push(
+            `${KIND} carries a \`case PurchaseChannel.X:\` again. The rail per channel is RENDERED into ${RENDERED} ` +
+              'from the register; a switch in Dart is a second copy of the decision, free to drift from it.',
+          );
+        }
+        if (!/\bkChannelRailKind\b/.test(kindCode)) {
+          problems.push(`${KIND} does not read \`kChannelRailKind\` (${RENDERED}); the client's rail per channel is not the rendered one.`);
+        }
+        // The kinds' wires, parsed structurally — the same shape §A parses PurchaseChannel with.
+        const kindWires = new Set([...kindCode.matchAll(/^\s*([a-zA-Z]\w*)\('([^']+)'\)[,;]/gm)].map((m) => m[2]));
         let dictNames = new Set();
         try {
           const d = JSON.parse(read(CHANNELS) ?? "{}").purchaseRails?.rails;
@@ -1510,72 +1531,61 @@ const flat = (v) =>
           // register; an empty set here simply skips the name check rather
           // than reporting the same defect a second time.
         }
-        for (const id of kindIds) {
-          if (dictNames.size && !dictNames.has(id)) {
+        for (const wire of kindWires) {
+          if (wire !== 'hosted' && dictNames.size && !dictNames.has(wire)) {
             problems.push(
-              `${KIND} declares rail \`${id}\`, which ${CHANNELS}'s \`purchaseRails.rails\` dictionary does ` +
+              `${KIND} declares rail kind \`${wire}\`, which ${CHANNELS}'s \`purchaseRails.rails\` dictionary does ` +
                 'not define. A rail the register has never named is a rail nobody decided, shipped in the ' +
                 'one file that decides which one a build opens.',
             );
           }
         }
-
-        // member -> registerId, from the PurchaseChannel enum §A already parsed.
-        const memberOfId = new Map([...capById].map(([id, r]) => [id, r.member]));
-        // The `case PurchaseChannel.X:` → `return PurchaseRailKind.y;` map,
-        // including the fall-through spelling `case A: case B: return …;`.
-        const shipped = new Map(); // PurchaseChannel member -> rail member
-        for (const m of kindCode.matchAll(
-          /case\s+PurchaseChannel\.(\w+):(?:\s*case\s+PurchaseChannel\.(\w+):)*\s*return\s+PurchaseRailKind\.(\w+)\s*;/g,
-        )) {
-          // The regex's repeated group only keeps the LAST alternative, so the
-          // whole matched text is re-scanned for every member it names. A map
-          // that silently lost the first channel of a fall-through pair would
-          // read as "that channel has no case", which is a different and more
-          // confusing failure than the real one.
-          for (const c of m[0].matchAll(/case\s+PurchaseChannel\.(\w+):/g)) {
-            shipped.set(c[1], m[3]);
-          }
+        if (!kindWires.has('hosted')) {
+          problems.push(`${KIND} declares no \`hosted\` kind, which the rendered map gives every hosted-page channel.`);
         }
-        // rail member name (playBilling) -> its register id (play-billing),
-        // read out of the enum declaration rather than lower-cased here.
-        const railIdOfMember = new Map(
-          [...kindCode.matchAll(/^\s*([a-zA-Z]\w*)\('([^']+)'\)[,;]/gm)].map((m) => [m[1], m[2]]),
+        const shipped = new Map(
+          [...code(renderedRaw).matchAll(/^\s*'([a-z][a-z0-9-]*)'\s*:\s*'([a-z][a-z0-9-]*)'\s*,/gm)].map((m) => [m[1], m[2]]),
         );
-
+        const memberOfId = new Map([...capById].map(([id, r]) => [id, r.member]));
         let railsCompared = 0;
         const problemsBeforeE = problems.length;
         for (const [id, { rail }] of railOf) {
-          const member = memberOfId.get(id);
-          if (!member) continue; // no enum row — §A already failed on it
-          const shippedMember = shipped.get(member);
-          if (!shippedMember) {
+          if (!memberOfId.get(id)) continue; // no enum row — §A already failed on it
+          const kind = shipped.get(id);
+          if (!kind) {
             problems.push(
-              `${KIND} has no \`case PurchaseChannel.${member}:\` — channel \`${id}\` is registered and the ` +
-                'client has no rail to pick for it. `ChassisBilling.railFor` would answer whatever the ' +
-                'switch falls through to, which on a store channel is the difference between a legal ' +
-                'purchase and a removal.',
+              `${RENDERED} has no kind for channel \`${id}\` — it is registered and the client has no rail to ` +
+                'pick for it, so `PurchaseRailKind.forChannel` answers none. Re-render.',
             );
             continue;
           }
           railsCompared += 1;
-          const shippedId = railIdOfMember.get(shippedMember) ?? shippedMember;
-          if (shippedId !== rail) {
+          const ok = kind === 'hosted' ? !kindWires.has(rail) : kind === rail;
+          if (!ok) {
             problems.push(
               `THE CLIENT WOULD OPEN THE WRONG RAIL — ${CHANNELS} gives channel \`${id}\` rail \`${rail}\`, ` +
-                `and ${KIND} answers \`PurchaseRailKind.${shippedMember}\` (\`${shippedId}\`). ` +
+                `and ${RENDERED} answers \`${kind}\`. ` +
                 'That map is what `ChassisBilling.railFor` consults, so this is not a documentation ' +
                 'disagreement: it is the build choosing a payment mechanism the channel forbids.',
             );
           }
         }
+        let registered = new Set();
+        try {
+          registered = new Set((JSON.parse(read(CHANNELS) ?? '{}').channels ?? []).map((c) => c?.id));
+        } catch {
+          // An unparseable register already failed above; no second report.
+        }
+        for (const id of shipped.keys()) {
+          if (registered.size && !registered.has(id)) problems.push(`${RENDERED} names channel \`${id}\`, which ${CHANNELS} does not register.`);
+        }
         if (railsCompared === 0) {
           coverageLost(
-            `not one channel's rail could be compared between ${CHANNELS} and ${KIND}. ` +
+            `not one channel's rail could be compared between ${CHANNELS} and ${RENDERED}. ` +
               'The mirror is unchecked, which is the state that makes it a second decision rather than a copy.',
           );
         } else if (problems.length === problemsBeforeE) {
-          ok(`${railsCompared} channel(s): the register's rail NAME and ${KIND} agree`);
+          ok(`${railsCompared} channel(s): the register's rail and the rendered ${RENDERED} agree`);
         }
       }
     }

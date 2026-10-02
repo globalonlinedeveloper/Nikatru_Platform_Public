@@ -30,8 +30,11 @@ import {
   databaseNames,
   Refusal,
   SMOKE,
+  SMOKE_SCRIPTS,
+  smokeArgv,
+  smokeFromEnv,
 } from '../../ops/rollback.mjs';
-import { PUBLISHED_ID_KEYS } from '../record-deployment.mjs';
+import { PUBLISHED_ID_KEYS, PUBLISHED_ID_FLAGS, ROLLBACK_KINDS, rollbackRecord } from '../record-deployment.mjs';
 import { parseWorkflow, workflowSteps } from '../workflow-scan.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -69,6 +72,10 @@ const WORKER_PAYLOAD = {
 };
 const WEB_STATUSES = [{ state: 'success', environment_url: 'https://nikatru.com/subscriptiontracker/' }];
 const WORKER_STATUSES = [{ state: 'success', environment_url: 'https://platform.nikatru.com' }];
+// ⏱ 2026-10-01 · PB-07: the apex site's record, as deploy-web.yml's `site` job now writes it.
+const SITE_PAYLOAD = { ...WEB_PAYLOAD, run_number: 303, run_id: 35700000303 };
+const SITE_STATUSES = [{ state: 'success', environment_url: 'https://nikatru.com' }];
+const SHIELD_STATUSES = [{ state: 'success', environment_url: 'https://auth-api.nikatru.com' }];
 
 let TMP;
 let REPLAY;
@@ -263,9 +270,53 @@ describe('rollback.mjs — re-promotes only what the ledger recorded', () => {
     );
     assert.equal(outputs.id_flag, '--worker-version-id');
     assert.equal(outputs.id, WORKER_ID);
-    assert.equal(outputs.smoke_url, 'https://platform.nikatru.com/v1/health');
-    assert.equal(outputs.smoke_expect, SHA);
-    assert.equal(outputs.smoke_require_ok, 'true');
+    assert.equal(outputs.smoke_script, 'tooling/ops/post-deploy-smoke.mjs');
+    assert.deepEqual(JSON.parse(outputs.smoke_args), ['--url', 'https://platform.nikatru.com/v1/health', '--field', 'build', '--expect', SHA, '--require-ok']);
+  });
+
+  // ⏱ 2026-10-01 · PB-07 (row O-APEX-SITE-HAS-NO-ROLLBACK). RED without the patch: a `site`
+  // unit was refused by kind, so the apex had no way back but the paused Git project.
+  test('🔴 PB-07 — --dry-run on the SITE unit prints the Pages rollback on nikatru-apex and hands over the site\'s own smoke', () => {
+    const { code, out, requests, outputs } = rollback(['--unit', 'nikatru-site', '--deployment', '9001', '--dry-run'], {
+      deployment: webDeployment(SITE_PAYLOAD, 'nikatru-site'),
+      statuses: SITE_STATUSES,
+    });
+    assert.equal(code, 0, out);
+    assert.ok(
+      out.includes(`/pages/projects/nikatru-apex/deployments/${PAGES_ID}/rollback"`),
+      out,
+    );
+    assert.ok(!requests.some((r) => r.host === 'api.cloudflare.com'));
+    assert.equal(outputs.unit, 'nikatru-site');
+    assert.equal(outputs.kind, 'site');
+    assert.equal(outputs.id_flag, '--pages-deployment-id');
+    assert.equal(outputs.smoke_script, 'tooling/sites/smoke-site-deploy.mjs');
+    assert.deepEqual(JSON.parse(outputs.smoke_args), ['--origin', 'https://nikatru.com', '--expect-sha', SHA]);
+  });
+
+  test('🔴 PB-07 — a SITE real run POSTs the rollback on the row\'s Direct Upload project, never the paused Git one', () => {
+    const { code, out, requests } = rollback(['--unit', 'nikatru-site', '--deployment', '9001'], {
+      deployment: webDeployment(SITE_PAYLOAD, 'nikatru-site'),
+      statuses: SITE_STATUSES,
+    });
+    assert.equal(code, 0, out);
+    assert.deepEqual(
+      requests.filter((r) => r.host === 'api.cloudflare.com').map((r) => r.pathname),
+      [`/client/v4/accounts/${CF_ACCOUNT}/pages/projects/nikatru-apex/deployments/${PAGES_ID}/rollback`],
+    );
+  });
+
+  // ⏱ 2026-10-01 · PB-08 (row O-EDGE-SHIELD-ROLLBACK-SMOKE-MISFIT). RED without the patch: the
+  // shield was handed the service smoke, `/v1/health --field build`, which it has no route for.
+  test('🔴 PB-08 — the EDGE SHIELD unit is handed ITS OWN smoke from the register, joined to the recorded SHA', () => {
+    const { code, out, outputs } = rollback(['--unit', 'edge-shield', '--deployment', '9001', '--dry-run'], {
+      deployment: { id: 9001, sha: SHA, environment: 'edge-shield', payload: WORKER_PAYLOAD },
+      statuses: SHIELD_STATUSES,
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /\(cd services\/edge-shield && \.\.\/\.\.\/tooling\/wrangler\/node_modules\/\.bin\/wrangler rollback /);
+    assert.equal(outputs.smoke_script, 'tooling/ops/check-edge-shield.mjs');
+    assert.deepEqual(JSON.parse(outputs.smoke_args), ['--settle', '--expect-release', SHA]);
   });
 
   test('a WEB real run POSTs the rollback of the recorded Pages deployment, with the token, and hands the smoke its build number', () => {
@@ -288,10 +339,8 @@ describe('rollback.mjs — re-promotes only what the ledger recorded', () => {
       id_flag: '--pages-deployment-id',
       id: PAGES_ID,
       environment_url: 'https://nikatru.com/subscriptiontracker',
-      smoke_url: 'https://nikatru.com/subscriptiontracker/version.json',
-      smoke_field: 'build_number',
-      smoke_expect: '101',
-      smoke_require_ok: 'false',
+      smoke_script: 'tooling/ops/post-deploy-smoke.mjs',
+      smoke_args: JSON.stringify(['--url', 'https://nikatru.com/subscriptiontracker/version.json', '--field', 'build_number', '--expect', '101']),
     });
   });
 
@@ -334,8 +383,51 @@ describe('rollback.mjs — the pure helpers', () => {
   });
 
   test('the smoke each kind runs is the one its deploy runs', () => {
-    assert.deepEqual({ ...SMOKE.web }, { path: '/version.json', field: 'build_number', expectFrom: 'run_number', requireOk: false });
-    assert.deepEqual({ ...SMOKE.service }, { path: '/v1/health', field: 'build', expectFrom: 'sha', requireOk: true });
+    assert.deepEqual(SMOKE.web.args, ['--url', '{url}/version.json', '--field', 'build_number', '--expect', '{run_number}']);
+    assert.deepEqual(SMOKE.service.args, ['--url', '{url}/v1/health', '--field', 'build', '--expect', '{sha}', '--require-ok']);
+    assert.deepEqual(SMOKE.site.args, ['--origin', '{url}', '--expect-sha', '{sha}']);
+    for (const k of Object.keys(SMOKE)) assert.ok(SMOKE_SCRIPTS.includes(SMOKE[k].script), k);
+  });
+
+  test('🔴 RED CONTROL — a per-unit smoke naming a script the lane does not run is refused, never run', () => {
+    const plan = { url: 'https://auth-api.nikatru.com', sha: SHA, runNumber: 1 };
+    assert.throws(() => smokeArgv({ script: 'tooling/ops/rollback.mjs', args: [] }, plan, '9001'), /is not one of/);
+    assert.throws(() => smokeArgv({ script: SMOKE_SCRIPTS[0], args: ['{secret}'] }, plan, '9001'), /placeholder \{secret\}/);
+    assert.throws(() => smokeArgv({ script: SMOKE_SCRIPTS[0], args: [7] }, plan, '9001'), /not a list of strings/);
+    assert.throws(() => smokeArgv(SMOKE.service, { ...plan, sha: 'not a sha!' }, '9001'), /names no sha/);
+  });
+
+  test('--run-smoke reads back only an allow-listed script and a JSON list of strings', () => {
+    assert.deepEqual(smokeFromEnv({ SMOKE_SCRIPT: SMOKE_SCRIPTS[2], SMOKE_ARGS: '["--settle"]' }), { script: SMOKE_SCRIPTS[2], args: ['--settle'] });
+    assert.throws(() => smokeFromEnv({ SMOKE_SCRIPT: 'tooling/ops/rollback.mjs', SMOKE_ARGS: '[]' }), /nothing was run/);
+    assert.throws(() => smokeFromEnv({ SMOKE_SCRIPT: SMOKE_SCRIPTS[0], SMOKE_ARGS: '--url x' }), /not a JSON list of strings/);
+  });
+
+  test('--run-smoke RUNS the unit\'s smoke and exits with ITS code (here 2: the shield probe could not look, before any request)', () => {
+    const empty = join(TMP, 'no-edge-config');
+    const { code, out } = rollback(['--run-smoke'], {
+      env: { SMOKE_SCRIPT: 'tooling/ops/check-edge-shield.mjs', SMOKE_ARGS: JSON.stringify(['--root', empty, '--expect-release', SHA]) },
+    });
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — services\/edge-shield\/wrangler\.jsonc does not exist/);
+  });
+
+  test('--run-smoke refuses a script outside the list, exit 1, and runs nothing', () => {
+    const { code, out } = rollback(['--run-smoke'], { env: { SMOKE_SCRIPT: 'tooling/ops/rollback.mjs', SMOKE_ARGS: '[]' } });
+    assert.equal(code, 1, out);
+    assert.match(out, /is not one of .*nothing was run/);
+  });
+
+  test('🔴 PB-07 — a site row with no `pagesProject` is refused: there is nothing to put a deployment back on', () => {
+    const register = structuredClone(REGISTER);
+    delete register.siteEnvironments.find((r) => r.deploymentEnvironment === 'nikatru-site').pagesProject;
+    assert.throws(() => resolveUnit(register, 'nikatru-site'), /names no `pagesProject`/);
+  });
+
+  test('🔴 PB-07 — the recorder takes the site\'s Pages deployment id, and records a re-promotion of a site', () => {
+    assert.ok(ROLLBACK_KINDS.includes('site'));
+    assert.deepEqual([...PUBLISHED_ID_FLAGS.site], ['pages-deployment-id']);
+    assert.equal(rollbackRecord('site', '9001', SHA).refusal, null);
   });
 
   test('the Worker rollback message fits wrangler\'s 120 characters, even with a long run id', () => {
@@ -364,8 +456,8 @@ describe('rollback.mjs — THE REAL TREE', () => {
     const services = REGISTER.serviceEnvironments;
     assert.deepEqual(
       services.map((s) => s.deploymentEnvironment),
-      // ⏱ 2026-09-27 (SHIELD-F6): the edge shield is a service unit too. It has no /v1/health, so
-      // rollback.yml's smoke does not fit it — tooling/channel-register.json's row names the bypass.
+      // ⏱ 2026-09-27 (SHIELD-F6): the edge shield is a service unit too. It has no /v1/health;
+      // since 2026-10-01 (PB-08) its register row names its own smoke, graded below.
       ['subscriptiontracker-api', 'platform', 'edge-shield'],
     );
     for (const s of services) {
@@ -373,6 +465,42 @@ describe('rollback.mjs — THE REAL TREE', () => {
       const config = readFileSync(join(ROOT, target.dir, 'wrangler.jsonc'), 'utf8');
       assert.match(config, new RegExp(`^\\s*"name"\\s*:\\s*"${s.deploymentEnvironment}"`, 'm'), target.dir);
     }
+  });
+
+  // PB-07/PB-08: a re-promotion is judged the way the unit's DEPLOY judges it. Read off the
+  // deploy workflows, `${{ github.sha }}` read as `{sha}`: an edit to either side reds this.
+  test('every site and per-unit smoke the lane runs is, argument for argument, the one its deploy job runs', () => {
+    const deploySmoke = (wfRel, job, script) => {
+      const wf = parseWorkflow(ROOT, wfRel);
+      const step = workflowSteps(wf.jobs.get(job)).find((s) => (s.run?.text ?? '').includes(`node ${script} `));
+      assert.ok(step, `${wfRel} job ${job} runs no ${script}`);
+      return step.run.text.replace(/\$\{\{\s*github\.sha\s*\}\}/g, '{sha}').trim().split(/\s+/).slice(2);
+    };
+    const shield = resolveUnit(REGISTER, 'edge-shield').smoke;
+    assert.deepEqual(shield.args, deploySmoke('.github/workflows/deploy-workers.yml', 'edge-shield', shield.script));
+    const site = resolveUnit(REGISTER, 'nikatru-site').smoke;
+    assert.deepEqual(
+      site.args.map((a) => a.replace('{url}', 'https://nikatru.com')),
+      deploySmoke('.github/workflows/deploy-web.yml', 'site', site.script),
+    );
+  });
+
+  test('deploy-web.yml\'s `site` job records the Pages deployment it published, from the deploy step\'s output', () => {
+    const wf = parseWorkflow(ROOT, '.github/workflows/deploy-web.yml');
+    const record = workflowSteps(wf.jobs.get('site')).find((s) => /record-deployment\.mjs nikatru-site /.test(s.run?.text ?? ''));
+    assert.ok(record, 'the site job records no nikatru-site Deployment');
+    assert.match(record.run.text, /--pages-deployment-id "\$PAGES_DEPLOYMENT_ID"/);
+    assert.match(record.env.get('PAGES_DEPLOYMENT_ID')?.value ?? '', /^\$\{\{\s*steps\.deploy\.outputs\.pages-deployment-id\s*\}\}$/);
+  });
+
+  test('rollback.yml runs the unit\'s own smoke through --run-smoke, from the re-promotion\'s outputs', () => {
+    const wf = parseWorkflow(ROOT, '.github/workflows/rollback.yml');
+    const steps = workflowSteps(wf.jobs.get('rollback'));
+    const smoke = steps.find((s) => /node tooling\/ops\/rollback\.mjs --run-smoke\s*$/.test(s.run?.text ?? ''));
+    assert.ok(smoke, 'rollback.yml has no `node tooling/ops/rollback.mjs --run-smoke` step');
+    assert.match(smoke.env.get('SMOKE_SCRIPT')?.value ?? '', /^\$\{\{\s*steps\.rollback\.outputs\.smoke_script\s*\}\}$/);
+    assert.match(smoke.env.get('SMOKE_ARGS')?.value ?? '', /^\$\{\{\s*steps\.rollback\.outputs\.smoke_args\s*\}\}$/);
+    assert.equal(smoke.cond, "steps.rollback.outputs.dry_run == 'false'", 'the smoke runs only after a real re-promotion');
   });
 
   // No guard grades these two: workflow-scan.mjs's PUBLISH matches no rollback.mjs,

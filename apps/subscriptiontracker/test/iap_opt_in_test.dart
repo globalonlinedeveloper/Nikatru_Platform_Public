@@ -41,6 +41,7 @@ import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
+import 'package:nikatru_purchases/testing.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/state/money_providers.dart';
 import 'package:subscriptiontracker/state/providers.dart';
@@ -57,63 +58,17 @@ class _MemSecureStore implements core.SecureStore {
   Future<void> write(String key, String value) async => data[key] = value;
 }
 
-/// Records what the rail asked of the store. Answers like a store that is
-/// reachable and sells the one plan the config sells.
-class _FakeBridge implements IapBridge {
-  final List<String> identities = <String>[];
-  int configureCalls = 0;
-  int storePlanCalls = 0;
-  String? configuredKey;
-
-  @override
-  Future<bool> configure(IapBridgeConfig config) async {
-    configureCalls++;
-    configuredKey = config.publicApiKey;
-    identities.add('configure:${config.appUserId}');
-    return true;
-  }
-
-  @override
-  Future<bool> identify(String appUserId) async {
-    identities.add('identify:$appUserId');
-    return true;
-  }
-
-  @override
-  Future<bool> logOut() async {
-    identities.add('logOut');
-    return true;
-  }
-
-  @override
-  Future<List<StorePlan>> storePlans() async {
-    storePlanCalls++;
-    return const <StorePlan>[
-      StorePlan(
-        productId: 'pro_monthly',
-        amountMinor: 599,
-        currencyCode: 'USD',
-        term: OfferingTerm.month,
-      ),
-    ];
-  }
-
-  @override
-  Future<IapPurchaseResult> purchase(Offering offering) async =>
-      const IapPurchaseResult(IapPurchaseOutcome.submitted);
-
-  @override
-  Future<IapPurchaseResult> restore() async =>
-      const IapPurchaseResult(IapPurchaseOutcome.submitted);
-
-  @override
-  Future<IapCustomerState> currentCustomerState() async =>
-      IapCustomerState.unknown;
-
-  @override
-  Stream<IapCustomerState> get customerState =>
-      const Stream<IapCustomerState>.empty();
-}
+/// What the store the rail asks sells: the one plan the config sells. The
+/// store is a [FakeIapBridge], which records what it was asked — the
+/// configure, every identity, every store-plan read.
+const List<StorePlan> _storeSells = <StorePlan>[
+  StorePlan(
+    productId: 'pro_monthly',
+    amountMinor: 599,
+    currencyCode: 'USD',
+    term: OfferingTerm.month,
+  ),
+];
 
 /// A config that sells one plan and carries a checkout template — so the only
 /// things that can refuse are the channel and the bridge.
@@ -148,12 +103,12 @@ const core.AuthUser _signedIn = core.AuthUser(
 
 /// The rail for [channel], built by the app's own `purchaseRailFor` once the
 /// config and the sign-in have settled — the order a real launch reaches.
-Future<({PurchaseRail rail, List<_FakeBridge> built})> _railFor(
+Future<({PurchaseRail rail, List<FakeIapBridge> built})> _railFor(
   String channel, {
   required String key,
   core.AuthUser? user = _signedIn,
 }) async {
-  final List<_FakeBridge> built = <_FakeBridge>[];
+  final List<FakeIapBridge> built = <FakeIapBridge>[];
   final ProviderContainer c = ProviderContainer(
     overrides: <Override>[
       secureStoreProvider.overrideWithValue(_MemSecureStore()),
@@ -165,7 +120,7 @@ Future<({PurchaseRail rail, List<_FakeBridge> built})> _railFor(
           channel,
           revenueCatKey: key,
           newBridge: () {
-            final _FakeBridge b = _FakeBridge();
+            final FakeIapBridge b = FakeIapBridge(plans: _storeSells);
             built.add(b);
             return b;
           },
@@ -201,14 +156,14 @@ void main() {
         final r = await _railFor(channel, key: 'public-sdk-key');
         expect(r.rail, isA<IapRail>());
         expect(r.built, hasLength(1));
-        expect(r.built.single.configuredKey, 'public-sdk-key');
+        expect(r.built.single.lastConfig?.publicApiKey, 'public-sdk-key');
       });
 
       test(
         'asks the store once, at build — no paywall needed for plans',
         () async {
           final r = await _railFor(channel, key: 'public-sdk-key');
-          final _FakeBridge bridge = r.built.single;
+          final FakeIapBridge bridge = r.built.single;
           expect(bridge.configureCalls, 1);
           expect(bridge.storePlanCalls, 1);
           expect(r.rail.offerings, hasLength(1));

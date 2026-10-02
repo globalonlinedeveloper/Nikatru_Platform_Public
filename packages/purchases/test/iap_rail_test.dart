@@ -1,85 +1,27 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
+import 'package:nikatru_purchases/testing.dart';
 
-class _FakeBridge implements IapBridge {
-  _FakeBridge({
-    this.configureAnswer = true,
-    this.purchaseAnswer = const IapPurchaseResult(IapPurchaseOutcome.submitted),
-    this.restoreAnswer = const IapPurchaseResult(IapPurchaseOutcome.submitted),
-    this.state = IapCustomerState.unknown,
-  });
-
-  bool configureAnswer;
-  IapPurchaseResult purchaseAnswer;
-  IapPurchaseResult restoreAnswer;
-  IapCustomerState state;
-
-  int configureCalls = 0;
-  int stateCalls = 0;
-  final List<String> purchased = <String>[];
-  int restoreCalls = 0;
-
-  /// Every identity the bridge was told, in order: `configure:<id>`,
-  /// `identify:<id>`, `logOut`. [ADR 085] B's subject is exactly this list.
-  final List<String> identities = <String>[];
-  bool identifyAnswer = true;
-
-  @override
-  Future<bool> configure(IapBridgeConfig config) async {
-    configureCalls++;
-    identities.add('configure:${config.appUserId}');
-    return configureAnswer;
-  }
-
-  @override
-  Future<bool> identify(String appUserId) async {
-    identities.add('identify:$appUserId');
-    return identifyAnswer;
-  }
-
-  @override
-  Future<bool> logOut() async {
-    identities.add('logOut');
-    return identifyAnswer;
-  }
-
-  /// What the store says it sells here. By default the one plan the rail
-  /// config sells, at the config's own price; the tests that are about WHOSE
-  /// price the paywall shows set their own.
-  List<StorePlan> plans = const <StorePlan>[_storeMonthly];
-  bool plansThrow = false;
-  int storePlanCalls = 0;
-
-  @override
-  Future<List<StorePlan>> storePlans() async {
-    storePlanCalls++;
-    if (plansThrow) throw StateError('store unreachable');
-    return plans;
-  }
-
-  @override
-  Future<IapPurchaseResult> purchase(Offering offering) async {
-    purchased.add(offering.productId);
-    return purchaseAnswer;
-  }
-
-  @override
-  Future<IapPurchaseResult> restore() async {
-    restoreCalls++;
-    return restoreAnswer;
-  }
-
-  @override
-  Future<IapCustomerState> currentCustomerState() async {
-    stateCalls++;
-    return state;
-  }
-
-  @override
-  Stream<IapCustomerState> get customerState =>
-      Stream<IapCustomerState>.value(state);
-}
+/// A reachable store (package:nikatru_purchases/testing.dart's [FakeIapBridge])
+/// that by default sells the one plan the rail config sells, at the config's
+/// own price; the tests that are about WHOSE price the paywall shows set their
+/// own `plans`.
+FakeIapBridge _store({
+  bool configureAnswer = true,
+  IapPurchaseResult purchaseAnswer =
+      const IapPurchaseResult(IapPurchaseOutcome.submitted),
+  IapPurchaseResult restoreAnswer =
+      const IapPurchaseResult(IapPurchaseOutcome.submitted),
+  IapCustomerState state = IapCustomerState.unknown,
+}) =>
+    FakeIapBridge(
+      configureAnswer: configureAnswer,
+      plans: const <StorePlan>[_storeMonthly],
+      purchaseAnswer: purchaseAnswer,
+      restoreAnswer: restoreAnswer,
+      state: state,
+    );
 
 /// A rail that is ONLY a [PurchaseRail] — the shape of every test fake in the
 /// apps. [restorePurchasesOf] must still answer for it.
@@ -100,17 +42,6 @@ class _BareRail implements PurchaseRail {
   @override
   Future<CancellationOutcome> requestCancellation() async =>
       CancellationOutcome.noActivePlan;
-}
-
-class _RecordingLauncher implements CheckoutLauncher {
-  final List<Uri> opened = <Uri>[];
-  bool answer = true;
-
-  @override
-  Future<bool> open(Uri url) async {
-    opened.add(url);
-    return answer;
-  }
 }
 
 class _FakeCancellations implements core.CancellationTransport {
@@ -201,7 +132,7 @@ IapRail _rail({
   core.CancellationTransport? cancellations,
 }) =>
     IapRail(
-      bridge: bridge ?? _FakeBridge(),
+      bridge: bridge ?? _store(),
       bridgeConfig: config,
       config: RailConfig(
         offerings: offerings,
@@ -221,7 +152,7 @@ IapRail _rail({
               ),
             ),
           ),
-      launcher: launcher ?? _RecordingLauncher(),
+      launcher: launcher ?? FakeCheckoutLauncher(),
     );
 
 void main() {
@@ -238,7 +169,7 @@ void main() {
     });
 
     test('[5]M-7 · no account id means the sheet never opens', () async {
-      final _FakeBridge bridge = _FakeBridge();
+      final FakeIapBridge bridge = _store();
       final CheckoutStart start = await _rail(
         channel: PurchaseChannel.androidPlay,
         bridge: bridge,
@@ -268,7 +199,7 @@ void main() {
 
     test('a bridge that cannot configure refuses with a stated reason',
         () async {
-      final _FakeBridge bridge = _FakeBridge(configureAnswer: false);
+      final FakeIapBridge bridge = _store(configureAnswer: false);
       final CheckoutStart start = await _rail(
         channel: PurchaseChannel.iosAppStore,
         bridge: bridge,
@@ -284,7 +215,7 @@ void main() {
   group('the store sheet runs, and it still does not unlock', () {
     test('a completed sheet answers CheckoutSubmitted — never an unlock',
         () async {
-      final _FakeBridge bridge = _FakeBridge();
+      final FakeIapBridge bridge = _store();
       final CheckoutStart start = await _rail(
         channel: PurchaseChannel.androidPlay,
         bridge: bridge,
@@ -300,7 +231,7 @@ void main() {
       // the server says not Pro. The rail must land on stillPending — a client
       // that unlocked on the store's word would be granting entitlement on a
       // device the customer controls.
-      final _FakeBridge bridge = _FakeBridge();
+      final FakeIapBridge bridge = _store();
       final CheckoutStart start = await _rail(
         channel: PurchaseChannel.androidPlay,
         bridge: bridge,
@@ -323,7 +254,7 @@ void main() {
     test('a user cancel is a REFUSAL, never a failure', () async {
       final CheckoutStart start = await _rail(
         channel: PurchaseChannel.androidPlay,
-        bridge: _FakeBridge(
+        bridge: _store(
           purchaseAnswer: const IapPurchaseResult(
             IapPurchaseOutcome.cancelledByUser,
             detail: 'dismissed',
@@ -339,14 +270,14 @@ void main() {
     test(
         'restore asks the store on a store rail, and only the server on a '
         'hosted one', () async {
-      final _FakeBridge bridge = _FakeBridge();
+      final FakeIapBridge bridge = _store();
       expect(
         await _rail(channel: PurchaseChannel.androidPlay, bridge: bridge)
             .restorePurchases(),
         RestoreOutcome.askedStore,
       );
       expect(bridge.restoreCalls, 1);
-      final _FakeBridge hosted = _FakeBridge();
+      final FakeIapBridge hosted = _store();
       expect(
         await _rail(channel: PurchaseChannel.web, bridge: hosted)
             .restorePurchases(),
@@ -429,7 +360,7 @@ void main() {
 
     test('restorePurchasesOf reaches the store through the store rail',
         () async {
-      final _FakeBridge bridge = _FakeBridge();
+      final FakeIapBridge bridge = _store();
       final IapRail rail =
           _rail(channel: PurchaseChannel.iosAppStore, bridge: bridge);
       expect(await restorePurchasesOf(rail), RestoreOutcome.askedStore);
@@ -438,7 +369,7 @@ void main() {
 
     test('a store that cannot be reached is couldNotAsk, not an unlock',
         () async {
-      final _FakeBridge bridge = _FakeBridge(
+      final FakeIapBridge bridge = _store(
         restoreAnswer: const IapPurchaseResult(
           IapPurchaseOutcome.unavailable,
           detail: 'offline',
@@ -453,7 +384,7 @@ void main() {
     test(
         'a bridge that cannot configure is couldNotAsk, and the store '
         'is never asked', () async {
-      final _FakeBridge bridge = _FakeBridge(configureAnswer: false);
+      final FakeIapBridge bridge = _store(configureAnswer: false);
       final IapRail rail =
           _rail(channel: PurchaseChannel.androidPlay, bridge: bridge);
       expect(await rail.restorePurchases(), RestoreOutcome.couldNotAsk);
@@ -472,10 +403,10 @@ void main() {
           ),
         ),
       );
-      final _RecordingLauncher launcher = _RecordingLauncher();
+      final FakeCheckoutLauncher launcher = FakeCheckoutLauncher();
       final IapRail rail = _rail(
         channel: PurchaseChannel.androidPlay,
-        bridge: _FakeBridge(
+        bridge: _store(
           state: IapCustomerState(
             activeEntitlementIds: const <String>{'pro'},
             managementUrl: Uri.parse('https://play.google.test/subscriptions'),
@@ -503,10 +434,10 @@ void main() {
           ),
         ),
       );
-      final _RecordingLauncher launcher = _RecordingLauncher()..answer = false;
+      final FakeCheckoutLauncher launcher = FakeCheckoutLauncher()..answer = false;
       final IapRail rail = _rail(
         channel: PurchaseChannel.androidPlay,
-        bridge: _FakeBridge(state: IapCustomerState.unknown),
+        bridge: _store(state: IapCustomerState.unknown),
         cancellations: cancellations,
         launcher: launcher,
       );
@@ -519,7 +450,7 @@ void main() {
     });
 
     test('no active plan opens nothing', () async {
-      final _RecordingLauncher launcher = _RecordingLauncher();
+      final FakeCheckoutLauncher launcher = FakeCheckoutLauncher();
       final IapRail rail = _rail(
         channel: PurchaseChannel.androidPlay,
         cancellations: _FakeCancellations(
@@ -546,7 +477,7 @@ void main() {
   group('re-identification after the first configure', () {
     test('a sign-in AFTER configure calls identify with the new app user id',
         () async {
-      final _FakeBridge bridge = _FakeBridge();
+      final FakeIapBridge bridge = _store();
       final IapRail rail = _rail(
         channel: PurchaseChannel.androidPlay,
         bridge: bridge,
@@ -571,7 +502,7 @@ void main() {
 
     test('an account SWITCH re-identifies; the same id again is a no-op',
         () async {
-      final _FakeBridge bridge = _FakeBridge();
+      final FakeIapBridge bridge = _store();
       final IapRail rail = _rail(
         channel: PurchaseChannel.androidPlay,
         bridge: bridge,
@@ -589,7 +520,7 @@ void main() {
 
     test('a sign-out calls logOut, and the next purchase is refused signed-out',
         () async {
-      final _FakeBridge bridge = _FakeBridge();
+      final FakeIapBridge bridge = _store();
       final IapRail rail = _rail(
         channel: PurchaseChannel.androidPlay,
         bridge: bridge,
@@ -605,7 +536,7 @@ void main() {
 
     test('a user change BEFORE configure is carried by configure itself',
         () async {
-      final _FakeBridge bridge = _FakeBridge();
+      final FakeIapBridge bridge = _store();
       final IapRail rail = _rail(
         channel: PurchaseChannel.androidPlay,
         bridge: bridge,
@@ -619,7 +550,7 @@ void main() {
 
     test('a FAILED re-identify refuses the purchase instead of crediting the '
         'previous account', () async {
-      final _FakeBridge bridge = _FakeBridge();
+      final FakeIapBridge bridge = _store();
       final IapRail rail = _rail(
         channel: PurchaseChannel.androidPlay,
         bridge: bridge,
@@ -659,7 +590,7 @@ void main() {
 
     test("the store's amount and currency are what the rail describes",
         () async {
-      final _FakeBridge bridge = _FakeBridge()
+      final FakeIapBridge bridge = _store()
         ..plans = const <StorePlan>[
           StorePlan(
             productId: 'pro_monthly',
@@ -712,7 +643,7 @@ void main() {
         );
 
     test("a store's USD price reaches formattedPrice", () async {
-      final _FakeBridge bridge = _FakeBridge()
+      final FakeIapBridge bridge = _store()
         ..plans = <StorePlan>[storeMonthlyAt(7.19, 'USD')];
       final IapRail rail =
           _rail(channel: PurchaseChannel.iosAppStore, bridge: bridge);
@@ -728,7 +659,7 @@ void main() {
     });
 
     test("a store's INR price reaches formattedPrice", () async {
-      final _FakeBridge bridge = _FakeBridge()
+      final FakeIapBridge bridge = _store()
         ..plans = <StorePlan>[storeMonthlyAt(179.0, 'INR')];
       final IapRail rail =
           _rail(channel: PurchaseChannel.androidPlay, bridge: bridge);
@@ -740,7 +671,7 @@ void main() {
 
     test("the trial is the store's, for this buyer, in the store's unit",
         () async {
-      final _FakeBridge bridge = _FakeBridge()
+      final FakeIapBridge bridge = _store()
         ..plans = const <StorePlan>[
           StorePlan(
             productId: 'pro_monthly',
@@ -774,7 +705,7 @@ void main() {
 
     test('a plan the store does not return is not listed, and not sold by id',
         () async {
-      final _FakeBridge bridge = _FakeBridge();
+      final FakeIapBridge bridge = _store();
       final IapRail rail = _rail(
         channel: PurchaseChannel.androidPlay,
         bridge: bridge,
@@ -797,7 +728,7 @@ void main() {
 
     test('a plan the store bills on another term is dropped, not relabelled',
         () async {
-      final _FakeBridge bridge = _FakeBridge()
+      final FakeIapBridge bridge = _store()
         ..plans = const <StorePlan>[
           StorePlan(
             productId: 'pro_monthly',
@@ -814,7 +745,7 @@ void main() {
     });
 
     test('a store that cannot be asked leaves nothing to sell', () async {
-      final _FakeBridge bridge = _FakeBridge()..plansThrow = true;
+      final FakeIapBridge bridge = _store()..plansThrow = true;
       final IapRail rail =
           _rail(channel: PurchaseChannel.androidPlay, bridge: bridge);
       await refreshOfferingsOf(rail);
@@ -823,7 +754,7 @@ void main() {
     });
 
     test('a hosted channel never asks the store', () async {
-      final _FakeBridge bridge = _FakeBridge();
+      final FakeIapBridge bridge = _store();
       final IapRail rail = _rail(channel: PurchaseChannel.web, bridge: bridge);
       await refreshOfferingsOf(rail);
       expect(bridge.storePlanCalls, 0);
@@ -832,7 +763,7 @@ void main() {
     });
 
     test('a load and a tap that race share ONE configure', () async {
-      final _FakeBridge bridge = _FakeBridge();
+      final FakeIapBridge bridge = _store();
       final IapRail rail =
           _rail(channel: PurchaseChannel.androidPlay, bridge: bridge);
       final Future<void> load = refreshOfferingsOf(rail);

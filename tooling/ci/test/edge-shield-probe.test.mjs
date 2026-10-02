@@ -177,6 +177,12 @@ describe('check-edge-shield — the verdict', () => {
     assert.ok(fetchImpl.calls.length > PROBES.length, 'settle asked only once');
   });
 
+  test('a shield deployed with a RELEASE marks itself with that SHA, and ops mode reads it as in path', async () => {
+    const fetchImpl = answering(() => ({ [SHIELD_HEADER]: NEW_SHA }), 403);
+    const { code, out } = await quiet(() => run({ root: fixture(REAL_CFG), fetchImpl, sleep: noSleep }));
+    assert.equal(code, 0, out);
+  });
+
   test('a RED probe outranks an unanswered one: 1, not 2', async () => {
     const fetchImpl = async (url) => {
       if (url.includes('glitchtip')) throw new TypeError('fetch failed');
@@ -184,6 +190,61 @@ describe('check-edge-shield — the verdict', () => {
     };
     const { code } = await quiet(() => run({ root: fixture(REAL_CFG), fetchImpl, sleep: noSleep }));
     assert.equal(code, 1);
+  });
+});
+
+// ⏱ 2026-10-01 · row O-EDGE-SHIELD-SMOKE-NOT-JOINED-TO-SHA (PB-26). `1` proved A shield is
+// in path; the deploy smoke (and rollback.yml's, for a re-promoted version) must prove THIS
+// release is, so it passes --expect-release and the header must be that SHA.
+const NEW_SHA = '0123456789abcdef0123456789abcdef01234567';
+const OLD_SHA = 'fedcba9876543210fedcba9876543210fedcba98';
+
+describe('check-edge-shield --expect-release — the smoke is joined to the commit', () => {
+  test('GREEN CONTROL — every probe answers with THIS release', async () => {
+    const fetchImpl = answering(() => ({ [SHIELD_HEADER]: NEW_SHA }), 403);
+    const { code, out } = await quiet(() => run({ root: fixture(REAL_CFG), fetchImpl, sleep: noSleep, settle: true, expectRelease: NEW_SHA }));
+    assert.equal(code, 0, out);
+    assert.match(out, new RegExp(`each answered with ${SHIELD_HEADER}: ${NEW_SHA}`));
+  });
+
+  test('🔴 RED CONTROL — the OLD SHA in path fails the smoke (1), even after settling', async () => {
+    const fetchImpl = answering(() => ({ [SHIELD_HEADER]: OLD_SHA }), 403);
+    const { code, out } = await quiet(() => run({ root: fixture(REAL_CFG), fetchImpl, sleep: noSleep, settle: true, expectRelease: NEW_SHA }));
+    assert.equal(code, 1, out);
+    assert.match(out, /A SHIELD IS IN PATH, BUT NOT THIS RELEASE/);
+    assert.ok(fetchImpl.calls.length > PROBES.length, 'settle asked only once');
+  });
+
+  test('🔴 RED CONTROL — a shield deployed with no RELEASE (`1`) is not this release', () => {
+    const v = judge(PROBES[0], new Response('', { status: 200, headers: { [SHIELD_HEADER]: '1' } }), NEW_SHA);
+    assert.equal(v.ok, false);
+    assert.match(v.line, /x-nikatru-shield: "1", not 0123456789abcdef/);
+  });
+
+  test('--settle: the old release still at an edge is re-asked, and GREEN once the new one arrives', async () => {
+    let n = 0;
+    const fetchImpl = async () => {
+      n++;
+      return new Response('', { status: 200, headers: { [SHIELD_HEADER]: n <= 2 ? OLD_SHA : NEW_SHA } });
+    };
+    const { code, out } = await quiet(() => run({ root: fixture(REAL_CFG), fetchImpl, sleep: noSleep, settle: true, expectRelease: NEW_SHA }));
+    assert.equal(code, 0, out);
+    assert.ok(n > PROBES.length, `nothing was re-asked (${n} calls)`);
+  });
+
+  test('no header at all is still "shield not in path"', () => {
+    const v = judge(PROBES[0], new Response('', { status: 200 }), NEW_SHA);
+    assert.equal(v.ok, false);
+    assert.match(v.line, /NO x-nikatru-shield header — SHIELD NOT IN PATH/);
+  });
+
+  test('an --expect-release that is not a SHA is COVERAGE LOST before any request', async () => {
+    const never = async () => {
+      throw new Error('no request may be sent');
+    };
+    const { code, out } = await quiet(() => run({ root: fixture(REAL_CFG), fetchImpl: never, sleep: noSleep, expectRelease: 'main' }));
+    assert.equal(code, 2, out);
+    assert.match(out, /is not a full lowercase commit SHA/);
   });
 });
 
@@ -255,5 +316,12 @@ describe('check-edge-shield — where it runs', () => {
     const smoke = shield.indexOf('node tooling/ops/check-edge-shield.mjs --settle');
     const record = shield.indexOf('node tooling/ci/record-deployment.mjs edge-shield');
     assert.ok(deploy >= 0 && smoke > deploy && record > smoke, `order deploy ${deploy} < smoke ${smoke} < record ${record}`);
+  });
+
+  // PB-26: the deploy carries the RELEASE the Worker echoes, and the smoke expects this commit's.
+  test('deploy-workers deploys the shield with RELEASE at this commit, and its smoke expects that SHA', () => {
+    const shield = job(wf('deploy-workers.yml'), 'edge-shield');
+    assert.match(shield, /command: deploy --var RELEASE:\$\{\{ github\.sha \}\}\s*$/m);
+    assert.match(shield, /node tooling\/ops\/check-edge-shield\.mjs --settle --expect-release \$\{\{ github\.sha \}\}/);
   });
 });

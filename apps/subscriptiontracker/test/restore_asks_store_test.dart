@@ -40,6 +40,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
+import 'package:nikatru_purchases/testing.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/features/monetization/manage_plan_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
@@ -66,56 +67,26 @@ class _Log {
   final List<String> calls = <String>[];
 }
 
-/// `iap_opt_in_test.dart`'s fake bridge, plus a restore that is counted and
-/// logged. Answers like a store that is reachable and sells the one plan the
-/// config sells.
-class _FakeBridge implements IapBridge {
-  _FakeBridge(this.log, this.restoreAnswer);
+/// The store: reachable, selling the one plan the config sells, its restore
+/// answering [restoreAnswer] — counted, and logged as `store:restore` so R1
+/// can assert the ORDER across the two seams.
+FakeIapBridge _storeBridge(_Log log, IapPurchaseResult restoreAnswer) =>
+    FakeIapBridge(
+      plans: _storeSells,
+      restoreAnswer: restoreAnswer,
+      onCall: (String method) {
+        if (method == 'restore') log.calls.add('store:restore');
+      },
+    );
 
-  final _Log log;
-  final IapPurchaseResult restoreAnswer;
-  int restoreCalls = 0;
-
-  @override
-  Future<bool> configure(IapBridgeConfig config) async => true;
-
-  @override
-  Future<bool> identify(String appUserId) async => true;
-
-  @override
-  Future<bool> logOut() async => true;
-
-  @override
-  Future<List<StorePlan>> storePlans() async {
-    return const <StorePlan>[
-      StorePlan(
-        productId: 'pro_monthly',
-        amountMinor: 599,
-        currencyCode: 'USD',
-        term: OfferingTerm.month,
-      ),
-    ];
-  }
-
-  @override
-  Future<IapPurchaseResult> purchase(Offering offering) async =>
-      const IapPurchaseResult(IapPurchaseOutcome.submitted);
-
-  @override
-  Future<IapPurchaseResult> restore() async {
-    restoreCalls++;
-    log.calls.add('store:restore');
-    return restoreAnswer;
-  }
-
-  @override
-  Future<IapCustomerState> currentCustomerState() async =>
-      IapCustomerState.unknown;
-
-  @override
-  Stream<IapCustomerState> get customerState =>
-      const Stream<IapCustomerState>.empty();
-}
+const List<StorePlan> _storeSells = <StorePlan>[
+  StorePlan(
+    productId: 'pro_monthly',
+    amountMinor: 599,
+    currencyCode: 'USD',
+    term: OfferingTerm.month,
+  ),
+];
 
 /// The Pro answer R9's server gives once the webhook has "landed".
 const core.Entitlements _pro = core.Entitlements(
@@ -191,7 +162,7 @@ class _Harness {
   _Harness(this.log, this.built, this.server, this.slept);
 
   final _Log log;
-  final List<_FakeBridge> built;
+  final List<FakeIapBridge> built;
   final _CountingServer server;
 
   /// Every wait the convergence asked for, in order — recorded, never slept.
@@ -207,7 +178,7 @@ Future<_Harness> _pumpManagePlan(
   IapPurchaseResult restoreAnswer = _storeAnswered,
 }) async {
   final _Log log = _Log();
-  final List<_FakeBridge> built = <_FakeBridge>[];
+  final List<FakeIapBridge> built = <FakeIapBridge>[];
   final _CountingServer server = _CountingServer(log);
   final List<Duration> slept = <Duration>[];
   final ProviderContainer c = ProviderContainer(
@@ -234,7 +205,7 @@ Future<_Harness> _pumpManagePlan(
           channel,
           revenueCatKey: 'dummy-public-sdk-key',
           newBridge: () {
-            final _FakeBridge b = _FakeBridge(log, restoreAnswer);
+            final FakeIapBridge b = _storeBridge(log, restoreAnswer);
             built.add(b);
             return b;
           },

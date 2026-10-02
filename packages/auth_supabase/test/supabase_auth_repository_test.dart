@@ -710,6 +710,37 @@ void main() {
       expect(u.email, 'a@b.com');
     });
 
+    // ⏱ 2026-10-01 · review of #1129, finding 1 — MEASURED on the live
+    // GoTrue (Box C, v2.189.0): a signed-in password change without
+    // `current_password` is `400 current_password_required`. The field must be
+    // IN THE BODY; gotrue 2.26.0's UserAttributes has none of its own.
+    test('🔴 a current password travels as current_password in the body',
+        () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      await auth.updatePassword(
+        newPassword: 'a-new-long-one',
+        currentPassword: 'correct-horse',
+      );
+
+      expect(g.bodiesSent, <Map<String, dynamic>>[
+        <String, dynamic>{
+          'password': 'a-new-long-one',
+          'current_password': 'correct-horse',
+        },
+      ]);
+    });
+
+    test('a reset (no current password) sends none', () async {
+      final _FakeGoTrue g = _FakeGoTrue(session: _session('live'));
+      final SupabaseAuthRepository auth = SupabaseAuthRepository(client: g);
+
+      await auth.updatePassword(newPassword: 'a-new-long-one');
+
+      expect(g.bodiesSent.single.containsKey('current_password'), isFalse);
+    });
+
     // 🔴 THE COMMONEST REAL OUTCOME, NOT AN EDGE CASE. An expired link, a
     // link already used, or a link opened on a device that never held the PKCE
     // verifier all leave exactly this state — no session at all.
@@ -1312,6 +1343,9 @@ void main() {
 // periodic timer that outlives the test.
 // ─────────────────────────────────────────────────────────────────────────────
 class _FakeGoTrue extends sb.GoTrueClient {
+  /// The JSON body of every `updateUser` — what `PUT /user` would carry.
+  final List<Map<String, dynamic>> bodiesSent = <Map<String, dynamic>>[];
+
   _FakeGoTrue({
     required this.session,
     this.failRefresh = false,
@@ -1428,6 +1462,7 @@ class _FakeGoTrue extends sb.GoTrueClient {
     if (boom != null) throw boom;
     final String? password = attributes.password;
     if (password != null) passwordsSet.add(password);
+    bodiesSent.add(attributes.toJson());
     return sb.UserResponse.fromJson(<String, dynamic>{
       'id': 'user-1',
       'app_metadata': <String, dynamic>{},

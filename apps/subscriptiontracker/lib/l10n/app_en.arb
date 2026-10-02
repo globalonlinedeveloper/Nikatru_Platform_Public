@@ -3956,5 +3956,79 @@
   "exportListFailed": "Your list did not load, so there is nothing to export yet. Try again.",
   "@exportListFailed": {
     "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). A list-load failure, said instead of returning silently (IM-08)."
+  },
+  "logOutAllDevicesBusy": "Logging out everywhere…",
+  "@logOutAllDevicesBusy": {
+    "description": "The log-out-everywhere row's label while the sign-out runs (SE-05)."
+  },
+  "remindersSection": "Reminders",
+  "@remindersSection": {
+    "description": "Settings section heading: every reminder channel and the one 'Remind me' row (SE-09)."
+  },
+  "changeEmailTitle": "Change e-mail",
+  "@changeEmailTitle": {
+    "description": "SE-02 · Settings row and dialog title: move the account to a new e-mail address."
+  },
+  "changeEmailNew": "New e-mail address",
+  "@changeEmailNew": {
+    "description": "SE-02 · The new-address field of the change-e-mail dialog."
+  },
+  "changeEmailInvalid": "Enter a full e-mail address.",
+  "@changeEmailInvalid": {
+    "description": "SE-02 · Under the new-address field when it is not an e-mail address."
+  },
+  "currentPassword": "Current password",
+  "@currentPassword": {
+    "description": "SE-02 · The re-authentication field: the password the account has now."
+  },
+  "reauthProviderHint": "To confirm it's you, you'll sign in with your provider again.",
+  "@reauthProviderHint": {
+    "description": "SE-02 · Shown instead of a password field for an account that signs in with Apple or Google."
+  },
+  "changeEmailCheckInboxes": "Check both inboxes. We sent a link to {oldEmail} and to {newEmail}. Your address changes once you follow it.",
+  "@changeEmailCheckInboxes": {
+    "description": "SE-02 · The change-e-mail result. NOTHING has changed yet: the provider mails both addresses and moves the account once the link is followed.",
+    "placeholders": {
+      "oldEmail": {
+        "type": "String",
+        "example": "old@example.com"
+      },
+      "newEmail": {
+        "type": "String",
+        "example": "new@example.com"
+      }
+    }
+  },
+  "changePasswordTitle": "Change password",
+  "@changePasswordTitle": {
+    "description": "SE-02 · Settings row and dialog title."
+  },
+  "newPassword": "New password",
+  "@newPassword": {
+    "description": "SE-02 · The new-password field of the change-password dialog."
+  },
+  "changePasswordDone": "Your password was changed.",
+  "@changePasswordDone": {
+    "description": "SE-02 · Shown after the new password was saved."
+  },
+  "reauthWrongPassword": "That password is not right. Nothing was changed.",
+  "@reauthWrongPassword": {
+    "description": "SE-02 · The re-authentication was refused; neither the e-mail nor the password was touched."
+  },
+  "accountChangeFailed": "That did not work, and nothing was changed. Try again.",
+  "@accountChangeFailed": {
+    "description": "SE-02 · Any other failure of a change-e-mail or change-password request."
+  },
+  "emailChangedSignedOut": "Your e-mail address changed, so every device was signed out — this one too. Sign in with your new address.",
+  "@emailChangedSignedOut": {
+    "description": "ADR 059 decision 2 · On the sign-in screen after a confirmed e-mail change ended every session (review of #1129, finding 2)."
+  },
+  "emailChangeSignOutFailed": "Your e-mail address changed, but your other devices could not be signed out. They may still be signed in.",
+  "@emailChangeSignOutFailed": {
+    "description": "ADR 059 decision 2 · SnackBar while still signed in, after the global sign-out failed three times (review 3 of #1129, finding 1). Never says the devices were signed out."
+  },
+  "emailChangedOthersStillSignedIn": "Your e-mail address changed and this device was signed out, but your other devices could not be — they may still be signed in. Sign in, then use “Log out of all devices” in Settings.",
+  "@emailChangedOthersStillSignedIn": {
+    "description": "ADR 059 decision 2 · Sign-in screen notice when this device was signed out but the global revoke of the others did not go through (review 3 of #1129, finding 1)."
   }
 }
