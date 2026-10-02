@@ -1189,10 +1189,8 @@ authRepositoryProvider = Provider<core.AuthRepository>((ref) {
   return SupabaseAuthRepository(
     requestServerDeletion: () =>
         requestAccountDeletion(ref.read(platformRestClientProvider)),
-    // ⏱ 2026-10-02 · AB-A4-01 — "Log out of all devices" and a password
-    // reset tell the Workers too: GoTrue ends refresh tokens only, so without
-    // this another device keeps calling both Workers for up to an hour. Limb 3
-    // of tooling/ci/assert-session-revocation.mjs refuses an app without it.
+    // ⏱ 2026-10-02 · AB-A4-01 — log-out-all and a new password end the access
+    // tokens at the Workers too (assert-session-revocation limb 3 holds it).
     revokeAtWorkers: (String accessToken) => requestWorkerSessionRevocation(
       ref.read(platformRestClientProvider),
       accessToken: accessToken,
