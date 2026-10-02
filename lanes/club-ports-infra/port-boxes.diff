@@ -1,0 +1,2112 @@
+diff --git a/tooling/boxes/backups.json b/tooling/boxes/backups.json
+new file mode 100644
+index 00000000..8b4f4e37
+--- /dev/null
++++ b/tooling/boxes/backups.json
+@@ -0,0 +1,74 @@
++{
++  "_why": [
++    "THE BACKUP DESTINATIONS AS DATA, each set with a restore drill. Read by tooling/ops/restore-drill.mjs (one named small file from the newest snapshot into a scratch directory, hashed against the hash the SOURCE recorded, then deleted), by tooling/ops/box-move.mjs (the backups to restore first, with a drill command each) and by tooling/ops/check-box-declared.mjs (`readBack`: the snapshot count and the newest timestamp of a repository that lives on a box).",
++    "TRAP backup-04: a restructure that renames AND relayouts gets half-applied, so every destination declares BOTH its remote NAME and its LAYOUT. A `<NAME>` inside a remote or repository is an environment variable the operator sets from the vault; the drill reports LOST when it is unset and never prints its value.",
++    "TRAP backup-06: a same-day re-run of a date-stamped backup replaces that day's artefact, so the drill READS and never runs a backup. Restic is always called with --no-lock (a lock is a write to the repository).",
++    "The encryption posture is cited per destination ([ADR 021], [ADR 046], [ADR 047], [ADR 060]); the facts are those of tooling/ops/register.json rows duty.restic-snapshot, duty.restic-third-copy, duty.cloudflare-backup-pull and duty.supabase-dump, cited by id, not restated beyond the name and the layout.",
++    "A field the public tree does not state is null. A drill whose `file` or `hash` is null is LOST, by design: naming the small file and where its hash was recorded is the first drill's work, never a guess."
++  ],
++  "destinations": [
++    { "id": "boxb-srv-restic", "kind": "restic", "box": "boxb", "remote": { "name": null, "layout": "/srv/restic" }, "repo": "/srv/restic", "env": [], "encryption": { "posture": "restic's own repository encryption; the repository key never leaves the box", "adr": ["046"] } },
++    { "id": "drive-restic-boxb", "kind": "restic", "box": null, "remote": { "name": "oracleenc", "layout": "restic-boxb" }, "repo": "rclone:oracleenc:restic-boxb", "env": [["RESTIC_PASSWORD_FILE", "RESTIC_PASSWORD"]], "encryption": { "posture": "restic's repository key inside the rclone crypt `oracleenc:` on the company Drive: the provider holds ciphertext twice over", "adr": ["021", "046", "047"] } },
++    { "id": "r2-restic-boxb", "kind": "restic", "box": null, "remote": { "name": "s3:<R2_S3_ENDPOINT>", "layout": "nikatru-backups/restic-boxb" }, "repo": "s3:<R2_S3_ENDPOINT>/nikatru-backups/restic-boxb", "env": [["RESTIC_PASSWORD_FILE", "RESTIC_PASSWORD"], "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "R2_S3_ENDPOINT"], "encryption": { "posture": "restic's repository key over R2 (restic's native S3 backend: rclone serve restic --stdio is refused by R2 with 501)", "adr": ["021", "046"] } },
++    { "id": "oci-thirdcopy", "kind": "restic", "box": "boxa", "remote": { "name": "ocienc", "layout": null }, "repo": "rclone:ocienc:<OCI_THIRDCOPY_PATH>", "env": [["RESTIC_PASSWORD_FILE", "RESTIC_PASSWORD"], "OCI_THIRDCOPY_PATH"], "encryption": { "posture": "a byte copy of /srv/restic through the rclone crypt `ocienc:` (the same obscured key as `oracleenc:`) into the versioned OCI bucket nikatru-backup-thirdcopy; the box's credential holds no delete right", "adr": ["060"] } },
++    { "id": "r2-nikatru-backups", "kind": "rclone-manifest", "box": null, "remote": { "name": "<R2_RCLONE_REMOTE>", "layout": "nikatru-backups: manifests/latest.json, d1/<db>/<date>.jsonl.gz, kv/<namespace>/<date>.json.gz" }, "base": "<R2_RCLONE_REMOTE>:nikatru-backups", "env": ["R2_RCLONE_REMOTE"], "encryption": { "posture": "no client-side encryption is declared for the objects: the export is gzip inside Cloudflare, and the off-vendor copy (drive-cloudflare) is the encrypted one", "adr": ["021"] } },
++    { "id": "drive-cloudflare", "kind": "rclone-dated", "box": null, "remote": { "name": "oracleenc", "layout": "cloudflare/<date>/" }, "base": "oracleenc:cloudflare", "env": [], "encryption": { "posture": "the rclone crypt `oracleenc:` on the company Drive", "adr": ["021", "046", "047"] } },
++    { "id": "boxb-glitchtip-dumps", "kind": "box-dir", "box": "boxb", "remote": { "name": null, "layout": "/opt/glitchtip/backups" }, "env": [], "encryption": { "posture": "plaintext on the box's own disk; the off-box copies are the encrypted ones", "adr": ["021"] } },
++    { "id": "drive-glitchtip", "kind": "rclone-dated", "box": null, "remote": { "name": null, "layout": null }, "base": null, "env": [], "encryption": { "posture": "the Drive sync of gt_drive_sync.sh (duty.oci.gt-drive-sync); its remote name and layout are not stated in the public tree", "adr": ["046", "047"] } },
++    { "id": "boxc-supabase-dumps", "kind": "box-dir", "box": "boxc", "remote": { "name": null, "layout": "/opt/supabase/backups" }, "env": [], "encryption": { "posture": "plaintext on the box's own disk; the off-box copies are the encrypted ones", "adr": ["021"] } },
++    { "id": "drive-supabase", "kind": "rclone-dated", "box": null, "remote": { "name": null, "layout": null }, "base": null, "env": [], "encryption": { "posture": "the Drive sync of sb_drive_sync.sh (duty.supabase-drive-sync); its remote name and layout are not stated in the public tree", "adr": ["046", "047"] } },
++    { "id": "boxb-supabase-second-copy", "kind": "box-dir", "box": "boxb", "remote": { "name": null, "layout": null }, "env": [], "encryption": { "posture": "the second copy sb_boxb_sync.sh pushes to Box B (duty.supabase-second-copy); its path is not stated in the public tree", "adr": ["021"] } }
++  ],
++  "sets": [
++    {
++      "id": "boxb-restic",
++      "box": "boxb",
++      "writer": "duty.restic-snapshot",
++      "what": "The seven paths of /opt/backup/restic-sets.txt on Box B, after sqlite-snapshot.py, tagged boxb,daily.",
++      "destinations": ["boxb-srv-restic", "drive-restic-boxb", "r2-restic-boxb"],
++      "retention": "Sundays: forget --keep-daily 14 --keep-weekly 8 --keep-monthly 6 --prune on all three repositories",
++      "readBack": { "destination": "boxb-srv-restic", "passwordFile": null },
++      "drill": { "from": "r2-restic-boxb", "file": null, "hash": "restic-tree", "tag": "boxb" }
++    },
++    {
++      "id": "restic-third-copy",
++      "box": "boxb",
++      "writer": "duty.restic-third-copy",
++      "what": "An rclone copy of /srv/restic into the OCI Object Storage bucket through `ocienc:`; a superset of /srv/restic (the weekly prune does not reach it).",
++      "destinations": ["oci-thirdcopy"],
++      "retention": "none upstream: the copy only grows; reconciling it is a deliberate act with the tenancy admin key",
++      "readBack": null,
++      "drill": { "from": "oci-thirdcopy", "file": null, "hash": "restic-tree", "tag": "boxb" }
++    },
++    {
++      "id": "glitchtip-pg",
++      "box": "boxb",
++      "writer": "duty.oci.glitchtip-pg-dump",
++      "what": "The nightly pg_dump of GlitchTip's database, then its Drive sync (duty.oci.gt-drive-sync).",
++      "destinations": ["boxb-glitchtip-dumps", "drive-glitchtip"],
++      "retention": null,
++      "readBack": null,
++      "drill": { "from": "drive-glitchtip", "file": null, "hash": null }
++    },
++    {
++      "id": "supabase-auth-pg",
++      "box": "boxc",
++      "writer": "duty.supabase-dump",
++      "what": "Four artefacts every six hours: the globals, the postgres and _supabase databases, and the pgsodium root key; then the Drive sync and the second copy to Box B.",
++      "destinations": ["boxc-supabase-dumps", "drive-supabase", "boxb-supabase-second-copy"],
++      "retention": "14 days on the box (duty.supabase-dump prunes)",
++      "readBack": null,
++      "drill": { "from": "drive-supabase", "file": null, "hash": null }
++    },
++    {
++      "id": "d1-kv-export",
++      "box": null,
++      "writer": "duty.platform-cron",
++      "what": "The nightly D1 and KV export the platform Worker writes to R2 (services/platform/src/backup/index.ts), with a manifest that records every object's SHA-256; Box B's cf_backup_pull.sh copies it off-vendor (duty.cloudflare-backup-pull).",
++      "destinations": ["r2-nikatru-backups", "drive-cloudflare"],
++      "retention": "R2: the Worker's retentionDays (isExpired in services/platform/src/backup/index.ts); the Drive copy: 35 days",
++      "readBack": null,
++      "drill": { "from": "r2-nikatru-backups", "file": "kv/platform-jwks/{date}.json.gz", "hash": "manifest", "manifest": "manifests/latest.json" }
++    }
++  ]
++}
+diff --git a/tooling/boxes/boxa.json b/tooling/boxes/boxa.json
+new file mode 100644
+index 00000000..873fb885
+--- /dev/null
++++ b/tooling/boxes/boxa.json
+@@ -0,0 +1,26 @@
++{
++  "box": "boxa",
++  "_why": [
++    "BOX A — the Oracle Cloud VM and its tenancy. Wiped of the platform on 2026-09-24 (the auth stack moved to Box C) and kept for non-platform use; the tenancy's Object Storage holds the encrypted third copy of the restic repositories (duty.restic-third-copy, [ADR 060]), which is the role this box holds: `backup-leg`.",
++    "O-BOXA-TRACKED-COPIES-UNGUARDED found a tracked copy of this box's state that omitted what the box runs. This declaration is the copy, and tooling/ops/check-box-declared.mjs is its guard: anything running that is not declared here is drift (exit 1).",
++    "The declaration is deliberately near-empty: since 2026-09-24 the platform runs nothing on this VM. The one sanctioned exception before the move was a Beszel agent bound to the WireGuard address (tooling/monitor-register.json `_notInThisRegister`); whether it still runs is the first read-back's to say. A field the public tree does not state is null and is reported UNREAD (LOST)."
++  ],
++  "roles": ["backup-leg"],
++  "provider": { "vendor": "oracle-cloud", "plan": "pay-as-you-go", "product": "Compute VM and Object Storage (ap-mumbai-1)" },
++  "cost": { "source": "Private/platform-state/identity.json", "vendorId": "oracle-cloud", "why": "Cited by vendor id, never copied: CI cannot read Private, so box-move grades the cost delta LOST there." },
++  "spec": { "cpu": null, "ramGiB": null, "diskGiB": null, "asOf": "2026-10-01", "verify": "check-box-declared.mjs reads nproc, free -b and df -B1 /; the shape is not stated in the public tree" },
++  "ssh": { "hostEnv": "BOXA_SSH_HOST", "userEnv": "BOXA_SSH_USER", "keyEnv": "BOXA_SSH_KEY", "portEnv": "BOXA_SSH_PORT", "sudoEnv": "BOXA_SSH_SUDO" },
++  "cronTz": { "value": null, "measuredOn": null, "by": "timedatectl", "cite": "tooling/ops/register.json#duty.supabase-dump", "carried": "Box A ran Asia/Kolkata on 2026-09-06; after the wipe nothing in the public tree says what it runs now" },
++  "services": [],
++  "units": ["cron", "ssh"],
++  "volumes": [],
++  "backupSets": ["restic-third-copy"],
++  "hostnames": [],
++  "tunnel": null,
++  "monitors": [41],
++  "crons": [],
++  "allowLists": [],
++  "_toConfirm": [
++    "Read back on the first run and fill: the timezone, the shape (nproc, RAM, disk), every running unit and any container. If the Beszel agent still runs here, declare it in `units` or retire it — an undeclared one is drift."
++  ]
++}
+diff --git a/tooling/boxes/boxb.json b/tooling/boxes/boxb.json
+new file mode 100644
+index 00000000..f2f36063
+--- /dev/null
++++ b/tooling/boxes/boxb.json
+@@ -0,0 +1,60 @@
++{
++  "box": "boxb",
++  "_why": [
++    "BOX B — the operations box. What it runs, declared as DATA and read back by tooling/ops/check-box-declared.mjs (READ-ONLY over SSH: exit 1 on drift, 2 when it could not look). Until this file, what the box runs was spread across Private runbooks, tooling/ops/register.json, tooling/monitor-register.json, tooling/ops/alarm-chains.json and the box itself (row O-BOXES-NOT-DECLARED-AS-DATA).",
++    "Every value here is either a name, a schedule, a version, or a CITATION of the register that owns the fact (monitors by id, crons by register row, backup sets by tooling/boxes/backups.json id, cost by Private vendor id). No address is ever written here: the box is reached through the environment names under `ssh`, which the operator fills from the vault.",
++    "Sources read for the first draft (2026-10-01): tooling/monitor-register.json `_notInThisRegister` (the hostnames and versions), tooling/ops/register.json (the crons, their schedules and the timezone), tooling/ops/alarm-chains.json `expectedMonitors` (the heartbeat ids). A field the public tree does not state is null, and the read-back reports it as UNREAD (LOST) until the first read fills it — never a guess presented as a measurement."
++  ],
++  "roles": ["ops"],
++  "provider": { "vendor": "hostinger", "plan": "KVM 8", "product": "VPS" },
++  "cost": { "source": "Private/platform-state/identity.json", "vendorId": "hostinger", "why": "Cited by vendor id, never copied: CI cannot read Private, so box-move grades the cost delta LOST there." },
++  "spec": { "cpu": 8, "ramGiB": 32, "diskGiB": 400, "asOf": "2026-10-01", "verify": "check-box-declared.mjs reads nproc, free -b and df -B1 / and compares (RAM and disk within 15% below the plan's figure)" },
++  "ssh": { "hostEnv": "BOXB_SSH_HOST", "userEnv": "BOXB_SSH_USER", "keyEnv": "BOXB_SSH_KEY", "portEnv": "BOXB_SSH_PORT", "sudoEnv": "BOXB_SSH_SUDO" },
++  "cronTz": { "value": "Etc/UTC", "measuredOn": "2026-09-03", "by": "timedatectl", "cite": "tooling/ops/register.json#duty.cloudflare-backup-pull" },
++  "services": [
++    { "id": "glitchtip", "image": "glitchtip/glitchtip", "version": "6.2.6", "compose": { "project": "glitchtip", "service": null }, "containers": 2, "hostnames": ["glitchtip.nikatru.com"], "secrets": ["SECRET_KEY", "DATABASE_URL", "EMAIL_URL"], "use": null },
++    { "id": "glitchtip-postgres", "image": "postgres", "version": null, "compose": { "project": "glitchtip", "service": null }, "containers": 1, "hostnames": [], "secrets": ["POSTGRES_PASSWORD"], "use": null },
++    { "id": "glitchtip-cache", "image": "valkey/valkey", "version": null, "compose": { "project": "glitchtip", "service": null }, "containers": 1, "hostnames": [], "secrets": [], "use": null },
++    { "id": "vaultwarden", "image": "vaultwarden/server", "version": "1.37.2", "compose": { "project": null, "service": null }, "containers": 1, "hostnames": ["vault.nikatru.com"], "secrets": ["ADMIN_TOKEN"], "use": null },
++    { "id": "ntfy", "image": "binwiederhier/ntfy", "version": "2.28.0", "compose": { "project": null, "service": null }, "containers": 1, "hostnames": ["ntfy.nikatru.com"], "secrets": [], "use": null },
++    { "id": "beszel-hub", "image": "henrygd/beszel", "version": "0.19.0", "compose": { "project": null, "service": null }, "containers": 1, "hostnames": ["beszel.nikatru.com"], "secrets": [], "use": null },
++    { "id": "dozzle", "image": "amir20/dozzle", "version": "10.9.2", "compose": { "project": null, "service": null }, "containers": 1, "hostnames": ["logs.nikatru.com"], "secrets": [], "use": null },
++    { "id": "diun", "image": "crazymax/diun", "version": "4.33.0", "compose": { "project": "diun", "service": null }, "containers": 1, "hostnames": [], "secrets": [], "use": null }
++  ],
++  "units": ["docker", "containerd", "cron", "ssh", "beszel-agent"],
++  "volumes": [
++    { "name": "/opt/glitchtip", "kind": "bind", "holds": "the GlitchTip compose project and its nightly dumps (backups/)", "backupSets": ["glitchtip-pg", "boxb-restic"] },
++    { "name": "/opt/backup", "kind": "bind", "holds": "the restic run, its set list (restic-sets.txt) and the third-copy scripts", "backupSets": ["boxb-restic"] },
++    { "name": "/opt/diun", "kind": "bind", "holds": "Diun's configuration and its run log", "backupSets": ["boxb-restic"] },
++    { "name": "/srv/restic", "kind": "bind", "holds": "the LOCAL restic repository (one of three)", "backupSets": ["restic-third-copy"] }
++  ],
++  "backupSets": ["boxb-restic", "glitchtip-pg", "d1-kv-export", "restic-third-copy", "supabase-auth-pg"],
++  "hostnames": [
++    { "name": "glitchtip.nikatru.com", "record": "tunnel-cname", "via": "the Box B Cloudflare tunnel" },
++    { "name": "vault.nikatru.com", "record": "tunnel-cname", "via": "the Box B Cloudflare tunnel" },
++    { "name": "ntfy.nikatru.com", "record": "tunnel-cname", "via": "the Box B Cloudflare tunnel" },
++    { "name": "beszel.nikatru.com", "record": "tunnel-cname", "via": "the Box B Cloudflare tunnel" },
++    { "name": "logs.nikatru.com", "record": "tunnel-cname", "via": "the Box B Cloudflare tunnel" }
++  ],
++  "tunnel": { "secret": "TUNNEL_TOKEN", "why": "Every hostname is a CNAME to one Cloudflare tunnel, no public port opened (tooling/monitor-register.json `_notInThisRegister`): the records do not change in a move; the connector runs on the target with this secret." },
++  "monitors": [1, 31, 32, 39, 16, 22, 23, 38, 41],
++  "crons": [
++    { "name": "glitchtip-pg-dump", "schedule": "0 2 * * *", "script": "/opt/glitchtip/backup.sh", "register": "duty.oci.glitchtip-pg-dump" },
++    { "name": "glitchtip-drive-sync", "schedule": "30 2 * * *", "script": "/opt/glitchtip/gt_drive_sync.sh", "register": "duty.oci.gt-drive-sync" },
++    { "name": "glitchtip-backup-liveness", "schedule": "41 * * * *", "script": "/opt/glitchtip/backup-liveness.py", "register": "duty.oci.backup-liveness" },
++    { "name": "boxb-disk-alert", "schedule": "17 * * * *", "script": "/opt/glitchtip/disk-alert.py", "register": "duty.oci.disk-alert" },
++    { "name": "cloudflare-backup-pull", "schedule": "45 2 * * *", "script": "/opt/glitchtip/cf_backup_pull.sh", "register": "duty.cloudflare-backup-pull" },
++    { "name": "restic-snapshot", "schedule": "0 4 * * *", "script": "/opt/backup/restic-run.sh", "register": "duty.restic-snapshot" },
++    { "name": "restic-liveness", "schedule": null, "script": "/opt/backup/restic-liveness.sh", "register": "duty.restic-snapshot" },
++    { "name": "restic-third-copy", "schedule": "0 5 * * *", "script": "/opt/backup/06-oci-third-copy.sh", "register": "duty.restic-third-copy" },
++    { "name": "restic-third-copy-liveness", "schedule": null, "script": "/opt/backup/07-oci-third-copy-liveness.sh", "register": "duty.restic-third-copy" },
++    { "name": "diun-liveness", "schedule": "23 * * * *", "script": "/opt/diun/diun-liveness.sh", "register": "duty.boxb.diun" }
++  ],
++  "allowLists": [
++    { "id": "apisetu-key-ip-whitelist", "where": "the API Setu partner console: the IP whitelist on the platform's API key", "owner": "owner", "row": "O-APISETU-KEY-IP-WHITELIST", "verify": "read the key's whitelist in the API Setu console and compare it to the declared address", "confirmedOn": null },
++    { "id": "boxc-admits-boxb", "where": "Box C's firewall and sshd: the second-copy sync and the Beszel agent are reached from this box's address", "owner": "operator", "row": null, "verify": "on Box C, read the firewall rules (ufw status / nft list ruleset) for the declared address", "confirmedOn": null }
++  ],
++  "_toConfirm": [
++    "Read back on the first run and fill, never guess: the compose project names of vaultwarden, ntfy, beszel-hub and dozzle; the image and version of GlitchTip's database and cache; the minutes of the two hourly liveness crons; every OS unit beyond the five named; every named docker volume. `node tooling/ops/check-box-declared.mjs boxb --print-observed` prints what was read, names only."
++  ]
++}
+diff --git a/tooling/boxes/boxc.json b/tooling/boxes/boxc.json
+new file mode 100644
+index 00000000..57aeca5f
+--- /dev/null
++++ b/tooling/boxes/boxc.json
+@@ -0,0 +1,46 @@
++{
++  "box": "boxc",
++  "_why": [
++    "BOX C — the auth box: the self-hosted GoTrue and its Postgres since 2026-09-24 (Box A before). Declared as DATA and read back by tooling/ops/check-box-declared.mjs, READ-ONLY over SSH: exit 1 on drift, 2 when it could not look.",
++    "This is the box the product cannot survive losing (tooling/ops/register.json `_substrateHosts._supabaseBoxCronWhy`): every identity's foreign key lives in its database. Its five root crons are the five `duty.supabase-*` rows, carried from Box A byte-identical on 2026-09-24.",
++    "No address is written here; the box is reached through the environment names under `ssh`. A field the public tree does not state is null and is reported UNREAD (LOST) until the first read-back fills it."
++  ],
++  "roles": ["auth"],
++  "provider": { "vendor": "hostinger", "plan": "KVM 8", "product": "VPS" },
++  "cost": { "source": "Private/platform-state/identity.json", "vendorId": "hostinger", "why": "Cited by vendor id, never copied: CI cannot read Private, so box-move grades the cost delta LOST there." },
++  "spec": { "cpu": 8, "ramGiB": 32, "diskGiB": 400, "asOf": "2026-10-01", "verify": "check-box-declared.mjs reads nproc, free -b and df -B1 / and compares (RAM and disk within 15% below the plan's figure)" },
++  "ssh": { "hostEnv": "BOXC_SSH_HOST", "userEnv": "BOXC_SSH_USER", "keyEnv": "BOXC_SSH_KEY", "portEnv": "BOXC_SSH_PORT", "sudoEnv": "BOXC_SSH_SUDO" },
++  "cronTz": { "value": "Asia/Kolkata", "measuredOn": "2026-09-06", "by": "timedatectl", "cite": "tooling/ops/register.json#duty.supabase-dump", "carried": "measured on Box A, whose crontab moved to this box byte-identical on 2026-09-24; the read-back re-reads it here (trap shell-25: cron reads the timezone once at start, so record it as read, never as assumed)" },
++  "services": [
++    { "id": "supabase-db", "image": "supabase/postgres", "version": "17.6.1.136", "compose": { "project": "supabase", "service": "db" }, "containers": 1, "hostnames": [], "secrets": ["POSTGRES_PASSWORD", "JWT_SECRET"], "use": null },
++    { "id": "gotrue", "image": "supabase/gotrue", "version": null, "compose": { "project": "supabase", "service": "auth" }, "containers": 1, "hostnames": ["auth-api.nikatru.com"], "secrets": ["JWT_SECRET", "GOTRUE_SMTP_USER", "GOTRUE_SMTP_PASS", "GOTRUE_EXTERNAL_APPLE_SECRET"], "use": null },
++    { "id": "envoy", "image": "envoyproxy/envoy", "version": null, "compose": { "project": "supabase", "service": null }, "containers": 1, "hostnames": ["auth-api.nikatru.com"], "secrets": [], "use": null },
++    { "id": "studio", "image": "supabase/studio", "version": null, "compose": { "project": "supabase", "service": "studio" }, "containers": 1, "hostnames": ["studio.nikatru.com"], "secrets": ["DASHBOARD_PASSWORD"], "use": null }
++  ],
++  "units": ["docker", "containerd", "cron", "ssh", "cloudflared", "beszel-agent"],
++  "volumes": [
++    { "name": "/opt/supabase", "kind": "bind", "holds": "the compose project, its .env (JWT_SECRET is read from it by the dump) and the dumps (backups/)", "backupSets": ["supabase-auth-pg"] },
++    { "name": "db-config", "kind": "named", "holds": "the pgsodium root key the dump copies out (duty.supabase-dump)", "backupSets": ["supabase-auth-pg"] }
++  ],
++  "backupSets": ["supabase-auth-pg"],
++  "hostnames": [
++    { "name": "auth-api.nikatru.com", "record": "tunnel-cname", "via": "the Box C Cloudflare tunnel, through envoy" },
++    { "name": "studio.nikatru.com", "record": "tunnel-cname", "via": "the Box C Cloudflare tunnel, behind Cloudflare Access" }
++  ],
++  "tunnel": { "secret": "TUNNEL_TOKEN", "why": "auth-api is served through the tunnel and envoy (services/edge-shield sits in front of /auth/v1/*): the record does not change in a move; the connector runs on the target with this secret." },
++  "monitors": [17, 18, 19, 24, 25, 26, 27],
++  "crons": [
++    { "name": "supabase-dump", "schedule": "15 0,6,12,18 * * *", "script": "/opt/supabase/backup.sh", "register": "duty.supabase-dump" },
++    { "name": "supabase-drive-sync", "schedule": "35 0,6,12,18 * * *", "script": "/opt/supabase/sb_drive_sync.sh", "register": "duty.supabase-drive-sync" },
++    { "name": "supabase-second-copy", "schedule": "50 0,6,12,18 * * *", "script": "/opt/supabase/sb_boxb_sync.sh", "register": "duty.supabase-second-copy" },
++    { "name": "supabase-backup-liveness", "schedule": "47 * * * *", "script": "/opt/supabase/backup-liveness.py", "register": "duty.supabase-backup-liveness" },
++    { "name": "supabase-disk-alert", "schedule": "17 * * * *", "script": "/opt/supabase/disk-alert.py", "register": "duty.supabase-disk-alert" }
++  ],
++  "allowLists": [
++    { "id": "boxc-pg-hba", "where": "the Postgres pg_hba.conf in the supabase db volume: the host lines that admit a client by address", "owner": "operator", "row": null, "verify": "on the box, read pg_hba.conf through the db container (SHOW hba_file; then read the file) and list the address lines, names only", "confirmedOn": null },
++    { "id": "edge-shield-waf-boxc", "where": "the Cloudflare WAF and rate-limit rules in front of auth-api (services/edge-shield, row O-BOXES-UNSHIELDED-FROM-SPIKES) that name the origin's address", "owner": "operator", "row": "O-BOXES-UNSHIELDED-FROM-SPIKES", "verify": "list the zone's custom rules and grep their expressions for the declared address", "confirmedOn": null }
++  ],
++  "_toConfirm": [
++    "Read back on the first run and fill, never guess: the GoTrue, envoy and studio image versions; the compose service names of envoy and the studio's meta companion if one runs; the database's data volume name; every OS unit beyond the six named. `node tooling/ops/check-box-declared.mjs boxc --print-observed` prints what was read, names only."
++  ]
++}
+diff --git a/tooling/boxes/roles.json b/tooling/boxes/roles.json
+new file mode 100644
+index 00000000..e379566f
+--- /dev/null
++++ b/tooling/boxes/roles.json
+@@ -0,0 +1,12 @@
++{
++  "_why": [
++    "WHICH BOX HOLDS WHICH ROLE — the selection source of tooling/ports/boxes.json (`selection.source` points here). A role names a duty the platform needs from a machine; a box is the machine that holds it today. One box per role (`by: single`): a move is this file's one edit plus the box-move dry run (tooling/ops/box-move.mjs), never a hunt through the tree.",
++    "Read by tooling/ci/assert-ports.mjs limb 2 (the pointer must resolve), by tooling/ops/box-declaration.mjs (every `box` must be a tooling/boxes/<box>.json declaration that lists the role back, and every declaration's roles must be here) and by tooling/ops/box-move.mjs (the roles a move carries).",
++    "Same rule as tooling/ops/register.json `_substrateHosts._portabilityWhy`: a duty names a ROLE, never a box, so a move changes the right-hand side here and nothing that cites the role."
++  ],
++  "roles": {
++    "auth": { "by": "single", "box": "boxc", "what": "The self-hosted GoTrue and its Postgres: every identity in the portfolio (since 2026-09-24)." },
++    "ops": { "by": "single", "box": "boxb", "what": "The operations box: the vault, ntfy, GlitchTip and its monitors, Beszel, the log viewer, and the restic repositories." },
++    "backup-leg": { "by": "single", "box": "boxa", "what": "The Oracle Cloud tenancy whose Object Storage holds the encrypted third copy of the restic repositories ([ADR 060]); the VM itself runs none of the platform." }
++  }
++}
+diff --git a/tooling/ci/assert-ports.mjs b/tooling/ci/assert-ports.mjs
+index b0505fb4..81b931ad 100644
+--- a/tooling/ci/assert-ports.mjs
++++ b/tooling/ci/assert-ports.mjs
+@@ -52,8 +52,10 @@
+ //               table port · claimed · earned · target prints on every run.
+ //   7 fakes     a `fake` never lists `live`, and selection.default.live is never one.
+ //   8 cross     every capability-register vendor key (minus `_`-keys) and every
+-//               provider-register provider id is EXACTLY ONE adapter's `vendor`
+-//               or one tooling/ports/_non-port.json row; and a ported vendor's
++//               provider-register provider id is the `vendor` of adapters of
++//               EXACTLY ONE port, or one tooling/ports/_non-port.json row (two
++//               adapters of one port may share a vendor — boxes.json's two
++//               Hostinger boxes are one placement, printed together); and a ported vendor's
+ //               C-8 seam.file equals its port's interface file, unless the
+ //               adapter declares that exact file as a `c8Seam` divergence
+ //               (printed).
+@@ -513,8 +515,11 @@ export function evaluate(root) {
+     const placed = new Map(); // vendor -> [where]
+     const place = (v, where) => placed.set(v, [...(placed.get(v) ?? []), where]);
+     for (const { doc } of ports) {
++      const here = new Set(); // a vendor behind two adapters of ONE port is one placement (two boxes at one provider)
+       for (const a of doc?.adapters ?? []) {
+         if (typeof a?.vendor !== 'string') continue;
++        if (here.has(a.vendor)) { result.vendorPort.get(a.vendor).adapter += `, ${a.id}`; continue; }
++        here.add(a.vendor);
+         place(a.vendor, `${doc.port}/${a.id}`);
+         result.vendorPort.set(a.vendor, { port: doc.port, adapter: a.id, earned: earnedOf.get(doc.port) ?? 0 });
+       }
+@@ -526,7 +531,7 @@ export function evaluate(root) {
+     for (const [id, regs] of all) {
+       const at = placed.get(id) ?? [];
+       if (at.length === 0) find(8, `vendor \`${id}\` (${[...regs].join(', ')}) is no adapter's \`vendor\` and no ${NON_PORT_REL} row. Port it, or say in _non-port.json why not.`);
+-      else if (at.length > 1) find(8, `vendor \`${id}\` is placed ${at.length} times (${at.join(', ')}); exactly one adapter or one non-port row.`);
++      else if (at.length > 1) find(8, `vendor \`${id}\` is placed ${at.length} times (${at.join(', ')}); exactly one port's adapters or one non-port row.`);
+     }
+     for (const v of placed.keys()) {
+       if (!all.has(v)) find(8, `\`${v}\` is placed in tooling/ports/ but is in neither ${CAPABILITY_REGISTER} vendors nor ${PROVIDER_REGISTER} providers.`);
+diff --git a/tooling/ci/test/boxes.test.mjs b/tooling/ci/test/boxes.test.mjs
+new file mode 100644
+index 00000000..d8ad72c0
+--- /dev/null
++++ b/tooling/ci/test/boxes.test.mjs
+@@ -0,0 +1,493 @@
++// boxes.test.mjs — the box declarations, the read-back, the move dry run and the
++// restore drill must each be able to FAIL (vacuous-03), with a green control
++// beside every red one.
++//
++// Subjects: tooling/boxes/*.json (read through tooling/ops/box-declaration.mjs),
++// tooling/ops/check-box-declared.mjs, tooling/ops/box-move.mjs and
++// tooling/ops/restore-drill.mjs. Row O-BOXES-NOT-DECLARED-AS-DATA.
++//
++// The red controls the brief names:
++//   read-back   a fixture with an undeclared running service → exit 1
++//   box-move    --dry-run omitted → refused; a target too small → FAIL
++//   drill       a fixture repository with a corrupted object → FAIL
++// Each is ALSO run against the REAL declarations where it can be ("a fixture
++// passing is not a guard working"): the real boxb with one container added, and
++// the real backups.json drills, which are LOST until their file is named.
++import { describe, it } from 'node:test';
++import assert from 'node:assert/strict';
++import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
++import { createHash } from 'node:crypto';
++import { tmpdir } from 'node:os';
++import { dirname, join, resolve } from 'node:path';
++import { spawnSync } from 'node:child_process';
++import { fileURLToPath } from 'node:url';
++import {
++  READ_ONLY_COMMANDS, assertReadOnly, resticSnapshotsCommand, validateAll, diffDeclared, parseCrontab,
++  parseDockerPs, splitImage, parseSpec, parseStats, parseResticSnapshots,
++} from '../../ops/box-declaration.mjs';
++import { sshArgv, readBoxOverSsh } from '../../ops/check-box-declared.mjs';
++import { parseArgs as moveArgs, monthlyCostFor } from '../../ops/box-move.mjs';
++import { missingEnv, fill } from '../../ops/restore-drill.mjs';
++
++const HERE = dirname(fileURLToPath(import.meta.url));
++const REPO = resolve(HERE, '..', '..', '..');
++const OPS = join(REPO, 'tooling', 'ops');
++const CHECK = join(OPS, 'check-box-declared.mjs');
++const MOVE = join(OPS, 'box-move.mjs');
++const DRILL = join(OPS, 'restore-drill.mjs');
++const REGISTERS = ['tooling/monitor-register.json', 'tooling/ops/alarm-chains.json', 'tooling/ops/register.json'];
++
++const run = (tool, args, env = {}) => {
++  const r = spawnSync(process.execPath, [tool, ...args], { cwd: REPO, encoding: 'utf8', timeout: 120_000, env: { PATH: process.env.PATH, HOME: process.env.HOME, ...env } });
++  const out = `${r.stderr}${r.stdout}`;
++  return { code: r.status, out, first: out.split('\n')[0] };
++};
++const tmp = (p) => mkdtempSync(join(tmpdir(), p));
++const w = (root, rel, v) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), typeof v === 'string' ? v : JSON.stringify(v, null, 2)); };
++const sha = (b) => createHash('sha256').update(b).digest('hex');
++
++/** A copy of the REAL declarations and the registers they cite. */
++function realCopy() {
++  const root = tmp('boxes-real-');
++  for (const rel of ['tooling/boxes', ...REGISTERS]) cpSync(join(REPO, rel), join(root, rel), { recursive: true });
++  return root;
++}
++const edit = (root, rel, fn) => { const doc = JSON.parse(readFileSync(join(root, rel), 'utf8')); fn(doc); w(root, rel, doc); };
++
++// ── a small fixture estate: one box, one role, one restic set and one manifest set ──
++const box = (over = {}) => ({
++  box: 'boxz',
++  _why: ['fixture'],
++  roles: ['ops'],
++  provider: { vendor: 'hostinger', plan: 'KVM 2', product: 'VPS' },
++  cost: { source: 'Private/platform-state/identity.json', vendorId: 'hostinger', why: 'cited' },
++  spec: { cpu: 2, ramGiB: 8, diskGiB: 100, asOf: '2026-10-01', verify: 'read back' },
++  ssh: { hostEnv: 'BOXZ_SSH_HOST', userEnv: 'BOXZ_SSH_USER', keyEnv: 'BOXZ_SSH_KEY', portEnv: 'BOXZ_SSH_PORT', sudoEnv: 'BOXZ_SSH_SUDO' },
++  cronTz: { value: 'Etc/UTC', measuredOn: '2026-10-01', by: 'timedatectl' },
++  services: [
++    { id: 'app', image: 'acme/app', version: '1.2.3', compose: { project: 'app', service: null }, containers: 2, hostnames: ['app.example.test'], secrets: ['APP_KEY'], use: { cpu: 1, ramGiB: 3, diskGiB: 20, asOf: '2026-10-01' } },
++    { id: 'db', image: 'postgres', version: '17', compose: { project: 'app', service: 'db' }, containers: 1, hostnames: [], secrets: ['POSTGRES_PASSWORD'], use: { cpu: 0.5, ramGiB: 2, diskGiB: 30, asOf: '2026-10-01' } },
++  ],
++  units: ['docker', 'cron', 'ssh'],
++  volumes: [{ name: 'pgdata', kind: 'named', holds: 'the database', backupSets: ['zset'] }],
++  backupSets: ['zset', 'zexport'],
++  hostnames: [{ name: 'app.example.test', record: 'tunnel-cname', via: 'tunnel' }],
++  tunnel: { secret: 'TUNNEL_TOKEN', why: 'fixture' },
++  monitors: [1],
++  crons: [{ name: 'snap', schedule: '0 4 * * *', script: '/opt/backup/restic-run.sh', register: 'duty.restic-snapshot' }],
++  allowLists: [{ id: 'db-hba', where: 'pg_hba on the box', owner: 'operator', row: null, verify: 'read it', confirmedOn: null }],
++  ...over,
++});
++const backups = (over = {}) => ({
++  _why: ['fixture'],
++  destinations: [
++    { id: 'zlocal', kind: 'restic', box: 'boxz', remote: { name: null, layout: '/srv/restic' }, repo: '/srv/restic', env: [], encryption: { posture: 'restic key', adr: ['046'] } },
++    { id: 'zrepo', kind: 'restic', box: null, remote: { name: 'local', layout: '<DRILL_REPO>' }, repo: '<DRILL_REPO>', env: [['RESTIC_PASSWORD_FILE', 'RESTIC_PASSWORD'], 'DRILL_REPO'], encryption: { posture: 'restic key', adr: ['046'] } },
++    { id: 'zr2', kind: 'rclone-manifest', box: null, remote: { name: '<Z_REMOTE>', layout: 'bucket' }, base: '<Z_REMOTE>:bucket', env: ['Z_REMOTE'], encryption: { posture: 'none client-side', adr: ['021'] } },
++    { id: 'zdrive', kind: 'rclone-dated', box: null, remote: { name: 'enc', layout: 'cf/<date>/' }, base: 'enc:cf', env: [], encryption: { posture: 'crypt', adr: ['047'] } },
++  ],
++  sets: [
++    { id: 'zset', box: 'boxz', writer: 'duty.restic-snapshot', what: 'f', destinations: ['zlocal', 'zrepo'], retention: 'r', readBack: { destination: 'zlocal', passwordFile: '/root/.restic-pass' }, drill: { from: 'zrepo', file: null, hash: 'restic-tree' } },
++    { id: 'zexport', box: null, writer: 'duty.platform-cron', what: 'f', destinations: ['zr2', 'zdrive'], retention: 'r', readBack: null, drill: { from: 'zr2', file: 'kv/jwks/{date}.json.gz', hash: 'manifest', manifest: 'manifests/latest.json' } },
++    { id: 'zdated', box: null, writer: 'duty.cloudflare-backup-pull', what: 'f', destinations: ['zdrive'], retention: 'r', readBack: null, drill: { from: 'zdrive', file: 'kv/jwks/{date}.json.gz', hash: 'manifest', manifest: 'manifests/{date}.json' } },
++  ],
++  ...over,
++});
++function estate({ boxDoc = box(), backupsDoc = backups(), roles = { roles: { ops: { by: 'single', box: 'boxz' } } } } = {}) {
++  const root = tmp('boxes-fx-');
++  for (const rel of REGISTERS) cpSync(join(REPO, rel), join(root, rel));
++  w(root, 'tooling/boxes/boxz.json', boxDoc);
++  w(root, 'tooling/boxes/roles.json', roles);
++  w(root, 'tooling/boxes/backups.json', backupsDoc);
++  return root;
++}
++
++/** What boxz answers when it runs exactly what it declares. */
++const observedMatching = () => ({
++  composeLs: JSON.stringify([{ Name: 'app', Status: 'running(3)' }]),
++  dockerPs: ['app-web-1\tacme/app:1.2.3\trunning\tapp\tweb', 'app-worker-1\tacme/app:v1.2.3\trunning\tapp\tworker', 'app-db-1\tdocker.io/library/postgres:17\trunning\tapp\tdb'].join('\n'),
++  volumes: 'app_pgdata\n',
++  crontab: '# m h dom mon dow command\nMAILTO=""\n0 4 * * * /opt/backup/restic-run.sh >/dev/null 2>&1\n',
++  timezone: 'Etc/UTC\n',
++  systemd: 'cron.service loaded active running Regular background program processing daemon\ndocker.service loaded active running Docker\nssh.service loaded active running OpenBSD Secure Shell server\n',
++  nproc: '2\n',
++  mem: '               total        used        free\nMem:      8323002368  1234567890  1000000000\nSwap:              0           0           0\n',
++  disk: ' 1B-blocks       Used\n107374182400 21474836480\n',
++  stats: 'app-web-1\t3.50%\t512MiB / 7.75GiB\napp-worker-1\t1.00%\t256MiB / 7.75GiB\napp-db-1\t0.20%\t1.5GiB / 7.75GiB\n',
++  restic: { zset: JSON.stringify([{ time: '2026-09-30T04:00:00Z', id: 'a' }, { time: '2026-10-01T04:00:00Z', id: 'b' }]) },
++});
++const checkWith = (root, observed, extra = []) => {
++  const f = join(root, 'observed.json');
++  writeFileSync(f, JSON.stringify(observed));
++  return run(CHECK, ['boxz', '--root', root, '--observed', f, ...extra]);
++};
++
++describe('the declarations validate, and every citation can redden them', () => {
++  it('green control: the real tooling/boxes validates against the registers it cites', () => {
++    const v = validateAll(REPO);
++    assert.deepEqual(v.errors, []);
++    assert.deepEqual([...v.boxes.keys()], ['boxa', 'boxb', 'boxc']);
++  });
++  /** Green on the real copy first, then one mutation, then the named error. */
++  const declRed = (mutate, re) => {
++    const root = realCopy();
++    assert.deepEqual(validateAll(root).errors, [], 'green before the mutation');
++    mutate(root);
++    const errs = validateAll(root).errors;
++    assert.ok(errs.some((e) => re.test(e)), errs.join('\n'));
++  };
++  it('red: a monitor id no register holds', () => declRed((r) => edit(r, 'tooling/boxes/boxb.json', (d) => d.monitors.push(99999)), /monitor 99999 is in neither/));
++  it('red: a cron citing a register row that does not exist', () => declRed((r) => edit(r, 'tooling/boxes/boxc.json', (d) => { d.crons[0].register = 'duty.nowhere'; }), /cites register row "duty\.nowhere"/));
++  it('red: a cost carrying a figure instead of a citation', () => declRed((r) => edit(r, 'tooling/boxes/boxb.json', (d) => { d.cost.monthlyUsd = 1; }), /a cost is cited, never copied/));
++  it('red: an address written into a declaration', () => declRed((r) => edit(r, 'tooling/boxes/boxa.json', (d) => { d._why.push(['203', '0', '113', '7'].join('.')); }), /carries an IPv4 address/));
++  it('red: a role the roles file gives to another box', () => declRed((r) => edit(r, 'tooling/boxes/roles.json', (d) => { d.roles.ops.box = 'boxc'; }), /role `ops` is not held by boxb|role `ops` names boxc, whose declaration does not list it/));
++  it('red: a destination without its layout (trap backup-04)', () => declRed((r) => edit(r, 'tooling/boxes/backups.json', (d) => { delete d.destinations[1].remote.layout; }), /must declare BOTH remote\.name and remote\.layout/));
++  it('red: a set drilled from a destination it does not have', () => declRed((r) => edit(r, 'tooling/boxes/backups.json', (d) => { d.sets[0].drill.from = 'drive-cloudflare'; }), /drills from `drive-cloudflare`, which is not one of its destinations/));
++  it('red: a box backup set that backups.json does not declare', () => declRed((r) => edit(r, 'tooling/boxes/boxa.json', (d) => { d.backupSets.push('ghost-set'); }), /backup set `ghost-set` is not in/));
++  it('red: a declaration the read-back cannot validate exits 1 before any box is read', () => {
++    const root = realCopy();
++    edit(root, 'tooling/boxes/boxb.json', (d) => d.monitors.push(99999));
++    const r = run(CHECK, ['boxb', '--root', root]);
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /the declarations do not validate/);
++  });
++});
++
++describe('the read-only command set holds', () => {
++  it('green: every READ_ONLY_COMMANDS entry and the restic listing pass assertReadOnly', () => {
++    for (const cmd of Object.values(READ_ONLY_COMMANDS)) assert.equal(assertReadOnly(cmd), cmd);
++    assertReadOnly(resticSnapshotsCommand('/srv/restic', '/root/.restic-pass'));
++  });
++  it('red: every write verb, a chained command, a redirect and restic without --no-lock or --no-cache is refused', () => {
++    const writes = ['docker restart glitchtip-web-1', 'docker compose up -d', 'systemctl restart docker', "pkill -f 'restic'", 'rm -rf /srv/restic',
++    'crontab -r', 'restic -r /srv/restic backup /opt', 'restic -r /srv/restic snapshots --json', 'restic --no-lock -r /srv/restic forget --keep-last 1 snapshots',
++    'restic --no-lock -r /srv/restic snapshots --json', 'crontab -l > /tmp/x', 'docker ps; reboot', 'rclone delete oracleenc:restic-boxb', 'sed -i s/a/b/ /etc/crontab', 'docker volume rm pgdata', ''];
++    for (const cmd of writes) assert.throws(() => assertReadOnly(cmd), /refused/, JSON.stringify(cmd));
++    assert.throws(() => assertReadOnly('restic --no-lock -r /srv/restic snapshots --json'), /--no-cache/);
++  });
++  it('the ssh argv is built from PARTS (trap shell-23), never a pasted command line; sudo only when asked', () => {
++    const doc = box();
++    assert.equal(sshArgv(doc, 'nproc', {}), null, 'no host, no call');
++    const a = sshArgv(doc, 'nproc', { BOXZ_SSH_HOST: 'h.example', BOXZ_SSH_KEY: '/k/id', BOXZ_SSH_PORT: '2222' });
++    assert.deepEqual(a.slice(-3), ['root@h.example', '--', 'nproc']);
++    assert.ok(a.includes('BatchMode=yes') && a.includes('-i') && a.includes('/k/id') && a.includes('2222'));
++    assert.ok(a.some((x) => /^ConnectTimeout=\d+$/.test(x)));
++    assert.equal(sshArgv(doc, 'nproc', { BOXZ_SSH_HOST: 'h', BOXZ_SSH_SUDO: '1' }).at(-1), 'sudo -n nproc');
++    assert.throws(() => sshArgv(doc, 'docker restart x', { BOXZ_SSH_HOST: 'h' }), /refused/);
++  });
++  it('the adapter: ssh exit 255 is unreachable, and every call carries a timeout', () => {
++    const calls = [];
++    const r = readBoxOverSsh(box(), backups(), { env: { BOXZ_SSH_HOST: 'h' }, spawn: (bin, argv, o) => { calls.push({ bin, argv, o }); return { status: 255, stdout: '', stderr: 'ssh: connect to host h port 22: Connection timed out' }; } });
++    assert.match(r.unreachable, /ssh to boxz failed/);
++    assert.equal(calls[0].bin, 'ssh');
++    assert.ok(calls[0].o.timeout > 0);
++  });
++  it('the adapter: a green read sends only read-only commands, and the restic listing uses --no-lock', () => {
++    const sent = [];
++    const obs = observedMatching();
++    const answer = { composeLs: obs.composeLs, dockerPs: obs.dockerPs, volumes: obs.volumes, crontab: obs.crontab, timezone: obs.timezone, systemd: obs.systemd, nproc: obs.nproc, mem: obs.mem, disk: obs.disk, stats: obs.stats };
++    const byCmd = new Map(Object.entries(READ_ONLY_COMMANDS).map(([k, c]) => [c, answer[k]]));
++    const r = readBoxOverSsh(box(), backups(), {
++      env: { BOXZ_SSH_HOST: 'h' },
++      spawn: (bin, argv) => { const cmd = argv.at(-1); sent.push(cmd); return { status: 0, stdout: byCmd.get(cmd) ?? obs.restic.zset, stderr: '' }; },
++    });
++    assert.equal(r.unreachable, null);
++    for (const c of sent) assertReadOnly(c);
++    assert.ok(sent.some((c) => /^restic --no-lock --no-cache .* snapshots --json$/.test(c)));
++    const d = diffDeclared(box(), r.observed, backups());
++    assert.deepEqual(d.drift, []);
++  });
++});
++
++describe('check-box-declared — the read-back', () => {
++  it('green control: a box that runs exactly what it declares exits 0, names and counts only', () => {
++    const r = checkWith(estate(), observedMatching(), ['--print-observed']);
++    assert.equal(r.code, 0, r.out);
++    assert.match(r.first, /^check-box-declared: ok — boxz runs what it declares/);
++    assert.match(r.out, /restic: zset 2 snapshot\(s\), newest 2026-10-01T04:00:00\.000Z/);
++    assert.match(r.out, /"measuredUse"/);
++  });
++  it('RED (the brief\'s): an undeclared running service exits 1 and names it', () => {
++    const o = observedMatching();
++    o.dockerPs += '\nminer-1\tevil/miner:latest\trunning\t\t';
++    const r = checkWith(estate(), o);
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /DRIFT — boxz: services: running container `miner-1` \(image evil\/miner, project none\) is declared by no service/);
++  });
++  /** The green observation, one mutation, exit 1 and the named drift. */
++  const obsRed = (mutate, re) => {
++    const o = observedMatching();
++    mutate(o);
++    const r = checkWith(estate(), o);
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.out, re);
++  };
++  it('red: a declared service not running exits 1', () => obsRed((o) => { o.dockerPs = o.dockerPs.split('\n').filter((l) => !l.startsWith('app-db')).join('\n'); }, /`db` \(postgres\) is declared and no container of it is running/));
++  it('red: a version that moved exits 1', () => obsRed((o) => { o.dockerPs = o.dockerPs.replace('postgres:17', 'postgres:18'); }, /`db` declares 17 and runs 18/));
++  it('red: a container count that differs exits 1', () => obsRed((o) => { o.dockerPs = o.dockerPs.split('\n').filter((l) => !l.startsWith('app-worker')).join('\n'); }, /`app` declares 2 container\(s\) and 1 run/));
++  it('red: an undeclared cron exits 1', () => obsRed((o) => { o.crontab += '*/5 * * * * /usr/local/bin/stray.sh\n'; }, /crontab and declared by no cron/));
++  it('red: a cron schedule that moved exits 1', () => obsRed((o) => { o.crontab = o.crontab.replace('0 4 * * *', '0 5 * * *'); }, /`snap` declares `0 4 \* \* \*` and the crontab runs `0 5 \* \* \*`/));
++  it('red: a cron timezone that is not the declared one (shell-25) exits 1', () => obsRed((o) => { o.timezone = 'Asia/Kolkata\n'; }, /cronTz: declared Etc\/UTC and the box's cron runs Asia\/Kolkata/));
++  it('red: a CRON_TZ line overrides the system timezone exits 1', () => obsRed((o) => { o.crontab = `CRON_TZ=Asia/Kolkata\n${o.crontab}`; }, /cron runs Asia\/Kolkata/));
++  it('red: an undeclared running unit exits 1', () => obsRed((o) => { o.systemd += 'cloudflared.service loaded active running cloudflared\n'; }, /units: `cloudflared` is running and declared nowhere/));
++  it('red: an undeclared docker volume exits 1', () => obsRed((o) => { o.volumes += 'app_scratch\n'; }, /docker volume `app_scratch` is declared nowhere/));
++  it('red: an undeclared compose project exits 1', () => obsRed((o) => { o.composeLs = JSON.stringify([{ Name: 'app', Status: 'running(3)' }, { Name: 'side', Status: 'exited(1)' }]); }, /compose: project `side` is declared by no service/));
++  it('red: a shape smaller than the plan exits 1', () => obsRed((o) => { o.nproc = '1\n'; }, /spec\.cpu: declared 2, the box reads 1/));
++  it('red: an empty restic repository exits 1', () => obsRed((o) => { o.restic.zset = '[]'; }, /restic: set `zset` holds no snapshot/));
++  it('LOST, not ok: a command that was not read, an answer that does not parse, an UNREAD field', () => {
++    const o = observedMatching();
++    delete o.crontab;
++    let r = checkWith(estate(), o);
++    assert.equal(r.code, 2, r.out);
++    assert.match(r.first, /LOST — boxz: crontab: not read/);
++    const o2 = observedMatching();
++    o2.composeLs = 'not json';
++    r = checkWith(estate(), o2);
++    assert.equal(r.code, 2, r.out);
++    const unread = box();
++    unread.services[1].version = null;
++    r = checkWith(estate({ boxDoc: unread }), observedMatching());
++    assert.equal(r.code, 2, r.out);
++    assert.match(r.out, /`db` version is UNREAD in the declaration \(running: 17\)/);
++  });
++  it('unreachable is exit 2: no host in the environment', () => {
++    const r = run(CHECK, ['boxz', '--root', estate()]);
++    assert.equal(r.code, 2, r.out);
++    assert.match(r.first, /LOST — boxz unreachable: BOXZ_SSH_HOST is not set/);
++    assert.doesNotMatch(r.out, /\b(?:\d{1,3}\.){3}\d{1,3}\b/);
++  });
++  it('on the REAL boxb declaration: a read that matches it is green but for its UNREAD fields; one extra container is DRIFT', () => {
++    const doc = JSON.parse(readFileSync(join(REPO, 'tooling/boxes/boxb.json'), 'utf8'));
++    const ps = [];
++    for (const s of doc.services) for (let i = 0; i < s.containers; i++) ps.push(`${s.id}-${i}\t${s.image}:${s.version ?? 'x'}\trunning\t${s.compose.project ?? 'p'}\t${s.compose.service ?? ''}`);
++    const o = {
++      composeLs: JSON.stringify([...new Set(doc.services.map((s) => s.compose.project ?? 'p'))].map((Name) => ({ Name, Status: 'running' }))),
++      dockerPs: ps.join('\n'),
++      volumes: '',
++      crontab: doc.crons.map((c) => `${c.schedule ?? '7 * * * *'} ${c.script}`).join('\n'),
++      timezone: doc.cronTz.value,
++      systemd: doc.units.map((u) => `${u}.service loaded active running x`).join('\n'),
++      nproc: String(doc.spec.cpu), mem: `Mem: ${doc.spec.ramGiB * 1024 ** 3} 0 0`, disk: `${doc.spec.diskGiB * 1024 ** 3} 0`,
++    };
++    const v = validateAll(REPO);
++    const green = diffDeclared(doc, o, v.backups);
++    assert.deepEqual(green.drift, []);
++    assert.ok(green.lost.length > 0, 'the real declaration still has UNREAD fields, so a matching read is LOST, never ok');
++    o.dockerPs += '\nstray-1\tacme/stray:1\trunning\tstray\t';
++    const red = diffDeclared(doc, o, v.backups);
++    assert.ok(red.drift.some((x) => /`stray-1`/.test(x)), red.drift.join('\n'));
++  });
++  it('the parsers read the shapes the commands print', () => {
++    assert.deepEqual(splitImage('docker.io/library/postgres:17'), { repo: 'postgres', tag: '17' });
++    assert.deepEqual(splitImage('ghcr.io/acme/app@sha256:abcd'), { repo: 'ghcr.io/acme/app', tag: null });
++    assert.deepEqual(splitImage('localhost:5000/app'), { repo: 'localhost:5000/app', tag: null });
++    assert.deepEqual(parseCrontab('no crontab for root\n'), { tz: null, jobs: [] });
++    assert.deepEqual(parseCrontab('@reboot /x.sh\n15 0,6,12,18 * * * /opt/s/hb-run.sh /opt/s/backup.sh').jobs.map((j) => j.schedule), ['@reboot', '15 0,6,12,18 * * *']);
++    assert.throws(() => parseCrontab('garbage line'), /neither a job nor an assignment/);
++    assert.equal(parseDockerPs('a\tb:1\trunning\t\t')[0].project, null);
++    assert.deepEqual(parseSpec({ nproc: '8', mem: 'Mem: 34359738368 1 1', disk: '429496729600 107374182400' }), { cpu: 8, ramGiB: 32, diskGiB: 400, diskUsedGiB: 100 });
++    assert.deepEqual(parseStats('x\t12.5%\t1.5GiB / 31GiB'), [{ name: 'x', cpuPct: 12.5, memMiB: 1536 }]);
++    assert.deepEqual(parseResticSnapshots('[]'), { count: 0, newest: null });
++    assert.throws(() => parseResticSnapshots('{"not":"a list"}'));
++  });
++});
++
++describe('box-move — the graded dry run', () => {
++  const spec = (over = {}) => {
++    const f = join(tmp('boxspec-'), 'spec.json');
++    writeFileSync(f, JSON.stringify({ name: 'boxy', provider: { vendor: 'hostinger', plan: 'KVM 4' }, cpu: 4, ramGiB: 16, diskGiB: 200, cost: { monthlyUsd: 12 }, ...over }));
++    return f;
++  };
++  const priv = (identity) => { const d = tmp('private-'); w(d, 'platform-state/identity.json', identity); return d; };
++  const readyBackups = () => backups({ sets: backups().sets.map((s) => ({ ...s, drill: { ...s.drill, file: s.drill.file ?? '/opt/x/small.txt' } })) });
++
++  it('RED (the brief\'s): --dry-run omitted is refused, exit 2', () => {
++    const r = run(MOVE, ['--from', 'boxb', '--to', spec()]);
++    assert.equal(r.code, 2, r.out);
++    assert.match(r.first, /REFUSED — refused without --dry-run/);
++    assert.deepEqual(moveArgs(['--from', 'boxb', '--to', '--dry-run']), { error: '--to was given "--dry-run", which is a flag, not a value' });
++  });
++  it('green control: a target that fits, operator-only allow-lists, runnable drills and a readable cost — exit 0', () => {
++    const root = estate({ backupsDoc: readyBackups() });
++    const r = run(MOVE, ['--from', 'boxz', '--to', spec(), '--dry-run', '--root', root, '--private', priv({ vendors: [{ id: 'hostinger', cost: { monthlyUsd: 10, renewalMonthlyUsd: 20 } }] })]);
++    assert.equal(r.code, 0, r.out);
++    assert.match(r.first, /^box-move: PASS — all 7 checks pass for boxz → boxy/);
++    assert.match(r.out, /C7 cost: monthly 10 → 12 USD \(delta \+2\); boxz renews at 20/);
++    assert.match(r.out, /app\.example\.test: no record change — start the tunnel connector on boxy with secret TUNNEL_TOKEN/);
++    assert.match(r.out, /C6 secrets: 3 secret NAME\(s\) to carry from the vault: APP_KEY, POSTGRES_PASSWORD, TUNNEL_TOKEN/);
++    assert.match(r.out, /the new box serves, the old stays standby for 7 days/);
++  });
++  it('RED (the brief\'s): a target too small for the declared services is FAIL, exit 1', () => {
++    const root = estate({ backupsDoc: readyBackups() });
++    const r = run(MOVE, ['--from', 'boxz', '--to', spec({ cpu: 1, ramGiB: 4, diskGiB: 40 }), '--dry-run', '--root', root, '--private', priv({ vendors: [{ id: 'hostinger', cost: { monthlyUsd: 10 } }] })]);
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /FAIL — C1 capacity: the measured use of 2 declared service\(s\) is 1\.5 CPU, 5 GiB RAM, 50 GiB disk; ×1\.25 it does not fit .* in cpu, ramGiB, diskGiB/);
++  });
++  it('red: an allow-list the OWNER holds is FAIL (an owner step); the cost is LOST without Private', () => {
++    const owned = box({ allowLists: [{ id: 'gov-whitelist', where: 'a console', owner: 'owner', row: 'O-APISETU-KEY-IP-WHITELIST', verify: 'look', confirmedOn: null }] });
++    const root = estate({ boxDoc: owned, backupsDoc: readyBackups() });
++    const r = run(MOVE, ['--from', 'boxz', '--to', spec(), '--dry-run', '--root', root, '--private', join(root, 'no-private-here')]);
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /FAIL — C3 allow-lists: 1 allow-list\(s\) pin boxz's address; 1 is the owner's to update \(gov-whitelist\)/);
++    assert.match(r.out, /LOST  C7 cost: Private platform-state\/identity\.json is not readable here/);
++  });
++  it('LOST, not PASS: unmeasured services against a target smaller than the source; an UNREAD drill', () => {
++    const unmeasured = box({ services: box().services.map((s) => ({ ...s, use: null })) });
++    const root = estate({ boxDoc: unmeasured });
++    const r = run(MOVE, ['--from', 'boxz', '--to', spec({ cpu: 1, ramGiB: 4, diskGiB: 40 }), '--dry-run', '--root', root, '--private', priv({ vendors: [{ id: 'hostinger', cost: { monthlyUsd: 10 } }] })]);
++    assert.equal(r.code, 2, r.out);
++    assert.match(r.out, /LOST  C1 capacity: 2 service\(s\) have no measured use/);
++    assert.match(r.out, /LOST  C4 backups: .* drill\(s\) cannot run yet \(zset\)/);
++  });
++  it('on the REAL boxb: the API Setu whitelist is an owner step (FAIL), every hostname is a tunnel record, the cost is LOST in CI', () => {
++    const r = run(MOVE, ['--from', 'boxb', '--to', spec({ cpu: 8, ramGiB: 32, diskGiB: 400 }), '--dry-run', '--private', join(tmp('none-'), 'x')]);
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /FAIL — C3 allow-lists: .*apisetu-key-ip-whitelist/);
++    assert.match(r.out, /PASS  C1 capacity: 8 service\(s\) unmeasured, and the target .* is at least boxb's declared shape/);
++    assert.match(r.out, /PASS  C2 dns: 5 record\(s\) to move/);
++    assert.match(r.out, /LOST  C7 cost/);
++    assert.doesNotMatch(r.out, /\b(?:\d{1,3}\.){3}\d{1,3}\b/, 'no address is ever printed');
++  });
++  it('the cost reader finds a monthly USD figure under the vendor, or says what it read', () => {
++    assert.deepEqual(monthlyCostFor({ vendors: { hostinger: { plan: { monthlyUsd: { value: 9.99 } } } } }, 'hostinger'), { usd: 9.99, path: '$.vendors.hostinger.plan.monthlyUsd.value', renewalUsd: null });
++    assert.match(monthlyCostFor({ vendors: { hostinger: { seats: 1 } } }, 'hostinger').lost, /no monthly USD figure under vendor `hostinger` \(read 1 numeric field/);
++  });
++});
++
++describe('restore-drill — one file back, hashed against the source, then deleted', () => {
++  // A fake rclone that serves `<remote>:<path>` from a local directory, with rclone's
++  // lsf habit of listing subdirectories with a trailing slash (trap backup-05).
++  const shimDir = tmp('rclone-shim-');
++  const RCLONE = join(shimDir, 'rclone');
++  writeFileSync(RCLONE, `#!/usr/bin/env node
++const fs = require('node:fs'); const path = require('node:path');
++const [cmd, ...rest] = process.argv.slice(2);
++const local = (p) => path.join(process.env.FAKE_RCLONE_ROOT, p.replace(/^[^:]*:/, ''));
++if (cmd === 'lsf') { const d = local(rest[0]); if (!fs.existsSync(d)) { console.error('directory not found'); process.exit(3); }
++  for (const e of fs.readdirSync(d, { withFileTypes: true })) { if (e.isDirectory()) console.log(e.name + '/'); else if (!rest.includes('--dirs-only')) console.log(e.name); } process.exit(0); }
++if (cmd === 'cat') { const f = local(rest[0]); if (!fs.existsSync(f)) { console.error('object not found'); process.exit(3); } process.stdout.write(fs.readFileSync(f)); process.exit(0); }
++if (cmd === 'copyto') { const f = local(rest[0]); if (!fs.existsSync(f)) { console.error('object not found'); process.exit(3); } fs.copyFileSync(f, rest[1]); process.exit(0); }
++console.error('unsupported ' + cmd); process.exit(9);
++`);
++  chmodSync(RCLONE, 0o755);
++  const exportTree = ({ corrupt = false, complete = true, date = '2026-10-01' } = {}) => {
++    const d = tmp('r2-');
++    const body = Buffer.from('{"keys":{"k1":"v1"}}');
++    const key = `kv/jwks/${date}.json.gz`;
++    w(d, `bucket/${key}`, corrupt ? Buffer.from('{"keys":{"k1":"v2"}}').toString() : body.toString());
++    w(d, 'bucket/manifests/latest.json', { date, complete, objects: [{ key, bytes: body.length, sha256: sha(body), truncated: false }] });
++    return d;
++  };
++  const drill = (root, set, fakeRoot, extra = [], env = {}) => {
++    const scratch = tmp('scratch-');
++    const r = run(DRILL, [set, '--to', scratch, '--root', root, '--rclone-bin', RCLONE, ...extra], { FAKE_RCLONE_ROOT: fakeRoot, Z_REMOTE: 'r2fixture', ...env });
++    return { ...r, scratch };
++  };
++
++  it('green control: the newest manifest names the object, it comes back, its SHA-256 matches, and the scratch copy is deleted', () => {
++    const r = drill(estate(), 'zexport', exportTree());
++    assert.equal(r.code, 0, r.out);
++    assert.match(r.first, /^restore-drill: PASS — zexport: zr2 2026-10-01: kv\/jwks\/2026-10-01\.json\.gz came back 20 B and its SHA-256 matches/);
++    assert.match(r.out, /the scratch copy was deleted/);
++    assert.deepEqual(readdirSync(r.scratch), [], 'nothing is left in the scratch directory');
++  });
++  it('RED (the brief\'s): a corrupted object fails the drill, exit 1', () => {
++    const r = drill(estate(), 'zexport', exportTree({ corrupt: true }));
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /FAIL — zexport: zr2 2026-10-01: kv\/jwks\/2026-10-01\.json\.gz came back 20 B with SHA-256 .*the source recorded/);
++    assert.deepEqual(readdirSync(r.scratch), [], 'the failed copy is deleted too');
++  });
++  it('red: a manifest that is not complete, and a manifest that does not list the file', () => {
++    let r = drill(estate(), 'zexport', exportTree({ complete: false }));
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /is not `complete`/);
++    const b = backups();
++    b.sets[1].drill.file = 'kv/other/{date}.json.gz';
++    r = drill(estate({ backupsDoc: b }), 'zexport', exportTree());
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /does not list kv\/other\/2026-10-01\.json\.gz/);
++  });
++  it('dated directories are PARSED, never inferred from a non-empty listing (trap backup-05)', () => {
++    const d = tmp('drive-');
++    const body = Buffer.from('jwks');
++    for (const date of ['2026-09-29', '2026-09-30']) {
++      w(d, `cf/${date}/kv/jwks/${date}.json.gz`, body.toString());
++      w(d, `cf/${date}/manifests/${date}.json`, { date, complete: true, objects: [{ key: `kv/jwks/${date}.json.gz`, sha256: sha(body) }] });
++    }
++    w(d, 'cf/not-a-date/x', 'x');
++    w(d, 'cf/README', 'x');
++    const r = drill(estate(), 'zdated', d);
++    assert.equal(r.code, 0, r.out);
++    assert.match(r.first, /zdrive 2026-09-30: kv\/jwks\/2026-09-30\.json\.gz came back/);
++    const empty = tmp('drive-empty-');
++    w(empty, 'cf/not-a-date/x', 'x');
++    const r2 = drill(estate(), 'zdated', empty);
++    assert.equal(r2.code, 1, r2.out);
++    assert.match(r2.first, /holds no dated directory \(listed 1 entr\(ies\), none a date\)/);
++  });
++  it('LOST: an unset credential name, a missing tool, and every REAL drill whose file is not yet named', () => {
++    let r = drill(estate(), 'zexport', exportTree(), [], { Z_REMOTE: '' });
++    assert.equal(r.code, 2, r.out);
++    assert.match(r.first, /needs Z_REMOTE in the environment/);
++    r = run(DRILL, ['zexport', '--to', tmp('s-'), '--root', estate(), '--rclone-bin', join(shimDir, 'no-such-rclone')], { Z_REMOTE: 'x' });
++    assert.equal(r.code, 2, r.out);
++    assert.match(r.first, /is not installed here/);
++    for (const set of ['boxb-restic', 'restic-third-copy', 'glitchtip-pg', 'supabase-auth-pg']) {
++      const real = run(DRILL, [set, '--to', tmp('s-')]);
++      assert.equal(real.code, 2, real.out);
++      assert.match(real.first, /the drill names no file/);
++    }
++    assert.deepEqual(missingEnv([['A', 'B'], 'C'], { B: '1' }), ['C']);
++    assert.deepEqual(fill('s3:<EP>/b', {}), { missing: ['EP'] });
++  });
++  it('refuses a scratch directory inside the repository', () => {
++    const r = run(DRILL, ['d1-kv-export', '--to', join(REPO, 'tooling'), '--rclone-bin', RCLONE], { R2_RCLONE_REMOTE: 'x', FAKE_RCLONE_ROOT: tmp('x-') });
++    assert.equal(r.code, 2, r.out);
++    assert.match(r.first, /--to is inside the repository/);
++  });
++
++  // The real restic, when this machine has one: CI's runners do not, and the
++  // shim-free red control above (a corrupted object) runs everywhere.
++  const RESTIC = process.env.RESTIC_BIN || 'restic';
++  const haveRestic = spawnSync(RESTIC, ['version'], { encoding: 'utf8', timeout: 30_000 }).status === 0;
++  it('restic: green from a real repository, then a corrupted pack fails the drill', { skip: haveRestic ? false : `no restic binary (set RESTIC_BIN to run it); the manifest red control above runs everywhere` }, () => {
++    const d = tmp('restic-');
++    const src = join(d, 'src', 'opt', 'backup');
++    mkdirSync(src, { recursive: true });
++    writeFileSync(join(src, 'restic-sets.txt'), '/opt/glitchtip\n/opt/backup\n');
++    const repo = join(d, 'repo');
++    const env = { ...process.env, RESTIC_PASSWORD: 'fixture-only' };
++    assert.equal(spawnSync(RESTIC, ['init', '-q', '-r', repo], { env, encoding: 'utf8' }).status, 0);
++    assert.equal(spawnSync(RESTIC, ['backup', '-q', '-r', repo, '--tag', 'boxb', src], { env, encoding: 'utf8' }).status, 0);
++    const file = join(src, 'restic-sets.txt');
++    const drillEnv = { RESTIC_PASSWORD: 'fixture-only', DRILL_REPO: repo };
++    const green = run(DRILL, ['zset', '--to', tmp('s-'), '--root', estate(), '--restic-bin', RESTIC, '--file', file], drillEnv);
++    assert.equal(green.code, 0, green.out);
++    assert.match(green.first, /PASS — zset: zrepo snapshot \w{8} of .*: .*restic-sets\.txt came back 27 B and its SHA-256 matches/);
++    assert.doesNotMatch(green.out, /fixture-only/, 'the password is never printed');
++    const packs = [];
++    const walk = (p) => { for (const e of readdirSync(p, { withFileTypes: true })) { if (e.isDirectory()) walk(join(p, e.name)); else packs.push(join(p, e.name)); } };
++    walk(join(repo, 'data'));
++    const found = spawnSync(RESTIC, ['--no-lock', '--no-cache', '-r', repo, 'find', '--show-pack-id', '--blob', sha(readFileSync(file))], { env, encoding: 'utf8' });
++    const dataPackId = /belongs to pack ([0-9a-f]{64})/.exec(found.stdout)?.[1];
++    assert.ok(dataPackId, found.stdout + found.stderr);
++    const dataPack = packs.find((p) => p.endsWith(dataPackId));
++    const treePacks = packs.filter((p) => p !== dataPack);
++    assert.ok(dataPack && treePacks.length, 'one data pack and at least one tree pack');
++    // Byte 20 of a pack is inside its FIRST blob's ciphertext (16 B IV, then the ciphertext), so its MAC fails.
++    const corrupt = (p) => { const before = readFileSync(p); const b = Buffer.from(before); b[20] ^= 0xff; chmodSync(p, 0o644); writeFileSync(p, b); return () => writeFileSync(p, before); };
++    // 1. the DATA object corrupted: the tree reads, the restore fails
++    let undo = corrupt(dataPack);
++    let red = run(DRILL, ['zset', '--to', tmp('s-'), '--root', estate(), '--restic-bin', RESTIC, '--file', file], drillEnv);
++    assert.equal(red.code, 1, red.out);
++    assert.match(red.first, /FAIL — zset: zrepo snapshot \w{8} of .*: the restore failed — .*ciphertext verification failed/);
++    undo();
++    // 2. the TREE corrupted with the data intact: before --no-cache the cached tree answered and this PASSED
++    const undos = treePacks.map(corrupt);
++    red = run(DRILL, ['zset', '--to', tmp('s-'), '--root', estate(), '--restic-bin', RESTIC, '--file', file], drillEnv);
++    assert.equal(red.code, 1, red.out);
++    assert.match(red.first, /FAIL — zset: zrepo snapshot \w{8} of .*: the tree holding .*restic-sets\.txt could not be read/);
++    undos.forEach((u) => u());
++    assert.ok(existsSync(repo), 'the repository is untouched by the drill');
++  });
++});
+diff --git a/tooling/ci/test/coverage-manifest.json b/tooling/ci/test/coverage-manifest.json
+index 7cb110ed..8d522ed0 100644
+--- a/tooling/ci/test/coverage-manifest.json
++++ b/tooling/ci/test/coverage-manifest.json
+@@ -137,6 +137,9 @@
+   "bounded-spawn.test.mjs":
+     9,
+ 
++  "boxes.test.mjs":
++    47,
++
+   "brick-drivers.test.mjs":
+     5,
+ 
+@@ -702,7 +705,7 @@
+     21,
+ 
+   "ports.test.mjs":
+-    40,
++    44,
+ 
+   "post-deploy-smoke.test.mjs":
+     157,
+diff --git a/tooling/ci/test/ports.test.mjs b/tooling/ci/test/ports.test.mjs
+index be856843..d566e375 100644
+--- a/tooling/ci/test/ports.test.mjs
++++ b/tooling/ci/test/ports.test.mjs
+@@ -256,6 +256,18 @@ describe('assert-ports — every limb reddens', () => {
+     assert.equal(r.code, 1, r.out);
+     assert.match(r.out, /vendor `acme` is placed 2 times/);
+   });
++  it('limb 8: two adapters of ONE port may share a vendor (two boxes at one provider) — one placement, printed together', () => {
++    const twin = port({ adapters: [adapter(), adapter({ id: 'acme-two' }), port().adapters[1]] });
++    const r = run(fixture({ ports: { widgets: twin } }));
++    assert.equal(r.code, 0, r.out);
++    assert.equal(portLineFor(evaluate(fixture({ ports: { widgets: twin } })), 'acme'), 'port: widgets (adapter acme, acme-two, earned L2)');
++  });
++  it('limb 8: …but the same vendor behind adapters of TWO ports is still placed twice', () => {
++    const other = port({ port: 'gadgets', adapters: [adapter({ id: 'acme-g' })], selection: { by: 'single', source: null, default: { live: 'acme-g', sandbox: 'acme-g', test: null }, canary: null }, handTables: [], switch: { runbook: 'Private/runbooks/switch-vendor.md#gadgets', dryRun: 'node tooling/ops/port-switch.mjs gadgets --to <adapter> --dry-run' } });
++    const r = run(fixture({ ports: { widgets: port(), gadgets: other } }));
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.out, /vendor `acme` is placed 2 times \(gadgets\/acme-g, widgets\/acme\)/);
++  });
+   it('limb 8: a row with both `until` and `nonPort` exits 1', () => {
+     const r = run(fixture({ nonPortRows: [{ vendor: 'other', registers: ['provider-register'], reason: 'a fixture vendor nobody ports', nonPort: true, until: 'port-x' }] }));
+     assert.equal(r.code, 1, r.out);
+@@ -295,13 +307,39 @@ describe('assert-ports — on a copy of the REAL registries', () => {
+     root = mkdtempSync(join(tmpdir(), 'ports-real-'));
+     const copy = (rel) => { if (existsSync(join(REPO, rel))) cpSync(join(REPO, rel), join(root, rel), { recursive: true }); };
+     for (const rel of ['tooling/ports', 'tooling/capability-register.json', 'tooling/legal/provider-register.json', 'tooling/channel-register.json',
+-      'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart']) copy(rel);
++      'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart',
++      'tooling/boxes', 'tooling/ops/box-declaration.mjs', 'tooling/ops/check-box-declared.mjs']) copy(rel);
+     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
+   });
+-  it('green control: payments, auth and telemetry each claim and earn L2', () => {
++  it('green control: payments, auth, telemetry and boxes each claim and earn L2', () => {
+     const r = run(root);
+     assert.equal(r.code, 0, r.out);
+-    for (const p of ['auth', 'payments', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
++    for (const p of ['auth', 'boxes', 'payments', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
++  });
++  it('red: hostinger placed back in _non-port.json beside the boxes port reddens limb 8', () => {
++    const rel = join(root, 'tooling/ports/_non-port.json');
++    const before = readFileSync(rel, 'utf8');
++    try {
++      const doc = JSON.parse(before);
++      doc.rows.push({ vendor: 'hostinger', registers: ['provider-register'], reason: 'the pre-port-boxes row, put back', until: 'port-boxes' });
++      writeFileSync(rel, JSON.stringify(doc));
++      const r = run(root);
++      assert.equal(r.code, 1, r.out);
++      assert.match(r.first, /limb 8 \(cross-register\): vendor `hostinger` is placed 2 times \(boxes\/boxb, _non-port\)/);
++    } finally { writeFileSync(rel, before); }
++  });
++  it('red: a box interface symbol that is not declared un-earns L2 for boxes (limb 2)', () => {
++    const rel = join(root, 'tooling/ports/boxes.json');
++    const before = readFileSync(rel, 'utf8');
++    try {
++      const doc = JSON.parse(before);
++      doc.interface.js.symbols.push('readBoxNowhere');
++      writeFileSync(rel, JSON.stringify(doc));
++      const r = run(root);
++      assert.equal(r.code, 1, r.out);
++      assert.match(r.first, /limb 2 \(symbols\).*`readBoxNowhere` is not declared in `tooling\/ops\/box-declaration\.mjs`/);
++      assert.match(r.out, /boxes\s+L2\s+L0/);
++    } finally { writeFileSync(rel, before); }
+   });
+   it('red: deleting one vendor from _non-port.json reddens limb 8', () => {
+     const rel = join(root, 'tooling/ports/_non-port.json');
+diff --git a/tooling/ops/box-declaration.mjs b/tooling/ops/box-declaration.mjs
+new file mode 100644
+index 00000000..6d5471a0
+--- /dev/null
++++ b/tooling/ops/box-declaration.mjs
+@@ -0,0 +1,472 @@
++// ─────────────────────────────────────────────────────────────────────────────
++// box-declaration.mjs — THE ONE READING of what a box is declared to run, and
++// of what a box was observed to run. The interface of tooling/ports/boxes.json.
++//
++// Row O-BOXES-NOT-DECLARED-AS-DATA. Until 2026-10-01 what each box runs was
++// spread across Private runbooks, tooling/ops/register.json,
++// tooling/monitor-register.json, tooling/ops/alarm-chains.json and the boxes
++// themselves, and O-BOXA-TRACKED-COPIES-UNGUARDED found a tracked copy that
++// omitted what its box ran. The declaration is now data —
++// tooling/boxes/<box>.json, tooling/boxes/roles.json and
++// tooling/boxes/backups.json — and three tools read it through this module:
++//   tooling/ops/check-box-declared.mjs  the read-back (READ-ONLY over SSH)
++//   tooling/ops/box-move.mjs            the graded move dry run
++//   tooling/ops/restore-drill.mjs       one file back from the newest snapshot
++//
++// What lives here: the loaders and the validation of the declarations (each
++// cited monitor, register row, backup set and role must exist where it is
++// cited — a declaration cites, it never restates); the READ-ONLY command set
++// and the refusal of anything else; the parsers of each command's raw output;
++// and `diffDeclared`, the comparison. Pure functions plus file reads of the
++// repository; no network, no exit. Each caller carries its own COVERAGE LOST.
++// ─────────────────────────────────────────────────────────────────────────────
++import { readdirSync, readFileSync } from 'node:fs';
++import { join } from 'node:path';
++
++export const BOXES_DIR = 'tooling/boxes';
++export const ROLES_REL = 'tooling/boxes/roles.json';
++export const BACKUPS_REL = 'tooling/boxes/backups.json';
++export const MONITOR_REGISTER = 'tooling/monitor-register.json';
++export const ALARM_CHAINS = 'tooling/ops/alarm-chains.json';
++export const OPS_REGISTER = 'tooling/ops/register.json';
++
++/** Every key a box declaration carries; `_toConfirm` is the one optional key. */
++export const BOX_FIELDS = Object.freeze([
++  'box', '_why', 'roles', 'provider', 'cost', 'spec', 'ssh', 'cronTz', 'services', 'units', 'volumes',
++  'backupSets', 'hostnames', 'tunnel', 'monitors', 'crons', 'allowLists',
++]);
++const OPTIONAL_FIELDS = new Set(['_toConfirm']);
++export const RECORD_KINDS = Object.freeze(['tunnel-cname', 'A', 'AAAA', 'CNAME']);
++export const ALLOW_LIST_OWNERS = Object.freeze(['owner', 'operator']);
++/** RAM and disk as the OS reports them may sit this far below the plan's figure. */
++export const SPEC_TOLERANCE = 0.85;
++
++const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
++const readJson = (root, rel) => JSON.parse(readFileSync(join(root, rel), 'utf8'));
++
++// ── the READ-ONLY command set ────────────────────────────────────────────────
++// Every command the read-back may send to a box. Nothing else is ever sent:
++// `assertReadOnly` is called on each command line before ssh is spawned, and
++// refuses any write verb even if a future edit adds one here (trap shell-19:
++// never kill anything from an SSH session; and no restart, no backup run, no
++// config edit, ever). Restic runs with --no-lock AND --no-cache: a lock is a
++// write to the repository, and a cache is a write on the box.
++export const READ_ONLY_COMMANDS = Object.freeze({
++  composeLs: 'docker compose ls --all --format json',
++  dockerPs: 'docker ps --all --format \'{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}\'',
++  volumes: 'docker volume ls --format \'{{.Name}}\'',
++  crontab: 'crontab -l',
++  timezone: 'timedatectl show -p Timezone --value',
++  systemd: 'systemctl list-units --type=service --state=running --no-legend --plain',
++  nproc: 'nproc',
++  mem: 'free -b',
++  disk: 'df -B1 --output=size,used /',
++  stats: 'docker stats --no-stream --format \'{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\'',
++});
++
++const WRITE_VERBS = [
++  /\b(?:rm|rmdir|mv|cp|dd|tee|truncate|shred|chmod|chown|mkdir|touch|kill|pkill|killall|reboot|shutdown|poweroff)\b/,
++  /\bdocker\s+(?:compose\s+)?(?:up|down|stop|start|restart|kill|rm|rmi|pull|run|exec|prune|create|update|system\s+prune|volume\s+(?:rm|prune|create))\b/,
++  /\bsystemctl\s+(?:start|stop|restart|reload|enable|disable|mask|unmask|kill|daemon-reload|edit)\b/,
++  /\bcrontab\s+(?:-[er]|[^-\s])/,
++  /\brestic\b(?![^|;&]*\bsnapshots\b)/,
++  /\brestic\b[^|;&]*\b(?:backup|forget|prune|unlock|init|rebuild-index|repair|migrate|key|tag|copy|rewrite)\b/,
++  /\brclone\s+(?!lsf\b|lsjson\b|cat\b)/,
++  /\bsed\s+-i\b/,
++  /(?:^|[^<>2&])>{1,2}(?!&)/,
++];
++
++/** Throw when `cmd` could write on a box; the read-back sends nothing that has not passed this. */
++export function assertReadOnly(cmd) {
++  if (typeof cmd !== 'string' || !cmd.trim()) throw new Error('refused: an empty command');
++  if (/[;&|`]|\$\(/.test(cmd.replace(/'[^']*'/g, "''"))) throw new Error(`refused: \`${cmd}\` chains commands; the read-back sends one read per call`);
++  for (const re of WRITE_VERBS) if (re.test(cmd.replace(/'[^']*'/g, "''"))) throw new Error(`refused: \`${cmd}\` matches a write verb (${re}); the read-back never writes on a box`);
++  if (/\brestic\b/.test(cmd) && !/--no-lock\b/.test(cmd)) throw new Error(`refused: \`${cmd}\` runs restic without --no-lock, and a lock is a write to the repository`);
++  if (/\brestic\b/.test(cmd) && !/--no-cache\b/.test(cmd)) throw new Error(`refused: \`${cmd}\` runs restic without --no-cache, and its cache is a write on the box (and an answer from the cache is not an answer from the repository)`);
++  return cmd;
++}
++
++/** The read-only restic snapshot listing for a repository on the box. */
++export function resticSnapshotsCommand(repo, passwordFile) {
++  const q = (s) => `'${String(s).replace(/'/g, '')}'`;
++  return `restic --no-lock --no-cache --password-file ${q(passwordFile)} -r ${q(repo)} snapshots --json`;
++}
++
++// ── loading and validating the declarations ─────────────────────────────────
++/** The box ids declared under tooling/boxes/ (every `box*.json`). */
++export function listBoxes(root) {
++  return readdirSync(join(root, BOXES_DIR)).filter((f) => /^box[a-z0-9]+\.json$/.test(f)).map((f) => f.replace(/\.json$/, '')).sort();
++}
++
++/** What the declarations cite: monitor ids (and names), register row ids. Throws if a register is unreadable. */
++export function readCited(root) {
++  const monitors = new Map();
++  const mon = readJson(root, MONITOR_REGISTER);
++  for (const h of mon.hosts ?? []) {
++    if (Number.isInteger(h?.monitor?.id)) monitors.set(h.monitor.id, h.monitor.name ?? h.hostname);
++    for (const p of h?.pathMonitors ?? []) if (Number.isInteger(p?.id)) monitors.set(p.id, p.name ?? p.url);
++  }
++  const chains = readJson(root, ALARM_CHAINS);
++  for (const m of chains.expectedMonitors ?? []) if (Number.isInteger(m?.id)) monitors.set(m.id, m.name);
++  const reg = readJson(root, OPS_REGISTER);
++  const rows = new Set((reg.rows ?? []).map((r) => r?.id).filter((x) => typeof x === 'string'));
++  if (!monitors.size || !rows.size) throw new Error(`read ${monitors.size} monitor id(s) and ${rows.size} register row(s); a side of zero cites nothing`);
++  return { monitors, rows };
++}
++
++/** Read every declaration and the two shared files. Returns { boxes: Map, roles, backups, errors }. */
++export function readAll(root) {
++  const errors = [];
++  const boxes = new Map();
++  let ids = [];
++  try { ids = listBoxes(root); } catch (e) { errors.push(`${BOXES_DIR}/ could not be listed (${e.message})`); }
++  if (!ids.length && !errors.length) errors.push(`${BOXES_DIR}/ declares no box`);
++  for (const id of ids) {
++    try { boxes.set(id, readJson(root, `${BOXES_DIR}/${id}.json`)); } catch (e) { errors.push(`${BOXES_DIR}/${id}.json could not be parsed (${e.message})`); }
++  }
++  let roles = null;
++  let backups = null;
++  try { roles = readJson(root, ROLES_REL); } catch (e) { errors.push(`${ROLES_REL} could not be read (${e.message})`); }
++  try { backups = readJson(root, BACKUPS_REL); } catch (e) { errors.push(`${BACKUPS_REL} could not be read (${e.message})`); }
++  return { boxes, roles, backups, errors };
++}
++
++const nonEmptyString = (v) => typeof v === 'string' && v.trim().length > 0;
++const CRON_RE = /^(?:@(?:reboot|yearly|annually|monthly|weekly|daily|midnight|hourly)|(?:\S+\s+){4}\S+)$/;
++
++/** Every problem with one declaration, against the registers it cites. */
++export function validateBox(doc, file, { cited, roles, backups }) {
++  const e = [];
++  const at = (m) => e.push(`${file}: ${m}`);
++  if (!isObj(doc)) return [`${file}: is not an object`];
++  for (const k of BOX_FIELDS) if (!(k in doc)) at(`missing \`${k}\``);
++  for (const k of Object.keys(doc)) if (!BOX_FIELDS.includes(k) && !OPTIONAL_FIELDS.has(k)) at(`unknown key \`${k}\``);
++  if (`${BOXES_DIR}/${doc.box}.json` !== file) at(`declares box ${JSON.stringify(doc.box)}; the box is the file name`);
++  if (!nonEmptyString(doc.provider?.vendor) || !('plan' in (doc.provider ?? {}))) at('provider needs `vendor` and `plan`');
++  if (doc.cost?.source !== 'Private/platform-state/identity.json' || !nonEmptyString(doc.cost?.vendorId)) at('cost must CITE Private/platform-state/identity.json by `vendorId`, never carry a figure');
++  if (isObj(doc.cost) && Object.keys(doc.cost).some((k) => !['source', 'vendorId', 'why'].includes(k))) at('cost carries a key other than source, vendorId and why: a cost is cited, never copied');
++  for (const k of ['cpu', 'ramGiB', 'diskGiB']) if (doc.spec?.[k] !== null && !(typeof doc.spec?.[k] === 'number' && doc.spec[k] > 0)) at(`spec.${k} must be a positive number or null`);
++  for (const k of ['hostEnv', 'userEnv', 'keyEnv', 'portEnv', 'sudoEnv']) if (!/^[A-Z][A-Z0-9_]*$/.test(doc.ssh?.[k] ?? '')) at(`ssh.${k} must be an environment variable NAME`);
++  if (!isObj(doc.cronTz) || !('value' in doc.cronTz)) at('cronTz needs `value` (null until read)');
++  // services
++  const svcIds = new Set();
++  for (const s of doc.services ?? []) {
++    if (!nonEmptyString(s?.id) || svcIds.has(s.id)) at(`service id ${JSON.stringify(s?.id)} is empty or repeated`);
++    svcIds.add(s?.id);
++    if (!nonEmptyString(s?.image)) at(`service \`${s?.id}\` needs an image repository`);
++    if (s?.version !== null && !nonEmptyString(s?.version)) at(`service \`${s?.id}\` version must be a string or null`);
++    if (!isObj(s?.compose) || !('project' in s.compose) || !('service' in s.compose)) at(`service \`${s?.id}\` needs compose.project and compose.service (null until read)`);
++    if (!(Number.isInteger(s?.containers) && s.containers >= 1)) at(`service \`${s?.id}\` needs containers >= 1`);
++    for (const n of s?.secrets ?? []) if (!/^[A-Z][A-Z0-9_]*$/.test(n)) at(`service \`${s?.id}\` secret ${JSON.stringify(n)} is not a NAME`);
++    if (s?.use !== null && !(isObj(s?.use) && ['cpu', 'ramGiB', 'diskGiB'].every((k) => typeof s.use[k] === 'number' && s.use[k] >= 0) && nonEmptyString(s.use.asOf))) at(`service \`${s?.id}\` use must be null or {cpu, ramGiB, diskGiB, asOf}`);
++  }
++  const keyOf = (s) => `${s.image}|${s.compose?.project}|${s.compose?.service}`;
++  const seen = new Map();
++  for (const s of doc.services ?? []) {
++    if (seen.has(keyOf(s))) at(`services \`${seen.get(keyOf(s))}\` and \`${s.id}\` share image and compose project with no compose.service to tell them apart`);
++    seen.set(keyOf(s), s.id);
++  }
++  if (!Array.isArray(doc.units) || doc.units.some((u) => !nonEmptyString(u))) at('units must be a list of unit names');
++  // hostnames, monitors, crons, backup sets, roles, allow-lists — each cited where it lives
++  for (const h of doc.hostnames ?? []) if (!nonEmptyString(h?.name) || !RECORD_KINDS.includes(h?.record)) at(`hostname ${JSON.stringify(h?.name)} needs a name and a record of ${RECORD_KINDS.join(' | ')}`);
++  if ((doc.hostnames ?? []).some((h) => h?.record === 'tunnel-cname') && !nonEmptyString(doc.tunnel?.secret)) at('a tunnel-cname hostname needs `tunnel.secret` (the connector secret NAME)');
++  for (const m of doc.monitors ?? []) if (!cited.monitors.has(m)) at(`monitor ${m} is in neither ${MONITOR_REGISTER} nor ${ALARM_CHAINS} expectedMonitors`);
++  for (const c of doc.crons ?? []) {
++    if (!nonEmptyString(c?.name) || !nonEmptyString(c?.script)) at(`cron ${JSON.stringify(c?.name)} needs a name and a script`);
++    if (c?.schedule !== null && !CRON_RE.test(c?.schedule ?? '')) at(`cron \`${c?.name}\` schedule ${JSON.stringify(c?.schedule)} is not a cron schedule (null until read)`);
++    if (!cited.rows.has(c?.register)) at(`cron \`${c?.name}\` cites register row ${JSON.stringify(c?.register)}, which is not in ${OPS_REGISTER}`);
++  }
++  const setIds = new Set((backups?.sets ?? []).map((s) => s.id));
++  for (const id of doc.backupSets ?? []) if (!setIds.has(id)) at(`backup set \`${id}\` is not in ${BACKUPS_REL}`);
++  for (const v of doc.volumes ?? []) {
++    if (!nonEmptyString(v?.name) || !['bind', 'named'].includes(v?.kind)) at(`volume ${JSON.stringify(v?.name)} needs a name and kind bind | named`);
++    for (const id of v?.backupSets ?? []) if (!setIds.has(id)) at(`volume \`${v?.name}\` cites backup set \`${id}\`, which is not in ${BACKUPS_REL}`);
++  }
++  for (const r of doc.roles ?? []) if (roles?.roles?.[r]?.box !== doc.box) at(`role \`${r}\` is not held by ${doc.box} in ${ROLES_REL}`);
++  for (const a of doc.allowLists ?? []) {
++    if (!nonEmptyString(a?.id) || !nonEmptyString(a?.where) || !ALLOW_LIST_OWNERS.includes(a?.owner) || !nonEmptyString(a?.verify)) at(`allow-list ${JSON.stringify(a?.id)} needs id, where, owner (${ALLOW_LIST_OWNERS.join(' | ')}) and verify`);
++    if (a?.row !== null && !/^O-[A-Z0-9-]+$/.test(a?.row ?? '')) at(`allow-list \`${a?.id}\` row must be an O- row id or null`);
++  }
++  for (const [path, s] of strings(doc)) {
++    // A four-part version (supabase/postgres 17.6.1.136) has the shape of an address; only `version` may carry it.
++    if (!/\.version$/.test(path) && /\b(?:\d{1,3}\.){3}\d{1,3}\b/.test(s)) at(`${path} carries an IPv4 address; a declaration names the address, never writes it`);
++  }
++  return e;
++}
++
++function* strings(v, at = '$') {
++  if (typeof v === 'string') yield [at, v];
++  else if (Array.isArray(v)) for (let i = 0; i < v.length; i++) yield* strings(v[i], `${at}[${i}]`);
++  else if (isObj(v)) for (const [k, x] of Object.entries(v)) yield* strings(x, `${at}.${k}`);
++}
++
++/** Every problem across the set: each box, the roles file and the backups file. */
++export function validateAll(root) {
++  const { boxes, roles, backups, errors } = readAll(root);
++  if (errors.length) return { errors, lost: true, boxes, roles, backups };
++  let cited;
++  try { cited = readCited(root); } catch (e) { return { errors: [`the cited registers could not be read (${e.message})`], lost: true, boxes, roles, backups }; }
++  const out = [];
++  for (const [id, doc] of boxes) out.push(...validateBox(doc, `${BOXES_DIR}/${id}.json`, { cited, roles, backups }));
++  for (const [role, r] of Object.entries(roles?.roles ?? {})) {
++    if (r?.by !== 'single') out.push(`${ROLES_REL}: role \`${role}\` selects by ${JSON.stringify(r?.by)}; every role is \`single\``);
++    if (!boxes.has(r?.box)) out.push(`${ROLES_REL}: role \`${role}\` names box ${JSON.stringify(r?.box)}, which has no declaration`);
++    else if (!(boxes.get(r.box).roles ?? []).includes(role)) out.push(`${ROLES_REL}: role \`${role}\` names ${r.box}, whose declaration does not list it`);
++  }
++  if (!Object.keys(roles?.roles ?? {}).length) out.push(`${ROLES_REL}: declares no role`);
++  const destIds = new Set();
++  for (const d of backups?.destinations ?? []) {
++    if (!nonEmptyString(d?.id) || destIds.has(d.id)) out.push(`${BACKUPS_REL}: destination id ${JSON.stringify(d?.id)} is empty or repeated`);
++    destIds.add(d?.id);
++    if (!isObj(d?.remote) || !('name' in d.remote) || !('layout' in d.remote)) out.push(`${BACKUPS_REL}: destination \`${d?.id}\` must declare BOTH remote.name and remote.layout (trap backup-04)`);
++    if (!nonEmptyString(d?.encryption?.posture) || !Array.isArray(d?.encryption?.adr) || !d.encryption.adr.length) out.push(`${BACKUPS_REL}: destination \`${d?.id}\` needs encryption.posture and the ADRs it rests on`);
++    if (d?.box !== null && d?.box !== undefined && !boxes.has(d.box)) out.push(`${BACKUPS_REL}: destination \`${d.id}\` is on box ${JSON.stringify(d.box)}, which has no declaration`);
++  }
++  let cited2 = cited;
++  for (const s of backups?.sets ?? []) {
++    if (!nonEmptyString(s?.id)) out.push(`${BACKUPS_REL}: a set has no id`);
++    if (!cited2.rows.has(s?.writer)) out.push(`${BACKUPS_REL}: set \`${s?.id}\` names writer ${JSON.stringify(s?.writer)}, which is not a ${OPS_REGISTER} row`);
++    for (const d of s?.destinations ?? []) if (!destIds.has(d)) out.push(`${BACKUPS_REL}: set \`${s?.id}\` names destination \`${d}\`, which is not declared`);
++    if (!s?.destinations?.length) out.push(`${BACKUPS_REL}: set \`${s?.id}\` has no destination`);
++    if (s?.box !== null && !boxes.has(s?.box)) out.push(`${BACKUPS_REL}: set \`${s?.id}\` is written on box ${JSON.stringify(s?.box)}, which has no declaration`);
++    if (!isObj(s?.drill) || !destIds.has(s.drill.from)) out.push(`${BACKUPS_REL}: set \`${s?.id}\` needs a drill whose \`from\` is one of its destinations`);
++    else if (!s.destinations.includes(s.drill.from)) out.push(`${BACKUPS_REL}: set \`${s.id}\` drills from \`${s.drill.from}\`, which is not one of its destinations`);
++    if (s?.readBack && !(s.destinations ?? []).includes(s.readBack.destination)) out.push(`${BACKUPS_REL}: set \`${s.id}\` reads back \`${s.readBack.destination}\`, which is not one of its destinations`);
++  }
++  return { errors: out, lost: false, boxes, roles, backups };
++}
++
++// ── the parsers: raw command output in, names out ───────────────────────────
++/** `docker compose ls --all --format json` → [{name, status}]. Throws on an unparsable answer. */
++export function parseComposeLs(text) {
++  const t = String(text ?? '').trim();
++  if (!t) return [];
++  const doc = JSON.parse(t);
++  if (!Array.isArray(doc)) throw new Error('docker compose ls did not answer a JSON array');
++  return doc.map((p) => ({ name: String(p.Name ?? p.name), status: String(p.Status ?? p.status ?? '') }));
++}
++
++/** An image reference → {repo, tag}; docker.io/ and library/ are dropped, a digest is not a tag. */
++export function splitImage(ref) {
++  let r = String(ref).replace(/@sha256:[0-9a-f]+$/, '');
++  r = r.replace(/^(?:docker\.io|index\.docker\.io)\//, '').replace(/^library\//, '');
++  const slash = r.lastIndexOf('/');
++  const colon = r.lastIndexOf(':');
++  if (colon > slash) return { repo: r.slice(0, colon), tag: r.slice(colon + 1) };
++  return { repo: r, tag: null };
++}
++
++/** `docker ps --all --format <names, image, state, project, service>` → containers. */
++export function parseDockerPs(text) {
++  const out = [];
++  for (const line of String(text ?? '').split('\n')) {
++    if (!line.trim()) continue;
++    const [name, image, state, project, service] = line.split('\t');
++    if (!name || !image) throw new Error(`docker ps line has no name or image: ${JSON.stringify(line.slice(0, 80))}`);
++    out.push({ name, image, ...splitImage(image), state: state ?? '', project: project || null, service: service || null });
++  }
++  return out;
++}
++
++/** `crontab -l` → {tz, jobs:[{schedule, command}]}. "no crontab for" is an empty table, not an error. */
++export function parseCrontab(text) {
++  const jobs = [];
++  let tz = null;
++  for (const raw of String(text ?? '').split('\n')) {
++    const line = raw.trim();
++    if (!line || line.startsWith('#') || /^no crontab for /.test(line)) continue;
++    const env = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
++    if (env) { if (env[1] === 'CRON_TZ' || env[1] === 'TZ') tz = env[2].replace(/^["']|["']$/g, ''); continue; }
++    const at = /^(@\w+)\s+(.+)$/.exec(line);
++    if (at) { jobs.push({ schedule: at[1], command: at[2] }); continue; }
++    const f = line.split(/\s+/);
++    if (f.length < 6) throw new Error(`crontab line is neither a job nor an assignment: ${JSON.stringify(line.slice(0, 60))}`);
++    jobs.push({ schedule: f.slice(0, 5).join(' '), command: f.slice(5).join(' ') });
++  }
++  return { tz, jobs };
++}
++
++/** `restic snapshots --json` → {count, newest} — counts and the newest timestamp only. */
++export function parseResticSnapshots(text) {
++  const doc = JSON.parse(String(text ?? '').trim() || 'null');
++  if (!Array.isArray(doc)) throw new Error('restic snapshots did not answer a JSON array');
++  const times = doc.map((s) => Date.parse(s?.time)).filter((t) => !Number.isNaN(t));
++  return { count: doc.length, newest: times.length ? new Date(Math.max(...times)).toISOString() : null };
++}
++
++/** `systemctl list-units --type=service --state=running --no-legend --plain` → unit names without `.service`. */
++export function parseSystemdUnits(text) {
++  return String(text ?? '').split('\n').map((l) => l.trim().split(/\s+/)[0]).filter(Boolean).map((u) => u.replace(/\.service$/, ''));
++}
++
++/** `docker volume ls --format '{{.Name}}'` → names. */
++export const parseVolumes = (text) => String(text ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
++
++const GiB = 1024 ** 3;
++const round1 = (n) => Math.round(n * 10) / 10;
++
++/** nproc, `free -b`, `df -B1 --output=size,used /` → {cpu, ramGiB, diskGiB, diskUsedGiB}. */
++export function parseSpec({ nproc, mem, disk }) {
++  const cpu = Number.parseInt(String(nproc ?? '').trim(), 10);
++  const memLine = String(mem ?? '').split('\n').find((l) => /^Mem:/.test(l.trim()));
++  const ram = memLine ? Number(memLine.trim().split(/\s+/)[1]) : Number.NaN;
++  const [size, used] = (String(disk ?? '').trim().split('\n').pop() ?? '').trim().split(/\s+/).map(Number);
++  if (!Number.isFinite(cpu) || !Number.isFinite(ram) || !Number.isFinite(size)) throw new Error('nproc, free -b or df answered something that is not a number');
++  return { cpu, ramGiB: round1(ram / GiB), diskGiB: round1(size / GiB), diskUsedGiB: Number.isFinite(used) ? round1(used / GiB) : null };
++}
++
++const UNIT = { B: 1, KIB: 1024, MIB: 1024 ** 2, GIB: GiB, KB: 1e3, MB: 1e6, GB: 1e9 };
++/** `docker stats --no-stream --format <name, cpu%, mem usage>` → [{name, cpuPct, memMiB}]. */
++export function parseStats(text) {
++  const out = [];
++  for (const line of String(text ?? '').split('\n')) {
++    if (!line.trim()) continue;
++    const [name, cpu, mem] = line.split('\t');
++    const m = /^([\d.]+)\s*([KMG]i?B|B)/i.exec(String(mem ?? '').trim());
++    const cpuPct = Number.parseFloat(String(cpu ?? '').replace('%', ''));
++    if (!name || !m || !Number.isFinite(cpuPct)) throw new Error(`docker stats line could not be read: ${JSON.stringify(line.slice(0, 80))}`);
++    out.push({ name, cpuPct, memMiB: round1((Number(m[1]) * UNIT[m[2].toUpperCase()]) / 1024 ** 2) });
++  }
++  return out;
++}
++
++// ── the comparison ──────────────────────────────────────────────────────────
++const normVer = (v) => (v === null || v === undefined ? null : String(v).replace(/^v/, ''));
++
++/**
++ * Compare a declaration with what was observed. `observed` holds the RAW output
++ * of each READ_ONLY_COMMANDS key (absent = could not read) and `restic` as
++ * {<set id>: raw}. Returns {drift, lost, ok, observed: names-only summary}.
++ */
++export function diffDeclared(doc, observed, backups) {
++  const drift = [];
++  const lost = [];
++  const ok = [];
++  const names = {};
++  const read = (key, parse) => {
++    if (observed[key] === undefined || observed[key] === null) { lost.push(`${key}: not read (${READ_ONLY_COMMANDS[key] ?? key})`); return null; }
++    try { return parse(observed[key]); } catch (e) { lost.push(`${key}: the answer could not be parsed (${e.message})`); return null; }
++  };
++
++  // services: every running container is declared, every declared service runs
++  const containers = read('dockerPs', parseDockerPs);
++  const projects = read('composeLs', parseComposeLs);
++  if (containers) {
++    const running = containers.filter((c) => /^running$/i.test(c.state) || c.state === '');
++    names.containers = running.map((c) => `${c.name} (${c.repo}${c.tag ? `:${c.tag}` : ''})`);
++    const claimed = new Map((doc.services ?? []).map((s) => [s.id, []]));
++    for (const c of running) {
++      const s = (doc.services ?? []).find((x) => x.image === c.repo && (x.compose?.project === null || x.compose?.project === c.project) && (x.compose?.service === null || x.compose?.service === c.service));
++      if (!s) { drift.push(`services: running container \`${c.name}\` (image ${c.repo}, project ${c.project ?? 'none'}) is declared by no service`); continue; }
++      claimed.get(s.id).push(c);
++    }
++    for (const s of doc.services ?? []) {
++      const got = claimed.get(s.id);
++      if (!got.length) { drift.push(`services: \`${s.id}\` (${s.image}) is declared and no container of it is running`); continue; }
++      if (got.length !== s.containers) drift.push(`services: \`${s.id}\` declares ${s.containers} container(s) and ${got.length} run`);
++      const tags = [...new Set(got.map((c) => normVer(c.tag)))];
++      if (s.version === null) lost.push(`services: \`${s.id}\` version is UNREAD in the declaration (running: ${tags.join(', ') || 'untagged'})`);
++      else if (tags.some((t) => t !== normVer(s.version))) drift.push(`services: \`${s.id}\` declares ${s.version} and runs ${tags.join(', ') || 'an untagged image'}`);
++      if (s.compose?.project === null) lost.push(`services: \`${s.id}\` compose project is UNREAD (running in: ${[...new Set(got.map((c) => c.project ?? 'none'))].join(', ')})`);
++      if (got.length === s.containers && s.version !== null && tags.every((t) => t === normVer(s.version))) ok.push(`services: ${s.id} ${s.version} ×${got.length}`);
++    }
++    const stopped = containers.filter((c) => !running.includes(c));
++    for (const c of stopped) {
++      const s = (doc.services ?? []).find((x) => x.image === c.repo);
++      if (!s) drift.push(`services: stopped container \`${c.name}\` (image ${c.repo}) is declared by no service`);
++    }
++  }
++  if (projects) {
++    names.composeProjects = projects.map((p) => p.name);
++    const declared = new Set((doc.services ?? []).map((s) => s.compose?.project).filter(Boolean));
++    for (const p of projects) if (!declared.has(p.name) && !(doc.services ?? []).some((s) => s.compose?.project === null)) drift.push(`compose: project \`${p.name}\` is declared by no service`);
++    for (const p of declared) if (!projects.some((x) => x.name === p)) drift.push(`compose: project \`${p}\` is declared and \`docker compose ls\` does not list it`);
++  }
++
++  // volumes (named ones; a bind path is not a docker volume)
++  const vols = read('volumes', parseVolumes);
++  if (vols) {
++    names.volumes = vols;
++    const declared = (doc.volumes ?? []).filter((v) => v.kind === 'named').map((v) => v.name);
++    const matches = (obs, dec) => obs === dec || obs.endsWith(`_${dec}`);
++    for (const v of vols) if (!declared.some((d) => matches(v, d))) drift.push(`volumes: docker volume \`${v}\` is declared nowhere`);
++    for (const d of declared) if (!vols.some((v) => matches(v, d))) drift.push(`volumes: \`${d}\` is declared and does not exist`);
++  }
++
++  // crons and their timezone (shell-25: as read, never as assumed)
++  const cron = read('crontab', parseCrontab);
++  const tz = read('timezone', (t) => String(t).trim() || (() => { throw new Error('empty answer'); })());
++  if (cron) {
++    names.crons = cron.jobs.map((j) => `${j.schedule} ${(/\S*\/[\w.-]+\.(?:sh|py|mjs|js)\b/.exec(j.command) ?? [j.command.split(/\s+/)[0]])[0]}`);
++    const used = new Set();
++    for (const c of doc.crons ?? []) {
++      const hits = cron.jobs.filter((j) => j.command.includes(c.script));
++      hits.forEach((h) => used.add(h));
++      if (!hits.length) { drift.push(`crons: \`${c.name}\` (${c.script}) is declared and is not in the crontab`); continue; }
++      if (c.schedule === null) lost.push(`crons: \`${c.name}\` schedule is UNREAD (crontab: ${hits.map((h) => h.schedule).join(', ')})`);
++      else if (!hits.some((h) => h.schedule === c.schedule)) drift.push(`crons: \`${c.name}\` declares \`${c.schedule}\` and the crontab runs \`${hits.map((h) => h.schedule).join(', ')}\``);
++      else ok.push(`crons: ${c.name} ${c.schedule}`);
++    }
++    for (const j of cron.jobs) if (!used.has(j)) drift.push(`crons: \`${names.crons[cron.jobs.indexOf(j)]}\` is in the crontab and declared by no cron`);
++  }
++  if (cron || tz) {
++    const effective = cron?.tz ?? tz;
++    names.cronTz = effective;
++    if (effective && doc.cronTz?.value === null) lost.push(`cronTz: UNREAD in the declaration (the box reads ${effective})`);
++    else if (effective && effective !== doc.cronTz?.value) drift.push(`cronTz: declared ${doc.cronTz?.value} and the box's cron runs ${effective}`);
++    else if (effective) ok.push(`cronTz: ${effective}`);
++  }
++
++  // systemd (names)
++  const units = read('systemd', parseSystemdUnits);
++  if (units) {
++    names.units = units;
++    for (const u of units) if (!(doc.units ?? []).includes(u)) drift.push(`units: \`${u}\` is running and declared nowhere`);
++    for (const u of doc.units ?? []) if (!units.includes(u)) drift.push(`units: \`${u}\` is declared and not running`);
++  }
++
++  // spec
++  const haveSpec = ['nproc', 'mem', 'disk'].every((k) => observed[k] !== undefined && observed[k] !== null);
++  if (!haveSpec) lost.push('spec: nproc, free -b or df was not read');
++  else {
++    try {
++      const s = parseSpec(observed);
++      names.spec = s;
++      for (const [k, tol] of [['cpu', 1], ['ramGiB', SPEC_TOLERANCE], ['diskGiB', SPEC_TOLERANCE]]) {
++        const d = doc.spec?.[k];
++        if (d === null || d === undefined) lost.push(`spec.${k}: UNREAD in the declaration (the box reads ${s[k]})`);
++        else if (s[k] < d * tol || s[k] > d * 1.05) drift.push(`spec.${k}: declared ${d}, the box reads ${s[k]}`);
++      }
++    } catch (e) { lost.push(`spec: ${e.message}`); }
++  }
++
++  // measured use, per declared service: the input for its `use` (informational, never a finding)
++  if (observed.stats !== undefined && observed.stats !== null && containers) {
++    try {
++      const stats = parseStats(observed.stats);
++      const use = {};
++      for (const s of doc.services ?? []) {
++        const mine = containers.filter((c) => c.repo === s.image && (s.compose?.project === null || s.compose?.project === c.project));
++        const rows = stats.filter((x) => mine.some((c) => c.name === x.name));
++        if (rows.length) use[s.id] = { cpu: round1(rows.reduce((a, r) => a + r.cpuPct, 0) / 100), ramGiB: round1(rows.reduce((a, r) => a + r.memMiB, 0) / 1024) };
++      }
++      names.measuredUse = use;
++    } catch (e) { names.measuredUse = `unreadable: ${e.message}`; }
++  }
++
++  // restic repositories that live on this box: counts and the newest timestamp only
++  for (const set of (backups?.sets ?? []).filter((s) => s.readBack && (doc.backupSets ?? []).includes(s.id))) {
++    const dest = (backups.destinations ?? []).find((d) => d.id === set.readBack.destination);
++    if (dest?.box !== doc.box) continue;
++    if (!set.readBack.passwordFile) { lost.push(`restic: set \`${set.id}\` declares no readBack.passwordFile, so its snapshots cannot be listed`); continue; }
++    const raw = observed.restic?.[set.id];
++    if (raw === undefined || raw === null) { lost.push(`restic: set \`${set.id}\` was not read`); continue; }
++    try {
++      const r = parseResticSnapshots(raw);
++      names[`restic:${set.id}`] = r;
++      if (r.count === 0) drift.push(`restic: set \`${set.id}\` holds no snapshot`);
++      else ok.push(`restic: ${set.id} ${r.count} snapshot(s), newest ${r.newest}`);
++    } catch (e) { lost.push(`restic: set \`${set.id}\`: ${e.message}`); }
++  }
++  return { drift, lost, ok, names };
++}
+diff --git a/tooling/ops/box-move.mjs b/tooling/ops/box-move.mjs
+new file mode 100644
+index 00000000..7be53001
+--- /dev/null
++++ b/tooling/ops/box-move.mjs
+@@ -0,0 +1,223 @@
++#!/usr/bin/env node
++// ─────────────────────────────────────────────────────────────────────────────
++// box-move.mjs — the graded, READ-ONLY dry run of moving a box to another host.
++// Phase 3 of the switch playbook (tooling/ports/README.md §4) for the `boxes`
++// port: a host change turned into a LIST, so a renewal price that roughly
++// doubles is a decision, not a crisis.
++//
++//   node tooling/ops/box-move.mjs --from <box> --to <spec.json> --dry-run
++//        [--private <dir>] [--root <repoRoot>]
++//
++//   --from     a declared box (tooling/boxes/<box>.json).
++//   --to       the target's spec, a JSON file the operator writes:
++//              {"name", "provider": {"vendor", "plan"}, "cpu", "ramGiB",
++//               "diskGiB", "cost": {"monthlyUsd"} | null}
++//   --dry-run  REQUIRED. This never moves anything; without it, it refuses.
++//   --private  the Private checkout, for the cost (default: the sibling
++//              ../Nikatru_Platform_Private, or $NIKATRU_PRIVATE_DIR).
++//
++// One line per check, `PASS | FAIL | LOST  C<n> <name>: <detail>`, after ONE
++// first line naming the check that decides the exit (port-switch.mjs's shape):
++//   C1 capacity    the declared services' measured `use` × HEADROOM fits the
++//                  target (FAIL when it does not). With a service's use
++//                  unmeasured: PASS when the target is at least the source's
++//                  declared shape (what runs today fits by construction), else
++//                  LOST. Use is recorded from check-box-declared --print-observed.
++//   C2 dns         the records to move: a tunnel CNAME does not change (the
++//                  connector moves, with its secret NAME); an A/AAAA record is
++//                  repointed to the target's declared address.
++//   C3 allow-lists every IP allow-list that pins the box's address (the address
++//                  cannot move, so every allow-list moves with the box). FAIL for
++//                  each one the OWNER holds — an owner step; an operator's is listed.
++//   C4 backups     the sets to restore first, each with its drill command; a set
++//                  without a drill is FAIL, a drill whose file or hash is UNREAD
++//                  is LOST.
++//   C5 monitors    the monitors to repoint, by id (cited, never restated).
++//   C6 secrets     the secrets the services need — NAMES only, from the vault.
++//   C7 cost        the monthly delta when Private platform-state/identity.json
++//                  is readable (by the declaration's vendorId); else LOST (CI
++//                  cannot read Private).
++// Exit 1 on any FAIL, 2 on any LOST (or a refusal), 0 only when every check
++// passes. It reads files and nothing else: no network, no box, no credential.
++// ─────────────────────────────────────────────────────────────────────────────
++import { existsSync, readFileSync } from 'node:fs';
++import { dirname, join, resolve } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { validateAll, readCited, ROLES_REL } from './box-declaration.mjs';
++
++/** The target must hold the measured use with this much to spare. */
++export const HEADROOM = 1.25;
++export const IDENTITY_REL = 'platform-state/identity.json';
++export const PHASES = Object.freeze([
++  'decide (an ADR names the target, the reason and the cost delta)',
++  'build (the target box, its declaration tooling/boxes/<box>.json, read back green)',
++  'dry run (this command, exit 0 or every FAIL an owner step already taken)',
++  'dual run: the new box serves, the old stays standby for 7 days',
++  'cutover (tooling/boxes/roles.json names the new box; DNS or the tunnel moves)',
++  'retire (the old box: its secrets revoked, its allow-list entries removed, its declaration deleted)',
++]);
++
++export function parseArgs(argv) {
++  const out = { from: null, to: null, private: null, root: null, dryRun: false };
++  for (let i = 0; i < argv.length; i++) {
++    const a = argv[i];
++    if (a === '--dry-run') { out.dryRun = true; continue; }
++    if (['--from', '--to', '--private', '--root'].includes(a)) {
++      const v = argv[i + 1];
++      if (v === undefined) return { error: `${a} needs a value` };
++      if (v.startsWith('--')) return { error: `${a} was given ${JSON.stringify(v)}, which is a flag, not a value` };
++      out[a.slice(2)] = v;
++      i++;
++      continue;
++    }
++    return { error: `unexpected argument ${JSON.stringify(a)}` };
++  }
++  if (!out.from || !out.to) return { error: '--from <box> and --to <spec.json> are both required' };
++  if (!out.dryRun) return { error: 'refused without --dry-run: this tool never moves a box, and it says so by refusing to run as if it might' };
++  return out;
++}
++
++/** The target spec, or {error}. */
++export function readTarget(path) {
++  let t;
++  try { t = JSON.parse(readFileSync(path, 'utf8')); } catch (e) { return { error: `the target spec ${path} could not be read (${e.message})` }; }
++  for (const k of ['cpu', 'ramGiB', 'diskGiB']) if (!(typeof t?.[k] === 'number' && t[k] > 0)) return { error: `the target spec needs a positive \`${k}\`` };
++  if (typeof t?.name !== 'string' || !t.name) return { error: 'the target spec needs a `name`' };
++  return { target: t };
++}
++
++const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
++
++/** A monthly figure for `vendorId` in Private identity.json: {usd, path} or {lost}. Values are read, never written anywhere. */
++export function monthlyCostFor(identity, vendorId) {
++  const entries = [];
++  const visit = (v, path, inVendor) => {
++    if (Array.isArray(v)) v.forEach((x, i) => visit(x, `${path}[${i}]`, inVendor || (isObj(x) && (x.id === vendorId || x.vendor === vendorId))));
++    else if (isObj(v)) for (const [k, x] of Object.entries(v)) visit(x, `${path}.${k}`, inVendor || k === vendorId);
++    else if (inVendor && typeof v === 'number') entries.push({ path, value: v });
++  };
++  visit(identity, '$', false);
++  const pick = (re) => entries.find((e) => re.test(e.path) && /usd/i.test(e.path) && !/renew/i.test(e.path));
++  const hit = pick(/month/i);
++  if (!hit) return { lost: `no monthly USD figure under vendor \`${vendorId}\` (read ${entries.length} numeric field(s))` };
++  const renewal = entries.find((e) => /renew/i.test(e.path) && /month/i.test(e.path) && /usd/i.test(e.path));
++  return { usd: hit.value, path: hit.path, renewalUsd: renewal?.value ?? null };
++}
++
++export function run(opts) {
++  const root = resolve(opts.root ?? process.cwd());
++  const checks = [];
++  const add = (n, name, verdict, detail, lines = []) => checks.push({ n, name, verdict, detail, lines });
++  const v = validateAll(root);
++  if (v.errors.length) return { code: 2, out: [`box-move: LOST — the declarations do not validate: ${v.errors[0]}`] };
++  const doc = v.boxes.get(opts.from);
++  if (!doc) return { code: 2, out: [`box-move: REFUSED — no declaration tooling/boxes/${opts.from}.json (declared: ${[...v.boxes.keys()].join(', ')})`] };
++  const t = readTarget(resolve(opts.to));
++  if (t.error) return { code: 2, out: [`box-move: REFUSED — ${t.error}`] };
++  const target = t.target;
++  const cited = readCited(root);
++
++  // C1 capacity
++  const svcs = doc.services ?? [];
++  const unmeasured = svcs.filter((s) => s.use === null).map((s) => s.id);
++  const sum = { cpu: 0, ramGiB: 0, diskGiB: 0 };
++  for (const s of svcs) if (s.use) for (const k of Object.keys(sum)) sum[k] += s.use[k];
++  const short = Object.keys(sum).filter((k) => sum[k] * HEADROOM > target[k]);
++  const fmt = (o) => `${o.cpu} CPU, ${o.ramGiB} GiB RAM, ${o.diskGiB} GiB disk`;
++  if (short.length) add(1, 'capacity', 'FAIL', `the measured use of ${svcs.length - unmeasured.length} declared service(s) is ${fmt(sum)}; ×${HEADROOM} it does not fit the target ${target.name} (${fmt(target)}) in ${short.join(', ')}`);
++  else if (!svcs.length) add(1, 'capacity', 'PASS', `${doc.box} declares no service: nothing to fit`);
++  else if (unmeasured.length) {
++    const src = doc.spec ?? {};
++    const atLeast = ['cpu', 'ramGiB', 'diskGiB'].every((k) => typeof src[k] === 'number' && target[k] >= src[k]);
++    if (atLeast) add(1, 'capacity', 'PASS', `${unmeasured.length} service(s) unmeasured, and the target (${fmt(target)}) is at least ${doc.box}'s declared shape (${fmt(src)}): what runs today fits by construction`);
++    else add(1, 'capacity', 'LOST', `${unmeasured.length} service(s) have no measured use (${unmeasured.join(', ')}) and the target is smaller than ${doc.box}'s declared shape: record \`use\` from check-box-declared --print-observed`);
++  } else add(1, 'capacity', 'PASS', `measured ${fmt(sum)} ×${HEADROOM} fits ${fmt(target)}`);
++
++  // C2 dns
++  const dns = (doc.hostnames ?? []).map((h) => (h.record === 'tunnel-cname'
++    ? `${h.name}: no record change — start the tunnel connector on ${target.name} with secret ${doc.tunnel?.secret}, stop the old connector after the dual run`
++    : `${h.name}: repoint the ${h.record} record to ${target.name}'s declared address`));
++  add(2, 'dns', 'PASS', dns.length ? `${dns.length} record(s) to move` : `${doc.box} serves no hostname`, dns);
++
++  // C3 allow-lists
++  const lists = doc.allowLists ?? [];
++  const ownerSteps = lists.filter((a) => a.owner === 'owner');
++  const lines3 = lists.map((a) => `${a.owner === 'owner' ? 'OWNER STEP' : 'operator'}: ${a.id} — ${a.where}${a.row ? ` (${a.row})` : ''}; verify: ${a.verify}`);
++  if (ownerSteps.length) add(3, 'allow-lists', 'FAIL', `${lists.length} allow-list(s) pin ${doc.box}'s address; ${ownerSteps.length} is the owner's to update (${ownerSteps.map((a) => a.id).join(', ')})`, lines3);
++  else add(3, 'allow-lists', 'PASS', lists.length ? `${lists.length} allow-list(s) pin ${doc.box}'s address, each the operator's: update with the move` : `no allow-list pins ${doc.box}'s address`, lines3);
++
++  // C4 backups
++  const dests = new Map((v.backups.destinations ?? []).map((d) => [d.id, d]));
++  const sets = (v.backups.sets ?? []).filter((s) => s.box === doc.box || (doc.backupSets ?? []).includes(s.id) || s.destinations.some((d) => dests.get(d)?.box === doc.box));
++  const noDrill = sets.filter((s) => !s.drill);
++  const unread = sets.filter((s) => s.drill && (!s.drill.file || !s.drill.hash));
++  const lines4 = sets.map((s) => `${s.id} (from ${s.drill?.from ?? 'nowhere'}): node tooling/ops/restore-drill.mjs ${s.id} --to <scratch dir>${s.drill && (!s.drill.file || !s.drill.hash) ? '   ⬜ drill UNREAD: name its file and hash source in tooling/boxes/backups.json' : ''}`);
++  if (noDrill.length) add(4, 'backups', 'FAIL', `${noDrill.length} set(s) have no drill: ${noDrill.map((s) => s.id).join(', ')}`, lines4);
++  else if (unread.length) add(4, 'backups', 'LOST', `${sets.length} set(s) to restore first; ${unread.length} drill(s) cannot run yet (${unread.map((s) => s.id).join(', ')})`, lines4);
++  else add(4, 'backups', 'PASS', sets.length ? `${sets.length} set(s) to restore first, each with a drill` : `${doc.box} holds no backup set`, lines4);
++
++  // C5 monitors
++  const missing = (doc.monitors ?? []).filter((m) => !cited.monitors.has(m));
++  const lines5 = (doc.monitors ?? []).map((m) => `monitor ${m}: ${cited.monitors.get(m) ?? 'NOT IN THE REGISTERS'}`);
++  if (missing.length) add(5, 'monitors', 'FAIL', `monitor(s) ${missing.join(', ')} are cited and no longer in the registers`, lines5);
++  else add(5, 'monitors', 'PASS', `${lines5.length} monitor(s) to repoint or re-home`, lines5);
++
++  // C6 secrets
++  const names = new Set();
++  for (const s of svcs) for (const n of s.secrets ?? []) names.add(n);
++  if (doc.tunnel?.secret) names.add(doc.tunnel.secret);
++  for (const s of sets) for (const d of s.destinations) for (const e of dests.get(d)?.box === doc.box ? dests.get(d).env ?? [] : []) for (const n of [e].flat()) names.add(n);
++  add(6, 'secrets', 'PASS', names.size ? `${names.size} secret NAME(s) to carry from the vault: ${[...names].sort().join(', ')}` : 'no secret declared');
++
++  // C7 cost
++  const privDir = opts.private ?? process.env.NIKATRU_PRIVATE_DIR ?? join(dirname(root), 'Nikatru_Platform_Private');
++  const idPath = join(privDir, IDENTITY_REL);
++  if (!existsSync(idPath)) add(7, 'cost', 'LOST', `Private ${IDENTITY_REL} is not readable here (CI cannot read Private): the delta is not known`);
++  else {
++    let identity;
++    try { identity = JSON.parse(readFileSync(idPath, 'utf8')); } catch (e) { identity = null; add(7, 'cost', 'LOST', `Private ${IDENTITY_REL} could not be parsed (${e.message})`); }
++    if (identity) {
++      const from = monthlyCostFor(identity, doc.cost.vendorId);
++      const to = typeof target.cost?.monthlyUsd === 'number' ? { usd: target.cost.monthlyUsd } : target.provider?.vendor ? monthlyCostFor(identity, target.provider.vendor) : { lost: 'the target spec carries no cost.monthlyUsd and no provider.vendor' };
++      if (from.lost || to.lost) add(7, 'cost', 'LOST', from.lost ?? to.lost);
++      else {
++        const delta = Math.round((to.usd - from.usd) * 100) / 100;
++        add(7, 'cost', 'PASS', `monthly ${from.usd} → ${to.usd} USD (delta ${delta >= 0 ? '+' : ''}${delta})${from.renewalUsd !== null ? `; ${doc.box} renews at ${from.renewalUsd}` : ''}`);
++      }
++    }
++  }
++
++  const roles = Object.entries(v.roles?.roles ?? {}).filter(([, r]) => r.box === doc.box).map(([k]) => k);
++  const fail = checks.find((c) => c.verdict === 'FAIL');
++  const lost = checks.find((c) => c.verdict === 'LOST');
++  const decider = fail ?? lost;
++  const code = fail ? 1 : lost ? 2 : 0;
++  const out = [decider
++    ? `box-move: ${decider.verdict} — C${decider.n} ${decider.name}: ${decider.detail}`
++    : `box-move: PASS — all ${checks.length} checks pass for ${doc.box} → ${target.name} (dry run; nothing was moved)`];
++  out.push(`roles carried: ${roles.join(', ') || 'none'} (${ROLES_REL} names ${target.name} at cutover)`);
++  for (const c of checks) {
++    out.push(`${c.verdict.padEnd(4)}  C${c.n} ${c.name}: ${c.detail}`);
++    for (const l of c.lines) out.push(`        · ${l}`);
++  }
++  out.push('phases (Private runbooks/switch-vendor.md#boxes):');
++  PHASES.forEach((p, i) => out.push(`  ${i + 1}. ${p}`));
++  return { code, out };
++}
++
++function main() {
++  const opts = parseArgs(process.argv.slice(2));
++  if (opts.error) {
++    console.error(`box-move: REFUSED — ${opts.error}`);
++    console.error('usage: node tooling/ops/box-move.mjs --from <box> --to <spec.json> --dry-run [--private <dir>] [--root <dir>]');
++    process.exit(2);
++  }
++  const { code, out } = run(opts);
++  for (const l of out) (code ? console.error : console.log)(l);
++  process.exit(code);
++}
++
++const IS_MAIN = (() => {
++  try { return resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url); } catch { return false; }
++})();
++if (IS_MAIN) main();
+diff --git a/tooling/ops/check-box-declared.mjs b/tooling/ops/check-box-declared.mjs
+new file mode 100644
+index 00000000..74c6635e
+--- /dev/null
++++ b/tooling/ops/check-box-declared.mjs
+@@ -0,0 +1,158 @@
++#!/usr/bin/env node
++// ─────────────────────────────────────────────────────────────────────────────
++// check-box-declared.mjs — READ ONE BOX BACK AGAINST ITS DECLARATION.
++//
++//   node tooling/ops/check-box-declared.mjs <box> [--observed <file.json>]
++//        [--print-observed] [--root <repoRoot>]
++//
++// Rows O-BOXES-NOT-DECLARED-AS-DATA and O-BOXA-TRACKED-COPIES-UNGUARDED. The
++// declaration is tooling/boxes/<box>.json (read through
++// tooling/ops/box-declaration.mjs, the one reading of it); this reads the box
++// and diffs the two: every running container is a declared service at its
++// declared version, every compose project and named volume is declared, the
++// crontab holds exactly the declared jobs at their schedules, the cron timezone
++// is the one declared (trap shell-25: AS READ, never as assumed), every running
++// systemd service is declared, the shape is the declared plan's, and every
++// restic repository that lives on the box answers a snapshot count and its
++// newest timestamp.
++//
++// 🔴 READ-ONLY, AND HELD TO IT IN CODE. The commands are READ_ONLY_COMMANDS in
++// box-declaration.mjs and nothing else; `assertReadOnly` refuses any write verb
++// before ssh is spawned (no restart, no kill — trap shell-19 — no backup run,
++// no config edit), and restic runs with --no-lock, because a lock is a write.
++// Each ssh call has its own ConnectTimeout and a process timeout.
++//
++// HOW IT REACHES THE BOX. The argv is built from PARTS (trap shell-23: the
++// vault's ORACLE_SSH_COMMAND is a Windows command line and breaks the key path
++// when pasted): the environment names in the declaration's `ssh` block —
++// <BOX>_SSH_HOST, _USER (default root), _KEY (a key PATH), _PORT (default 22),
++// _SUDO (1 prefixes `sudo -n`). The address is never printed, and neither is
++// anything the box answers beyond names, versions, schedules and counts.
++//
++// --observed <file>  read the box's answers from a JSON file instead of ssh:
++//                    {composeLs, dockerPs, volumes, crontab, timezone, systemd,
++//                    nproc, mem, disk, restic: {<set>: raw}} — the raw text each
++//                    command prints. The fixtures in test/boxes.test.mjs use it.
++// --print-observed   also print what was read as JSON, names only: the input
++//                    for completing a declaration's UNREAD fields.
++//
++// Exit 0 the box matches its declaration · 1 DRIFT (a finding) · 2 COVERAGE LOST:
++// the box was unreachable, a command failed, an answer did not parse, or the
++// declaration holds an UNREAD field. The first line names the deciding finding.
++// ─────────────────────────────────────────────────────────────────────────────
++import { existsSync, readFileSync } from 'node:fs';
++import { resolve } from 'node:path';
++import { spawnSync } from 'node:child_process';
++import { fileURLToPath } from 'node:url';
++import { READ_ONLY_COMMANDS, assertReadOnly, resticSnapshotsCommand, validateAll, diffDeclared } from './box-declaration.mjs';
++
++export const SSH_CONNECT_TIMEOUT_S = 15;
++export const CALL_TIMEOUT_MS = 60_000;
++
++export function parseArgs(argv) {
++  const out = { box: null, observed: null, printObserved: false, root: null };
++  const pos = [];
++  for (let i = 0; i < argv.length; i++) {
++    const a = argv[i];
++    if (a === '--print-observed') { out.printObserved = true; continue; }
++    if (a === '--observed' || a === '--root') {
++      const v = argv[i + 1];
++      if (v === undefined || v.startsWith('--')) return { error: `${a} needs a value` };
++      out[a.slice(2)] = v;
++      i++;
++      continue;
++    }
++    if (a.startsWith('-')) return { error: `unknown flag ${a}` };
++    pos.push(a);
++  }
++  if (pos.length !== 1) return { error: `expected exactly one <box>, got ${pos.length}` };
++  out.box = pos[0];
++  return out;
++}
++
++/** The ssh argv for one read, from the declaration's environment NAMES. Null when the host is unset. */
++export function sshArgv(doc, cmd, env = process.env) {
++  assertReadOnly(cmd);
++  const host = env[doc.ssh.hostEnv];
++  if (!host) return null;
++  const user = env[doc.ssh.userEnv] || 'root';
++  const port = env[doc.ssh.portEnv] || '22';
++  const key = env[doc.ssh.keyEnv];
++  const argv = ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${SSH_CONNECT_TIMEOUT_S}`, '-o', 'StrictHostKeyChecking=accept-new', '-p', port];
++  if (key) argv.push('-i', key, '-o', 'IdentitiesOnly=yes');
++  argv.push(`${user}@${host}`, '--', env[doc.ssh.sudoEnv] === '1' ? `sudo -n ${cmd}` : cmd);
++  return argv;
++}
++
++/** The adapter: read every command over ssh. {observed, unreachable} — never throws. */
++export function readBoxOverSsh(doc, backups, { env = process.env, spawn = spawnSync } = {}) {
++  const observed = { restic: {} };
++  const cmds = Object.entries(READ_ONLY_COMMANDS);
++  for (const set of (backups?.sets ?? []).filter((s) => s.readBack?.passwordFile && (doc.backupSets ?? []).includes(s.id))) {
++    const dest = (backups.destinations ?? []).find((d) => d.id === set.readBack.destination);
++    if (dest?.box === doc.box) cmds.push([`restic:${set.id}`, resticSnapshotsCommand(dest.repo, set.readBack.passwordFile)]);
++  }
++  for (const [key, cmd] of cmds) {
++    const argv = sshArgv(doc, cmd, env);
++    if (!argv) return { observed, unreachable: `${doc.ssh.hostEnv} is not set; fill it from the vault (the address is never printed)` };
++    const r = spawn('ssh', argv, { encoding: 'utf8', timeout: CALL_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'pipe'] });
++    if (r.error || r.status === 255 || r.signal) return { observed, unreachable: `ssh to ${doc.box} failed on \`${key}\` (${r.error?.code ?? r.signal ?? `exit ${r.status}`})` };
++    const nocron = key === 'crontab' && r.status === 1 && /no crontab for/.test(r.stderr ?? '');
++    if (r.status !== 0 && !nocron) continue; // absent → LOST in the diff, named by key
++    if (key.startsWith('restic:')) observed.restic[key.slice('restic:'.length)] = r.stdout;
++    else observed[key] = nocron ? '' : r.stdout;
++  }
++  return { observed, unreachable: null };
++}
++
++export function run(opts, { env = process.env, spawn = spawnSync } = {}) {
++  const root = resolve(opts.root ?? process.cwd());
++  const v = validateAll(root);
++  const out = [];
++  if (v.errors.length) {
++    out.push(`check-box-declared: ${v.lost ? 'LOST' : 'FAILED'} — the declarations do not validate: ${v.errors[0]}`);
++    for (const e of v.errors) out.push(`  ${e}`);
++    return { code: v.lost ? 2 : 1, out };
++  }
++  const doc = v.boxes.get(opts.box);
++  if (!doc) return { code: 2, out: [`check-box-declared: REFUSED — no declaration tooling/boxes/${opts.box}.json (declared: ${[...v.boxes.keys()].join(', ')})`] };
++
++  let observed;
++  if (opts.observed) {
++    try { observed = JSON.parse(readFileSync(resolve(opts.observed), 'utf8')); } catch (e) {
++      return { code: 2, out: [`check-box-declared: LOST — --observed ${opts.observed} could not be read (${e.message})`] };
++    }
++  } else {
++    const r = readBoxOverSsh(doc, v.backups, { env, spawn });
++    if (r.unreachable) return { code: 2, out: [`check-box-declared: LOST — ${doc.box} unreachable: ${r.unreachable}`] };
++    observed = r.observed;
++  }
++  const d = diffDeclared(doc, observed, v.backups);
++  const code = d.drift.length ? 1 : d.lost.length ? 2 : 0;
++  if (d.drift.length) out.push(`check-box-declared: DRIFT — ${doc.box}: ${d.drift[0]}`);
++  else if (d.lost.length) out.push(`check-box-declared: LOST — ${doc.box}: ${d.lost[0]}`);
++  else out.push(`check-box-declared: ok — ${doc.box} runs what it declares (${d.ok.length} check(s) matched; read-only)`);
++  for (const x of d.drift) out.push(`DRIFT ${x}`);
++  for (const x of d.lost) out.push(`LOST  ${x}`);
++  for (const x of d.ok) out.push(`ok    ${x}`);
++  if (opts.printObserved) out.push('', JSON.stringify({ box: doc.box, observed: d.names }, null, 2));
++  return { code, out };
++}
++
++function main() {
++  const opts = parseArgs(process.argv.slice(2));
++  if (opts.error) {
++    console.error(`check-box-declared: REFUSED — ${opts.error}`);
++    console.error('usage: node tooling/ops/check-box-declared.mjs <box> [--observed <file.json>] [--print-observed] [--root <dir>]');
++    process.exit(2);
++  }
++  if (opts.root && !existsSync(opts.root)) { console.error(`check-box-declared: REFUSED — --root ${opts.root} does not exist`); process.exit(2); }
++  const { code, out } = run(opts);
++  for (const l of out) (code ? console.error : console.log)(l);
++  process.exit(code);
++}
++
++const IS_MAIN = (() => {
++  try { return resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url); } catch { return false; }
++})();
++if (IS_MAIN) main();
+diff --git a/tooling/ops/restore-drill.mjs b/tooling/ops/restore-drill.mjs
+new file mode 100644
+index 00000000..14a54856
+--- /dev/null
++++ b/tooling/ops/restore-drill.mjs
+@@ -0,0 +1,235 @@
++#!/usr/bin/env node
++// ─────────────────────────────────────────────────────────────────────────────
++// restore-drill.mjs — ONE NAMED SMALL FILE BACK FROM THE NEWEST SNAPSHOT of a
++// backup set, verified against the hash its SOURCE recorded, then deleted.
++//
++//   node tooling/ops/restore-drill.mjs <set> --to <scratch dir> [--file <path>]
++//        [--restic-bin <path>] [--rclone-bin <path>] [--root <repoRoot>]
++//
++// Row O-BOXES-NOT-DECLARED-AS-DATA. The sets, their destinations and each
++// set's drill are tooling/boxes/backups.json (read through
++// tooling/ops/box-declaration.mjs). A backup nobody restores is a hope; this is
++// the smallest restore that proves the newest copy is readable AND is the
++// bytes the source had.
++//
++// WHERE THE HASH COMES FROM (`drill.hash`), never from the copy being tested:
++//   restic-tree  restic's own tree records a small file's content as ONE blob
++//                whose id IS the SHA-256 of its plaintext, written at backup
++//                time. A file of more than one chunk is LOST (pick a smaller one).
++//   manifest     the export's manifest records every object's SHA-256
++//                (services/platform/src/backup/index.ts writes it).
++//   recorded     `drill.sha256` in backups.json, measured at the source.
++//
++// 🔴 READ-ONLY toward the repository and the box's live data. Restic runs with
++// --no-lock (a lock is a write) and --no-cache (a cached tree answered for a
++// corrupted repository, measured 2026-10-01); rclone only lists, cats and
++// copies OUT. Nothing
++// is ever read from a box: a `box-dir` destination is refused, because the
++// drill would then be reading the very disk a move is leaving. Trap backup-06:
++// the drill reads and never runs a backup. Trap backup-05: `rclone lsf` lists
++// subdirectories too, so a dated directory is PARSED by name, never inferred
++// from a non-empty answer.
++//
++// THE SCRATCH COPY: restored into a fresh directory under --to, hashed, then
++// deleted with that directory; the deletion is checked.
++//
++// Credentials: the destination's `env` NAMES (a list inside a list is "one of").
++// An unset name, or a `<NAME>` placeholder whose variable is unset, is LOST;
++// every value is redacted from anything printed.
++//
++// Exit 0 PASS · 1 FAIL (no snapshot, a restore that errors — a corrupted object —,
++// an empty file, a hash that differs, a scratch copy that would not delete) ·
++// 2 LOST (an unknown set, an UNREAD drill, a missing tool or credential, a
++// repository that could not be listed). The first line names the verdict.
++// ─────────────────────────────────────────────────────────────────────────────
++import { createHash } from 'node:crypto';
++import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
++import { basename, join, posix, resolve } from 'node:path';
++import { spawnSync } from 'node:child_process';
++import { fileURLToPath } from 'node:url';
++import { validateAll } from './box-declaration.mjs';
++
++export const CALL_TIMEOUT_MS = 300_000;
++const DATED_DIR = /^(\d{4}-\d{2}-\d{2})\/$/;
++
++export function parseArgs(argv) {
++  const out = { set: null, to: null, file: null, root: null, resticBin: 'restic', rcloneBin: 'rclone' };
++  const pos = [];
++  const flags = { '--to': 'to', '--file': 'file', '--root': 'root', '--restic-bin': 'resticBin', '--rclone-bin': 'rcloneBin' };
++  for (let i = 0; i < argv.length; i++) {
++    const a = argv[i];
++    if (flags[a]) {
++      const v = argv[i + 1];
++      if (v === undefined || v.startsWith('--')) return { error: `${a} needs a value` };
++      out[flags[a]] = v;
++      i++;
++      continue;
++    }
++    if (a.startsWith('-')) return { error: `unknown flag ${a}` };
++    pos.push(a);
++  }
++  if (pos.length !== 1) return { error: `expected exactly one <set>, got ${pos.length}` };
++  if (!out.to) return { error: '--to <scratch dir> is required' };
++  out.set = pos[0];
++  return out;
++}
++
++const sha256 = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
++
++/** Resolve `<NAME>` placeholders from env; {value} or {missing: [...]}. */
++export function fill(template, env) {
++  const missing = [];
++  const value = String(template).replace(/<([A-Z][A-Z0-9_]*)>/g, (_, n) => { if (!env[n]) missing.push(n); return env[n] ?? ''; });
++  return missing.length ? { missing } : { value };
++}
++
++/** The env NAMES a destination needs that are unset (a nested list is one-of). */
++export function missingEnv(names, env) {
++  return (names ?? []).filter((n) => (Array.isArray(n) ? !n.some((x) => env[x]) : !env[n])).map((n) => (Array.isArray(n) ? n.join(' | ') : n));
++}
++
++export function run(opts, { env = process.env, spawn = spawnSync } = {}) {
++  const root = resolve(opts.root ?? process.cwd());
++  const v = validateAll(root);
++  const finish = (code, verdict, detail, lines = []) => ({ code, out: [`restore-drill: ${verdict} — ${opts.set}: ${detail}`, ...lines] });
++  if (v.errors.length) return finish(2, 'LOST', `the declarations do not validate: ${v.errors[0]}`);
++  const set = (v.backups.sets ?? []).find((s) => s.id === opts.set);
++  if (!set) return finish(2, 'LOST', `no set \`${opts.set}\` in tooling/boxes/backups.json (sets: ${(v.backups.sets ?? []).map((s) => s.id).join(', ')})`);
++  const dest = (v.backups.destinations ?? []).find((d) => d.id === set.drill.from);
++  const file = opts.file ?? set.drill.file;
++  if (!file) return finish(2, 'LOST', `the drill names no file: name ONE small file of the set in backups.json (or pass --file)`);
++  if (!set.drill.hash) return finish(2, 'LOST', 'the drill names no hash source (restic-tree | manifest | recorded): a restore with nothing to compare to proves only that bytes came back');
++  if (dest.kind === 'box-dir') return finish(2, 'LOST', `drills from \`${dest.id}\`, a directory ON a box; the drill never reads live data on a box — drill from an off-box destination`);
++  const unset = missingEnv(dest.env, env);
++  if (unset.length) return finish(2, 'LOST', `the destination \`${dest.id}\` needs ${unset.join(', ')} in the environment (from the vault)`);
++
++  // every value a printed line could carry is redacted to its NAME
++  const secretVals = [];
++  for (const n of (dest.env ?? []).flat()) if (env[n] && env[n].length >= 4) secretVals.push([env[n], `<${n}>`]);
++  for (const m of JSON.stringify(dest).matchAll(/<([A-Z][A-Z0-9_]*)>/g)) if (env[m[1]] && env[m[1]].length >= 4) secretVals.push([env[m[1]], `<${m[1]}>`]);
++  const redact = (s) => secretVals.reduce((acc, [val, name]) => acc.split(val).join(name), String(s ?? ''));
++  const firstLine = (r) => redact(`${r.stderr ?? ''}${r.stdout ?? ''}`.trim().split('\n').find((l) => l.trim()) ?? `exit ${r.status}`).slice(0, 200);
++  const call = (bin, args) => spawn(bin, args, { encoding: 'utf8', timeout: CALL_TIMEOUT_MS, env, stdio: ['ignore', 'pipe', 'pipe'] });
++  const toolMissing = (r, bin) => r.error?.code === 'ENOENT' ? `${bin} is not installed here (--${bin.includes('restic') ? 'restic' : 'rclone'}-bin)` : r.error ? `${bin} did not run (${r.error.code ?? r.error.message})` : null;
++
++  // the scratch directory: fresh, under --to, removed at the end whatever happened
++  const scratchRoot = resolve(opts.to);
++  if (scratchRoot === root || scratchRoot.startsWith(`${root}/`)) return finish(2, 'LOST', '--to is inside the repository; restore into a scratch directory outside it');
++  mkdirSync(scratchRoot, { recursive: true });
++  const work = mkdtempSync(join(scratchRoot, `drill-${set.id}-`));
++  const cleanup = (res) => {
++    rmSync(work, { recursive: true, force: true });
++    if (existsSync(work)) return finish(1, 'FAIL', `the scratch copy at ${work} could not be deleted`, res.out.slice(1));
++    res.out.push(`        · the scratch copy was deleted (${basename(work)})`);
++    return res;
++  };
++  const verify = (path, want, from) => {
++    if (!existsSync(path) || !statSync(path).isFile()) return finish(1, 'FAIL', `${from}: the restore reported success and ${file} is not there`);
++    const size = statSync(path).size;
++    if (size === 0) return finish(1, 'FAIL', `${from}: ${file} came back EMPTY`);
++    const got = sha256(path);
++    if (got !== want) return finish(1, 'FAIL', `${from}: ${file} came back ${size} B with SHA-256 ${got.slice(0, 12)}…, the source recorded ${String(want).slice(0, 12)}…`);
++    return finish(0, 'PASS', `${from}: ${file} came back ${size} B and its SHA-256 matches the source's (${got.slice(0, 12)}…)`);
++  };
++
++  try {
++    if (dest.kind === 'restic') {
++      const repo = fill(dest.repo, env);
++      if (repo.missing) return cleanup(finish(2, 'LOST', `the repository needs ${repo.missing.join(', ')} in the environment`));
++      // --no-cache: measured 2026-10-01 with restic 0.18.1 — with the local cache, a repository whose tree
++      // pack was corrupted still restored the file from the CACHED tree and the drill passed. A drill
++      // answered by a cache is not a drill of the repository.
++      const base = ['--no-lock', '--no-cache', '-r', repo.value];
++      const ls = call(opts.resticBin, [...base, 'snapshots', '--json', ...(set.drill.tag ? ['--tag', set.drill.tag] : [])]);
++      const tm = toolMissing(ls, opts.resticBin);
++      if (tm) return cleanup(finish(2, 'LOST', tm));
++      if (ls.status !== 0) return cleanup(finish(2, 'LOST', `the repository could not be listed (unreachable or the credential is wrong): ${firstLine(ls)}`));
++      let snaps;
++      try { snaps = JSON.parse(ls.stdout); } catch { return cleanup(finish(2, 'LOST', 'restic snapshots did not answer JSON')); }
++      if (!Array.isArray(snaps) || !snaps.length) return cleanup(finish(1, 'FAIL', `${dest.id} holds no snapshot${set.drill.tag ? ` tagged ${set.drill.tag}` : ''}`));
++      const newest = snaps.reduce((a, b) => (Date.parse(b.time) > Date.parse(a.time) ? b : a));
++      const from = `${dest.id} snapshot ${String(newest.id).slice(0, 8)} of ${newest.time}`;
++      if (set.drill.hash !== 'restic-tree' && set.drill.hash !== 'recorded') return cleanup(finish(2, 'LOST', `hash source \`${set.drill.hash}\` does not apply to a restic repository`));
++      let want = set.drill.sha256;
++      if (set.drill.hash === 'restic-tree') {
++        const tree = call(opts.resticBin, [...base, 'cat', 'tree', `${newest.id}:${posix.dirname(file)}`]);
++        if (tree.status !== 0) return cleanup(finish(1, 'FAIL', `${from}: the tree holding ${file} could not be read: ${firstLine(tree)}`));
++        let node;
++        try { node = (JSON.parse(tree.stdout).nodes ?? []).find((n) => n.name === posix.basename(file)); } catch { return cleanup(finish(1, 'FAIL', `${from}: the tree holding ${file} is not JSON`)); }
++        if (!node) return cleanup(finish(1, 'FAIL', `${from}: ${file} is not in the newest snapshot`));
++        if (node.type !== 'file') return cleanup(finish(2, 'LOST', `${from}: ${file} is a ${node.type}, not a file`));
++        if (!(node.content ?? []).length) return cleanup(finish(1, 'FAIL', `${from}: ${file} was backed up EMPTY`));
++        if (node.content.length > 1) return cleanup(finish(2, 'LOST', `${from}: ${file} is ${node.content.length} chunks; restic's record is one hash per chunk, so pick a file under 512 KiB`));
++        want = node.content[0];
++      } else if (!/^[0-9a-f]{64}$/.test(want ?? '')) return cleanup(finish(2, 'LOST', 'hash `recorded` needs drill.sha256 (64 hex) in backups.json'));
++      const rs = call(opts.resticBin, [...base, 'restore', newest.id, '--target', work, '--include', file]);
++      if (rs.status !== 0) return cleanup(finish(1, 'FAIL', `${from}: the restore failed — ${firstLine(rs)}`));
++      return cleanup(verify(join(work, file), want, from));
++    }
++
++    if (dest.kind === 'rclone-manifest' || dest.kind === 'rclone-dated') {
++      if (!dest.base) return cleanup(finish(2, 'LOST', `the destination \`${dest.id}\` declares no remote base (remote name and layout UNREAD)`));
++      const b = fill(dest.base, env);
++      if (b.missing) return cleanup(finish(2, 'LOST', `the remote needs ${b.missing.join(', ')} in the environment`));
++      let dir = b.value;
++      let date = null;
++      if (dest.kind === 'rclone-dated') {
++        const lsf = call(opts.rcloneBin, ['lsf', dir, '--dirs-only']);
++        const tm = toolMissing(lsf, opts.rcloneBin);
++        if (tm) return cleanup(finish(2, 'LOST', tm));
++        if (lsf.status !== 0) return cleanup(finish(2, 'LOST', `the remote could not be listed: ${firstLine(lsf)}`));
++        const dates = lsf.stdout.split('\n').map((l) => DATED_DIR.exec(l.trim())?.[1]).filter(Boolean).sort();
++        if (!dates.length) return cleanup(finish(1, 'FAIL', `${dest.id} holds no dated directory (listed ${lsf.stdout.split('\n').filter(Boolean).length} entr(ies), none a date)`));
++        date = dates[dates.length - 1];
++        dir = `${dir}/${date}`;
++      }
++      let want = set.drill.sha256;
++      let key = file;
++      if (set.drill.hash === 'manifest') {
++        const mpath = String(set.drill.manifest ?? '').replace('{date}', date ?? '');
++        const cat = call(opts.rcloneBin, ['cat', `${dir}/${mpath}`]);
++        const tm = toolMissing(cat, opts.rcloneBin);
++        if (tm) return cleanup(finish(2, 'LOST', tm));
++        if (cat.status !== 0) return cleanup(finish(2, 'LOST', `the manifest ${mpath} could not be read: ${firstLine(cat)}`));
++        let m;
++        try { m = JSON.parse(cat.stdout); } catch { return cleanup(finish(1, 'FAIL', `the manifest ${mpath} is not JSON`)); }
++        if (m.complete !== true) return cleanup(finish(1, 'FAIL', `the newest manifest (${m.date ?? 'undated'}) is not \`complete\``));
++        date = date ?? m.date;
++        key = file.replace('{date}', date ?? '');
++        const entry = (m.objects ?? []).find((o) => o.key === key);
++        if (!entry) return cleanup(finish(1, 'FAIL', `the newest manifest (${m.date}) does not list ${key}`));
++        want = entry.sha256;
++      } else if (set.drill.hash !== 'recorded' || !/^[0-9a-f]{64}$/.test(want ?? '')) {
++        return cleanup(finish(2, 'LOST', `hash source \`${set.drill.hash}\` needs drill.sha256 (64 hex) or a manifest for an rclone destination`));
++      } else key = file.replace('{date}', date ?? '');
++      const local = join(work, basename(key));
++      const cp = call(opts.rcloneBin, ['copyto', `${dir}/${key}`, local]);
++      const tm = toolMissing(cp, opts.rcloneBin);
++      if (tm) return cleanup(finish(2, 'LOST', tm));
++      if (cp.status !== 0) return cleanup(finish(1, 'FAIL', `${dest.id} ${date ?? ''}: the copy of ${key} failed — ${firstLine(cp)}`));
++      const res = verify(local, want, `${dest.id} ${date ?? ''}`.trim());
++      if (res.code === 0 || res.code === 1) res.out[0] = res.out[0].replace(file, key);
++      return cleanup(res);
++    }
++    return cleanup(finish(2, 'LOST', `destination kind \`${dest.kind}\` has no drill`));
++  } catch (e) {
++    return cleanup(finish(2, 'LOST', `the drill could not run (${redact(e.message)})`));
++  }
++}
++
++function main() {
++  const opts = parseArgs(process.argv.slice(2));
++  if (opts.error) {
++    console.error(`restore-drill: REFUSED — ${opts.error}`);
++    console.error('usage: node tooling/ops/restore-drill.mjs <set> --to <scratch dir> [--file <path>] [--restic-bin <path>] [--rclone-bin <path>] [--root <dir>]');
++    process.exit(2);
++  }
++  const { code, out } = run(opts);
++  for (const l of out) (code ? console.error : console.log)(l);
++  process.exit(code);
++}
++
++const IS_MAIN = (() => {
++  try { return resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url); } catch { return false; }
++})();
++if (IS_MAIN) main();
+diff --git a/tooling/ports/README.md b/tooling/ports/README.md
+index 5a6dd893..70eae518 100644
+--- a/tooling/ports/README.md
++++ b/tooling/ports/README.md
+@@ -13,6 +13,12 @@ The first subjects, at their honest levels: `tooling/ports/payments.json` (inbou
+ `tooling/ports/auth.json` (Dart `AuthRepository`) and `tooling/ports/telemetry.json` (Dart `TelemetryClient`), each
+ claiming L2 with target L3; every other vendor is placed in `tooling/ports/_non-port.json`.
+ 
++`tooling/ports/boxes.json` (port-boxes) makes each box an adapter: its declaration is `tooling/boxes/<box>.json`, its
++role is selected one box per role by `tooling/boxes/roles.json`, it is read back by
++`tooling/ops/check-box-declared.mjs` and its move is rehearsed by `tooling/ops/box-move.mjs --dry-run`, the box
++equivalent of §4's phase 3. Backup destinations and their restore drills are `tooling/boxes/backups.json` and
++`tooling/ops/restore-drill.mjs`.
++
+ ## 1. Levels
+ 
+ | Level | Means | Earned when (assert-ports limb 6) |
+@@ -35,9 +41,9 @@ wherever the shape can hold it).
+ | `$schema` | `./port.schema.json`. |
+ | `port` | The capability; equals the file name. |
+ | `level.claimed` / `level.target` | 0–3. Claimed is checked against earned; target is where the trains are taking it. |
+-| `interface.ts` / `interface.dart` | `{file, symbols}` — either or both. Each symbol must be **declared** in the file (comment-stripped). |
++| `interface.ts` / `interface.dart` / `interface.js` | `{file, symbols}` — at least one. Each symbol must be **declared** in the file (comment-stripped). `js` is a node module under `tooling/` for a port that is operated rather than imported (the boxes). |
+ | `adapters[].id` | The wire id: the value the selection names and the code keys on. |
+-| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. |
++| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. Two adapters of ONE port may share a vendor (two boxes at one provider); two ports may not. |
+ | `adapters[].status` | `draft` · `built` · `live` · `standby` · `retired` · `fake` · `external`. |
+ | `adapters[].impl` | `{file, symbol}`; for `external` (e.g. a self-hosted GoTrue configured by env) `{configAt, verify}`. |
+ | `adapters[].capabilities` | The port's own verbs (e.g. `verify`, `parse`, `cancel-api`). Capability verbs, never vendor nouns. |
+diff --git a/tooling/ports/_non-port.json b/tooling/ports/_non-port.json
+index 5d9ea543..1a4db074 100644
+--- a/tooling/ports/_non-port.json
++++ b/tooling/ports/_non-port.json
+@@ -18,8 +18,6 @@
+     { "vendor": "lemon-squeezy", "registers": ["provider-register"], "reason": "A retired rail ([ADR 039] D4): no adapter exists and none will be built; kept in the provider register for disclosure history.", "nonPort": true },
+     { "vendor": "sign-in-with-apple", "registers": ["provider-register"], "reason": "A federated identity provider reached THROUGH the auth adapter; the platform authority for its own accounts.", "nonPort": true },
+     { "vendor": "sign-in-with-google", "registers": ["provider-register"], "reason": "A federated identity provider reached THROUGH the auth adapter; the platform authority for its own accounts.", "nonPort": true },
+-    { "vendor": "hostinger", "registers": ["provider-register"], "reason": "Hosts the self-hosted GlitchTip box; the boxes are ported by port-boxes.", "until": "port-boxes" },
+-    { "vendor": "oracle-cloud", "registers": ["provider-register"], "reason": "Box A, the always-free VM; the boxes are ported by port-boxes.", "until": "port-boxes" },
+     { "vendor": "sentry-cdn", "registers": ["provider-register"], "reason": "The CDN the Sentry browser SDK would load from; a delivery path of the telemetry adapter, placed by port-telemetry.", "until": "port-telemetry" },
+     { "vendor": "google-gstatic", "registers": ["provider-register"], "reason": "Static content delivery (fonts, platform scripts) the web build references; content delivery, not a capability with an adapter.", "nonPort": true }
+   ]
+diff --git a/tooling/ports/boxes.json b/tooling/ports/boxes.json
+new file mode 100644
+index 00000000..5803c846
+--- /dev/null
++++ b/tooling/ports/boxes.json
+@@ -0,0 +1,64 @@
++{
++  "$schema": "./port.schema.json",
++  "port": "boxes",
++  "level": { "claimed": 2, "target": 3 },
++  "interface": {
++    "js": { "file": "tooling/ops/box-declaration.mjs", "symbols": ["BOX_FIELDS", "readAll", "validateAll", "diffDeclared"] }
++  },
++  "adapters": [
++    {
++      "id": "boxa",
++      "vendor": "oracle-cloud",
++      "status": "live",
++      "impl": { "file": "tooling/ops/check-box-declared.mjs", "symbol": "readBoxOverSsh" },
++      "capabilities": ["hold-backups"],
++      "secrets": [],
++      "identity": [],
++      "environments": ["live"],
++      "cost": { "feeCells": [], "unit": null },
++      "conformance": null,
++      "exportDuty": "Leaves with us: the encrypted third copy in the tenancy's Object Storage (a byte copy of /srv/restic, rebuilt from the other two repositories) and the VM's provider snapshot. Cannot move: the IP addresses, so every allow-list in tooling/boxes/boxa.json moves with the box (box-move C3).",
++      "readAt": null
++    },
++    {
++      "id": "boxb",
++      "vendor": "hostinger",
++      "status": "live",
++      "impl": { "file": "tooling/ops/check-box-declared.mjs", "symbol": "readBoxOverSsh" },
++      "capabilities": ["run-services", "serve-hostnames", "run-crons", "hold-backups"],
++      "secrets": [],
++      "identity": [],
++      "environments": ["live"],
++      "cost": { "feeCells": [], "unit": null },
++      "conformance": null,
++      "exportDuty": "Leaves with us: the volumes (restored from the sets in tooling/boxes/backups.json), the compose files, the env (from the vault; NAMES in tooling/boxes/boxb.json) and the provider snapshot. Cannot move: the IP addresses, so every allow-list in tooling/boxes/boxb.json moves with the box (box-move C3).",
++      "readAt": null
++    },
++    {
++      "id": "boxc",
++      "vendor": "hostinger",
++      "status": "live",
++      "impl": { "file": "tooling/ops/check-box-declared.mjs", "symbol": "readBoxOverSsh" },
++      "capabilities": ["run-services", "serve-hostnames", "run-crons"],
++      "secrets": [],
++      "identity": [],
++      "environments": ["live"],
++      "cost": { "feeCells": [], "unit": null },
++      "conformance": null,
++      "exportDuty": "Leaves with us: the volumes (the Postgres data and db-config, restored from supabase-auth-pg in tooling/boxes/backups.json), the compose files, the env (from the vault; NAMES in tooling/boxes/boxc.json) and the provider snapshot. auth.users ids move unchanged (README §5, Auth). Cannot move: the IP addresses, so every allow-list in tooling/boxes/boxc.json moves with the box (box-move C3).",
++      "readAt": null
++    }
++  ],
++  "selection": { "by": "single", "source": "tooling/boxes/roles.json#roles", "default": { "live": null, "sandbox": null, "test": null }, "canary": null },
++  "generated": false,
++  "handTables": [],
++  "conformance": { "suite": null, "pending": [] },
++  "switch": { "runbook": "Private/runbooks/switch-vendor.md#boxes", "dryRun": "node tooling/ops/port-switch.mjs boxes --to <adapter> --dry-run" },
++  "_why": [
++    "EACH BOX IS AN ADAPTER, AND EACH ROLE SELECTS ONE (row O-BOXES-NOT-DECLARED-AS-DATA). The port is 'a machine that holds a role' — auth, ops, backup-leg — and the selection is tooling/boxes/roles.json, one box per role (`by: single`), so `default` is null in every slot: the roles file is the whole answer.",
++    "The interface is the declaration reader tooling/ops/box-declaration.mjs, a node module (`interface.js`): a box is operated, never imported by a Worker or an app, so limb 4 has no import graph to walk for it. Every adapter's impl is the same SSH reader, tooling/ops/check-box-declared.mjs readBoxOverSsh, applied to that box's declaration tooling/boxes/<box>.json — the adapter differs by its data, not its code.",
++    "`secrets` is empty on purpose: limb 5 reads Worker secret names, and a box's secrets are the env of its own services, held in the vault and named per service in its declaration (box-move C6 prints them). `cost` cites nothing here: the box's cost is cited from Private platform-state/identity.json by vendorId in its declaration, and box-move C7 reads it where Private is readable.",
++    "boxb and boxc share the vendor `hostinger`; assert-ports limb 8 counts one placement per PORT, so two boxes at one provider are placed once.",
++    "L2, honestly: the selection is by config and no caller imports an adapter. L3 needs a conformance suite two adapters call — the read-back run green against two boxes' declarations is the candidate — and the switch dry run for a box is tooling/ops/box-move.mjs --from <box> --to <spec.json> --dry-run, which port-switch.mjs does not yet delegate to."
++  ]
++}
+diff --git a/tooling/ports/port.schema.json b/tooling/ports/port.schema.json
+index 112c657a..625cd714 100644
+--- a/tooling/ports/port.schema.json
++++ b/tooling/ports/port.schema.json
+@@ -24,7 +24,8 @@
+       "minProperties": 1,
+       "properties": {
+         "ts": { "$ref": "#/$defs/symbols" },
+-        "dart": { "$ref": "#/$defs/symbols" }
++        "dart": { "$ref": "#/$defs/symbols" },
++        "js": { "$ref": "#/$defs/symbols", "description": "A node module (.mjs) in tooling/: the interface of a port whose adapters are operated, not imported by a Worker or an app (boxes)." }
+       }
+     },
+     "adapters": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/adapter" } },

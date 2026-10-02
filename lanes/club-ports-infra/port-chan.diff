@@ -1,0 +1,2209 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 288a28c6..7ebb374a 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -1988,6 +1988,10 @@ jobs:
+           persist-credentials: false
+           fetch-depth: 0
+       - uses: ./.github/actions/setup-node
++      # why: every store submitter (tooling/ports/channels.json) against the one dry-run
++      # contract, under a fetch and a spawn stub. App-independent, so each leg runs it once.
++      - name: Every store submitter passes the dry-run contract, with no network
++        run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/release/test/*.test.mjs"
+       - name: The Microsoft Store submission path still walks (dry run)
+         run: node tooling/release/submit-windows-store.mjs --dry-run --app ${{ matrix.app }} --allow-missing-artifact
+       - name: The App Store submission path still walks — iOS (dry run)
+diff --git a/extensions/scripts/publish-amo.mjs b/extensions/scripts/publish-amo.mjs
+index d32a465c..1262e94d 100644
+--- a/extensions/scripts/publish-amo.mjs
++++ b/extensions/scripts/publish-amo.mjs
+@@ -55,6 +55,8 @@ import { pathToFileURL } from 'node:url';
+ import { laneVerdict, ArmingCoverageLost, REPO_ROOT } from './publish-arming.mjs';
+ import { buildAmoMetadata, buildAmoListingAssets, PRIMARY_SOURCES as METADATA_SOURCES } from './amo-metadata.mjs';
+ import { requireStorePublishEnvironment } from './lib/store-environment.mjs';
++import { storeSubmitter } from '../../tooling/release/submit-common.mjs';
++import * as vocabulary from '../../contracts/store/vocabulary.js';
+ 
+ /** The pages this lane's flags and calls were read from. ⏱ 2026-09-29 (rv2
+  *  EXL-12): three of these were cited in main() and defined nowhere, so the first
+@@ -66,6 +68,39 @@ export const PRIMARY_SOURCES = Object.freeze({
+   webExtVersion: 'https://www.npmjs.com/package/web-ext',
+ });
+ 
++/** addons.mozilla.org behind the one store contract (tooling/release/submit-common.mjs,
++ *  tooling/ports/channels.json). `plan` is what main() does on `--submit`, in order;
++ *  `upload` IS this script with `--submit`, arming and gate and all.
++ *  🔴 TRAPS stores-01: `gecko.id` is PERMANENT once AMO signs it, and changing it
++ *  publishes a DIFFERENT add-on. It is a value to CONFIRM, never to set: `validate`
++ *  refuses a record whose manifest id is not the confirmed one (publish/identity.json,
++ *  as publish-arming.mjs toolListingId() holds it), or that carries no confirmed id. */
++export const amoSubmitter = storeSubmitter({
++  channel: 'amo',
++  vocabulary,
++  script: 'extensions/scripts/publish-amo.mjs',
++  steps: (artifact) => [
++    { does: 'ask the register whether this channel is armed (publish-arming laneVerdict)', surface: 'local', call: 'tooling/channel-register.json', writes: false },
++    { does: 'read the "store-publish" environment back and require its reviewer', surface: 'api', call: 'GET https://api.github.com/repos/{owner}/{repo}/environments/store-publish', writes: false },
++    { does: 'build the listing payload the first submit carries (amo-metadata.mjs)', surface: 'local', call: 'amo-metadata.json', writes: false },
++    { does: `sign ${artifact?.path ?? 'the unpacked firefox tree'} on the listed channel — the gecko.id it carries is CONFIRMED, never set`, surface: 'cli', call: 'web-ext sign --channel listed --amo-metadata <amo-metadata.json>', writes: true },
++    { does: 'read the listing URL back', surface: 'api', call: `GET ${AMO_API}/addons/addon/{guid}/`, writes: false },
++    { does: 'upload the previews while the listing has none', surface: 'api', call: `POST ${AMO_API}/addons/addon/{guid}/previews/`, writes: true },
++    { does: 'set the privacy policy', surface: 'api', call: `PATCH ${AMO_API}/addons/addon/{guid}/`, writes: true },
++  ],
++  extraFindings: (record) => {
++    const id = record?.geckoId ?? {};
++    if (typeof id.confirmed !== 'string' || id.confirmed.trim() === '') {
++      return [{ field: 'geckoId.confirmed', message: 'no confirmed gecko.id: it is a value to CONFIRM against publish/identity.json, never to set (stores-01)' }];
++    }
++    if (id.manifest !== id.confirmed) {
++      return [{ field: 'geckoId.manifest', message: `the manifest's gecko.id ${JSON.stringify(id.manifest)} is not the confirmed ${JSON.stringify(id.confirmed)}; AMO fixes the id at first signing, so a changed one publishes a DIFFERENT add-on (stores-01)` }];
++    }
++    return [];
++  },
++  uploadArgv: (artifact) => ['--tool', artifact.tool, '--source-dir', artifact.path, '--submit'],
++});
++
+ /** The island that holds the signer, repo-relative. */
+ const WEB_EXT_ISLAND = 'tooling/web-ext';
+ 
+diff --git a/extensions/scripts/publish-cws.mjs b/extensions/scripts/publish-cws.mjs
+index 444e7842..3a602504 100644
+--- a/extensions/scripts/publish-cws.mjs
++++ b/extensions/scripts/publish-cws.mjs
+@@ -86,6 +86,8 @@ import {
+   NOT_CONFIRMED,
+ } from './store-poll.mjs';
+ import { CouldNotLook } from '../../tooling/ops/bounded-retry.mjs';
++import { storeSubmitter, invokedAsScript } from '../../tooling/release/submit-common.mjs';
++import * as vocabulary from '../../contracts/store/vocabulary.js';
+ 
+ // ─────────────────────────────────────────────────────────────────────────────
+ // PRIMARY SOURCES — fetched 2026-09-07.
+@@ -97,6 +99,24 @@ const PRIMARY_SOURCES = Object.freeze({
+ 
+ const API_ORIGIN = 'https://chromewebstore.googleapis.com';
+ 
++/** The Chrome Web Store behind the one store contract (tooling/release/submit-common.mjs,
++ *  tooling/ports/channels.json). `plan` is what main() below does, in its order, against
++ *  the v2 endpoints this header cites; `upload` IS this script, arming and gate and all. */
++export const chromeWebstoreSubmitter = storeSubmitter({
++  channel: 'chrome-webstore',
++  vocabulary,
++  script: 'extensions/scripts/publish-cws.mjs',
++  steps: (artifact) => [
++    { does: 'ask the register whether this channel is armed (publish-arming laneVerdict)', surface: 'local', call: 'tooling/channel-register.json', writes: false },
++    { does: 'read the "store-publish" environment back and require its reviewer', surface: 'api', call: 'GET https://api.github.com/repos/{owner}/{repo}/environments/store-publish', writes: false },
++    { does: 'mint a bearer token for the service account', surface: 'api', call: `POST ${TOKEN_URL}`, writes: false },
++    { does: `upload ${artifact?.path ?? 'the chromium zip'} to the item`, surface: 'api', call: `POST ${API_ORIGIN}/upload/v2/publishers/{publisherId}/items/{itemId}:upload`, writes: true },
++    { does: 'poll the upload to its terminal state', surface: 'api', call: `GET ${API_ORIGIN}/v2/publishers/{publisherId}/items/{itemId}:fetchStatus`, writes: false },
++    { does: 'submit the item for review', surface: 'api', call: `POST ${API_ORIGIN}/v2/publishers/{publisherId}/items/{itemId}:publish`, writes: true },
++  ],
++  uploadArgv: (artifact) => ['--tool', artifact.tool, '--zip', artifact.path],
++});
++
+ const argv = process.argv.slice(2);
+ const opt = (name, fallback = null) => {
+   const i = argv.indexOf(`--${name}`);
+@@ -266,4 +286,4 @@ async function main() {
+   console.log(`publish-cws: SUBMITTED — ${TOOL} uploaded and submitted for review on the Chrome Web Store (item state ${submission.detail}).`);
+ }
+ 
+-await main();
++if (invokedAsScript(import.meta.url)) await main();
+diff --git a/extensions/scripts/publish-edge.mjs b/extensions/scripts/publish-edge.mjs
+index 13d5e0f5..d5813491 100644
+--- a/extensions/scripts/publish-edge.mjs
++++ b/extensions/scripts/publish-edge.mjs
+@@ -46,6 +46,8 @@ import { laneVerdict, ArmingCoverageLost, readSubmittablePackage } from './publi
+ import { requireStorePublishEnvironment } from './lib/store-environment.mjs';
+ import { pollToTerminal, readStatus, classifyEdgeOperation, loopbackBase, overrideLine, pollTiming, NOT_CONFIRMED } from './store-poll.mjs';
+ import { CouldNotLook } from '../../tooling/ops/bounded-retry.mjs';
++import { storeSubmitter, invokedAsScript } from '../../tooling/release/submit-common.mjs';
++import * as vocabulary from '../../contracts/store/vocabulary.js';
+ 
+ const PRIMARY_SOURCES = Object.freeze({
+   api: 'https://learn.microsoft.com/en-us/microsoft-edge/extensions/update/api/using-addons-api',
+@@ -53,6 +55,24 @@ const PRIMARY_SOURCES = Object.freeze({
+ 
+ const API_ROOT = 'https://api.addons.microsoftedge.microsoft.com';
+ 
++/** Microsoft Edge Add-ons behind the one store contract (tooling/release/submit-common.mjs,
++ *  tooling/ports/channels.json). `plan` is the four calls this header lists, in order;
++ *  `upload` IS this script, arming and gate and all. */
++export const edgeAddonsSubmitter = storeSubmitter({
++  channel: 'edge-addons',
++  vocabulary,
++  script: 'extensions/scripts/publish-edge.mjs',
++  steps: (artifact) => [
++    { does: 'ask the register whether this channel is armed (publish-arming laneVerdict)', surface: 'local', call: 'tooling/channel-register.json', writes: false },
++    { does: 'read the "store-publish" environment back and require its reviewer', surface: 'api', call: 'GET https://api.github.com/repos/{owner}/{repo}/environments/store-publish', writes: false },
++    { does: `upload ${artifact?.path ?? 'the chromium zip'} as the draft package`, surface: 'api', call: `POST ${API_ROOT}/v1/products/{productId}/submissions/draft/package`, writes: true },
++    { does: 'poll the package operation to its terminal state', surface: 'api', call: `GET ${API_ROOT}/v1/products/{productId}/submissions/draft/package/operations/{operationId}`, writes: false },
++    { does: 'submit the draft for certification', surface: 'api', call: `POST ${API_ROOT}/v1/products/{productId}/submissions`, writes: true },
++    { does: 'poll the submission operation to its terminal state', surface: 'api', call: `GET ${API_ROOT}/v1/products/{productId}/submissions/operations/{operationId}`, writes: false },
++  ],
++  uploadArgv: (artifact) => ['--tool', artifact.tool, '--zip', artifact.path],
++});
++
+ const argv = process.argv.slice(2);
+ const opt = (name, fallback = null) => {
+   const i = argv.indexOf(`--${name}`);
+@@ -241,4 +261,4 @@ async function main() {
+   console.log(`publish-edge: SUBMITTED — ${TOOL} uploaded and submitted for certification on Microsoft Edge Add-ons.`);
+ }
+ 
+-await main();
++if (invokedAsScript(import.meta.url)) await main();
+diff --git a/tooling/ci/assert-ports.mjs b/tooling/ci/assert-ports.mjs
+index b0505fb4..de9ed660 100644
+--- a/tooling/ci/assert-ports.mjs
++++ b/tooling/ci/assert-ports.mjs
+@@ -56,7 +56,10 @@
+ //               or one tooling/ports/_non-port.json row; and a ported vendor's
+ //               C-8 seam.file equals its port's interface file, unless the
+ //               adapter declares that exact file as a `c8Seam` divergence
+-//               (printed).
++//               (printed). An adapter's `channel` is a tooling/channel-register.json
++//               row, named by one adapter; a `candidates` id is NOT a row yet (a
++//               candidate with a row is an adapter), and every candidate PRINTS.
++//               (⏱ 2026-10-01, port-channels: tooling/ports/channels.json.)
+ //
+ // Exit 0 green, 1 a finding, 2 COVERAGE LOST (every problem is one). The FIRST
+ // line names the deciding limb.
+@@ -313,7 +316,9 @@ export function evaluate(root) {
+       if (ids.has(a?.id)) find(1, `${rel} lists adapter \`${a?.id}\` twice.`);
+       ids.add(a?.id);
+       if (a?.status === 'fake' && a?.vendor !== null) find(1, `${rel} adapter \`${a.id}\` is a fake with vendor ${JSON.stringify(a.vendor)}; a fake has none.`);
+-      if (a?.status !== 'fake' && a?.vendor === null) find(1, `${rel} adapter \`${a.id}\` has vendor null but is not a fake.`);
++      // A per-channel adapter names its tooling/channel-register.json row instead of a vendor (limb 8 resolves it).
++      if (a?.status !== 'fake' && a?.vendor === null && typeof a?.channel !== 'string') find(1, `${rel} adapter \`${a.id}\` has vendor null but is not a fake and names no \`channel\`.`);
++      if (typeof a?.channel === 'string' && a?.vendor !== null) find(1, `${rel} adapter \`${a.id}\` names both a vendor and a channel; a channel adapter's store is its register row's.`);
+       const impl = a?.impl ?? {};
+       if (a?.status === 'external' ? !(impl.configAt && impl.verify) : !(impl.file && impl.symbol)) {
+         find(1, `${rel} adapter \`${a?.id}\` impl must be ${a?.status === 'external' ? '{configAt, verify}' : '{file, symbol}'} for status ${a?.status}.`);
+@@ -553,6 +558,32 @@ export function evaluate(root) {
+       }
+     }
+   }
++  // a per-channel adapter's `channel` is a register row, and a candidate is not one yet
++  const channelAdapters = ports.flatMap(({ rel, doc }) => (doc?.adapters ?? []).filter((a) => typeof a?.channel === 'string').map((a) => ({ rel, a })));
++  const candidates = ports.flatMap(({ rel, doc }) => (doc?.candidates ?? []).map((c) => ({ rel, port: doc.port, c })));
++  if (channelAdapters.length || candidates.length) {
++    let rows = null;
++    try {
++      const ch = JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8'));
++      rows = new Set((ch?.channels ?? []).map((c) => c?.id).filter((x) => typeof x === 'string'));
++    } catch (e) {
++      lost(8, `${CHANNEL_REGISTER} could not be read (${e.message}); no adapter's \`channel\` can be resolved.`);
++    }
++    if (rows) {
++      if (rows.size === 0) lost(8, `${CHANNEL_REGISTER} carries no channel row, so every \`channel\` would resolve to nothing.`);
++      const named = new Map();
++      for (const { rel, a } of channelAdapters) {
++        if (rows.size && !rows.has(a.channel)) find(8, `${rel} adapter \`${a.id}\` names channel \`${a.channel}\`, which is no ${CHANNEL_REGISTER} row.`);
++        named.set(a.channel, [...(named.get(a.channel) ?? []), `${rel}/${a.id}`]);
++      }
++      for (const [c, at] of named) if (at.length > 1) find(8, `channel \`${c}\` is named by ${at.length} adapters (${at.join(', ')}); one channel, one adapter.`);
++      for (const { rel, port, c } of candidates) {
++        if (rows.has(c.id)) find(8, `${rel} candidate \`${c.id}\` already has a ${CHANNEL_REGISTER} row: it is an adapter now, not a candidate.`);
++        else if (named.has(c.id)) find(8, `${rel} candidate \`${c.id}\` is also an adapter's channel.`);
++        else notes.push(`CANDIDATE ${port}/${c.id} (${c.name}): not submittable — ${c.deferral?.source ?? 'no source'}; commission ${c.commission?.cell ? `${c.commission.cell} read ${c.commission.asOf}` : 'UNREAD'}`);
++      }
++    }
++  }
+   return result;
+ }
+ 
+diff --git a/tooling/ci/test/coverage-manifest.json b/tooling/ci/test/coverage-manifest.json
+index 55caf234..bd8d91c5 100644
+--- a/tooling/ci/test/coverage-manifest.json
++++ b/tooling/ci/test/coverage-manifest.json
+@@ -590,6 +590,9 @@
+   "native-symbol-upload.test.mjs":
+     26,
+ 
++  "new-channel.test.mjs":
++    8,
++
+   "new-product-plan.test.mjs":
+     41,
+ 
+@@ -702,7 +705,7 @@
+     21,
+ 
+   "ports.test.mjs":
+-    40,
++    45,
+ 
+   "post-deploy-smoke.test.mjs":
+     157,
+diff --git a/tooling/ci/test/new-channel.test.mjs b/tooling/ci/test/new-channel.test.mjs
+new file mode 100644
+index 00000000..90fd34b2
+--- /dev/null
++++ b/tooling/ci/test/new-channel.test.mjs
+@@ -0,0 +1,118 @@
++// new-channel.test.mjs — tooling/kit/new-channel.mjs scaffolds a store channel,
++// and WRITES NOTHING without --write.
++//
++// ⏱ 2026-10-01 (port-channels, O-CHANNELS-HAVE-NO-SUBMIT-CONTRACT). Run over a
++// temp tree holding copies of the REAL tooling/channel-register.json and
++// tooling/ports/channels.json, so the row lands where the real register's
++// channels array ends and the candidate it consumes is the real one.
++import { describe, it } from 'node:test';
++import assert from 'node:assert/strict';
++import { mkdtempSync, mkdirSync, cpSync, readFileSync, existsSync, readdirSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { dirname, join, resolve } from 'node:path';
++import { spawnSync } from 'node:child_process';
++import { fileURLToPath } from 'node:url';
++import { parseArgs, scaffold, REGISTER_REL, PORT_REL } from '../../kit/new-channel.mjs';
++import { validate, declares } from '../assert-ports.mjs';
++
++const HERE = dirname(fileURLToPath(import.meta.url));
++const REPO = resolve(HERE, '..', '..', '..');
++const KIT = join(REPO, 'tooling/kit/new-channel.mjs');
++const SCHEMA = JSON.parse(readFileSync(join(REPO, 'tooling/ports/port.schema.json'), 'utf8'));
++
++function tree() {
++  const root = mkdtempSync(join(tmpdir(), 'new-channel-'));
++  for (const rel of [REGISTER_REL, PORT_REL]) {
++    mkdirSync(dirname(join(root, rel)), { recursive: true });
++    cpSync(join(REPO, rel), join(root, rel));
++  }
++  return root;
++}
++const snapshot = (root) => ({
++  register: readFileSync(join(root, REGISTER_REL), 'utf8'),
++  port: readFileSync(join(root, PORT_REL), 'utf8'),
++  release: existsSync(join(root, 'tooling/release')) ? readdirSync(join(root, 'tooling/release')) : [],
++});
++const run = (root, ...args) => {
++  const r = spawnSync(process.execPath, [KIT, ...args, '--root', root], { encoding: 'utf8', timeout: 60_000 });
++  return { code: r.status, out: r.stdout, err: r.stderr };
++};
++
++describe('new-channel — the dry run prints and writes nothing', () => {
++  it('🔴 a dry run on the candidate prints the row, the adapter, the skeleton and the owner steps — and every byte is unchanged', () => {
++    const root = tree();
++    const before = snapshot(root);
++    for (const args of [['--id', 'indus-appstore', '--dry-run'], ['--id', 'indus-appstore']]) {
++      const r = run(root, ...args);
++      assert.equal(r.code, 0, r.err);
++      assert.match(r.out, /DRY RUN \(nothing is written; pass --write\)/);
++      assert.match(r.out, /"id": "indus-appstore"[\s\S]*"kind": "store"[\s\S]*"submittable": false/);
++      assert.match(r.out, /export const indusAppstoreSubmitter = storeSubmitter\(/);
++      assert.match(r.out, /OWNER STEPS \(printed, never performed\)[\s\S]*open an Indus Appstore developer account/);
++      assert.match(r.out, /DRY RUN — nothing was written/);
++      assert.deepEqual(snapshot(root), before, `${args.join(' ')} wrote to the tree`);
++    }
++  });
++
++  it('--write scaffolds all three, moves the candidate into the adapters, and refuses a second run', () => {
++    const root = tree();
++    const r = run(root, '--id', 'indus-appstore', '--write');
++    assert.equal(r.code, 0, r.err);
++    const register = JSON.parse(readFileSync(join(root, REGISTER_REL), 'utf8'));
++    assert.equal(register.channels.at(-1).id, 'indus-appstore');
++    assert.equal(register.channels.at(-1).submittable, false);
++    const port = JSON.parse(readFileSync(join(root, PORT_REL), 'utf8'));
++    assert.deepEqual(port.candidates, []);
++    const adapter = port.adapters.find((a) => a.id === 'indus-appstore');
++    assert.equal(adapter.status, 'draft');
++    assert.deepEqual(validate(port, SCHEMA, SCHEMA), [], 'the port registry still validates against port.schema.json');
++    const skeleton = readFileSync(join(root, adapter.impl.file), 'utf8');
++    assert.ok(declares(skeleton, adapter.impl.symbol, '.mjs'), 'the skeleton declares the symbol the adapter names');
++    assert.equal(spawnSync(process.execPath, ['--check', join(root, adapter.impl.file)]).status, 0, 'the skeleton parses');
++    // a second run: the row exists now
++    const again = run(root, '--id', 'indus-appstore', '--write');
++    assert.equal(again.code, 1);
++    assert.match(again.err, /already a tooling\/channel-register\.json row/);
++  });
++
++  it('an existing channel is refused, exit 1, and nothing is written', () => {
++    const root = tree();
++    const before = snapshot(root);
++    const r = run(root, '--id', 'android-play', '--write');
++    assert.equal(r.code, 1);
++    assert.match(r.err, /android-play is already a tooling\/channel-register\.json row/);
++    assert.deepEqual(snapshot(root), before);
++  });
++
++  it('a missing register is COVERAGE LOST, exit 2', () => {
++    const root = mkdtempSync(join(tmpdir(), 'new-channel-empty-'));
++    const r = run(root, '--id', 'indus-appstore');
++    assert.equal(r.code, 2);
++    assert.match(r.err, /COVERAGE LOST/);
++  });
++});
++
++describe('new-channel — the flags are two declared sets (TRAPS shell-13)', () => {
++  it('a switch never eats the next argument, in either order', () => {
++    assert.deepEqual(parseArgs(['--dry-run', '--id', 'x']).errors, []);
++    assert.equal(parseArgs(['--dry-run', '--id', 'x']).opts.id, 'x');
++    assert.equal(parseArgs(['--id', 'x', '--dry-run']).opts.id, 'x');
++    assert.ok(parseArgs(['--id', 'x', '--write']).opts.switches.has('--write'));
++  });
++  it('🔴 a valued flag refuses a flag as its value', () => {
++    const { errors } = parseArgs(['--id', '--write']);
++    assert.match(errors.join('\n'), /--id needs a value, and the next argument is the flag --write/);
++  });
++  it('🔴 --dry-run with --write, an unknown flag, and a bad id are refused', () => {
++    assert.match(parseArgs(['--id', 'x', '--dry-run', '--write']).errors.join('\n'), /pick one/);
++    assert.match(parseArgs(['--id', 'x', '--submit']).errors.join('\n'), /unknown argument "--submit"/);
++    assert.match(parseArgs(['--id', 'Indus Appstore']).errors.join('\n'), /is not a channel id/);
++    assert.match(parseArgs(['--id', 'x', '--surface', 'tv']).errors.join('\n'), /--surface must be app or extension/);
++  });
++  it('the scaffold for an extension channel is a publisher under extensions/scripts', () => {
++    const s = scaffold({ id: 'opera-addons', surface: 'extension', candidate: null });
++    assert.equal(s.script, 'extensions/scripts/publish-opera-addons.mjs');
++    assert.equal(s.row.storeMetadataDir, 'extensions/Extension/{tool}/store/opera-addons');
++    assert.match(s.submitter, /from '\.\.\/\.\.\/tooling\/release\/submit-common\.mjs'/);
++  });
++});
+diff --git a/tooling/ci/test/ports.test.mjs b/tooling/ci/test/ports.test.mjs
+index be856843..eb3df51c 100644
+--- a/tooling/ci/test/ports.test.mjs
++++ b/tooling/ci/test/ports.test.mjs
+@@ -295,13 +295,51 @@ describe('assert-ports — on a copy of the REAL registries', () => {
+     root = mkdtempSync(join(tmpdir(), 'ports-real-'));
+     const copy = (rel) => { if (existsSync(join(REPO, rel))) cpSync(join(REPO, rel), join(root, rel), { recursive: true }); };
+     for (const rel of ['tooling/ports', 'tooling/capability-register.json', 'tooling/legal/provider-register.json', 'tooling/channel-register.json',
+-      'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart']) copy(rel);
++      'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart',
++      // the channels port: the contract, its submitters and the conformance file that calls the runner
++      'tooling/release', 'extensions/scripts/publish-cws.mjs', 'extensions/scripts/publish-edge.mjs', 'extensions/scripts/publish-amo.mjs', 'tooling/ops/port-switch.mjs']) copy(rel);
+     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
+   });
+-  it('green control: payments, auth and telemetry each claim and earn L2', () => {
++  it('green control: payments, auth and telemetry each claim and earn L2; channels claims L2 and earns L3', () => {
+     const r = run(root);
+     assert.equal(r.code, 0, r.out);
+     for (const p of ['auth', 'payments', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
++    assert.match(r.out, /channels\s+L2\s+L3\s+L3/);
++    assert.match(r.out, /CANDIDATE channels\/indus-appstore \(Indus Appstore\): not submittable — \[ADR 076\] rider; commission UNREAD/);
++  });
++  // ⏱ 2026-10-01 (port-channels): the per-channel adapter names its register row, not a vendor.
++  const mutateChannels = (fn) => {
++    const rel = join(root, 'tooling/ports/channels.json');
++    const before = readFileSync(rel, 'utf8');
++    const doc = JSON.parse(before);
++    fn(doc);
++    writeFileSync(rel, JSON.stringify(doc));
++    try { return run(root); } finally { writeFileSync(rel, before); }
++  };
++  it('red: a channel adapter whose `channel` is no register row reddens limb 8', () => {
++    const r = mutateChannels((d) => { d.adapters.find((a) => a.id === 'amo').channel = 'firefox-addons'; });
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /limb 8 \(cross-register\): tooling\/ports\/channels\.json adapter `amo` names channel `firefox-addons`, which is no tooling\/channel-register\.json row/);
++  });
++  it('red: a non-fake adapter with neither a vendor nor a channel reddens limb 1', () => {
++    const r = mutateChannels((d) => { delete d.adapters.find((a) => a.id === 'linux-snap').channel; });
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /limb 1 \(schema\): .*adapter `linux-snap` has vendor null but is not a fake and names no `channel`/);
++  });
++  it('red: two adapters naming one channel redden limb 8', () => {
++    const r = mutateChannels((d) => { d.adapters.find((a) => a.id === 'macos-appstore').channel = 'ios-appstore'; });
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.out, /channel `ios-appstore` is named by 2 adapters/);
++  });
++  it('red: a candidate that already has a register row reddens limb 8', () => {
++    const r = mutateChannels((d) => { d.candidates[0].id = 'linux-snap'; });
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.out, /candidate `linux-snap` already has a tooling\/channel-register\.json row/);
++  });
++  it('red: a candidate that claims to be submittable reddens limb 1', () => {
++    const r = mutateChannels((d) => { d.candidates[0].submittable = true; });
++    assert.equal(r.code, 1, r.out);
++    assert.match(r.first, /limb 1 \(schema\): tooling\/ports\/channels\.json \$\.candidates\[0\]\.submittable: must be false/);
+   });
+   it('red: deleting one vendor from _non-port.json reddens limb 8', () => {
+     const rel = join(root, 'tooling/ports/_non-port.json');
+diff --git a/tooling/enforcement-index.json b/tooling/enforcement-index.json
+index 1893e322..17fe841c 100644
+--- a/tooling/enforcement-index.json
++++ b/tooling/enforcement-index.json
+@@ -4267,6 +4267,7 @@
+   {
+     "claims": [],
+     "invokedBy": [
++      ".github/workflows/ci.yml#app-dryrun",
+       ".github/workflows/ci.yml#content-gate",
+       ".github/workflows/ci.yml#guard-tests",
+       ".github/workflows/extensions-ci.yml#core",
+diff --git a/tooling/kit/new-channel.mjs b/tooling/kit/new-channel.mjs
+new file mode 100644
+index 00000000..8a75f2e8
+--- /dev/null
++++ b/tooling/kit/new-channel.mjs
+@@ -0,0 +1,239 @@
++#!/usr/bin/env node
++// ─────────────────────────────────────────────────────────────────────────────
++// new-channel.mjs — scaffold a STORE CHANNEL: a register row, a port adapter and
++// a submitter skeleton that the dry-run contract already grades.
++//
++// ⏱ 2026-10-01 (port-channels, O-CHANNELS-HAVE-NO-SUBMIT-CONTRACT). Adding a
++// store is a row plus an adapter (tooling/ports/channels.json, whose _why says
++// so), and this is the command that writes the three pieces in the shapes the
++// guards read:
++//   · the tooling/channel-register.json row — `served: false`, `submittable:
++//     false`, every fact a store has to answer left null for the owner's reading;
++//   · the tooling/ports/channels.json adapter — `status: draft`, so it earns
++//     nothing until it is built; a matching `candidates` entry is moved into it;
++//   · the submitter skeleton — tooling/release/submit-<id>.mjs (an app channel)
++//     or extensions/scripts/publish-<id>.mjs (an extension channel), exporting a
++//     ChannelSubmitter whose `--submit` REFUSES until it is written.
++// And it prints the OWNER STEPS, which it never performs: no account is opened,
++// no term is accepted and no store is called by anything here.
++//
++// 🔴 A DRY RUN UNLESS `--write`. With no mode, or `--dry-run`, it prints all
++// three pieces and the owner steps and writes NOTHING. `--write` writes them and
++// refuses when any of the three already exists. `--dry-run --write` is refused.
++//
++// 🔴 TRAPS shell-13: a no-value flag in a hand-rolled argv loop eats the next
++// argument, and a `--dry-run` written last once UPLOADED. So the flags are two
++// declared sets: a VALUED flag takes the next argument and refuses one that
++// starts with `--`; a SWITCH never takes one; anything in neither is refused.
++//
++// After `--write`, the contract test (tooling/release/test/submitters.contract
++// .test.mjs) is RED until the new channel has a fixture in
++// tooling/release/test/fixtures/submitters.json — that is the forcing function,
++// not a fault.
++//
++// Usage:
++//   node tooling/kit/new-channel.mjs --id <channel-id> [--name <name>] [--surface app|extension]
++//                                    [--dry-run | --write] [--root <dir>]
++//
++// Exit: 0 printed (dry run) or written · 1 refused: the channel or a file already
++// exists · 2 usage, or COVERAGE LOST — a register it must read is absent.
++// ─────────────────────────────────────────────────────────────────────────────
++import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
++import { dirname, join, resolve } from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const HERE = dirname(fileURLToPath(import.meta.url));
++export const REGISTER_REL = 'tooling/channel-register.json';
++export const PORT_REL = 'tooling/ports/channels.json';
++/** The text the channels array ends on; the row is inserted before it. */
++const CHANNELS_END = '\n  ],\n  "disqualified"';
++
++export const VALUED = new Set(['--id', '--name', '--surface', '--root']);
++export const SWITCHES = new Set(['--dry-run', '--write']);
++
++/** argv → { opts, errors }. Pure. */
++export function parseArgs(argv) {
++  const opts = { switches: new Set() };
++  const errors = [];
++  for (let i = 0; i < argv.length; i++) {
++    const a = argv[i];
++    if (SWITCHES.has(a)) opts.switches.add(a);
++    else if (VALUED.has(a)) {
++      const v = argv[i + 1];
++      if (v === undefined || v.startsWith('--')) errors.push(`${a} needs a value${v === undefined ? '' : `, and the next argument is the flag ${v}`}`);
++      else {
++        opts[a.slice(2)] = v;
++        i++;
++      }
++    } else errors.push(`unknown argument ${JSON.stringify(a)}`);
++  }
++  if (opts.switches.has('--dry-run') && opts.switches.has('--write')) errors.push('--dry-run and --write together: pick one');
++  if (opts.id === undefined) errors.push('--id <channel-id> is required');
++  else if (!/^[a-z][a-z0-9-]*$/.test(opts.id)) errors.push(`--id ${JSON.stringify(opts.id)} is not a channel id (lower-case letters, digits, hyphens)`);
++  if (opts.surface !== undefined && !['app', 'extension'].includes(opts.surface)) errors.push(`--surface must be app or extension, not ${JSON.stringify(opts.surface)}`);
++  return { opts, errors };
++}
++
++const camel = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
++
++/** The three pieces and the owner steps for `id`. Pure: every input is passed in. */
++export function scaffold({ id, name, surface, candidate }) {
++  const display = name ?? candidate?.name ?? id;
++  const script = surface === 'extension' ? `extensions/scripts/publish-${id}.mjs` : `tooling/release/submit-${id}.mjs`;
++  const symbol = `${camel(id)}Submitter`;
++  const reason = candidate?.deferral?.reason ?? `${display} is a channel to evaluate: no developer account exists, so nothing is submitted.`;
++  const row = {
++    id,
++    name: display,
++    platforms: [],
++    kind: 'store',
++    surface,
++    storefrontKey: null,
++    served: false,
++    submittable: false,
++    purchaseRail: null,
++    artifactFormats: [],
++    signing: { keyKind: null },
++    minimumToolchain: [],
++    lane: null,
++    deploymentEnvironment: null,
++    storeMetadataDir: surface === 'extension' ? `extensions/Extension/{tool}/store/${id}` : `apps/{app}/store/${id}`,
++    ownerQueue: null,
++    accountStatus: { status: 'none', asOf: null, note: 'Scaffolded by tooling/kit/new-channel.mjs. No account is open; every null above is read from the store, never guessed.' },
++    deferral: { reason, alsoBlockedBy: 'the owner steps new-channel.mjs printed' },
++    notes: [],
++  };
++  const adapter = {
++    id,
++    vendor: null,
++    channel: id,
++    status: 'draft',
++    impl: { file: script, symbol },
++    capabilities: ['validate', 'plan', 'upload', 'status'],
++    secrets: [],
++    identity: [],
++    environments: ['test'],
++    cost: { feeCells: candidate?.commission?.cell ? [candidate.commission.cell] : [], unit: null },
++    conformance: { file: 'tooling/release/test/submitters.contract.test.mjs' },
++    exportDuty: candidate?.exportDuty ?? 'UNREAD: what leaves with us (the listing, rendered from app.yaml), what stays (reviews, ratings) and what is permanent (the app id) — read from the store before the adapter is built.',
++    readAt: null,
++    account: { kind: 'unrecorded', source: `${REGISTER_REL} channels[${id}].accountStatus — no account yet` },
++  };
++  const common = surface === 'extension' ? '../../tooling/release/submit-common.mjs' : './submit-common.mjs';
++  const submitter = `#!/usr/bin/env node
++// ─────────────────────────────────────────────────────────────────────────────
++// ${script.split('/').pop()} — the ${display} channel (${id}). SKELETON, scaffolded by
++// tooling/kit/new-channel.mjs: the ChannelSubmitter is in place so the dry-run
++// contract grades it, and \`--submit\` REFUSES until the store's calls are read from
++// a primary source and written here, each citing its URL.
++// ─────────────────────────────────────────────────────────────────────────────
++import { storeSubmitter, invokedAsScript } from '${common}';
++
++export const ${symbol} = storeSubmitter({
++  channel: '${id}',
++  script: '${script}',
++  steps: (artifact) => [
++    { does: \`upload \${artifact?.path ?? 'the artifact'} by hand: no submission API is sourced yet\`, surface: 'console', call: '${display} developer console', writes: true },
++  ],
++  uploadArgv: (artifact) => ['--submit', '--app', artifact.app],
++});
++
++if (invokedAsScript(import.meta.url)) {
++  const argv = process.argv.slice(2);
++  if (argv.includes('--submit')) {
++    console.error('FAIL --submit is NOT BUILT for ${id}: no store call is sourced. Nothing was sent.');
++    process.exit(1);
++  }
++  for (const s of ${symbol}.plan({ path: '<artifact>' }, { dryRun: true })) console.log(\`→    \${s.step}. [\${s.surface}] \${s.does}\`);
++}
++`;
++  const ownerSteps = candidate?.deferral?.ownerSteps ?? [
++    `open a ${display} developer account, and record its kind (individual or organization) — an entity change later has to move it`,
++    `read ${display}'s developer terms and record the commission as a tooling/catalog/fee-register.json cell, with the date read and its URL`,
++    'read the listing fields and limits the store publishes, with their sources, into the register row',
++  ];
++  const agentSteps = [
++    `add a recorded fixture for ${id} to tooling/release/test/fixtures/submitters.json — the contract test is red until it exists`,
++    `add the ${id} row's storeMetadataContract.perChannel entry and the metadata tree it names`,
++  ];
++  return { script, symbol, row, adapter, submitter, ownerSteps, agentSteps };
++}
++
++/** Run with `argv`; returns the exit code. `log`/`err` are injectable for the tests. */
++export function main(argv, { log = (s) => console.log(s), err = (s) => console.error(s) } = {}) {
++  const { opts, errors } = parseArgs(argv);
++  if (errors.length) {
++    for (const e of errors) err(`FAIL ${e}`);
++    err('usage: node tooling/kit/new-channel.mjs --id <channel-id> [--name <name>] [--surface app|extension] [--dry-run | --write] [--root <dir>]');
++    return 2;
++  }
++  const root = resolve(opts.root ?? join(HERE, '..', '..'));
++  const write = opts.switches.has('--write');
++  let register;
++  let port;
++  let registerText;
++  let portText;
++  try {
++    registerText = readFileSync(join(root, REGISTER_REL), 'utf8');
++    register = JSON.parse(registerText);
++    portText = readFileSync(join(root, PORT_REL), 'utf8');
++    port = JSON.parse(portText);
++  } catch (e) {
++    err(`FAIL COVERAGE LOST — ${e.message}. new-channel reads ${REGISTER_REL} and ${PORT_REL}, and scaffolds nothing it cannot check against them.`);
++    return 2;
++  }
++  if ((register.channels ?? []).some((c) => c.id === opts.id)) {
++    err(`FAIL ${opts.id} is already a ${REGISTER_REL} row. A store is scaffolded once.`);
++    return 1;
++  }
++  if ((port.adapters ?? []).some((a) => a.id === opts.id)) {
++    err(`FAIL ${opts.id} is already an adapter in ${PORT_REL}.`);
++    return 1;
++  }
++  const candidate = (port.candidates ?? []).find((c) => c.id === opts.id) ?? null;
++  const s = scaffold({ id: opts.id, name: opts.name, surface: opts.surface ?? 'app', candidate });
++
++  log(`new-channel: ${opts.id}${candidate ? ` — from the ${PORT_REL} candidate "${candidate.name}"` : ''} — ${write ? 'WRITE' : 'DRY RUN (nothing is written; pass --write)'}`);
++  log(`\n── the ${REGISTER_REL} row ──`);
++  log(JSON.stringify(s.row, null, 2));
++  log(`\n── the ${PORT_REL} adapter${candidate ? ' (replaces the candidate)' : ''} ──`);
++  log(JSON.stringify(s.adapter, null, 2));
++  log(`\n── the submitter skeleton: ${s.script} (exports ${s.symbol}) ──`);
++  log(s.submitter);
++  log('── OWNER STEPS (printed, never performed) ──');
++  s.ownerSteps.forEach((o, i) => log(`  ${i + 1}. ${o}`));
++  log('── then, the agent ──');
++  s.agentSteps.forEach((o) => log(`  · ${o}`));
++
++  if (!write) {
++    log('\nnew-channel: DRY RUN — nothing was written. Pass --write to scaffold these three pieces.');
++    return 0;
++  }
++  if (existsSync(join(root, s.script))) {
++    err(`FAIL ${s.script} already exists; new-channel never overwrites a submitter.`);
++    return 1;
++  }
++  const at = registerText.lastIndexOf(CHANNELS_END);
++  if (at === -1) {
++    err(`FAIL COVERAGE LOST — ${REGISTER_REL} no longer ends its channels array on ${JSON.stringify(CHANNELS_END)}; the row cannot be placed without rewriting the file.`);
++    return 2;
++  }
++  const rowText = `,\n${JSON.stringify(s.row, null, 2).replace(/^/gm, '    ')}`;
++  const nextRegister = registerText.slice(0, at) + rowText + registerText.slice(at);
++  const parsed = JSON.parse(nextRegister);
++  if (parsed.channels.at(-1)?.id !== opts.id) {
++    err(`FAIL the inserted row did not land as the last channel of ${REGISTER_REL}; nothing was written.`);
++    return 1;
++  }
++  port.adapters = [...port.adapters, s.adapter];
++  if (candidate) port.candidates = port.candidates.filter((c) => c.id !== opts.id);
++  mkdirSync(dirname(join(root, s.script)), { recursive: true });
++  writeFileSync(join(root, s.script), s.submitter);
++  writeFileSync(join(root, REGISTER_REL), nextRegister);
++  writeFileSync(join(root, PORT_REL), `${JSON.stringify(port, null, 2)}\n`);
++  log(`\nnew-channel: WROTE ${REGISTER_REL}, ${PORT_REL} and ${s.script}.`);
++  return 0;
++}
++
++const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
++if (invokedDirectly) process.exitCode = main(process.argv.slice(2));
+diff --git a/tooling/ops/port-switch.mjs b/tooling/ops/port-switch.mjs
+index 57f71b8b..3909637a 100644
+--- a/tooling/ops/port-switch.mjs
++++ b/tooling/ops/port-switch.mjs
+@@ -187,7 +187,7 @@ export function run(opts) {
+   if (!target) add(1, 'target', 'FAIL', `${rel} has no adapter \`${opts.to}\` (has: ${adapters.map((a) => a?.id).join(', ')})`);
+   else if (target.status === 'fake' && env === 'live') add(1, 'target', 'FAIL', `\`${target.id}\` is a fake; a fake is never selectable in live`);
+   else if (!(target.environments ?? []).includes(env)) add(1, 'target', 'FAIL', `\`${target.id}\` does not list the ${env} environment (${(target.environments ?? []).join(', ')})`);
+-  else add(1, 'target', 'PASS', `\`${target.id}\` (vendor ${target.vendor ?? 'none — a fake'}) is a row of ${rel} for ${env}`);
++  else add(1, 'target', 'PASS', `\`${target.id}\` (${target.vendor ? `vendor ${target.vendor}` : typeof target.channel === 'string' ? `channel ${target.channel} — the store is that ${CHANNEL_REGISTER} row's` : 'vendor none — a fake'}) is a row of ${rel} for ${env}`);
+   if (!target) return finish(checks);
+ 
+   // C2
+diff --git a/tooling/ports/README.md b/tooling/ports/README.md
+index 5a6dd893..18118e6c 100644
+--- a/tooling/ports/README.md
++++ b/tooling/ports/README.md
+@@ -13,6 +13,13 @@ The first subjects, at their honest levels: `tooling/ports/payments.json` (inbou
+ `tooling/ports/auth.json` (Dart `AuthRepository`) and `tooling/ports/telemetry.json` (Dart `TelemetryClient`), each
+ claiming L2 with target L3; every other vendor is placed in `tooling/ports/_non-port.json`.
+ 
++`tooling/ports/channels.json` (port-channels) is a port selected PER CHANNEL: one adapter per `kind: store` row of
++`tooling/channel-register.json`, each a `ChannelSubmitter` (`tooling/release/submit-common.mjs`: `validate` · `plan` ·
++`upload` · `status`) that passes `submitterConformance` dry, with no network
++(`tooling/release/test/submitters.contract.test.mjs`). Adding a store is a row, an adapter and a submitter —
++`node tooling/kit/new-channel.mjs --id <id> --dry-run` prints the three. Its switch is not a margin switch between
++rails: `port-switch.mjs`'s C8 has no fee model for moving a channel, and prints LOST rather than a guess.
++
+ ## 1. Levels
+ 
+ | Level | Means | Earned when (assert-ports limb 6) |
+@@ -48,6 +55,8 @@ wherever the shape can hold it).
+ | `adapters[].conformance` | `{file}` — the adapter's test that **calls** the suite's runner; null until it exists. |
+ | `adapters[].exportDuty` | What leaves with us, what must be exported, what cannot move. |
+ | `adapters[].readAt` | `{url, on}` — the vendor page the adapter's facts were read from, and when; null if none was read. |
++| `adapters[].channel` | Optional, for a port selected per channel (`channels.json`): a `tooling/channel-register.json` row id. The store is that row's, so `vendor` is null and the store stays placed once in `_non-port.json`. Limb 8 resolves it, and one channel has one adapter. |
++| `adapters[].account` | Optional, `{kind, source}`: the KIND of store account the channel binds to (`individual` · `organization` · `none` · `unrecorded`) and where that is recorded — what an entity change has to move. Never the account's values. |
+ | `adapters[].c8Seam` | Optional, a **declared, printed** divergence: the vendor's C-8 `seam.file` is not this port's interface. Names the C-8 file exactly, with `why` and `until`. |
+ | `selection.by` | `single` · `environment` · `stream` · `channel-market` · `per-call`. |
+ | `selection.source` | `<file>#<pointer>` when another register (or one code site) holds the answer — e.g. `tooling/channel-register.json#purchaseRails`; null when `default` is the whole answer. |
+@@ -59,6 +68,7 @@ wherever the shape can hold it).
+ | `conformance.pending[]` | `{adapter, case, row}` — a scenario an adapter cannot pass yet. Names its `O-` row, prints on every run, and blocks L3 for that adapter. |
+ | `switch.runbook` | `Private/runbooks/switch-vendor.md#<port>`. |
+ | `switch.dryRun` | `node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run`. |
++| `candidates[]` | Optional. A store not built because an owner step stands first: `{id, name, submittable: false, deferral {reason, source, ownerSteps}, commission {cell, asOf, verify}, exportDuty}`. It has no impl and no register row; limb 8 refuses one that has a row (it is an adapter then) and PRINTS every candidate. Its commission is null until the store's terms are read and dated. `tooling/kit/new-channel.mjs` turns a candidate into a row, an adapter and a submitter skeleton. |
+ | `_why` | Prose: the honest state and its reasons. |
+ 
+ `tooling/ports/_non-port.json` (`$defs.nonPortRegister`) places every vendor that is **not** an adapter: each row a
+diff --git a/tooling/ports/channels.json b/tooling/ports/channels.json
+new file mode 100644
+index 00000000..1b7549bf
+--- /dev/null
++++ b/tooling/ports/channels.json
+@@ -0,0 +1,389 @@
++{
++  "$schema": "./port.schema.json",
++  "port": "channels",
++  "level": {
++    "claimed": 2,
++    "target": 3
++  },
++  "interface": {
++    "ts": {
++      "file": "tooling/release/submit-common.mjs",
++      "symbols": [
++        "ChannelSubmitter"
++      ]
++    }
++  },
++  "adapters": [
++    {
++      "id": "android-play",
++      "vendor": null,
++      "channel": "android-play",
++      "status": "built",
++      "impl": {
++        "file": "tooling/release/submit-play.mjs",
++        "symbol": "playSubmitter"
++      },
++      "capabilities": [
++        "validate",
++        "plan",
++        "upload",
++        "status"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "test",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [
++          "play-billing-subscription"
++        ],
++        "unit": null
++      },
++      "conformance": {
++        "file": "tooling/release/test/submitters.contract.test.mjs"
++      },
++      "exportDuty": "Leaves with us: the listing text and graphics are OURS — apps/{app}/store/android-play, rendered from apps/{app}/app.yaml, and every signed artifact. Stays with the store: reviews, ratings and install history. Permanent: the package name (applicationId) — an entity change TRANSFERS the app between Play accounts, keeping the package id and the upload key.",
++      "readAt": null,
++      "account": {
++        "kind": "organization",
++        "source": "tooling/channel-register.json channels[android-play].accountStatus — the Play ORGANIZATION account, verified 2026-08-04"
++      }
++    },
++    {
++      "id": "ios-appstore",
++      "vendor": null,
++      "channel": "ios-appstore",
++      "status": "built",
++      "impl": {
++        "file": "tooling/release/submit-appstore.mjs",
++        "symbol": "iosAppstoreSubmitter"
++      },
++      "capabilities": [
++        "validate",
++        "plan",
++        "upload",
++        "status"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "test",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [
++          "apple-iap-standard"
++        ],
++        "unit": null
++      },
++      "conformance": {
++        "file": "tooling/release/test/submitters.contract.test.mjs"
++      },
++      "exportDuty": "Leaves with us: the listing text and graphics are OURS — apps/{app}/store/ios-appstore, rendered from apps/{app}/app.yaml, and every signed artifact. Stays with the store: reviews and ratings. Permanent: the bundle id (tooling/apple-provisioning.json) — an Individual → Organization change needs a D-U-N-S number and a team change, and the certificates are reissued.",
++      "readAt": null,
++      "account": {
++        "kind": "individual",
++        "source": "tooling/channel-register.json channels[ios-appstore].accountStatus.note — Individual enrolment, ACTIVE since 2026-08-31"
++      }
++    },
++    {
++      "id": "macos-appstore",
++      "vendor": null,
++      "channel": "macos-appstore",
++      "status": "built",
++      "impl": {
++        "file": "tooling/release/submit-appstore.mjs",
++        "symbol": "macosAppstoreSubmitter"
++      },
++      "capabilities": [
++        "validate",
++        "plan",
++        "upload",
++        "status"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "test",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [
++          "apple-iap-standard"
++        ],
++        "unit": null
++      },
++      "conformance": {
++        "file": "tooling/release/test/submitters.contract.test.mjs"
++      },
++      "exportDuty": "Leaves with us: the listing text and graphics are OURS — apps/{app}/store/macos-appstore, rendered from apps/{app}/app.yaml, and every signed artifact. Stays with the store: reviews and ratings. Permanent: the bundle id (tooling/apple-provisioning.json) — moved with the same Apple team change as ios-appstore.",
++      "readAt": null,
++      "account": {
++        "kind": "individual",
++        "source": "tooling/channel-register.json channels[macos-appstore].accountStatus.note — the same Individual Apple membership"
++      }
++    },
++    {
++      "id": "windows-store",
++      "vendor": null,
++      "channel": "windows-store",
++      "status": "built",
++      "impl": {
++        "file": "tooling/release/submit-windows-store.mjs",
++        "symbol": "windowsStoreSubmitter"
++      },
++      "capabilities": [
++        "validate",
++        "plan",
++        "upload",
++        "status"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "test",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": {
++        "file": "tooling/release/test/submitters.contract.test.mjs"
++      },
++      "exportDuty": "Leaves with us: the listing text and graphics are OURS — apps/{app}/store/windows-store, rendered from apps/{app}/app.yaml, and every signed artifact. Stays with the store: reviews and ratings. Permanent: the product id and the package identity name (apps/{app}/app.yaml stores.windows-store). The Partner Center account TYPE is what an entity change touches; an API-created submission is never edited in Partner Center (stores-07).",
++      "readAt": null,
++      "account": {
++        "kind": "organization",
++        "source": "tooling/channel-register.json channels[windows-store].accountStatus.note — a COMPANY Partner Center account"
++      }
++    },
++    {
++      "id": "linux-snap",
++      "vendor": null,
++      "channel": "linux-snap",
++      "status": "built",
++      "impl": {
++        "file": "tooling/release/submit-snap.mjs",
++        "symbol": "snapSubmitter"
++      },
++      "capabilities": [
++        "validate",
++        "plan",
++        "upload",
++        "status"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "test",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": {
++        "file": "tooling/release/test/submitters.contract.test.mjs"
++      },
++      "exportDuty": "Leaves with us: the listing text and graphics are OURS — apps/{app}/store/linux-snap, rendered from apps/{app}/app.yaml, and every signed artifact and the generated snapcraft.yaml. Stays with the store: ratings and the install base. Permanent: the snap name, a global namespace claimed once per app (apps/{app}/store/linux-snap/snap-name.txt).",
++      "readAt": null,
++      "account": {
++        "kind": "none",
++        "source": "tooling/channel-register.json channels[linux-snap].accountStatus — status none: the owner step is the snap NAME, not an account"
++      }
++    },
++    {
++      "id": "apps-gov-in",
++      "vendor": null,
++      "channel": "apps-gov-in",
++      "status": "external",
++      "impl": {
++        "configAt": "tooling/channel-register.json channels[apps-gov-in].noSubmissionApi",
++        "verify": "the portal publishes NO submission API, so the path is the developer portal by hand — the register row's deferral names it; nothing here can call it"
++      },
++      "capabilities": [
++        "validate"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "test",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": null,
++      "exportDuty": "Leaves with us: the listing text and graphics are OURS — apps/{app}/store/apps-gov-in, rendered from apps/{app}/app.yaml, and every signed artifact. Stays with the store: the portal's listing record. Permanent: the package name; the profile's OWNER is what an entity change moves.",
++      "readAt": null,
++      "account": {
++        "kind": "individual",
++        "source": "tooling/channel-register.json channels[apps-gov-in].accountStatus.note — the developer profile is entity INDIVIDUAL"
++      }
++    },
++    {
++      "id": "chrome-webstore",
++      "vendor": null,
++      "channel": "chrome-webstore",
++      "status": "built",
++      "impl": {
++        "file": "extensions/scripts/publish-cws.mjs",
++        "symbol": "chromeWebstoreSubmitter"
++      },
++      "capabilities": [
++        "validate",
++        "plan",
++        "upload",
++        "status"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "test",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": {
++        "file": "tooling/release/test/submitters.contract.test.mjs"
++      },
++      "exportDuty": "Leaves with us: the listing text and graphics (extensions/Extension/{tool}/store/chrome and store/_shared) and every packed zip. Stays with the store: reviews, ratings and users. Permanent: the item id (tool.json storeMetadata.stores.chrome.listingId); the VERIFIED PUBLISHER is what an entity change moves.",
++      "readAt": null,
++      "account": {
++        "kind": "individual",
++        "source": "tooling/channel-register.json channels[chrome-webstore].accountStatus.note — TRADER verified; the verified publisher is the proprietor's legal name"
++      }
++    },
++    {
++      "id": "edge-addons",
++      "vendor": null,
++      "channel": "edge-addons",
++      "status": "built",
++      "impl": {
++        "file": "extensions/scripts/publish-edge.mjs",
++        "symbol": "edgeAddonsSubmitter"
++      },
++      "capabilities": [
++        "validate",
++        "plan",
++        "upload",
++        "status"
++      ],
++      "secrets": [],
++      "identity": [],
++      "environments": [
++        "test",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": {
++        "file": "tooling/release/test/submitters.contract.test.mjs"
++      },
++      "exportDuty": "Leaves with us: the listing text and graphics (extensions/Extension/{tool}/store/edge and store/_shared) and every packed zip. Stays with the store: reviews, ratings and users. Permanent: the product id; it moves with the Partner Center account type, as windows-store does.",
++      "readAt": null,
++      "account": {
++        "kind": "organization",
++        "source": "tooling/channel-register.json channels[edge-addons].accountStatus.note — the same Company Partner Center account as windows-store"
++      }
++    },
++    {
++      "id": "amo",
++      "vendor": null,
++      "channel": "amo",
++      "status": "built",
++      "impl": {
++        "file": "extensions/scripts/publish-amo.mjs",
++        "symbol": "amoSubmitter"
++      },
++      "capabilities": [
++        "validate",
++        "plan",
++        "upload",
++        "status"
++      ],
++      "secrets": [],
++      "identity": [
++        "ownerDomain"
++      ],
++      "environments": [
++        "test",
++        "live"
++      ],
++      "cost": {
++        "feeCells": [],
++        "unit": null
++      },
++      "conformance": {
++        "file": "tooling/release/test/submitters.contract.test.mjs"
++      },
++      "exportDuty": "Leaves with us: the listing text and graphics (extensions/Extension/{tool}/store/firefox and store/_shared), the amo-metadata payload and every signed xpi. Stays with the store: reviews, ratings and users. Permanent: gecko.id, fixed at the first signing — unchanged by any entity change, and CONFIRMED, never set (stores-01).",
++      "readAt": null,
++      "account": {
++        "kind": "unrecorded",
++        "source": "tooling/channel-register.json channels[amo].accountStatus.note — the signup asked no account type; none is recorded"
++      }
++    }
++  ],
++  "selection": {
++    "by": "per-call",
++    "source": "tooling/channel-register.json#channels",
++    "default": {
++      "live": null,
++      "sandbox": null,
++      "test": null
++    },
++    "canary": null
++  },
++  "generated": false,
++  "handTables": [],
++  "conformance": {
++    "suite": {
++      "file": "tooling/release/submit-common.mjs",
++      "runner": "submitterConformance"
++    },
++    "pending": []
++  },
++  "switch": {
++    "runbook": "Private/runbooks/switch-vendor.md#channels",
++    "dryRun": "node tooling/ops/port-switch.mjs channels --to <adapter> --dry-run"
++  },
++  "candidates": [
++    {
++      "id": "indus-appstore",
++      "name": "Indus Appstore",
++      "submittable": false,
++      "deferral": {
++        "reason": "A channel to EVALUATE, not one to ship: [ADR 076]'s rider names the Indus Appstore for its 0% commission on in-app payments. No developer account exists, so no row is written to the channel register and no submitter is built; the facts below are read first.",
++        "source": "[ADR 076] rider",
++        "ownerSteps": [
++          "open an Indus Appstore developer account, as the entity the other Android channel uses — the account kind is what an entity change later has to move",
++          "read the developer terms and record the commission as a tooling/catalog/fee-register.json cell, with the date read and its URL",
++          "then scaffold the channel: node tooling/kit/new-channel.mjs --id indus-appstore --dry-run, and --write once the row's facts are read"
++        ]
++      },
++      "commission": {
++        "cell": null,
++        "asOf": null,
++        "verify": "UNREAD: the 0% figure is the rider's, not a reading of the store's terms. Read the Indus Appstore developer terms and write the cell with asOf before any margin is computed from it."
++      },
++      "exportDuty": "The same as android-play once built: the listing is ours (rendered from app.yaml), the reviews and ratings stay with the store, and the package name is permanent — so it must be the SAME package id the Play channel ships."
++    }
++  ],
++  "_why": [
++    "EVERY STORE CHANNEL IS A REGISTER ROW PLUS A SUBMITTER THAT PASSES ONE DRY-RUN CONTRACT. The row is tooling/channel-register.json's (cited by `channel`, never restated); the submitter is the ChannelSubmitter each script exports (tooling/release/submit-common.mjs): validate · plan · upload · status. Adding a store is a row, an adapter here, and a submitter that passes submitterConformance — tooling/kit/new-channel.mjs scaffolds the three.",
++    "One adapter per `kind: store` row, and the contract test holds that set equal both ways. The web row and the two `kind: direct` rows have no store to submit to and no adapter. `vendor` is null on every adapter on purpose: the store is the row's, and apple-app-store, google-play and microsoft-store stay placed once in _non-port.json as billing authorities.",
++    "L2, not L3, CLAIMED: every adapter is chosen per call by its channel id and passes the conformance suite DRY, against recorded fixtures with no network. No channel is served and no `upload` has ever run here, so nothing has shown the upload half conforms; the claim waits for a first real submission on two channels.",
++    "apps-gov-in is `external`: the portal has no submission API (the row's noSubmissionApi), so its path is a person at the portal and there is nothing to call dry or wet.",
++    "cost.feeCells is the STORE's commission where the store bills: Play Billing and Apple IAP. The paddle-rail stores take none on our own checkout; that rail's cells are the payments port's. secrets are none here: every store credential is named once in the register's signing.ciSecrets and ciSecretRegister.",
++    "candidates holds a store not built because an owner step stands first. Its commission is UNREAD until the store's terms are read and dated."
++  ]
++}
+diff --git a/tooling/ports/port.schema.json b/tooling/ports/port.schema.json
+index 112c657a..a5a07d7b 100644
+--- a/tooling/ports/port.schema.json
++++ b/tooling/ports/port.schema.json
+@@ -101,6 +101,11 @@
+         "dryRun": { "type": "string", "pattern": "^node tooling/ops/port-switch\\.mjs [a-z][a-z0-9-]* --to <adapter> --dry-run$" }
+       }
+     },
++    "candidates": {
++      "type": "array",
++      "items": { "$ref": "#/$defs/candidate" },
++      "description": "Optional. Adapters NOT YET BUILT because an owner step stands in front of them — a store with no developer account. A candidate has no impl and no register row; it records why, the owner steps, and what must be read first. assert-ports limb 8 refuses a candidate whose id already has a tooling/channel-register.json row (it is then an adapter)."
++    },
+     "_why": { "$ref": "#/$defs/prose" }
+   },
+   "$defs": {
+@@ -173,6 +178,21 @@
+             "on": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+           }
+         },
++        "channel": {
++          "type": "string",
++          "pattern": "^[a-z][a-z0-9-]*$",
++          "description": "A tooling/channel-register.json `channels[].id`, for a port selected per channel (tooling/ports/channels.json). The store is that row's, so `vendor` stays null: a store is placed once, in _non-port.json, as the billing authority. assert-ports limb 8 resolves it."
++        },
++        "account": {
++          "type": "object",
++          "additionalProperties": false,
++          "required": ["kind", "source"],
++          "description": "The kind of store account the channel's submissions bind to — what an entity change has to move. A KIND, never the account's values.",
++          "properties": {
++            "kind": { "enum": ["individual", "organization", "none", "unrecorded"] },
++            "source": { "type": "string", "minLength": 10 }
++          }
++        },
+         "c8Seam": {
+           "type": "object",
+           "additionalProperties": false,
+@@ -186,6 +206,38 @@
+         }
+       }
+     },
++    "candidate": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["id", "name", "submittable", "deferral", "commission", "exportDuty"],
++      "properties": {
++        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
++        "name": { "type": "string", "minLength": 2 },
++        "submittable": { "const": false, "description": "A candidate is never submittable: nothing is built until the account exists." },
++        "deferral": {
++          "type": "object",
++          "additionalProperties": false,
++          "required": ["reason", "source", "ownerSteps"],
++          "properties": {
++            "reason": { "type": "string", "minLength": 20 },
++            "source": { "type": "string", "minLength": 4 },
++            "ownerSteps": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 10 } }
++          }
++        },
++        "commission": {
++          "type": "object",
++          "additionalProperties": false,
++          "required": ["cell", "asOf", "verify"],
++          "description": "The fee-register.json cell for the store's commission, with the date it was read. Null in both until it is read from the store's own terms: a candidate's margin is UNREAD, never a guess.",
++          "properties": {
++            "cell": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9-]*$" },
++            "asOf": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
++            "verify": { "type": "string", "minLength": 20 }
++          }
++        },
++        "exportDuty": { "type": "string", "minLength": 20 }
++      }
++    },
+     "nonPortRegister": {
+       "type": "object",
+       "additionalProperties": false,
+diff --git a/tooling/release/submit-appstore.mjs b/tooling/release/submit-appstore.mjs
+index 2c4f4a71..2ef124c1 100644
+--- a/tooling/release/submit-appstore.mjs
++++ b/tooling/release/submit-appstore.mjs
+@@ -82,7 +82,7 @@ import { fileURLToPath } from 'node:url';
+ import { spawnSync } from 'node:child_process';
+ import { readAppleBundleId } from '../ci/read-identity.mjs';
+ import { appleArtifactPath } from '../ci/apple-signing.mjs';
+-import { submitCli } from './submit-common.mjs';
++import { submitCli, storeSubmitter, invokedAsScript } from './submit-common.mjs';
+ import { bundleIdOf, REGISTER as APPLE_REGISTER } from '../ci/apple-provisioning.mjs';
+ import { storeRecordOf, missingIdsOf } from '../store/store-record.mjs';
+ 
+@@ -90,6 +90,37 @@ const CHANNELS = ['ios-appstore', 'macos-appstore'];
+ const REGISTER = 'tooling/channel-register.json';
+ const APPS = 'catalog/apps.json';
+ 
++// ── the ChannelSubmitter (submit-common.mjs · tooling/ports/channels.json) ────
++/** Both Apple channels behind the one store contract — one submitter per row,
++ *  as the register carries one row per channel. `--submit` REFUSES by design
++ *  (UNVERIFIED below), so the plan is the console path the runbook walks, every
++ *  write a human's in App Store Connect; `upload` runs that refusing `--submit`. */
++const appleSubmitter = (channel) =>
++  storeSubmitter({
++    channel,
++    script: 'tooling/release/submit-appstore.mjs',
++    steps: (artifact) => [
++      { does: `run the Small Business Program gate for ${channel} before any submission`, surface: 'local', call: `node tooling/ci/assert-small-business-program.mjs --for-submission=${channel} --real-submission`, writes: false },
++      { does: `upload ${artifact?.path ?? 'the signed build'} to App Store Connect (the API path is UNVERIFIED, so a human uploads)`, surface: 'console', call: 'App Store Connect — Private/runbooks/store-submission-apple.md', writes: true },
++      { does: 'attach the build to the version and submit it for review', surface: 'console', call: 'App Store Connect — Private/runbooks/store-submission-apple.md', writes: true },
++    ],
++    uploadArgv: (artifact) => ['--submit', '--channel', channel, '--app', artifact.app],
++  });
++export const iosAppstoreSubmitter = appleSubmitter(CHANNELS[0]);
++export const macosAppstoreSubmitter = appleSubmitter(CHANNELS[1]);
++
++// ── the CLI, which runs only when this file is the entry point ────────────────
++// ⏱ 2026-10-01 (port-channels): the export above made this file a module that
++// tooling/release/test/submitters.contract.test.mjs imports, and a script whose
++// body runs on import cannot be imported — it would read the test's argv and
++// exit. So the body is `cli()`, called below only when node was pointed at this
++// file. The body is the CLI exactly as it was, and it is DELIBERATELY LEFT AT
++// COLUMN 0: re-indenting it would rewrite every line other lanes patch here, and
++// every patch to it would stop applying. Its behaviour, flags and exit codes are
++// unchanged; the dry runs in ci.yml `app-dryrun` walk it as before.
++if (invokedAsScript(import.meta.url)) await cli();
++
++async function cli() {
+ // ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
+ const { flag, opt, root: ROOT, ok, abs, read, coverageLost, die, appOf } = submitCli('submit-appstore');
+ 
+@@ -584,3 +615,4 @@ if (DRY_RUN) {
+ }
+ 
+ // The --submit path refused at the top of this file, before any check ran.
++}
+diff --git a/tooling/release/submit-common.mjs b/tooling/release/submit-common.mjs
+index c2a01d1e..c67b53d2 100644
+--- a/tooling/release/submit-common.mjs
++++ b/tooling/release/submit-common.mjs
+@@ -30,9 +30,11 @@
+ // grades this file's own code for the read, so deleting the read here un-credits
+ // every caller at once.
+ // ─────────────────────────────────────────────────────────────────────────────
+-import { readFileSync } from 'node:fs';
++import { readFileSync, realpathSync } from 'node:fs';
+ import { join, resolve, dirname } from 'node:path';
+ import { fileURLToPath } from 'node:url';
++import { spawnSync } from 'node:child_process';
++import { createRequire, syncBuiltinESMExports } from 'node:module';
+ import { githubApiBase } from '../ci/record-deployment.mjs';
+ 
+ /** The COVERAGE LOST exit. A finding is 1; a guard that could not look is 2. */
+@@ -260,3 +262,302 @@ export async function requirePublishEnvironment({ env = process.env, fetchImpl =
+     ],
+   };
+ }
++
++// ─────────────────────────────────────────────────────────────────────────────
++// THE ChannelSubmitter CONTRACT — one shape every store submitter exports.
++//
++// ⏱ ADDED 2026-10-01 (port-channels, O-CHANNELS-HAVE-NO-SUBMIT-CONTRACT). Each
++// store had its own submit script and each script its own shape: four here,
++// three extension publishers, and a runbook for apps.gov.in. No test ran every
++// one of them dry, so "adding a store" meant reading all of them to learn what
++// a submitter is. The answer is now this block, and tooling/ports/channels.json
++// is the port registry that names one adapter per store channel:
++//
++//   { channel,                                   a tooling/channel-register.json row id
++//     validate(record, { root }) → findings,     pure: the listing record against its contract
++//     plan(artifact, { dryRun: true }) → steps,  pure and deterministic: what `upload` WOULD do
++//     upload(artifact, { dryRun: false, … }),    the real path — the script's own CLI, every gate kept
++//     status({ root }) → { served, submittable, account, asOf } }   read from the register, never the store
++//
++// 🔴 `plan` NEVER CALLS A WRITE API, AND NEVER CALLS ANY API. It describes the
++// calls and does not make them; `submitterConformance` below runs it under a
++// fetch stub and a child_process stub and refuses a single call. It throws
++// unless `dryRun` is literally `true`, so a caller that forgot the flag gets an
++// error rather than a plan it might mistake for a run.
++//
++// 🔴 `upload` IS THE SCRIPT ITSELF, NOT A SECOND IMPLEMENTATION. It spawns the
++// submit script's own `--submit` path, so the publish environment, the typed
++// confirm word and every PG-n gate stay in exactly one place. It refuses unless
++// `dryRun` is literally `false`. Nothing in this repository's tests calls it.
++//
++// ⚠️ ONE SURFACE PER PLAN (TRAPS stores-07): once the Microsoft Store API has
++// created a submission, editing that submission in Partner Center burns it. So a
++// plan's WRITE steps all speak one surface — the API (or a CLI over it) or the
++// console, never both — and the conformance runner refuses a plan that mixes them.
++// ─────────────────────────────────────────────────────────────────────────────
++
++const requireBuiltin = createRequire(import.meta.url);
++
++/** The repository this file sits in. Every contract read defaults to it; tests pass `root`. */
++export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
++
++/** The four methods, in the order the contract lists them. */
++export const SUBMITTER_METHODS = Object.freeze(['validate', 'plan', 'upload', 'status']);
++
++/** What a plan step may speak. `api` and `cli` reach the store programmatically,
++ *  `console` is a human in the store's web console, `local` touches only this machine. */
++export const PLAN_SURFACES = Object.freeze(['api', 'cli', 'console', 'local']);
++
++/** The register a submitter's row is read from. */
++export const CHANNEL_REGISTER = 'tooling/channel-register.json';
++
++/** Why a ChannelSubmitter fails the shape: [] when it has every member. Never throws,
++ *  so a submitter missing `plan` is a finding a test can print, not an import error. */
++export function submitterProblems(s) {
++  if (s === null || typeof s !== 'object') return [`is ${s === null ? 'null' : typeof s}, not a ChannelSubmitter object`];
++  const out = [];
++  if (typeof s.channel !== 'string' || s.channel.trim() === '') out.push('names no `channel` (a tooling/channel-register.json row id)');
++  for (const m of SUBMITTER_METHODS) if (typeof s[m] !== 'function') out.push(`has no \`${m}\` function`);
++  return out;
++}
++
++/** The contract's one declaration: its members and its shape check. Named in
++ *  tooling/ports/channels.json `interface`. */
++export const ChannelSubmitter = Object.freeze({ methods: SUBMITTER_METHODS, problemsOf: submitterProblems });
++
++/** True when the module at `metaUrl` is the process entry point. Paths are compared
++ *  after realpath, so a symlinked or differently-cased invocation still runs the CLI
++ *  rather than silently doing nothing and exiting 0. */
++export function invokedAsScript(metaUrl, argv1 = process.argv[1]) {
++  if (typeof argv1 !== 'string' || argv1 === '') return false;
++  const real = (p) => {
++    try {
++      return realpathSync(p);
++    } catch {
++      return resolve(p);
++    }
++  };
++  return real(resolve(argv1)) === real(fileURLToPath(metaUrl));
++}
++
++/** The register and the channel's row. Throws when either is missing: a contract
++ *  read with no row has nothing to answer from. */
++export function channelRowOf(channelId, root = REPO_ROOT) {
++  const register = JSON.parse(readFileSync(join(root, CHANNEL_REGISTER), 'utf8'));
++  const row = (register.channels ?? []).find((c) => c?.id === channelId);
++  if (!row) throw new Error(`${CHANNEL_REGISTER} has no channel "${channelId}"`);
++  return { register, row };
++}
++
++/** A limit block (`maxChars` / `maxLines`) as { file: max }, dropping `_why` keys
++ *  and any entry without a sourced number — the register refuses an unsourced max. */
++const limitsOf = (block) =>
++  Object.fromEntries(
++    Object.entries(block ?? {})
++      .filter(([k, v]) => !k.startsWith('_') && Number.isInteger(v?.max) && typeof v?.source === 'string')
++      .map(([k, v]) => [k, v.max]),
++  );
++
++/**
++ * The listing contract a channel's record is validated against. An APP row
++ * reads `storeMetadataContract` (requiredFiles + its perChannel additionalFiles
++ * and sourced limits); an EXTENSION row reads contracts/store/vocabulary.js,
++ * the one declaration extensions/scripts/check-store-metadata.mjs also reads —
++ * the per-store files plus the `_shared` ones, flattened into one record.
++ *
++ * ⚠️ The vocabulary is PASSED IN, never imported here: this file is the preamble
++ * of every submit script, and the tests that walk a script in a copied tree copy
++ * its imports by hand. An import here that only extension rows use would break
++ * every one of those copies; the extension publishers import it themselves.
++ */
++export function listingContractOf(channelId, root = REPO_ROOT, vocabulary = null) {
++  const { register, row } = channelRowOf(channelId, root);
++  const contract = register.storeMetadataContract ?? {};
++  if (row.surface === 'extension') {
++    if (vocabulary === null) throw new Error(`${channelId} is an extension row; its listing contract is contracts/store/vocabulary.js, and none was passed`);
++    return {
++      required: [...vocabulary.extensionPerStoreListingFiles(), ...vocabulary.extensionSharedListingFiles()],
++      urlFiles: vocabulary.urlListingFiles(),
++      maxChars: {},
++      maxLines: {},
++    };
++  }
++  const per = contract.perChannel?.[channelId] ?? {};
++  const required = [...(Array.isArray(contract.requiredFiles) ? contract.requiredFiles : []), ...(per.additionalFiles ?? [])];
++  return { required, urlFiles: contract.urlFiles ?? [], maxChars: limitsOf(per.maxChars), maxLines: limitsOf(per.maxLines) };
++}
++
++/**
++ * The findings for a listing record `{ fields: { '<file>': '<text>' } }` against a
++ * contract from `listingContractOf`. Each finding is `{ field, message }`; [] is
++ * a record the store would accept as far as this repository can tell. A required
++ * list of zero is itself a finding: it would accept anything.
++ */
++export function listingFindings(record, contract) {
++  const out = [];
++  const fields = record?.fields;
++  if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) return [{ field: null, message: 'the record carries no `fields` object' }];
++  if (!Array.isArray(contract?.required) || contract.required.length === 0) return [{ field: null, message: 'the listing contract names no required field, so it would accept anything' }];
++  for (const f of contract.required) {
++    const v = fields[f];
++    if (typeof v !== 'string' || v.trim() === '') out.push({ field: f, message: `${f} is required by the listing contract and is ${v === undefined ? 'missing' : 'empty'}` });
++  }
++  for (const f of contract.urlFiles ?? []) {
++    const v = fields[f];
++    if (typeof v === 'string' && v.trim() !== '' && !/^https:\/\/\S+$/.test(v.trim())) out.push({ field: f, message: `${f} must be one https:// URL` });
++  }
++  for (const [f, max] of Object.entries(contract.maxChars ?? {})) {
++    const v = fields[f];
++    if (typeof v === 'string' && [...v.trim()].length > max) out.push({ field: f, message: `${f} is ${[...v.trim()].length} characters; the store's limit is ${max}` });
++  }
++  for (const [f, max] of Object.entries(contract.maxLines ?? {})) {
++    const v = fields[f];
++    const n = typeof v === 'string' ? v.split('\n').filter((l) => l.trim() !== '').length : 0;
++    if (n > max) out.push({ field: f, message: `${f} has ${n} entries; the store's limit is ${max}` });
++  }
++  return out;
++}
++
++/** The status every submitter answers from its row: no store is asked. */
++export function channelStatus(channelId, root = REPO_ROOT) {
++  const { row } = channelRowOf(channelId, root);
++  return {
++    channel: channelId,
++    served: row.served === true,
++    submittable: row.submittable === true,
++    account: row.accountStatus?.status ?? null,
++    asOf: row.accountStatus?.asOf ?? null,
++  };
++}
++
++/**
++ * Build a ChannelSubmitter from the pieces a store differs in. `steps(artifact)`
++ * returns the plan's steps as `{ does, surface, call, writes }`; `extraFindings`
++ * adds the store's own rules to the listing contract; `uploadArgv(artifact, opts)`
++ * is the argv of the script's own `--submit` path, run from `cwd` (repo-relative).
++ * An extension channel passes `vocabulary` (contracts/store/vocabulary.js).
++ */
++export function storeSubmitter({ channel, script, cwd = '.', steps, extraFindings = () => [], uploadArgv, vocabulary = null }) {
++  return Object.freeze({
++    channel,
++    validate(record, { root = REPO_ROOT } = {}) {
++      return [...listingFindings(record, listingContractOf(channel, root, vocabulary)), ...extraFindings(record)];
++    },
++    plan(artifact, opts) {
++      if (opts?.dryRun !== true) throw new Error(`${channel}: plan() is dry-run only — pass { dryRun: true }. It describes the upload and never performs it.`);
++      return steps(artifact).map((s, i) => Object.freeze({ step: i + 1, ...s }));
++    },
++    upload(artifact, opts) {
++      if (opts?.dryRun !== false) throw new Error(`${channel}: upload() runs ${script} --submit and needs { dryRun: false }. Use plan() to see what it would do.`);
++      return spawnSync(process.execPath, [join(REPO_ROOT, script), ...uploadArgv(artifact, opts)], { cwd: join(REPO_ROOT, cwd), stdio: 'inherit' });
++    },
++    status({ root = REPO_ROOT } = {}) {
++      return channelStatus(channel, root);
++    },
++  });
++}
++
++/**
++ * THE CONFORMANCE RUNNER (tooling/ports/channels.json `conformance.suite`). Runs
++ * one submitter, dry, against its recorded fixture `{ good, artifact }` and
++ * returns every finding as a sentence; [] is conformant. It asks that:
++ *   1. the shape is whole (submitterProblems);
++ *   2. `validate` passes the good record;
++ *   3. `validate` refuses the record with each required field removed, NAMING it;
++ *   4. `plan` is non-empty, well-formed, one write surface, and identical twice;
++ *   5. `plan` without `{ dryRun: true }` throws;
++ *   6. `status` answers for the submitter's own channel;
++ *   7. none of the above made a network call or spawned a process — a fetch stub
++ *      and a child_process stub count them, and any count above zero is a finding.
++ */
++export async function submitterConformance(submitter, fixture, { root = REPO_ROOT, stubs } = {}) {
++  const shape = submitterProblems(submitter);
++  if (shape.length) return shape.map((p) => `the submitter ${p}`);
++  const out = [];
++  const ch = submitter.channel;
++  const calls = await underNetworkStubs(stubs, async () => {
++    const good = fixture?.good;
++    const okFindings = await submitter.validate(good, { root });
++    if (!Array.isArray(okFindings)) out.push(`${ch}: validate() returned ${typeof okFindings}, not a findings array`);
++    else if (okFindings.length) out.push(`${ch}: validate() refused the good fixture: ${okFindings.map((f) => f.message).join('; ')}`);
++    const required = listingContractOf(ch, root, await import('../../contracts/store/vocabulary.js')).required;
++    if (required.length === 0) out.push(`${ch}: the listing contract names no required field, so the refusal limb would check nothing`);
++    for (const f of required) {
++      const fields = { ...(good?.fields ?? {}) };
++      delete fields[f];
++      const found = await submitter.validate({ ...good, fields }, { root });
++      if (!Array.isArray(found) || !found.some((x) => x?.field === f)) out.push(`${ch}: validate() accepted a record with no ${f}, which the listing contract requires`);
++    }
++    const p1 = await submitter.plan(fixture?.artifact, { dryRun: true });
++    const p2 = await submitter.plan(fixture?.artifact, { dryRun: true });
++    if (!Array.isArray(p1) || p1.length === 0) out.push(`${ch}: plan() returned no steps`);
++    else {
++      if (JSON.stringify(p1) !== JSON.stringify(p2)) out.push(`${ch}: plan() is not deterministic — two dry runs over one artifact differ`);
++      for (const s of p1) {
++        if (typeof s?.does !== 'string' || s.does.trim() === '') out.push(`${ch}: plan step ${s?.step} says nothing about what it does`);
++        if (!PLAN_SURFACES.includes(s?.surface)) out.push(`${ch}: plan step ${s?.step} has surface ${JSON.stringify(s?.surface)}, not one of ${PLAN_SURFACES.join(', ')}`);
++        if (typeof s?.writes !== 'boolean') out.push(`${ch}: plan step ${s?.step} does not say whether it writes`);
++      }
++      const writeSurfaces = new Set(p1.filter((s) => s?.writes === true && s.surface !== 'local').map((s) => (s.surface === 'cli' ? 'api' : s.surface)));
++      if (writeSurfaces.size > 1) out.push(`${ch}: plan() writes through both the API and the console (stores-07: a console edit of an API-created submission burns it)`);
++    }
++    let threw = false;
++    try {
++      await submitter.plan(fixture?.artifact, {});
++    } catch {
++      threw = true;
++    }
++    if (!threw) out.push(`${ch}: plan() ran without { dryRun: true }; it must refuse`);
++    const st = await submitter.status({ root });
++    if (st?.channel !== ch) out.push(`${ch}: status() answered for ${JSON.stringify(st?.channel)}`);
++  });
++  if (calls.fetch) out.push(`${ch}: ${calls.fetch} network call(s) during validate/plan/status — the dry-run contract allows none`);
++  if (calls.spawn) out.push(`${ch}: ${calls.spawn} process spawn(s) during validate/plan/status — the dry-run contract allows none`);
++  return out;
++}
++
++/** Run `fn` with `fetch` and every child_process launcher replaced by counting
++ *  stubs that refuse; restore them after. `stubs` lets a caller pass its own
++ *  { install, restore, counts } (the tests do, to prove the count is read). */
++async function underNetworkStubs(stubs, fn) {
++  const s = stubs ?? defaultStubs();
++  s.install();
++  try {
++    await fn();
++  } finally {
++    s.restore();
++  }
++  return s.counts;
++}
++
++function defaultStubs() {
++  const counts = { fetch: 0, spawn: 0 };
++  const cp = requireBuiltin('node:child_process');
++  const LAUNCHERS = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'];
++  let saved = null;
++  return {
++    counts,
++    install() {
++      saved = { fetch: globalThis.fetch, cp: Object.fromEntries(LAUNCHERS.map((k) => [k, cp[k]])) };
++      globalThis.fetch = async () => {
++        counts.fetch++;
++        throw new Error('network refused: the dry-run contract makes no call');
++      };
++      for (const k of LAUNCHERS) {
++        cp[k] = () => {
++          counts.spawn++;
++          throw new Error('spawn refused: the dry-run contract launches nothing');
++        };
++      }
++      // An ESM `import { spawnSync } from 'node:child_process'` is a live binding to
++      // the builtin's exports, refreshed only by this call — without it the stub
++      // would count the CJS callers and miss every module in this tree.
++      syncBuiltinESMExports();
++    },
++    restore() {
++      globalThis.fetch = saved.fetch;
++      Object.assign(cp, saved.cp);
++      syncBuiltinESMExports();
++    },
++  };
++}
+diff --git a/tooling/release/submit-play.mjs b/tooling/release/submit-play.mjs
+index 8646fcee..ed33a2ae 100644
+--- a/tooling/release/submit-play.mjs
++++ b/tooling/release/submit-play.mjs
+@@ -89,7 +89,7 @@ import { spawnSync } from 'node:child_process';
+ import { createHash, createSign } from 'node:crypto';
+ import { readGradleApplicationId } from '../ci/read-identity.mjs';
+ import { parseWorkflow } from '../ci/workflow-scan.mjs';
+-import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT, githubToken } from './submit-common.mjs';
++import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT, githubToken, storeSubmitter, invokedAsScript } from './submit-common.mjs';
+ 
+ const CHANNEL_ID = 'android-play';
+ const REGISTER = 'tooling/channel-register.json';
+@@ -196,6 +196,41 @@ const POSTURE_ENV = 'ANDROID_SIGNING_POSTURE';
+ const RELEASE_SIGNED = 'release-signed';
+ const SIGNATURE_GUARD = 'assert-artifact-signed.mjs';
+ 
++// ── the ChannelSubmitter (submit-common.mjs · tooling/ports/channels.json) ────
++/** Google Play behind the one store contract. `plan` is the edit lifecycle
++ *  `--submit` runs below, as steps and in its order, each against the endpoint
++ *  PRIMARY_SOURCES cites; `upload` IS that `--submit`, PG-1…PG-6 and all. */
++export const playSubmitter = storeSubmitter({
++  channel: CHANNEL_ID,
++  script: 'tooling/release/submit-play.mjs',
++  steps: (artifact) => {
++    const edits = `${PLAY_API_ORIGIN}/androidpublisher/v3/applications/{packageName}/edits`;
++    return [
++      { does: `PG-5: read the "${PUBLISH_ENVIRONMENT}" environment back and require its reviewer`, surface: 'api', call: `GET https://api.github.com/repos/{owner}/{repo}/environments/${PUBLISH_ENVIRONMENT}`, writes: false },
++      { does: 'mint a bearer token for the service account', surface: 'api', call: `POST ${GOOGLE_TOKEN_URL}`, writes: false },
++      { does: 'open an edit (edits.insert)', surface: 'api', call: `POST ${edits}`, writes: true },
++      { does: 'list the tracks and resolve the testing track (edits.tracks.list)', surface: 'api', call: `GET ${edits}/{editId}/tracks`, writes: false },
++      { does: `upload ${artifact?.path ?? 'the .aab'} (edits.bundles.upload)`, surface: 'api', call: `POST ${PLAY_API_ORIGIN}/upload/androidpublisher/v3/applications/{packageName}/edits/{editId}/bundles?uploadType=resumable`, writes: true },
++      { does: 'assign the uploaded version code to the track (edits.tracks.update)', surface: 'api', call: `PUT ${edits}/{editId}/tracks/{track}`, writes: true },
++      { does: 'validate the edit (edits.validate)', surface: 'api', call: `POST ${edits}/{editId}:validate`, writes: false },
++      { does: 'commit the edit (edits.commit)', surface: 'api', call: `POST ${edits}/{editId}:commit?changesInReviewBehavior=${CHANGES_IN_REVIEW_BEHAVIOR}`, writes: true },
++    ];
++  },
++  uploadArgv: (artifact, opts) => ['--submit', '--app', artifact.app, '--confirm', opts.confirm],
++});
++
++// ── the CLI, which runs only when this file is the entry point ────────────────
++// ⏱ 2026-10-01 (port-channels): the export above made this file a module that
++// tooling/release/test/submitters.contract.test.mjs imports, and a script whose
++// body runs on import cannot be imported — it would read the test's argv and
++// exit. So the body is `cli()`, called below only when node was pointed at this
++// file. The body is the CLI exactly as it was, and it is DELIBERATELY LEFT AT
++// COLUMN 0: re-indenting it would rewrite every line other lanes patch here, and
++// every patch to it would stop applying. Its behaviour, flags and exit codes are
++// unchanged; the dry runs in ci.yml `app-dryrun` walk it as before.
++if (invokedAsScript(import.meta.url)) await cli();
++
++async function cli() {
+ // ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
+ const { flag, opt, root: ROOT, ok, step, abs, read, coverageLost, die, appOf } = submitCli('submit-play');
+ 
+@@ -1558,3 +1593,4 @@ if (!SUBMIT) {
+   console.log('   ⬜ Promoting this to production is [ADR 031] class A — owner-only, per instance, in the Console.');
+   process.exitCode = 0;
+ }
++}
+diff --git a/tooling/release/submit-snap.mjs b/tooling/release/submit-snap.mjs
+index 1188b996..1de7b12f 100644
+--- a/tooling/release/submit-snap.mjs
++++ b/tooling/release/submit-snap.mjs
+@@ -92,7 +92,7 @@ import { join, dirname } from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ import { spawnSync } from 'node:child_process';
+ import { parseWorkflow } from '../ci/workflow-scan.mjs';
+-import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT } from './submit-common.mjs';
++import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT, storeSubmitter, invokedAsScript } from './submit-common.mjs';
+ 
+ const CHANNEL_ID = 'linux-snap';
+ const REGISTER = 'tooling/channel-register.json';
+@@ -192,6 +192,33 @@ const EXPORT_LOGIN_STEP =
+ const RECIPE_GUARD = 'assert-snapcraft-generable.mjs';
+ const PACK_VERB = 'snapcraft pack';
+ 
++// ── the ChannelSubmitter (submit-common.mjs · tooling/ports/channels.json) ────
++/** The Snap Store behind the one store contract. `plan` is the one-step
++ *  `snapcraft upload --release` `--submit` runs below (PRIMARY_SOURCES), into
++ *  the default channel; `upload` IS that `--submit`, PG-n gates and all. */
++export const snapSubmitter = storeSubmitter({
++  channel: CHANNEL_ID,
++  script: 'tooling/release/submit-snap.mjs',
++  steps: (artifact) => [
++    { does: `PG-6: read the "${PUBLISH_ENVIRONMENT}" environment back and require its reviewer`, surface: 'api', call: `GET https://api.github.com/repos/{owner}/{repo}/environments/${PUBLISH_ENVIRONMENT}`, writes: false },
++    { does: `check the ${CREDENTIAL_ENV} credential is live`, surface: 'cli', call: 'snapcraft whoami', writes: false },
++    { does: `upload ${artifact?.path ?? 'the .snap'} and release it to ${DEFAULT_CHANNEL} (never ${REFUSED_RISK})`, surface: 'cli', call: `snapcraft upload <snap> --release=${DEFAULT_CHANNEL}`, writes: true },
++  ],
++  uploadArgv: (artifact, opts) => ['--submit', '--app', artifact.app, '--confirm', opts.confirm],
++});
++
++// ── the CLI, which runs only when this file is the entry point ────────────────
++// ⏱ 2026-10-01 (port-channels): the export above made this file a module that
++// tooling/release/test/submitters.contract.test.mjs imports, and a script whose
++// body runs on import cannot be imported — it would read the test's argv and
++// exit. So the body is `cli()`, called below only when node was pointed at this
++// file. The body is the CLI exactly as it was, and it is DELIBERATELY LEFT AT
++// COLUMN 0: re-indenting it would rewrite every line other lanes patch here, and
++// every patch to it would stop applying. Its behaviour, flags and exit codes are
++// unchanged; the dry runs in ci.yml `app-dryrun` walk it as before.
++if (invokedAsScript(import.meta.url)) await cli();
++
++async function cli() {
+ // ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
+ const { flag, opt, root: ROOT, ok, step, abs, read, coverageLost, die, appOf } = submitCli('submit-snap');
+ 
+@@ -1018,3 +1045,4 @@ if (failure) {
+   console.log('   ⬜ [10]D-9 LEDGER: this is the event limb (iii) of D-10 has been waiting for. Record it.');
+   process.exitCode = 0;
+ }
++}
+diff --git a/tooling/release/submit-windows-store.mjs b/tooling/release/submit-windows-store.mjs
+index 065e1aeb..84894b24 100644
+--- a/tooling/release/submit-windows-store.mjs
++++ b/tooling/release/submit-windows-store.mjs
+@@ -92,7 +92,7 @@ import { existsSync, statSync } from 'node:fs';
+ import { join, dirname } from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ import { spawnSync } from 'node:child_process';
+-import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT } from './submit-common.mjs';
++import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT, storeSubmitter, invokedAsScript } from './submit-common.mjs';
+ import { windowsIdentityOf } from '../ci/read-identity.mjs';
+ import { storeRecordOf } from '../store/store-record.mjs';
+ 
+@@ -100,6 +100,41 @@ const CHANNEL_ID = 'windows-store';
+ const REGISTER = 'tooling/channel-register.json';
+ const APPS = 'catalog/apps.json';
+ 
++// ── the ChannelSubmitter (submit-common.mjs · tooling/ports/channels.json) ────
++/** The Microsoft Store behind the one store contract. `plan` is the msstore CLI
++ *  sequence `submitPath()` runs below — every write through the submission API,
++ *  none in Partner Center; `upload` IS that `--submit`, PG-n gates and all.
++ *  🔴 TRAPS stores-07: once the API has created a submission, a Partner Center
++ *  edit BURNS it, so `validate` refuses a record that carries one. */
++export const windowsStoreSubmitter = storeSubmitter({
++  channel: CHANNEL_ID,
++  script: 'tooling/release/submit-windows-store.mjs',
++  steps: (artifact) => [
++    { does: `PG-6: read the "${PUBLISH_ENVIRONMENT}" environment back and require its reviewer`, surface: 'api', call: `GET https://api.github.com/repos/{owner}/{repo}/environments/${PUBLISH_ENVIRONMENT}`, writes: false },
++    { does: 'configure the CLI with the account (tenant, seller, client)', surface: 'local', call: 'msstore reconfigure', writes: false },
++    { does: `upload ${artifact?.path ?? 'the .msix'} into a DRAFT submission (publish recreates the draft, so it runs first)`, surface: 'cli', call: 'msstore publish <app> --inputFile <msix> --appId <productId> --noCommit', writes: true },
++    { does: 'commit the draft submission', surface: 'cli', call: 'msstore submission publish <productId>', writes: true },
++    { does: 'poll the commit to its terminal state', surface: 'cli', call: 'msstore submission poll <productId>', writes: false },
++  ],
++  extraFindings: (record) =>
++    Array.isArray(record?.submission?.partnerCenterEdits) && record.submission.partnerCenterEdits.length > 0
++      ? [{ field: 'submission.partnerCenterEdits', message: 'this submission was edited in Partner Center; an API-created submission edited there is BURNED (stores-07). Start a new one through the API, and never mix the two.' }]
++      : [],
++  uploadArgv: (artifact, opts) => ['--submit', '--app', artifact.app, '--confirm', opts.confirm],
++});
++
++// ── the CLI, which runs only when this file is the entry point ────────────────
++// ⏱ 2026-10-01 (port-channels): the export above made this file a module that
++// tooling/release/test/submitters.contract.test.mjs imports, and a script whose
++// body runs on import cannot be imported — it would read the test's argv and
++// exit. So the body is `cli()`, called below only when node was pointed at this
++// file. The body is the CLI exactly as it was, and it is DELIBERATELY LEFT AT
++// COLUMN 0: re-indenting it would rewrite every line other lanes patch here, and
++// every patch to it would stop applying. Its behaviour, flags and exit codes are
++// unchanged; the dry runs in ci.yml `app-dryrun` walk it as before.
++if (invokedAsScript(import.meta.url)) await cli();
++
++async function cli() {
+ // ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
+ const { flag, opt, root: ROOT, ok, abs, read, coverageLost, die, appOf } = submitCli('submit-windows-store');
+ 
+@@ -847,4 +882,4 @@ async function submitPath() {
+ }
+ 
+ await submitPath();
+-
++}
+diff --git a/tooling/release/test/fixtures/submitters.json b/tooling/release/test/fixtures/submitters.json
+new file mode 100644
+index 00000000..74015ed4
+--- /dev/null
++++ b/tooling/release/test/fixtures/submitters.json
+@@ -0,0 +1,182 @@
++{
++  "_why": [
++    "RECORDED FIXTURES for tooling/release/test/submitters.contract.test.mjs: one good listing record and one artifact per store channel that has a code submitter (tooling/ports/channels.json). The values are shaped like the real trees (apps/{app}/store/<channel>, extensions/Extension/{tool}/store/<store>) and are not read from them, so a dry run here depends on no file outside this one and the register.",
++    "A binary field (a .png) is a placeholder string: validate() grades presence, never pixels — the pixel checks are assert-store-metadata.mjs's and check-store-metadata.mjs's.",
++    "The contract test removes each REQUIRED field in turn (the register's storeMetadataContract, or contracts/store/vocabulary.js for an extension row) and requires validate() to name it, so a field added to the contract without one here reddens the good-record limb first."
++  ],
++  "channels": {
++    "android-play": {
++      "good": {
++        "app": "subscriptiontracker",
++        "fields": {
++          "README.md": "# Listing tree (fixture)\n",
++          "title.txt": "Subscription Tracker",
++          "short-description.txt": "Every subscription, its renewal date and its cost, in one place.",
++          "long-description.txt": "Track every subscription you pay for, see what renews next, and decide what to keep.",
++          "category.txt": "Finance",
++          "privacy-policy-url.txt": "https://nikatru.com/subscriptiontracker/privacy",
++          "support-url.txt": "https://nikatru.com/subscriptiontracker/support",
++          "screenshots/README.md": "Screenshots are captured by the screenshot lane.\n",
++          "data-safety.json": "{\"dataCollected\": []}",
++          "content-rating.json": "{\"rating\": \"everyone\"}",
++          "ads-declaration.json": "{\"containsAds\": false}",
++          "feature-graphic.png": "<binary: 1024x500 png>",
++          "store-icon-512.png": "<binary: 512x512 png>",
++          "release-notes.txt": "First release."
++        }
++      },
++      "artifact": {
++        "app": "subscriptiontracker",
++        "path": "build/app/outputs/bundle/release/app-release.aab"
++      }
++    },
++    "ios-appstore": {
++      "good": {
++        "app": "subscriptiontracker",
++        "fields": {
++          "README.md": "# Listing tree (fixture)\n",
++          "title.txt": "Subscription Tracker",
++          "short-description.txt": "Every subscription, its renewal date and its cost, in one place.",
++          "long-description.txt": "Track every subscription you pay for, see what renews next, and decide what to keep.",
++          "category.txt": "Finance",
++          "privacy-policy-url.txt": "https://nikatru.com/subscriptiontracker/privacy",
++          "support-url.txt": "https://nikatru.com/subscriptiontracker/support",
++          "screenshots/README.md": "Screenshots are captured by the screenshot lane.\n",
++          "subtitle.txt": "Know what renews next",
++          "keywords.txt": "subscriptions,renewals,budget",
++          "promotional-text.txt": "See every renewal before it charges.",
++          "privacy-manifest.json": "{\"NSPrivacyTracking\": false}",
++          "age-rating.json": "{\"rating\": \"4+\"}",
++          "terms-of-use-url.txt": "https://nikatru.com/subscriptiontracker/terms"
++        }
++      },
++      "artifact": {
++        "app": "subscriptiontracker",
++        "path": "build/ios/ipa/subscriptiontracker.ipa"
++      }
++    },
++    "macos-appstore": {
++      "good": {
++        "app": "subscriptiontracker",
++        "fields": {
++          "README.md": "# Listing tree (fixture)\n",
++          "title.txt": "Subscription Tracker",
++          "short-description.txt": "Every subscription, its renewal date and its cost, in one place.",
++          "long-description.txt": "Track every subscription you pay for, see what renews next, and decide what to keep.",
++          "category.txt": "Finance",
++          "privacy-policy-url.txt": "https://nikatru.com/subscriptiontracker/privacy",
++          "support-url.txt": "https://nikatru.com/subscriptiontracker/support",
++          "screenshots/README.md": "Screenshots are captured by the screenshot lane.\n",
++          "subtitle.txt": "Know what renews next",
++          "keywords.txt": "subscriptions,renewals,budget",
++          "promotional-text.txt": "See every renewal before it charges.",
++          "terms-of-use-url.txt": "https://nikatru.com/subscriptiontracker/terms"
++        }
++      },
++      "artifact": {
++        "app": "subscriptiontracker",
++        "path": "build/macos/Build/Products/Release/subscriptiontracker.pkg"
++      }
++    },
++    "windows-store": {
++      "good": {
++        "app": "subscriptiontracker",
++        "fields": {
++          "README.md": "# Listing tree (fixture)\n",
++          "title.txt": "Subscription Tracker",
++          "short-description.txt": "Every subscription, its renewal date and its cost, in one place.",
++          "long-description.txt": "Track every subscription you pay for, see what renews next, and decide what to keep.",
++          "category.txt": "Finance",
++          "privacy-policy-url.txt": "https://nikatru.com/subscriptiontracker/privacy",
++          "support-url.txt": "https://nikatru.com/subscriptiontracker/support",
++          "screenshots/README.md": "Screenshots are captured by the screenshot lane.\n",
++          "search-terms.txt": "subscriptions\nrenewals\nbudget",
++          "age-rating.json": "{\"iarc\": \"3+\"}"
++        }
++      },
++      "artifact": {
++        "app": "subscriptiontracker",
++        "path": "build/windows/x64/runner/Release/subscriptiontracker.msix"
++      }
++    },
++    "linux-snap": {
++      "good": {
++        "app": "subscriptiontracker",
++        "fields": {
++          "README.md": "# Listing tree (fixture)\n",
++          "title.txt": "Subscription Tracker",
++          "short-description.txt": "Every subscription, its renewal date and its cost, in one place.",
++          "long-description.txt": "Track every subscription you pay for, see what renews next, and decide what to keep.",
++          "category.txt": "Finance",
++          "privacy-policy-url.txt": "https://nikatru.com/subscriptiontracker/privacy",
++          "support-url.txt": "https://nikatru.com/subscriptiontracker/support",
++          "screenshots/README.md": "Screenshots are captured by the screenshot lane.\n",
++          "snap-name.txt": "subscriptiontracker",
++          "license.txt": "Proprietary"
++        }
++      },
++      "artifact": {
++        "app": "subscriptiontracker",
++        "path": "subscriptiontracker_1.0.0_amd64.snap"
++      }
++    },
++    "chrome-webstore": {
++      "good": {
++        "tool": "fullshot",
++        "fields": {
++          "title.txt": "FullShot",
++          "short-description.txt": "Capture the whole page, a region or the visible screen.",
++          "long-description.txt": "FullShot captures a full web page, a region of it, or what is on screen, and saves it on this device.",
++          "category.txt": "Productivity",
++          "privacy-policy-url.txt": "https://nikatru.com/fullshot/privacy",
++          "support-url.txt": "https://nikatru.com/fullshot/support",
++          "screenshots/README.md": "Screenshots are captured by the extension lane.\n"
++        }
++      },
++      "artifact": {
++        "tool": "fullshot",
++        "path": "release-assets/fullshot-chromium.zip"
++      }
++    },
++    "edge-addons": {
++      "good": {
++        "tool": "fullshot",
++        "fields": {
++          "title.txt": "FullShot",
++          "short-description.txt": "Capture the whole page, a region or the visible screen.",
++          "long-description.txt": "FullShot captures a full web page, a region of it, or what is on screen, and saves it on this device.",
++          "category.txt": "Productivity",
++          "privacy-policy-url.txt": "https://nikatru.com/fullshot/privacy",
++          "support-url.txt": "https://nikatru.com/fullshot/support",
++          "screenshots/README.md": "Screenshots are captured by the extension lane.\n"
++        }
++      },
++      "artifact": {
++        "tool": "fullshot",
++        "path": "release-assets/fullshot-chromium.zip"
++      }
++    },
++    "amo": {
++      "good": {
++        "tool": "fullshot",
++        "fields": {
++          "title.txt": "FullShot",
++          "short-description.txt": "Capture the whole page, a region or the visible screen.",
++          "long-description.txt": "FullShot captures a full web page, a region of it, or what is on screen, and saves it on this device.",
++          "category.txt": "Productivity",
++          "privacy-policy-url.txt": "https://nikatru.com/fullshot/privacy",
++          "support-url.txt": "https://nikatru.com/fullshot/support",
++          "screenshots/README.md": "Screenshots are captured by the extension lane.\n"
++        },
++        "geckoId": {
++          "manifest": "fullshot@nikatru.com",
++          "confirmed": "fullshot@nikatru.com"
++        }
++      },
++      "artifact": {
++        "tool": "fullshot",
++        "path": "release-assets/unpacked-firefox"
++      }
++    }
++  }
++}
+diff --git a/tooling/release/test/submitters.contract.test.mjs b/tooling/release/test/submitters.contract.test.mjs
+new file mode 100644
+index 00000000..73fb7b2c
+--- /dev/null
++++ b/tooling/release/test/submitters.contract.test.mjs
+@@ -0,0 +1,252 @@
++// submitters.contract.test.mjs — every store submitter, dry, against one contract.
++//
++// ⏱ 2026-10-01 (port-channels, O-CHANNELS-HAVE-NO-SUBMIT-CONTRACT). The subject
++// set is tooling/ports/channels.json, never a list in this file: each adapter's
++// impl {file, symbol} is imported and run through submitterConformance
++// (tooling/release/submit-common.mjs), against the recorded fixture in
++// fixtures/submitters.json, under a fetch stub and a child_process stub. So a
++// channel added to the port is tested the day it is added, and one added without
++// a fixture fails here rather than passing on nothing.
++//
++// The second block proves the runner can FAIL (vacuous-03): one synthetic
++// submitter per limb, each broken in exactly the way the limb exists to catch.
++// The real-tree red controls are in the PR body: delete `plan` from a real
++// submitter, or make one fetch inside `plan`, and the first block reds.
++import { describe, it } from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync, mkdtempSync, symlinkSync, rmSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { dirname, join, resolve } from 'node:path';
++import { fileURLToPath, pathToFileURL } from 'node:url';
++import { spawnSync } from 'node:child_process';
++import {
++  submitterConformance,
++  submitterProblems,
++  storeSubmitter,
++  invokedAsScript,
++  listingContractOf,
++  SUBMITTER_METHODS,
++} from '../submit-common.mjs';
++
++const HERE = dirname(fileURLToPath(import.meta.url));
++const REPO = resolve(HERE, '..', '..', '..');
++const readJson = (rel) => JSON.parse(readFileSync(join(REPO, rel), 'utf8'));
++const PORT = readJson('tooling/ports/channels.json');
++const REGISTER = readJson('tooling/channel-register.json');
++const FIXTURES = JSON.parse(readFileSync(join(HERE, 'fixtures', 'submitters.json'), 'utf8')).channels;
++
++const codeAdapters = PORT.adapters.filter((a) => a.status !== 'external');
++const load = async (a) => (await import(pathToFileURL(join(REPO, a.impl.file)).href))[a.impl.symbol];
++
++describe('every store channel has one submitter, and every submitter passes the dry-run contract', () => {
++  it('the adapters are the register\'s `kind: store` rows, both ways', () => {
++    const stores = REGISTER.channels.filter((c) => c.kind === 'store').map((c) => c.id).sort();
++    const adapters = PORT.adapters.map((a) => a.channel).sort();
++    assert.ok(stores.length >= 9, `the register carries ${stores.length} store rows; the measured set is 9`);
++    assert.deepEqual(adapters, stores);
++  });
++
++  it('every code adapter has a recorded fixture, and no fixture names a channel without one', () => {
++    assert.deepEqual(Object.keys(FIXTURES).sort(), codeAdapters.map((a) => a.channel).sort());
++  });
++
++  it('an external adapter is a row that publishes no submission API', () => {
++    for (const a of PORT.adapters.filter((x) => x.status === 'external')) {
++      const row = REGISTER.channels.find((c) => c.id === a.channel);
++      assert.equal(row.submittable, false, `${a.channel} is external but its row is submittable`);
++      assert.equal(typeof row.noSubmissionApi, 'string', `${a.channel} is external but its row records no noSubmissionApi`);
++    }
++  });
++
++  for (const a of codeAdapters) {
++    it(`${a.channel}: ${a.impl.file} ${a.impl.symbol} conforms — no network, no spawn`, async () => {
++      const submitter = await load(a);
++      assert.ok(submitter, `${a.impl.file} exports no ${a.impl.symbol}`);
++      assert.equal(submitter.channel, a.channel);
++      assert.deepEqual(await submitterConformance(submitter, FIXTURES[a.channel]), []);
++    });
++  }
++
++  it('upload() refuses without { dryRun: false } — before it spawns anything', async () => {
++    for (const a of codeAdapters) {
++      const submitter = await load(a);
++      assert.throws(() => submitter.upload(FIXTURES[a.channel].artifact, {}), /needs \{ dryRun: false \}/);
++      assert.throws(() => submitter.upload(FIXTURES[a.channel].artifact, { dryRun: true }), /needs \{ dryRun: false \}/);
++    }
++  });
++});
++
++describe("the stores' own rules, in validate()", () => {
++  const amo = codeAdapters.find((a) => a.channel === 'amo');
++  const win = codeAdapters.find((a) => a.channel === 'windows-store');
++
++  it('AMO: an unconfirmed gecko.id is refused — it is a value to CONFIRM, never to set (stores-01)', async () => {
++    const s = await load(amo);
++    const good = FIXTURES.amo.good;
++    const f = s.validate({ ...good, geckoId: { manifest: good.geckoId.manifest } });
++    assert.deepEqual(f.map((x) => x.field), ['geckoId.confirmed']);
++  });
++
++  it('AMO: a manifest gecko.id that differs from the confirmed one is refused — it would publish a different add-on', async () => {
++    const s = await load(amo);
++    const good = FIXTURES.amo.good;
++    const f = s.validate({ ...good, geckoId: { manifest: 'fullshot2@nikatru.com', confirmed: good.geckoId.confirmed } });
++    assert.deepEqual(f.map((x) => x.field), ['geckoId.manifest']);
++    assert.match(f[0].message, /DIFFERENT add-on/);
++  });
++
++  it('AMO: no plan step sets the id', async () => {
++    const s = await load(amo);
++    const steps = s.plan(FIXTURES.amo.artifact, { dryRun: true });
++    assert.ok(steps.some((x) => /CONFIRMED, never set/.test(x.does)));
++    assert.ok(!steps.some((x) => /\bset\b.*gecko|gecko\.id\s*=/.test(`${x.call} ${x.does}`.replace('CONFIRMED, never set', ''))));
++  });
++
++  it('Microsoft Store: a submission edited in Partner Center is refused — the API created it, so the edit burned it (stores-07)', async () => {
++    const s = await load(win);
++    const f = s.validate({ ...FIXTURES['windows-store'].good, submission: { partnerCenterEdits: ['listing'] } });
++    assert.deepEqual(f.map((x) => x.field), ['submission.partnerCenterEdits']);
++  });
++
++  it('a sourced store limit is enforced from the register, not from this file', async () => {
++    const play = await load(codeAdapters.find((a) => a.channel === 'android-play'));
++    const max = listingContractOf('android-play').maxChars['title.txt'];
++    assert.ok(Number.isInteger(max));
++    const f = play.validate({ ...FIXTURES['android-play'].good, fields: { ...FIXTURES['android-play'].good.fields, 'title.txt': 'x'.repeat(max + 1) } });
++    assert.deepEqual(f.map((x) => x.field), ['title.txt']);
++  });
++});
++
++// ── the runner can fail: one broken submitter per limb ──────────────────────
++const good = FIXTURES['linux-snap'];
++const honest = () =>
++  storeSubmitter({
++    channel: 'linux-snap',
++    script: 'tooling/release/submit-snap.mjs',
++    steps: (artifact) => [{ does: `upload ${artifact.path}`, surface: 'cli', call: 'snapcraft upload', writes: true }],
++    uploadArgv: () => [],
++  });
++const mutate = (over) => ({ ...honest(), ...over });
++
++describe('submitterConformance can fail, limb by limb (vacuous-03)', () => {
++  it('green control: the honest synthetic submitter conforms', async () => {
++    assert.deepEqual(await submitterConformance(honest(), good), []);
++  });
++
++  it('🔴 a submitter missing `plan` fails the shape', async () => {
++    const { plan, ...noPlan } = honest();
++    assert.equal(typeof plan, 'function');
++    assert.deepEqual(submitterProblems(noPlan), ['has no `plan` function']);
++    assert.deepEqual(await submitterConformance(noPlan, good), ['the submitter has no `plan` function']);
++    for (const m of SUBMITTER_METHODS) {
++      const s = { ...honest() };
++      delete s[m];
++      assert.match((await submitterConformance(s, good)).join('\n'), new RegExp(`has no \`${m}\` function`));
++    }
++  });
++
++  it('🔴 a plan that fetches is counted, and fails', async () => {
++    const r = await submitterConformance(
++      mutate({
++        plan: (artifact, opts) => {
++          globalThis.fetch('https://dashboard.snapcraft.io/').catch(() => {});
++          return honest().plan(artifact, opts);
++        },
++      }),
++      good,
++    );
++    assert.match(r.join('\n'), /network call\(s\) during validate\/plan\/status/);
++  });
++
++  it('🔴 a plan that spawns is counted through an ESM `import { spawnSync }`, and fails', async () => {
++    const r = await submitterConformance(
++      mutate({
++        plan: (artifact, opts) => {
++          try {
++            spawnSync('snapcraft', ['whoami']);
++          } catch {
++            /* the stub refuses; the count is what is graded */
++          }
++          return honest().plan(artifact, opts);
++        },
++      }),
++      good,
++    );
++    assert.match(r.join('\n'), /[1-9]\d* process spawn\(s\)/);
++    // and the stub is gone afterwards: the real binding is back
++    assert.equal(spawnSync(process.execPath, ['-e', '0']).status, 0);
++  });
++
++  it('🔴 a validate that accepts anything fails, naming the first required field', async () => {
++    const r = await submitterConformance(mutate({ validate: () => [] }), good);
++    assert.match(r.join('\n'), /validate\(\) accepted a record with no README\.md/);
++  });
++
++  it('🔴 a validate that refuses the good record fails', async () => {
++    const r = await submitterConformance(mutate({ validate: () => [{ field: 'x', message: 'no' }] }), good);
++    assert.match(r.join('\n'), /refused the good fixture/);
++  });
++
++  it('🔴 a non-deterministic plan fails', async () => {
++    let n = 0;
++    const r = await submitterConformance(
++      mutate({ plan: (a, o) => { if (o?.dryRun !== true) throw new Error('dry only'); return [{ step: 1, does: `run ${n++}`, surface: 'cli', writes: true }]; } }),
++      good,
++    );
++    assert.match(r.join('\n'), /not deterministic/);
++  });
++
++  it('🔴 a plan that writes through both the API and the console fails (stores-07)', async () => {
++    const r = await submitterConformance(
++      mutate({
++        plan: (a, o) => {
++          if (o?.dryRun !== true) throw new Error('dry only');
++          return [
++            { step: 1, does: 'create the submission', surface: 'api', writes: true },
++            { step: 2, does: 'edit its listing', surface: 'console', writes: true },
++          ];
++        },
++      }),
++      good,
++    );
++    assert.match(r.join('\n'), /writes through both the API and the console/);
++  });
++
++  it('🔴 a plan that runs without { dryRun: true } fails', async () => {
++    const r = await submitterConformance(mutate({ plan: () => [{ step: 1, does: 'x', surface: 'cli', writes: true }] }), good);
++    assert.match(r.join('\n'), /ran without \{ dryRun: true \}/);
++  });
++
++  it('🔴 a status for another channel fails', async () => {
++    const r = await submitterConformance(mutate({ status: () => ({ channel: 'amo' }) }), good);
++    assert.match(r.join('\n'), /status\(\) answered for "amo"/);
++  });
++});
++
++describe('the submit scripts are importable, and their CLI is unchanged', () => {
++  it('a script with no mode still refuses, exit 1, when it is the entry point', () => {
++    const r = spawnSync(process.execPath, [join(REPO, 'tooling/release/submit-play.mjs')], { encoding: 'utf8', timeout: 60_000 });
++    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
++    assert.match(r.stderr, /exactly one of --dry-run, --submit and --sync-listing is required/);
++  });
++
++  it('invokedAsScript: true for the file itself and through a symlink, false for another file and for no argv[1]', () => {
++    const file = join(REPO, 'tooling/release/submit-snap.mjs');
++    const url = pathToFileURL(file).href;
++    assert.equal(invokedAsScript(url, file), true);
++    assert.equal(invokedAsScript(url, join(REPO, 'tooling/release/submit-play.mjs')), false);
++    assert.equal(invokedAsScript(url, undefined), false);
++    const dir = mkdtempSync(join(tmpdir(), 'invoked-'));
++    try {
++      let linked = true;
++      try {
++        symlinkSync(file, join(dir, 'link.mjs'));
++      } catch {
++        linked = false; // a host that cannot create symlinks (Windows without the privilege)
++      }
++      if (linked) assert.equal(invokedAsScript(url, join(dir, 'link.mjs')), true);
++    } finally {
++      rmSync(dir, { recursive: true, force: true });
++    }
++  });
++});
+diff --git a/tooling/scripts/preflight.mjs b/tooling/scripts/preflight.mjs
+index 81d56432..7d9994d5 100644
+--- a/tooling/scripts/preflight.mjs
++++ b/tooling/scripts/preflight.mjs
+@@ -752,9 +752,10 @@ export const LEG_COMMANDS = {
+     { cwd: 'extensions', subject: 'scripts/test/selftest.node.js', args: ['--single-threaded', 'scripts/test/selftest.node.js'] },
+     { cwd: 'extensions', subject: 'scripts/test/amo-gate-zip.test.mjs', args: ['--import', '../tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', 'scripts/test/amo-gate-zip.test.mjs'] },
+   ],
+-  // prepare's one step, then app-dryrun's five, per app.
++  // prepare's one step, then app-dryrun's contract suite and its five dry runs, per app.
+   [DRYRUN_LEG]: [
+     { cwd: '.', subject: 'tooling/ci/assert-release-lane-generic.mjs', args: ['tooling/ci/assert-release-lane-generic.mjs', '--emit-apps'], emitsApps: true },
++    { cwd: '.', subject: 'tooling/release/test', args: ['--import', './tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000', '--test', 'tooling/release/test/*.test.mjs'] },
+     { cwd: '.', subject: 'tooling/release/submit-windows-store.mjs', args: ['tooling/release/submit-windows-store.mjs', '--dry-run', '--app', '{app}', '--allow-missing-artifact'] },
+     { cwd: '.', subject: 'tooling/release/submit-appstore.mjs', args: ['tooling/release/submit-appstore.mjs', '--dry-run', '--channel', 'ios-appstore', '--app', '{app}', '--allow-missing-artifact'] },
+     { cwd: '.', subject: 'tooling/release/submit-appstore.mjs', args: ['tooling/release/submit-appstore.mjs', '--dry-run', '--channel', 'macos-appstore', '--app', '{app}', '--allow-missing-artifact'] },
