@@ -50,9 +50,10 @@
 //   C10 prices    the price ids still to create per offering on the target rail
 //                 (app-config-data.json `prices.*.rails.<id>`, via
 //                 render-rail-prices.mjs `plan`). FAIL while any is missing.
-//   C11 channels  the channels whose purchaseRails the switch would change. A STORE-billed
-//                 channel (a rail of a `cancel-store` adapter) moves only to another
-//                 store-billing adapter, never to a web rail; C8 nets the same set.
+//   C11 channels  the channels whose purchaseRails the switch would change. A channel moves
+//                 only to an adapter of its billing KIND: a STORE-billed channel (a rail of a
+//                 `cancel-store` adapter) only to another store biller, a web-billed one only
+//                 to a web rail; C8 nets the same set.
 //   C12 run-off   card and UPI mandates do not move: existing subscribers renew on
 //                 the current rail until they lapse (each current adapter's
 //                 export duty is printed). The reconcile during the dual run is
@@ -84,6 +85,7 @@ import { fileURLToPath } from 'node:url';
 import { readSecretSources, callsRunner, declares } from '../ci/assert-ports.mjs';
 import { stripSourceComments } from '../ci/text-reductions.mjs';
 import { readRegister, plan, netAfterFee, feeCurrencyProblem, FEE_REGISTER, CHANNEL_REGISTER, RAILS } from '../catalog/render-rail-prices.mjs';
+import { railsOf, billsThroughStore, storeBilledRails } from '../ports/render.mjs';
 
 export const NO_VALUE_FLAGS = new Set(['--dry-run']);
 export const VALUE_FLAGS = new Set(['--to', '--env', '--from', '--root']);
@@ -151,24 +153,18 @@ export function feeFor(adapter, rail, price, cells) {
   return { fee: { percentBps, fixedMinor }, cells: applied.map((x) => x.id) };
 }
 
-/** The rails an adapter serves: the `rail` of each of its fee cells. */
-const railsOf = (adapter, cells) => new Set((adapter?.cost?.feeCells ?? []).map((id) => cells[id]?.rail).filter(Boolean));
-
-/** An adapter that fronts a STORE's own billing: only the store can bill or cancel (`cancel-store`). */
-export const billsThroughStore = (adapter) => (adapter?.capabilities ?? []).includes('cancel-store');
+// The rails an adapter serves, whether it bills through a store, and the store-billed rails it
+// derives: ONE copy, in tooling/ports/render.mjs, because the client's rail kind per channel
+// (its Dart render) reads the same predicate this move rule does (port-pay-client).
+export { billsThroughStore, storeBilledRails };
 
 /**
- * The store-billed rails, DERIVED from the registry: every rail a `cancel-store` adapter serves
- * (today RevenueCat's apple-iap and play-billing). A channel on one of these is billed by the
- * store, so it can move only to another store-billing adapter, never to a web rail, and a
- * switch to a web rail counts no margin for it (#1127 money review, finding 3).
+ * Can a channel billed on `rail` move to `target` at all? Only to an adapter that serves its
+ * billing KIND, both ways: a store-billed channel moves only to a store biller, and a web-billed
+ * channel (web, desktop, extension) only to a web rail — a store aggregator cannot bill a page
+ * the store never sees (#1127 re-review, nit A).
  */
-export function storeBilledRails(adapters, cells) {
-  return new Set((adapters ?? []).filter(billsThroughStore).flatMap((a) => [...railsOf(a, cells)]));
-}
-
-/** Can a channel billed on `rail` move to `target` at all? */
-const canMoveTo = (rail, target, stores) => !stores.has(rail) || billsThroughStore(target);
+export const canMoveTo = (rail, target, stores) => stores.has(rail) === billsThroughStore(target);
 
 /** C8 · margin. Returns {verdict, detail, lines}. */
 export function margin(root, doc, target, current) {
@@ -203,7 +199,7 @@ export function margin(root, doc, target, current) {
     const rail = ch.purchaseRail.rail;
     const cur = current.find((a) => railsOf(a, cells).has(rail));
     if (!cur || cur.id === target.id) continue;
-    // The same set C11 moves: a store-billed channel never moves to a web rail, so it nets nothing.
+    // The same set C11 moves: a channel moves only to an adapter of its billing kind, so the rest net nothing.
     if (!canMoveTo(rail, target, stores)) continue;
     lines.push(`    ${ch.id} (${rail}): ${cur.id} → ${target.id}`);
     const onStore = stores.has(rail);
@@ -415,9 +411,13 @@ export function channelsChanging(root, target, current, adapters = [...current, 
   const leaving = channels.filter((c) => typeof c?.purchaseRail?.rail === 'string' && served.has(c.purchaseRail.rail) && !railsOf(target, cells).has(c.purchaseRail.rail));
   const moving = leaving.filter((c) => canMoveTo(c.purchaseRail.rail, target, stores));
   const held = leaving.filter((c) => !canMoveTo(c.purchaseRail.rail, target, stores));
-  const heldNote = held.length
-    ? `; ${held.length} store-billed channel(s) stay on their store's billing, which \`${target.id}\` cannot take: ${held.map((c) => `${c.id} (${c.purchaseRail.rail})`).join(', ')}`
-    : '';
+  const heldStore = held.filter((c) => stores.has(c.purchaseRail.rail));
+  const heldWeb = held.filter((c) => !stores.has(c.purchaseRail.rail));
+  const named = (cs) => cs.map((c) => `${c.id} (${c.purchaseRail.rail})`).join(', ');
+  const heldNote = [
+    heldStore.length ? `; ${heldStore.length} store-billed channel(s) stay on their store's billing, which \`${target.id}\` cannot take: ${named(heldStore)}` : '',
+    heldWeb.length ? `; ${heldWeb.length} web-billed channel(s) stay on a web rail, which \`${target.id}\` (a store biller) cannot take: ${named(heldWeb)}` : '',
+  ].join('');
   if (!moving.length) return { verdict: 'PASS', detail: `no channel's purchaseRail changes${heldNote}` };
   return { verdict: 'PASS', detail: `${moving.length} channel(s) would change purchaseRail: ${moving.map((c) => `${c.id} (${c.purchaseRail.rail} → ${target.id})`).join(', ')}${heldNote}` };
 }

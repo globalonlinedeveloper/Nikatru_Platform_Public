@@ -68,6 +68,7 @@ import 'package:nikatru_chassis_screens/monetization/paywall_screen.dart'
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
+import 'package:nikatru_purchases/testing.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
 import 'package:subscriptiontracker/state/money_providers.dart';
 import 'package:subscriptiontracker/state/providers.dart';
@@ -98,12 +99,8 @@ class _MemSecureStore implements core.SecureStore {
 /// TWO offerings, not one: the monthly carries a trial so its subtitle is
 /// `paywallTermWithTrial`, the longest string this screen renders, and it is the
 /// one that would wrap or overflow first if the cap moved.
-class _OfferingRail implements PurchaseRail {
-  @override
-  PurchaseRailKind get railKind => PurchaseRailKind.paddle;
-
-  @override
-  List<Offering> get offerings => const <Offering>[
+FakePurchaseRail _offeringRail() => FakePurchaseRail(
+  offerings: const <Offering>[
     Offering(
       productId: 'pro_monthly',
       amountMinor: 499,
@@ -117,31 +114,17 @@ class _OfferingRail implements PurchaseRail {
       currencyCode: 'USD',
       term: OfferingTerm.year,
     ),
-  ];
-
-  @override
-  bool get canStartCheckout => true;
-
-  /// Never reached — this file taps nothing — and it refuses rather than
-  /// pretending to open a checkout, so a tap case added later fails loudly
-  /// instead of silently starting a purchase flow inside a width test.
-  @override
-  Future<CheckoutStart> startCheckout(Offering offering) async =>
-      const CheckoutRefused(
-        CheckoutRefusal.notSignedIn,
-        detail: 'width test does not buy anything',
-      );
-
-  @override
-  Future<CancellationOutcome> requestCancellation() async =>
-      CancellationOutcome.noActivePlan;
-}
+  ],
+  canStartCheckout: true,
+  refusal: CheckoutRefusal.notSignedIn,
+  refusalDetail: 'width test does not buy anything',
+);
 
 /// The money seams this screen needs on top of the harness's two.
 List<Override> _moneyOverrides() => <Override>[
   secureStoreProvider.overrideWithValue(_MemSecureStore()),
   sellingEnabledProvider.overrideWithValue(true),
-  purchaseRailProvider.overrideWithValue(_OfferingRail()),
+  purchaseRailProvider.overrideWithValue(_offeringRail()),
 ];
 
 void main() {

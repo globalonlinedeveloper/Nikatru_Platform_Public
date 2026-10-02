@@ -20,7 +20,7 @@ check, the unit's own smoke and a ledger record.
 
 | input | what it is |
 |---|---|
-| `unit` | the ledger environment: `<app>-web`, `subscriptiontracker-api` or `platform`. Resolved through `tooling/channel-register.json` by `resolveEnvironment` in `tooling/ci/deployment-record.mjs`, the resolver `record-deployment.mjs` uses, so any app's `<app>-web` is taken the same way. |
+| `unit` | the ledger environment: `<app>-web`, `nikatru-site`, `subscriptiontracker-api`, `platform` or `edge-shield`. Resolved through `tooling/channel-register.json` by `resolveEnvironment` in `tooling/ci/deployment-record.mjs`, the resolver `record-deployment.mjs` uses, so any app's `<app>-web` is taken the same way. |
 | `deployment` | the id of the GitHub Deployment (the ledger record) whose build goes back live. |
 | `dry_run` | **defaults to true.** Prints the exact command and changes nothing: no Cloudflare call, no smoke, no record. A stray click is a no-op. |
 
@@ -39,13 +39,28 @@ check, the unit's own smoke and a ledger record.
    prints `$ <the exact command>`, and on a real run runs it:
    - `<app>-web`: `POST /accounts/{account}/pages/projects/<app>/deployments/<id>/rollback`
      on the Cloudflare API, which must answer `success: true`.
+   - `nikatru-site` (⏱ 2026-10-01, PB-07, row O-APEX-SITE-HAS-NO-ROLLBACK): the same
+     Pages call, on the Direct Upload project its `siteEnvironments` row names as
+     `pagesProject` (nikatru-apex) — never on the paused Git project `nikatru`. The
+     `site` job of deploy-web.yml records `--pages-deployment-id` since the same date;
+     an earlier record names no id and is refused.
    - a Worker: `wrangler rollback <version-id> --message "<run and ledger id>" --yes`,
      from `services/<worker>/`, with the island's binary. The run then reads
      `Current Version ID:` back and refuses if it is not the id it asked for.
 5. **The unit's own smoke**, joined to the re-promoted build rather than to
-   main's head: the web build number is the recorded run's `run_number`
-   (`<environment_url>/version.json`, field `build_number`); a Worker's build is
-   the recorded SHA (`/v1/health`, field `build`, `--require-ok`).
+   main's head, run as `rollback.mjs --run-smoke` from the script and arguments the
+   re-promotion step handed over (`smoke_script`, `smoke_args`); only a script in
+   `SMOKE_SCRIPTS` runs. By kind: the web build number is the recorded run's
+   `run_number` (`<environment_url>/version.json`, field `build_number`); a Worker's
+   build is the recorded SHA (`/v1/health`, field `build`, `--require-ok`); the site
+   runs its deploy smoke, `tooling/sites/smoke-site-deploy.mjs --origin
+   <environment_url> --expect-sha <sha>`. ⏱ 2026-10-01 (PB-08, row
+   O-EDGE-SHIELD-ROLLBACK-SMOKE-MISFIT): a register row's `rollbackSmoke` replaces its
+   kind's. The edge shield has no `/v1/health`, so its row names its deploy smoke,
+   `tooling/ops/check-edge-shield.mjs --settle --expect-release <sha>`: both shield
+   routes must answer with the recorded SHA, which the re-promoted version echoes.
+   `tooling/ci/test/rollback.test.mjs` holds each per-unit smoke equal, argument for
+   argument, to the one its deploy job runs.
 6. **The record**: `record-deployment.mjs <unit> <url> --rollback-of <ledger id>
    --ref <sha> <id flag> <id>`, conditioned on the re-promotion, not on the smoke,
    like both deploy lanes' record steps.
@@ -96,6 +111,11 @@ ledger Deployment it re-promoted instead; the refusal prints its id.
 | `wrangler rollback [version-id]` takes `--name`, `--message` (at most 120 characters) and `--yes`, and prints `Current Version ID:` | wrangler 4.129.0 `wrangler-dist/cli.js` | read at 4.129.0; the island pins 4.135.0 |
 
 ## The owner step after merge
+
+⏱ 2026-10-01 (PB-09): no rollback through this lane had run, and every revert row's
+`lastDone` in `tooling/ops/register.json` is null. The drill is the no-op below, for
+`platform` first, then `nikatru-site` and `subscriptiontracker-web`; each run's id is
+what sets that row's `lastDone`.
 
 An attended no-op re-promotion of what is live now: dispatch with `unit:
 subscriptiontracker-web` and `deployment:` the newest successful ledger

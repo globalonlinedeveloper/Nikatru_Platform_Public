@@ -108,7 +108,7 @@
     72,
 
   "assert-deploy-triggers-deploy.test.mjs":
-    34,
+    44,
 
   "assert-frames-carry-text.test.mjs":
     11,
@@ -142,6 +142,9 @@
 
   "brick-drivers.test.mjs":
     5,
+
+  "brick-payment-fakes.test.mjs":
+    4,
 
   "built-artifact-pr-lane.test.mjs":
     27,
@@ -351,7 +354,7 @@
     16,
 
   "edge-shield-probe.test.mjs":
-    18,
+    26,
 
   "elf-page-alignment.test.mjs":
     23,
@@ -654,7 +657,7 @@
     116,
 
   "ops-register.test.mjs":
-    435,
+    439,
 
   "ops-status.test.mjs":
     53,
@@ -675,7 +678,7 @@
     25,
 
   "pages-deployments.test.mjs":
-    108,
+    111,
 
   "pages-origin.test.mjs":
     26,
@@ -714,13 +717,13 @@
     62,
 
   "port-render.test.mjs":
-    10,
+    16,
 
   "port-switch.test.mjs":
-    35,
+    37,
 
   "ports.test.mjs":
-    56,
+    64,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -765,7 +768,7 @@
     30,
 
   "prod-provenance.test.mjs":
-    152,
+    154,
 
   "propagate-versions.test.mjs":
     15,
@@ -801,7 +804,7 @@
     21,
 
   "purchase-path.test.mjs":
-    133,
+    136,
 
   "rail-prices.test.mjs":
     61,
@@ -864,7 +867,7 @@
     4,
 
   "rollback.test.mjs":
-    32,
+    44,
 
   "rollup-lossless.test.mjs":
     52,

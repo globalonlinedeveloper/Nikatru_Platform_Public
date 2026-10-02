@@ -508,6 +508,32 @@ function jobsPerLeg(wf) {
   return out;
 }
 const deployJobs = deployWorkers === null ? [] : jobsPerLeg(deployWorkers);
+// ⏱ 2026-10-01 · PB-03 (row O-APP-WORKERS-DEPLOY-BEFORE-THE-MIGRATION) — A DATABASE MAY
+// MIGRATE BEFORE THE WHOLE DEPLOY. platform_db is read by every app Worker, so its
+// migrations moved out of deploy-workers.yml's platform job into a callee of its own
+// (migrate-platform-db.yml) that ci.yml's `deploy-workers` call NEEDS. The premise below
+// still has to hold — a Deployment at a commit containing M proves M was applied — and it
+// does when that callee's applier runs on exactly the plan the deploying job runs: same
+// run, same commit, same `plan-deploy.mjs <environment>` against the same ledger, and the
+// deploy cannot start unless the call succeeded. So such a job is an applier too, judged
+// below for that plan, its `if:` and `continue-on-error`; the deploying job is then the
+// deploy-workers job whose `id: deploy` runs in the same directory.
+const CI_REL = '.github/workflows/ci.yml';
+const callOf = (job) =>
+  job.lines.map((l) => l.text.match(/^ {4}uses:\s*\.\/(\.github\/workflows\/\S+\.ya?ml)\s*$/)).find(Boolean)?.[1] ?? null;
+function preDeployJobs() {
+  const ci = parseWorkflow(ROOT, CI_REL);
+  const call = ci === null ? undefined : [...ci.jobs.values()].find((j) => callOf(j) === DEPLOY_WORKERS_REL);
+  if (!call) return [];
+  const out = [];
+  for (const need of call.needs) {
+    const rel = ci.jobs.get(need) ? callOf(ci.jobs.get(need)) : null;
+    if (rel === null || rel === DEPLOY_WORKERS_REL) continue;
+    for (const j of parseWorkflow(ROOT, rel)?.jobs.values() ?? []) out.push({ ...j, preDeploy: { rel, callJob: need } });
+  }
+  return out;
+}
+const preDeploy = deployWorkers === null ? [] : preDeployJobs();
 // ⏱ 2026-09-26 — once per walked database: its owner's applier job, in the
 // directory of the wrangler file that owns it (limb 10).
 for (const db of derived.databases) {
@@ -520,29 +546,75 @@ for (const db of derived.databases) {
     flag(`${DEPLOY_WORKERS_REL} does not exist, so nothing applies ${db.migrationsDir} — and a pending migration would wait for an applier that is not there.`);
   } else {
     const esc = workerDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const appliers = deployJobs.filter(
-      (j) => j.lines.some((l) => /\bd1 migrations apply\b.*--remote\b/.test(l.text)) && j.lines.some((l) => new RegExp(`^\\s*workingDirectory:\\s*${esc}\\s*$`).test(l.text)),
-    );
+    const inDir = (j) => j.lines.some((l) => new RegExp(`^\\s*workingDirectory:\\s*${esc}\\s*$`).test(l.text));
+    const appliers = [...deployJobs, ...preDeploy].filter((j) => j.lines.some((l) => /\bd1 migrations apply\b.*--remote\b/.test(l.text)) && inDir(j));
+    let envs = [];
+    try {
+      envs = (JSON.parse(readFileSync(join(ROOT, CHANNELS_REL), 'utf8')).serviceEnvironments ?? []).filter((s) => s?.source === workerDir).map((s) => s.deploymentEnvironment);
+    } catch {
+      // an unreadable register is reported below as "no environment", never skipped
+    }
     if (appliers.length !== 1) {
       flag(
-        `${DEPLOY_WORKERS_REL} has ${appliers.length} job(s) that run \`d1 migrations apply … --remote\` in ${workerDir}; the ` +
+        `${DEPLOY_WORKERS_REL} has ${appliers.length} job(s) that run \`d1 migrations apply … --remote\` in ${workerDir}, counting every callee ` +
+          `ci.yml's deploy-workers call needs; the ` +
           `monitor treats a ${db.worker} Deployment as proof the ONE applier ran, so there must be exactly one.`,
       );
     } else {
-      const j = appliers[0];
-      const at = (re) => j.lines.find((l) => re.test(l.text)) ?? null;
-      const apply = at(/\bd1 migrations apply\b.*--remote\b/);
-      const deploy = at(/^\s*id:\s*deploy\s*$/);
-      const record = at(/record-deployment\.mjs\s/);
-      const stepOf = (line) => {
-        const starts = j.lines.filter((l) => /^ {6}- /.test(l.text)).map((l) => l.n);
+      const a = appliers[0];
+      const stepIn = (job, line) => {
+        const starts = job.lines.filter((l) => /^ {6}- /.test(l.text)).map((l) => l.n);
         const from = Math.max(...starts.filter((n) => n <= line.n));
         const to = Math.min(...starts.filter((n) => n > line.n), Infinity);
-        return j.lines.filter((l) => l.n >= from && l.n < to);
+        return job.lines.filter((l) => l.n >= from && l.n < to);
       };
+      // The job whose `id: deploy` puts the Worker live: the applier itself, or — for a
+      // pre-deploy callee — the deploy-workers job deploying from the same directory.
+      let j = a;
+      if (a.preDeploy) {
+        const where = `${a.preDeploy.rel} job \`${a.name}\` (ci.yml's \`${a.preDeploy.callJob}\`, which the deploy-workers call needs)`;
+        const applyLine = a.lines.find((l) => /\bd1 migrations apply\b.*--remote\b/.test(l.text));
+        const planned = a.lines.find((l) => /plan-deploy\.mjs\s+(\S+)/.test(l.text))?.text.match(/plan-deploy\.mjs\s+(\S+)/)?.[1] ?? null;
+        const applyIfs = stepIn(a, applyLine).filter((l) => /^\s*if:/.test(l.text)).map((l) => l.text.trim());
+        if (envs.length !== 1 || planned !== envs[0]) {
+          flag(
+            `${where} applies ${db.name}'s migrations on the plan of \`${planned ?? '(no plan-deploy.mjs step)'}\`, not of ${workerDir}'s environment ` +
+              `${envs.length === 1 ? `\`${envs[0]}\`` : `(${envs.length} in ${CHANNELS_REL})`}: a ${db.worker} Deployment proves its migrations ran only when both run on ONE plan.`,
+          );
+        }
+        if (!(applyIfs.length === 1 && applyIfs[0] === "if: steps.plan.outputs.deploy == 'true'")) {
+          flag(`${where}: the migration step (line ${applyLine.n}) carries ${applyIfs.length ? `\`${applyIfs.join('` and `')}\`` : 'no `if:`'}, not exactly \`if: steps.plan.outputs.deploy == 'true'\` — the condition the deploy runs on.`);
+        }
+        if (a.continueOnError !== null) {
+          flag(`${where}: \`continue-on-error: true\` at line ${a.continueOnError.n} lets the deploy run past a failed migration.`);
+        }
+        const deployers = deployJobs.filter((x) => inDir(x) && x.lines.some((l) => /^\s*id:\s*deploy\s*$/.test(l.text)));
+        if (deployers.length !== 1) {
+          flag(`${DEPLOY_WORKERS_REL} has ${deployers.length} job(s) deploying ${workerDir} (\`id: deploy\`), so no single ${db.worker} Deployment follows the migration in ${a.preDeploy.rel}.`);
+          continue;
+        }
+        j = deployers[0];
+        // …and that job deploys on the ONE plan, under the migration's one condition.
+        const jPlan = j.lines.find((l) => /plan-deploy\.mjs\s+(\S+)/.test(l.text))?.text.match(/plan-deploy\.mjs\s+(\S+)/)?.[1] ?? null;
+        const deployLine = j.lines.find((l) => /^\s*id:\s*deploy\s*$/.test(l.text));
+        const deployIfs = stepIn(j, deployLine).filter((l) => /^\s*if:/.test(l.text)).map((l) => l.text.trim());
+        if (jPlan !== planned || !(deployIfs.length === 1 && deployIfs[0] === "if: steps.plan.outputs.deploy == 'true'")) {
+          flag(
+            `${DEPLOY_WORKERS_REL} job \`${j.name}\` deploys on the plan of \`${jPlan ?? '(none)'}\` under ` +
+              `${deployIfs.length ? `\`${deployIfs.join('` and `')}\`` : 'no `if:`'}, and ${where} migrates on \`${planned ?? '(none)'}\` under ` +
+              "`if: steps.plan.outputs.deploy == 'true'`. Only ONE plan and ONE condition make the deploy proof that the migrations ran.",
+          );
+        }
+      }
+      const at = (re) => j.lines.find((l) => re.test(l.text)) ?? null;
+      // In a pre-deploy callee the migration ran before this whole job: line 0.
+      const apply = a.preDeploy ? { n: 0 } : at(/\bd1 migrations apply\b.*--remote\b/);
+      const deploy = at(/^\s*id:\s*deploy\s*$/);
+      const record = at(/record-deployment\.mjs\s/);
+      const stepOf = (line) => stepIn(j, line);
       const where = `${DEPLOY_WORKERS_REL} job \`${j.name}\`${j.leg ? ` (the ${j.leg} leg)` : ''}`;
       if (!deploy || !record) {
-        flag(`${where} applies the migrations but has ${!deploy ? 'no `id: deploy` step' : 'no `record-deployment.mjs` step'}, so a ${db.worker} Deployment no longer proves the applier ran.`);
+        flag(`${where} ${a.preDeploy ? 'deploys after the migrations' : 'applies the migrations'} but has ${!deploy ? 'no `id: deploy` step' : 'no `record-deployment.mjs` step'}, so a ${db.worker} Deployment no longer proves the applier ran.`);
       } else if (!(apply.n < deploy.n && deploy.n < record.n)) {
         flag(
           `${where}: the migrations apply at line ${apply.n}, the deploy at ${deploy.n}, the Deployment is recorded at ${record.n}. ` +
@@ -552,8 +624,9 @@ for (const db of derived.databases) {
         // ⏱ 2026-09-25 [PD2B-3] The migration step may carry an `if:` only when every
         // `if:` line in it is byte-equal, trimmed, to the `id: deploy` step's one `if:`:
         // then both run on the one condition, and a failed migration still stops the deploy.
+        // (A pre-deploy callee's migration step was held to that condition above.)
         const ifsOf = (line) => stepOf(line).filter((l) => /^\s*if:/.test(l.text)).map((l) => l.text.trim());
-        const applyIfs = ifsOf(apply);
+        const applyIfs = a.preDeploy ? [] : ifsOf(apply);
         const deployIfs = ifsOf(deploy);
         if (applyIfs.length && !(deployIfs.length === 1 && applyIfs.every((t) => t === deployIfs[0]))) {
           flag(
@@ -566,12 +639,6 @@ for (const db of derived.databases) {
         }
         if (j.continueOnError !== null) {
           flag(`${where}: \`continue-on-error: true\` at line ${j.continueOnError.n} lets the deploy and its record run past a failed migration.`);
-        }
-        let envs = [];
-        try {
-          envs = (JSON.parse(readFileSync(join(ROOT, CHANNELS_REL), 'utf8')).serviceEnvironments ?? []).filter((s) => s?.source === workerDir).map((s) => s.deploymentEnvironment);
-        } catch {
-          // an unreadable register is reported below as "no environment", never skipped
         }
         const recorded = record.text.match(/record-deployment\.mjs\s+(\S+)/)?.[1];
         if (envs.length !== 1 || envs[0] !== recorded) {

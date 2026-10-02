@@ -544,10 +544,13 @@ export const PUBLISHED_ID_KEYS = Object.freeze(['pages_deployment_id', 'worker_v
 export const CLOUDFLARE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Which id flag each kind of unit takes. A kind not named here publishes
- *  nothing rollback.yml can re-promote, so it takes none. */
+ *  nothing rollback.yml can re-promote, so it takes none. ⏱ 2026-10-01 · PB-07
+ *  (row O-APEX-SITE-HAS-NO-ROLLBACK): a `site` is a Direct Upload Pages project,
+ *  and its record names the deployment it published, as an app's web record does. */
 export const PUBLISHED_ID_FLAGS = Object.freeze({
   web: Object.freeze(['pages-deployment-id']),
   service: Object.freeze(['wrangler-output-env', 'worker-version-id']),
+  site: Object.freeze(['pages-deployment-id']),
 });
 const ALL_ID_FLAGS = [...new Set(Object.values(PUBLISHED_ID_FLAGS).flat())];
 
@@ -625,7 +628,7 @@ export function publishedIds(kind, flags, env = process.env) {
 // taken DOWN), the ledger would say the bad build is live: plan-deploy.mjs would
 // then plan "nothing to deploy" on the next push, and the rollback would outlive
 // the fix. So a rollback names the commit it put back, and says it is one.
-export const ROLLBACK_KINDS = Object.freeze(['web', 'service']);
+export const ROLLBACK_KINDS = Object.freeze(['web', 'service', 'site']);
 
 /** PURE. `{ sha, payload, refusal }` for the --rollback-of / --ref pair. Neither
  *  given: `{ sha: null, payload: {} }` — an ordinary deploy record. */

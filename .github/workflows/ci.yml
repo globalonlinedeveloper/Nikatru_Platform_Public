@@ -2503,9 +2503,28 @@ jobs:
   # (migrations applied, Workers deployed or planned as unchanged), and a failed
   # Worker deploy leaves the web on the build that matches the live API.
   # tooling/ci/test/workflow-scan.test.mjs reads this edge off the real file.
+  #
+  # why: PLATFORM_DB MIGRATES BEFORE BOTH (row O-APP-WORKERS-DEPLOY-BEFORE-THE-MIGRATION,
+  # PB-03). Every app Worker, the platform Worker and the apex site's Function bind
+  # platform_db, and its migrations used to run in deploy-workers' platform job, AFTER
+  # every app Worker had gone live. platform-db-migrate applies them once, first; both
+  # deploys need it, so a failed migration publishes nothing that reads platform_db.
+  # assert-deploy-triggers-deploy.mjs limb 5 holds every PLATFORM_DB deploy behind it.
+  platform-db-migrate:
+    name: platform-db-migrate
+    needs: [ci-gate]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/migrate-platform-db.yml
+    permissions:
+      contents: read
+      deployments: read
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
   deploy-web:
     name: deploy-web
-    needs: [ci-gate, deploy-workers]
+    needs: [ci-gate, platform-db-migrate, deploy-workers]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy-web.yml
     permissions:
@@ -2522,7 +2541,7 @@ jobs:
 
   deploy-workers:
     name: deploy-workers
-    needs: [ci-gate]
+    needs: [ci-gate, platform-db-migrate]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy-workers.yml
     permissions:
