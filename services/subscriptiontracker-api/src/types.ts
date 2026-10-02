@@ -6,7 +6,7 @@ import type { KvStore } from '../../_shared/src/ports/kv';
 /** ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql): the D1 bindings
  *  are declared as the SQL PORT; the binding satisfies it structurally
  *  (services/_shared/src/ports/adapters/cloudflare.ts `cloudflareD1`), and
- *  assert-ports limb 9 refuses a `D1Database` type in any handler. */
+ *  assert-ports limb 12 refuses a `D1Database` type in any handler. */
 import type { SqlDb } from '../../_shared/src/ports/sql';
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared types for the Worker. Keep the Env interface in sync with wrangler.jsonc.
@@ -30,6 +30,12 @@ export interface Env {
   // writes it. Optional: absence fails OPEN, and
   // tooling/ci/assert-session-revocation.mjs reds a config that does not bind it.
   SESSION_REVOKED?: KvStore;
+
+  // ⏱ 2026-10-01 · rv2-services-008. The per-account write limiter
+  // (`ratelimits` in wrangler.jsonc), read by middleware/write-limit.ts and keyed
+  // on the verified subject. Optional: absence fails OPEN and is logged once
+  // per isolate; test/wrangler-config.test.ts asserts both environments bind it.
+  WRITE_LIMITER?: RateLimiterBinding;
 
   // 🔴 `EXPORTS: R2Bucket` WAS HERE and was removed on 2026-08-01 with the
   // binding it typed ([4]B-18). It is worth naming why the TYPE had to go too:
@@ -87,6 +93,7 @@ export interface Env {
  * `src/routes/account.ts` refuses anything that is not `'asymmetric'`.
  */
 import type { TokenAssurance } from '../../_shared/src/auth-middleware';
+import type { RateLimiterBinding } from '../../_shared/src/rate-limit';
 export type { TokenAssurance }; // declared once, beside the boundary that sets it
 
 /**

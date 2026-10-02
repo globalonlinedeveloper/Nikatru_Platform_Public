@@ -51,6 +51,7 @@ export 'src/config/version_gate.dart';
 export 'src/models/entitlement.dart';
 export 'src/money/fx_rates.dart';
 export 'src/money/fx_source.dart';
+export 'src/money/iso4217.g.dart';
 export 'src/money/money.dart';
 export 'src/money/money_bag.dart';
 export 'src/money/money_format.dart';

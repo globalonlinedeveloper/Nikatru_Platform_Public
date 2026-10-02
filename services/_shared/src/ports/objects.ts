@@ -4,7 +4,7 @@
 //
 // ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage). The one writer
 // is the nightly off-vendor export (services/platform/src/backup/index.ts), which
-// takes an `ObjectStore`, never an `R2Bucket` (assert-ports limb 9). An R2 bucket
+// takes an `ObjectStore`, never an `R2Bucket` (assert-ports limb 12). An R2 bucket
 // satisfies this interface STRUCTURALLY; adapters/cloudflare.ts proves it at
 // compile time and wraps nothing.
 //

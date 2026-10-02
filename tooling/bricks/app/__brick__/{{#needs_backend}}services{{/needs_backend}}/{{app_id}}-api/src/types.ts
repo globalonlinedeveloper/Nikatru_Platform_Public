@@ -6,7 +6,7 @@ import type { KvStore } from '../../_shared/src/ports/kv';
 /** ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql): the D1 bindings
  *  are declared as the SQL PORT; the binding satisfies it structurally
  *  (services/_shared/src/ports/adapters/cloudflare.ts `cloudflareD1`), and
- *  assert-ports limb 9 refuses a `D1Database` type in any handler. */
+ *  assert-ports limb 12 refuses a `D1Database` type in any handler. */
 import type { SqlDb } from '../../_shared/src/ports/sql';
 import type { Context } from 'hono';
 

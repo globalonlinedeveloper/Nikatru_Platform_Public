@@ -4,7 +4,7 @@
 //
 // ⏱ 2026-10-01 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-storage). Every handler
 // that reads or writes CONFIG_KV, JWKS_CACHE, SESSION_REVOKED or SIGNUPS takes a
-// `KvStore`, never a `KVNamespace` (assert-ports limb 9). The Cloudflare binding
+// `KvStore`, never a `KVNamespace` (assert-ports limb 12). The Cloudflare binding
 // satisfies this interface STRUCTURALLY — no wrapper sits on the hot path; the
 // adapter module (adapters/cloudflare.ts) is a compile-time proof, not a shim.
 //

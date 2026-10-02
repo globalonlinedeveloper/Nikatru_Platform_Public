@@ -193,6 +193,7 @@ describe('capture-backend: the sandbox is computed from the wrangler configs', (
       'd1:APP_DB': '4e7c7730-3dc7-4004-9895-403b17702b91',
       'd1:PLATFORM_DB': 'ead92001-03e1-4f71-9b92-c64963a24925',
       'kv:JWKS_CACHE': 'b2acb786d12f4e36b339dd19f8812bbe',
+      'ratelimit:WRITE_LIMITER': '1032', // ⏱ 2026-10-01 · rv2-services-008, the per-account write limiter's sandbox namespace.
     });
     const defines = captureBackendDefines({ backend: b, env: { SUPABASE_URL: b.platform.supabaseUrl } });
     assert.deepEqual(defines, [

@@ -135,7 +135,7 @@
     "dryRun": "node tooling/ops/port-switch.mjs objects --to <adapter> --dry-run"
   },
   "_why": [
-    "BACKUPS_R2 is declared as ObjectStore in services/platform's `interface Env`, and its one writer — the nightly export, services/platform/src/backup/index.ts (BackupEnv) — takes an ObjectStore. An R2Bucket satisfies it STRUCTURALLY; cloudflareR2 is the identity, kept as the compile-time proof. assert-ports limb 9 refuses an R2Bucket (or R2Objects) type anywhere else under services/*/src.",
+    "BACKUPS_R2 is declared as ObjectStore in services/platform's `interface Env`, and its one writer — the nightly export, services/platform/src/backup/index.ts (BackupEnv) — takes an ObjectStore. An R2Bucket satisfies it STRUCTURALLY; cloudflareR2 is the identity, kept as the compile-time proof. assert-ports limb 12 refuses an R2Bucket (or R2Objects) type anywhere else under services/*/src.",
     "L2 claimed, L2 target: selected by environment, no caller imports an adapter, one live adapter. The `s3` adapter is DRAFT on purpose — the exit is already open through rclone, so building it before a second store exists would be code with no subject.",
     "The conformance suite runs against the memory fake; against the bucket it is PENDING, because no Worker suite runs on workerd."
   ]

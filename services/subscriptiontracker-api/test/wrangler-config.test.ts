@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 // `?raw` rather than node:fs — a Workers tsconfig has no node types on purpose.
 import raw from '../wrangler.jsonc?raw';
+import platformRaw from '../../platform/wrangler.jsonc?raw';
+import edgeShieldRaw from '../../edge-shield/wrangler.jsonc?raw';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The DEPLOYED half of this Worker's configuration.
@@ -70,10 +72,17 @@ interface D1Entry {
   database_id?: string;
   migrations_dir?: string;
 }
+interface RateLimit {
+  name?: string;
+  namespace_id?: unknown;
+  simple?: { limit?: unknown; period?: unknown };
+}
 const cfg = parseJsonc(raw) as {
   name?: string;
   vars?: Record<string, unknown>;
   d1_databases?: D1Entry[];
+  ratelimits?: RateLimit[];
+  env?: { sandbox?: { ratelimits?: RateLimit[] } };
 };
 
 describe('the parse itself reached the config', () => {
@@ -191,6 +200,44 @@ describe('the clone contract this Worker is the template for', () => {
       expect(d.database_id, `${d.binding} still holds the all-zeros placeholder`).not.toMatch(
         /^0{8}-/,
       );
+    }
+  });
+});
+
+// ⏱ 2026-10-01 · rv2-services-008 (lane fix-st-api-bounds). The per-account
+// write limiter fails OPEN when its binding is absent (the kit's
+// withinRateLimit), so deleting this block would leave every unit test green
+// and every account unbounded. Wrangler does not inherit `ratelimits` into an
+// environment, so the sandbox needs its own.
+describe('ratelimits.WRITE_LIMITER — the per-account write bound, in BOTH environments', () => {
+  const where = [
+    ['the top level', cfg.ratelimits],
+    ['env.sandbox', cfg.env?.sandbox?.ratelimits],
+  ] as const;
+  for (const [label, list] of where) {
+    it(`${label} binds WRITE_LIMITER: 120 per 60 s`, () => {
+      const e = (list ?? []).find((r) => r.name === 'WRITE_LIMITER');
+      expect(e, `${label} has no WRITE_LIMITER: every write is unbounded`).toBeDefined();
+      expect(e!.simple).toEqual({ limit: 120, period: 60 });
+      expect(String(e!.namespace_id)).toMatch(/^[0-9]+$/);
+    });
+  }
+
+  it('the two namespaces differ (a sandbox capture must not spend production’s budget)', () => {
+    const top = (cfg.ratelimits ?? []).find((r) => r.name === 'WRITE_LIMITER');
+    const sandbox = (cfg.env?.sandbox?.ratelimits ?? []).find((r) => r.name === 'WRITE_LIMITER');
+    expect(String(top?.namespace_id)).toBe('1031');
+    expect(String(sandbox?.namespace_id)).toBe('1032');
+  });
+
+  it('no other Worker in this repo uses either namespace id (they are account-wide)', () => {
+    // services/platform holds 1001-1030; services/edge-shield is the other Worker.
+    for (const [name, text] of [
+      ['services/platform', platformRaw],
+      ['services/edge-shield', edgeShieldRaw],
+    ] as const) {
+      expect(text, `${name}: the read reached nothing`).toContain('"name"');
+      expect(text, name).not.toMatch(/"namespace_id"\s*:\s*"(1031|1032)"/);
     }
   });
 });

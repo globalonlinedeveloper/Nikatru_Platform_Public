@@ -166,11 +166,11 @@
           "path": "/v1/subscriptions",
           "auth": "required",
           "owningFile": "services/subscriptiontracker-api/src/routes/subscriptions.ts",
-          "purpose": "Every subscription owned by the verified user, newest renewal first. Scoped by the token's user_id, never by a body value.",
+          "purpose": "Every subscription owned by the verified user, most expensive first. Scoped by the token's user_id, never by a body value. ⏱ 2026-10-01 · rv2-services-008: BOUNDED — with no `limit` it is the bare array, LIMIT the per-account row cap (500), so it never truncates a list the cap admitted; with `?limit=N&after=<cursor>` it is keyset-paged as `{items, next}`.",
           "client": {
             "file": "apps/subscriptiontracker/lib/data/api/dio_api_client.dart",
-            "expression": "_rest.get('/subscriptions')",
-            "note": "The real call inside `getSubscriptions()`, at the assignment — not the class doc comment, which is stripped before matching."
+            "expression": "'/subscriptions?limit=$subscriptionsPageSize$cursor'",
+            "note": "The real call inside `getSubscriptions()`, at the assignment — not the class doc comment, which is stripped before matching. It follows `next` page by page, and reads a pre-paging Worker's bare array whole."
           }
         },
         {
@@ -233,15 +233,6 @@
           "owningFile": "services/subscriptiontracker-api/src/routes/subscriptions.ts",
           "purpose": "The user records a payment by hand (ST-R5, round-2 X06: mark as paid). Writes one payment_history row with `source` = manual against a subscription the user owns and has not removed; ownership is in the SQL, so a foreign or removed id is a 404.",
           "unconsumedReason": "⏱ 2026-09-29: SERVED AHEAD OF ITS BUTTON. The API half of ST-R5 landed first on purpose (fix-rv2-st-api-lifecycle); the \"Mark as paid\" control is drawn by the design train dw1 (D5-3), which adds the client call. Until then nothing in the app issues this request."
-        },
-        {
-          "id": "subscriptiontracker-renewals",
-          "method": "GET",
-          "path": "/v1/renewals",
-          "auth": "required",
-          "owningFile": "services/subscriptiontracker-api/src/routes/renewals.ts",
-          "purpose": "The upcoming-renewals list for the verified user, computed server-side over a window. Mounted at index.ts:87 behind `supabaseAuth`, 108 lines, with its own test file.",
-          "unconsumedReason": "🔴 NOTHING IN THIS REPO CALLS IT, AND THAT IS THE FINDING THIS ENTRY EXISTS TO STOP BEING INVISIBLE. Measured 2026-08-25 across every language and every root in the repo, with the /v1 prefix removed after that exact mistake once produced a false negative: apps/subscriptiontracker/lib/data/api/api_client.dart declares NINE methods and none is renewals; dio_api_client.dart issues NINE requests and none is to /renewals; packages/api_client has no renewals transport; and every bare-word `renewals` hit outside services/ is a UI string, a feature flag, the platform cron fan-out (services/platform/src/scheduled.ts, which writes subscriptiontracker_db DIRECTLY through the SUBSCRIPTIONTRACKER_DB binding and never over HTTP), or a test. The app computes its upcoming-renewal list locally from the subscriptions it already holds. ⚠️ IT IS NOT DELETED, AND DELETION IS NOT THIS ITEM’S CALL: it is a plausible sync-era surface, deletion is the irreversible half, and the register’s whole purpose is that an unconsumed capability is a PRINTED fact rather than a silence. Give it a client or remove it deliberately — but from now on the choice is on the screen every CI run."
         },
         {
           "id": "subscriptiontracker-budget-get",
@@ -967,7 +958,6 @@
       "readers": [
         "services/subscriptiontracker-api/src/routes/subscriptions.ts",
         "services/subscriptiontracker-api/src/routes/budget.ts",
-        "services/subscriptiontracker-api/src/routes/renewals.ts",
         "tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/src/routes/account.ts"
       ]
     },
@@ -1199,6 +1189,15 @@
       "purpose": "⏱ 2026-09-26 · LEAD RULING SHIELD-R1, row O-BOXES-UNSHIELDED-FROM-SPIKES. ⏱ 2026-09-27 · SHIELD-R3. services/edge-shield's intake limiter, keyed global:intake, all clients together: GlitchTip's crash intake on Box B (/api/<id>/envelope/ and /store/). Over the limit the shield answers 429 with Retry-After; any fault of this binding FAILS OPEN and is logged as shield_fail_open (src/limit.ts). The limit and what it is sized from are beside the binding in services/edge-shield/wrangler.jsonc. It is the ONLY limiter of its class: the Worker reads no client address (LEAD RULING SHIELD-R3, the ADR no.011 / ADR no.020 posture), and the per-IP limit on the credential paths is the nikatru.com zone's own rate-limiting rule (tooling/edge-ratelimit-rule.json).",
       "readers": [
         "services/edge-shield/src/classify.ts"
+      ]
+    },
+    {
+      "binding": "WRITE_LIMITER",
+      "kind": "ratelimits",
+      "scope": "per-app",
+      "purpose": "⏱ 2026-10-01 · rv2-services-008 (lane fix-st-api-bounds). subscriptiontracker-api's per-ACCOUNT write limiter: every non-GET under /v1, mounted after supabaseAuth and keyed `st:<verified sub>` — never a header or the body. `simple: { limit: 120, period: 60 }`; over it is a 429 with Retry-After: 60. FAILS OPEN (the kit's withinRateLimit): the per-user row cap in routes/subscriptions.ts bounds the total without it, and test/wrangler-config.test.ts asserts the binding in both environments. Its OWN namespace (1031; the sandbox's is 1032).",
+      "readers": [
+        "services/subscriptiontracker-api/src/middleware/write-limit.ts"
       ]
     },
     {

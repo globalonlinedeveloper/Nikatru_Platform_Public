@@ -7,7 +7,7 @@
 // the edge from the transport, never from a header the caller wrote. It was read
 // by hand in three modules (the edge-ceiling key, the events row's coarse geo and
 // the request log's colo), each with its own guard against a missing or odd
-// value. It is read HERE now, and assert-ports limb 10 refuses a `.cf` read in
+// value. It is read HERE now, and assert-ports limb 13 refuses a `.cf` read in
 // any other module under services/*/src: a second runtime answers this one
 // function, not three call sites.
 //

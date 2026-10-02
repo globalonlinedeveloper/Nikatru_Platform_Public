@@ -109,7 +109,7 @@
     "dryRun": "node tooling/ops/port-switch.mjs kv --to <adapter> --dry-run"
   },
   "_why": [
-    "CONFIG_KV, JWKS_CACHE, SESSION_REVOKED and SIGNUPS are declared as KvStore in every Worker's `interface Env`, and every handler — the auth plumbing in services/_shared/src/auth-middleware.ts included — takes a KvStore. The binding satisfies it STRUCTURALLY; cloudflareKv is the identity, kept as the compile-time proof (tsc reds the day the binding and the port drift). assert-ports limb 9 refuses a KVNamespace type anywhere else under services/*/src.",
+    "CONFIG_KV, JWKS_CACHE, SESSION_REVOKED and SIGNUPS are declared as KvStore in every Worker's `interface Env`, and every handler — the auth plumbing in services/_shared/src/auth-middleware.ts included — takes a KvStore. The binding satisfies it STRUCTURALLY; cloudflareKv is the identity, kept as the compile-time proof (tsc reds the day the binding and the port drift). assert-ports limb 12 refuses a KVNamespace type anywhere else under services/*/src.",
     "L2 claimed, L2 target: the selection is by environment (wrangler binds the namespace in live and sandbox; the memory fake serves tests), no caller imports an adapter, and one non-fake adapter is live. L3 would need a second REAL store and a switch runbook, and nothing durable lives here to justify one (tooling/capability-register.json cloudflare.exitPlan: \"Deliberately kept: nothing durable lives in KV\").",
     "The conformance suite runs against the memory fake; against the binding it is PENDING, because no Worker suite runs on workerd. A missing key is null, not a throw; list pages; a TTL expires."
   ]

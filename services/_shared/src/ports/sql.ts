@@ -5,7 +5,7 @@
 // ⏱ 2026-10-02 · O-CLOUDFLARE-BINDINGS-SCATTERED (port-sql), the D1 limb.
 // Every handler, route, lib and middleware that reads or writes PLATFORM_DB,
 // SUBSCRIPTIONTRACKER_DB or APP_DB takes a `SqlDb`, never a `D1Database`
-// (assert-ports limb 9). The Cloudflare binding satisfies this interface
+// (assert-ports limb 12). The Cloudflare binding satisfies this interface
 // STRUCTURALLY — no wrapper sits on the hot path; adapters/cloudflare.ts is a
 // compile-time proof, not a shim. The second engine is fakes/sql.ts: the
 // `node:sqlite` engine every Worker suite already ran its SQL through.
