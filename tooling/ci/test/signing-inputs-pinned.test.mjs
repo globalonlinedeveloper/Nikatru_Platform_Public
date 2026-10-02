@@ -249,6 +249,17 @@ describe('assert-signing-inputs-pinned', () => {
     assert.match(verificationFindings('m.xml', metadata().replace(/<components>[\s\S]*<\/components>/, '<components/>')).join('\n'), /lists no <component>/);
   });
 
+  test('V9 RED CONTROL — a comment one strip pass would re-form does not lend its contents to the listing', () => {
+    // `<!<!---->--` collapses to `<!--` after ONE pass, so a single-pass strip
+    // reads the `true` inside it as the real setting and finds nothing wrong.
+    // Stripped to a fixed point, the re-formed comment goes and `false` is all
+    // that is left — a finding. An opener that never closes is refused outright.
+    const hidden = metadata({ verify: 'false' }).replace('<verify-metadata>false</verify-metadata>',
+      '<verify-metadata>false</verify-metadata><!<!---->-- <verify-metadata>true</verify-metadata> -->');
+    assert.match(verificationFindings('m.xml', hidden).join('\n'), /<verify-metadata> is not `true`/);
+    assert.match(verificationFindings('m.xml', metadata().replace('<components>', '<!-- <components>')).join('\n'), /unterminated or re-formed XML comment/);
+  });
+
   test('C1 a register that names no signing secret -> exit 2', () => {
     const root = fixture(runStep('echo hi'));
     writeFileSync(join(root, 'tooling/channel-register.json'), JSON.stringify({ channels: [{ id: 'x' }] }));

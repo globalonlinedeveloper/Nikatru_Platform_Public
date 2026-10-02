@@ -299,7 +299,16 @@ export const VERIFICATION_OFF =
 
 /** Limb V over one verification-metadata.xml. Returns finding strings. */
 export function verificationFindings(rel, text) {
-  const xml = String(text ?? '').replace(/<!--[\s\S]*?-->/g, '');
+  // Comments stripped to a FIXED POINT, then REFUSED if an opener survives: one
+  // pass re-forms `<!<!---->--` into a comment and leaves what it hides readable
+  // as a listing (CodeQL js/incomplete-multi-character-sanitization, #1154). The
+  // same rule as apple-provisioning.mjs parseFlatDict: a parser, not a sanitiser.
+  let xml = String(text ?? '');
+  for (let prev = null; prev !== xml; ) {
+    prev = xml;
+    xml = xml.replace(/<!--[\s\S]*?-->/g, '');
+  }
+  if (xml.includes('<!--')) return [`${rel}: carries an unterminated or re-formed XML comment, so what it hides cannot be told from what it lists — refused, never read around.`];
   const out = [];
   if (!/<verification-metadata\b/.test(xml)) return [`${rel}: is not Gradle dependency-verification metadata (no <verification-metadata> root).`];
   if (!/<verify-metadata>\s*true\s*<\/verify-metadata>/.test(xml)) {

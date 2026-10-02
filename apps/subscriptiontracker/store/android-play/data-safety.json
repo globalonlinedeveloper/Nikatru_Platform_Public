@@ -1872,7 +1872,7 @@
           "Email address",
           "User IDs"
         ],
-        "why": "First-party. Wires the Supabase session through OS-backed secure storage so the refresh token is not written in plaintext. Under demo it is never initialised (main.dart:147 gates on isBackendLive)."
+        "why": "First-party. Wires the Supabase session through OS-backed secure storage so the refresh token is not written in plaintext. Under demo it is never initialised (main.dart:148 gates on isBackendLive)."
       },
       "nikatru_telemetry": {
         "introduces": [
