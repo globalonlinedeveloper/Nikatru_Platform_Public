@@ -257,5 +257,14 @@
   "aiDisclosureDecline": "अभी नहीं",
   "aiCandidateLabel": "AI का सुझाव: सहेजने से पहले जाँचें",
   "aiSuggestionLabel": "AI सुझाव",
-  "aiReportAction": "इस AI परिणाम की रिपोर्ट करें"
+  "aiReportAction": "इस AI परिणाम की रिपोर्ट करें",
+  "planEndedRefundApproved": "भुगतान वापस किए जाने के कारण आपका प्लान समाप्त हो गया।",
+  "planEndedChargeback": "आपके बैंक में भुगतान पर विवाद होने के कारण आपका प्लान समाप्त हो गया।",
+  "planEndedChargebackReversed": "आपका प्लान फिर से चालू हो गया: भुगतान विवाद सुलझ गया।",
+  "planEndedSubscriptionExpired": "भुगतान की गई अवधि पूरी होने पर आपका प्लान समाप्त हो गया।",
+  "planEndedTrialExpired": "आपका मुफ़्त ट्रायल समाप्त हो गया है।",
+  "planEndedPaymentFailedFinal": "नवीनीकरण का भुगतान न लिए जा सकने के कारण आपका प्लान समाप्त हो गया।",
+  "planEndedCancelledAtPeriodEnd": "आपका प्लान रद्द किया गया और भुगतान की गई अवधि के अंत में समाप्त हो गया।",
+  "planEndedSubscriptionPaused": "आपका प्लान रोका गया है।",
+  "planEndedOn": "{date} को"
 }

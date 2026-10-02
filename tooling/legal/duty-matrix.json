@@ -418,6 +418,25 @@
       "note": "⏱ 2026-10-02 · T17 (train-st-ai-customer-pays), the lead's reading (decided): we are the provider; we do NOT rely on the 'assistive / standard editing' carve-out for receipt parsing — labelling and marking every AI output costs almost nothing and removes the open question. BUILT in this tree: the disclosure before the first call (packages/chassis_screens/lib/ai/ai_disclosure.dart, AiDisclosureDialog; the opt-in is recorded by POST /v1/ai/consent and no call is possible without it), the label on every AI output (AiOutputLabel, with the report action), and the machine-readable marker on every server AI output (services/platform/src/routes/ai.ts: `provenance`, `source: ai_import`, `generated_by: ai`); assert-paid-calls-metered.mjs P3 fails an ai-inference row without a disclosure key or a marker field. NOT YET BUILT (hence partial): the marker in the app's own storage, export and backup of a row saved from an AI candidate — it lands with the app's AI import screen. The Commission's Code of Practice on Transparency of AI-generated content exists (the same FAQ, read 2026-10-02: 'a voluntary practical tool ... assessed as adequate'); aligning the marker format to it is owed with that screen. The older row eu-ai-act-marking-grace (generated ASSETS, ADR 019) stays as it is."
     },
     {
+      "id": "eu-withdrawal-button",
+      "requirement": "K-13",
+      "markets": [
+        "eu"
+      ],
+      "duty": "The EU 'withdrawal function' for distance contracts concluded online (Directive (EU) 2023/2673, new Consumer Rights Directive Art. 11a): a trader that sells online must give the consumer an easy way to withdraw. EU consumer sales here run through Paddle (merchant of record) and the app stores, which are the traders; this row records what Paddle states, so the gap is read rather than assumed.",
+      "status": "partial",
+      "artefact": "tooling/legal/duty-matrix.json",
+      "trigger": "The first EU sale through Paddle, i.e. the day paywall.enabled flips. Paddle's checkout buyer terms (read 2026-10-02) state the EU/EEA 14-day withdrawal right and route a buyer to its Buyer portal and a cancellation request form; whether that is the dedicated withdrawal FUNCTION Art. 11a describes is not stated there, and needs Paddle's confirmation before the first EU sale.",
+      "verification": "primary-source",
+      "source": {
+        "url": "https://paddle.com/legal/checkout-buyer-terms",
+        "fetched": "2026-10-02",
+        "quote": "Consumers residing in the EU/EEA and UK You have the right to withdraw from the Agreement for any reason within 14 days of completing a Transaction in accordance with our Refund Policy. ... You can cancel your Subscription through our Buyer portal, which is accessible via the link in your Subscription confirmation email. Alternatively, you can submit a cancellation request here. If you would like to request a refund or exercise any applicable statutory withdrawal rights, please see our Refund Policy and section 15 (Country-Specific Terms) below."
+      },
+      "verify": "curl -sL https://paddle.com/legal/checkout-buyer-terms | grep -o 'You have the right to withdraw from the Agreement for any reason within 14 days'",
+      "note": "⏱ 2026-10-02 · refund-finish (lead 7185eb, O-EU-WITHDRAWAL-BUTTON-UNCHECKED). The stores (Apple, Google) are the traders for in-app purchases and run their own refund and withdrawal processes (sites/nikatru/refund.html section 4 points there). Our own policy is MORE generous than the statutory 14 days on the Paddle and Razorpay rails (30 days, no reason, use does not forfeit it — refund.html sections 2 and 3), and services/platform POST /v1/plan/refund carries it out for a rail that can refund. What is NOT established: that Paddle's checkout exposes the Art. 11a withdrawal FUNCTION itself; the Directive's application date (19 June 2026 in the lead's brief) was not read from eur-lex here (the page answered 202 with no body to this environment), so it is not asserted. Owner/lead: ask Paddle in writing before the first EU sale."
+    },
+    {
       "id": "play-ai-content-declaration",
       "requirement": "K-13",
       "duty": "Google Play's declaration requirement for apps that generate AI content, and the date it takes effect.",

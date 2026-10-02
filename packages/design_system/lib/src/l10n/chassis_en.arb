@@ -1129,5 +1129,47 @@
   "aiReportAction": "Report this AI result",
   "@aiReportAction": {
     "description": "T17 · Play AI-generated content policy. The report action on every AI output; opens the in-app report."
+  },
+  "planEndedRefundApproved": "Your plan ended because the payment was refunded.",
+  "@planEndedRefundApproved": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `refund_approved`."
+  },
+  "planEndedChargeback": "Your plan ended because the payment was disputed with your bank.",
+  "@planEndedChargeback": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `chargeback`."
+  },
+  "planEndedChargebackReversed": "Your plan was restored: the payment dispute was resolved.",
+  "@planEndedChargebackReversed": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `chargeback_reversed`."
+  },
+  "planEndedSubscriptionExpired": "Your plan ended when its paid period ran out.",
+  "@planEndedSubscriptionExpired": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `subscription_expired`."
+  },
+  "planEndedTrialExpired": "Your free trial has ended.",
+  "@planEndedTrialExpired": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `trial_expired`."
+  },
+  "planEndedPaymentFailedFinal": "Your plan ended because the next payment could not be taken.",
+  "@planEndedPaymentFailedFinal": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `payment_failed_final`."
+  },
+  "planEndedCancelledAtPeriodEnd": "Your plan was cancelled and ended at the end of its paid period.",
+  "@planEndedCancelledAtPeriodEnd": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `cancelled_at_period_end`."
+  },
+  "planEndedSubscriptionPaused": "Your plan is paused.",
+  "@planEndedSubscriptionPaused": {
+    "description": "refund-finish (MF-7) · The plan screen says why access ended, from the entitlement contract's revocation reason `subscription_paused`."
+  },
+  "planEndedOn": "On {date}",
+  "@planEndedOn": {
+    "description": "refund-finish (MF-7) · When access ended, under the reason sentence. Shown only when the date is known.",
+    "placeholders": {
+      "date": {
+        "type": "DateTime",
+        "format": "yMMMd"
+      }
+    }
   }
 }

@@ -284,6 +284,30 @@
       }
     },
     {
+      "id": "table:platform_db.refund_requests",
+      "kind": "d1-table",
+      "personalData": true,
+      "name": "refund_requests",
+      "holds": "⏱ 2026-10-02 · refund-finish (MF-5). One row per in-window refund a signed-in user asked for: our account id, the app, the rail and its purchase reference, the request's idempotency key, when the charge happened (the rail's own clock), when it was asked, and the rail's refund reference once carried out — or why it was not. References only: no card, UPI or bank detail.",
+      "retention": {
+        "kind": "keep",
+        "reason": "A refund is a money event a dispute, a chargeback or an audit can ask about for as long as the account exists, and the row is what stops one payment being refunded twice. ERASED WITH THE ACCOUNT by construction: the column is spelled `user_id`."
+      },
+      "erasure": {
+        "kind": "purge",
+        "route": "services/platform/src/routes/account.ts",
+        "reason": "The row is the person's request. When the account is erased the request has nobody left to answer to."
+      },
+      "writtenBy": [
+        "services/platform/migrations/0026_refund_requests.sql",
+        "services/platform/src/routes/refund.ts"
+      ],
+      "disclosure": {
+        "page": "privacy.html",
+        "quote": "if you buy something, the transaction is processed by the relevant app store or by our payment processor"
+      }
+    },
+    {
       "id": "table:platform_db.provider_payment_links",
       "kind": "d1-table",
       "name": "provider_payment_links",

@@ -257,5 +257,14 @@
   "aiDisclosureDecline": "இப்போது வேண்டாம்",
   "aiCandidateLabel": "AI பரிந்துரை: சேமிக்கும் முன் சரிபார்க்கவும்",
   "aiSuggestionLabel": "AI பரிந்துரை",
-  "aiReportAction": "இந்த AI முடிவைப் புகாரளிக்கவும்"
+  "aiReportAction": "இந்த AI முடிவைப் புகாரளிக்கவும்",
+  "planEndedRefundApproved": "கட்டணம் திருப்பித் தரப்பட்டதால் உங்கள் திட்டம் முடிந்தது.",
+  "planEndedChargeback": "உங்கள் வங்கியில் கட்டணம் மறுக்கப்பட்டதால் உங்கள் திட்டம் முடிந்தது.",
+  "planEndedChargebackReversed": "உங்கள் திட்டம் மீட்டமைக்கப்பட்டது: கட்டண மறுப்பு தீர்க்கப்பட்டது.",
+  "planEndedSubscriptionExpired": "கட்டணம் செலுத்திய காலம் முடிந்ததால் உங்கள் திட்டம் முடிந்தது.",
+  "planEndedTrialExpired": "உங்கள் இலவச சோதனைக் காலம் முடிந்தது.",
+  "planEndedPaymentFailedFinal": "புதுப்பிப்புக் கட்டணத்தைப் பெற முடியாததால் உங்கள் திட்டம் முடிந்தது.",
+  "planEndedCancelledAtPeriodEnd": "உங்கள் திட்டம் ரத்து செய்யப்பட்டு, கட்டணம் செலுத்திய காலத்தின் முடிவில் முடிந்தது.",
+  "planEndedSubscriptionPaused": "உங்கள் திட்டம் இடைநிறுத்தப்பட்டுள்ளது.",
+  "planEndedOn": "{date} அன்று"
 }

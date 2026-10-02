@@ -84,6 +84,8 @@ class ManagePlanView extends StatelessWidget {
     this.source,
     this.periodEnds,
     this.onManageInStore,
+    this.endedReasonText,
+    this.endedOn,
     super.key,
   }) : assert(
          (upgradeLabel == null) == (onUpgrade == null),
@@ -193,6 +195,15 @@ class ManagePlanView extends StatelessWidget {
   /// which cannot stop a subscription only the store bills.
   final VoidCallback? onManageInStore;
 
+  /// refund-finish (MF-7): WHY access ended (or, for a reversed dispute, why
+  /// it came back), in words — one of [revocationReasonSentences], chosen by
+  /// the adapter from the entitlement's `revocation_reason` — or null.
+  final String? endedReasonText;
+
+  /// When access ended, when the entitlement says (its expiry), or null.
+  /// Said only while the plan is not active.
+  final DateTime? endedOn;
+
   @override
   Widget build(BuildContext context) {
     final ChassisLocalizations l10n = context.chassisL10n;
@@ -260,6 +271,9 @@ class ManagePlanView extends StatelessWidget {
                     },
                   if (isPro && periodEnds != null)
                     l10n.planPeriodEnds(periodEnds!),
+                  ?endedReasonText,
+                  if (endedReasonText != null && !isPro && endedOn != null)
+                    l10n.planEndedOn(endedOn!),
                 ],
               ),
             const SizedBox(height: AppSpacing.lg),
@@ -445,6 +459,26 @@ class PlanStatusTile extends StatelessWidget {
 /// text-contrast guideline silently stops measuring the status sentence — the
 /// app's manage-plan contrast sweep went red on exactly that. Two stops for a
 /// screen reader is the price of a sentence whose contrast is still checked.
+/// The plan screen's sentence for every revocation reason of the entitlement
+/// contract, IN THE CONTRACT'S ORDER (`contracts/entitlement/contract.json`
+/// `revocationReasons`, the order `nikatru_purchases`' generated
+/// `kRevocationReasons` carries). Shared code never spells a reason code (the
+/// clone-tell rule: the codes are the contract's vocabulary, not the chassis'),
+/// so the adapter picks the sentence by the reason's index in that generated
+/// list. test/revocation_reason_test.dart holds the order and the count to the
+/// contract in every locale, so a reason added there with no sentence here, or
+/// a reordering, fails before it ships as silence or as the wrong sentence.
+List<String> revocationReasonSentences(ChassisLocalizations l10n) => <String>[
+  l10n.planEndedRefundApproved,
+  l10n.planEndedChargeback,
+  l10n.planEndedChargebackReversed,
+  l10n.planEndedSubscriptionExpired,
+  l10n.planEndedTrialExpired,
+  l10n.planEndedPaymentFailedFinal,
+  l10n.planEndedCancelledAtPeriodEnd,
+  l10n.planEndedSubscriptionPaused,
+];
+
 class _StatusCard extends StatelessWidget {
   const _StatusCard({
     required this.isPro,

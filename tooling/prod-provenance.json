@@ -162,6 +162,11 @@
           "resolver": "live-environment",
           "reason": "⏱ 2026-10-02 · T17 (train-st-ai-customer-pays). NO app_version COLUMN: a call row is written by the meter from an authenticated request and a grant row by the money path after its signature check. `environment` (0025_ai_meter.sql, NOT NULL) is stamped from the deploy's money world; a sandbox row in production would count sandbox spend against the live circuit-breaker, so a non-live row there is a finding."
         },
+        "refund_requests": {
+          "marker": "environment",
+          "resolver": "live-environment",
+          "reason": "⏱ 2026-10-02 · refund-finish (MF-5). NO app_version COLUMN: a row is written by POST /v1/plan/refund from an authenticated session, and `environment` (0026_refund_requests.sql, NOT NULL) is stamped from the deploy's money world; a sandbox refund request in production would point the manual refund tool at the wrong world, so a non-live row there is a finding."
+        },
         "provider_payment_links": {
           "marker": "environment",
           "resolver": "live-environment",

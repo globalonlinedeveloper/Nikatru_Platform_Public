@@ -237,6 +237,8 @@ describe('platform_db migrations re-apply cleanly', () => {
       // ⏱ 2026-09-24 · migration 0016 — one token row per (subject, provider)
       // (O-GOOGLE-SIGN-IN-NOT-BUILT). 0012's table above stays until a later drop.
       'provider_tokens',
+      // ⏱ 2026-10-02 · migration 0026 — in-window refund requests (refund-finish).
+      'refund_requests',
       // ⏱ 2026-09-28 · migration 0020 — renewal reminders (ST-R1/ST-R2).
       'reminder_feed',
       'reminder_prefs',

@@ -106,6 +106,9 @@ describe('the delete set is derived from the real platform schema', () => {
       // ⏱ 2026-09-28 · 0020, renewal reminders. Spelt `user_id` ON PURPOSE:
       // erasing the account deletes the email preference, the sent ledger and the
       // calendar feed — a deleted feed row answers the same 404 as a revoked one.
+      // ⏱ 2026-10-02 · 0026 (refund-finish). Spelt `user_id` ON PURPOSE: a person's refund
+      // requests leave with the account.
+      'refund_requests',
       'reminder_feed',
       'reminder_prefs',
       'reminder_sent',

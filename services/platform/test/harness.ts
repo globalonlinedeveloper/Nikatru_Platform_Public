@@ -59,6 +59,8 @@ import nativeAttest0022 from '../migrations/0022_native_attest.sql?raw';
 import providerTokenEncryption0023 from '../migrations/0023_provider_token_encryption.sql?raw';
 import providerPaymentLinks0024 from '../migrations/0024_provider_payment_links.sql?raw';
 import aiMeter0025 from '../migrations/0025_ai_meter.sql?raw';
+import refundRequests0026 from '../migrations/0026_refund_requests.sql?raw';
+import cancelAttempts0027 from '../migrations/0027_cancel_attempts.sql?raw';
 
 type SQLValue = string | number | bigint | null | Uint8Array;
 
@@ -130,6 +132,11 @@ export const PLATFORM_MIGRATIONS: readonly string[] = [
   providerPaymentLinks0024,
   // ⏱ 2026-10-02 · T17 — the AI meter: credits, allowance, opt-in and the call ledger.
   aiMeter0025,
+  // ⏱ 2026-10-02 · refund-finish — the in-window refund requests (MF-5).
+  refundRequests0026,
+  // ⏱ 2026-10-02 · refund-finish — the cancel executor's retry state. ADD
+  // COLUMN, so ledger-protected and NOT in REPLAY_SAFE_MIGRATIONS below.
+  cancelAttempts0027,
 ];
 
 /**
@@ -185,6 +192,8 @@ export const REPLAY_SAFE_MIGRATIONS: readonly string[] = [
   providerPaymentLinks0024,
   // 0025 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
   aiMeter0025,
+  // 0026 is CREATE TABLE / CREATE [UNIQUE] INDEX IF NOT EXISTS only — it replays.
+  refundRequests0026,
 ];
 
 // `node:sqlite` is fetched through `process.getBuiltinModule` rather than a

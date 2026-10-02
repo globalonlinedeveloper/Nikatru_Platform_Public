@@ -185,6 +185,11 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
         ref.watch(purchaseRailProvider).canStartCheckout;
     // MO-05, AB-M4-03-client: where the user PAID (chassis_adapters.dart).
     final PaidAt paid = paidAtOf(isPro ? ent.value : null);
+    // refund-finish (MF-7): why access ended, and when — the server's
+    // recorded revocation reason, never a guess.
+    final core.Entitlement? ended = ent.value?.items
+        .where((core.Entitlement e) => e.revocationReason != null)
+        .firstOrNull;
 
     return ManagePlanView(
       title: l10n.managePlanTitle,
@@ -245,6 +250,12 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
       source: paid.source,
       periodEnds: paid.periodEnds,
       onManageInStore: paid.onManageInStore,
+      endedReasonText: endedReasonText(
+        context.chassisL10n,
+        ended?.revocationReason,
+        isPro: isPro,
+      ),
+      endedOn: ended?.expiresAt,
     );
   }
 }
@@ -252,3 +263,23 @@ class _ManagePlanScreenState extends ConsumerState<ManagePlanScreen> {
 /// What a finished restore reports: what the rail answered, and whether the
 /// server's entitlement shows an active plan after the re-read.
 typedef _Restored = ({RestoreOutcome outcome, bool planActive});
+
+/// refund-finish (MF-7): the sentence for a recorded revocation [reason], or
+/// null — for no reason, a code the contract does not declare, or a reason the
+/// plan's state contradicts (an ending reason while the plan is active, the
+/// restoring one while it is not). The index into the chassis' sentences is
+/// the reason's index in the generated contract list; the chassis test holds
+/// the two in the same order.
+String? endedReasonText(
+  ChassisLocalizations l10n,
+  String? reason, {
+  required bool isPro,
+}) {
+  if (reason == null) return null;
+  final int i = kRevocationReasons.indexWhere(
+    (EntitlementRevocationReason r) => r.reason == reason,
+  );
+  if (i < 0 || kRevocationReasons[i].restoresAccess != isPro) return null;
+  final List<String> sentences = revocationReasonSentences(l10n);
+  return i < sentences.length ? sentences[i] : null;
+}

@@ -70,6 +70,7 @@ import ext from './routes/ext';
 import events from './routes/events';
 import cancellation from './routes/cancellation';
 import report from './routes/report';
+import refund from './routes/refund';
 import ai from './routes/ai';
 import checkout from './routes/checkout';
 import money from './routes/money';
@@ -306,6 +307,9 @@ app.route('/v1', ext);
 // named "cancel" the moment somebody reordered the file.
 app.use('/v1/plan/*', platformAuth);
 app.route('/v1', cancellation);
+// AUTHENTICATED: the in-window refund refund.html promises (refund-finish, MF-5),
+// under the same /v1/plan/* auth as the cancel above.
+app.route('/v1', refund);
 
 // AUTHENTICATED: the in-app AI-content report (O-PLAY-AI-CONTENT-REPORTING, G-39).
 // Google Play requires a content app to let users flag offensive AI output to
