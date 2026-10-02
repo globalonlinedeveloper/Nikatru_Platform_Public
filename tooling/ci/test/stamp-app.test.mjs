@@ -41,7 +41,7 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { appIdProblems } from '../../../contracts/app-id/app-id.js';
 import { PRODUCT_REGISTERS } from '../../../contracts/entitlement/bundle.js';
-import { planStamp, runStamp, REPO, REGEN, TAG_OWNER, APP_LICENCE_ROWS } from '../../kit/stamp-app.mjs';
+import { planStamp, runStamp, REPO, REGEN, TAG_OWNER, APP_LICENCE_ROWS, STAMP_SHARED } from '../../kit/stamp-app.mjs';
 
 let ROOT;
 const GOOD = 'good-vars.json';
@@ -240,7 +240,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     assert.match(noVars.problems.join('\n'), /--vars <file\.json> is required/);
   });
 
-  test('the post-conditions are the pubspec, regen.mjs, tag-owner.mjs and the licence rows --check, in that order', () => {
+  test('the post-conditions are the pubspec, regen.mjs, tag-owner.mjs, the licence rows and the shared files --check, in that order', () => {
     const p = plan(['--vars', GOOD]);
     assert.deepEqual(p.problems, []);
     assert.deepEqual(
@@ -250,12 +250,16 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
         `node ${REGEN} --check`,
         `node ${TAG_OWNER} --check`,
         `node ${APP_LICENCE_ROWS} --check --app habittracker`,
+        `node ${STAMP_SHARED} --check`,
       ],
     );
     assert.equal(p.post[0].path, join(ROOT, 'apps', 'habittracker', 'pubspec.yaml'));
     assert.deepEqual(p.post[1].args, [join(ROOT, 'tooling', 'sites', 'regen.mjs'), '--check']);
     assert.deepEqual(p.post[2].args, [join(ROOT, 'tooling', 'ci', 'tag-owner.mjs'), '--check']);
     assert.deepEqual(p.post[3].args, [join(ROOT, 'tooling', 'ci', 'gen-app-licence-rows.mjs'), '--check', '--app', 'habittracker']);
+    // ⏱ 2026-10-01 (train P43): the bundle exclusion, the e2e entry and the auth
+    // allow list post_gen writes outside apps/<id>/.
+    assert.deepEqual(p.post[4].args, [join(ROOT, 'tooling', 'kit', 'stamp-shared.mjs'), '--check', '--root', ROOT]);
   });
 
   test('a stamp whose licence rows check red exits 1 and names the generator', () => {
@@ -278,7 +282,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     const red = runStamp(p, { run: regenFails, exists: () => true, tree: INERT, log: () => {}, error: (l) => errors.push(l) });
     assert.equal(red, 1);
     assert.match(errors.join('\n'), /1 post-condition\(s\) failed: node tooling\/sites\/regen\.mjs --check/);
-    assert.equal(calls.length, 7, `expected mason get, mason make, pub get, the --write and the three --check runs; got ${calls.join(' | ')}`);
+    assert.equal(calls.length, 8, `expected mason get, mason make, pub get, the --write and the four --check runs; got ${calls.join(' | ')}`);
 
     const green = runStamp(p, { run: () => 0, exists: () => true, tree: INERT, log: () => {}, error: () => {} });
     assert.equal(green, 0);

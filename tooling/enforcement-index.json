@@ -465,7 +465,9 @@
     "state": "WIRED"
   },
   {
-    "claims": [],
+    "claims": [
+      "ADR 075"
+    ],
     "invokedBy": [
       ".github/workflows/ci.yml#guards-chassis"
     ],

@@ -624,10 +624,14 @@ bool _writeAppDeclaration(
 ///
 /// `tooling/sites/regen.mjs` owns the order of the site generators, render.mjs
 /// first; the catalogue row, the listing copy, the site feed, the landing
-/// payload and the discovery pages are its output. `tooling/ci/tag-owner.mjs
-/// --write` then regenerates the release lanes' `tags:` filters from the product
-/// registers. This hook lists neither the generators nor their order: it runs
-/// the one CLI that does.
+/// payload and the discovery pages are its output. `tooling/kit/stamp-shared.mjs`
+/// then writes the app's entries in the shared files OUTSIDE apps/<id>/ — the
+/// bundle register's exclusion, the e2e leg register's `apps.<id>` legs and the
+/// generated auth allow list (⏱ 2026-10-01, train P43: each was a hand edit, and
+/// the bundle one turned ci.yml red on app #2's first commit). `tooling/ci/
+/// tag-owner.mjs --write` then regenerates the release lanes' `tags:` filters
+/// from the product registers. This hook lists neither the generators nor their
+/// order: it runs the CLIs that do.
 ///
 /// Warns rather than throws, for the reason `_writeBrandAssets` does: post_gen
 /// runs AFTER the tree is written, so throwing leaves a half-stamped app. A
@@ -638,6 +642,7 @@ bool _writeAppDeclaration(
 void _runSiteChain(HookContext context, {required String id}) {
   const commands = <List<String>>[
     <String>['tooling/sites/regen.mjs'],
+    <String>['tooling/kit/stamp-shared.mjs'],
     <String>['tooling/ci/tag-owner.mjs', '--write'],
   ];
   for (final args in commands) {
@@ -651,7 +656,8 @@ void _runSiteChain(HookContext context, {required String id}) {
       context.logger.warn(
         'site chain: `$command` exited ${result.exitCode}, so "$id" is stamped but the site surface or the '
         'release tag filter may not carry it. Re-run from the repo root:  $command  and read what it says; '
-        'then `node tooling/sites/regen.mjs --check` and `node tooling/ci/tag-owner.mjs --check` must both exit 0.\n'
+        'then `node tooling/sites/regen.mjs --check`, `node tooling/kit/stamp-shared.mjs --check` and '
+        '`node tooling/ci/tag-owner.mjs --check` must all exit 0.\n'
         '${result.stdout}${result.stderr}',
       );
       return;
@@ -659,7 +665,7 @@ void _runSiteChain(HookContext context, {required String id}) {
   }
   context.logger.success(
     'site chain: rendered "$id" (SHOW-1) from apps/$id/app.yaml through tooling/sites/regen.mjs, '
-    'then tooling/ci/tag-owner.mjs --write.',
+    'wrote its shared-file entries through tooling/kit/stamp-shared.mjs, then tooling/ci/tag-owner.mjs --write.',
   );
 }
 

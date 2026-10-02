@@ -227,6 +227,9 @@ stores:
   linux-snap:
     state: pending
     declaredOn: null
+  apps-gov-in:
+    state: pending
+    declaredOn: null
 
 legal:
   privacyPolicyUrl: https://nikatru.com/privacy

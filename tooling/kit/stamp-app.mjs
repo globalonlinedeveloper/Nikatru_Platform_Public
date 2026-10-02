@@ -60,10 +60,14 @@
 //   1. apps/<id>/pubspec.yaml exists — a stamp that wrote no app is not a stamp;
 //   2. `node tooling/sites/regen.mjs --check` exits 0;
 //   3. `node tooling/ci/tag-owner.mjs --check` exits 0;
-//   4. `node tooling/ci/gen-app-licence-rows.mjs --check --app <id>` exits 0.
+//   4. `node tooling/ci/gen-app-licence-rows.mjs --check --app <id>` exits 0;
+//   5. `node tooling/kit/stamp-shared.mjs --check` exits 0 (⏱ 2026-10-01, train
+//      P43): the shared files outside apps/<id>/ — the bundle register's
+//      exclusion, the e2e leg register's `apps.<id>` entry and the generated
+//      auth allow list — carry the new app. post_gen's site chain writes them.
 // Any one failing makes the exit 1, and the line names it.
 //
-// Exit 0 = stamped, and all four post-conditions hold (or --dry-run printed the plan).
+// Exit 0 = stamped, and all five post-conditions hold (or --dry-run printed the plan).
 // Exit 1 = refused before mason, a mason step failed, the root pub get left a
 //          tracked file changed, or a post-condition failed.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,6 +89,7 @@ export const SAFE_ARG = /^[A-Za-z0-9._/\\:=-]+$/;
 export const REGEN = 'tooling/sites/regen.mjs';
 export const TAG_OWNER = 'tooling/ci/tag-owner.mjs';
 export const APP_LICENCE_ROWS = 'tooling/ci/gen-app-licence-rows.mjs';
+export const STAMP_SHARED = 'tooling/kit/stamp-shared.mjs';
 const OVERWRITE_ENV = 'NIKATRU_ALLOW_OVERWRITE';
 
 /**
@@ -179,6 +184,7 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
     { label: `node ${REGEN} --check`, kind: 'spawn', command: process.execPath, args: [join(root, ...REGEN.split('/')), '--check'], cwd: root },
     { label: `node ${TAG_OWNER} --check`, kind: 'spawn', command: process.execPath, args: [join(root, ...TAG_OWNER.split('/')), '--check'], cwd: root },
     { label: `node ${APP_LICENCE_ROWS} --check --app ${id}`, kind: 'spawn', command: process.execPath, args: [licenceRows, '--check', '--app', id], cwd: root },
+    { label: `node ${STAMP_SHARED} --check`, kind: 'spawn', command: process.execPath, args: [join(root, ...STAMP_SHARED.split('/')), '--check', '--root', root], cwd: root },
   ];
   return { problems, id, vars, overwrite, steps, post };
 }

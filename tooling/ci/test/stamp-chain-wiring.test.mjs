@@ -59,6 +59,20 @@ describe('post_gen.dart — the site chain runs once, last, and warns', () => {
     assert.match(chain, /Process\.runSync\(\s*'node',\s*args,/);
   });
 
+  // ⏱ 2026-10-01 (train P43). The shared files outside apps/<id>/ — the bundle
+  // exclusion, the e2e leg entry, the auth allow list — are stamp outputs, and
+  // stamp-shared.mjs reads the catalogue row and the workspace entry the steps
+  // before it wrote: after regen, before tag-owner. stamp-app.mjs holds the
+  // result with `stamp-shared.mjs --check` (stamp-app.test.mjs).
+  test('_runSiteChain writes the shared files (stamp-shared.mjs) after regen.mjs and before tag-owner.mjs', () => {
+    const chain = body('void _runSiteChain(');
+    const regen = chain.indexOf("<String>['tooling/sites/regen.mjs']");
+    const shared = chain.indexOf("<String>['tooling/kit/stamp-shared.mjs']");
+    const tagOwner = chain.indexOf("<String>['tooling/ci/tag-owner.mjs', '--write']");
+    assert.ok(shared !== -1, '_runSiteChain does not run tooling/kit/stamp-shared.mjs, so a stamp leaves the shared files to a hand edit');
+    assert.ok(regen < shared && shared < tagOwner, 'stamp-shared.mjs must run after regen.mjs (the catalogue row) and before tag-owner.mjs');
+  });
+
   test('run() calls _runSiteChain once, after every step that writes the app and before the checklist', () => {
     const run = body('void run(HookContext context)');
     const calls = run.match(/_runSiteChain\(context, id: id\)/g) ?? [];

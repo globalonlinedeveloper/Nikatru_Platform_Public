@@ -32,6 +32,8 @@ import { REPO, STEPS, STEPS_BY_KIND, planProduct, exitCodeOf, main, resolveKind 
 import { main as pagesOriginMain } from '../../web/pages-origin.mjs';
 import { APPS_CATALOG } from '../../kit/product-steps/tree.mjs';
 import { main as stampServiceMain } from '../../kit/stamp-service.mjs';
+import { run as runStampShared } from '../../kit/stamp-shared.mjs';
+import { BUNDLES_REGISTER, isStampedExclusion } from '../../catalog/read.mjs';
 
 const APP = 'subscriptiontracker';
 let TMP;
@@ -610,8 +612,85 @@ describe('step 11 · product row (the private corpus; its guard runs there, not 
 });
 
 describe('step 12 · bundle join', () => {
-  test('a live product → DONE', () => {
+  const BUNDLE_GUARD = 'tooling/ci/assert-bundle-availability.mjs';
+
+  test('a live product → DONE, and the bundle guard is green', () => {
     assert.equal(stepOf('bundle join').state, 'DONE');
+    const g = guard(BUNDLE_GUARD, FX);
+    assert.equal(g.status, 0, g.out);
+  });
+
+  // ⏱ 2026-10-01 (rv2-newproduct-011). A stamp renders the new app's catalogue
+  // row, and limb F of the bundle guard requires every catalogue product to be a
+  // member or excluded BY NAME — so before this, app #2's first commit turned
+  // ci.yml's bundle step red. The stamp now writes the exclusion
+  // (tooling/kit/stamp-shared.mjs); these cases pair each reader answer with the
+  // guard over the same fixture.
+  /** Adds a catalogue row for `probe`, cloned from app #1's, at `status`; returns the restore. */
+  const addProbeRow = (status) =>
+    mutate(APPS_CATALOG, (t) => {
+      const rows = JSON.parse(t);
+      rows.push({ ...rows[0], slug: 'probe', name: 'Probe', status });
+      return `${JSON.stringify(rows, null, 2)}\n`;
+    });
+
+  test('a stamped product the stamp did NOT place: the guard is red (the defect), and the stamp places it', () => {
+    const restoreRow = addProbeRow('preview');
+    const restoreBundles = mutate(BUNDLES_REGISTER, (t) => `${t} `);
+    try {
+      const red = guard(BUNDLE_GUARD, FX);
+      assert.equal(red.status, 1, red.out);
+      assert.match(red.out, /`probe` is a catalogue product and catalog\/bundles\.json neither lists it in `members` nor names it in `excluded`/);
+      const w = runStampShared(FX);
+      assert.equal(w.code, 0, w.lines.join('\n'));
+      assert.ok(isStampedExclusion(JSON.parse(readFileSync(at(BUNDLES_REGISTER), 'utf8'))[0].excluded.find((x) => x.slug === 'probe')));
+      const green = guard(BUNDLE_GUARD, FX);
+      assert.equal(green.status, 0, green.out);
+      assert.equal(stepOf('bundle join', 'probe').state, 'AFTER-LIVE');
+    } finally {
+      restoreBundles();
+      restoreRow();
+    }
+  });
+
+  test('a LIVE product still carrying the stamp\'s placeholder → NEXT, and the guard is red', () => {
+    const restoreRow = addProbeRow('live');
+    const restoreBundles = mutate(BUNDLES_REGISTER, (t) => `${t} `);
+    try {
+      assert.equal(runStampShared(FX).code, 0);
+      const a = stepOf('bundle join', 'probe');
+      assert.equal(a.state, 'NEXT');
+      assert.match(a.detail, /the stamp's placeholder exclusion/);
+      const g = guard(BUNDLE_GUARD, FX);
+      assert.equal(g.status, 1, g.out);
+      assert.match(g.out, /still excludes `probe` with the STAMP's placeholder why, and `probe` is live/);
+    } finally {
+      restoreBundles();
+      restoreRow();
+    }
+  });
+
+  test('a live product excluded BY DECISION → DONE, and the guard is green', () => {
+    const restoreRow = addProbeRow('live');
+    const restoreBundles = mutate(BUNDLES_REGISTER, (t) => {
+      const rows = JSON.parse(t);
+      rows[0].excluded = [{ slug: 'probe', why: 'a CI probe: it is never sold, so no bundle may count it.' }];
+      return `${JSON.stringify(rows, null, 2)}\n`;
+    });
+    try {
+      assert.equal(stepOf('bundle join', 'probe').state, 'DONE');
+      // Limb F — the limb this step owns — is green. The run as a whole is not:
+      // a SECOND live product meets limb C's floor while fullshot keeps the gate
+      // shut, and limb C refuses that story by design. That is the bundle's own
+      // go-live question, not this step's, so it is asserted here as what it is.
+      const g = guard(BUNDLE_GUARD, FX);
+      assert.match(g.out, /ok {2}the 3 catalogue product\(s\) equal members ∪ excluded \(members: subscriptiontracker, fullshot; excluded: probe\)/);
+      assert.doesNotMatch(g.out, /placeholder why/);
+      assert.match(g.out, /the gate is closed but NOT because there are too few live products/);
+    } finally {
+      restoreBundles();
+      restoreRow();
+    }
   });
 
   test('a preview product → AFTER-LIVE, which --check does not count', () => {

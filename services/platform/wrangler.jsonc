@@ -82,8 +82,8 @@
     // The brick's post_gen checklist prints this as a required step.
     //
     //   nikatru.com         — every app's public origin since [ADR 075]
-    //   subscriptiontracker-7qg.pages.dev — the app's Cloudflare Pages preview
-    //                         domain (mirrored in services/subscriptiontracker-api)
+    //   subscriptiontracker-7qg.pages.dev — the app's Pages preview origin, DERIVED
+    //                         from catalog/apps.json `origin` (both Workers)
     //   localhost:3000      — the local Subly web dev server (.claude/launch.json).
     //                         It fetches config.nikatru.com cross-origin from the
     //                         browser, so omitting it breaks local web dev.

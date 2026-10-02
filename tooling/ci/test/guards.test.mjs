@@ -483,7 +483,9 @@ describe('assert-cors-allowlist', () => {
    *  Without it the guard reports COVERAGE LOST rather than checking anything,
    *  so every fixture below is a tree that has one. */
   const CATALOGUE = JSON.stringify(
-    [{ slug: 'subscriptiontracker', name: 'Subly', url: 'https://nikatru.com/subscriptiontracker', status: 'live' }],
+    // `origin` is the Pages preview origin render.mjs writes into every row; since
+    // 2026-10-01 (rv2-newproduct-010) the guard derives it, so the fixture row carries it.
+    [{ slug: 'subscriptiontracker', name: 'Subly', url: 'https://nikatru.com/subscriptiontracker', origin: PAGES_NEW, status: 'live' }],
     null,
     2,
   );
