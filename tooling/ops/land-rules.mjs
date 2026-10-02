@@ -26,6 +26,7 @@
 // NEWEST run of its workflow on the head; a gate from an OLDER run than the
 // workflow's newest is STALE, which is pending, never a verdict.
 // ─────────────────────────────────────────────────────────────────────────────
+import { POST_GATE_EVENTS } from './post-gate.mjs';
 
 /** The one required check on main (docs/ci/README.md §4). */
 export const GATE_CHECK = 'ci-gate';
@@ -178,15 +179,17 @@ export function redChecks(rollup, { runs = [] } = {}) {
 
 /**
  * What main-healthy.yml posts for one completed workflow_run of CI, or null
- * when the run is not main's: not a push, not on main, or from another
- * repository (a fork's branch can be called `main`). A cancelled run posts
+ * when the run is not main's: not a post-gate run (a push, or since 2026-10-02
+ * the dispatch land.yml starts after its GITHUB_TOKEN merge — POST_GATE_EVENTS),
+ * not on main, or from another repository (a fork's branch can be called
+ * `main`). A cancelled run posts
  * nothing — superseded by a newer main push, whose own run verifies it; a
  * cancel on the newest commit leaves main PENDING until someone re-runs it.
  */
 export function statusForRun(run, { repo }) {
   if (!run || typeof run !== 'object') return { post: null, why: 'no workflow_run in the event' };
   const from = run.head_repository?.full_name ?? run.repository?.full_name ?? null;
-  if (run.event !== 'push') return { post: null, why: `run ${run.id} is a ${run.event} run, not a push to main` };
+  if (!POST_GATE_EVENTS.includes(run.event)) return { post: null, why: `run ${run.id} is a ${run.event} run, not a push or dispatch of main` };
   if (run.head_branch !== 'main') return { post: null, why: `run ${run.id} is on ${run.head_branch}, not main` };
   if (from !== repo) return { post: null, why: `run ${run.id} is from ${from}, not ${repo}` };
   if (!isMainWorkflowRun(run)) return { post: null, why: `run ${run.id} is ${run.path}, not ${MAIN_WORKFLOW_PATH}` };
