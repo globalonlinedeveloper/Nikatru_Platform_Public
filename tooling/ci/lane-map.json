@@ -47,6 +47,7 @@
         "tooling/versions.json",
         "tooling/bundle-availability.mjs",
         "tooling/legal/data-inventory.json",
+        "tooling/i18n/locales.json",
         "tooling/ops/**",
         "tooling/ci/release-manifest.mjs",
         "tooling/ci/channel-surface.mjs",
@@ -82,7 +83,8 @@
         "contracts/tokens/**",
         "catalog/apps-landing.json",
         "tooling/sites/**",
-        "tooling/content_pipeline/**"
+        "tooling/content_pipeline/**",
+        "tooling/i18n/**"
       ]
     },
     "apps": {
@@ -94,6 +96,7 @@
         "mason.yaml",
         "tooling/bricks/**",
         "tooling/app-yaml/**",
+        "tooling/i18n/**",
         ".github/actions/setup-flutter/**"
       ]
     },
@@ -106,6 +109,7 @@
         "catalog/apps.json",
         "tooling/release/**",
         "tooling/store/**",
+        "tooling/i18n/**",
         "tooling/versions.json",
         ".github/actions/setup-flutter/**"
       ]
