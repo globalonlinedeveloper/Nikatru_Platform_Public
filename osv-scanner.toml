@@ -62,8 +62,14 @@ reason = "node-forge <=1.4.0 has no patched release (2026-10-01); transitive dev
 # none of them in the shipped app. They were there before; nothing read them. They are
 # moved by an AGP / Kotlin / Gradle bump, not by an edit here, so each is acknowledged
 # for ONE MONTH: on 2026-10-31 the daily scan of main reddens on whatever is left.
-# ⚠️ HELD FOR THE REVIEW: the alternative is `--experimental-disable-plugins` for the
-# verification-metadata extractor, which would hide them instead.
+# REVIEWED (PR #1154, 2026-10-02): the ignores stay, rather than
+# `--experimental-disable-plugins` for the verification-metadata extractor, which
+# would hide them. From 14 days before the date, scan-dependencies.mjs prints a
+# warning naming every id still here (EXPIRY_WARN_DAYS), on every PR and on the
+# daily scan; the owner row is O-OSV-BUILD-CLASSPATH-IGNORES-EXPIRE-2026-10-31
+# (the toolchain-bump lane). ⚠️ An ignore is by GHSA id across ALL lockfiles, not
+# by file: these are Maven-only advisories, so no npm or pub finding is masked
+# today, but a reused id would be.
 
 [[IgnoredVulns]]
 id = "GHSA-2363-cqg2-863c"

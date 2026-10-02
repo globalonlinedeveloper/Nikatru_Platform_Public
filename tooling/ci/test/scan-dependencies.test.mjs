@@ -21,7 +21,10 @@ import { fileURLToPath } from 'node:url';
 import {
   CANARIES,
   CoverageLost,
+  EXPIRY_WARN_DAYS,
   LOCKFILE_NAMES,
+  expiringIgnores,
+  ignoredVulnsFrom,
   lockfilesFrom,
   parseArgs,
   parseFindings,
@@ -209,6 +212,78 @@ describe('scan-dependencies — exit 2 is COVERAGE LOST, never a pass', () => {
 
   test('a missing osv-scanner.toml exits 2 — the explicit --config is not optional', () => {
     lostOn(scan(fakeOsv(), { config: 'nope.toml' }), /nope\.toml does not exist/);
+  });
+});
+
+// PR #1154 ruling item 4: an ignore WARNS before it expires, so 90 ids expiring on
+// one day are not first seen as a red ops-watch page.
+describe('scan-dependencies — an osv-scanner.toml ignore warns before it expires', () => {
+  const NOW = new Date('2026-10-02T12:00:00Z');
+  const toml = (entries) =>
+    entries
+      .map(([id, until]) => `[[IgnoredVulns]]\nid = "${id}"\n${until ? `ignoreUntil = ${until}\n` : ''}reason = "x" # note`)
+      .join('\n\n');
+  const withConfig = (text, fn) => {
+    writeFileSync(join(ROOT, 'osv-expiry.toml'), text);
+    try {
+      return fn();
+    } finally {
+      rmSync(join(ROOT, 'osv-expiry.toml'), { force: true });
+    }
+  };
+
+  test('RED CONTROL — an ignore expiring in 7 days warns, naming its id and date; the exit code is unchanged', () => {
+    const r = withConfig(toml([['GHSA-seven-days-0000', '2026-10-09T00:00:00Z']]), () =>
+      scan(fakeOsv(), { config: 'osv-expiry.toml', now: NOW }),
+    );
+    assert.equal(r.code, 0, 'a warning, never a finding');
+    assert.equal(r.expiring.length, 1);
+    const line = r.lines.find((l) => l.startsWith('⚠'));
+    assert.ok(line, r.lines.join('\n'));
+    assert.match(line, /GHSA-seven-days-0000/);
+    assert.match(line, /expire on 2026-10-09 \(in 7 days\)/);
+  });
+
+  test('GREEN CONTROL — an ignore 30 days out does not warn', () => {
+    const r = withConfig(toml([['GHSA-thirty-days-000', '2026-11-01T12:00:00Z']]), () =>
+      scan(fakeOsv(), { config: 'osv-expiry.toml', now: NOW }),
+    );
+    assert.equal(r.code, 0);
+    assert.deepEqual(r.expiring, []);
+    assert.ok(!r.lines.some((l) => l.startsWith('⚠')), r.lines.join('\n'));
+  });
+
+  test('the window edge is EXPIRY_WARN_DAYS (14): 14 days warns, 15 does not; past and undated warn', () => {
+    assert.equal(EXPIRY_WARN_DAYS, 14);
+    const entries = ignoredVulnsFrom(
+      toml([
+        ['GHSA-at-14', '2026-10-16T12:00:00Z'],
+        ['GHSA-at-15', '2026-10-17T12:00:00Z'],
+        ['GHSA-past', '2026-09-30T00:00:00Z'],
+        ['GHSA-undated', null],
+        ['GHSA-bad-date', 'soon'],
+      ]),
+    );
+    const groups = expiringIgnores(entries, NOW);
+    const ids = groups.flatMap((g) => g.ids).sort();
+    assert.deepEqual(ids, ['GHSA-at-14', 'GHSA-bad-date', 'GHSA-past', 'GHSA-undated']);
+  });
+
+  test('ids sharing one date are ONE warning (the 2026-10-31 cohort)', () => {
+    const text = toml(Array.from({ length: 90 }, (_, i) => [`GHSA-cohort-${i}`, '2026-10-31T00:00:00Z']));
+    const groups = expiringIgnores(ignoredVulnsFrom(text), new Date('2026-10-24T00:00:00Z'));
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].ids.length, 90);
+    assert.equal(groups[0].daysLeft, 7);
+  });
+
+  test('the REAL osv-scanner.toml parses: every entry has an id and a readable ignoreUntil', () => {
+    const entries = ignoredVulnsFrom(readFileSync(join(REPO, 'osv-scanner.toml'), 'utf8'));
+    assert.ok(entries.length > 0);
+    for (const e of entries) {
+      assert.match(e.id ?? '', /^GHSA-/);
+      assert.ok(e.until instanceof Date, `${e.id} has no readable ignoreUntil`);
+    }
   });
 });
 

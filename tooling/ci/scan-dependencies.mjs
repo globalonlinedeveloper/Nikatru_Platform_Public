@@ -47,6 +47,16 @@
 //      N > 0, else COVERAGE LOST naming the missing ones. Findings are read from
 //      `--format json` — structure, never the table.
 //
+// ⏱ 2026-10-02 · THE IGNORES WARN BEFORE THEY EXPIRE (PR #1154 ruling item 4). 90
+// GHSA ids were acknowledged until ONE day (2026-10-31), so the first sign of their
+// expiry would have been main's daily scan going red on all of them at once. Every
+// run now reads osv-scanner.toml's `[[IgnoredVulns]]` and prints a ⚠ line (and, on
+// Actions, a ::warning) for each expiry date within EXPIRY_WARN_DAYS, grouped by
+// date, naming the ids — on every PR's security-scan and on ops-watch's daily scan
+// of main. An entry with no `ignoreUntil` this reader can parse warns too. A
+// WARNING, never a change of exit code: an acknowledged advisory is not a finding
+// until its date passes, and then OSV itself reddens the lane.
+//
 // Exit 0 = the canary fired, the floor held and no advisory stands (with --pr-range:
 // none in a lockfile the PR changed) · 1 = an advisory against a tracked lockfile
 // (with --pr-range: one the PR changed; each printed) · 2 = COVERAGE LOST (no
@@ -56,7 +66,7 @@
 // Usage: node tooling/ci/scan-dependencies.mjs --osv <path> [--config <file>]
 //          [--pr-range <40-hex base>..<40-hex head>] [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -277,14 +287,76 @@ export class CoverageLost extends Error {
 /** The whole scan. Returns `{ code: 0 | 1, lines, deferred }` and THROWS CoverageLost
  *  for exit 2; `run` and `prDiff` (the PR's changed files) are injectable for tests.
  *  `prRange` null grades every lockfile (a push, the daily scan of main). */
-export function scanDependencies({ root, osv, config, run = runOsv, lockfiles = null, tmp = tmpdir(), prRange = null, prDiff = prChangedFiles }) {
+/** How many days ahead of an `ignoreUntil` the scan starts warning. */
+export const EXPIRY_WARN_DAYS = 14;
+
+const DAY_MS = 86_400_000;
+
+/** osv-scanner.toml's `[[IgnoredVulns]]` entries as `{ id, until }`, `until` a Date or
+ *  null when the entry carries no `ignoreUntil` this reader can parse. Line-based: the
+ *  file is ours and holds only `key = value` lines, comments and table headers. */
+export function ignoredVulnsFrom(tomlText) {
+  const entries = [];
+  let cur = null;
+  for (const raw of String(tomlText).split(/\r?\n/)) {
+    const line = raw.replace(/#.*$/, '').trim();
+    if (line.startsWith('[')) {
+      cur = line === '[[IgnoredVulns]]' ? { id: null, until: null } : null;
+      if (cur) entries.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    const kv = /^([A-Za-z]+)\s*=\s*(.+)$/.exec(line);
+    if (!kv) continue;
+    if (kv[1] === 'id') cur.id = kv[2].replace(/^"|"$/g, '');
+    if (kv[1] === 'ignoreUntil') {
+      const d = /^\d{4}-\d{2}-\d{2}(T[0-9:.]+(Z|[+-]\d{2}:\d{2})?)?$/.test(kv[2]) ? new Date(kv[2]) : null;
+      cur.until = d && !Number.isNaN(d.getTime()) ? d : null;
+    }
+  }
+  return entries;
+}
+
+/** The entries due within `days` of `now` (or already past, or undated), grouped by
+ *  expiry day: `[{ day: 'YYYY-MM-DD' | null, daysLeft, ids }]`, soonest first. */
+export function expiringIgnores(entries, now, days = EXPIRY_WARN_DAYS) {
+  const byDay = new Map();
+  for (const e of entries) {
+    const daysLeft = e.until ? Math.ceil((e.until.getTime() - now.getTime()) / DAY_MS) : null;
+    if (daysLeft !== null && daysLeft > days) continue;
+    const day = e.until ? e.until.toISOString().slice(0, 10) : null;
+    if (!byDay.has(day)) byDay.set(day, { day, daysLeft, ids: [] });
+    byDay.get(day).ids.push(e.id ?? '(no id)');
+  }
+  return [...byDay.values()].sort((a, b) => (a.daysLeft ?? -Infinity) - (b.daysLeft ?? -Infinity));
+}
+
+/** One printable line per group from [expiringIgnores]. */
+export function expiryLine(g) {
+  const when =
+    g.day === null
+      ? 'carry no ignoreUntil this scan can read'
+      : g.daysLeft <= 0
+        ? `expired on ${g.day}`
+        : `expire on ${g.day} (in ${g.daysLeft} day${g.daysLeft === 1 ? '' : 's'})`;
+  return `⚠ ${g.ids.length} osv-scanner.toml ignore(s) ${when}: ${g.ids.join(', ')}. Fix them or re-date each with a reason before the date; on it, main's daily scan reddens on every one still listed.`;
+}
+
+export function scanDependencies({ root, osv, config, run = runOsv, lockfiles = null, tmp = tmpdir(), prRange = null, prDiff = prChangedFiles, now = new Date() }) {
   const lines = [];
   const lost = (why) => {
     throw new CoverageLost([...lines, `✗ COVERAGE LOST — ${why}`]);
   };
   const rootAbs = resolve(root);
   const cfg = resolve(rootAbs, config ?? 'osv-scanner.toml');
-  if (!existsSync(cfg)) lost(`${cfg} does not exist. The scan passes --config explicitly (without it v2 resolves a config per lockfile DIRECTORY and ignores nothing for packages/tokens — run 33960900452), so a missing file is not a default.`);
+  let cfgText;
+  try {
+    cfgText = readFileSync(cfg, 'utf8');
+  } catch {
+    lost(`${cfg} does not exist. The scan passes --config explicitly (without it v2 resolves a config per lockfile DIRECTORY and ignores nothing for packages/tokens — run 33960900452), so a missing file is not a default.`);
+  }
+  const expiring = expiringIgnores(ignoredVulnsFrom(cfgText), now);
+  for (const g of expiring) lines.push(expiryLine(g));
 
   // 0 · the PR's scope, resolved FIRST: a range git cannot name is COVERAGE LOST
   // before OSV is asked anything, never a silent fall-back to "grade nothing".
@@ -377,7 +449,7 @@ export function scanDependencies({ root, osv, config, run = runOsv, lockfiles = 
   if (t.status === 0 && findings.length > 0) lost(`OSV exited 0 (clean) and its JSON names ${findings.length} vulnerable package(s), so the two answers disagree.`);
   if (findings.length === 0) {
     lines.push('✓ no advisory against any tracked lockfile');
-    return { code: 0, lines, deferred: 0 };
+    return { code: 0, lines, deferred: 0, expiring };
   }
   const graded = [];
   const deferred = [];
@@ -395,14 +467,14 @@ export function scanDependencies({ root, osv, config, run = runOsv, lockfiles = 
   }
   if (graded.length === 0) {
     lines.push('✓ no advisory against a lockfile this pull request changed');
-    return { code: 0, lines, deferred: deferred.length };
+    return { code: 0, lines, deferred: deferred.length, expiring };
   }
   for (const at of graded) lines.push(`✗ ${at}`);
   lines.push(
     `✗ ${graded.length} vulnerable package(s)${scope && !scope.all ? ' in lockfile(s) this pull request changed' : ''}. Move each to a fixed version in the lockfile named; ` +
       'an advisory that cannot be fixed yet is acknowledged in osv-scanner.toml with a dated ignoreUntil, never without one.',
   );
-  return { code: 1, lines, deferred: deferred.length };
+  return { code: 1, lines, deferred: deferred.length, expiring };
 }
 
 /** The CLI's arguments: `{ osv, config, prRange, root }`, or null when they do not parse. */
@@ -433,8 +505,11 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     process.exitCode = 2;
   } else {
     try {
-      const { code, lines, deferred } = scanDependencies(args);
+      const { code, lines, deferred, expiring } = scanDependencies(args);
       for (const l of lines) (code === 0 ? console.log : console.error)(l);
+      if (process.env.GITHUB_ACTIONS === 'true') {
+        for (const g of expiring) console.log(`::warning title=osv-scanner.toml ignores near expiry (${g.day ?? 'undated'})::${expiryLine(g)}`);
+      }
       if (deferred && process.env.GITHUB_ACTIONS === 'true') {
         console.log(`::warning title=${deferred} advisory(ies) on main, not this PR's::Printed in the step log and not graded here; ops-watch's daily dependency-advisories scan of main owns them.`);
       }
