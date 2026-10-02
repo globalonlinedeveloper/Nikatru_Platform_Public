@@ -49,7 +49,7 @@
 //                       reservation, never at zero
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AiAttempt, AiBeforeCall, AiCostModel, AiLimits, AiModelId, AiOutcome, AiProvider, AiRequest, AiReservationRequest, AiUsage } from '../../src/ports/ai';
-import { attemptsUsd, settle } from '../../src/ports/ai';
+import { attemptsUsd, settle, worstCaseUsd } from '../../src/ports/ai';
 import { buildEnvelope } from '../../src/error-sink';
 
 export const AI_SCENARIOS = [
@@ -306,6 +306,8 @@ export async function checkAiScenario(scenario: AiScenario, h: AiHarness, secret
       if (JSON.stringify(models) !== JSON.stringify(FALLBACK_ATTEMPTS.map((a) => a.model))) fail(scenario, `attempts ${JSON.stringify(models)}: every attempt is billed, the declined one too`);
       const r = reservations[0] ?? fail(scenario, 'no reservation was asked for');
       if (JSON.stringify(r.attemptModels) !== JSON.stringify(['claude-opus-5-5', 'claude-opus-4-8', 'claude-opus-5'])) fail(scenario, `the reservation covered ${JSON.stringify(r.attemptModels)}, not the whole chain`);
+      const worst = worstCaseUsd(CONFORMANCE_PRICES, r.attemptModels, CONFORMANCE_INPUT_CAP, conformanceRequest().maxOutputTokens) ?? 0;
+      if (Math.abs(r.reserveUsd - worst) > 1e-12) fail(scenario, `reserved ${r.reserveUsd}, the worst case of the whole chain is ${worst}`);
       const st = settle(CONFORMANCE_PRICES, r.reserveUsd, out);
       if (Math.abs(st.chargeUsd - FALLBACK_CHARGE_USD) > 1e-12) fail(scenario, `charged ${st.chargeUsd}, the hand computation is ${FALLBACK_CHARGE_USD}`);
       if (st.chargeUsd > r.reserveUsd) fail(scenario, 'the charge is above the reservation');
