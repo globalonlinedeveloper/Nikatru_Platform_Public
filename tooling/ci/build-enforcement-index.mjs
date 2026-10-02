@@ -27,7 +27,7 @@ import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { listDir } from './tree-walk.mjs';
-import { parseAllWorkflows, WORKFLOW_DIR } from './workflow-scan.mjs';
+import { parseAllActions, parseAllWorkflows, WORKFLOW_DIR } from './workflow-scan.mjs';
 
 export const INDEX_REL = 'tooling/enforcement-index.json';
 export const KINDS = new Set(['guard', 'script', 'lane', 'human', 'test', 'cross-repo', 'none']);
@@ -369,6 +369,20 @@ export async function buildEnforcementIndex(root, opts = {}) {
     if (!invokedBy.has(key)) invokedBy.set(key, new Set());
     invokedBy.get(key).add(edge);
   };
+  // ⏱ 2026-10-02 · A PRELOAD NAMED BY A VARIABLE: `node --import "$SPAWN_CEILING"`
+  // (PR #1160 — a relative --import follows the cwd). The variable is written to
+  // $GITHUB_ENV by a composite step, so VAR's edge goes to the tooling path(s) that
+  // same composite step names, quoted. No such step names none: no edge, no row.
+  const envPreloads = new Map();
+  for (const action of parseAllActions(ROOT)) {
+    const text = action.lines.map((l) => l.text).join('\n');
+    for (const step of text.split(/\n {4}- /)) {
+      for (const m of step.matchAll(/echo\s+"?([A-Z_][A-Z0-9_]*)=[^\n]*>>\s*"?\$\{?GITHUB_ENV\b/g)) {
+        const paths = [...step.matchAll(/['"](tooling\/[A-Za-z0-9._/-]+\.mjs)['"]/g)].map((x) => x[1]);
+        envPreloads.set(m[1], [...(envPreloads.get(m[1]) ?? []), ...paths]);
+      }
+    }
+  }
   let testRunnerJobs = [];
   for (const wf of workflows) {
     for (const job of wf.jobs.values()) {
@@ -385,6 +399,9 @@ export async function buildEnforcementIndex(root, opts = {}) {
           } else {
             addEdge(rel, edge);
           }
+        }
+        for (const m of text.matchAll(/\bnode\b[^\n]*?--import(?:=|\s+)(['"]?)\$\{?([A-Z_][A-Z0-9_]*)\}?\1(?=\s|$)/g)) {
+          for (const rel of envPreloads.get(m[2]) ?? []) if (!rel.startsWith('tooling/ci/')) addEdge(rel, edge);
         }
         if (/\bnode\b[^\n]*--test\b[^\n]*tooling\/ci\/test\//.test(text)) testRunnerJobs.push(edge);
         // A guard-tests shard names no test path: its `node --test` reads the list

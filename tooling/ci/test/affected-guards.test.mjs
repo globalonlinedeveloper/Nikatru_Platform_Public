@@ -25,8 +25,8 @@ import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
-import { main, parseNodeCall, scanSource } from '../../scripts/affected-guards.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { main, parseNodeCall, scanSource, withCiEnv } from '../../scripts/affected-guards.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -262,6 +262,15 @@ test('AG7 the workflow read: value-taking node flags, the script, and a --test c
   const t = parseNodeCall('node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test --test-reporter=spec  --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="${{ runner.temp }}/guard-tests.junit.xml" "tooling/ci/test/*.test.mjs"');
   assert.deepEqual(t, { test: ['tooling/ci/test/*.test.mjs'], flags: ['--import', './tooling/scripts/spawn-ceiling.mjs', '--test-timeout=600000'] });
   assert.equal(parseNodeCall('echo node is not called here'), null);
+  // The workflows' `--import "$SPAWN_CEILING"` replays as the checkout's own absolute
+  // preload URL: no shell expands it here, and a relative path would follow the cwd.
+  const w = parseNodeCall('node --import "$SPAWN_CEILING" --test-timeout=600000 --test scripts/test/a.test.mjs');
+  assert.deepEqual(w.flags, ['--import', '$SPAWN_CEILING', '--test-timeout=600000']);
+  const root = resolve('/somewhere', 'checkout');
+  const url = pathToFileURL(join(root, 'tooling', 'scripts', 'spawn-ceiling.mjs')).href;
+  assert.deepEqual(withCiEnv(w.flags, root), ['--import', url, '--test-timeout=600000']);
+  assert.deepEqual(withCiEnv(['--import', '${SPAWN_CEILING}'], root), ['--import', url]);
+  assert.deepEqual(withCiEnv(['--import', '$SPAWN_CEILING_MS', 'x$SPAWN_CEILING'], root), ['--import', '$SPAWN_CEILING_MS', 'x$SPAWN_CEILING'], 'only the whole word');
   // join chains: the base argument drops, a later non-literal is "any path"
   const { chains } = scanSource("const a = join(ROOT, 'apps', app, 'pubspec.yaml'); const b = join(HERE, '..', 'x.json');");
   assert.deepEqual(chains.map((c) => c.parts), [['apps', '\u0000', 'pubspec.yaml'], ['..', 'x.json']]);

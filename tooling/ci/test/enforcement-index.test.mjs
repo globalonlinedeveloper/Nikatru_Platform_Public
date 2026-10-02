@@ -644,3 +644,52 @@ describe('build-enforcement-index — a sharded guard-tests step still runs the 
     assert.match(r.stderr, /no workflow job runs node --test over tooling\/ci\/test/, r.stderr);
   });
 });
+
+describe('build-enforcement-index — a preload named by a variable a composite exports', () => {
+  // PR #1160: every workflow now writes `node --import "$SPAWN_CEILING"` (an absolute
+  // URL setup-node writes to $GITHUB_ENV), so the preload's path is in the composite,
+  // not the workflow. The edge follows the variable to the composite step that writes it.
+  const ACTION_REL = '.github/actions/setup-node/action.yml';
+  const action = (exported) => [
+    'name: Set up Node',
+    'runs:',
+    '  using: composite',
+    '  steps:',
+    '    - id: pin',
+    '      shell: bash',
+    '      run: |',
+    `          ceiling="$(node -p "require('path').resolve(process.env.GITHUB_WORKSPACE, 'tooling/scripts/pre-load.mjs')")"`,
+    ...(exported ? ['          echo "PRE_LOAD=$ceiling" >> "$GITHUB_ENV"'] : []),
+    '',
+  ].join('\n');
+  const workflow = WORKFLOW.replace(
+    '      - run: node --test "tooling/ci/test/*.test.mjs"\n',
+    '      - uses: ./.github/actions/setup-node\n      - run: node --import "$PRE_LOAD" --test "tooling/ci/test/*.test.mjs"\n',
+  );
+  const rows = (exported) => {
+    const root = fixture({ workflow, files: { [ACTION_REL]: action(exported), 'tooling/scripts/pre-load.mjs': 'export {};\n' }, index: null, yieldDoc: null });
+    const r = spawnSync(process.execPath, [GENERATOR, root], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    return JSON.parse(r.stdout);
+  };
+
+  test('the variable reaches the file the exporting composite step names: a WIRED script row', () => {
+    assert.ok(workflow.includes('"$PRE_LOAD"'), 'the fixture rewrite did not land');
+    const row = rowFor(rows(true), 'tooling/scripts/pre-load.mjs');
+    assert.deepEqual(row.invokedBy, ['.github/workflows/ci.yml#platform']);
+    assert.equal(row.state, 'WIRED');
+  });
+
+  test('RED control: the same composite without the $GITHUB_ENV write gives no edge and no row', () => {
+    assert.equal(rows(false).find((x) => x.ref === 'tooling/scripts/pre-load.mjs'), undefined);
+  });
+
+  test('assert-enforcement-index reads the same edge: green with the write, red once the write is gone', () => {
+    const files = { [ACTION_REL]: action(true), 'tooling/scripts/pre-load.mjs': 'export {};\n' };
+    const green = run(fixture({ workflow, files }));
+    assert.equal(green.code, 0, green.out);
+    const red = run(fixture({ workflow, files, breakAfter: { [ACTION_REL]: action(false) } }));
+    assert.equal(red.code, 1, red.out);
+    assert.match(red.out, /"tooling\/scripts\/pre-load\.mjs" is WIRED by "\.github\/workflows\/ci\.yml#platform" and that job never names it/);
+  });
+});
