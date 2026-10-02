@@ -3119,6 +3119,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/land.yml#land"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/land-next.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 095"
     ],
