@@ -11,10 +11,10 @@
     make unnecessary. Analysis and tests passed throughout, because neither needs
     a platform folder.
 
-    ⚠️ THERE IS NO SERVICE WORKER FILE HERE, and that is correct rather than
-    missing. Flutter generates the service worker at BUILD time through
-    flutter_bootstrap.js, controlled by `--pwa-strategy`. That coupling is
-    [9]R-9's to own; a checked-in service worker would be a second, stale copy.
+    ⚠️ THE SERVICE WORKER HERE IS OURS (web/sw.js, registered by web/sw-register.js
+    below), NEVER FLUTTER'S: the build keeps `--pwa-strategy=none`. ⏱ 2026-10-01 —
+    this said "THERE IS NO SERVICE WORKER FILE HERE"; [ADR 023]'s 2026-09-30
+    amendment added ours: network-first, one cache per build, scope /<app id>/.
   -->
   <base href="$FLUTTER_BASE_HREF">
 
@@ -55,6 +55,9 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <!-- The offline shell. NOT async, and above the bootstrap: its first-frame
+       listener must exist before the engine can fire the event. -->
+  <script src="sw-register.js"></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

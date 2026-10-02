@@ -32,9 +32,14 @@
     the app's former subdomain got a BLANK WHITE PAGE for the whole engine boot,
     with nothing on screen saying the page was alive. That window is not small
     on this channel and it is not going to shrink on its own: deploy-web.yml
-    builds with `--pwa-strategy=none` ([ADR 023], LOCKED 2026-07-31), so there
-    is no service worker and therefore no warm cache on a first visit —
+    builds with `--pwa-strategy=none` ([ADR 023], RECORDED 2026-07-31), so
+    Flutter emits no service worker and there is no warm cache on a first visit —
     CanvasKit, the engine and main.dart.js are all fetched cold — and
+    ⏱ 2026-10-01: this said "LOCKED"; [ADR 023]'s status is RECORDED, and its
+    2026-09-30 amendment adds OUR OWN worker (web/sw.js, registered by
+    web/sw-register.js below). It is network-first, so a first visit is still
+    cold and everything above still holds online; offline, it serves the shell
+    the last online visit left, and
     `web/_headers` deliberately makes every stable-named entry point revalidate
     on every return visit. A blank white page is indistinguishable from a dead
     site, and the visitor's only available action is to close the tab.
@@ -229,6 +234,10 @@
     })();
   </script>
 
+  <!-- The offline shell ([ADR 023] as amended 2026-09-30). NOT async, and above
+       the bootstrap for the same reason as the loader script: its first-frame
+       listener must exist before the engine can fire the event. -->
+  <script src="sw-register.js"></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

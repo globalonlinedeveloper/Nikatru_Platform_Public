@@ -116,10 +116,14 @@
 #
 # 🔴 WHY THIS FILE EXISTS — [pipeline 9]R-9, the cache limb.
 #
-# deploy-web.yml builds with `--pwa-strategy=none` ([ADR 023], LOCKED
-# 2026-07-31: the service worker was rejected deliberately, it is not an
-# oversight). So there is NO service worker and no client-side update
-# machinery on the ONLY channel this factory serves. That leaves the HTTP
+# deploy-web.yml builds with `--pwa-strategy=none` ([ADR 023], RECORDED
+# 2026-07-31: Flutter's service worker was rejected deliberately, it is not an
+# oversight). So there is NO Flutter service worker and no client-side update
+# machinery on the ONLY channel this factory serves. ⏱ 2026-10-01: this said
+# "LOCKED"; ADR 023's status is RECORDED, and its 2026-09-30 amendment adds our
+# OWN worker (web/sw.js). It is network-first — online, every request below
+# still goes to the network and is still revalidated by these rules — so the
+# paragraph that follows holds unchanged while a network answers. That leaves the HTTP
 # cache as the entire update mechanism, and until this file existed nothing in
 # the repository CHOSE a policy for it — `flutter build web` emits no
 # `_headers` and the deploy ships `build/web` straight to Pages, so whatever
@@ -202,6 +206,18 @@
 /version.json
   Cache-Control: public, max-age=0, must-revalidate
 /manifest.json
+  Cache-Control: public, max-age=0, must-revalidate
+
+# The offline shell ([ADR 023] as amended 2026-09-30): our own worker and the
+# script that registers it. Both are shipped verbatim from web/ under a stable
+# name, so they revalidate like every other entry point. sw.js is fetched
+# through no HTTP cache on an update check either (`updateViaCache: 'none'`).
+# 🔴 NO `Service-Worker-Allowed`, ever: the script lives at /<id>/sw.js, its
+# scope is /<id>/, and that header is the one way a worker on this shared origin
+# could claim the marketing site or another app. assert-web-cache-policy refuses it.
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+/sw-register.js
   Cache-Control: public, max-age=0, must-revalidate
 
 # main.dart.js is emitted under a STABLE name by `flutter build web`, so it is
