@@ -698,8 +698,11 @@ class Subscription {
     }
     if (!changes.containsKey('price_after_trial_minor') &&
         changes.containsKey('currency') &&
-        changes['currency'] != price.currencyCode) {
-      merged.remove('price_after_trial_minor');
+        changes['currency'] != price.currencyCode &&
+        merged.containsKey('price_after_trial_minor')) {
+      // Nulled, never removed: a missing key reads as "this API has no such
+      // column" ([priceAfterTrialSupported]).
+      merged['price_after_trial_minor'] = null;
     }
     if (changes.containsKey('still_using')) {
       final StillUsing? answer = StillUsing.parse(changes['still_using']);

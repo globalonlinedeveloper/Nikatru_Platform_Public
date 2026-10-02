@@ -51,8 +51,11 @@ void main() {
     test(
       'a row with none still SENDS the key as null, so an edit can clear it',
       () {
+        // The API (0010) serves the key, null included; a wire WITHOUT it is
+        // an API that predates the column, which T9's capability gate keeps
+        // the key away from (`priceAfterTrialSupported`).
         final Map<String, dynamic> json = Subscription.fromJson(
-          _wire(),
+          _wire(extra: <String, dynamic>{'price_after_trial_minor': null}),
         ).toJson();
         expect(json.containsKey('price_after_trial_minor'), isTrue);
         expect(json['price_after_trial_minor'], isNull);
