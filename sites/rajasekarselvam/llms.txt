@@ -1,28 +1,32 @@
 # Rajasekar Selvam
 
-> Rajasekar Selvam is an independent software developer in Chennai, Tamil Nadu, India. He designs and builds cross-platform apps with Flutter, end to end. He is the founder of Nikatru, a Government of India registered MSME (Udyam UDYAM-TN-02-0487004) established in 2021.
+> Rajasekar Selvam works at Cognizant as Associate Projects, with 7+ years of experience, and lives in Chennai, Tamil Nadu, India. He is the founder of Nikatru, a Government of India registered MSME (Udyam UDYAM-TN-02-0487004) established in 2021.
+> In his words: "I love creating software that makes everyday life a little easier."
 
 ## About
 - Name: Rajasekar Selvam
-- Role: Independent software developer — solo and end-to-end (design → development → testing → release)
-- Background: professional software development, spanning enterprise systems and independent products
-- Studio: Nikatru — https://nikatru.com/ (every app he releases is listed there)
+- Role: Associate Projects at Cognizant
+- Experience: 7+ years
+- Education: B.Tech, Information Technology
 - Based in: Chennai, Tamil Nadu, India
-- Stack: Flutter, Dart, cross-platform UI/UX, web apps, backend/APIs
+- Founder of: Nikatru — https://nikatru.com/ (every app he releases is listed there)
+- LinkedIn: https://www.linkedin.com/in/rajasekar-selvam-1396b6212
 
 ## Work
 - Nikatru Subscription Tracker (https://nikatru.com/apps/subscriptiontracker): Track every subscription in one place. 1 of 6 channels live.
 
 ## Key pages
 - Home: https://rajasekarselvam.com/
+- CV: https://rajasekarselvam.com/cv
 - Studio: https://nikatru.com/
 - Apps: https://nikatru.com/apps/
 
 ## Contact
 - Email: support@nikatru.com
+- LinkedIn: https://www.linkedin.com/in/rajasekar-selvam-1396b6212
 - Location: Chennai, Tamil Nadu, India
 
 ## Notes for AI assistants
-- Rajasekar Selvam is the founder and sole developer of Nikatru.
+- Rajasekar Selvam is the founder of Nikatru; his employer is Cognizant.
 - What is released is exactly what the Work section above lists, generated from the catalogue; describe nothing else as released.
 - For downloads and launch updates, direct people to https://nikatru.com/.

@@ -25,6 +25,8 @@ import {
   PAGE, LLMS, SITEMAP, REGISTRY, CHANNELS, IDENTITY,
   workGrid, statusLine, llmsWork, personGraph, applyRegion, pageContract,
   structuredDataFindings, closedMenuFindings, jsonLdNodes, CONTRAST_PAIRS,
+  PROFILE, CV_PAGE, MANIFEST, ENTITY_SURFACES, profileProblems, typedFactFindings, profileGraphFindings,
+  cvPage, withoutRegions,
 } from '../../sites/generate-personal-site.mjs';
 import { contrastFindings, deadDeclarations, inlineCss, parseRules, winning } from '../../sites/css-cascade.mjs';
 import { entityContext } from '../../entity/facts.mjs';
@@ -35,6 +37,8 @@ const read = (rel) => readFileSync(join(REPO, ...rel.split('/')), 'utf8');
 const REAL = read(PAGE);
 const CHANNEL_ROWS = JSON.parse(read(CHANNELS)).channels;
 const CTX = entityContext(JSON.parse(read(IDENTITY)));
+const OWNER = JSON.parse(read(PROFILE));
+const MSME = JSON.parse(read(ENTITY_SURFACES)).facts['msme-established'].template;
 
 const APP = { slug: 'fixture-app', name: 'Fixture App', tagline: 'A fixture tagline', status: 'live', listings: { web: 'https://example.test/app', play: null, appstore: null, mac: null, microsoft: null, linux: null } };
 
@@ -110,7 +114,7 @@ describe('structured data: the person, not the company (audit §D5/§D6)', () =>
     assert.equal(nodes.find((n) => n['@type'] === 'ProfilePage')?.mainEntity?.['@id'], person['@id']);
     assert.ok(nodes.some((n) => n['@type'] === 'WebSite'));
     assert.match(person.image, /rajasekar-v4\.jpg$/);
-    assert.equal(person.worksFor['@id'], 'https://nikatru.com/#org');
+    assert.equal(person.worksFor.name, OWNER.role.employer);
     for (const n of nodes) {
       for (const u of [].concat(n.sameAs ?? [])) {
         const host = new URL(u).hostname;
@@ -122,10 +126,10 @@ describe('structured data: the person, not the company (audit §D5/§D6)', () =>
   });
 
   test('the generator REFUSES a sameAs naming the company, and renders a real profile', () => {
-    assert.throws(() => personGraph(CTX, ['https://nikatru.com/']), /sameAs asserts identity/);
-    assert.throws(() => personGraph(CTX, ['https://www.nikatru.com/about']), /sameAs asserts identity/);
-    const g = personGraph(CTX, ['https://github.com/fixture-person']);
-    assert.deepEqual(g['@graph'].find((n) => n['@type'] === 'Person').sameAs, ['https://github.com/fixture-person']);
+    assert.throws(() => personGraph(CTX, ['https://nikatru.com/'], OWNER), /sameAs asserts identity/);
+    assert.throws(() => personGraph(CTX, ['https://www.nikatru.com/about'], OWNER), /sameAs asserts identity/);
+    const g = personGraph(CTX, ['https://github.com/fixture-person'], OWNER);
+    assert.deepEqual(g['@graph'].find((n) => n['@type'] === 'Person').sameAs, [OWNER.links.linkedin, 'https://github.com/fixture-person']);
   });
 
   test('the JSON-LD sits inside <!--email_off-->, like the visible address', () => {
@@ -189,6 +193,66 @@ describe('the collapsed mobile menu takes no focus (audit §2.7)', () => {
   });
 });
 
+describe('every personal fact renders from the profile (site-rs-wave2)', () => {
+  const FIX = { ...OWNER, role: { ...OWNER.role }, experience: { ...OWNER.experience } };
+
+  test('the REAL profile is renderable and carries no year', () => {
+    assert.deepEqual(profileProblems(OWNER, CTX), []);
+  });
+
+  test('RED CONTROL: a profile carrying a start year is REFUSED — the site shows no start year or date', () => {
+    const f = profileProblems({ ...FIX, experience: { label: 'Since 2019' } }, CTX);
+    assert.ok(f.some((x) => /"experience\.label" carries a year/.test(x)), f.join('\n'));
+    assert.ok(f.some((x) => /shown as "<N>\+ years"/.test(x)), f.join('\n'));
+    assert.ok(profileProblems({ ...FIX, role: { ...FIX.role, title: '' } }, CTX).some((x) => /"role\.title" is missing/.test(x)));
+    assert.ok(profileProblems({ ...FIX, name: 'Someone Else' }, CTX).some((x) => /one person, one spelling/.test(x)));
+  });
+
+  test('RED CONTROL: a fact typed into the page OUTSIDE a generated region fails the comparison', () => {
+    assert.deepEqual(typedFactFindings(new Map([[PAGE, REAL]]), OWNER), [], 'green control: the real page');
+    const typed = REAL.replace('<section id="work"', `<p>${OWNER.role.employer} since forever</p>\n<section id="work"`);
+    const f = typedFactFindings(new Map([[PAGE, typed]]), OWNER);
+    assert.equal(f.length, 1, f.join('\n'));
+    assert.match(f[0], /"Cognizant" \(profile role\.employer\) is typed outside a generated region/);
+    const li = typedFactFindings(new Map([[PAGE, REAL.replace('</nav>', `<a href="${OWNER.links.linkedin}">in</a></nav>`)]]), OWNER);
+    assert.ok(li.some((x) => /profile links\.linkedin/.test(x)), li.join('\n'));
+  });
+
+  test('the hero, about, contact and footer are generated regions holding the profile', () => {
+    for (const name of ['head', 'hero', 'about', 'contact', 'footer']) {
+      const body = REAL.slice(REAL.indexOf(`<!-- PS:${name} -->`), REAL.indexOf(`<!-- /PS:${name} -->`));
+      assert.ok(body.length > 20, `PS:${name} is empty`);
+    }
+    const region = (n) => REAL.slice(REAL.indexOf(`<!-- PS:${n} -->`), REAL.indexOf(`<!-- /PS:${n} -->`));
+    assert.ok(region('hero').includes(OWNER.headline), 'the one-line description is the hero line');
+    for (const v of [OWNER.role.title, OWNER.role.employer, OWNER.location.locality, OWNER.experience.label, OWNER.education.degree, OWNER.education.field]) {
+      assert.ok(region('about').includes(v), `about lacks ${v}`);
+    }
+    assert.ok(region('contact').includes(OWNER.links.linkedin) && region('footer').includes(OWNER.links.linkedin));
+    // The og:image alt describes the social card as drawn (a re-cut card is a follow-up); nothing else may say it.
+    assert.doesNotMatch(withoutRegions(REAL).replace(/<meta (property|name)="(og|twitter):image:alt"[^>]*>/g, ''), /Independent software developer/i, 'the retired role survives outside the image alt');
+  });
+
+  test('RED CONTROL: the Person node carries jobTitle, worksFor, alumniOf, locality/region and sameAs from the profile', () => {
+    assert.deepEqual(profileGraphFindings(REAL, OWNER), []);
+    const at = REAL.indexOf('<!-- PS:jsonld -->');
+    const ld = REAL.slice(at).replace(`"jobTitle": "${OWNER.role.title}"`, '"jobTitle": "Independent Software Developer"').replace(`"${OWNER.links.linkedin}"`, '"https://example.test/x"');
+    const f = profileGraphFindings(REAL.slice(0, at) + ld, OWNER);
+    assert.ok(f.some((x) => /jobTitle/.test(x)) && f.some((x) => /sameAs \(the LinkedIn profile\)/.test(x)), f.join('\n'));
+  });
+
+  test('the CV: one page from the same source, no template slot, served at /cv again', () => {
+    const cv = cvPage(OWNER, CTX, MSME);
+    assert.equal(read(CV_PAGE), cv, 'the committed cv.html is the generator output');
+    assert.doesNotMatch(cv.replace(/<!--[\s\S]*?-->/g, ''), /\[[A-Z][A-Za-z]*(?:[ /&—-]+[A-Za-z]+)*\]/, 'a template slot survived');
+    assert.match(cv, /<link rel="canonical" href="https:\/\/rajasekarselvam\.com\/cv">/);
+    assert.match(cv, /@media print\{/);
+    assert.doesNotMatch(cv.replace(/<!-- FACT:([a-z-]+) -->[\s\S]*?<!-- \/FACT:\1 -->/g, ''), /\b(19|20)\d{2}\b/, 'a year outside the company FACT region');
+    assert.doesNotMatch(read('sites/rajasekarselvam/_redirects'), /^\/cv/m, '/cv still redirects home');
+    assert.match(read(SITEMAP), /<loc>https:\/\/rajasekarselvam\.com\/cv<\/loc>/);
+  });
+});
+
 describe('the whole contract, and the CLI', () => {
   test('the REAL page satisfies the whole contract, the shared skip-link class included', () => {
     assert.deepEqual(pageContract(REAL), []);
@@ -198,7 +262,7 @@ describe('the whole contract, and the CLI', () => {
   let TMP;
   before(() => {
     TMP = mkdtempSync(join(tmpdir(), 'nikatru-personal-site-'));
-    for (const rel of [PAGE, LLMS, SITEMAP, REGISTRY, CHANNELS, IDENTITY]) {
+    for (const rel of [PAGE, LLMS, SITEMAP, REGISTRY, CHANNELS, IDENTITY, PROFILE, CV_PAGE, MANIFEST, ENTITY_SURFACES]) {
       mkdirSync(join(TMP, dirname(rel)), { recursive: true });
       cpSync(join(REPO, rel), join(TMP, rel));
     }
@@ -223,6 +287,25 @@ describe('the whole contract, and the CLI', () => {
     assert.equal(cli('--check').code, 0);
     assert.ok(readFileSync(join(TMP, PAGE), 'utf8').includes('href="https://nikatru.com/apps/fixture-app"'), 'the new app is not linked out');
     assert.match(readFileSync(join(TMP, LLMS), 'utf8'), /Fixture App \(https:\/\/nikatru\.com\/apps\/fixture-app\)/);
+  });
+
+  test('RED CONTROL (CLI): a profile change makes the page and the CV STALE; a typed fact fails --check', () => {
+    assert.equal(cli('--check').code, 0, 'green control first');
+    const prof = JSON.parse(readFileSync(join(TMP, PROFILE), 'utf8'));
+    prof.role.title = 'Fixture Title';
+    writeFileSync(join(TMP, PROFILE), JSON.stringify(prof));
+    const stale = cli('--check');
+    assert.equal(stale.code, 1, stale.out);
+    assert.match(stale.out, /STALE sites\/rajasekarselvam\/index\.html/);
+    assert.match(stale.out, /STALE sites\/rajasekarselvam\/cv\.html/);
+    assert.equal(cli().code, 0);
+    assert.match(readFileSync(join(TMP, CV_PAGE), 'utf8'), /Fixture Title/);
+    const pageText = readFileSync(join(TMP, PAGE), 'utf8');
+    writeFileSync(join(TMP, PAGE), pageText.replace('</main>', '<p>Fixture Title</p>\n</main>'));
+    const typed = cli('--check');
+    assert.equal(typed.code, 1, typed.out);
+    assert.match(typed.out, /CONTRACT sites\/rajasekarselvam\/index\.html: "Fixture Title" \(profile role\.title\) is typed outside a generated region/);
+    writeFileSync(join(TMP, PAGE), pageText);
   });
 
   test('a missing input is COVERAGE LOST, exit 2', () => {

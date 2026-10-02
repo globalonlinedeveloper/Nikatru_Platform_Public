@@ -1,8 +1,5 @@
 # Cloudflare Pages redirects — https://developers.cloudflare.com/pages/configuration/redirects/
 #
-# /cv was an UNFILLED CV TEMPLATE ([Job title] — [Company], a yellow "TEMPLATE" banner) that
-# answered 200 to anyone who guessed the URL (rajasekarselvam.com audit, 2026-10-02, D2). It is
-# unpublished: the file is gone from this deploy root and its git history keeps it. Both spellings
-# go home until the owner supplies the real CV (an OWNER item), and then this file loses these lines.
-/cv       /  301
-/cv.html  /  301
+# /cv served an UNFILLED CV TEMPLATE until 2026-10-02 (rajasekarselvam.com audit, D2) and was
+# redirected home. It is now the owner's real one-page CV, generated from profile.json by
+# tooling/sites/generate-personal-site.mjs, so /cv serves cv.html again (Pages serves /cv for it).
