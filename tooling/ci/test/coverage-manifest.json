@@ -128,6 +128,15 @@
   "auth-cutover-preflight.test.mjs":
     100,
 
+  "autopilot-issue-queue.test.mjs":
+    18,
+
+  "autopilot-queue-doc.test.mjs":
+    2,
+
+  "autopilot-queue-migrate.test.mjs":
+    11,
+
   "availability.test.mjs":
     33,
 
@@ -360,10 +369,13 @@
     48,
 
   "edge-ratelimit-rule.test.mjs":
-    16,
+    18,
 
   "edge-shield-probe.test.mjs":
     26,
+
+  "edge-zone.test.mjs":
+    24,
 
   "elf-page-alignment.test.mjs":
     23,

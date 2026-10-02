@@ -135,7 +135,7 @@
     "message": "Kundi"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Pandisha hadi FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Chaguo"
@@ -441,10 +441,10 @@
     "message": "Nenda moja kwa moja kwenye kuweka maelezo (kwa picha za sehemu moja pekee)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Njia za mkato za kitufe kimoja katika kihariri"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Vitufe vya herufi huchagua zana, + na - hukuza na kupunguza, ? huorodhesha vitufe. Kikizimwa, hufanya kazi tu wakati picha imelengwa."
   },
   "optionsTheme": {
     "message": "Mandhari"
@@ -1247,7 +1247,7 @@
     "message": "Kisha"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Ukuzaji $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1256,28 +1256,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Nyekundu"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Kaharabu"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Kijani"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Bluu"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Zambarau"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Waridi"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Nyeusi"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Nyeupe"
   },
   "editorZoomTipToHundred": {
     "message": "Imetoshelezwa kwenye dirisha — bofya kupata 100%"
@@ -2026,7 +2026,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ hunasa eneo lote linaloonekana",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2049,10 +2049,10 @@
     "message": "Chrome Web Store huzuia viendelezi kusoma kurasa zake, hivyo ukurasa huu hauwezi kunaswa."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Microsoft Edge Add-ons huzuia viendelezi kusoma kurasa zake, hivyo ukurasa huu hauwezi kunaswa."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Firefox Add-ons (addons.mozilla.org) huzuia viendelezi kusoma kurasa zake, hivyo ukurasa huu hauwezi kunaswa."
   },
   "errRestrictedGeneric": {
     "message": "Ukurasa huu unalindwa na kivinjari na hauwezi kunaswa."
