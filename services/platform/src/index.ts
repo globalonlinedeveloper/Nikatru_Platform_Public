@@ -61,6 +61,8 @@ import { corsMiddleware } from './middleware/cors';
 import { platformAuth } from './middleware/auth';
 import { entitlementsAuth } from './middleware/ext-device-auth';
 import providerToken from './routes/provider-token';
+import appleCode from './routes/apple-code';
+import identityChange from './routes/identity-change';
 import account from './routes/account';
 import config from './routes/config';
 import fx from './routes/fx';
@@ -254,6 +256,11 @@ app.use('/v1/account', platformAuth);
 app.use('/v1/account/*', platformAuth);
 app.route('/v1', account);
 app.route('/v1', providerToken);
+// ⏱ 2026-10-02 · review of #1155, findings 1 and 3: the native Apple sheet's
+// code exchange (routes/apple-code.ts) and the recency check before a sign-in
+// method is linked or unlinked (routes/identity-change.ts), under the same line.
+app.route('/v1', appleCode);
+app.route('/v1', identityChange);
 
 // AUTHENTICATED: the caller's signed-in sessions, and signing them out at the
 // Workers (⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS, routes/sessions.ts). TWO lines
