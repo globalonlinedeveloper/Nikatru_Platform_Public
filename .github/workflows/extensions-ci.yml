@@ -1140,10 +1140,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - uses: ./.github/actions/setup-node
-      # why: a quoted brace glob, expanded by node --test itself (bash on windows-2022 too),
-      # names the three suites; each finds the repository from its own path, not the cwd.
+      # why: NO `node --test` GLOB. On windows-2022 (node 24.21) `--test` matched nothing for
+      # "../tooling/ci/test/{…}.test.mjs" — "Could not find", exit 1, first run of this job on
+      # #1160. Bash expands the braces to three plain paths and node runs each file directly:
+      # a node:test file run directly exits 1 on any failing test, and `set -e` stops there.
+      # Each suite finds the repository from its own path, not the cwd.
       - name: The box, port and restore-drill tests pass on this OS
-        run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "../tooling/ci/test/{boxes,ports,port-switch}.test.mjs"
+        run: |
+          for f in ../tooling/ci/test/{boxes,ports,port-switch}.test.mjs; do
+            echo "── $f"
+            node --import ../tooling/scripts/spawn-ceiling.mjs "$f"
+          done
 
   ff-ops-tooling:
     # why: FF-2 — starts only once `ops-tooling` has concluded red, so it keeps its failure. docs/ci/README.md §2.1
