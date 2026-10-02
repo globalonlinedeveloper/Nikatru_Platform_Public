@@ -10,7 +10,7 @@ import { AI_FEATURES, AI_MODEL_CANDIDATES, costUsd } from '../../_shared/src/por
 import { createStubAi } from '../../_shared/src/ports/fakes/ai';
 import { GRANT, conformanceRequest, CONFORMANCE_ROWS_TEXT } from '../../_shared/test/conformance/ai';
 import { createAnthropicAi } from '../src/adapters/ai/anthropic';
-import { AI_COST_MODEL, AI_FALLBACKS, AI_FEATURE_TABLE, AI_LIMITS, aiFor } from '../src/ports';
+import { AI_COST_MODEL, AI_FALLBACKS, AI_FEATURE_TABLE, aiFor, aiLimits } from '../src/ports';
 
 const AI = JSON.parse(AI_RAW) as {
   adapters: Array<{ id: string; half?: string; capabilities: string[]; cost: { models?: Record<string, Record<string, unknown> & { fallbacks?: string[] }> } }>;
@@ -24,7 +24,7 @@ describe('src/ports.ts is tooling/ports/ai.json', () => {
     const want = Object.fromEntries(Object.entries(AI.features).map(([f, ft]) => [f, { adapter: ft.adapter, model: ft.model, effort: ft.effort, maxInputTokens: ft.maxInputTokens }]));
     expect(AI_FEATURE_TABLE).toEqual(want);
     expect([...AI_FEATURES].sort()).toEqual(Object.keys(AI.features).sort());
-    expect(AI_LIMITS.maxInputTokens).toEqual(Object.fromEntries(Object.entries(AI.features).map(([f, ft]) => [f, ft.maxInputTokens])));
+    expect(aiLimits().maxInputTokens).toEqual(Object.fromEntries(Object.entries(AI.features).map(([f, ft]) => [f, ft.maxInputTokens])));
   });
 
   it("the candidate list is the registry's, for every feature", () => {
@@ -48,8 +48,8 @@ describe('src/ports.ts is tooling/ports/ai.json', () => {
 
   it('the server adapters declare the capabilities the registry lists (one source: this assertion)', () => {
     const declared = (id: string) => [...(AI.adapters.find((a) => a.id === id)?.capabilities ?? [])].sort();
-    expect([...createAnthropicAi({ apiKey: SENTINEL, limits: AI_LIMITS }).capabilities].sort()).toEqual(declared('anthropic'));
-    expect([...createStubAi({ limits: AI_LIMITS }).capabilities].sort()).toEqual(declared('stub'));
+    expect([...createAnthropicAi({ apiKey: SENTINEL, limits: aiLimits() }).capabilities].sort()).toEqual(declared('anthropic'));
+    expect([...createStubAi({ limits: aiLimits() }).capabilities].sort()).toEqual(declared('stub'));
   });
 
   it('costUsd prices a call from the table: Opus 5.5 at 3,000 in and 500 out is 0.022 USD', () => {

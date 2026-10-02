@@ -40,7 +40,7 @@
 //     on the one rule that no call is made that the customer has not paid for;
 //   · AI_COST_MODEL is the price of every model a call may reach (the candidates
 //     and their fallbacks), AI_FALLBACKS each model's priced fallback chain, and
-//     each feature's maxInputTokens its input cap — together AI_LIMITS, which
+//     each feature's maxInputTokens its input cap — together aiLimits(), which
 //     the adapter checks BEFORE the wire and the meter settles with
 //     (ports/ai.ts reserveOrRefuse, settle). All mirror ai.json.
 // The stub (services/_shared/src/ports/fakes/ai.ts) is never selected here.
@@ -184,12 +184,16 @@ export const AI_FALLBACKS: Readonly<Record<string, readonly string[]>> = {
   'claude-opus-5-5': ['claude-opus-4-8', 'claude-opus-5'],
 };
 
-/** The spend limits every AI provider is built with, from the three tables above. */
-export const AI_LIMITS: AiLimits = {
-  prices: AI_COST_MODEL,
-  maxInputTokens: { import: AI_FEATURE_TABLE.import.maxInputTokens, review: AI_FEATURE_TABLE.review.maxInputTokens },
-  fallbacks: AI_FALLBACKS,
-};
+/** The spend limits every AI provider is built with, from the three tables above.
+ *  A function, not a const: a top-level property read is kept by esbuild, so a
+ *  const would ship these tables in a Worker that calls no model. */
+export function aiLimits(): AiLimits {
+  return {
+    prices: AI_COST_MODEL,
+    maxInputTokens: { import: AI_FEATURE_TABLE.import.maxInputTokens, review: AI_FEATURE_TABLE.review.maxInputTokens },
+    fallbacks: AI_FALLBACKS,
+  };
+}
 
 export type AiSelection =
   | { readonly ok: true; readonly feature: AiFeature; readonly model: AiModelId; readonly effort: AiEffort | null; readonly provider: AiProvider }
@@ -207,6 +211,6 @@ export function aiFor(
   if (!wiring.beforeCall) return { ok: false, detail: 'ai: no meter is wired (beforeCall), so no provider is built' };
   const apiKey = env.NIKATRU_ANTHROPIC_API_KEY;
   if (!apiKey) return { ok: false, detail: 'ai: NIKATRU_ANTHROPIC_API_KEY is not set on this Worker' };
-  const provider = createAnthropicAi({ apiKey, beforeCall: wiring.beforeCall, limits: AI_LIMITS, ...(wiring.fetchImpl ? { fetchImpl: wiring.fetchImpl } : {}) });
+  const provider = createAnthropicAi({ apiKey, beforeCall: wiring.beforeCall, limits: aiLimits(), ...(wiring.fetchImpl ? { fetchImpl: wiring.fetchImpl } : {}) });
   return { ok: true, feature, model: row.model, effort: row.effort, provider };
 }
