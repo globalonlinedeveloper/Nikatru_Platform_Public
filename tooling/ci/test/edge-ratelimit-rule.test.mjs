@@ -19,6 +19,8 @@ import { RULE_FILE_REL, loadDeclared, judge, shape, toApi, run } from '../../ops
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const DECLARED = loadDeclared(REPO);
+/** The declared file's `_why`, joined: what the rule's reader is told beside it. */
+const DECLARED_WHY = JSON.parse(readFileSync(join(REPO, RULE_FILE_REL), 'utf8'))._why.join('\n');
 const ZONE_ID = 'zone-id-1';
 const noSleep = async () => {};
 
@@ -59,6 +61,33 @@ async function quiet(fn) {
   }
 }
 
+/**
+ * The rule's expression as a predicate over a path. It reads exactly the two
+ * forms the Free-plan rule is written in — `(starts_with(http.request.uri.path,
+ * "<prefix>"))` and `(http.request.uri.path in {"<path>" …})`, joined by ` or ` —
+ * and FAILS on anything else, so a new construct cannot be read as "matches nothing".
+ */
+function pathMatcher(expression) {
+  const term = /\((?:starts_with\(http\.request\.uri\.path, "([^"]+)"\)|http\.request\.uri\.path in \{((?: ?"[^"]+")+)\})\)/y;
+  const or = / or /y;
+  const prefixes = [];
+  const exact = new Set();
+  let at = 0;
+  for (;;) {
+    term.lastIndex = at;
+    const m = term.exec(expression);
+    assert.ok(m, `the expression has a form this test cannot read at offset ${at}: ${expression.slice(at, at + 60)}`);
+    if (m[1] !== undefined) prefixes.push(m[1]);
+    else for (const q of m[2].matchAll(/"([^"]+)"/g)) exact.add(q[1]);
+    at = term.lastIndex;
+    if (at === expression.length) break;
+    or.lastIndex = at;
+    assert.ok(or.exec(expression), `expected " or " at offset ${at}: ${expression.slice(at, at + 60)}`);
+    at = or.lastIndex;
+  }
+  return (path) => exact.has(path) || prefixes.some((p) => path.startsWith(p));
+}
+
 const env = { CLOUDFLARE_API_TOKEN: 'test-token' };
 const drifted = (patch) => DECLARED.rules.map((r) => {
   const a = toApi(r);
@@ -93,9 +122,50 @@ describe('the declared rule (tooling/edge-ratelimit-rule.json)', () => {
     }
   });
 
-  test('🔴 never counts /auth/v1/token: by path it would 429 the refresh grant, which signs the user out (SHIELD-R2)', () => {
-    assert.doesNotMatch(rule.expression, /\/auth\/v1\/token/);
-    assert.doesNotMatch(rule.expression, /starts_with\(http\.request\.uri\.path, "\/auth\/v1/);
+  test('🔴 counts every MFA factor path and /auth/v1/reauthenticate, so one address cannot fill those credential buckets (SYN-A2 / PB-01)', () => {
+    const counted = pathMatcher(rule.expression);
+    for (const p of [
+      '/auth/v1/reauthenticate',
+      '/auth/v1/factors/abc/verify',
+      '/auth/v1/factors/0b6f2a1c-1d2e-4f50-8a9b-0c1d2e3f4a5b/challenge',
+      ...['signup', 'otp', 'recover', 'verify', 'magiclink', 'resend'].map((x) => `/auth/v1/${x}`),
+      '/_allauth/browser/v1/auth/login',
+    ]) {
+      assert.ok(counted(p), `${p} is not in the rule`);
+    }
+    assert.ok(DECLARED_WHY.includes('THE RESIDUAL'), 'the residual is not written down beside the rule');
+  });
+
+  test('🔴 RED CONTROL: never counts /auth/v1/token — the refresh grant\'s path (lead ruling on PR #1147, item 1)', () => {
+    // The Free plan cannot read the query, so counting /token counts the refresh
+    // grant; gotrue-dart signs a native user out on a refresh 429, and behind
+    // carrier-grade NAT one address is many users. The reason sits beside the
+    // expression (`_expression_why`) and in _why.
+    const counted = pathMatcher(rule.expression);
+    for (const p of ['/auth/v1/token', '/auth/v1/token/', '/auth/v1/tokens']) {
+      assert.ok(!counted(p), `${p} is in the rule: a refresh-grant 429 signs native users out`);
+    }
+    assert.ok(!rule.expression.includes('/auth/v1/token'), 'the refresh-grant path appears in the expression');
+    assert.doesNotMatch(rule.expression, /starts_with\(http\.request\.uri\.path, "\/auth\/v1\/t/);
+    assert.match(String(rule._expression_why ?? ''), /carrier-grade NAT/, 'the reason is not written beside the expression');
+  });
+
+  test('🔴 never counts the rest of /auth/v1 — the reads a signed-in app makes all day, and the JWKS every verifier fetches', () => {
+    const counted = pathMatcher(rule.expression);
+    for (const p of [
+      '/auth/v1/user',
+      '/auth/v1/logout',
+      '/auth/v1/settings',
+      '/auth/v1/health',
+      '/auth/v1/.well-known/jwks.json',
+      '/auth/v1/authorize',
+      '/auth/v1/callback',
+      '/auth/v1/admin/users',
+      '/auth/v1/factors',
+    ]) {
+      assert.ok(!counted(p), `${p} is in the rule`);
+    }
+    assert.doesNotMatch(rule.expression, /starts_with\(http\.request\.uri\.path, "\/auth\/v1\/?"\)/);
   });
 });
 

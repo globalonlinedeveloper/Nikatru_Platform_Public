@@ -618,6 +618,14 @@
       "disposition": "by-design",
       "host": "api.cloudflare.com",
       "reason": "worker-secrets.mjs:190 (cf()'s PUT body; :153 when CodeQL flagged it). The vault value is the body of PUT /accounts/<id>/workers/scripts/<w>/secrets on api.cloudflare.com, which sets a Worker secret: the purpose of the tool. apiBase() admits no other host but a 127.0.0.1 test double, and no value is ever printed. Added 2026-10-02."
+    },
+    {
+      "alert": 560,
+      "rule": "js/file-access-to-http",
+      "path": "tooling/ops/check-wildcard-dns.mjs",
+      "disposition": "by-design",
+      "host": "api.cloudflare.com",
+      "reason": "tooling/ops/check-edge-zone.mjs (#1147) passes the declared `zone` from tooling/edge/zone.json to readZoneRecords/zoneId, which GET it from the literal CF_API origin (https://api.cloudflare.com/client/v4) with the read token: comparing the declared zone with the live one is the script's purpose. The file cannot choose the host, and validateDeclaration refuses any `zone` that is not a bare lowercase DNS name (ZONE_NAME) before a request is built; the value is URL-encoded into the query. Added 2026-10-02."
     }
   ]
 }

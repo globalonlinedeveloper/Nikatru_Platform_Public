@@ -2,7 +2,7 @@
   // ───────────────────────────────────────────────────────────────────────────
   // Cloudflare Worker — edge-shield. Wrangler v4 / jsonc. LEAD RULINGS SHIELD-R1,
   // R2 and R3 (2026-09-26), row O-BOXES-UNSHIELDED-FROM-SPIKES. A pass-through in
-  // front of Box C's auth and Box B's crash intake that counts four request
+  // front of Box C's auth and Box B's crash intake that counts six request
   // classes against one GLOBAL cap each and answers 429 over a cap, or 503 for
   // the refresh grant (SHIELD-R2); src/index.ts says what it does and does not do.
   //
@@ -31,11 +31,13 @@
     { "pattern": "auth-api.nikatru.com/auth/v1/*", "zone_name": "nikatru.com" },
     { "pattern": "glitchtip.nikatru.com/api/*", "zone_name": "nikatru.com" }
   ],
-  // why: namespace_ids 1102/1104/1106/1108 are this Worker's own. A namespace_id
-  // is account-wide, and services/platform holds 1001-1012
+  // why: namespace_ids 1104/1106/1108/1110/1112/1114 are this Worker's own. A
+  // namespace_id is account-wide, and services/platform holds 1001-1026
   // (test/wrangler-config.test.ts refuses a collision). The odd ids 1101-1107
   // were the per-client limiters LEAD RULING SHIELD-R3 removed before any
-  // deploy; they stay unused rather than renumbered.
+  // deploy, and 1102 was the single AUTH_CREDENTIAL_GLOBAL_LIMITER until it was
+  // split into the three credential classes below (⏱ 2026-10-01); all of them
+  // stay unused rather than renumbered.
   //
   // ONE limiter per class, keyed `global:<class>`, and NO per-client one: this
   // Worker never reads the client's address (SHIELD-R3, the ADR no.011 / ADR
@@ -58,13 +60,42 @@
   // users) and wrong at scale: measure the boxes and re-anchor every cap BEFORE
   // scale, not "later" (rv-c21 SHIELD-F8).
   "ratelimits": [
+    // 🔴 THREE CREDENTIAL CAPS, ONE PER CLASS (⏱ 2026-10-01 · SYN-A2 / PB-01, row
+    // O-ONE-CLIENT-CAN-EXHAUST-THE-CREDENTIAL-CAP). They were ONE 300/min
+    // AUTH_CREDENTIAL bucket, which one client's junk password posts could fill
+    // for every sign-up, recovery and MFA step in its colo (src/classify.ts).
+    // Each stays at 300, not a third of it: a global cap is lockable by about
+    // cap ÷ the zone rule's per-IP rate (5 per 10 s = 30/min), so 300 takes ~10
+    // addresses per colo and a 100 share would take 3-4. The config test
+    // (test/wrangler-config.test.ts) holds every credential cap at >= 10 × that
+    // per-IP rate.
+    // ⚠️ SO THE BCRYPT WORST CASE DOUBLES: a password grant and a sign-up are a
+    // bcrypt each, and the corpus's ESTIMATE is ~57 checks/s at half of Box C's
+    // 8 vCPU (70 ms bcrypt, assumed). One shared 300 kept ten colos at the cap
+    // under it; two caps of 300 keep FIVE colos at both caps under it.
     {
-      // why: 300/min (5/s) per colo. Each of these is a bcrypt check or a
-      // mail/sign-up; the corpus's ESTIMATE is ~57 password checks/s at half of
-      // Box C's 8 vCPU (70 ms bcrypt, assumed), so ten colos at the cap stay
-      // under it. Measured demand is ~0: 6 users, pre-launch.
-      "name": "AUTH_CREDENTIAL_GLOBAL_LIMITER",
-      "namespace_id": "1102",
+      // why: 300/min (5/s) per colo, auth-password: every /token grant but
+      // refresh_token (password, pkce, id_token, none) — a password grant is a
+      // bcrypt check. Measured demand is ~0: 6 users, pre-launch.
+      "name": "AUTH_PASSWORD_GLOBAL_LIMITER",
+      "namespace_id": "1110",
+      "simple": { "limit": 300, "period": 60 }
+    },
+    {
+      // why: 300/min (5/s) per colo, auth-signup-recover: a sign-up is a bcrypt
+      // hash and a row; otp, recover, resend and magiclink a mail each (GoTrue's
+      // own mail cap bounds those further); verify a token lookup. Measured
+      // demand is ~0.
+      "name": "AUTH_SIGNUP_RECOVER_GLOBAL_LIMITER",
+      "namespace_id": "1112",
+      "simple": { "limit": 300, "period": 60 }
+    },
+    {
+      // why: 300/min (5/s) per colo, auth-factor: an MFA verify (a TOTP check),
+      // an MFA challenge or a reauthenticate (a code or nonce sent). No bcrypt.
+      // Demand is 0: no app in this repo calls GoTrue's MFA or reauthenticate.
+      "name": "AUTH_FACTOR_GLOBAL_LIMITER",
+      "namespace_id": "1114",
       "simple": { "limit": 300, "period": 60 }
     },
     {
@@ -72,7 +103,9 @@
       // 200 refreshes/s (an ESTIMATE) — each refresh rotates a token row in the
       // 2-CPU database. 🔴 BELOW the ~28/s 1M-MAU planning peak (above). Refused
       // 503, not 429 (src/classify.ts says why), and gotrue-dart re-asks a 503
-      // up to 6 times per 10 s tick, so a tripped cap sees up to x6 retry load.
+      // up to 6 times in all, at 0, 0.4, 1.2, 2.8, 6.0 and 12.4 s (package:retry
+      // 3.1.2, 200 ms × 2^n, read 2026-10-01), so a tripped cap sees up to x6
+      // retry load.
       "name": "AUTH_REFRESH_GLOBAL_LIMITER",
       "namespace_id": "1104",
       "simple": { "limit": 1200, "period": 60 }

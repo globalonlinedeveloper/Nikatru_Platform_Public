@@ -135,7 +135,7 @@
     "message": "Пакетно"
   },
   "popupUpgrade": {
-    "message": "Upgrade to FullShot Pro"
+    "message": "Перейти на FullShot Pro"
   },
   "popupLinkOptions": {
     "message": "Налаштування"
@@ -441,10 +441,10 @@
     "message": "Одразу переходити до позначок (лише для знімків з однієї частини)."
   },
   "optionsSingleKeyShortcuts": {
-    "message": "Single-key shortcuts in the editor"
+    "message": "Гарячі клавіші в одне натискання в редакторі"
   },
   "optionsSingleKeyShortcutsDesc": {
-    "message": "Letter keys pick a tool, + and - zoom, ? lists the keys. When off, they work only while the image has focus."
+    "message": "Клавіші з літерами вибирають інструмент, + і - змінюють масштаб, ? показує список клавіш. Коли вимкнено, вони працюють лише тоді, коли зображення у фокусі."
   },
   "optionsTheme": {
     "message": "Тема"
@@ -1301,7 +1301,7 @@
     "message": "Вписати"
   },
   "editorZoomLevelName": {
-    "message": "$PERCENT$ zoom",
+    "message": "Масштаб $PERCENT$",
     "placeholders": {
       "percent": {
         "content": "$1",
@@ -1310,28 +1310,28 @@
     }
   },
   "editorColorRed": {
-    "message": "Red"
+    "message": "Червоний"
   },
   "editorColorAmber": {
-    "message": "Amber"
+    "message": "Бурштиновий"
   },
   "editorColorGreen": {
-    "message": "Green"
+    "message": "Зелений"
   },
   "editorColorBlue": {
-    "message": "Blue"
+    "message": "Синій"
   },
   "editorColorViolet": {
-    "message": "Violet"
+    "message": "Фіолетовий"
   },
   "editorColorPink": {
-    "message": "Pink"
+    "message": "Рожевий"
   },
   "editorColorBlack": {
-    "message": "Black"
+    "message": "Чорний"
   },
   "editorColorWhite": {
-    "message": "White"
+    "message": "Білий"
   },
   "editorZoomTipToHundred": {
     "message": "Вписано у вікно — клацніть для 100%"
@@ -2236,7 +2236,7 @@
     }
   },
   "regionHintEnter": {
-    "message": "$ENTER$ captures the whole visible area",
+    "message": "$ENTER$ знімає всю видиму область",
     "placeholders": {
       "enter": {
         "content": "Enter"
@@ -2259,10 +2259,10 @@
     "message": "Chrome Web Store забороняє розширенням читати свої сторінки, тому цю сторінку зняти не вдасться."
   },
   "errRestrictedEdgeAddons": {
-    "message": "Microsoft Edge Add-ons blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Сайт додатків Microsoft Edge забороняє розширенням читати свої сторінки, тому цю сторінку зняти не вдасться."
   },
   "errRestrictedAmo": {
-    "message": "Firefox Add-ons (addons.mozilla.org) blocks extensions from reading its pages, so this one cannot be captured."
+    "message": "Сайт додатків Firefox (addons.mozilla.org) забороняє розширенням читати свої сторінки, тому цю сторінку зняти не вдасться."
   },
   "errRestrictedGeneric": {
     "message": "Ця сторінка захищена браузером і не може бути знята."
