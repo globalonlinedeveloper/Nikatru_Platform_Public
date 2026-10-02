@@ -530,11 +530,6 @@ class _AddSheetState extends ConsumerState<SubscriptionFormSheet> {
       priceAfterTrialSupported:
           was?.priceAfterTrialSupported ?? _afterTrialSupported,
       tags: _typedTags,
-      // Train T11 (IN-08). This sheet does not ask "Still using?", so an edit
-      // CARRIES the answer: `toJson` always sends it, and a draft built
-      // without it would send a clear.
-      stillUsing: was?.stillUsing,
-      stillUsingAt: was?.stillUsingAt,
     );
   }
 

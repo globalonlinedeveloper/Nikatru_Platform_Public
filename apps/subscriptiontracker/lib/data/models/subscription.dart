@@ -745,6 +745,11 @@ class Subscription {
       if (k == 'id') continue;
       // The server stamps `still_using_at`; a PATCH never carries it.
       if (k == 'still_using_at') continue;
+      // An edit never CLEARS a "Still using?" answer. A draft that does not
+      // know it (the add sheet, an import row) holds null, and sending that
+      // would wipe what another device answered. An answer is written by
+      // `StillUsingController.answer` as its own PATCH.
+      if (k == 'still_using' && b[k] == null) continue;
       if (!_sameWireValue(a[k], b[k])) out[k] = b[k];
     }
     for (final List<String> group in _togetherKeys) {
