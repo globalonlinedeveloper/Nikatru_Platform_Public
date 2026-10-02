@@ -1,0 +1,60 @@
+{
+  "box": "boxb",
+  "_why": [
+    "BOX B — the operations box. What it runs, declared as DATA and read back by tooling/ops/check-box-declared.mjs (READ-ONLY over SSH: exit 1 on drift, 2 when it could not look). Until this file, what the box runs was spread across Private runbooks, tooling/ops/register.json, tooling/monitor-register.json, tooling/ops/alarm-chains.json and the box itself (row O-BOXES-NOT-DECLARED-AS-DATA).",
+    "Every value here is either a name, a schedule, a version, or a CITATION of the register that owns the fact (monitors by id, crons by register row, backup sets by tooling/boxes/backups.json id, cost by Private vendor id). No address is ever written here: the box is reached through the environment names under `ssh`, which the operator fills from the vault.",
+    "Sources read for the first draft (2026-10-01): tooling/monitor-register.json `_notInThisRegister` (the hostnames and versions), tooling/ops/register.json (the crons, their schedules and the timezone), tooling/ops/alarm-chains.json `expectedMonitors` (the heartbeat ids). A field the public tree does not state is null, and the read-back reports it as UNREAD (LOST) until the first read fills it — never a guess presented as a measurement."
+  ],
+  "roles": ["ops"],
+  "provider": { "vendor": "hostinger", "plan": "KVM 8", "product": "VPS" },
+  "cost": { "source": "Private/platform-state/identity.json", "vendorId": "hostinger", "why": "Cited by vendor id, never copied: CI cannot read Private, so box-move grades the cost delta LOST there." },
+  "spec": { "cpu": 8, "ramGiB": 32, "diskGiB": 400, "asOf": "2026-10-01", "verify": "check-box-declared.mjs reads nproc, free -b and df -B1 / and compares (RAM and disk within 15% below the plan's figure)" },
+  "ssh": { "hostEnv": "BOXB_SSH_HOST", "userEnv": "BOXB_SSH_USER", "keyEnv": "BOXB_SSH_KEY", "portEnv": "BOXB_SSH_PORT", "sudoEnv": "BOXB_SSH_SUDO" },
+  "cronTz": { "value": "Etc/UTC", "measuredOn": "2026-09-03", "by": "timedatectl", "cite": "tooling/ops/register.json#duty.cloudflare-backup-pull" },
+  "services": [
+    { "id": "glitchtip", "image": "glitchtip/glitchtip", "version": "6.2.6", "compose": { "project": "glitchtip", "service": null }, "containers": 2, "hostnames": ["glitchtip.nikatru.com"], "secrets": ["SECRET_KEY", "DATABASE_URL", "EMAIL_URL"], "use": null },
+    { "id": "glitchtip-postgres", "image": "postgres", "version": null, "compose": { "project": "glitchtip", "service": null }, "containers": 1, "hostnames": [], "secrets": ["POSTGRES_PASSWORD"], "use": null },
+    { "id": "glitchtip-cache", "image": "valkey/valkey", "version": null, "compose": { "project": "glitchtip", "service": null }, "containers": 1, "hostnames": [], "secrets": [], "use": null },
+    { "id": "vaultwarden", "image": "vaultwarden/server", "version": "1.37.2", "compose": { "project": null, "service": null }, "containers": 1, "hostnames": ["vault.nikatru.com"], "secrets": ["ADMIN_TOKEN"], "use": null },
+    { "id": "ntfy", "image": "binwiederhier/ntfy", "version": "2.28.0", "compose": { "project": null, "service": null }, "containers": 1, "hostnames": ["ntfy.nikatru.com"], "secrets": [], "use": null },
+    { "id": "beszel-hub", "image": "henrygd/beszel", "version": "0.19.0", "compose": { "project": null, "service": null }, "containers": 1, "hostnames": ["beszel.nikatru.com"], "secrets": [], "use": null },
+    { "id": "dozzle", "image": "amir20/dozzle", "version": "10.9.2", "compose": { "project": null, "service": null }, "containers": 1, "hostnames": ["logs.nikatru.com"], "secrets": [], "use": null },
+    { "id": "diun", "image": "crazymax/diun", "version": "4.33.0", "compose": { "project": "diun", "service": null }, "containers": 1, "hostnames": [], "secrets": [], "use": null }
+  ],
+  "units": ["docker", "containerd", "cron", "ssh", "beszel-agent"],
+  "volumes": [
+    { "name": "/opt/glitchtip", "kind": "bind", "holds": "the GlitchTip compose project and its nightly dumps (backups/)", "backupSets": ["glitchtip-pg", "boxb-restic"] },
+    { "name": "/opt/backup", "kind": "bind", "holds": "the restic run, its set list (restic-sets.txt) and the third-copy scripts", "backupSets": ["boxb-restic"] },
+    { "name": "/opt/diun", "kind": "bind", "holds": "Diun's configuration and its run log", "backupSets": ["boxb-restic"] },
+    { "name": "/srv/restic", "kind": "bind", "holds": "the LOCAL restic repository (one of three)", "backupSets": ["restic-third-copy"] }
+  ],
+  "backupSets": ["boxb-restic", "glitchtip-pg", "d1-kv-export", "restic-third-copy", "supabase-auth-pg"],
+  "hostnames": [
+    { "name": "glitchtip.nikatru.com", "record": "tunnel-cname", "via": "the Box B Cloudflare tunnel" },
+    { "name": "vault.nikatru.com", "record": "tunnel-cname", "via": "the Box B Cloudflare tunnel" },
+    { "name": "ntfy.nikatru.com", "record": "tunnel-cname", "via": "the Box B Cloudflare tunnel" },
+    { "name": "beszel.nikatru.com", "record": "tunnel-cname", "via": "the Box B Cloudflare tunnel" },
+    { "name": "logs.nikatru.com", "record": "tunnel-cname", "via": "the Box B Cloudflare tunnel" }
+  ],
+  "tunnel": { "secret": "TUNNEL_TOKEN", "why": "Every hostname is a CNAME to one Cloudflare tunnel, no public port opened (tooling/monitor-register.json `_notInThisRegister`): the records do not change in a move; the connector runs on the target with this secret." },
+  "monitors": [1, 31, 32, 39, 16, 22, 23, 38, 41],
+  "crons": [
+    { "name": "glitchtip-pg-dump", "schedule": "0 2 * * *", "script": "/opt/glitchtip/backup.sh", "register": "duty.oci.glitchtip-pg-dump" },
+    { "name": "glitchtip-drive-sync", "schedule": "30 2 * * *", "script": "/opt/glitchtip/gt_drive_sync.sh", "register": "duty.oci.gt-drive-sync" },
+    { "name": "glitchtip-backup-liveness", "schedule": "41 * * * *", "script": "/opt/glitchtip/backup-liveness.py", "register": "duty.oci.backup-liveness" },
+    { "name": "boxb-disk-alert", "schedule": "17 * * * *", "script": "/opt/glitchtip/disk-alert.py", "register": "duty.oci.disk-alert" },
+    { "name": "cloudflare-backup-pull", "schedule": "45 2 * * *", "script": "/opt/glitchtip/cf_backup_pull.sh", "register": "duty.cloudflare-backup-pull" },
+    { "name": "restic-snapshot", "schedule": "0 4 * * *", "script": "/opt/backup/restic-run.sh", "register": "duty.restic-snapshot" },
+    { "name": "restic-liveness", "schedule": null, "script": "/opt/backup/restic-liveness.sh", "register": "duty.restic-snapshot" },
+    { "name": "restic-third-copy", "schedule": "0 5 * * *", "script": "/opt/backup/06-oci-third-copy.sh", "register": "duty.restic-third-copy" },
+    { "name": "restic-third-copy-liveness", "schedule": null, "script": "/opt/backup/07-oci-third-copy-liveness.sh", "register": "duty.restic-third-copy" },
+    { "name": "diun-liveness", "schedule": "23 * * * *", "script": "/opt/diun/diun-liveness.sh", "register": "duty.boxb.diun" }
+  ],
+  "allowLists": [
+    { "id": "apisetu-key-ip-whitelist", "where": "the API Setu partner console: the IP whitelist on the platform's API key", "owner": "owner", "row": "O-APISETU-KEY-IP-WHITELIST", "verify": "read the key's whitelist in the API Setu console and compare it to the declared address", "confirmedOn": null },
+    { "id": "boxc-admits-boxb", "where": "Box C's firewall and sshd: the second-copy sync and the Beszel agent are reached from this box's address", "owner": "operator", "row": null, "verify": "on Box C, read the firewall rules (ufw status / nft list ruleset) for the declared address", "confirmedOn": null }
+  ],
+  "_toConfirm": [
+    "Read back on the first run and fill, never guess: the compose project names of vaultwarden, ntfy, beszel-hub and dozzle; the image and version of GlitchTip's database and cache; the minutes of the two hourly liveness crons; every OS unit beyond the five named; every named docker volume. `node tooling/ops/check-box-declared.mjs boxb --print-observed` prints what was read, names only."
+  ]
+}

@@ -89,7 +89,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash, createSign } from 'node:crypto';
 import { readGradleApplicationId } from '../ci/read-identity.mjs';
 import { parseWorkflow } from '../ci/workflow-scan.mjs';
-import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT, githubToken } from './submit-common.mjs';
+import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT, githubToken, storeSubmitter, invokedAsScript } from './submit-common.mjs';
 
 const CHANNEL_ID = 'android-play';
 const REGISTER = 'tooling/channel-register.json';
@@ -196,6 +196,41 @@ const POSTURE_ENV = 'ANDROID_SIGNING_POSTURE';
 const RELEASE_SIGNED = 'release-signed';
 const SIGNATURE_GUARD = 'assert-artifact-signed.mjs';
 
+// ── the ChannelSubmitter (submit-common.mjs · tooling/ports/channels.json) ────
+/** Google Play behind the one store contract. `plan` is the edit lifecycle
+ *  `--submit` runs below, as steps and in its order, each against the endpoint
+ *  PRIMARY_SOURCES cites; `upload` IS that `--submit`, PG-1…PG-6 and all. */
+export const playSubmitter = storeSubmitter({
+  channel: CHANNEL_ID,
+  script: 'tooling/release/submit-play.mjs',
+  steps: (artifact) => {
+    const edits = `${PLAY_API_ORIGIN}/androidpublisher/v3/applications/{packageName}/edits`;
+    return [
+      { does: `PG-5: read the "${PUBLISH_ENVIRONMENT}" environment back and require its reviewer`, surface: 'api', call: `GET https://api.github.com/repos/{owner}/{repo}/environments/${PUBLISH_ENVIRONMENT}`, writes: false },
+      { does: 'mint a bearer token for the service account', surface: 'api', call: `POST ${GOOGLE_TOKEN_URL}`, writes: false },
+      { does: 'open an edit (edits.insert)', surface: 'api', call: `POST ${edits}`, writes: true },
+      { does: 'list the tracks and resolve the testing track (edits.tracks.list)', surface: 'api', call: `GET ${edits}/{editId}/tracks`, writes: false },
+      { does: `upload ${artifact?.path ?? 'the .aab'} (edits.bundles.upload)`, surface: 'api', call: `POST ${PLAY_API_ORIGIN}/upload/androidpublisher/v3/applications/{packageName}/edits/{editId}/bundles?uploadType=resumable`, writes: true },
+      { does: 'assign the uploaded version code to the track (edits.tracks.update)', surface: 'api', call: `PUT ${edits}/{editId}/tracks/{track}`, writes: true },
+      { does: 'validate the edit (edits.validate)', surface: 'api', call: `POST ${edits}/{editId}:validate`, writes: false },
+      { does: 'commit the edit (edits.commit)', surface: 'api', call: `POST ${edits}/{editId}:commit?changesInReviewBehavior=${CHANGES_IN_REVIEW_BEHAVIOR}`, writes: true },
+    ];
+  },
+  uploadArgv: (artifact, opts) => ['--submit', '--app', artifact.app, '--confirm', opts.confirm],
+});
+
+// ── the CLI, which runs only when this file is the entry point ────────────────
+// ⏱ 2026-10-01 (port-channels): the export above made this file a module that
+// tooling/release/test/submitters.contract.test.mjs imports, and a script whose
+// body runs on import cannot be imported — it would read the test's argv and
+// exit. So the body is `cli()`, called below only when node was pointed at this
+// file. The body is the CLI exactly as it was, and it is DELIBERATELY LEFT AT
+// COLUMN 0: re-indenting it would rewrite every line other lanes patch here, and
+// every patch to it would stop applying. Its behaviour, flags and exit codes are
+// unchanged; the dry runs in ci.yml `app-dryrun` walk it as before.
+if (invokedAsScript(import.meta.url)) await cli();
+
+async function cli() {
 // ── arguments, and the two stops (submit-common.mjs: COVERAGE LOST exits 2) ──
 const { flag, opt, root: ROOT, ok, step, abs, read, coverageLost, die, appOf } = submitCli('submit-play');
 
@@ -1557,4 +1592,5 @@ if (!SUBMIT) {
   );
   console.log('   ⬜ Promoting this to production is [ADR 031] class A — owner-only, per instance, in the Console.');
   process.exitCode = 0;
+}
 }
