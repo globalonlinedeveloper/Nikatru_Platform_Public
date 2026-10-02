@@ -42,6 +42,10 @@ function fakeDb() {
   return { db, bound, statements };
 }
 
+/** The cron_heartbeat INSERT tuples (job, target, ok, detail, ran_at) among every
+ *  bound tuple — a read binds (job, target) and is not a recorded row. */
+const insertsOf = (bound: unknown[][]) => bound.filter((args) => args.length === 5);
+
 function env(overrides: Partial<Env> = {}): Env {
   const { db } = fakeDb();
   return {
@@ -426,9 +430,13 @@ describe('boxbReachability — an outage is a ROW, not a gap', () => {
     const { db, bound } = fakeDb();
     const e = env({ BOXB_REACH_URLS: 'https://glitchtip.test/', PLATFORM_DB: db } as unknown as Partial<Env>);
     vi.stubGlobal('fetch', vi.fn(async () => new Response('error code: 1033', { status: 530 })));
+    vi.spyOn(console, 'log').mockImplementation(() => {});
     await boxbReachability(e);
-    expect(bound).toHaveLength(1);
-    const [job, , ok, detail] = bound[0];
+    // ⏱ 2026-10-01 · an ok=0 row first READS its previous row (the owner page's
+    // two-in-a-row rule, lib/owner-page.ts), so the INSERT is the 5-value tuple.
+    const inserts = insertsOf(bound);
+    expect(inserts).toHaveLength(1);
+    const [job, , ok, detail] = inserts[0];
     expect(job).toBe(BOXB_REACH_JOB);
     expect(ok).toBe(0);
     expect(String(detail)).toContain('530');
@@ -438,9 +446,11 @@ describe('boxbReachability — an outage is a ROW, not a gap', () => {
     const { db, bound } = fakeDb();
     const e = env({ BOXB_REACH_URLS: 'https://dead.test/', PLATFORM_DB: db } as unknown as Partial<Env>);
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('connect ETIMEDOUT'); }));
+    vi.spyOn(console, 'log').mockImplementation(() => {});
     await boxbReachability(e);
-    expect(bound[0][2]).toBe(0);
-    expect(String(bound[0][3])).toContain('no answer');
+    const inserts = insertsOf(bound);
+    expect(inserts[0][2]).toBe(0);
+    expect(String(inserts[0][3])).toContain('no answer');
   });
 
   it('one dead host does not stop the others being recorded', async () => {
@@ -452,10 +462,12 @@ describe('boxbReachability — an outage is a ROW, not a gap', () => {
       if (n === 1) throw new Error('down');
       return new Response('', { status: 200 });
     }));
+    vi.spyOn(console, 'log').mockImplementation(() => {});
     await boxbReachability(e);
-    expect(bound).toHaveLength(2);
-    expect(bound[0][2]).toBe(0);
-    expect(bound[1][2]).toBe(1);
+    const inserts = insertsOf(bound);
+    expect(inserts).toHaveLength(2);
+    expect(inserts[0][2]).toBe(0);
+    expect(inserts[1][2]).toBe(1);
   });
 });
 

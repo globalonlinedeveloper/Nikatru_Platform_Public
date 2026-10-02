@@ -310,12 +310,17 @@ void main() {
     final Subscription netflix = DemoData.subscriptions().firstWhere(
       (Subscription s) => s.id == kNetflixId,
     );
-    final DateTime today = DateTime.now();
+    final DateTime today = wallClock();
     final DateTime renewal = netflix.nextCharge(today);
+    // ⚠️ TWO CLOCKS, stated rather than hidden: the next charge is rolled off
+    // `nowProvider` (the seam a time-travel run moves), but the seed client's
+    // getPaymentHistory reads `DateTime.now()` directly, so the history row is
+    // expected off the real clock. Identical on every unshifted run.
+    final DateTime realToday = DateTime.now();
     final DateTime firstPayment = RecurrenceSchedule.rollForward(
       netflix.firstChargeOn!,
       netflix.cycle!,
-      DateTime(today.year, today.month, today.day),
+      DateTime(realToday.year, realToday.month, realToday.day),
     ).crossings.last;
 
     for (final String code in <String>['en', 'ta']) {
@@ -384,7 +389,7 @@ void main() {
       final AppLocalizations en = await AppLocalizations.delegate.load(
         const Locale('en'),
       );
-      final DateTime now = DateTime.now();
+      final DateTime now = wallClock();
       final Subscription netflix = DemoData.subscriptions().firstWhere(
         (Subscription s) => s.id == kNetflixId,
       );

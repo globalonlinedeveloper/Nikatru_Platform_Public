@@ -34,6 +34,7 @@ import { APPS_CATALOG } from '../../kit/product-steps/tree.mjs';
 import { main as stampServiceMain } from '../../kit/stamp-service.mjs';
 import { run as runStampShared } from '../../kit/stamp-shared.mjs';
 import { BUNDLES_REGISTER, isStampedExclusion } from '../../catalog/read.mjs';
+import { TEST_NOW_VAR } from '../../scripts/test-clock.mjs';
 
 const APP = 'subscriptiontracker';
 let TMP;
@@ -508,8 +509,16 @@ describe('step 9 · price row', () => {
 
   test('every served offering priced → DONE; render-rail-prices.mjs --check is green', () => {
     assert.equal(stepOf('price row').state, 'DONE');
-    const g = guard('tooling/catalog/render-rail-prices.mjs', FX, '--check');
-    assert.equal(g.status, 0, g.out);
+    // ON THE REAL CLOCK, deliberately: --check grades the LIVE fee register's
+    // asOf dates against today (a fee cell is re-read within 90 days), so on a
+    // time-travel run it would grade a future nobody has re-read yet. The date
+    // that register next goes stale is an ops obligation, not a test fuse.
+    const r = spawnSync(process.execPath, [repoFile('tooling/catalog/render-rail-prices.mjs'), FX, '--check'], {
+      cwd: FX,
+      encoding: 'utf8',
+      env: { ...process.env, [TEST_NOW_VAR]: '' },
+    });
+    assert.equal(r.status, 0, `${r.stdout ?? ''}${r.stderr ?? ''}`);
   });
 
   // rv2-newproduct-002. The absent row is served the defaults, so no guard of this

@@ -70,6 +70,18 @@
 //     for the probe (2026-10-02): a request the worker fetches is not the page's
 //     to pause.
 //
+// ── IT PROVES THE INSTALLED-VERSION READ (2026-10-01) ────────────────────────
+// The force-update floor fails OPEN when the app cannot read its own version
+// (`packageVersionProvider` resolves null), and on web that read is
+// package_info_plus fetching the bundle's `version.json`. Nothing asserted it
+// resolved, so a bundle whose read came back null would never enforce the floor
+// and every lane was green (row O-FORCE-UPDATE-VERSION-READ-UNPROVEN). The app
+// now publishes the read on `globalThis.__nikatruPackageVersion` (core
+// `publishVersionRead`, JS null for a failed read), and once the ready signal is
+// observed the smoke requires it to be a string EQUAL to `--build-name`: null,
+// never published, or another version is a finding. With no `--build-name` the
+// limb has nothing to compare against, which is COVERAGE LOST.
+//
 // ── AND THEN IT OPENS WITH THE NETWORK OFF (2026-10-01) ───────────────────────
 // [ADR 023] as amended 2026-09-30, rule 5: the offline shell's proof is a red
 // control. Row O-WEB-OFFLINE-COLD-LOAD-IS-BROWSER-ERROR: the app was the one
@@ -94,10 +106,12 @@
 //     bundle and the app's first frame; #1075's read-through cache is what fills
 //     the list once it has.
 //
-// Usage:  node tooling/smoke/smoke-web-artifact.mjs <bundleDir> [--connect URL]... [--timeout-ms N] [--chrome PATH]
+// Usage:  node tooling/smoke/smoke-web-artifact.mjs <bundleDir> --build-name X.Y.Z [--connect URL]... [--timeout-ms N] [--chrome PATH]
 // Exit 0 = the artifact started under its own policy and reached the ready
-// signal, every --connect origin was allowed, and it started again offline. Exit 1 = a finding. Exit 2 =
-// COVERAGE LOST: the bundle carries no policy for the smoke to boot under.
+// signal, read its own version as --build-name, every --connect origin was
+// allowed, and it started again offline. Exit 1 = a finding. Exit 2 = COVERAGE
+// LOST: the bundle carries no policy for the smoke to boot under, or no
+// --build-name was given.
 // ─────────────────────────────────────────────────────────────────────────────
 import { createServer } from 'node:http';
 import { readFileSync, existsSync, statSync, mkdtempSync, rmSync } from 'node:fs';
@@ -139,6 +153,33 @@ export const CSP_VIOLATION = {
 };
 
 /**
+ * THE VERSION-READ HALF. The global the app publishes its installed-version
+ * read on — `kVersionReadGlobal` in packages/core/lib/src/config/web_page.dart,
+ * held equal by tooling/ci/test/smoke-web-artifact.test.mjs. `undefined` means
+ * the read never ran; JS null means it ran and failed (the floor fails open).
+ */
+export const VERSION_READ = {
+  global: '__nikatruPackageVersion',
+  expression: "JSON.stringify({ published: typeof window.__nikatruPackageVersion !== 'undefined', value: window.__nikatruPackageVersion === undefined ? null : window.__nikatruPackageVersion })",
+  /** How long after the first frame the read may take to land. */
+  waitMs: 15000,
+};
+
+/** The verdict on one observed read: null when it is `expected`, else why not. Pure, for its test. */
+export function versionReadProblem(observed, expected) {
+  if (!observed || observed.published !== true) {
+    return 'the app never published its installed-version read, so whether the force-update floor can be enforced is unknown';
+  }
+  if (observed.value === null || observed.value === undefined) {
+    return 'the installed-version read resolved NULL: the force-update floor fails open on this bundle, so no floor would ever wall it';
+  }
+  if (typeof observed.value !== 'string' || observed.value !== expected) {
+    return `the installed-version read is ${JSON.stringify(observed.value)}, not the --build-name ${JSON.stringify(expected)} this bundle was built with`;
+  }
+  return null;
+}
+
+/**
  * THE OFFLINE LEG's two signals. Exported so a test can hold the bundle's own
  * web/sw-register.js to the name this harness polls.
  */
@@ -165,6 +206,7 @@ const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[
 const BUNDLE = positional[0] ? resolve(positional[0]) : null;
 const TIMEOUT_MS = Number(flag('timeout-ms', '90000'));
 const CONNECT = flagAll('connect');
+const BUILD_NAME = flag('build-name', null);
 
 /** Entry points whose absence means the bundle cannot start at all. Checked
  *  before a browser is launched so the failure names the cause instead of
@@ -485,6 +527,11 @@ function main() {
     );
     process.exit(1);
   }
+  if (typeof BUILD_NAME !== 'string' || BUILD_NAME.trim() === '' || BUILD_NAME.startsWith('--')) {
+    coverageLost('no --build-name was given, so the installed-version read has nothing to be compared with.', [
+      'Pass the value the build was given as `flutter build web --build-name` (flutter-release-build.mjs: <release line>.<run number>).',
+    ]);
+  }
   return run(rules, [...new Set(origins)], csp);
 }
 
@@ -694,6 +741,25 @@ async function run(rules, origins, csp) {
     );
   }
 
+  // ── THE VERSION READ, after the boot's verdicts and before the probe. The
+  // read is async (package_info_plus fetches version.json), so it is polled
+  // until published or VERSION_READ.waitMs passes.
+  let observed = null;
+  const readStarted = Date.now();
+  while (Date.now() - readStarted < VERSION_READ.waitMs) {
+    const r = await send('Runtime.evaluate', { expression: VERSION_READ.expression, returnByValue: true }, session);
+    try { observed = JSON.parse(r.result?.result?.value ?? 'null'); } catch { observed = null; }
+    if (observed?.published === true) break;
+    await new Promise((done) => setTimeout(done, 250));
+  }
+  const readProblem = versionReadProblem(observed, BUILD_NAME);
+  if (readProblem) {
+    die(readProblem, [
+      `read from \`globalThis.${VERSION_READ.global}\`, which the app sets from packageVersionProvider (core publishVersionRead).`,
+      'A null read makes mustForceUpdateProvider answer false for every floor: the kill-switch is off and nothing says so.',
+    ]);
+  }
+
   // ── THE PROBE, after the boot's own verdicts so nothing it answers can move
   // them. Interception is switched on only now: the boot above reaches exactly
   // what it reached before this limb existed, and from here every request to a
@@ -831,6 +897,7 @@ async function run(rules, origins, csp) {
 
   console.log(`ok   ${READY_SIGNAL.id} reached in ${elapsed} ms — the artifact starts`);
   console.log(`ok   no 404 from the bundle, no unhandled page exception`);
+  console.log(`ok   the installed-version read resolved to ${JSON.stringify(BUILD_NAME)}, the --build-name — the force-update floor can wall this bundle`);
   console.log("ok   no Content-Security-Policy violation, under the bundle's own _headers");
   for (const o of origins) {
     console.log(`ok   connect-src allows ${o} — fetched from the page, paused and answered here with a 204; it never reached the host`);

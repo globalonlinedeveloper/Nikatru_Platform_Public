@@ -425,6 +425,7 @@ const byId = new Map(live.map((m) => [m.id, m]));
 const accountedFor = new Set();
 const problems = [];
 const gaps = [];
+const unrecordedThresholds = [];
 let matched = 0;
 
 for (const row of rows) {
@@ -488,6 +489,13 @@ for (const row of rows) {
       continue;
     }
   }
+  // ── the THRESHOLD limb — ⏱ 2026-10-01 (PB-23) — see gradeConfirmationThreshold ──
+  const threshold = gradeConfirmationThreshold(row.hostname, m, found);
+  if (threshold.problem) {
+    problems.push(threshold.problem);
+    continue;
+  }
+  if (threshold.unrecorded) unrecordedThresholds.push(threshold.unrecorded);
   matched++;
   const state = found.isUp === false ? 'DOWN' : 'up';
   console.log(`ok   ${row.hostname} — monitor ${m.id} "${found.name}" (${found.monitorType}, every ${found.interval}s) is ${state}`);
@@ -545,6 +553,11 @@ if (gaps.length) {
   console.log(`--   ${gaps.length} declared hostname(s) with NO monitor — the same gap the CI guard prints:`);
   for (const g of gaps) console.log(`       ${g}`);
 }
+if (unrecordedThresholds.length) {
+  console.log(`--   ${unrecordedThresholds.length} monitor(s) whose confirmationThreshold the register does not record — PRINTED with the live value:`);
+  for (const u of unrecordedThresholds) console.log(`       ${u}`);
+  console.log('     Record each as `confirmationThreshold` with `confirmationThresholdVerifiedOn` (the date it was read) on its row.');
+}
 
 console.log(
   `\nverify-monitors — ${matched} of ${rows.length} declared host(s) reconciled against ${live.length} live monitor(s); ` +
@@ -584,4 +597,35 @@ function pinnedGlitchtipBase() {
     console.error(`✗ COVERAGE LOST — ${e.message}. No monitor was read.`);
     process.exit(2);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · PB-23 — THE THRESHOLD LIMB. Down here so no line above moves
+// (tooling/monitor-register.json cites this file by line).
+//
+// A row that RECORDS `confirmationThreshold` is compared with the live monitor:
+// a different number is drift, exit 1. It is the one field a full-replace PUT
+// resets by OMISSION (2 -> 1, TRAPS ci-10), so a monitor could start paging on a
+// single blip — or stop after the owner raised it — with the register still
+// claiming the old value and nothing reading it. A row that records none is
+// PRINTED with the live value, never failed: a guard that reddens ops-watch until
+// someone measures is a guard that gets switched off, and the print is how the
+// numbers get recorded.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** PURE. `declared` is a register row's `monitor`, `live` the API's monitor.
+ *  Returns `{ problem }` (drift), `{ unrecorded }` (print) or `{}`. */
+export function gradeConfirmationThreshold(hostname, declared, live) {
+  const want = declared?.confirmationThreshold;
+  const have = live?.confirmationThreshold;
+  if (typeof want === 'number') {
+    if (have === want) return {};
+    return {
+      problem:
+        `${hostname} — monitor id ${declared.id} records confirmationThreshold ${want} (verified ` +
+        `${declared.confirmationThresholdVerifiedOn ?? 'on no date'}) and the live monitor carries ${JSON.stringify(have ?? null)}. ` +
+        'A threshold is how many misses page; one that moved without the register is a pager nobody configured.',
+    };
+  }
+  return { unrecorded: `${hostname} — monitor ${declared?.id} live confirmationThreshold ${JSON.stringify(have ?? null)}, unrecorded` };
 }

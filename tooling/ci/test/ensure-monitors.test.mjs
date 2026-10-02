@@ -32,6 +32,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { appendHostRow, expectedMonitors, replaceHostRow } from '../../ops/monitor-register.mjs';
+import { clockEnv } from '../../scripts/test-clock.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const OPS = join(REPO, 'tooling', 'ops');
@@ -75,7 +76,10 @@ const runScript = (file, args, env) =>
   new Promise((ok) => {
     const child = spawn(process.execPath, [file, ...args], {
       cwd: REPO,
-      env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, OPS_SECOND_LOOK_GAP_MS: '0', GLITCHTIP_ORG: 'nikatru', ...env },
+      // `...clockEnv()`: on a time-travel run the child reads the parent's moved
+      // clock, so E3's `verifiedOn` and the parent's TODAY are the same day
+      // (tooling/scripts/test-clock.mjs). Empty on every other run.
+      env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, OPS_SECOND_LOOK_GAP_MS: '0', GLITCHTIP_ORG: 'nikatru', ...clockEnv(), ...env },
     });
     let out = '';
     child.stdout.on('data', (d) => { out += d; });
@@ -419,7 +423,14 @@ describe('verify-alarm-chains.mjs — the canary reads the monitor register', ()
       return [404, {}];
     });
   }
-  const canary = (root, url) => runScript(join(root, 'tooling', 'ops', 'verify-alarm-chains.mjs'), [], { GLITCHTIP_TOKEN: 'fixture-token', GLITCHTIP_URL: url });
+  /** ⏱ 2026-10-02 · limb C ages every observation against "today" (PB-16), so these
+   *  cases grade the canary ON the day the real ledger's observed project was
+   *  watched, as ops-verifiers.test.mjs does (`asOf`). Unpinned, they read the live
+   *  ledger's age: red on every PR from 30 days after that date (the time-travel
+   *  run found it). The age limb has its own dated cases in ops-verifiers.test.mjs. */
+  const observedDay = () => Object.values(realLedger().chainsObserved).find((o) => o?.date && o?.evidence).date;
+  const canary = (root, url) =>
+    runScript(join(root, 'tooling', 'ops', 'verify-alarm-chains.mjs'), [], { GLITCHTIP_TOKEN: 'fixture-token', GLITCHTIP_URL: url, ALARM_CHAINS_TODAY: observedDay() });
 
   test('V1 GREEN CONTROL: every host id and every listed id live — exit 0', async () => {
     const g = await healthy();

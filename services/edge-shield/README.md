@@ -5,7 +5,8 @@ and **Box B** (GlitchTip, `glitchtip.nikatru.com/api/*`). LEAD RULINGS SHIELD-R1
 O-BOXES-UNSHIELDED-FROM-SPIKES.
 
 - Passes every request to the tunnel origin unchanged (`fetch(request)`), adding one response
-  header, `x-nikatru-shield: 1`.
+  header, `x-nikatru-shield: <RELEASE>` (the deployed commit SHA, or `1` without one), on a
+  refusal too.
 - Counts four classes (`src/classify.ts`) against ONE global cap each, per Cloudflare location,
   with Workers Rate Limiting bindings (`wrangler.jsonc`). Over a cap: 429 with `Retry-After` —
   except the refresh grant, refused **503**, because the auth SDK signs the user out on a

@@ -16,7 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { AppTarget, Env } from './types';
 import { recomputeRenewals } from './renewals';
-import { runBackup } from './backup';
+import { MAX_D1_QUERIES_PER_RUN, runBackup } from './backup';
 import { isMoneyEnvironment } from './lib/mor/contract';
 import { inboundFor } from './ports';
 import { unconcludedNotifications } from './lib/mor/store';
@@ -33,9 +33,16 @@ import {
   subjectsReadyForIdentity,
 } from './lib/erasure-ledger';
 import { deleteIdentity, erasePlatformRows, purgeVerifiedSignups } from './lib/platform-erasure';
-import { runReminderMail } from './lib/reminders';
+import { reminderMailStatementBudget, runReminderMail } from './lib/reminders';
 import { refreshFxRates } from './fx';
-import { backfillProviderTokens, dropProviderTokens, providerOfRevokeStep, revokeProviderToken } from './lib/provider-revoke';
+import {
+  MAX_TOKEN_BACKFILL_PER_RUN,
+  backfillProviderTokens,
+  dropProviderTokens,
+  providerOfRevokeStep,
+  revokeProviderToken,
+} from './lib/provider-revoke';
+import { pageFlaggedRows, pageOnConsecutiveMiss, type PageRow } from './lib/owner-page';
 import {
   runOpsWatchdogChecks,
   scanStuckRuns,
@@ -183,6 +190,12 @@ async function recordHeartbeat(
  * D1 is not on Box B either. The alert sink matters as much as the prober: ntfy
  * and GlitchTip are both ON Box B, so neither can carry news of Box B being down.
  *
+ * ⏱ 2026-10-01 · PB-02 — THAT SINK NOW EXISTS, AND THE CADENCE ABOVE WAS THE
+ * CRON'S, NOT THIS LIMB'S. Until today this probe ran on the nightly firing only,
+ * and its rows reached a human through nothing but the ops-watch issue. It now
+ * runs on every 6-hourly firing, and a target ok=0 on two consecutive firings
+ * mails the owner straight from this Worker (lib/owner-page.ts), once per outage.
+ *
  * ⚠️ IT ASSERTS REACHABILITY, NOT HEALTH, and the distinction is deliberate. Any
  * HTTP answer at all - including a 401 from Vaultwarden, which is the correct
  * response to an unauthenticated GET - proves the tunnel and the host are up. Only
@@ -202,7 +215,11 @@ export function boxbTargets(env: Env): string[] {
 }
 
 export async function boxbReachability(env: Env): Promise<void> {
-  await recordHeartbeat(env, await probeReachability(boxbTargets(env)), BOXB_REACH_JOB);
+  const rows = await probeReachability(boxbTargets(env));
+  // [PB-02] The page leaves from here, not from Box B - lib/owner-page.ts. It
+  // marks the rows, so it runs BEFORE they are recorded.
+  await pageOnConsecutiveMiss(env, BOXB_REACH_JOB, 'Box B', rows);
+  await recordHeartbeat(env, rows, BOXB_REACH_JOB);
 }
 
 /**
@@ -236,13 +253,17 @@ export async function boxaReachability(env: Env): Promise<void> {
     );
     return;
   }
-  await recordHeartbeat(env, await probeReachability(targets), BOXA_REACH_JOB);
+  // The not-configured row above never pages: it is not an outage, and it is
+  // ok=0 on every firing until the variable is set.
+  const rows = await probeReachability(targets);
+  await pageOnConsecutiveMiss(env, BOXA_REACH_JOB, 'the BOXA_REACH_URLS hosts', rows);
+  await recordHeartbeat(env, rows, BOXA_REACH_JOB);
 }
 
 /** One GET per URL; any HTTP answer is reachable, a 52x/53x or no answer is not.
  *  Shared by Box A and Box B so the two are graded by one rule. */
-async function probeReachability(targets: string[]): Promise<{ target: string; ok: boolean; detail: string }[]> {
-  const rows: { target: string; ok: boolean; detail: string }[] = [];
+async function probeReachability(targets: string[]): Promise<PageRow[]> {
+  const rows: PageRow[] = [];
   for (const url of targets) {
     try {
       const res = await fetch(url, {
@@ -278,6 +299,19 @@ async function probeReachability(targets: string[]): Promise<{ target: string; o
  * success or failure, lands in `cron_heartbeat`. Before that, a keep-alive that
  * had been failing nightly for a month was indistinguishable from a working one,
  * and the first signal would have been a pause email for the live auth project.
+ *
+ * ⏱ 2026-10-01 · O-SUPABASE-KEEPALIVE-REASON-STALE (rv2-services-021). THE WHY
+ * ABOVE NO LONGER DESCRIBES THE DEFAULT TARGET. Since the auth cutover
+ * SUPABASE_URL is the self-hosted https://auth-api.nikatru.com (wrangler.jsonc
+ * `vars`), which has no idle pause; against it this limb is a reachability probe.
+ * Its keep-alive reason survives only if SUPABASE_KEEPALIVE_URLS (a Worker
+ * secret, absent from wrangler.jsonc) still names a HOSTED project — the hosted
+ * rollback kept until Phase 6. UNREAD IN THIS CHANGE: the drafting sandbox holds
+ * no Cloudflare token, so whether that secret exists, and which hosts it names,
+ * was not measured. Read it by NAME and host only before merge; if no hosted
+ * project remains, retire this limb and its `supabase_keepalive` duty entry and
+ * fold the auth-host probe into one reachability job, rather than keep a
+ * "keep-alive" that keeps nothing alive.
  */
 export async function keepAliveSupabase(env: Env): Promise<void> {
   const targets = keepAliveTargets(env);
@@ -941,10 +975,23 @@ export const MONEY_REDERIVE_JOB = 'money_rederive';
 export const REDERIVE_MAX_AGE_DAYS = 30;
 
 // Per-run bound. Each candidate costs the reads and at most one write pair the
-// route itself would have spent; 200 a night is far inside the D1 daily budget
-// and far above any real backlog — a rail delivers a handful of events a day.
+// route itself would have spent; far above any real backlog — a rail delivers a
+// handful of events a day.
+// ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED: 200 -> 150. At the
+// measured REDERIVE_STATEMENTS_PER_CANDIDATE a run of 200 is 1,002 statements,
+// past d1.queriesPerInvocation's Paid 1,000 even with the limb on its own firing.
 // @ceiling d1.rowsWrittenPerDay lte
-export const MAX_REDERIVE_PER_RUN = 200;
+export const MAX_REDERIVE_PER_RUN = 150;
+
+/**
+ * D1 statements one re-derived candidate may spend. MEASURED 2026-10-01 on the
+ * real store over the real migrations (test/scheduled-crons.test.ts counts the
+ * whole MONEY_REDERIVE_CRON invocation): 5 for an applied single-app grant and 5
+ * for a stale one. 6 leaves one for the bundle path, which was not measured.
+ *
+ * @ceiling none — a measured per-candidate cost that JOB_STATEMENT_BUDGET multiplies, not a cap on any platform resource.
+ */
+export const REDERIVE_STATEMENTS_PER_CANDIDATE = 6;
 
 /**
  * Re-derive every unconcluded notification younger than the age bound.
@@ -1085,8 +1132,30 @@ export const ERASURE_RETRY_JOB = 'erasure_retry';
  *  unfinished erasure may wait before the heartbeat turns red. */
 export const ERASURE_STUCK_AFTER_DAYS = 7;
 
-/** @ceiling d1.queriesPerInvocation lte — each order costs one RPC and at most two statements. */
-export const MAX_ERASURE_RETRIES_PER_RUN = 50;
+/**
+ * ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED: 50 -> 15. This said
+ * "each order costs one RPC and at most two statements", and that is true of the
+ * confirm step alone. An order whose subject then completes costs the platform_db
+ * re-walk too: MEASURED at 48 statements a subject, so 50 a run was ~2,400
+ * statements, past d1.queriesPerInvocation's Paid 1,000 on any firing. 15 is
+ * 15 × ERASURE_STATEMENTS_PER_ORDER + 4 = 904. An unfinished erasure is retried
+ * the next night, and one waiting past ERASURE_STUCK_AFTER_DAYS is RED.
+ *
+ * @ceiling d1.queriesPerInvocation lte
+ */
+export const MAX_ERASURE_RETRIES_PER_RUN = 15;
+
+/**
+ * D1 statements one retried order may spend, its subject's completion included.
+ * MEASURED 2026-10-01 (test/scheduled-crons.test.ts counts the whole
+ * ERASURE_RETRY_CRON invocation): 48 a completed subject plus 4 a run. The walk
+ * is DERIVED from the schema (erasePlatformRows), so it grows with every
+ * user-owned table; 60 leaves room for a few, and the count test is what reds
+ * when the schema outgrows it.
+ *
+ * @ceiling none — a measured per-order cost that JOB_STATEMENT_BUDGET multiplies, not a cap on any platform resource.
+ */
+export const ERASURE_STATEMENTS_PER_ORDER = 60;
 
 export async function erasureRetry(env: Env, nowMs: number = Date.now()): Promise<void> {
   const nowIso = new Date(nowMs).toISOString();
@@ -1633,14 +1702,33 @@ export const NATIVE_ATTEST_COUNTERS_RETENTION_DAYS = 1;
 // @ceiling none — a RETENTION PERIOD is a policy number, not a platform resource; nothing in tooling/ceilings.json bounds how long rows may be kept.
 export const NATIVE_ATTEST_KEYS_RETENTION_DAYS = 90;
 
-// The per-store, per-run delete bound. A sweep is a CATCH-UP job, not a one
-// shot: hitting the bound leaves the remainder for tomorrow and says `capped=1`
-// rather than pretending the store is clean. Worst case per night is 2 × 1000
-// base rows plus their index rows (events carries 4 indexes,
-// provider_notifications 2) ≈ 8,000 of the 100,000 daily row-write budget — and
-// that is the CATCH-UP peak, not the steady state.
+// The per-PASS delete bound: one DELETE statement removes at most this many rows
+// of one store. ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED: it was
+// also the per-NIGHT bound, so past ~1,000 rows a day into one store the sweep
+// fell behind for good and the declared period silently stopped being true,
+// while `capped=1` was only printed. A store whose pass removes a full batch is
+// now swept again, inside MAX_SWEEP_STATEMENTS_PER_RUN below.
 // @ceiling d1.rowsWrittenPerDay lte
 export const MAX_ROWS_PER_SWEEP = 1000;
+
+/**
+ * ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED. The DELETE statements
+ * one sweep may send, across every store. A store keeps being swept while a pass
+ * removes a full MAX_ROWS_PER_SWEEP, until this runs out; a store still full when
+ * it does is counted in `capped=`, and tooling/ops/check-heartbeats.mjs turns RED
+ * when a store stays capped for `cappedNightsRed.nights` runs in a row
+ * (tooling/ops/register.json, duty.platform-cron).
+ *
+ * Inside the rollup + sweep firing's budget (JOB_STATEMENT_BUDGET, RETENTION_CRON),
+ * which scheduled-crons.test.ts sums against d1.queriesPerInvocation. Rows: at
+ * most 50,000 base rows a night, plus their index rows (events carries 4) — a
+ * CATCH-UP peak, reached only by a backlog; the steady state is one pass a store.
+ * On Workers Paid d1.rowsWrittenPerDay is billed past the monthly allowance, not
+ * refused (that row's own `ambiguity`).
+ *
+ * @ceiling d1.queriesPerInvocation lte
+ */
+export const MAX_SWEEP_STATEMENTS_PER_RUN = 50;
 
 // @ceiling none — a unit conversion (milliseconds in a day), not a cap on any platform resource.
 const MS_PER_DAY = 86400000;
@@ -2078,6 +2166,7 @@ export async function retentionSweep(
     native_attest_counters: NATIVE_ATTEST_COUNTERS_RETENTION_DAYS,
   },
   nowMs: number = Date.now(),
+  maxStatements: number = MAX_SWEEP_STATEMENTS_PER_RUN,
 ): Promise<void> {
   const stores: RetentionStore[] = [
     'events',
@@ -2095,6 +2184,7 @@ export async function retentionSweep(
   let declared = 0;
   let deleted = 0;
   let capped = 0;
+  let passes = 0;
   const per: string[] = [];
   let quiet = 0;
   const inert: string[] = [];
@@ -2124,16 +2214,29 @@ export async function retentionSweep(
         continue;
       }
       declared++;
-      // `events_daily.day` is 'YYYY-MM-DD'; every other store compares a full
-      // ISO instant. Narrowing here keeps the DELETE a plain string literal.
-      const n = await deleteOlderThan(env, store, store === 'events_daily' ? bounded.slice(0, 10) : bounded);
-      deleted += n;
-      // The two uncapped limbs delete in full, so a large count is not a cap.
-      if (n >= MAX_ROWS_PER_SWEEP && store !== 'native_attest_redeemed' && store !== 'native_attest_counters') capped++;
+      // The two uncapped limbs delete in full in one pass, so a large count is
+      // never a reason to sweep them again.
+      const uncapped = store === 'native_attest_redeemed' || store === 'native_attest_counters';
+      // ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED. AGAIN WHILE A
+      // PASS REMOVES A FULL BATCH, until the run's statement budget is spent.
+      // `full` starts true, so a store the budget never reached is counted as
+      // capped: it was not swept tonight and may hold expired rows.
+      let swept = 0;
+      let full = true;
+      while (full && passes < maxStatements) {
+        // `events_daily.day` is 'YYYY-MM-DD'; every other store compares a full
+        // ISO instant. Narrowing here keeps the DELETE a plain string literal.
+        const n = await deleteOlderThan(env, store, store === 'events_daily' ? bounded.slice(0, 10) : bounded);
+        passes++;
+        swept += n;
+        full = !uncapped && n >= MAX_ROWS_PER_SWEEP;
+      }
+      deleted += swept;
+      if (full) capped++;
       // ⏱ 2026-09-29 · with nine stores the full token list outgrew the
       // heartbeat's 200-character detail (recordHeartbeat slices there), so a
       // store that deleted nothing is COUNTED in `quiet=` rather than named.
-      if (n > 0) per.push(`${store}=${String(periods[store])}d:${n}`);
+      if (swept > 0) per.push(`${store}=${String(periods[store])}d:${swept}`);
       else quiet++;
     }
   } catch (err) {
@@ -2145,7 +2248,7 @@ export async function retentionSweep(
         {
           target: '(portfolio)',
           ok: false,
-          detail: `stores=${n_stores} declared=${declared} deleted=${deleted} capped=${capped} — retention sweep FAILED: ${String(err)}`,
+          detail: `stores=${n_stores} declared=${declared} deleted=${deleted} capped=${capped} passes=${passes} — retention sweep FAILED: ${String(err)}`,
         },
       ],
       RETENTION_SWEEP_JOB,
@@ -2169,7 +2272,7 @@ export async function retentionSweep(
             // One word, because a reader who cannot tell them apart will go
             // looking for a missing number that is not missing.
             ? `stores=${n_stores} declared=0 deleted=0 capped=0 — INERT: ${inert.join(', ')} (a bare store name = no period declared, owner: one value each in services/platform/src/scheduled.ts; \`events(unrolled)\` = the rollup watermark is null, which is the interlock refusing to delete unrolled-up history and needs no action).`
-            : `stores=${n_stores} declared=${declared} deleted=${deleted} capped=${capped}${per.length > 0 ? ` ${per.join(' ')}` : ''}${quiet > 0 ? ` quiet=${quiet}` : ''}${inert.length > 0 ? ` inert=${inert.join(',')}` : ''}`,
+            : `stores=${n_stores} declared=${declared} deleted=${deleted} capped=${capped} passes=${passes}${per.length > 0 ? ` ${per.join(' ')}` : ''}${quiet > 0 ? ` quiet=${quiet}` : ''}${inert.length > 0 ? ` inert=${inert.join(',')}` : ''}`,
       },
     ],
     RETENTION_SWEEP_JOB,
@@ -2208,6 +2311,10 @@ export async function retentionSweep(
 /** The job name recorded in `cron_heartbeat` for the workflow dispatcher. */
 export const GITHUB_DISPATCH_JOB = 'github_dispatch';
 
+/** The cron the e2e.yml target is pinned to (PB-18): the minute e2e.yml's own
+ *  `schedule:` names. Asserted against wrangler.jsonc by scheduled-crons.test.ts. */
+export const E2E_DISPATCH_CRON = '17 3 * * *';
+
 /**
  * The workflows this cron fires, declared IN THE TREE rather than in an env var.
  *
@@ -2227,6 +2334,13 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   workflow: string;
   ref: string;
   everyHours?: number;
+  /** `workflow_dispatch` inputs sent with the dispatch. Each must be declared
+   *  under the workflow's own `on.workflow_dispatch.inputs` - github-dispatch.test.ts
+   *  reads the real file, because GitHub answers 422 to an undeclared input. */
+  inputs?: Readonly<Record<string, string>>;
+  /** PB-18: the cron this target is PINNED to - it always fires on that firing, and
+   *  unpinned targets skip it (PINNED_CRONS, targetDue below). */
+  atCron?: string;
 }> = [
   // ⏱️ ONCE A DAY IS PLENTY. renovate.json confines PR creation to Mondays in
   // Asia/Kolkata, so extra firings evaluate the tree and exit in about a minute
@@ -2261,7 +2375,15 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // the workflow whose lateness froze the repository twice, and three duty rows
   // read its freshness against a 36h window. Firing it every 6h costs a cheap
   // read-only check and buys 30h of margin.
-  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'ops-watch.yml', ref: 'main' },
+  //
+  // ⏱ 2026-10-01 · PB-02 (patch 2). `unattended: 'true'` is the one input this
+  // dispatch sets, and ops-watch.yml's `alert` job reads it: nobody is watching
+  // a run the Worker fired, so its failure files the ops-watch issue exactly as a
+  // scheduled run's does. Until today that job ran on `schedule` alone, under a
+  // comment calling every workflow_dispatch failure "attended" - false since this
+  // Worker began dispatching ops-watch. A land-script or hand dispatch sends no
+  // input, so it stays attended.
+  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'ops-watch.yml', ref: 'main', inputs: { unattended: 'true' } },
   // ── PHASE 2, SECOND WORKFLOW, ADDED 2026-09-04 ───────────────────────────
   // 🔴 AND THIS ONE MOVES ITS EVIDENCE TOO, WHICH ops-watch.yml ABOVE DOES NOT.
   // `duty.workflow.e2e.yml` now reads a TWO-LIMB record: the cadence claim comes
@@ -2289,7 +2411,18 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // moment that cron stops being daily. What defers moving it is BLAST RADIUS on
   // the repository's most safety-critical guard, NOT permission — and calling it
   // "locked" would have stopped a later reader from even asking.
-  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'e2e.yml', ref: 'main', everyHours: 20 },
+  //
+  // ⏱ 2026-10-01 · PB-18, row O-LIVE-DUTY-RED-BLOCKS-THE-FIX-DEPLOY (folding
+  // O-NIGHTLY-E2E-STARTS-SIX-HOURS-LATE). `everyHours: 20` on the 6h grid fired
+  // this at whichever grid slot came 20h after the last firing, so the nightly
+  // drifted round the clock, and GitHub's own `17 3 * * *` slot started it
+  // 5-6.6 h late. It is now PINNED to E2E_DISPATCH_CRON, its own Cloudflare
+  // firing at 03:17Z, the minute e2e.yml's `schedule:` names (that slot stays,
+  // for assert-e2e-proof-fresh.mjs's freshness claim and as the rollback).
+  // `everyHours: 26` is the safety net, not the cadence: on a grid firing it
+  // fires only when the 03:17 dispatch has not succeeded for 26h, so one
+  // refused dispatch is retried within 6h rather than a day later.
+  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'e2e.yml', ref: 'main', everyHours: 26, atCron: E2E_DISPATCH_CRON },
   // ── PHASE 2, THIRD WORKFLOW, ADDED 2026-09-04 ────────────────────────────
   // ⚠️ AND THIS ONE IS DEFENCE IN DEPTH, NOT A FIX FOR A LIVE PROBLEM. Say so
   // plainly, because the two above were urgent and this reads like the third of
@@ -2311,6 +2444,11 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // and it buys reliability, not evidence. Drop to 120 if that trade sours.
   { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'build-platforms.yml', ref: 'main', everyHours: 84 },
 ];
+
+/** Every cron a target is pinned to, derived from the targets, never listed. */
+export const PINNED_CRONS: ReadonlySet<string> = new Set(
+  GITHUB_DISPATCH_TARGETS.flatMap((t) => (t.atCron === undefined ? [] : [t.atCron])),
+);
 
 /** The row target under which the DISPATCHER records its own liveness, as
  *  opposed to a workflow it fired.
@@ -2340,7 +2478,7 @@ export const DISPATCHER_TARGET = '(dispatcher)';
  * retention sweep on the nightly firing. A hung fetch must not delay a limb that
  * deletes data on a schedule, so every request carries a 10s abort.
  */
-export async function dispatchGithubWorkflows(env: Env): Promise<void> {
+export async function dispatchGithubWorkflows(env: Env, cron?: string): Promise<void> {
   const rows: { target: string; ok: boolean; detail: string }[] = [];
 
   if (GITHUB_DISPATCH_TARGETS.length === 0) {
@@ -2367,7 +2505,16 @@ export async function dispatchGithubWorkflows(env: Env): Promise<void> {
   let skipped = 0;
   for (const t of GITHUB_DISPATCH_TARGETS) {
     const target = `${t.repo}/${t.workflow}`;
-    const due = await targetIsDue(env, target, t.everyHours);
+    // A target PINNED to a cron (`atCron`) always fires on that cron's firing,
+    // and on any other firing only as the `everyHours` safety net. An unpinned
+    // target never fires on a pinned cron's firing: that firing is the pinned
+    // targets' own.
+    const due =
+      t.atCron !== undefined && cron === t.atCron
+        ? { fire: true, why: `pinned to ${t.atCron}` }
+        : t.atCron === undefined && cron !== undefined && PINNED_CRONS.has(cron)
+          ? { fire: false, why: `the ${cron} firing is reserved for its pinned target(s)` }
+          : await targetIsDue(env, target, t.everyHours);
     if (!due.fire) {
       skipped++;
       console.log(`[cron] github dispatch ${target}: not due (${due.why})`);
@@ -2393,7 +2540,7 @@ export async function dispatchGithubWorkflows(env: Env): Promise<void> {
             'User-Agent': 'nikatru-platform-cron',
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ ref: t.ref }),
+          body: JSON.stringify(t.inputs ? { ref: t.ref, inputs: t.inputs } : { ref: t.ref }),
         },
       );
       // 🔴 204 IS THE ONLY SUCCESS, checked as a number rather than through
@@ -2489,8 +2636,57 @@ async function targetIsDue(
  * services/platform/wrangler.jsonc actually declares. The other direction had no
  * such check available, because "four sweeps a day" is indistinguishable from
  * "one" in every record either of them writes.
+ *
+ * ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED — "THE WHOLE NIGHTLY
+ * HANDLER" IS NOW ITS LIGHT LIMBS. The 06:00 firing ran every limb in ONE
+ * invocation, sharing one D1 statement budget, while each limb's cap was checked
+ * as if it ran alone: a money or erasure backlog could spend the budget the
+ * census, the rollup, the sweep and their heartbeats needed. The four heavy
+ * firings in SPLIT_FIRINGS below each have their own trigger, so their own
+ * invocation; JOB_STATEMENT_BUDGET declares what each job may spend and
+ * scheduled-crons.test.ts sums it per trigger against d1.queriesPerInvocation.
  */
 export const NIGHTLY_CRON = '0 6 * * *';
+
+/** ST-R1's digest, on its own invocation. After 06:00 so it reads the renewal
+ *  dates the 06:00 renewals pass just wrote. */
+export const REMINDER_MAIL_CRON = '10 6 * * *';
+/** The money re-derivation, on its own invocation. */
+export const MONEY_REDERIVE_CRON = '20 6 * * *';
+/** The erasure retry, on its own invocation. After 06:00 so the token backfill
+ *  there has sealed every row a revoke retried here reads. */
+export const ERASURE_RETRY_CRON = '30 6 * * *';
+/** The rollup then the sweep, on their own invocation — AFTER the 02:30 backup,
+ *  so the archive still holds the night the sweep prunes. */
+export const RETENTION_CRON = '40 6 * * *';
+
+/**
+ * The heavy firings, each its own trigger and so its own invocation and its own
+ * D1 statement budget (Workers Paid allows 250 triggers an account; this Worker
+ * holds 10). A Map, not an object literal, so a cron string can never resolve to
+ * an inherited key. `jobs` is what the firing writes, in order; the register's
+ * `watchedJobs` keeps each job on exactly this cron (scheduled-crons.test.ts).
+ *
+ * ⚠️ The rollup still runs BEFORE the sweep, and that order is still an
+ * optimisation, not the safety property: the sweep reads the rollup's watermark
+ * (`rollupBoundedCutoff`), so a failed rollup bounds the `events` cutoff whatever
+ * the order.
+ */
+export const SPLIT_FIRINGS: ReadonlyMap<string, { jobs: readonly string[]; run: (env: Env) => Promise<void> }> = new Map([
+  [REMINDER_MAIL_CRON, { jobs: [REMINDER_MAIL_JOB], run: (env: Env) => reminderMail(env) }],
+  [MONEY_REDERIVE_CRON, { jobs: [MONEY_REDERIVE_JOB], run: (env: Env) => moneyRederive(env) }],
+  [ERASURE_RETRY_CRON, { jobs: [ERASURE_RETRY_JOB], run: (env: Env) => erasureRetry(env) }],
+  [
+    RETENTION_CRON,
+    {
+      jobs: [EVENTS_ROLLUP_JOB, RETENTION_SWEEP_JOB],
+      run: async (env: Env) => {
+        await eventsRollup(env);
+        await retentionSweep(env);
+      },
+    },
+  ],
+]);
 
 /**
  * [research/revamp-2026-09-05/06 §4.2] The off-vendor export of D1 and KV into
@@ -2617,6 +2813,10 @@ export async function opsWatchdogJob(
     return 'withheld';
   }
   rows.push({ target: '(watchdog)', ok: true, detail: `completed: ${rows.length} check row(s), ${rows.filter((r) => !r.ok).length} not ok` });
+  // [PB-10] A row carrying `page` (ops-watchdog.ts, the ops-watch freshness limb)
+  // mails the owner straight from here, once per streak - lib/owner-page.ts.
+  // Never throws, and runs before the record because it marks the row.
+  await pageFlaggedRows(env, OPS_WATCHDOG_JOB, 'PAGE: ops-watch has stopped completing runs on main', rows);
   await recordHeartbeat(env, rows, OPS_WATCHDOG_JOB);
   return sendHeartbeat(env.OPS_WATCHDOG_HEARTBEAT_URL, 'OPS_WATCHDOG_HEARTBEAT_URL');
 }
@@ -2784,6 +2984,62 @@ export async function backupRerunJob(
   return 'ran';
 }
 
+/**
+ * ⏱ 2026-10-01 · O-NIGHTLY-CRON-INVOCATION-BUDGET-UNSUMMED. What one run of a
+ * LIGHT limb may spend in D1 statements: its few reads and one heartbeat row per
+ * target. MEASURED on an empty platform_db over the real migrations: 1 to 5 a
+ * limb, 8 for the dispatcher with four targets.
+ *
+ * @ceiling d1.queriesPerInvocation lte
+ */
+export const LIGHT_LIMB_STATEMENT_BUDGET = 25;
+
+/**
+ * Per app, the renewals pass: two schema reads, the due read, and its batch. 🔴
+ * NOT A CAP THE CODE ENFORCES: the batch grows with the renewals due that day
+ * (tooling/ceilings.json `batchCallSites`, services/platform/src/renewals.ts says
+ * why it is unbounded). It is the allowance this firing's sum reserves for it.
+ *
+ * @ceiling d1.queriesPerInvocation lte
+ */
+export const RENEWALS_STATEMENTS_PER_APP = 100;
+
+/**
+ * THE MOST D1 STATEMENTS ONE RUN OF EACH WATCHED JOB MAY SEND, heartbeat included.
+ * scheduled-crons.test.ts sums it over the jobs each trigger runs, from the
+ * register's `watchedJobs`, and fails when one trigger's sum passes
+ * d1.queriesPerInvocation (tooling/ceilings.json) — the check the single 06:00
+ * invocation never had. It also fails when a watched job has no entry here, and
+ * counts the heavy firings' real invocations on the database against these
+ * figures, so a declaration that understates its limb is red too.
+ */
+export const JOB_STATEMENT_BUDGET: Readonly<Record<string, number>> = {
+  [KEEPALIVE_JOB]: LIGHT_LIMB_STATEMENT_BUDGET,
+  [ANALYTICS_LIVENESS_JOB]: LIGHT_LIMB_STATEMENT_BUDGET,
+  [BOXB_REACH_JOB]: LIGHT_LIMB_STATEMENT_BUDGET,
+  [BOXA_REACH_JOB]: LIGHT_LIMB_STATEMENT_BUDGET,
+  [GITHUB_DISPATCH_JOB]: LIGHT_LIMB_STATEMENT_BUDGET,
+  [OPS_WATCHDOG_JOB]: LIGHT_LIMB_STATEMENT_BUDGET,
+  [OPS_STUCK_RUNS_JOB]: LIGHT_LIMB_STATEMENT_BUDGET,
+  [FX_RATES_JOB]: LIGHT_LIMB_STATEMENT_BUDGET,
+  [CANCELLATION_DRAIN_JOB]: LIGHT_LIMB_STATEMENT_BUDGET,
+  [RENEWALS_JOB]: APP_TARGETS.length * (RENEWALS_STATEMENTS_PER_APP + 1),
+  // Five fixed statements, one UPDATE a row, one heartbeat row (provider-revoke.ts).
+  [PROVIDER_TOKEN_BACKFILL_JOB]: MAX_TOKEN_BACKFILL_PER_RUN + 6,
+  [REMINDER_MAIL_JOB]: reminderMailStatementBudget(APP_TARGETS.length),
+  // The candidate read, each candidate, the heartbeat.
+  [MONEY_REDERIVE_JOB]: 2 + MAX_REDERIVE_PER_RUN * REDERIVE_STATEMENTS_PER_CANDIDATE,
+  // The due read, the ready read, the stuck count, the heartbeat — and each order.
+  [ERASURE_RETRY_JOB]: 4 + MAX_ERASURE_RETRIES_PER_RUN * ERASURE_STATEMENTS_PER_ORDER,
+  // The watermark read, the gap skip, a batch of two a day, the heartbeat
+  // (MAX_DAYS_PER_ROLLUP_RUN's own arithmetic).
+  [EVENTS_ROLLUP_JOB]: 3 + 2 * MAX_DAYS_PER_ROLLUP_RUN,
+  // The watermark read, the passes, the heartbeat.
+  [RETENTION_SWEEP_JOB]: 2 + MAX_SWEEP_STATEMENTS_PER_RUN,
+  // The export's own pool and its eight heartbeat rows (batchCallSites).
+  [BACKUP_JOB]: MAX_D1_QUERIES_PER_RUN + 8,
+};
+
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env, ctx) => {
   ctx.waitUntil(
     (async () => {
@@ -2811,17 +3067,49 @@ async function runFiring(event: ScheduledController | undefined, env: Env): Prom
     await recordHeartbeat(env, await runBackup(env), BACKUP_JOB);
     return;
   }
+  // ⏱ 2026-10-01 · each heavy firing runs ALONE, on its own invocation's budget
+  // — see SPLIT_FIRINGS and JOB_STATEMENT_BUDGET.
+  const split = typeof event?.cron === 'string' ? SPLIT_FIRINGS.get(event.cron) : undefined;
+  if (split !== undefined) {
+    await split.run(env);
+    return;
+  }
   // Every other cron but the nightly one is a MARGIN firing: the dispatcher,
-  // and nothing else. An unrecognised value falls through to the full handler
-  // — see NIGHTLY_CRON for why that is the safe direction. OPS_HOURLY_CRON never
+  // the ops watchdog and (since 2026-10-01) the two reachability probes, and
+  // nothing else. An unrecognised value runs the dispatcher only — see
+  // NIGHTLY_CRON for why that is the safe direction. OPS_HOURLY_CRON never
   // arrives here: `scheduled` routes it to opsStuckRunsJob and returns.
   if (typeof event?.cron === 'string' && event.cron !== NIGHTLY_CRON) {
-    await dispatchGithubWorkflows(env);
+    // ⏱ 2026-10-01 · PB-02. The two reachability probes ride this grid too, so
+    // "ok=0 on two consecutive firings" - the owner page's condition - is 12 h,
+    // not the 24-48 h a nightly-only probe gave. Read-only, bounded by 10 s per
+    // target, and ahead of the dispatcher as on the nightly firing.
+    // ⏱ 2026-10-02 · NOT on a PINNED firing (E2E_DISPATCH_CRON, 03:17): that one
+    // exists to start e2e.yml on time, and a probe row there would make "the
+    // previous firing" 3 h back, not 6 h - the register watches the probes on
+    // the six-hourly grid only (tooling/ops/register.json duty.platform-cron).
+    if (!PINNED_CRONS.has(event.cron)) {
+      await boxbReachability(env);
+      await boxaReachability(env);
+    }
+    await dispatchGithubWorkflows(env, event.cron);
     // Read-only, bounded by 10s per call. It cancels nothing since the stuck-run
     // check moved to OPS_HOURLY_CRON (2026-09-24).
     await opsWatchdogJob(env);
     return;
   }
+  await runNightly(env);
+  // ⚠️ NO CRON STRING AT ALL — a local invocation, a test double, a runtime that
+  // stopped reporting it — still runs EVERYTHING, the split firings included, in
+  // their own order. That is the safe reading of "no schedule was reported", and
+  // it is the one path that spends every job's budget in one invocation.
+  if (typeof event?.cron !== 'string') {
+    for (const firing of SPLIT_FIRINGS.values()) await firing.run(env);
+  }
+}
+
+/** The 06:00 firing's light limbs. The heavy ones are SPLIT_FIRINGS. */
+async function runNightly(env: Env): Promise<void> {
   await keepAliveSupabase(env);
   await analyticsLiveness(env);
   await boxbReachability(env);
@@ -2837,39 +3125,17 @@ async function runFiring(event: ScheduledController | undefined, env: Env): Prom
   // the table validates, so it sits ahead of the per-app limbs.
   await fxRates(env);
   await renewalsFanOut(env);
-  // ST-R1 — right after the renewals pass, so it reads the dates that pass just
-  // wrote. Bounded: at most MAX_REMINDER_MAILS_PER_DAY sends and
-  // MAX_ADDRESS_READS_PER_RUN identity reads, each with a 10 s timeout.
-  await reminderMail(env);
-  // Re-derives stored money notifications that never concluded. Its position
-  // is not a safety property either: it writes through the one entitlement
-  // writer and the retention sweep never deletes an unconcluded row, so
-  // nothing here depends on running before or after anything else.
-  await moneyRederive(env);
   // ⏱ 2026-09-30 · encrypts the provider tokens stored before 0023, BEFORE the
-  // erasure retry below reads any of them. Bounded: MAX_TOKEN_BACKFILL_PER_RUN.
+  // erasure retry (ERASURE_RETRY_CRON, 06:30) reads any of them. Bounded:
+  // MAX_TOKEN_BACKFILL_PER_RUN.
   await providerTokenBackfill(env);
-  // [ADR 081] Finishes erasures DELETE /v1/account accepted but could not finish.
-  // Before the destructive sweep only by position; it deletes its own ledger rows.
-  await erasureRetry(env);
   // READ-ONLY, so its position is NOT a safety property: it deletes nothing,
   // and `cancellation_requests` is a reasoned `keep` (tooling/ops/register.json
-  // retention.d1.platform_db.cancellation_requests) that the sweep below never
-  // touches. It sits ahead of the destructive limb only so a slow sweep cannot
-  // delay a census that costs one query.
+  // retention.d1.platform_db.cancellation_requests) that the sweep never
+  // touches.
   await cancellationDrainCensus(env);
-  // The rollup runs BEFORE the sweep so a day rolled up tonight is sweepable
-  // tonight.
-  //
-  // 🔴 THIS ORDER IS AN OPTIMISATION, NOT THE SAFETY PROPERTY. Both limbs
-  // catch their own errors so they can write ok=0 heartbeats, so they run
-  // INDEPENDENTLY — a rollup that fails at 06:00:10 does nothing to stop a
-  // sweep that deletes at 06:00:11. The safety property is the watermark the
-  // sweep reads (`rollupBoundedCutoff`). Swap these two lines and nothing is
-  // destroyed; delete the watermark read and everything is.
-  await eventsRollup(env);
-  // LAST, deliberately: the sweep is the only limb that destroys anything,
-  // and a slow or failing sweep must not delay the keep-alive that stands
-  // between a free-tier Supabase project and its ~7-day auto-pause.
-  await retentionSweep(env);
+  // ⏱ 2026-10-01 · reminderMail, moneyRederive, erasureRetry, eventsRollup and
+  // retentionSweep LEFT this firing for SPLIT_FIRINGS. The rollup still runs
+  // before the sweep, on RETENTION_CRON, and that order is still an optimisation:
+  // the safety property is the watermark the sweep reads (`rollupBoundedCutoff`).
 }

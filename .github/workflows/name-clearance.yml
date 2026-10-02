@@ -209,8 +209,16 @@ jobs:
           fi
 
           # ── 🔴 ARMING AUTO-MERGE IS THE HALF THAT CLOSES THE LOOP ──
+          # The squash takes the PR body it was opened with — the file above, at the
+          # head just pushed — never the repository's default, which writes the commit
+          # message and drops the Rows: line main's history is read for
+          # (tooling/ci/assert-main-rows.mjs, tooling/ops/land-merge.mjs).
+          PR_NUMBER="${PR_URL##*/}"
           set +e
-          gh pr merge "$PR_URL" --auto --squash > "$OUT/gh-pr-merge.log" 2>&1
+          gh pr merge "$PR_URL" --auto --squash \
+            --match-head-commit "$(git rev-parse HEAD)" \
+            --subject "${TITLE} (#${PR_NUMBER})" \
+            --body-file "${RUNNER_TEMP}/pr-body.md" > "$OUT/gh-pr-merge.log" 2>&1
           MERGE_RC=$?
           set -e
           cat "$OUT/gh-pr-merge.log"

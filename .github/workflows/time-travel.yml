@@ -1,0 +1,216 @@
+name: Time travel
+
+run-name: "Time travel, every suite on a later day (${{ github.event_name }})"
+
+# Every test suite, run with the clock moved forward, so a date fuse fires HERE
+# and not on every pull request on the day it was set for. The argument and the
+# two halves of the clock are the headers of services/_shared/test/test-clock.ts
+# (the Worker suites) and tooling/scripts/test-clock.mjs (node, children
+# included); the Dart seam is apps/subscriptiontracker/test/flutter_test_config.dart.
+# Only `# why:` lines live here, and docs/ci/README.md carries the rules every
+# workflow has to obey.
+
+on:
+  workflow_dispatch:
+    inputs:
+      instant:
+        # why: re-running ONE instant is how a fix is proved green before it merges.
+        description: 'Run only this instant (ISO-8601 with a zone, e.g. 2027-11-05T00:00:00Z); empty runs the weekly three'
+        type: string
+        default: ''
+  schedule:
+    # why: WEEKLY. A fuse is found ~400 days before it fires, so a week of latency
+    # costs nothing; Saturday, so a red lands before the Monday ops-watch digest.
+    - cron: '10 5 * * 6' # 05:10 UTC Saturdays
+
+# why: empty at file level; every job grants only `contents: read`.
+permissions: {}
+
+concurrency:
+  # why: cancel-in-progress FALSE. A dispatched re-check must not kill the
+  # scheduled run whose conclusion the ops register reads.
+  group: time-travel
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: The instants and the Worker set
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      instants: ${{ steps.instants.outputs.instants }}
+      workers: ${{ steps.workers.outputs.workers }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      # why: three instants. now+400d reaches every fuse set inside the next
+      # year (#1101's two were 3 and 11 months out); 31 Dec 23:59 and 1 Jan 00:00
+      # are the year boundary, where a test that builds "this year" from one read
+      # and "today" from another disagrees. Computed per run, never written down,
+      # so the run always looks ahead of the day it runs on.
+      - id: instants
+        name: Which days this run travels to
+        env:
+          CHOSEN: ${{ inputs.instant }}
+        run: |
+          set -euo pipefail
+          zone='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?(Z|[+-][0-9]{2}:[0-9]{2})$'
+          if [ -n "${CHOSEN:-}" ]; then
+            if ! [[ "$CHOSEN" =~ $zone ]]; then
+              echo "::error title=Not an instant::The instant input must be ISO-8601 with a zone, e.g. 2027-11-05T00:00:00Z."
+              exit 1
+            fi
+            instants="[\"${CHOSEN}\"]"
+          else
+            far="$(date -u -d '+400 days' '+%Y-%m-%dT%H:%M:00Z')"
+            year="$(date -u '+%Y')"
+            if [ "$(date -u '+%s')" -ge "$(date -u -d "${year}-12-31T23:59:00Z" '+%s')" ]; then year=$((year + 1)); fi
+            instants="[\"${far}\",\"${year}-12-31T23:59:00Z\",\"$((year + 1))-01-01T00:00:00Z\"]"
+          fi
+          echo "instants=${instants}" >> "$GITHUB_OUTPUT"
+          echo "Travelling to: ${instants}"
+      # why: the Worker matrix comes from services/, exactly as lane-workers.yml
+      # reads it, so a Worker added there is time-travelled with no edit here.
+      - id: workers
+        name: The Worker set comes from services/, never from this file
+        run: |
+          set -euo pipefail
+          workers="$(node tooling/ci/worker-set.mjs --for-deploy --emit)"
+          echo "workers=${workers}" >> "$GITHUB_OUTPUT"
+
+  workers:
+    # why: fail-fast OFF, unlike lane-workers.yml: this run's whole product is
+    # the LIST of fuses, and a cancelled sibling hides the next one.
+    name: ${{ matrix.worker }} Worker at ${{ matrix.instant }}
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: ${{ fromJSON(needs.plan.outputs.workers) }}
+        instant: ${{ fromJSON(needs.plan.outputs.instants) }}
+    defaults:
+      run:
+        working-directory: services/${{ matrix.worker }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - run: npm ci
+      # why: the variable is the whole mechanism — every Worker's vitest.config.ts
+      # loads ../_shared/test/test-clock.ts, which moves `Date` when it is set.
+      - name: The Worker suite, on another day
+        env:
+          NIKATRU_TEST_NOW: ${{ matrix.instant }}
+        run: npm test
+
+  brick-worker:
+    # why: the brick's Worker is a template, so it is stamped first, the way
+    # ci.yml's app-brick job stamps it; its suite is the chassis's own plus the
+    # template's, and a fuse in either is born into every new backend.
+    name: The stamped brick Worker at ${{ matrix.instant }}
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        instant: ${{ fromJSON(needs.plan.outputs.instants) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-flutter
+      - uses: ./.github/actions/setup-node
+      - name: Install mason_cli
+        run: dart pub global activate mason_cli 0.1.4
+      - name: Stamp the opt-in backend app
+        run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          node tooling/kit/stamp-app.mjs --vars tooling/bricks/app/_probe_backend_vars.json --overwrite
+      - name: The stamped Worker suite, on another day
+        working-directory: services/probeapi-api
+        env:
+          NIKATRU_TEST_NOW: ${{ matrix.instant }}
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+
+  tooling:
+    # why: NODE_OPTIONS carries the preload into the runner, every test file it
+    # forks and every child a test spawns — the #1101 lane's child kept the real
+    # clock because its fake was a property of one process.
+    name: The tooling suites at ${{ matrix.instant }}
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        instant: ${{ fromJSON(needs.plan.outputs.instants) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node
+      # why: the variables are STEP env, never job env: a job-level NODE_OPTIONS
+      # reaches the JavaScript actions too, and actions/checkout's node would try
+      # to preload a file it has not checked out yet. The preload is named on the
+      # command line as well: the flag is the runner's own load, the variable is
+      # every descendant's, and one module URL loads once.
+      - name: The guards' suites, on another day
+        env:
+          NIKATRU_TEST_NOW: ${{ matrix.instant }}
+          NODE_OPTIONS: --import=${{ github.workspace }}/tooling/scripts/test-clock.mjs
+        run: node --import ./tooling/scripts/test-clock.mjs --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/ci/test/*.test.mjs"
+      - name: The pipeline's suites, on another day
+        if: ${{ !cancelled() }}
+        env:
+          NIKATRU_TEST_NOW: ${{ matrix.instant }}
+          NODE_OPTIONS: --import=${{ github.workspace }}/tooling/scripts/test-clock.mjs
+        run: node --import ./tooling/scripts/test-clock.mjs --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test "tooling/content_pipeline/test/*.test.mjs"
+
+  dart:
+    # why: `melos run test` is the workspace gate's own command, so every Dart
+    # and Flutter member runs. A Flutter suite reads the variable through its
+    # test-only clock seam (flutter_test_config.dart); `dart test` members take
+    # their clock as a parameter, so the instant reaches only what reads a seam.
+    name: The Dart workspace at ${{ matrix.instant }}
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        instant: ${{ fromJSON(needs.plan.outputs.instants) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-flutter
+      - name: Activate melos
+        run: dart pub global activate melos 8.9.0
+      # why: at the workspace ROOT and against the lock (TRAPS git-09).
+      - name: Resolve the workspace
+        run: flutter pub get --enforce-lockfile
+      - name: melos run test, on another day
+        env:
+          NIKATRU_TEST_NOW: ${{ matrix.instant }}
+        run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
+          melos run test
