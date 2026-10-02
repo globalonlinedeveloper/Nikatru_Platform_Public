@@ -56,6 +56,8 @@ function realTree() {
   // limb NATIVE (AB-E2E-02): the target catalog and the native suite.
   cpSync(join(REPO, CHANNELS), join(root, CHANNELS));
   cpSync(join(REPO, NATIVE_SUITE), join(root, NATIVE_SUITE));
+  // limb FLOWS (st-e2e-parity): the suites' imported step files, where the flow anchors live.
+  cpSync(join(REPO, 'apps/subscriptiontracker/integration_test'), join(root, 'apps/subscriptiontracker/integration_test'), { recursive: true });
   return root;
 }
 

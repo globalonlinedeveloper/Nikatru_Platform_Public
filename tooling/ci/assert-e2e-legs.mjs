@@ -69,6 +69,12 @@
 // drive not called, or an `if:` naming a cron the workflow does not declare —
 // is a finding (exit 1), as is an anchor that stopped resolving.
 //
+// ── limb FLOWS (⏱ 2026-10-01, train st-e2e-parity) ───────────────────────
+// Every user flow of the register's `flows.list` must have, on EVERY catalog
+// target (web included), a leg whose anchors resolve in its suite or the
+// integration_test files it imports, or an equivalent `provenBy` a target the
+// flow has a leg on, with a written why. A gap is exit 1; no list is exit 2.
+//
 // Usage:  node tooling/ci/assert-e2e-legs.mjs [repoRoot]
 // ─────────────────────────────────────────────────────────────────────────────
 import { readFileSync, existsSync } from 'node:fs';
@@ -599,6 +605,115 @@ if (legTargets.length) {
   }
 }
 
+// ── limb FLOWS: every user flow, a leg or a declared equivalent on EVERY
+// target (⏱ 2026-10-01 · train st-e2e-parity, EN-07/EN-08/XP-02). The targets
+// are the catalog's — every platform of a `surface: app` channel, web included
+// — never listed in the register. A flow with neither a leg nor an equivalent
+// on a target is a finding (exit 1); an empty `flows.list` is COVERAGE LOST.
+// A leg's anchors resolve in its suite PLUS the integration_test files that
+// suite imports (the flow steps live in flow_steps.dart), comment-stripped.
+const flowTargets = [
+  ...new Set(
+    (Array.isArray(channels) ? channels : [])
+      .filter((c) => c && c.surface === 'app')
+      .flatMap((c) => (Array.isArray(c.platforms) ? c.platforms : [])),
+  ),
+].sort();
+const flowList = Array.isArray(reg.flows?.list) ? reg.flows.list : [];
+if (flowList.length === 0) {
+  coverageLost([
+    `${REGISTER_REL} names no \`flows.list\`.`,
+    'Feature parity quantifies over the user flows; with none named, no target is graded on any of them.',
+  ]);
+}
+const withImports = (rel) => {
+  const abs = join(ROOT, rel);
+  const readOrNull = (p) => {
+    try {
+      return readFileSync(p, 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  const raw = readOrNull(abs);
+  if (raw === null) return null;
+  const parts = [stripSourceComments(raw, '.dart')];
+  // The capture is a bare file name (no separator, no `..`), so the join stays
+  // in the suite's own directory.
+  for (const m of raw.matchAll(/^import\s+'([A-Za-z0-9_]+\.dart)';/gm)) {
+    const sib = readOrNull(join(dirname(abs), m[1]));
+    if (sib !== null) parts.push(stripSourceComments(sib, '.dart'));
+  }
+  return parts.join('\n');
+};
+const flowSuites = {
+  web: { rel: testRel, src: withImports(testRel) },
+  native: { rel: `${APP_DIR}/${NT.suite}`, src: typeof NT.suite === 'string' ? withImports(`${APP_DIR}/${NT.suite}`) : null },
+};
+let flowLegs = 0;
+let flowEquivalents = 0;
+const seenFlows = new Set();
+for (const flow of flowList) {
+  const id = flow?.id;
+  if (typeof id !== 'string' || id === '' || seenFlows.has(id)) {
+    problems.push(`flows.list carries a flow with no id, or a repeated one (${JSON.stringify(id ?? null)}).`);
+    continue;
+  }
+  seenFlows.add(id);
+  const fl = flow.legs && typeof flow.legs === 'object' ? flow.legs : {};
+  const fe = flow.equivalents && typeof flow.equivalents === 'object' ? flow.equivalents : {};
+  for (const t of [...Object.keys(fl), ...Object.keys(fe)]) {
+    if (!flowTargets.includes(t)) {
+      problems.push(`flow "${id}" declares "${t}", which no \`surface: app\` channel of ${CHANNELS_REL} ships to — a leg graded against nothing.`);
+    }
+  }
+  for (const t of flowTargets) {
+    const leg = fl[t];
+    const eq = fe[t];
+    if (leg && eq) {
+      problems.push(`flow "${id}" on ${t} is both a leg and an equivalent. One claim per target, or neither is checkable.`);
+      continue;
+    }
+    if (leg) {
+      const suite = flowSuites[leg.suite];
+      const anchors = Array.isArray(leg.anchors) ? leg.anchors : [];
+      if (!suite) {
+        problems.push(`flow "${id}" on ${t} names suite ${JSON.stringify(leg.suite ?? null)}; a leg runs in \`web\` or \`native\`.`);
+      } else if (suite.src === null) {
+        problems.push(`flow "${id}" on ${t}: the ${leg.suite} suite ${suite.rel} does not exist.`);
+      } else if (leg.suite === 'native' && t === 'web') {
+        problems.push(`flow "${id}" on web names the native suite; web is driven by ${testRel}.`);
+      } else if (leg.suite === 'web' && t !== 'web') {
+        problems.push(`flow "${id}" on ${t} names the web suite, which runs on web only.`);
+      } else if (anchors.length === 0) {
+        problems.push(`flow "${id}" on ${t} is a leg with no anchors — an unanchored claim cannot fail.`);
+      } else {
+        const miss = anchors.filter((a) => !suite.src.includes(a));
+        if (miss.length) {
+          problems.push(
+            `flow "${id}" on ${t}: ${miss.length} of ${anchors.length} anchor(s) no longer resolve in ${suite.rel} or what it imports ` +
+              `(comment-stripped): ${miss.map((m) => JSON.stringify(m)).join(', ')}.`,
+          );
+        } else flowLegs++;
+      }
+      continue;
+    }
+    if (eq) {
+      const by = eq.provenBy;
+      if (typeof by !== 'string' || !fl[by] || by === t) {
+        problems.push(`flow "${id}" on ${t} is an equivalent \`provenBy\` ${JSON.stringify(by ?? null)}, which is not a target this flow has a LEG on.`);
+      } else if (!Array.isArray(eq.why) || eq.why.join('').trim() === '') {
+        problems.push(`flow "${id}" on ${t} is an equivalent with no written \`why\` — an equivalent nobody can disagree with is an excuse.`);
+      } else flowEquivalents++;
+      continue;
+    }
+    problems.push(
+      `flow "${id}" has neither a leg nor a declared equivalent on ${t}. Feature parity: a flow ships on every target, ` +
+        `so ${REGISTER_REL} flows.list must say what walks it there (legs.${t}) or what proves it instead (equivalents.${t}).`,
+    );
+  }
+}
+
 // THE EQUALITY, STATED. It follows from the per-leg checks above, and it is
 // computed and printed anyway: the two numbers are what N-6 actually asks for,
 // and a relationship nobody prints is one nobody can audit from a log.
@@ -641,5 +756,6 @@ console.log(
     `${proven} proven by ${testRel} (equality holds); ${blocked.length} blocked with a live blocker; ` +
     `every app of the workspace set carries integration_test/app_test.dart (apps=${APP_SET.length}); ` +
     `${definesRead.size} E2E_ define(s) the suites read, every one passed by ${wfRel}; ` +
-    `${nativeTargets.length} native catalog target(s), each leg run or declared equivalent`,
+    `${nativeTargets.length} native catalog target(s), each leg run or declared equivalent; ` +
+    `${flowList.length} user flow(s) × ${flowTargets.length} target(s): ${flowLegs} leg(s) anchored, ${flowEquivalents} declared equivalent(s)`,
 );

@@ -237,58 +237,107 @@ describe('native_auth_proof --expect-refusal — the leg proves the gate', () =>
     assert.equal(resolveProofLogConsent(log).noRow, true);
   });
 
-  test('WORKFLOW-SCAN: every native leg in e2e.yml and native-auth-proof.yml runs the driver with --expect-refusal', () => {
-    let runs = 0;
+  // ⏱ 2026-10-01 · train st-e2e-parity (EN-07): the native legs OPEN THE APP
+  // again. A `--sign-in token` leg runs the refusal probe FIRST — so the gate is
+  // still proven — and then the device leg. Every target is `token` for now: a
+  // phone's form route needs an attestation no hosted device can produce, and a
+  // desktop's e-mail sign-in is the system-browser hand-off, which no app
+  // screen opens until #1133's PR B lands. A `form` leg runs no probe.
+  const TARGETS_NOW = ['android', 'ios', 'macos', 'windows', 'linux'];
+  function driverBlocks(root) {
+    const blocks = [];
     for (const rel of ['.github/workflows/e2e.yml', '.github/workflows/native-auth-proof.yml']) {
-      const wf = parseWorkflow(REPO, rel);
+      const wf = parseWorkflow(root, rel);
       assert.ok(wf, `${rel} parses`);
       for (const job of wf.jobs.values()) {
         for (const line of job.logical) {
           const text = typeof line === 'string' ? line : line.text;
-          if (!/tooling\/e2e\/native_auth_proof\.mjs/.test(text)) continue;
-          runs++;
-          assert.match(text, /--expect-refusal\b/, `${rel} job ${job.name} runs the proof without --expect-refusal: ${text.trim()}`);
+          if (/tooling\/e2e\/native_auth_proof\.mjs/.test(text)) blocks.push({ rel, job: job.name, text });
         }
       }
     }
-    assert.ok(runs >= 7, `the scan found ${runs} driver invocation(s) — fewer than the seven legs means it stopped reaching them`);
+    return blocks;
+  }
+
+  test('WORKFLOW-SCAN: every native leg opens the app; a token leg runs the refusal probe first', () => {
+    const blocks = driverBlocks(REPO);
+    for (const { rel, job, text } of blocks) {
+      const calls = text.split(/(?=node tooling\/e2e\/native_auth_proof\.mjs)/).filter((c) => c.startsWith('node tooling/e2e/native_auth_proof.mjs'));
+      const device = calls.filter((c) => !/--expect-refusal\b/.test(c));
+      assert.equal(device.length, 1, `${rel} job ${job}: one device leg per run block, found ${device.length}: ${text.trim()}`);
+      assert.match(device[0], /--device\b/, `${rel} job ${job}: the device leg names no device`);
+      const via = /--sign-in (\S+)/.exec(device[0])?.[1];
+      assert.ok(via, `${rel} job ${job}: the device leg says no --sign-in: ${device[0].trim()}`);
+      for (const probe of calls.filter((c) => /--expect-refusal\b/.test(c))) {
+        assert.doesNotMatch(probe, /--device\b/, `${rel} job ${job}: the refusal probe never opens a device`);
+      }
+      if (via === 'form') continue;
+      // `token`, literal or chosen by the matrix: the probe comes first.
+      assert.ok(calls.length === 2 && /--expect-refusal\b/.test(calls[0]), `${rel} job ${job}: a --sign-in ${via} leg runs no refusal probe before it: ${text.trim()}`);
+    }
+    assert.ok(blocks.length >= 7, `the scan found ${blocks.length} driver run block(s) — fewer than the seven legs means it stopped reaching them`);
+    // The matrix: every target takes the token today, and each run block with
+    // a "$SIGN_IN" device leg probes first when it is `token`.
+    const e2e = readFileSync(join(REPO, '.github/workflows/e2e.yml'), 'utf8');
+    const rows = [...e2e.matchAll(/- target: (\w+)\n(?:\s+\w+: [^\n]*\n)*?\s+sign_in: (\w+)/g)].map((m) => [m[1], m[2]]);
+    assert.deepEqual(Object.fromEntries(rows), Object.fromEntries(TARGETS_NOW.map((t) => [t, 'token'])));
+    assert.equal((e2e.match(/if \[ "\$SIGN_IN" = token \]; then\n\s+node tooling\/e2e\/native_auth_proof\.mjs [^\n]*--expect-refusal/g) ?? []).length, 2);
+    const nap = readFileSync(join(REPO, '.github/workflows/native-auth-proof.yml'), 'utf8');
+    const napLines = nap.split('\n');
+    for (const t of TARGETS_NOW) {
+      const leg = napLines.findIndex((l) => l.includes(`--target ${t} --device `) && l.includes('--sign-in token'));
+      assert.ok(leg > 0, `native-auth-proof.yml ${t}: no --sign-in token device leg`);
+      const probe = napLines.findIndex((l) => l.includes(`--target ${t} --log `) && l.includes('--expect-refusal'));
+      assert.ok(probe > 0 && probe < leg, `native-auth-proof.yml ${t}: no refusal probe before the device leg`);
+    }
   });
 
-  // Third review of #1070: a refusal leg probes over HTTP, so a leg that still
-  // installs Flutter and boots a device spends its ceiling on nothing.
+  // The device steps stay gated on PROOF_NEEDS_DEVICE (so a refusal-only
+  // posture can come back in one line), and every native-leg job sets it 'true'.
   const DEVICE_STEP = /setup-flutter|^flutter pub get$|build and session deps|desktop target|^Boot an |past MAX_PATH/;
   const GATED = /env\.PROOF_NEEDS_DEVICE == 'true'/;
-  function ungatedDeviceSteps(root) {
+  function deviceLegFindings(root) {
     const found = [];
     let jobs = 0;
     for (const rel of ['.github/workflows/e2e.yml', '.github/workflows/native-auth-proof.yml']) {
       for (const job of parseWorkflow(root, rel).jobs.values()) {
-        if (!job.logical.some((l) => /native_auth_proof\.mjs[^\n]*--expect-refusal/.test(typeof l === 'string' ? l : l.text))) continue;
+        if (!job.logical.some((l) => /native_auth_proof\.mjs/.test(typeof l === 'string' ? l : l.text))) continue;
         jobs++;
-        if (jobEnv(job).get('PROOF_NEEDS_DEVICE')?.value !== 'false') found.push(`${rel} ${job.name}: PROOF_NEEDS_DEVICE is not 'false'`);
+        if (jobEnv(job).get('PROOF_NEEDS_DEVICE')?.value !== 'true') found.push(`${rel} ${job.name}: PROOF_NEEDS_DEVICE is not 'true' — the leg never opens the app`);
+        let deviceSteps = 0;
         for (const s of workflowSteps(job)) {
-          if (DEVICE_STEP.test(s.uses ?? s.name ?? '') && !GATED.test(s.cond ?? '')) found.push(`${rel} ${job.name}: "${s.uses ?? s.name}" runs in refusal mode`);
+          if (!DEVICE_STEP.test(s.uses ?? s.name ?? '')) continue;
+          deviceSteps++;
+          if (!GATED.test(s.cond ?? '')) found.push(`${rel} ${job.name}: "${s.uses ?? s.name}" is not gated on PROOF_NEEDS_DEVICE`);
         }
+        if (deviceSteps === 0) found.push(`${rel} ${job.name}: no device step — nothing builds or boots the app`);
       }
     }
     return { jobs, found };
   }
 
-  test('WORKFLOW-SCAN: a refusal leg installs no Flutter and boots no device', () => {
-    const { jobs, found } = ungatedDeviceSteps(REPO);
-    assert.ok(jobs >= 6, `the scan found ${jobs} refusal job(s) — fewer than six means it stopped reaching them`);
+  test('WORKFLOW-SCAN: every native-leg job builds and boots the app (PROOF_NEEDS_DEVICE true, its steps gated on it)', () => {
+    const { jobs, found } = deviceLegFindings(REPO);
+    assert.ok(jobs >= 6, `the scan found ${jobs} native-leg job(s) — fewer than six means it stopped reaching them`);
     assert.deepEqual(found, []);
   });
 
-  test('🔴 RED CONTROL: the real workflow with one device step un-gated is a finding', () => {
-    const root = mkdtempSync(join(tmpdir(), 'nk-refusal-wf-'));
+  test('🔴 RED CONTROL: the real workflows with one job back on PROOF_NEEDS_DEVICE false, or a device step un-gated, are findings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'nk-device-wf-'));
     mkdirSync(join(root, '.github', 'workflows'), { recursive: true });
     for (const rel of ['.github/workflows/e2e.yml', '.github/workflows/native-auth-proof.yml']) {
       let text = readFileSync(join(REPO, rel), 'utf8');
-      if (rel.endsWith('native-auth-proof.yml')) text = text.replace(/\n {8}if: env\.PROOF_NEEDS_DEVICE == 'true'\n(\s+env:\n\s+API_LEVEL)/, '\n$1');
+      if (rel.endsWith('native-auth-proof.yml')) {
+        text = text.replace(/\n {8}if: env\.PROOF_NEEDS_DEVICE == 'true'\n(\s+env:\n\s+API_LEVEL)/, '\n$1');
+      } else {
+        text = text.replace("PROOF_NEEDS_DEVICE: 'true'", "PROOF_NEEDS_DEVICE: 'false'");
+      }
       writeFileSync(join(root, rel), text);
     }
-    assert.deepEqual(ungatedDeviceSteps(root).found, ['.github/workflows/native-auth-proof.yml android: "Boot an emulator" runs in refusal mode']);
+    assert.deepEqual(deviceLegFindings(root).found, [
+      ".github/workflows/e2e.yml native: PROOF_NEEDS_DEVICE is not 'true' — the leg never opens the app",
+      '.github/workflows/native-auth-proof.yml android: "Boot an emulator" is not gated on PROOF_NEEDS_DEVICE',
+    ]);
   });
 });
 
@@ -452,9 +501,9 @@ describe('native_auth_proof --expect-refusal — the legs share the per-network 
         assert.equal(env.get('REFUSAL_APPS')?.value, '${{ needs.prepare.outputs.apps }}');
       }
     }
-    // Two run blocks: the non-Linux step, and the Linux step whose one block holds both of its invocations.
+    // ⏱ 2026-10-01 · st-e2e-parity: two run blocks again — the non-Linux step and the Linux step, each with its probe before its device leg.
     assert.ok(legs >= 2, `the scan found ${legs} refusal run block(s) in e2e.yml — fewer than two means it stopped reaching them`);
-    assert.equal((readFileSync(join(REPO, '.github/workflows/e2e.yml'), 'utf8').match(/--expect-refusal --stagger-anchor "\$REFUSAL_ANCHOR" --stagger-apps "\$REFUSAL_APPS"/g) ?? []).length, 3);
+    assert.equal((readFileSync(join(REPO, '.github/workflows/e2e.yml'), 'utf8').match(/--expect-refusal --stagger-anchor "\$REFUSAL_ANCHOR" --stagger-apps "\$REFUSAL_APPS"/g) ?? []).length, 2);
     assert.match(readFileSync(join(REPO, '.github/workflows/e2e.yml'), 'utf8'), /refusal_anchor: \$\{\{ steps\.workspace\.outputs\.refusal_anchor \}\}/);
   });
 });
