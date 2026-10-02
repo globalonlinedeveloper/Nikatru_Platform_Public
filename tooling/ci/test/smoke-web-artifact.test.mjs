@@ -58,10 +58,12 @@ const {
   probeOrigin,
   VERSION_READ,
   versionReadProblem,
+  OFFLINE_SHELL,
 } = await import(`file://${SMOKE.replaceAll('\\', '/')}`);
 
 const FIXTURE = join(ROOT, 'tooling', 'ci', 'test', 'fixtures', 'smoke-web-csp');
-const APP_HEADERS = readFileSync(join(ROOT, 'apps', 'subscriptiontracker', 'web', '_headers'), 'utf8');
+const APP_WEB = join(ROOT, 'apps', 'subscriptiontracker', 'web');
+const APP_HEADERS = readFileSync(join(APP_WEB, '_headers'), 'utf8');
 /** The CSP the app ships, as written on its one `Content-Security-Policy:` line. */
 const APP_CSP = APP_HEADERS.match(/^\s+Content-Security-Policy:\s*(.+?)\s*$/m)?.[1];
 const API = 'https://subscriptiontracker-api.nikatru.com';
@@ -96,8 +98,9 @@ describe('smoke-web-artifact.mjs — it refuses before it ever opens a browser',
   test('a newline inside a value cannot start a log line of its own — no forged workflow command (CodeQL #40)', () => {
     // --chrome REPLACES the candidate list, so this never launches a real browser: the spawn
     // fails, and both detail lines ("tried:" and "last error:") carry the value. The bundle
-    // carries a policy so that it reaches the launch at all (2026-09-24: no _headers is exit 2).
-    const dir = bundle({ 'index.html': '<html></html>', 'flutter_bootstrap.js': '// x', _headers: MINIMAL_HEADERS });
+    // carries a policy so that it reaches the launch at all (2026-09-24: no _headers is exit 2),
+    // and a worker (2026-10-01: a bundle with no sw.js is refused before the launch).
+    const dir = bundle({ 'index.html': '<html></html>', 'flutter_bootstrap.js': '// x', 'sw.js': '// x', _headers: MINIMAL_HEADERS });
     const r = run([dir, '--build-name', '1.2.34', '--chrome', join(TMP, 'no-such-chrome') + '\n::error title=forged::x']);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /no headless Chrome could be started/);
@@ -316,10 +319,14 @@ describe('smoke-web-artifact.mjs — a bundle compiled for a path is served at t
 // read at test time, so the fixture carries no copy of it.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The fixture bundle, copied, with `headers` as its `_headers` (none when null). */
+/** The fixture bundle, copied, with `headers` as its `_headers` (none when null).
+ *  ⏱ 2026-10-01 — and with the app's REAL offline shell beside it (web/sw.js and
+ *  web/sw-register.js, read at test time), so the offline leg runs the code that
+ *  ships, not a copy of it. */
 function cspBundle(headers) {
   const dir = join(TMP, `b${seq++}`);
   cpSync(FIXTURE, dir, { recursive: true });
+  for (const f of ['sw.js', 'sw-register.js']) cpSync(join(APP_WEB, f), join(dir, f));
   if (headers !== null) writeFileSync(join(dir, '_headers'), headers);
   return dir;
 }
@@ -497,6 +504,8 @@ describe("smoke-web-artifact.mjs — in Chrome, the fixture boots under the app'
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /ok {3}no Content-Security-Policy violation/);
     assert.match(r.out, /ok {3}connect-src allows https:\/\/subscriptiontracker-api\.nikatru\.com — fetched from the page, paused and answered here/);
+    // ⏱ 2026-10-01 — and the GREEN CONTROL of the offline leg: the same boot, reloaded with the server shut down.
+    assert.match(r.out, /ok {3}offline: with the server shut down, flutter-first-frame reached again in \d+ ms, in a page sw\.js controls/);
     if (r.seen === null) return t.skip('the no-egress half needs a shell wrapper for Chrome, which Windows cannot spawn');
     assert.deepEqual(r.seen.filter((u) => hostOf(u) === API_HOST), [], `the probe reached the network: ${r.seen.join(', ')}`);
   });
@@ -588,6 +597,59 @@ describe('smoke-web-artifact.mjs — the installed-version read is proven before
     const r = await smokeInChrome(cspBundle(APP_HEADERS), [], '9.9.9');
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /is "1\.2\.34", not the --build-name "9\.9\.9"/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · THE OFFLINE LEG — [ADR 023] as amended 2026-09-30, rule 5 (row
+// O-WEB-OFFLINE-COLD-LOAD-IS-BROWSER-ERROR). Its green control is RC4 above: the
+// fixture, carrying the app's REAL web/sw.js and web/sw-register.js, is reloaded
+// with the server shut down and reaches its first frame again. The red controls
+// below each take ONE thing away from that same bundle.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('smoke-web-artifact.mjs — the artifact starts again with the network off', () => {
+  test('OFFLINE_SHELL polls the global the real web/sw-register.js sets, for the reply the real web/sw.js sends', () => {
+    const register = readFileSync(join(APP_WEB, 'sw-register.js'), 'utf8');
+    const worker = readFileSync(join(APP_WEB, OFFLINE_SHELL.worker), 'utf8');
+    assert.match(OFFLINE_SHELL.warmed, /window\.__nikatruShellWarm/);
+    assert.match(register, /window\.__nikatruShellWarm = event\.data/);
+    assert.match(OFFLINE_SHELL.warmed, /'nikatru-shell-warmed'/);
+    assert.match(worker, /type: 'nikatru-shell-warmed'/);
+  });
+
+  test('a bundle that ships no sw.js fails BEFORE a browser is launched, naming the file', () => {
+    const dir = cspBundle(APP_HEADERS);
+    rmSync(join(dir, 'sw.js'));
+    const r = run([dir, '--chrome', join(TMP, 'no-such-chrome')]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /ships no sw\.js, so it cannot start offline/);
+  });
+
+  test("🔴 RED CONTROL — the same leg with NO worker registered is the browser's error page, and exits 1", { timeout: 120000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const dir = cspBundle(APP_HEADERS);
+    const index = readFileSync(join(dir, 'index.html'), 'utf8');
+    const tag = '<script src="sw-register.js"></script>';
+    assert.ok(index.includes(tag), 'the seam moved: the fixture index.html no longer loads sw-register.js');
+    writeFileSync(join(dir, 'index.html'), index.replace(tag, ''));
+    const r = await runAsync([dir, '--timeout-ms', '30000', '--build-name', FIXTURE_BUILD_NAME, '--chrome', CHROME]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /with the network off, http:\/\/127\.0\.0\.1:\d+\/subscriptiontracker\/ is the browser's error page \(net::ERR_/);
+    assert.match(r.out, /the worker NEVER reported its cache warm/);
+    assert.doesNotMatch(r.out, /never reached the ready signal|while it booted/, 'the online boot itself must still pass: only the offline leg is red');
+  });
+
+  test('🔴 RED CONTROL — a worker that never answers from its cache is the error page too', { timeout: 120000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const dir = cspBundle(APP_HEADERS);
+    const sw = readFileSync(join(dir, 'sw.js'), 'utf8');
+    const seam = '    if (cached) return cached;\n';
+    assert.ok(sw.includes(seam), 'the seam moved: web/sw.js no longer returns its cached copy on that line');
+    writeFileSync(join(dir, 'sw.js'), sw.replace(seam, ''));
+    const r = await runAsync([dir, '--timeout-ms', '30000', '--build-name', FIXTURE_BUILD_NAME, '--chrome', CHROME]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is the browser's error page/);
+    assert.match(r.out, /the worker reported its cache warm/, 'registration still worked: what failed is the offline answer');
   });
 });
 

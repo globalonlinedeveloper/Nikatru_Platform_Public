@@ -80,11 +80,36 @@
 // never published, or another version is a finding. With no `--build-name` the
 // limb has nothing to compare against, which is COVERAGE LOST.
 //
+// ── AND THEN IT OPENS WITH THE NETWORK OFF (2026-10-01) ───────────────────────
+// [ADR 023] as amended 2026-09-30, rule 5: the offline shell's proof is a red
+// control. Row O-WEB-OFFLINE-COLD-LOAD-IS-BROWSER-ERROR: the app was the one
+// target that could not start offline — a cold load with no network was the
+// browser's own error page while the user's list sat in #1075's cache.
+//
+//   · ONE ONLINE VISIT. The boot above IS that visit. The bundle's own
+//     web/sw-register.js registers web/sw.js and, after the first frame, posts
+//     the files it loaded to the worker; the worker's reply is left on
+//     `window.__nikatruShellWarm` (OFFLINE_SHELL.warmed), which is waited for.
+//   · THEN THE NETWORK GOES AWAY FOR REAL. This server is shut down — every
+//     socket closed, and a fetch from here is required to FAIL before the leg
+//     counts — and the same URL is navigated to again. That is a cold load with
+//     no network, not DevTools' offline emulation, which a service worker's own
+//     fetches do not obey.
+//   · IT MUST REACH THE SAME READY SIGNAL, inside a page the worker controls.
+//     The red control is the same leg with no worker registered: Chrome answers
+//     the navigation with its error page (`net::ERR_CONNECTION_REFUSED`), and the
+//     smoke exits 1 naming it. tooling/ci/test/smoke-web-artifact.test.mjs runs both.
+//   · WHAT THIS DOES NOT REACH: a signed-in user's list. The artifact boots with no
+//     backend, so the leg proves the SHELL starts offline — the engine, the
+//     bundle and the app's first frame; #1075's read-through cache is what fills
+//     the list once it has.
+//
 // Usage:  node tooling/smoke/smoke-web-artifact.mjs <bundleDir> --build-name X.Y.Z [--connect URL]... [--timeout-ms N] [--chrome PATH]
 // Exit 0 = the artifact started under its own policy and reached the ready
-// signal, read its own version as --build-name, and every --connect origin was
-// allowed. Exit 1 = a finding. Exit 2 = COVERAGE LOST: the bundle carries no
-// policy for the smoke to boot under, or no --build-name was given.
+// signal, read its own version as --build-name, every --connect origin was
+// allowed, and it started again offline. Exit 1 = a finding. Exit 2 = COVERAGE
+// LOST: the bundle carries no policy for the smoke to boot under, or no
+// --build-name was given.
 // ─────────────────────────────────────────────────────────────────────────────
 import { createServer } from 'node:http';
 import { readFileSync, existsSync, statSync, mkdtempSync, rmSync } from 'node:fs';
@@ -151,6 +176,21 @@ export function versionReadProblem(observed, expected) {
   }
   return null;
 }
+
+/**
+ * THE OFFLINE LEG's two signals. Exported so a test can hold the bundle's own
+ * web/sw-register.js to the name this harness polls.
+ */
+export const OFFLINE_SHELL = {
+  worker: 'sw.js',
+  /** Set by web/sw-register.js from the worker's reply to the post made after the first frame. */
+  warmed: "(function () { var w = window.__nikatruShellWarm; return !!(w && w.type === 'nikatru-shell-warmed'); })()",
+  /** Read after the offline navigation: where the browser landed, and whether a worker answered it. */
+  landed: 'JSON.stringify({ href: location.href, controlled: !!(navigator.serviceWorker && navigator.serviceWorker.controller) })',
+  why:
+    "[ADR 023] as amended 2026-09-30, rule 5: after one online visit the app must start with the network off. " +
+    "With no worker, that navigation is the browser's own error page.",
+};
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -476,6 +516,15 @@ function main() {
       'The smoke would boot the bundle under no policy, which proves nothing about the one it is meant to test.',
     ]);
   }
+  // The offline leg needs the worker in the artifact. Checked before a browser
+  // is launched, so the failure names the missing file rather than a timeout.
+  if (!existsSync(join(BUNDLE, OFFLINE_SHELL.worker))) {
+    console.error(
+      `FAIL smoke-web-artifact: ${BUNDLE} ships no ${OFFLINE_SHELL.worker}, so it cannot start offline. ` +
+        `${OFFLINE_SHELL.why} Flutter copies web/ into build/web, so the app's web/${OFFLINE_SHELL.worker} is missing.`,
+    );
+    process.exit(1);
+  }
   if (typeof BUILD_NAME !== 'string' || BUILD_NAME.trim() === '' || BUILD_NAME.startsWith('--')) {
     coverageLost('no --build-name was given, so the installed-version read has nothing to be compared with.', [
       'Pass the value the build was given as `flutter build web --build-name` (flutter-release-build.mjs: <release line>.<run number>).',
@@ -569,6 +618,7 @@ async function run(rules, origins, csp) {
   const pending = new Map();
   const pageErrors = [];
   const consoleErrors = [];
+  const consoleWarnings = [];
   const netFailures = [];
   /** Enforced CSP violations, from the binding. A report-only one blocks
    *  nothing, so it is printed and never fails the smoke. */
@@ -592,6 +642,9 @@ async function run(rules, origins, csp) {
     if (msg.method === 'Runtime.exceptionThrown') {
       const d = msg.params?.exceptionDetails ?? {};
       pageErrors.push(d.exception?.description ?? d.text ?? 'unknown exception');
+    }
+    if (msg.method === 'Runtime.consoleAPICalled' && msg.params?.type === 'warning') {
+      consoleWarnings.push((msg.params.args ?? []).map((a) => a.value ?? a.description ?? '').join(' '));
     }
     if (msg.method === 'Log.entryAdded' && msg.params?.entry?.level === 'error') {
       consoleErrors.push(msg.params.entry.text);
@@ -759,6 +812,66 @@ async function run(rules, origins, csp) {
     }
   }
 
+  // ── THE OFFLINE LEG ([ADR 023] as amended, rule 5) ─────────────────────────
+  // After the boot's verdicts and the probe, so nothing here can move them.
+  const evaluate = async (expression) =>
+    (await send('Runtime.evaluate', { expression, returnByValue: true }, session)).result?.result?.value;
+  const warmStarted = Date.now();
+  let warmed = false;
+  while (Date.now() - warmStarted < Math.min(TIMEOUT_MS, 30000)) {
+    if (await evaluate(OFFLINE_SHELL.warmed)) { warmed = true; break; }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  const warmMs = Date.now() - warmStarted;
+  // The network goes away: every socket closed, the listener closed, and a
+  // request from here must FAIL before this leg is evidence of anything. The
+  // probe asks the bare loopback origin, not `base`: a closed listener refuses
+  // every path, and `base` carries the artifact's <base href> (CodeQL #559,
+  // js/file-access-to-http — file data in a request URL).
+  const probeOrigin = `http://127.0.0.1:${server.address().port}/`;
+  server.closeAllConnections();
+  await new Promise((r) => server.close(() => r()));
+  const stillServing = await fetch(probeOrigin, { signal: AbortSignal.timeout(5000) }).then(() => true, () => false);
+  if (stillServing) {
+    lost(`the bundle server still answered ${probeOrigin} after it was shut down, so the offline leg would test nothing.`);
+  }
+  const violationsBefore = violations.length;
+  const nav = await send('Page.navigate', { url: base }, session);
+  const offlineStarted = Date.now();
+  let offlineReady = false;
+  let where = null;
+  while (Date.now() - offlineStarted < Math.min(TIMEOUT_MS, 60000)) {
+    await new Promise((r) => setTimeout(r, 250));
+    const landed = await evaluate(OFFLINE_SHELL.landed);
+    where = landed ? JSON.parse(landed) : where;
+    if (where?.href?.startsWith('chrome-error:')) break;
+    if (violations.length > violationsBefore) break;
+    if (await evaluate(READY_SIGNAL.expression)) { offlineReady = true; break; }
+  }
+  const offlineMs = Date.now() - offlineStarted;
+  const offlineWhy = [
+    OFFLINE_SHELL.why,
+    warmed
+      ? `the worker reported its cache warm ${warmMs} ms after the first frame`
+      : `the worker NEVER reported its cache warm (waited ${warmMs} ms): web/sw-register.js did not register web/${OFFLINE_SHELL.worker}, or it did not answer`,
+    ...consoleWarnings.slice(0, 3).map((w) => `console warning: ${w}`),
+  ];
+  if (nav.result?.errorText || where?.href?.startsWith('chrome-error:')) {
+    die(
+      `with the network off, ${base} is the browser's error page (${nav.result?.errorText || where.href}) — the offline shell did not start.`,
+      offlineWhy,
+    );
+  }
+  if (violations.length > violationsBefore) {
+    die(`offline, the artifact broke its own Content-Security-Policy: ${showViolation(violations[violationsBefore])}.`, offlineWhy);
+  }
+  if (!offlineReady) {
+    die(`with the network off, the artifact never reached \`${READY_SIGNAL.id}\` within ${offlineMs} ms.`, offlineWhy);
+  }
+  if (!where?.controlled) {
+    die(`offline, the artifact started in a page NO service worker controls — this is not the offline shell answering.`, offlineWhy);
+  }
+
   console.log(`ok   ${READY_SIGNAL.id} reached in ${elapsed} ms — the artifact starts`);
   console.log(`ok   no 404 from the bundle, no unhandled page exception`);
   console.log(`ok   the installed-version read resolved to ${JSON.stringify(BUILD_NAME)}, the --build-name — the force-update floor can wall this bundle`);
@@ -767,6 +880,10 @@ async function run(rules, origins, csp) {
     console.log(`ok   connect-src allows ${o} — fetched from the page, paused and answered here with a 204; it never reached the host`);
   }
   if (!origins.length) console.log('--   no --connect origin was given, so connect-src was not probed');
+  console.log(
+    `ok   offline: with the server shut down, ${READY_SIGNAL.id} reached again in ${offlineMs} ms, in a page ${OFFLINE_SHELL.worker} controls ` +
+      `(warm reported ${warmMs} ms after the first frame) — [ADR 023] rule 5`,
+  );
   for (const v of reportOnly.slice(0, 5)) console.log(`--   report-only: ${oneLine(showViolation(v))}`);
   console.log('\nsmoke-web-artifact: ok (this ran BEFORE publication — the artifact, not the deployment)');
   cleanup();
