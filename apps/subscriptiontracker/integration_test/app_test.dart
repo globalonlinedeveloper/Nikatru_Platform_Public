@@ -50,8 +50,6 @@ import 'package:subscriptiontracker/l10n/app_localizations.dart';
 import 'package:subscriptiontracker/main.dart' as app;
 import 'package:subscriptiontracker/state/analytics_providers.dart'
     show kInstallIdKey;
-import 'package:subscriptiontracker/state/providers.dart'
-    show subscriptionRepositoryProvider;
 
 import 'consent.dart';
 import 'flow_steps.dart';
@@ -110,6 +108,9 @@ void main() {
   // same script grades the drive log: a `form` run whose session came from the
   // harness token is red.
   const String signInVia = String.fromEnvironment('E2E_SIGN_IN');
+  // `run` walks the 14d changed flows; `skip` parks them, said (the dispatch
+  // input pending_flows; tooling/e2e/native_auth_proof.mjs PENDING_FLOWS_ROW).
+  const String pendingFlows = String.fromEnvironment('E2E_PENDING_FLOWS');
   const bool captchaGateOn = expectCaptchaGate == 'yes';
   const bool workersTrustIssuer = expectWorkersTrust == 'yes';
 
@@ -127,6 +128,9 @@ void main() {
     }
     if (signInVia != 'form' && signInVia != 'token') {
       undecided.add('E2E_SIGN_IN="$signInVia"');
+    }
+    if (pendingFlows != 'run' && pendingFlows != 'skip') {
+      undecided.add('E2E_PENDING_FLOWS="$pendingFlows"');
     }
     if (undecided.isNotEmpty) {
       fail(
@@ -2023,115 +2027,120 @@ void main() {
     // feed the deployed Workers answer (flow_steps.dart), never presence.
     // tooling/e2e-leg-register.json `flows` anchors each one here.
     //
-    // EDIT a price, read it back — on B, which survives to verify_row.
-    await openRowOnHome(tester, pumpFor, subNameB);
-    await editPriceAndReadBack(
-      tester,
-      pumpFor,
-      name: subNameB,
-      newPrice: '8.88',
-      expectMinorUnits: 888,
-    );
-    // PAUSE → RESUME, each read back.
-    await statusAndReadBack(
-      tester,
-      pumpFor,
-      name: subNameB,
-      action: 'Pause',
-      want: SubscriptionStatus.paused,
-      chip: 'Paused',
-    );
-    await statusAndReadBack(
-      tester,
-      pumpFor,
-      name: subNameB,
-      action: 'Resume',
-      want: SubscriptionStatus.active,
-    );
-    await backToHome(tester, pumpFor);
-    await shot('14d-edited-resumed');
+    // ⏱ 2026-10-02 · PARKED unless E2E_PENDING_FLOWS=run (lead ruling on
+    // #1143): web E2E 36987311361 went red at the edit sheet's submit (not
+    // hit-testable). Skipped and SAID, so main's nightly cannot go red on a
+    // leg not yet proven; tooling/e2e-leg-register.json grades each pending.
+    if (pendingFlows != 'run') {
+      debugPrint(kWebFlowsPendingLine);
+    } else {
+      // EDIT a price, read it back — on B, which survives to verify_row.
+      await openRowOnHome(tester, pumpFor, subNameB);
+      await editPriceAndReadBack(
+        tester,
+        pumpFor,
+        name: subNameB,
+        newPrice: '8.88',
+        expectMinorUnits: 888,
+      );
+      // PAUSE → RESUME, each read back.
+      await statusAndReadBack(
+        tester,
+        pumpFor,
+        name: subNameB,
+        action: 'Pause',
+        want: SubscriptionStatus.paused,
+        chip: 'Paused',
+      );
+      await statusAndReadBack(
+        tester,
+        pumpFor,
+        name: subNameB,
+        action: 'Resume',
+        want: SubscriptionStatus.active,
+      );
+      await backToHome(tester, pumpFor);
+      await shot('14d-edited-resumed');
 
-    // MARK CANCELLED, then DELETE → UNDO → DELETE, on a plan of their own.
-    final String flowName = 'E2E Flow ${DateTime.now().millisecondsSinceEpoch}';
-    await addPlanThroughSheet(tester, pumpFor, name: flowName, price: '3.10');
-    await openRowOnHome(tester, pumpFor, flowName);
-    await statusAndReadBack(
-      tester,
-      pumpFor,
-      name: flowName,
-      action: 'Mark as cancelled',
-      want: SubscriptionStatus.cancelled,
-      chip: 'Cancelled',
-    );
-    await deleteUndoThenDelete(tester, pumpFor, name: flowName);
-    await backToHome(tester, pumpFor);
-    await shot('14d-delete-undo');
+      // MARK CANCELLED, then DELETE → UNDO → DELETE, on a plan of their own.
+      final String flowName =
+          'E2E Flow ${DateTime.now().millisecondsSinceEpoch}';
+      await addPlanThroughSheet(tester, pumpFor, name: flowName, price: '3.10');
+      await openRowOnHome(tester, pumpFor, flowName);
+      await statusAndReadBack(
+        tester,
+        pumpFor,
+        name: flowName,
+        action: 'Mark as cancelled',
+        want: SubscriptionStatus.cancelled,
+        chip: 'Cancelled',
+      );
+      await deleteUndoThenDelete(tester, pumpFor, name: flowName);
+      await backToHome(tester, pumpFor);
+      await shot('14d-delete-undo');
 
-    // SAVE A BUDGET, read it back (GET /v1/budget).
-    await tester.tap(find.text('Insights'));
-    await pumpFor(tester, const Duration(seconds: 2));
-    await scrollUntilFound(
-      tester,
-      target: find.byKey(BudgetCard.editButton),
-      scrollable: scrollableWithin(find.byType(InsightsScreen)),
-      what: 'the Insights budget card\'s Edit',
-      maxScrolls: 20,
-      delta: 200,
-    );
-    await saveBudgetAndReadBack(
-      tester,
-      pumpFor,
-      amount: '123',
-      expectMinorUnits: 12300,
-    );
-    await shot('14d-budget-saved');
+      // SAVE A BUDGET, read it back (GET /v1/budget).
+      await tester.tap(find.text('Insights'));
+      await pumpFor(tester, const Duration(seconds: 2));
+      await scrollUntilFound(
+        tester,
+        target: find.byKey(BudgetCard.editButton),
+        scrollable: scrollableWithin(find.byType(InsightsScreen)),
+        what: 'the Insights budget card\'s Edit',
+        maxScrolls: 20,
+        delta: 200,
+      );
+      await saveBudgetAndReadBack(
+        tester,
+        pumpFor,
+        amount: '123',
+        expectMinorUnits: 12300,
+      );
+      await shot('14d-budget-saved');
 
-    // E-MAIL REMINDER PREFS PUT, then the CALENDAR FEED minted, fetched and
-    // rotated — both on Settings, both read back from the platform Worker.
-    await tester.tap(find.text('Settings'));
-    await pumpFor(tester, const Duration(seconds: 2));
-    await scrollUntilFound(
-      tester,
-      target: find.byKey(const Key('settings.reminder.email')),
-      scrollable: scrollableWithin(find.byType(SettingsScreen)),
-      what: 'the e-mail reminders switch',
-      maxScrolls: 30,
-      delta: 200,
-    );
-    await toggleEmailRemindersAndReadBack(tester, pumpFor);
-    await mintFetchAndRotateCalendarFeed(tester, pumpFor);
-    await shot('14d-reminders-feed');
+      // E-MAIL REMINDER PREFS PUT, then the CALENDAR FEED minted, fetched and
+      // rotated — both on Settings, both read back from the platform Worker.
+      await tester.tap(find.text('Settings'));
+      await pumpFor(tester, const Duration(seconds: 2));
+      await scrollUntilFound(
+        tester,
+        target: find.byKey(const Key('settings.reminder.email')),
+        scrollable: scrollableWithin(find.byType(SettingsScreen)),
+        what: 'the e-mail reminders switch',
+        maxScrolls: 30,
+        delta: 200,
+      );
+      await toggleEmailRemindersAndReadBack(tester, pumpFor);
+      await mintFetchAndRotateCalendarFeed(tester, pumpFor);
+      await shot('14d-reminders-feed');
 
-    // EXPORT CSV: the row taps the real exporter, the browser downloads the
-    // file, and tooling/e2e/verify_export_csv.mjs reads it off the runner's
-    // disk after the drive — the rows the server held when it was tapped.
-    final List<Subscription> exported =
-        await tester.runAsync(
-          () => appContainer().read(subscriptionRepositoryProvider).fetchAll(),
-        ) ??
-        const <Subscription>[];
-    await scrollUntilFound(
-      tester,
-      target: find.byKey(const Key('settings.data.export')),
-      scrollable: scrollableWithin(find.byType(SettingsScreen)),
-      what: 'the Export (CSV) row',
-      maxScrolls: 30,
-      delta: 200,
-    );
-    await tapWhenHittable(
-      tester,
-      find.byKey(const Key('settings.data.export')),
-      'Export (CSV)',
-      scrollable: scrollableWithin(find.byType(SettingsScreen)).first,
-    );
-    await pumpFor(tester, const Duration(seconds: 4));
-    debugPrint(
-      'NK_E2E step=export rows=${exported.length} name=$subNameB '
-      'price=8.88',
-    );
-    await tester.tap(find.text('Home'));
-    await pumpFor(tester, const Duration(seconds: 2));
-    expect(shellIndex(), 0);
+      // EXPORT CSV: the row taps the real exporter, the browser downloads the
+      // file, and tooling/e2e/verify_export_csv.mjs reads it off the runner's
+      // disk after the drive — the rows the server held when it was tapped.
+      final List<Subscription> exported = await serverRows(tester);
+      await scrollUntilFound(
+        tester,
+        target: find.byKey(const Key('settings.data.export')),
+        scrollable: scrollableWithin(find.byType(SettingsScreen)),
+        what: 'the Export (CSV) row',
+        maxScrolls: 30,
+        delta: 200,
+      );
+      await tapWhenHittable(
+        tester,
+        find.byKey(const Key('settings.data.export')),
+        'Export (CSV)',
+        scrollable: scrollableWithin(find.byType(SettingsScreen)).first,
+      );
+      await pumpFor(tester, const Duration(seconds: 4));
+      debugPrint(
+        'NK_E2E step=export rows=${exported.length} name=$subNameB '
+        'price=8.88',
+      );
+      await tester.tap(find.text('Home'));
+      await pumpFor(tester, const Duration(seconds: 2));
+      expect(shellIndex(), 0);
+    }
 
     // ── 15 Settings: switch currency (client-state propagation) ──────────────
     await tester.tap(find.text('Settings'));

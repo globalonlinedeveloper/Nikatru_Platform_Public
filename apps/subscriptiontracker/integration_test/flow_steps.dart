@@ -53,6 +53,18 @@ const List<String> kCoreFlowLines = <String>[
   'NK_PROOF step=core-delete outcome=ok',
 ];
 
+/// PARKED (lead ruling on #1143, 2026-10-02): what the native suite prints in
+/// place of [kCoreFlowLines] (and the notification tap) when it is built with
+/// NK_PROOF_PENDING_FLOWS=skip. tooling/e2e/native_auth_proof.mjs
+/// CORE_FLOW_PENDING_LINE is the other copy; the driver requires it.
+const String kCoreFlowPendingLine =
+    'NK_PROOF step=core-flow outcome=pending row=O-E2E-CORE-FLOW-LEGS-PENDING';
+
+/// The web suite's line for the same park (E2E_PENDING_FLOWS=skip): the 14d
+/// changed-flow walk is skipped and SAID, never silently absent.
+const String kWebFlowsPendingLine =
+    'NK_E2E step=flows outcome=pending row=O-E2E-CORE-FLOW-LEGS-PENDING';
+
 /// The notification-tap leg's lines: the host taps the notification titled
 /// [kTapProofTitle] once the suite prints [kAwaitNotificationMarker].
 const String kAwaitNotificationMarker = 'NK_PROOF_AWAIT_NOTIFICATION';
@@ -89,6 +101,15 @@ Future<bool> pumpUntil(
     await pumpFor(tester, const Duration(milliseconds: 250));
   }
   return ok();
+}
+
+/// Every row the live Worker holds for this user, through the app's
+/// repository (see the STATED LIMIT above).
+Future<List<Subscription>> serverRows(WidgetTester tester) async {
+  final List<Subscription>? rows = await tester.runAsync(
+    () => appContainer().read(subscriptionRepositoryProvider).fetchAll(),
+  );
+  return rows ?? const <Subscription>[];
 }
 
 /// Re-reads the list from the live Worker until [ok] holds for the row named
@@ -136,6 +157,32 @@ Future<void> tapLanding(
   );
   await tester.ensureVisible(f.first);
   await pumpFor(tester, const Duration(milliseconds: 300));
+  // 🔬 WEB E2E 36987311361: the edit sheet's submit was inside the viewport
+  // after `ensureVisible` and still not hit-testable — `ensureVisible` scrolls
+  // the MINIMUM into the viewport rect and knows nothing about what is painted
+  // over its bottom edge (app_test.dart `tapWhenHittable` tells the history).
+  // So drive the scroll view holding [f] a little further while the hit test
+  // misses, then wait for the control to be enabled before tapping.
+  final Finder holder = find.ancestor(
+    of: f.first,
+    matching: find.byType(Scrollable),
+  );
+  for (int i = 0; i < 15; i++) {
+    if (f.first.hitTestable().evaluate().isNotEmpty) break;
+    if (holder.evaluate().isEmpty) break;
+    await tester.drag(holder.first, const Offset(0, -120), warnIfMissed: false);
+    await pumpFor(tester, const Duration(milliseconds: 250));
+  }
+  expect(
+    await pumpUntil(
+      tester,
+      pumpFor,
+      () => _enabled(f.first),
+      timeout: const Duration(seconds: 15),
+    ),
+    isTrue,
+    reason: '$what stayed disabled. On screen: ${flowOnScreen()}',
+  );
   expect(
     f.first.hitTestable(),
     findsOneWidget,
@@ -145,6 +192,15 @@ Future<void> tapLanding(
   );
   await tester.tap(f.first);
   await pumpFor(tester, const Duration(milliseconds: 500));
+}
+
+/// Whether the button [f] finds (if it is one) would act on a tap: a
+/// `ButtonStyleButton` with a null `onPressed` swallows the tap silently.
+bool _enabled(Finder f) {
+  final Iterable<Element> els = f.evaluate();
+  if (els.isEmpty) return false;
+  final Widget w = els.first.widget;
+  return w is! ButtonStyleButton || w.onPressed != null;
 }
 
 /// Scrolls Home until the row named [name] shows, then opens it.
@@ -203,6 +259,28 @@ Future<void> addPlanThroughSheet(
 }) async {
   await tapLanding(tester, pumpFor, find.byKey(E2EKeys.fabAdd), 'Add (+)');
   await pumpFor(tester, const Duration(seconds: 1));
+  // 🔬 NATIVE PROOF 36987269922, ALL FIVE TARGETS: `enterText(addName)` threw
+  // `Bad state: No element`. ST-T9 (AD-03, #1130) opens an ADD on a PICK step
+  // (catalogue search, "Add by hand"); the form carrying `addName` is one tap
+  // further — the web suite's `openAddFormByHand` already walks it.
+  await tapLanding(
+    tester,
+    pumpFor,
+    find.byKey(E2EKeys.addByHand),
+    'the pick step\'s "Add by hand"',
+  );
+  expect(
+    await pumpUntil(
+      tester,
+      pumpFor,
+      () => find.byKey(E2EKeys.addName).evaluate().isNotEmpty,
+      timeout: const Duration(seconds: 10),
+    ),
+    isTrue,
+    reason:
+        '"Add by hand" did not open the add form. On screen: '
+        '${flowOnScreen()}',
+  );
   await tester.enterText(find.byKey(E2EKeys.addName), name);
   await tester.enterText(find.byKey(E2EKeys.addPrice), price);
   if (weekly) {

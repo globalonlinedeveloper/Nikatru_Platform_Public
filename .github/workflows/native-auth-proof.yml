@@ -21,6 +21,18 @@ on:
         description: 'The app to prove: one id of the workspace app set (tooling/ci/assert-release-lane-generic.mjs --emit-apps). The gate job refuses any other value.'
         required: true
         type: string
+      # why: the lead ruling on #1143 (2026-10-02): the core flow (and the tap
+      # after it) went red on all five targets in 36987269922 and is PARKED:
+      # `skip` prints that it was skipped and why (row
+      # O-E2E-CORE-FLOW-LEGS-PENDING); `run` walks it — the proof of a fix.
+      pending_flows:
+        description: 'skip (default): the core flow is parked and said. run: walk it.'
+        type: choice
+        required: false
+        default: skip
+        options:
+          - skip
+          - run
 
 concurrency:
   group: native-auth-proof-${{ inputs.app }}
@@ -89,6 +101,8 @@ jobs:
       # no.NNN), and the desktops' e-mail sign-in is the system-browser
       # hand-off, which no app screen opens until #1133's PR B lands.
       PROOF_NEEDS_DEVICE: 'true'
+      # why: parked flows (the pending_flows input): the core flow and the tap.
+      PENDING_FLOWS: ${{ inputs.pending_flows || 'skip' }}
       # why: ONE path per job — the proof step writes it, the purge step reads
       # it (the consent row's install id, or proof that none was written).
       # Relative to the checkout, where both steps run: `runner` is not
@@ -191,7 +205,7 @@ jobs:
         run: |
           set -euo pipefail
           node tooling/e2e/native_auth_proof.mjs --app "$APP" --target android --log "$E2E_PROOF_LOG" --expect-refusal
-          node tooling/e2e/native_auth_proof.mjs --app "$APP" --target android --device emulator-5554 --log "$E2E_PROOF_LOG" --callback --sign-in token --notification-tap
+          node tooling/e2e/native_auth_proof.mjs --app "$APP" --target android --device emulator-5554 --log "$E2E_PROOF_LOG" --callback --sign-in token --pending-flows "$PENDING_FLOWS" --notification-tap
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -227,6 +241,8 @@ jobs:
       # no.NNN), and the desktops' e-mail sign-in is the system-browser
       # hand-off, which no app screen opens until #1133's PR B lands.
       PROOF_NEEDS_DEVICE: 'true'
+      # why: parked flows (the pending_flows input): the core flow and the tap.
+      PENDING_FLOWS: ${{ inputs.pending_flows || 'skip' }}
       # why: ONE path per job — the proof step writes it, the purge step reads
       # it (the consent row's install id, or proof that none was written).
       # Relative to the checkout, where both steps run: `runner` is not
@@ -277,7 +293,7 @@ jobs:
         run: |
           set -euo pipefail
           node tooling/e2e/native_auth_proof.mjs --app "$APP" --target ios --log "$E2E_PROOF_LOG" --expect-refusal
-          node tooling/e2e/native_auth_proof.mjs --app "$APP" --target ios --device "$SIM" --log "$E2E_PROOF_LOG" --callback --sign-in token
+          node tooling/e2e/native_auth_proof.mjs --app "$APP" --target ios --device "$SIM" --log "$E2E_PROOF_LOG" --callback --sign-in token --pending-flows "$PENDING_FLOWS"
       # why: what the simulator showed 25 s after simctl openurl (the driver's
       # afterOpenDiagnostics). Run 36546306851's callback never reached the app
       # and the job log could not say whether iOS held it behind a prompt.
@@ -323,6 +339,8 @@ jobs:
       # no.NNN), and the desktops' e-mail sign-in is the system-browser
       # hand-off, which no app screen opens until #1133's PR B lands.
       PROOF_NEEDS_DEVICE: 'true'
+      # why: parked flows (the pending_flows input): the core flow and the tap.
+      PENDING_FLOWS: ${{ inputs.pending_flows || 'skip' }}
       # why: ONE path per job — the proof step writes it, the purge step reads
       # it (the consent row's install id, or proof that none was written).
       # Relative to the checkout, where both steps run: `runner` is not
@@ -364,7 +382,7 @@ jobs:
         run: |
           set -euo pipefail
           node tooling/e2e/native_auth_proof.mjs --app "$APP" --target macos --log "$E2E_PROOF_LOG" --expect-refusal
-          node tooling/e2e/native_auth_proof.mjs --app "$APP" --target macos --device macos --log "$E2E_PROOF_LOG" --callback --sign-in token
+          node tooling/e2e/native_auth_proof.mjs --app "$APP" --target macos --device macos --log "$E2E_PROOF_LOG" --callback --sign-in token --pending-flows "$PENDING_FLOWS"
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -404,6 +422,8 @@ jobs:
       # no.NNN), and the desktops' e-mail sign-in is the system-browser
       # hand-off, which no app screen opens until #1133's PR B lands.
       PROOF_NEEDS_DEVICE: 'true'
+      # why: parked flows (the pending_flows input): the core flow and the tap.
+      PENDING_FLOWS: ${{ inputs.pending_flows || 'skip' }}
       # why: ONE path per job — the proof step writes it, the purge step reads
       # it (the consent row's install id, or proof that none was written).
       # Relative to the checkout, where both steps run: `runner` is not
@@ -457,7 +477,7 @@ jobs:
         run: |
           set -euo pipefail
           node tooling/e2e/native_auth_proof.mjs --app "$APP" --target windows --log "$E2E_PROOF_LOG" --expect-refusal
-          node tooling/e2e/native_auth_proof.mjs --app "$APP" --target windows --device windows --log "$E2E_PROOF_LOG" --sign-in token
+          node tooling/e2e/native_auth_proof.mjs --app "$APP" --target windows --device windows --log "$E2E_PROOF_LOG" --sign-in token --pending-flows "$PENDING_FLOWS"
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
         env:
@@ -490,6 +510,8 @@ jobs:
       # no.NNN), and the desktops' e-mail sign-in is the system-browser
       # hand-off, which no app screen opens until #1133's PR B lands.
       PROOF_NEEDS_DEVICE: 'true'
+      # why: parked flows (the pending_flows input): the core flow and the tap.
+      PENDING_FLOWS: ${{ inputs.pending_flows || 'skip' }}
       # why: ONE path per job — the proof step writes it, the purge step reads
       # it (the consent row's install id, or proof that none was written).
       # Relative to the checkout, where both steps run: `runner` is not
@@ -552,7 +574,7 @@ jobs:
             eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
             xvfb-run -a -s "-screen 0 1920x1200x24" \
-              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --sign-in token
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --sign-in token --pending-flows "$PENDING_FLOWS"
           '
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'

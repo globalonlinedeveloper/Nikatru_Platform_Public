@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   CORE_FLOW_LINES,
+  CORE_FLOW_PENDING_LINE,
   SIGN_IN_LINE,
   TOKEN_SESSION_LINE,
   NOTIFICATION_TAP_LINE,
@@ -32,7 +33,7 @@ const IT = 'apps/subscriptiontracker/integration_test';
 
 function realTree() {
   const root = mkdtempSync(join(tmpdir(), 'nikatru-parity-'));
-  for (const rel of [REGISTER, 'tooling/channel-register.json', '.github/workflows/e2e.yml', 'pubspec.yaml']) {
+  for (const rel of [REGISTER, 'tooling/channel-register.json', '.github/workflows/e2e.yml', '.github/workflows/native-auth-proof.yml', 'pubspec.yaml']) {
     mkdirSync(dirname(join(root, rel)), { recursive: true });
     cpSync(join(REPO, rel), join(root, rel));
   }
@@ -128,6 +129,65 @@ describe('limb FLOWS — every flow, a leg or an equivalent on every target', ()
     assert.equal(r.status, 1, r.stdout);
     assert.match(r.stderr, /pending flow "sign-up-check-inbox" names no register row/);
   });
+  // ⏱ 2026-10-02 · lead ruling on #1143: a leg red on its last dispatch is
+  // PARKED — pending, citing a run and its failure, skipped and SAID in the
+  // suite, and defaulted off in the workflows so main never requires it.
+  test('green control: the parked legs are printed with their runs', () => {
+    const root = realTree();
+    const r = run(root);
+    rmSync(root, { recursive: true, force: true });
+    assert.equal(r.status, 0, r.stderr);
+    const runs = JSON.parse(readFileSync(join(REPO, REGISTER), 'utf8')).flows.park.runs;
+    for (const k of Object.keys(runs)) assert.ok(r.stdout.includes(`${k} (run ${runs[k].run})`), r.stdout);
+  });
+  test('🔴 a pending leg parked by no run exits 1', () => {
+    const root = realTree();
+    editRegister(root, (r) => {
+      delete r.flows.list.find((f) => f.id === 'edit-price').legs.web.parkedBy;
+    });
+    const r = run(root);
+    rmSync(root, { recursive: true, force: true });
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /flow "edit-price" on web is pending, parked by null/);
+  });
+  test('🔴 a park with no verbatim failure exits 1', () => {
+    const root = realTree();
+    editRegister(root, (r) => {
+      r.flows.park.runs['native-core-flow'].failure = [];
+    });
+    const r = run(root);
+    rmSync(root, { recursive: true, force: true });
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /flows\.park\.runs\.native-core-flow quotes no failure/);
+  });
+  test('🔴 a suite that skips without SAYING so exits 1', () => {
+    const root = realTree();
+    const p = join(root, IT, 'native_auth_proof_test.dart');
+    writeFileSync(p, readFileSync(p, 'utf8').replace('debugPrint(kCoreFlowPendingLine);', ''));
+    const r = run(root);
+    rmSync(root, { recursive: true, force: true });
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /skip anchor\(s\) "debugPrint\(kCoreFlowPendingLine\)" no longer resolve/);
+  });
+  test('🔴 a workflow that walks the parked legs by default exits 1', () => {
+    const root = realTree();
+    const p = join(root, '.github/workflows/e2e.yml');
+    writeFileSync(p, readFileSync(p, 'utf8').replace("E2E_PENDING_FLOWS: ${{ inputs.pending_flows || 'skip' }}", 'E2E_PENDING_FLOWS: run'));
+    const r = run(root);
+    rmSync(root, { recursive: true, force: true });
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /may now be required on main/);
+  });
+  test('🔴 a parked run no leg cites any more exits 1', () => {
+    const root = realTree();
+    editRegister(root, (r) => {
+      r.flows.park.runs.stale = { ...r.flows.park.runs['web-changed-flows'] };
+    });
+    const r = run(root);
+    rmSync(root, { recursive: true, force: true });
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /flows\.park\.runs\.stale .* is cited by no pending leg/);
+  });
   test('🔴 a flow both walked and pending exits 1', () => {
     const root = realTree();
     editRegister(root, (r) => {
@@ -172,6 +232,23 @@ describe('the native driver reads the device leg back', () => {
   test('🔴 the notification tap line is required when the leg taps', () => {
     assert.match(readProof(form, { callback: false, notificationTap: true }).join('\n'), /notification-tap/);
     assert.deepEqual(readProof(`${form}\n${NOTIFICATION_TAP_LINE}`, { callback: false, notificationTap: true }), []);
+  });
+  test('a parked leg needs the pending line instead of the flow and tap lines', () => {
+    const parked = [SIGN_IN_LINE, ...BASE, CORE_FLOW_PENDING_LINE].join('\n');
+    assert.deepEqual(readProof(parked, { callback: false, coreFlow: true, notificationTap: true, flowsParked: true }), []);
+  });
+  test('🔴 a parked leg that does not SAY it skipped fails', () => {
+    const out = [SIGN_IN_LINE, ...BASE].join('\n');
+    assert.match(readProof(out, { callback: false, coreFlow: true, flowsParked: true }).join('\n'), /core-flow outcome=pending/);
+  });
+  test('🔴 a run leg whose suite skipped the flows fails', () => {
+    const out = `${form}\n${CORE_FLOW_PENDING_LINE}`;
+    assert.match(readProof(out, { callback: false, coreFlow: true }).join('\n'), /skipped the flows this run asked it to walk/);
+  });
+  test('the driver and the Dart steps print the SAME pending line', () => {
+    const dart = readFileSync(join(REPO, IT, 'flow_steps.dart'), 'utf8');
+    const m = /const String kCoreFlowPendingLine =\s*'([^']+)';/.exec(dart);
+    assert.equal(m?.[1], CORE_FLOW_PENDING_LINE);
   });
   test('the driver and the Dart steps print the SAME core-flow lines', () => {
     const dart = readFileSync(join(REPO, IT, 'flow_steps.dart'), 'utf8');

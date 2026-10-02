@@ -58,7 +58,7 @@
 //   node tooling/e2e/native_auth_proof.mjs --app <id> --target <t>
 //        [--device <id>] [--callback] [--log <path>] [--expect-refusal]
 //        [--stagger-anchor <epoch ms> --stagger-apps <JSON app list>]
-//        [--sign-in form|token] [--notification-tap]
+//        [--sign-in form|token] [--notification-tap] [--pending-flows skip|run]
 //
 // Env: E2E_EMAIL, E2E_PASSWORD, SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL.
 // Exit 0 = every step read back · 1 = a step failed or is missing · 2 = the
@@ -99,6 +99,21 @@ export const CORE_FLOW_LINES = Object.freeze([
   'NK_PROOF step=core-delete-undo outcome=ok',
   'NK_PROOF step=core-delete outcome=ok',
 ]);
+
+// ⏱ 2026-10-02 · lead ruling on #1143 (land the proven, park the red legs).
+// Dispatch 36987269922: on all five targets the refusal probe passed and the
+// token session reached Home, and the core flow failed at its first step
+// (`addPlanThroughSheet`: `Bad state: No element` on the add form's name field).
+// One targeted fix followed (flow_steps.dart walks the ST-T9 pick step); until a
+// dispatch proves it, the core flow and the notification tap after it are
+// PARKED: `--pending-flows skip` (the default) builds the suite with
+// NK_PROOF_PENDING_FLOWS=skip, the suite prints CORE_FLOW_PENDING_LINE instead
+// of walking them, and readProof requires that line — so a parked leg is said
+// on every run, never silently absent. tooling/e2e-leg-register.json `flows`
+// carries each parked leg as `status: pending` with this run id and failure.
+export const PENDING_FLOWS_MODES = Object.freeze(['skip', 'run']);
+export const PENDING_FLOWS_ROW = 'O-E2E-CORE-FLOW-LEGS-PENDING';
+export const CORE_FLOW_PENDING_LINE = `NK_PROOF step=core-flow outcome=pending row=${PENDING_FLOWS_ROW}`;
 
 /** How a device leg gets its session (`--sign-in`). `form`: the real form —
  *  the line SIGN_IN_LINE is required and a harness-token session is a FINDING.
@@ -489,7 +504,7 @@ export function openCommands(target, url, { app, root, device, home = homedir() 
 export const appOpensCallback = (target) => target === 'ios';
 
 /** What the run's output proves, and what it does not. */
-export function readProof(out, { callback, offlineRead = false, coreFlow = false, signIn = 'form', notificationTap = false }) {
+export function readProof(out, { callback, offlineRead = false, coreFlow = false, signIn = 'form', notificationTap = false, flowsParked = false }) {
   const text = String(out ?? '');
   const problems = [];
   const need = (line, why) => {
@@ -502,7 +517,13 @@ export function readProof(out, { callback, offlineRead = false, coreFlow = false
     // A form leg whose session came from the harness token proves no front door.
     if (text.includes(TOKEN_SESSION_LINE)) problems.push(`"${TOKEN_SESSION_LINE}" in a --sign-in form leg — the session came from the harness token, not the form`);
   }
-  if (coreFlow) {
+  if (flowsParked) {
+    // Parked: the suite must SAY so; the core-flow and tap lines are not asked.
+    if (coreFlow || notificationTap) need(CORE_FLOW_PENDING_LINE, 'a parked run must print that the core flow was skipped, and why');
+  } else if (text.includes(CORE_FLOW_PENDING_LINE)) {
+    problems.push(`"${CORE_FLOW_PENDING_LINE}" in a --pending-flows run leg — the suite skipped the flows this run asked it to walk`);
+  }
+  if (coreFlow && !flowsParked) {
     let at = -1;
     for (const line of CORE_FLOW_LINES) {
       const i = text.indexOf(line, at + 1);
@@ -510,7 +531,7 @@ export function readProof(out, { callback, offlineRead = false, coreFlow = false
       else at = i;
     }
   }
-  if (notificationTap) need(NOTIFICATION_TAP_LINE, 'the tapped reminder did not land on its /sub/<id>');
+  if (notificationTap && !flowsParked) need(NOTIFICATION_TAP_LINE, 'the tapped reminder did not land on its /sub/<id>');
   for (const step of ['sign-up-registered', 'recover-unregistered']) {
     const m = new RegExp(`NK_PROOF step=${step} answer=(\\S+)`).exec(text);
     if (!m) problems.push(`missing "NK_PROOF step=${step}" — GoTrue's answer was not recorded`);
@@ -526,13 +547,14 @@ export function readProof(out, { callback, offlineRead = false, coreFlow = false
 }
 
 function args(argv) {
-  const o = { callback: false, expectRefusal: false, signIn: 'form', notificationTap: false };
+  const o = { callback: false, expectRefusal: false, signIn: 'form', notificationTap: false, pendingFlows: 'skip' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--callback') o.callback = true;
     else if (a === '--expect-refusal') o.expectRefusal = true;
     else if (a === '--notification-tap') o.notificationTap = true;
     else if (a === '--sign-in') o.signIn = argv[++i];
+    else if (a === '--pending-flows') o.pendingFlows = argv[++i];
     else if (a === '--app' || a === '--target' || a === '--device' || a === '--log') o[a.slice(2)] = argv[++i];
     else if (a === '--stagger-anchor') o.staggerAnchor = argv[++i];
     else if (a === '--stagger-apps') o.staggerApps = argv[++i];
@@ -630,6 +652,7 @@ async function main() {
     if (!o.app || !TARGETS.includes(o.target)) throw new Error(`--app <id> and --target <${TARGETS.join('|')}> are required`);
     if (o.target === 'windows' && o.callback) throw new Error('windows cannot take --callback here: protocol activation needs the MSIX installed');
     if (!SIGN_IN_MODES.includes(o.signIn)) throw new Error(`--sign-in must be one of ${SIGN_IN_MODES.join(', ')}`);
+    if (!PENDING_FLOWS_MODES.includes(o.pendingFlows)) throw new Error(`--pending-flows must be one of ${PENDING_FLOWS_MODES.join(', ')}`);
     if (o.notificationTap && !NOTIFICATION_TAP_TARGETS.includes(o.target)) {
       throw new Error(`--notification-tap: the host cannot tap a notification on ${o.target} (only ${NOTIFICATION_TAP_TARGETS.join(', ')})`);
     }
@@ -665,6 +688,10 @@ async function main() {
   console.log(`${NAME}: ${o.app}'s proof suite ${offlineRead ? 'declares' : 'does not declare'} the offline read`);
   const coreFlow = coreFlowDeclared(root, o.app);
   console.log(`${NAME}: ${o.app}'s proof suite ${coreFlow ? 'walks' : 'does not walk'} the core flow; sign-in via ${o.signIn}`);
+  const flowsParked = o.pendingFlows === 'skip';
+  if (flowsParked && (coreFlow || o.notificationTap)) {
+    console.log(`${NAME}: the core flow${o.notificationTap ? ' and the notification tap are' : ' is'} PARKED (--pending-flows skip) under ${PENDING_FLOWS_ROW} — red on dispatch 36987269922; not graded proven`);
+  }
   await printEgressIp();
 
   const appVersion = proofAppVersion(process.env);
@@ -685,6 +712,7 @@ async function main() {
     `--dart-define=NK_PROOF_CALLBACK=${o.callback}`,
     `--dart-define=NK_PROOF_SIGN_IN=${o.signIn}`,
     `--dart-define=NK_PROOF_NOTIFICATION_TAP=${o.notificationTap}`,
+    `--dart-define=NK_PROOF_PENDING_FLOWS=${o.pendingFlows}`,
     ...(appVersion ? [`--dart-define=APP_VERSION=${appVersion}`] : []),
     ...(o.callback && appOpensCallback(o.target) ? [`--dart-define=NK_PROOF_OPEN_FROM_APP=${callbackUrl(o.app)}`] : []),
   ];
@@ -733,7 +761,7 @@ async function main() {
   clearTimeout(silence);
   if (log) appendFileSync(log, `\n${PROOF_LOG_END} flutter_exit=${code}${hung ? ' killed=silence' : ''}\n`);
 
-  const problems = readProof(out, { callback: o.callback, offlineRead, coreFlow, signIn: o.signIn, notificationTap: o.notificationTap });
+  const problems = readProof(out, { callback: o.callback, offlineRead, coreFlow, signIn: o.signIn, notificationTap: o.notificationTap, flowsParked });
   if (code !== 0) problems.unshift(`flutter test exited ${code}`);
   if (hung) problems.unshift(`flutter test printed nothing for ${SILENCE_LIMIT_MS / 60_000} min and was killed — the app never reported back (a launch that hung, not a sign-in that failed)`);
   if (problems.length) {

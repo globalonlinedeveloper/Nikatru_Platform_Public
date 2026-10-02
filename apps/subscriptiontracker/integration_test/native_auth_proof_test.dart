@@ -69,6 +69,9 @@ const String _signInVia = String.fromEnvironment(
 const String _tokenHash = String.fromEnvironment('E2E_TOKEN_HASH');
 // Android: the host taps the reminder (native_auth_proof.mjs --notification-tap).
 const bool _notificationTap = bool.fromEnvironment('NK_PROOF_NOTIFICATION_TAP');
+// `run` walks the core flow and the tap; anything else PARKS them, said
+// (native_auth_proof.mjs --pending-flows; lead ruling on #1143).
+const String _pendingFlows = String.fromEnvironment('NK_PROOF_PENDING_FLOWS');
 
 /// A wall-clock pump that lets real I/O land, for the flow steps.
 Future<void> _pumpFor(WidgetTester tester, Duration total) async {
@@ -217,11 +220,16 @@ void main() {
       // 1c ── the core flow (XP-02), through the UI, read back from the
       // server: add a weekly plan → read it back → edit its price → pause
       // (status chip) → delete → Undo → delete (flow_steps.dart).
-      await walkCoreFlow(tester, _pumpFor);
-
       // 1d ── the notification tap (Android): one minute out, tapped by the
       // host, landing on /sub/<id>.
-      if (_notificationTap) await proveNotificationTap(tester, _pumpFor);
+      // ⏱ 2026-10-02 · PARKED unless NK_PROOF_PENDING_FLOWS=run: red on all
+      // five targets in dispatch 36987269922 (O-E2E-CORE-FLOW-LEGS-PENDING).
+      if (_pendingFlows == 'run') {
+        await walkCoreFlow(tester, _pumpFor);
+        if (_notificationTap) await proveNotificationTap(tester, _pumpFor);
+      } else {
+        debugPrint(kCoreFlowPendingLine);
+      }
 
       // 2 ── the other gated calls, answered without the captcha.
       final core.AuthRepository auth = container.read(authRepositoryProvider);

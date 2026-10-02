@@ -28,6 +28,21 @@ on:
         options:
           - production
           - selfhosted
+      # why: the lead ruling on #1143 (2026-10-02) — legs red on their last
+      # dispatch are PARKED, not required: `skip` (the default, and the only
+      # value the schedule ever sees) builds both suites so they print that the
+      # changed flows / the core flow were skipped and why (row
+      # O-E2E-CORE-FLOW-LEGS-PENDING, tooling/e2e-leg-register.json `flows`), so
+      # main's nightly cannot go red on a leg not yet proven. `run` walks them —
+      # dispatch it on a BRANCH to try a fix; a green run is what un-parks a leg.
+      pending_flows:
+        description: 'skip (default): the parked flows are skipped and said. run: walk them (dispatch on a branch).'
+        type: choice
+        required: false
+        default: skip
+        options:
+          - skip
+          - run
   # why: 03:17, computed rather than chosen -- including the wrap past midnight,
   # which a sorted list of slots never shows. This lane runs against LIVE Supabase,
   # the live Worker and live D1, so a red night may mean production is broken.
@@ -411,6 +426,8 @@ jobs:
           # E2E_APP_ID names its own binary (LEAD RULING 34, the two-leg confirm);
           # assert-e2e-legs fails a suite-read E2E_ define the drive never passes.
           E2E_APP_ID: ${{ matrix.app }}
+          # why: parked flows (the pending_flows input above); the schedule carries none.
+          E2E_PENDING_FLOWS: ${{ inputs.pending_flows || 'skip' }}
         run: |
           set -euo pipefail
           export CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)"
@@ -493,6 +510,7 @@ jobs:
             --dart-define=E2E_EXPECT_WORKERS_TRUST="$E2E_WORKERS_TRUST" \
             --dart-define=E2E_DELETE_PASSWORD="$E2E_DELETE_PASSWORD" \
             --dart-define=E2E_SIGN_IN="$E2E_SIGN_IN" \
+            --dart-define=E2E_PENDING_FLOWS="$E2E_PENDING_FLOWS" \
             --dart-define=E2E_APP_ID="$E2E_APP_ID" 2>&1 | tee "${RUNNER_TEMP}/drive.log"
           kill "$CHROMEDRIVER_PID" || true
 
@@ -538,8 +556,10 @@ jobs:
 
       # why: the export leg's FILE, read off the runner's disk — the browser's
       # download, held to the rows the live Worker held when Export was tapped.
+      # The export is one of the 14d changed flows: parked with them unless
+      # pending_flows=run, and then the suite printed no export line to read.
       - name: The exported CSV holds the rows the server held
-        if: steps.drive.outcome == 'success'
+        if: steps.drive.outcome == 'success' && (inputs.pending_flows || 'skip') == 'run'
         run: node tooling/e2e/verify_export_csv.mjs "${RUNNER_TEMP}/drive.log" "$HOME/Downloads"
 
       - name: Verify the row landed in live D1
@@ -758,6 +778,8 @@ jobs:
       TARGET: ${{ matrix.target }}
       SIGN_IN: ${{ matrix.sign_in }}
       TAP: ${{ matrix.tap }}
+      # why: parked flows (the pending_flows input): the core flow and the tap.
+      PENDING_FLOWS: ${{ inputs.pending_flows || 'skip' }}
       DEVICE: ${{ matrix.device }}
       CALLBACK: ${{ matrix.callback }}
       # why: the stagger (fourth review of #1070). Every leg of every app fires at the
@@ -879,7 +901,7 @@ jobs:
           if [ "$SIGN_IN" = token ]; then
             node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --log "$E2E_PROOF_LOG" --expect-refusal --stagger-anchor "$REFUSAL_ANCHOR" --stagger-apps "$REFUSAL_APPS"
           fi
-          node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" --log "$E2E_PROOF_LOG" $CALLBACK --sign-in "$SIGN_IN" $TAP
+          node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" --log "$E2E_PROOF_LOG" $CALLBACK --sign-in "$SIGN_IN" --pending-flows "$PENDING_FLOWS" $TAP
       - name: The native leg — the bundle under xvfb, one D-Bus session
         id: proof_linux
         if: matrix.target == 'linux'
@@ -899,7 +921,7 @@ jobs:
             eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
             xvfb-run -a -s "-screen 0 1920x1200x24" \
-              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --sign-in "$SIGN_IN"
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --sign-in "$SIGN_IN" --pending-flows "$PENDING_FLOWS"
           '
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
