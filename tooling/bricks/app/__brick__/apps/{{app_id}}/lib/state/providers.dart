@@ -845,7 +845,7 @@ Future<core.ConsentArtifact> applyConsentDecision({
   }
   // Best-effort by contract. The decision already applies on-device, so an
   // upload failure must never make the user's choice look rejected.
-  await transport.send(appId: appId, artifact: artifact);
+  await controller.upload(transport, appId: appId, artifact: artifact);
   return artifact;
 }
 
@@ -1066,6 +1066,7 @@ final FutureProvider<core.Analytics> analyticsProvider =
         anonId: await ref.watch(installIdProvider.future),
         transport: ref.watch(eventTransportProvider),
         consent: consent,
+        consentTransport: ref.watch(consentTransportProvider),
         queueStore: kv,
         envelope: <String, Object?>{
           'platform': analyticsPlatformName(),

@@ -5,6 +5,7 @@ import '../result.dart';
 import '../storage/key_value_store.dart';
 import 'analytics.dart';
 import 'consent.dart';
+import 'consent_transport.dart';
 import 'ids.dart';
 
 /// A session ends after this much inactivity. Matches the locked envelope spec.
@@ -61,6 +62,17 @@ const int kMaxQueuedEvents = 500;
 /// they are sent. Withdrawal is the mirror image and is [purge]'s job: the
 /// symmetry only holds if what is already queued dies with the grant.
 ///
+/// ## The server holds the artifact BEFORE it holds an event
+/// The platform Worker refuses a batch from an install whose analytics artifact
+/// it has no record of (409 `consent_not_recorded`) or whose latest artifact is
+/// a withdrawal (403 `consent_withdrawn`). So [flush] sends nothing until the
+/// artifact in force has been ACKNOWLEDGED by the server
+/// ([ConsentController.isAcknowledged]); until then it posts that artifact
+/// through [ConsentTransport] itself and keeps the queue. A 409 un-acknowledges
+/// and re-posts; a 403 drops the queue. Without this ordering a consent POST
+/// that was lost, or merely still in flight when the 10 s deadline fired, made
+/// the server refuse honest events from a person who had said yes.
+///
 /// ## Connectivity
 /// There is deliberately **no connectivity check**. `connectivity_plus` reports
 /// *interface state*, not reachability: it says "connected" behind a captive
@@ -75,6 +87,7 @@ class AnalyticsRecorder implements Analytics {
     required this.anonId,
     required EventTransport transport,
     required ConsentController consent,
+    required ConsentTransport consentTransport,
     KeyValueStore? queueStore,
     Map<String, Object?> envelope = const <String, Object?>{},
     DateTime Function()? clock,
@@ -84,6 +97,7 @@ class AnalyticsRecorder implements Analytics {
     this.flushInterval = kFlushInterval,
   })  : _transport = transport,
         _consent = consent,
+        _consentTransport = consentTransport,
         _queueStore = queueStore,
         _envelope = envelope,
         _now = clock ?? DateTime.now,
@@ -100,6 +114,12 @@ class AnalyticsRecorder implements Analytics {
 
   final EventTransport _transport;
   final ConsentController _consent;
+
+  /// REQUIRED, not optional with a default: a recorder that could be built
+  /// without it would flush before its install's artifact reached the server,
+  /// which is the ordering the server now refuses. An app with no backend
+  /// passes [DiscardingConsentTransport] and says so at the call site.
+  final ConsentTransport _consentTransport;
   final KeyValueStore? _queueStore;
   final Map<String, Object?> _envelope;
   final DateTime Function() _now;
@@ -302,7 +322,24 @@ class AnalyticsRecorder implements Analytics {
     // Did this attempt actually hand events over? Only a delivery re-arms —
     // see the `finally` below.
     bool delivered = false;
+    // …or a 409 whose cause was repaired on the spot: the artifact is now on
+    // the server, so the kept batch is ready to go again rather than waiting
+    // for a log that may never come.
+    bool repaired = false;
     try {
+      // 🔴 THE ARTIFACT BEFORE THE EVENTS. Nothing is sent until the server
+      // holds the artifact this install's events are collected under; until
+      // then the queue is KEPT, exactly as on any other retryable failure.
+      if (!await _ensureConsentAcknowledged()) return;
+      // That may have been a network round trip, and the world moves during
+      // one: a withdrawal purges the queue, a refusal latches, a new decision
+      // replaces the grant. Re-check all of it before sending anything.
+      if (epoch != _epoch || _queue.isEmpty || _refused) return;
+      if (_consent.statusOf(ConsentPurpose.analytics) !=
+          ConsentStatus.granted) {
+        return;
+      }
+
       // Snapshot: events logged during the in-flight request stay queued for
       // the next flush rather than being dropped by a wholesale clear.
       final List<AnalyticsEvent> batch =
@@ -323,13 +360,28 @@ class AnalyticsRecorder implements Analytics {
         delivered = true;
         await _persist();
       } else if (r case Err<void>(failure: UnreleasedBuildFailure())) {
-        // ⏱ 2026-09-26 — the one Err that is NOT retried. The server refuses
+        // ⏱ 2026-09-26 — an Err that is NOT retried (403 below is the other,
+        // and only this one latches). The server refuses
         // this build's stamp, and the stamp cannot change while it runs, so
         // keeping the queue only re-sent it on every later log(). Drop it, in
         // memory and on disk, and latch. Not re-armed (`delivered` is false).
         _refused = true;
         _queue.clear();
         await _clearStore();
+      } else if (r case Err<void>(failure: ConsentWithdrawnFailure())) {
+        // 403 — the server's latest artifact for this install is a WITHDRAWAL
+        // (another tab, another surface, a decision this process never saw).
+        // Nothing collected under the grant this process still holds may land,
+        // so the queue goes, in memory and on disk. NOT latched: a later grant
+        // is a new artifact, and it reopens the rail through the ack above.
+        _queue.clear();
+        await _clearStore();
+      } else if (r case Err<void>(failure: ConsentNotRecordedFailure())) {
+        // 409 — the server has no artifact for this install, whatever this
+        // process believed. Keep the queue, forget the acknowledgement, and
+        // post the artifact again now; the batch follows once it lands.
+        await _consent.forgetAcknowledgement(ConsentPurpose.analytics);
+        repaired = await _ensureConsentAcknowledged();
       }
       // On any other Err: keep everything. The next log() or flush()
       // retries, and the server dedups on event_id, so a retry after a lost
@@ -346,9 +398,33 @@ class AnalyticsRecorder implements Analytics {
       // log() (which finds no timer armed and arms one) or the next explicit
       // flush retries. On a SUCCESS with events still queued there is a further
       // batch ready to go now, so it is armed to drain rather than left waiting
-      // on a log that may never come.
-      if (delivered) _armFlushTimer();
+      // on a log that may never come. A repaired 409 is the same case: the
+      // batch it kept can go now, and only a SUCCESSFUL repair re-arms, so a
+      // consent POST that keeps failing is not a fixed-interval retry loop.
+      if (delivered || repaired) _armFlushTimer();
     }
+  }
+
+  /// Make sure the server holds the analytics artifact in force, posting it if
+  /// it does not. True only when it is acknowledged.
+  ///
+  /// Posts the artifact AS RECORDED — same `consentId`, same decision — never a
+  /// fresh one: the server dedups on `consent_id`, so re-posting an artifact
+  /// that did land is a no-op, and minting a new one would put a decision on
+  /// the trail that the person never took.
+  Future<bool> _ensureConsentAcknowledged() async {
+    if (_consent.isAcknowledged(ConsentPurpose.analytics)) return true;
+    final ConsentArtifact? artifact =
+        _consent.artifactOf(ConsentPurpose.analytics);
+    // No artifact, or one that is not a grant: there is nothing this recorder
+    // may post on the person's behalf, and nothing it may send either.
+    if (artifact == null || !artifact.granted) return false;
+    final Result<void> r = await _consent.upload(
+      _consentTransport,
+      appId: appId,
+      artifact: artifact,
+    );
+    return r.isOk && _consent.isAcknowledged(ConsentPurpose.analytics);
   }
 
   /// Drop every queued event, in memory AND on disk, and deliver none of them.

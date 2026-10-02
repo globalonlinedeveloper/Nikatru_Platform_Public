@@ -351,6 +351,8 @@ const ERASURE_KINDS =
   register.erasureKinds && typeof register.erasureKinds === 'object' ? register.erasureKinds : {};
 let disclosuresChecked = 0;
 let writersChecked = 0;
+/** Consent gates whose enforcing file was opened and searched for its anchors. */
+let consentGatesChecked = 0;
 /** How many erasure declarations were actually compared to the schema. The one
  *  counter that can silently empty out: a row-shape change, a renamed `kind`
  *  field or a walk that stops filing tables would make "every table has an
@@ -717,6 +719,53 @@ for (const s of stores) {
     }
   }
 
+  // ── THE CONSENT GATE ─────────────────────────────────────────────────────
+  // ⏱ 2026-10-01 · consent enforced at ingest (full review r2, services-005). `events` said
+  // "collected only after consent" for as long as it existed, and until that
+  // day the ingest route never read `consent_artifacts` — the sentence was true
+  // of our client and of nothing a forked build, an old build or a late flush
+  // had to respect. So the claim now OWES a pointer: a row whose `holds` says
+  // "only after consent" names a `consentGate` — the server file that refuses
+  // what was not consented to, and the anchors that prove it still does.
+  //
+  // WHAT THIS DOES NOT CATCH: anchors are a MENTION in code (comments stripped,
+  // string literals kept — the refusal codes ARE string literals), not a proof
+  // the branch runs. services/platform/test/events.test.ts is where the branch
+  // is proven; this limb is what stops the inventory pointing at a file that no
+  // longer does it, or making the claim with no pointer at all.
+  const claimsConsent = typeof s.holds === 'string' && /\bonly after consent\b/i.test(s.holds);
+  if (s.consentGate !== undefined || claimsConsent) {
+    const g = s.consentGate;
+    const anchors = Array.isArray(g?.anchors) ? g.anchors.filter((a) => typeof a === 'string' && a !== '') : [];
+    if (!g || typeof g.enforcedBy !== 'string' || g.enforcedBy.trim() === '' || anchors.length === 0) {
+      problems.push(
+        `${where} says its data is collected "only after consent" (or declares a \`consentGate\`) and names no ` +
+          '`consentGate` with an `enforcedBy` file and at least one `anchors` entry. A consent claim with nothing ' +
+          'enforcing it server-side is true of honest clients only — which is what this table was until 2026-10-01.',
+      );
+    } else {
+      const abs = join(repoRoot, ...g.enforcedBy.split('/'));
+      if (!existsSync(abs)) {
+        problems.push(
+          `${where} names ${g.enforcedBy} as its consent gate, and that file does not exist. The claim is now ` +
+            'enforced by nothing this inventory can point at.',
+        );
+      } else {
+        consentGatesChecked++;
+        const src = stripSourceComments(readFileSync(abs, 'utf8'), extname(g.enforcedBy).toLowerCase());
+        for (const a of anchors) {
+          if (!src.includes(a)) {
+            problems.push(
+              `${where} names ${g.enforcedBy} as its consent gate and that file's code never mentions ` +
+                `${JSON.stringify(a)}. Either the refusal was removed or renamed, or it moved and this row still ` +
+                'points at the old file.',
+            );
+          }
+        }
+      }
+    }
+  }
+
   // 🔴 `ttl` IS THE ONE RETENTION KIND THAT MAKES A CLAIM ABOUT CODE, and until
   // 2026-08-09 no row in this register used it — so the second half of the
   // vocabulary's own sentence ("the row names the code that sets the expiry")
@@ -812,6 +861,10 @@ console.log(
   `    ${erasureRowsChecked} erasure declaration(s) checked against the columns of ${columnsByTable.size} table(s): ` +
     'every `purge` names a table that really has a `user_id`, every `unlink` a column that really ends in ' +
     '`_user_id`, and every "unreachable" a table that really has neither',
+);
+console.log(
+  `    ${consentGatesChecked} consent gate(s) checked: every "only after consent" claim names a server file whose code ` +
+    'still carries the refusal',
 );
 if (prints.length) {
   console.log('');

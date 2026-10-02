@@ -107,6 +107,7 @@ void main() {
               anonId: 'install-1',
               transport: events,
               consent: consent,
+              consentTransport: const core.DiscardingConsentTransport(),
               queueStore: store,
               batchSize: 99,
             );
@@ -160,6 +161,7 @@ void main() {
       anonId: 'install-1',
       transport: events,
       consent: controller,
+      consentTransport: const core.DiscardingConsentTransport(),
       queueStore: store,
       batchSize: 99,
     );

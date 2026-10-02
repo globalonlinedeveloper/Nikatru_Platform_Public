@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Hono } from 'hono';
+import CEILINGS_RAW from '../../../tooling/ceilings.json?raw';
+import DART_ANALYTICS from '../../../packages/core/lib/src/analytics/analytics.dart?raw';
+import DART_EVENT_TRANSPORT from '../../../packages/api_client/lib/src/dio_event_transport.dart?raw';
 import events, {
+  CONSENT_NOT_RECORDED,
+  CONSENT_WITHDRAWN,
+  CONSENT_READS_PER_BATCH,
   MAX_CONSENT_BODY_BYTES,
   MAX_EVENTS_BODY_BYTES,
   MAX_EVENTS_PER_BATCH,
@@ -53,9 +59,20 @@ function harness(
     /** `MONEY_ENVIRONMENT`. `'live'` is the production Worker
      *  (lib/build-stamp.ts); omitted is a local run, as every older case means. */
     world?: string;
+    /**
+     * ⏱ 2026-10-01 · Seed a GRANTED analytics artifact for every install a
+     * `/v1/events` post names, before it is sent. ON by default, because every
+     * case written before the route read `consent_artifacts` grades something
+     * else (caps, keys, bodies, stamps) and was written for a consenting
+     * install. The consent cases below turn it OFF and post their artifacts
+     * through the real `/v1/consent` route instead. Seeded straight into the
+     * engine, so it never appears in `db.sql` or `db.bound`.
+     */
+    autoConsent?: boolean;
   } = {},
 ) {
   const db = opts.db ?? realPlatformDb();
+  const autoConsent = opts.autoConsent !== false;
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => {
     c.set('requestId', 'test-rid');
@@ -73,6 +90,7 @@ function harness(
   } as unknown as AppEnv['Bindings'];
 
   const post = (path: string, body: unknown, cf?: Record<string, unknown>) => {
+    if (autoConsent && path === '/v1/events') seedGrants(db, body);
     const req = new Request(`https://platform.nikatru.com${path}`, {
       method: 'POST',
       headers: {
@@ -97,6 +115,26 @@ function harness(
 
   return { db, post, postRaw, fairness, ceiling };
 }
+
+/** A granted analytics artifact per install the body names — see `autoConsent`. */
+function seedGrants(db: RealDb, body: unknown) {
+  const b = body as { app_id?: unknown; events?: unknown };
+  if (typeof b?.app_id !== 'string' || !Array.isArray(b.events)) return;
+  for (const e of b.events as Array<{ anon_id?: unknown }>) {
+    if (typeof e?.anon_id !== 'string' || e.anon_id === '') continue;
+    db.db
+      .prepare(
+        `INSERT INTO consent_artifacts (consent_id, app_id, anon_id, purpose, granted, policy_version, server_ts)
+         VALUES (?, ?, ?, 'analytics', 1, '2026-07-25', '2026-07-25T00:00:00.000Z')
+         ON CONFLICT(consent_id) DO NOTHING`,
+      )
+      .run(`seed:${b.app_id}:${e.anon_id}`, b.app_id, e.anon_id);
+  }
+}
+
+/** The route's consent read, recognised by its text — it is inline at its
+ *  `.prepare` (assert-d1-sql-inventory reads it there), so there is no constant. */
+const isConsentRead = (sql: string) => sql.includes('FROM json_each(?)') && sql.includes('consent_artifacts');
 
 const ev = (over: Record<string, unknown> = {}) => ({
   event_id: '11111111-1111-4111-8111-111111111111',
@@ -659,8 +697,10 @@ describe('anon_id is required, never invented and never borrowed', () => {
       ],
     });
     expect(await res.json()).toEqual({ ok: true, received: 1 });
-    expect(db.bound).toHaveLength(1);
-    expect(db.bound[0][2]).toBe('install-A');
+    // ⏱ 2026-10-01 — read off the TABLE, not `db.bound`. The route now binds a
+    // second statement (the consent read), so "one bound tuple" stopped meaning
+    // "one event row"; what landed is the property, and the engine can say it.
+    expect(db.rows('SELECT anon_id FROM events')).toEqual([{ anon_id: 'install-A' }]);
   });
 });
 
@@ -999,5 +1039,237 @@ describe('production refuses an unreleased build (lib/build-stamp.ts)', () => {
     const { post } = harness({ world: 'live' });
     const res = await post('/v1/consent', consent({ app_id: 'no-such-app', app_version: 'dev' }));
     expect(res.status).toBe(404);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 2026-10-01 · CONSENT IS ENFORCED AT INGEST (full review r2, services-005,
+// SYN-S5). The recorded failing input: an install with NO analytics
+// artifact posted one well-formed event and the route answered 200 and stored
+// ONE row — measured on this file's harness at 65fc0526, before the read
+// existed. A withdrawal after a grant stored it too. Every case below posts its
+// artifacts through the REAL `/v1/consent` route (autoConsent OFF), and grades
+// what LANDED with `db.count`, never which methods the route called.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('POST /v1/events stores nothing an install has not consented to', () => {
+  const grant = (over: Record<string, unknown> = {}) => ({
+    consent_id: 'c-grant-1',
+    app_id: 'subscriptiontracker',
+    anon_id: 'install-1',
+    purpose: 'analytics',
+    granted: true,
+    policy_version: '2026-07-25',
+    ...over,
+  });
+  const batch = (n: number, anon = 'install-1') => ({
+    app_id: 'subscriptiontracker',
+    events: Array.from({ length: n }, (_, i) =>
+      ev({ event_id: `${anon}-e${i}`, anon_id: anon, consent_id: 'c-grant-1' }),
+    ),
+  });
+
+  it('🔴 an install with NO artifact stores 0 rows and is told 409 consent_not_recorded', async () => {
+    // The event even CLAIMS a consent_id. A claim is not an artifact: the
+    // column was stored unverified, which is the defect.
+    const { db, post } = harness({ autoConsent: false });
+    const res = await post('/v1/events', batch(1));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ ok: false, error: 'consent_not_recorded', received: 0 });
+    expect(db.count('events')).toBe(0);
+    expect(db.batched).toBe(0);
+  });
+
+  it('a live grant stores every event in the batch', async () => {
+    // The other direction of the same requirement: a check that refuses the
+    // consenting install too passes the case above and takes the rail off air.
+    const { db, post } = harness({ autoConsent: false });
+    expect((await post('/v1/consent', grant())).status).toBe(200);
+    const res = await post('/v1/events', batch(3));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, received: 3 });
+    expect(db.count('events', 'anon_id = ?', 'install-1')).toBe(3);
+  });
+
+  it('🔴 a withdrawal AFTER a grant stores 0 rows and is told 403 consent_withdrawn', async () => {
+    // Both artifacts land within the same millisecond here, so this also pins
+    // the tie-break: the row inserted LAST is the decision taken last.
+    const { db, post } = harness({ autoConsent: false });
+    await post('/v1/consent', grant());
+    await post('/v1/consent', grant({ consent_id: 'c-withdraw-1', granted: false }));
+    expect(db.count('consent_artifacts')).toBe(2);
+    const res = await post('/v1/events', batch(3));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ ok: false, error: 'consent_withdrawn', received: 0 });
+    expect(db.count('events')).toBe(0);
+  });
+
+  it('the LATEST artifact decides — a grant after a withdrawal stores again', async () => {
+    // "Any granted row exists" would pass every case above and store events
+    // for someone who withdrew; "any withdrawal exists" would lock out a person
+    // who changed their mind back. Only the newest row is the decision.
+    const { db, post } = harness({ autoConsent: false });
+    db.db.exec(`INSERT INTO consent_artifacts (consent_id, app_id, anon_id, purpose, granted, policy_version, server_ts)
+                VALUES ('old-grant', 'subscriptiontracker', 'install-1', 'analytics', 1, 'p', '2026-08-01T00:00:00.000Z'),
+                       ('old-withdraw', 'subscriptiontracker', 'install-1', 'analytics', 0, 'p', '2026-08-02T00:00:00.000Z')`);
+    expect((await post('/v1/events', batch(1))).status).toBe(403);
+    await post('/v1/consent', grant({ consent_id: 'new-grant' }));
+    const res = await post('/v1/events', batch(2));
+    expect(res.status).toBe(200);
+    expect(db.count('events')).toBe(2);
+  });
+
+  it('ORDER IS server_ts, not insertion: an older row inserted later does not win', async () => {
+    const { db, post } = harness({ autoConsent: false });
+    db.db.exec(`INSERT INTO consent_artifacts (consent_id, app_id, anon_id, purpose, granted, policy_version, server_ts)
+                VALUES ('newer-withdraw', 'subscriptiontracker', 'install-1', 'analytics', 0, 'p', '2026-09-02T00:00:00.000Z'),
+                       ('older-grant', 'subscriptiontracker', 'install-1', 'analytics', 1, 'p', '2026-09-01T00:00:00.000Z')`);
+    expect((await post('/v1/events', batch(1))).status).toBe(403);
+    expect(db.count('events')).toBe(0);
+  });
+
+  it('only an ANALYTICS artifact for THIS app and THIS install counts', async () => {
+    const { db, post } = harness({ autoConsent: false });
+    // A grant for another purpose — `terms` is taken at sign-up and says
+    // nothing about usage statistics.
+    await post('/v1/consent', grant({ consent_id: 'c-terms', purpose: 'terms' }));
+    // A grant for another install.
+    await post('/v1/consent', grant({ consent_id: 'c-other-install', anon_id: 'install-2' }));
+    // A grant for the same install under another app id (seeded: the route
+    // refuses an unregistered app, which is its own pinned property).
+    db.db.exec(`INSERT INTO consent_artifacts (consent_id, app_id, anon_id, purpose, granted, policy_version, server_ts)
+                VALUES ('c-other-app', 'some-other-app', 'install-1', 'analytics', 1, 'p', '2026-09-01T00:00:00.000Z')`);
+    const res = await post('/v1/events', batch(2));
+    expect(res.status).toBe(409);
+    expect(db.count('events')).toBe(0);
+  });
+
+  it('a split batch stores the consenting install and drops the other', async () => {
+    // Not a shape our client sends (one install per batch), so it gets no
+    // special status — but a stranger's rows must not cost a consenting
+    // install its own.
+    const { db, post } = harness({ autoConsent: false });
+    await post('/v1/consent', grant());
+    const res = await post('/v1/events', {
+      app_id: 'subscriptiontracker',
+      events: [...batch(2).events, ...batch(3, 'install-nobody').events],
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, received: 2 });
+    expect(db.count('events')).toBe(2);
+    expect(db.count('events', 'anon_id = ?', 'install-nobody')).toBe(0);
+  });
+
+  it('a split batch with NO survivors answers 409 when any install is merely unrecorded', async () => {
+    // 409 is the answer a client can act on; the re-send then drops the
+    // withdrawn install's rows again by itself.
+    const { db, post } = harness({ autoConsent: false });
+    await post('/v1/consent', grant({ granted: false }));
+    const res = await post('/v1/events', {
+      app_id: 'subscriptiontracker',
+      events: [...batch(1).events, ...batch(1, 'install-nobody').events],
+    });
+    expect(res.status).toBe(409);
+    expect(db.count('events')).toBe(0);
+  });
+
+  it('the production Worker enforces it too — not only a local run', async () => {
+    const { db, post } = harness({ autoConsent: false, world: 'live' });
+    const shipped = { ...batch(1), events: batch(1).events.map((e) => ({ ...e, app_version: '1.0.144+40c0787' })) };
+    expect((await post('/v1/events', shipped)).status).toBe(409);
+    expect(db.count('events')).toBe(0);
+  });
+
+  it('a failed consent read is a 503 and writes nothing — the client keeps the batch', async () => {
+    const { db, post } = harness();
+    const prepare = db.prepare.bind(db);
+    (db as unknown as { prepare: (sql: string) => unknown }).prepare = (sql: string) =>
+      isConsentRead(sql)
+        ? {
+            bind: () => ({
+              all: async () => {
+                throw new Error('d1 down');
+              },
+            }),
+          }
+        : prepare(sql);
+    const res = await post('/v1/events', batch(1));
+    expect(res.status).toBe(503);
+    expect(db.count('events')).toBe(0);
+  });
+
+  it('ONE read per batch, however many installs it names, served by idx_consent_lookup with no sort', async () => {
+    const { db, post } = harness({ autoConsent: false });
+    for (const anon of ['install-1', 'install-2', 'install-3']) {
+      await post('/v1/consent', grant({ consent_id: `c-${anon}`, anon_id: anon }));
+    }
+    const before = db.sql.length;
+    const res = await post('/v1/events', {
+      app_id: 'subscriptiontracker',
+      events: [...batch(2).events, ...batch(2, 'install-2').events, ...batch(2, 'install-3').events],
+    });
+    expect(res.status).toBe(200);
+    expect(db.count('events')).toBe(6);
+    const reads = db.sql.slice(before).filter(isConsentRead);
+    expect(reads).toHaveLength(CONSENT_READS_PER_BATCH);
+    // The plan, from the real engine: an index SEARCH on the three equality
+    // columns, and no temp b-tree — `ORDER BY server_ts DESC, rowid DESC` is
+    // read straight off idx_consent_lookup (app_id, anon_id, purpose, server_ts).
+    const plan = db
+      .rows(`EXPLAIN QUERY PLAN ${reads[0]}`, 'subscriptiontracker', '["install-1"]')
+      .map((r) => String(r.detail));
+    expect(plan.join('\n')).toMatch(/SEARCH ca USING INDEX idx_consent_lookup \(app_id=\? AND anon_id=\? AND purpose=\?\)/);
+    expect(plan.join('\n')).not.toMatch(/TEMP B-TREE/);
+    expect(plan.join('\n')).not.toMatch(/SCAN ca\b/);
+  });
+
+  it('🔴 a FULL batch is 1 read + N inserts, and that sum fits d1.queriesPerInvocation', async () => {
+    // The read is a query. At the old cap of 50 a full batch was 51 statements
+    // against the worst-case reading of a 50-query ceiling — B-6 again.
+    const ceilings = JSON.parse(CEILINGS_RAW) as { ceilings: { id: string; value: number | null }[] };
+    const ceiling = ceilings.ceilings.find((c) => c.id === 'd1.queriesPerInvocation')?.value;
+    expect(typeof ceiling).toBe('number');
+    const { db, post } = harness();
+    const before = db.sql.length;
+    const res = await post('/v1/events', {
+      app_id: 'subscriptiontracker',
+      events: Array.from({ length: MAX_EVENTS_PER_BATCH }, (_, i) => ev({ event_id: `full-${i}` })),
+    });
+    expect(res.status).toBe(200);
+    const reads = db.sql.slice(before).filter(isConsentRead).length;
+    expect(reads).toBe(CONSENT_READS_PER_BATCH);
+    expect(db.batched).toBe(MAX_EVENTS_PER_BATCH);
+    expect(reads + db.batched).toBeLessThanOrEqual(ceiling as number);
+    expect(MAX_EVENTS_PER_BATCH + CONSENT_READS_PER_BATCH).toBeLessThanOrEqual(ceiling as number);
+  });
+
+  it('the Dart client spells both refusals exactly as this route answers them', async () => {
+    // The client acts on the CODE, and Dart and TypeScript cannot share a
+    // literal. Rename either side alone and the client stops recognising the
+    // refusal: a 409 becomes a plain retry that never posts consent, and a 403
+    // keeps a queue that must be dropped.
+    expect(CONSENT_NOT_RECORDED).toBe('consent_not_recorded');
+    expect(CONSENT_WITHDRAWN).toBe('consent_withdrawn');
+    expect(DART_ANALYTICS).toContain(`const String kConsentNotRecordedError = '${CONSENT_NOT_RECORDED}';`);
+    expect(DART_ANALYTICS).toContain(`const String kConsentWithdrawnError = '${CONSENT_WITHDRAWN}';`);
+    expect(DART_EVENT_TRANSPORT).toContain('_answered(e, 409, core.kConsentNotRecordedError)');
+    expect(DART_EVENT_TRANSPORT).toContain('_answered(e, 403, core.kConsentWithdrawnError)');
+  });
+
+  it('the refusal log names the app and the counts, never an install id', async () => {
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, 'warn').mockImplementation((...a: unknown[]) => {
+      lines.push(a.map(String).join(' '));
+    });
+    try {
+      const { post } = harness({ autoConsent: false });
+      await post('/v1/events', batch(2, 'install-secret-anon'));
+    } finally {
+      spy.mockRestore();
+    }
+    const line = lines.find((l) => l.includes('consent refused'));
+    expect(line).toBeDefined();
+    expect(line).toContain('app=subscriptiontracker');
+    expect(line).toContain('consent_not_recorded=2');
+    expect(line).not.toContain('install-secret-anon');
   });
 });

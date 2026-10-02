@@ -72,6 +72,9 @@ void main() {
       anonId: anonId,
       transport: DioEventTransport(platformBaseUrl: kProbePlatformBase),
       consent: consent,
+      consentTransport: DioConsentTransport(
+        platformBaseUrl: kProbePlatformBase,
+      ),
       queueStore: store,
       envelope: <String, Object?>{
         'platform': 'probe',

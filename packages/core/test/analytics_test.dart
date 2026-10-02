@@ -70,6 +70,7 @@ AnalyticsRecorder _recorder({
       anonId: anonId,
       transport: transport,
       consent: consent,
+      consentTransport: const DiscardingConsentTransport(),
       queueStore: store,
       clock: clock,
       batchSize: batchSize,

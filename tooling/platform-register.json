@@ -500,7 +500,7 @@
       "path": "/v1/events",
       "auth": "public",
       "owningFile": "services/platform/src/routes/events.ts",
-      "purpose": "G-12 first-party analytics ingest ([ADR 011]). Batched, pseudonymous, consent-gated CLIENT-side. Unauthenticated deliberately: the most valuable events (first_launch, paywall_viewed) happen before any login exists, and a bearer token would attach an identity to rows whose whole point is that they carry none.",
+      "purpose": "G-12 first-party analytics ingest ([ADR 011]). Batched, pseudonymous, consent-gated on BOTH sides: the client collects nothing before a grant, and since 2026-10-01 the route stores nothing for an install whose latest `purpose='analytics'` artifact is missing (409 consent_not_recorded) or a withdrawal (403 consent_withdrawn). Unauthenticated deliberately: the most valuable events (first_launch, paywall_viewed) happen before any login exists, and a bearer token would attach an identity to rows whose whole point is that they carry none.",
       "client": {
         "file": "packages/api_client/lib/src/dio_event_transport.dart",
         "expression": "'$_base/v1/events'",

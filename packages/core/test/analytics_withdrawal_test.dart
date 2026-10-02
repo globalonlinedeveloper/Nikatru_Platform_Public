@@ -81,6 +81,7 @@ AnalyticsRecorder _recorder({
       anonId: 'install-1',
       transport: transport,
       consent: consent,
+      consentTransport: const DiscardingConsentTransport(),
       queueStore: store,
       batchSize: batchSize,
     );

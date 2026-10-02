@@ -282,7 +282,13 @@ Future<core.ConsentArtifact> applyConsentDecision({
   }
   // Best-effort by contract. The decision already applies on-device, so an
   // upload failure must never make the user's choice look rejected.
-  await transport.send(appId: appId, artifact: artifact);
+  //
+  // ⏱ 2026-10-01 — `upload`, not `transport.send`: it also records that the
+  // server holds the artifact, so the recorder does not post it a second time
+  // before its first flush. A failed upload stays unacknowledged, and the
+  // recorder retries it — the platform Worker refuses analytics from an
+  // install whose artifact it does not hold.
+  await controller.upload(transport, appId: appId, artifact: artifact);
   return artifact;
 }
 
@@ -554,6 +560,9 @@ analyticsProvider = FutureProvider<core.Analytics>((ref) async {
     anonId: anonId,
     transport: ref.watch(eventTransportProvider),
     consent: consent,
+    // ⏱ 2026-10-01 — the recorder posts the artifact itself until the server
+    // holds it; no event leaves before that (see core.AnalyticsRecorder).
+    consentTransport: ref.watch(consentTransportProvider),
     queueStore: kv,
     envelope: <String, Object?>{
       'platform': _platformName(),
