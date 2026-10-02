@@ -39,6 +39,11 @@
 //             `land-freeze` issue naming the run and the job. Only ci.yml and
 //             codeql.yml are judged, so the attended dispatches (Rollback, Native
 //             auth proof, Store submit) never count.
+//   review    ⏱ 2026-10-02 (O-REVIEWS-DEPEND-ON-THE-LAPTOP) a `land-hold` label waits; a
+//             `needs-review` PR waits until the NEWEST owner verdict review (line 1
+//             `VERDICT: APPROVE`) is on the current head, with `review:approve`
+//             (`reviewVerdict`). Labels set by review-gate.yml; verdicts posted by
+//             tooling/autopilot/post-verdict.mjs.
 //   one       ONE write per run (a merge, an update-branch, an E2E dispatch, a
 //             main dispatch or a freeze), in order of land-ok label time, then
 //             PR number. `concurrency: land` makes the run itself the one actor.
@@ -63,11 +68,21 @@ import { gateVerdict, newReds, MAIN_WORKFLOW, MAIN_WORKFLOW_PATH } from '../ops/
 import { fetchWithBoundedRetry } from '../ops/bounded-retry.mjs';
 import { globClaims } from './deploy-globs.mjs';
 import { POST_GATE_EVENTS } from '../ops/post-gate.mjs';
+import { CONTRACT } from '../autopilot/cli.mjs';
 
 const ROOT = resolve(join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 
 export const LAND_LABEL = 'land-ok';
 export const FREEZE_LABEL = 'land-freeze';
+// ⏱ 2026-10-02 · O-REVIEWS-DEPEND-ON-THE-LAPTOP. The review gate's labels are the
+// autopilot contract's (tooling/autopilot/contract.json), never spelled twice.
+const PR_LABELS = CONTRACT.publicLabels.pr;
+export const HOLD_LABEL = PR_LABELS[1];
+export const NEEDS_REVIEW_LABEL = PR_LABELS[2];
+export const APPROVE_LABEL = PR_LABELS[3];
+/** Line 1 of a verdict review's body. A verdict is a COMMENT review (GitHub refuses
+ *  APPROVE from a PR's author, and every PR here has one author). */
+export const VERDICT_LINE = /^VERDICT: (APPROVE|CHANGES)\s*$/;
 export const BASE_BRANCH = 'main';
 export const E2E_WORKFLOW_PATH = '.github/workflows/e2e.yml';
 /** The workflows whose run on main's head is main's verdict after a merge. */
@@ -260,6 +275,34 @@ function freezeBody({ sha, fresh, marker }) {
   return lines.join('\n');
 }
 
+// ── PURE: the independent review ────────────────────────────────────────────
+
+/**
+ * THE REVIEW GATE (owner rule 2026-09-29; lane autopilot-reviews). `reviews` are the
+ * PR's reviews from the REST API. Only a review by the repository OWNER
+ * (`author_association`) whose body's first line is `VERDICT: APPROVE|CHANGES` is a
+ * verdict — anyone may post a COMMENT review on a public repository, so nobody
+ * else's text can approve or block. The NEWEST owner verdict decides, and it must be
+ * an APPROVE whose `commit_id` is the current head, with the `review:approve` label.
+ * Returns { ok, why }.
+ */
+export function reviewVerdict({ reviews, headSha, labels }) {
+  const verdicts = (reviews ?? [])
+    .map((r) => ({ r, m: VERDICT_LINE.exec(String(r?.body ?? '').split(/\r?\n/)[0]) }))
+    .filter(({ r, m }) => m && r?.author_association === 'OWNER')
+    .sort((a, b) => (Date.parse(b.r.submitted_at ?? '') || 0) - (Date.parse(a.r.submitted_at ?? '') || 0) || Number(b.r.id ?? 0) - Number(a.r.id ?? 0));
+  const at = String(headSha).slice(0, 8);
+  if (!verdicts.length) {
+    const others = (reviews ?? []).filter((r) => VERDICT_LINE.test(String(r?.body ?? '').split(/\r?\n/)[0])).length;
+    return { ok: false, why: `needs-review: no owner verdict yet${others ? ` (${others} verdict-shaped review(s) by a non-owner ignored)` : ''}` };
+  }
+  const { r, m } = verdicts[0];
+  if (r.commit_id !== headSha) return { ok: false, why: `needs-review: the newest verdict (${m[1]}, review ${r.id}) is on ${String(r.commit_id).slice(0, 8)}, not the head ${at}` };
+  if (m[1] !== 'APPROVE') return { ok: false, why: `needs-review: the newest verdict on ${at} is CHANGES (review ${r.id})` };
+  if (!(labels ?? []).includes(APPROVE_LABEL)) return { ok: false, why: `needs-review: APPROVE on ${at} (review ${r.id}) but no \`${APPROVE_LABEL}\` label` };
+  return { ok: true, why: `owner APPROVE on ${at} (review ${r.id})` };
+}
+
 // ── PURE: one pull request ──────────────────────────────────────────────────
 
 /**
@@ -276,6 +319,13 @@ export function decidePr(pr, { repo, units }) {
   if (!(pr.labels ?? []).includes(LAND_LABEL)) return skip(`no \`${LAND_LABEL}\` label`);
   if (pr.baseRef !== BASE_BRANCH) return skip(`base is ${pr.baseRef}, not ${BASE_BRANCH}`);
   if (!/^[0-9a-f]{40}$/.test(String(pr.headSha ?? ''))) return skip('no readable head sha');
+  if ((pr.labels ?? []).includes(HOLD_LABEL)) return wait(`\`${HOLD_LABEL}\`: held by the lead`);
+  let reviewed = '';
+  if ((pr.labels ?? []).includes(NEEDS_REVIEW_LABEL)) {
+    const rv = reviewVerdict({ reviews: pr.reviews, headSha: pr.headSha, labels: pr.labels });
+    if (!rv.ok) return wait(rv.why);
+    reviewed = `, ${rv.why}`;
+  }
   const g = gateVerdict(pr.checks ?? [], { runs: gateRuns(pr.runs) });
   if (g.verdict === 'RED') return skip(`ci-gate RED — ${g.why}`);
   if (g.verdict !== 'GREEN') return wait(`ci-gate ${g.verdict} — ${g.why}`);
@@ -296,7 +346,7 @@ export function decidePr(pr, { repo, units }) {
     }
   }
   const skew = Number(pr.behindBy) > 0 ? `, ${pr.behindBy} behind but DISJOINT` : '';
-  return { action: 'MERGE', why: `ci-gate GREEN, mergeable${skew}${needsE2E(pr.files) ? ', E2E green' : ''}` };
+  return { action: 'MERGE', why: `ci-gate GREEN, mergeable${skew}${needsE2E(pr.files) ? ', E2E green' : ''}${reviewed}` };
 }
 
 /** Queue order: land-ok label time, then PR number. A PR with no label time sorts last. */
@@ -500,7 +550,10 @@ export async function readSnapshot({ repo, token, now = new Date() }) {
     const runs = (await get(`/actions/runs?head_sha=${p.head.sha}&per_page=100`)).workflow_runs ?? [];
     const files = await paged(get, `/pulls/${p.number}/files`, null, PR_FILE_CAP / 100);
     const cmp = await get(`/compare/${p.head.sha}...${BASE_BRANCH}`);
+    // The review gate's input, read only for a PR that carries `needs-review`.
+    const reviews = labels.includes(NEEDS_REVIEW_LABEL) ? (await paged(get, `/pulls/${p.number}/reviews`)).rows.map((r) => ({ id: r.id, author_association: r.author_association, body: r.body, commit_id: r.commit_id, submitted_at: r.submitted_at, state: r.state })) : [];
     prs.push({
+      reviews,
       ...entry,
       labeledAt: labeled.at(-1) ?? null,
       mergeable: full.mergeable,

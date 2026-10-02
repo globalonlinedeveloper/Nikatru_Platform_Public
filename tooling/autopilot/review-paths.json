@@ -1,0 +1,41 @@
+{
+  "_header": "The review classes (lane autopilot-reviews, O-REVIEWS-DEPEND-ON-THE-LAPTOP). Owner rule 2026-09-29: an auth, money, user-data or API pull request gets an INDEPENDENT review before it may merge. .github/workflows/review-gate.yml runs tooling/autopilot/review-paths.mjs over a PR's file list and adds `needs-review` when any path matches a glob below; tooling/ci/land-next.mjs then waits for an owner's `VERDICT: APPROVE` on the head. Name globs are scoped to the product roots (apps, packages, services, sites, extensions) so a tooling test named after a class is not a review. Globs: `**` any depth, `*` within one segment, `{a,b}` alternatives; matched case-insensitively against the repo-relative path. Seeded from the brief, refined from this tree (packages/, services/*/src/routes, services/*/migrations, contracts/). A test fixture per class is in tooling/ci/test/autopilot-review-gate.test.mjs.",
+  "classes": {
+    "auth": [
+      "packages/auth_supabase/**",
+      "packages/core/lib/src/auth/**",
+      "packages/chassis_screens/lib/auth/**",
+      "apps/*/lib/features/auth/**",
+      "apps/*/lib/data/auth/**",
+      "services/*/src/middleware/**",
+      "services/_shared/src/auth*.ts",
+      "services/platform/src/routes/{native-auth,native-handoff,provider-token}.ts",
+      "tooling/bricks/app/__brick__/**/features/auth/**",
+      "{apps,packages,services,sites,extensions}/**/*{session,oauth,jwks,siwa,signin,sign_in,sign-in,captcha,turnstile}*"
+    ],
+    "money": [
+      "packages/purchases/**",
+      "packages/billing_revenuecat/**",
+      "contracts/{entitlement,fx,renewals}/**",
+      "services/platform/src/lib/mor/**",
+      "services/platform/src/routes/{checkout,money,receipts,rail-price-ids,entitlements,cancellation}.ts",
+      "services/platform/src/{fx,renewals}.ts",
+      "services/_shared/src/entitlement-read.ts",
+      "{apps,packages,services,sites,extensions}/**/*{payment,billing,refund,paddle,razorpay,revenuecat,checkout,pricing,paywall,entitlement}*",
+      "{apps,packages,services,sites,extensions}/**/tax/**",
+      "{apps,packages,services,sites,extensions}/**/*{-tax,_tax,tax-,tax_}*"
+    ],
+    "user-data": [
+      "services/*/migrations/**",
+      "services/_shared/src/erasure.ts",
+      "services/platform/src/routes/account.ts",
+      "{apps,packages,services,sites,extensions}/**/*{privacy,erasure,deletion,dpdp,consent,data-export,data_export,account-delet}*"
+    ],
+    "api": [
+      "services/*-api/**",
+      "contracts/**",
+      "services/platform/src/routes/**",
+      "services/_shared/src/**"
+    ]
+  }
+}

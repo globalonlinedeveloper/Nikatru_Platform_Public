@@ -43,6 +43,16 @@
     "state": "WIRED"
   },
   {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/review-gate.yml#label"
+    ],
+    "kind": "script",
+    "ref": "tooling/autopilot/review-paths.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
     "claims": [
       "ADR 044",
       "ADR 076",

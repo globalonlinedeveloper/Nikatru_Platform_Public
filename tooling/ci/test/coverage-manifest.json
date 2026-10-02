@@ -137,13 +137,25 @@
   "autopilot-issue-queue.test.mjs":
     18,
 
+  "autopilot-land-gate.test.mjs":
+    11,
+
   "autopilot-outage.test.mjs":
     14,
+
+  "autopilot-post-verdict.test.mjs":
+    8,
+
+  "autopilot-prompts.test.mjs":
+    2,
 
   "autopilot-queue-doc.test.mjs":
     2,
 
   "autopilot-queue-migrate.test.mjs":
+    11,
+
+  "autopilot-review-gate.test.mjs":
     11,
 
   "availability.test.mjs":

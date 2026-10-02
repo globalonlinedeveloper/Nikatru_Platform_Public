@@ -2041,6 +2041,28 @@
       "unverifiedWhy": "The workflow has not run yet: a schedule and a dispatch exist only once the file is on the default branch. Its first runs are DRY, beside the laptop landers, until the lead's cut-over sets LAND_DRY_RUN to false."
     },
     {
+      "_whyThisRowExists": "APPENDED 2026-10-02 for O-REVIEWS-DEPEND-ON-THE-LAPTOP. The owner rule of 2026-09-29 (an auth, money, user-data or API pull request gets an independent review before it may merge) lived only on the laptop: a hold list, approve files and a daemon. This workflow labels the review-classed pull requests on GitHub, and land-next.mjs waits for an owner verdict review on the head. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together.",
+      "id": "duty.workflow.review-gate.yml",
+      "kind": "duty",
+      "what": "On every opened, synchronized, reopened or ready-for-review pull request, tooling/autopilot/review-paths.mjs reads the PR's file list over the API and adds `needs-review` when a path matches a class in tooling/autopilot/review-paths.json (auth, money, user-data, api) or the list cannot be read whole; on a new head it removes `review:approve` / `review:changes`, because a verdict is pinned to the head it read. It never removes `needs-review`. It runs from main under pull_request_target and never checks out the PR's code.",
+      "detector": "The run's own exit: review-paths.mjs exits 1 when a label write was refused. tooling/ci/test/autopilot-review-gate.test.mjs holds every class, the fail-closed list, the synchronize rule and this workflow's shape on every CI run.",
+      "response": "Read the run: it prints the classes it found and the labels it changed. A missing `needs-review` on a review-classed PR is added by hand; land-next.mjs then waits for the verdict like any other.",
+      "cadence": "trigger",
+      "trigger": "a pull request opened, synchronized, reopened or marked ready for review",
+      "mechanism": {
+        "substrate": "github-actions",
+        "anchor": ".github/workflows/review-gate.yml",
+        "record": "GitHub Actions run history for review-gate.yml, and the labels on each pull request",
+        "failingValue": "conclusion = failure — a label write was refused",
+        "readBy": "tooling/ci/test/autopilot-review-gate.test.mjs on every CI run (the decisions and the shell); land-next.mjs reads the labels it sets. NOT graded RED-SINCE: it has no workflow_dispatch, and its next pull request event re-runs it."
+      },
+      "accessProviders": [
+        "github"
+      ],
+      "source": "unverified",
+      "unverifiedWhy": "The workflow has not run yet: a pull_request_target workflow runs from the default branch, so its first run is the first pull request event after this row reaches main."
+    },
+    {
       "_whyThisRowExists": "APPENDED 2026-09-23 for O-CI-GATE-CASCADE-STRANDS-THE-DEPLOY-LANES. On 2026-09-22 a red ci-gate on 2c4540fa failed `Deploy web` #426 and `Deploy workers` #168 on their gate step; the repair commit 35147514 turned CI green but matched neither lane's push paths, so nothing re-entered them and production served the previous build until a scheduled Ops watch noticed. This workflow is the re-entry. assert-ops-register.mjs holds `watched workflows ≡ .github/workflows/*.yml` in BOTH directions, so the file and this row land together. WIDENED 2026-09-23 for O-REDEPLOY-STRANDED-MISSES-THE-BUILD-LANE: Build apps #102 (run 35800063831, the Worker's 00:00Z dispatch) failed its gate step and was not re-entered, because the derivation took push-on-main lanes only and the run's always() aggregate `all-platforms` failed beside the gate.",
       "id": "duty.workflow.redeploy-stranded.yml",
       "kind": "duty",

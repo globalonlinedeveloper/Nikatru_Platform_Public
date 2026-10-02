@@ -616,6 +616,16 @@ const CLASSIFIED_ELSEWHERE = new Map([
       'the workflow landed.',
   ],
   [
+    'review-gate.yml',
+    'labels the pull requests that need an independent review (`needs-review`) and drops a verdict label pinned ' +
+      "to an old head. It builds no app, produces no release artifact and names no app id: " +
+      "tooling/autopilot/review-paths.mjs reads a pull request's file list and nothing app-shaped. R-1 would carry " +
+      'it in the denominator as a permanent empty-set pass, the reason already written out for ops-watch.yml. The ' +
+      'owning stage is stage 14 ops, through the duty row `duty.workflow.review-gate.yml` in tooling/ops/register.json. ' +
+      'What holds its behaviour correct is tooling/ci/test/autopilot-review-gate.test.mjs. Classified 2026-10-02 ' +
+      '(O-REVIEWS-DEPEND-ON-THE-LAPTOP), the round the workflow landed.',
+  ],
+  [
     'apple-expiry-write.yml',
     'writes the Apple signing certificate and App Store profile expiry dates into tooling/ops/register.json ' +
       'from App Store Connect, dispatch-only and never on main, and pushes that one file to the dispatched ' +
