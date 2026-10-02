@@ -47,6 +47,8 @@
 //   · MENU       the collapsed mobile menu's links take no focus
 //   · SKIP       the skip link carries the shared `skip-link` class
 //   · NO-CLIENT  no list is rendered in the browser from a script array
+//   · LD         ProfilePage → Person, a WebSite, the portrait as the image, no
+//                sameAs naming the company
 //
 // Usage:  node tooling/sites/generate-personal-site.mjs [repoRoot]          write
 //         node tooling/sites/generate-personal-site.mjs [repoRoot] --check  compare
@@ -282,11 +284,46 @@ export function closedMenuFindings(html, rules, { width = 375 } = {}) {
   return out;
 }
 
+/** Every node of every JSON-LD block in `html`, flattened through `@graph`. */
+export function jsonLdNodes(html) {
+  const nodes = [];
+  for (const m of html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi)) {
+    const doc = JSON.parse(m[1]);
+    for (const d of Array.isArray(doc) ? doc : [doc]) nodes.push(...(Array.isArray(d['@graph']) ? d['@graph'] : [d]));
+  }
+  return nodes;
+}
+
+/** The structured-data limb: ProfilePage → Person, a WebSite, the portrait, and no sameAs to the company. */
+export function structuredDataFindings(html) {
+  let nodes;
+  try { nodes = jsonLdNodes(html); } catch (e) { return [`${PAGE}: a JSON-LD block does not parse (${e.message})`]; }
+  const out = [];
+  const typed = (t) => nodes.filter((n) => n['@type'] === t);
+  for (const n of nodes) {
+    for (const u of [].concat(n.sameAs ?? [])) {
+      let host = '';
+      try { host = new URL(u).hostname; } catch { /* not a URL: reported below */ }
+      if (host === APEX_HOST || host.endsWith(`.${APEX_HOST}`)) {
+        out.push(`${PAGE}: the ${n['@type']} node says sameAs ${u}. sameAs asserts IDENTITY — that this ${n['@type']} IS the company's site. The relation is worksFor (Person) / founder (Organization).`);
+      } else if (!host) out.push(`${PAGE}: the ${n['@type']} node carries a sameAs that is not a URL: ${JSON.stringify(u)}`);
+    }
+  }
+  const person = typed('Person')[0];
+  if (!person) out.push(`${PAGE}: no Person node in the JSON-LD`);
+  if (!typed('ProfilePage').some((p) => p.mainEntity?.['@id'] && p.mainEntity['@id'] === person?.['@id'])) out.push(`${PAGE}: no ProfilePage whose mainEntity is the Person`);
+  if (!typed('WebSite').length) out.push(`${PAGE}: no WebSite node in the JSON-LD`);
+  if (person && !/\.(jpe?g|webp|png)$/i.test(person.image ?? '')) out.push(`${PAGE}: the Person has no image`);
+  if (person && /og-image/i.test(person.image ?? '')) out.push(`${PAGE}: the Person's image is the social card (${person.image}), not the portrait`);
+  if (person && person.worksFor?.['@id'] !== `${APEX_ORIGIN}#org`) out.push(`${PAGE}: the Person does not work for ${APEX_ORIGIN}#org`);
+  return out;
+}
+
 /**
  * Every contract finding on a homepage, as strings. Pure: no file is read.
  */
 export function pageContract(html) {
-  const findings = [];
+  const findings = [...structuredDataFindings(html)];
   const rules = parseRules(inlineCss(html));
   for (const d of deadDeclarations(rules)) {
     findings.push(`${PAGE}: in ${d.scheme} mode \`${d.selector}{${d.prop}}\` inside @media ${d.media} never applies — a later \`${d.selector}\` rule sets ${d.prop}: ${d.lostTo}. Same selector, same specificity: source order decides, and the override is above the rule it overrides.`);

@@ -244,21 +244,14 @@ if (SCANNING_OWN_REPO) {
  * other served page, and the audit below says so rather than waiting to be
  * noticed.
  */
-const PAGE_QUALITY_EXCLUDED = new Map([
-  [
-    `${MIRROR_ROOT}/cv.html`,
-    'the mirror\'s TEMPLATE, and the exact counterpart of sites/nikatru/apps/_template.html — which this ' +
-      'file already allowlists by name and which CHROME_EXCLUDED already excuses for the same reason. It ' +
-      'says so in its own opening comment, at line 3 ("CV TEMPLATE — NOT linked from the site yet"), it is ' +
-      '`noindex, nofollow` (asserted below, not assumed), and it is linked from no page in either deploy ' +
-      'root — MEASURED 2026-08-25, not assumed: `grep -rn "cv\\.html" sites/` returns hits in that file ' +
-      'alone, and it appears in neither sites/rajasekarselvam/sitemap.xml nor its llms.txt. Its ' +
-      'body is bracketed slots waiting on history only the owner can write. Grading it would fail a file ' +
-      'whose whole job is to sit still until it is filled in. Reversible, and the reversal is the point: ' +
-      'the day it is linked from the hero and the noindex comes off, this entry is what has to be deleted, ' +
-      'and until then the audit below keeps the noindex half honest.',
-  ],
-]);
+// ⏱ 2026-10-02 — EMPTY. Its one entry, `sites/rajasekarselvam/cv.html` (the unfilled CV
+// template), was deleted from the deploy root and /cv now 301s home
+// (sites/rajasekarselvam/_redirects); the audit below asked for the entry back out, as it
+// was built to. A served page with template slots is now refused outright by
+// check-site-integrity.mjs's template-slot limb, so a page can no longer earn an entry
+// here by being "noindex and linked from nowhere". The map and its audit stay: the next
+// entry costs a written reason and is audited the same way.
+const PAGE_QUALITY_EXCLUDED = new Map([]);
 
 /**
  * PER-CONDITION exemptions, keyed `<repo-relative page>#<condition>`, with the
@@ -271,19 +264,10 @@ const PAGE_QUALITY_EXCLUDED = new Map([
  * it cannot outlive its cause either: the run after the underlying page is fixed
  * turns red asking for the entry back out.
  */
-const PAGE_QUALITY_CONDITION_EXCLUDED = new Map([
-  [
-    `${MIRROR_ROOT}/index.html#skip-link`,
-    'MEASURED 2026-08-25, and it is a MATCHER mismatch rather than a missing affordance: that page carries a ' +
-      'real, working skip link — `<a class="skip" href="#main">Skip to content</a>` above `<main id="main" ' +
-      'tabindex="-1">` — but this limb identifies a skip link by the class token `skip-link`, which is what ' +
-      'tooling/sites/chrome.mjs emits. 🔴 THE MATCHER MUST NOT BE WIDENED TO ALSO ACCEPT `skip`: that would ' +
-      'let any page under sites/nikatru satisfy the contract with a class the shared chrome never writes, ' +
-      'which is a red turned green on every page in this file rather than one. The repair is to rename the ' +
-      'class in sites/rajasekarselvam/index.html — a file the 2026-08-25 change did not own — and the run ' +
-      'after that lands FAILS here demanding this entry be deleted.',
-  ],
-]);
+// ⏱ 2026-10-02 — EMPTY. Its one entry, `sites/rajasekarselvam/index.html#skip-link`,
+// retired itself: that page's skip link now carries the shared `skip-link` class, the
+// audit below turned red asking for the entry's deletion, and this is the deletion.
+const PAGE_QUALITY_CONDITION_EXCLUDED = new Map([]);
 
 /**
  * Is this served page a subject of the page-quality contract?
@@ -910,19 +894,36 @@ let pricedSections = 0;
 
 // (ii) [12]W-2b — SHOW-1 wants the showcase on the mirror too, and the reason it
 //      is not generated there is MEASURED, not a preference.
+//
+// ⏱ 2026-10-02 — DECIDED (gate row R12-05): the mirror LINKS OUT to nikatru.com/apps/
+// instead of duplicating the catalogue. An apps/ directory there would make the root
+// app-facing (check-site-integrity.mjs) and owe four legal pages; the app's legal pages
+// live once, on the storefront that sells it. tooling/sites/generate-personal-site.mjs
+// renders the mirror's work list from the same registry, each entry linking to
+// https://nikatru.com/apps/<slug>. So the open-decision print is gone, and what is left
+// is the decision's two halves as checks: still no apps/ directory, and every live app
+// still linked out from the mirror homepage.
 {
-  const mirrorApps = abs('sites/rajasekarselvam/apps');
-  if (!existsSync(mirrorApps)) {
-    prints.push(
-      'MIRROR NOT GENERATED ([12]W-2b, SHOW-1 wants the entry on both sites): sites/rajasekarselvam ships no ' +
-        'apps/ directory and this generator does not create one. The reason is structural, not a preference — ' +
-        'check-site-integrity.mjs classifies a deploy root as APP-FACING when it ships an apps/ directory, ' +
-        'and an app-facing root immediately owes privacy.html, terms.html, refund.html and ' +
-        'delete-account.html, none of which exist there. Creating the directory would turn the sites lane ' +
-        'red on four pages of legal copy only the owner writes (OWNER_QUEUE O-3). Decide once: publish those ' +
-        'four pages on the mirror, or record that the mirror links to nikatru.com/apps/ instead of ' +
-        'duplicating the catalogue.',
-    );
+  const mirrorRoot = abs('sites/rajasekarselvam');
+  if (existsSync(mirrorRoot)) {
+    if (existsSync(abs('sites/rajasekarselvam/apps'))) {
+      problems.push(
+        'sites/rajasekarselvam/apps/ exists. R12-05 decided the mirror LINKS OUT to nikatru.com/apps/: an apps/ ' +
+          'directory makes that root app-facing (check-site-integrity.mjs) and owes it privacy, terms, refund and ' +
+          'delete-account pages. Remove it, or reopen the decision in its own change.',
+      );
+    }
+    const homeRel = 'sites/rajasekarselvam/index.html';
+    const home = existsSync(abs(homeRel)) ? readFileSync(abs(homeRel), 'utf8') : '';
+    const unlinked = registry
+      .filter((a) => a && a.status === 'live' && typeof a.slug === 'string')
+      .filter((a) => !home.includes(`href="${CANONICAL_HUB_URL}${a.slug}"`));
+    if (home && unlinked.length) {
+      problems.push(
+        `${homeRel} does not link ${unlinked.map((a) => `${CANONICAL_HUB_URL}${a.slug}`).join(', ')}. The mirror's ` +
+          'work list is generated from the registry (R12-05: it links out); run node tooling/sites/generate-personal-site.mjs.',
+      );
+    }
   }
 }
 
