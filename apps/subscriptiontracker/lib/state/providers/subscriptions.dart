@@ -22,6 +22,7 @@ import '../../data/api/seed_api_client.dart';
 import '../../data/local/subscription_store.dart';
 import '../../data/models/payment_record.dart';
 import '../../data/models/price_change.dart';
+import '../../data/models/spend_history.dart';
 import '../../data/subscriptions/subscription_repository.dart';
 import '../settings_controller.dart' show currencyCodeProvider;
 import '../subscriptions_controller.dart' show subscriptionsControllerProvider;
@@ -302,6 +303,30 @@ final FutureProviderFamily<List<PriceChange>, String> priceHistoryProvider =
       (ref, String id) =>
           ref.watch(subscriptionRepositoryProvider).priceHistory(id),
     );
+
+/// Every charge and price edit over the last year — ST-P6 (round-2 F23, the
+/// trend) and ST-I4 (round-2 X09, the price-rise alert).
+///
+/// It WATCHES the list, so an edit that moves a price (and writes its
+/// `price_change` row in the same batch) re-reads the history, and the rise
+/// shows without a restart.
+///
+/// 🔴 NULL, NOT AN ERROR, WHEN THE READ FAILS — and not an empty history
+/// either. Null is "unknown": Insights hides the trend and draws no rise, and
+/// never a row of empty bars that reads as "you spent nothing". It is caught
+/// here rather than surfaced because this read is an ENRICHMENT of a screen
+/// that stands without it, and an error state would arm riverpod's retry
+/// backoff on every Insights visit while offline. The next list change
+/// re-reads it.
+final FutureProvider<SpendHistory?> spendHistoryProvider =
+    FutureProvider<SpendHistory?>((ref) async {
+      ref.watch(subscriptionsControllerProvider);
+      try {
+        return await ref.watch(subscriptionRepositoryProvider).spendHistory();
+      } catch (_) {
+        return null;
+      }
+    });
 
 // ── `purchasesServiceProvider` WAS HERE, AND IT IS GONE ON PURPOSE ──────────
 // [pipeline 5]M-11/M-13/M-15, [ADR 026]. `lib/services/purchases/` held a

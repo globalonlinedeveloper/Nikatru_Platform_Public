@@ -8,6 +8,7 @@ import 'package:subscriptiontracker/data/api/api_client.dart';
 import 'package:subscriptiontracker/data/local/subscription_store.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';
 import 'package:subscriptiontracker/data/models/payment_record.dart';
+import 'package:subscriptiontracker/data/models/spend_history.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/data/subscriptions/subscription_repository.dart';
 import 'package:subscriptiontracker/state/providers.dart';
@@ -385,6 +386,12 @@ class _FakeNetwork implements ApiClient {
   Future<List<PaymentRecord>> getPaymentHistory(String id) async {
     _gate();
     return const <PaymentRecord>[];
+  }
+
+  @override
+  Future<SpendHistory> getSpendHistory() async {
+    _gate();
+    return SpendHistory.empty;
   }
 
   @override

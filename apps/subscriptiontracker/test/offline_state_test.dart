@@ -8,6 +8,7 @@ import 'package:subscriptiontracker/data/api/api_client.dart';
 import 'package:subscriptiontracker/data/local/subscription_store.dart';
 import 'package:subscriptiontracker/data/models/budget_info.dart';
 import 'package:subscriptiontracker/data/models/payment_record.dart';
+import 'package:subscriptiontracker/data/models/spend_history.dart';
 import 'package:subscriptiontracker/data/models/subscription.dart';
 import 'package:subscriptiontracker/state/providers.dart';
 
@@ -59,6 +60,8 @@ class _Network implements ApiClient {
   Future<void> deleteSubscription(String id) async => _down();
   @override
   Future<List<PaymentRecord>> getPaymentHistory(String id) async => _down();
+  @override
+  Future<SpendHistory> getSpendHistory() async => _down();
   // NO-10 · "Mark as paid": not exercised by this suite.
   @override
   Future<void> recordPayment(

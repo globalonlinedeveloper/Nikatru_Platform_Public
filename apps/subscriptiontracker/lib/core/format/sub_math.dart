@@ -1,4 +1,5 @@
-import 'package:nikatru_core/nikatru_core.dart' show Money, MoneyBag;
+import 'package:nikatru_core/nikatru_core.dart'
+    show Cadence, CycleUnit, Money, MoneyBag;
 
 import '../../data/models/subscription.dart';
 import 'monthly_share.dart';
@@ -47,16 +48,24 @@ class SubMath {
 
   /// The per-month total of every plan's [MonthlyShare]. A PER-MONTH figure:
   /// it is printed only under a per-month label, never as a charge.
+  ///
+  /// ⏱ 2026-09-30 · ST-P4 (round-2 F38): the USER'S share of each plan
+  /// ([Subscription.myMonthlyShare]) — a plan split three ways costs them a
+  /// third, and the spend totals, the budget and the category breakdown say
+  /// so. The CHARGE figures below ([chargedInMonth], [dueWithin]) keep the
+  /// whole [Subscription.price]: a shared plan is still billed in full.
   static MoneyBag totalMonthly(List<Subscription> s) =>
-      MonthlyShare.sum(charging(s).map((Subscription x) => x.monthlyShare));
+      MonthlyShare.sum(charging(s).map((Subscription x) => x.myMonthlyShare));
 
   /// What the plans charge in a year: each row's [Subscription.yearlyCharge].
   ///
   /// 🔴 NOT `totalMonthly(s).times(12)`. Twelve rounded twelfths of a yearly
   /// price are not the price (120.53 a year is a 10.04 share, and 12 x 10.04
   /// is 120.48), so a yearly figure is summed from the charges themselves.
+  ///
+  /// The user's share, as in [totalMonthly]: [Subscription.myYearlyCharge].
   static MoneyBag totalYearly(List<Subscription> s) =>
-      MoneyBag.sum(charging(s).map((Subscription x) => x.yearlyCharge));
+      MoneyBag.sum(charging(s).map((Subscription x) => x.myYearlyCharge));
 
   /// The money that leaves the account in [month] of [year]: the whole
   /// [Subscription.price] of EVERY charge in it ([chargesInMonth]).
@@ -131,7 +140,7 @@ class SubMath {
   static List<CategoryTotal> categoryTotals(List<Subscription> s) {
     final Map<String, List<MonthlyShare>> m = <String, List<MonthlyShare>>{};
     for (final Subscription x in charging(s)) {
-      (m[x.category] ??= <MonthlyShare>[]).add(x.monthlyShare);
+      (m[x.category] ??= <MonthlyShare>[]).add(x.myMonthlyShare);
     }
     final List<CategoryTotal> list = m.entries
         .map(
@@ -270,6 +279,39 @@ class SubMath {
     });
     return l.take(take).toList();
   }
+
+  /// What to put aside EACH MONTH so a charge that lands less often than
+  /// monthly is covered when it comes: the charge divided by the months it
+  /// covers (a 1,200-a-year plan: 100 a month). Null for a plan that bills
+  /// monthly or more often — there is nothing to save ahead for.
+  ///
+  /// ⏱ 2026-09-30 · ST-P6 (round-2 X07), a Pro "plan and save" figure. It is
+  /// a [Money] and not a [MonthlyShare] because it IS an amount the user moves,
+  /// printed only under its own "set aside a month" label. It divides the
+  /// user's own part of the charge (ST-P4), rounded once and UP to the minor
+  /// unit, so twelve set-asides never fall short of the charge.
+  static Money? setAsidePerMonth(Subscription x) {
+    final Cadence c = x.billingCadence;
+    final int months = switch (c.unit) {
+      CycleUnit.year => 12 * c.every,
+      CycleUnit.month => c.every,
+      CycleUnit.week || CycleUnit.day => 0,
+    };
+    if (months <= 1) return null;
+    final int minor = x.price.minorUnits * x.shareNumerator;
+    final int over = months * x.shareDenominator;
+    final int perMonth = (minor + over - 1) ~/ over;
+    return Money(perMonth, x.currencyCode);
+  }
+
+  /// Every CHARGING plan with a [setAsidePerMonth], largest first within a
+  /// currency (the [byMonthlyDesc] order).
+  static List<({Subscription sub, Money perMonth})> setAsides(
+    List<Subscription> s,
+  ) => <({Subscription sub, Money perMonth})>[
+    for (final Subscription x in byMonthlyDesc(charging(s)))
+      if (setAsidePerMonth(x) case final Money m) (sub: x, perMonth: m),
+  ];
 
   static List<Subscription> unused(List<Subscription> s) =>
       s.where((Subscription x) => x.unused).toList();

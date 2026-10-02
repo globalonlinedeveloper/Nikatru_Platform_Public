@@ -182,7 +182,7 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
           totals.of(
             MoneyBag.sum(<Money>[
               for (final Subscription s in SubMath.charging(subs))
-                if (s.category == c.name) s.yearlyCharge,
+                if (s.category == c.name) s.myYearlyCharge,
             ]),
           ),
         ),
@@ -439,4 +439,9 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
   //
   // Everything left on this screen is computed from the subscriptions actually
   // held. When real history exists, a trend can come back and be true.
+  //
+  // ⏱ 2026-09-30 · ST-P6 (round-2 F23): it exists, and the trend is back — on
+  // the Pro card (forecast_card.dart), drawn ONLY from payment_history, the
+  // charges the platform's nightly pass and "mark as paid" record, served by
+  // `GET /v1/insights`. No history draws no bars.
 }

@@ -3,6 +3,7 @@ import '../models/budget_info.dart';
 import '../models/entitlement.dart';
 import '../models/payment_record.dart';
 import '../models/price_change.dart';
+import '../models/spend_history.dart';
 import '../models/subscription.dart';
 
 /// Domain-facing wrapper over [ApiClient] — the controllers talk to this.
@@ -43,6 +44,7 @@ class SubscriptionRepository {
     return (api as PaymentWrites).getPriceHistory(id);
   }
 
+  Future<SpendHistory> spendHistory() => _api.getSpendHistory();
   Future<BudgetInfo> budget() => _api.getBudget();
   Future<BudgetInfo> saveBudget(BudgetInfo b) => _api.updateBudget(b);
   Future<Entitlements> entitlements() => _api.getEntitlements();

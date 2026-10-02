@@ -244,6 +244,19 @@
           "unconsumedReason": "🔴 NOTHING IN THIS REPO CALLS IT, AND THAT IS THE FINDING THIS ENTRY EXISTS TO STOP BEING INVISIBLE. Measured 2026-08-25 across every language and every root in the repo, with the /v1 prefix removed after that exact mistake once produced a false negative: apps/subscriptiontracker/lib/data/api/api_client.dart declares NINE methods and none is renewals; dio_api_client.dart issues NINE requests and none is to /renewals; packages/api_client has no renewals transport; and every bare-word `renewals` hit outside services/ is a UI string, a feature flag, the platform cron fan-out (services/platform/src/scheduled.ts, which writes subscriptiontracker_db DIRECTLY through the SUBSCRIPTIONTRACKER_DB binding and never over HTTP), or a test. The app computes its upcoming-renewal list locally from the subscriptions it already holds. ⚠️ IT IS NOT DELETED, AND DELETION IS NOT THIS ITEM’S CALL: it is a plausible sync-era surface, deletion is the irreversible half, and the register’s whole purpose is that an unconsumed capability is a PRINTED fact rather than a silence. Give it a client or remove it deliberately — but from now on the choice is on the screen every CI run."
         },
         {
+          "id": "subscriptiontracker-insights",
+          "method": "GET",
+          "path": "/v1/insights",
+          "auth": "required",
+          "owningFile": "services/subscriptiontracker-api/src/routes/insights.ts",
+          "purpose": "⏱ 2026-09-30 · ST-P6 (round-2 F23) + ST-I4 (round-2 X09). The user's payment_history rows and price_change rows over the last 12 calendar months, across every plan, in ONE read — the Insights trend is drawn from the first and the price-rise alert from the second. Named columns and GET /v1/subscriptions/:id's currency rule, so the two readers agree; ownership is in the SQL.",
+          "client": {
+            "file": "apps/subscriptiontracker/lib/data/api/dio_api_client.dart",
+            "expression": "_rest.get('/insights')",
+            "note": "The real call inside `getSpendHistory()`, read by `spendHistoryProvider` for the Pro trend (forecast_card.dart) and the price-rise signal (signals.dart)."
+          }
+        },
+        {
           "id": "subscriptiontracker-budget-get",
           "method": "GET",
           "path": "/v1/budget",
