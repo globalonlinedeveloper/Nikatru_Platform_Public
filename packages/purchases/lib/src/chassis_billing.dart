@@ -214,7 +214,7 @@ abstract final class ChassisBilling {
           BillingRailRefusal.iapBridgeMissing,
           kind: kind,
           detail:
-              'Channel ${channel.registerId} sells through ${kind.registerId}, '
+              'Channel ${channel.registerId} sells through ${kind.wire}, '
               'but this build ships no IapBridge. An app opts in by depending on '
               'nikatru_billing_revenuecat and declaring billing.mobileIap in its '
               'app.yaml; assert-app-yaml holds those two together.',

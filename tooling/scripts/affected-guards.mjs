@@ -702,8 +702,14 @@ export const CONTENT_SUBJECTS = Object.freeze([
       if (!named.size) throw new Error('no tooling/ports/*.json registry names a file — the port guard\'s subjects cannot be read');
       // A Worker's composition root and its rendered port table are subjects by CONVENTION
       // (tooling/ports/README.md §3; limbs 4 and 3), so they are matched by shape, not listed.
+      // ⏱ 2026-10-01 · port-pay-client: so are the Dart rail map limb 3 re-renders (and the fee
+      // register it derives the store-billed rails from), and every Dart lib file — limb 10
+      // DERIVES the client adapter set from the classes in packages/*/lib that implement a seam,
+      // and refuses an apps/*/lib or packages/*/lib import of the shared fakes.
       return (path) => named.has(path) || path.startsWith('tooling/ports/') || path.startsWith('services/_shared/src/ports/') ||
-        /^services\/[^/]+\/src\/(?:generated\/)?ports\.ts$/.test(path);
+        /^services\/[^/]+\/src\/(?:generated\/)?ports\.ts$/.test(path) ||
+        path === 'tooling/catalog/fee-register.json' ||
+        /^(?:packages|apps)\/[^/]+\/lib\/.+\.dart$/.test(path);
     },
   },
 ]);

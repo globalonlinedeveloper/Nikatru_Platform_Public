@@ -2298,6 +2298,7 @@
         "declaredIn": "apps/{app}/android/app/build.gradle.kts"
       },
       "accountStatus": {
+        "accountType": { "store": "googlePlay", "value": "Organization" },
         "_why": [
           "[10]D-4's agent slice. The `ownerQueue` id above is a POINTER into a file CI can never open",
           "(it moved to nikatru/, a separate private repo), so until this field existed 'does a publisher account",
@@ -2550,6 +2551,7 @@
       "storeMetadataDir": "apps/{app}/store/ios-appstore",
       "ownerQueue": null,
       "accountStatus": {
+        "accountType": { "store": "appleAppStore", "value": "Individual" },
         "status": "verified",
         "asOf": "2026-09-08",
         "openedBy": "A-4",
@@ -2709,6 +2711,7 @@
       "storeMetadataDir": "apps/{app}/store/macos-appstore",
       "ownerQueue": null,
       "accountStatus": {
+        "accountType": { "store": "appleAppStore", "value": "Individual" },
         "status": "verified",
         "asOf": "2026-09-08",
         "openedBy": "A-4",
@@ -2826,6 +2829,7 @@
       "storeMetadataDir": "apps/{app}/store/windows-store",
       "ownerQueue": null,
       "accountStatus": {
+        "accountType": { "store": "microsoftStore", "value": "Company" },
         "status": "verified",
         "asOf": "2026-09-22",
         "openedBy": "A-2",
@@ -3706,6 +3710,7 @@
         "declaredIn": "apps/{app}/android/app/build.gradle.kts"
       },
       "accountStatus": {
+        "accountType": { "store": "appsGovIn", "value": "Individual" },
         "status": "verified",
         "asOf": "2026-08-31",
         "note": "Developer profile APPROVED 2026-08-31, entity INDIVIDUAL — Private/platform-state/identity.json storeAccounts.apps-gov-in. The portal offers only PVT/Gov/PSU or Individual, and an individual PAN plus a proprietorship GSTIN make Individual the only consistent answer. ⏳ THE ACCOUNT IS THE THING ON A CLOCK, WHICH NO OTHER ROW HERE IS: research 09 §1.9 records a live suspension rule — an individual developer must upload an app within TWO MONTHS of profile approval or the profile is suspended — so this `verified` lapses about 2026-10-31 by the store's own rule rather than by going stale. It is the only expiry in [ADR 067]."
@@ -3960,6 +3965,7 @@
       "extensionRedirectUri": null,
       "ownerQueue": null,
       "accountStatus": {
+        "accountType": { "store": "microsoftStore", "value": "Company" },
         "status": "live",
         "asOf": "2026-08-28",
         "note": "The Microsoft partner account that publishes Edge Add-ons is the SAME company account the Microsoft Store row uses — Company, LIVE and AUTHORIZED 2026-08-28, seller 95860710 (platform-state/manifest.json stores[].id microsoft, whose `channel` reads 'windows + edge add-ons'). ⚠️ THE OTHER SELLER ID, 95661860, IS THE OLD ONE and differs by three digits; do not touch it. Registration for the Edge program carries no fee, so there is no OWNER_QUEUE row to name here — the account question is already answered, with a date. `windows-store` keeps its own A-2 id because that row's queue item is the STORE listing work, not the account."

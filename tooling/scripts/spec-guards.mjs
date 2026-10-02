@@ -524,6 +524,17 @@ const GUARDS = [
     rel: ['tooling/ci/assert-release-json.mjs'],
     args: ['--self-test'],
     what: 'the guard that grades a release record against its own bytes can still fail' },
+
+  /* ADDED 2026-10-01 (rv2-business 007, train P23). Its subject is public — the
+     entity source, every surface it renders, every tracked file — and CI runs it
+     too (`ci.yml#guards-legal`, with `--ci`). It is here for the ONE limb CI
+     cannot run: BRAIN, which compares tooling/house-identity.json with the
+     business brain's business/public-facts.json, and the brain is on this
+     machine and on no GitHub runner. Invoked WITHOUT `--ci`, so a hook that
+     cannot find the brain exits 2 (UNREAD) instead of passing over it. */
+  { name: 'assert-business-facts', speed: 'fast', needsPrivate: false,
+    rel: ['tooling/scripts/assert-business-facts.mjs'],
+    what: 'every printed business fact is the entity source\'s, the source is the brain\'s, and no fact is typed elsewhere' },
 ];
 
 /* The rows typed in this file. The corpus's own rows join them below, once the corpus

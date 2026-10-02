@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { loadContext } from '../../entity/facts.mjs';
 
 import {
   a11yCss,
@@ -201,8 +202,10 @@ describe('chrome.mjs · the footer itself', () => {
   });
 
   test('carries the legal identity the four apps/* footers had lost', () => {
-    assert.match(footer(), /UDYAM-TN-02-0487004/);
-    assert.match(footer(), /Chennai, Tamil Nadu, India/);
+    // The values are the entity source's (tooling/house-identity.json), never typed here.
+    const ctx = loadContext();
+    assert.ok(footer().includes(ctx.udyam), 'the footer carries the Udyam number the entity source holds');
+    assert.ok(footer().includes(`${ctx.office.city}, ${ctx.office.state}, ${ctx.office.country}`));
   });
 
   test('every internal link is root-relative and extension-less', () => {

@@ -309,35 +309,42 @@ class IapRail implements PurchaseRail {
  *  those two agree — a fixture that disagreed by construction would make every
  *  case in this file a failing one for the wrong reason. */
 const RAIL_KIND = `
+import 'generated/rails.dart';
+
 enum PurchaseRailKind {
-  paddle('paddle'),
+  hosted('hosted'),
   playBilling('play-billing'),
   appleIap('apple-iap'),
   none('none');
 
-  const PurchaseRailKind(this.registerId);
-  final String registerId;
+  const PurchaseRailKind(this.wire);
+  final String wire;
 
-  static PurchaseRailKind forChannel(PurchaseChannel channel) {
-    switch (channel) {
-      case PurchaseChannel.web:
-        return PurchaseRailKind.paddle;
-      case PurchaseChannel.androidPlay:
-        return PurchaseRailKind.playBilling;
-      case PurchaseChannel.iosAppStore:
-        return PurchaseRailKind.appleIap;
-      case PurchaseChannel.macosAppStore:
-        return PurchaseRailKind.appleIap;
-      case PurchaseChannel.windowsStore:
-        return PurchaseRailKind.paddle;
-      case PurchaseChannel.windowsDirect:
-        return PurchaseRailKind.paddle;
-      case PurchaseChannel.linuxSnap:
-      case PurchaseChannel.linuxAppImage:
-        return PurchaseRailKind.paddle;
+  static PurchaseRailKind fromWire(String? wire) {
+    for (final PurchaseRailKind k in PurchaseRailKind.values) {
+      if (k.wire == wire) return k;
     }
+    return PurchaseRailKind.none;
   }
+
+  static PurchaseRailKind forChannel(PurchaseChannel channel) =>
+      fromWire(kChannelRailKind[channel.registerId]);
 }
+`;
+
+/** The RENDERED rail map (tooling/ports/render.mjs's Dart target) for
+ *  `channelRows()`: a store rail by its id, every other rail `hosted`. */
+const RAILS_DART = `
+const Map<String, String> kChannelRailKind = <String, String>{
+  'web': 'hosted',
+  'android-play': 'play-billing',
+  'ios-appstore': 'apple-iap',
+  'macos-appstore': 'apple-iap',
+  'windows-store': 'hosted',
+  'windows-direct': 'hosted',
+  'linux-snap': 'hosted',
+  'linux-appimage': 'hosted',
+};
 `;
 
 const RAIL_TEST = `
@@ -553,6 +560,9 @@ function run(o = {}) {
   if (o.hostedRail !== null) write(root, 'packages/purchases/lib/src/hosted_checkout_rail.dart', o.hostedRail ?? HOSTED_RAIL);
   if (o.iapRail !== null) write(root, 'packages/purchases/lib/src/iap_rail.dart', o.iapRail ?? IAP_RAIL);
   if (o.railKind !== null) write(root, 'packages/purchases/lib/src/purchase_rail_kind.dart', o.railKind ?? RAIL_KIND);
+  if (o.railsDart !== null) write(root, 'packages/purchases/lib/src/generated/rails.dart', o.railsDart ?? RAILS_DART);
+  // The shared test fake (port-pay-client): a declared RAIL_IMPLS member that no limb grades.
+  if (o.fakeRail !== null) write(root, 'packages/purchases/lib/testing.dart', o.fakeRail ?? 'class FakePurchaseRail implements PurchaseRail {}\n');
   if (o.extraRailImpl) write(root, 'packages/purchases/lib/src/second_rail.dart', o.extraRailImpl);
   // §H's census: the facade (the one declared site) and the two providers that ask it,
   // plus the hook a case uses to add another site or move a provider off the facade.
@@ -1246,16 +1256,10 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
   // channel row now needs a ninth case there too — the same shape as the enum
   // member and the launcher test already have. Recorded as a fixture helper
   // rather than left for the next reader to discover from a red build.
-  const railKindWithSideload = () =>
-    mutate(
-      RAIL_KIND,
-      '      case PurchaseChannel.iosAppStore:',
-      [
-        '      case PurchaseChannel.androidSideload:',
-        '        return PurchaseRailKind.paddle;',
-        '      case PurchaseChannel.iosAppStore:',
-      ].join('\n'),
-    );
+  // ⏱ 2026-10-01 · port-pay-client: the map is RENDERED now, so the ninth row is one more
+  // line of generated/rails.dart (what render.mjs writes for it), not a hand `case`.
+  const railsDartWithSideload = () =>
+    mutate(RAILS_DART, "  'ios-appstore': 'apple-iap',", "  'android-sideload': 'hosted',\n  'ios-appstore': 'apple-iap',");
   const railTestWithSideload = () =>
     mutate(RAIL_TEST, '    PurchaseChannel.web,', '    PurchaseChannel.web,\n    PurchaseChannel.androidSideload,');
   const sideloadLiveRow = () => ({
@@ -1304,7 +1308,7 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
       channels: registerDoc({ channels: [...channelRows(), sideloadLiveRow()], parked: [] }),
       caps: capsWithSideload(),
       railTest: railTestWithSideload(),
-      railKind: railKindWithSideload(),
+      railsDart: railsDartWithSideload(),
     });
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /9 channel\(s\): the register's rail and the shipped capability matrix agree/);
@@ -1482,7 +1486,7 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
     const r = run({ extraRailImpl: 'class AmazonAppstoreRail implements PurchaseRail {\n  const AmazonAppstoreRail();\n}\n' });
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — §G reasons from a DECLARED set of PurchaseRail implementations/);
-    assert.match(r.out, /implements \[AmazonAppstoreRail, HostedCheckoutRail, IapRail, UnavailablePurchaseRail\]/);
+    assert.match(r.out, /implements \[AmazonAppstoreRail, FakePurchaseRail, HostedCheckoutRail, IapRail, UnavailablePurchaseRail\]/);
   });
 
   test('FAILS when the "sells nothing" rail stops answering a literal false', () => {
@@ -1510,7 +1514,7 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
   test('COVERAGE LOST when the "sells nothing" rail disappears from the declared set', () => {
     const r = run({ facadeCtor: 'class ChassisBilling {\n  static PurchaseRail railFor(String c) => HostedCheckoutRail();\n}\n' });
     assert.equal(r.code, 2, r.out);
-    assert.match(r.out, /implements \[HostedCheckoutRail, IapRail\]/);
+    assert.match(r.out, /implements \[FakePurchaseRail, HostedCheckoutRail, IapRail\]/);
   });
 
   test('🔴 COVERAGE LOST when the store rail reads the HOSTED rail\'s permission field', () => {
@@ -1524,53 +1528,65 @@ describe('assert-purchase-path — §G the rail follows the CHANNEL', () => {
     assert.match(r.out, /reads .channelPermitted., the HOSTED rail's store-policy field/);
   });
 
-  // ── limb (e) · the rail NAME, which is what ChassisBilling.railFor reads ──
-  test('PASSES, and SAYS the register rail NAME and the shipped map agree', () => {
+  // ── limb (e) · the RENDERED rail map, which is what ChassisBilling.railFor reads ──
+  test('PASSES, and SAYS the register rail and the rendered map agree', () => {
     const r = run();
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /channel\(s\): the register's rail NAME and packages\/purchases\/lib\/src\/purchase_rail_kind\.dart agree/);
+    assert.match(r.out, /channel\(s\): the register's rail and the rendered packages\/purchases\/lib\/src\/generated\/rails\.dart agree/);
   });
 
-  test('🔴 FAILS when the Dart map gives a store channel the PADDLE rail', () => {
+  test('🔴 FAILS when the rendered map gives a store channel the HOSTED rail', () => {
     // The expensive direction: an external checkout inside a Play build is the
     // anti-steering violation, and limb (d) cannot see it — those two booleans
     // are correctly `false` on android-play either way.
-    const r = run({
-      railKind: RAIL_KIND.replace(
-        'return PurchaseRailKind.playBilling;',
-        'return PurchaseRailKind.paddle;',
-      ),
-    });
+    const r = run({ railsDart: RAILS_DART.replace("'android-play': 'play-billing',", "'android-play': 'hosted',") });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /THE CLIENT WOULD OPEN THE WRONG RAIL/);
     assert.match(r.out, /android-play/);
   });
 
-  test('FAILS when a registered channel has no case in the Dart map', () => {
+  test('🔴 FAILS when the register moves a channel the rendered map was not re-rendered for', () => {
+    const rows = channelRows().map((c) => (c.id === 'windows-direct' ? { ...c, purchaseRail: railBlock('none', ['paddle', 'play-billing', 'apple-iap']) } : c));
+    const r = run({ channels: registerDoc({ channels: rows }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /channel `windows-direct` rail `none`, and packages\/purchases\/lib\/src\/generated\/rails\.dart answers `hosted`/);
+  });
+
+  test('FAILS when a registered channel has no kind in the rendered map', () => {
+    const r = run({ railsDart: RAILS_DART.replace("  'windows-direct': 'hosted',\n", '') });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /has no kind for channel `windows-direct`/);
+  });
+
+  test('FAILS when a per-channel `case` comes back into the kind file', () => {
     const r = run({
       railKind: RAIL_KIND.replace(
-        `      case PurchaseChannel.windowsDirect:
-        return PurchaseRailKind.paddle;
-`,
-        '',
+        '  static PurchaseRailKind forChannel(PurchaseChannel channel) =>',
+        '  static PurchaseRailKind legacy(PurchaseChannel c) {\n    switch (c) {\n      case PurchaseChannel.web:\n        return PurchaseRailKind.hosted;\n    }\n  }\n\n  static PurchaseRailKind forChannel(PurchaseChannel channel) =>',
       ),
     });
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /has no .case PurchaseChannel\.windowsDirect:./);
+    assert.match(r.out, /carries a `case PurchaseChannel\.X:` again/);
   });
 
   test('FAILS when the Dart enum names a rail the register never defined', () => {
     const r = run({
-      railKind: RAIL_KIND.replace("paddle('paddle'),", "paddle('paddle'),\n  amazon('amazon-iap'),"),
+      railKind: RAIL_KIND.replace("hosted('hosted'),", "hosted('hosted'),\n  amazon('amazon-iap'),"),
     });
     assert.equal(r.code, 1, r.out);
-    assert.match(r.out, /declares rail .amazon-iap., which/);
+    assert.match(r.out, /declares rail kind .amazon-iap., which/);
   });
 
-  test('COVERAGE LOST when the rail-kind map is gone entirely', () => {
+  test('COVERAGE LOST when the rail-kind file is gone entirely', () => {
     const r = run({ railKind: null });
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /purchase_rail_kind\.dart does not exist/);
+  });
+
+  test('COVERAGE LOST when the rendered map is gone', () => {
+    const r = run({ railsDart: null });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /generated\/rails\.dart does not exist/);
   });
 
   test('COVERAGE LOST when the `paddle` rail id resolves to no code', () => {

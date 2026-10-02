@@ -81,7 +81,7 @@ function markdown(o = {}) {
     ...FILLER.flatMap((p) => [p, '']),
     '---',
     '',
-    'Published by Rajasekar Selvam, trading as NIKATRU.',
+    'Published by Fixture Person, trading as NIKATRU.',
     '',
   ].join('\n');
 }
@@ -112,7 +112,7 @@ function html(o = {}) {
     ...FILLER.map((p) => `<p>${p}</p>`),
     '',
     '<footer>',
-    'Published by Rajasekar Selvam, trading as NIKATRU.',
+    'Published by Fixture Person, trading as NIKATRU.',
     '</footer>',
     '',
     '</body>',

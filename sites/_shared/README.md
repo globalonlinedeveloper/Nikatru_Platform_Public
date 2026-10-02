@@ -22,7 +22,7 @@ because this file is cited by `sites/nikatru/_headers:53` as the answer to why
 `/assets/tokens.css` is a 404, so a reader arrives here already asking.)*
 
 ⚠️ One contradiction is **open and is not this file's to settle**:
-`nikatru/decisions/decisions-log.md:82` still locks *"Web: Eleventy + shared
+`nikatru/decisions/decisions-log.md#2026-07-21` (a line cite, `:82`, until 2026-10-01) still locks *"Web: Eleventy + shared
 `sites/_shared/`"* as the architecture. That is a business-brain lock against a
 product-side cut; reconciling the two needs one ADR in `Private/decisions/`, not
 an edit here.
