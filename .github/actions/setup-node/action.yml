@@ -36,6 +36,16 @@ runs:
         v="${NODE_MAJOR:-$(node -p "require(process.env.GITHUB_WORKSPACE + '/tooling/versions.json').node")}"
         test -n "$v"
         echo "node=$v" >> "$GITHUB_OUTPUT"
+        # why: SPAWN_CEILING is the spawn-ceiling preload as an ABSOLUTE file URL, for every
+        # later step's `node --import "$SPAWN_CEILING"`. A relative `--import` resolves
+        # against the step's cwd, and #1160's ops-tooling job ran from the repository root
+        # with `../tooling/...`, which left the checkout (run 37006580364). A URL, not a
+        # path: node reads a bare `D:\...` import as a `d:` URL scheme on Windows.
+        # tooling/ci/test/spawn-ceiling-cwd.test.mjs runs this exact expression, and the
+        # quoted repo-relative path is how assert-guards-refuse-empty sees the preload edge.
+        ceiling="$(node -p "require('url').pathToFileURL(require('path').resolve(process.env.GITHUB_WORKSPACE, 'tooling/scripts/spawn-ceiling.mjs')).href")"
+        test -n "$ceiling"
+        echo "SPAWN_CEILING=$ceiling" >> "$GITHUB_ENV"
     - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: ${{ steps.pin.outputs.node }}
