@@ -231,12 +231,12 @@ describe('M6 — the wiring in ci.yml', () => {
     return src.slice(start, next === -1 ? undefined : start + 1 + next);
   };
 
-  test('guard-meta runs it in a step gated on push to main, with the full history', () => {
+  test('guard-meta runs it in a step gated on main (a push, or its dispatch — land-next P2), with the full history', () => {
     const gm = job(yml(), 'guard-meta');
     const at = gm.indexOf('run: node tooling/ci/assert-main-rows.mjs');
     assert.ok(at > 0, 'guard-meta no longer runs assert-main-rows.mjs');
     const step = gm.slice(gm.lastIndexOf('- name:', at), at);
-    assert.match(step, /if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'/);
+    assert.match(step, /if: \(github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch'\) && github\.ref == 'refs\/heads\/main'/);
     assert.match(gm, /fetch-depth: 0/);
     assert.doesNotMatch(gm.slice(0, gm.indexOf('steps:')), /\n {4}if:/, 'a job-level if: on guard-meta would read as skipped in ci-gate');
   });
