@@ -1031,6 +1031,13 @@
         "02:30 Drive sync picks it up and before the 06:00 retention sweep deletes anything. It is watched",
         "here for the same reason as every other job: check-heartbeats.mjs refuses a declared cron that no",
         "job keeps, because a schedule firing with nothing watching what it did is how a backup stops.",
+        "⏱ 2026-10-01 · `backup_export` ALSO KEEPS A FOURTH KIND OF FIRING: the lead's ONE-SHOT RE-RUN AFTER A FIX. Cloudflare",
+        "cannot fire a production cron on demand, so a fixed backup could not be re-proven before the next 02:30 (#1108 merged",
+        "04:27Z and ops-watch stayed red on the 02:30Z rows). The hourly `15 * * * *` firing, AFTER its stuck-run scan, reads",
+        "the CONFIG_KV flag `ops:rerun:backup_export` = {requestedAt, by, reason, expiresAt}; a live flag is DELETED FIRST and",
+        "the real export runs once (`backupRerunJob`, services/platform/src/scheduled.ts). It is EXPORT ONLY: objects under",
+        "R2 `reruns/<stamp>/`, no latest.json, no retention sweep and no `retention` row. An allowlist of one: no other",
+        "`ops:rerun:*` key is read. The cron listed for it here stays `30 2 * * *`: the re-run is an extra, never the schedule.",
         "",
         "🔴 `money_rederive` KEEPS THE NIGHTLY CRON, added 2026-09-10. It re-derives stored provider",
         "notifications whose derivation never concluded (refused, or threw) — the backstop behind the",
@@ -4680,7 +4687,7 @@
       "store": "d1:platform_db:apple_provider_tokens",
       "what": "One row per subject who signed in with Apple: Apple’s OAuth refresh token for this relying party, which the account deletion revokes with; O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE.",
       "rule": "keep",
-      "keepWhy": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. ⏱ 2026-09-24 · RETIRED BY 0016: every row was copied into provider_tokens (the row below) and no code reads or writes this table any more (⏱ 2026-09-30 · but for the nightly provider_token_backfill, which re-runs 0016's copy and then empties each row's plain-text token while the plain-text window is open — migration 0023). It is kept until a later migration drops it, once the copy has been read back in production; until then an erased account’s row is deleted when its erasure completes (services/platform/src/lib/provider-revoke.ts dropProviderTokens, from DELETE /v1/account and the nightly erasureRetry), because the copy did not move it. NEVER on a timer, for the reason the provider_tokens row gives.",
+      "keepWhy": "⏱ 2026-09-16 · O-SIWA-TOKEN-NOT-REVOKED-ON-DELETE. ⏱ 2026-09-24 · RETIRED BY 0016: every row was copied into provider_tokens (the row below) and no code reads or writes this table any more (⏱ 2026-09-30 · but for the nightly provider_token_backfill, which re-runs 0016's copy and then empties each row's plain-text token while the plain-text window lasts — migration 0023). It is kept until a later migration drops it, once the copy has been read back in production; until then an erased account’s row is deleted when its erasure completes (services/platform/src/lib/provider-revoke.ts dropProviderTokens, from DELETE /v1/account and the nightly erasureRetry), because the copy did not move it. NEVER on a timer, for the reason the provider_tokens row gives.",
       "mechanism": {
         "substrate": "cloudflare-d1",
         "anchor": "services/platform/migrations/0012_apple_provider_tokens.sql",
@@ -5036,6 +5043,28 @@
       "source": "verified"
     },
     {
+      "id": "retention.d1.subscriptiontracker_db.preferences",
+      "kind": "retention",
+      "store": "d1:subscriptiontracker_db:preferences",
+      "what": "⏱ 2026-09-30 · ST-N6 (D11). The user's own preferences, one row per key (currency, theme, language, reminder choices).",
+      "rule": "keep",
+      "keepWhy": "User content, one row per account, replaced on every change. Same reasoning as retention.d1.subscriptiontracker_db.subscriptions; the account erasure deletes it (derived by its user_id column).",
+      "detector": "tooling/ci/assert-retention-coverage.mjs.",
+      "response": "n/a",
+      "cadence": "365d",
+      "mechanism": {
+        "substrate": "cloudflare-d1",
+        "anchor": "services/subscriptiontracker-api/migrations/0008_preferences.sql",
+        "record": "the table itself",
+        "failingValue": "not applicable to a reasoned keep",
+        "readBy": "tooling/ci/assert-retention-coverage.mjs"
+      },
+      "accessProviders": [
+        "cloudflare"
+      ],
+      "source": "verified"
+    },
+    {
       "id": "retention.d1.subscriptiontracker_db.payment_history",
       "kind": "retention",
       "store": "d1:subscriptiontracker_db:payment_history",
@@ -5171,7 +5200,7 @@
       "id": "retention.r2.platform.BACKUPS_R2",
       "kind": "retention",
       "store": "r2:platform:BACKUPS_R2",
-      "what": "🔴 THE FIRST R2 BUCKET IN THIS DOMAIN, AND THE DOMAIN HAD TO GROW TO HOLD IT. `nikatru-backups` is the nightly off-vendor export of D1 and KV added 2026-09-05 to close research/revamp-2026-09-05/06 sec 4.2 — d1/<db>/<date>.jsonl.gz, kv/<ns>/<date>.json.gz, and one manifest per night. It is a DERIVED store: every byte is a copy of something whose own row is elsewhere in this file, which is exactly why it needs a rule of its own — copies outlive their originals unless something deletes them.",
+      "what": "🔴 THE FIRST R2 BUCKET IN THIS DOMAIN, AND THE DOMAIN HAD TO GROW TO HOLD IT. `nikatru-backups` is the nightly off-vendor export of D1 and KV added 2026-09-05 to close research/revamp-2026-09-05/06 sec 4.2 — d1/<db>/<date>.jsonl.gz, kv/<ns>/<date>.json.gz, and one manifest per night. It is a DERIVED store: every byte is a copy of something whose own row is elsewhere in this file, which is exactly why it needs a rule of its own — copies outlive their originals unless something deletes them. ⏱ 2026-10-01: a one-shot re-run (scheduled.ts `backupRerunJob`) writes the same objects under reruns/<stamp>/ and sweeps nothing; its keys start with the date, so this same sweep ages them out at 30 days.",
       "rule": "period",
       "periodDays": 30,
       "declaredBy": "ADR 067 decision 6. The number is not a preference: it is D1 Time Travel's own 30-day window, so the two mechanisms cover the same period from opposite sides - shorter would leave days neither can reach, longer buys little. Cost did not decide it; R2 is at 1.3% of the free 10 GB and a night is under half a megabyte.",
@@ -5195,7 +5224,7 @@
       "id": "retention.kv.platform.CONFIG_KV",
       "kind": "retention",
       "store": "kv:platform:CONFIG_KV",
-      "what": "Per-app config overrides, keyed config:<app>.",
+      "what": "Per-app config overrides, keyed config:<app>. ⏱ 2026-10-01: also `ops:rerun:backup_export`, the lead's one-shot re-run flag, which the hourly firing deletes when it reads a live or expired one (services/platform/src/scheduled.ts `backupRerunJob`).",
       "rule": "keep",
       "keepWhy": "Configuration, not personal data. A TTL here would silently un-configure a live app.",
       "detector": "tooling/ci/assert-retention-coverage.mjs.",

@@ -679,6 +679,30 @@
   "@exportDataCsv": {
     "description": "Data-export row. data-safety.json declares that export exists; deleting this row makes that declaration false."
   },
+  "preferenceCurrencyChangedElsewhere": "Currency was changed on another device.",
+  "@preferenceCurrencyChangedElsewhere": {
+    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11), review #1080 delta finding 3: shown once when this device’s change to the currency lost to a newer value another device saved, and the screen flipped to it. A whole sentence per setting (review 3 nit) so the verb agrees."
+  },
+  "preferenceAppearanceChangedElsewhere": "Appearance was changed on another device.",
+  "@preferenceAppearanceChangedElsewhere": {
+    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11), review #1080 delta finding 3: shown once when this device’s change to the theme (Appearance) lost to a newer value another device saved, and the screen flipped to it. A whole sentence per setting (review 3 nit) so the verb agrees."
+  },
+  "preferenceLanguageChangedElsewhere": "Language was changed on another device.",
+  "@preferenceLanguageChangedElsewhere": {
+    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11), review #1080 delta finding 3: shown once when this device’s change to the app language lost to a newer value another device saved, and the screen flipped to it. A whole sentence per setting (review 3 nit) so the verb agrees."
+  },
+  "preferenceRemindersChangedElsewhere": "Reminder settings were changed on another device.",
+  "@preferenceRemindersChangedElsewhere": {
+    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11), review #1080 delta finding 3: shown once when this device’s change to the reminder lead time or time of day lost to a newer value another device saved, and the screen flipped to it. A whole sentence per setting (review 3 nit) so the verb agrees."
+  },
+  "preferenceNotificationsChangedElsewhere": "Notifications were changed on another device.",
+  "@preferenceNotificationsChangedElsewhere": {
+    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11), review #1080 delta finding 3: shown once when this device’s change to a notification switch lost to a newer value another device saved, and the screen flipped to it. A whole sentence per setting (review 3 nit) so the verb agrees."
+  },
+  "preferenceNotSaved": "Couldn’t save that setting to your account.",
+  "@preferenceNotSaved": {
+    "description": "Consumed by features/settings/preference_refused_notice.dart. ST-N6 (D11): the one-line notice shown when the account REFUSED a preference change this device sent (a 400 or 413); the change is dropped and the account’s value comes back."
+  },
   "settingsNotAvailableYet": "Not available yet",
   "@settingsNotAvailableYet": {
     "description": "Consumed by settings_screen.dart (_LinkRow). ST-U5 (D2, D6): the subtitle of a settings row that is shown but not yet wired (Connected accounts, Export data). With it the row says what it is; without a tap it draws no chevron."
@@ -985,77 +1009,6 @@
       }
     }
   },
-  "scanResultsHeading": "YOUR SUBSCRIPTIONS",
-  "@scanResultsHeading": {
-    "description": "Consumed by scan_screen.dart:222. Pinned by test/width_scan_test.dart:124 — the value must not change without moving those."
-  },
-  "subscriptionCount": "{count, plural, =1{1 subscription} other{{count} subscriptions}}",
-  "@subscriptionCount": {
-    "description": "Consumed by scan_screen.dart:229. PLURAL. The live line read `${subs.length} subscriptions`, which says \"1 subscriptions\" for a single plan.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "perMonthTotal": "{amount} / month",
-  "@perMonthTotal": {
-    "description": "Consumed by scan_screen.dart:233.",
-    "placeholders": {
-      "amount": {
-        "type": "String",
-        "example": "₹2,340"
-      }
-    }
-  },
-  "scanStep1": "Preparing your board",
-  "@scanStep1": {
-    "description": "Consumed by scan_screen.dart:40. One of the five progress captions the scan cycles through."
-  },
-  "scanStep2": "Loading your subscriptions",
-  "@scanStep2": {
-    "description": "Consumed by scan_screen.dart:41. See scanStep1."
-  },
-  "scanStep3": "Building your renewal calendar",
-  "@scanStep3": {
-    "description": "Consumed by scan_screen.dart:42. See scanStep1."
-  },
-  "scanStep4": "Working out your totals",
-  "@scanStep4": {
-    "description": "Consumed by scan_screen.dart:43. See scanStep1."
-  },
-  "scanStep5": "Finalising",
-  "@scanStep5": {
-    "description": "Consumed by scan_screen.dart:44. See scanStep1. British spelling, matching the live literal."
-  },
-  "scanStatusInitial": "Setting things up",
-  "@scanStatusInitial": {
-    "description": "Consumed by scan_screen.dart:50. The status before the first timer tick, so it is on screen for 560 ms of every first run."
-  },
-  "scanDoneTitle": "All set",
-  "@scanDoneTitle": {
-    "description": "Consumed by scan_screen.dart:123. Pinned by test/width_scan_test.dart:27 — the value must not change without moving those."
-  },
-  "scanBusyTitle": "Setting up your board",
-  "@scanBusyTitle": {
-    "description": "Consumed by scan_screen.dart:123."
-  },
-  "scanDoneSubtitle": "Your subscriptions. Add or edit any time.",
-  "@scanDoneSubtitle": {
-    "description": "Consumed by scan_screen.dart:129."
-  },
-  "scanBusySubtitle": "This only takes a moment.",
-  "@scanBusySubtitle": {
-    "description": "Consumed by scan_screen.dart:130."
-  },
-  "goToDashboard": "Go to dashboard",
-  "@goToDashboard": {
-    "description": "Consumed by scan_screen.dart:139. Pinned by integration_test/app_test.dart:370, integration_test/store_screenshots_test.dart:206 — the value must not change without moving those."
-  },
-  "scanningEllipsis": "Loading…",
-  "@scanningEllipsis": {
-    "description": "Consumed by scan_screen.dart. The busy CTA while the first list loads. ST-U3 (B44): it read 'Scanning…', and nothing is scanned."
-  },
   "demoDataBanner": "Demo data - sample subscriptions, not your account",
   "@demoDataBanner": {
     "description": "Consumed by app_shell.dart:75. Shown ONLY when no API is configured. Seed data wearing real data's clothes is the defect this line exists to prevent, so it must stay plainly readable. Hyphen-minus, matching the live literal. Pinned by integration_test/store_screenshots_test.dart:17 — the value must not change without moving those."
@@ -1258,15 +1211,15 @@
   },
   "forgotPasswordShort": "Forgot password?",
   "@forgotPasswordShort": {
-    "description": "Consumed by auth/login_screen.dart:192. Subly's shorter label. The chassis `forgotPassword` reads \"Forgot your password?\" — the values differ, so this is minted rather than reused."
+    "description": "Consumed by auth/login_screen.dart:198. Subly's shorter label. The chassis `forgotPassword` reads \"Forgot your password?\" — the values differ, so this is minted rather than reused."
   },
   "orDivider": "or",
   "@orDivider": {
-    "description": "Consumed by auth/login_screen.dart:214. The word between the email form and the OAuth button."
+    "description": "Consumed by auth/login_screen.dart:229. The word between the email form and the OAuth button."
   },
   "dismiss": "Dismiss",
   "@dismiss": {
-    "description": "Consumed by auth/login_screen.dart:352. Clears the account-deletion notice. Pinned by test/delete_account_test.dart:252 — the value must not change without moving those."
+    "description": "Consumed by auth/login_screen.dart:399. Clears the account-deletion notice. Pinned by test/delete_account_test.dart:252 — the value must not change without moving those."
   },
   "authEnterBoth": "Enter your email and password.",
   "@authEnterBoth": {
@@ -1278,23 +1231,23 @@
   },
   "authIncorrect": "Incorrect email or password.",
   "@authIncorrect": {
-    "description": "Consumed by auth/login_screen.dart:95. Says which of the two is wrong on purpose: it does not, because naming the wrong field lets anyone test which emails are registered."
+    "description": "Consumed by auth/login_screen.dart:101. Says which of the two is wrong on purpose: it does not, because naming the wrong field lets anyone test which emails are registered."
   },
   "authAlreadyRegistered": "That email is already registered — try signing in.",
   "@authAlreadyRegistered": {
-    "description": "Consumed by auth/login_screen.dart:100."
+    "description": "Consumed by auth/login_screen.dart:106."
   },
   "authConfirmEmail": "Please confirm your email, then sign in.",
   "@authConfirmEmail": {
-    "description": "Consumed by auth/login_screen.dart:106."
+    "description": "Consumed by auth/login_screen.dart:112."
   },
   "authRateLimited": "Too many attempts — please wait a moment and try again.",
   "@authRateLimited": {
-    "description": "Consumed by auth/login_screen.dart:109."
+    "description": "Consumed by auth/login_screen.dart:115."
   },
   "authNetworkError": "Network error — check your connection and try again.",
   "@authNetworkError": {
-    "description": "Consumed by auth/login_screen.dart:115."
+    "description": "Consumed by auth/login_screen.dart:121."
   },
   "authCaptchaFailed": "Verification expired. Please try again.",
   "@authCaptchaFailed": {
@@ -1302,7 +1255,7 @@
   },
   "authUnknownError": "Something went wrong. Please try again.",
   "@authUnknownError": {
-    "description": "Consumed by auth/login_screen.dart:117. The fallback for anything _friendlyMessage does not model. Never shows the raw exception."
+    "description": "Consumed by auth/login_screen.dart:123. The fallback for anything _friendlyMessage does not model. Never shows the raw exception."
   },
   "welcomeBack": "Welcome back",
   "@welcomeBack": {
@@ -1314,31 +1267,31 @@
   },
   "signUpSubtitle": "Start tracking every subscription in one place.",
   "@signUpSubtitle": {
-    "description": "Consumed by auth/login_screen.dart:160."
+    "description": "Consumed by auth/login_screen.dart:166."
   },
   "signInSubtitle": "Sign in to keep your money in check.",
   "@signInSubtitle": {
-    "description": "Consumed by auth/login_screen.dart:161."
+    "description": "Consumed by auth/login_screen.dart:167."
   },
   "emailHint": "you@email.com",
   "@emailHint": {
-    "description": "Consumed by auth/login_screen.dart:170. An example address, not prose — it stays identical in every locale."
+    "description": "Consumed by auth/login_screen.dart:176. An example address, not prose — it stays identical in every locale."
   },
   "passwordHint": "Your password",
   "@passwordHint": {
-    "description": "Consumed by auth/login_screen.dart:179."
+    "description": "Consumed by auth/login_screen.dart:185."
   },
   "pleaseWait": "Please wait…",
   "@pleaseWait": {
-    "description": "Consumed by auth/login_screen.dart:204."
+    "description": "Consumed by auth/login_screen.dart:219."
   },
   "haveAccountPrompt": "Have an account? Sign in",
   "@haveAccountPrompt": {
-    "description": "Consumed by auth/login_screen.dart:230-231. ONE full sentence, not the two TextSpans the live screen concatenates — the emphasised half is the second clause in English and need not be in Tamil."
+    "description": "Consumed by auth/login_screen.dart:245-231. ONE full sentence, not the two TextSpans the live screen concatenates — the emphasised half is the second clause in English and need not be in Tamil."
   },
   "newHerePrompt": "New here? Create account",
   "@newHerePrompt": {
-    "description": "Consumed by auth/login_screen.dart:230-231. See haveAccountPrompt."
+    "description": "Consumed by auth/login_screen.dart:245-231. See haveAccountPrompt."
   },
   "subscriptiontrackerOnboarding1Title": "Every subscription, one clean board",
   "@subscriptiontrackerOnboarding1Title": {
@@ -1410,16 +1363,6 @@
   "notificationActionOpen": "Open",
   "@notificationActionOpen": {
     "description": "Consumed by services/notifications/notification_service.dart:47. The Linux notification's default action label — a button the desktop shell renders, so it is user-facing."
-  },
-  "a11yScanRing": "Setting up, {percent}.",
-  "@a11yScanRing": {
-    "description": "Consumed by scan_screen.dart. The Semantics label of the setup ring (a CustomPaint). ST-U3 (B44): it read 'Scan progress', and nothing is scanned.",
-    "placeholders": {
-      "percent": {
-        "type": "String",
-        "example": "45%"
-      }
-    }
   },
   "a11yAccountSettings": "Account and settings",
   "@a11yAccountSettings": {
@@ -2490,6 +2433,209 @@
   "@categoryOther": {
     "description": "ST-X8 (audit C6): the display name of the fallback category whose id is \"Other\" — a row with no category."
   },
+  "importTitle": "Import subscriptions",
+  "@importTitle": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). The hub title, the Settings › Your data row, the Home empty-state link."
+  },
+  "importSubtitle": "Bring in a CSV, a backup file or the text of a receipt. Everything is read on this device; nothing is uploaded until you add the rows.",
+  "@importSubtitle": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). 🔴 TRUE OF THE BUILD: the readers are core/portability, on the device; the only network call is the ordinary add route, after the review."
+  },
+  "importChooseFile": "Choose a file",
+  "@importChooseFile": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). Shown only where a file picker is linked (FileImporter.canPick)."
+  },
+  "importPasteLabel": "Or paste a CSV, a backup or a receipt",
+  "@importPasteLabel": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importRead": "Read it",
+  "@importRead": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). Reads the pasted text on the device."
+  },
+  "importNothingFound": "Nothing to import was found there.",
+  "@importNothingFound": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importFileUnreadable": "That file could not be read. Try a .csv, .json or .txt file under 4 MB.",
+  "@importFileUnreadable": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importListFailed": "Your list did not load, so duplicates cannot be checked yet. Try again.",
+  "@importListFailed": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importMapTitle": "Which column is which?",
+  "@importMapTitle": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). The ColumnMapping step."
+  },
+  "importMapRecognised": "Recognised an export from {app}. Check the columns, then continue.",
+  "@importMapRecognised": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). {app} is another tracker's name (a ColumnPreset).",
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "importMapRows": "{count, plural, =1{1 row in this file} other{{count} rows in this file}}",
+  "@importMapRows": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "importMapNone": "Not in this file",
+  "@importMapNone": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). The \"no column\" choice of a mapping dropdown."
+  },
+  "importMapColumn": "Column {number}",
+  "@importMapColumn": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). A column whose header cell is blank.",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "importReviewTitle": "Review before adding",
+  "@importReviewTitle": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). The ImportPlan review list."
+  },
+  "importReviewDuplicate": "Already in your list",
+  "@importReviewDuplicate": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). A duplicate (subscriptionExistingKey) — shown, never added."
+  },
+  "importReviewProblem": "Row {row} is not imported: {reason}",
+  "@importReviewProblem": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). {reason} is the import engine's own sentence naming the cell.",
+    "placeholders": {
+      "row": {
+        "type": "int"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "importDateOrderQuestion": "Dates such as {sample}: which comes first?",
+  "@importDateOrderQuestion": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). A DateOrderQuestion.",
+    "placeholders": {
+      "sample": {
+        "type": "String"
+      }
+    }
+  },
+  "importDayFirst": "Day first",
+  "@importDayFirst": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importMonthFirst": "Month first",
+  "@importMonthFirst": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importAddSelected": "{count, plural, =0{Nothing selected} =1{Add 1 subscription} other{Add {count} subscriptions}}",
+  "@importAddSelected": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). PLURAL. The review step's primary action.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "importAdded": "{count, plural, =1{Added 1 subscription.} other{Added {count} subscriptions.}}",
+  "@importAdded": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). PLURAL. The snackbar after an import.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "importAddFailed": "Added {added} of {total}. The rest were not added; check your connection and try again.",
+  "@importAddFailed": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub).",
+    "placeholders": {
+      "added": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "importStartOver": "Start over",
+  "@importStartOver": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "importInstead": "Import instead",
+  "@importInstead": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). The add sheet's link to /import."
+  },
+  "restoreTitle": "Restore from backup",
+  "@restoreTitle": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). The restore preview, and the Settings › Your data row."
+  },
+  "restorePreview": "{add} to add, {update} to update, {same} unchanged. Nothing in your list is deleted.",
+  "@restorePreview": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). BackupRestore merges, never deletes.",
+    "placeholders": {
+      "add": {
+        "type": "int"
+      },
+      "update": {
+        "type": "int"
+      },
+      "same": {
+        "type": "int"
+      }
+    }
+  },
+  "restoreConfirm": "Restore",
+  "@restoreConfirm": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub)."
+  },
+  "restoreDone": "{count, plural, =0{Restored. Your list already matched the backup.} =1{Restored 1 subscription.} other{Restored {count} subscriptions.}}",
+  "@restoreDone": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). PLURAL.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "restoreRefused": "This backup cannot be restored: {reason}",
+  "@restoreRefused": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). {reason} is BackupRestore's own sentence.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "backupDataJson": "Back up (JSON)",
+  "@backupDataJson": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). Consumed by settings_screen.dart (Settings › Your data). Writes a BackupEnvelope."
+  },
+  "exportDone": "Exported.",
+  "@exportDone": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). Consumed by state/providers/persistence.dart: ExportOutcome.exported."
+  },
+  "exportDismissed": "Export cancelled. Nothing was saved.",
+  "@exportDismissed": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). ExportOutcome.dismissed."
+  },
+  "exportFailed": "Could not export on this device. Nothing was saved.",
+  "@exportFailed": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). ExportOutcome.failed."
+  },
+  "exportListFailed": "Your list did not load, so there is nothing to export yet. Try again.",
+  "@exportListFailed": {
+    "description": "Consumed by features/import/import_screen.dart (IM-01..05, train ST import hub). A list-load failure, said instead of returning silently (IM-08)."
+  },
   "nameErrorRequired": "Enter a name",
   "@nameErrorRequired": {
     "description": "Consumed by features/add/add_subscription_sheet.dart, the name field's errorText when it is blank (ST truth pass (2026-10-01). AD-01)."
@@ -2559,5 +2705,119 @@
   "detailRemindersNoDeviceNotifications": "This device does not send notifications — e-mail reminders and the calendar feed are in Settings",
   "@detailRemindersNoDeviceNotifications": {
     "description": "Consumed by features/detail/reminder_rows.dart: on a target that cannot schedule a notification, under the reminder rows; opens Settings (ST truth pass (2026-10-01). DE-03)."
+  },
+  "reminderActionMarkPaid": "Mark as paid",
+  "@reminderActionMarkPaid": {
+    "description": "NO-10: button on a renewal reminder and on a /notifications row; records one payment."
+  },
+  "reminderActionSnooze": "Snooze 1 day",
+  "@reminderActionSnooze": {
+    "description": "NO-10: button on a renewal reminder and on a /notifications row; the reminder comes back in 24 hours."
+  },
+  "reminderActionKeep": "Keep it",
+  "@reminderActionKeep": {
+    "description": "NO-10: /notifications row button — the user keeps the plan; hides the notice, no network."
+  },
+  "reminderActionHowToStop": "How to stop",
+  "@reminderActionHowToStop": {
+    "description": "NO-10: /notifications row button — opens the plan's stop entry."
+  },
+  "reminderMarkedPaid": "Marked {name} as paid",
+  "@reminderMarkedPaid": {
+    "description": "Snackbar after Mark as paid.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Netflix"
+      }
+    }
+  },
+  "reminderMarkPaidFailed": "Couldn't mark it as paid. Try again.",
+  "@reminderMarkPaidFailed": {
+    "description": "Snackbar when the payment could not be recorded."
+  },
+  "reminderSnoozed": "We'll remind you again tomorrow",
+  "@reminderSnoozed": {
+    "description": "Snackbar after Snooze 1 day."
+  },
+  "testReminderTitle": "Test reminder",
+  "@testReminderTitle": {
+    "description": "NO-13: title of the test notification."
+  },
+  "testReminderBody": "Reminders work on this device.",
+  "@testReminderBody": {
+    "description": "NO-13: body of the test notification."
+  },
+  "settingsSendTestReminder": "Send a test reminder",
+  "@settingsSendTestReminder": {
+    "description": "NO-13: Settings row."
+  },
+  "testReminderSentLocal": "A test reminder arrives in 10 seconds.",
+  "@testReminderSentLocal": {
+    "description": "NO-13: after the test on a device that schedules."
+  },
+  "quietHoursTitle": "Quiet hours",
+  "@quietHoursTitle": {
+    "description": "NO-13: Settings switch."
+  },
+  "quietHoursSubtitle": "No reminders {start}–{end}; they arrive after.",
+  "@quietHoursSubtitle": {
+    "description": "NO-13: under the switch.",
+    "placeholders": {
+      "start": {
+        "type": "String",
+        "example": "22:00"
+      },
+      "end": {
+        "type": "String",
+        "example": "07:00"
+      }
+    }
+  },
+  "exactAlarmOfferTitle": "Get reminders on time?",
+  "@exactAlarmOfferTitle": {
+    "description": "NO-12: one-time Android offer."
+  },
+  "exactAlarmOfferBody": "Allow “Alarms & reminders” for this app so reminders arrive at the time you chose.",
+  "@exactAlarmOfferBody": {
+    "description": "NO-12: one-time Android offer body."
+  },
+  "exactAlarmOfferOpen": "Open settings",
+  "@exactAlarmOfferOpen": {
+    "description": "NO-12: opens the system Alarms & reminders page."
+  },
+  "exactAlarmOfferLater": "Not now",
+  "@exactAlarmOfferLater": {
+    "description": "NO-12: declines the offer."
+  },
+  "exactAlarmRefused": "Reminders may arrive a little late.",
+  "@exactAlarmRefused": {
+    "description": "NO-12: Settings line after a refusal."
+  },
+  "notificationsStatusOn": "Reminders: on, {days, plural, =0{on the day} =1{1 day before} other{{days} days before}} at {time}",
+  "@notificationsStatusOn": {
+    "description": "NO-09: /notifications status where this device posts reminders.",
+    "placeholders": {
+      "days": {
+        "type": "int",
+        "example": "2"
+      },
+      "time": {
+        "type": "String",
+        "example": "09:00"
+      }
+    }
+  },
+  "notificationsStatusOff": "Reminders: off",
+  "@notificationsStatusOff": {
+    "description": "NO-09: /notifications status where the user turned renewal alerts off."
+  },
+  "notificationsStatusNoPush": "This device can't show reminders. Get them by e-mail or add the calendar feed.",
+  "@notificationsStatusNoPush": {
+    "description": "NO-09: /notifications status where push is absent (web)."
+  },
+  "notificationsOpenSettings": "Reminder settings",
+  "@notificationsOpenSettings": {
+    "description": "NO-09: link from the /notifications status line to Settings."
   }
 }

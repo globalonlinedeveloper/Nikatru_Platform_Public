@@ -173,10 +173,14 @@ export const INLINE_SCRIPT_RE = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script
  *  something the header quietly accommodates. */
 export const INLINE_HANDLER_RE = /(\son[a-z]+\s*=\s*["'])|(["']javascript:)/i;
 
-/** The `_headers` line this generator splices. It matches the DIRECTIVE LINE, not
+/** The `_headers` lines this generator splices. It matches the DIRECTIVE LINE, not
  *  the file, so every other rule and every one of that file's several hundred
- *  lines of recorded reasoning is untouched. */
-export const CSP_LINE_RE = /^ *Content-Security-Policy:.*$/m;
+ *  lines of recorded reasoning is untouched.
+ *  ⏱ 2026-10-01 · rv2-security-021 — GLOBAL (`g`): EVERY CSP line, not the first.
+ *  Until today this matched only the `/*` line, so the `/ext/connect` override's
+ *  restated script-src was a hand copy that the next inline-script edit would have
+ *  left one hash short, and nothing here would have said so. */
+export const CSP_LINE_RE = /^ *Content-Security-Policy:.*$/gm;
 /** RE-EXPORTED, not declared. The literal moved to `apex.mjs` on 2026-09-09 so
  *  that `render.mjs` and `assert-app-address-shape.mjs` could import the apex
  *  without importing this generator — see that file's header for the four
@@ -1471,12 +1475,26 @@ export const pricingClose = (region) => `<!-- /PRICING:${region} -->`;
  *            features?: {flag: string, title: string, blurb: string}[],
  *            offerings: object[], paywallEnabled: boolean}[]}
  */
-export function pricedProducts(ctx, liveApps, bundles, problems) {
+export function pricedProducts(ctx, liveApps, bundles, problems, extensions = []) {
   const priced = [];
   for (const app of liveApps) {
     const { features, offerings, paywallEnabled } = commerceFor(ctx.rail, app.slug, problems);
     if (offerings.length > 0) {
       priced.push({ slug: app.slug, name: app.name, kind: 'app', tagline: app.tagline ?? '', features, offerings, paywallEnabled });
+    }
+  }
+  /* ⏱ 2026-10-01 · EXM-01. AN EXTENSION WITH A WEB OFFERING IS PRICED HERE: FullShot
+     Pro is sold on the nikatru.com checkout only (decisions/ext/015), so this page
+     is the one place its price is published, and the page Paddle verifies. Any
+     register status: the offering, not the store listing, is what is priced. Its
+     cards carry NO bullet — an extension is served no `features` (config.ts sells
+     its `paywall` alone), and the defaults' flags are app #1's words. */
+  for (const ext of extensions) {
+    if (typeof ext?.slug !== 'string' || ext.slug === '') continue;
+    const { offerings, paywallEnabled } = commerceFor(ctx.rail, ext.slug, problems);
+    if (offerings.length > 0) {
+      const name = typeof ext.name === 'string' && ext.name.trim() !== '' ? ext.name : ext.slug;
+      priced.push({ slug: ext.slug, name, kind: 'extension', tagline: ext.tagline ?? '', features: [], offerings, paywallEnabled });
     }
   }
   const sellable = new Map();
@@ -1517,6 +1535,22 @@ function readBundleRows(repoRoot, problems) {
   if (r.ok) return r.rows;
   if (existsSync(join(repoRoot, ...BUNDLES_REGISTER.split('/')))) {
     problems.push(`${r.why}. ${PRICING_PAGE} prices every sellable bundle, so an unreadable register is a price list that may be missing one.`);
+  }
+  return [];
+}
+
+/** The extension register's rows (extensions/catalog/extensions.json). Absent in a
+ *  fixture tree, which has no extension; present and unreadable is a problem. */
+export const EXTENSION_REGISTER = 'extensions/catalog/extensions.json';
+function readExtensionRows(repoRoot, problems) {
+  const p = join(repoRoot, ...EXTENSION_REGISTER.split('/'));
+  if (!existsSync(p)) return [];
+  try {
+    const rows = JSON.parse(readFileSync(p, 'utf8'));
+    if (Array.isArray(rows)) return rows;
+    problems.push(`${EXTENSION_REGISTER} is not a list. ${PRICING_PAGE} prices every extension with a web offering.`);
+  } catch (e) {
+    problems.push(`${EXTENSION_REGISTER} is not valid JSON (${e.message}). ${PRICING_PAGE} prices every extension with a web offering.`);
   }
   return [];
 }
@@ -1963,6 +1997,8 @@ export function planDiscovery(repoRoot) {
     channels: readChannelRegister(repoRoot, problems),
     // The bundle register, for the price list's `sellable` bundles.
     bundles: readBundleRows(repoRoot, problems),
+    // The extension register, for the price list's priced extensions (EXM-01, 2026-10-01).
+    extensions: readExtensionRows(repoRoot, problems),
   };
 
   const live = usable.filter((a) => a.status === 'live');
@@ -2050,7 +2086,7 @@ export function planDiscovery(repoRoot) {
       // above for why a hand-written page is spliced rather than generated, and
       // why leaving those numbers hand-maintained was a defect no guard in this
       // repository could see.
-      if (rel === PRICING_PAGE) out = applyPricing(out, pricedProducts(ctx, live, ctx.bundles, problems));
+      if (rel === PRICING_PAGE) out = applyPricing(out, pricedProducts(ctx, live, ctx.bundles, problems, ctx.extensions));
       // ... and the support and about pages take one each, for the apps they
       // name. See `supportAppsBlock` above for why the list is `live`.
       if (rel === SUPPORT_PAGE) {
@@ -2102,7 +2138,7 @@ export function planDiscovery(repoRoot) {
     const headersPath = join(repoRoot, ...headersRel.split('/'));
     // ⚠️ AN ABSENT `_headers` IS NOT THIS GENERATOR'S FINDING, and that is a
     // scoping decision rather than a shrug. This block SPLICES one directive
-    // line into a file it does not own — it has no business creating the file,
+    // (into each CSP line) of a file it does not own — it has no business creating the file,
     // and a root with no header policy at all is a different, larger defect with
     // a guard of its own: `assert-web-cache-policy.mjs` floors every static-site
     // bundle on its entry-point rules and goes RED when `_headers` is gone
@@ -2131,8 +2167,29 @@ export function planDiscovery(repoRoot) {
       }
       const scriptSrc = `script-src 'self'${[...hashes].sort().map((h) => ` ${h}`).join('')}`;
       const current = files.get(headersRel) ?? readFileSync(headersPath, 'utf8');
-      const next = current.replace(CSP_LINE_RE, (line) => line.replace(/script-src [^;]*/, scriptSrc));
-      if (next === current && !current.includes(scriptSrc)) {
+      // ⏱ 2026-10-01 · rv2-security-021 — EVERY CSP LINE, the per-path overrides
+      // included. A rule that detaches the global policy (`! Content-Security-Policy`,
+      // the `/ext/connect` block) has to RESTATE the whole policy, and the restated
+      // script-src is the same site-wide hash list: Cloudflare matches `_headers` on
+      // the REQUEST path, and the overriding page shares the origin's chrome. A
+      // per-page list would be narrower, and it would also be a second derivation
+      // of the same set that could disagree with this one. Every line gets this one.
+      // A CSP line with NO script-src is refused rather than skipped: it falls back to
+      // its default-src, which blocks every inline block this run just hashed.
+      let cspLines = 0;
+      const next = current.replace(CSP_LINE_RE, (line) => {
+        cspLines++;
+        if (!/(^|[:;]\s*)script-src\s/.test(line)) {
+          problems.push(
+            `${headersRel}: the Content-Security-Policy line "${line.trim().slice(0, 80)}…" carries no script-src ` +
+              'directive, so the hash list this run computed cannot be spliced into it, and the pages it governs ' +
+              'would run every inline block under its default-src instead. Restate the whole policy on that line.',
+          );
+          return line;
+        }
+        return line.replace(/script-src [^;]*/, scriptSrc);
+      });
+      if (cspLines === 0) {
         problems.push(
           `${headersRel}: no Content-Security-Policy line with a script-src directive was found, so the hash ` +
             'list this run computed has nowhere to go. The header is spliced, not written whole — see the block ' +

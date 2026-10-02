@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_chassis_screens/firstrun/onboarding_screen.dart';
 import 'package:nikatru_design_system/nikatru_design_system.dart';
@@ -303,5 +304,84 @@ void main() {
         }, skip: !Platform.isLinux);
       }
     }
+  });
+
+  // ⏱ 2026-10-01 · EN-11 / EN-12 — THE CAROUSEL GOES BACK, ANSWERS THE ARROW
+  // KEYS, AND LETS A RETURNING USER OUT ON PAGE ONE. MUTATION PROOF: delete
+  // the `CallbackShortcuts` and the arrow case goes red; delete the Previous
+  // `IconButton` and the previous case does; drop `onHaveAccount` from the
+  // first page and the last one does.
+  group('EN-11 / EN-12 — back, arrows and the way out for an account', () {
+    int page(WidgetTester tester) => tester
+        .widget<PageView>(find.byType(PageView))
+        .controller!
+        .page!
+        .round();
+
+    testWidgets('Previous appears from page two and goes back one page', (
+      WidgetTester tester,
+    ) async {
+      await pumpChassis(tester, kPhone, view());
+      expect(find.byKey(OnboardingView.previousButton), findsNothing);
+      await tester.tap(find.byKey(OnboardingView.advanceButton));
+      await tester.pumpAndSettle();
+      expect(page(tester), 1);
+      expect(find.byKey(OnboardingView.previousButton), findsOneWidget);
+      await tester.tap(find.byKey(OnboardingView.previousButton));
+      await tester.pumpAndSettle();
+      expect(page(tester), 0);
+    });
+
+    testWidgets('the arrow keys page it, and never finish it', (
+      WidgetTester tester,
+    ) async {
+      int finished = 0;
+      await pumpChassis(tester, kPhone, view(onFinish: () => finished++));
+      // Focus inside the carousel: a keyboard user's first Tab.
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(page(tester), 1);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(page(tester), 2);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(page(tester), 2);
+      expect(finished, 0, reason: 'only the button finishes onboarding');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pumpAndSettle();
+      expect(page(tester), 1);
+    });
+
+    testWidgets('page one offers "I already have an account"; later pages do '
+        'not, and it is hidden when the app gives no way out', (
+      WidgetTester tester,
+    ) async {
+      int haveAccount = 0;
+      await pumpChassis(
+        tester,
+        kPhone,
+        OnboardingView(
+          pages: pages,
+          onFinish: () {},
+          onHaveAccount: () => haveAccount++,
+        ),
+      );
+      final ChassisLocalizations l10n = lookupChassisLocalizations(
+        const Locale('en'),
+      );
+      expect(find.text(l10n.onboardingHaveAccount), findsOneWidget);
+      await tester.tap(find.byKey(OnboardingView.haveAccountButton));
+      await tester.pump();
+      expect(haveAccount, 1);
+      await tester.tap(find.byKey(OnboardingView.advanceButton));
+      await tester.pumpAndSettle();
+      expect(find.byKey(OnboardingView.haveAccountButton), findsNothing);
+
+      await pumpChassis(tester, kPhone, view());
+      expect(find.byKey(OnboardingView.haveAccountButton), findsNothing);
+    });
   });
 }

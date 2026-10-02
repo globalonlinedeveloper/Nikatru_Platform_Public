@@ -24,7 +24,7 @@
     58,
 
   "analytics-contract.test.mjs":
-    79,
+    80,
 
   "analytics-liveness.test.mjs":
     28,
@@ -39,10 +39,13 @@
     34,
 
   "android-vapt-manifest.test.mjs":
-    49,
+    55,
 
   "app-address-shape.test.mjs":
     32,
+
+  "app-connect.test.mjs":
+    10,
 
   "app-dod.test.mjs":
     38,
@@ -234,7 +237,7 @@
     22,
 
   "config-registry.test.mjs":
-    61,
+    65,
 
   "connect-origins.test.mjs":
     38,
@@ -306,7 +309,7 @@
     16,
 
   "discovery-surface.test.mjs":
-    163,
+    168,
 
   "dod-sync.test.mjs":
     20,
@@ -372,7 +375,7 @@
     64,
 
   "extension-tool-identity.test.mjs":
-    79,
+    82,
 
   "extensions-build-free.test.mjs":
     14,
@@ -393,7 +396,7 @@
     30,
 
   "flutter-release-build.test.mjs":
-    33,
+    37,
 
   "flutter-stock-assets-injection.test.mjs":
     1,
@@ -453,7 +456,7 @@
     18,
 
   "guards.test.mjs":
-    501,
+    503,
 
   "heartbeats.test.mjs":
     87,
@@ -516,7 +519,7 @@
     62,
 
   "legal-text-parity.test.mjs":
-    29,
+    30,
 
   "legal-tripwires.test.mjs":
     26,
@@ -573,7 +576,7 @@
     30,
 
   "mor-adapters.test.mjs":
-    43,
+    44,
 
   "msix-visual-name.test.mjs":
     14,
@@ -672,7 +675,7 @@
     16,
 
   "paywall-flip-ready.test.mjs":
-    9,
+    13,
 
   "plan-deploy.test.mjs":
     36,
@@ -684,7 +687,7 @@
     107,
 
   "play-declarations.test.mjs":
-    180,
+    186,
 
   "play-device-coverage.test.mjs":
     61,
@@ -698,11 +701,14 @@
   "policy-claims.test.mjs":
     62,
 
+  "port-render.test.mjs":
+    10,
+
   "port-switch.test.mjs":
-    21,
+    35,
 
   "ports.test.mjs":
-    40,
+    56,
 
   "post-deploy-smoke.test.mjs":
     157,
@@ -735,7 +741,7 @@
     31,
 
   "price-literals.test.mjs":
-    37,
+    39,
 
   "privacy-manifest.test.mjs":
     20,
@@ -783,7 +789,7 @@
     133,
 
   "rail-prices.test.mjs":
-    54,
+    61,
 
   "redeploy-stranded.test.mjs":
     50,
@@ -822,7 +828,7 @@
     25,
 
   "repo-posture.test.mjs":
-    19,
+    23,
 
   "required-providers.test.mjs":
     27,
@@ -853,6 +859,9 @@
 
   "runner-budget.test.mjs":
     33,
+
+  "runtime-signer-check.test.mjs":
+    37,
 
   "safe-rerun.test.mjs":
     77,
@@ -1059,7 +1068,7 @@
     42,
 
   "web-cache-policy.test.mjs":
-    73,
+    86,
 
   "web-drive-stages-fonts.test.mjs":
     5,
@@ -1068,7 +1077,7 @@
     24,
 
   "well-known-shape.test.mjs":
-    31,
+    45,
 
   "wildcard-dns.test.mjs":
     13,

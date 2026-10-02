@@ -221,6 +221,10 @@ export interface Env {
    * characters of randomness, `wrangler secret put NATIVE_ATTEST_CHALLENGE_KEY`;
    * ours, not a vendor's). Absent or short, the challenge endpoint and every
    * native op answer 503. Rotating it invalidates only challenges in flight.
+   * ⏱ 2026-10-01: the desktop system-browser hand-off's codes are sealed under a
+   * key HKDF-derived from it (lib/native-attest/handoff.ts), so absent or short,
+   * the hand-off mint and exchange answer 503 too, and a rotation also
+   * invalidates the codes in flight (each lives two minutes).
    */
   NATIVE_ATTEST_CHALLENGE_KEY?: string;
 
@@ -357,6 +361,14 @@ export interface Env {
   RAZORPAY_KEY_SECRET?: string;
   /** The webhook signing secret. `wrangler secret put`, NEVER a var. */
   RAZORPAY_WEBHOOK_SECRET?: string;
+  /**
+   * The fake rail's webhook HMAC key (services/_shared/src/ports/fakes/payments.ts).
+   * 🔴 SET ON NO DEPLOY. The fake is registered for `test` only, so the door answers
+   * 404 for `/v1/money/fake` on every deployed environment, and the fake's `verify`
+   * refuses (401) when this is unset. It is typed so a test harness can inject one, and
+   * so a verify under it is never a verify under the committed public test constant.
+   */
+  FAKE_RAIL_WEBHOOK_SECRET?: string;
   SUPABASE_URL: string;
   /**
    * OPTIONAL comma-separated list of Supabase project URLs the nightly cron keeps
@@ -583,6 +595,23 @@ export interface Env {
    * user sees changes; the notice is a convenience, the row is the record.
    */
   RESEND_API_KEY?: string;
+  /**
+   * port-mail · the `reminders` stream's own Resend key (tooling/ports/mail.json
+   * `streams.reminders`). DECLARED, NOT PROVISIONED: until it is set the reminder
+   * digest sends with RESEND_API_KEY under its own small daily cap
+   * (lib/reminders.ts MAX_REMINDER_MAILS_PER_DAY). src/ports.ts `mailFor` is the
+   * one reader.
+   */
+  RESEND_REMINDERS_API_KEY?: string;
+  /**
+   * port-mail · the Amazon SES DRAFT adapter's credentials
+   * (src/adapters/mail/ses.ts; tooling/ports/mail.json row `ses`, status draft,
+   * no environment). DECLARED, NOT PROVISIONED — no AWS account exists and
+   * nothing reads them; the names are here so a switch rehearsal
+   * (`port-switch.mjs mail --to ses --dry-run`) can name them.
+   */
+  AWS_SES_ACCESS_KEY_ID?: string;
+  AWS_SES_SECRET_ACCESS_KEY?: string;
   /**
    * The commit this Worker was deployed from — `--var RELEASE:<sha>` in
    * deploy-workers.yml. NOT `API_VERSION`: that is the literal "v1" and has

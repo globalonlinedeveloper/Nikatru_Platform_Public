@@ -1,4 +1,4 @@
-import 'package:nikatru_core/nikatru_core.dart' show RecurrenceRoll;
+import 'package:nikatru_core/nikatru_core.dart' show Money, RecurrenceRoll;
 
 import '../../core/app_config.dart';
 import '../models/budget_info.dart';
@@ -90,6 +90,26 @@ class SeedApiClient implements ApiClient {
   Future<void> deleteSubscription(String id) async =>
       _subs.removeWhere((Subscription s) => s.id == id);
 
+  /// Payments recorded by hand this session, per subscription — demo data,
+  /// so it lives as long as the process does. Keyed by idempotency key too,
+  /// so a repeated press records one.
+  final Map<String, List<PaymentRecord>> _manual =
+      <String, List<PaymentRecord>>{};
+  final Set<String> _manualKeys = <String>{};
+
+  @override
+  Future<void> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {
+    if (!_manualKeys.add(idempotencyKey)) return;
+    (_manual[id] ??= <PaymentRecord>[]).add(
+      PaymentRecord(date: paidOn, amount: amount),
+    );
+  }
+
   /// The charges this row has DATES for: every renewal from its
   /// `firstChargeOn` up to today, by the platform's own rule
   /// ([RecurrenceSchedule]) — what the nightly pass would have written. A row
@@ -104,7 +124,9 @@ class SeedApiClient implements ApiClient {
     final Subscription s = _subs.firstWhere((Subscription s) => s.id == id);
     final DateTime? first = s.firstChargeOn;
     final Cadence? cadence = s.cycle;
-    if (first == null || cadence == null) return const <PaymentRecord>[];
+    if (first == null || cadence == null) {
+      return <PaymentRecord>[...?_manual[id]?.reversed];
+    }
     final DateTime now = DateTime.now();
     final RecurrenceRoll roll = RecurrenceSchedule.rollForward(
       first,
@@ -112,6 +134,8 @@ class SeedApiClient implements ApiClient {
       DateTime(now.year, now.month, now.day),
     );
     return <PaymentRecord>[
+      // Recorded by hand ("Mark as paid"), newest first, above the rolled ones.
+      ...?_manual[id]?.reversed,
       for (final DateTime d in roll.crossings.reversed)
         PaymentRecord(date: d, amount: s.price),
     ];

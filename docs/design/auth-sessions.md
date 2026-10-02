@@ -16,7 +16,7 @@ before that token expires.
 | Piece | Where |
 |---|---|
 | `signOut({SignOutScope scope = SignOutScope.local})` on the seam. The default is unchanged. | `packages/core/lib/src/auth/auth_repository.dart:166` |
-| The adapter maps the scope to gotrue's own type, and **before a global revoke it makes sure it holds a live token** (see below) | `packages/auth_supabase/lib/src/supabase_auth_repository.dart:353` |
+| The adapter maps the scope to gotrue's own type, and **before a global revoke it makes sure it holds a live token** (see below) | `packages/auth_supabase/lib/src/supabase_auth_repository.dart:405` |
 | `signOutAndForgetUser(ref, {scope})`, still the only place allowed to call `.signOut(` | `apps/subscriptiontracker/lib/state/providers/auth.dart:7` and the brick's `providers.dart` |
 | "Log out of all devices" (Subly) and "Sign out of all devices" (the chassis `SettingsView`, so every stamped app) | the two `settings_screen.dart` files |
 
@@ -51,7 +51,7 @@ them is the session:
   `sub`, `email` and `authRecencyOf(payload)`.
 
 Nothing anywhere reads `payload.session_id` or `payload.iat`. The `session_id` that does appear in
-`services/` (`services/platform/src/routes/events.ts:269`, `services/platform/src/types.ts:985`) is the
+`services/` (`services/platform/src/routes/events.ts:269`, `services/platform/src/types.ts:1006`) is the
 analytics envelope's own field and is unrelated.
 
 **No Worker can reach Postgres.** The bindings are D1, KV, R2, a service binding and rate limits. A grep for

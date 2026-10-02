@@ -18,7 +18,7 @@ import type { AppTarget, Env } from './types';
 import { recomputeRenewals } from './renewals';
 import { runBackup } from './backup';
 import { isMoneyEnvironment } from './lib/mor/contract';
-import { verifierFor } from './lib/mor/registry';
+import { inboundFor } from './ports';
 import { unconcludedNotifications } from './lib/mor/store';
 import { grantFromVerifiedEvent } from './lib/mor/grant';
 import { grantDepsFor } from './routes/money';
@@ -987,7 +987,9 @@ export async function moneyRederive(env: Env, nowMs: number = Date.now()): Promi
     // known product but a bundle; the checkout's one-time price map; the mint.
     const deps = grantDepsFor(env.PLATFORM_DB, environment, nowMs);
     for (const row of rows) {
-      const verifier = verifierFor(row.provider);
+      // ⏱ 2026-10-01 · port-pay-core: the SAME lookup the door makes (src/ports.ts), so a row
+      // is replayed only through an adapter this environment may serve.
+      const verifier = inboundFor(row.provider, environment);
       if (verifier === null) { bump('unknown_provider'); failed++; continue; }
       // The stored id goes back as the hint: a rail whose event id arrived as a
       // header (contract.ts `eventIdHeader`) has no other way to recover it here.
@@ -2504,6 +2506,10 @@ export const NIGHTLY_CRON = '0 6 * * *';
  * branch below is now a three-way, the register maps this job to this cron, and
  * the test asserts the partition rather than the old two-case shape. A cron that
  * fires with nothing watching it is what check-heartbeats.mjs refuses outright.
+ *
+ * ⏱ 2026-10-01 · A FOURTH KIND OF FIRING writes this job too: the lead's one-shot
+ * re-run after a fix, on OPS_HOURLY_CRON, gated by a KV flag (BACKUP_RERUN_KEY).
+ * It is export only. The schedule this job keeps is still BACKUP_CRON alone.
  */
 export const BACKUP_JOB = 'backup_export';
 
@@ -2624,6 +2630,8 @@ export async function opsWatchdogJob(
  * and never beats PLATFORM_CRON_HEARTBEAT_URL or OPS_WATCHDOG_HEARTBEAT_URL,
  * whose monitors (37 and 40) prove the six-hourly grid ran. :15 keeps it clear
  * of the :00 grid firings and the 02:30 backup.
+ * ⏱ 2026-10-01: after the scan it also reads the lead's one-shot backup re-run
+ * flag (BACKUP_RERUN_KEY), and with no flag it does nothing more.
  */
 export const OPS_HOURLY_CRON = '15 * * * *';
 
@@ -2675,13 +2683,117 @@ export async function opsStuckRunsJob(
   return sendHeartbeat(env.OPS_STUCK_RUNS_HEARTBEAT_URL, 'OPS_STUCK_RUNS_HEARTBEAT_URL');
 }
 
+/**
+ * ⏱ 2026-10-01 · THE LEAD'S ONE-SHOT RE-RUN OF backup_export, on the hourly firing.
+ *
+ * 🔴 WHY IT EXISTS. A fix to a nightly duty could not be proven until the next
+ * night: Cloudflare cannot fire a production cron on demand, and BACKUP_JOB runs
+ * only when `event.cron === BACKUP_CRON`. So after #1108 (merged 04:27Z) the
+ * newest backup_export rows stayed the 02:30Z run that predated it, and ops-watch
+ * read red on every run for ~22 h. Writing a heartbeat by hand is forbidden; this
+ * runs the REAL export instead, once, when the lead sets this CONFIG_KV key to
+ * `{ requestedAt, by, reason, expiresAt }` (services/platform/README.md).
+ *
+ * ⚠️ AN ALLOWLIST OF ONE. Only this key is read; any other `ops:rerun:*` key is
+ * never read, never run and never deleted.
+ */
+export const BACKUP_RERUN_KEY = `ops:rerun:${BACKUP_JOB}`;
+
+interface RerunFlag {
+  requestedAt: string;
+  by: string;
+  reason: string;
+  expiresAt: string;
+}
+
+/** A parsed time, re-printed: the log never carries the flag's own characters. */
+const iso = (t: string): string => new Date(Date.parse(t)).toISOString();
+
+/** The flag, or null when it is not one: every field a non-empty string, both
+ *  times parseable, `by` a short plain name (it is the one value logged). */
+function parseRerunFlag(raw: string): RerunFlag | null {
+  let v: unknown;
+  try {
+    v = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
+  const f = v as Record<string, unknown>;
+  for (const k of ['requestedAt', 'by', 'reason', 'expiresAt']) {
+    if (typeof f[k] !== 'string' || (f[k] as string).trim().length === 0) return null;
+  }
+  const flag = f as unknown as RerunFlag;
+  if (Number.isNaN(Date.parse(flag.requestedAt)) || Number.isNaN(Date.parse(flag.expiresAt))) return null;
+  if (!/^[\w .@:-]{1,64}$/.test(flag.by)) return null;
+  return flag;
+}
+
+/**
+ * Read BACKUP_RERUN_KEY and, if it is a live flag, DELETE IT FIRST and then run
+ * the export once (runBackup's `rerun` option: export only, see BackupOptions).
+ *
+ * 🔴 THE DELETE COMES BEFORE THE RUN, AND A DELETE THAT FAILS RUNS NOTHING. The
+ * flag is one-shot whatever happens next: an export that throws or times out
+ * must not leave a key that fires it again every hour. Absent, unparseable or
+ * expired runs nothing; an expired flag is deleted, a malformed one is left for
+ * the lead to read. Never throws, and never logs a row value or the `reason`.
+ */
+export async function backupRerunJob(
+  env: Env,
+  nowMs: number = Date.now(),
+  backup: typeof runBackup = runBackup,
+): Promise<'none' | 'ran' | 'expired' | 'malformed' | 'failed'> {
+  const kv = env.CONFIG_KV as KVNamespace | undefined;
+  if (!kv) return 'none';
+  let raw: string | null;
+  try {
+    raw = await kv.get(BACKUP_RERUN_KEY);
+  } catch (err) {
+    console.log(`[ops] rerun ${BACKUP_JOB}: flag unreadable, nothing ran: ${String(err).slice(0, 120)}`);
+    return 'failed';
+  }
+  if (raw === null) return 'none';
+  const flag = parseRerunFlag(raw);
+  if (flag === null) {
+    console.log(`[ops] rerun ${BACKUP_JOB}: flag malformed, nothing ran`);
+    return 'malformed';
+  }
+  const expired = Date.parse(flag.expiresAt) <= nowMs;
+  try {
+    await kv.delete(BACKUP_RERUN_KEY);
+  } catch (err) {
+    console.log(`[ops] rerun ${BACKUP_JOB}: flag could not be deleted, nothing ran: ${String(err).slice(0, 120)}`);
+    return 'failed';
+  }
+  if (expired) {
+    console.log(`[ops] rerun ${BACKUP_JOB}: flag expired at ${iso(flag.expiresAt)}, deleted, nothing ran`);
+    return 'expired';
+  }
+  console.log(`[ops] rerun ${BACKUP_JOB} requestedAt=${iso(flag.requestedAt)} by=${flag.by}`);
+  let rows: HeartbeatRow[];
+  try {
+    rows = await backup(env, nowMs, { rerun: true });
+  } catch (err) {
+    // runBackup never throws; if it ever does, the night's rows stand and no
+    // row is invented for a target the next good run would never overwrite.
+    console.log(`[ops] rerun ${BACKUP_JOB}: the export threw, no row written: ${String(err).slice(0, 120)}`);
+    return 'failed';
+  }
+  await recordHeartbeat(env, rows, BACKUP_JOB);
+  return 'ran';
+}
+
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env, ctx) => {
   ctx.waitUntil(
     (async () => {
       // The hourly stuck-run firing is its own work and its own beat, and never
-      // reaches runFiring or platformCronBeat - see OPS_HOURLY_CRON.
+      // reaches runFiring or platformCronBeat - see OPS_HOURLY_CRON. The backup
+      // re-run rides it AFTER the scan, and only when the lead's flag is set -
+      // see BACKUP_RERUN_KEY.
       if (typeof event?.cron === 'string' && event.cron === OPS_HOURLY_CRON) {
         await opsStuckRunsJob(env);
+        await backupRerunJob(env);
         return;
       }
       await runFiring(event, env);

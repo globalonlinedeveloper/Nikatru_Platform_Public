@@ -24,16 +24,21 @@
 //   1 schema    every registry validates against port.schema.json, through the
 //               small validator below that READS the schema (no second copy of
 //               the shape lives here); no secret-shaped value and no e-mail
-//               literal; the file name equals `port`. An empty or unreadable
+//               literal; the file name equals `port`. An adapter with NO
+//               environment is `draft` or `retired`; a `stream` selection has
+//               `streams`, each naming an adapter of the port and only secrets
+//               that adapter declares. An empty or unreadable
 //               tooling/ports/ is COVERAGE LOST (exit 2) — a floor of zero ports
 //               is met by an empty directory (vacuous-02).
 //   2 symbols   every interface and impl symbol is DECLARED in its file, in
 //               comment-stripped source — a mention, an import or a comment is
 //               not a declaration.
 //   3 waivers   every handTables anchor still exists, and is PRINTED on every run.
-//               `generated: true` needs the render tool, which arrives with
-//               port-pay-core; until then no port may claim it.
-//   4 imports   no TS module imports an adapter's impl.file except its Worker's
+//               `generated: true` needs the render tool (tooling/ports/render.mjs),
+//               and the rendered table must be CURRENT (its renderCheck, run here
+//               on every build: a hand edit of the generated file is a finding).
+//   4 imports   no TS module imports an adapter's impl.file (or its outbound file
+//               and modules) except its Worker's
 //               composition root (services/<w>/src/ports.ts) or, while
 //               `generated: false`, a file the port's handTables names. A walk
 //               of the import graph of services/*/src (tests are not modules of
@@ -48,15 +53,25 @@
 //               limb 4 clean for the port, with a non-fake adapter that is built;
 //               L3 + a conformance suite whose runner each of >= 2 adapters'
 //               conformance files CALLS, zero pending for them, a runbook and the
-//               dry-run command. A claim above the earned level is exit 1. The
-//               table port · claimed · earned · target prints on every run.
+//               dry-run command. A draft or retired adapter is never one of the
+//               two: it may pass the suite, but nothing can select it. A claim
+//               above the earned level is exit 1. The table port · claimed ·
+//               earned · target prints on every run.
 //   7 fakes     a `fake` never lists `live`, and selection.default.live is never one.
 //   8 cross     every capability-register vendor key (minus `_`-keys) and every
 //               provider-register provider id is EXACTLY ONE adapter's `vendor`
 //               or one tooling/ports/_non-port.json row; and a ported vendor's
 //               C-8 seam.file equals its port's interface file, unless the
 //               adapter declares that exact file as a `c8Seam` divergence
-//               (printed).
+//               (printed). A vendor behind two adapters of ONE port (mail's
+//               HTTP API and its SMTP relay) is placed once, in that port.
+//   9 literals  no owner-domain address is a literal in services/*/src outside
+//               src/generated/ (comment-stripped, so a citation in prose is not
+//               one): an address is an entity-source FIELD, rendered. Every
+//               stream's `from`/`to` path resolves in tooling/house-identity.json,
+//               and when a stream names one, services/platform/src/generated/
+//               entity.ts is what tooling/ports/render-entity.mjs renders.
+//               No house identity, or no module scanned, is COVERAGE LOST.
 //
 // Exit 0 green, 1 a finding, 2 COVERAGE LOST (every problem is one). The FIRST
 // line names the deciding limb.
@@ -69,6 +84,8 @@ import { extname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripSourceComments } from './text-reductions.mjs';
 import { listDir } from './tree-walk.mjs';
+import { renderCheck } from '../ports/render.mjs';
+import { renderEntityAt, ENTITY_SOURCE } from '../ports/render-entity.mjs';
 
 export const PORTS_DIR = 'tooling/ports';
 export const SCHEMA_REL = 'tooling/ports/port.schema.json';
@@ -77,8 +94,8 @@ export const CAPABILITY_REGISTER = 'tooling/capability-register.json';
 export const PROVIDER_REGISTER = 'tooling/legal/provider-register.json';
 export const SECRETS_MANIFEST = 'tooling/worker-secrets.json';
 export const CHANNEL_REGISTER = 'tooling/channel-register.json';
-/** The renderer `generated: true` needs; it arrives with port-pay-core. */
-export const RENDER_TOOL = 'tooling/ops/render-port-tables.mjs';
+/** The renderer `generated: true` needs (port-pay-core); limb 3 runs its check on every build. */
+export const RENDER_TOOL = 'tooling/ports/render.mjs';
 /** A Worker's one composition root, relative to services/<w>/. */
 export const COMPOSITION_ROOT = 'src/ports.ts';
 export const LIMB_NAMES = Object.freeze({
@@ -90,6 +107,7 @@ export const LIMB_NAMES = Object.freeze({
   6: 'level',
   7: 'fakes',
   8: 'cross-register',
+  9: 'literals',
 });
 
 // ── values a registry may never carry (rule: no secret value, no business-fact literal) ──
@@ -319,6 +337,17 @@ export function evaluate(root) {
         find(1, `${rel} adapter \`${a?.id}\` impl must be ${a?.status === 'external' ? '{configAt, verify}' : '{file, symbol}'} for status ${a?.status}.`);
       }
     }
+    for (const a of doc?.adapters ?? []) {
+      if (Array.isArray(a?.environments) && a.environments.length === 0 && a.status !== 'draft' && a.status !== 'retired') {
+        find(1, `${rel} adapter \`${a.id}\` lists no environment but is ${a.status}; only a draft or retired adapter may be selectable nowhere.`);
+      }
+    }
+    if (doc?.selection?.by === 'stream' && !isObj(doc?.streams)) find(1, `${rel} is selected by stream but declares no \`streams\`.`);
+    for (const [name, st] of Object.entries(isObj(doc?.streams) ? doc.streams : {})) {
+      const a = (doc?.adapters ?? []).find((x) => x?.id === st?.adapter);
+      if (!a) { find(1, `${rel} stream \`${name}\` names adapter \`${st?.adapter}\`, which is no adapter of this port.`); continue; }
+      for (const n of st.secrets ?? []) if (!(a.secrets ?? []).includes(n)) find(1, `${rel} stream \`${name}\` takes secret \`${n}\`, which its adapter \`${a.id}\` does not declare.`);
+    }
     for (const env of ['live', 'sandbox', 'test']) {
       const sel = doc?.selection?.default?.[env];
       if (sel !== null && sel !== undefined && !ids.has(sel)) find(1, `${rel} selection.default.${env} names \`${sel}\`, which is no adapter of this port.`);
@@ -357,6 +386,13 @@ export function evaluate(root) {
       if (src === null) { find(2, `${rel} adapter \`${a.id}\` impl.file \`${a.impl.file}\` does not exist.`); continue; }
       if (!declares(src, a.impl.symbol, extname(a.impl.file))) find(2, `${rel} adapter \`${a.id}\` symbol \`${a.impl.symbol}\` is not declared in \`${a.impl.file}\`.`);
     }
+    for (const a of doc?.adapters ?? []) {
+      if (!a?.outbound) continue;
+      const src = readStripped(root, a.outbound.file);
+      if (src === null) { find(2, `${rel} adapter \`${a.id}\` outbound.file \`${a.outbound.file}\` does not exist.`); continue; }
+      if (!declares(src, a.outbound.symbol, extname(a.outbound.file))) find(2, `${rel} adapter \`${a.id}\` outbound symbol \`${a.outbound.symbol}\` is not declared in \`${a.outbound.file}\`.`);
+      for (const m of a.outbound.modules ?? []) if (!existsSync(join(root, m))) find(2, `${rel} adapter \`${a.id}\` outbound module \`${m}\` does not exist.`);
+    }
     const src = doc?.selection?.source;
     if (typeof src === 'string') {
       const [file, pointer] = src.split('#');
@@ -382,10 +418,17 @@ export function evaluate(root) {
         waivers.push(`${doc.port}: hand table \`${h.anchor}\` in ${h.file} — until ${h.until}`);
       }
     }
-    if (doc?.generated === true) {
-      if (!existsSync(join(root, RENDER_TOOL))) find(3, `${rel} claims \`generated: true\`, but ${RENDER_TOOL} (the renderer, arriving with port-pay-core) does not exist; no rendered table can be current.`);
-      else find(3, `${rel} claims \`generated: true\`; this guard does not yet know how to check ${RENDER_TOOL} for a current table. Teach limb 3 in the change that lands the renderer.`);
+    if (doc?.generated === true && !existsSync(join(root, RENDER_TOOL))) {
+      find(3, `${rel} claims \`generated: true\`, but ${RENDER_TOOL} (the renderer) does not exist; no rendered table can be current.`);
     }
+  }
+  // The rendered table is current, whether or not a port claims `generated` yet: a hand
+  // edit of services/platform/src/generated/ports.ts is a finding on every build.
+  if (existsSync(join(root, RENDER_TOOL)) && ports.some(({ doc }) => doc?.port === 'payments')) {
+    const r = renderCheck(root);
+    if (r.lost) lost(3, `render --check: ${r.detail}`);
+    else if (!r.ok) find(3, `render --check: ${r.detail}`);
+    else notes.push(`limb 3: ${r.detail}`);
   }
 
   // ── limb 4 · imports ──
@@ -407,7 +450,8 @@ export function evaluate(root) {
       for (const { doc } of tsPorts) limb4Clean.set(doc.port, false);
     }
     for (const { rel, doc } of tsPorts) {
-      const implFiles = new Set((doc.adapters ?? []).map((a) => a?.impl?.file).filter((f) => typeof f === 'string' && /\.ts$/.test(f)));
+      // An adapter's files: its inbound impl, its outbound half and that half's private modules (port-pay-core).
+      const implFiles = new Set((doc.adapters ?? []).flatMap((a) => [a?.impl?.file, a?.outbound?.file, ...(a?.outbound?.modules ?? [])]).filter((f) => typeof f === 'string' && /\.ts$/.test(f)));
       const allowed = new Set(doc.generated === false ? (doc.handTables ?? []).map((h) => h.file) : []);
       for (const [from, targets] of graph) {
         const worker = from.split('/')[1];
@@ -481,7 +525,9 @@ export function evaluate(root) {
         if (suiteSrc === null || !declares(suiteSrc, suite.runner, extname(suite.file))) why.push(`the suite ${suite.file} does not declare ${suite.runner}`);
         else {
           for (const a of doc.adapters ?? []) {
-            if (!a?.conformance?.file || pending.has(a.id)) continue;
+            // A draft or retired adapter may pass the suite (mail's SES draft
+            // does), but no environment can select it, so it earns nothing.
+            if (!a?.conformance?.file || pending.has(a.id) || a.status === 'draft' || a.status === 'retired') continue;
             const s = readStripped(root, a.conformance.file);
             if (s !== null && callsRunner(s, suite.runner, extname(a.conformance.file))) conformant++;
           }
@@ -513,8 +559,13 @@ export function evaluate(root) {
     const placed = new Map(); // vendor -> [where]
     const place = (v, where) => placed.set(v, [...(placed.get(v) ?? []), where]);
     for (const { doc } of ports) {
+      const inPort = new Set();
       for (const a of doc?.adapters ?? []) {
         if (typeof a?.vendor !== 'string') continue;
+        // One placement per port: a vendor behind two adapters of the same port
+        // (an HTTP API and an SMTP relay) is still one vendor in one port.
+        if (inPort.has(a.vendor)) continue;
+        inPort.add(a.vendor);
         place(a.vendor, `${doc.port}/${a.id}`);
         result.vendorPort.set(a.vendor, { port: doc.port, adapter: a.id, earned: earnedOf.get(doc.port) ?? 0 });
       }
@@ -553,6 +604,49 @@ export function evaluate(root) {
       }
     }
   }
+
+  // ── limb 9 · literals ──
+  let house = null;
+  try { house = JSON.parse(readFileSync(join(root, ENTITY_SOURCE), 'utf8')); } catch (e) {
+    lost(9, `${ENTITY_SOURCE} could not be read (${e.message}); without the owner domain no address literal can be recognised.`);
+  }
+  const ownerDomain = house?.ownerDomain?.value;
+  if (house && (typeof ownerDomain !== 'string' || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(ownerDomain))) {
+    lost(9, `${ENTITY_SOURCE} \`ownerDomain.value\` is not a domain; the literal scan has nothing to match.`);
+  } else if (house) {
+    const scanned = tsFiles.filter((f) => !/\/src\/generated\//.test(f));
+    if (!scanned.length) lost(9, 'the literal scan read no TypeScript module under services/*/src.');
+    const re = new RegExp(`[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\\.)*${esc(ownerDomain)}(?![A-Za-z0-9.-])`, 'gi');
+    for (const f of scanned) {
+      const code = stripSourceComments(readFileSync(join(root, f), 'utf8'), '.ts');
+      for (const m of code.matchAll(re)) {
+        const line = code.slice(0, m.index).split('\n').length;
+        find(9, `${f}:${line} carries an address on ${ownerDomain} as a literal. An address is an entity-source field (${ENTITY_SOURCE}), read from the Worker's src/generated/entity.ts.`);
+      }
+    }
+    notes.push(`limb 9 scanned ${scanned.length} TS module(s) for an address on ${ownerDomain}`);
+    const resolves = (path) => {
+      let node = house;
+      for (const k of path.split('.')) node = isObj(node) ? node[k] : undefined;
+      const v = isObj(node) ? node.value : node;
+      return typeof v === 'string' && v !== '';
+    };
+    let namesSender = false;
+    for (const { rel, doc } of ports) {
+      for (const [name, st] of Object.entries(isObj(doc?.streams) ? doc.streams : {})) {
+        for (const k of ['from', 'to']) {
+          if (typeof st?.[k] !== 'string') continue;
+          namesSender = true;
+          if (!resolves(st[k])) find(9, `${rel} stream \`${name}\` ${k} path \`${st[k]}\` resolves to no value in ${ENTITY_SOURCE}.`);
+        }
+      }
+    }
+    if (namesSender) {
+      const r = renderEntityAt(root, { check: true });
+      if (r.code === 1) find(9, r.msg);
+      else if (r.code !== 0) lost(9, r.msg);
+    }
+  }
   return result;
 }
 
@@ -574,7 +668,7 @@ function main() {
   if (deciding) {
     console.error(`assert-ports: ${allLost ? 'COVERAGE LOST' : 'FAILED'} — limb ${deciding.limb} (${LIMB_NAMES[deciding.limb]}): ${deciding.msg.replace(/^COVERAGE LOST — /, '')}`);
   } else {
-    console.log(`assert-ports: ok — all 8 limbs green over ${r.table.length} port(s)`);
+    console.log(`assert-ports: ok — all ${Object.keys(LIMB_NAMES).length} limbs green over ${r.table.length} port(s)`);
   }
   if (r.table.length) {
     console.log('\nport         claimed  earned  target');

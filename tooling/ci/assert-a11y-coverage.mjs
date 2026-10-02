@@ -817,9 +817,19 @@ const REQUIRED_COVERAGE = [
     // chassis SettingsHeading arrived swept with the Help card
     // (`a11y: help-section`, light + dark kPhone). Read off the per-root line:
     // `27 of 27 … across 63 case(s)`.
-    surfaces: 27,
-    a11yFiles: 4,
-    cases: 63,
+    // ⏱ 2026-10-01 · O-APPS-GOV-IN-VAPT-CHECKLIST: 27 -> 31 surfaces, 4 -> 5
+    // files, 63 -> 71 cases — TamperedBuildScreen, TamperedBuildApp,
+    // RootedDeviceNoticeHost and ReauthDialog arrived swept in
+    // a11y_integrity_test.dart (light kPhone + dark kDesktop each). Read off the
+    // per-root line: `31 of 31 … from 5 a11y test file(s) across 71 case(s)`.
+    // ⏱ 2026-10-01 · ST-N6 (#1080), merged with the above: 31 -> 32 surfaces —
+    // the chassis RefreshOnResume arrived swept in the consent-scrim chain of
+    // a11y_shell_test.dart (files and cases unchanged). Read off the per-root
+    // line on the merged tree: `32 of 32 … from 5 a11y test file(s) across 71
+    // case(s)`.
+    surfaces: 32,
+    a11yFiles: 5,
+    cases: 71,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',
@@ -911,7 +921,16 @@ const REQUIRED_COVERAGE = [
     //   surfaces  38 → 43
     //   a11yFiles 13 → 14
     //   cases     27 → 28
-    surfaces: 43,
+    //
+    // ⏱ 2026-10-01 · train st-entry (EN-11): `SwallowSystemBack` arrived
+    // UNSWEPT and stays in the printed ⬜ list on purpose: it paints nothing (a
+    // `SizedBox.shrink`) — it is a claim on the router's back-button
+    // dispatcher, not a layer a reader traverses, so a semantics sweep of it
+    // could not fail. Its behaviour is pinned by swallow_system_back_test.dart.
+    // Read off the per-root line: "26 of 44 reachable surface(s) carry an a11y
+    // sweep, from 14 a11y test file(s) across 28 case(s)".
+    //   surfaces  43 → 44
+    surfaces: 44,
     a11yFiles: 14,
     cases: 28,
     label:
@@ -1014,7 +1033,9 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
     new Set(
       [
         'features/insights/insights_screen.dart#InsightsScreen',
-        'features/scan/scan_screen.dart#ScanScreen',
+        // 2026-10-01 (IM-01, ADR 077 §2.2): `/scan` retired to a redirect; the
+        // import hub that replaced it is swept in a11y_semantics_test.dart.
+        'features/import/import_screen.dart#ImportScreen',
         'features/calendar/calendar_screen.dart#CalendarScreen',
         'features/detail/subscription_detail_screen.dart#SubscriptionDetailScreen',
         'features/auth/check_inbox_screen.dart#CheckInboxScreen',
@@ -1078,6 +1099,11 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         // 2026-09-23: the two home bodies, swept in a11y_home_test.dart.
         'home/home_screen.dart#CatchUpBannerView',
         'home/home_screen.dart#WelcomeView',
+        // 2026-10-01 (O-APPS-GOV-IN-VAPT-CHECKLIST): device integrity, swept in
+        // a11y_integrity_test.dart in the same change.
+        'integrity/device_integrity_gate.dart#ReauthDialog',
+        'integrity/tampered_build_screen.dart#TamperedBuildApp',
+        'integrity/tampered_build_screen.dart#TamperedBuildScreen',
         'monetization/manage_plan_screen.dart#ManagePlanView',
         'monetization/paywall_screen.dart#PaywallView',
         'settings/report_content_dialog.dart#ReportContentDialog',
@@ -1092,6 +1118,7 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
         'shell/app_shell.dart#ConsentScrim',
         'shell/app_shell.dart#NikatruApp',
         'shell/app_shell.dart#OfflineBannerHost',
+        'shell/app_shell.dart#RootedDeviceNoticeHost',
       ].map((k) => `packages/chassis_screens/lib/${k}`),
     ),
   ],

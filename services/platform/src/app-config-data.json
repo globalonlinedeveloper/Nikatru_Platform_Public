@@ -30,6 +30,17 @@
     "  · tooling/ci/assert-ads-declarations.mjs, pointed here by the android-play ads-declaration.json `configPayloads`",
     "  · tooling/ci/release-manifest.mjs `releaseFloor` — the release record's minSupported is the highest `min_supported_version` served to the channels it stages",
     "",
+    "⏱ 2026-10-01 · EXM-01, EXM-04 (train P47): AN `apps` KEY MAY NAME AN EXTENSION, AND THEN IT CARRIES `paywall` ALONE.",
+    "FullShot Pro's tier is recorded here as data: `apps.fullshot.paywall.offerings` is ADR 093's single-app web tier",
+    "(the monthly and yearly figures subscriptiontracker's served offerings carry; no lifetime, and no trial while no",
+    "renewal notice exists for it), and `prices.apps.fullshot` holds its rails, with no store column because no browser",
+    "store sells an in-extension product. An extension is SOLD, never SERVED: services/platform/src/config.ts",
+    "`buildExtensionPaywalls` reads that `paywall` for POST /v1/checkout, and no GET /config/<extension> exists. Four more",
+    "readers take it from here: extensions/scripts/render-listing.mjs (whether the tool sells, and the Edge price range),",
+    "contracts/legal/pro-gate.mjs (whether the privacy page's purchase paragraph is published), tooling/sites/",
+    "generate-discovery.mjs (the /pricing section) and tooling/ci/assert-no-price-literals.mjs (the one range the Edge",
+    "listing may carry). assert-config-registry.mjs limb 3 refuses any other key on an extension's entry.",
+    "",
     "🔴 THAT LINE SAID \"THREE READERS\" UNTIL 2026-08-21 AND \"EIGHT\" UNTIL 2026-09-22, AND BOTH UNDERCOUNTS",
     "COST AN INVESTIGATION. A reader who trusted the first concluded `apps.subscriptiontracker.features` was",
     "dead data — every `.feature(` call in Dart and every read in the TypeScript tests really does miss it —",
@@ -116,6 +127,27 @@
   },
 
   "apps": {
+    "fullshot": {
+      "paywall": {
+        "enabled": false,
+        "offerings": [
+          {
+            "product_id": "pro_monthly",
+            "amount_minor": 599,
+            "currency_code": "USD",
+            "term": "month",
+            "trial_days": 0
+          },
+          {
+            "product_id": "pro_yearly",
+            "amount_minor": 3499,
+            "currency_code": "USD",
+            "term": "year",
+            "trial_days": 0
+          }
+        ]
+      }
+    },
     "subscriptiontracker": {
       "features": { "renewals": true, "budgets": true, "exports": true },
       "paywall": {
@@ -182,6 +214,32 @@
       "--check run fails a channel that can sell and nets below the web row of the same plan."
     ],
     "apps": {
+      "fullshot": {
+        "pro_monthly": {
+          "plan": "single-monthly",
+          "webInrMinor": 14900,
+          "rails": {
+            "paddle": {
+              "pending": "no Paddle price exists yet: the sandbox price is created through the Paddle API with the vault key and read back here, and the live price waits for the owner's word at the first FullShot store submission"
+            },
+            "razorpay": {
+              "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here"
+            }
+          }
+        },
+        "pro_yearly": {
+          "plan": "single-yearly",
+          "webInrMinor": 99900,
+          "rails": {
+            "paddle": {
+              "pending": "no Paddle price exists yet: the sandbox price is created through the Paddle API with the vault key and read back here, and the live price waits for the owner's word at the first FullShot store submission"
+            },
+            "razorpay": {
+              "pending": "no Razorpay plan exists yet: the owner creates it (ADR 094), and Razorpay PR B reads it from here"
+            }
+          }
+        }
+      },
       "subscriptiontracker": {
         "pro_monthly": {
           "plan": "single-monthly",

@@ -433,6 +433,24 @@ class CachedApiClient implements ApiClient {
   Future<List<PaymentRecord>> getPaymentHistory(String id) async =>
       _network.getPaymentHistory(await _outbox.resolve(id));
 
+  /// A write: the network or an error, never the cache, and not queued — the
+  /// outbox carries subscription rows only, so an offline "Mark as paid"
+  /// fails where the user sees it (the notification stays up, the row says
+  /// so) and a second press is the same payment (the key is derived). A row
+  /// added offline is resolved to its server id first, as on every read.
+  @override
+  Future<void> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async => _network.recordPayment(
+    await _outbox.resolve(id),
+    amount: amount,
+    paidOn: paidOn,
+    idempotencyKey: idempotencyKey,
+  );
+
   @override
   Future<BudgetInfo> getBudget() => _cache.read(
     kLocalBudgetKey,

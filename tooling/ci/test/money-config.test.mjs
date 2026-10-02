@@ -33,7 +33,7 @@
 //   MC7  the resolver's `: null` refusal replaced by       -> caught after a FIX (below)
 //        `: ('live' as MoneyEnvironment)`
 //   MC8  `isMoneyEnvironment(...)` removed                 -> caught: "does not validate"
-//   MC9  MOR_VERIFIERS emptied                             -> caught: "COVERAGE LOST —
+//   MC9  MOR_VERIFIER_IDS emptied                             -> caught: "COVERAGE LOST —
 //                                                             derived ZERO money secrets"
 //   MC10 the adapter's `secretEnvVar` removed              -> caught: "declares no
 //                                                             `secretEnvVar`"
@@ -93,9 +93,10 @@ const PLATFORM_WRANGLER = `{
 
 const SUBLY_WRANGLER = '{ "name": "subscriptiontracker-api", "vars": { "APP_ID": "subscriptiontracker" } }';
 
+// ⏱ 2026-10-01 · port-pay-core: the rail set is the RENDERED table (services/platform/src/generated/ports.ts,
+// tooling/ports/render.mjs); the registry's hand array is gone, so the fixture writes the rendered shape.
 const REGISTRY_TS = `
-import { paddleVerifier } from './paddle';
-export const MOR_VERIFIERS: readonly MoRWebhookVerifier[] = [paddleVerifier];
+export const MOR_VERIFIER_IDS = ['paddle'] as const;
 `;
 
 const PADDLE_TS = `
@@ -214,13 +215,11 @@ export const secondVerifier: MoRWebhookVerifier = {
 `;
 
 const REGISTRY_TS_STALE_DOC = `
-import { paddleVerifier } from './paddle';
-import { secondVerifier } from './second';
 /**
  * Until the second rail landed this read:
- *   export const MOR_VERIFIERS: readonly MoRWebhookVerifier[] = [paddleVerifier];
+ *   export const MOR_VERIFIER_IDS = ['paddle'] as const;
  */
-export const MOR_VERIFIERS: readonly MoRWebhookVerifier[] = [paddleVerifier, secondVerifier];
+export const MOR_VERIFIER_IDS = ['paddle', 'second'] as const;
 `;
 
 function write(root, rel, body) {
@@ -326,7 +325,7 @@ function run(o = {}) {
   write(root, `${BRICK_DIR}/src/routes/account.ts`, o.brickSrc ?? BRICK_ACCOUNT_TS);
   write(root, 'services/platform/wrangler.jsonc', o.platformWrangler ?? PLATFORM_WRANGLER);
   if (o.subscriptiontrackerWrangler !== null) write(root, 'services/subscriptiontracker-api/wrangler.jsonc', o.subscriptiontrackerWrangler ?? SUBLY_WRANGLER);
-  write(root, 'services/platform/src/lib/mor/registry.ts', o.registry ?? REGISTRY_TS);
+  write(root, 'services/platform/src/generated/ports.ts', o.registry ?? REGISTRY_TS);
   write(root, 'services/platform/src/lib/mor/paddle.ts', o.paddle ?? PADDLE_TS);
   if (o.second) write(root, 'services/platform/src/lib/mor/second.ts', o.second);
   if (o.route !== null) write(root, 'services/platform/src/routes/money.ts', o.route ?? ROUTE_TS);
@@ -483,7 +482,7 @@ describe('assert-money-config — sandbox money cannot grant a production unlock
   });
 
   test('COVERAGE LOST when the adapter registry is empty — "exactly one secret" over zero rails', () => {
-    const r = run({ registry: REGISTRY_TS.replace('[paddleVerifier]', '[]') });
+    const r = run({ registry: REGISTRY_TS.replace("['paddle']", '[]') });
     assert.equal(r.code, 2);
     assert.match(r.out, /COVERAGE LOST — derived ZERO money destination secrets/);
   });
@@ -612,7 +611,7 @@ describe('assert-money-config — sandbox money cannot grant a production unlock
     assert.match(r.out, /declares PADDLE_NOTIFICATION_SECRET as a committed `vars` entry/);
   });
 
-  test('🔴 a STALE doc comment above MOR_VERIFIERS cannot hide a second registered rail', () => {
+  test('🔴 a STALE doc comment above MOR_VERIFIER_IDS cannot hide a second registered rail', () => {
     // Same defect one level up, and the one the brief undercounted: the registry
     // read was raw too. Read raw, the comment's one-rail declaration wins, the
     // second rail's destination secret is never derived, and limb 3 says ok over

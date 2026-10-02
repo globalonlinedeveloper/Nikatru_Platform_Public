@@ -27,7 +27,6 @@
 // `showUnused` below reads `prefs['unused']`, which only the settings toggles
 // write. Changing one screen without the other severs a coupling nothing tests.
 // ─────────────────────────────────────────────────────────────────────────────
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -37,14 +36,15 @@ import 'package:nikatru_notifications/nikatru_notifications.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
 
 import '../../core/app_config.dart';
+import '../../core/e2e_keys.dart';
 import '../../core/format/category_label.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
-import '../../core/windows_notification_identity.g.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart';
 import '../../state/providers.dart';
+import '../../state/refresh_on_return.dart';
 import '../../state/settings_controller.dart';
 import '../../state/subscriptions_controller.dart';
 // The `/sub/:id` screen, imported so it can be BUILT IN PLACE in the second
@@ -85,6 +85,9 @@ class HomeScreen extends ConsumerWidget {
   /// The list column's pane; `test/width_home_test.dart` resolves the
   /// `ListView` through it rather than through `.first`.
   static const Key listPaneKey = Key('home-list-pane');
+
+  /// The list's pull-to-refresh (ST-N6), so a test can drag it by key.
+  static const Key pullToRefreshKey = Key('home-pull-to-refresh');
 
   /// The summary's own column, present from [asideMinBodyWidth] up.
   static const Key asideKey = Key('home-aside');
@@ -242,25 +245,33 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
     // it is a no-op. It is a CONTENT width, not a navigation breakpoint.
     return ContentPane.reading(
       key: HomeScreen.listPaneKey,
-      child: ListView(
-        padding: AppShell.pageInsetOf(context),
-        children: <Widget>[
-          // THE HEADER IS OUTSIDE THE DATA STATES. It is the route to
-          // notifications and settings, so no state may hide it — a spinner
-          // that ate it would be a screen with no door.
-          _header(context, l10n, user, now),
-          const SizedBox(height: AppSpacing.lg),
-          ..._states(
-            context,
-            l10n,
-            money,
-            subs,
-            now,
-            showUnused,
-            summaryInList: summaryInList,
-            twoPane: twoPane,
-          ),
-        ],
+      // ST-N6 (D23): pull down to re-read — the SAME re-read a return to the
+      // app runs, so the gesture and the resume cannot disagree about what
+      // "refresh" means. Always scrollable, or a short list cannot be pulled.
+      child: RefreshIndicator(
+        key: HomeScreen.pullToRefreshKey,
+        onRefresh: () => refreshOnReturn(ref),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: AppShell.pageInsetOf(context),
+          children: <Widget>[
+            // THE HEADER IS OUTSIDE THE DATA STATES. It is the route to
+            // notifications and settings, so no state may hide it — a spinner
+            // that ate it would be a screen with no door.
+            _header(context, l10n, user, now),
+            const SizedBox(height: AppSpacing.lg),
+            ..._states(
+              context,
+              l10n,
+              money,
+              subs,
+              now,
+              showUnused,
+              summaryInList: summaryInList,
+              twoPane: twoPane,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -317,6 +328,15 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
           body: l10n.dataEmptyBody,
           actionLabel: l10n.addSubscriptionTitle,
           onAction: () => showAddSubscriptionSheet(context),
+        ),
+        // IM-01 — the second first step: a list kept somewhere else comes in
+        // through the import hub rather than being typed row by row.
+        Center(
+          child: TextButton(
+            key: E2EKeys.homeImport,
+            onPressed: () => context.push('/import'),
+            child: Text(l10n.importTitle),
+          ),
         ),
       ];
     }
@@ -706,10 +726,13 @@ class _HomeDashboardState extends ConsumerState<_HomeDashboard> {
 /// [core.CatchUpNudge] refuses when reminders are off — routing around the
 /// switch is precisely what the switch exists to prevent.
 ///
-/// ⚠️ P2.5 DEPENDENCY: `AppConfig.reminderHour` / `reminderMinute` exist ONLY in
-/// the STAMPED `lib/core/app_config.dart`. The live `lib/core/config/
-/// app_config.dart` has neither, so the de-duplication must keep the stamp's
-/// constants or this widget stops compiling. See MANIFEST.md · FINDING 3.
+/// 🔴 HO-09 · THE OPT-OUT IT READS IS "RENEWAL ALERTS", NOT THE RETIRED DAILY
+/// SWITCH. It read `remindersEnabledProvider`, which launch forces OFF
+/// (ST-U1: the chassis daily reminder is not this app's) — so on web, the one
+/// target this banner exists for, it could never show. It now reads the
+/// capability (`renewalRemindersProvider`, `!canSchedule`) and the
+/// alerts preference, at the reminder time the user chose in Settings.
+///
 class CatchUpNudgeBanner extends ConsumerWidget {
   const CatchUpNudgeBanner({this.clock, super.key});
 
@@ -722,19 +745,20 @@ class CatchUpNudgeBanner extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final NotificationCapabilities caps = NotificationCapabilities.resolve(
-      defaultTargetPlatform,
-      isWeb: kIsWeb,
-      windows: kWindowsNotificationIdentity,
-    );
+    // The same object the scheduler was built from, so the nudge and the
+    // scheduler cannot disagree about whether this target schedules.
+    final NotificationCapabilities caps = ref
+        .watch(renewalRemindersProvider)
+        .capabilities;
+    final SettingsState settings = ref.watch(settingsControllerProvider);
     final AppLocalizations l10n = AppLocalizations.of(context);
     final DateTime now = (clock ?? DateTime.now)();
     final core.CatchUpNudgeVerdict verdict = const core.CatchUpNudge().decide(
       now: now,
       lastShownAt: ref.watch(catchUpNudgeProvider),
-      reminderHour: AppConfig.reminderHour,
-      reminderMinute: AppConfig.reminderMinute,
-      remindersEnabled: ref.watch(remindersEnabledProvider),
+      reminderHour: settings.reminderMinuteOfDay ~/ 60,
+      reminderMinute: settings.reminderMinuteOfDay % 60,
+      remindersEnabled: settings.prefs['alerts'] ?? true,
       platformCanSchedule: caps.canSchedule,
     );
     if (verdict != core.CatchUpNudgeVerdict.show) {

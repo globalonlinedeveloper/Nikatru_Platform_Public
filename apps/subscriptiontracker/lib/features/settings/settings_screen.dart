@@ -343,7 +343,7 @@ class SettingsScreen extends ConsumerWidget {
               ],
               selected: <ThemeMode>{mode},
               onSelectionChanged: (Set<ThemeMode> s) =>
-                  ref.read(themeModeProvider.notifier).set(s.first),
+                  setThemeModeByUser(ref, s.first),
             ),
 
             // ── LANGUAGE ─────────────────────────────────────────────────────
@@ -357,11 +357,10 @@ class SettingsScreen extends ConsumerWidget {
                 color: Colors.transparent,
                 child: RadioGroup<String>(
                   groupValue: ref.watch(localeProvider)?.languageCode ?? '',
-                  onChanged: (String? code) => ref
-                      .read(localeProvider.notifier)
-                      .set(
-                        (code == null || code.isEmpty) ? null : Locale(code),
-                      ),
+                  onChanged: (String? code) => setLocaleByUser(
+                    ref,
+                    (code == null || code.isEmpty) ? null : Locale(code),
+                  ),
                   child: Column(
                     children: <Widget>[
                       RadioListTile<String>(
@@ -437,7 +436,7 @@ class SettingsScreen extends ConsumerWidget {
                         // 🔴 THE OFF CHIP WAS A PINNED WHITE BLOCK, AND IN
                         // DARK IT WAS THE BRIGHTEST THING ON THE SCREEN.
                         // Measured against `buildAppTheme(seed: 0xFF6459F5,
-                        // brightness: dark)` — what `app.dart:84` supplies —
+                        // brightness: dark)` — what `app.dart:85` supplies —
                         // on 2026-08-21: #FFFFFF on the scaffold #131318 is
                         // **18.52:1**, i.e. three white slabs glaring out of
                         // a dark screen, with an #ECECF2 hairline round each
@@ -804,28 +803,27 @@ class SettingsScreen extends ConsumerWidget {
 
             // ── ACCOUNT & DATA (live-only rows) ──────────────────────────────
             _sectionLabel(context, l10n.settingsAccountSection),
-            Container(
+            // IM-01/IM-03: Export, Import, Back up and Restore are the chassis
+            // Your data card (dataCard); Restore opens the same import hub.
+            dataCard(
+              context,
               decoration: cardDecoration(context),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: <Widget>[
-                  // Not yet wired — see the OPEN QUESTION in MANIFEST.md. Kept
-                  // because deleting it is a product decision, not a merge one.
-                  _LinkRow(
-                    icon: '⇄',
-                    label: l10n.connectedAccounts,
-                    last: false,
-                  ),
-                  // 🔴 DO NOT DELETE IN A MERGE: data-safety.json declares this
-                  // export. test/settings_export_test.dart parses its file back.
-                  _LinkRow(
-                    icon: '⇩',
-                    label: l10n.exportDataCsv,
-                    last: true,
-                    onTap: exportDataTap(ref),
-                  ),
-                ],
-              ),
+              row: _LinkRow.new,
+              leading: <Widget>[
+                // Not yet wired — see the OPEN QUESTION in MANIFEST.md. Kept
+                // because deleting it is a product decision, not a merge one.
+                _LinkRow(icon: '⇄', label: l10n.connectedAccounts, last: false),
+              ],
+              // 🔴 DO NOT DELETE IN A MERGE: data-safety.json declares this
+              // export. test/settings_export_test.dart parses its file back.
+              exportLabel: l10n.exportDataCsv,
+              onExport: exportDataTap(ref, context),
+              importLabel: l10n.importTitle,
+              onImport: () => context.push('/import'),
+              backupLabel: l10n.backupDataJson,
+              onBackup: backupDataTap(ref, context),
+              restoreLabel: l10n.restoreTitle,
+              onRestore: () => context.push('/import'),
             ),
 
             _sectionLabel(context, l10n.settingsHelpSection),
@@ -1300,7 +1298,7 @@ class SettingsScreen extends ConsumerWidget {
     // `ref.read` past that await throws `StateError` — inside the try it killed
     // the forget silently; after it, it escaped into `_DeleteAccountDialog._run`,
     // leaving the dialog `_busy` with no outcome. That was the live E2E flake.
-    final List<UserStateDrop> drops = userStateDrops(ref);
+    final List<UserStateDrop> drops = userStateDrops(ref, accountDeleted: true);
     final StateController<core.AccountDeletionOutcome?> outcomeSink = ref.read(
       lastAccountDeletionOutcomeProvider.notifier,
     );
@@ -1575,7 +1573,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
   /// in a dark app — and every descendant that takes its colour from the THEME
   /// rather than from an `AppColors` literal then followed the DARK scheme onto
   /// that white. Measured against `buildAppTheme(seed: 0xFF6459F5, brightness:
-  /// dark)` — what `app.dart:84` actually supplies — on 2026-08-21:
+  /// dark)` — what `app.dart:85` actually supplies — on 2026-08-21:
   ///
   ///   · the TITLE. Neither `AlertDialog` sets `titleTextStyle`, and there is
   ///     no `dialogTheme` anywhere in `build_app_theme.dart`, so M3 resolves

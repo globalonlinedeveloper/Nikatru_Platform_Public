@@ -46,16 +46,58 @@ app: fullshot
 surface: extension
 asOf: "2026-09-06"
 
-# C-NO-NETWORK-ADDRESS-COLUMN. Stronger here than anywhere else in the
-# portfolio: there is no network layer in this extension to record one with.
+# C-NO-NETWORK-ADDRESS-COLUMN. The one network call is the Pro account check
+# (pro/account.js), and the device link it reads stores no network address.
 networkAddress: false
 
-# Nothing is retained or transmitted, so no category owes a retention class.
-collects: []
+# ⏱ 2026-10-01 (EXM-01, train P47). FullShot SELLS Pro and TRANSMITS for it:
+# tool.json policy.networkAllowlist names platform.nikatru.com, where the account
+# check (vendor/core/entitlement-client.js, through pro/account.js) asks whether
+# this browser's linked account has Pro. Capturing, annotating, redacting and
+# exporting still send nothing; every row below exists only for a person who
+# signs in to Pro (contracts/legal/fullshot-privacy.md, "If you sign in to
+# FullShot Pro").
+collects:
+  - category: Personal info
+    type: User IDs
+    purposes:
+      - Account management
+      - App functionality
+    retentionClass: 730
+    required: false
+    shared: false
+    basis: >-
+      Only for a person who signs in to FullShot Pro. The extension holds one
+      device credential for its link to a Nikatru account and sends it, with the
+      product name, to ask whether that account has Pro; the server keys the
+      link on the account's user id. Never a screenshot, a page or a URL.
+    source: contracts/legal/fullshot-privacy.md
+    asOf: "2026-10-01"
 
-# Nobody outside this repository receives anything, because nothing leaves the
-# device.
-processors: []
+processors:
+  - id: cloudflare
+    role: infrastructure
+    purpose: Runs the server the Pro account check asks, and holds the device link.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-10-01"
+
+  - id: supabase
+    role: identity
+    purpose: Runs the hosted account and sign-in service a FullShot Pro sign-in uses.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-10-01"
+
+  - id: paddle
+    role: merchant_of_record
+    purpose: Takes the payment and is the seller of record for FullShot Pro bought on nikatru.com.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-10-01"
+
+  - id: razorpay
+    role: payment_gateway
+    purpose: When you buy FullShot Pro in India, Nikatru is the seller and Razorpay takes the payment as our payment gateway.
+    source: tooling/legal/provider-register.json
+    asOf: "2026-10-01"
 
 # The nine Chrome Web Store "Privacy practices → Data usage" categories, in the
 # dashboard's own order.
@@ -73,8 +115,9 @@ storeDisclosures:
   - category: Personally identifiable information
     disposition: not-collected
     basis: >-
-      No account, no sign-in and no identity of any kind is read, derived or
-      stored. A capture may depict a name; FullShot never extracts, parses,
+      Capturing reads, derives and stores no identity of any kind; the one
+      identifier FullShot ever holds is Pro's device credential (Authentication
+      information, below), and only after a Pro sign-in. A capture may depict a name; FullShot never extracts, parses,
       indexes or retains one, and the opt-in redaction feature exists to remove
       such text from the image rather than to gather it.
     source: extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md
@@ -99,13 +142,15 @@ storeDisclosures:
     asOf: "2026-09-06"
 
   - category: Authentication information
-    disposition: not-collected
+    disposition: collected
     basis: >-
-      Never read. No credential, password, security answer or PIN is requested,
-      observed or stored anywhere in the extension, which has no account system
-      of its own to need one.
-    source: extensions/Extension/Full_Screen_Shot/publish/COMPLIANCE-CHECKLIST.md
-    asOf: "2026-09-06"
+      Only for a person who signs in to FullShot Pro: the extension stores one
+      device credential for its link to a Nikatru account and sends it to
+      Nikatru's server to confirm Pro. No password, security answer or PIN is
+      ever requested or observed; sign-in happens on nikatru.com. Capturing and
+      every free feature need no account.
+    source: contracts/legal/fullshot-privacy.md
+    asOf: "2026-10-01"
 
   - category: Personal communications
     disposition: not-collected

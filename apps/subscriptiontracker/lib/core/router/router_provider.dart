@@ -9,11 +9,16 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nikatru_core/nikatru_core.dart' as core show NotificationTap;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 
 import '../../l10n/app_localizations.dart';
-import '../../state/notification_tap_observer.dart' show NotificationTapRouter;
+import '../../state/notification_tap_observer.dart'
+    show NotificationTapRouter, ReminderActionHandler;
 import '../../state/providers.dart';
+import '../../state/share_inbox.dart';
+import '../../state/subscriptions_controller.dart'
+    show subscriptionsControllerProvider;
 import 'gates.dart';
 import 'navigator_key.dart';
 import 'routes.dart';
@@ -69,12 +74,35 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   // here because the router is what opens it and lives as long as the app
   // (lib/app.dart is a chassis fork at its ceiling). The gate chain still runs
   // on the way: a signed-out tap lands on sign-in first.
+  // NO-10: the reminder's BUTTONS — "Mark as paid" and "Snooze 1 day" —
+  // on the same stream; the router above takes only body taps.
+  final ReminderActionHandler actions = ReminderActionHandler(
+    service: ref.read(notificationTapSourceProvider),
+    markPaid: (String id) =>
+        ref.read(subscriptionsControllerProvider.notifier).markPaid(id),
+    snooze: (String id, int notificationId) => ref
+        .read(subscriptionsControllerProvider.notifier)
+        .snoozeReminder(id, notificationId: notificationId),
+  )..start();
+  ref.onDispose(actions.stop);
   final NotificationTapRouter taps = NotificationTapRouter(
     service: ref.read(notificationTapSourceProvider),
     open: router.go,
+    onLaunchAction: (core.NotificationTap t) => unawaited(actions.handle(t)),
   );
   unawaited(taps.start());
   ref.onDispose(taps.stop);
+
+  // IM-06: a file shared to the app opens the import hub with it — here for
+  // the same reason as the taps above (the router opens it and lives as long
+  // as the app).
+  final ShareInboxRouter shares = ShareInboxRouter(
+    source: ref.read(sharedImportSourceProvider),
+    deliver: (f) => ref.read(importInboxProvider.notifier).deliver(f),
+    open: router.go,
+  );
+  unawaited(shares.start());
+  ref.onDispose(shares.stop);
   return router;
 });
 

@@ -86,6 +86,15 @@ class _RecordingApi implements ApiClient {
     subs = subs.where((Subscription s) => s.id != id).toList();
   }
 
+  // NO-10 · "Mark as paid": not exercised by this suite.
+  @override
+  Future<void> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {}
+
   @override
   Future<List<PaymentRecord>> getPaymentHistory(String id) async =>
       const <PaymentRecord>[];
@@ -602,8 +611,12 @@ void main() {
         );
 
         await service.syncAll(<Subscription>[trial], copy: _copy);
+        // ⏱ 2026-10-01 · NO-11: the renewal is armed for its next charges
+        // too (`|2|c1`, `|2|c2`); the trial reminder stays one.
         expect(seam.pending.keys.toSet(), <int>{
           RenewalReminders.renewalIdFor('trial-1|2'),
+          RenewalReminders.renewalIdFor('trial-1|2|c1'),
+          RenewalReminders.renewalIdFor('trial-1|2|c2'),
           trialId,
         });
 

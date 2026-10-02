@@ -287,17 +287,30 @@ final FutureProvider<MoneyFunnel> moneyFunnelProvider =
 /// is not evidence of a refund.
 final FutureProvider<core.Entitlements> entitlementsProvider =
     FutureProvider<core.Entitlements>((ref) async {
+      // 🔴 AB-M3-03 · ONE ACCOUNT'S ANSWER IS NOT ANOTHER'S. This read the
+      // sign-in with `ref.read` and nothing re-ran it, so after a sign-out and
+      // a sign-in as someone else the app kept the FIRST account's plan until
+      // restart. A change of SETTLED identity re-reads; the first settle is
+      // the launch read itself (the token comes from the repository, not the
+      // stream), so a cold start still asks the server once. A return to the
+      // app re-reads too — `refreshOnReturn`.
+      ref.listen<AsyncValue<core.AuthUser?>>(authUserProvider, (prev, next) {
+        if (prev == null || !prev.hasValue || !next.hasValue) return;
+        if (prev.value?.id != next.value?.id) ref.invalidateSelf();
+      });
+      // Read BEFORE the first await: a rebuild disposes this ref, and a
+      // disposed ref throws when it is used.
       final core.EntitlementCache cache = ref.watch(entitlementCacheProvider);
+      final core.EntitlementTransport transport = ref.watch(
+        entitlementTransportProvider,
+      );
+      final core.AuthRepository auth = ref.read(authRepositoryProvider);
       final core.Entitlements cached = await cache.readValid();
 
-      final core.Result<core.Entitlements> fresh = await ref
-          .watch(entitlementTransportProvider)
-          .fetch(
-            appId: AppConfig.appId,
-            accessToken: await ref
-                .read(authRepositoryProvider)
-                .currentAccessToken(),
-          );
+      final core.Result<core.Entitlements> fresh = await transport.fetch(
+        appId: AppConfig.appId,
+        accessToken: await auth.currentAccessToken(),
+      );
 
       final core.Entitlements? server = fresh.fold(
         (core.Entitlements e) => e,

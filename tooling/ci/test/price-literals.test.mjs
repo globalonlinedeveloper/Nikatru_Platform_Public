@@ -96,7 +96,15 @@ const LISTING_REGISTER = () => ({
     { id: 'web', kind: 'web', surface: 'app', storeMetadataDir: null },
     { id: 'android-play', kind: 'store', surface: 'app', storeMetadataDir: 'apps/{app}/store/android-play' },
     { id: 'ios-appstore', kind: 'store', surface: 'app', storeMetadataDir: 'apps/{app}/store/ios-appstore' },
-    { id: 'edge-addons', kind: 'store', surface: 'extension', storeMetadataDir: 'extensions/Extension/{tool}/store/edge' },
+    // The real register's edge-addons row quotes policy 1.8.2, the ground limb C's
+    // one price-range allowance stands on; a row without it is COVERAGE LOST (LC6).
+    {
+      id: 'edge-addons',
+      kind: 'store',
+      surface: 'extension',
+      storeMetadataDir: 'extensions/Extension/{tool}/store/edge',
+      purchaseRail: { rail: 'paddle', forbidsWhy: 'policy 1.8.2 requires the price range in the listing' },
+    },
   ],
   storeMetadataContract: {
     perChannel: { 'ios-appstore': { additionalFiles: ['subtitle.txt', 'promotional-text.txt', 'privacy-manifest.json'] } },
@@ -415,6 +423,32 @@ describe('limb C — no price and no lifetime plan in any listing text field', (
     const r = run({ noRegister: true });
     assert.equal(r.code, 2, r.out);
     assert.match(r.out, /COVERAGE LOST — tooling\/channel-register\.json does not exist, so limb C cannot say which channels carry a listing/);
+  });
+
+  test('LC6 · COVERAGE LOST when the edge-addons row stops citing policy 1.8.2 — the price-range allowance has no ground', () => {
+    const r = run({ mutateRegister: (reg) => { delete reg.channels.find((c) => c.id === 'edge-addons').purchaseRail; } });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — tooling\/channel-register\.json channel "edge-addons" no longer cites policy 1\.8\.2/);
+  });
+
+  // ⏱ 2026-10-01 · #1117 review 1, finding 5: the Edge range carries the India web
+  // price (webInrMinor), and the allowance is the range the register derives, INR
+  // included — read through the same pro-gate disclosedOfferings the renderer reads.
+  test('LC7 · the Edge range the register derives, INR from webInrMinor included, is allowed on edge-addons; another INR figure is not', () => {
+    const offer = (product_id, amount_minor, term) => ({ product_id, amount_minor, currency_code: 'USD', term, trial_days: 0 });
+    const extra = {
+      'extensions/Extension/demo_tool/tool.json': '{ "id": "demo_tool" }\n',
+      'services/platform/src/app-config-data.json': `${JSON.stringify({
+        apps: { demo_tool: { paywall: { enabled: false, offerings: [offer('pro_monthly', 599, 'month'), offer('pro_yearly', 3499, 'year')] } } },
+        prices: { apps: { demo_tool: { pro_monthly: { webInrMinor: 14900 }, pro_yearly: { webInrMinor: 99900 } } } },
+      })}\n`,
+    };
+    const rel = 'extensions/Extension/demo_tool/store/edge/long-description.txt';
+    const derived = run({ extra, listing: { [rel]: 'Demo.\nPrices range from INR 149.00 a month to INR 999.00 a year; USD 5.99 a month to USD 34.99 a year.\n' } });
+    assert.equal(derived.code, 0, derived.out);
+    const other = run({ extra, listing: { [rel]: 'Demo.\nPrices range from INR 199.00 a month.\n' } });
+    assert.equal(other.code, 1, other.out);
+    assert.match(other.out, /store\/edge\/long-description\.txt:2` names a price/);
   });
 
   test('LC5 · COVERAGE LOST when a tree exists and holds none of its listing text fields', () => {

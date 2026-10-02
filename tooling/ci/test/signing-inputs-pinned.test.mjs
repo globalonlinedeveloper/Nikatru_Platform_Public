@@ -184,7 +184,8 @@ describe('assert-signing-inputs-pinned', () => {
 
 describe('assert-signing-inputs-pinned — the REAL tree, mutated', () => {
   const CHECK_LINE =
-    "        if command -v sha256sum >/dev/null 2>&1; then printf '%s  %s\\n' \"$ARCHIVE_SHA256\" \"$ARCHIVE_FILE\" | sha256sum --check; else printf '%s  %s\\n' \"$ARCHIVE_SHA256\" \"$ARCHIVE_FILE\" | shasum -a 256 --check; fi\n";
+    // ⏱ 2026-10-01: macOS takes shasum (its BSD sha256sum has no --check); the mutations are unchanged.
+    "        if [ \"$RUNNER_OS\" = macOS ] || ! command -v sha256sum >/dev/null 2>&1; then printf '%s  %s\\n' \"$ARCHIVE_SHA256\" \"$ARCHIVE_FILE\" | shasum -a 256 --check; else printf '%s  %s\\n' \"$ARCHIVE_SHA256\" \"$ARCHIVE_FILE\" | sha256sum --check; fi\n";
   const EXTRACT_LINE = '        case "$ARCHIVE_FILE" in *.zip) unzip -q -o "$ARCHIVE_FILE" -d "$SDK_ROOT" ;; *) tar -xJf "$ARCHIVE_FILE" -C "$SDK_ROOT" ;; esac\n';
 
   const redOn = (name, rel, from, to, expect) =>
@@ -201,7 +202,9 @@ describe('assert-signing-inputs-pinned — the REAL tree, mutated', () => {
   redOn('R3 subosito\'s cache handed back to the input -> exit 1', ACTION_REL, "        cache: 'false'\n", '        cache: ${{ inputs.cache }}\n', /runs with `cache` `\$\{\{ inputs\.cache \}\}`; it must be the literal 'false'/);
   redOn('R4 subosito\'s cache-path no longer names the verifying step -> exit 1', ACTION_REL, '        cache-path: ${{ steps.sdk.outputs.root }}\n', '        cache-path: ${{ steps.archive.outputs.root }}\n', /extracts nothing|runs no sha256 check/);
   redOn('R5 the check moved AFTER the extraction -> exit 1', ACTION_REL, CHECK_LINE + '        rm -rf "$SDK_ROOT"\n        mkdir -p "$SDK_ROOT"\n' + EXTRACT_LINE, '        rm -rf "$SDK_ROOT"\n        mkdir -p "$SDK_ROOT"\n' + EXTRACT_LINE + CHECK_LINE, /extracts BEFORE it checks/);
-  redOn('R6 the check followed by `|| true` -> exit 1', ACTION_REL, 'shasum -a 256 --check; fi\n', 'shasum -a 256 --check || true; fi\n', /follows its sha256 check with `\|\|`/);
+  redOn('R6 the check followed by `|| true` -> exit 1', ACTION_REL, 'sha256sum --check; fi\n', 'sha256sum --check || true; fi\n', /follows its sha256 check with `\|\|`/);
+  // ⏱ 2026-10-01: the macOS branch (shasum) is a check of its own, so it gets its own red control.
+  redOn('R6b the macOS shasum check followed by `|| true` -> exit 1', ACTION_REL, 'shasum -a 256 --check; else', 'shasum -a 256 --check || true; else', /follows its sha256 check with `\|\|`/);
   redOn('R7 the verifying step gains an `if:` -> exit 1', ACTION_REL, '    - id: sdk\n      shell: bash\n', "    - id: sdk\n      if: ${{ inputs.cache != 'true' }}\n      shell: bash\n", /carries `if: /);
 
   test('R8 `flutter` bumped without its digests (the Renovate PR) -> exit 1, naming where to copy them from', () => {

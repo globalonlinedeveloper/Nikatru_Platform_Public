@@ -398,11 +398,34 @@ describe('assert-legal-text-parity — assertion 3: the published BYTES are the 
     assert.equal(c.status, 0, `${c.stdout ?? ''}${c.stderr ?? ''}`);
   });
 
-  test('Q2: FullShot neither transmits nor sells, so no Pro paragraph is published', () => {
+  // ⏱ 2026-10-01 (EXM-01, train P47): FullShot now SELLS Pro (app-config-data
+  // apps.fullshot.paywall.offerings) and TRANSMITS for its account check, so the
+  // real tree publishes both Pro paragraphs. The free shape is graded from
+  // alternative inputs instead: an empty allowlist and no FullShot offering.
+  test('Q2: FullShot transmits and sells, so the Pro and the purchase paragraphs are published', () => {
     const r = runReal();
     const c = spawnSync(process.execPath, [join(r.root, REAL.renderer), '--stdout'], { encoding: 'utf8' });
     assert.equal(c.status, 0, c.stderr);
+    assert.match(c.stdout, /FullShot Pro is optional/);
+    assert.match(c.stdout, /If you buy FullShot Pro, Paddle handles the payment/);
+    assert.doesNotMatch(c.stdout, /It does not have accounts/);
+  });
+
+  test('Q2: a FullShot that neither transmits nor sells publishes no Pro paragraph and keeps the no-accounts lead', () => {
+    const r = runReal();
+    const t = JSON.parse(readFileSync(join(r.root, REAL.tool), 'utf8'));
+    t.policy.networkAllowlist = [];
+    const altTool = join(r.root, 'tool-free.json');
+    writeFileSync(altTool, JSON.stringify(t, null, 2));
+    const cfg = JSON.parse(readFileSync(join(r.root, REAL.offerings), 'utf8'));
+    assert.ok(cfg.apps.fullshot, 'the real register must still price FullShot for this control to mean anything');
+    delete cfg.apps.fullshot;
+    const altCfg = join(r.root, 'app-config-free.json');
+    writeFileSync(altCfg, JSON.stringify(cfg, null, 2));
+    const c = spawnSync(process.execPath, [join(r.root, REAL.renderer), '--stdout', '--tool', altTool, '--app-config', altCfg], { encoding: 'utf8' });
+    assert.equal(c.status, 0, c.stderr);
     assert.doesNotMatch(c.stdout, /FullShot Pro is optional/);
+    assert.doesNotMatch(c.stdout, /If you buy FullShot Pro/);
     assert.match(c.stdout, /It does not have accounts/);
   });
 

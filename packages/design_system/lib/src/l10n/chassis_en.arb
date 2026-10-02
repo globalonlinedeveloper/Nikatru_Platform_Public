@@ -961,5 +961,93 @@
   "authPasswordRuleBreach": "Not found in known data breaches",
   "@authPasswordRuleBreach": {
     "description": "ST-D10 (canvas v2) · A rule in the sign-up password checklist. The server checks it at sign-up; it reads as failed once the server has refused the password as breached."
+  },
+  "authAttestationRequired": "This copy of the app could not prove it is genuine. Update it from your app store, then try again.",
+  "@authAttestationRequired": {
+    "description": "EN-02. Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart for the platform Worker's attestation_required refusal (401): a native sign-in, sign-up, reset or resend arrived with no app attestation. Says what to do; never 'Something went wrong'."
+  },
+  "authAttestationRefused": "This device could not be verified for sign-in. Update the app, or sign in on the web.",
+  "@authAttestationRefused": {
+    "description": "EN-02. Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart for the platform Worker's attestation_kind_refused refusal (403): the server does not accept the kind of attestation this build sent."
+  },
+  "authNativeUnavailable": "Sign-in is unavailable right now. Please try again shortly.",
+  "@authNativeUnavailable": {
+    "description": "EN-02. Consumed by package:nikatru_chassis_screens/auth/auth_error_text.dart for the platform Worker's native_auth_unavailable refusal (502/503): the native sign-in route could not reach the auth server or its limiter. Nothing is wrong with what the user typed."
+  },
+  "authRetryAfterMinutes": "{count, plural, =1{Please try again in 1 minute.} other{Please try again in {count} minutes.}}",
+  "@authRetryAfterMinutes": {
+    "description": "EN-02. Appended by auth_error_text.dart to a rate-limit or unavailable refusal when the server sent Retry-After, rounded UP to whole minutes. Under 90 minutes; longer waits use authRetryAfterHours.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "authRetryAfterHours": "{count, plural, =1{Please try again in 1 hour.} other{Please try again in {count} hours.}}",
+  "@authRetryAfterHours": {
+    "description": "EN-02. Appended by auth_error_text.dart to a rate-limit refusal when the server's Retry-After is 90 minutes or more (a daily cap sends seconds to midnight UTC), rounded UP to whole hours.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reacceptTermsNotRecorded": "We couldn't save your acceptance, so nothing has changed yet. Check your connection, then try again.",
+  "@reacceptTermsNotRecorded": {
+    "description": "EN-05. Wherever a terms acceptance could not be sent to the server (offline, or the server refused it), mapped from the consent_not_recorded code by auth_error_text.dart. The acceptance is NOT recorded and the user stays where they are; on the re-acceptance interstitial the accept button then reads 'Retry'."
+  },
+  "authResendConfirmation": "Resend confirmation",
+  "@authResendConfirmation": {
+    "description": "EN-04. A button in the notice above the sign-in form when a sign-up confirmation link could not be used (expired, used, or opened elsewhere). Sends the confirmation mail again to the address typed in the e-mail box; captcha-gated on web."
+  },
+  "onboardingPrevious": "Previous",
+  "@onboardingPrevious": {
+    "description": "EN-11. The tooltip and accessible name of the onboarding carousel's back control, shown from the second page on. The Left arrow key does the same."
+  },
+  "onboardingHaveAccount": "I already have an account",
+  "@onboardingHaveAccount": {
+    "description": "EN-12. A button on the FIRST onboarding page for a returning user on a new device: skips the carousel and opens sign-in."
+  },
+  "verifyEmailResendIn": "Resend link in {time}",
+  "@verifyEmailResendIn": {
+    "description": "EN-14. The verify-email Resend button while it rests after a mail was sent; {time} is m:ss. The rest survives leaving the screen. Same words as the app's checkInboxResendIn.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "0:24"
+      }
+    }
+  },
+  "verifyEmailUseDifferent": "Use a different email",
+  "@verifyEmailUseDifferent": {
+    "description": "EN-14. On the verify-email waiting room: signs out of the unverified account and opens sign-up with its address already filled, to be corrected. The way out for somebody who registered with a typo."
+  },
+  "tamperedBuildTitle": "This copy of the app was modified",
+  "@tamperedBuildTitle": {
+    "description": "O-APPS-GOV-IN-VAPT-CHECKLIST · Title of the non-dismissable screen shown when the app's signing certificate is not one of the store's pinned keys."
+  },
+  "tamperedBuildMessage": "This copy of the app was modified, so it cannot open your data. Install the app from the official store.",
+  "@tamperedBuildMessage": {
+    "description": "O-APPS-GOV-IN-VAPT-CHECKLIST · Body of the modified-copy screen. It must tell the user what to do: install from the official store."
+  },
+  "tamperedBuildExit": "Close app",
+  "@tamperedBuildExit": {
+    "description": "The one action on the modified-copy screen: leave the app."
+  },
+  "rootedDeviceNotice": "This device appears to be rooted or jailbroken. Your data stays available, but exporting it or deleting your account will ask you to confirm it's you.",
+  "@rootedDeviceNotice": {
+    "description": "O-APPS-GOV-IN-VAPT-CHECKLIST · The once-per-session, non-blocking notice on a rooted or jailbroken device."
+  },
+  "rootedDeviceNoticeDismiss": "Got it",
+  "@rootedDeviceNoticeDismiss": {
+    "description": "Dismisses the rooted-device notice."
+  },
+  "reauthTitle": "Confirm it's you",
+  "@reauthTitle": {
+    "description": "Title of the dialog asking a user on a rooted device to re-enter their password before a sensitive action."
+  },
+  "reauthMessage": "This device appears to be rooted, so enter your password to continue.",
+  "@reauthMessage": {
+    "description": "Body of the re-authentication dialog on a rooted device."
   }
 }

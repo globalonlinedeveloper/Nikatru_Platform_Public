@@ -33,6 +33,13 @@ dependencies:
   # lock through gotrue; declared because this package now imports it. The
   # constraint is packages/telemetry's, COPIED, to keep the two in step.
   http: ^1.2.0
+  # ⏱ 2026-10-01 · EN-04 — the deep link the OS handed supabase_flutter, read
+  # to class a FAILED native auth callback by its flow (a confirmation or a
+  # provider return, not a reset). Already in the lock through
+  # supabase_flutter's own deep-link listener, so no new binary ships; the
+  # constraint is that lock's version, declared because this package now
+  # imports it.
+  app_links: ^7.2.1
 
 dev_dependencies:
   # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.

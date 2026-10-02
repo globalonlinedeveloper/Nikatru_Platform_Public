@@ -441,6 +441,34 @@ if (approved.length) {
   for (const a of approved) console.log(`    ${a}`);
 }
 
+// ── ONE NUMBER, ONE MIGRATION, PER DIRECTORY ─────────────────────────────────
+// ⏱ 2026-09-30 · review #1080 finding 8. Two open PRs each added a `0005_…`
+// to services/subscriptiontracker-api/migrations. Wrangler records migrations
+// by FILENAME, so both would apply — in whatever order the second PR's deploy
+// met them — while every local replay applies them in the order a sort gives.
+// A replay that is green over an order production never used is evidence of
+// nothing, so a repeated numeric prefix in one directory is a violation here.
+{
+  const byDir = new Map();
+  for (const file of files) {
+    const posix = String(file).replaceAll('\\', '/');
+    const cut = posix.lastIndexOf('/');
+    const dir = posix.slice(0, cut);
+    const m = /^(\d+)_/.exec(posix.slice(cut + 1));
+    if (!m) continue;
+    const key = `${dir}\u0000${Number(m[1])}`;
+    byDir.set(key, [...(byDir.get(key) ?? []), posix]);
+  }
+  for (const [, same] of byDir) {
+    if (same.length < 2) continue;
+    violations++;
+    console.error(
+      `✗ ${same.length} migrations share one number in one directory — wrangler applies both, in an order no local replay reproduces; renumber the later one:`,
+    );
+    for (const f of same.sort()) console.error(`    ${f}`);
+  }
+}
+
 if (violations > 0) {
   console.error(
     `\ncheck-migrations: ${violations} violation(s) across ${files.length} migration file(s).\n` +

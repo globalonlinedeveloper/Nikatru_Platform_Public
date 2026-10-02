@@ -110,6 +110,20 @@ class _FakeNetwork implements ApiClient {
     subs = subs.where((Subscription s) => s.id != id).toList();
   }
 
+  /// The row ids "Mark as paid" reached the network with (NO-10).
+  final List<String> payments = <String>[];
+
+  @override
+  Future<void> recordPayment(
+    String id, {
+    required Money amount,
+    required DateTime paidOn,
+    required String idempotencyKey,
+  }) async {
+    _gate();
+    payments.add(id);
+  }
+
   @override
   Future<List<PaymentRecord>> getPaymentHistory(String id) async {
     _gate();
@@ -572,6 +586,28 @@ void main() {
         row.id,
       ); // the screen still holds the client id
       expect(net.subs, isEmpty, reason: 'the DELETE went to the server row');
+    });
+
+    // NO-10: "Mark as paid" on a row the screen still knows by its client id
+    // (an add whose response was lost) — the payment goes to the server row,
+    // as every read and write on that row does.
+    test('once synced, a payment reaches the server row too', () async {
+      final _IdempotentNetwork net = _IdempotentNetwork(
+        <Subscription>[],
+        _budget,
+      );
+      net.loseNextResponse = true;
+      final CachedApiClient c = client(net);
+      final Subscription row = await c.createSubscription(_sub('', 'Gym'));
+      await client(net).getSubscriptions(); // the replay resolves the id
+      await c.recordPayment(
+        row.id,
+        amount: const Money(1549, 'USD'),
+        paidOn: DateTime(2030, 7, 22),
+        idempotencyKey: 'paid_x_2030-07-22',
+      );
+      expect(net.payments, <String>[net.subs.single.id]);
+      expect(net.payments.single, isNot(row.id));
     });
 
     // 🔴 REVIEW ROUND 2, MAJOR 1 — a lost response costs no attempt, so

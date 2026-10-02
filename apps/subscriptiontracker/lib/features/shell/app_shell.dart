@@ -6,6 +6,7 @@ import '../../core/app_config.dart';
 import '../../core/e2e_keys.dart';
 import '../../l10n/app_localizations.dart';
 import '../add/add_subscription_sheet.dart';
+import '../settings/preference_refused_notice.dart';
 import '../shared/widgets.dart';
 import 'sync_problems_strip.dart';
 
@@ -179,12 +180,16 @@ class AppShell extends StatelessWidget {
     // Not `MediaQuery`: a window is not always the size of the screen, and
     // the width harness pins layout without moving `MediaQuery` at all.
     // The offline outbox's dead letters sit under the shell (review #1075
-    // finding 9); the bare shell while there are none.
-    return SyncProblemsStrip(
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) => _build(
-          context,
-          compact: windowClassFor(constraints.maxWidth) == WindowClass.compact,
+    // finding 9); the bare shell while there are none. D11: an account
+    // refusal of a preference change is said here, once.
+    return PreferenceRefusedNotice(
+      child: SyncProblemsStrip(
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) => _build(
+            context,
+            compact:
+                windowClassFor(constraints.maxWidth) == WindowClass.compact,
+          ),
         ),
       ),
     );

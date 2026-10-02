@@ -49,7 +49,9 @@ RenewalReminders _svc(DateTime now, [core.NotificationService? seam]) =>
       now: () => now,
     );
 
-const ReminderRules _at0930 = ReminderRules(hour: 9, minute: 30);
+// ⏱ 2026-10-01 · NO-11: these are the rules of ONE charge, so they arm one
+// (`cycles: 1`); the next charges are reminders_everywhere_test.dart's.
+const ReminderRules _at0930 = ReminderRules(hour: 9, minute: 30, cycles: 1);
 
 void main() {
   // Thursday 1 October 2026, 08:00.
@@ -97,7 +99,12 @@ void main() {
       final List<core.ScheduledNotification> p = _svc(now).plannedFor(
         _sub('netflix', DateTime(2026, 10, 10)),
         copy: _copy(),
-        rules: const ReminderRules(leadDays: <int>[3], hour: 20, minute: 15),
+        rules: const ReminderRules(
+          leadDays: <int>[3],
+          hour: 20,
+          minute: 15,
+          cycles: 1,
+        ),
       );
       expect(p.single.at, DateTime(2026, 10, 7, 20, 15));
     });
@@ -108,7 +115,12 @@ void main() {
         final List<core.ScheduledNotification> p = _svc(now).plannedFor(
           _sub('netflix', DateTime(2026, 10, 2)),
           copy: _copy(),
-          rules: const ReminderRules(leadDays: <int>[2], hour: 9, minute: 30),
+          rules: const ReminderRules(
+            leadDays: <int>[2],
+            hour: 9,
+            minute: 30,
+            cycles: 1,
+          ),
         );
         expect(p, hasLength(1));
         expect(p.single.at, DateTime(2026, 10, 1, 9, 30));

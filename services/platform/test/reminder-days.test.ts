@@ -23,7 +23,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Hono } from 'hono';
 import calendar from '../src/routes/calendar';
 import { runReminderMail, addDays } from '../src/lib/reminders';
-import { RESEND_EMAILS_URL } from '../src/lib/report-notify';
+import { RESEND_EMAILS_URL } from '../src/adapters/mail/resend';
 import { app as realApp } from '../src/index';
 import type { AppEnv, Env } from '../src/types';
 import { RealDb, realPlatformDb } from './harness';

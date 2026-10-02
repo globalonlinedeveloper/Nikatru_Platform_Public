@@ -56,7 +56,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/auth/verify_email_screen.dart",
           "linesAtSince": 182,
-          "ceiling": 162,
+          "ceiling": 80,
           "template": 47
         },
         {
@@ -68,7 +68,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/auth/reset_password_screen.dart",
           "linesAtSince": 314,
-          "ceiling": 305,
+          "ceiling": 82,
           "template": 77
         },
         {
@@ -104,7 +104,7 @@
         {
           "file": "apps/subscriptiontracker/lib/features/settings/settings_screen.dart",
           "linesAtSince": 1969,
-          "ceiling": 1947,
+          "ceiling": 1945,
           "template": 616
         }
       ],
@@ -166,6 +166,13 @@
           "callSiteDelta": -104,
           "measured": "Lane fix-rv2-st-after-dw (audit D8, D12/F53) after its parity STOP on run 36806466768: the cloud draft built the header-node headings and the ONE Help section (contact page, support mail, Rate, Send feedback) inside the fork and took apps/subscriptiontracker/lib/features/settings/settings_screen.dart from its ceiling 1948 to 2053. Instead of raising the ceiling, the heading node (SettingsHeading) and the Help rows with their order, keys, mailto subjects, the store-listing Rate and its unavailable SnackBar (helpCard, HelpKeys, supportMailUri) moved into packages/chassis_screens/lib/settings/help_section.dart with their own tests (packages/chassis_screens/test/help_section_test.dart, width-measured at all three classes), re-exported through features/shared/chassis_adapters.dart beside EditProfileDialog/RowChevron so the fork keeps a single chassis path (chassis-delegation follows one). The fork keeps its strings, its card decoration and its row widget (passed as `_LinkRow.new`); its private `_contactSupport` went with the move. Fork 2053 -> 1947 = -106, adapter +2 (the export directive), callSiteDelta -104; wc -l after dart format (0 changed), Flutter 3.47.5. Net against origin/main: fork 1948 -> 1947, and the ceiling falls 1948 -> 1947 in the same commit. No ceiling rose."
         },
+        {
+          "file": "features/shared/chassis_adapters.dart",
+          "piece": "dataCard, DataKeys",
+          "on": "2026-10-01",
+          "callSiteDelta": -23,
+          "measured": "Lane apply-st-import (train ST import hub, IM-01/IM-03/IM-08) after its parity STOP measured locally: the cloud draft added Settings › Your data's Import, Back up (JSON) and Restore rows inside the fork and, merged onto origin/main 96e0eb13, took apps/subscriptiontracker/lib/features/settings/settings_screen.dart from its ceiling 1947 to 1971. Instead of raising the ceiling, the Account & data card's Export, Import, Back up and Restore rows with their order, keys and last-row rule (dataCard, DataKeys) moved into packages/chassis_screens/lib/settings/data_section.dart with their own tests (packages/chassis_screens/test/data_section_test.dart, four mutations each red), re-exported through features/shared/chassis_adapters.dart beside helpCard so the fork keeps a single chassis path. The fork keeps its strings, its card decoration, its row widget (passed as `_LinkRow.new`), its taps (exportDataTap, backupDataTap, context.push('/import')) and the inert Connected accounts row (passed as `leading`). Fork 1971 -> 1946 = -25, adapter +2 (the export directive), callSiteDelta -23; wc -l after dart format (0 changed), Flutter 3.47.5. Net against origin/main: fork 1947 -> 1946, and the ceiling falls 1947 -> 1946 in the same commit. No ceiling rose."
+        },
         {"file": "features/onboarding/onboarding_screen.dart", "piece": "OnboardingView", "on": "2026-09-28", "callSiteDelta": -285, "measured": "apps/subscriptiontracker/lib/features/onboarding/onboarding_screen.dart 467 -> 182 lines (wc -l, after dart format, Flutter 3.47.5, against `git show <base>:<path>`; re-measured 2026-09-29 on the train ST-D DW2 base, which carries ST-U3's capability-aware slide 2). Train ST-D8: the carousel mechanism — the reading cap on the WHOLE column (the chassis view had it per page, so its controls ran 1232 px wide on a 1280 window; this app's own width_onboarding_test was the property), scale-safe pages, the spoken \"Page 2 of 3\" (chassis key onboardingPageIndicator, en + ta) and Skip beside the primary — now lives in packages/chassis_screens/lib/firstrun/onboarding_screen.dart. The app file keeps its adapter: the subscriptiontrackerOnboarding1..3 copy with the [O3] AppConfig.copy override, the onboardingSeenProvider write and the /sign-in hand-off, and the first page's tile art (theme roles + AppSpacing/AppRadius only). The forced-dark stage (AppColors.onboardBg + white-alpha literals) is gone: the carousel follows the theme."},
         {
           "file": "features/monetization/manage_plan_screen.dart",
@@ -180,6 +187,27 @@
           "on": "2026-09-29",
           "callSiteDelta": -79,
           "measured": "Train ST-D9. apps/subscriptiontracker/lib/features/monetization/paywall_screen.dart 373 -> 294 lines, `wc -l` against `git show origin/main:<path>` at 600cc6dc, both after `dart format` (Flutter 3.47.5). The whole `_body` phase switch and the layout moved into the chassis PaywallView, which ST-D9 redrew on the ST-D0 foundation (AppCard plans, DecisionStrip pending / unlocked / refused, a config-driven features card, two columns from 840 up). The private `_PaywallPhase` and `_RefusedView` enums became the chassis PaywallPhase (a typedef, as in the brick) and PaywallRefusalView. ST-T2's `PlansLoadGate` still asks the rail once and feeds the view's loading flag (the chassis skeleton carries PlansLoading's key), so `_asking` never landed. What stayed: the phase machine, the four funnel emissions, `startCheckout` + `awaitUnlock`, the price under the reader's locale (`MoneyFormatter(l10n.localeName).format(o.price)`, handed to the view as its formatted price), and the D-11 pitch codes resolved through this app's catalogue. Every paywall string the view draws was already byte-identical between the app and chassis arb files in both shipped locales."
+        },
+        {
+          "file": "features/auth/reset_password_screen.dart",
+          "piece": "ResetPasswordView",
+          "on": "2026-10-01",
+          "callSiteDelta": -223,
+          "measured": "Train st-entry (EN-06) after its parity STOP: the reset form's Show / Hide, rules checklist and live-region done line were drafted INTO the private copy (305 -> 387, +82 over its ceiling), so they went into packages/chassis_screens/lib/auth/reset_password_screen.dart instead — `AuthField` with `AuthRevealLabels` on both boxes, `AuthPasswordChecklist` (length + breached), the breached flag forgotten on the next keystroke, a `Semantics(liveRegion: true)` done line, and an optional `panel` slot as `ReacceptTermsView` has — and the app adopted the view. apps/subscriptiontracker/lib/features/auth/reset_password_screen.dart 305 -> 82 lines, `wc -l` against `git show origin/main:<path>`, both after `dart format` (Flutter 3.47.5). What stays is what a package without Riverpod and go_router cannot hold: the provider reads, `updatePassword`, `_leave` (arrival cleared before the await, the sign-out through the spine) and `AuthPanel`. Every string the view renders is byte-identical between app_*.arb and chassis_*.arb in en and ta (checked key by key), and every key constant is an alias of the view's, so password_reset_test.dart drives the adapter unchanged. The 2026-09-20 note's blocker for reset_password — the error mapper — had already moved to the chassis (authErrorText, 2026-09-24)."
+        },
+        {
+          "file": "features/auth/verify_email_screen.dart",
+          "piece": "VerifyEmailView",
+          "on": "2026-10-01",
+          "callSiteDelta": -82,
+          "measured": "Train st-entry (EN-14) after its parity STOP: the resend rest that survives leave/return and 'Use a different email' were drafted INTO the private copy (162 -> 239, +77 over its ceiling), so they went into packages/chassis_screens/lib/auth/verify_email_screen.dart as three OPTIONAL parameters — `secondsUntilResend` (the adapter keeps the deadline; the view seeds and runs the countdown, read on arrival and after each send), `onUseDifferent`, and `panel` — so the brick adapter is untouched, and the app adopted the view. apps/subscriptiontracker/lib/features/auth/verify_email_screen.dart 162 -> 80 lines, `wc -l` against `git show origin/main:<path>`, both after `dart format` (Flutter 3.47.5). The 2026-09-20 note's blocker (no captcha slot, no error mapper on the view) is gone: `captcha` / `captchaController` landed with ST-A1 and the view maps through authErrorText. The adapter keeps `CaptchaHost` (the app's token holder IS the chassis `CaptchaTokenController`), passes `TurnstileGate`, and spends the token with `consume()` inside a CALL, not a tear-off, for assert-captcha-gated-call-sites. Two strings moved to the chassis arb (verifyEmailResendIn, verifyEmailUseDifferent, en + ta); every other string the view renders is byte-identical between app_*.arb and chassis_*.arb in both locales."
+        },
+        {
+          "file": "state/refresh_on_return.dart",
+          "piece": "RefreshOnResume",
+          "on": "2026-10-01",
+          "callSiteDelta": -6,
+          "measured": "ST-N6 (D23/F37, #1080), on merging main at c89cb4fa (O-APPS-GOV-IN-VAPT-CHECKLIST). Main's `_OfflineBanner` now wraps its child in the chassis `RootedDeviceNoticeHost`, and this PR's chassis `RefreshOnResume` wrapped the same child: nested in the fork, the two took apps/subscriptiontracker/lib/app.dart to 662 lines against its ceiling 660. Instead of raising the ceiling, the `RefreshOnResume(onRefresh:, elapsed:, child:)` construction moved out of the fork into the app's own state/refresh_on_return.dart as `refreshOnResume(ref, child:)`, beside the `refreshOnReturn` it calls, and the fork keeps one line, `RootedDeviceNoticeHost(child: refreshOnResume(ref, child: child))`: app.dart 662 -> 656 lines, `wc -l` after `dart format` (Flutter 3.47.5), and its ceiling re-recorded at 656 in the same commit."
         }
       ],
       "_adoptedWhy": "⏱ 2026-09-15 · [ADR 086] ONE PIECE AT A TIME: the app now imports the package in the files listed here; tooling/ci/assert-chassis-parity.mjs holds that list equal to the scan and every callSiteDelta negative ([ADR 066]). The row is deleted when the last template file is adopted.",

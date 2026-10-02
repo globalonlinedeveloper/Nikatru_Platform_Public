@@ -71,6 +71,13 @@ const FEATURES = `${APP}/lib/features`;
 const TESTS = `${APP}/test`;
 const HARNESS = `${TESTS}/support/width_harness.dart`;
 const RESET_PW = `${TESTS}/width_reset_password_test.dart`;
+// ⏱ 2026-10-01 · train st-entry — THE UNCOVERED-SURFACE SUBJECT MOVED OFF
+// `ResetPasswordScreen`, which now DELEGATES to the chassis `ResetPasswordView`
+// and is measured THERE: emptying its app width test no longer uncovers it, so
+// R1 and R12 would have stopped measuring what they claim. `ImportScreen` (the
+// hub that replaced `/scan`, #1124) is app-owned and constructed by exactly one
+// width file (4 × `const ImportScreen()`).
+const IMPORT = `${TESTS}/width_import_test.dart`;
 
 // 🔴 THE MANIFESTS ARE PART OF THE SUBJECT. The guard's domain used to be
 // `const APP = 'apps/subscriptiontracker'`; it is now DERIVED from `tooling/bricks/app/
@@ -215,7 +222,7 @@ describe('the guard says YES on the tree as it is', () => {
     // staying at reachable == measured is the property, and "17 reachable, 12
     // measured" would print as a cheerful report-mode line if it ever slipped.
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
-    assert.match(out, /packages\/chassis_screens: 27 surface\(s\) reachable, 27 measured — the two sets are EQUAL/);
+    assert.match(out, /packages\/chassis_screens: 32 surface\(s\) reachable, 32 measured — the two sets are EQUAL/ /* ⏱ 2026-10-01 ST-N6 (#1080), merged over O-APPS-GOV-IN-VAPT-CHECKLIST: +1 chassis surface, RefreshOnResume (app_shell_view_test.dart, files unchanged) */); /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces, +2 chassis test files (device_integrity_gate_test.dart, a11y_integrity_test.dart), on top of SettingsHeading */
 
     assert.match(out, /apps\/subscriptiontracker: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
     assert.match(
@@ -236,7 +243,8 @@ describe('the guard says YES on the tree as it is', () => {
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 31 → 27 of 35.
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 30 of 38 → 36 of 43 — the auth frame's five parts and AuthField, pumped at 375 / 768 / 1280 / 1440 by auth_frame_test.dart.
     // ⏱ 2026-10-01 · ST truth pass (EN-17): 36 of 43 → 37 of 43 — ForceUpdateGate, pumped at 375 / 768 / 1280 by system_screens_text_scale_test.dart.
-    assert.match(out, /packages\/design_system: 37 of 43 surface\(s\) measured — 6 PRINTED and not failed/);
+    // ⏱ 2026-10-01 · train st-entry: 37 of 43 → 37 of 44 — SwallowSystemBack (paints nothing) is printed unmeasured.
+    assert.match(out, /packages\/design_system: 37 of 44 surface\(s\) measured — 7 PRINTED and not failed/);
   });
 
   test('the copied subject tree reproduces the subscriptiontracker reading exactly — and derives TWO roots', () => {
@@ -263,7 +271,7 @@ describe('the guard says YES on the tree as it is', () => {
     assert.match(out, /PARTIAL TREE: the declared-root-must-exist clause is SKIPPED/);
     assert.match(out, /apps\/subscriptiontracker: 18 surface\(s\) reachable, 18 measured — the two sets are EQUAL/);
     // ⏱ 2026-09-23 (O-CHASSIS-PHASE-2B, unit chassis-home): WelcomeView + CatchUpBannerView joined packages/chassis_screens with home_view_test.dart, so the root reads 20/20. Read off the guard's own per-root line.
-    assert.match(out, /packages\/chassis_screens: 27 surface\(s\) reachable, 27 measured — the two sets are EQUAL/);
+    assert.match(out, /packages\/chassis_screens: 32 surface\(s\) reachable, 32 measured — the two sets are EQUAL/ /* ⏱ 2026-10-01 ST-N6 (#1080), merged over O-APPS-GOV-IN-VAPT-CHECKLIST: +1 chassis surface, RefreshOnResume (app_shell_view_test.dart, files unchanged) */); /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces, +2 chassis test files (device_integrity_gate_test.dart, a11y_integrity_test.dart), on top of SettingsHeading */
     // ⏱ 2026-09-22 · 36 → 37 TEST FILES, SURFACES UNCHANGED. The app gained
     // `width_shell_fab_test.dart`, which pumps the five shell branches at all
     // three widths to prove the FAB clears each list's last row. It measures
@@ -280,7 +288,7 @@ describe('the guard says YES on the tree as it is', () => {
       // corpus. Both per-root equalities above are untouched.
       // ⏱ 2026-09-29 · train ST-D9 on DW2: +1 chassis width file (plan_golden_test.dart), surfaces unchanged.
     // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: +1 chassis surface (SettingsSection), +1 width file (settings_design_test.dart).
-      /45 reachable surface\(s\), 45 measured by 48 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-10-01 fix-rv2-st-after-dw: +1 chassis surface (SettingsHeading), +1 width file (help_section_test.dart) */ /* ⏱ 2026-09-29 ST-D10: +1 chassis width file (auth_frame_adoption_test.dart), surfaces unchanged */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet), measured in an existing width file */ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
+      /50 reachable surface\(s\), 50 measured by 51 test file\(s\); 0 measured where they delegate to/ /* ⏱ 2026-10-01 ST-N6 (#1080), merged over the import hub: +1 chassis surface, RefreshOnResume */ /* ⏱ 2026-10-01 train ST import hub: +1 chassis test file (data_section_test.dart), surfaces unchanged */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces, +2 chassis test files (device_integrity_gate_test.dart, a11y_integrity_test.dart), on top of SettingsHeading */ /* ⏱ 2026-10-01 fix-rv2-st-after-dw: +1 chassis surface (SettingsHeading), +1 width file (help_section_test.dart) */ /* ⏱ 2026-09-29 ST-D10: +1 chassis width file (auth_frame_adoption_test.dart), surfaces unchanged */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D6: +1 app surface (showEditSubscriptionSheet), measured in an existing width file */ /* ⏱ 2026-09-28 ST-T8a: +1 chassis test file (web_semantics_test.dart), surfaces unchanged */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces, +1 width file */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate), +1 width file */,
     );
     assert.equal(fails(out).length, 0, out);
   });
@@ -294,10 +302,10 @@ describe('set equality, both directions, in apps/subscriptiontracker', () => {
     const root = tree();
     // The import stays, so provenance survives and the ONLY thing that changed
     // is whether any case pumps the screen. That is the axis under test.
-    edit(root, RESET_PW, 'const ResetPasswordScreen()', 'const SizedBox()', { count: 4 });
+    edit(root, IMPORT, 'const ImportScreen()', 'const SizedBox()', { count: 4 });
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /FAIL UNCOVERED SURFACE — `ResetPasswordScreen`/);
+    assert.match(out, /FAIL UNCOVERED SURFACE — `ImportScreen`/);
     // ⚠️ THE COVERED FLOOR CO-FIRES, AND IT IS PINNED RATHER THAN LEFT
     // UNSTATED. subscriptiontracker's `coveredSurfaces` floor is its WHOLE domain, so any
     // surface losing its measurement trips both limbs. The measured reading is
@@ -347,10 +355,10 @@ describe('set equality, both directions, in apps/subscriptiontracker', () => {
     // Report mode is per root, dated and opt-in — never a default a new root
     // falls into. One tree, one run, both behaviours side by side.
     const root = treeWithNewRoots();
-    edit(root, RESET_PW, 'const ResetPasswordScreen()', 'const SizedBox()', { count: 4 });
+    edit(root, IMPORT, 'const ImportScreen()', 'const SizedBox()', { count: 4 });
     const { code, out } = run(root);
     assert.equal(code, 1, out);
-    assert.match(out, /FAIL UNCOVERED SURFACE — `ResetPasswordScreen`/);
+    assert.match(out, /FAIL UNCOVERED SURFACE — `ImportScreen`/);
     // The design system's unmeasured widgets are in the SAME run and NOT failures.
     // ⏱ 2026-09-23 (chassis home): this read the brick's `HomeScreen` until the
     // brick's printed list reached ZERO — HomeScreen and ExploreScreen now count
@@ -582,7 +590,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // ⏱ 2026-09-29 · trains ST-D6 + ST-D1: 23 of 25 → 29 of 31 (floor re-based to 31).
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 29 of 31 → 33 of 35 (floor re-based to 35).
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 36 of 38 → 41 of 43 — the auth frame raised the surfaces floor.
-    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 41 responsive surface\(s\).*floor is 43/s);
+    // ⏱ 2026-10-01 · train st-entry: 41 of 43 → 42 of 44 — SwallowSystemBack raised the floor.
+    assert.match(out, /COVERAGE LOST — `packages\/design_system` has only 42 responsive surface\(s\).*floor is 44/s);
   });
 
   test("R11c · a NEW unmeasured surface in EACH new root reaches that root's printed list", () => {
@@ -616,7 +625,8 @@ describe('a report-mode root can get better, never quietly worse', () => {
     // ⏱ 2026-09-29 · train ST-D5, on top of ST-D6 + ST-D1: 23 of 32 → 27 of 36 (measured arrivals).
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): 30 of 39 → 36 of 44 — six more measured; the probe is the one new unmeasured surface.
     // ⏱ 2026-10-01 · ST truth pass (EN-17): 36 of 44 → 37 of 44 — ForceUpdateGate measured; the probe is still the one new unmeasured surface.
-    assert.match(out, /packages\/design_system: 37 of 44 surface\(s\) measured — 7 PRINTED/);
+    // ⏱ 2026-10-01 · train st-entry: 37 of 44 → 37 of 45 — SwallowSystemBack is printed beside the probe.
+    assert.match(out, /packages\/design_system: 37 of 45 surface\(s\) measured — 8 PRINTED/);
   });
 });
 
@@ -780,7 +790,7 @@ describe('a screen that DELEGATES into the chassis is measured where it now live
 // the two report-mode roots — the half this ENFORCED root has never had.
 //
 // ⚠️ MEASURED, NOT PREDICTED: both mutations exit **1**, not 2. This guard has a
-// single `process.exit(1)` (`assert-responsive-coverage.mjs:1529`) and expresses
+// single `process.exit(1)` (`assert-responsive-coverage.mjs:1535`) and expresses
 // COVERAGE LOST as a message prefix rather than a distinct code, exactly as
 // R10/R10b/R11a/R11b already record. That is a property of the guard, not of
 // this floor raise, and it is written down here rather than asserted away.
@@ -792,7 +802,7 @@ describe('the chassis_screens floors are floors, not report lines', () => {
   test('R14-control · GREEN CONTROL — the same fixture, unmutated, is 21/21 and passes', () => {
     const { code, out } = run(treeWithNewRoots());
     assert.equal(code, 0, out);
-    assert.match(out, /packages\/chassis_screens: 27 surface\(s\) reachable, 27 measured/); // ⏱ 2026-09-23: 18 → 20 (chassis home)
+    assert.match(out, /packages\/chassis_screens: 32 surface\(s\) reachable, 32 measured/ /* ⏱ 2026-10-01 ST-N6 (#1080), merged over O-APPS-GOV-IN-VAPT-CHECKLIST: +1 chassis surface, RefreshOnResume (app_shell_view_test.dart, files unchanged) */); /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces, +2 chassis test files (device_integrity_gate_test.dart, a11y_integrity_test.dart), on top of SettingsHeading */ // ⏱ 2026-09-23: 18 → 20 (chassis home)
   });
 
   // ── R14a · A SURFACE LEAVES ────────────────────────────────────────────────
@@ -821,13 +831,13 @@ describe('the chassis_screens floors are floors, not report lines', () => {
     // and its measurement left together and the two sets stayed equal.
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` has only 26 responsive surface\(s\).*floor is 27/s, // ⏱ 2026-09-23: 18 → 20; 2026-09-29 ST-D4: → 26 (SettingsSection); 2026-10-01: → 27 (SettingsHeading)
+      /COVERAGE LOST — `packages\/chassis_screens` has only 31 responsive surface\(s\).*floor is 32/s, /* ⏱ 2026-10-01 ST-N6 (#1080), merged over O-APPS-GOV-IN-VAPT-CHECKLIST: +1 chassis surface, RefreshOnResume (app_shell_view_test.dart, files unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces, +2 chassis test files (device_integrity_gate_test.dart, a11y_integrity_test.dart), on top of SettingsHeading */ // ⏱ 2026-09-23: 18 → 20; 2026-09-29 ST-D4: → 26 (SettingsSection); 2026-10-01: → 27 (SettingsHeading)
     );
     // AND the ratchet on what was measured, which fires in the same run. Both
     // numbers moved 7 → 17 in the landing and both are load-bearing.
     assert.match(
       out,
-      /COVERAGE LOST — `packages\/chassis_screens` has 26 measured surface\(s\) and its measured floor is 27/s, // ⏱ 2026-09-23: 18 → 20; 2026-09-29 ST-D4: → 26 (SettingsSection); 2026-10-01: → 27 (SettingsHeading)
+      /COVERAGE LOST — `packages\/chassis_screens` has 31 measured surface\(s\) and its measured floor is 32/s, /* ⏱ 2026-10-01 ST-N6 (#1080), merged over O-APPS-GOV-IN-VAPT-CHECKLIST: +1 chassis surface, RefreshOnResume (app_shell_view_test.dart, files unchanged) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces, +2 chassis test files (device_integrity_gate_test.dart, a11y_integrity_test.dart), on top of SettingsHeading */ // ⏱ 2026-09-23: 18 → 20; 2026-09-29 ST-D4: → 26 (SettingsSection); 2026-10-01: → 27 (SettingsHeading)
     );
   });
 
@@ -877,7 +887,7 @@ describe('the chassis_screens floors are floors, not report lines', () => {
       // ⏱ 28/29 ON 2026-09-29 (train ST-D10): `auth_frame_adoption_test.dart`
       // joined the corpus; the floor was raised to the measured 29 and the
       // assertion moved with it, not loosened.
-      /COVERAGE LOST — `packages\/chassis_screens` yielded only 29 width test file\(s\).*checked-in floor is 30/s, // ⏱ 2026-10-01: 29 → 30 (help_section_test.dart)
+      /COVERAGE LOST — `packages\/chassis_screens` yielded only 32 width test file\(s\).*checked-in floor is 33/s, /* ⏱ 2026-10-01 train ST import hub: 32 → 33 (data_section_test.dart) */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces, +2 chassis test files (device_integrity_gate_test.dart, a11y_integrity_test.dart), on top of SettingsHeading */ // ⏱ 2026-10-01: 29 → 30 (help_section_test.dart)
     );
     // This root ENFORCES, so the surface the deleted file measured is a FAIL and
     // not a print — the half R12 pins for apps/subscriptiontracker, here for the new root.

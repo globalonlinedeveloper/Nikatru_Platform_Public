@@ -38,6 +38,9 @@ class OnboardingScreen extends ConsumerWidget {
   /// not a property of the copy.
   static const int slideCount = 3;
 
+  /// ⏱ 2026-10-01 · EN-11 — the neutral frame painted while the flags hydrate.
+  static const Key bootFrame = Key('onboardingBootFrame');
+
   /// The designed copy, from the arb.
   ///
   /// 🔴 THESE ARE `subscriptiontrackerOnboarding*`, NOT the chassis `onboarding1Title` FAMILY,
@@ -102,6 +105,18 @@ class OnboardingScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // ⏱ 2026-10-01 · EN-11 — THE CAROUSEL ONLY FOR SOMEBODY WHO HAS NOT SEEN
+    // IT. The router starts here (`initialLocation: '/onboarding'`) while the
+    // "seen" flag is still coming off disk, and the gate declines to decide
+    // until it lands — so a returning user saw the first run flash before
+    // being moved on. Until the flag reads `false` and there is no session
+    // (EN-12), this is a neutral first frame in the theme's own background,
+    // the colour `web/index.html` and the native launch screens paint too.
+    final bool? seen = ref.watch(onboardingSeenProvider);
+    final bool signedIn = ref.watch(authRepositoryProvider).currentUser != null;
+    if (seen != false || signedIn) {
+      return const Scaffold(key: OnboardingScreen.bootFrame);
+    }
     final AppLocalizations l10n = AppLocalizations.of(context);
     final core.AppConfig? cfg = ref.watch(appConfigProvider).value;
     // The same reading of the chassis matrix home's catch-up nudge makes.
@@ -121,6 +136,9 @@ class OnboardingScreen extends ConsumerWidget {
           ),
       ],
       onFinish: () => _finish(context, ref),
+      // EN-12 — the same exit as finishing: the flag is recorded and sign-in
+      // opens, for a returning user on a device that has not seen this.
+      onHaveAccount: () => _finish(context, ref),
       footer: NikatruWordmark(
         onDark: Theme.of(context).brightness == Brightness.dark,
         height: AppSpacing.lg,

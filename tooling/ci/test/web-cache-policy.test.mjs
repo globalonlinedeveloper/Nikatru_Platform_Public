@@ -193,6 +193,8 @@ const SEC_LINES = {
   'X-Content-Type-Options': '  X-Content-Type-Options: nosniff',
   'X-Frame-Options': '  X-Frame-Options: DENY',
   'Referrer-Policy': '  Referrer-Policy: strict-origin-when-cross-origin',
+  // ⏱ 2026-10-01 · rv2-security-021 — owed beside the CSP, and floored.
+  'Permissions-Policy': '  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()',
   'Strict-Transport-Security': '  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload',
 };
 const CSP_OK =
@@ -219,6 +221,7 @@ const SITE_CSP_OK =
 const GOOD_SITE = `# security headers carry no Cache-Control, so nothing overlaps
 /*
   X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
   Content-Security-Policy: ${SITE_CSP_OK}
 /
   Cache-Control: public, max-age=0, must-revalidate
@@ -1200,10 +1203,12 @@ describe('assert-web-cache-policy · the nikatru.com site CSP and its per-path o
     return { ...d, outOfScope: [] };
   };
 
-  test('🔴 the REAL sites/nikatru/_headers and site-csp.json PASS, with the /ext/connect override graded', () => {
+  // ⏱ 2026-10-01: 2 -> 3 policy lines floored and 1 -> 2 declared overrides — the desktop
+  // hand-off's /app/connect restates the whole policy as /ext/connect does.
+  test('🔴 the REAL sites/nikatru/_headers and site-csp.json PASS, with the /ext/connect and /app/connect overrides graded', () => {
     const { code, out } = site(realHeaders(), realDecl());
     assert.equal(code, 0, out);
-    assert.match(out, /1 in-scope site\(s\), 2 policy line\(s\) floored, 1 declared per-path override/);
+    assert.match(out, /1 in-scope site\(s\), 3 policy line\(s\) floored, 2 declared per-path override/);
   });
 
   test('🔴 …and deleting the REAL /ext/connect CSP line while its detach stays goes RED', () => {
@@ -1216,5 +1221,106 @@ describe('assert-web-cache-policy · the nikatru.com site CSP and its per-path o
     const { code, out } = site(lines.join('\n'), realDecl());
     assert.equal(code, 1, out);
     assert.match(out, /"\/ext\/connect" is served with NO Content-Security-Policy/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · rv2-security-021 — THE PERMISSIONS-POLICY LIMB AND THE SCRIPT-HOST
+// REASON LIMB. Red controls, measured on the REAL tree before these cases were
+// written: deleting the Permissions-Policy line from apps/subscriptiontracker/web/
+// _headers ⇒ EXIT 1 "declares no Permissions-Policy"; deleting its
+// `# script-src-host: https://challenges.cloudflare.com` line ⇒ EXIT 1 "records no
+// reason"; both restored ⇒ EXIT 0. The two `REAL` cases below repeat both on copies.
+describe('assert-web-cache-policy · Permissions-Policy and the third-party script-host reason', () => {
+  const HOST = 'https://challenges.example.test';
+  const REASON = `# script-src-host: ${HOST} — no SRI: the vendor changes the file without notice, so the CSP host-pin is the control\n`;
+  const withHost = (reason = REASON) =>
+    `${reason}${GOOD.replace(CSP_OK, `${CSP_OK} ${HOST}`)}`;
+
+  test('🔴 FAILS when an app bundle declares no Permissions-Policy', () => {
+    const { code, out } = run(fixture({ app: GOOD.replace(`${SEC_LINES['Permissions-Policy']}\n`, '') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subscriptiontracker\/web\/_headers declares no Permissions-Policy/);
+  });
+
+  test('🔴 FAILS when the brick template declares no Permissions-Policy — every stamped app would be born without one', () => {
+    const { code, out } = run(fixture({ brick: GOOD.replace(`${SEC_LINES['Permissions-Policy']}\n`, '') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /__brick__.*declares no Permissions-Policy/);
+  });
+
+  test('FAILS when the Permissions-Policy leaves camera open', () => {
+    const { code, out } = run(fixture({ app: GOOD.replace('camera=(), ', 'camera=(self), ') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /Permissions-Policy does not deny camera=\(\)/);
+  });
+
+  test('FAILS when the Permissions-Policy omits geolocation entirely', () => {
+    const { code, out } = run(fixture({ app: GOOD.replace('geolocation=(), ', '') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does not deny geolocation=\(\)/);
+  });
+
+  test('a compliant pair passes and the summary counts the policies', () => {
+    const { code, out } = run(fixture());
+    assert.equal(code, 0, out);
+    assert.match(out, /Permissions-Policy — 2 policy\(ies\) deny camera, microphone, geolocation; 0 third-party script-src host/);
+  });
+
+  test('🔴 FAILS when the in-scope site\'s /* rule carries no Permissions-Policy', () => {
+    const { code, out } = run(fixture({ sites: { nikatru: GOOD_SITE.replace('  Permissions-Policy: geolocation=(), microphone=(), camera=()\n', '') } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /sites\/nikatru\/_headers has no Permissions-Policy on its \/\* rule/);
+  });
+
+  test('a script-src host WITH its recorded no-SRI reason passes, and is counted', () => {
+    const { code, out } = run(fixture({ app: withHost() }));
+    assert.equal(code, 0, out);
+    assert.match(out, /1 third-party script-src host\(s\), each with a recorded no-SRI reason/);
+  });
+
+  test('🔴 FAILS when a script-src host has NO recorded reason', () => {
+    const { code, out } = run(fixture({ app: withHost('') }));
+    assert.equal(code, 1, out);
+    assert.match(out, /script-src admits https:\/\/challenges\.example\.test and records no reason for it/);
+  });
+
+  test('FAILS when the recorded reason does not say why there is no SRI', () => {
+    const { code, out } = run(fixture({ app: withHost(`# script-src-host: ${HOST} — the widget needs it to render at all on sign-up\n`) }));
+    assert.equal(code, 1, out);
+    assert.match(out, /does not say why it carries no SRI/);
+  });
+
+  test('FAILS when a reason outlives its host — a stale exception', () => {
+    const { code, out } = run(fixture({ app: `${REASON}${GOOD}` }));
+    assert.equal(code, 1, out);
+    assert.match(out, /records a script-src-host reason for https:\/\/challenges\.example\.test, and script-src no longer admits it/);
+  });
+
+  // THE REAL FILES, copied into a fixture: the shipped bundle and the brick pass,
+  // and a mutation of the real bytes goes red.
+  const realApp = () => readFileSync(join(REPO, 'apps', 'subscriptiontracker', 'web', '_headers'), 'utf8');
+  const realBrick = () => readFileSync(join(REPO, ...BRICK_WEB.split('/'), '_headers'), 'utf8');
+
+  test('🔴 the REAL app and brick _headers PASS, with Turnstile graded as a script host in each', () => {
+    const { code, out } = run(fixture({ app: realApp(), brick: realBrick(), sec: false }));
+    assert.equal(code, 0, out);
+    assert.match(out, /2 policy\(ies\) deny camera, microphone, geolocation; 2 third-party script-src host\(s\)/);
+  });
+
+  test('🔴 …deleting the REAL Permissions-Policy line goes RED', () => {
+    const app = realApp().replace(/^ {2}Permissions-Policy:.*\n/m, '');
+    assert.notEqual(app, realApp(), 'the real app _headers no longer carries a Permissions-Policy line; re-read this test');
+    const { code, out } = run(fixture({ app, brick: realBrick(), sec: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subscriptiontracker\/web\/_headers declares no Permissions-Policy/);
+  });
+
+  test('🔴 …deleting the REAL Turnstile no-SRI reason goes RED', () => {
+    const app = realApp().replace(/^# script-src-host: https:\/\/challenges\.cloudflare\.com .*\n/m, '');
+    assert.notEqual(app, realApp(), 'the real app _headers no longer records the Turnstile reason; re-read this test');
+    const { code, out } = run(fixture({ app, brick: realBrick(), sec: false }));
+    assert.equal(code, 1, out);
+    assert.match(out, /script-src admits https:\/\/challenges\.cloudflare\.com and records no reason for it/);
   });
 });

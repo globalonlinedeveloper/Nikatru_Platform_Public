@@ -40,6 +40,7 @@ import subscriptions from './routes/subscriptions';
 import renewals from './routes/renewals';
 import budget from './routes/budget';
 import categories from './routes/categories';
+import preferences from './routes/preferences';
 import entitlements from './routes/entitlements';
 
 const app = new Hono<AppEnv>();
@@ -190,6 +191,7 @@ api.route('/subscriptions', subscriptions);
 api.route('/renewals', renewals);
 api.route('/budget', budget);
 api.route('/categories', categories);
+api.route('/preferences', preferences);
 api.route('/entitlements', entitlements);
 app.route('/v1', api);
 
