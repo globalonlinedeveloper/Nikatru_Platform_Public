@@ -20,15 +20,39 @@
 // `apps/subscriptiontracker` is on it because a human typed it there, and the stamper added
 // nothing — so the newest and least-tested app in the repo was the one thing the
 // one-command check did not check. Green tick, nothing examined.
+//
+// ── O-BRICK-STAMPS-WEB-ONLY (D30): THE NATIVE TARGETS, AND THE APP SET ─────
+// The claim above is where an app is PUBLISHED (app.yaml `platforms`), and a
+// stamp publishes on web only. What it BUILDS for is a second question, and the
+// one that turned red on nobody's watch: build-platforms.yml's matrix is every
+// `apps/` workspace member with no platform filter, so an app #2 stamped web-only
+// red-lines every native job of the weekly proof the day it is committed. Three
+// limbs, each a relationship:
+//   · N1 the stamp WRITES every platform build-platforms.yml compiles: post_gen
+//     calls `_stampNativePlatforms`, and tooling/kit/stamp-native.mjs's
+//     NATIVE_PLATFORMS plus the template's own folders cover the set that
+//     workflow builds (derived from its `flutter build` census, never typed);
+//   · N2 ci.yml BUILDS at least one native target on the fresh stamp, so a stamp
+//     is proven native by a compiler and not by file presence;
+//   · N3 every app in the workspace set (tooling/ci/app-set.mjs) carries a folder
+//     for each platform build-platforms.yml compiles — the weekly proof's red,
+//     moved onto the pull request that causes it.
+//
+// LANE-BOUND: build-platforms.yml — N1 and N3's subject is the one workflow whose matrix is every
+// workspace app built on every platform with no filter; that unfiltered matrix IS the defect they
+// guard. Another lane that builds a stamped app (ci.yml) is graded by N2 and direction 1 by name.
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
-import { parseWorkflow, flutterBuilds, workflowSteps as jobSteps, shellSegments, COMPOSER_CALL } from './workflow-scan.mjs';
+import { parseWorkflow, flutterBuilds, workflowSteps as jobSteps, shellSegments, COMPOSER_CALL, BUILD_TARGET_PLATFORM } from './workflow-scan.mjs';
+import { appSet, nestedIds } from './app-set.mjs';
+import { NATIVE_PLATFORMS } from '../kit/stamp-native.mjs';
 
 const ROOT = process.cwd();
 const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const POST_GEN = 'tooling/bricks/app/hooks/post_gen.dart';
 const CI = '.github/workflows/ci.yml';
+const BUILD_PLATFORMS = '.github/workflows/build-platforms.yml';
 const PROBE_VARS = 'tooling/bricks/app/_probe_vars.json';
 const problems = [];
 const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
@@ -298,6 +322,103 @@ if (postGen !== null && ci !== null) {
     problems.push(
       `${POST_GEN}'s workspace registration is not idempotent — re-stamping would add a second \`apps/<id>\` line, and a duplicated workspace entry makes the whole workspace fail to resolve.`,
     );
+  }
+}
+
+// ── O-BRICK-STAMPS-WEB-ONLY (D30): N1 · N2 · N3 ──────────────────────────────
+// Outside the `postGen && ci` block for the reason the S-4 block below is: N3
+// asks about the workspace and build-platforms.yml, and must not stop running
+// when post_gen or ci.yml goes missing.
+{
+  /** The platforms build-platforms.yml compiles for its matrix app — every
+   *  `flutter build` it runs, typed or composed, mapped through workflow-scan's
+   *  one target→platform table. Empty when the workflow cannot be read. */
+  const bpPlatforms = new Set();
+  let bpRead = false;
+  try {
+    const wf = parseWorkflow(ROOT, BUILD_PLATFORMS);
+    if (wf !== null) {
+      bpRead = true;
+      for (const b of flutterBuilds(ROOT, [wf])) if (b.platform) bpPlatforms.add(b.platform);
+    }
+  } catch (e) {
+    coverageLost(`${BUILD_PLATFORMS} could not be parsed (${e.message}), so which platforms the weekly proof compiles for every app is unknown.`);
+  }
+  if (bpRead && bpPlatforms.size === 0) {
+    coverageLost(
+      `${BUILD_PLATFORMS} yielded ZERO \`flutter build\` platforms. Either the proof builds nothing or the census no longer reads it; N1 and N3 would range over an empty set and pass.`,
+    );
+  } else if (!bpRead && !problems.some((p) => p.includes(BUILD_PLATFORMS))) {
+    coverageLost(`${BUILD_PLATFORMS} is missing, so which platforms the weekly proof compiles for every app is unknown.`);
+  }
+  const bp = [...bpPlatforms].sort();
+
+  // ── N1: the stamp writes every platform the weekly proof compiles ──────────
+  let templateDirs = [];
+  try {
+    templateDirs = listDir(join(ROOT, BRICK_APP)).filter((e) => PLATFORM_DIRS.includes(e));
+  } catch {
+    /* reported by direction 2 above when post_gen and ci.yml are readable */
+  }
+  // A CALL, not the name: the declaration-vs-usage trap the S-4 limb records.
+  const nativeCalls =
+    postGen === null
+      ? []
+      : [...postGen.matchAll(/(^|[^\w])_stampNativePlatforms\s*\(/g)].filter(
+          (mm) => !/void\s*$/.test(postGen.slice(0, mm.index + mm[0].length - '_stampNativePlatforms('.length)),
+        );
+  if (postGen !== null && nativeCalls.length === 0) {
+    problems.push(
+      `${POST_GEN} never calls \`_stampNativePlatforms\`, so a stamp writes no native folder and app #2 inherits web alone. ${BUILD_PLATFORMS} builds every workspace app on ${bp.join(', ') || 'its platforms'}, so the first commit of that app turns the weekly proof red.`,
+    );
+  } else if (postGen !== null) {
+    ok('the stamp calls `_stampNativePlatforms` (tooling/kit/stamp-native.mjs)');
+  }
+  const stampable = new Set([...templateDirs, ...NATIVE_PLATFORMS]);
+  const unstamped = bp.filter((p) => !stampable.has(p));
+  if (unstamped.length) {
+    problems.push(
+      `${BUILD_PLATFORMS} compiles every workspace app for ${unstamped.join(', ')}, and neither the brick's template nor tooling/kit/stamp-native.mjs's NATIVE_PLATFORMS stamps ${unstamped.length === 1 ? 'that folder' : 'those folders'}. A freshly stamped app is then red on that job from its first commit.`,
+    );
+  } else if (bp.length) {
+    ok(`every platform ${BUILD_PLATFORMS} compiles (${bp.join(', ')}) is one the stamp writes`);
+  }
+
+  // ── N2: a native target is BUILT on the fresh stamp ────────────────────────
+  if (ci !== null && stampDir !== null) {
+    const nativeTargets = [...BUILD_TARGET_PLATFORM].filter(([, platform]) => NATIVE_PLATFORMS.includes(platform));
+    const built = nativeTargets
+      .filter(([target]) => buildInvocations(target).some((b) => anchoredTo(b, stampDir)))
+      .map(([target]) => target);
+    if (built.length === 0) {
+      problems.push(
+        `${CI} builds no native target (${nativeTargets.map(([t]) => t).join(', ')}) in \`${stampDir}\`. The stamp writes ${NATIVE_PLATFORMS.join(', ')}, and without one native build on the fresh stamp it is proven native by file presence alone — the exact gap D30's first red control left open.`,
+      );
+    } else {
+      ok(`${CI} builds the fresh stamp natively: flutter build ${built.join(', ')} in ${stampDir}`);
+    }
+  }
+
+  // ── N3: every workspace app carries every platform the proof compiles ──────
+  const set = appSet(ROOT);
+  if (set === null) {
+    coverageLost('pubspec.yaml has no readable `workspace:` block, so the app set build-platforms.yml iterates could not be graded.');
+  } else if (set.length === 0) {
+    coverageLost('pubspec.yaml declares no `workspace:` entry under apps/, so N3 ranged over no app.');
+  } else if (nestedIds(set.map((a) => a.dir)).length) {
+    coverageLost(`pubspec.yaml declares ${nestedIds(set.map((a) => a.dir)).join(', ')}, nested below apps/<id>; no per-app path can address it.`);
+  } else if (bp.length) {
+    let missing = 0;
+    for (const { id, dir } of set) {
+      const lacks = bp.filter((p) => !existsSync(join(ROOT, dir, p)));
+      for (const p of lacks) {
+        missing++;
+        problems.push(
+          `${dir} is in the workspace app set and has no \`${p}/\` folder, and ${BUILD_PLATFORMS} builds every app of that set for ${p} with no platform filter. The weekly proof goes red on the day this lands. Stamp it: node tooling/kit/stamp-native.mjs --app ${id}`,
+        );
+      }
+    }
+    if (missing === 0) ok(`apps=${set.length}: every workspace app carries ${bp.join(', ')}`);
   }
 }
 

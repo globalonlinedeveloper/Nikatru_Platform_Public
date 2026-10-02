@@ -25,13 +25,16 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { REPO, STEPS, planProduct, exitCodeOf, main } from '../../kit/new-product.mjs';
+import { REPO, STEPS, STEPS_BY_KIND, planProduct, exitCodeOf, main, resolveKind } from '../../kit/new-product.mjs';
 import { main as pagesOriginMain } from '../../web/pages-origin.mjs';
 import { APPS_CATALOG } from '../../kit/product-steps/tree.mjs';
 import { TEST_NOW_VAR } from '../../scripts/test-clock.mjs';
+import { main as stampServiceMain } from '../../kit/stamp-service.mjs';
+import { run as runStampShared } from '../../kit/stamp-shared.mjs';
+import { BUNDLES_REGISTER, isStampedExclusion } from '../../catalog/read.mjs';
 
 const APP = 'subscriptiontracker';
 let TMP;
@@ -58,6 +61,13 @@ function remove(rel) {
 /** Run a guard of THIS repository by path over the fixture. */
 function guard(rel, ...args) {
   const r = spawnSync(process.execPath, [repoFile(rel), ...args], { cwd: FX, encoding: 'utf8' });
+  return { status: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+}
+
+/** Run the FIXTURE's copy of a script by path: for the extension scripts, which take
+ *  their root from `--repo-root` and their schema from beside themselves. */
+function fxScript(rel, ...args) {
+  const r = spawnSync(process.execPath, [at(rel), ...args], { cwd: FX, encoding: 'utf8' });
   return { status: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
@@ -108,11 +118,17 @@ describe('the readout', () => {
     assert.doesNotMatch(r.out, /^NEXT /m);
   });
 
-  test('the steps are the twelve of plan §3.2 (with the tag filter), in order, and none is a crash sink', () => {
+  test('an app\'s steps are the twelve of plan §3.2 (with the tag filter) and its Worker\'s crash sink, in order', () => {
     assert.deepEqual(STEPS.map((s) => s.reader.name), [
-      'id', 'pages origin', 'stamp', 'tag filter', 'backend', 'store records',
+      'id', 'pages origin', 'stamp', 'tag filter', 'backend', 'crash sink', 'store records',
       'name clearance', 'sworn files', 'price row', 'monitor row', 'product row', 'bundle join',
     ]);
+  });
+
+  test('each kind has its own steps, and only an app\'s stamp a Flutter app or a Pages origin', () => {
+    assert.deepEqual(STEPS_BY_KIND.extension.map((s) => s.reader.name), ['id', 'catalogue row', 'store listings', 'product row', 'bundle join']);
+    assert.deepEqual(STEPS_BY_KIND.service.map((s) => s.reader.name), ['id', 'stamp', 'register row', 'backend', 'crash sink', 'monitor row', 'product row']);
+    assert.deepEqual(STEPS_BY_KIND.site.map((s) => s.reader.name), ['id', 'site directory', 'deploy', 'product row']);
   });
 
   test('--expect-next passes only on the exact NEXT set', () => {
@@ -180,6 +196,42 @@ describe('step 1 · id', () => {
     writeFileSync(vars, JSON.stringify({ app_id: APP }));
     const g = guard('tooling/kit/stamp-app.mjs', '--vars', vars, '--dry-run');
     assert.equal(g.status, 0, g.out);
+  });
+
+  // rv2-newproduct-015. stamp-app.mjs reads the claimed set of its own tree, which the
+  // fixture copies, so the claim on `platform` is the same one on both sides.
+  test('an id another product claims (platform, a service) is NEXT naming each claim, stops the plan, and stamp-app.mjs refuses it too', () => {
+    const answers = planProduct(FX, 'platform', { privateRoot: null, kind: 'app' });
+    assert.equal(answers.length, 1);
+    assert.equal(answers[0].state, 'NEXT');
+    assert.match(answers[0].detail, /^"platform" is already claimed: service id \(services\/platform\/wrangler\.jsonc, owned by service:platform\)/);
+    assert.match(answers[0].detail, /D1 database "platform_db"/);
+    const vars = join(TMP, 'claimed-id-vars.json');
+    writeFileSync(vars, JSON.stringify({ app_id: 'platform' }));
+    const g = guard('tooling/kit/stamp-app.mjs', '--vars', vars, '--dry-run');
+    assert.equal(g.status, 1, g.out);
+    assert.match(g.out, /"platform" is already claimed/);
+  });
+
+  test('a host label the platform already answers on (vault.nikatru.com) is claimed for every kind', () => {
+    const a = stepOf('id', 'vault', { privateRoot: null, kind: 'service' });
+    assert.equal(a.state, 'NEXT');
+    assert.match(a.detail, /host vault\.nikatru\.com \(tooling\/monitor-register\.json, owned by host:vault\.nikatru\.com\)/);
+  });
+
+  test('app #1\'s own Worker, database and API host are its own claims, not clashes', () => {
+    const a = stepOf('id');
+    assert.equal(a.state, 'DONE');
+    assert.match(a.detail, /no other product claims it/);
+  });
+
+  test('a stamped app whose catalogue row is missing keeps its Worker: the id is still DONE, never a service clash', () => {
+    const restore = mutate(APPS_CATALOG, (t) => JSON.stringify(JSON.parse(t).filter((a) => a.slug !== APP), null, 2) + '\n');
+    try {
+      assert.equal(stepOf('id').state, 'DONE');
+    } finally {
+      restore();
+    }
   });
 });
 
@@ -469,10 +521,50 @@ describe('step 9 · price row', () => {
     assert.equal(r.status, 0, `${r.stdout ?? ''}${r.stderr ?? ''}`);
   });
 
-  test('an app serving no offering → DONE, no entry owed', () => {
-    const a = stepOf('price row', 'nextapp');
-    assert.equal(a.state, 'DONE');
-    assert.match(a.detail, /serves no offering/);
+  // rv2-newproduct-002. The absent row is served the defaults, so no guard of this
+  // repository is red on it (render-rail-prices joins only declared offerings,
+  // assert-render-payload overlays the defaults): the reader leads the guards here,
+  // and the case grades the reader alone.
+  test('no apps.<id> row → NEXT, never "free": the price is undecided, not declared', () => {
+    const a = stepOf('price row', 'nextapp', { privateRoot: null, kind: 'app' });
+    assert.equal(a.state, 'NEXT');
+    assert.match(a.detail, /has no apps\.nextapp row/);
+    assert.match(a.command, /"offerings": \[\]\}` declares it free/);
+  });
+
+  // The stamp writes apps.<id> with its update_url alone (snap-update-row.mjs); that
+  // row decides no price. Red control: with the `paywall` key test removed from the
+  // reader, this row reads DONE "declares no offering".
+  test('an apps.<id> row with no `paywall` (the stamp\'s update_url row) → NEXT, never "free"', () => {
+    const restore = mutate('services/platform/src/app-config-data.json', (t) => {
+      const j = JSON.parse(t);
+      j.apps.nextapp = { update_url: { 'linux-snap': 'https://snapcraft.io/nextapp' } };
+      return JSON.stringify(j, null, 2) + '\n';
+    });
+    try {
+      const a = stepOf('price row', 'nextapp', { privateRoot: null, kind: 'app' });
+      assert.equal(a.state, 'NEXT');
+      assert.match(a.detail, /apps\.nextapp declares no `paywall`/);
+    } finally {
+      restore();
+    }
+  });
+
+  test('apps.<id> declaring no offering → DONE, free by declaration; render-rail-prices.mjs --check is green', () => {
+    const restore = mutate('services/platform/src/app-config-data.json', (t) => {
+      const j = JSON.parse(t);
+      j.apps.nextapp = { features: {}, paywall: { enabled: false, offerings: [] } };
+      return JSON.stringify(j, null, 2) + '\n';
+    });
+    try {
+      const a = stepOf('price row', 'nextapp', { privateRoot: null, kind: 'app' });
+      assert.equal(a.state, 'DONE');
+      assert.match(a.detail, /declares no offering/);
+      const g = guard('tooling/catalog/render-rail-prices.mjs', FX, '--check');
+      assert.equal(g.status, 0, g.out);
+    } finally {
+      restore();
+    }
   });
 });
 
@@ -547,8 +639,85 @@ describe('step 11 · product row (the private corpus; its guard runs there, not 
 });
 
 describe('step 12 · bundle join', () => {
-  test('a live product → DONE', () => {
+  const BUNDLE_GUARD = 'tooling/ci/assert-bundle-availability.mjs';
+
+  test('a live product → DONE, and the bundle guard is green', () => {
     assert.equal(stepOf('bundle join').state, 'DONE');
+    const g = guard(BUNDLE_GUARD, FX);
+    assert.equal(g.status, 0, g.out);
+  });
+
+  // ⏱ 2026-10-01 (rv2-newproduct-011). A stamp renders the new app's catalogue
+  // row, and limb F of the bundle guard requires every catalogue product to be a
+  // member or excluded BY NAME — so before this, app #2's first commit turned
+  // ci.yml's bundle step red. The stamp now writes the exclusion
+  // (tooling/kit/stamp-shared.mjs); these cases pair each reader answer with the
+  // guard over the same fixture.
+  /** Adds a catalogue row for `probe`, cloned from app #1's, at `status`; returns the restore. */
+  const addProbeRow = (status) =>
+    mutate(APPS_CATALOG, (t) => {
+      const rows = JSON.parse(t);
+      rows.push({ ...rows[0], slug: 'probe', name: 'Probe', status });
+      return `${JSON.stringify(rows, null, 2)}\n`;
+    });
+
+  test('a stamped product the stamp did NOT place: the guard is red (the defect), and the stamp places it', () => {
+    const restoreRow = addProbeRow('preview');
+    const restoreBundles = mutate(BUNDLES_REGISTER, (t) => `${t} `);
+    try {
+      const red = guard(BUNDLE_GUARD, FX);
+      assert.equal(red.status, 1, red.out);
+      assert.match(red.out, /`probe` is a catalogue product and catalog\/bundles\.json neither lists it in `members` nor names it in `excluded`/);
+      const w = runStampShared(FX);
+      assert.equal(w.code, 0, w.lines.join('\n'));
+      assert.ok(isStampedExclusion(JSON.parse(readFileSync(at(BUNDLES_REGISTER), 'utf8'))[0].excluded.find((x) => x.slug === 'probe')));
+      const green = guard(BUNDLE_GUARD, FX);
+      assert.equal(green.status, 0, green.out);
+      assert.equal(stepOf('bundle join', 'probe').state, 'AFTER-LIVE');
+    } finally {
+      restoreBundles();
+      restoreRow();
+    }
+  });
+
+  test('a LIVE product still carrying the stamp\'s placeholder → NEXT, and the guard is red', () => {
+    const restoreRow = addProbeRow('live');
+    const restoreBundles = mutate(BUNDLES_REGISTER, (t) => `${t} `);
+    try {
+      assert.equal(runStampShared(FX).code, 0);
+      const a = stepOf('bundle join', 'probe');
+      assert.equal(a.state, 'NEXT');
+      assert.match(a.detail, /the stamp's placeholder exclusion/);
+      const g = guard(BUNDLE_GUARD, FX);
+      assert.equal(g.status, 1, g.out);
+      assert.match(g.out, /still excludes `probe` with the STAMP's placeholder why, and `probe` is live/);
+    } finally {
+      restoreBundles();
+      restoreRow();
+    }
+  });
+
+  test('a live product excluded BY DECISION → DONE, and the guard is green', () => {
+    const restoreRow = addProbeRow('live');
+    const restoreBundles = mutate(BUNDLES_REGISTER, (t) => {
+      const rows = JSON.parse(t);
+      rows[0].excluded = [{ slug: 'probe', why: 'a CI probe: it is never sold, so no bundle may count it.' }];
+      return `${JSON.stringify(rows, null, 2)}\n`;
+    });
+    try {
+      assert.equal(stepOf('bundle join', 'probe').state, 'DONE');
+      // Limb F — the limb this step owns — is green. The run as a whole is not:
+      // a SECOND live product meets limb C's floor while fullshot keeps the gate
+      // shut, and limb C refuses that story by design. That is the bundle's own
+      // go-live question, not this step's, so it is asserted here as what it is.
+      const g = guard(BUNDLE_GUARD, FX);
+      assert.match(g.out, /ok {2}the 3 catalogue product\(s\) equal members ∪ excluded \(members: subscriptiontracker, fullshot; excluded: probe\)/);
+      assert.doesNotMatch(g.out, /placeholder why/);
+      assert.match(g.out, /the gate is closed but NOT because there are too few live products/);
+    } finally {
+      restoreBundles();
+      restoreRow();
+    }
   });
 
   test('a preview product → AFTER-LIVE, which --check does not count', () => {
@@ -558,5 +727,215 @@ describe('step 12 · bundle join', () => {
     } finally {
       restore();
     }
+  });
+});
+
+// ── kinds (rv2-newproduct-014, -016, -017) ───────────────────────────────────
+describe('the kind is read from where the id is published', () => {
+  test('fullshot reads as the extension it is: no Pages origin, no Flutter stamp', () => {
+    const r = cli('fullshot', '--check');
+    assert.equal(r.code, 0, `${r.out}\n${r.err}`);
+    assert.match(r.out, /^new-product plan fullshot \(extension\)$/m);
+    assert.doesNotMatch(r.out, /^\S+ (pages origin|stamp) — /m);
+    assert.doesNotMatch(r.out, /run: +node tooling\/(web\/pages-origin|kit\/stamp-app)\.mjs/);
+    assert.match(r.out, /^OWNER store listings — no listing on chrome, edge, firefox$/m);
+  });
+
+  test('platform reads as a service, nikatru as a site, app #1 as an app', () => {
+    assert.deepEqual(resolveKind(FX, 'platform'), { kind: 'service' });
+    assert.deepEqual(resolveKind(FX, 'nikatru'), { kind: 'site' });
+    assert.deepEqual(resolveKind(FX, APP), { kind: 'app' });
+  });
+
+  test('a --kind the register contradicts is a usage error (exit 2), naming the register', () => {
+    const r = cli('fullshot', '--kind', 'app');
+    assert.equal(r.code, 2);
+    assert.match(r.err, /"fullshot" is published as extension \(extensions\/catalog\/extensions\.json\), and --kind says app/);
+  });
+
+  test('a new id with no --kind is a usage error (exit 2); with one, it reads that kind\'s steps', () => {
+    assert.equal(cli('nextapp').code, 2);
+    const r = cli('nextsvc', '--kind', 'service');
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /^NEXT stamp — no Worker directory services\/nextsvc-api/m);
+    assert.match(r.out, /run: {3}node tooling\/kit\/stamp-service\.mjs nextsvc/);
+  });
+
+  test('an id two kinds publish needs --kind, and its id step is NEXT on the other kind\'s claim', () => {
+    const restore = mutate('extensions/catalog/extensions.json', (t) => {
+      const j = JSON.parse(t);
+      j.push({ ...j[0], slug: APP });
+      return JSON.stringify(j, null, 2) + '\n';
+    });
+    try {
+      const r = cli(APP);
+      assert.equal(r.code, 2);
+      assert.match(r.err, /published as app \(catalog\/apps\.json\), extension \(extensions\/catalog\/extensions\.json\): name the one to plan with --kind/);
+      const a = stepOf('id', APP, { privateRoot: null, kind: 'app' });
+      assert.equal(a.state, 'NEXT');
+      assert.match(a.detail, /extension id \(extensions\/catalog\/extensions\.json, owned by extension:subscriptiontracker\)/);
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe('extension · catalogue row', () => {
+  test('the row missing → NEXT new-tool.mjs; publish-catalog.mjs --check is red', () => {
+    const restore = mutate('extensions/catalog/extensions.json', (t) => JSON.stringify(JSON.parse(t).filter((x) => x.slug !== 'fullshot'), null, 2) + '\n');
+    try {
+      const a = stepOf('catalogue row', 'fullshot', { privateRoot: null, kind: 'extension' });
+      assert.equal(a.state, 'NEXT');
+      assert.match(a.command, /^node extensions\/scripts\/new-tool\.mjs --category Extension .* --id fullshot /);
+      assert.equal(fxScript('extensions/scripts/publish-catalog.mjs', '--check', '--repo-root', at('extensions')).status, 1);
+    } finally {
+      restore();
+    }
+  });
+
+  test('present → DONE; publish-catalog.mjs --check is green', () => {
+    assert.equal(stepOf('catalogue row', 'fullshot', { privateRoot: null, kind: 'extension' }).state, 'DONE');
+    const g = fxScript('extensions/scripts/publish-catalog.mjs', '--check', '--repo-root', at('extensions'));
+    assert.equal(g.status, 0, g.out);
+  });
+});
+
+describe('extension · store listings', () => {
+  test('no listing (fullshot today) → OWNER; check-catalog.mjs prints the owner action, and --owner-actions-fatal is red', () => {
+    const a = stepOf('store listings', 'fullshot', { privateRoot: null, kind: 'extension' });
+    assert.equal(a.state, 'OWNER');
+    const plain = fxScript('extensions/scripts/check-catalog.mjs', '--repo-root', at('extensions'));
+    assert.equal(plain.status, 0, plain.out);
+    assert.match(plain.out, /Unlisted: fullshot/);
+    assert.equal(fxScript('extensions/scripts/check-catalog.mjs', '--repo-root', at('extensions'), '--owner-actions-fatal').status, 1);
+  });
+
+  // The DONE half is graded on the reader alone: a listed row is also `live` and its tool.json
+  // `shipping`, three files the owner's listing changes together, which no fixture here invents.
+  test('every store listed → DONE', () => {
+    const restore = mutate('extensions/catalog/extensions.json', (t) => {
+      const j = JSON.parse(t);
+      const row = j.find((x) => x.slug === 'fullshot');
+      for (const k of Object.keys(row.listings)) row.listings[k] = `https://example.invalid/${k}`;
+      return JSON.stringify(j, null, 2) + '\n';
+    });
+    try {
+      assert.equal(stepOf('store listings', 'fullshot', { privateRoot: null, kind: 'extension' }).state, 'DONE');
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe('app and service · crash sink (rv2-newproduct-001)', () => {
+  test('app #1\'s secret undeclared by the called deploy workflow → NEXT; assert-worker-error-sink.mjs is red', () => {
+    const restore = mutate('tooling/platform-register.json', (t) => {
+      const j = JSON.parse(t);
+      j.appWorkers[0].dsnSecret = 'GLITCHTIP_DSN_SUBSCRIPTIONTRACKER';
+      return JSON.stringify(j, null, 2) + '\n';
+    });
+    try {
+      const a = stepOf('crash sink');
+      assert.equal(a.state, 'NEXT');
+      assert.match(a.detail, /names GLITCHTIP_DSN_SUBSCRIPTIONTRACKER, and \.github\/workflows\/deploy-workers\.yml does not declare it/);
+      assert.equal(guard('tooling/ci/assert-worker-error-sink.mjs', FX).status, 1);
+    } finally {
+      restore();
+    }
+  });
+
+  test('named and delivered → DONE; assert-worker-error-sink.mjs is green', () => {
+    assert.equal(stepOf('crash sink').state, 'DONE');
+    const g = guard('tooling/ci/assert-worker-error-sink.mjs', FX);
+    assert.equal(g.status, 0, g.out);
+  });
+
+  test('client-only (no hosts.api) → DONE by the declaration', () => {
+    const restore = mutate(`apps/${APP}/app.yaml`, (t) => t.replace(/^  api: .*\n/m, ''));
+    try {
+      const a = stepOf('crash sink');
+      assert.equal(a.state, 'DONE');
+      assert.match(a.detail, /^client-only/);
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe('service (rv2-newproduct-016)', () => {
+  test('the platform Worker reads DONE at every step but its corpus row; worker-set.mjs and provision-backend.mjs --check are green', () => {
+    const r = cli('platform', '--check');
+    assert.equal(r.code, 0, `${r.out}\n${r.err}`);
+    assert.match(r.out, /^DONE register row — tooling\/platform-register\.json servingWorker names services\/platform\/wrangler\.jsonc$/m);
+    assert.equal(guard('tooling/ci/worker-set.mjs', FX).status, 0);
+    const g = guard('tooling/scripts/provision-backend.mjs', '--check');
+    assert.equal(g.status, 0, g.out);
+  });
+
+  test('a stamped scratch service → its register row, backend, crash sink and monitor row are NEXT; provision-backend.mjs --check and assert-d1-bindings.mjs are red', () => {
+    const code = stampServiceMain(['probesvc', '--root', FX], { log: () => {}, err: () => {} });
+    assert.equal(code, 0);
+    try {
+      const r = cli('probesvc', '--check', '--expect-next', 'register row,backend,crash sink,monitor row');
+      assert.equal(r.code, 0, `${r.out}\n${r.err}`);
+      assert.match(r.out, /^new-product plan probesvc \(service\)$/m);
+      assert.equal(guard('tooling/ci/worker-set.mjs', FX).status, 0, 'a stamped Worker is a member of the set');
+      const check = guard('tooling/scripts/provision-backend.mjs', '--check');
+      assert.equal(check.status, 1);
+      assert.match(check.out, /services\/probesvc-api holds a wrangler\.jsonc/);
+      assert.equal(guard('tooling/ci/assert-d1-bindings.mjs', FX).status, 1);
+    } finally {
+      rmSync(at('services/probesvc-api'), { recursive: true, force: true });
+    }
+    assert.equal(existsSync(at('services/probesvc-api')), false);
+  });
+
+  test('a Worker template tag stamp-service.mjs does not render refuses the stamp (exit 1), writing nothing', () => {
+    const readme = 'tooling/bricks/app/__brick__/{{#needs_backend}}services{{/needs_backend}}/{{app_id}}-api/README.md';
+    const restore = mutate(readme, (t) => `${t}\nOwner: {{owner_name}}\n`);
+    try {
+      const err = [];
+      assert.equal(stampServiceMain(['probesvc', '--root', FX], { log: () => {}, err: (s) => err.push(s) }), 1);
+      assert.match(err.join('\n'), /README\.md: \{\{owner_name\}\}/);
+      assert.equal(existsSync(at('services/probesvc-api')), false, 'a refused stamp wrote the Worker directory');
+    } finally {
+      restore();
+    }
+  });
+
+  test('a service id already claimed is refused by stamp-service.mjs (exit 1), writing nothing', () => {
+    const err = [];
+    assert.equal(stampServiceMain(['platform', '--root', FX], { log: () => {}, err: (s) => err.push(s) }), 1);
+    assert.match(err.join('\n'), /"platform" is already claimed/);
+    assert.equal(existsSync(at('services/platform-api')), false);
+  });
+});
+
+describe('site (rv2-newproduct-017)', () => {
+  test('nikatru → its directory and its deploy are DONE; site-set.mjs is green', () => {
+    assert.equal(stepOf('site directory', 'nikatru', { privateRoot: null, kind: 'site' }).state, 'DONE');
+    assert.equal(stepOf('deploy', 'nikatru', { privateRoot: null, kind: 'site' }).state, 'DONE');
+    assert.equal(guard('tooling/ci/site-set.mjs', FX).status, 0);
+  });
+
+  test('a site directory with no index.html → NEXT; site-set.mjs is red, naming it', () => {
+    mkdirSync(at('sites/newsite'), { recursive: true });
+    writeFileSync(at('sites/newsite/draft.html'), '<html></html>\n');
+    try {
+      const a = stepOf('site directory', 'newsite', { privateRoot: null, kind: 'site' });
+      assert.equal(a.state, 'NEXT');
+      assert.match(a.detail, /ships no index\.html/);
+      const g = guard('tooling/ci/site-set.mjs', FX);
+      assert.equal(g.status, 1);
+      assert.match(g.out, /sites\/newsite is neither _shared nor a site/);
+    } finally {
+      rmSync(at('sites/newsite'), { recursive: true, force: true });
+    }
+  });
+
+  test('a site no deploy workflow names (rajasekarselvam) → UNREAD, which --check does not count', () => {
+    const r = cli('rajasekarselvam', '--check');
+    assert.equal(r.code, 0, `${r.out}\n${r.err}`);
+    assert.match(r.out, /^UNREAD deploy — no deploy workflow names sites\/rajasekarselvam/m);
   });
 });

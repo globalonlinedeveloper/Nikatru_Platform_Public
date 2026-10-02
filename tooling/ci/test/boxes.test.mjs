@@ -15,10 +15,10 @@
 // the real backups.json drills, which are LOST until their file is named.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, posix, win32 } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
@@ -27,7 +27,7 @@ import {
 } from '../../ops/box-declaration.mjs';
 import { sshArgv, readBoxOverSsh } from '../../ops/check-box-declared.mjs';
 import { parseArgs as moveArgs, monthlyCostFor } from '../../ops/box-move.mjs';
-import { missingEnv, fill } from '../../ops/restore-drill.mjs';
+import { missingEnv, fill, insideRepo } from '../../ops/restore-drill.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -348,6 +348,15 @@ describe('box-move — the graded dry run', () => {
     assert.match(r.out, /LOST  C7 cost/);
     assert.doesNotMatch(r.out, /\b(?:\d{1,3}\.){3}\d{1,3}\b/, 'no address is ever printed');
   });
+  it('LOST, not a crash: an identity.json that exists and cannot be read (a directory here; EACCES on the laptop) is exit 2 naming the code', () => {
+    const root = estate({ backupsDoc: readyBackups() });
+    const d = tmp('private-');
+    mkdirSync(join(d, 'platform-state', 'identity.json'), { recursive: true });
+    const r = run(MOVE, ['--from', 'boxz', '--to', spec(), '--dry-run', '--root', root, '--private', d]);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /^box-move: LOST — C7 cost: Private platform-state\/identity\.json could not be read \((EISDIR|EPERM|EACCES)\)/);
+    assert.doesNotMatch(r.out, /\n\s+at /, 'no stack trace');
+  });
   it('the cost reader finds a monthly USD figure under the vendor, or says what it read', () => {
     assert.deepEqual(monthlyCostFor({ vendors: { hostinger: { plan: { monthlyUsd: { value: 9.99 } } } } }, 'hostinger'), { usd: 9.99, path: '$.vendors.hostinger.plan.monthlyUsd.value', renewalUsd: null });
     assert.match(monthlyCostFor({ vendors: { hostinger: { seats: 1 } } }, 'hostinger').lost, /no monthly USD figure under vendor `hostinger` \(read 1 numeric field/);
@@ -358,9 +367,11 @@ describe('restore-drill — one file back, hashed against the source, then delet
   // A fake rclone that serves `<remote>:<path>` from a local directory, with rclone's
   // lsf habit of listing subdirectories with a trailing slash (trap backup-05).
   const shimDir = tmp('rclone-shim-');
-  const RCLONE = join(shimDir, 'rclone');
-  writeFileSync(RCLONE, `#!/usr/bin/env node
-const fs = require('node:fs'); const path = require('node:path');
+  // A .cjs node script, never a shebang file: the drill runs a .js/.cjs/.mjs tool
+  // with process.execPath, so this launches on Windows too (#1148 shipped a shebang
+  // shim that Windows reported as ENOENT, failing four tests there).
+  const RCLONE = join(shimDir, 'rclone.cjs');
+  writeFileSync(RCLONE, `const fs = require('node:fs'); const path = require('node:path');
 const [cmd, ...rest] = process.argv.slice(2);
 const local = (p) => path.join(process.env.FAKE_RCLONE_ROOT, p.replace(/^[^:]*:/, ''));
 if (cmd === 'lsf') { const d = local(rest[0]); if (!fs.existsSync(d)) { console.error('directory not found'); process.exit(3); }
@@ -369,7 +380,6 @@ if (cmd === 'cat') { const f = local(rest[0]); if (!fs.existsSync(f)) { console.
 if (cmd === 'copyto') { const f = local(rest[0]); if (!fs.existsSync(f)) { console.error('object not found'); process.exit(3); } fs.copyFileSync(f, rest[1]); process.exit(0); }
 console.error('unsupported ' + cmd); process.exit(9);
 `);
-  chmodSync(RCLONE, 0o755);
   const exportTree = ({ corrupt = false, complete = true, date = '2026-10-01' } = {}) => {
     const d = tmp('r2-');
     const body = Buffer.from('{"keys":{"k1":"v1"}}');
@@ -442,6 +452,35 @@ console.error('unsupported ' + cmd); process.exit(9);
   });
   it('refuses a scratch directory inside the repository', () => {
     const r = run(DRILL, ['d1-kv-export', '--to', join(REPO, 'tooling'), '--rclone-bin', RCLONE], { R2_RCLONE_REMOTE: 'x', FAKE_RCLONE_ROOT: tmp('x-') });
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /--to is inside the repository/);
+  });
+
+  it('the containment test holds under win32 semantics: case, separators, the long-path prefix, a sibling with a shared prefix', () => {
+    const W = { p: win32, real: () => null };
+    const root = 'C:\\Users\\o\\Nikatru_Platform_Public';
+    for (const inside of [root, `${root}\\x`, 'c:\\users\\O\\NIKATRU_PLATFORM_PUBLIC\\x', 'C:/Users/o/Nikatru_Platform_Public/tooling', `${root}\\a\\..\\b`, `\\\\?\\${root}\\x`, `${root}\\..foo`]) {
+      assert.equal(insideRepo(root, inside, W), true, `${inside} is inside`);
+    }
+    for (const outside of ['C:\\Users\\o\\scratch', 'C:\\Users\\o\\Nikatru_Platform_Public-scratch', 'C:\\Users\\o', `${root}\\..\\drill`, 'D:\\Users\\o\\Nikatru_Platform_Public\\x']) {
+      assert.equal(insideRepo(root, outside, W), false, `${outside} is outside`);
+    }
+    // the #1148 test, on these same paths, failed open: control that it would have
+    const old = (r, t) => { const a = win32.resolve(r); const b = win32.resolve(t); return b === a || b.startsWith(`${a}/`); };
+    assert.equal(old(root, `${root}\\x`), false, 'the old prefix test lets a backslashed inside path through');
+    // a junction or 8.3 short name: `real` says where it lands
+    const viaLink = { p: win32, real: (x) => (x.toLowerCase().startsWith('c:\\link') ? x.replace(/^c:\\link/i, root) : null) };
+    assert.equal(insideRepo(root, 'C:\\link\\x', viaLink), true, 'a junction into the repo is inside');
+    assert.equal(insideRepo(root, 'C:\\link\\x', W), false, 'control: without its target the junction reads as outside');
+    assert.equal(insideRepo('/srv/repo', '/srv/repo-scratch', { p: posix, real: () => null }), false);
+    assert.equal(insideRepo('/srv/repo', '/srv/repo/x', { p: posix, real: () => null }), true);
+  });
+  it('a symlink outside the repository that points into it is refused (the real filesystem)', (t) => {
+    const link = join(tmp('link-'), 'into-repo');
+    try { symlinkSync(join(REPO, 'tooling'), link, 'junction'); } catch (e) { t.skip(`cannot create a link here (${e.code})`); return; }
+    assert.equal(insideRepo(REPO, join(link, 'scratch')), true);
+    assert.equal(insideRepo(REPO, join(dirname(link), 'scratch')), false, 'control: its sibling is outside');
+    const r = run(DRILL, ['d1-kv-export', '--to', join(link, 'scratch'), '--rclone-bin', RCLONE], { R2_RCLONE_REMOTE: 'x', FAKE_RCLONE_ROOT: tmp('x-') });
     assert.equal(r.code, 2, r.out);
     assert.match(r.first, /--to is inside the repository/);
   });

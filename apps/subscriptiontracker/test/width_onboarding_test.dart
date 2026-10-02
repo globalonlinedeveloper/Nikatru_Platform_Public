@@ -93,6 +93,24 @@ void main() {
       );
     });
 
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): the expanded (1024) and
+    // extra-large (1920) window classes — the same flat cap as at 768.
+    for (final (Size window, String _) in <(Size, String)>[
+      (kExpanded, 'expanded'),
+      (kWide, 'extra-large'),
+    ]) {
+      testWidgets('at ${window.width.toInt()} the reading cap holds', (
+        WidgetTester tester,
+      ) async {
+        await pumpAt(tester, window, const OnboardingScreen());
+        expect(
+          offeredWidth(tester, inPane(Column)),
+          AppBreakpoints.reading - kGutters,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     testWidgets('at 1280 the carousel is capped at AppBreakpoints.reading', (
       WidgetTester tester,
     ) async {

@@ -64,6 +64,20 @@ let BASE;
  *  mutable files from these, so a case cannot inherit the previous case's edit. */
 let PRISTINE_PROP;
 let PRISTINE_PROVIDERS;
+let PRISTINE_REGISTER;
+
+const DOD_REGISTER = 'tooling/dod-register.json';
+/** The property keys the REAL register's rows naming this guard rest on (items C,
+ *  D and F). Read off the register, not listed, so a row that gains a key moves
+ *  this set with it. Limb (4) grades these on the exempted app as real FAILs, so
+ *  the ratchet cases below must never hide one — `run()` protects them always. */
+const DOD_BOUND = [
+  ...new Set(
+    JSON.parse(readFileSync(join(REPO, DOD_REGISTER), 'utf8'))
+      .items.filter((i) => i.check === 'assert-stamp-properties.mjs')
+      .flatMap((i) => i.restsOn ?? []),
+  ),
+];
 
 before(() => {
   TMP = mkdtempSync(join(tmpdir(), 'nikatru-stamp-prop-'));
@@ -72,7 +86,9 @@ before(() => {
   for (const d of ['catalog', 'packages', 'services', 'tooling/bricks']) {
     cpSync(join(REPO, d), join(BASE, d), { recursive: true, filter });
   }
-  for (const f of ['tooling/channel-register.json', 'tooling/ci/check-site-integrity.mjs']) {
+  // dod-register.json: limb (4) reads which properties the DoD rests on, for an
+  // exempted app that is the real package — which this fixture's is.
+  for (const f of ['tooling/channel-register.json', 'tooling/ci/check-site-integrity.mjs', 'tooling/dod-register.json']) {
     mkdirSync(dirname(join(BASE, f)), { recursive: true });
     cpSync(join(REPO, f), join(BASE, f));
   }
@@ -85,6 +101,7 @@ before(() => {
   cpSync(join(REPO, EXEMPT, SNAP_NAME), join(BASE, EXEMPT, SNAP_NAME));
   PRISTINE_PROP = readFileSync(join(REPO, BRICK, PROP_TEST), 'utf8');
   PRISTINE_PROVIDERS = readFileSync(join(REPO, BRICK, PROVIDERS), 'utf8');
+  PRISTINE_REGISTER = readFileSync(join(REPO, DOD_REGISTER), 'utf8');
 });
 after(() => {
   rmSync(TMP, { recursive: true, force: true });
@@ -110,10 +127,14 @@ after(() => {
  * That is the 2026-08-21 class-D shape reproduced: read RAW the anchor still
  * matches, read COMMENT-STRIPPED it does not.
  */
-function run({ missingGroups = 0, protect = [], commentOutPackAnchor = false, workspace = GOOD_WORKSPACE, exemptHasPubspec = true } = {}) {
+function run({ missingGroups = 0, protect = [], hide = [], commentOutPackAnchor = false, workspace = GOOD_WORKSPACE, exemptHasPubspec = true, register = PRISTINE_REGISTER } = {}) {
   let hidden = 0;
+  // `hide` names DoD-bound keys to hide ON PURPOSE (limb 4's cases); every other
+  // DoD-bound key is protected, so the ratchet cases measure the floor alone.
+  const shielded = [...protect, ...DOD_BOUND.filter((k) => !hide.includes(k))];
   const prop = PRISTINE_PROP.replace(/group\(\s*'property: ([a-z0-9-]+)'/g, (m, key) => {
-    if (protect.includes(key) || hidden >= missingGroups) return m;
+    if (hide.includes(key)) return m.replace("'property: ", "'notaproperty: ");
+    if (shielded.includes(key) || hidden >= missingGroups) return m;
     hidden++;
     return m.replace("'property: ", "'notaproperty: ");
   });
@@ -131,6 +152,8 @@ function run({ missingGroups = 0, protect = [], commentOutPackAnchor = false, wo
   const manifest = join(BASE, EXEMPT, 'pubspec.yaml');
   if (exemptHasPubspec) writeFileSync(manifest, 'name: subscriptiontracker\ndescription: fixture stand-in\n');
   else rmSync(manifest, { force: true });
+  if (register === null) rmSync(join(BASE, DOD_REGISTER), { force: true });
+  else writeFileSync(join(BASE, DOD_REGISTER), register);
 
   const r = spawnSync(process.execPath, [GUARD], { cwd: BASE, encoding: 'utf8' });
   return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
@@ -138,7 +161,7 @@ function run({ missingGroups = 0, protect = [], commentOutPackAnchor = false, wo
 
 // The floor the guard records for apps/subscriptiontracker. Named once here so a case that
 // moves off it says which direction it moved in.
-const FLOOR = 14; // ⏱ 2026-09-27 · ST-U1: 11 -> 13, the flagship dropped the chassis daily reminder by design; ⏱ 2026-09-28 · ST-T1b: 13 -> 14, its SignUpScreen was retired (A-5)
+const FLOOR = 13; // ⏱ 2026-09-27 · ST-U1: 11 -> 13, the flagship dropped the chassis daily reminder by design; ⏱ 2026-09-28 · ST-T1b: 13 -> 14, its SignUpScreen was retired (A-5); ⏱ 2026-10-01 · C-10/C-14: 14 -> 13, ui-invariants-inherited holds on the app and is DoD-bound (limb 4), so the floor stops counting it
 
 describe('assert-stamp-properties — EXEMPT_APPS is visible, existent and sized', () => {
   // ── LIMB (1) · VISIBLE ─────────────────────────────────────────────────────
@@ -255,6 +278,90 @@ describe('assert-stamp-properties — EXEMPT_APPS is visible, existent and sized
     const { code, out } = run({ missingGroups: 0 });
     assert.equal(code, 1, out);
     assert.match(out, /has CAUGHT UP: the audit produces 0 FAIL line\(s\)/);
+  });
+});
+
+// ── LIMB (4) · AN EXEMPTION FROM THE CHASSIS IS NOT AN EXEMPTION FROM THE DoD ──
+// dod-register items C, D and F name assert-stamp-properties as their enforcement
+// and the exempted app's dod.json claims all three "held". Until 2026-10-01 the
+// ratchet only COUNTED, so a property a DoD row rests on could break inside the
+// floor. Each case changes ONE thing on the floor tree the green control exits 0 on.
+describe('assert-stamp-properties — the exempted app is GRADED on the properties the DoD rests on', () => {
+  test('green control: the floor tree exits 0 and says, on the ok line, what it graded', () => {
+    assert.ok(DOD_BOUND.length > 0, 'the real register names no property for this guard — limb (4) would grade ∅');
+    const { code, out } = run({ missingGroups: FLOOR });
+    assert.equal(code, 0, out);
+    assert.match(out, /ok {3}apps\/subscriptiontracker — GRADED, though exempt, on the \d+ property\/properties DoD rows rest on: /);
+    const verdict = out.split('\n').find((l) => l.startsWith('assert-stamp-properties: ok'));
+    assert.match(verdict, /except on the properties the DoD rests on: apps\/subscriptiontracker on /, verdict);
+    for (const k of DOD_BOUND) assert.ok(verdict.includes(k), `${k} missing from the verdict line: ${verdict}`);
+  });
+
+  // ATTRIBUTION. A DoD-bound group hidden on top of the floor tree: limb (4) takes
+  // that verdict OUT of the count, so the ratchet stays exactly on its floor and
+  // the one FAIL is the DoD's, named with the item that rests on it.
+  // Two cases, DECLARED, not generated by a loop: a looped case is one
+  // declaration to coverage-manifest.json however many keys it iterates
+  // (assert-no-loop-cases). One per register item kind: C/F's limb and D's.
+  function assertGradedNotAbsorbed(key) {
+    assert.ok(DOD_BOUND.includes(key), `${key} is no longer DoD-bound in the register — re-point this case`);
+    const { code, out } = run({ missingGroups: FLOOR, hide: [key] });
+    assert.equal(code, 1, out);
+    assert.match(out, new RegExp(`FAIL apps/subscriptiontracker: property '${key}' is NOT asserted in .* EXEMPT FROM THE CHASSIS, NOT FROM THE DoD: '${key}' \\(DoD item [A-Z, ]+\\)`));
+    assert.match(out, new RegExp(`produces ${FLOOR} FAIL line\\(s\\) \\(recorded floor ${FLOOR},`));
+    assert.doesNotMatch(out, /has DRIFTED|has CAUGHT UP/, out);
+  }
+
+  test("exit 1 when 'ui-invariants-inherited' (items C, F) breaks on the exempted app, and the floor does not absorb it", () => {
+    assertGradedNotAbsorbed('ui-invariants-inherited');
+  });
+
+  test("exit 1 when 'theme-mode-persisted' (item D) breaks on the exempted app, and the floor does not absorb it", () => {
+    assertGradedNotAbsorbed('theme-mode-persisted');
+  });
+
+  // 🔴 THE TRADE A COUNT CANNOT SEE. One ordinary property FIXED and one DoD-bound
+  // property BROKEN in the same change: FLOOR groups hidden in all, so a guard that
+  // only counts sits exactly on its floor and exits 0. Measured: with limb (4)
+  // switched off in the real guard (`bound = null`), this case is the one that
+  // stays green while the DoD row it breaks still reads "held".
+  test('exit 1 on the TRADE: one chassis property fixed, one DoD-bound property broken', () => {
+    const { code, out } = run({ missingGroups: FLOOR - 1, hide: ['ui-invariants-inherited'] });
+    assert.equal(code, 1, out);
+    assert.match(out, /property 'ui-invariants-inherited' is NOT asserted in .* EXEMPT FROM THE CHASSIS, NOT FROM THE DoD/);
+  });
+
+  test('exit 1 when a register row names this guard with no `restsOn`', () => {
+    const reg = JSON.parse(PRISTINE_REGISTER);
+    const row = reg.items.find((i) => i.id === 'D');
+    assert.ok(row && row.check === 'assert-stamp-properties.mjs', 'item D no longer names this guard — re-point this case');
+    delete row.restsOn;
+    const { code, out } = run({ missingGroups: FLOOR, register: JSON.stringify(reg) });
+    assert.equal(code, 1, out);
+    assert.match(out, /tooling\/dod-register\.json item D \(Dark mode, persisted\) names assert-stamp-properties\.mjs as its enforcement and carries no `restsOn`/);
+  });
+
+  test('exit 1 when a register row rests on a key nothing audits', () => {
+    const reg = JSON.parse(PRISTINE_REGISTER);
+    reg.items.find((i) => i.id === 'C').restsOn = ['five-window-classes'];
+    const { code, out } = run({ missingGroups: FLOOR, register: JSON.stringify(reg) });
+    assert.equal(code, 1, out);
+    assert.match(out, /item C rests on property 'five-window-classes', which is not a key of REQUIRED_COVERAGE/);
+  });
+
+  test('exit 2 when the register is gone — graded on nothing is not a pass', () => {
+    const { code, out } = run({ missingGroups: FLOOR, register: null });
+    assert.equal(code, 2, out);
+    assert.match(out, /COVERAGE LOST — tooling\/dod-register\.json could not be read/);
+  });
+
+  // The measurability gate holds for limb (4) too: a tree whose exempted app is
+  // not the package (every guards.test.mjs fixture) grades nothing and needs no
+  // register — pinned, so the gate cannot be widened into a skip by accident.
+  test('a non-package exempted app is not graded, and needs no register', () => {
+    const { code, out } = run({ missingGroups: 0, exemptHasPubspec: false, register: null });
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /GRADED, though exempt|dod-register/, out);
   });
 });
 

@@ -966,9 +966,22 @@ const REQUIRED_COVERAGE = [
     // Read off the per-root line: "26 of 44 reachable surface(s) carry an a11y
     // sweep, from 14 a11y test file(s) across 28 case(s)".
     //   surfaces  43 → 44
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-11): the SIXTEEN printed-unswept
+    // surfaces the app or its chassis screens MOUNT arrived swept, by
+    // a11y_mounted_surfaces_test.dart (eleven case bodies) and
+    // a11y_two_pane_test.dart (one), each looped over both schemes. Two
+    // files, not one, because only the two-pane case pins a window size — see
+    // that file's header for why the others must not. `NavShell` is the one
+    // left printed: nothing under apps/subscriptiontracker/lib or
+    // packages/chassis_screens/lib mounts it. Read off the per-root line: "42
+    // of 44 reachable surface(s) carry an a11y sweep, from 16 a11y test
+    // file(s) across 40 case(s)".
+    //   surfaces  44 → 44 (SwallowSystemBack stays unswept: it paints nothing)
+    //   a11yFiles 14 → 16
+    //   cases     28 → 40
     surfaces: 44,
-    a11yFiles: 14,
-    cases: 28,
+    a11yFiles: 16,
+    cases: 40,
     label:
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
@@ -1230,6 +1243,27 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
       'packages/design_system/lib/src/widgets/auth_frame.dart#AuthMessage',
       'packages/design_system/lib/src/widgets/auth_frame.dart#AuthOrDivider',
       'packages/design_system/lib/src/widgets/auth_frame.dart#AuthPasswordChecklist',
+      // ⏱ 2026-10-01 · train P39 (SYN-X1 C-11): every printed-unswept surface
+      // the app or its chassis screens mount, in the same change as their
+      // sweep (a11y_mounted_surfaces_test.dart, a11y_two_pane_test.dart).
+      // `NavShell` is NOT here: it is
+      // mounted by nothing and stays on the printed list.
+      'packages/design_system/lib/src/widgets/brand_lockup.dart#BrandFooter',
+      'packages/design_system/lib/src/widgets/brand_lockup.dart#BrandWordmark',
+      'packages/design_system/lib/src/widgets/content_pane.dart#ContentPane',
+      'packages/design_system/lib/src/widgets/destructive_confirm_dialog.dart#DestructiveConfirmDialog',
+      'packages/design_system/lib/src/widgets/destructive_outcome_notice.dart#DestructiveOutcomeNotice',
+      'packages/design_system/lib/src/widgets/focusable_tap.dart#FocusableTap',
+      'packages/design_system/lib/src/widgets/force_update_gate.dart#ForceUpdateGate',
+      'packages/design_system/lib/src/widgets/paywall_gate.dart#PaywallGate',
+      'packages/design_system/lib/src/widgets/promo_card.dart#PromoCard',
+      'packages/design_system/lib/src/widgets/promo_objection_control.dart#PromoObjectionControl',
+      'packages/design_system/lib/src/widgets/promo_surface.dart#PromoSurface',
+      'packages/design_system/lib/src/widgets/system_screens.dart#AppErrorScreen',
+      'packages/design_system/lib/src/widgets/system_screens.dart#NotFoundScreen',
+      'packages/design_system/lib/src/widgets/system_screens.dart#OfflineNotice',
+      'packages/design_system/lib/src/widgets/two_pane.dart#TwoPane',
+      'packages/design_system/lib/src/widgets/two_pane.dart#TwoPanePlaceholder',
     ]),
   ],
 ]);

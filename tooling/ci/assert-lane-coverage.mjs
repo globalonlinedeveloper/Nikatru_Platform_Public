@@ -38,6 +38,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import { workerSet } from './worker-set.mjs';
+import { siteSet } from './site-set.mjs';
 const repoRoot = process.argv[2] ?? process.cwd();
 
 /** Below this, the scan itself is broken rather than the tree being empty. */
@@ -248,6 +249,18 @@ const hasWorkerLane = workflowTexts.some(
 );
 const workerDirs = new Set((workerSet(repoRoot)?.workers ?? []).map((w) => `services/${w}`));
 
+// THE SAME PAIR FOR SITES (O-SITE-SET-HAND-LISTED, rv2-newproduct-017). ci.yml named
+// each site directory on check-site-integrity.mjs's run line, and a site typed nowhere
+// was claimed by nothing. That run line now passes the set tooling/ci/site-set.mjs
+// reads, so a site unit is also claimed when a workflow assigns that set and hands it
+// to check-site-integrity.mjs on the next line (whole lines, comments stripped), and
+// the unit's directory is in the set site-set.mjs reads. Delete either line, or hand
+// the set to some other script, and every site named nowhere else goes unclaimed.
+const hasSiteLane = workflowTexts.some((t) =>
+  /^[ \t]*sites=\$\(node tooling\/ci\/site-set\.mjs --emit\)[ \t]*\n[ \t]*node tooling\/ci\/check-site-integrity\.mjs \. \$sites[ \t]*$/m.test(t),
+);
+const siteDirs = new Set((siteSet(repoRoot)?.sites ?? []).map((s) => `sites/${s}`));
+
 /** The tool id, which is what discover.mjs emits and the catalogue keys on. */
 function toolId(unitPath) {
   const f = join(repoRoot, unitPath, 'tool.json');
@@ -270,6 +283,7 @@ function isClaimed(unit) {
     return id !== null && catalogSlugs.has(id) && hasExtensionLane;
   }
   if (unit.type === 'worker' && hasWorkerLane && workerDirs.has(unit.path)) return true;
+  if (unit.type === 'site' && hasSiteLane && siteDirs.has(unit.path)) return true;
   return workflowText.includes(unit.path);
 }
 

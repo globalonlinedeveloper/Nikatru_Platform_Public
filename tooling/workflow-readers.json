@@ -320,6 +320,16 @@
       "property": "workflow-scan"
     },
     {
+      "path": "tooling/kit/product-steps/crash-sink.mjs",
+      "property": "workflow-scan",
+      "reads": "deploy-workers.yml's on.workflow_call.secrets, to say whether a deploy delivers an app or service Worker's dsnSecret (new-product.mjs's crash sink step)"
+    },
+    {
+      "path": "tooling/kit/product-steps/site-deploy.mjs",
+      "property": "workflow-scan",
+      "reads": "every deploy-*.yml, for a line naming sites/<id>, to say whether a workflow deploys a site (new-product.mjs's site deploy step)"
+    },
+    {
       "path": "tooling/ops/check-pages-deployments.mjs",
       "property": "workflow-scan",
       "reads": "the environment deploy-web.yml hands plan-deploy.mjs (its lane-map.json deploy unit), each job's timeout-minutes and a site job's --project-name, to derive a direct-upload Pages project, its expected commit and its deploy-lane window"

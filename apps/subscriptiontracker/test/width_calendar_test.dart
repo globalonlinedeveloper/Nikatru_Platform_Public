@@ -268,6 +268,25 @@ void main() {
       );
     });
 
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): the EXPANDED class. 1024 is
+    // above the 840 split, so the screen is already two columns, and neither
+    // column may outgrow the cap it holds at 1280.
+    testWidgets('at 1024 (expanded) it is already two capped columns', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, kExpanded, const CalendarScreen());
+      expect(dayPane(), findsOneWidget);
+      expect(
+        offeredWidth(tester, inPaneOf(gridPane(), ListView)),
+        lessThanOrEqualTo(AppBreakpoints.pane),
+      );
+      expect(
+        offeredWidth(tester, inPaneOf(dayPane(), ListView)),
+        lessThanOrEqualTo(AppBreakpoints.reading),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('at 1920 neither column grows — the leftover is split', (
       WidgetTester tester,
     ) async {
