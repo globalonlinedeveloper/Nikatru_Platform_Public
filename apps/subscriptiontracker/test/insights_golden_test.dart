@@ -289,7 +289,9 @@ void main() {
     testWidgets('Insights · converted · compact · ${b.name}', (
       WidgetTester tester,
     ) async {
-      final DateTime now = DateTime.now();
+      // The screen reads the pinned [_kNow] (header); so must these rows, or
+      // "in 5 days" is a month away from the screen's today.
+      final DateTime now = _kNow;
       await _pump(
         tester,
         _classes['compact']!,
