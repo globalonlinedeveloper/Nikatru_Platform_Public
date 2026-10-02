@@ -343,9 +343,41 @@
         },
         "android-play/tablet": {
           "calibration": "tooling/ci/test/fixtures/store-ink-calibration/android-play-tablet"
+        },
+        "_why": [
+          "⏱ 2026-10-01 (O-STORE-SCREENSHOTS): the five classes below land BEFORE their frames, because each capture job in store-screenshots.yml runs assert-listing-assets right after it captures and a frame with no class is COVERAGE LOST. Their calibration frames are made by `node tooling/store/capture-ink-calibration.mjs --class <key>` from the live signed-out web app at each class's own geometry. Measured 2026-10-01: with no font the app throws on its sign-in page (\"Null check operator used on a null value\") and paints a blank field, so those pairs are dropped and each set holds the four that render in both modes, the consent prompt and the three onboarding pages (the committed frames were captured 2026-10-02 with Chrome on Windows: iphone separation 11.29x, ipad 11.05x, desktop 11.05x); the guard checks every declared class's calibration set on every run, frames or none, so a class that cannot calibrate is caught here and not by the first capture.",
+          "The three desktop classes share ONE directory: all three capture 1280x800 at DPR 2, and a calibration set is a property of the geometry, not of the store that shows the frames. capture-ink-calibration.mjs refuses a shared directory whose classes disagree on geometry."
+        ],
+        "ios-appstore/iphone": {
+          "calibration": "tooling/ci/test/fixtures/store-ink-calibration/ios-appstore-iphone"
+        },
+        "ios-appstore/ipad": {
+          "calibration": "tooling/ci/test/fixtures/store-ink-calibration/ios-appstore-ipad"
+        },
+        "macos-appstore/desktop": {
+          "calibration": "tooling/ci/test/fixtures/store-ink-calibration/desktop-1280x800-dpr2"
+        },
+        "windows-store/desktop": {
+          "calibration": "tooling/ci/test/fixtures/store-ink-calibration/desktop-1280x800-dpr2"
+        },
+        "linux-snap/desktop": {
+          "calibration": "tooling/ci/test/fixtures/store-ink-calibration/desktop-1280x800-dpr2"
         }
       },
       "source": "Measured 2026-09-24 at Public main 7dd09500 by tooling/store/frame-ink.mjs (metric local-contrast-ink-v1, per-channel delta 24, 9x9 glyph filter) with areaDownscale and removedInkRunMedian, over the committed Play frames, the committed e2e fixtures (tooling/ci/test/fixtures/frames-ink-2026-09-23/) and each class's calibration directory. The floor is not written here: tooling/ci/assert-listing-assets.mjs computes it on every run. Row O-STORE-INK-FLOOR-HAND-PASTED; it replaces the per-frame inkFloor of row O-STORE-FRAMES-CARRY-NO-TEXT."
+    },
+    "screenProvenance": {
+      "_why": [
+        "🔴 A STORE SET SHOWS THE COMMIT IT PHOTOGRAPHED, AND A SUBMISSION REFUSES ONE WHOSE SCREENS MOVED SINCE (2026-10-01, row O-STORE-SCREENSHOTS). The Play sets captured 2026-09-22 passed every guard after #1061 aa1fa424, 35da94b2 and b1f933ef redrew the four screens they show, because CAPTURE.json named no commit.",
+        "tooling/store/capture-play-screenshots.mjs writes `capturedSha` (GITHUB_SHA in CI, HEAD off it) and `capturedAt` into every CAPTURE.json; `node tooling/ci/assert-listing-assets.mjs --for-submission [--channel <id>]` refuses a set with no capturedSha, or one where any watched path differs between capturedSha and HEAD. tooling/store/capture-provenance.mjs owns both halves.",
+        "THE WATCHED PATHS are each frame's screen DIRECTORY (resolved through tooling/store/capture-suite-scan.mjs from the `find.byType` above each capture) plus `alsoWatched` below: the shared widgets every screen composes, the strings every screen prints, and the design system every screen paints with. b1f933ef touched ONLY packages/design_system/lib, so a list without it would have read the 2026-09-22 sets fresh."
+      ],
+      "alsoWatched": [
+        "apps/{app}/lib/features/shared",
+        "apps/{app}/lib/l10n",
+        "packages/design_system/lib"
+      ],
+      "source": "Chosen 2026-10-01 from the paths the three redesign commits touched (git show --stat aa1fa424 35da94b2 b1f933ef): every one of them lands under a frame's feature folder, apps/{app}/lib/features/shared or packages/design_system/lib. lib/l10n is added because a frame prints its strings."
     },
     "perChannel": {
       "_why": [
@@ -4210,7 +4242,9 @@
       "name": "Edge shield Worker (in front of Box B and Box C)",
       "url": "https://auth-api.nikatru.com",
       "source": "services/edge-shield",
-      "notes": "NOT app-scoped and mounts no route: bound by zone routes on auth-api.nikatru.com/auth/v1/* and glitchtip.nikatru.com/api/* (LEAD RULING SHIELD-R1). `url` is the first host it fronts. It has no /v1/health: its deploy smoke is tooling/ops/check-edge-shield.mjs --settle, so rollback.mjs's service smoke does not fit it — a rollback of it through rollback.yml re-promotes the version and then FAILS that smoke (rv-c21 SHIELD-F6; a per-unit smoke is a follow-up the Private pass records as a row). Until then the bypass is: delete its two zone routes on nikatru.com (the origins answer directly again, exactly as before the shield), or `wrangler rollback` from services/edge-shield. Deploying it also applies the zone's per-IP credential rule (tooling/edge-ratelimit-rule.json, LEAD RULING SHIELD-R3), which a Worker rollback does not touch. Deployed by .github/workflows/deploy-workers.yml."
+      "_rollbackSmokeWhy": "⏱ 2026-10-01 · PB-08, row O-EDGE-SHIELD-ROLLBACK-SMOKE-MISFIT. It has no /v1/health, so rollback.mjs's service smoke (a `build` field) cannot ask it anything. `rollbackSmoke` is THIS unit's own deploy smoke, read by rollback.mjs in place of its kind's and run by rollback.yml: both routes must answer x-nikatru-shield with the RECORDED SHA, which the re-promoted version echoes because a Worker version keeps the RELEASE var it was deployed with. `{sha}` and `{url}` are the ledger Deployment's commit and environment URL.",
+      "rollbackSmoke": { "script": "tooling/ops/check-edge-shield.mjs", "args": ["--settle", "--expect-release", "{sha}"] },
+      "notes": "NOT app-scoped and mounts no route: bound by zone routes on auth-api.nikatru.com/auth/v1/* and glitchtip.nikatru.com/api/* (LEAD RULING SHIELD-R1). `url` is the first host it fronts. It has no /v1/health: its deploy smoke is tooling/ops/check-edge-shield.mjs --settle --expect-release <sha>, and since 2026-10-01 (PB-08) rollback.yml runs that same smoke for it, from `rollbackSmoke` above, so a rollback through the lane is judged the way its deploy is. The bypass, should the lane itself be down: delete its two zone routes on nikatru.com (the origins answer directly again, exactly as before the shield), or `wrangler rollback` from services/edge-shield. Deploying it also applies the zone's per-IP credential rule (tooling/edge-ratelimit-rule.json, LEAD RULING SHIELD-R3), which a Worker rollback does not touch. Deployed by .github/workflows/deploy-workers.yml."
     }
   ],
   "_siteEnvironmentsWhy": [
@@ -4219,7 +4253,12 @@
     "release channel (no `{app}` in it, no store) and it is not a Worker: rollback.mjs reads a service row's",
     "`source` as the directory it runs `wrangler rollback` from. So it gets a list of its own, matched",
     "exactly by resolveEnvironment in tooling/ci/deployment-record.mjs, and `kind: \"site\"`, which",
-    "record-deployment.mjs gives no published-id flag and rollback.mjs refuses by kind."
+    "record-deployment.mjs gives no published-id flag and rollback.mjs refuses by kind.",
+    "",
+    "⏱ 2026-10-01 · PB-07, row O-APEX-SITE-HAS-NO-ROLLBACK. The last sentence above is history: the `site` job",
+    "records the Pages deployment it published (`--pages-deployment-id`), and rollback.mjs re-promotes a",
+    "`kind: \"site\"` row's deployment on the Direct Upload project its `pagesProject` names, then runs the",
+    "site's own deploy smoke. The paused Git project `nikatru` stops being the apex's only way back."
   ],
   "siteEnvironments": [
     {
@@ -4229,7 +4268,8 @@
       "name": "Apex site (sites/nikatru) and its Pages Functions",
       "url": "https://nikatru-apex.pages.dev",
       "source": "sites/nikatru",
-      "notes": "Direct Upload Pages project nikatru-apex, deployed by the `site` job of .github/workflows/deploy-web.yml. nikatru.com still serves the Git-connected project `nikatru` until the owner moves the custom domain (D3b)."
+      "pagesProject": "nikatru-apex",
+      "notes": "Direct Upload Pages project nikatru-apex, deployed by the `site` job of .github/workflows/deploy-web.yml, which serves nikatru.com since the owner moved the custom domain (D3b, 2026-09-26). The Git-connected project `nikatru` is paused and kept for rollback only (tooling/ops/pages-rollback-only.json). Re-promoted by .github/workflows/rollback.yml (unit nikatru-site) on `pagesProject`, and judged by the site's own deploy smoke."
     }
   ],
   "nonChannelSigningIdentities": [

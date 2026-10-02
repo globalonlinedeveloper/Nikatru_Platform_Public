@@ -637,16 +637,17 @@ describe('§A9 — a post-gate job runs only after its aggregator, and only on a
   };
   const withIf = (cond) => POST_GATE.map((l) => (l.startsWith('    if:') ? `    if: ${cond}` : l));
 
-  test('the real tree: ci.yml deploy-web and deploy-workers are the post-gate jobs, and their callees carry no job-level `if:`', () => {
+  // ⏱ 2026-10-01 · PB-03: platform-db-migrate is the third, and both deploys need it.
+  test('the real tree: ci.yml platform-db-migrate, deploy-web and deploy-workers are the post-gate jobs, and their callees carry no job-level `if:`', () => {
     const r = run(REPO);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /, 2 post-gate job\(s\) run only after their aggregator on a push to main, 2 of 2 post-gate callee\(s\) with no job-level `if:`/);
+    assert.match(r.out, /, 3 post-gate job\(s\) run only after their aggregator on a push to main, 3 of 3 post-gate callee\(s\) with no job-level `if:`/);
   });
 
   test('a post-gate job with the exact `if:` is green, and it gates its callee', () => {
     const r = run(withDeployX(POST_GATE));
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /, 3 post-gate job\(s\) run only after their aggregator on a push to main, 3 of 3 post-gate callee\(s\) with no job-level `if:`/);
+    assert.match(r.out, /, 4 post-gate job\(s\) run only after their aggregator on a push to main, 4 of 4 post-gate callee\(s\) with no job-level `if:`/);
     assert.match(r.out, /, (\d+) of \1 ending in one always-run verdict job over every other job/);
   });
 

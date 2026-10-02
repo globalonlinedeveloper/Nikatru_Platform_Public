@@ -617,19 +617,41 @@ const WIRE_CONTRACTS = [
   // be live first. `absentFromDart` keeps each claim checked — the day that PR
   // builds one of these paths, the gap becomes a false statement and this fails,
   // which is exactly when its wire contract has to be pinned.
+  // ⏱ 2026-10-01 · train ST-SETTINGS (SE-03) — the client arrived
+  // (packages/api_client DioSessionsTransport, read by core
+  // DeviceSession.tryParse, drawn by the chassis DevicesSection), so the list
+  // and the one-session revoke are PINNED. The two POSTs stay gaps: still no
+  // client builds their paths (revoke-all is gotrue's global sign-out).
   {
     id: 'sessions-list',
-    kind: 'gap',
-    reason:
-      'NO CLIENT YET, AND IT IS A STATE RATHER THAN A CONSTRUCTION: the sessions list ships in the web PR after this Worker deploys. There is no released client of ours to break. The answer is `{sessions:[{id, current, createdAt, lastActiveAt, device}]}`, pinned by services/platform/test/sessions.test.ts until a client reads it.',
-    absentFromDart: '/v1/sessions',
+    kind: 'body',
+    server: 'services/platform/src/routes/sessions.ts',
+    client: {
+      file: 'packages/api_client/lib/src/dio_sessions_transport.dart',
+      member: 'static core.Result<List<core.DeviceSession>> _sessions(',
+      reader: 'body',
+    },
+    requiredBoth: ['sessions'],
+    clientOnly: {},
+    serverOnly: {
+      d1Pending:
+        'NOT THIS ROUTE\'S ANSWER: sessions.ts also serves POST /v1/sessions/revoke-all, whose 200 {d1Pending: true} (EXA-11) is read off the same file. That route has no Dart client (sessions-revoke-all, a gap below); the list never sends it.',
+    },
   },
   {
     id: 'sessions-revoke',
-    kind: 'gap',
-    reason:
-      'NO CLIENT YET: requestSessionRevocation ships in the web PR after this Worker deploys. Success is a 204 with no body; each refusal is a status with `{error}` (404 not_found, 409 current_session, 429 rate_limited, 503 sessions_unavailable), so what that PR pins is the status set.',
-    absentFromDart: '/v1/sessions/',
+    kind: 'status',
+    servers: ['services/platform/src/routes/sessions.ts'],
+    client: {
+      file: 'packages/core/lib/src/sessions_transport.dart',
+      member: 'static SessionRevokeOutcome forStatus(',
+    },
+    /** THE FLOOR. 404 is "already signed out", which the list must treat as
+     *  done rather than as a failure; 409 is the caller's own session, which
+     *  is "Log out", never a by-id revoke. */
+    mustMap: [404, 409, 429, 503],
+    bodyIsNotTheContract:
+      'DioSessionsTransport.revoke reads only the status — success is a 204 with no body and every refusal is `{error}` beside a literal status — so the STATUS SET is the contract, as for account deletion.',
   },
   {
     id: 'sessions-revoke-all',
@@ -1874,7 +1896,10 @@ for (const { id, dir } of APP_SET) {
     );
   }
 }
-const serverFilesOf = (contract) => appWorkers.map((w) => `${w}/${contract.appServer.under}`);
+// A status route served by the platform Worker ALONE (sessions-revoke) declares
+// no `appServer`; its `servers` are then the whole set. ⏱ 2026-10-01 · SE-03.
+const serverFilesOf = (contract) =>
+  contract.appServer ? appWorkers.map((w) => `${w}/${contract.appServer.under}`) : [];
 
 /** A keyed pin lives under its app's directory; an unkeyed one is repo-relative. */
 const pinPath = (pin) => (pin.app ? `apps/${pin.app}/${pin.file}` : pin.file);

@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseArgs, feeFor, webhook, channelsChanging, storeBilledRails } from '../../ops/port-switch.mjs';
+import { parseArgs, feeFor, webhook, channelsChanging, storeBilledRails, canMoveTo, margin } from '../../ops/port-switch.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..', '..');
@@ -202,8 +202,13 @@ describe('port-switch — margin over a copy of the REAL registers', () => {
     const onWeb = feeFor(paddle, 'paddle', 599, cells);
     const onStore = feeFor(rc, 'paddle', 599, cells);
     assert.ok(onStore.fee.percentBps > onWeb.fee.percentBps, 'a store aggregator costs more than the web rail');
-    const lower = run(['payments', '--to', 'revenuecat', '--from', 'paddle', '--dry-run', '--root', root]);
-    assert.match(lower.out, /C8 margin: \d+ of \d+ net\(s\) FALL .* the switch's ADR must say why/);
+    // A WEB rail that charges a store's rate: the web channels may move to it (same billing kind),
+    // and every net falls. (#1127 re-review, nit A: revenuecat, a store biller, can no longer take
+    // the web channels, so it is not the example any more.)
+    const dear = { id: 'dear-web', capabilities: ['verify', 'checkout'], cost: { feeCells: ['apple-iap-standard'], unit: null } };
+    const lower = margin(root, doc, dear, [paddle]);
+    assert.equal(lower.verdict, 'PASS');
+    assert.match(lower.detail, /^\d+ of \d+ net\(s\) FALL .* the switch's ADR must say why$/);
   });
   it('red: a fee cell deleted from the register is LOST (exit 2), never a pass', () => {
     const rel = join(root, 'tooling/catalog/fee-register.json');
@@ -279,6 +284,27 @@ describe('port-switch — the payments additions over a copy of the REAL registe
     assert.match(c11, /3 store-billed channel\(s\) stay on their store's billing, which `razorpay` cannot take/);
     assert.match(r.out, /^PASS  C8 margin: \d+ net\(s\)/m, 'the per-channel net per price, current against target');
     assert.match(r.out, /^ {4}web \(paddle\): paddle → razorpay$/m);
+  });
+  // #1127 re-review, nit A: the move rule is SYMMETRIC. A store aggregator cannot bill a web page,
+  // so --to revenuecat lists no web, desktop or extension channel, and C8 nets none of them.
+  it('red: --to revenuecat moves no web-billed channel (web, desktop or extension), and C8 nets none', () => {
+    const r = run(['payments', '--to', 'revenuecat', '--dry-run', '--root', root]);
+    const c11 = r.out.split('\n').find((l) => /C11 channels/.test(l)) ?? '';
+    for (const ch of ['web', 'windows-store', 'windows-direct', 'linux-snap', 'linux-appimage', 'chrome-webstore', 'edge-addons', 'amo']) {
+      assert.doesNotMatch(c11, new RegExp(`(?:: |, )${ch} \\([a-z-]+ → revenuecat\\)`), `${ch} is billed on the web`);
+      assert.doesNotMatch(r.out, new RegExp(`^ {4}${ch} \\(`, 'm'), `C8 nets nothing for ${ch}`);
+    }
+    assert.match(c11, /^PASS  C11 channels: no channel's purchaseRail changes; 8 web-billed channel\(s\) stay on a web rail, which `revenuecat` \(a store biller\) cannot take: web \(paddle\)/);
+    assert.match(r.out, /^PASS  C8 margin: no channel served by paddle, razorpay would change rail; no net moves$/m);
+  });
+  it('the move rule is one predicate, both ways: kind in, kind out', () => {
+    const stores = new Set(['play-billing', 'apple-iap']);
+    const storeBiller = { capabilities: ['verify', 'cancel-store'] };
+    const webRail = { capabilities: ['verify', 'checkout', 'cancel'] };
+    assert.equal(canMoveTo('play-billing', storeBiller, stores), true);
+    assert.equal(canMoveTo('play-billing', webRail, stores), false);
+    assert.equal(canMoveTo('paddle', webRail, stores), true);
+    assert.equal(canMoveTo('paddle', storeBiller, stores), false, 'a web channel never moves to a store biller');
   });
   it('green control: a store-billing target CAN take a store-billed channel (the rule is derived, not a name list)', () => {
     const doc = JSON.parse(readFileSync(join(root, 'tooling/ports/payments.json'), 'utf8'));

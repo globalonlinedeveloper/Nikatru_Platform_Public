@@ -8,9 +8,12 @@
 // channels — so they stay app-side; the mechanisms under them (the seam, the
 // transport, the link policy) are packages every app gets.
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart' show StateProvider;
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_notifications/nikatru_notifications.dart'
     show ExactAlarmAccess;
@@ -137,8 +140,31 @@ String _time(BuildContext context, int minuteOfDay) =>
       alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
     );
 
+/// Whether this account's E-MAIL reminders are on, as the platform last
+/// answered — written by [ReminderChannelsCard] after a read or a write,
+/// read by [ReminderRuleRows] so the ONE "Remind me" row is offered whenever
+/// any channel uses it (SE-09). False until the platform has answered.
+///
+/// It belongs to the ACCOUNT, so it starts over whenever the signed-in account
+/// changes: a sign-out must not leave the last account's e-mail answer
+/// offering the "Remind me" row to nobody.
+final StateProvider<bool> emailRemindersOnProvider = StateProvider<bool>((ref) {
+  ref.watch(
+    authUserProvider.select((AsyncValue<core.AuthUser?> u) => u.value?.id),
+  );
+  return false;
+});
+
 /// ST-R3 (audit C26): the default lead and the time of day, under "Renewal
 /// alerts" while it is ON on a target that can schedule.
+///
+/// ⏱ 2026-10-01 · train ST-SETTINGS (SE-09): THE ONE "Remind me" ROW. The
+/// e-mail card used to draw a second row with the same title for the
+/// server's own lead, so a person who set "3 days" in one place got e-mails
+/// on another schedule. Now this row is the account's lead for every
+/// channel: the e-mail card follows it ([ReminderChannelsCard] writes it to
+/// the platform), and the row is offered when local alerts can fire OR when
+/// e-mail reminders are on — the web, where nothing local can, included.
 class ReminderRuleRows extends ConsumerWidget {
   const ReminderRuleRows({super.key});
 
@@ -149,10 +175,12 @@ class ReminderRuleRows extends ConsumerWidget {
         .watch(renewalRemindersProvider)
         .capabilities
         .canSchedule;
+    final bool local = deliverable && (s.prefs['alerts'] ?? false);
     // NO-12 / NO-13: the tools rows follow the rules on both paths, mounted
     // from here so settings_screen.dart, a chassis fork at its ceiling, does
-    // not grow by them.
-    if (!deliverable || !(s.prefs['alerts'] ?? false)) {
+    // not grow by them. SE-09: the one "Remind me" row is drawn when local
+    // alerts can fire OR e-mail reminders are on; otherwise only the tools.
+    if (!local && !ref.watch(emailRemindersOnProvider)) {
       return const ReminderToolsRows();
     }
     final AppLocalizations l10n = AppLocalizations.of(context);
@@ -176,23 +204,24 @@ class ReminderRuleRows extends ConsumerWidget {
               if (d != null) await c.setReminderLead(d);
             },
           ),
-          ListTile(
-            key: const Key('settings.reminder.time'),
-            leading: const Icon(Icons.schedule),
-            title: Text(l10n.reminderTimeTitle),
-            subtitle: Text(_time(context, s.reminderMinuteOfDay)),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () async {
-              final TimeOfDay? t = await showTimePicker(
-                context: context,
-                initialTime: TimeOfDay(
-                  hour: s.reminderMinuteOfDay ~/ 60,
-                  minute: s.reminderMinuteOfDay % 60,
-                ),
-              );
-              if (t != null) await c.setReminderTime(t.hour, t.minute);
-            },
-          ),
+          if (local)
+            ListTile(
+              key: const Key('settings.reminder.time'),
+              leading: const Icon(Icons.schedule),
+              title: Text(l10n.reminderTimeTitle),
+              subtitle: Text(_time(context, s.reminderMinuteOfDay)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                final TimeOfDay? t = await showTimePicker(
+                  context: context,
+                  initialTime: TimeOfDay(
+                    hour: s.reminderMinuteOfDay ~/ 60,
+                    minute: s.reminderMinuteOfDay % 60,
+                  ),
+                );
+                if (t != null) await c.setReminderTime(t.hour, t.minute);
+              },
+            ),
           const ReminderToolsRows(),
         ],
       ),
@@ -386,7 +415,11 @@ class ReminderSyncBanner extends ConsumerWidget {
 /// reminders that reach EVERY target, web included, because the platform
 /// Worker sends them. Shown to a signed-in account on a live backend only.
 class ReminderChannelsCard extends ConsumerStatefulWidget {
-  const ReminderChannelsCard({super.key});
+  const ReminderChannelsCard({this.embedded = false, super.key});
+
+  /// SE-09: drawn as rows inside the caller's Reminders card rather than as a
+  /// card of its own — Settings has ONE Reminders section.
+  final bool embedded;
 
   @override
   ConsumerState<ReminderChannelsCard> createState() =>
@@ -416,6 +449,22 @@ class _ReminderChannelsCardState extends ConsumerState<ReminderChannelsCard> {
           ? r.value
           : core.ReminderPrefs.defaults,
     );
+    _publish();
+    _reconcile();
+  }
+
+  /// Tells [ReminderRuleRows] whether e-mail uses the one "Remind me" row.
+  void _publish() {
+    if (!mounted) return;
+    ref.read(emailRemindersOnProvider.notifier).state =
+        _prefs?.emailOptIn ?? false;
+  }
+
+  /// The account's lead, as the platform may hold it — null when the local
+  /// choice is outside the platform's range, which then keeps its own.
+  int? _accountLead() {
+    final int lead = ref.read(settingsControllerProvider).reminderLeadDays;
+    return core.ReminderPrefs.isValidLead(lead) ? lead : null;
   }
 
   /// Every call goes through here: one at a time, and a failure is SAID.
@@ -450,7 +499,25 @@ class _ReminderChannelsCardState extends ConsumerState<ReminderChannelsCard> {
     );
     if (r is core.Ok<core.ReminderPrefs> && mounted) {
       setState(() => _prefs = r.value);
+      _publish();
+      _reconcile(sent: leadDays);
     }
+  }
+
+  /// ⏱ review of #1129, finding 6 — ONE schedule for every channel, kept so:
+  /// after each read and each write the platform's lead is brought to the one
+  /// "Remind me" row's. A change made while a write was in flight (dropped by
+  /// [_run]) and a lead set before SE-09 both converge. Not when the platform
+  /// just answered another number for the lead it was SENT — it keeps its own
+  /// range, and insisting would loop.
+  void _reconcile({int? sent}) {
+    final core.ReminderPrefs? p = _prefs;
+    final int? lead = _accountLead();
+    if (p == null || !p.emailOptIn || lead == null || p.leadDays == lead) {
+      return;
+    }
+    if (sent != null && p.leadDays != sent) return;
+    unawaited(_write(leadDays: lead));
   }
 
   /// ⏱ T12 (CA-06): the SAME calls the calendar screen's feed controls make
@@ -492,61 +559,62 @@ class _ReminderChannelsCardState extends ConsumerState<ReminderChannelsCard> {
       return const SizedBox.shrink();
     }
     if (!_asked) _load();
+    // SE-09: the ONE "Remind me" row is the account's lead; when it changes
+    // and e-mail reminders are on, the platform is told the same number.
+    ref.listen<int>(
+      settingsControllerProvider.select(
+        (SettingsState s) => s.reminderLeadDays,
+      ),
+      (int? before, int now) {
+        final core.ReminderPrefs? p = _prefs;
+        final int? lead = _accountLead();
+        if (p != null && p.emailOptIn && lead != null && p.leadDays != lead) {
+          _write(leadDays: lead);
+        }
+      },
+    );
     final AppLocalizations l10n = AppLocalizations.of(context);
     final core.ReminderPrefs p = _prefs ?? core.ReminderPrefs.defaults;
+    final Widget rows = Material(
+      type: MaterialType.transparency,
+      child: Column(
+        children: <Widget>[
+          SwitchListTile.adaptive(
+            key: const Key('settings.reminder.email'),
+            title: Text(l10n.emailRemindersTitle),
+            subtitle: Text(
+              l10n.emailRemindersDesc(l10n.reminderLeadValue(p.leadDays)),
+            ),
+            value: p.emailOptIn,
+            // Switching e-mail ON sends the account's lead with it, so
+            // the two channels start on the one schedule.
+            onChanged: _prefs == null || _busy
+                ? null
+                : (bool on) => _write(
+                    emailOptIn: on,
+                    leadDays: on ? _accountLead() : null,
+                  ),
+          ),
+          ListTile(
+            key: const Key('settings.reminder.calendar'),
+            leading: const Icon(Icons.event_available_outlined),
+            title: Text(l10n.calendarAddTitle),
+            subtitle: Text(l10n.calendarAddDesc),
+            onTap: _busy ? null : _addToCalendar,
+          ),
+          ListTile(
+            key: const Key('settings.reminder.calendar.reset'),
+            leading: const Icon(Icons.link_off),
+            title: Text(l10n.calendarResetTitle),
+            onTap: _busy ? null : _reset,
+          ),
+        ],
+      ),
+    );
+    if (widget.embedded) return rows;
     return Padding(
       padding: const EdgeInsets.only(top: 12),
-      child: DecoratedBox(
-        decoration: cardDecoration(context),
-        child: Material(
-          type: MaterialType.transparency,
-          child: Column(
-            children: <Widget>[
-              SwitchListTile.adaptive(
-                key: const Key('settings.reminder.email'),
-                title: Text(l10n.emailRemindersTitle),
-                subtitle: Text(
-                  l10n.emailRemindersDesc(l10n.reminderLeadValue(p.leadDays)),
-                ),
-                value: p.emailOptIn,
-                onChanged: _prefs == null || _busy
-                    ? null
-                    : (bool on) => _write(emailOptIn: on),
-              ),
-              if (p.emailOptIn)
-                ListTile(
-                  key: const Key('settings.reminder.email.lead'),
-                  title: Text(l10n.reminderLeadTitle),
-                  subtitle: Text(l10n.reminderLeadValue(p.leadDays)),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _busy
-                      ? null
-                      : () async {
-                          final int? d = await chooseLeadDays(
-                            context,
-                            title: l10n.reminderLeadChooseTitle,
-                            current: p.leadDays,
-                          );
-                          if (d != null) await _write(leadDays: d);
-                        },
-                ),
-              ListTile(
-                key: const Key('settings.reminder.calendar'),
-                leading: const Icon(Icons.event_available_outlined),
-                title: Text(l10n.calendarAddTitle),
-                subtitle: Text(l10n.calendarAddDesc),
-                onTap: _busy ? null : _addToCalendar,
-              ),
-              ListTile(
-                key: const Key('settings.reminder.calendar.reset'),
-                leading: const Icon(Icons.link_off),
-                title: Text(l10n.calendarResetTitle),
-                onTap: _busy ? null : _reset,
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: DecoratedBox(decoration: cardDecoration(context), child: rows),
     );
   }
 }

@@ -38,6 +38,7 @@ import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart'
     show ChassisLocalizations;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
+import 'package:nikatru_purchases/testing.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/features/monetization/paywall_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
@@ -86,54 +87,19 @@ const core.AuthUser _buyer = core.AuthUser(
 const String _detail = 'engineering detail: try the web checkout';
 
 /// A store that sells one plan and answers the purchase sheet with [answer] —
-/// or, when [held] is set, keeps the sheet open until the test answers.
-class _FakeBridge implements IapBridge {
-  _FakeBridge(this.answer);
-
-  final IapPurchaseOutcome answer;
-  Completer<IapPurchaseResult>? held;
-  int purchases = 0;
-
-  @override
-  Future<bool> configure(IapBridgeConfig config) async => true;
-
-  @override
-  Future<bool> identify(String appUserId) async => true;
-
-  @override
-  Future<bool> logOut() async => true;
-
-  @override
-  Future<List<StorePlan>> storePlans() async => const <StorePlan>[
+/// or, when the test sets [FakeIapBridge.heldPurchase], keeps the sheet open
+/// until the test answers.
+FakeIapBridge _storeAnswering(IapPurchaseOutcome answer) => FakeIapBridge(
+  plans: const <StorePlan>[
     StorePlan(
       productId: 'pro_monthly',
       amountMinor: 599,
       currencyCode: 'USD',
       term: OfferingTerm.month,
     ),
-  ];
-
-  @override
-  Future<IapPurchaseResult> purchase(Offering offering) {
-    purchases++;
-    return held?.future ??
-        Future<IapPurchaseResult>.value(
-          IapPurchaseResult(answer, detail: _detail),
-        );
-  }
-
-  @override
-  Future<IapPurchaseResult> restore() async =>
-      const IapPurchaseResult(IapPurchaseOutcome.submitted);
-
-  @override
-  Future<IapCustomerState> currentCustomerState() async =>
-      IapCustomerState.unknown;
-
-  @override
-  Stream<IapCustomerState> get customerState =>
-      const Stream<IapCustomerState>.empty();
-}
+  ],
+  purchaseAnswer: IapPurchaseResult(answer, detail: _detail),
+);
 
 /// A rail that sells one plan and refuses every checkout with [reason], for
 /// the refusals no store answer produces. It is an [IdentifiesBuyer], like the
@@ -203,7 +169,7 @@ final core.AppConfig _selling = core.AppConfig(
 
 /// The app's own rail for [channel]: a store channel gets a key and [bridge];
 /// a hosted channel is keyless and never builds one.
-Override _realRail(String channel, [_FakeBridge? bridge]) =>
+Override _realRail(String channel, [FakeIapBridge? bridge]) =>
     purchaseRailProvider.overrideWith(
       (ref) => purchaseRailFor(
         ref,
@@ -326,13 +292,13 @@ void main() {
   group('R1 — each refusal goes where its route says', () {
     testWidgets('purchaseCancelled: a cancelled store sheet returns to the '
         'plans, and says nothing', (WidgetTester tester) async {
-      final _FakeBridge bridge = _FakeBridge(
+      final FakeIapBridge bridge = _storeAnswering(
         IapPurchaseOutcome.cancelledByUser,
       );
       await _pumpPaywall(tester, rail: _realRail('android-play', bridge));
       await buy(tester);
 
-      expect(bridge.purchases, 1, reason: 'the store sheet really ran');
+      expect(bridge.purchased.length, 1, reason: 'the store sheet really ran');
       expect(upgrade, findsOneWidget);
       expect(find.text(en.paywallUnavailable), findsNothing);
       expect(find.text(en.paywallRetryMessage), findsNothing);
@@ -342,11 +308,13 @@ void main() {
 
     testWidgets('channelNotPermitted: a store that refuses shows the '
         'unavailable sentence and Try again', (WidgetTester tester) async {
-      final _FakeBridge bridge = _FakeBridge(IapPurchaseOutcome.storeRefused);
+      final FakeIapBridge bridge = _storeAnswering(
+        IapPurchaseOutcome.storeRefused,
+      );
       await _pumpPaywall(tester, rail: _realRail('ios-appstore', bridge));
       await buy(tester);
 
-      expect(bridge.purchases, 1);
+      expect(bridge.purchased.length, 1);
       expectRefused(en.paywallUnavailable);
 
       await tester.tap(tryAgain);
@@ -356,11 +324,13 @@ void main() {
 
     testWidgets('couldNotOpen: a store that cannot be reached shows the retry '
         'sentence', (WidgetTester tester) async {
-      final _FakeBridge bridge = _FakeBridge(IapPurchaseOutcome.unavailable);
+      final FakeIapBridge bridge = _storeAnswering(
+        IapPurchaseOutcome.unavailable,
+      );
       await _pumpPaywall(tester, rail: _realRail('macos-appstore', bridge));
       await buy(tester);
 
-      expect(bridge.purchases, 1);
+      expect(bridge.purchased.length, 1);
       expectRefused(en.paywallRetryMessage);
     });
 
@@ -431,12 +401,17 @@ void main() {
       testWidgets('$channel says paywallOpeningStore', (
         WidgetTester tester,
       ) async {
-        final _FakeBridge bridge = _FakeBridge(IapPurchaseOutcome.submitted)
-          ..held = Completer<IapPurchaseResult>();
+        final FakeIapBridge bridge = _storeAnswering(
+          IapPurchaseOutcome.submitted,
+        )..heldPurchase = Completer<IapPurchaseResult>();
         await _pumpPaywall(tester, rail: _realRail(channel, bridge));
         await buy(tester);
 
-        expect(bridge.purchases, 1, reason: 'the sheet is open, and held');
+        expect(
+          bridge.purchased.length,
+          1,
+          reason: 'the sheet is open, and held',
+        );
         expect(find.text(en.paywallOpeningStore), findsOneWidget);
         expect(find.text(en.paywallOpeningHosted), findsNothing);
         expect(
@@ -444,7 +419,7 @@ void main() {
           findsNothing,
         );
 
-        bridge.held!.complete(
+        bridge.heldPurchase!.complete(
           const IapPurchaseResult(IapPurchaseOutcome.cancelledByUser),
         );
         await _settle(tester);

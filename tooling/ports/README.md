@@ -12,9 +12,23 @@ This file is normative and stands alone: later trains read the standard from her
 The first subjects, at their honest levels: `tooling/ports/payments.json` (both halves — `RailInbound`, which is
 [ADR 004]'s `MoRWebhookVerifier`, and `RailOutbound` — at L3 since port-pay-core), `tooling/ports/auth.json` (Dart
 `AuthRepository`) and `tooling/ports/telemetry.json` (Dart `TelemetryClient`), each claiming L2 with target L3; every
-other vendor is placed in `tooling/ports/_non-port.json`. `tooling/ports/mail.json` (TS `MailTransport`, port-mail) is at
+other vendor is placed in `tooling/ports/_non-port.json`. Payments also carries its CLIENT half (`client`: the Dart
+`PurchaseRail` and `IapBridge` seams, at L3 since port-pay-client). `tooling/ports/mail.json` (TS `MailTransport`, port-mail) is at
 L3 as well: Resend and a fake conformant, an Amazon SES draft passing the same suite to prove the port is not
 Resend-shaped.
+
+`tooling/ports/channels.json` (port-channels) is a port selected PER CHANNEL: one adapter per `kind: store` row of
+`tooling/channel-register.json`, each a `ChannelSubmitter` (`tooling/release/submit-common.mjs`: `validate` · `plan` ·
+`upload` · `status`) that passes `submitterConformance` dry, with no network
+(`tooling/release/test/submitters.contract.test.mjs`). Adding a store is a row, an adapter and a submitter —
+`node tooling/kit/new-channel.mjs --id <id> --dry-run` prints the three. Its switch is not a margin switch between
+rails: `port-switch.mjs`'s C8 has no fee model for moving a channel, and prints LOST rather than a guess.
+
+`tooling/ports/boxes.json` (port-boxes) makes each box an adapter: its declaration is `tooling/boxes/<box>.json`, its
+role is selected one box per role by `tooling/boxes/roles.json`, it is read back by
+`tooling/ops/check-box-declared.mjs` and its move is rehearsed by `tooling/ops/box-move.mjs --dry-run`, the box
+equivalent of §4's phase 3. Backup destinations and their restore drills are `tooling/boxes/backups.json` and
+`tooling/ops/restore-drill.mjs`.
 
 ## 1. Levels
 
@@ -38,9 +52,9 @@ wherever the shape can hold it).
 | `$schema` | `./port.schema.json`. |
 | `port` | The capability; equals the file name. |
 | `level.claimed` / `level.target` | 0–3. Claimed is checked against earned; target is where the trains are taking it. |
-| `interface.ts` / `interface.dart` | `{file, symbols}` — either or both. Each symbol must be **declared** in the file (comment-stripped). |
+| `interface.ts` / `interface.dart` / `interface.js` | `{file, symbols}` — at least one. Each symbol must be **declared** in the file (comment-stripped). `js` is a node module under `tooling/` for a port that is operated rather than imported (the boxes). |
 | `adapters[].id` | The wire id: the value the selection names and the code keys on. |
-| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. |
+| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. Two adapters of ONE port may share a vendor (two boxes at one provider); two ports may not. |
 | `adapters[].status` | `draft` · `built` · `live` · `standby` · `retired` · `fake` · `external`. |
 | `adapters[].impl` | `{file, symbol}`; for `external` (e.g. a self-hosted GoTrue configured by env) `{configAt, verify}`. |
 | `adapters[].outbound` | Optional `{file, symbol, modules}` — the adapter's outbound half (e.g. `RailOutbound`) and its further private modules. Limb 2 holds the symbol declared; limb 4 protects `file` and every `modules` path exactly as it protects `impl.file`. |
@@ -53,6 +67,8 @@ wherever the shape can hold it).
 | `adapters[].exportDuty` | What leaves with us, what must be exported, what cannot move. |
 | `adapters[].readAt` | `{url, on}` — the vendor page the adapter's facts were read from, and when; null if none was read. |
 | `adapters[].delivery` | Mail only: `{rail, dnsNeeded, domainVerification, warming, suppression: {export, import}}` — the `tooling/mail-transport.json` rail whose `authRecords` it sends under (or, with none yet, the records to publish), the verification step, the warm-up, and how the suppression list leaves and enters it (null until the runbook names the method). Read by the mail dry run (C9–C14). |
+| `adapters[].channel` | Optional, for a port selected per channel (`channels.json`): a `tooling/channel-register.json` row id. The store is that row's, so `vendor` is null and the store stays placed once in `_non-port.json`. Limb 8 resolves it, and one channel has one adapter. |
+| `adapters[].account` | Optional, `{kind, source}`: the KIND of store account the channel binds to (`individual` · `organization` · `none` · `unrecorded`) and where that is recorded — what an entity change has to move. Never the account's values. |
 | `adapters[].c8Seam` | Optional, a **declared, printed** divergence: the vendor's C-8 `seam.file` is not this port's interface. Names the C-8 file exactly, with `why` and `until`. |
 | `streams` | For `selection.by: stream`: `{<stream>: {adapter, secrets, from, to?, why}}` — the adapter, its secret NAMES in preference order (the first one set wins), and the From (and a fixed recipient) as entity-source PATHS. Each adapter is one of the port's and each secret one that adapter declares (limb 1); each path resolves (limb 9). |
 | `selection.by` | `single` · `environment` · `stream` · `channel-market` · `per-call`. |
@@ -65,6 +81,8 @@ wherever the shape can hold it).
 | `conformance.pending[]` | `{adapter, case, row}` — a scenario an adapter cannot pass yet. Names its `O-` row, prints on every run, and blocks L3 for that adapter. |
 | `switch.runbook` | `Private/runbooks/switch-vendor.md#<port>`. |
 | `switch.dryRun` | `node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run`. |
+| `client` | Optional: the CLIENT (Dart) half of a port whose seams live in an app package — `{level, seams, adapters, pending, _why}`. `seams[]` is `{interface, suite: {file, runner}}` (each `interface` a symbol of `interface.dart`); `adapters[]` is `{id, seam, status, impl: {file, symbol}, conformance: {file} \| null, waits?}` (`waits` says why an adapter with no conformance test has none, printed on every run). Its level is earned by limb 10 the way limb 6 earns the port's, and prints as `<port>/client`. Payments' client half: `PurchaseRail` and `IapBridge` (port-pay-client). |
+| `candidates[]` | Optional. A store not built because an owner step stands first: `{id, name, submittable: false, deferral {reason, source, ownerSteps}, commission {cell, asOf, verify}, exportDuty}`. It has no impl and no register row; limb 8 refuses one that has a row (it is an adapter then) and PRINTS every candidate. Its commission is null until the store's terms are read and dated. `tooling/kit/new-channel.mjs` turns a candidate into a row, an adapter and a submitter skeleton. |
 | `_why` | Prose: the honest state and its reasons. |
 
 `tooling/ports/_non-port.json` (`$defs.nonPortRegister`) places every vendor that is **not** an adapter: each row a
@@ -98,8 +116,14 @@ wherever the shape can hold it).
 
 ### Dart ports (apps)
 
-- The seams stay in `packages/core`. Each seam package exports `lib/testing.dart`: the fake plus
-  `run<Seam>Conformance`.
+- The seams stay in `packages/core` — or, for a seam that only one capability's apps speak, in that capability's
+  package (payments: `packages/purchases`, whose library file is `interface.dart`; limb 2 follows its relative
+  `export`s). Each seam package exports `lib/testing.dart`: the fake plus `run<Seam>Conformance` (a `package:test`
+  `group` per adapter). No `lib/` file of an app or a package imports it (limb 10).
+- **A channel's rail is rendered, never switched on.** `tooling/ports/render.mjs` writes
+  `packages/purchases/lib/src/generated/rails.dart` (channel → `hosted` | a store rail | `none`) from
+  `channel-register.json#purchaseRails`; `PurchaseRailKind.forChannel` reads it. A hosted page is `hosted` whichever
+  vendor serves it — the client names none.
 - **The client never names a payment vendor.** C-5 (`assert-package-boundaries.mjs`) already refuses an app importing a
   vendor SDK around its adapter; limb 4 is TS-only for that reason.
 
@@ -168,7 +192,9 @@ Where one of these appears as a vendor in a register, `_non-port.json` carries i
 ## 8. The guard and the tool
 
 `node tooling/ci/assert-ports.mjs` — exit 0 green, 1 a finding, 2 coverage lost; the first line names the deciding limb.
-Limbs: 1 schema · 2 symbols · 3 waivers · 4 imports · 5 secrets · 6 level · 7 fakes · 8 cross-register · 9 literals.
+Limbs: 1 schema · 2 symbols · 3 waivers · 4 imports · 5 secrets · 6 level · 7 fakes · 8 cross-register · 9 literals ·
+10 client (a port's Dart half: each adapter's conformance test CALLS its seam's runner; every class in `packages/*/lib`
+implementing a seam is a registered adapter; no lib imports the shared fakes; the half's level, printed `<port>/client`).
 Every limb has a recorded mutation in `tooling/ci/test/ports.test.mjs`. Limb 8 places a vendor once per port: mail's
 Resend HTTP adapter and its SMTP relay (auth mail) are one vendor in one port.
 
@@ -179,8 +205,9 @@ verification, C11 streams and their secret names, **C12 the suppression-list exp
 names the method**, C13 warming, and C14 the per-stream cost from `tooling/ceilings.json` (LOST while it records none). Without `--dry-run` it refuses. Tests: `tooling/ci/test/port-switch.test.mjs`.
 For `payments` it adds C9 the
 webhook URL to register and the secrets by name, C10 the price ids still to create per offering, C11 the channels whose
-`purchaseRails` would change (a store-billed channel never moves to a web rail, and C8 nets only what moves), and C12 the run-off note; each pending conformance case prints as its own `FAIL` line.
+`purchaseRails` would change (a channel moves only to an adapter of its billing kind — a store-billed channel never to a web rail, a web-billed one never to a store biller — and C8 nets only what moves), and C12 the run-off note; each pending conformance case prints as its own `FAIL` line.
 
 `node tooling/ports/render.mjs [--check]` renders the tables code reads (today
-`services/platform/src/generated/ports.ts` from `payments.json`); `--check` exits 1 on any difference, and limb 3
-runs the same check on every build.
+`services/platform/src/generated/ports.ts` from `payments.json`, and `packages/purchases/lib/src/generated/rails.dart`
+from `channel-register.json` and the store-billed rails `payments.json` derives); `--check` exits 1 on any difference,
+and limb 3 runs the same check on every build.

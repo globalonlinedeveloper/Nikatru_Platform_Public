@@ -276,6 +276,18 @@ describe('assert-ports — every limb reddens', () => {
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /vendor `acme` is placed 2 times/);
   });
+  it('limb 8: two adapters of ONE port may share a vendor (two boxes at one provider) — one placement, printed together', () => {
+    const twin = port({ adapters: [adapter(), adapter({ id: 'acme-two' }), port().adapters[1]] });
+    const r = run(fixture({ ports: { widgets: twin } }));
+    assert.equal(r.code, 0, r.out);
+    assert.equal(portLineFor(evaluate(fixture({ ports: { widgets: twin } })), 'acme'), 'port: widgets (adapter acme, acme-two, earned L2)');
+  });
+  it('limb 8: …but the same vendor behind adapters of TWO ports is still placed twice', () => {
+    const other = port({ port: 'gadgets', adapters: [adapter({ id: 'acme-g' })], selection: { by: 'single', source: null, default: { live: 'acme-g', sandbox: 'acme-g', test: null }, canary: null }, handTables: [], switch: { runbook: 'Private/runbooks/switch-vendor.md#gadgets', dryRun: 'node tooling/ops/port-switch.mjs gadgets --to <adapter> --dry-run' } });
+    const r = run(fixture({ ports: { widgets: port(), gadgets: other } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /vendor `acme` is placed 2 times \(gadgets\/acme-g, widgets\/acme\)/);
+  });
   it('limb 8: a row with both `until` and `nonPort` exits 1', () => {
     const r = run(fixture({ nonPortRows: [{ vendor: 'other', registers: ['provider-register'], reason: 'a fixture vendor nobody ports', nonPort: true, until: 'port-x' }] }));
     assert.equal(r.code, 1, r.out);
@@ -365,17 +377,53 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     root = mkdtempSync(join(tmpdir(), 'ports-real-'));
     const copy = (rel) => { if (existsSync(join(REPO, rel))) cpSync(join(REPO, rel), join(root, rel), { recursive: true }); };
     for (const rel of ['tooling/ports', 'tooling/capability-register.json', 'tooling/legal/provider-register.json', 'tooling/channel-register.json', 'tooling/house-identity.json', 'tooling/ops/port-switch.mjs',
-      'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart']) copy(rel);
+      'tooling/catalog/fee-register.json', 'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart',
+      // port-pay-client: the client half's seams, adapters and conformance tests (limb 10).
+      'packages/purchases/lib', 'packages/purchases/test/conformance', 'packages/billing_revenuecat/lib', 'packages/billing_revenuecat/test/revenuecat_bridge_conformance_test.dart',
+      // the channels port: the contract, its submitters and the conformance file that calls the runner
+      'tooling/release', 'extensions/scripts/publish-cws.mjs', 'extensions/scripts/publish-edge.mjs', 'extensions/scripts/publish-amo.mjs',
+      // the boxes port: the declarations and the module that reads them (port-boxes)
+      'tooling/boxes', 'tooling/ops/box-declaration.mjs', 'tooling/ops/check-box-declared.mjs']) copy(rel);
     rmSync(join(root, 'services', 'platform', 'node_modules'), { recursive: true, force: true });
   });
-  it('green control: payments and mail claim and earn L3; auth and telemetry claim and earn L2', () => {
+  it('green control: payments and mail claim and earn L3; auth, telemetry and boxes claim and earn L2; channels claims L2 and earns L3', () => {
     const r = run(root);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /payments\s+L3\s+L3\s+L3/);
     assert.match(r.out, /mail\s+L3\s+L3\s+L3/);
-    for (const p of ['auth', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
+    for (const p of ['auth', 'boxes', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
     assert.match(r.out, /limb 3: services\/platform\/src\/generated\/ports\.ts matches tooling\/ports\/payments\.json/);
     assert.match(r.out, /PENDING payments\/revenuecat: refund reversed or dispute won restores \(O-REVENUECAT-VERIFIER\)/);
+    assert.match(r.out, /payments\/client\s+L3\s+L3\s+L3/);
+    assert.match(r.out, /limb 10: payments\/client — PurchaseRail 3 conformant, IapBridge 2 conformant/);
+    assert.match(r.out, /channels\s+L2\s+L3\s+L3/);
+    assert.match(r.out, /CANDIDATE channels\/indus-appstore \(Indus Appstore\): not submittable — \[ADR 076\] rider; commission UNREAD/);
+  });
+  // port-pay-client · MUTATE THE REAL TREE: RevenueCat's conformance test that imports the suite
+  // but never CALLS the runner reddens limb 10, and the client half falls to L2 (IapBridge has one).
+  it('red: the RevenueCat bridge test importing the suite but never calling it reddens limb 10', () => {
+    const rel = join(root, 'packages/billing_revenuecat/test/revenuecat_bridge_conformance_test.dart');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      // The call becomes a tear-off: the name stays, the suite never runs.
+      const after = before.replace(/^( *)runIapBridgeConformance\(/m, '$1final Object never = runIapBridgeConformance;\n$1(');
+      assert.notEqual(after, before, 'the mutation must land');
+      writeFileSync(rel, after);
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 10 \(client\).*`revenuecat-bridge`.*never CALLS `runIapBridgeConformance`/);
+      assert.match(r.out, /payments\/client\s+L3\s+L2/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: a hand edit of the rendered Dart rail map reddens limb 3', () => {
+    const rel = join(root, 'packages/purchases/lib/src/generated/rails.dart');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, before.replace("  'windows-direct': 'hosted',", "  'windows-direct': 'none',"));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 3 \(waivers\): render --check: .*packages\/purchases\/lib\/src\/generated\/rails\.dart differs from its render/);
+    } finally { writeFileSync(rel, before); }
   });
   const mutate = (rel, fn, check) => {
     const abs = join(root, rel);
@@ -417,6 +465,65 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       // resend alone: the SES draft passes the suite too, and is not counted.
       assert.match(r.out, /mail\.json claims L3 and earns L2: 1 conformant adapter\(s\)/);
     });
+  });
+  // ⏱ 2026-10-01 (port-channels): the per-channel adapter names its register row, not a vendor.
+  const mutateChannels = (fn) => {
+    const rel = join(root, 'tooling/ports/channels.json');
+    const before = readFileSync(rel, 'utf8');
+    const doc = JSON.parse(before);
+    fn(doc);
+    writeFileSync(rel, JSON.stringify(doc));
+    try { return run(root); } finally { writeFileSync(rel, before); }
+  };
+  it('red: a channel adapter whose `channel` is no register row reddens limb 8', () => {
+    const r = mutateChannels((d) => { d.adapters.find((a) => a.id === 'amo').channel = 'firefox-addons'; });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 8 \(cross-register\): tooling\/ports\/channels\.json adapter `amo` names channel `firefox-addons`, which is no tooling\/channel-register\.json row/);
+  });
+  it('red: a non-fake adapter with neither a vendor nor a channel reddens limb 1', () => {
+    const r = mutateChannels((d) => { delete d.adapters.find((a) => a.id === 'linux-snap').channel; });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 1 \(schema\): .*adapter `linux-snap` has vendor null but is not a fake and names no `channel`/);
+  });
+  it('red: two adapters naming one channel redden limb 8', () => {
+    const r = mutateChannels((d) => { d.adapters.find((a) => a.id === 'macos-appstore').channel = 'ios-appstore'; });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /channel `ios-appstore` is named by 2 adapters/);
+  });
+  it('red: a candidate that already has a register row reddens limb 8', () => {
+    const r = mutateChannels((d) => { d.candidates[0].id = 'linux-snap'; });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /candidate `linux-snap` already has a tooling\/channel-register\.json row/);
+  });
+  it('red: a candidate that claims to be submittable reddens limb 1', () => {
+    const r = mutateChannels((d) => { d.candidates[0].submittable = true; });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 1 \(schema\): tooling\/ports\/channels\.json \$\.candidates\[0\]\.submittable: must be false/);
+  });
+  it('red: hostinger placed back in _non-port.json beside the boxes port reddens limb 8', () => {
+    const rel = join(root, 'tooling/ports/_non-port.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.rows.push({ vendor: 'hostinger', registers: ['provider-register'], reason: 'the pre-port-boxes row, put back', until: 'port-boxes' });
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 8 \(cross-register\): vendor `hostinger` is placed 2 times \(boxes\/boxb, _non-port\)/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: a box interface symbol that is not declared un-earns L2 for boxes (limb 2)', () => {
+    const rel = join(root, 'tooling/ports/boxes.json');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      const doc = JSON.parse(before);
+      doc.interface.js.symbols.push('readBoxNowhere');
+      writeFileSync(rel, JSON.stringify(doc));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 2 \(symbols\).*`readBoxNowhere` is not declared in `tooling\/ops\/box-declaration\.mjs`/);
+      assert.match(r.out, /boxes\s+L2\s+L0/);
+    } finally { writeFileSync(rel, before); }
   });
   it('red: deleting one vendor from _non-port.json reddens limb 8', () => {
     const rel = join(root, 'tooling/ports/_non-port.json');
@@ -491,6 +598,86 @@ describe('assert-ports — on a copy of the REAL registries', () => {
   });
 });
 
+// ⏱ 2026-10-01 · port-pay-client · limb 10, the client (Dart) half, on a fixture adapter package.
+describe('assert-ports — limb 10, the client half, reddens', () => {
+  const clientHalf = (over = {}) => ({
+    level: { claimed: 3, target: 3 },
+    seams: [{ interface: 'Rail', suite: { file: 'packages/seam/lib/testing/conformance.dart', runner: 'runRailConformance' } }],
+    adapters: [
+      { id: 'acme-rail', seam: 'Rail', status: 'built', impl: { file: 'packages/acme_rail/lib/acme_rail.dart', symbol: 'AcmeRail' }, conformance: { file: 'packages/acme_rail/test/acme_rail_conformance_test.dart' } },
+      { id: 'fake-rail', seam: 'Rail', status: 'fake', impl: { file: 'packages/seam/lib/testing.dart', symbol: 'FakeRail' }, conformance: { file: 'packages/seam/test/fake_conformance_test.dart' } },
+    ],
+    pending: [],
+    _why: ['fixture'],
+    ...over,
+  });
+  const clientPort = (over = {}) => port({
+    level: { claimed: 2, target: 3 },
+    interface: { ts: { file: 'services/w/src/lib/contract.ts', symbols: ['WidgetPort'] }, dart: { file: 'packages/seam/lib/seam.dart', symbols: ['Rail'] } },
+    client: clientHalf(over),
+  });
+  const CALLS = "import 'package:seam/testing.dart';\n\nvoid main() {\n  runRailConformance('acme', <String, Object>{});\n}\n";
+  const files = (extra = {}) => ({
+    'packages/seam/lib/seam.dart': "library;\n\nexport 'src/rail.dart';\n",
+    'packages/seam/lib/src/rail.dart': 'abstract interface class Rail {\n  void sell();\n}\n',
+    'packages/seam/lib/testing/conformance.dart': 'void runRailConformance(String adapter, Map<String, Object> fixtures) {}\n',
+    'packages/seam/lib/testing.dart': "import 'seam.dart';\n\nclass FakeRail implements Rail {\n  @override\n  void sell() {}\n}\n",
+    'packages/seam/test/fake_conformance_test.dart': CALLS,
+    'packages/acme_rail/lib/acme_rail.dart': "import 'package:seam/seam.dart';\n\nclass AcmeRail implements Rail {\n  @override\n  void sell() {}\n}\n",
+    'packages/acme_rail/test/acme_rail_conformance_test.dart': CALLS,
+    'tooling/ops/port-switch.mjs': '// the dry-run tool L3 needs; its behaviour is port-switch.test.mjs\'s subject\n',
+    ...extra,
+  });
+  it('green control: the client half claims and earns L3, through a library file that EXPORTS the seam', () => {
+    const r = run(fixture({ ports: { widgets: clientPort() }, files: files() }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /widgets\/client\s+L3\s+L3\s+L3/);
+  });
+  it('red: an adapter package whose test imports the suite but never CALLS the runner', () => {
+    const r = run(fixture({
+      ports: { widgets: clientPort() },
+      files: files({ 'packages/acme_rail/test/acme_rail_conformance_test.dart': "import 'package:seam/testing.dart';\n\n// runRailConformance('acme', {}); — a comment runs nothing\nvoid main() {\n  final Object f = runRailConformance;\n}\n" }),
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /^assert-ports: FAILED — limb 10 \(client\): .*`acme-rail`: `packages\/acme_rail\/test\/acme_rail_conformance_test\.dart` never CALLS `runRailConformance`/);
+    assert.match(r.out, /widgets\/client\s+L3\s+L2/);
+  });
+  it('red: a class implementing the seam that is no registered client adapter', () => {
+    const r = run(fixture({
+      ports: { widgets: clientPort() },
+      files: files({ 'packages/other_rail/lib/other.dart': "import 'package:seam/seam.dart';\n\nclass OtherRail implements Rail {\n  @override\n  void sell() {}\n}\n" }),
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 10 \(client\): .*`OtherRail` \(packages\/other_rail\/lib\/other\.dart\) implements the client seam `Rail` and is no client adapter/);
+  });
+  it('red: an app lib importing the shared fakes', () => {
+    const r = run(fixture({
+      ports: { widgets: clientPort() },
+      files: files({ 'apps/shop/lib/main.dart': "import 'package:nikatru_purchases/testing.dart';\n\nvoid main() {}\n" }),
+    }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 10 \(client\): apps\/shop\/lib\/main\.dart imports the shared payment fakes/);
+  });
+  it('red: a seam the library file neither declares nor exports reddens limb 2', () => {
+    const r = run(fixture({ ports: { widgets: clientPort() }, files: files({ 'packages/seam/lib/seam.dart': 'library;\n' }) }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 2 \(symbols\): .*interface\.dart symbol `Rail` is not declared in `packages\/seam\/lib\/seam\.dart` or a file it exports/);
+  });
+  it('red: a conformance-less adapter must say why it waits', () => {
+    const half = clientHalf();
+    half.adapters[0] = { ...half.adapters[0], conformance: null };
+    const p = port({
+      level: { claimed: 2, target: 3 },
+      interface: { ts: { file: 'services/w/src/lib/contract.ts', symbols: ['WidgetPort'] }, dart: { file: 'packages/seam/lib/seam.dart', symbols: ['Rail'] } },
+      client: half,
+    });
+    const r = run(fixture({ ports: { widgets: p }, files: files() }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /client adapter `acme-rail` has no conformance test and says nothing about why/);
+    assert.match(r.out, /widgets\/client\s+L3\s+L2/, 'and the seam is one conformant adapter short');
+  });
+});
+
 describe('affected-guards selects assert-ports by REGISTRY CONTENT', () => {
   it('a registry-named impl file, a registry, and a shared port module select it; an unnamed route does not', async () => {
     const { buildChecks, select, trackedTree } = await import('../../scripts/affected-guards.mjs');
@@ -506,5 +693,8 @@ describe('affected-guards selects assert-ports by REGISTRY CONTENT', () => {
     assert.equal(picks('services/platform/src/lib/mor/paddle-rail.ts'), true, 'named by payments.json outbound.file');
     assert.equal(picks('services/platform/src/generated/ports.ts'), true, 'the rendered table limb 3 checks');
     assert.equal(picks('services/platform/src/ports.ts'), true, 'the composition root limb 4 allows');
+    assert.equal(picks('packages/purchases/lib/src/generated/rails.dart'), true, 'the Dart rail map limb 3 re-renders');
+    assert.equal(picks('packages/billing_revenuecat/test/revenuecat_bridge_conformance_test.dart'), true, 'named by payments.json client conformance');
+    assert.equal(picks('packages/notifications/lib/src/x.dart'), true, 'limb 10 derives the client adapters from every Dart lib');
   });
 });
