@@ -46,12 +46,32 @@ import { laneVerdict, ArmingCoverageLost, readSubmittablePackage } from './publi
 import { requireStorePublishEnvironment } from './lib/store-environment.mjs';
 import { pollToTerminal, readStatus, classifyEdgeOperation, loopbackBase, overrideLine, pollTiming, NOT_CONFIRMED } from './store-poll.mjs';
 import { CouldNotLook } from '../../tooling/ops/bounded-retry.mjs';
+import { storeSubmitter, invokedAsScript } from '../../tooling/release/submit-common.mjs';
+import * as vocabulary from '../../contracts/store/vocabulary.js';
 
 const PRIMARY_SOURCES = Object.freeze({
   api: 'https://learn.microsoft.com/en-us/microsoft-edge/extensions/update/api/using-addons-api',
 });
 
 const API_ROOT = 'https://api.addons.microsoftedge.microsoft.com';
+
+/** Microsoft Edge Add-ons behind the one store contract (tooling/release/submit-common.mjs,
+ *  tooling/ports/channels.json). `plan` is the four calls this header lists, in order;
+ *  `upload` IS this script, arming and gate and all. */
+export const edgeAddonsSubmitter = storeSubmitter({
+  channel: 'edge-addons',
+  vocabulary,
+  script: 'extensions/scripts/publish-edge.mjs',
+  steps: (artifact) => [
+    { does: 'ask the register whether this channel is armed (publish-arming laneVerdict)', surface: 'local', call: 'tooling/channel-register.json', writes: false },
+    { does: 'read the "store-publish" environment back and require its reviewer', surface: 'api', call: 'GET https://api.github.com/repos/{owner}/{repo}/environments/store-publish', writes: false },
+    { does: `upload ${artifact?.path ?? 'the chromium zip'} as the draft package`, surface: 'api', call: `POST ${API_ROOT}/v1/products/{productId}/submissions/draft/package`, writes: true },
+    { does: 'poll the package operation to its terminal state', surface: 'api', call: `GET ${API_ROOT}/v1/products/{productId}/submissions/draft/package/operations/{operationId}`, writes: false },
+    { does: 'submit the draft for certification', surface: 'api', call: `POST ${API_ROOT}/v1/products/{productId}/submissions`, writes: true },
+    { does: 'poll the submission operation to its terminal state', surface: 'api', call: `GET ${API_ROOT}/v1/products/{productId}/submissions/operations/{operationId}`, writes: false },
+  ],
+  uploadArgv: (artifact) => ['--tool', artifact.tool, '--zip', artifact.path],
+});
 
 const argv = process.argv.slice(2);
 const opt = (name, fallback = null) => {
@@ -241,4 +261,4 @@ async function main() {
   console.log(`publish-edge: SUBMITTED — ${TOOL} uploaded and submitted for certification on Microsoft Edge Add-ons.`);
 }
 
-await main();
+if (invokedAsScript(import.meta.url)) await main();

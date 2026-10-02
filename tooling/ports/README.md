@@ -17,6 +17,19 @@ other vendor is placed in `tooling/ports/_non-port.json`. Payments also carries 
 L3 as well: Resend and a fake conformant, an Amazon SES draft passing the same suite to prove the port is not
 Resend-shaped.
 
+`tooling/ports/channels.json` (port-channels) is a port selected PER CHANNEL: one adapter per `kind: store` row of
+`tooling/channel-register.json`, each a `ChannelSubmitter` (`tooling/release/submit-common.mjs`: `validate` · `plan` ·
+`upload` · `status`) that passes `submitterConformance` dry, with no network
+(`tooling/release/test/submitters.contract.test.mjs`). Adding a store is a row, an adapter and a submitter —
+`node tooling/kit/new-channel.mjs --id <id> --dry-run` prints the three. Its switch is not a margin switch between
+rails: `port-switch.mjs`'s C8 has no fee model for moving a channel, and prints LOST rather than a guess.
+
+`tooling/ports/boxes.json` (port-boxes) makes each box an adapter: its declaration is `tooling/boxes/<box>.json`, its
+role is selected one box per role by `tooling/boxes/roles.json`, it is read back by
+`tooling/ops/check-box-declared.mjs` and its move is rehearsed by `tooling/ops/box-move.mjs --dry-run`, the box
+equivalent of §4's phase 3. Backup destinations and their restore drills are `tooling/boxes/backups.json` and
+`tooling/ops/restore-drill.mjs`.
+
 ## 1. Levels
 
 | Level | Means | Earned when (assert-ports limb 6) |
@@ -39,9 +52,9 @@ wherever the shape can hold it).
 | `$schema` | `./port.schema.json`. |
 | `port` | The capability; equals the file name. |
 | `level.claimed` / `level.target` | 0–3. Claimed is checked against earned; target is where the trains are taking it. |
-| `interface.ts` / `interface.dart` | `{file, symbols}` — either or both. Each symbol must be **declared** in the file (comment-stripped). |
+| `interface.ts` / `interface.dart` / `interface.js` | `{file, symbols}` — at least one. Each symbol must be **declared** in the file (comment-stripped). `js` is a node module under `tooling/` for a port that is operated rather than imported (the boxes). |
 | `adapters[].id` | The wire id: the value the selection names and the code keys on. |
-| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. |
+| `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. Two adapters of ONE port may share a vendor (two boxes at one provider); two ports may not. |
 | `adapters[].status` | `draft` · `built` · `live` · `standby` · `retired` · `fake` · `external`. |
 | `adapters[].impl` | `{file, symbol}`; for `external` (e.g. a self-hosted GoTrue configured by env) `{configAt, verify}`. |
 | `adapters[].outbound` | Optional `{file, symbol, modules}` — the adapter's outbound half (e.g. `RailOutbound`) and its further private modules. Limb 2 holds the symbol declared; limb 4 protects `file` and every `modules` path exactly as it protects `impl.file`. |
@@ -54,6 +67,8 @@ wherever the shape can hold it).
 | `adapters[].exportDuty` | What leaves with us, what must be exported, what cannot move. |
 | `adapters[].readAt` | `{url, on}` — the vendor page the adapter's facts were read from, and when; null if none was read. |
 | `adapters[].delivery` | Mail only: `{rail, dnsNeeded, domainVerification, warming, suppression: {export, import}}` — the `tooling/mail-transport.json` rail whose `authRecords` it sends under (or, with none yet, the records to publish), the verification step, the warm-up, and how the suppression list leaves and enters it (null until the runbook names the method). Read by the mail dry run (C9–C14). |
+| `adapters[].channel` | Optional, for a port selected per channel (`channels.json`): a `tooling/channel-register.json` row id. The store is that row's, so `vendor` is null and the store stays placed once in `_non-port.json`. Limb 8 resolves it, and one channel has one adapter. |
+| `adapters[].account` | Optional, `{kind, source}`: the KIND of store account the channel binds to (`individual` · `organization` · `none` · `unrecorded`) and where that is recorded — what an entity change has to move. Never the account's values. |
 | `adapters[].c8Seam` | Optional, a **declared, printed** divergence: the vendor's C-8 `seam.file` is not this port's interface. Names the C-8 file exactly, with `why` and `until`. |
 | `streams` | For `selection.by: stream`: `{<stream>: {adapter, secrets, from, to?, why}}` — the adapter, its secret NAMES in preference order (the first one set wins), and the From (and a fixed recipient) as entity-source PATHS. Each adapter is one of the port's and each secret one that adapter declares (limb 1); each path resolves (limb 9). |
 | `selection.by` | `single` · `environment` · `stream` · `channel-market` · `per-call`. |
@@ -67,6 +82,7 @@ wherever the shape can hold it).
 | `switch.runbook` | `Private/runbooks/switch-vendor.md#<port>`. |
 | `switch.dryRun` | `node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run`. |
 | `client` | Optional: the CLIENT (Dart) half of a port whose seams live in an app package — `{level, seams, adapters, pending, _why}`. `seams[]` is `{interface, suite: {file, runner}}` (each `interface` a symbol of `interface.dart`); `adapters[]` is `{id, seam, status, impl: {file, symbol}, conformance: {file} \| null, waits?}` (`waits` says why an adapter with no conformance test has none, printed on every run). Its level is earned by limb 10 the way limb 6 earns the port's, and prints as `<port>/client`. Payments' client half: `PurchaseRail` and `IapBridge` (port-pay-client). |
+| `candidates[]` | Optional. A store not built because an owner step stands first: `{id, name, submittable: false, deferral {reason, source, ownerSteps}, commission {cell, asOf, verify}, exportDuty}`. It has no impl and no register row; limb 8 refuses one that has a row (it is an adapter then) and PRINTS every candidate. Its commission is null until the store's terms are read and dated. `tooling/kit/new-channel.mjs` turns a candidate into a row, an adapter and a submitter skeleton. |
 | `_why` | Prose: the honest state and its reasons. |
 
 `tooling/ports/_non-port.json` (`$defs.nonPortRegister`) places every vendor that is **not** an adapter: each row a
