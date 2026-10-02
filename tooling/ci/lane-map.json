@@ -215,6 +215,7 @@
       "tooling/ci/workflow-scan.mjs",
       "tooling/ops/post-deploy-smoke.mjs",
       "tooling/ci/check-site-integrity.mjs",
+      "tooling/site-shots.json",
       "tooling/ci/assert-site-bindings.mjs",
       "tooling/ci/record-deployment.mjs",
       "tooling/ci/deployment-record.mjs",
