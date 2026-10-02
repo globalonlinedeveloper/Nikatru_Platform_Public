@@ -355,7 +355,9 @@ const Map<String, String> kCannotBeSwept = <String, String>{
       'as if it were the whole screen — and the page it does NOT build is '
       'the last one, which carries the button out of onboarding. Sweeping '
       'it needs a per-page walk driven by the carousel, which is '
-      'screen-specific knowledge this file deliberately does not hold.',
+      'screen-specific knowledge this file deliberately does not hold — so '
+      'it lives in onboarding_keyboard_walk_test.dart, which Tabs every page '
+      'and leaves by the keyboard through both exits.',
 };
 
 /// Path parameters for the one route pattern that takes them.

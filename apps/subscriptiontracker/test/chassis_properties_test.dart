@@ -1299,7 +1299,15 @@ void main() {
             '${routes.hasErrorBuilder ? ' plus an errorBuilder' : ''} — a '
             'screen would be outside every UI invariant above',
       );
-    });
+    },
+      variant: const TargetPlatformVariant(<TargetPlatform>{
+        TargetPlatform.android,
+        TargetPlatform.iOS,
+        TargetPlatform.linux,
+        TargetPlatform.macOS,
+        TargetPlatform.windows,
+      }),
+    );
 
     // LIMB 3 — ADAPTIVE LAYOUT at Material's exact boundaries. Asserted on the
     // PURE resolver, so the five classes are checked at their exact edges rather
