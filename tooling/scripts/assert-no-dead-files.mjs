@@ -550,7 +550,7 @@ const CANARIES = [
     from: 'services/subscriptiontracker-api/src/routes/budget.ts',
     note:
       'the TypeScript import graph, which was INVISIBLE to this guard until 2026-08-17 — finding (3) in the ' +
-      "header. budget.ts:7 carries `import { allRows, firstRow, nowIso, uuid } from '../lib/d1'`, and six " +
+      "header. budget.ts:7 carries `import { allRows, batchIdempotent, firstRow, nowIso, uuid } from '../lib/d1'`, and six " +
       'more tracked files import the same module (four more under src/routes/, src/index.ts, and ' +
       'test/renewals.test.ts). Before the module-import resolver, d1.ts resolved on exactly ONE source and ' +
       'it was not any of the seven: a comment in ' +
