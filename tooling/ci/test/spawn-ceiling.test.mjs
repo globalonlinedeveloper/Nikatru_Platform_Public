@@ -10,9 +10,10 @@
 //   (a) with a 2000 ms ceiling, a spawn of a process that never exits returns
 //       ETIMEDOUT at the ceiling — through the ESM named import a test file uses;
 //   (b) a timeout the caller passed is kept, including one LONGER than the ceiling;
-//   (c) every `node --test` line under .github/workflows/ carries `--import` of the
-//       preload and `--test-timeout=`, with a fixture line that lacks it as the red
-//       control, so the check is not vacuous.
+//   (c) every `node --test` line under .github/workflows/ carries `--import "$SPAWN_CEILING"`
+//       (the preload as the absolute URL setup-node exports — a relative path resolves
+//       against the step's cwd: spawn-ceiling-cwd.test.mjs) and `--test-timeout=`, with
+//       fixture lines that lack it, or name the preload relatively, as the red control.
 //
 // ⏱ 2026-09-28 · PR #1025 (run 36376688038, guard-meta): no-hardcoded-strings.test.mjs
 // :1033's guard child printed and never exited, and the ceiling killed it at 240 s
@@ -144,7 +145,7 @@ function unwired(text) {
   text.split('\n').forEach((line, i) => {
     const code = line.replace(/^\s*#.*$/, '');
     if (!/\bnode\b.*\s--test(\s|$)/.test(code)) return;
-    const imports = /--import\s+(\.\.?\/)+tooling\/scripts\/spawn-ceiling\.mjs(\s|$)/.test(code);
+    const imports = /--import\s+"\$SPAWN_CEILING"(\s|$)/.test(code);
     const timeout = /\s--test-timeout=\d+/.test(code);
     if (!imports || !timeout) bad.push(`:${i + 1} ${line.trim()}`);
   });
@@ -156,8 +157,11 @@ const testLines = (text) => text.split('\n').filter((l) => /\bnode\b.*\s--test(\
 describe('spawn-ceiling: every workflow node --test loads the preload', () => {
   test('(c) the red control: a line without the preload is caught, a wired one is not', () => {
     assert.deepEqual(unwired('        run: node --test "tooling/ci/test/*.test.mjs"'), [':1 run: node --test "tooling/ci/test/*.test.mjs"']);
-    assert.equal(unwired('        run: node --import ./tooling/scripts/spawn-ceiling.mjs --test "x.test.mjs"').length, 1, 'no --test-timeout');
-    assert.deepEqual(unwired('        run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test scripts/test/a.test.mjs'), []);
+    assert.equal(unwired('        run: node --import "$SPAWN_CEILING" --test "x.test.mjs"').length, 1, 'no --test-timeout');
+    assert.deepEqual(unwired('        run: node --import "$SPAWN_CEILING" --test-timeout=600000 --test scripts/test/a.test.mjs'), []);
+    // A relative preload resolves against the step's cwd, which left the checkout in #1160.
+    assert.equal(unwired('        run: node --import ../tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test a.test.mjs').length, 1, 'relative ../');
+    assert.equal(unwired('        run: node --import ./tooling/scripts/spawn-ceiling.mjs --test-timeout=600000 --test a.test.mjs').length, 1, 'relative ./');
     assert.deepEqual(unwired('      # run: node --test "x.test.mjs"'), [], 'a comment is not a run');
   });
 

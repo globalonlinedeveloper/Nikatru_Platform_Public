@@ -15,9 +15,11 @@
 //     stamped nothing.
 //   · On Windows `mason` is `mason.bat`, which bash does not find and which
 //     Node will not spawn without a shell (EINVAL since the 2024
-//     argument-injection fix). So cmd.exe is the executable, with
-//     `/d /s /c mason.bat …`, and EVERY argument is refused unless it matches
-//     SAFE_ARG first. Never `shell: true` over an unchecked string.
+//     argument-injection fix). It is NOT reached through cmd.exe (CodeQL
+//     #578): tooling/kit/sdk-tool.mjs resolves the executable the .bat runs
+//     (mason.exe, or the Flutter SDK's dart.exe `pub global run
+//     mason_cli:mason`) and it is spawned `shell: false`. EVERY argument
+//     still matches SAFE_ARG first. Never `shell: true`, never cmd.exe /c.
 //   · NIKATRU_ALLOW_OVERWRITE=1 is set ONLY by --overwrite, and stripped from
 //     the child's environment otherwise, so a value left exported in the
 //     caller's shell cannot turn a new stamp into a silent overwrite.
@@ -35,7 +37,7 @@
 //     new app on it (never in the app directory: that rewrites the root lock
 //     from a subdirectory), and `gen-app-licence-rows.mjs --write --app <id>`
 //     writes the rows from that resolution. On Windows flutter is `flutter.bat`,
-//     reached through cmd.exe exactly as mason is.
+//     whose real executable sdk-tool.mjs resolves exactly as mason's.
 //   · THAT PUB GET LEAVES THE TRACKED TREE AS IT FOUND IT (lead ruling on
 //     NP12B-R2's draft, 2026-09-28; TRAPS.md "Dart / Flutter — worktrees and
 //     stray writes"). A root `flutter pub get` "upgrades" every workspace
@@ -91,12 +93,14 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { appIdProblems } from '../../contracts/app-id/app-id.js';
 import { clashesOf, describeClashes } from './product-set.mjs';
+import { sdkTool } from './sdk-tool.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO = resolve(HERE, '..', '..');
 
-/** Every argument handed to cmd.exe matches this, or nothing is spawned. It
- *  admits no space and none of cmd's metacharacters: & | < > ^ % ! " ( ) ; , */
+/** Every argument handed to mason, flutter or dart matches this, or nothing is
+ *  spawned. It admits no space and none of cmd's metacharacters: & | < > ^ % ! " ( ) ; ,
+ *  — no shell reads them any more (sdk-tool.mjs), but a vars path is a plain repo path. */
 export const SAFE_ARG = /^[A-Za-z0-9._/\\:=-]+$/;
 
 export const REGEN = 'tooling/sites/regen.mjs';
@@ -116,7 +120,7 @@ const OVERWRITE_ENV = 'NIKATRU_ALLOW_OVERWRITE';
  *            post: ({label: string, kind: 'exists', path: string} |
  *                   {label: string, kind: 'spawn', command: string, args: string[], cwd: string})[]}}
  */
-export function planStamp({ argv = [], platform = process.platform, env = process.env, root = REPO } = {}) {
+export function planStamp({ argv = [], platform = process.platform, env = process.env, root = REPO, isFile } = {}) {
   const problems = [];
   const nothing = (id = null, vars = null, overwrite = false) => ({ problems, id, vars, overwrite, steps: [], post: [] });
 
@@ -134,7 +138,7 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
   if (!SAFE_ARG.test(vars) || !vars.endsWith('.json')) {
     problems.push(
       `--vars ${JSON.stringify(vars)} is refused: it must be a .json path matching ${SAFE_ARG}. ` +
-        'On Windows it is handed to cmd.exe, where a space or any of & | < > ^ % ! " ( ) ; , changes the command.',
+        'A vars path is a plain repo path: no space and none of & | < > ^ % ! " ( ) ; ,.',
     );
     return nothing(null, vars, overwrite);
   }
@@ -174,17 +178,20 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
   delete childEnv[OVERWRITE_ENV];
   if (overwrite) childEnv[OVERWRITE_ENV] = '1';
 
-  const mason = (label, args) => {
+  // No tool is reached through a shell (CodeQL #578, lead ruling 2026-10-02): on Windows
+  // sdk-tool.mjs resolves the executable each .bat runs, and spawns it `shell: false`.
+  const tool = (name, label, args, cwd) => {
     const bad = args.filter((a) => !SAFE_ARG.test(a));
     if (bad.length) problems.push(`${label}: argument(s) ${bad.map((a) => JSON.stringify(a)).join(', ')} refused (${SAFE_ARG}).`);
-    return platform === 'win32'
-      ? { label, command: 'cmd.exe', args: ['/d', '/s', '/c', 'mason.bat', ...args], cwd: root, env: childEnv }
-      : { label, command: 'mason', args, cwd: root, env: childEnv };
+    const t = sdkTool(name, args, { platform, env, isFile });
+    if (t.problem) {
+      problems.push(`${label}: ${t.problem} Nothing was stamped.`);
+      return { label, command: name, args, cwd, env: childEnv };
+    }
+    return { label, command: t.command, args: t.args, cwd, env: { ...childEnv, ...t.env } };
   };
-  const flutter = (label, args) =>
-    platform === 'win32'
-      ? { label, command: 'cmd.exe', args: ['/d', '/s', '/c', 'flutter.bat', ...args], cwd: root, env: childEnv }
-      : { label, command: 'flutter', args, cwd: root, env: childEnv };
+  const mason = (label, args) => tool('mason', label, args, root);
+  const flutter = (label, args) => tool('flutter', label, args, root);
   const licenceRows = join(root, ...APP_LICENCE_ROWS.split('/'));
   const appDir = join(root, 'apps', id);
   const steps = [
@@ -192,12 +199,7 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
     mason('mason make', ['make', 'app', '-c', vars, '-o', '.', '--on-conflict', 'overwrite']),
     { ...flutter('flutter pub get (repo root)', ['pub', 'get']), keepsTrackedTree: true },
     {
-      label: `dart run flutter_launcher_icons (apps/${id})`,
-      ...(platform === 'win32'
-        ? { command: 'cmd.exe', args: ['/d', '/s', '/c', 'dart.bat', 'run', 'flutter_launcher_icons'] }
-        : { command: 'dart', args: ['run', 'flutter_launcher_icons'] }),
-      cwd: appDir,
-      env: childEnv,
+      ...tool('dart', `dart run flutter_launcher_icons (apps/${id})`, ['run', 'flutter_launcher_icons'], appDir),
       keepsTrackedTree: true,
       treeRoot: root,
       owns: [],

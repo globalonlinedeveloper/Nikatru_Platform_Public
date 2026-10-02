@@ -5,8 +5,10 @@
 // What is pinned here, and why each matters:
 //   · `mason get` runs before `mason make`, from the repo root — a fresh
 //     checkout has no brick registry and `make` exits 64 having stamped nothing;
-//   · on Windows mason is `mason.bat`, reached through cmd.exe `/d /s /c`, and
-//     an argument cmd would read as syntax is refused before anything runs;
+//   · on Windows mason, flutter and dart are .bat files, and NONE is reached
+//     through cmd.exe (CodeQL #578): each is the executable the .bat runs,
+//     spawned without a shell; an argument cmd would read as syntax is still
+//     refused before anything runs;
 //   · NIKATRU_ALLOW_OVERWRITE=1 comes from --overwrite and from nothing else;
 //   · a vars file that cannot be read, or an app id the contract refuses, stops
 //     the stamp before mason;
@@ -167,19 +169,41 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     assert.deepEqual(p.steps.map((s) => s.cwd), [ROOT, ROOT, ROOT, join(ROOT, 'apps', 'habittracker'), ROOT]);
   });
 
-  test('on Windows every mason and flutter step is cmd.exe /d /s /c <tool>.bat with the same arguments', () => {
-    const p = plan(['--vars', GOOD], { platform: 'win32' });
+  test('🔴 on Windows no step is cmd.exe: each .bat is replaced by the executable it runs, with the same arguments (CodeQL #578)', () => {
+    const sdk = 'C:\\sdk\\flutter';
+    const dart = `${sdk}\\bin\\cache\\dart-sdk\\bin\\dart.exe`;
+    const snapshot = `${sdk}\\bin\\cache\\flutter_tools.snapshot`;
+    const packages = `--packages=${sdk}\\packages\\flutter_tools\\.dart_tool\\package_config.json`;
+    const files = new Set([`${sdk}\\bin\\flutter.bat`, dart, snapshot, packages.slice('--packages='.length)]);
+    const p = plan(['--vars', GOOD], { platform: 'win32', env: { Path: `C:\\Windows;${sdk}\\bin` }, isFile: (f) => files.has(f) });
     assert.deepEqual(p.problems, []);
     assert.deepEqual(
       p.steps.slice(0, 4).map((s) => [s.command, ...s.args]),
       [
-        ['cmd.exe', '/d', '/s', '/c', 'mason.bat', 'get'],
-        ['cmd.exe', '/d', '/s', '/c', 'mason.bat', 'make', 'app', '-c', GOOD, '-o', '.', '--on-conflict', 'overwrite'],
-        ['cmd.exe', '/d', '/s', '/c', 'flutter.bat', 'pub', 'get'],
-        ['cmd.exe', '/d', '/s', '/c', 'dart.bat', 'run', 'flutter_launcher_icons'],
+        [dart, 'pub', 'global', 'run', 'mason_cli:mason', 'get'],
+        [dart, 'pub', 'global', 'run', 'mason_cli:mason', 'make', 'app', '-c', GOOD, '-o', '.', '--on-conflict', 'overwrite'],
+        [dart, packages, snapshot, 'pub', 'get'],
+        [dart, 'run', 'flutter_launcher_icons'],
       ],
     );
+    assert.ok(p.steps.every((s) => s.command !== 'cmd.exe' && !s.args.includes('/c')), 'a step still goes through cmd.exe');
+    assert.ok(p.steps.slice(0, 4).every((s) => s.env.FLUTTER_ROOT === sdk), 'the SDK tools are told their root');
     assert.equal(p.steps[4].command, process.execPath, 'the licence-row generator is node, spawned without a shell');
+
+    // A mason.exe on PATH is used as it is.
+    files.add('C:\\tools\\mason.exe');
+    const exe = plan(['--vars', GOOD], { platform: 'win32', env: { PATH: `C:\\tools;${sdk}\\bin` }, isFile: (f) => files.has(f) });
+    assert.deepEqual([exe.steps[0].command, ...exe.steps[0].args], ['C:\\tools\\mason.exe', 'get']);
+  });
+
+  test('on Windows an SDK that cannot be resolved is refused before anything runs, never worked around through cmd.exe', () => {
+    const none = plan(['--vars', GOOD], { platform: 'win32', env: { Path: 'C:\\Windows' }, isFile: () => false });
+    assert.equal(none.steps.length, 0);
+    assert.match(none.problems.join('\n'), /flutter\.bat is not on PATH/);
+
+    const unbuilt = plan(['--vars', GOOD], { platform: 'win32', env: { Path: 'C:\\sdk\\flutter\\bin' }, isFile: (f) => f.endsWith('flutter.bat') });
+    assert.equal(unbuilt.steps.length, 0);
+    assert.match(unbuilt.problems.join('\n'), /has not built its tool yet .*run `flutter --version` once/);
   });
 
   test('the licence rows are written only after the root pub get, and a failed pub get stops the stamp before them', () => {
@@ -215,7 +239,7 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     assert.ok(withIt.steps.every((s) => s.env.NIKATRU_ALLOW_OVERWRITE === '1'), '--overwrite did not set NIKATRU_ALLOW_OVERWRITE=1');
   });
 
-  test('a vars path cmd.exe would read as syntax is refused, and nothing is planned', () => {
+  test('a vars path a shell would read as syntax is refused, and nothing is planned', () => {
     const amp = plan(['--vars', 'a&calc.json'], { platform: 'win32' });
     assert.equal(amp.steps.length, 0);
     assert.match(amp.problems.join('\n'), /--vars "a&calc\.json" is refused/);

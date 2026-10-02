@@ -150,7 +150,7 @@
     9,
 
   "boxes.test.mjs":
-    47,
+    50,
 
   "brick-audience.test.mjs":
     5,
@@ -387,7 +387,7 @@
     23,
 
   "enforcement-index.test.mjs":
-    33,
+    36,
 
   "ensure-monitors.test.mjs":
     24,
@@ -1001,6 +1001,9 @@
   "snapcraft-generable.test.mjs":
     92,
 
+  "spawn-ceiling-cwd.test.mjs":
+    4,
+
   "spawn-ceiling.test.mjs":
     11,
 
@@ -1011,7 +1014,7 @@
     9,
 
   "stamp-app.test.mjs":
-    18,
+    19,
 
   "stamp-brand-assets.test.mjs":
     19,
@@ -1026,7 +1029,7 @@
     15,
 
   "stamp-native.test.mjs":
-    29,
+    31,
 
   "stamp-platforms.test.mjs":
     39,

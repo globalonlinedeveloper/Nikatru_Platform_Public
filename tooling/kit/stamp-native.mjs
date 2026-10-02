@@ -55,6 +55,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { sdkTool } from './sdk-tool.mjs';
+
 import {
   ANDROID_BACKGROUNDS,
   ANDROID_DRAWABLE_NAME,
@@ -460,20 +462,16 @@ export function flutterCreateArgs({ id, dest }) {
   return ['create', '--no-pub', `--platforms=${NATIVE_PLATFORMS.join(',')}`, '--project-name', id, '--org', ORG, dest];
 }
 
-/** What a flutter argument may contain before it reaches cmd.exe /c: stamp-app.mjs's
- *  SAFE_ARG, plus the comma of `--platforms=` and the tilde of a Windows 8.3 temp
- *  path. Nothing a shell reads as syntax (CodeQL #572). */
-export const SAFE_FLUTTER_ARG = /^[A-Za-z0-9._/\\:=,~-]+$/;
-
-/** The default runner: flutter on PATH (flutter.bat through cmd.exe on Windows).
- *  Every argument is checked first; a refused one runs nothing. */
-function runFlutter(args) {
-  const bad = args.filter((a) => typeof a !== 'string' || !SAFE_FLUTTER_ARG.test(a));
-  if (bad.length) return { status: -1, output: `refused flutter argument(s) ${bad.map((a) => JSON.stringify(a)).join(', ')} (${SAFE_FLUTTER_ARG})` };
-  const r =
-    process.platform === 'win32'
-      ? spawnSync('cmd.exe', ['/d', '/s', '/c', 'flutter.bat', ...args], { encoding: 'utf8' })
-      : spawnSync('flutter', args, { encoding: 'utf8' });
+/** The default runner: the real flutter executable (tooling/kit/sdk-tool.mjs —
+ *  on Windows the dart.exe flutter.bat runs, never cmd.exe), `shell: false`, every
+ *  value its own argument. The create destination is under os.tmpdir(), i.e. the
+ *  environment, so it must reach flutter as ONE literal argument whatever it
+ *  contains (CodeQL #578, lead ruling 2026-10-02). `platform`, `env`, `isFile` and
+ *  `spawn` are injectable for the suite. */
+export function runFlutter(args, { platform = process.platform, env = process.env, isFile, spawn = spawnSync } = {}) {
+  const tool = sdkTool('flutter', args, { platform, env, isFile });
+  if (tool.problem) return { status: -1, output: tool.problem };
+  const r = spawn(tool.command, tool.args, { encoding: 'utf8', shell: false, env: { ...env, ...tool.env } });
   return { status: r.status ?? -1, output: `${r.stdout ?? ''}${r.stderr ?? ''}${r.error ? String(r.error) : ''}` };
 }
 
@@ -586,9 +584,9 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     process.exit(1);
   }
   // ⏱ 2026-10-02 · CodeQL #572 (js/indirect-command-line-injection), CI red 2 of club apply-ci.
-  // `--app <id>` reaches `cmd.exe /c flutter.bat` on Windows. A pattern check on the argument was
-  // not enough for the query, so the id handed on is never the argument: it is the NAME OF A
-  // DIRECTORY under apps/ that equals it. The stamp only ever runs over an app mason just wrote,
+  // `--app <id>` reached `cmd.exe /c flutter.bat` on Windows (no shell since #578: sdk-tool.mjs).
+  // A pattern check on the argument was not enough for the query, so the id handed on is never
+  // the argument: it is the NAME OF A DIRECTORY under apps/ that equals it. The stamp only ever runs over an app mason just wrote,
   // so an id with no apps/<id> is refused here instead of being passed anywhere.
   let appsDirs = [];
   try {
