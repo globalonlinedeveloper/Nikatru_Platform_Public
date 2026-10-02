@@ -16,9 +16,12 @@ import 'package:nikatru_widgets/nikatru_widgets.dart';
 import '../../core/app_config.dart';
 import '../../core/format/money_format.dart';
 import '../../core/format/sub_math.dart';
+import '../../data/api/api_client.dart';
+import '../../data/api/cached_api_client.dart';
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import 'persistence.dart';
+import 'subscriptions.dart' show apiClientProvider;
 
 /// How the lock signs a person out. Set by the root widget to
 /// `signOutAndForgetUser(ref)`: `.signOut()` may be called from
@@ -39,12 +42,24 @@ final Provider<AppLockController> appLockControllerProvider =
       final AppLockController controller = AppLockController(
         store: ref.watch(secureStoreProvider),
         signOut: () => ref.read(appLockSignOutProvider)(),
+        unsyncedChanges: () => unsyncedAfterSync(ref.read(apiClientProvider)),
         biometric: biometric ? LocalAuthBiometricUnlocker() : null,
       );
       unawaited(controller.load());
       ref.onDispose(controller.dispose);
       return controller;
     });
+
+/// ⏱ 2026-10-02 · review of #1155, finding 6. What the lock's sign-out
+/// would lose: it SENDS the signed-in user's queued writes first, then counts
+/// what is still unsent (offline, or refused). The lock asks before
+/// discarding any of them. In the unconfigured posture there is no queue,
+/// and no account to sign out of: nothing is at stake.
+Future<int> unsyncedAfterSync(ApiClient api) async {
+  if (api is! CachedApiClient) return 0;
+  await api.replayPending();
+  return (await api.pendingWrites()).length;
+}
 
 /// Where this build writes its glance: the AppWidget / WidgetKit store, the
 /// PWA badge, or nowhere yet (see `GlanceCapabilities`).
@@ -82,12 +97,18 @@ const String addSheetRoute = '/home?add=1';
 ///
 /// The facts are Subly's (they name a subscription and a month's money); the
 /// gate, the wire format and the publishers are the package's.
+///
+/// ⏱ 2026-10-02 · review of #1155, finding 7: with the APP LOCK on
+/// ([appLocked]) the widget shows no figures at all — the home screen is
+/// outside the lock.
 GlanceSnapshot sublyGlance({
   required List<Subscription> subs,
   required bool locked,
   required DateTime now,
   required AppLocalizations l10n,
+  bool appLocked = false,
 }) {
+  if (appLocked) return GlanceSnapshot.hidden(prompt: l10n.glanceAppLocked);
   final List<Subscription> charging = SubMath.charging(subs)
     ..sort(
       (Subscription a, Subscription b) =>

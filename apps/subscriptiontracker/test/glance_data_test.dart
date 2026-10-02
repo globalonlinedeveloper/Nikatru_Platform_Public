@@ -85,4 +85,19 @@ void main() {
       );
     }
   });
+
+  test('RED CONTROL (#1155 review, finding 7): with the app lock on, the '
+      'widget shows no figures', () {
+    final GlanceSnapshot g = sublyGlance(
+      subs: _subs,
+      locked: false,
+      now: now,
+      l10n: en,
+      appLocked: true,
+    );
+    expect(g.facts, isEmpty);
+    expect(g.badgeCount, 0);
+    expect(g.proPrompt, en.glanceAppLocked);
+    expect(g.toWidgetData().values.join(), isNot(contains('Netflix')));
+  });
 }

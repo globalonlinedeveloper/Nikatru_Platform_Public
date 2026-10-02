@@ -190,4 +190,160 @@ void main() {
     expect(c.enabled, isFalse);
     expect(c.locked, isFalse);
   });
+
+  group('⏱ 2026-10-02 · review of #1155, finding 2: the attempts outlive the '
+      'process', () {
+    test('RED CONTROL: 3 wrong, relaunch, 2 wrong -> signed out', () async {
+      final AppLockController first = build();
+      await first.enable(pin: '2468', delay: Duration.zero);
+      await first.load();
+      for (int i = 0; i < 3; i++) {
+        expect(await first.submitPin('0000'), PinOutcome.wrong);
+      }
+      // A relaunch: a fresh controller over the same secure store.
+      final AppLockController second = build();
+      await second.load();
+      expect(second.locked, isTrue);
+      expect(second.attemptsLeft, 2);
+      expect(await second.submitPin('0000'), PinOutcome.wrong);
+      expect(await second.submitPin('0000'), PinOutcome.signedOut);
+      expect(signOuts, 1);
+      expect(second.enabled, isFalse);
+    });
+
+    test('the attempt is written before the PIN is compared', () async {
+      final AppLockController c = build();
+      await c.enable(pin: '2468', delay: Duration.zero);
+      await c.load();
+      await c.submitPin('0000');
+      final String? raw = await store.read(AppLockController.attemptsKey);
+      expect(raw, contains('"wrong":1'));
+    });
+
+    test('a correct PIN gives the attempts back, across a relaunch', () async {
+      final AppLockController first = build();
+      await first.enable(pin: '2468', delay: Duration.zero);
+      await first.load();
+      for (int i = 0; i < 4; i++) {
+        await first.submitPin('0000');
+      }
+      expect(await first.submitPin('2468'), PinOutcome.unlocked);
+      expect(await store.read(AppLockController.attemptsKey), isNull);
+      final AppLockController second = build();
+      await second.load();
+      expect(second.attemptsLeft, AppLockController.defaultMaxAttempts);
+    });
+
+    test('a count that does not parse reads as the attempts spent', () async {
+      final AppLockController first = build();
+      await first.enable(pin: '2468', delay: Duration.zero);
+      await store.write(AppLockController.attemptsKey, '{not json');
+      final AppLockController second = build();
+      await second.load();
+      expect(second.lockedOut, isTrue);
+      expect(await second.submitPin('2468'), PinOutcome.lockedOut);
+    });
+  });
+
+  group('⏱ 2026-10-02 · review of #1155, finding 6: the lock never silently '
+      'discards unsynced writes', () {
+    late int unsent;
+    late int syncs;
+    late List<int> asked;
+
+    AppLockController withQueue() => AppLockController(
+      store: store,
+      signOut: () async => signOuts++,
+      unsyncedChanges: () async {
+        syncs++;
+        return unsent;
+      },
+      clock: () => now,
+      random: Random(7),
+    );
+
+    setUp(() {
+      unsent = 3;
+      syncs = 0;
+      asked = <int>[];
+    });
+
+    Future<bool> Function(int) answer(bool yes) => (int n) async {
+      asked.add(n);
+      return yes;
+    };
+
+    test('RED CONTROL: Forgot PIN with unsent writes asks, and "keep" keeps '
+        'them and the lock', () async {
+      final AppLockController c = withQueue();
+      await c.enable(pin: '2468', delay: Duration.zero);
+      await c.load();
+      expect(await c.forgotPin(confirmDiscard: answer(false)), isFalse);
+      expect(syncs, 1, reason: 'a sync is tried first');
+      expect(asked, <int>[3]);
+      expect(signOuts, 0);
+      expect(c.enabled, isTrue);
+      expect(c.locked, isTrue);
+    });
+
+    test('with no one to ask, nothing unsynced is discarded', () async {
+      final AppLockController c = withQueue();
+      await c.enable(pin: '2468', delay: Duration.zero);
+      await c.load();
+      expect(await c.forgotPin(), isFalse);
+      expect(signOuts, 0);
+    });
+
+    test('agreeing signs out', () async {
+      final AppLockController c = withQueue();
+      await c.enable(pin: '2468', delay: Duration.zero);
+      await c.load();
+      expect(await c.forgotPin(confirmDiscard: answer(true)), isTrue);
+      expect(signOuts, 1);
+      expect(c.enabled, isFalse);
+    });
+
+    test('a sync that sent everything signs out without asking', () async {
+      unsent = 0;
+      final AppLockController c = withQueue();
+      await c.enable(pin: '2468', delay: Duration.zero);
+      await c.load();
+      expect(await c.forgotPin(confirmDiscard: answer(false)), isTrue);
+      expect(asked, isEmpty);
+      expect(signOuts, 1);
+    });
+
+    test('five wrong PINs with unsent writes, kept: locked out, across a '
+        'relaunch, and no PIN is checked any more', () async {
+      final AppLockController c = withQueue();
+      await c.enable(pin: '2468', delay: Duration.zero);
+      await c.load();
+      PinOutcome last = PinOutcome.wrong;
+      for (int i = 0; i < AppLockController.defaultMaxAttempts; i++) {
+        last = await c.submitPin('0000', confirmDiscard: answer(false));
+      }
+      expect(last, PinOutcome.lockedOut);
+      expect(signOuts, 0);
+      expect(asked, <int>[3]);
+      final AppLockController again = withQueue();
+      await again.load();
+      expect(again.lockedOut, isTrue);
+      expect(again.locked, isTrue);
+      expect(await again.submitPin('2468'), PinOutcome.lockedOut);
+      // Back online later: the sync sends everything and the sign-out runs.
+      unsent = 0;
+      expect(await again.forgotPin(), isTrue);
+      expect(signOuts, 1);
+    });
+  });
+
+  test(
+    '⏱ review of #1155, finding 5: not ready until the store has answered',
+    () async {
+      final AppLockController c = build();
+      expect(c.ready, isFalse);
+      await c.load();
+      expect(c.ready, isTrue);
+    },
+  );
 }

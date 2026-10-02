@@ -21,9 +21,15 @@ const AppLockStrings _strings = AppLockStrings(
   biometricReason: 'Unlock the app',
   forgotPin: 'Forgot PIN? Sign out',
   wrongPin: _wrong,
+  lockedOut: 'Too many wrong PINs. Sign out to continue.',
+  unsyncedWarning: _unsynced,
+  signOutAnyway: 'Sign out anyway',
+  keepChanges: 'Keep my changes',
 );
 
 String _wrong(int left) => 'Wrong PIN, $left left';
+
+String _unsynced(int n) => '$n changes not synced will be lost';
 
 class _Bio implements BiometricUnlocker {
   @override

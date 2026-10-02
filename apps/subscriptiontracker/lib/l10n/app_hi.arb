@@ -791,5 +791,10 @@
   "appLockWrongPin": "गलत PIN। {count, plural, =1{1 प्रयास बाकी} other{{count} प्रयास बाकी}}",
   "appLockDelayMinutes": "{count, plural, =1{1 मिनट बाद} other{{count} मिनट बाद}}",
   "emailCodeRequest": "मुझे एक कोड ईमेल करें",
-  "emailCodeTitle": "अपना ईमेल देखें"
+  "emailCodeTitle": "अपना ईमेल देखें",
+  "appLockLockedOut": "बहुत बार गलत PIN। जारी रखने के लिए साइन आउट करें।",
+  "appLockUnsyncedWarning": "{count, plural, =1{इस डिवाइस पर 1 बदलाव सिंक नहीं हुआ है और अभी साइन आउट करने पर खो जाएगा।} other{इस डिवाइस पर {count} बदलाव सिंक नहीं हुए हैं और अभी साइन आउट करने पर खो जाएंगे।}}",
+  "appLockSignOutAnyway": "फिर भी साइन आउट करें",
+  "appLockKeepChanges": "मेरे बदलाव रखें",
+  "glanceAppLocked": "अपने नवीनीकरण देखने के लिए ऐप खोलें"
 }

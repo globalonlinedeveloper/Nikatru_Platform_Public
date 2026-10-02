@@ -10,6 +10,12 @@ import 'web_badge.dart';
 /// Writes a [GlanceSnapshot] to wherever this target shows one.
 abstract interface class GlancePublisher {
   Future<void> publish(GlanceSnapshot snapshot);
+
+  /// ⏱ 2026-10-02 · review of #1155, finding 7. Forgets every value the
+  /// surface holds — run by every sign-out, so a signed-out phone's home
+  /// screen does not keep the last account's renewals. Never throws: the
+  /// glance is a mirror, and a sign-out must not fail over one.
+  Future<void> clear();
 }
 
 /// A publisher that does nothing — a target whose surface is not built yet,
@@ -20,6 +26,9 @@ class NoGlancePublisher implements GlancePublisher {
 
   @override
   Future<void> publish(GlanceSnapshot snapshot) async {}
+
+  @override
+  Future<void> clear() async {}
 }
 
 /// Android AppWidget and iOS WidgetKit, through `home_widget`.
@@ -67,6 +76,26 @@ class HomeWidgetGlancePublisher implements GlancePublisher {
       debugPrint('glance: home widget not updated ($e)');
     }
   }
+
+  @override
+  Future<void> clear() async {
+    try {
+      final String? group = appGroupId;
+      if (group != null && !_grouped) {
+        await HomeWidget.setAppGroupId(group);
+        _grouped = true;
+      }
+      for (final String key in GlanceSnapshot.widgetKeys) {
+        await HomeWidget.saveWidgetData<String>(key, null);
+      }
+      await HomeWidget.updateWidget(
+        qualifiedAndroidName: androidProvider,
+        iOSName: iOSKind,
+      );
+    } on Object catch (e) {
+      debugPrint('glance: home widget not cleared ($e)');
+    }
+  }
 }
 
 /// The web equivalent: the installed PWA's app badge, set to the count due
@@ -78,6 +107,15 @@ class WebBadgeGlancePublisher implements GlancePublisher {
   @override
   Future<void> publish(GlanceSnapshot snapshot) =>
       setAppBadge(snapshot.locked ? 0 : snapshot.badgeCount);
+
+  @override
+  Future<void> clear() async {
+    try {
+      await setAppBadge(0);
+    } on Object catch (e) {
+      debugPrint('glance: badge not cleared ($e)');
+    }
+  }
 }
 
 /// The publisher for [platform], by [GlanceCapabilities]: the one call an

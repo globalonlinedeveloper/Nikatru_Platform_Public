@@ -9,6 +9,7 @@ import 'package:nikatru_widgets/nikatru_widgets.dart';
 
 import '../../core/router/navigator_key.dart';
 import '../../core/router/router_provider.dart' show routerProvider;
+import '../../data/api/cached_api_client.dart' show CachedApiClient;
 import '../../data/models/subscription.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/money_providers.dart' show paywallLockedProvider;
@@ -97,10 +98,18 @@ class _DeviceSurfacesHostState extends ConsumerState<DeviceSurfacesHost> {
       fireImmediately: true,
     );
     ref.listenManual(paywallLockedProvider, (_, _) => _publishGlance());
+    // ⏱ 2026-10-02 · review of #1155, finding 7: turning the app lock on or
+    // off hides or shows the figures at once, not at the next sync.
+    final AppLockController lock = ref.read(appLockControllerProvider)
+      ..addListener(_publishGlance);
+    _lock = lock;
   }
+
+  AppLockController? _lock;
 
   @override
   void dispose() {
+    _lock?.removeListener(_publishGlance);
     final Future<void> Function()? cancel = _cancelTaps;
     if (cancel != null) unawaited(cancel());
     super.dispose();
@@ -124,10 +133,18 @@ class _DeviceSurfacesHostState extends ConsumerState<DeviceSurfacesHost> {
   /// Writes the glance when what it would show has changed. Comparing the
   /// flat map keeps a rebuild from re-writing the widget store every frame.
   void _publishGlance() {
+    if (!mounted) return;
     final List<Subscription>? subs = ref
         .read(subscriptionsControllerProvider)
         .value;
     if (subs == null) return;
+    // Signed out: the sign-out cleared the glance (`userStateDrops`), and an
+    // empty list landing after it must not write "This month: 0" back.
+    if (glanceSignedOut(ref)) {
+      _lastGlance = null;
+      return;
+    }
+    final AppLockController lock = ref.read(appLockControllerProvider);
     final GlanceSnapshot snapshot;
     try {
       snapshot = sublyGlance(
@@ -135,6 +152,9 @@ class _DeviceSurfacesHostState extends ConsumerState<DeviceSurfacesHost> {
         locked: ref.read(paywallLockedProvider),
         now: ref.read(nowProvider)(),
         l10n: _l10n,
+        // Not yet read counts as on: a cold start must not publish the
+        // figures in the frames before the store answers.
+        appLocked: lock.enabled || !lock.ready,
       );
     } on Object catch (e) {
       // The glance is a mirror, never the record: a fact that cannot be
@@ -169,8 +189,18 @@ class _DeviceSurfacesHostState extends ConsumerState<DeviceSurfacesHost> {
         biometricReason: l10n.appLockBiometricReason,
         forgotPin: l10n.appLockForgotPin,
         wrongPin: l10n.appLockWrongPin,
+        lockedOut: l10n.appLockLockedOut,
+        unsyncedWarning: l10n.appLockUnsyncedWarning,
+        signOutAnyway: l10n.appLockSignOutAnyway,
+        keepChanges: l10n.appLockKeepChanges,
       ),
       child: widget.child,
     );
   }
 }
+
+/// Whether nobody is signed in on a build that HAS accounts. In the
+/// unconfigured posture the list is the device's own and the glance shows it.
+bool glanceSignedOut(WidgetRef ref) =>
+    ref.read(apiClientProvider) is CachedApiClient &&
+    ref.read(authRepositoryProvider).currentUser == null;

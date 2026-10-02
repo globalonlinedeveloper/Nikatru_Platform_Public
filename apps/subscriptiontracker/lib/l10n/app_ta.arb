@@ -791,5 +791,10 @@
   "shortcutAddSubscription": "சந்தாவைச் சேர்க்கவும்",
   "shortcutWhatRenewsNext": "அடுத்து எது புதுப்பிக்கப்படும்?",
   "appLockWrongPin": "தவறான PIN. {count, plural, =1{1 முயற்சி மீதம்} other{{count} முயற்சிகள் மீதம்}}",
-  "appLockDelayMinutes": "{count, plural, =1{1 நிமிடத்திற்குப் பின்} other{{count} நிமிடங்களுக்குப் பின்}}"
+  "appLockDelayMinutes": "{count, plural, =1{1 நிமிடத்திற்குப் பின்} other{{count} நிமிடங்களுக்குப் பின்}}",
+  "appLockLockedOut": "தவறான PIN பல முறை. தொடர வெளியேறவும்.",
+  "appLockUnsyncedWarning": "{count, plural, =1{இந்தச் சாதனத்தில் 1 மாற்றம் ஒத்திசைக்கப்படவில்லை; இப்போது வெளியேறினால் அது இழக்கப்படும்.} other{இந்தச் சாதனத்தில் {count} மாற்றங்கள் ஒத்திசைக்கப்படவில்லை; இப்போது வெளியேறினால் அவை இழக்கப்படும்.}}",
+  "appLockSignOutAnyway": "இருந்தாலும் வெளியேறு",
+  "appLockKeepChanges": "என் மாற்றங்களை வைத்திரு",
+  "glanceAppLocked": "உங்கள் புதுப்பிப்புகளைப் பார்க்க ஆப்பைத் திறக்கவும்"
 }

@@ -48,6 +48,7 @@ import 'package:nikatru_platform_storage/age_signals.dart'
     show currentStoreAgeSignalSource;
 import 'package:nikatru_platform_storage/nikatru_platform_storage.dart'
     show platformNativeAttestor;
+import 'package:nikatru_widgets/nikatru_widgets.dart' show GlancePublisher;
 
 import '../../core/app_config.dart';
 import '../../data/api/api_client.dart' show ApiClient;
@@ -57,6 +58,7 @@ import '../../data/local/subscription_store.dart' show LocalSubscriptionStore;
 import '../analytics_providers.dart';
 import 'account_preferences.dart' show forgetAccountPreferences;
 import 'analytics_envelope.dart' show kPlatformBaseUrl;
+import 'device_surfaces.dart' show glancePublisherProvider;
 import 'notifications.dart';
 import 'persistence.dart';
 import 'subscriptions.dart' show apiClientProvider, nowProvider;
@@ -686,7 +688,18 @@ List<UserStateDrop> userStateDrops(
   // [accountDeleted] (review 4 of #1080): the account is gone, so its pending
   // preference sends go with it instead of waiting for a sign-in.
   forgetAccountPreferences(ref, erase: accountDeleted),
+  // ⏱ 2026-10-02 · review of #1155, finding 7: the home-screen widget and the
+  // PWA badge show this account's renewals OUTSIDE the app; a signed-out
+  // device must not keep them on its home screen.
+  clearGlanceDrop(ref.read(glancePublisherProvider)),
 ];
+
+/// The glance's sign-out drop. STARTED, not awaited: the clear goes over a
+/// platform channel to a widget extension that may not exist in this build,
+/// and a sign-out must neither wait on nor fail over a mirror.
+UserStateDrop clearGlanceDrop(GlancePublisher glance) => () async {
+  unawaited(glance.clear());
+};
 
 /// 🔴 THE ONE ORDER IN WHICH THIS DEVICE FORGETS A USER'S OFFLINE STATE —
 /// called by EVERY sign-out path: the explicit drops ([userStateDrops]: Log

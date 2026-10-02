@@ -61,6 +61,20 @@ class GlanceSnapshot {
     );
   }
 
+  /// ⏱ 2026-10-02 · review of #1155, finding 7. The snapshot while the APP
+  /// LOCK is on: no facts and no badge — the same shape as a Free snapshot —
+  /// and [prompt] in their place. A home screen is outside the lock, so a
+  /// locked app must not show its renewals and its month's total there.
+  factory GlanceSnapshot.hidden({
+    required String prompt,
+    String deepLink = '/home',
+  }) => GlanceSnapshot._(
+    facts: const <GlanceFact>[],
+    proPrompt: prompt,
+    badgeCount: 0,
+    deepLink: deepLink,
+  );
+
   /// A small widget has room for two lines; the brief names two facts.
   static const int maxFacts = 2;
 
@@ -93,6 +107,15 @@ class GlanceSnapshot {
       keyValue(i): i < facts.length ? facts[i].value : '',
     },
   };
+
+  /// Every key [toWidgetData] writes — what a clear forgets.
+  static List<String> get widgetKeys => <String>[
+    keyLocked,
+    keyPrompt,
+    keyLink,
+    keyBadge,
+    for (int i = 0; i < maxFacts; i++) ...<String>[keyLabel(i), keyValue(i)],
+  ];
 
   static const String keyLocked = 'glance_locked';
   static const String keyPrompt = 'glance_prompt';

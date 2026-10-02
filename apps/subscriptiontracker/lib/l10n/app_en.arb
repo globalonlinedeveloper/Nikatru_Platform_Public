@@ -177,7 +177,11 @@
   "syncProblemMessage": "{count, plural, =1{A change couldn't sync} other{{count} changes couldn't sync}}",
   "@syncProblemMessage": {
     "description": "Shown when changes made offline were refused by the server or failed too many times (the outbox's dead letters). Offers Retry and Discard.",
-    "placeholders": { "count": { "type": "int" } }
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "syncDiscard": "Discard",
   "@syncDiscard": {
@@ -4136,5 +4140,30 @@
         "type": "int"
       }
     }
+  },
+  "appLockLockedOut": "Too many wrong PINs. Sign out to continue.",
+  "@appLockLockedOut": {
+    "description": "XP-03 (#1155 review, finding 6): the lock screen once the attempts are spent and the sign-out waits; no PIN is checked any more."
+  },
+  "appLockUnsyncedWarning": "{count, plural, =1{1 change on this device hasn't synced and will be lost if you sign out now.} other{{count} changes on this device haven't synced and will be lost if you sign out now.}}",
+  "@appLockUnsyncedWarning": {
+    "description": "XP-03 (#1155 review, finding 6): asked before the lock's sign-out discards writes a sync just failed to send.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "appLockSignOutAnyway": "Sign out anyway",
+  "@appLockSignOutAnyway": {
+    "description": "XP-03 (#1155 review, finding 6): agrees to lose the unsynced changes and sign out."
+  },
+  "appLockKeepChanges": "Keep my changes",
+  "@appLockKeepChanges": {
+    "description": "XP-03 (#1155 review, finding 6): keeps the unsynced changes; the app stays locked."
+  },
+  "glanceAppLocked": "Open the app to see your renewals",
+  "@glanceAppLocked": {
+    "description": "XP-04 (#1155 review, finding 7): what the home-screen widget shows instead of the figures while the app lock is on."
   }
 }
