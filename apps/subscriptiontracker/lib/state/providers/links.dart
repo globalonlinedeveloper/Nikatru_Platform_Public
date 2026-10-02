@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_external_links/nikatru_external_links.dart'
     show UrlLauncherExternalLinks;
+import 'package:nikatru_purchases/nikatru_purchases.dart' show BillingSource;
 
 import '../../core/app_config.dart';
 import 'analytics_envelope.dart' show kPlatformBaseUrl;
@@ -32,6 +33,12 @@ final core.LinkPolicy appLinkPolicy = core.LinkPolicy.fromUrls(
     AppConfig.refundUrl,
     AppConfig.contactUrl,
     AppConfig.updateUrl,
+    // ⏱ 2026-10-01 · MO-03 / MO-05: Apple's standard EULA (the paywall of an
+    // Apple build) and the two stores' own subscriptions pages (Manage plan,
+    // for a plan bought in a store) — `BillingSource.manageUrl`.
+    AppConfig.appleEulaUrl,
+    for (final BillingSource s in BillingSource.values)
+      ?s.manageUrl?.toString(),
   ],
   supportEmail: AppConfig.supportEmail,
 );

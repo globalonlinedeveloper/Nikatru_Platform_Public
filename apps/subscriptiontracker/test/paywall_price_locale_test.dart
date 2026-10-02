@@ -210,7 +210,7 @@ void main() {
     await tester.pump();
     expect(find.textContaining('7.19'), findsOneWidget);
     expect(find.textContaining('free trial'), findsNothing);
-    expect(find.text('Billed per month'), findsOneWidget);
+    expect(find.text('Billed monthly'), findsOneWidget);
   });
 
   // 🔴 ST-U2 (audit C34, C35) — MONEY SAFETY. With `paywall.enabled` false the

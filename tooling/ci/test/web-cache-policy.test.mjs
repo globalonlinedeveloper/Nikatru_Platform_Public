@@ -249,15 +249,39 @@ const GOOD_SITE = `# security headers carry no Cache-Control, so nothing overlap
 // `siteCsp` is tooling/ci/site-csp.json for the fixture: by default every fixture
 // site is declared OUT of scope (a cache case says nothing about the site CSP);
 // the site-CSP cases hand in exactly the declaration they mean, or `false` for none.
-function fixture({ app = GOOD, brick = GOOD, brickIndex = '<html></html>', sec = true, sites = null, appFiles = {}, siteFiles = {}, siteCsp = undefined } = {}) {
+// ⏱ 2026-10-01 · every flutter-web bundle ships the offline shell ([ADR 023] as
+// amended 2026-09-30): `sw.js`, `sw-register.js` and the tag that loads the second.
+// `worker` supplies the REAL files from this repository (the app's to the app, the
+// brick's to the brick) plus a revalidating rule for each, so a cache case stays
+// about caching; the worker cases pass `worker: false` or their own `sw`.
+const APP_WEB_REAL = join(REPO, 'apps', 'subscriptiontracker', 'web');
+const BRICK_WEB_REAL = join(REPO, BRICK_WEB);
+const REAL_SW = readFileSync(join(APP_WEB_REAL, 'sw.js'), 'utf8');
+const REAL_SW_REGISTER = readFileSync(join(APP_WEB_REAL, 'sw-register.js'), 'utf8');
+const SW_TAGS = '<script src="sw-register.js"></script>\n<script src="flutter_bootstrap.js" async></script>';
+const SW_RULES = `/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+/sw-register.js
+  Cache-Control: public, max-age=0, must-revalidate
+`;
+
+function fixture({ app = GOOD, brick = GOOD, brickIndex = '<html></html>', sec = true, sites = null, appFiles = {}, siteFiles = {}, siteCsp = undefined, worker = true, sw = undefined } = {}) {
   const withSec = (h) => (h === null || !sec || h.includes('Content-Security-Policy') ? h : SEC + h);
-  app = withSec(app);
-  brick = withSec(brick);
+  // A file with no rule at all is left as it is: those cases are ABOUT that file.
+  const withSw = (h) => (h === null || !worker || h.includes('/sw.js') || !/^\//m.test(h) ? h : h + SW_RULES);
+  app = withSw(withSec(app));
+  brick = withSw(withSec(brick));
   const root = join(TMP, `f${seq++}`);
   mkdirSync(join(root, 'apps', 'subscriptiontracker', 'web'), { recursive: true });
   mkdirSync(join(root, BRICK_WEB), { recursive: true });
-  writeFileSync(join(root, 'apps', 'subscriptiontracker', 'web', 'index.html'), '<html></html>');
-  writeFileSync(join(root, BRICK_WEB, 'index.html'), brickIndex);
+  writeFileSync(join(root, 'apps', 'subscriptiontracker', 'web', 'index.html'), worker ? `<html>${SW_TAGS}</html>` : '<html></html>');
+  writeFileSync(join(root, BRICK_WEB, 'index.html'), worker ? `${brickIndex}\n${SW_TAGS}` : brickIndex);
+  if (worker) {
+    writeFileSync(join(root, 'apps', 'subscriptiontracker', 'web', 'sw.js'), sw ?? REAL_SW);
+    writeFileSync(join(root, 'apps', 'subscriptiontracker', 'web', 'sw-register.js'), REAL_SW_REGISTER);
+    writeFileSync(join(root, BRICK_WEB, 'sw.js'), readFileSync(join(BRICK_WEB_REAL, 'sw.js'), 'utf8'));
+    writeFileSync(join(root, BRICK_WEB, 'sw-register.js'), readFileSync(join(BRICK_WEB_REAL, 'sw-register.js'), 'utf8'));
+  }
   if (app !== null) writeFileSync(join(root, 'apps', 'subscriptiontracker', 'web', '_headers'), app);
   if (brick !== null) writeFileSync(join(root, BRICK_WEB, '_headers'), brick);
   for (const [rel, body] of Object.entries(appFiles)) {
@@ -1048,7 +1072,7 @@ describe('assert-web-cache-policy · the nikatru.com site CSP and its per-path o
   const DECL = {
     inScope: [{ site: 'sites/nikatru', why: 'fixture: served on the nikatru.com origin' }],
     outOfScope: [],
-    overrides: [{ site: 'sites/nikatru', path: '/ext/connect', why: 'fixture: the extension link page talks to auth' }],
+    overrides: [{ site: 'sites/nikatru', path: '/ext/connect', adds: { 'connect-src': ['https://auth-api.example'] }, why: 'fixture: the extension link page talks to auth' }],
   };
   const site = (headers, siteCsp = DECL, extra = {}) => run(fixture({ sites: { nikatru: headers, ...extra }, siteCsp }));
 
@@ -1117,7 +1141,7 @@ describe('assert-web-cache-policy · the nikatru.com site CSP and its per-path o
     // Each block carries a floored CSP, so the per-block limbs are all green; but a
     // request for /ext/connect matches both, and each detaches the other's value.
     const both = `${WITH_OVERRIDE}/ext/*\n  ! Content-Security-Policy\n  Content-Security-Policy: ${OVERRIDE_CSP}\n`;
-    const decl = { ...DECL, overrides: [...DECL.overrides, { site: 'sites/nikatru', path: '/ext/*', why: 'fixture: a second overlapping override' }] };
+    const decl = { ...DECL, overrides: [...DECL.overrides, { site: 'sites/nikatru', path: '/ext/*', adds: { 'connect-src': ['https://auth-api.example'] }, why: 'fixture: a second overlapping override' }] };
     const { code, out } = site(both, decl);
     assert.equal(code, 1, out);
     assert.match(out, /"\/ext\/connect" is served with NO Content-Security-Policy/);
@@ -1209,6 +1233,41 @@ describe('assert-web-cache-policy · the nikatru.com site CSP and its per-path o
     const { code, out } = site(realHeaders(), realDecl());
     assert.equal(code, 0, out);
     assert.match(out, /1 in-scope site\(s\), 3 policy line\(s\) floored, 2 declared per-path override/);
+  });
+
+  // ⏱ 2026-10-02 · #1095 review finding 3: `connect-src *` on /ext/connect exited 0. Every
+  // override directive is now bounded by the global line plus its declared `adds`.
+  test('🔴 FAILS on `connect-src *` in the override — the reproduced #1095 hole', () => {
+    const wide = WITH_OVERRIDE.replace("connect-src 'self' https://auth-api.example", 'connect-src *');
+    const { code, out } = site(wide);
+    assert.equal(code, 1, out);
+    assert.match(out, /\(the "\/ext\/connect" override\) connect-src admits \*, which neither the global \/\* policy nor the override's declared `adds\.connect-src`/);
+  });
+
+  test('🔴 FAILS on an origin the override adds without declaring it, and on a widened img-src', () => {
+    const { code, out } = site(WITH_OVERRIDE, { ...DECL, overrides: [{ ...DECL.overrides[0], adds: {} }] });
+    assert.equal(code, 1, out);
+    assert.match(out, /connect-src admits https:\/\/auth-api\.example/);
+    const img = site(WITH_OVERRIDE.replace(OVERRIDE_CSP, OVERRIDE_CSP.replace("img-src 'self' data:", "img-src 'self' data: https:")));
+    assert.equal(img.code, 1, img.out);
+    assert.match(img.out, /img-src admits https:/);
+  });
+
+  test('🔴 FAILS on a declared addition that is a wildcard or a bare scheme, never one origin', () => {
+    for (const bad of ['*', 'https:', 'https://*.example']) {
+      const { code, out } = site(WITH_OVERRIDE, { ...DECL, overrides: [{ ...DECL.overrides[0], adds: { 'connect-src': ['https://auth-api.example', bad] } }] });
+      assert.equal(code, 1, `${bad}: ${out}`);
+      assert.match(out, /declares `adds\.connect-src` .*each addition is ONE concrete https origin/);
+    }
+  });
+
+  test('🔴 …and `connect-src *` written into the REAL /ext/connect line goes RED', () => {
+    const real = realHeaders();
+    const wide = real.replace(/(\/ext\/connect[\s\S]*?connect-src )[^;]*;/, '$1*;');
+    assert.notEqual(wide, real, 'the real /ext/connect block has no connect-src; re-read this test');
+    const { code, out } = site(wide, realDecl());
+    assert.equal(code, 1, out);
+    assert.match(out, /\(the "\/ext\/connect" override\) connect-src admits \*/);
   });
 
   test('🔴 …and deleting the REAL /ext/connect CSP line while its detach stays goes RED', () => {
@@ -1322,5 +1381,173 @@ describe('assert-web-cache-policy · Permissions-Policy and the third-party scri
     const { code, out } = run(fixture({ app, brick: realBrick(), sec: false }));
     assert.equal(code, 1, out);
     assert.match(out, /script-src admits https:\/\/challenges\.cloudflare\.com and records no reason for it/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-01 · THE OFFLINE SHELL — [ADR 023] as amended 2026-09-30, rules 1-4
+// (row O-WEB-OFFLINE-COLD-LOAD-IS-BROWSER-ERROR). Every case below starts from the
+// REAL apps/subscriptiontracker/web/sw.js and makes ONE edit at a seam that is
+// asserted to exist, so a moved seam fails here instead of mutating nothing. The
+// first case is the green control: the same fixture, unedited, exits 0.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('assert-web-cache-policy · the offline shell (ADR 023 as amended)', () => {
+  /** The real worker with `from` replaced by `to`; refuses a seam that moved. */
+  const swWith = (from, to) => {
+    assert.ok(REAL_SW.includes(from), `the seam moved: apps/subscriptiontracker/web/sw.js has no \`${from}\``);
+    return REAL_SW.replace(from, to);
+  };
+  const FETCH_SEAM = '  let response;\n  try {\n    response = await fetch(request);';
+
+  test('GREEN CONTROL — the real worker, registered by the real script, passes and is RUN in both bundles', () => {
+    const { code, out } = run(fixture());
+    assert.equal(code, 0, out);
+    assert.match(out, /offline shell .* — 2 worker\(s\) RUN in a simulated scope/);
+  });
+
+  test('🔴 RED CONTROL — a CACHE-FIRST worker exits 1 (rule 2: online, the network always wins)', () => {
+    const sw = swWith(FETCH_SEAM, `  const hit = await (await caches.open(CACHE)).match(request);\n  if (hit) return hit;\n${FETCH_SEAM}`);
+    const { code, out } = run(fixture({ sw }));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subscriptiontracker\/web\/sw\.js serves a CACHED copy of the bundle \(main\.dart\.js\) while the network answers/);
+  });
+
+  test('a stale-while-revalidate worker is cache-first too, and exits 1', () => {
+    const sw = swWith(
+      FETCH_SEAM,
+      '  const hit = await (await caches.open(CACHE)).match(request);\n' +
+        '  const net = fetch(request);\n' +
+        '  if (hit) { event.waitUntil(net.catch(() => {})); return hit; }\n' +
+        '  let response;\n  try {\n    response = await net;',
+    );
+    const { code, out } = run(fixture({ sw }));
+    assert.equal(code, 1, out);
+    assert.match(out, /serves a CACHED copy of the shell \(a navigation to the scope\) while the network answers/);
+  });
+
+  test('🔴 RED CONTROL — a worker with ONE cache name for every build exits 1 (rule 3)', () => {
+    const sw = swWith('const CACHE = `${CACHE_PREFIX}${BUILD}`;', 'const CACHE = `${CACHE_PREFIX}v1`;');
+    const { code, out } = run(fixture({ sw }));
+    assert.equal(code, 1, out);
+    assert.match(out, /has no per-build cache name \(ADR 023 rule 3\): installed as build 41 it opened \["nikatru-subscriptiontracker-shell-v1"\]/);
+  });
+
+  test('a worker that keeps the previous build\'s cache on activate exits 1 (rule 3)', () => {
+    const sw = swWith('if (name.startsWith(CACHE_PREFIX) && name !== CACHE) await caches.delete(name);', 'void name;');
+    const { code, out } = run(fixture({ sw }));
+    assert.equal(code, 1, out);
+    assert.match(out, /leaves the previous build's cache\(s\) \["nikatru-subscriptiontracker-shell-41"\] in place/);
+  });
+
+  test('a worker that deletes EVERY other cache on the shared origin exits 1 (rule 4)', () => {
+    const sw = swWith('if (name.startsWith(CACHE_PREFIX) && name !== CACHE)', 'if (name !== CACHE)');
+    const { code, out } = run(fixture({ sw }));
+    assert.equal(code, 1, out);
+    assert.match(out, /deleted \["nikatru-otherapp-shell-7","nikatru-site-pages"\] on activate/);
+  });
+
+  test('a worker whose cache names carry no per-app prefix exits 1 (rule 4)', () => {
+    const sw = swWith('const CACHE_PREFIX = `nikatru-${APP_ID}-shell-`;', 'const CACHE_PREFIX = `shell-`;');
+    const { code, out } = run(fixture({ sw }));
+    assert.equal(code, 1, out);
+    assert.match(out, /names cache\(s\) "shell-41", "shell-42" without the per-app prefix "nikatru-subscriptiontracker-"/);
+  });
+
+  test('a worker that installs under the origin root exits 1 (rule 4: scope /<id>/ only)', () => {
+    const sw = swWith('if (decodeURIComponent(new URL(SCOPE).pathname) !== `/${APP_ID}/`) {', 'if (false) {');
+    const { code, out } = run(fixture({ sw }));
+    assert.equal(code, 1, out);
+    assert.match(out, /installs under the ORIGIN ROOT scope as readily as under \/subscriptiontracker\//);
+  });
+
+  test('🔴 a worker that stores an API response exits 1 — it answers other origins and keeps any 200', () => {
+    let sw = swWith('  if (!request.url.startsWith(SCOPE)) return false;\n', '');
+    sw = sw.replace("    response.type === 'basic' &&\n", '');
+    const { code, out } = run(fixture({ sw }));
+    assert.equal(code, 1, out);
+    assert.match(out, /stores an API response \(another origin\) \(https:\/\/subscriptiontracker-api\.nikatru\.com\/v1\/subscriptions\)/);
+  });
+
+  test('a worker that stores a credentialed request or version.json exits 1', () => {
+    const sw = swWith("  if (request.headers.has('authorization') || request.headers.has('range')) return false;\n", '').replace(
+      "const NEVER_STORED = new Set(['sw.js', 'version.json']);",
+      "const NEVER_STORED = new Set(['sw.js']);",
+    );
+    const { code, out } = run(fixture({ sw }));
+    assert.equal(code, 1, out);
+    assert.match(out, /stores version\.json \(the deploy marker/);
+    assert.match(out, /stores a request carrying credentials/);
+  });
+
+  test('a worker that never falls back to its cache exits 1 — the cold load would be the error page', () => {
+    const sw = swWith('    if (cached) return cached;\n', '');
+    const { code, out } = run(fixture({ sw }));
+    assert.equal(code, 1, out);
+    assert.match(out, /with the network off, does not serve the copy of the bundle \(main\.dart\.js\) it holds/);
+  });
+
+  test('a worker that does not evaluate is a finding, not a crash of the guard', () => {
+    const { code, out } = run(fixture({ sw: 'self.addEventListener(' }));
+    assert.equal(code, 1, out);
+    assert.match(out, /sw\.js does not evaluate as a worker script/);
+  });
+
+  test('a bundle with no sw.js exits 1', () => {
+    const root = fixture();
+    rmSync(join(root, 'apps', 'subscriptiontracker', 'web', 'sw.js'));
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subscriptiontracker\/web\/sw\.js does not exist/);
+  });
+
+  test('🔴 RED CONTROL — a `Service-Worker-Allowed` header in a bundle\'s _headers exits 1 (rule 4)', () => {
+    const { code, out } = run(fixture({ app: `${GOOD}${SW_RULES.replace('/sw.js\n', '/sw.js\n  Service-Worker-Allowed: /\n')}` }));
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subscriptiontracker\/web\/_headers rule "\/sw\.js" declares Service-Worker-Allowed \("\/"\)/);
+  });
+
+  test('the same header on a static site\'s _headers exits 1 — the site shares the origin', () => {
+    const { code, out } = run(fixture({ sites: { nikatru: `${GOOD_SITE}/app/*\n  Service-Worker-Allowed: /\n` } }));
+    assert.equal(code, 1, out);
+    assert.match(out, /sites\/nikatru\/_headers rule "\/app\/\*" declares Service-Worker-Allowed/);
+  });
+
+  test('the header set in a Pages Function (the apex router) exits 1; one named only in a comment does not', () => {
+    const fnBody = (extra) =>
+      `${extra}export async function onRequestPost() {\n  return new Response('{}', { headers: {\n` +
+      '    "x-content-type-options": "nosniff",\n    "x-frame-options": "DENY",\n' +
+      '    "referrer-policy": "strict-origin-when-cross-origin",\n' +
+      '    "strict-transport-security": "max-age=63072000; includeSubDomains; preload",\n' +
+      '    "content-security-policy": "default-src \'none\'; frame-ancestors \'none\'",\n  } });\n}\n';
+    const set = run(fixture({ sites: { nikatru: GOOD_SITE }, siteFiles: { 'functions/_middleware.js': fnBody("const h = { 'Service-Worker-Allowed': '/' };\n") } }));
+    assert.equal(set.code, 1, set.out);
+    assert.match(set.out, /sites\/nikatru\/functions\/_middleware\.js sets Service-Worker-Allowed/);
+    const comment = run(fixture({ sites: { nikatru: GOOD_SITE }, siteFiles: { 'functions/_middleware.js': fnBody('// never Service-Worker-Allowed here\n') } }));
+    assert.equal(comment.code, 0, comment.out);
+  });
+
+  test('index.html that does not load sw-register.js ABOVE the bootstrap exits 1 (rule 1: registered by us)', () => {
+    const root = fixture();
+    const index = join(root, 'apps', 'subscriptiontracker', 'web', 'index.html');
+    writeFileSync(index, '<html><script src="flutter_bootstrap.js" async></script>\n<script src="sw-register.js"></script></html>');
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /apps\/subscriptiontracker\/web\/index\.html does not load <script src="sw-register\.js">/);
+  });
+
+  test("a bootstrap that hands Flutter's loader serviceWorkerSettings exits 1 (rule 1: never Flutter's worker)", () => {
+    const root = fixture({ appFiles: { 'flutter_bootstrap.js': '_flutter.loader.load({ serviceWorkerSettings: { serviceWorkerVersion: "1" } });\n' } });
+    const { code, out } = run(root);
+    assert.equal(code, 1, out);
+    assert.match(out, /flutter_bootstrap\.js names Flutter's own service worker \(serviceWorkerSettings\)/);
+  });
+
+  test('the brick template is the stamp of the app worker: they differ in APP_ID alone, and the register script not at all', () => {
+    const brickSw = readFileSync(join(BRICK_WEB_REAL, 'sw.js'), 'utf8');
+    assert.ok(brickSw.includes("const APP_ID = '{{app_id}}';"), 'the brick worker does not take its id from the stamp');
+    assert.equal(brickSw.replaceAll('{{app_id}}', 'subscriptiontracker'), REAL_SW, 'the brick worker and the app worker have drifted apart');
+    assert.equal(readFileSync(join(BRICK_WEB_REAL, 'sw-register.js'), 'utf8'), REAL_SW_REGISTER, 'the brick and app register scripts have drifted apart');
+    const brickIndex = readFileSync(join(BRICK_WEB_REAL, 'index.html'), 'utf8');
+    assert.ok(brickIndex.includes('<script src="sw-register.js"></script>'), 'the brick index.html does not load the register script');
   });
 });

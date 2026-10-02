@@ -226,7 +226,15 @@ void main() {
         const PaywallScreen(),
         overrides: _money(
           pitch: (
-            pro: const <String>['plan', 'save', 'not-a-feature'],
+            // MO-07: the delivered Pro items; the retired `plan`/`save` codes
+            // draw nothing now, exactly like an unknown one.
+            pro: const <String>[
+              'forecast',
+              'caps',
+              'plan',
+              'save',
+              'not-a-feature',
+            ],
             free: const <String>['sync'],
             trialCopy: false,
           ),
@@ -234,10 +242,13 @@ void main() {
       );
       final AppLocalizations l10n = _l10n(tester, PaywallScreen);
       expect(find.byKey(PaywallView.featuresCard), findsOneWidget);
-      expect(find.text(l10n.paywallFeaturePlan), findsOneWidget);
-      expect(find.text(l10n.paywallFeatureSave), findsOneWidget);
+      expect(find.text(l10n.paywallFeatureForecast), findsOneWidget);
+      expect(find.text(l10n.paywallFeatureCaps), findsOneWidget);
       expect(find.text(l10n.paywallFeatureSync), findsOneWidget);
       expect(find.textContaining('not-a-feature'), findsNothing);
+      // The retired pitch is gone: "Find savings" gated nothing (MO-07).
+      expect(find.textContaining('Find savings'), findsNothing);
+      expect(find.textContaining('Plan ahead'), findsNothing);
       expect(find.byKey(PaywallView.upgradeButton), findsOneWidget);
     });
 
@@ -388,5 +399,108 @@ void main() {
       );
       expect(find.byKey(ManagePlanView.restoreTile), findsOneWidget);
     });
+  });
+
+  // ── ⏱ 2026-10-01 · train st-money-ready ───────────────────────────────────
+  group('st-money-ready', () {
+    core.Entitlements proFrom(String store) => core.Entitlements(
+      appId: 'subscriptiontracker',
+      isPro: true,
+      items: <core.Entitlement>[
+        core.Entitlement(
+          entitlement: 'pro',
+          productId: 'pro_monthly',
+          store: store,
+          isActive: true,
+          expiresAt: DateTime.now().add(const Duration(days: 20)),
+        ),
+      ],
+    );
+
+    // RED CONTROL (MO-05, AB-M4-03-client): a Play-sourced plan on a HOSTED
+    // (web) build — `_Rail` is paddle — is managed in Google Play, and the
+    // screen offers no Cancel that would post /v1/plan/cancel for it.
+    testWidgets('Pro from Google Play on a web build: Manage in Google Play, '
+        'no Cancel', (WidgetTester tester) async {
+      await pumpAt(
+        tester,
+        kPhone,
+        const ManagePlanScreen(),
+        overrides: _money(entitlements: () async => proFrom('PLAY_STORE')),
+      );
+      final ChassisLocalizations chassis = _chassis(tester, ManagePlanScreen);
+      expect(find.text(chassis.manageInGooglePlay), findsOneWidget);
+      expect(find.byKey(ManagePlanView.cancelTile), findsNothing);
+      expect(find.text(chassis.planBoughtInGooglePlay), findsOneWidget);
+    });
+
+    testWidgets('Pro bought on the web: our own Cancel stays', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(
+        tester,
+        kPhone,
+        const ManagePlanScreen(),
+        overrides: _money(entitlements: () async => proFrom('')),
+      );
+      expect(find.byKey(ManagePlanView.cancelTile), findsOneWidget);
+      expect(find.byKey(ManagePlanView.manageInStoreTile), findsNothing);
+    });
+
+    // RED CONTROL (IN-05): a gov-channel build with `paywall.enabled: true`
+    // locks nothing — so no "See Pro" can be drawn — and sells nothing.
+    for (final (String channel, bool locks) in <(String, bool)>[
+      ('apps-gov-in', false),
+      ('web', true),
+    ]) {
+      test(
+        '$channel: paywallLocked is $locks with the paywall served on',
+        () async {
+          final ProviderContainer c = ProviderContainer(
+            overrides: <Override>[
+              releaseChannelProvider.overrideWithValue(channel),
+              secureStoreProvider.overrideWithValue(_MemSecureStore()),
+              appConfigProvider.overrideWith(
+                (_) async => core.AppConfig(
+                  appId: 'subscriptiontracker',
+                  apiBaseUrl: 'https://example.invalid/v1',
+                  features: const <String, bool>{},
+                  paywall: const core.PaywallConfig(enabled: true),
+                  contentPack: null,
+                  copy: const <String, String>{},
+                  minSupportedVersion: '1.0.0',
+                ),
+              ),
+              entitlementsProvider.overrideWith((_) async => _free),
+            ],
+          );
+          addTearDown(c.dispose);
+          await c.read(appConfigProvider.future);
+          await c.read(entitlementsProvider.future);
+          expect(c.read(paywallLockedProvider), locks);
+          expect(c.read(sellingEnabledProvider), locks);
+        },
+      );
+    }
+
+    // MO-03/MO-04 through the REAL adapter: a hosted rail says "here", and
+    // draws Restore, Terms and Privacy — no EULA off an Apple rail.
+    testWidgets(
+      'hosted paywall: cancel here, Terms + Privacy + Restore, no EULA',
+      (WidgetTester tester) async {
+        await pumpAt(
+          tester,
+          kPhone,
+          const PaywallScreen(),
+          overrides: _money(),
+        );
+        final ChassisLocalizations chassis = _chassis(tester, PaywallScreen);
+        expect(find.textContaining(chassis.paywallCancelHere), findsOneWidget);
+        expect(find.byKey(PaywallView.termsLink), findsOneWidget);
+        expect(find.byKey(PaywallView.privacyLink), findsOneWidget);
+        expect(find.byKey(PaywallView.restoreLink), findsOneWidget);
+        expect(find.byKey(PaywallView.eulaLink), findsNothing);
+      },
+    );
   });
 }

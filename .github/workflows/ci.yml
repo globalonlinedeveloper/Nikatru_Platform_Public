@@ -6,11 +6,11 @@ run-name: "CI on ${{ github.event_name == 'pull_request' && format('PR #{0}', gi
 # docs/ci/README.md. Only `# why:` lines live here.
 
 on:
-  # why: main only. A branch-prefix list cannot cover branches nobody has named
-  # yet, and `pull_request:` (unfiltered) already covers every branch that opens
-  # a PR — so a commit on a PR branch used to run CI twice.
+  # why: main only; `pull_request:` (unfiltered) covers every branch that opens a PR.
   push:
     branches: [main]
+  # why: land.yml merges with GITHUB_TOKEN, whose push starts no run, so it dispatches this on main (POST_GATE_IF).
+  workflow_dispatch:
   pull_request:
     # why: `edited` so that fixing a PR body re-runs assert-pr-rows (guard-meta).
     # The other three are GitHub's defaults, listed because `types:` replaces them.
@@ -373,17 +373,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-glitchtip-no-ip.mjs
       # Slowest green 49 s (median 37), so 3 minutes.
-      # why: CLOUDFLARE_READ_TOKEN, never the deploy token (rv2-security-001, limb 8d): a PR runs
-      # this job. Until the owner mints it the Cloudflare rows read `unreadable`, inside the
-      # register's declared `_maxUnreadable` ceiling.
+      # why: NO CLOUDFLARE TOKEN AT ALL (#1095 review, findings 1-2; limb 8d). A PR runs this
+      # job, and even CLOUDFLARE_READ_TOKEN is account-scoped D1 READ, i.e. every production
+      # user row (`productionData: read`). The Cloudflare rows therefore read `unreadable` here
+      # by policy, inside `_maxUnreadable`, and are read on schedule by ops-watch.yml's
+      # `assert-ops-register` step, which holds the token (READ || API: the API half's
+      # repositoryFallback ends 2026-11-30, assert-channel-register 8c).
       - name: Every failure has a detector, a response and a cadence
         if: ${{ !cancelled() }}
         timeout-minutes: 3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GLITCHTIP_TOKEN: ${{ secrets.GLITCHTIP_TOKEN }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node --single-threaded tooling/ci/assert-ops-register.mjs
       # ⏱ 2026-09-28 · ops watch 36416498456: `reminder_mail` was declared at a
       # cloud draft's sandbox commit, which owed a slot hours before the job
@@ -459,16 +460,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node --single-threaded tooling/ci/assert-platform-proof-fresh.mjs
-      # why: CLOUDFLARE_READ_TOKEN, never the deploy token (rv2-security-001, limb 8d). The dated
-      # flag defers ONLY the D1 timer limb while that token does not exist yet, loudly; on
-      # 2026-10-21 an absent token is COVERAGE LOST again. Delete the flag once the token is minted.
+      # why: NO CLOUDFLARE TOKEN (#1095 review, finding 2; limb 8d): a PR runs this job, and a D1
+      # read token reads every production row. The OUTCOME record is graded here; the D1 TIMER
+      # row is read on schedule by ops-watch.yml's heartbeats job. The flag is a standing policy,
+      # printed on every run, not a dated deferral.
       - name: The nightly golden-path proof is fresh
         if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node tooling/ci/assert-e2e-proof-fresh.mjs --cloudflare-read-pending-until 2026-10-21
+        run: node tooling/ci/assert-e2e-proof-fresh.mjs --timer-read-by-ops-watch
       - name: The nightly exercised the legs it claims
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-e2e-legs.mjs
@@ -909,6 +909,9 @@ jobs:
       - name: Every port earns the level it claims, and every vendor is placed
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-ports.mjs
+      - name: Every secret a Worker reads is a row of tooling/worker-secrets.json
+        if: ${{ !cancelled() }}
+        run: node tooling/ci/assert-worker-secrets-declared.mjs
       - name: One convention set reaches every app, and can fail a build
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-lint-inheritance.mjs
@@ -1080,15 +1083,17 @@ jobs:
       # (a force-push) is COVERAGE LOST, exit 2 — never a pass. The values reach
       # the shell through `env:`, never `${{ }}` inside `run:` (zizmor's
       # template-injection rule). fetch-depth: 0 above is what puts both ends in
-      # the clone.
+      # the clone. A DISPATCH ON MAIN (land.yml's post-merge start) carries no
+      # before/after, so it scans first-parent..sha: for land.yml's squash merge
+      # that is exactly the before..after its push would have carried.
       - name: Secret scan (self-tests, then the tree, then the change's commits)
         env:
           SCAN_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          SCAN_HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
+          SCAN_HEAD: ${{ github.event.pull_request.head.sha || github.event.after || github.sha }}
           SCAN_KIND: ${{ github.event_name == 'pull_request' && 'pr' || 'push' }}
-        run: >-
-          node tooling/ci/scan-secrets.mjs . --gitleaks "${RUNNER_TEMP}/gitleaks"
-          --range "${SCAN_BASE}..${SCAN_HEAD}" --range-kind "${SCAN_KIND}"
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then SCAN_BASE="$(git rev-parse --verify "${SCAN_HEAD}^1")"; fi
+          node tooling/ci/scan-secrets.mjs . --gitleaks "${RUNNER_TEMP}/gitleaks" --range "${SCAN_BASE}..${SCAN_HEAD}" --range-kind "${SCAN_KIND}"
       # ⚠️ THE ASSET NAME CARRIES NO VERSION — `zizmor-x86_64-unknown-linux-gnu.tar.gz`
       # is the same string at every release, and only the `/v${ver}/` path segment
       # differs. So on this lane the digest is not a second opinion about the
@@ -1397,6 +1402,7 @@ jobs:
           node tooling/sites/gen-auth-mail.mjs
           node tooling/sites/generate-discovery.mjs
           node tooling/sites/generate-well-known.mjs
+          node tooling/sites/generate-personal-site.mjs
           node tooling/ci/tag-owner.mjs --write
           git diff --stat
           git diff --exit-code
@@ -2208,8 +2214,8 @@ jobs:
           --app ${{ matrix.app }}
           --posture debug
       # why: main writes the one entry every PR restores; a PR never writes one.
-      - name: Save the Gradle caches (push to main only, on a key miss)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
+      - name: Save the Gradle caches (a run of main only, on a key miss)
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -2514,7 +2520,7 @@ jobs:
   platform-db-migrate:
     name: platform-db-migrate
     needs: [ci-gate]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/migrate-platform-db.yml
     permissions:
       contents: read
@@ -2526,7 +2532,7 @@ jobs:
   deploy-web:
     name: deploy-web
     needs: [ci-gate, platform-db-migrate, deploy-workers]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy-web.yml
     permissions:
       contents: read
@@ -2543,7 +2549,7 @@ jobs:
   deploy-workers:
     name: deploy-workers
     needs: [ci-gate, platform-db-migrate]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy-workers.yml
     permissions:
       contents: read

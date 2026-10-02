@@ -18,11 +18,22 @@ class CancellationReceipt {
     required this.hasActivePlan,
     required this.recorded,
     required this.executed,
+    this.cancelAt,
+    this.manageUrl,
   });
 
   final bool hasActivePlan;
   final bool recorded;
   final bool executed;
+
+  /// ⏱ 2026-10-01 · AB-M4-03-client. Where the plan must be cancelled when it
+  /// is NOT ours to cancel: the server's 409 for a store row carries
+  /// `cancel_at` (`app_store`, `play_store` or `store`). Null on every answer
+  /// our own cancel route can act on.
+  final String? cancelAt;
+
+  /// The store's own subscriptions page from that 409, or null.
+  final String? manageUrl;
 
   static CancellationReceipt fromJson(Map<String, Object?> j) =>
       CancellationReceipt(
@@ -31,6 +42,8 @@ class CancellationReceipt {
         hasActivePlan: j['has_active_plan'] == true,
         recorded: j['recorded'] == true,
         executed: j['executed'] == true,
+        cancelAt: j['cancel_at'] is String ? j['cancel_at'] as String : null,
+        manageUrl: j['manage_url'] is String ? j['manage_url'] as String : null,
       );
 }
 

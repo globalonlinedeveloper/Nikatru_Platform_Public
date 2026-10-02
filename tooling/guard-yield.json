@@ -3058,6 +3058,11 @@
         "reason": "exposed 55 of the 90 days a zero needs before it is evidence (firstSeen 2026-08-02); re-judged at the next fetch"
       }
     },
+    "tooling/ci/assert-worker-secrets-declared.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ci/assert-workflow-hardening.mjs": {
       "catches": 0,
       "firstSeen": "2026-07-26",
@@ -3319,6 +3324,11 @@
         "basis": "exposure",
         "reason": "exposed 15 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-11); re-judged at the next fetch"
       }
+    },
+    "tooling/ci/land-next.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
     },
     "tooling/ci/lane-detect.mjs": {
       "catches": 0,
@@ -3606,9 +3616,19 @@
       "firstSeen": "2026-07-21",
       "evidence": []
     },
+    "tooling/e2e/sign_in_via.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
     "tooling/e2e/verify_consent.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-09",
+      "evidence": []
+    },
+    "tooling/e2e/verify_export_csv.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
       "evidence": []
     },
     "tooling/e2e/verify_purged.mjs": {
@@ -3701,6 +3721,11 @@
       "firstSeen": "2026-09-30",
       "evidence": []
     },
+    "tooling/ops/check-secret-scopes.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ops/check-tech-currency.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-29",
@@ -3750,6 +3775,11 @@
     "tooling/ops/name-clearance-sweep.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-09",
+      "evidence": []
+    },
+    "tooling/ops/osv-scan-due.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ops/post-deploy-smoke.mjs": {
@@ -3962,6 +3992,11 @@
     "tooling/sites/generate-landing-payload.mjs": {
       "catches": 0,
       "firstSeen": "2026-08-18",
+      "evidence": []
+    },
+    "tooling/sites/generate-personal-site.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
       "evidence": []
     },
     "tooling/sites/generate-well-known.mjs": {
