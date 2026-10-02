@@ -760,7 +760,7 @@
     },
     {
       "path": "test_driver/integration_test.dart",
-      "lines": 62,
+      "lines": 71,
       "verdict": "STAYS",
       "why": "⏱ 2026-09-27 (10b): apps/subscriptiontracker/test_driver/integration_test.dart byte for byte below a stamp header — a driver names no app, and flutter drive needs it inside the app it drives. tooling/ci/test/brick-drivers.test.mjs fails the moment the copy and its source differ."
     },
