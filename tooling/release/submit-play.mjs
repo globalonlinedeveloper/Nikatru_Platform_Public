@@ -88,6 +88,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash, createSign } from 'node:crypto';
 import { readGradleApplicationId } from '../ci/read-identity.mjs';
+import { loadRegister } from '../i18n/locales.mjs';
 import { parseWorkflow } from '../ci/workflow-scan.mjs';
 import { submitCli, requirePublishEnvironment, PUBLISH_ENVIRONMENT, githubToken, storeSubmitter, invokedAsScript } from './submit-common.mjs';
 
@@ -190,8 +191,14 @@ const CHANGES_IN_REVIEW_BEHAVIOR = 'ERROR_IF_IN_REVIEW';
 const ALLOWED_RELEASE_STATUS = Object.freeze(['draft', 'completed']);
 
 const CONFIRM_TOKEN = 'SUBMIT-TO-PLAY';
-/** The language the listing tree is written in: the release notes and --sync-listing send it. */
-const LISTING_LANGUAGE = 'en-US';
+/** The language the listing tree is written in: the release notes and --sync-listing send it.
+ *  It is the locale register's SOURCE row, spelled as Play spells it (tooling/i18n/locales.json):
+ *  the store folders have no locale level yet and localised store metadata is still cut, so the
+ *  one listing is the source language's. */
+const LISTING_LANGUAGE = (() => {
+  const reg = loadRegister();
+  return reg.locales.find((r) => r.code === reg.source).play;
+})();
 const POSTURE_ENV = 'ANDROID_SIGNING_POSTURE';
 const RELEASE_SIGNED = 'release-signed';
 const SIGNATURE_GUARD = 'assert-artifact-signed.mjs';

@@ -4,6 +4,13 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<!-- The locale register's supported set (tooling/i18n/locales.json); assert-locale-register L4 holds it. Without it the App Store lists the app as English only and iOS does not report the device language to Flutter. -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>ta</string>
+		<string>hi</string>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIconFile</key>

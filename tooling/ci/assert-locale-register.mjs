@@ -32,7 +32,7 @@
 //                 stripped), in any scanned file not in EXEMPT below.
 //
 // Exit 0 = green. 1 = a finding. 2 = COVERAGE LOST: the register is absent, the
-// scan read too few files, or no app had native folders to grade.
+// scan did not reach every named reader, or no app had native folders to grade.
 //
 // Usage: node tooling/ci/assert-locale-register.mjs [--write] [--root <dir>]
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,7 +85,6 @@ export const EXEMPT = [
 const SCAN_ROOTS = ['apps', 'packages', 'tooling', 'services', '.github'];
 const SCAN_EXT = /\.(dart|mjs|js|cjs|ts|yml|yaml|json|sh|kts|gradle|xml|plist)$/;
 const SKIP_DIRS = new Set(['node_modules', 'build', '.dart_tool', 'goldens', 'Pods', '.git', 'ephemeral']);
-const SCAN_FLOOR = 1000;
 
 /** The files L6 reads: the TRACKED files when [root] is a checkout (gen-l10n output is
  *  gitignored and spells the locale list by construction), else a walk (fixtures). */
@@ -522,13 +521,18 @@ export function main(args) {
 
   // L6
   let scanned = 0;
+  const reached = new Set();
   const lists = [];
   for (const rel of scanFiles(root)) {
     if (!SCAN_EXT.test(rel) || exempt(rel) || !existsSync(join(root, rel))) continue;
     scanned++;
+    reached.add(rel);
     for (const hit of handTypedLists(readFileSync(join(root, rel), 'utf8'), rel, allCodes)) lists.push({ rel, ...hit });
   }
-  if (scanned < SCAN_FLOOR) return lost(`the hand-typed-list scan read ${scanned} file(s), under its floor of ${SCAN_FLOOR}.`);
+  // The reach check: every named reader is a file that once held a hand-typed list,
+  // so a scan that no longer reaches all of them is not evidence of anything.
+  const unreached = READERS.map((r) => r.file).filter((f) => !reached.has(f));
+  if (unreached.length) return lost(`the hand-typed-list scan did not reach ${unreached.join(', ')} — files that once held a typed locale list.`);
   for (const l of lists) {
     problems.push(
       `L6 ${l.rel}:${l.from}${l.to !== l.from ? `-${l.to}` : ''} types the locale list [${l.codes.join(', ')}] by hand. ` +

@@ -1008,6 +1008,27 @@ void _writeBrandAssets(
 /// app declares it in its own app.yaml `stores`, tooling/app-yaml/render.mjs
 /// renders it into `identity_name`, and a stamp writes the sentinel. Only the
 /// account's `publisher` and `publisher_display_name` are read from the row.
+/// The MSIX `languages:` value: every SUPPORTED row of the locale register
+/// (tooling/i18n/locales.json), as msix_config spells it — never a typed list.
+/// The Microsoft Store offers a listing only in a language the package
+/// declares, so a stamped app that declared `en-us` alone was English-only in
+/// the Store whatever its ARB files said. Throws when the register cannot be
+/// read; the caller's catch then writes no msix_config and says so.
+String _msixLanguages() {
+  final Map<String, dynamic> reg =
+      jsonDecode(File('tooling/i18n/locales.json').readAsStringSync())
+          as Map<String, dynamic>;
+  final List<String> codes = <String>[
+    for (final dynamic row in reg['locales'] as List<dynamic>)
+      if ((row as Map<String, dynamic>)['status'] == 'supported')
+        row['msix'] as String,
+  ];
+  if (codes.isEmpty) {
+    throw StateError('tooling/i18n/locales.json lists no supported locale');
+  }
+  return codes.join(',');
+}
+
 void _writeMsixConfig(
   HookContext context, {
   required String id,
@@ -1118,7 +1139,7 @@ void _writeMsixConfig(
       )
       ..writeln('  build_windows: false')
       ..writeln('  architecture: x64')
-      ..writeln('  languages: en-us')
+      ..writeln('  languages: ${_msixLanguages()}')
       ..writeln('  capabilities: internetClient')
       ..writeln('  output_path: build/windows/msix');
     file.writeAsStringSync(existing + buffer.toString());
