@@ -28,6 +28,21 @@ on:
         options:
           - production
           - selfhosted
+      # why: the lead ruling on #1143 (2026-10-02) — legs red on their last
+      # dispatch are PARKED, not required: `skip` (the default, and the only
+      # value the schedule ever sees) builds both suites so they print that the
+      # changed flows / the core flow were skipped and why (row
+      # O-E2E-CORE-FLOW-LEGS-PENDING, tooling/e2e-leg-register.json `flows`), so
+      # main's nightly cannot go red on a leg not yet proven. `run` walks them —
+      # dispatch it on a BRANCH to try a fix; a green run is what un-parks a leg.
+      pending_flows:
+        description: 'skip (default): the parked flows are skipped and said. run: walk them (dispatch on a branch).'
+        type: choice
+        required: false
+        default: skip
+        options:
+          - skip
+          - run
   # why: 03:17, computed rather than chosen -- including the wrap past midnight,
   # which a sorted list of slots never shows. This lane runs against LIVE Supabase,
   # the live Worker and live D1, so a red night may mean production is broken.
@@ -411,6 +426,8 @@ jobs:
           # E2E_APP_ID names its own binary (LEAD RULING 34, the two-leg confirm);
           # assert-e2e-legs fails a suite-read E2E_ define the drive never passes.
           E2E_APP_ID: ${{ matrix.app }}
+          # why: parked flows (the pending_flows input above); the schedule carries none.
+          E2E_PENDING_FLOWS: ${{ inputs.pending_flows || 'skip' }}
         run: |
           set -euo pipefail
           export CHROME_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)"
@@ -418,6 +435,13 @@ jobs:
           chromedriver --port=4444 &
           CHROMEDRIVER_PID=$!
           sleep 3
+          # why: EN-08 — how the full walk signs in, decided (never defaulted):
+          # the form on a stack whose Turnstile key is an always-pass TEST key
+          # or that has no gate, the harness token otherwise. Graded below.
+          # The step runs in apps/<app> (working-directory), so the root script is named from the workspace.
+          sign_in="$(node "$GITHUB_WORKSPACE/tooling/e2e/sign_in_via.mjs" --derive)"
+          export "$sign_in"
+          echo "$sign_in" >> "$GITHUB_ENV"
           # tee'd, not just printed: the step below turns the assertion into a
           # GitHub annotation, and `pipefail` (set above) keeps flutter's exit
           # code as the pipeline's, so teeing cannot mask a failure.
@@ -485,6 +509,8 @@ jobs:
             --dart-define=E2E_EXPECT_CAPTCHA_GATE="$E2E_EXPECT_CAPTCHA_GATE" \
             --dart-define=E2E_EXPECT_WORKERS_TRUST="$E2E_WORKERS_TRUST" \
             --dart-define=E2E_DELETE_PASSWORD="$E2E_DELETE_PASSWORD" \
+            --dart-define=E2E_SIGN_IN="$E2E_SIGN_IN" \
+            --dart-define=E2E_PENDING_FLOWS="$E2E_PENDING_FLOWS" \
             --dart-define=E2E_APP_ID="$E2E_APP_ID" 2>&1 | tee "${RUNNER_TEMP}/drive.log"
           kill "$CHROMEDRIVER_PID" || true
 
@@ -521,6 +547,20 @@ jobs:
             echo ''
             echo 'Screenshots up to the failure are in the `e2e-screenshots` artifact on this run.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # why: EN-08 — a run that expected the form and got its session from the
+      # harness token is red here, whatever the suite said.
+      - name: The full walk signed in the way this run expected
+        if: steps.drive.outcome == 'success'
+        run: node tooling/e2e/sign_in_via.mjs --grade "${RUNNER_TEMP}/drive.log"
+
+      # why: the export leg's FILE, read off the runner's disk — the browser's
+      # download, held to the rows the live Worker held when Export was tapped.
+      # The export is one of the 14d changed flows: parked with them unless
+      # pending_flows=run, and then the suite printed no export line to read.
+      - name: The exported CSV holds the rows the server held
+        if: steps.drive.outcome == 'success' && (inputs.pending_flows || 'skip') == 'run'
+        run: node tooling/e2e/verify_export_csv.mjs "${RUNNER_TEMP}/drive.log" "$HOME/Downloads"
 
       - name: Verify the row landed in live D1
         env:
@@ -691,34 +731,55 @@ jobs:
           - windows
           - linux
         include:
+          # why: sign_in — `token` everywhere for now, the refusal probe first
+          # (it proves the gate). The phones' form route needs an attestation no
+          # hosted emulator/simulator can produce (ADR no.NNN); the desktops'
+          # e-mail sign-in is the system-browser hand-off, which no app screen
+          # opens until #1133's PR B lands. The form is the web leg's.
+          # tap — the host taps a delivered notification on Android only; the
+          # rest are declared equivalents in tooling/e2e-leg-register.json flows.
           - target: android
             os: ubuntu-24.04
             device: emulator-5554
             callback: --callback
+            sign_in: token
+            tap: --notification-tap
           - target: ios
             os: macos-26
             device: booted
             callback: --callback
+            sign_in: token
+            tap: ''
           - target: macos
             os: macos-26
             device: macos
             callback: --callback
+            sign_in: token
+            tap: ''
           - target: windows
             os: windows-2025
             device: windows
             callback: ''
+            sign_in: token
+            tap: ''
           - target: linux
             os: ubuntu-24.04
             device: linux
             callback: --callback
+            sign_in: token
+            tap: ''
     env:
       APP: ${{ matrix.app }}
-      # why: --expect-refusal probes the native route over HTTP and never opens
-      # the app (ADR no.NNN), so the toolchain, the build and the device are dead
-      # weight: their steps run only when this is 'true'. It goes back to 'true'
-      # with the proof's --expect-refusal flags, when attested CI builds exist.
-      PROOF_NEEDS_DEVICE: 'false'
+      # why: EN-07 (train st-e2e-parity) — the leg OPENS THE APP on every target:
+      # first run, a session (the harness token, after the refusal probe), the
+      # offline read, the core flow and, on Android, the notification tap.
+      # 'false' was the refusal-only posture.
+      PROOF_NEEDS_DEVICE: 'true'
       TARGET: ${{ matrix.target }}
+      SIGN_IN: ${{ matrix.sign_in }}
+      TAP: ${{ matrix.tap }}
+      # why: parked flows (the pending_flows input): the core flow and the tap.
+      PENDING_FLOWS: ${{ inputs.pending_flows || 'skip' }}
       DEVICE: ${{ matrix.device }}
       CALLBACK: ${{ matrix.callback }}
       # why: the stagger (fourth review of #1070). Every leg of every app fires at the
@@ -830,11 +891,17 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
-        # why: --expect-refusal (ADR no.NNN, lead ruling 2026-09-30): production
-        # serves native sign-in only to a VERIFIED attestation, and a CI device
-        # cannot attest, so this leg now proves the gate: every call such a build
-        # sends is refused and no session comes back. A 2xx is the leg's red.
-        run: node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" --log "$E2E_PROOF_LOG" $CALLBACK --expect-refusal --stagger-anchor "$REFUSAL_ANCHOR" --stagger-apps "$REFUSAL_APPS"
+          E2E_TOKEN_HASH: ${{ steps.user.outputs.token_hash }}
+        # why: on a `token` target the refusal probe runs FIRST (ADR no.NNN):
+        # production serves the form's route only to a VERIFIED attestation, a
+        # CI device cannot attest, and every call such a build sends must be
+        # refused. Then the device leg opens the app either way.
+        run: |
+          set -euo pipefail
+          if [ "$SIGN_IN" = token ]; then
+            node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --log "$E2E_PROOF_LOG" --expect-refusal --stagger-anchor "$REFUSAL_ANCHOR" --stagger-apps "$REFUSAL_APPS"
+          fi
+          node tooling/e2e/native_auth_proof.mjs --app "$APP" --target "$TARGET" --device "${SIM_UDID:-$DEVICE}" --log "$E2E_PROOF_LOG" $CALLBACK --sign-in "$SIGN_IN" --pending-flows "$PENDING_FLOWS" $TAP
       - name: The native leg — the bundle under xvfb, one D-Bus session
         id: proof_linux
         if: matrix.target == 'linux'
@@ -843,18 +910,18 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           E2E_EMAIL: ${{ steps.user.outputs.email }}
           E2E_PASSWORD: ${{ steps.user.outputs.password }}
+          E2E_TOKEN_HASH: ${{ steps.user.outputs.token_hash }}
         run: |
-          # why: no display and no keyring in refusal mode — the probe never opens the bundle.
-          if [ "$PROOF_NEEDS_DEVICE" != true ]; then
-            node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal --stagger-anchor "$REFUSAL_ANCHOR" --stagger-apps "$REFUSAL_APPS"
-            exit
+          # why: the probe is HTTP only — no display, no keyring — so it runs first, outside the session.
+          if [ "$SIGN_IN" = token ]; then
+            node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --log "$E2E_PROOF_LOG" --expect-refusal --stagger-anchor "$REFUSAL_ANCHOR" --stagger-apps "$REFUSAL_APPS"
           fi
           dbus-run-session -- bash -c '
             set -euo pipefail
             eval "$(printf "" | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
             xvfb-run -a -s "-screen 0 1920x1200x24" \
-              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --expect-refusal --stagger-anchor "$REFUSAL_ANCHOR" --stagger-apps "$REFUSAL_APPS"
+              node tooling/e2e/native_auth_proof.mjs --app "$APP" --target linux --device linux --log "$E2E_PROOF_LOG" --callback --sign-in "$SIGN_IN" --pending-flows "$PENDING_FLOWS"
           '
       - name: Purge the throwaway user
         if: always() && steps.user.outcome != 'skipped'
