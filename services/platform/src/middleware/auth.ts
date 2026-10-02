@@ -8,10 +8,11 @@
 // The DECIDING is in `services/_shared/src/auth.ts` and is carried by every
 // Worker: the ES256 pin (`verifyOptions`), the twice-corrected
 // `isKeySetUnavailable` predicate, `JWKS_KV_KEY`, `JWKS_TTL_SECONDS`, `bearer`
-// and `usableJwksDocument`. What stays HERE is the `jose`/`hono` plumbing that
-// binds those decisions to this Worker's context type — because
-// `services/_shared/` can carry no bare import at all (the measurement is in
-// that file's header). [ADR 067] decision 2.
+// and `usableJwksDocument`. ⏱ 2026-10-01: the `jose` plumbing moved too, to
+// `services/_shared/src/auth-middleware.ts` (services/_shared is a package that
+// declares `jose` since then). What stays HERE is the `hono` binding of those
+// decisions to this Worker's context, and what only this Worker sets.
+// [ADR 067] decision 2.
 //
 // SWAP-PROVIDER NOTE: this is the only file in services/platform that knows we
 // use Supabase. To move to another identity provider, rewrite the verification
@@ -39,10 +40,12 @@
 // is a recorded failing input in test/auth.test.ts rather than a claim.
 //
 // 📌 AND SINCE [ADR 067] THAT IS A PROPERTY OF THIS FILE'S IMPORTS, NOT ONLY OF
-// ITS BODY. `services/_shared/src/auth.ts` names no secret, and neither does
-// `../lib/ext-links` (⏱ 2026-09-30, EXA-11 — D1 statements only, no env read), so
-// "nothing reachable from here can read SUPABASE_JWT_SECRET" is checkable by
-// reading five import lines. `tooling/ci/assert-erasure-reach.mjs` limb 3 walks
+// ITS BODY. `services/_shared/src/auth.ts` names no secret, neither does
+// `services/_shared/src/auth-middleware.ts` (its HS256 branch takes a secret VALUE
+// a carrier passes, and this file passes `NO_SYMMETRIC_FALLBACK`), and neither
+// does `../lib/ext-links` (⏱ 2026-09-30, EXA-11 — D1 statements only, no env
+// read), so "nothing reachable from here can read SUPABASE_JWT_SECRET" is
+// checkable by reading five import lines. `tooling/ci/assert-erasure-reach.mjs` limb 3 walks
 // exactly that.
 //
 // ── THE CACHE, AND THE ROTATION IT MUST SURVIVE ──────────────────────────────
@@ -58,145 +61,30 @@
 // every miss: KV Free allows 1,000 writes/day account-wide
 // (`tooling/ceilings.json` → `kv.writesPerDay`), shared with CONFIG_KV, and a
 // cache that re-put on every cold isolate would spend that budget on itself.
+// (Both halves now live in `warmJwksCache` / `remoteJwks` in the kit.)
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { MiddlewareHandler } from 'hono';
-import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
-import {
-  JWKS_KV_KEY,
-  JWKS_TTL_SECONDS,
-  bearer,
-  isKeySetUnavailable,
-  usableJwksDocument,
-  verifyOptions,
-  authRecencyOf,
-  revocationKey,
-  revocationRefusal,
-} from '../../../_shared/src/auth';
-import type { AppEnv, Env } from '../types';
+import { authRecencyOf, bearer } from '../../../_shared/src/auth';
+import { NO_SYMMETRIC_FALLBACK, sessionRevoked, verifySupabaseToken } from '../../../_shared/src/auth-middleware';
+import type { AppEnv } from '../types';
 import { raiseLinkFloor } from '../lib/ext-links';
 
-/** The remote JWKS *getter*, cached per SUPABASE_URL for the isolate's life.
- *  `createRemoteJWKSet` keeps its own in-memory cache with request coalescing
- *  and refetches on an unknown `kid` — which is the half that survives a key
- *  rotation. Rebuilding it per request would throw that away and turn every
- *  verify into a fetch. */
-const remoteSets = new Map<string, JWTVerifyGetKey>();
-
-function jwks(supabaseUrl: string): JWTVerifyGetKey {
-  let set = remoteSets.get(supabaseUrl);
-  if (!set) {
-    set = createRemoteJWKSet(new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`));
-    remoteSets.set(supabaseUrl, set);
-  }
-  return set;
-}
-
-/**
- * 🔴 THE JWKS USED TO FAIL CLOSED, AND THAT WAS A PORTFOLIO-WIDE OUTAGE WAITING
- * ON ONE BOX.
- *
- * Read from jose's own source (`src/jwks/remote.ts`): `createRemoteJWKSet`
- * keeps a per-isolate in-memory cache, and **on a failed fetch the error
- * propagates — there is no fallback to a previously cached key set.** At this
- * portfolio's user count isolates are almost always cold, so an unreachable
- * JWKS endpoint meant a cold isolate fetched, failed, and 401'd EVERY
- * authenticated request — not just logins, every read in every app.
- *
- * The KV copy already existed and was already written by `warmCache`, but its
- * own comment called it "the warm-start for a cold isolate rather than the
- * source of truth" and NOTHING READ IT ON THE FAILURE PATH. It does now.
- *
- * ⚠️ WHAT THIS DELIBERATELY DOES NOT DO. It does not widen what is accepted:
- * both paths take the same `verifyOptions`, so a token refused by the remote
- * path is refused by this one. It does not extend `JWKS_TTL_SECONDS` to make
- * the fallback last longer — the TTL is what lets a rotated key propagate, and
- * lengthening it to paper over an outage would trade a short outage for a
- * silent stale-key window. And it is reached ONLY when the key set could not be
- * obtained: an invalid token still 401s immediately, without a second attempt.
- *
- * ⚠️ IT TAKES THE ONE BINDING IT NEEDS, NOT `Env`, AND THAT IS NOT A STYLE
- * CHOICE. A function that never receives the environment cannot read
- * `SUPABASE_JWT_SECRET`. This Worker has no such secret to read, but the
- * signature is the shape the whole portfolio's erasure boundaries rest on and
- * writing it differently here is how the two would drift. The cached JWKS is a
- * PUBLIC document, so caching it adds no secret to this scope. (Converged with
- * `services/subscriptiontracker-api` on 2026-09-06; this file previously took `Env` and
- * reached `env.JWKS_CACHE`, which is the same value by a weaker route.)
- *
- * The parse and the empty-key-set refusal live in
- * `services/_shared/src/auth.ts`'s `usableJwksDocument` — the decision every
- * carrier makes identically; only the key-set construction, which needs `jose`,
- * is here.
- */
-async function localSetFromCache(jwksCache: KVNamespace | undefined): Promise<JWTVerifyGetKey | null> {
-  try {
-    if (!jwksCache) return null;
-    const doc = usableJwksDocument(await jwksCache.get(JWKS_KV_KEY));
-    if (doc === null) return null;
-    return createLocalJWKSet(doc as Parameters<typeof createLocalJWKSet>[0]);
-  } catch {
-    // A corrupt cache, or a KV read that threw, is no cache. Fail closed, as
-    // before — the one `try` covers the same span the three copies always did.
-    return null;
-  }
-}
-
-/** Best-effort warm of the KV copy. Never awaited on the request path and never
- *  fatal: `jose` does its own fetching, so a KV failure costs latency on a cold
- *  isolate and nothing else. */
-async function warmCache(env: Env): Promise<void> {
-  try {
-    if (!env.JWKS_CACHE) return;
-    if (await env.JWKS_CACHE.get(JWKS_KV_KEY)) return; // still warm
-    const res = await fetch(`${env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`);
-    if (!res.ok) return;
-    await env.JWKS_CACHE.put(JWKS_KV_KEY, await res.text(), {
-      expirationTtl: JWKS_TTL_SECONDS,
-    });
-  } catch {
-    // Non-fatal by construction. See the header note.
-  }
-}
-
-/**
- * ⏱ 2026-09-25 · AUTH-REVOKE-AT-WORKERS. True when the VERIFIED token belongs to
- * a session that was signed out — its `session_id` is listed in the user's
- * `rev:<sub>` record, or it was issued before that record's `before`. The
- * decision is `revocationRefusal` in services/_shared/src/auth.ts; only the KV
- * read and the fail-open policy are here. No `cacheTtl`: a cached miss would
- * keep admitting a revoked token for as long as the cache lived.
- *
- * 🔴 IT FAILS OPEN, ON PURPOSE. A read that throws (a KV incident, or a record
- * that is not JSON) and a missing binding both ADMIT, with one log line naming
- * the event and nothing else — never the token, the user id or a session id.
- * The worst case of admitting is today's behaviour (a signed-out session's
- * access token lives until its own `exp`); failing closed would turn a KV
- * incident into a portfolio-wide 401, which every client reads as a dead
- * session. A binding missing from a Worker's config is a CI red instead
- * (tooling/ci/assert-session-revocation.mjs), not a runtime refusal.
- *
- * Takes the ONE binding it needs, not `Env` — the `localSetFromCache` rule.
- */
-async function sessionRevoked(
-  revoked: KVNamespace | undefined,
-  sub: string,
-  payload: Record<string, unknown>,
-  logPrefix: string,
-): Promise<boolean> {
-  if (!revoked) {
-    console.warn(`${logPrefix} auth_revocation_binding_missing: SESSION_REVOKED is not bound; admitted unchecked`);
-    return false;
-  }
-  let record: unknown;
-  try {
-    record = await revoked.get(revocationKey(sub), 'json');
-  } catch (err) {
-    console.warn(`${logPrefix} auth_revocation_read_failed: ${err instanceof Error ? err.name : typeof err}; admitted`);
-    return false;
-  }
-  return revocationRefusal(payload, record) !== null;
-}
+// ⏱ 2026-10-01 · rv2 SYN-S2 (services-012). The
+// PLUMBING — the remote JWKS getter cached per SUPABASE_URL, the KV warm-start
+// (`warmCache` here, `warmJwksCache` in the app Workers: aligned on the explicit
+// absent-binding check this file had), the cached-key-set second attempt that
+// #433 added HERE first and the revocation read — moved WHOLE to
+// services/_shared/src/auth-middleware.ts, which this file calls. Each carrier
+// had its own copy and nothing compared them; the headers there hold the
+// reasoning that used to live here (the outage that failed closed, why the cache
+// helpers take one binding and never `Env`, why the revocation read fails open).
+// What stays here is what only this Worker does: the context it sets and the
+// recovery floor below.
+//
+// 🔴 THE "NO HS256 FALLBACK" ABOVE IS NOW A DECLARED OPTION: `platformAuth`
+// verifies through `verifySupabaseToken(…, NO_SYMMETRIC_FALLBACK)`, which carries
+// no secret, and this Worker's Env has no SUPABASE_JWT_SECRET to pass.
 
 // ⏱ 2026-09-16 · O-APP-API-DELETE-NO-RECENCY — `authRecencyOf` (how the verified
 // token's user signs in, and when they last AUTHENTICATED — `amr`, never `iat`) moved
@@ -357,23 +245,7 @@ export const platformAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (token === null) return c.json({ error: 'unauthorized' }, 401);
 
   try {
-    void warmCache(c.env);
-    const opts = verifyOptions(c.env.SUPABASE_URL);
-    let payload;
-    try {
-      ({ payload } = await jwtVerify(token, jwks(c.env.SUPABASE_URL), opts));
-    } catch (err) {
-      // ⚠️ ONLY a key-set acquisition failure earns a second attempt. jose
-      // raises JWKSNoMatchingKey / JOSEError subclasses for a bad token, and a
-      // TypeError("fetch failed") — or a JWKSTimeout — when it could not reach
-      // the endpoint at all. Retrying a BAD TOKEN against the cache would be a
-      // second bite at verification, which is not what this exists for.
-      if (!isKeySetUnavailable(err)) throw err;
-      const local = await localSetFromCache(c.env.JWKS_CACHE);
-      // No usable cache ⇒ behave exactly as before: fail closed.
-      if (!local) throw err;
-      ({ payload } = await jwtVerify(token, local, opts));
-    }
+    const { payload } = await verifySupabaseToken(token, c.env.SUPABASE_URL, c.env.JWKS_CACHE, NO_SYMMETRIC_FALLBACK);
     // `sub` IS the user id. A verified token with no subject authenticates
     // nobody, and letting it through would set `userId` to undefined and hand
     // every `WHERE user_id = ?` a null — which matches no row on a read and, on

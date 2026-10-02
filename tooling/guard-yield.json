@@ -3330,6 +3330,11 @@
         "reason": "exposed 15 of the 90 days a zero needs before it is evidence (firstSeen 2026-09-11); re-judged at the next fetch"
       }
     },
+    "tooling/ci/land-next.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-02",
+      "evidence": []
+    },
     "tooling/ci/lane-detect.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-25",

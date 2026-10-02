@@ -608,13 +608,24 @@ const CLASSIFIED_ELSEWHERE = new Map([
   ],
   [
     'main-healthy.yml',
-    "posts the `main-healthy` commit status on the commit a push-to-main CI run ran on, from that completed " +
+    "posts the `main-healthy` commit status on the commit a CI run of main (push or dispatch) ran on, from that completed " +
       'run. It builds no app, produces no release artifact and names no app id: tooling/ops/land-gate.mjs ' +
       'reads the workflow_run event and nothing else. R-1 would carry it in the denominator as a permanent ' +
       'empty-set pass, the reason already written out for ops-watch.yml. The owning stage is stage 14 ops, ' +
       'through the duty row `duty.workflow.main-healthy.yml` in tooling/ops/register.json. What holds its ' +
       'behaviour correct is tooling/ci/test/land-rules.test.mjs. Classified 2026-09-29, the round the ' +
       'workflow landed.',
+  ],
+  [
+    'land.yml',
+    'is the merge orchestrator: it merges the next `land-ok` pull request, updates a skewed head, dispatches ' +
+      "E2E live on a head that needs it and dispatches main's pipeline after a merge. It builds no app, produces " +
+      'no release artifact and names no app id: tooling/ci/land-next.mjs reads open pull requests, runs and ' +
+      'issues and nothing app-shaped. R-1 would carry it in the denominator as a permanent empty-set pass, the ' +
+      'reason already written out for ops-watch.yml. The owning stage is stage 14 ops, through the duty row ' +
+      '`duty.workflow.land.yml` in tooling/ops/register.json. What holds its behaviour correct is ' +
+      'tooling/ci/test/land-next.test.mjs. Classified 2026-10-02 (O-MERGES-DEPEND-ON-THE-LAPTOP), the round ' +
+      'the workflow landed.',
   ],
   [
     'apple-expiry-write.yml',

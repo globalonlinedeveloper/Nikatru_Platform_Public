@@ -237,7 +237,7 @@ import { listDir } from './tree-walk.mjs';
 // The ONE workflow parser. Four copies of it drift in the way that reports
 // "clean" — which lines they can see — so [14]O-7's deploy-job derivation goes
 // through the same one assert-release-provenance and assert-no-secret-defines use.
-import { parseAllWorkflows, workflowEvents, shellSegments, RECORD_CALL, expandMatrixEnvironment, POST_GATE_IF, postGateJobs, bindEveryApp } from './workflow-scan.mjs';
+import { parseAllWorkflows, workflowEvents, shellSegments, RECORD_CALL, expandMatrixEnvironment, POST_GATE_IF, isPostGateRun, postGateJobs, bindEveryApp } from './workflow-scan.mjs';
 // The ONE comment tokenizer, for the same reason as the workflow parser above.
 import { stripSourceComments } from './text-reductions.mjs';
 import { appWorkerMatrix } from './worker-set.mjs';
@@ -2876,7 +2876,7 @@ export const isCallJob = (job) => (job?.lines ?? []).some((l) => /^ {4}uses:\s*\
  *  EXCEPT on the four neutral arms (PD2B2-4), checked in this order, where the
  *  run cannot have run the call: (a) the run's `referenced_workflows` is an
  *  array that names no `/<callee>@`, so the run predates the call; (b) the call
- *  job's `if:` is POST_GATE_IF and the run is not a push to main; (c) a job the
+ *  job's `if:` is POST_GATE_IF and the run is not a push or dispatch of main; (c) a job the
  *  call job `needs` is in the run with a conclusion other than success; (d) the
  *  run concluded `cancelled` and a NEWER run on its branch superseded it
  *  (`supersededBy`). A run object with no `referenced_workflows` array stays
@@ -2991,8 +2991,8 @@ export function zeroEntryNeutral(job, run, apiJobs, wf, newer = null) {
   if (callee && Array.isArray(refs) && !refs.some((r) => String(r?.path ?? '').includes(`/${callee}@`))) {
     return `(a) its referenced_workflows name no "/${callee}@": the run predates the call`;
   }
-  if (job?.jobIf?.cond === POST_GATE_IF && (run?.event !== 'push' || run?.head_branch !== 'main')) {
-    return `(b) its \`if:\` is POST_GATE_IF and the run is ${JSON.stringify(run?.event ?? null)} on ${JSON.stringify(run?.head_branch ?? null)}, not a push to main`;
+  if (job?.jobIf?.cond === POST_GATE_IF && !isPostGateRun(run)) {
+    return `(b) its \`if:\` is POST_GATE_IF and the run is ${JSON.stringify(run?.event ?? null)} on ${JSON.stringify(run?.head_branch ?? null)}, not a push or dispatch of main`;
   }
   for (const need of job?.needs ?? []) {
     const match = apiJobMatcher(need, wf?.jobs?.get?.(need));
@@ -3693,11 +3693,13 @@ async function probeUnitRedSince(q, repo, wf, cache) {
 // actually lives, and so that is what is read.
 //
 // ⬜ AND THE ROWS THAT STAY OUT, NAMED HERE RATHER THAN INFERRED:
-//   · `ci.yml`             — `on:` is `push` + `pull_request`, NO
-//                            `workflow_dispatch`. Its newest run on `main` can
+//   · `ci.yml`             — the GATE workflow. Its newest run on `main` can
 //                            be made green only by merging, so grading it is
-//                            the deadlock the paragraph above refuses. The
-//                            derivation reaches that same answer on its own.
+//                            the deadlock the paragraph above refuses. Since
+//                            2026-10-02 it declares `workflow_dispatch` (land.yml's
+//                            post-merge start), which re-runs the same commit and
+//                            is no exit, so `dispatchableWorkflows` leaves the
+//                            gate workflow out by derivation (`gateTopology`).
 //   · any other trigger row — `on:` is a push or a pull request alone, NO
 //                            `workflow_dispatch`. Same shape, same answer: a red
 //                            run there is cleared by the next push to `main`,
@@ -3757,10 +3759,18 @@ export function rowWorkflowFile(row) {
  *
  *  Returned as a SET OF FILENAMES because that is what a `recordQuery.workflow`
  *  and the GitHub API path both use. */
-export function dispatchableWorkflows(root) {
+export function dispatchableWorkflows(root, gateWorkflow = gateTopology(root).gateWorkflow) {
   const out = new Set();
   for (const wf of parseAllWorkflows(root)) {
-    if (workflowEvents(wf).has('workflow_dispatch')) out.add(String(wf.rel ?? '').split('/').pop());
+    const file = String(wf.rel ?? '').split('/').pop();
+    // ⏱ 2026-10-02 (O-MERGES-DEPEND-ON-THE-LAPTOP) — THE GATE WORKFLOW IS NEVER AN EXIT.
+    // ci.yml declares `workflow_dispatch` so land.yml can start main's run after its
+    // GITHUB_TOKEN merge (a push made with that token starts none). That dispatch re-runs
+    // the SAME commit: a red there is still cleared only by MERGING, so the deadlock
+    // argument above stands and the gate workflow stays out of this set by derivation.
+    // land.yml's `land-freeze` issue is what watches a red main run now.
+    if (file === gateWorkflow) continue;
+    if (workflowEvents(wf).has('workflow_dispatch')) out.add(file);
   }
   return out;
 }
@@ -4809,6 +4819,15 @@ export function redSinceTriggerCensus(reg, dispatchable = null, postGate = null)
           `are not post-gate (\`needs: [${postGate.gateJob}]\` and \`if: ${POST_GATE_IF}\`, byte-equal). A unit that can ` +
           'redden its own gate can be made green only by MERGING, so it is not graded. Excluded by DERIVATION from ' +
           'the workflow file.',
+      );
+      continue;
+    }
+    if (!dispatchable.has(file) && file === postGate?.gateWorkflow) {
+      excluded.push(
+        `${r.id} — \`${WORKFLOW_DIR_REL}/${file}\` is the GATE workflow: its \`workflow_dispatch\` (land.yml's post-merge ` +
+          'start) re-runs the same commit, so its newest run on its own branch can be made green only by MERGING. ' +
+          'Grading it would block merges on a state only a merge can clear — the `ci-18` deadlock. Excluded by ' +
+          'DERIVATION (`gateTopology`), not by being left off a list; land.yml\'s `land-freeze` issue watches it.',
       );
       continue;
     }

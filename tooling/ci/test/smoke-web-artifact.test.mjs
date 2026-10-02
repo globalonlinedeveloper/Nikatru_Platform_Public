@@ -449,9 +449,9 @@ function needChrome(t) {
 }
 
 /** The smoke, run WITHOUT blocking this process: the recording proxy below lives in it. */
-const runAsync = (args) =>
+const runAsync = (args, smoke = SMOKE) =>
   new Promise((done) => {
-    const child = spawn(process.execPath, [SMOKE, ...args]);
+    const child = spawn(process.execPath, [smoke, ...args]);
     let out = '';
     child.stdout.on('data', (d) => { out += d; });
     child.stderr.on('data', (d) => { out += d; });
@@ -469,9 +469,9 @@ const runAsync = (args) =>
 /** The version tooling/ci/test/fixtures/smoke-web-csp/version.json carries. */
 const FIXTURE_BUILD_NAME = '1.2.34';
 
-async function smokeInChrome(dir, extra = [], buildName = FIXTURE_BUILD_NAME) {
+async function smokeInChrome(dir, extra = [], buildName = FIXTURE_BUILD_NAME, smoke = SMOKE) {
   const args = [dir, '--timeout-ms', '30000', ...(buildName === null ? [] : ['--build-name', buildName]), ...extra];
-  if (process.platform === 'win32') return { ...(await runAsync([...args, '--chrome', CHROME])), seen: null };
+  if (process.platform === 'win32') return { ...(await runAsync([...args, '--chrome', CHROME], smoke)), seen: null };
   const seen = [];
   const proxy = createServer((req, res) => {
     seen.push(req.url);
@@ -491,7 +491,7 @@ async function smokeInChrome(dir, extra = [], buildName = FIXTURE_BUILD_NAME) {
   writeFileSync(wrapper, `#!/bin/sh\nexec ${quoted} --proxy-server=http://127.0.0.1:${proxy.address().port} "$@"\n`);
   chmodSync(wrapper, 0o755);
   try {
-    return { ...(await runAsync([...args, '--chrome', wrapper])), seen };
+    return { ...(await runAsync([...args, '--chrome', wrapper], smoke)), seen };
   } finally {
     proxy.close();
   }
@@ -650,6 +650,75 @@ describe('smoke-web-artifact.mjs — the artifact starts again with the network 
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /is the browser's error page/);
     assert.match(r.out, /the worker reported its cache warm/, 'registration still worked: what failed is the offline answer');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⏱ 2026-10-02 · THE PROBE IN A PAGE A SERVICE WORKER CONTROLS. After #1145 every
+// main deploy-web run failed "5 probe request(s) were NOT paused by the
+// interception": the real bundle's worker controls the page by the time the probe
+// runs, and a request the worker issues is not the page's to pause. The fixture
+// above reaches its ready signal before its worker takes control, so RC4 stayed
+// green. These cases hold the page until the worker controls it, and give the
+// worker a fetch handler that fetches every other-origin request itself.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The fixture with a worker that controls the page before its first frame and
+ *  fetches other-origin requests on the page's behalf. */
+function workerFetchingBundle() {
+  const dir = cspBundle(APP_HEADERS);
+  const sw = readFileSync(join(dir, 'sw.js'), 'utf8');
+  const seam = '  if (!ownsRequest(event.request)) return;\n';
+  assert.ok(sw.includes(seam), 'the seam moved: web/sw.js no longer returns early for a request it does not own');
+  writeFileSync(
+    join(dir, 'sw.js'),
+    sw.replace(seam, `  if (!event.request.url.startsWith(self.location.origin)) return event.respondWith(fetch(event.request));\n${seam}`),
+  );
+  const boot = readFileSync(join(dir, 'flutter_bootstrap.js'), 'utf8');
+  const ready = "  window.dispatchEvent(new Event('flutter-first-frame'));";
+  assert.ok(boot.includes(ready), 'the seam moved: the fixture no longer dispatches the ready signal on its own line');
+  writeFileSync(
+    join(dir, 'flutter_bootstrap.js'),
+    boot.replace(
+      ready,
+      '  await new Promise(function (done) { if (navigator.serviceWorker.controller) return done(); ' +
+        "navigator.serviceWorker.addEventListener('controllerchange', done); });\n" +
+        "  if (!navigator.serviceWorker.controller) throw new Error('fixture: no worker controls the page');\n" +
+        ready,
+    ),
+  );
+  return dir;
+}
+
+describe('smoke-web-artifact.mjs — the probe in a page its service worker controls', () => {
+  test('GREEN — the worker is bypassed: every probe is paused, none reaches the network, and offline still runs', { timeout: 120000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const r = await smokeInChrome(workerFetchingBundle(), ['--connect', API]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {3}connect-src allows https:\/\/subscriptiontracker-api\.nikatru\.com — fetched from the page, paused/);
+    // The bypass is switched off again: the offline leg is still answered by the worker.
+    assert.match(r.out, /ok {3}offline: .* in a page sw\.js controls/);
+    if (r.seen === null) return t.skip('the no-egress half needs a shell wrapper for Chrome, which Windows cannot spawn');
+    assert.deepEqual(r.seen.filter((u) => hostOf(u) === API_HOST), [], `the probe reached the network: ${r.seen.join(', ')}`);
+  });
+
+  test('🔴 RED CONTROL — the same smoke WITHOUT the bypass reports the probe unpaused (exit 1), as main did', { timeout: 120000 }, async (t) => {
+    if (!needChrome(t)) return;
+    // Without the recording proxy the worker's fetch would reach the real host.
+    if (process.platform === 'win32') return t.skip('needs the shell wrapper for Chrome, so the unpaused probe cannot leave');
+    const src = readFileSync(SMOKE, 'utf8');
+    const seam = "    const bypass = await send('Network.setBypassServiceWorker', { bypass: true }, session);\n";
+    assert.ok(src.includes(seam), 'the seam moved: the smoke no longer bypasses the service worker on that line');
+    const copy = join(TMP, `smoke-${seq++}`, 'tooling', 'smoke', 'smoke-web-artifact.mjs');
+    mkdirSync(dirname(copy), { recursive: true });
+    writeFileSync(copy, src.replace(seam, '    const bypass = {};\n'));
+    const r = await smokeInChrome(workerFetchingBundle(), ['--connect', API], FIXTURE_BUILD_NAME, copy);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /1 probe request\(s\) were NOT paused by the interception/);
+    // The unpaused URL is named on a line of its own, compared whole (CodeQL #576).
+    assert.ok(r.out.split('\n').some((l) => l.trim() === `${API}/`), r.out);
+    // ...and the request it did not pause is the one the worker sent out, to the recording proxy.
+    assert.ok(r.seen.some((u) => hostOf(u) === API_HOST), `the recording proxy saw: ${r.seen.join(', ') || 'nothing'}`);
   });
 });
 

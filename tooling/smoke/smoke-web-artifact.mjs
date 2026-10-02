@@ -66,7 +66,9 @@
 //     refusal happens in the renderer before a request exists, so an origin
 //     missing from `connect-src` still surfaces as a violation. Each probe must
 //     also have BEEN paused: a pattern that stopped matching is a failure, not a
-//     request that went out unnoticed.
+//     request that went out unnoticed. The page's service worker is bypassed
+//     for the probe (2026-10-02): a request the worker fetches is not the page's
+//     to pause.
 //
 // ── IT PROVES THE INSTALLED-VERSION READ (2026-10-01) ────────────────────────
 // The force-update floor fails OPEN when the app cannot read its own version
@@ -762,7 +764,22 @@ async function run(rules, origins, csp) {
   // them. Interception is switched on only now: the boot above reaches exactly
   // what it reached before this limb existed, and from here every request to a
   // probe origin is paused and answered with a 204 by the handler above.
+  //
+  // 🔴 THE PAGE'S SERVICE WORKER IS BYPASSED FIRST (2026-10-02). Once web/sw.js
+  // controls the page, a request the page makes is handed to the worker, and a
+  // request the worker makes is issued from ITS target, which the page's Fetch
+  // domain never sees — every main run after #1145 failed "5 probe request(s)
+  // were NOT paused". Bypassed, the probe goes straight to the page's network
+  // stack, where the interception pauses it. It is switched back off before the
+  // offline leg, which needs the worker to answer. Fail closed, as for Fetch.
   if (origins.length) {
+    const bypass = await send('Network.setBypassServiceWorker', { bypass: true }, session);
+    if (bypass.error) {
+      lost("the page's service worker could not be bypassed, so the connect-src probe was NOT sent.", [
+        JSON.stringify(bypass.error),
+        'A probe the worker fetches is issued from the worker, past the page\'s interception, and reaches the real host.',
+      ]);
+    }
     const intercepting = await send(
       'Fetch.enable',
       { patterns: origins.map((o) => ({ urlPattern: `${o}/*`, requestStage: 'Request' })) },
@@ -808,6 +825,12 @@ async function run(rules, origins, csp) {
     if (failed.length) {
       die(`${failed.length} probe request(s) did not complete although no violation was reported.`, [
         ...failed.map((r) => `  ${r.url}: ${r.error}`),
+      ]);
+    }
+    const restored = await send('Network.setBypassServiceWorker', { bypass: false }, session);
+    if (restored.error) {
+      lost("the page's service worker could not be un-bypassed after the probe, so the offline leg would test no worker.", [
+        JSON.stringify(restored.error),
       ]);
     }
   }

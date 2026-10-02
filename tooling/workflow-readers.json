@@ -405,6 +405,16 @@
     {
       "path": "tooling/ci/assert-money-config.mjs",
       "property": "workflow-scan"
+    },
+    {
+      "path": "tooling/ci/land-next.mjs",
+      "property": "refuses-blind",
+      "evidence": "parity cannot be judged",
+      "reads": "ci.yml and every local workflow it calls, for an expression that admits a push to main and not a dispatch of main, a push-only payload read, and the post-merge dispatch targets' workflow_dispatch inputs (dispatchParityProblems)"
+    },
+    {
+      "path": "tooling/ops/post-gate.mjs",
+      "property": "workflow-scan"
     }
   ],
   "_resolves": [
