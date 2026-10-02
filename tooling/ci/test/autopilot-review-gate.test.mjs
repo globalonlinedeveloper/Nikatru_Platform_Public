@@ -24,14 +24,16 @@ describe('the classes', () => {
     'user-data': ['services/platform/migrations/0024_new.sql', 'services/_shared/src/erasure.ts', 'apps/subscriptiontracker/lib/features/settings/data_export_screen.dart'],
     api: ['services/subscriptiontracker-api/src/routes/items.ts', 'contracts/entitlement/bundle.json', 'services/platform/src/routes/calendar.ts'],
   };
-  for (const [cls, files] of Object.entries(one)) {
-    test(`🔴 a ${cls} fixture is labelled needs-review`, () => {
-      for (const f of files) {
-        assert.ok(classify([f]).classes.includes(cls), `${f} should be ${cls}`);
-        assert.deepEqual(decideLabels({ files: [f] }).add, ['needs-review'], f);
-      }
-    });
-  }
+  const labelled = (cls) => {
+    for (const f of one[cls]) {
+      assert.ok(classify([f]).classes.includes(cls), `${f} should be ${cls}`);
+      assert.deepEqual(decideLabels({ files: [f] }).add, ['needs-review'], f);
+    }
+  };
+  test('🔴 an auth fixture is labelled needs-review', () => labelled('auth'));
+  test('🔴 a money fixture is labelled needs-review', () => labelled('money'));
+  test('🔴 a user-data fixture is labelled needs-review', () => labelled('user-data'));
+  test('🔴 an api fixture is labelled needs-review', () => labelled('api'));
   test('🔴 a docs-only (or tooling-only) PR is NOT labelled', () => {
     for (const files of [['docs/ci/README.md', 'docs/autopilot/contract.md'], ['tooling/ci/land-next.mjs', 'tooling/ci/test/consent-anon-id.test.mjs'], ['apps/subscriptiontracker/lib/features/home/home_screen.dart']]) {
       const d = decideLabels({ files });

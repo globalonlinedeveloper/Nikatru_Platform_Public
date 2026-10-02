@@ -5539,8 +5539,12 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     // ⏱ 2026-10-02: five. duty.workflow.land.yml (O-MERGES-DEPEND-ON-THE-LAPTOP) declares `workflow_dispatch`
     // and carries NO recordQuery on purpose: a transient read failure of the lander would otherwise redden
     // every PR's ci-gate until its next slot. It is excluded with that reason printed, not silently.
-    assert.equal(census.excluded.length, 5, 'the committed register has exactly five unadmitted trigger rows');
+    // ⏱ 2026-10-02: seven. duty.workflow.review-gate.yml (O-REVIEWS-DEPEND-ON-THE-LAPTOP; no
+    // workflow_dispatch, its next pull request event re-runs it) and duty.workflow.autopilot-watch.yml
+    // (O-WATCH-RUNS-ON-THE-LAPTOP; no recordQuery for land.yml's reason) — each excluded and named.
+    assert.equal(census.excluded.length, 7, 'the committed register has exactly seven unadmitted trigger rows');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.land\.yml — .* carries no `mechanism\.recordQuery`/.test(l)), 'land.yml is excluded for want of a recordQuery, and says so');
+    for (const id of ['duty.workflow.review-gate.yml', 'duty.workflow.autopilot-watch.yml']) assert.ok(census.excluded.some((l) => l.startsWith(`${id} —`)), `${id} is excluded and named`);
     assert.ok(census.excluded.some((l) => /duty\.workflow\.main-healthy\.yml/.test(l)), 'main-healthy.yml is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.ci\.yml/.test(l)), 'ci.yml is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.extensions-ci\.yml/.test(l)), 'the extensions CI callee is excluded by derivation');
