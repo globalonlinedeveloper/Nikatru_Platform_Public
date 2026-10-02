@@ -1,5 +1,5 @@
 {
-  "$comment": "Read by tooling/ci/assert-web-cache-policy.mjs (the site CSP limb, rv2-security-005 / O-EXT-CONNECT-CSP-HAS-NO-READER). Every static deploy root (sites/* with an index.html) is declared in scope or out of scope, both ways. An in-scope site's /* Content-Security-Policy and every declared per-path override are floored; an undeclared override fails; a declared override whose block no longer sets a CSP fails; a declaration the tree no longer matches is COVERAGE LOST.",
+  "$comment": "Read by tooling/ci/assert-web-cache-policy.mjs (the site CSP limb, rv2-security-005 / O-EXT-CONNECT-CSP-HAS-NO-READER). Every static deploy root (sites/* with an index.html) is declared in scope or out of scope, both ways. An in-scope site's /* Content-Security-Policy and every declared per-path override are floored; an override may add only the sources its `adds` declares (one concrete https origin each), per directive, over the global line; an undeclared override fails; a declared override whose block no longer sets a CSP fails; a declaration the tree no longer matches is COVERAGE LOST.",
   "inScope": [
     {
       "site": "sites/nikatru",
@@ -16,11 +16,13 @@
     {
       "site": "sites/nikatru",
       "path": "/ext/connect",
+      "adds": { "connect-src": ["https://auth-api.nikatru.com", "https://platform.nikatru.com"] },
       "why": "The browser-extension link page signs in against GoTrue and asks the platform Worker for a one-time code, so it alone needs connect-src https://auth-api.nikatru.com and https://platform.nikatru.com; the global policy is detached and restated whole, because Cloudflare joins a header two rules set and a browser enforces every CSP it receives."
     },
     {
       "site": "sites/nikatru",
       "path": "/app/connect",
+      "adds": { "connect-src": ["https://auth-api.nikatru.com", "https://platform.nikatru.com"] },
       "why": "⏱ 2026-10-01 · O-DESKTOP-EMAIL-SIGN-IN-HAS-NO-ATTESTED-PATH. The desktop app's system-browser sign-in page signs in against GoTrue and asks the platform Worker for a one-time hand-off code, so it needs connect-src https://auth-api.nikatru.com and https://platform.nikatru.com and nothing else — no script source is widened, so the page carries no Turnstile and offers Sign in with Apple only. Detached and restated whole, as /ext/connect is, because Cloudflare joins a header two rules set and a browser enforces every CSP it receives."
     }
   ]

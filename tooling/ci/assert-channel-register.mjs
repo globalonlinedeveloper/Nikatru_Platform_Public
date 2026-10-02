@@ -3933,16 +3933,54 @@ const jobReachable = (wf, job) => {
 /** caller rel -> [{ job, callee }] for every local reusable-workflow call. */
 const localCalls = new Map();
 for (const wf of scopeWorkflows) localCalls.set(wf.rel, resolveLocalCalls(wf, scopeWorkflows).calls);
-for (const wf of scopeWorkflows) {
-  if (!prWorkflows.has(wf.rel)) continue;
-  for (const c of localCalls.get(wf.rel)) {
-    const job = wf.jobs.get(c.job);
-    if (job && jobReachable(wf, job) && !prWorkflows.has(c.callee.rel)) {
-      prWorkflows.set(c.callee.rel, { underTarget: prWorkflows.get(wf.rel).underTarget });
+// ⏱ 2026-10-02 · #1095 review finding 7: ONE pass marked C (A → B → C) reachable only when the loop
+// had already visited B. Propagate to a FIXPOINT, so the answer cannot depend on file order. And
+// the edges are read here, not taken from resolveLocalCalls: that helper REFUSES a callee that
+// itself calls a local workflow (its `nested` refusal) and returns no edge for it, so A → B → C
+// left B and C both unreachable — measured on a fixture, 8d exited 0 over a deploy read in C.
+// GitHub runs nested reusable workflows (up to four levels), so reachability follows every hop.
+const scopeByRel = new Map(scopeWorkflows.map((w) => [w.rel, w]));
+const reachEdges = (w) => {
+  const out = [];
+  for (const job of w.jobs.values()) {
+    for (const l of job.lines) {
+      const m = l.text.match(/^ {4}uses:\s*(['"]?)\.\/(\.github\/workflows\/[^@\s'"]+\.ya?ml)\1\s*$/);
+      const callee = m ? scopeByRel.get(m[2]) : undefined;
+      if (callee) out.push({ job: job.name, callee });
+    }
+  }
+  return out;
+};
+for (let grew = true; grew; ) {
+  grew = false;
+  for (const wf of scopeWorkflows) {
+    if (!prWorkflows.has(wf.rel)) continue;
+    for (const c of reachEdges(wf)) {
+      const job = wf.jobs.get(c.job);
+      if (job && jobReachable(wf, job) && !prWorkflows.has(c.callee.rel)) {
+        prWorkflows.set(c.callee.rel, { underTarget: prWorkflows.get(wf.rel).underTarget });
+        grew = true;
+      }
     }
   }
 }
 
+/** ⏱ 2026-10-02 · #1095 review finding 4. `${{ toJSON(secrets) }}` (or any use of the `secrets`
+ *  context not followed by `.NAME`) hands a job EVERY secret at once and names none, so the per-name
+ *  grading below never sees it. zizmor's overprovisioned-secrets audit catches it too, but only on
+ *  Linux; this keeps "no deploy secret in a PR job" from depending on a scanner. */
+const wholeSecretsRefsIn = (lines) => {
+  const out = [];
+  for (const l of lines) {
+    for (const expr of l.text.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
+      // `needs.secrets-scan.result` is a job named secrets-scan, not the context: a `.`, `-` or word
+      // character on either side means another name.
+      if (/(?<![\w.-])secrets(?![\w-])(?!\s*\.\s*[A-Za-z_])/.test(expr[1])) out.push({ n: l.n, expr: expr[1].trim() });
+    }
+  }
+  return out;
+};
+const wholeSecretsRefs = [];
 /** One graded reference: which file and line, which job, the job's environment, and whether a PR reaches it. */
 const scopeRefs = [];
 for (const wf of scopeWorkflows) {
@@ -3953,6 +3991,7 @@ for (const wf of scopeWorkflows) {
     const pr = jobReachable(wf, job);
     for (const l of job.lines) inAJob.add(l.n);
     for (const r of secretRefsIn(job.lines)) scopeRefs.push({ ...r, rel: wf.rel, job: job.name, env, pr, callee: calls.get(job.name) ?? null });
+    if (pr) for (const r of wholeSecretsRefsIn(job.lines)) wholeSecretsRefs.push({ ...r, rel: wf.rel, job: job.name, env });
   }
   // A workflow-level `env:` (above or below `jobs:`) reaches every job, and an
   // environment secret never resolves there: graded as a job with no environment.
@@ -4022,15 +4061,114 @@ if (storageLags.length > 0) {
   );
 }
 
+// ── 8c rule (e): the SIGNING reads (train P17, security-001 part 6) ─────────
+// ⏱ 2026-10-02 · lane fix-secrets-scope-readback. Rules (a)-(d) grade the nonSigning rows; nothing
+// graded where an ANDROID_* upload key, an APPLE_*_P12* certificate or a provisioning profile was
+// read. `ciSecretRegister.signingScope` declares it: every reference whose NAME matches one of its
+// `match` patterns must sit in a job bound to its `environment`, or in a job one of its
+// `repositoryFallback` entries licenses by `<workflow>#<job>` until a YYYY-MM-DD date. An expired
+// licence FAILS, a licence naming a job that no longer reads a matching secret FAILS (a stale
+// licence is a permanent one in waiting), and a matching read with no `signingScope` at all FAILS.
+{
+  const sc = register?.ciSecretRegister?.signingScope;
+  const patterns = Array.isArray(sc?.match) ? sc.match.filter((p) => typeof p === 'string' && p) : [];
+  let rx = [];
+  try {
+    rx = patterns.map((p) => new RegExp(p));
+  } catch (e) {
+    problems.push(`8c rule (e): \`ciSecretRegister.signingScope.match\` holds a pattern that is not a regular expression (${e.message}).`);
+  }
+  const DEFAULT_SIGNING = [/^ANDROID_/, /^APPLE_[A-Z0-9_]*P12/, /PROVISIONING/];
+  const isSigningRead = (name) => (rx.length ? rx : DEFAULT_SIGNING).some((r) => r.test(name));
+  const signingRefs = scopeRefs.filter((r) => isSigningRead(r.name));
+  // A register that scopes ANY secret to an environment has adopted scopes, and then a signing read
+  // with no signingScope is a hole in them. (A register that scopes nothing — a §8-only fixture — has
+  // no environment for a signing key to be held to.)
+  if (signingRefs.length && !sc && scopedToEnvironment.size > 0) {
+    problems.push(
+      `8c rule (e): ${signingRefs.length} signing secret read(s) (${[...new Set(signingRefs.map((r) => r.name))].join(', ')}) and no \`ciSecretRegister.signingScope\` saying which environment holds them. A signing key read by any job with no environment is readable by every job.`,
+    );
+  } else if (sc) {
+    const env = typeof sc.environment === 'string' && sc.environment.trim() ? sc.environment.trim() : null;
+    if (!env) problems.push('8c rule (e): `ciSecretRegister.signingScope.environment` is not a GitHub environment name.');
+    if (!rx.length) problems.push('8c rule (e): `ciSecretRegister.signingScope.match` names no pattern, so no signing read would be graded.');
+    const licences = new Map();
+    for (const f of Array.isArray(sc.repositoryFallback) ? sc.repositoryFallback : []) {
+      const okShape = typeof f?.job === 'string' && /^\.github\/workflows\/[^#]+\.ya?ml#[A-Za-z0-9_-]+$/.test(f.job) && /^\d{4}-\d{2}-\d{2}$/.test(String(f?.until ?? '')) && typeof f?.why === 'string' && f.why.trim().length >= 20;
+      if (!okShape) {
+        problems.push(`8c rule (e): \`signingScope.repositoryFallback\` entry ${JSON.stringify(f)} needs a \`job\` (<workflow path>#<job id>), an \`until\` (YYYY-MM-DD) and a \`why\` (20+ characters).`);
+        continue;
+      }
+      licences.set(f.job, f);
+    }
+    const used = new Set();
+    for (const r of signingRefs) {
+      if (env && r.env !== null && r.env.name === env) continue;
+      const key = `${r.rel}#${r.job}`;
+      const lic = licences.get(key);
+      if (lic && lic.until >= SCOPE_TODAY) {
+        used.add(key);
+        continue;
+      }
+      problems.push(
+        lic
+          ? `8c rule (e): ${scopeAt(r)} reads signing secret \`secrets.${r.name}\` under a \`signingScope.repositoryFallback\` that expired on ${lic.until} (today ${SCOPE_TODAY}). Bind the job to environment "${env}" (the owner's move: ${sc.moveStep ?? 'no moveStep written'}) and delete the fallback.`
+          : `8c rule (e): ${scopeAt(r)} reads signing secret \`secrets.${r.name}\` in a job not bound to environment "${env}", and no \`signingScope.repositoryFallback\` names ${key}. A signing key outside its environment is readable by every job; bind the job, or license it by name with a date and a reason.`,
+      );
+    }
+    for (const [key, f] of licences) {
+      if (!used.has(key) && !signingRefs.some((r) => `${r.rel}#${r.job}` === key)) {
+        problems.push(`8c rule (e): \`signingScope.repositoryFallback\` licenses ${key} until ${f.until}, and that job reads no signing secret. Delete the stale licence: one with no subject waits to license the next read nobody reviewed.`);
+      }
+    }
+    if (licences.size) {
+      prints.push(`8c (e) SIGNING TRANSITION: ${[...licences.values()].map((f) => `${f.job} until ${f.until}`).join(' · ')} — env-less signing reads licensed by name; after each date the read FAILS unless the job is bound to "${env}".`);
+    }
+    ok(`${signingRefs.length} signing secret reference(s) graded against environment "${env}" [8c (e)]`);
+  }
+}
+
 // 8d grading.
+// ⏱ 2026-10-02 · #1095 review findings 1 and 2. 8d graded only publishing and signing rows, so
+// CLOUDFLARE_D1_TOKEN (D1 edit on every production database) in guards-platform passed with every
+// guard green, and CLOUDFLARE_READ_TOKEN — account-scoped D1 READ, i.e. every production user row —
+// sat in two PR-reachable steps by design. Each row now declares `productionData` (read | write |
+// none), and anything but `none` is forbidden in a PR-reachable job exactly as a deploy secret is.
+// A credential-kind row that does not declare it cannot be graded, so it fails too.
+const PRODUCTION_DATA = new Set(['read', 'write', 'none']);
+const PRODUCTION_DATA_REQUIRED = new Set(['service-credential', 'publishing-credential', 'runtime-secret']);
+for (const [name, e] of nonSigningSecrets) {
+  if (Object.hasOwn(e, 'productionData')) {
+    if (!PRODUCTION_DATA.has(e.productionData)) {
+      problems.push(`8d: \`ciSecretRegister.nonSigning\` entry "${name}" declares \`productionData: ${JSON.stringify(e.productionData)}\`; it is one of read | write | none.`);
+    }
+  } else if (PRODUCTION_DATA_REQUIRED.has(e.kind)) {
+    problems.push(
+      `8d: \`ciSecretRegister.nonSigning\` entry "${name}" is a ${e.kind} and declares no \`productionData\` (read | write | none). Whether a pull request may hold it depends on exactly that, so an undeclared reach cannot be graded.`,
+    );
+  }
+}
+const productionReach = (name) => {
+  const pd = nonSigningSecrets.get(name)?.productionData;
+  return pd === 'read' || pd === 'write' ? pd : null;
+};
 const PR_FORBIDDEN_WHY = (name) =>
-  signingSecrets.has(name) ? `signing material on ${signingSecrets.get(name)}` : 'a publishing credential (it deploys or publishes)';
+  signingSecrets.has(name)
+    ? `signing material on ${signingSecrets.get(name)}`
+    : nonSigningSecrets.get(name)?.kind === 'publishing-credential'
+    ? 'a publishing credential (it deploys or publishes)'
+    : `a credential that can ${productionReach(name)} PRODUCTION user data (its row's \`productionData\`)`;
 const prRefs = scopeRefs.filter((r) => r.pr);
 for (const r of prRefs) {
   const row = nonSigningSecrets.get(r.name);
-  if (!(signingSecrets.has(r.name) || row?.kind === 'publishing-credential')) continue;
+  if (!(signingSecrets.has(r.name) || row?.kind === 'publishing-credential' || productionReach(r.name))) continue;
   problems.push(
-    `8d: ${scopeAt(r)} reads \`secrets.${r.name}\`, ${PR_FORBIDDEN_WHY(r.name)}, in a job a pull request can run. A pull request runs the PR's own code — its tests, its scripts, its guards — so a deploy, publish or signing secret there is one edit away from exfiltration or a deploy around ci-gate and branch protection (rv2-security-001). Read a read-only credential instead (CLOUDFLARE_READ_TOKEN for Cloudflare state), or move the read into a job whose \`if:\` excludes pull requests (\`github.event_name == 'push'\`, a schedule slot, a dispatch). No register field licenses this.`,
+    `8d: ${scopeAt(r)} reads \`secrets.${r.name}\`, ${PR_FORBIDDEN_WHY(r.name)}, in a job a pull request can run. A pull request runs the PR's own code — its tests, its scripts, its guards — so a deploy, publish, signing or production-data secret there is one edit away from exfiltration or a deploy around ci-gate and branch protection (rv2-security-001). Read a credential whose row is \`productionData: none\` instead, or move the read into a job whose \`if:\` excludes pull requests (\`github.event_name == 'push'\`, a schedule slot, a dispatch). No register field licenses this.`,
+  );
+}
+for (const r of wholeSecretsRefs) {
+  problems.push(
+    `8d: ${scopeAt(r)} uses the whole \`secrets\` context (\`\${{ ${r.expr} }}\`) in a job a pull request can run. That hands the PR's code EVERY repository secret, deploy and production-data tokens included, without naming one, so no row can grade it. Name each secret the step needs as \`secrets.<NAME>\`.`,
   );
 }
 const prJobCount = scopeWorkflows.reduce((s, wf) => s + [...wf.jobs.values()].filter((j) => jobReachable(wf, j)).length, 0);
@@ -4044,7 +4182,7 @@ if (ciWorkflow && prWorkflows.has(ciWorkflow.rel) && ![...ciWorkflow.jobs.values
 }
 if (prWorkflows.size > 0) {
   ok(
-    `${prJobCount} job(s) across ${prWorkflows.size} workflow(s) a pull request can run; ${prRefs.length} secret reference(s) in them graded, none a deploy, publish or signing secret unless reported above [8d]`,
+    `${prJobCount} job(s) across ${prWorkflows.size} workflow(s) a pull request can run; ${prRefs.length} secret reference(s) in them graded, none a deploy, publish, signing or production-data secret unless reported above [8d]`,
   );
 }
 
