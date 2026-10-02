@@ -54,6 +54,18 @@ id = "GHSA-86w9-cpqp-85rv"
 ignoreUntil = 2026-10-15T00:00:00Z
 reason = "node-forge <=1.4.0 has no patched release (2026-10-01); transitive devDependency of web-ext in tooling/web-ext (CI-only Firefox lint and AMO signer); in no shipped package"
 
+# ⏱ 2026-10-02 23:10Z (club held-apps r2): the PR's security-scan went red on GHSA-vfj7-8cjw-p6xm (CI run 37074900134).
+# braces <= 3.0.3, stack-exhaustion denial of service through deeply nested patterns.
+# NO PATCHED RELEASE EXISTS (3.0.3 is the newest on npm; the advisory's range is last_affected 3.0.3).
+# Exposure: a TRANSITIVE devDependency in sites/_shared ONLY (@11ty/eleventy -> chokidar 3.6.0 -> braces), the
+# file-watcher of the static-site build. It is in no app, Worker or extension, and it expands no user-supplied pattern.
+# Fix when braces publishes one (or chokidar drops it): `npm update braces --prefix sites/_shared`, and delete this
+# entry in the same commit. scan-dependencies.mjs warns 14 days before the expiry, and the expiry reddens the lane.
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2026-11-02T00:00:00Z
+reason = "braces <=3.0.3 has no patched release (2026-10-02); transitive devDependency of @11ty/eleventy via chokidar in sites/_shared (build-time file-watcher); in no shipped package"
+
 # ── 2026-10-01 · THE GRADLE BUILD CLASSPATH, NOW VISIBLE [rv2-security-003 stage (b)] ──
 # apps/subscriptiontracker/android/gradle/verification-metadata.xml (Gradle dependency
 # verification) lists every artefact the Android build resolves, and OSV 2.6.0 reads it
