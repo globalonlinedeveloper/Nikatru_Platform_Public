@@ -1,21 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
-
-/// Records what it was asked to open. The seam exists FOR this: a test cannot
-/// observe a real browser opening, so "the checkout opens" would be a claim
-/// nobody could check on any platform — which is how a paywall ships with a
-/// button that does nothing.
-class _RecordingLauncher implements CheckoutLauncher {
-  final List<Uri> opened = <Uri>[];
-  bool answer = true;
-
-  @override
-  Future<bool> open(Uri url) async {
-    opened.add(url);
-    return answer;
-  }
-}
+import 'package:nikatru_purchases/testing.dart';
 
 class _FakeCancellations implements core.CancellationTransport {
   _FakeCancellations(this.result);
@@ -83,32 +69,32 @@ HostedCheckoutRail _rail({
   String? account = 'user-123',
   CheckoutLauncher? launcher,
   core.CancellationTransport? cancellations,
-}) =>
-    HostedCheckoutRail(
-      config: RailConfig(
-        offerings: offerings,
-        // ⏱ 2026-10-01: NO template, as served. The rail no longer reads one.
-        checkoutUrlTemplate: null,
-        manageUrlTemplate: null,
-      ),
-      checkoutSessions: sessions ?? _FakeSessions(),
-      appId: 'probe',
-      returnUrl: 'https://nikatru.test/checkout-return',
-      accountId: () async => account,
-      accessToken: () async => 'token',
-      cancellationTransport: cancellations ??
-          _FakeCancellations(
-            const core.Result<core.CancellationReceipt>.ok(
-              core.CancellationReceipt(
-                hasActivePlan: true,
-                recorded: true,
-                executed: false,
-              ),
-            ),
+}) => HostedCheckoutRail(
+  config: RailConfig(
+    offerings: offerings,
+    // ⏱ 2026-10-01: NO template, as served. The rail no longer reads one.
+    checkoutUrlTemplate: null,
+    manageUrlTemplate: null,
+  ),
+  checkoutSessions: sessions ?? _FakeSessions(),
+  appId: 'probe',
+  returnUrl: 'https://nikatru.test/checkout-return',
+  accountId: () async => account,
+  accessToken: () async => 'token',
+  cancellationTransport:
+      cancellations ??
+      _FakeCancellations(
+        const core.Result<core.CancellationReceipt>.ok(
+          core.CancellationReceipt(
+            hasActivePlan: true,
+            recorded: true,
+            executed: false,
           ),
-      launcher: launcher ?? _RecordingLauncher(),
-      capabilities: PurchaseCapabilities.forChannel(channel),
-    );
+        ),
+      ),
+  launcher: launcher ?? FakeCheckoutLauncher(),
+  capabilities: PurchaseCapabilities.forChannel(channel),
+);
 
 void main() {
   // ── [5]M-6(a) · THE LAUNCHER, PER SELLABLE CHANNEL ────────────────────────
@@ -126,7 +112,7 @@ void main() {
       PurchaseChannel.linuxAppImage,
     ]) {
       test('${channel.registerId} opens the hosted checkout URL', () async {
-        final _RecordingLauncher launcher = _RecordingLauncher();
+        final FakeCheckoutLauncher launcher = FakeCheckoutLauncher();
         final _FakeSessions sessions = _FakeSessions();
         final HostedCheckoutRail rail = _rail(
           channel: channel,
@@ -161,7 +147,7 @@ void main() {
       PurchaseChannel.androidPlay,
     ]) {
       test('${channel.registerId} refuses with channelNotPermitted', () async {
-        final _RecordingLauncher launcher = _RecordingLauncher();
+        final FakeCheckoutLauncher launcher = FakeCheckoutLauncher();
         final CheckoutStart start = await _rail(
           channel: channel,
           launcher: launcher,
@@ -183,54 +169,66 @@ void main() {
   });
 
   group('every refusal is a state the UI can explain', () {
-    test('NO platform host (backend not live) ⇒ railNotConfigured, nothing opened',
-        () async {
-      final _RecordingLauncher launcher = _RecordingLauncher();
-      final _FakeSessions sessions = _FakeSessions(available: false);
-      final CheckoutStart start = await _rail(
-        channel: PurchaseChannel.web,
-        sessions: sessions,
-        launcher: launcher,
-      ).startCheckout(_monthly);
+    test(
+      'NO platform host (backend not live) ⇒ railNotConfigured, nothing opened',
+      () async {
+        // The state today: no seller account exists (OWNER_QUEUE A-1), so no
+        // template can have been pasted out of a console that nobody has.
+        final FakeCheckoutLauncher launcher = FakeCheckoutLauncher();
+        final _FakeSessions sessions = _FakeSessions(available: false);
+        final CheckoutStart start = await _rail(
+          channel: PurchaseChannel.web,
+          sessions: sessions,
+          launcher: launcher,
+        ).startCheckout(_monthly);
 
-      expect(
-          (start as CheckoutRefused).reason, CheckoutRefusal.railNotConfigured);
-      expect(sessions.asked, isEmpty);
-      expect(launcher.opened, isEmpty);
-    });
+        expect(
+          (start as CheckoutRefused).reason,
+          CheckoutRefusal.railNotConfigured,
+        );
+        expect(sessions.asked, isEmpty);
+        expect(launcher.opened, isEmpty);
+      },
+    );
 
-    test('NOTHING TO SELL (paywall off) ⇒ railNotConfigured, host never asked',
-        () async {
-      final _FakeSessions sessions = _FakeSessions();
-      final CheckoutStart start = await _rail(
-        channel: PurchaseChannel.web,
-        sessions: sessions,
-        offerings: const <Offering>[],
-      ).startCheckout(_monthly);
+    test(
+      'NOTHING TO SELL (paywall off) ⇒ railNotConfigured, host never asked',
+      () async {
+        final _FakeSessions sessions = _FakeSessions();
+        final CheckoutStart start = await _rail(
+          channel: PurchaseChannel.web,
+          sessions: sessions,
+          offerings: const <Offering>[],
+        ).startCheckout(_monthly);
 
-      expect(
-          (start as CheckoutRefused).reason, CheckoutRefusal.railNotConfigured);
-      expect(sessions.asked, isEmpty);
-    });
+        expect(
+          (start as CheckoutRefused).reason,
+          CheckoutRefusal.railNotConfigured,
+        );
+        expect(sessions.asked, isEmpty);
+      },
+    );
 
-    test('the host REFUSING (403/429/502) is couldNotOpen, nothing opened',
-        () async {
-      final _RecordingLauncher launcher = _RecordingLauncher();
-      final CheckoutStart start = await _rail(
-        channel: PurchaseChannel.web,
-        sessions: _FakeSessions(fail: true),
-        launcher: launcher,
-      ).startCheckout(_monthly);
+    test(
+      'the host REFUSING (403/429/502) is couldNotOpen, nothing opened',
+      () async {
+        final FakeCheckoutLauncher launcher = FakeCheckoutLauncher();
+        final CheckoutStart start = await _rail(
+          channel: PurchaseChannel.web,
+          sessions: _FakeSessions(fail: true),
+          launcher: launcher,
+        ).startCheckout(_monthly);
 
-      expect((start as CheckoutRefused).reason, CheckoutRefusal.couldNotOpen);
-      expect(start.detail, isNotEmpty);
-      expect(launcher.opened, isEmpty);
-    });
+        expect((start as CheckoutRefused).reason, CheckoutRefusal.couldNotOpen);
+        expect(start.detail, isNotEmpty);
+        expect(launcher.opened, isEmpty);
+      },
+    );
 
     test('NO account ⇒ notSignedIn, and the checkout never opens', () async {
       // [5]M-7. An unclaimed payment arising from an IN-APP purchase is a
       // defect, not a supported state — so the money never moves.
-      final _RecordingLauncher launcher = _RecordingLauncher();
+      final FakeCheckoutLauncher launcher = FakeCheckoutLauncher();
       final _FakeSessions sessions = _FakeSessions();
       final CheckoutStart start = await _rail(
         channel: PurchaseChannel.web,
@@ -244,21 +242,26 @@ void main() {
       expect(launcher.opened, isEmpty);
     });
 
-    test('the platform refusing to open is couldNotOpen, not success',
-        () async {
-      final _RecordingLauncher launcher = _RecordingLauncher()..answer = false;
-      final CheckoutStart start = await _rail(
-        channel: PurchaseChannel.web,
-        launcher: launcher,
-      ).startCheckout(_monthly);
+    test(
+      'the platform refusing to open is couldNotOpen, not success',
+      () async {
+        final FakeCheckoutLauncher launcher = FakeCheckoutLauncher()
+          ..answer = false;
+        final CheckoutStart start = await _rail(
+          channel: PurchaseChannel.web,
+          launcher: launcher,
+        ).startCheckout(_monthly);
 
-      expect((start as CheckoutRefused).reason, CheckoutRefusal.couldNotOpen);
-    });
+        expect((start as CheckoutRefused).reason, CheckoutRefusal.couldNotOpen);
+      },
+    );
 
     test('canStartCheckout is false when EITHER half is false', () {
       expect(_rail(channel: PurchaseChannel.web).canStartCheckout, isTrue);
-      expect(_rail(channel: PurchaseChannel.iosAppStore).canStartCheckout,
-          isFalse);
+      expect(
+        _rail(channel: PurchaseChannel.iosAppStore).canStartCheckout,
+        isFalse,
+      );
       expect(
         _rail(
           channel: PurchaseChannel.web,
@@ -267,35 +270,39 @@ void main() {
         isFalse,
       );
       expect(
-        _rail(channel: PurchaseChannel.web, offerings: const <Offering>[])
-            .canStartCheckout,
+        _rail(
+          channel: PurchaseChannel.web,
+          offerings: const <Offering>[],
+        ).canStartCheckout,
         isFalse,
       );
     });
   });
 
   group('[5]M-9 · cancellation reports what actually happened', () {
-    test('recorded-but-not-executed is its OWN outcome, never `executed`',
-        () async {
-      // Folding these together is the app telling a user their subscription is
-      // over on the strength of our having written down that they asked.
-      final _FakeCancellations t = _FakeCancellations(
-        const core.Result<core.CancellationReceipt>.ok(
-          core.CancellationReceipt(
-            hasActivePlan: true,
-            recorded: true,
-            executed: false,
+    test(
+      'recorded-but-not-executed is its OWN outcome, never `executed`',
+      () async {
+        // Folding these together is the app telling a user their subscription is
+        // over on the strength of our having written down that they asked.
+        final _FakeCancellations t = _FakeCancellations(
+          const core.Result<core.CancellationReceipt>.ok(
+            core.CancellationReceipt(
+              hasActivePlan: true,
+              recorded: true,
+              executed: false,
+            ),
           ),
-        ),
-      );
-      final CancellationOutcome o = await _rail(
-        channel: PurchaseChannel.web,
-        cancellations: t,
-      ).requestCancellation();
+        );
+        final CancellationOutcome o = await _rail(
+          channel: PurchaseChannel.web,
+          cancellations: t,
+        ).requestCancellation();
 
-      expect(o, CancellationOutcome.recorded);
-      expect(t.calls, 1);
-    });
+        expect(o, CancellationOutcome.recorded);
+        expect(t.calls, 1);
+      },
+    );
 
     test('executed on the rail is reported as executed', () async {
       final CancellationOutcome o = await _rail(
@@ -361,17 +368,21 @@ void main() {
       expect(o, CancellationOutcome.failed);
     });
 
-    test('the cancel path is REACHED — the transport is really called',
-        () async {
-      // The account-deletion dialog in this same chassis once called
-      // Navigator.pop and nothing else, which looks exactly like a button that
-      // worked. Asserting the call count is what tells the two apart.
-      final _FakeCancellations t = _FakeCancellations(
-        const core.Result<core.CancellationReceipt>.err(core.Failure('x')),
-      );
-      await _rail(channel: PurchaseChannel.web, cancellations: t)
-          .requestCancellation();
-      expect(t.calls, 1);
-    });
+    test(
+      'the cancel path is REACHED — the transport is really called',
+      () async {
+        // The account-deletion dialog in this same chassis once called
+        // Navigator.pop and nothing else, which looks exactly like a button that
+        // worked. Asserting the call count is what tells the two apart.
+        final _FakeCancellations t = _FakeCancellations(
+          const core.Result<core.CancellationReceipt>.err(core.Failure('x')),
+        );
+        await _rail(
+          channel: PurchaseChannel.web,
+          cancellations: t,
+        ).requestCancellation();
+        expect(t.calls, 1);
+      },
+    );
   });
 }

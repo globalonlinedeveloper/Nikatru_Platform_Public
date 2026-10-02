@@ -80,7 +80,7 @@ class HostedCheckoutRail implements PurchaseRail, RestoresPurchases {
 
   /// Always the merchant-of-record page: this rail opens nothing else.
   @override
-  PurchaseRailKind get railKind => PurchaseRailKind.paddle;
+  PurchaseRailKind get railKind => PurchaseRailKind.hosted;
 
   @override
   List<Offering> get offerings => _config.offerings;

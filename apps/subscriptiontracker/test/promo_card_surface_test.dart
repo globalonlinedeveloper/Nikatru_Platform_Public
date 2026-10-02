@@ -31,6 +31,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_design_system/nikatru_design_system.dart';
 import 'package:nikatru_purchases/nikatru_purchases.dart';
+import 'package:nikatru_purchases/testing.dart';
 import 'package:subscriptiontracker/core/app_config.dart';
 import 'package:subscriptiontracker/features/home/home_screen.dart';
 import 'package:subscriptiontracker/l10n/app_localizations.dart';
@@ -71,59 +72,33 @@ class _MemStore implements core.KeyValueStore {
 
 /// A rail that says selling is permitted. Used ONLY for the buy-button rows —
 /// see the header.
-class _SellingRail implements PurchaseRail {
-  @override
-  PurchaseRailKind get railKind => PurchaseRailKind.paddle;
-
-  @override
-  List<Offering> get offerings => const <Offering>[
+FakePurchaseRail _sellingRail() => FakePurchaseRail(
+  offerings: const <Offering>[
     Offering(
       productId: 'pro_monthly',
       amountMinor: 499,
       currencyCode: 'USD',
       term: OfferingTerm.month,
     ),
-  ];
-
-  @override
-  bool get canStartCheckout => true;
-
-  @override
-  Future<CheckoutStart> startCheckout(Offering offering) async =>
-      const CheckoutRefused(CheckoutRefusal.railNotConfigured);
-
-  @override
-  Future<CancellationOutcome> requestCancellation() async =>
-      CancellationOutcome.noActivePlan;
-}
+  ],
+  canStartCheckout: true,
+  refusal: CheckoutRefusal.railNotConfigured,
+);
 
 /// Twelve and a half lakh rupees — where Indian and Western grouping differ in
 /// every separator position. Used ONLY by the locale-grouping case.
-class _InrSellingRail implements PurchaseRail {
-  @override
-  PurchaseRailKind get railKind => PurchaseRailKind.paddle;
-
-  @override
-  List<Offering> get offerings => const <Offering>[
+FakePurchaseRail _inrSellingRail() => FakePurchaseRail(
+  offerings: const <Offering>[
     Offering(
       productId: 'pro_year_inr',
       amountMinor: 125000000,
       currencyCode: 'INR',
       term: OfferingTerm.year,
     ),
-  ];
-
-  @override
-  bool get canStartCheckout => true;
-
-  @override
-  Future<CheckoutStart> startCheckout(Offering offering) async =>
-      const CheckoutRefused(CheckoutRefusal.railNotConfigured);
-
-  @override
-  Future<CancellationOutcome> requestCancellation() async =>
-      CancellationOutcome.noActivePlan;
-}
+  ],
+  canStartCheckout: true,
+  refusal: CheckoutRefusal.railNotConfigured,
+);
 
 core.AppConfig _config({
   bool promoEnabled = false,
@@ -187,7 +162,7 @@ Widget _host(
     // ST-U2 (audit C35): selling is on for these cases — `paywall.enabled`.
     sellingEnabledProvider.overrideWithValue(selling),
     if (!realRail)
-      purchaseRailProvider.overrideWithValue(rail ?? _SellingRail()),
+      purchaseRailProvider.overrideWithValue(rail ?? _sellingRail()),
     if (entitled)
       entitlementsProvider.overrideWith(
         (_) async => core.Entitlements(
@@ -302,7 +277,7 @@ void main() {
         _host(
           _MemStore(),
           _config(promoEnabled: true),
-          rail: _InrSellingRail(),
+          rail: _inrSellingRail(),
           locale: const Locale('ta'),
         ),
       );
@@ -314,7 +289,7 @@ void main() {
         _host(
           _MemStore(),
           _config(promoEnabled: true),
-          rail: _InrSellingRail(),
+          rail: _inrSellingRail(),
           locale: const Locale('en'),
         ),
       );
@@ -462,7 +437,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
-        _host(_MemStore(), _config(promoEnabled: true), rail: _SellingRail()),
+        _host(_MemStore(), _config(promoEnabled: true), rail: _sellingRail()),
       );
       await tester.pumpAndSettle();
       expect(

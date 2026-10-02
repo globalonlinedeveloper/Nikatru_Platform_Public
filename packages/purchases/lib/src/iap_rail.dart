@@ -288,7 +288,7 @@ class IapRail
       return CheckoutRefused(
         CheckoutRefusal.channelNotPermitted,
         detail:
-            'Channel ${_channel.registerId} sells through ${_railKind.registerId}, '
+            'Channel ${_channel.registerId} sells through ${_railKind.wire}, '
             'not the store billing rail. tooling/channel-register.json is the decision.',
       );
     }

@@ -367,6 +367,37 @@ void main() {
       );
     });
 
+    // ADR 093 §11.2: no store sells the lifetime plan. Red control: drop the
+    // oneTime check in offeringsFromStore and this case offers pro_lifetime.
+    test('offeringsFromStore never offers a lifetime plan in-app', () {
+      const Offering lifetime = Offering(
+        productId: 'pro_lifetime',
+        amountMinor: 8900,
+        currencyCode: 'USD',
+        term: OfferingTerm.oneTime,
+      );
+      expect(
+        offeringsFromStore(const <Offering>[
+          monthly,
+          lifetime,
+        ], const <StorePlan>[
+          StorePlan(
+            productId: 'pro_monthly',
+            amountMinor: 719,
+            currencyCode: 'USD',
+            term: OfferingTerm.month,
+          ),
+          StorePlan(
+            productId: 'pro_lifetime',
+            amountMinor: 8900,
+            currencyCode: 'USD',
+            term: OfferingTerm.oneTime,
+          ),
+        ]).map((Offering o) => o.productId),
+        <String>['pro_monthly'],
+      );
+    });
+
     test('a trial counts days only where a day count is exact', () {
       expect(const TrialPeriod.days(30).exactDays, 30);
       expect(const TrialPeriod(count: 2, unit: TrialUnit.week).exactDays, 14);

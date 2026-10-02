@@ -91,6 +91,12 @@ class StorePlan {
 ///   "billed per month" line on a yearly charge is a chargeback.
 /// - A store plan the config does not name is not offered. The config decides
 ///   WHICH plans this app sells; the store only describes them.
+/// - 🔴 A LIFETIME ([OfferingTerm.oneTime]) plan is NEVER offered in-app, even
+///   when a store describes one ([ADR 093] §11.2: no store sells the lifetime
+///   plan; it is a web plan). Checked on BOTH sides — the config's term and the
+///   store's — so a console that grows a non-consumable under the lifetime id
+///   cannot put a store buy button on it. `runPurchaseRailConformance`'s
+///   "no lifetime offering in-app" scenario holds every store rail to this.
 List<Offering> offeringsFromStore(
   List<Offering> config,
   List<StorePlan> store,
@@ -102,6 +108,13 @@ List<Offering> offeringsFromStore(
   for (final Offering c in config) {
     final StorePlan? s = byId[c.productId];
     if (s == null) continue;
+    if (c.term == OfferingTerm.oneTime || s.term == OfferingTerm.oneTime) {
+      debugPrint(
+        '[purchases] dropped ${c.productId}: a lifetime plan is sold on the '
+        'web only, never in-app (ADR 093 §11.2).',
+      );
+      continue;
+    }
     if (s.term != c.term) {
       debugPrint(
         '[purchases] dropped ${c.productId}: the store bills it per '

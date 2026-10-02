@@ -4,54 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
 import 'package:nikatru_purchases/nikatru_purchases.dart';
-
-/// A bridge that records what it was asked. The seam exists FOR this: a store
-/// purchase sheet cannot be driven from a unit test, so without an injectable
-/// bridge "the facade builds a store rail" would be a claim nobody could check.
-///
-/// The facade only ever CONSTRUCTS a rail, so this fake answers the interface
-/// and nothing more — the behaviour of the rail it is handed to is
-/// iap_rail_test.dart's subject, with a fake that scripts every outcome.
-class _FakeBridge implements IapBridge {
-  @override
-  Future<bool> configure(IapBridgeConfig config) async => true;
-
-  @override
-  Future<bool> identify(String appUserId) async => true;
-
-  @override
-  Future<bool> logOut() async => true;
-
-  @override
-  Future<List<StorePlan>> storePlans() async => const <StorePlan>[];
-
-  @override
-  Future<IapPurchaseResult> purchase(Offering offering) async =>
-      const IapPurchaseResult(IapPurchaseOutcome.submitted);
-
-  @override
-  Future<IapPurchaseResult> restore() async =>
-      const IapPurchaseResult(IapPurchaseOutcome.submitted);
-
-  @override
-  Future<IapCustomerState> currentCustomerState() async =>
-      IapCustomerState.unknown;
-
-  @override
-  Stream<IapCustomerState> get customerState =>
-      Stream<IapCustomerState>.value(IapCustomerState.unknown);
-}
-
-class _RecordingLauncher implements CheckoutLauncher {
-  final List<Uri> opened = <Uri>[];
-  bool answer = true;
-
-  @override
-  Future<bool> open(Uri url) async {
-    opened.add(url);
-    return answer;
-  }
-}
+import 'package:nikatru_purchases/testing.dart';
 
 class _FakeCancellations implements core.CancellationTransport {
   _FakeCancellations(this.result);
@@ -135,7 +88,7 @@ ChassisBillingConfig _config({
           ),
       iapBridge: bridge,
       iapBridgeConfig: bridgeConfig,
-      launcher: launcher ?? _RecordingLauncher(),
+      launcher: launcher ?? FakeCheckoutLauncher(),
     );
 
 const IapBridgeConfig _bridgeConfig = IapBridgeConfig(
@@ -161,10 +114,10 @@ void main() {
     ]) {
       test('${channel.registerId} gets the hosted checkout rail', () {
         final BillingRailResult r =
-            ChassisBilling.railFor(channel, _config(bridge: _FakeBridge()));
+            ChassisBilling.railFor(channel, _config(bridge: FakeIapBridge()));
         expect(r, isA<BillingRailReady>());
         final BillingRailReady ready = r as BillingRailReady;
-        expect(ready.kind, PurchaseRailKind.paddle);
+        expect(ready.kind, PurchaseRailKind.hosted);
         expect(ready.rail, isA<HostedCheckoutRail>());
       });
     }
@@ -177,7 +130,7 @@ void main() {
       test('${channel.registerId} gets the store IAP rail', () {
         final BillingRailResult r = ChassisBilling.railFor(
           channel,
-          _config(bridge: _FakeBridge(), bridgeConfig: _bridgeConfig),
+          _config(bridge: FakeIapBridge(), bridgeConfig: _bridgeConfig),
         );
         expect(r, isA<BillingRailReady>());
         final BillingRailReady ready = r as BillingRailReady;
@@ -213,7 +166,7 @@ void main() {
       // windows-direct build would inherit windows-store's answer for no reason.
       final BillingRailReady ready = ChassisBilling.railFor(
         PurchaseChannel.windowsDirect,
-        _config(bridge: _FakeBridge()),
+        _config(bridge: FakeIapBridge()),
       ) as BillingRailReady;
       final HostedCheckoutRail rail = ready.rail as HostedCheckoutRail;
       expect(rail.capabilities.why,
@@ -315,7 +268,7 @@ void main() {
       ]) {
         test('$channel: canStartCheckout, and the checkout OPENS', () async {
           final _FakeSessions sessions = _FakeSessions();
-          final _RecordingLauncher launcher = _RecordingLauncher();
+          final FakeCheckoutLauncher launcher = FakeCheckoutLauncher();
           final ChassisBillingConfig config = _config(
             railConfig: served,
             sessions: sessions,
@@ -435,7 +388,7 @@ void main() {
     test('a `rail: none` channel is a rail that sells nothing', () {
       final PurchaseRail rail = ChassisBilling.railForDeclared(
         'apps-gov-in',
-        _config(bridge: _FakeBridge(), bridgeConfig: _bridgeConfig),
+        _config(bridge: FakeIapBridge(), bridgeConfig: _bridgeConfig),
       ).orUnavailableRail(_config());
       expect(
         (rail as UnavailablePurchaseRail).refusal.reason,
@@ -480,19 +433,37 @@ void main() {
             .firstWhere((PurchaseChannel c) => c.registerId == row['id']);
         final Map<String, Object?> rail =
             row['purchaseRail']! as Map<String, Object?>;
-        expect(
-          PurchaseRailKind.forChannel(channel).registerId,
-          rail['rail'],
-          reason: 'channel ${row['id']}',
-        );
+        final String registerRail = rail['rail']! as String;
+        final PurchaseRailKind kind = PurchaseRailKind.forChannel(channel);
+        // The client kind IS the register rail for a store rail and for
+        // `none`; every other rail is a hosted page, and which vendor serves
+        // it is the server's business. So: either the wires are equal, or the
+        // client says `hosted` for a rail no client kind names. A register
+        // edit not re-rendered (`windows-direct` → `none`) fails here.
+        final Set<String> kindWires = <String>{
+          for (final PurchaseRailKind k in PurchaseRailKind.values) k.wire,
+        };
+        if (kind == PurchaseRailKind.hosted) {
+          expect(kindWires, isNot(contains(registerRail)),
+              reason: 'channel ${row['id']} takes $registerRail, and the '
+                  'rendered map says hosted');
+        } else {
+          expect(kind.wire, registerRail, reason: 'channel ${row['id']}');
+        }
         compared++;
       }
       // A comparison over an empty set agrees with everything.
       expect(compared, greaterThanOrEqualTo(6));
     });
 
+    test('an unknown wire is none — a channel the map does not name sells nothing', () {
+      expect(PurchaseRailKind.fromWire('paddle'), PurchaseRailKind.none);
+      expect(PurchaseRailKind.fromWire(null), PurchaseRailKind.none);
+      expect(PurchaseRailKind.fromWire('hosted'), PurchaseRailKind.hosted);
+    });
+
     test('only the two store rails answer isStoreBilling', () {
-      expect(PurchaseRailKind.paddle.isStoreBilling, isFalse);
+      expect(PurchaseRailKind.hosted.isStoreBilling, isFalse);
       expect(PurchaseRailKind.none.isStoreBilling, isFalse);
       expect(PurchaseRailKind.playBilling.isStoreBilling, isTrue);
       expect(PurchaseRailKind.appleIap.isStoreBilling, isTrue);
@@ -512,7 +483,7 @@ void main() {
             '${channel.registerId} ${withBridge ? 'with' : 'without'} a '
             'bridge answers ${PurchaseRailKind.forChannel(channel).name}', () {
           final ChassisBillingConfig config = withBridge
-              ? _config(bridge: _FakeBridge(), bridgeConfig: _bridgeConfig)
+              ? _config(bridge: FakeIapBridge(), bridgeConfig: _bridgeConfig)
               : _config();
           final PurchaseRail rail =
               ChassisBilling.railFor(channel, config).orUnavailableRail(config);
