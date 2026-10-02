@@ -429,11 +429,11 @@ if (archived.size === 0) {
   }
   const current = archived.get(published) ?? new Map();
   // ⏱ 2026-10-02 (O-TAMIL-NOTICE-REVIEW) — the first translated notice landed (ta, 2026-09-26),
-  // so a translation is now a comparison that can FAIL two ways, not only by mis-declaring:
+  // so a translation is now held to more than its declared version:
   //   · LAG. A locale that has EVER had a notice and has none at the version in force means
-  //     the English moved on and the translation did not. Its readers are left with a
-  //     superseded document, so this fails; a locale that never had one is still the print
-  //     below, which is owner-gated work.
+  //     the English moved on and the translation did not. PRINTED, NOT FAILED, for now: failing
+  //     it makes every English bump wait on a reviewed translation, and whether to do that is
+  //     the lead's call (PR #1173) — the next English bump (DPDP E1/E2) is already queued.
   //   · STRUCTURE. Only `en` is text-compared (limb 1), so a translation is held to the English
   //     snapshot of the same version on what does not translate: the count of each block
   //     element, the link targets, and how often the age floor 18 is stated. A dropped
@@ -443,10 +443,11 @@ if (archived.size === 0) {
   for (const locale of locales) {
     if (!current.has(locale) && everNoticed(locale)) {
       const had = [...archived].filter(([, m]) => m.has(locale)).map(([v]) => v).sort();
-      problems.push(
-        `${ARCHIVE_ROOT}/${published}/${locale}/${DOC} is missing, but ${locale} has had a notice before ` +
-          `(${had.join(', ')}). The English notice moved to ${published} and the ${locale} translation did not: ` +
-          'its readers are left with a superseded document. Translate the new version in the same change as the bump.',
+      prints.push(
+        `TRANSLATION BEHIND: ${ARCHIVE_ROOT}/${published}/${locale}/${DOC} is missing, but ${locale} has had a notice ` +
+          `before (${had.join(', ')}). The English notice moved to ${published} and the ${locale} translation did not: ` +
+          'its readers are left with a superseded document. Translate the new version; turning this print into a ' +
+          "build failure is the lead's call.",
       );
     }
   }

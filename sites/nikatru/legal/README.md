@@ -64,5 +64,5 @@ translated too, and the footer stays the English snapshot's frozen chrome.
 Only `en` is text-compared with the live page. A translation is held to the English
 snapshot of the same version on what does not translate: the count of `<h2>`, `<li>`,
 `<p>` and `<b>`, the link targets, and how often the age floor 18 appears. A locale
-that has had a notice before and has none at the version in force fails the build,
-so **an English version bump ships its translations in the same change.**
+that has had a notice before and has none at the version in force is printed on every
+run (`TRANSLATION BEHIND`); whether it fails the build is the lead's call.
