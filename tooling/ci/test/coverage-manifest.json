@@ -471,7 +471,7 @@
     18,
 
   "guards.test.mjs":
-    503,
+    505,
 
   "heartbeats.test.mjs":
     87,
@@ -609,7 +609,7 @@
     26,
 
   "new-product-plan.test.mjs":
-    41,
+    66,
 
   "new-tool-chain.test.mjs":
     12,
@@ -941,6 +941,9 @@
   "site-integrity.test.mjs":
     109,
 
+  "site-set.test.mjs":
+    6,
+
   "small-business-program.test.mjs":
     17,
 
@@ -966,7 +969,7 @@
     9,
 
   "stamp-app.test.mjs":
-    15,
+    17,
 
   "stamp-brand-assets.test.mjs":
     19,

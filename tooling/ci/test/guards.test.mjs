@@ -728,6 +728,27 @@ describe('assert-lane-coverage', () => {
     assert.match(out, /sites\/nikatru/);
   });
 
+  test('PASSES a site named nowhere when the site-set pair hands it to check-site-integrity.mjs (O-SITE-SET-HAND-LISTED)', () => {
+    const dir = build('lc-site-lane', { sites: ['sites/s'], named: [] });
+    writeFileSync(
+      join(dir, '.github', 'workflows', 'site.yml'),
+      'name: S\njobs:\n  s:\n    steps:\n      - run: |\n          sites=$(node tooling/ci/site-set.mjs --emit)\n          node tooling/ci/check-site-integrity.mjs . $sites\n',
+    );
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 0, out);
+  });
+
+  test('FAILS a site named nowhere when the set is read but never handed to check-site-integrity.mjs', () => {
+    const dir = build('lc-site-lane-cut', { sites: ['sites/s'], named: [] });
+    writeFileSync(
+      join(dir, '.github', 'workflows', 'site.yml'),
+      'name: S\njobs:\n  s:\n    steps:\n      - run: |\n          sites=$(node tooling/ci/site-set.mjs --emit)\n          echo $sites\n',
+    );
+    const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });
+    assert.equal(code, 1);
+    assert.match(out, /sites\/s/);
+  });
+
   test('FAILS when a dart package is outside the workspace', () => {
     const dir = build('lc-dart', { declared: EIGHT_DART.slice(0, 7) });
     const { code, out } = run('assert-lane-coverage.mjs', { args: [dir] });

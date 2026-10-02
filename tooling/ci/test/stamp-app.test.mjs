@@ -40,6 +40,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { appIdProblems } from '../../../contracts/app-id/app-id.js';
+import { PRODUCT_REGISTERS } from '../../../contracts/entitlement/bundle.js';
 import { planStamp, runStamp, REPO, REGEN, TAG_OWNER, APP_LICENCE_ROWS } from '../../kit/stamp-app.mjs';
 
 let ROOT;
@@ -75,8 +76,20 @@ function refusedIdVars(line) {
   return typeof spec?.app_id === 'string' && appIdProblems(spec.app_id).length > 0;
 }
 
+/** Every register PRODUCT_REGISTERS names, empty, so the claimed-id set (tooling/kit/product-set.mjs)
+ *  reads a tree and not an absence; `extension` is the extension register's rows. */
+function registers(root, extension = []) {
+  for (const { register } of PRODUCT_REGISTERS) {
+    if (register === null) continue;
+    mkdirSync(dirname(join(root, register)), { recursive: true });
+    writeFileSync(join(root, register), register.startsWith('extensions/') ? JSON.stringify(extension) : '[]\n');
+  }
+}
+
 before(() => {
   ROOT = mkdtempSync(join(tmpdir(), 'nikatru-stamp-app-'));
+  registers(ROOT, [{ slug: 'claimedtool', status: 'preview' }]);
+  writeFileSync(join(ROOT, 'claimed-id-vars.json'), JSON.stringify({ app_id: 'claimedtool' }));
   writeFileSync(join(ROOT, GOOD), JSON.stringify({ app_id: 'habittracker', display_name: 'Habit Tracker' }));
   writeFileSync(join(ROOT, 'bad-id-vars.json'), JSON.stringify({ app_id: 'habit_tracker' }));
   writeFileSync(join(ROOT, 'no-id-vars.json'), JSON.stringify({ display_name: 'No Id' }));
@@ -109,6 +122,7 @@ function trackedTree() {
   const root = mkdtempSync(join(tmpdir(), 'nikatru-stamp-tree-'));
   git(root, 'init', '-q');
   git(root, 'config', 'core.autocrlf', 'false');
+  registers(root);
   put(root, 'packages/a/analysis_options.yaml', 'include: package:nikatru_lints/analysis_options.yaml\n');
   put(root, 'apps/one/analysis_options.yaml', 'include: package:nikatru_lints/analysis_options.yaml\n');
   put(root, 'pubspec.lock', 'packages: {}\n');
@@ -282,6 +296,28 @@ describe('stamp-app.mjs — one command, and loud about what it left behind', ()
     const code = runStamp(p, { run: (c) => { ran.push(c); return 0; }, exists: () => true, tree: INERT, log: () => {}, error: () => {} });
     assert.equal(code, 1);
     assert.deepEqual(ran, [], 'a refused stamp ran a command');
+  });
+
+  test('rv2-newproduct-015: an id another product claims stops the stamp before mason, naming the claim', () => {
+    const p = plan(['--vars', 'claimed-id-vars.json']);
+    assert.equal(p.steps.length, 0);
+    assert.match(p.problems.join('\n'), /"claimedtool" is already claimed: extension id \(extensions\/catalog\/extensions\.json, owned by extension:claimedtool\)/);
+    const ran = [];
+    const code = runStamp(p, { run: (c) => { ran.push(c); return 0; }, exists: () => true, tree: INERT, log: () => {}, error: () => {} });
+    assert.equal(code, 1);
+    assert.deepEqual(ran, [], 'a refused stamp ran a command');
+  });
+
+  test('rv2-newproduct-015: a tree whose product registers cannot be read stamps nothing (the claimed set is not a measurement)', () => {
+    const bare = mkdtempSync(join(tmpdir(), 'nikatru-stamp-bare-'));
+    try {
+      writeFileSync(join(bare, GOOD), JSON.stringify({ app_id: 'habittracker' }));
+      const p = planStamp({ argv: ['--vars', GOOD], root: bare, platform: 'linux', env: {} });
+      assert.equal(p.steps.length, 0);
+      assert.match(p.problems.join('\n'), /the claimed-id set could not be read/);
+    } finally {
+      rmSync(bare, { recursive: true, force: true });
+    }
   });
 
   test('only the root pub get is wrapped by the tracked-tree keeper', () => {

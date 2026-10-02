@@ -3353,6 +3353,17 @@
   },
   {
     "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#guards-store",
+      ".github/workflows/ci.yml#sites"
+    ],
+    "kind": "guard",
+    "ref": "tooling/ci/site-set.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
     "invokedBy": [],
     "kind": "guard",
     "ref": "tooling/ci/sql-seed.mjs",
@@ -3687,6 +3698,16 @@
     ],
     "kind": "script",
     "ref": "tooling/kit/stamp-app.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ci.yml#app-brick"
+    ],
+    "kind": "script",
+    "ref": "tooling/kit/stamp-service.mjs",
     "references": [],
     "state": "WIRED"
   },

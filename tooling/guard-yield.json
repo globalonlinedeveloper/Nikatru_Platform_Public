@@ -3476,6 +3476,11 @@
       "firstSeen": "2026-09-11",
       "evidence": []
     },
+    "tooling/ci/site-set.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ci/sql-seed.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-10",
@@ -3634,6 +3639,11 @@
     "tooling/kit/stamp-app.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-26",
+      "evidence": []
+    },
+    "tooling/kit/stamp-service.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ops/check-analytics-liveness.mjs": {

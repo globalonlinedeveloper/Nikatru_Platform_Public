@@ -786,9 +786,13 @@ jobs:
       - name: No shipped client overrides TLS certificate trust
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-no-tls-pinning.mjs
+      # why: O-SITE-SET-HAND-LISTED. The claimed sites are the set tooling/ci/site-set.mjs reads off sites/, never a
+      # typed list: a new site directory is claimed on its first run. Its own assignment, so -e stops on its exit 1/2.
       - name: The web channel declares a cache policy a deploy can be seen through
         if: ${{ !cancelled() }}
-        run: node tooling/ci/assert-web-cache-policy.mjs . sites/nikatru sites/rajasekarselvam
+        run: |
+          sites=$(node tooling/ci/site-set.mjs --emit)
+          node tooling/ci/assert-web-cache-policy.mjs . $sites
       - name: Release lanes cover every app, and no guard hides a lane
         if: ${{ !cancelled() }}
         run: node tooling/ci/assert-release-lane-generic.mjs
@@ -1522,10 +1526,12 @@ jobs:
           if ! grep -qF 'apps/probe/lib/state/money_providers.dart:' "$RUNNER_TEMP/iap-red.log"; then echo "::error::assert-app-yaml exited 1 without naming apps/probe/lib/state/money_providers.dart"; exit 1; fi
           node tooling/ci/assert-app-yaml.mjs
       # why: O-NEW-PRODUCT-HAS-NO-READOUT (15b). Read from the tree the stamp just wrote, every product step of the
-      # probe is DONE, OWNER or AFTER-LIVE except its name clearance, the one agent step a stamp cannot take (the
-      # probe dials the stores). --expect-next exits 1 on any other NEXT set, a missing one included.
-      - name: The new-product plan reads the stamped probe, and only its name clearance is the agent's
-        run: node tooling/kit/new-product.mjs plan probe --check --expect-next "name clearance"
+      # probe is DONE, OWNER or AFTER-LIVE except the two agent steps a stamp cannot take: its name clearance (the
+      # probe dials the stores) and its price row (nothing writes apps.<id> in app-config-data.json, and an absent
+      # row is an undecided price, never "free": rv2-newproduct-002). --expect-next exits 1 on any other NEXT set,
+      # a missing one included.
+      - name: The new-product plan reads the stamped probe, and only its name clearance and price row are the agent's
+        run: node tooling/kit/new-product.mjs plan probe --check --expect-next "name clearance,price row"
       - name: SHOW-1 — probe is in the catalogue, and a RE-STAMP changes nothing
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
@@ -1554,6 +1560,20 @@ jobs:
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
           node tooling/kit/stamp-app.mjs --vars tooling/bricks/app/_probe_backend_vars.json --overwrite
+      # why: rv2-newproduct-008. The backend probe passes through the readout too, so its backend reader's
+      # placeholder path is proven on a real stamp, not only on the fixture: APP_DB is the all-zeros placeholder
+      # (provision-backend's step), and with no register row yet its Worker names no crash-sink secret (the same
+      # step writes the row). Its name clearance and price row are the agent's, as for the client probe.
+      - name: The new-product plan reads the stamped backend probe, and only its provision steps are added
+        run: node tooling/kit/new-product.mjs plan probeapi --check --expect-next "name clearance,backend,crash sink,price row"
+      # why: rv2-newproduct-016. An API-only Worker is stamped from the same Worker template by stamp-service.mjs,
+      # and the readout reads it as a service whose provision steps are NEXT. Removed again before any later step
+      # reads services/, so the Worker lanes below see the tree they saw before.
+      - name: A scratch service stamps from the Worker template, and the plan reads it as a service
+        run: |
+          node tooling/kit/stamp-service.mjs probesvc --name "Probe Service"
+          node tooling/kit/new-product.mjs plan probesvc --check --expect-next "register row,backend,crash sink,monitor row"
+          rm -rf services/probesvc-api
       - name: Stamped backend app is dart format-clean
         run: |
           cp -r apps/probeapi "$RUNNER_TEMP/probeapi-as-stamped"
@@ -1717,8 +1737,12 @@ jobs:
       # reader below grades the bytes this writes. Needs the full history above (lastmod).
       - name: Generate the discovery surface (the sitemap is never committed)
         run: node tooling/sites/generate-discovery.mjs
+      # why: O-SITE-SET-HAND-LISTED. The claimed deploy roots are the set tooling/ci/site-set.mjs reads off sites/;
+      # assert-lane-coverage.mjs claims each site through this pair of lines.
       - name: Site integrity
-        run: node tooling/ci/check-site-integrity.mjs . sites/nikatru sites/rajasekarselvam
+        run: |
+          sites=$(node tooling/ci/site-set.mjs --emit)
+          node tooling/ci/check-site-integrity.mjs . $sites
       - name: The published catalogue satisfies its contract
         run: node tooling/ci/assert-catalog-contract.mjs
       - name: Delete the feed so the generator has to produce it

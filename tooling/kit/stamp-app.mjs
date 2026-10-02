@@ -22,7 +22,10 @@
 //     the child's environment otherwise, so a value left exported in the
 //     caller's shell cannot turn a new stamp into a silent overwrite.
 //   · The app id is refused BEFORE mason, with the contract's own message
-//     (contracts/app-id/app-id.js appIdProblems); pre_gen refuses it too.
+//     (contracts/app-id/app-id.js appIdProblems); pre_gen refuses it too. So
+//     is an id another product already claims (tooling/kit/product-set.mjs
+//     clashesOf: a service, extension or site id, a Worker, D1 database or
+//     host name), which pre_gen cannot see (rv2-newproduct-015).
 //   · THE APP'S LICENCE ROWS (LEAD RULING NP12B-R2, 2026-09-27). Every file a
 //     pub package ships into the new app's web bundle needs an `app:<id>` row
 //     in tooling/legal/asset-register.json, and until this step nothing wrote
@@ -70,6 +73,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { appIdProblems } from '../../contracts/app-id/app-id.js';
+import { clashesOf, describeClashes } from './product-set.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO = resolve(HERE, '..', '..');
@@ -131,6 +135,18 @@ export function planStamp({ argv = [], platform = process.platform, env = proces
   const idProblems = appIdProblems(id);
   if (idProblems.length) {
     problems.push(...idProblems.map((p) => `${p} Refused before mason; nothing was stamped.`));
+    return nothing(id, vars, overwrite);
+  }
+  // rv2-newproduct-015: the id must also be one no OTHER product claims (tooling/kit/product-set.mjs).
+  // `platform` as an app would bind its APP_DB to the live platform_db. A re-stamp of
+  // the same app is its own claim, so --overwrite of an existing app is not refused.
+  const { clashes, problems: claimProblems } = clashesOf(root, id, 'app');
+  if (claimProblems.length) {
+    problems.push(`the claimed-id set could not be read (${claimProblems[0]}); nothing was stamped.`);
+    return nothing(id, vars, overwrite);
+  }
+  if (clashes.length) {
+    problems.push(`${describeClashes(id, clashes)}. Refused before mason; nothing was stamped.`);
     return nothing(id, vars, overwrite);
   }
 
