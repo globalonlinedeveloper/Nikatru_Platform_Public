@@ -663,6 +663,9 @@ function baseRegister() {
         detector: 'a heartbeat monitor on another host',
         response: 'run it by hand and read its log',
         cadence: '8h',
+        // ⏱ 2026-10-02 — every scheduled laptop duty names its outage home
+        // (checkLaptopOutageHomes, O-LAPTOP-OUTAGE-READS-AS-RED).
+        outage: { cloudTwin: 'none: laptop-only', laptopOnly: 'the whole bundle; it catches up on boot' },
         mechanism: {
           substrate: 'windows-task-scheduler',
           anchor: 'renovate.json',

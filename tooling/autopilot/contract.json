@@ -1,5 +1,5 @@
 {
-  "_header": "The autopilot lane-queue contract, v1: the ONE place its names and thresholds are defined. Read by tooling/autopilot/issue-queue.mjs (and through it queue-migrate.mjs); docs/autopilot/queue.md describes it and tooling/ci/test/autopilot-queue-doc.test.mjs fails when the doc names a label or threshold this file does not hold. The queue's issues live in the PRIVATE repo; nothing here is lane content.",
+  "_header": "The autopilot lane-queue contract, v1: the ONE place its names and thresholds are defined. Read by tooling/autopilot/issue-queue.mjs (and through it queue-migrate.mjs); docs/autopilot/queue.md describes it and tooling/ci/test/autopilot-queue-doc.test.mjs fails when the doc names a label or threshold this file does not hold. The queue's issues live in the PRIVATE repo; nothing here is lane content. ⏱ 2026-10-02 (club-rt-autopilot): the FAILOVER half — the laptop heartbeat, the reviewer and fixer claim staleness, the Public labels, the four cloud routines and the pipeline-driver switch — is the keys after `laptopRunner`, described in docs/autopilot/contract.md; tooling/ci/test/autopilot-contract.test.mjs fails on a tooling/autopilot/*.mjs that hard-codes a label or threshold held here. The heartbeat's STALE_MIN is `thresholds.HEARTBEAT_STALE_MIN`: one number, never two.",
   "version": 1,
   "titlePrefix": "lane: ",
   "headerTag": "autopilot v1",
@@ -19,5 +19,34 @@
     "HOUSEKEEPING_MAX_OPS": 20
   },
   "verbs": ["CLAIM", "YIELD", "RELEASE", "RECLAIM", "PROGRESS"],
-  "laptopRunner": "laptop"
+  "laptopRunner": "laptop",
+  "heartbeat": {
+    "ref": "lead/heartbeat",
+    "file": "beat.json",
+    "schemaVersion": 1,
+    "modes": ["primary", "handover", "drill"],
+    "host": "laptop",
+    "states": ["fresh", "stale", "handover", "drill-stale", "unknown"],
+    "FUTURE_SKEW_MIN": 5,
+    "DEGRADED_MAX_H": 72,
+    "redPastMaxH": ["duty.laptop.nikatru-daily-backup"],
+    "CALL_CEILING_S": 60,
+    "LOOP_S": 600
+  },
+  "claimStaleness": {
+    "REVIEW_CLAIM_STALE_H": 2,
+    "FIX_CLAIM_STALE_H": 3,
+    "RUNNER_INFLIGHT_MAX": 3
+  },
+  "publicLabels": {
+    "pr": ["land-ok", "land-hold", "needs-review", "review:approve", "review:changes", "fix-first"],
+    "issue": ["land-freeze", "laptop-off"]
+  },
+  "routines": [
+    { "id": "reviewer", "account": "1", "minute": 5 },
+    { "id": "runner-a", "account": "3", "minute": 20 },
+    { "id": "fixer", "account": "3", "minute": 35 },
+    { "id": "runner-b", "account": "1", "minute": 50 }
+  ],
+  "pipelineDriverFallback": false
 }
