@@ -1296,6 +1296,15 @@ const SIM_API = 'https://subscriptiontracker-api.nikatru.com/v1/subscriptions';
 const SIM_SETTLE_MS = 3000;
 const FLUTTER_WORKER_NAMES = /flutter_service_worker|serviceWorkerSettings/;
 
+/** A file's text, or null when it is absent: read, never checked-then-read (CodeQL js/file-system-race). */
+const readOrNull = (abs) => {
+  try {
+    return readFileSync(abs, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return null;
+    throw e;
+  }
+};
 const stripJsComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:\\])\/\/.*$/gm, '$1');
 
 /** A promise that rejects, naming `what`, when `p` has not settled in time. */
@@ -1663,9 +1672,10 @@ for (const b of bundles) {
   // directory. On a shared origin that is how /<id>/sw.js claims the site, so it
   // is refused on EVERY bundle, flutter-web or static.
   const headersAbs = join(ROOT, b.dir, '_headers');
-  if (existsSync(headersAbs)) {
+  const headersSrc = readOrNull(headersAbs);
+  if (headersSrc !== null) {
     swAllowedScanned++;
-    for (const [pattern, headers] of parseHeaders(readFileSync(headersAbs, 'utf8'))) {
+    for (const [pattern, headers] of parseHeaders(headersSrc)) {
       if (headers.has('service-worker-allowed')) {
         problems.push(
           `${b.dir}/_headers rule "${pattern}" declares Service-Worker-Allowed ("${headers.get('service-worker-allowed')}"). ` +
@@ -1679,7 +1689,8 @@ for (const b of bundles) {
   if (b.kind !== 'flutter-web') continue;
   const appId = b.dir === BRICK_WEB ? '{{app_id}}' : b.dir.split('/')[1];
   const swAbs = join(ROOT, b.dir, WORKER_FILE);
-  if (!existsSync(swAbs)) {
+  const swSrc = readOrNull(swAbs);
+  if (swSrc === null) {
     problems.push(
       `${b.dir}/${WORKER_FILE} does not exist. [ADR 023] as amended 2026-09-30 gives every web app our own ` +
         'network-first worker; without it a cold load with the network off is the browser\'s error page, while the ' +
@@ -1689,15 +1700,16 @@ for (const b of bundles) {
   }
   // Rule 1: registered by OUR script, and Flutter's worker is named nowhere.
   const regAbs = join(ROOT, b.dir, REGISTER_FILE);
-  const regSrc = existsSync(regAbs) ? stripJsComments(readFileSync(regAbs, 'utf8')) : null;
+  const regRaw = readOrNull(regAbs);
+  const regSrc = regRaw === null ? null : stripJsComments(regRaw);
   if (regSrc === null) {
     problems.push(`${b.dir}/${REGISTER_FILE} does not exist, so nothing registers ${WORKER_FILE}: the worker ships and never runs.`);
   } else if (!/serviceWorker\s*\.\s*register\s*\(/.test(regSrc) || !/['"]sw\.js['"]/.test(regSrc)) {
     problems.push(`${b.dir}/${REGISTER_FILE} does not call navigator.serviceWorker.register on '${WORKER_FILE}'.`);
   }
   const indexAbs = join(ROOT, b.dir, 'index.html');
-  const html = existsSync(indexAbs) ? readFileSync(indexAbs, 'utf8').replace(/<!--[\s\S]*?-->/g, ' ') : '';
-  const regTag = html.search(new RegExp(`<script\\s+src=["']${REGISTER_FILE.replace('.', '\\.')}["']\\s*>`));
+  const html = (readOrNull(indexAbs) ?? '').replace(/<!--[\s\S]*?-->/g, ' ');
+  const regTag = html.search(/<script\s+src=["']sw-register\.js["']\s*>/);
   const bootTag = html.search(/<script[^>]*\ssrc=["']flutter_bootstrap\.js["']/);
   if (regTag === -1 || bootTag === -1 || regTag > bootTag) {
     problems.push(
@@ -1707,9 +1719,8 @@ for (const b of bundles) {
     );
   }
   for (const f of ['index.html', 'flutter_bootstrap.js', REGISTER_FILE]) {
-    const abs = join(ROOT, b.dir, f);
-    if (!existsSync(abs)) continue;
-    const raw = readFileSync(abs, 'utf8');
+    const raw = readOrNull(join(ROOT, b.dir, f));
+    if (raw === null) continue;
     const code = f.endsWith('.html') ? raw.replace(/<!--[\s\S]*?-->/g, ' ') : stripJsComments(raw.replace(/<%![\s\S]*?%>/, ' '));
     if (FLUTTER_WORKER_NAMES.test(code)) {
       problems.push(
@@ -1719,7 +1730,7 @@ for (const b of bundles) {
     }
   }
   // Rules 2-4, by running it.
-  const findings = await exerciseWorker(readFileSync(swAbs, 'utf8'), appId);
+  const findings = await exerciseWorker(swSrc, appId);
   workersRun++;
   for (const f of findings) problems.push(`${b.dir}/${WORKER_FILE} ${f}`);
 }
