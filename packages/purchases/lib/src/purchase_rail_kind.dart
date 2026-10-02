@@ -1,14 +1,17 @@
+import 'generated/rails.dart';
 import 'purchase_capabilities.dart';
 
 /// WHICH RAIL A CHANNEL SELLS THROUGH — the client-side view of
-/// `tooling/channel-register.json` → `purchaseRails.rails`, per channel.
+/// `tooling/channel-register.json` → `purchaseRails`, per channel.
 ///
-/// 🔴 THE NAMES ARE THE REGISTER'S OWN `rail` VALUES, and that is load-bearing
-/// in exactly the way [PurchaseChannel]'s ids are: `tooling/ci/
-/// assert-purchase-path.mjs` §G4(e) holds this map equal to the register's
-/// per-channel decision, both directions. Without that limb this file would be
-/// a SECOND COPY of the register — a decision restated in Dart, free to drift
-/// from the one [ADR 039] locked, with nothing comparing them.
+/// 🔴 RENDERED, NOT RESTATED. The answer per channel is
+/// `generated/rails.dart`'s `kChannelRailKind`, which `tooling/ports/render.mjs`
+/// renders from the register (and `--check`, run by assert-ports limb 3 on
+/// every build, fails on a hand edit or a register edit not re-rendered). This
+/// file used to carry a `switch` with one `case` per channel — a second copy of
+/// the decision [ADR 039] locked, compared to the register by a guard but still
+/// typed by hand. A channel moving rail is now a register edit and a re-render,
+/// and nothing in Dart names a payment vendor.
 ///
 /// ## Why the rail kind lives here rather than in [PurchaseCapabilities]
 /// [PurchaseCapabilities] answers "may this build open a HOSTED checkout?" —
@@ -20,8 +23,11 @@ import 'purchase_capabilities.dart';
 /// the hosted rail, which is the documented removal cause §G4(d) exists to
 /// catch. So the two vocabularies stay separate and the facade reads both.
 enum PurchaseRailKind {
-  /// The merchant-of-record hosted checkout, opened in the browser. [ADR 038].
-  paddle('paddle'),
+  /// A hosted checkout page owned by the merchant of record, opened in the
+  /// browser ([ADR 038]). WHICH merchant serves it is the server's business —
+  /// the Worker's rail table picks it per channel and market — so the client
+  /// names none: this was `paddle` until port-pay-client.
+  hosted('hosted'),
 
   /// Google Play Billing, reached through the [IapBridge] seam. [ADR 039] D2/D5.
   playBilling('play-billing'),
@@ -29,15 +35,17 @@ enum PurchaseRailKind {
   /// Apple StoreKit in-app purchase, same seam. [ADR 039] D3/D5.
   appleIap('apple-iap'),
 
-  /// This channel sells nothing and must open no checkout of any kind. No
-  /// channel carries it today; it exists so a channel that must not sell can
-  /// SAY so rather than being absent and read as somebody not having got to it.
+  /// This channel sells nothing and must open no checkout of any kind. It
+  /// exists so a channel that must not sell can SAY so rather than being absent
+  /// and read as somebody not having got to it.
   none('none');
 
-  const PurchaseRailKind(this.registerId);
+  const PurchaseRailKind(this.wire);
 
-  /// The value this rail carries in `tooling/channel-register.json`.
-  final String registerId;
+  /// The kind's value in the rendered map: a STORE rail's register id
+  /// (`play-billing`, `apple-iap`), `none`, or `hosted` for every rail that is
+  /// a hosted page, whichever vendor serves it.
+  final String wire;
 
   /// Whether this rail is a STORE billing system rather than a hosted page.
   /// The facade's single predicate — a caller that tests
@@ -46,50 +54,20 @@ enum PurchaseRailKind {
   bool get isStoreBilling =>
       this == PurchaseRailKind.playBilling || this == PurchaseRailKind.appleIap;
 
-  /// The rail [channel] sells through.
+  /// The kind whose [wire] is [wire]; [none] for anything else.
   ///
-  /// 🔒 EVERY ANSWER BELOW IS THE REGISTER'S, NOT AN OPINION. The comment on
-  /// each case names the register row it mirrors, so a reviewer can check this
-  /// switch against `channel-register.json` by reading, and CI checks it by
-  /// running.
-  static PurchaseRailKind forChannel(PurchaseChannel channel) {
-    switch (channel) {
-      case PurchaseChannel.web:
-        // `web` → paddle. Our own site; no store sits between us and the buyer.
-        return PurchaseRailKind.paddle;
-      case PurchaseChannel.androidPlay:
-        // `android-play` → play-billing, and it FORBIDS paddle. The rail follows
-        // the CHANNEL, not the artifact: the sideload of this same build is
-        // paddle, which is the confusion the register's own note is written for.
-        return PurchaseRailKind.playBilling;
-      case PurchaseChannel.iosAppStore:
-        // `ios-appstore` → apple-iap. Guideline 3.1.1.
-        return PurchaseRailKind.appleIap;
-      case PurchaseChannel.macosAppStore:
-        // `macos-appstore` → apple-iap. Same 3.1.1 family. A macOS build
-        // distributed OUTSIDE the Mac App Store is a different channel and the
-        // register parks it under `awaitingChannelRow`, so it has no row here.
-        return PurchaseRailKind.appleIap;
-      case PurchaseChannel.windowsStore:
-        // `windows-store` → paddle. Microsoft Store Policies §10.8.1/§10.8.6
-        // permit a third-party purchase rail for non-game PC apps ([ADR 039]).
-        return PurchaseRailKind.paddle;
-      case PurchaseChannel.windowsDirect:
-        // `windows-direct` → paddle. Direct download; no store commerce policy.
-        return PurchaseRailKind.paddle;
-      case PurchaseChannel.linuxSnap:
-      case PurchaseChannel.linuxAppImage:
-        // Neither imposes a commerce policy on digital goods sold by the
-        // publisher, so both take the hosted checkout.
-        return PurchaseRailKind.paddle;
-      case PurchaseChannel.appsGovIn:
-        // `apps-gov-in` → none, and it is the FIRST row to carry that rail.
-        // The register's answer is `none` because nobody has read the Mobile
-        // Seva commerce terms from a primary source, and it forbids all three
-        // real rails: paddle as POLICY-UNREAD, play-billing and apple-iap as
-        // mechanical. The same .apk through Play is play-billing — the rail
-        // follows the CHANNEL, not the artifact ([ADR 039] D1).
-        return PurchaseRailKind.none;
+  /// 🔒 FAIL CLOSED. A channel the rendered map does not name, or a kind this
+  /// enum does not know, sells NOTHING — a build that cannot say which rail it
+  /// takes must not guess one, because on a store channel the wrong guess is an
+  /// external checkout inside a store build.
+  static PurchaseRailKind fromWire(String? wire) {
+    for (final PurchaseRailKind k in PurchaseRailKind.values) {
+      if (k.wire == wire) return k;
     }
+    return PurchaseRailKind.none;
   }
+
+  /// The rail [channel] sells through — the register's answer, as rendered.
+  static PurchaseRailKind forChannel(PurchaseChannel channel) =>
+      fromWire(kChannelRailKind[channel.registerId]);
 }
