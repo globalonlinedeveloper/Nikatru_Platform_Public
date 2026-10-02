@@ -94,8 +94,35 @@ class _SignedIn extends core.AuthRepository {
   Stream<core.AuthUser?> authStateChanges() =>
       const Stream<core.AuthUser?>.empty();
 
+  // The hosted rail asks the platform host WITH the session (2026-10-01).
+  @override
+  Future<String?> currentAccessToken() async => 'token-under-test';
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// ⏱ 2026-10-01 · O-ST-HOSTED-CHECKOUT-CANNOT-START. The platform host's
+/// `POST /v1/checkout`, answered here: the app's REAL hosted rail now asks it for
+/// the page, so a test of the real wiring must give it a host to ask. The served
+/// config carries NO `checkout_url_template` — that is the point.
+class _Sessions implements core.CheckoutSessionTransport {
+  const _Sessions();
+
+  @override
+  bool get isAvailable => true;
+
+  @override
+  Future<core.Result<core.CheckoutSession>> createSession({
+    required String appId,
+    required String offeringId,
+    required String? accessToken,
+  }) async => core.Result<core.CheckoutSession>.ok(
+    core.CheckoutSession(
+      checkoutUrl: Uri.parse('https://checkout.example.test/?_ptxn=txn_1'),
+      transactionId: 'txn_1',
+    ),
+  );
 }
 
 /// A config that can sell, everywhere the matrix allows it to.
@@ -115,7 +142,6 @@ final core.AppConfig _selling = core.AppConfig(
           'trial_days': 0,
         },
       ],
-      'checkout_url_template': 'https://checkout.example.test/{price_id}',
     },
   ),
   contentPack: null,
@@ -136,6 +162,7 @@ Future<void> _pumpOn(
       ...defaultWidthOverrides(),
       secureStoreProvider.overrideWithValue(_MemSecureStore()),
       appConfigProvider.overrideWith((_) async => _selling),
+      checkoutSessionTransportProvider.overrideWithValue(const _Sessions()),
       if (auth != null) authRepositoryProvider.overrideWithValue(auth),
       purchaseRailProvider.overrideWith(
         (ref) => purchaseRailFor(ref, releaseChannel, revenueCatKey: ''),

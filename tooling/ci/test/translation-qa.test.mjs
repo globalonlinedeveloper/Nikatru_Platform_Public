@@ -102,11 +102,11 @@ describe('on a copy of the real ARBs', () => {
 
   test('a Tamil translation that drops a placeholder is named', () => {
     editJson('packages/design_system/lib/src/l10n/chassis_ta.arb', (j) => {
-      assert.ok(j.paywallTermWithTrial.includes('{term}'));
-      j.paywallTermWithTrial = j.paywallTermWithTrial.replace('{term}', '');
+      assert.ok(j.paywallTermMonthlyWithTrial.includes('{count}'));
+      j.paywallTermMonthlyWithTrial = j.paywallTermMonthlyWithTrial.replace('{count}', '');
     });
     const f = qa(root, 'ta').findings;
-    assert.deepEqual(f.map((x) => [x.kind, x.key, x.why]), [['placeholder', 'paywallTermWithTrial', 'drops {term}']]);
+    assert.deepEqual(f.map((x) => [x.kind, x.key, x.why]), [['placeholder', 'paywallTermMonthlyWithTrial', 'drops {count}']]);
   });
 
   test('--accept fingerprints the English; an English edit afterwards is CHANGED', () => {

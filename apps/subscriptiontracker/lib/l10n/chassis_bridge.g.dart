@@ -94,6 +94,8 @@ extension ChassisBridge on AppLocalizations {
 
   String get cancel => _chassis.cancel;
 
+  String get cancelInStore => _chassis.cancelInStore;
+
   String get cancelRecorded => _chassis.cancelRecorded;
 
   String get catchUpBody => _chassis.catchUpBody;
@@ -213,6 +215,10 @@ extension ChassisBridge on AppLocalizations {
 
   String get legalese => _chassis.legalese;
 
+  String get manageInAppStore => _chassis.manageInAppStore;
+
+  String get manageInGooglePlay => _chassis.manageInGooglePlay;
+
   String get managePlanLoadFailed => _chassis.managePlanLoadFailed;
 
   String get managePlanLoading => _chassis.managePlanLoading;
@@ -272,6 +278,14 @@ extension ChassisBridge on AppLocalizations {
 
   String get paywallAlwaysFree => _chassis.paywallAlwaysFree;
 
+  String get paywallAppleEula => _chassis.paywallAppleEula;
+
+  String get paywallCancelHere => _chassis.paywallCancelHere;
+
+  String get paywallCancelInAppStore => _chassis.paywallCancelInAppStore;
+
+  String get paywallCancelInGooglePlay => _chassis.paywallCancelInGooglePlay;
+
   String get paywallCheckAgain => _chassis.paywallCheckAgain;
 
   String get paywallHeadline => _chassis.paywallHeadline;
@@ -288,10 +302,15 @@ extension ChassisBridge on AppLocalizations {
 
   String get paywallRetryMessage => _chassis.paywallRetryMessage;
 
-  String paywallTerm(String term) => _chassis.paywallTerm(term);
+  String get paywallTermMonthly => _chassis.paywallTermMonthly;
 
-  String paywallTermWithTrial(String term, int count, String unit) =>
-      _chassis.paywallTermWithTrial(term, count, unit);
+  String paywallTermMonthlyWithTrial(int count, String unit) =>
+      _chassis.paywallTermMonthlyWithTrial(count, unit);
+
+  String get paywallTermYearly => _chassis.paywallTermYearly;
+
+  String paywallTermYearlyWithTrial(int count, String unit) =>
+      _chassis.paywallTermYearlyWithTrial(count, unit);
 
   String get paywallTerms => _chassis.paywallTerms;
 
@@ -310,6 +329,14 @@ extension ChassisBridge on AppLocalizations {
   String get permissionPrimingBody => _chassis.permissionPrimingBody;
 
   String get permissionPrimingTitle => _chassis.permissionPrimingTitle;
+
+  String get planBoughtInAppStore => _chassis.planBoughtInAppStore;
+
+  String get planBoughtInGooglePlay => _chassis.planBoughtInGooglePlay;
+
+  String get planBoughtOnWeb => _chassis.planBoughtOnWeb;
+
+  String planPeriodEnds(DateTime date) => _chassis.planPeriodEnds(date);
 
   String get privacy => _chassis.privacy;
 
