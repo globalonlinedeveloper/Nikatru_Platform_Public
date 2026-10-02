@@ -247,9 +247,12 @@ const needles = [];
 for (const lv of surfaces.literals?.values ?? []) {
   const value = get(doc, lv.path);
   if (typeof value !== 'string' || !value) continue;
-  const same = needles.find((n) => n.value === value && n.match === (lv.match ?? 'text'));
+  // `surfaces`: refused only under these path prefixes (a bare year is guarded where it is printed
+  // as the business's year, not in every dated file). Absent: refused everywhere.
+  const where = Array.isArray(lv.surfaces) && lv.surfaces.length ? lv.surfaces : null;
+  const same = needles.find((n) => n.value === value && n.match === (lv.match ?? 'text') && JSON.stringify(n.surfaces) === JSON.stringify(where));
   if (same) { same.classes.push(lv.class); continue; }
-  needles.push({ value, match: lv.match ?? 'text', classes: [lv.class], re: needleRe(value, lv.match) });
+  needles.push({ value, match: lv.match ?? 'text', classes: [lv.class], surfaces: where, re: needleRe(value, lv.match) });
 }
 if (needles.reduce((n, x) => n + x.classes.length, 0) < MIN_LITERAL_CLASSES) {
   lost.push(`LITERALS: only ${needles.length} guarded value(s) resolved from ${SURFACES} \`literals.values\`, under the floor of ${MIN_LITERAL_CLASSES}; a guard over nothing passes everything`);
@@ -263,7 +266,16 @@ const formIgnored = new Set(formIgnore.map((x) => x.path));
 
 const exempt = surfaces.exempt ?? [];
 for (const x of exempt) if (!x.path || !x.kind || !x.why) find('LITERALS', SURFACES, `an \`exempt\` entry lacks path, kind or why: ${JSON.stringify(x).slice(0, 120)}`);
-const isExempt = (rel) => exempt.some((x) => (x.path.endsWith('/') ? rel.startsWith(x.path) : rel === x.path));
+const exemptionOf = (rel) => exempt.find((x) => (x.path.endsWith('/') ? rel.startsWith(x.path) : rel === x.path)) ?? null;
+// An entry WITH `classes` exempts only those literal classes on its path; the file is still
+// scanned for every other guarded value. Without `classes` the whole path is out.
+const isExempt = (rel) => { const x = exemptionOf(rel); return x !== null && !Array.isArray(x.classes); };
+const knownClasses = new Set((surfaces.literals?.values ?? []).map((v) => v.class));
+for (const x of exempt) {
+  if (x.classes === undefined) continue;
+  if (!Array.isArray(x.classes) || !x.classes.length) find('LITERALS', SURFACES, `the \`exempt\` entry for ${x.path} carries \`classes\` that is not a non-empty list`);
+  else for (const c of x.classes) if (!knownClasses.has(c)) find('LITERALS', SURFACES, `the \`exempt\` entry for ${x.path} names class "${c}", which no \`literals.values\` entry carries; it would exempt nothing while reading like an exemption`);
+}
 const generatedFiles = new Set((surfaces.files ?? []).map((f) => f.file));
 const anchoredBy = new Map();
 for (const a of surfaces.anchored ?? []) { if (!anchoredBy.has(a.file)) anchoredBy.set(a.file, []); anchoredBy.get(a.file).push(a); }
@@ -287,7 +299,10 @@ function scan(rel, text) {
   const spans = ownedSpans(rel, text);
   const owned = (i, j) => spans.some(([s, t]) => i >= s && j <= t);
   const lineOf = (i) => text.slice(0, i).split('\n').length;
+  const exemptClasses = new Set(exemptionOf(rel)?.classes ?? []);
   for (const n of needles) {
+    if (n.classes.some((c) => exemptClasses.has(c))) continue;
+    if (n.surfaces && !n.surfaces.some((p) => rel.startsWith(p))) continue;
     for (const m of text.matchAll(n.re)) {
       if (!owned(m.index, m.index + m[0].length)) hits.push({ line: lineOf(m.index), what: `carries the ${n.classes.join(' / ')} outside the entity source and its rendered spans` });
     }

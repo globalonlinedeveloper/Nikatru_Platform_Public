@@ -82,6 +82,7 @@ export function entityContext(doc, { year = buildYear() } = {}) {
     grievance: { name: g.nameFrom === 'people.founder.name' ? val(founder.name) : val(g.name), title: g.title ?? null },
     jurisdiction: { law: val(e.jurisdiction?.law), courts: val(e.jurisdiction?.courts) },
     copyright: { holder: val(e.copyright?.holder), years: copyrightYears(val(e.copyright?.firstYear), year) },
+    established: val(e.established),
     storeSellerName: val(e.storeSellerName),
     storeAccounts: store,
     supportEmail: val(doc?.supportEmail),

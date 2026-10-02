@@ -184,6 +184,61 @@ describe('assert-business-facts over a fixture workspace', () => {
     assert.match(r.out, /docs\/notes\.md:3\s+carries the legal name/);
   });
 
+  // ── 2026-10-02: the personal site's exemption NARROWED to the person's name ──
+  // sites/rajasekarselvam/ was exempt WHOLE ("personal-site"), so a company fact typed on
+  // it — the Udyam number, the year established — passed. An entry carrying `classes`
+  // exempts only those literal classes; every other guarded value is still refused there.
+  const withPersonal = (exemptEntry, extraLiterals = []) => {
+    const surfaces = structuredClone(SURFACES);
+    surfaces.exempt = [...surfaces.exempt, exemptEntry];
+    surfaces.literals.values = [...surfaces.literals.values, ...extraLiterals];
+    writeJson(join(PUB, 'tooling', 'entity', 'surfaces.json'), surfaces);
+  };
+  const trackedWrite = (rel, text) => { write(rel, text); git('add', rel); };
+  const untrack = (rel) => { git('rm', '-q', '--cached', rel); rmSync(join(PUB, ...rel.split('/'))); };
+
+  test('RED CONTROL: a company fact typed on a class-narrowed exempt path exits 1; the person\'s name there does not', () => {
+    withPersonal({ path: 'sites/personal/', kind: 'personal-site', classes: ['legal name'], why: 'fixture: the person\'s own site' });
+    trackedWrite('sites/personal/index.html', `<main><p>${NAME} runs a business registered as Udyam ${UDYAM}.</p></main>\n`);
+    const r = run();
+    untrack('sites/personal/index.html');
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /LITERALS\s+sites\/personal\/index\.html:1\s+carries the Udyam number/);
+    assert.doesNotMatch(r.out, /sites\/personal\/index\.html:1\s+carries the legal name/, 'the class the entry names is exempt');
+  });
+
+  test('the same page under a WHOLE-path exemption passes — the hole the narrowing closes', () => {
+    withPersonal({ path: 'sites/personal/', kind: 'personal-site', why: 'fixture: the old, whole-root exemption' });
+    trackedWrite('sites/personal/index.html', `<main><p>${NAME} runs a business registered as Udyam ${UDYAM}.</p></main>\n`);
+    const r = run();
+    untrack('sites/personal/index.html');
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('an exemption naming a class no literal carries is refused — it would exempt nothing', () => {
+    withPersonal({ path: 'sites/personal/', kind: 'personal-site', classes: ['founder nmae'], why: 'fixture: a typo' });
+    const r = run();
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /names class "founder nmae", which no `literals\.values` entry carries/);
+  });
+
+  test('a literal carrying `surfaces` is refused under those prefixes and nowhere else', () => {
+    const s = source();
+    s.entity.established = { value: '2001', why: 'fixture' };
+    writeJson(join(PUB, 'tooling', 'house-identity.json'), s);
+    withPersonal(
+      { path: 'sites/personal/', kind: 'personal-site', classes: ['legal name'], why: 'fixture' },
+      [{ class: 'established year', path: 'entity.established.value', match: 'word', surfaces: ['sites/personal/'] }],
+    );
+    write('docs/notes.md', '# notes\n\nA dated line from 2001.\n');
+    trackedWrite('sites/personal/index.html', '<main><p>Established in 2001.</p></main>\n');
+    const r = run(['--ci']);
+    untrack('sites/personal/index.html');
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /LITERALS\s+sites\/personal\/index\.html:1\s+carries the established year/);
+    assert.doesNotMatch(r.out, /docs\/notes\.md/, 'outside its surfaces a bare year is just a year');
+  });
+
   test('FORM WORDS: the form named on a printed surface outside a FACT region exits 1', () => {
     write('sites/nikatru/other.html', '<main><p>We are a sole proprietorship.</p></main>\n');
     git('add', 'sites/nikatru/other.html');

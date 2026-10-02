@@ -3,7 +3,7 @@
     "THE ENTITY SURFACES: every place a business fact is printed, and how it is rendered from the entity source (tooling/house-identity.json `entity`, `people`). Rendered by `node tooling/entity/render.mjs`; checked by tooling/scripts/assert-business-facts.mjs, which also refuses a guarded value anywhere this file does not declare.",
     "THREE SHAPES. `facts` are the named templates a FACT region renders (`<!-- FACT:<name> -->…<!-- /FACT:<name> -->`, HTML pages; the markers are zero-width to every visible-text comparison, tooling/ci/text-reductions.mjs `stripInert`). `anchored` entries replace the named group `v` of a regex, an exact number of times, where a comment cannot sit: an attribute, JSON-LD, a JSON value, a licence line, Markdown. `files` are rendered whole. The site footer is rendered by tooling/sites/chrome.mjs `footer()` and the Worker module by tooling/ports/render-entity.mjs, both from the same source.",
     "A TEMPLATE THAT DEPENDS ON THE ENTITY FORM is written `byForm`. A form with no wording is a refusal naming the template, never a blank: `node tooling/kit/entity-change.mjs --dry-run <proposed.json>` lists every one a proposed form leaves unworded.",
-    "`literals` are the values the guard refuses outside the source and the declared outputs, READ FROM THE SOURCE, never typed here. Domain facts (the support inbox, the owner domain) and the brand are deliberately not among them: an entity change leaves them alone, and assert-house-identity, assert-repo-posture and assert-ports limb 9 hold them. `exempt` is the ONLY way out, one path per entry, each with its kind and its reason."
+    "`literals` are the values the guard refuses outside the source and the declared outputs, READ FROM THE SOURCE, never typed here. Domain facts (the support inbox, the owner domain) and the brand are deliberately not among them: an entity change leaves them alone, and assert-house-identity, assert-repo-posture and assert-ports limb 9 hold them. `exempt` is the ONLY way out, one path per entry, each with its kind and its reason; an entry carrying `classes` exempts only the literal classes it names, so the rest are still refused there. A literal carrying `surfaces` is refused only under those path prefixes."
   ],
   "facts": {
     "legal-name": { "template": "{{legalName}}" },
@@ -20,12 +20,15 @@
     "founder-role": { "byForm": { "sole-proprietorship": "proprietor" }, "why": "The founder's role in the business: a proprietor of a proprietorship, an officer of anything else." },
     "grievance-officer": { "template": "{{grievance.name}}, {{grievance.title}}" },
     "governing-law": { "template": "{{jurisdiction.law}}" },
-    "courts": { "template": "{{jurisdiction.courts}}" }
+    "courts": { "template": "{{jurisdiction.courts}}" },
+    "msme-established": { "template": "a Government of India registered MSME (Udyam {{udyam}}) established in {{established}}", "why": "The founder's site names the business it runs; the MSME claim is printed beside the registration that makes it true, and the year from the source." }
   },
   "anchored": [
     { "file": "sites/nikatru/index.html", "pattern": "\"@id\": \"https://rajasekarselvam\\.com/#person\", \"name\": \"(?<v>[^\"]+)\"", "template": "{{founder.name}}", "escape": "json", "why": "The founder in the homepage JSON-LD; a comment cannot sit inside a script's JSON." },
     { "file": "sites/nikatru/index.html", "pattern": "alt=\"(?<v>[^\"]+), founder of Nikatru\"", "template": "{{founder.name}}", "escape": "html", "why": "An attribute." },
     { "file": "sites/nikatru/llms.txt", "pattern": "\\(Udyam (?<v>[^)]+)\\)", "template": "{{udyam}}" },
+    { "file": "sites/rajasekarselvam/llms.txt", "pattern": "registered MSME \\(Udyam (?<v>[^)]+)\\)", "template": "{{udyam}}", "why": "The founder's site, in plain text: a comment would be read as content." },
+    { "file": "sites/rajasekarselvam/llms.txt", "pattern": "\\) established in (?<v>[0-9]{4})\\.", "template": "{{established}}" },
     { "file": "sites/nikatru/llms.txt", "pattern": "Founder & developer: (?<v>.+?) \\(11\\+ years", "template": "{{founder.name}}" },
     { "file": "NOTICE.md", "pattern": "^© (?<v>.+)\\. All rights reserved\\.$", "flags": "m", "template": "{{copyright.years}} {{legalName}}, {{form.roleNoun}}, trading as {{tradeName}}" },
     { "file": "README.md", "pattern": "^© (?<v>.+)\\. All rights reserved\\.$", "flags": "m", "template": "{{copyright.years}} {{legalName}}, {{form.roleNoun}}, trading as {{tradeName}}" },
@@ -62,11 +65,12 @@
       { "class": "registered-office street", "path": "entity.registeredOffice.street.value" },
       { "class": "registered-office building", "path": "entity.registeredOffice.building.value" },
       { "class": "registered-office area", "path": "entity.registeredOffice.area.value" },
-      { "class": "registered-office PIN", "path": "entity.registeredOffice.postalCode.value", "match": "word" }
+      { "class": "registered-office PIN", "path": "entity.registeredOffice.postalCode.value", "match": "word" },
+      { "class": "established year", "path": "entity.established.value", "match": "word", "surfaces": ["sites/rajasekarselvam/"], "why": "A bare year is a word every dated file carries, so it is refused only where it is printed as the business's year and nothing else dated is: the founder's site. sites/nikatru/ still types it (index.html foundingDate, llms.txt); the nikatru lane renders those and widens this list." }
     ],
     "formWords": {
       "paths": ["entity.form.wording.noun", "entity.form.wording.longNoun", "entity.form.wording.roleNoun", "entity.form.wording.roleTitle"],
-      "surfaces": ["sites/nikatru/", "extensions/Extension/", "apps/subscriptiontracker/store/", "apps/subscriptiontracker/lib/"],
+      "surfaces": ["sites/nikatru/", "sites/rajasekarselvam/", "extensions/Extension/", "apps/subscriptiontracker/store/", "apps/subscriptiontracker/lib/"],
       "ignore": [
         { "path": "extensions/Extension/Full_Screen_Shot/LICENSE", "why": "The licence's own definition of \"your company\" (\"any legal entity, sole proprietorship, or other kind of organization\"): the licence's words, not a statement about this business. Its Required Notice line is an anchored field." }
       ],
@@ -76,7 +80,7 @@
   "exempt": [
     { "path": "sites/nikatru/legal/", "kind": "dated-history", "why": "The dated policy snapshots: what was served on each date, frozen (tooling/ci/assert-policy-archive.mjs). Re-rendering one would falsify the record of what a user consented to." },
     { "path": "tooling/ci/test/apple-signing.test.mjs", "kind": "pinned-fixture", "why": "The ZIP64 case's archive digest is a HISTORICAL measurement over exact fixture bytes, and the stub profile's TeamName is among them. The test's own comment forbids re-baselining (\"Restoring the names is the fix rather than repasting node's new numbers\"), so the name in it is a frozen artefact, never printed and never rendered." },
-    { "path": "sites/rajasekarselvam/", "kind": "personal-site", "why": "The founder's own site, a person's shop window and not the entity's (tooling/sites/chrome.mjs CHROME_ROOT says the same). It names the person, who stays the same through an entity change." }
+    { "path": "sites/rajasekarselvam/", "kind": "personal-site", "classes": ["founder name"], "why": "The founder's own site names the PERSON on every line, and the person stays the same through an entity change, so his name is exempt here and nothing else is. Narrowed 2026-10-02 from the whole root: every COMPANY fact this site prints (the Udyam number, the year established, the form) is a FACT region or an anchored field, and a typed one is refused like anywhere else." }
   ],
   "floors": {
     "files": 800,
