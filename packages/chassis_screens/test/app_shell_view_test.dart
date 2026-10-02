@@ -38,6 +38,7 @@ void main() {
     bool mustUpdate = false,
     VoidCallback? onBackground,
     VoidCallback? onRetry,
+    VoidCallback? onConfigRefresh,
     void Function({required bool granted})? onAnswer,
     ThemeMode themeMode = ThemeMode.light,
     Future<void> Function()? onReturn,
@@ -59,6 +60,7 @@ void main() {
       ),
       mustUpdate: mustUpdate,
       onUpdate: () {},
+      onConfigRefresh: onConfigRefresh ?? () {},
       shell: (Widget routed) => RefreshOnResume(
         onRefresh: onReturn ?? () async {},
         elapsed: elapsed,
@@ -123,6 +125,88 @@ void main() {
   // the WIDTH from the chassis: `AppBreakpoints.form`. Measured at all three
   // window classes because the cap only shows itself once the window is wider
   // than it — a single narrow case would pass with the cap deleted.
+  // [pipeline 10]D-8 · O-FORCE-UPDATE-VERSION-READ-UNPROVEN —
+  // `listenForConfigRefresh`, the chassis half of the brick's
+  // `floor-rereads-after-launch` property: the edges it promises fire, and
+  // nothing else does.
+  group('listenForConfigRefresh', () {
+    testWidgets('nothing at start: the first read is the provider\'s own', (
+      tester,
+    ) async {
+      final List<String> calls = <String>[];
+      final VoidCallback stop = listenForConfigRefresh(() => calls.add('r'));
+      expect(calls, isEmpty);
+      stop();
+    });
+
+    testWidgets('a resume re-reads — on web, a tab back at the front', (
+      tester,
+    ) async {
+      final List<String> calls = <String>[];
+      final VoidCallback stop = listenForConfigRefresh(() => calls.add('r'));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      expect(calls, isEmpty, reason: 'going to the background is no re-read');
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      expect(calls, <String>['r']);
+      stop();
+    });
+
+    testWidgets('the timer re-reads a tab that never changes visibility', (
+      tester,
+    ) async {
+      final List<String> calls = <String>[];
+      final VoidCallback stop = listenForConfigRefresh(
+        () => calls.add('r'),
+        interval: const Duration(minutes: 1),
+      );
+      await tester.pump(const Duration(seconds: 59));
+      expect(calls, isEmpty);
+      await tester.pump(const Duration(seconds: 1));
+      expect(calls, <String>['r']);
+      await tester.pump(const Duration(minutes: 2));
+      expect(calls, hasLength(3));
+      stop();
+    });
+
+    test('the default interval is a quarter hour', () {
+      expect(kConfigRefreshInterval, const Duration(minutes: 15));
+    });
+
+    testWidgets('stopped, it re-reads nothing — timer and listener both go', (
+      tester,
+    ) async {
+      final List<String> calls = <String>[];
+      listenForConfigRefresh(
+        () => calls.add('r'),
+        interval: const Duration(minutes: 1),
+      )();
+      await tester.pump(const Duration(minutes: 5));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      expect(calls, isEmpty);
+    });
+  });
+
+  // [pipeline 10]D-8 · O-FORCE-UPDATE-VERSION-READ-UNPROVEN: the shell mounts
+  // `listenForConfigRefresh` above the wall, so a resume re-reads the config,
+  // and an unmounted shell stops re-reading.
+  testWidgets('NikatruApp re-reads the config on a resume, and stops when '
+      'unmounted', (WidgetTester tester) async {
+    final List<String> calls = <String>[];
+    await tester.pumpWidget(buildApp(onConfigRefresh: () => calls.add('r')));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    expect(calls, <String>['r']);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump(kConfigRefreshInterval);
+    expect(calls, <String>['r']);
+  });
+
   group('property: consent-card-capped-at-every-window-class', () {
     Future<double> cardWidthAt(WidgetTester tester, Size size) async {
       await pumpShell(tester, size, asking: true);

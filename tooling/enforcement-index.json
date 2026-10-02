@@ -3423,6 +3423,16 @@
     "state": "LIBRARY"
   },
   {
+    "claims": [
+      "D-8"
+    ],
+    "invokedBy": [],
+    "kind": "guard",
+    "ref": "tooling/ci/update-exit.mjs",
+    "references": [],
+    "state": "LIBRARY"
+  },
+  {
     "claims": [],
     "invokedBy": [],
     "kind": "guard",

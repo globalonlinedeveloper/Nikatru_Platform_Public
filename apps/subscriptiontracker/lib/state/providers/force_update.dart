@@ -3,26 +3,27 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nikatru_core/nikatru_core.dart' as core;
+import 'package:nikatru_telemetry/nikatru_telemetry.dart'
+    show SentryTelemetryClient;
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../core/app_config.dart';
 import 'config.dart';
 
 // ═════════════════════════════════════════════════════════════════════════════
 // SECTION C · FORCE-UPDATE KILL-SWITCH
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// The running app version (e.g. "1.2.0"), or null when it can't be determined
-/// (widget tests / an unsupported platform) — in which case force-update fails
-/// OPEN. Resilient: a plugin error resolves to null, never throws.
-final FutureProvider<String?> packageVersionProvider = FutureProvider<String?>((
-  ref,
-) async {
-  try {
-    return (await PackageInfo.fromPlatform()).version;
-  } catch (_) {
-    return null;
-  }
-});
+/// The running app version (e.g. "1.2.0"), or null when it can't be read — the
+/// floor then fails OPEN, and core's `readInstalledVersion` reports that null to
+/// the crash sink, once (O-FORCE-UPDATE-VERSION-READ-UNPROVEN). Never throws.
+final FutureProvider<String?> packageVersionProvider = FutureProvider<String?>(
+  (ref) => core.readInstalledVersion(
+    () async => (await PackageInfo.fromPlatform()).version,
+    channel: AppConfig.releaseChannel,
+    report: const SentryTelemetryClient().captureMessage,
+  ),
+);
 
 /// Whether the running version is below the CFG-1 `min_supported_version` floor
 /// (the force-update kill-switch). Fails OPEN (false) while either the config or

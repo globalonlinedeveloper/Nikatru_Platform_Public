@@ -942,7 +942,7 @@
     14,
 
   "smoke-web-artifact.test.mjs":
-    30,
+    37,
 
   "snap-submission.test.mjs":
     48,
@@ -1066,6 +1066,9 @@
 
   "update-coverage.test.mjs":
     35,
+
+  "update-exit.test.mjs":
+    12,
 
   "vacuity-a.test.mjs":
     4,

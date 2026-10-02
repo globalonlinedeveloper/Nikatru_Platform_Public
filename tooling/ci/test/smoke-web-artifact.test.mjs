@@ -56,6 +56,8 @@ const {
   headersFor,
   headerValue,
   probeOrigin,
+  VERSION_READ,
+  versionReadProblem,
 } = await import(`file://${SMOKE.replaceAll('\\', '/')}`);
 
 const FIXTURE = join(ROOT, 'tooling', 'ci', 'test', 'fixtures', 'smoke-web-csp');
@@ -96,7 +98,7 @@ describe('smoke-web-artifact.mjs — it refuses before it ever opens a browser',
     // fails, and both detail lines ("tried:" and "last error:") carry the value. The bundle
     // carries a policy so that it reaches the launch at all (2026-09-24: no _headers is exit 2).
     const dir = bundle({ 'index.html': '<html></html>', 'flutter_bootstrap.js': '// x', _headers: MINIMAL_HEADERS });
-    const r = run([dir, '--chrome', join(TMP, 'no-such-chrome') + '\n::error title=forged::x']);
+    const r = run([dir, '--build-name', '1.2.34', '--chrome', join(TMP, 'no-such-chrome') + '\n::error title=forged::x']);
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /no headless Chrome could be started/);
     assert.doesNotMatch(r.out, /^::/m, r.out);
@@ -457,8 +459,11 @@ const runAsync = (args) =>
  * by a wrapper script (`--chrome` replaces the binary), so on Windows, where a
  * shell wrapper cannot be spawned, `seen` is null and the proof cases skip.
  */
-async function smokeInChrome(dir, extra = []) {
-  const args = [dir, '--timeout-ms', '30000', ...extra];
+/** The version tooling/ci/test/fixtures/smoke-web-csp/version.json carries. */
+const FIXTURE_BUILD_NAME = '1.2.34';
+
+async function smokeInChrome(dir, extra = [], buildName = FIXTURE_BUILD_NAME) {
+  const args = [dir, '--timeout-ms', '30000', ...(buildName === null ? [] : ['--build-name', buildName]), ...extra];
   if (process.platform === 'win32') return { ...(await runAsync([...args, '--chrome', CHROME])), seen: null };
   const seen = [];
   const proxy = createServer((req, res) => {
@@ -539,6 +544,53 @@ describe("smoke-web-artifact.mjs — in Chrome, the fixture boots under the app'
   });
 });
 
+// ── O-FORCE-UPDATE-VERSION-READ-UNPROVEN: the installed-version read must resolve, to --build-name.
+describe('smoke-web-artifact.mjs — the installed-version read is proven before publication', () => {
+  test("the global it reads is core's kVersionReadGlobal, by value", () => {
+    const dart = readFileSync(join(ROOT, 'packages', 'core', 'lib', 'src', 'config', 'web_page.dart'), 'utf8');
+    assert.equal(dart.match(/kVersionReadGlobal\s*=\s*'([^']+)'/)?.[1], VERSION_READ.global);
+    assert.match(VERSION_READ.expression, new RegExp(`window\\.${VERSION_READ.global}`));
+  });
+
+  test('versionReadProblem: only a published string equal to --build-name passes', () => {
+    assert.equal(versionReadProblem({ published: true, value: '1.2.34' }, '1.2.34'), null);
+    assert.match(versionReadProblem({ published: true, value: null }, '1.2.34'), /resolved NULL/);
+    assert.match(versionReadProblem({ published: false, value: null }, '1.2.34'), /never published/);
+    assert.match(versionReadProblem(null, '1.2.34'), /never published/);
+    assert.match(versionReadProblem({ published: true, value: '1.2.3' }, '1.2.34'), /not the --build-name "1\.2\.34"/);
+    assert.match(versionReadProblem({ published: true, value: 1234 }, '1.2.34'), /not the --build-name/);
+  });
+
+  test('no --build-name is COVERAGE LOST (exit 2), before any browser is launched', () => {
+    const r = run([cspBundle(APP_HEADERS), '--chrome', join(TMP, 'no-such-chrome')]);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /COVERAGE LOST — smoke-web-artifact: no --build-name was given/);
+  });
+
+  test('GREEN CONTROL — the fixture reads its own version.json as the --build-name', { timeout: 90000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const r = await smokeInChrome(cspBundle(APP_HEADERS));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /ok {3}the installed-version read resolved to "1\.2\.34", the --build-name/);
+  });
+
+  test('RC5 — a stubbed NULL version read fails the smoke (exit 1): the floor would fail open', { timeout: 90000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const dir = cspBundle(APP_HEADERS);
+    writeFileSync(join(dir, 'version.json'), '{"app_name":"subscriptiontracker"}\n');
+    const r = await smokeInChrome(dir);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /the installed-version read resolved NULL/);
+  });
+
+  test('RC6 — a read that is not the --build-name fails the smoke (exit 1)', { timeout: 90000 }, async (t) => {
+    if (!needChrome(t)) return;
+    const r = await smokeInChrome(cspBundle(APP_HEADERS), [], '9.9.9');
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /is "1\.2\.34", not the --build-name "9\.9\.9"/);
+  });
+});
+
 describe("deploy-web.yml — the pre-publication smoke probes the build's derived connect origins", () => {
   test('the smoke step takes its --connect flags from the connect-src compare, and hand-passes no define', () => {
     // Without the flags the probe silently probes nothing: the smoke prints a
@@ -553,5 +605,17 @@ describe("deploy-web.yml — the pre-publication smoke probes the build's derive
     assert.match(smoke.run.text, /\$\{\{ steps\.connect\.outputs\.connect \}\}/);
     assert.doesNotMatch(smoke.run.text, /--connect\b/);
     assert.equal(smoke.env.size, 0, `the smoke step needs no secret now: ${[...smoke.env.keys()].join(', ')}`);
+  });
+
+  test('both web smoke steps pass the build name flutter-release-build.mjs composes (<release line>.<run number>)', () => {
+    for (const file of ['.github/workflows/deploy-web.yml', '.github/workflows/ci.yml']) {
+      const wf = parseWorkflow(ROOT, file);
+      assert.ok(wf, `${file} was not found`);
+      const smokes = [...wf.jobs.values()].flatMap((j) => workflowSteps(j)).filter((s) => s.run?.text.includes('node tooling/smoke/smoke-web-artifact.mjs'));
+      assert.ok(smokes.length > 0, `${file} no longer runs the launch smoke`);
+      for (const smoke of smokes) {
+        assert.match(smoke.run.text, /--build-name \$\{\{ steps\.ver\.outputs\.release_line \}\}\.\$\{\{ github\.run_number \}\}/, file);
+      }
+    }
   });
 });

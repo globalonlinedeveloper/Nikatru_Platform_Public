@@ -250,11 +250,13 @@ jobs:
       # build from a served fallback (TRAPS ci-02).
       # why: it boots under its own _headers CSP, and each --connect origin is fetched from the page and answered by
       # the smoke, never sent; the origins are the set the connect-src compare emitted (row O-WEB-CSP-HAND-LIST-UNSMOKED).
+      # why --build-name: the app's installed-version read must equal it, or the floor fails open (O-FORCE-UPDATE-VERSION-READ-UNPROVEN).
       - name: Launch the built bundle once, before it is published
         if: steps.plan.outputs.deploy == 'true'
         working-directory: .
         run: >
           node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
+          --build-name ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
           ${{ steps.connect.outputs.connect }}
 
       # why: the release is created by a node script, not `glitchtip-cli releases new`: the

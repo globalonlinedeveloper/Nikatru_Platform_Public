@@ -37,12 +37,10 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
     // at launch too; it fails open while config/version load (never blocks the UI).
     final bool mustUpdate = ref.watch(mustForceUpdateProvider);
 
-    // [pipeline C-8] RUNTIME first, compiled-in default as the fallback. The
-    // wall's destination must be repointable without a release: it is the
-    // emergency exit, and an emergency exit you can only move by shipping a new
-    // build is not one. `valueOrNull` and the `??` are both load-bearing —
-    // while the config resolves, or with no network at all, the compiled-in
-    // default still gives the button somewhere to go.
+    // [pipeline C-8] RUNTIME first, the compiled-in define as the fallback: an
+    // emergency exit you can only move by shipping a new build is not one. The
+    // `.value` and the `??` are both load-bearing; how the button EXITS on each
+    // channel (reload, store listing, URL) is core's `openUpdateExit`.
     // Indentation here matches `dart format`'s output exactly. The template is
     // mustache, so nothing can format it — only a real stamp can, and the
     // app_brick lane runs `dart format --set-exit-if-changed` on that stamp.
@@ -80,7 +78,8 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
       themeMode: ref.watch(themeModeProvider),
       routerConfig: router,
       mustUpdate: mustUpdate,
-      onUpdate: () => _openUpdate(updateUrl),
+      onUpdate: () => _openUpdate(ref, updateUrl),
+      onConfigRefresh: () => ref.invalidate(appConfigProvider),
       // The gate chain, wrapped around the routed screen by NikatruApp's
       // builder. Every one of the three is a ConsumerWidget, which is why the
       // chain is written here and not in the package.
@@ -94,12 +93,13 @@ class {{app_id.pascalCase()}}App extends ConsumerWidget {
     );
   }
 
-  Future<void> _openUpdate(String url) async {
-    // The wall's own launcher: the app's link policy plus the ONE destination
-    // the config resolved (`updateLinkLauncher`). Best-effort — a refusal or a
-    // missing handler reads as not opened and never crashes the update screen.
-    await updateLinkLauncher(url).openUrl(url);
-  }
+  Future<void> _openUpdate(WidgetRef ref, String url) => core.openUpdateExit(
+    url,
+    ref.read(appConfigProvider).value?.updateUrl,
+    channel: AppConfig.releaseChannel,
+    listing: ref.read(reviewPrompterProvider).openStoreListing,
+    open: updateLinkLauncher(url).openUrl,
+  );
 }
 
 /// The offline banner's ADAPTER half — [pipeline C-13].

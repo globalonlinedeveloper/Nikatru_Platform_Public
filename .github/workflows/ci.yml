@@ -2299,11 +2299,14 @@ jobs:
       # package_config.json "Resolve the workspace" wrote (lead ruling PRL-R1).
       - name: Every asset the build actually shipped has a licence row
         run: node tooling/ci/assert-licence-register.mjs . --bundle apps/${{ matrix.app }}/build/web/assets --app ${{ matrix.app }}
-      # why: the bundle boots under its own _headers CSP and must reach flutter-first-frame.
+      # why: the bundle boots under its own _headers CSP and must reach flutter-first-frame, and
+      # its installed-version read must equal the build name (O-FORCE-UPDATE-VERSION-READ-UNPROVEN).
       # No --connect origin is passed: the build's URL-valued defines are empty here, so
       # there is no origin to probe; deploy-web.yml probes each one with its real value.
       - name: Launch the built bundle once
-        run: node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
+        run: >
+          node tooling/smoke/smoke-web-artifact.mjs apps/${{ matrix.app }}/build/web
+          --build-name ${{ steps.ver.outputs.release_line }}.${{ github.run_number }}
       - name: Every artifact this lane claims exists, and is not empty
         run: >
           node tooling/ci/assert-artifact-shape.mjs
