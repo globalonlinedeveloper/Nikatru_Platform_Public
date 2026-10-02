@@ -41,6 +41,13 @@
 #     wrapper withholds the beat and the monitor goes Down;
 #   - the end state is CHECKED, not assumed: an archive older than RETAIN_DAYS
 #     still present, or no archive for a container in the last 36 h, is a FAIL.
+#
+# ⏱ 2026-10-02 · ruling on review 2 of #1140, item 1 — MFA stays on, so the MFA
+# challenge address is kept while a challenge is pending (GoTrue compares it on
+# verify) and blanked once it is verified (a trigger) or past GoTrue's 300 s
+# expiry: THIS job runs that sweep, nikatru_privacy.mfa_challenge_ip_sweep()
+# (../sql/identity-address-null-on-write.sql), once a day. A sweep that does not
+# answer with a row count is a FAIL like any other step.
 set -u
 RETAIN_DAYS=7
 # The archive directory; overridable for tooling/ci/test/identity-log-retention.test.mjs only.
@@ -82,6 +89,13 @@ for c in supabase-auth supabase-envoy; do
     fail "$c: no archive inside the last 36 h"
   fi
 done
+
+swept=$(docker exec supabase-db psql -U supabase_admin -d postgres -X -v ON_ERROR_STOP=1 -tAc \
+  'SELECT nikatru_privacy.mfa_challenge_ip_sweep()' </dev/null 2>&1) || swept="exit $?: $swept"
+case "$swept" in
+  ''|*[!0-9]*) fail "mfa challenge address sweep did not run: $(printf '%s' "$swept" | head -c 200)" ;;
+  *) echo "ok identity-log-retention $stamp mfa challenge address sweep: $swept blanked" ;;
+esac
 
 find "$ARCH" -maxdepth 1 -name '*.json.gz' -mmin +"$maxmin" -delete || fail "archive prune did not run"
 stale=$(find "$ARCH" -maxdepth 1 -name '*.json.gz' -mmin +"$(( RETAIN_DAYS * 1440 ))" | wc -l)

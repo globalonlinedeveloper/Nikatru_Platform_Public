@@ -156,13 +156,17 @@
     we also keep a short-lived counter keyed to a <b>salted, one-way fingerprint</b> of the network address
     the request came from. The fingerprint is not reversible to an IP address, it is never stored alongside
     your email, and it is discarded automatically within an hour.</li>
-    <li><b>Network addresses</b> &mdash; we do not keep the network address a request comes from with your
-    account or with any record about you. Two things see it, and neither keeps it with your data:
+    <li><b>Network addresses</b> &mdash; apart from a pending sign-in verification (below), we do not keep the
+    network address a request comes from with your account or with any record about you. Two things see it, and neither keeps it with your data:
     <b>Cloudflare</b>, at our network edge, uses it to deliver the request, to stop abuse and to work out an
     approximate location, and then discards it, apart from Cloudflare's own security logs; and the request
     log of our own sign-in service records it for security and fault diagnosis and deletes it after
     <b>7 days</b>. Our sign-in service records the address on each sign-in, and since 2 October 2026 the
-    database it writes to empties that field on every write. Copies made before that date remain until they
+    database it writes to empties that field on every write, with one exception: a pending sign-in
+    verification briefly holds the network address it was requested from. If you use a second sign-in step,
+    its one-time code is accepted only from the address that asked for it, so that address is kept until the
+    code is used; it is erased when the verification succeeds, or, if it is never completed, within a day of
+    the code expiring, 5 minutes after it was requested. Copies made before that date remain until they
     age out: a sign-in session opened before 2 October 2026 keeps the address it was opened from until it
     next refreshes, which happens whenever the app is used; the encrypted backups of the sign-in records
     taken before that date contain those addresses; and so does the fallback copy Supabase holds (section

@@ -3351,12 +3351,12 @@
         "hostinger"
       ],
       "ownerGated": true,
-      "ownerGap": "On a host CI cannot reach. Open, countable: (1) install the review-1 script on Box C (its sha12 replaces 902d41cd4412 in tooling/legal/policy-claims.json) and switch the crontab line to the hb-run.sh form in the script's header; (2) create the GlitchTip heartbeat monitor, beat it once, and fill `mechanism.recordQuery.monitor` with its id; (3) hb-run.sh is not in any backup set, as for every Box C duty.",
+      "ownerGap": "On a host CI cannot reach. Open, countable: (1) install the review-2 script on Box C (sha12 aacf07ad23e8, which also runs the MFA challenge address sweep; it replaces 902d41cd4412 in tooling/legal/policy-claims.json) and switch the crontab line to the hb-run.sh form in the script's header; (2) create the GlitchTip heartbeat monitor, beat it once, and fill `mechanism.recordQuery.monitor` with its id; (3) hb-run.sh is not in any backup set, as for every Box C duty.",
       "degradedUntil": "2026-10-09",
       "degradedWhy": "The heartbeat monitor this row reads does not exist yet (lead step of #1140 review 1, finding 4): until its id is filled, the probe is UNREADABLE and a failed run reaches nobody. One week, then this row reddens every branch until the id is in.",
       "degradedLeadDays": 3,
       "source": "unverified",
-      "unverifiedWhy": "Written before the monitor exists and before the review-1 script is installed on Box C: no beat has been observed. The script's behaviour is held by tooling/ci/test/identity-log-retention.test.mjs (a missing container, the prune that must still run, no fresh archive); the box half is the lead's."
+      "unverifiedWhy": "Written before the monitor exists and before the review-1 script is installed on Box C: no beat has been observed. The script's behaviour is held by tooling/ci/test/identity-log-retention.test.mjs (a missing container, the prune that must still run, no fresh archive, a sweep that did not run); the box half is the lead's."
     },
     {
       "id": "revert.worker.platform",

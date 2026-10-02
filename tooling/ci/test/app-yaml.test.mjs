@@ -120,6 +120,9 @@ function tree() {
     // columns to the trigger file, and refuses (2) a run with no register.
     'tooling/legal/identity-address-columns.json',
     'docs/platform/supabase/sql/identity-address-null-on-write.sql',
+    // ⏱ 2026-10-02 (ruling on review 2 of #1140): limb 10 reads the script that
+    // runs the MFA challenge address sweep.
+    'docs/platform/supabase/boxc/identity-log-retention.sh',
   ]) {
     mkdirSync(join(root, dirname(rel)), { recursive: true });
     cpSync(join(REPO, rel), join(root, rel));
@@ -539,22 +542,76 @@ describe('assert-app-yaml — the declaration and its renderings', () => {
   });
 
   // ⏱ 2026-10-02 · review 1 of #1140, finding 3 — GoTrue reads the MFA
-  // challenge address back on verify (mfa.go), so a trigger there would fail
-  // every MFA verify. These two are the state the PR head shipped in.
-  test('MUTATION: a trigger on auth.mfa_challenges (the address GoTrue compares on verify) is refused (limb 10)', () => {
+  // challenge address back on verify (mfa.go), so an every-write trigger there
+  // fails every MFA verify. ⏱ Ruling on review 2, item 3: the limb grades a
+  // trigger by its table, timing and function, so no spelling slips past it;
+  // `CREATE OR REPLACE TRIGGER` and a quoted table name both passed before.
+  const withStatement = (sql, stmt) => sql.replace('COMMIT;', `${stmt}\n\nCOMMIT;`);
+  for (const [name, stmt] of [
+    ['CREATE TRIGGER', 'CREATE TRIGGER nikatru_address_null_on_write\n  BEFORE INSERT OR UPDATE ON auth.mfa_challenges\n  FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.audit_ip_empty();'],
+    ['CREATE OR REPLACE TRIGGER (PG14+), another name', 'CREATE OR REPLACE TRIGGER zz_other\n  BEFORE INSERT OR UPDATE ON auth.mfa_challenges\n  FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.audit_ip_empty();'],
+    ['a quoted "auth"."mfa_challenges"', 'CREATE TRIGGER zz_quoted BEFORE INSERT OR UPDATE ON "auth"."mfa_challenges" FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.audit_ip_empty();'],
+    ['the on-verify function, on INSERT too', 'CREATE TRIGGER zz_insert BEFORE INSERT OR UPDATE ON auth.mfa_challenges FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.mfa_ip_blank_on_verify();'],
+  ]) {
+    test(`MUTATION: an every-write trigger on auth.mfa_challenges by ${name} is refused (limb 10)`, () => {
+      const root = tree();
+      try {
+        const sql = get(root, IDENTITY_SQL);
+        put(root, IDENTITY_SQL, withStatement(sql, stmt));
+        const { code, out } = spawn(GUARD, [root]);
+        assert.equal(code, 1, out);
+        assert.match(out, /a trigger on auth\.mfa_challenges \(BEFORE INSERT OR UPDATE, .*that is not its declared on-verify trigger/);
+      } finally { kill(root); }
+    });
+  }
+
+  test('MUTATION: any other statement naming auth.mfa_challenges is refused (limb 10)', () => {
+    const root = tree();
+    try {
+      put(root, IDENTITY_SQL, withStatement(get(root, IDENTITY_SQL), "ALTER TABLE auth.mfa_challenges ALTER COLUMN ip_address SET DEFAULT '0.0.0.0';"));
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /a statement names auth\.mfa_challenges, whose ip_address is EXEMPT/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: the on-verify trigger removed — a verified challenge keeps the address (limb 10)', () => {
     const root = tree();
     try {
       const sql = get(root, IDENTITY_SQL);
-      const cut = sql.replace(
-        'COMMIT;',
-        "CREATE OR REPLACE FUNCTION nikatru_privacy.mfa_ip_unspecified()\n  RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$\nBEGIN\n  NEW.ip_address := '0.0.0.0'::inet;\n  RETURN NEW;\nEND $$;\n" +
-          'CREATE TRIGGER nikatru_address_null_on_write\n  BEFORE INSERT OR UPDATE ON auth.mfa_challenges\n  FOR EACH ROW EXECUTE FUNCTION nikatru_privacy.mfa_ip_unspecified();\n\nCOMMIT;',
-      );
+      const cut = sql.replace(/CREATE TRIGGER nikatru_mfa_ip_blank_on_verify\n[^\n]*\n[^\n]*\n/, '');
+      assert.notEqual(cut, sql, 'the mutation must remove the on-verify trigger');
+      put(root, IDENTITY_SQL, cut);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /0 on-verify trigger\(s\) on auth\.mfa_challenges/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: the on-verify function blanking a PENDING challenge (no verified_at guard) is refused (limb 10)', () => {
+    const root = tree();
+    try {
+      const sql = get(root, IDENTITY_SQL);
+      const cut = sql.replace("  IF NEW.verified_at IS NOT NULL THEN\n    NEW.ip_address := '0.0.0.0';\n  END IF;", "  NEW.ip_address := '0.0.0.0';");
       assert.notEqual(cut, sql);
       put(root, IDENTITY_SQL, cut);
       const { code, out } = spawn(GUARD, [root]);
       assert.equal(code, 1, out);
-      assert.match(out, /creates a trigger on auth\.mfa_challenges, whose ip_address is EXEMPT/);
+      assert.match(out, /mfa_ip_blank_on_verify\(\) is not exactly the declared body/);
+    } finally { kill(root); }
+  });
+
+  test('MUTATION: the sweep no longer run by the retention script (only named in its comments) is refused (limb 10)', () => {
+    const root = tree();
+    const SCRIPT = 'docs/platform/supabase/boxc/identity-log-retention.sh';
+    try {
+      const text = get(root, SCRIPT);
+      const cut = text.replace("'SELECT nikatru_privacy.mfa_challenge_ip_sweep()'", "'SELECT 1'");
+      assert.notEqual(cut, text);
+      put(root, SCRIPT, cut);
+      const { code, out } = spawn(GUARD, [root]);
+      assert.equal(code, 1, out);
+      assert.match(out, /never calls nikatru_privacy\.mfa_challenge_ip_sweep\(\)/);
     } finally { kill(root); }
   });
 

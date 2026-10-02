@@ -24,7 +24,7 @@ const SCRIPT = join(REPO, 'docs', 'platform', 'supabase', 'boxc', 'identity-log-
 const DAY_S = 86_400;
 
 /** A box: a docker log dir with one live log per container, an archive dir, and a fake `docker`. */
-function box({ containers = ['supabase-auth', 'supabase-envoy'] } = {}) {
+function box({ containers = ['supabase-auth', 'supabase-envoy'], sweep = 'echo 1' } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'idlog-'));
   const bin = join(root, 'bin');
   const logs = join(root, 'containers');
@@ -39,8 +39,12 @@ function box({ containers = ['supabase-auth', 'supabase-envoy'] } = {}) {
     known[c] = log;
   }
   // `docker inspect -f '{{.LogPath}}' <name>`: the path, or exit 1 like the real CLI.
+  // `docker exec supabase-db psql … mfa_challenge_ip_sweep()`: `sweep`, a shell line.
   const cases = Object.entries(known).map(([c, p]) => `  ${c}) echo '${p}' ;;`).join('\n');
-  writeFileSync(join(bin, 'docker'), `#!/bin/sh\nname="$4"\ncase "$name" in\n${cases}\n  *) echo "Error: No such object: $name" >&2; exit 1 ;;\nesac\n`);
+  writeFileSync(
+    join(bin, 'docker'),
+    `#!/bin/sh\nif [ "$1" = exec ]; then\n  case "$*" in *'nikatru_privacy.mfa_challenge_ip_sweep()'*) ${sweep} ;; *) echo "unexpected: $*" >&2; exit 1 ;; esac\n  exit $?\nfi\nname="$4"\ncase "$name" in\n${cases}\n  *) echo "Error: No such object: $name" >&2; exit 1 ;;\nesac\n`,
+  );
   chmodSync(join(bin, 'docker'), 0o755);
   return { root, bin, logs, arch, known };
 }
@@ -72,6 +76,7 @@ describe('identity-log-retention.sh — 7 days, and watched', () => {
       assert.equal(kept.filter((f) => /^supabase-(auth|envoy)-\d{8}T\d{6}Z\.json\.gz$/.test(f)).length, 2, kept.join(' '));
       for (const log of Object.values(b.known)) assert.equal(statSync(log).size, 0);
       assert.match(out, /ok identity-log-retention \S+ supabase-auth: cut/);
+      assert.match(out, /ok identity-log-retention \S+ mfa challenge address sweep: 1 blanked/);
       assert.match(out, /done: failed=0/);
     } finally { rmSync(b.root, { recursive: true, force: true }); }
   });
@@ -103,6 +108,28 @@ describe('identity-log-retention.sh — 7 days, and watched', () => {
       const { code, out } = run(b);
       assert.equal(code, 1, out);
       assert.match(out, /FAIL identity-log-retention \S+ supabase-envoy: no archive inside the last 36 h/);
+    } finally { rmSync(b.root, { recursive: true, force: true }); }
+  });
+
+  // ⏱ 2026-10-02 · ruling on review 2 of #1140, item 1: the expired MFA
+  // challenge's address is blanked by THIS job; a sweep that did not run must
+  // withhold the beat, or the notice's "erased within a day" rests on nothing.
+  test('🔴 the MFA challenge address sweep failing (psql error) is a FAIL (exit 1), and the log cut still runs', () => {
+    const b = box({ sweep: 'echo \'ERROR:  function nikatru_privacy.mfa_challenge_ip_sweep() does not exist\' >&2; exit 3' });
+    try {
+      const { code, out } = run(b);
+      assert.equal(code, 1, out);
+      assert.match(out, /FAIL identity-log-retention \S+ mfa challenge address sweep did not run: exit 3: ERROR: {2}function/);
+      assert.match(out, /ok identity-log-retention \S+ supabase-auth: cut/);
+    } finally { rmSync(b.root, { recursive: true, force: true }); }
+  });
+
+  test('🔴 a sweep that answers with no row count (the db container missing) is a FAIL, never a quiet pass', () => {
+    const b = box({ sweep: 'true' });
+    try {
+      const { code, out } = run(b);
+      assert.equal(code, 1, out);
+      assert.match(out, /FAIL identity-log-retention \S+ mfa challenge address sweep did not run/);
     } finally { rmSync(b.root, { recursive: true, force: true }); }
   });
 
