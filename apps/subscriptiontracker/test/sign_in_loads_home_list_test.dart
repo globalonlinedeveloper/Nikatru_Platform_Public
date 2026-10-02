@@ -126,6 +126,12 @@ void main() {
     WidgetTester tester,
   ) async {
     await bootSignedOut(tester);
+    // The invariant `refreshOnReturn` documents: ONLY A LIST THAT EXISTS.
+    expect(
+      c.exists(subscriptionsControllerProvider),
+      isFalse,
+      reason: 'something mounted on /sign-in built the list',
+    );
     expect(
       api.signedOutReads,
       0,

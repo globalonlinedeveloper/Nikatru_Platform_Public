@@ -99,6 +99,7 @@ class _DeviceSurfacesHostState extends ConsumerState<DeviceSurfacesHost> {
     // boot with no session, the Worker answered 401, and the first Home after
     // sign-in showed "Your session has ended". A signed-out device has no
     // glance to write (`glanceSignedOut`) and so no reason to read the list.
+    // The same invariant `refreshOnReturn` keeps: ONLY A LIST THAT EXISTS.
     ref.listenManual(
       authUserProvider.select((AsyncValue<Object?> u) => u.value != null),
       (_, bool signedIn) => _followList(signedIn),
