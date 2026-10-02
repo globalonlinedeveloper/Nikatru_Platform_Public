@@ -84,6 +84,9 @@ import { loadRegister, supportedCodes, arbSuffix } from '../i18n/locales.mjs';
 // The API base rule is the one every release build composes with (flutter-release-build.mjs),
 // so a stamped default and a shipped binary are graded against the same function.
 import { apiBaseUrl } from './flutter-release-build.mjs';
+// The render-owned XML name fields and their ONE escaping (see the entity scan).
+import { ICON_LABEL_TARGETS, xmlText } from '../app-yaml/render.mjs';
+import { parseYaml } from '../app-yaml/yaml.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name) => {
@@ -308,6 +311,38 @@ const SKIP_DIR = new Set(['build', '.dart_tool', 'node_modules', '.git', '.wrang
  *  and only in that file. Excluded by name so the exception stays visible. */
 const HTML_OK = new Set(['index.html']);
 
+/** ⏱ 2026-10-01 · O-BRICK-STAMPS-WEB-ONLY (D30): a stamp now carries native
+ *  folders, and render.mjs writes the declared icon label into three of their
+ *  XML files (android:label, both CFBundleDisplayName) through its `xmlText`,
+ *  where `&amp;` is the CORRECT escape, as `&#x27;` is in index.html. So the one
+ *  further exception is that field's value, and only when it is EXACTLY
+ *  xmlText(app.yaml shortName): mason's `&#x27;` or `&#x2F;` in the same slot is
+ *  not what render writes and still fails, and any entity elsewhere on the line
+ *  still fails. Keyed by the target's own file and pattern, imported from
+ *  render.mjs, never retyped here. */
+const XML_LABEL_TARGETS = new Map(ICON_LABEL_TARGETS.filter((t) => t.encode === xmlText).map((t) => [t.in, t]));
+let declaredShortName = null;
+try {
+  const v = parseYaml(readFileSync(join(appDir, 'app.yaml'), 'utf8'))?.shortName;
+  if (typeof v === 'string' && v !== '') declaredShortName = v;
+} catch {
+  /* no declaration, no exception: every entity is then graded as before */
+}
+let renderedLabels = 0;
+/** `text` with the render-owned label value cut out, when it is exactly
+ *  render's. Matched over the whole file, as render.mjs matches it (a plist's
+ *  key and value are two lines); the value holds no newline, so every line
+ *  keeps its number. */
+function withoutRenderedLabel(appRel, text) {
+  const t = XML_LABEL_TARGETS.get(appRel);
+  if (!t || declaredShortName === null) return text;
+  return text.replace(t.re, (m, pre, post) => {
+    if (m.slice(pre.length, m.length - post.length) !== xmlText(declaredShortName)) return m;
+    renderedLabels++;
+    return pre + post;
+  });
+}
+
 const scanRoots = [appDir];
 if (servicePath) scanRoots.push(resolve(ROOT, servicePath));
 
@@ -345,8 +380,10 @@ const walk = (dir) => {
     }
     if (text === null) continue;
     scanned++;
-    for (const [i, line] of text.split('\n').entries()) {
-      if (ENTITY.test(line)) escaped.push(`${relative(ROOT, p).split(sep).join('/')}:${i + 1}: ${line.trim()}`);
+    const lines = text.split('\n');
+    const graded = withoutRenderedLabel(relative(appDir, p).split(sep).join('/'), text).split('\n');
+    for (const [i, line] of graded.entries()) {
+      if (ENTITY.test(line)) escaped.push(`${relative(ROOT, p).split(sep).join('/')}:${i + 1}: ${lines[i].trim()}`);
     }
   }
 };
@@ -367,7 +404,10 @@ if (escaped.length) {
       'in hooks/pre_gen.dart. mason escapes & < > " \' / on every DOUBLE stache.',
   );
 } else {
-  ok(`no HTML entity in ${scanned} stamped text file(s) (web/index.html excepted, where it is correct)`);
+  ok(
+    `no HTML entity in ${scanned} stamped text file(s) (web/index.html excepted, where it is correct` +
+      `${renderedLabels ? `; ${renderedLabels} render-owned XML label(s) carry xmlText(shortName), where it is correct too` : ''})`,
+  );
 }
 
 // ── 2 · a blank optional var was DERIVED, not interpolated as nothing ────────

@@ -315,6 +315,37 @@ describe('assert-stamp-text-fidelity', () => {
     assert.equal(r.code, 0, r.out);
   });
 
+  // ⏱ 2026-10-01 · O-BRICK-STAMPS-WEB-ONLY (D30). A stamp carries native folders,
+  // and render.mjs writes the icon label into three XML name fields through its
+  // xmlText, where `&amp;` is CORRECT. Exactly that value is excepted; mason's
+  // escape in the same slot, or any other entity on the line, still fails.
+  const nativeLabels = (label, { plistValue = label.replaceAll('&', '&amp;'), manifestExtra = '' } = {}) => ({ write, app }) => {
+    write(`apps/${app}/app.yaml`, `id: ${app}\nshortName: ${JSON.stringify(label)}\n`);
+    write(
+      `apps/${app}/android/app/src/main/AndroidManifest.xml`,
+      `<manifest>\n    <application android:label="${label.replaceAll('&', '&amp;')}"${manifestExtra}>\n    </application>\n</manifest>\n`,
+    );
+    write(`apps/${app}/ios/Runner/Info.plist`, `<plist version="1.0">\n<dict>\n\t<key>CFBundleDisplayName</key>\n\t<string>${plistValue}</string>\n</dict>\n</plist>\n`);
+  };
+
+  test('the native name fields render.mjs writes as xmlText(shortName) are NOT a failure', () => {
+    const r = run(tree({ mutate: nativeLabels('E-Book & Co') }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /2 render-owned XML label\(s\) carry xmlText\(shortName\)/);
+  });
+
+  test("🔴 mason's escape in a native name field still fails: it is not what render.mjs writes", () => {
+    const r = run(tree({ mutate: nativeLabels("Probe's", { plistValue: 'Probe&#x27;s' }) }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /ios\/Runner\/Info\.plist:4: <string>Probe&#x27;s<\/string>/);
+  });
+
+  test('🔴 the exception is the label VALUE only: another entity on the same line still fails', () => {
+    const r = run(tree({ mutate: nativeLabels('E-Book & Co', { manifestExtra: ' android:note="a &quot;b&quot;"' }) }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /AndroidManifest\.xml:2:/);
+  });
+
   // ── 2 · the derivation defect ─────────────────────────────────────────────
   // 🔴 THE DEFECT THIS LIMB EXISTS FOR, AND IT SHIPPED IN THE TEMPLATE FROM THE DAY
   // THE BRICK WAS WRITTEN UNTIL 2026-09-12. `--dart-define-from-file` maps each JSON

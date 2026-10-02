@@ -120,6 +120,19 @@ void main() {
     // ⏱ 2026-09-16 · [ADR 083]: with the slim rail from 1200 px up, a 1280 px
     // window now gives 1280 - R - 1 (1163 for a 116 px rail), not 919. The old
     // case still could not fail, for the reason given.
+    // ⏱ 2026-10-01 · train P39 (SYN-X1 C-17): the EXPANDED class, between
+    // the two cases that already bind.
+    testWidgets('at 1024 (expanded) the list is at the cap', (
+      WidgetTester tester,
+    ) async {
+      await pumpAt(tester, kExpanded, screen);
+      expect(
+        offeredWidth(tester, inPaneOf(bodyPane(), ListView)),
+        AppBreakpoints.reading,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('at 1280 the list is at the cap', (WidgetTester tester) async {
       await pumpAt(tester, kDesktop, screen);
       expect(

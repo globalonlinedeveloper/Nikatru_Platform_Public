@@ -49,6 +49,12 @@
 //       `excluded` entry is `{ slug, why }` with a non-empty why; a member or an
 //       exclusion naming no catalogue product is refused. A missing `excluded`
 //       reads as []. Reading zero catalogue slugs is COVERAGE LOST.
+//       ⏱ 2026-10-01 (rv2-newproduct-011, O-BUNDLE-MEMBER-INSERT-UNLOCKED): a
+//       STAMP excludes the product it stamps, with a why that opens with
+//       STAMPED_EXCLUSION_MARK (tooling/catalog/read.mjs) — the placeholder that
+//       keeps app #2's first commit green without a decision nobody made. On a
+//       product whose catalogue status is `live` that placeholder is a finding:
+//       going live is when the bundle must say in or out (new-product step 12).
 //
 //   G · THE DIRECT catalog/*.json READERS STAY AT OR BELOW A FLOOR THAT ONLY
 //       FALLS. O-BUNDLE-AVAILABILITY-TAKES-THE-FIRST. New code reads the
@@ -91,7 +97,7 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { listDir } from './tree-walk.mjs';
-import { BUNDLE_LOCK, bundleKey, lockEntriesOf, memberSlugsOf, readBundleLock, readBundles } from '../catalog/read.mjs';
+import { BUNDLE_LOCK, bundleKey, isStampedExclusion, lockEntriesOf, memberSlugsOf, readBundleLock, readBundles } from '../catalog/read.mjs';
 
 // argv: an optional repo root, plus flags.
 //   --list-readers        print every direct catalog/*.json reader limb G counts
@@ -465,6 +471,8 @@ const conjunctsOf = (why) =>
 {
   const before = problems.length;
   const catalog = new Set();
+  /** slug → its catalogue `status`, for the stamp's placeholder exclusion. */
+  const statusOf = new Map();
   for (const file of [APPS, EXTENSIONS]) {
     let rows;
     try {
@@ -474,7 +482,10 @@ const conjunctsOf = (why) =>
       continue;
     }
     for (const r of Array.isArray(rows) ? rows : []) {
-      if (typeof r?.slug === 'string' && r.slug) catalog.add(r.slug);
+      if (typeof r?.slug === 'string' && r.slug) {
+        catalog.add(r.slug);
+        statusOf.set(r.slug, r.status);
+      }
     }
   }
   let rows = [];
@@ -507,6 +518,13 @@ const conjunctsOf = (why) =>
           fail(`${tag}${BUNDLES} excludes \`${x.slug}\` with no \`why\`. An exclusion from "every product" is a decision, and a decision states its reason.`);
         }
         excluded.push(x.slug);
+        if (isStampedExclusion(x) && statusOf.get(x.slug) === 'live') {
+          fail(
+            `${tag}${BUNDLES} still excludes \`${x.slug}\` with the STAMP's placeholder why, and \`${x.slug}\` is live. ` +
+              'Going live is when the bundle says in or out: list it as a member of a NEW featureSet version (limb H), ' +
+              'or replace the placeholder with the reason it stays out (new-product step 12, bundle join).',
+          );
+        }
       }
     }
     for (const s of members) {

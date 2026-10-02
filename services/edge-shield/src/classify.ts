@@ -13,12 +13,31 @@
 // anchored on; `period` below must equal the binding's own, which
 // test/wrangler-config.test.ts holds, because it is what Retry-After promises.
 //
+// 🔴 THREE CREDENTIAL CLASSES, NOT ONE (⏱ 2026-10-01 · SYN-A2 / PB-01, row
+// O-ONE-CLIENT-CAN-EXHAUST-THE-CREDENTIAL-CAP). Until then every path below that
+// proves, mints or mails a credential shared ONE `auth-credential` bucket, and
+// no per-IP limit covered `/auth/v1/token`: junk password posts from one address
+// filled it, and every sign-up, OTP, recovery, verify and MFA step in that colo
+// was refused here, before GoTrue's own per-IP limiter could tell that client
+// apart. Now each kind of credential call has its own bucket —
+//   · auth-password       — /token, every grant but refresh_token (and none);
+//   · auth-signup-recover — /signup, /otp, /recover, /resend, /verify, /magiclink;
+//   · auth-factor         — /factors/<id>/verify|challenge, /reauthenticate —
+// so filling one refuses nothing in the other two, and refresh stays its own.
+//
 // 🔴 NO PER-CLIENT LIMITER, AND NO CLIENT ADDRESS READ AT ALL (LEAD RULING
 // SHIELD-R3, 2026-09-26). The posture of ADR no.011 / ADR no.020 is that no
 // Worker reads a client-IP header, and tooling/ci/assert-glitchtip-no-ip.mjs
-// holds it for this Worker too. The per-IP limit on the CREDENTIAL paths is the
-// nikatru.com zone's own rate-limiting rule instead, declared as code in
-// tooling/edge-ratelimit-rule.json and applied by deploy-workers.yml.
+// holds it for this Worker too. The per-IP limit on the CREDENTIAL paths of
+// auth-signup-recover and auth-factor is the nikatru.com zone's own rate-limiting
+// rule instead, declared as code in tooling/edge-ratelimit-rule.json and applied
+// by deploy-workers.yml. /auth/v1/token is NOT in it (lead ruling on PR #1147):
+// the Free plan cannot read the query, so it would count the refresh grant, and a
+// refresh 429 signs a native user out — behind carrier-grade NAT, many at once.
+// ⚠️ THE RESIDUAL: a covered global bucket is still lockable by about cap ÷ the
+// per-IP rate — 300/min ÷ 30/min = 10 addresses at the zone rule's limit, per
+// colo; test/wrangler-config.test.ts holds both covered caps at or above it.
+// auth-password has no per-IP bound at the edge: one client can fill it alone.
 //
 // ⚠️ NOT EVERY PATH IS COUNTED, AND THE ONES THAT ARE NOT ARE NAMED:
 //   · OPTIONS, always — a refused CORS preflight turns the real request into an
@@ -37,7 +56,7 @@ export const AUTH_HOST = 'auth-api.nikatru.com';
 export const INTAKE_HOST = 'glitchtip.nikatru.com';
 export const JWKS_PATH = '/auth/v1/.well-known/jwks.json';
 
-export type ShieldClass = 'auth-credential' | 'auth-refresh' | 'auth-other' | 'intake';
+export type ShieldClass = 'auth-password' | 'auth-signup-recover' | 'auth-factor' | 'auth-refresh' | 'auth-other' | 'intake';
 
 export interface ClassSpec {
   /** Seconds in the binding's window; the refusal's Retry-After. */
@@ -65,10 +84,20 @@ export interface ClassSpec {
  * attempts", and the crash SDKs stop sending for Retry-After.
  */
 export const CLASSES: Record<ShieldClass, ClassSpec> = {
-  'auth-credential': {
+  'auth-password': {
     period: 60,
     refusal: 429,
-    global: (env) => env.AUTH_CREDENTIAL_GLOBAL_LIMITER,
+    global: (env) => env.AUTH_PASSWORD_GLOBAL_LIMITER,
+  },
+  'auth-signup-recover': {
+    period: 60,
+    refusal: 429,
+    global: (env) => env.AUTH_SIGNUP_RECOVER_GLOBAL_LIMITER,
+  },
+  'auth-factor': {
+    period: 60,
+    refusal: 429,
+    global: (env) => env.AUTH_FACTOR_GLOBAL_LIMITER,
   },
   'auth-refresh': {
     period: 60,
@@ -88,13 +117,15 @@ export const CLASSES: Record<ShieldClass, ClassSpec> = {
 };
 
 /**
- * GoTrue paths (below /auth/v1) that PROVE or MINT a credential, or send mail:
- * a guess, a sign-up or a send per request. `/token` is here too, for every
- * grant EXCEPT refresh_token (see classify()).
+ * auth-signup-recover: GoTrue paths (below /auth/v1) that MINT an account or
+ * send mail, or redeem what was mailed — a sign-up, a send or a link per request.
+ * `/token`'s grants are auth-password (see classify()).
  */
-const CREDENTIAL_PATHS = new Set(['/otp', '/signup', '/recover', '/resend', '/verify', '/magiclink', '/reauthenticate']);
-/** MFA: `/factors/<id>/verify` guesses a code, `/factors/<id>/challenge` sends one. */
-const FACTOR_CREDENTIAL = /^\/factors\/[^/]+\/(?:verify|challenge)$/;
+const SIGNUP_RECOVER_PATHS = new Set(['/signup', '/otp', '/recover', '/resend', '/verify', '/magiclink']);
+/** auth-factor: `/reauthenticate` sends a nonce to a signed-in user. */
+const REAUTHENTICATE_PATH = '/reauthenticate';
+/** auth-factor: MFA — `/factors/<id>/verify` guesses a code, `/factors/<id>/challenge` sends one. */
+const FACTOR_PATH = /^\/factors\/[^/]+\/(?:verify|challenge)$/;
 /** GlitchTip's Sentry-protocol intake: `/api/<project id>/envelope/` and `/store/`. */
 const INTAKE_PATH = /^\/api\/[^/]+\/(?:envelope|store)$/;
 
@@ -124,12 +155,13 @@ export function classify(url: URL, method: string): Route {
     const rest = path.slice('/auth/v1'.length);
     if (rest === '/token') {
       // Any grant but a refresh is a credential proof (password, pkce, id_token,
-      // an unknown one); a missing or repeated grant_type counts as a credential.
+      // an unknown one); a missing or repeated grant_type counts as one too.
       const grants = url.searchParams.getAll('grant_type');
       const refresh = grants.length === 1 && grants[0] === 'refresh_token';
-      return { kind: 'limit', cls: refresh ? 'auth-refresh' : 'auth-credential' };
+      return { kind: 'limit', cls: refresh ? 'auth-refresh' : 'auth-password' };
     }
-    if (CREDENTIAL_PATHS.has(rest) || FACTOR_CREDENTIAL.test(rest)) return { kind: 'limit', cls: 'auth-credential' };
+    if (SIGNUP_RECOVER_PATHS.has(rest)) return { kind: 'limit', cls: 'auth-signup-recover' };
+    if (rest === REAUTHENTICATE_PATH || FACTOR_PATH.test(rest)) return { kind: 'limit', cls: 'auth-factor' };
     return { kind: 'limit', cls: 'auth-other' };
   }
 

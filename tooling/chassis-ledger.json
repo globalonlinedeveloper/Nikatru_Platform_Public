@@ -48,9 +48,9 @@
     },
     {
       "path": "assets/icon/README.md",
-      "lines": 38,
+      "lines": 39,
       "verdict": "STAYS",
-      "why": "Per-app brand assets."
+      "why": "Per-app brand assets. ⏱ 2026-10-01 · O-BRICK-STAMPS-WEB-ONLY (D30): 38 -> 39, +1 — the master is named app_icon_1024.png and the stamp adds the native platforms itself, so the README says how to re-derive the splash and Linux packaging from new art."
     },
     {
       "path": "config/defaults.example.json",
@@ -262,9 +262,9 @@
     },
     {
       "path": "pubspec.yaml",
-      "lines": 203,
+      "lines": 202,
       "verdict": "STAYS",
-      "why": "Per-app manifest; its dependency list is swept by assert-play-declarations as of PR #474. ⏱ 2026-09-28 · NP-12b (O-BRICK-SELLS-NOTHING-IN-A-STORE, re-drafted on LEAD RULING NP12B-R2): 193 -> 202, +9 — the nikatru_billing_revenuecat dependency the store bridge is built from, with its comment."
+      "why": "Per-app manifest; its dependency list is swept by assert-play-declarations as of PR #474. ⏱ 2026-09-28 · NP-12b (O-BRICK-SELLS-NOTHING-IN-A-STORE, re-drafted on LEAD RULING NP12B-R2): 193 -> 202, +9 — the nikatru_billing_revenuecat dependency the store bridge is built from, with its comment. ⏱ 2026-10-01 · O-BRICK-STAMPS-WEB-ONLY (D30): 203 -> 202, -1 — the launcher-icons comment says the stamp runs the tool over the native folders it now writes, and image_path names app_icon_1024.png."
     },
     {
       "path": "README.md",

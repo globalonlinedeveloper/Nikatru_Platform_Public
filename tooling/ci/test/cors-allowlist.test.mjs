@@ -107,6 +107,9 @@ const PAGES = 'https://subly-9cp.pages.dev';
  *  order was widen, cut over, then narrow. */
 const PAGES_NEW = 'https://subscriptiontracker-7qg.pages.dev';
 const LOCAL = 'http://localhost:3000';
+/** A second app's Pages preview origin, as render.mjs writes it into the
+ *  catalogue row's `origin` from app.yaml `hosts.pagesOrigin`. */
+const DRIFT_PAGES = 'https://drift-x1y.pages.dev';
 /** The RETIRED app subdomain. It is no longer in either config and no longer in
  *  EXTRAS -- it is kept here only as the input for the two cases that must still
  *  be able to fail: an unjustified origin, and the coupled removal below. */
@@ -252,7 +255,10 @@ describe('assert-cors-allowlist', () => {
     // blended tally is how a hand-maintained list creeps back unnoticed. The
     // EXTRAS count is FIVE, not three, and the two it grew by are the retiring
     // subdomain in each config — the number rising is the cutover being visible.
-    assert.match(out, /2 derived requirement\(s\) \+ 3 declared EXTRAS all present/);
+    // ⏱ 2026-10-01 (rv2-newproduct-010): FOUR derived and ONE EXTRA. The Pages
+    // preview origin moved from EXTRAS into the derivation (each row's `origin`),
+    // once per Worker, so the derived tally grew by exactly the two EXTRAS lost.
+    assert.match(out, /4 derived requirement\(s\) \+ 1 declared EXTRAS all present/);
     assert.match(out, /2 Worker\(s\) bind the `cors` scope their tooling\/platform-register\.json row names/);
   });
 
@@ -274,11 +280,12 @@ describe('assert-cors-allowlist', () => {
   // still every app's browser traffic refused at runtime. Both halves asserted.
   // ─────────────────────────────────────────────────────────────────────────
   test('two catalogue apps yield exactly ONE derived origin, and dropping it still FAILS', () => {
-    const drift = { slug: 'drift', name: 'Drift', url: `${APEX}/drift`, status: 'live' };
+    const drift = { slug: 'drift', name: 'Drift', url: `${APEX}/drift`, origin: DRIFT_PAGES, status: 'live' };
 
     // (a) the collapse itself: 2 apps, 1 origin. If this ever reads "2
-    //     catalogue origin(s)", an app has left the apex.
-    const ok = run(tree({ apps: [SUBLY, drift] }));
+    //     catalogue origin(s)", an app has left the apex. (The shared Worker
+    //     lists drift's Pages preview origin: that one IS per app, and derived.)
+    const ok = run(tree({ apps: [SUBLY, drift], workers: { ...REAL, platform: `${REAL.platform},${DRIFT_PAGES}` } }));
     assert.equal(ok.code, 0, ok.out);
     assert.match(
       ok.out,
@@ -286,7 +293,9 @@ describe('assert-cors-allowlist', () => {
     );
     // The shared Worker still carries one derived requirement PER APP — they
     // just happen to be the same string now, which is exactly the point.
-    assert.match(ok.out, /3 derived requirement\(s\) \+ 3 declared EXTRAS all present/);
+    // Six: the apex and the preview origin per app on the shared Worker (4), and
+    // app #1's two on its own Worker (2).
+    assert.match(ok.out, /6 derived requirement\(s\) \+ 1 declared EXTRAS all present/);
 
     // (b) the floor that survived: drop the apex from the shared Worker and
     //     every app in the catalogue is named, not just the newest one.
@@ -352,6 +361,42 @@ describe('assert-cors-allowlist', () => {
   });
 
   // The other direction: the catalogue is also a CEILING, not just a floor.
+  // ── ⏱ 2026-10-01 · THE PAGES PREVIEW ORIGIN IS DERIVED (rv2-newproduct-010) ──
+  // It was a hand EXTRAS entry, so a second app's preview build was refused by
+  // every Worker with this guard green. RED CONTROL, measured on the real tree
+  // before this case was written: the preview origin removed from
+  // services/platform/wrangler.jsonc exits 1 naming it as derived from `origin`.
+  test('FAILS when a catalogue row\'s Pages preview origin is dropped from EITHER Worker', () => {
+    for (const service of ['platform', 'subscriptiontracker-api']) {
+      const workers = { ...REAL, [service]: REAL[service].split(',').filter((o) => o !== PAGES_NEW).join(',') };
+      const { code, out } = run(tree({ workers }));
+      assert.equal(code, 1, `${service}: ${out}`);
+      assert.match(
+        out,
+        new RegExp(`${rx(`services/${service}/wrangler.jsonc`)} — missing "${rx(PAGES_NEW)}" — apps\\.json declares "subscriptiontracker"'s Pages preview origin`),
+      );
+    }
+  });
+
+  test('a SECOND app\'s preview origin is required on the shared Worker with no edit to this guard', () => {
+    const drift = { slug: 'drift', name: 'Drift', url: `${APEX}/drift`, origin: DRIFT_PAGES, status: 'live' };
+    const { code, out } = run(tree({ apps: [SUBLY, drift] }));
+    assert.equal(code, 1, out);
+    assert.match(out, new RegExp(`services/platform/wrangler\\.jsonc — missing "${rx(DRIFT_PAGES)}" — apps\\.json declares "drift"'s Pages preview origin`));
+    // Its own Worker does not exist, so only the shared one is charged.
+    assert.doesNotMatch(out, /services\/subscriptiontracker-api\/wrangler\.jsonc — missing/);
+  });
+
+  test('FAILS a catalogue row with no `origin`, or one that is not a bare https origin', () => {
+    const { origin: _dropped, ...noOrigin } = SUBLY;
+    const missing = run(tree({ apps: [noOrigin] }));
+    assert.equal(missing.code, 1, missing.out);
+    assert.match(missing.out, /apps\.json row "subscriptiontracker" has no `origin`, so its Pages preview origin cannot be derived/);
+    const pathy = run(tree({ apps: [{ ...SUBLY, origin: `${PAGES_NEW}/app` }] }));
+    assert.equal(pathy.code, 1, pathy.out);
+    assert.match(pathy.out, /has an `origin` that is not a bare https origin/);
+  });
+
   test('FAILS on a hand-added origin the catalogue does not justify', () => {
     const workers = { ...REAL, 'subscriptiontracker-api': `${REAL['subscriptiontracker-api']},https://evil.example.com` };
     const { code, out } = run(tree({ workers }));
@@ -360,7 +405,7 @@ describe('assert-cors-allowlist', () => {
     assert.match(out, /standing CORS grant nobody reviewed/);
   });
 
-  test('accepts the declared EXTRAS (retiring subdomain, preview domain, local dev server)', () => {
+  test('accepts the declared EXTRAS and the derived preview origin (local dev server, Pages preview)', () => {
     // These are NOT in apps.json and must still be allowed, because EXTRAS
     // gives each a reason. The subdomain is one of them now: it stopped being
     // catalogue-derived the moment the app moved to a path.
