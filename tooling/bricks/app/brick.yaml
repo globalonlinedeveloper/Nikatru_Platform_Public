@@ -142,20 +142,18 @@ vars:
   audience:
     type: string
     description: >-
-      Who the app is offered to — `general` or `children`. [pipeline K-16]
-      Declaring `children` is REFUSED for as long as the children's surface does
-      not exist. 🔴 THE VERDICT IS READ, NOT HARDCODED: hooks/pre_gen.dart opens
-      the `children-surface-before-a-kids-app` row in
-      tooling/legal/duty-matrix.json and requires it to be `implemented` AND to
-      name an `artefact` that is really on disk. So the day the surface is built
-      and filed there the stamp starts accepting a kids app with nobody
-      remembering to unblock it, and a status flipped to `implemented` without a
-      real artefact still cannot buy a pass.
+      Who the app is offered to — `general`, the only value. [pipeline K-16]
+      [ADR 068] (LOCKED 2026-09-05): no NIKATRU app, extension or site targets
+      children, and the audience floor is 18. hooks/pre_gen.dart refuses
+      `children` by name, citing that decision, and no register edit can lift
+      the refusal (until 2026-10-01 it read the
+      `children-surface-before-a-kids-app` row of tooling/legal/duty-matrix.json,
+      which is now withdrawn).
       ⚠️ NOTHING IN A REPOSITORY CAN DERIVE AN INTENDED AUDIENCE — the same
       question in apps/subscriptiontracker/store/android-play/content-rating.json says so of
       itself. This value is a human's declaration; what is mechanical is that it
-      cannot outrun the surface it obliges.
-    prompt: Audience (general | children)
+      cannot name an audience a locked decision rules out.
+    prompt: Audience (general)
     default: general
   subtitle:
     type: string

@@ -142,6 +142,11 @@ void run(HookContext context) {
   if (wrote) _runSiteChain(context, id: id);
 
   final apiHost = apiDomain.isEmpty ? '$id-api.nikatru.com' : apiDomain;
+  // The GitHub secret holding this Worker's crash-sink DSN: the name
+  // provision-backend.mjs writes as the register row's `dsnSecret`
+  // (`GLITCHTIP_DSN_<APP>`; the app-id contract makes the upper-cased id a valid
+  // suffix), restated here because the checklist prints before that row exists.
+  final dsnSecret = 'GLITCHTIP_DSN_${id.toUpperCase()}';
 
   context.logger.info('');
   if (needsBackend) {
@@ -267,21 +272,45 @@ void run(HookContext context) {
       // [pipeline 11]E-8. The stamped Worker now calls `reportWorkerError` in its
       // `app.onError` and carries `src/lib/error-sink.ts` (added 2026-09-08), so
       // limbs 2, 3 and 4 of assert-worker-error-sink.mjs pass on a fresh stamp.
-      // Limb 5 CANNOT be stamped: it wants a job named after this Worker in
-      // deploy-workers.yml, and a deploy job for an app that does not exist yet
-      // has nothing to deploy. So it is a printed step, like step 4 — the same
-      // class of genuinely manual work, named rather than left to be discovered
-      // by a red build.
+      // Limb 5 CANNOT be stamped: it wants this Worker's crash-sink SECRET
+      // delivered to deploy-workers.yml, and only the owner can create that
+      // secret (O-E1). So it is a printed step — genuinely manual work, named
+      // rather than left to be discovered by a red build.
+      //
+      // ⏱ 2026-10-01 — rv2-newproduct-004a. This step used to send the owner to
+      // add a per-Worker job to deploy-workers.yml and copy an existing one.
+      // There has been no such job since O-SERVICE-KIT-UNBUILT: the app-Worker
+      // matrix is printed by tooling/ci/worker-set.mjs from the `appWorkers` row
+      // provision-backend.mjs step [6] writes at step 2 above, `dsnSecret`
+      // included. What is left is the secret and the two lines that deliver it
+      // BY NAME (lead ruling Q1: never `secrets: inherit`) — the same two lines
+      // provision-backend.mjs prints, and assert-input-contract.mjs fails this
+      // file if either stops printing or the retired job step comes back.
       // ⚠️ NAME NO OTHER APP HERE. This string is executable shared code, and
       // [C-10] (tooling/ci/assert-no-clone-tells.mjs) fails the build on shared
       // code that knows which app it is in — it caught the first draft of this
       // line, which said "copy the `subscriptiontracker-api` job". Every stamped app would
       // have inherited an instruction naming a product it is not.
       ..info(
-        '  6. REQUIRED before this Worker deploys: add a `$id-api` job to '
-        '.github/workflows/deploy-workers.yml passing --var GLITCHTIP_DSN: and '
-        '--var RELEASE:. Copy any existing Worker job in that file. Without it '
-        'the crash sink has no DSN and every unhandled error is invisible, and '
+        '  6. REQUIRED before this Worker deploys: its crash-sink SECRET. There '
+        'is no deploy job to write — deploy-workers.yml deploys every '
+        '`appWorkers` row of tooling/platform-register.json, and step 2 wrote '
+        'this one with dsnSecret $dsnSecret. O-E1 (owner): create the GitHub '
+        'secret $dsnSecret, holding the DSN of the GlitchTip project of this '
+        'app alone, then deliver it BY NAME, never `secrets: inherit`, in the '
+        'same change:',
+      )
+      ..info(
+        '       .github/workflows/deploy-workers.yml, under '
+        'on.workflow_call.secrets:   $dsnSecret:  (with required: true)',
+      )
+      ..info(
+        '       .github/workflows/ci.yml, in the secrets of the deploy-workers: '
+        'call:   $dsnSecret: \${{ secrets.$dsnSecret }}',
+      )
+      ..info(
+        '     Without them the Worker deploys with no crash sink, so every '
+        'unhandled error is invisible, and '
         'tooling/ci/assert-worker-error-sink.mjs limb 5 fails the build.',
       )
       ..warn(

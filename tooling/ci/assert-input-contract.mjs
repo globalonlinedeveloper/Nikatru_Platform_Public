@@ -413,6 +413,33 @@ const RETIRED_INSTRUCTIONS = [
       + 'so an unattached host is NXDOMAIN rather than 522.) Say what is actually missing (attachment), '
       + 'not what the deploy already does.',
   },
+  // ⏱ 2026-10-01 — rv2-newproduct-004a. Printed on every needs_backend stamp after the matrix
+  // replaced the per-Worker jobs, so the owner was sent to write a job nothing would run.
+  {
+    pattern: /\badd\s+an?\s+`?[^`\s]*`?\s*job\s+to\s+\S*deploy-workers\.yml/i,
+    what: 'telling the owner to add a Worker job to deploy-workers.yml',
+    why: 'deploy-workers.yml has no per-Worker job to copy: its app-Worker matrix is printed by '
+      + '`tooling/ci/worker-set.mjs --for-deploy --app-workers` from the `appWorkers` row '
+      + 'provision-backend.mjs step [6] writes (row O-SERVICE-KIT-UNBUILT). What the owner owes is the '
+      + 'crash-sink SECRET, declared under `on.workflow_call.secrets` and passed by name from ci.yml.',
+  },
+];
+
+// ⏱ 2026-10-01 — rv2-newproduct-004a, the positive half. The line the retired step crowded out:
+// a needs_backend Worker deploys only with its crash-sink secret, and nothing but the owner can
+// create it (O-E1), so the checklist must print where it goes. Each entry is a line
+// assert-worker-error-sink.mjs limb 5 fails the Worker without, spelled as
+// provision-backend.mjs step [6] prints it. ALL of an entry's patterns must hold in ONE printed
+// sentence: a file that names the workflow in one step and the key in another prints neither line.
+const REQUIRED_INSTRUCTIONS = [
+  {
+    patterns: [/deploy-workers\.yml/, /\bon\.workflow_call\.secrets\b/, /GLITCHTIP_DSN|\$\{?dsnSecret/],
+    what: "deploy-workers.yml's `on.workflow_call.secrets` declaration",
+  },
+  {
+    patterns: [/\bci\.yml/, /\bdeploy-workers:/, /\$\{\{\s*secrets\./],
+    what: "ci.yml's `deploy-workers:` call passing it by name",
+  },
 ];
 
 const POST_GEN_PATH = `${BRICK}/hooks/post_gen.dart`;
@@ -428,6 +455,12 @@ if (postGenSrc === null) {
   // printed text, never the note explaining why it was removed.
   const printable = stripDart(postGenSrc, { keepStrings: true });
   const printed = [...printable.matchAll(/'((?:[^'\\\n]|\\.)*)'/g)].map((m) => m[1]);
+  // What Dart PRINTS: adjacent literals are one string, and the hook wraps every long step across
+  // several. A rule matched one literal at a time misses any sentence that crosses a wrap.
+  const LITERAL = /'((?:[^'\\\n]|\\.)*)'/g;
+  const sentences = [...printable.matchAll(/'(?:[^'\\\n]|\\.)*'(?:\s*'(?:[^'\\\n]|\\.)*')*/g)].map((m) =>
+    [...m[0].matchAll(LITERAL)].map((l) => l[1]).join(''),
+  );
 
   // 🔴 COVERAGE AS A RELATIONSHIP, not a typed floor. The raw source and the
   // extracted view are two independent observations of the same thing: every
@@ -448,7 +481,7 @@ if (postGenSrc === null) {
   } else {
     const retired = [];
     for (const rule of RETIRED_INSTRUCTIONS) {
-      const hit = printed.find((t) => rule.pattern.test(t));
+      const hit = sentences.find((t) => rule.pattern.test(t));
       if (hit !== undefined) retired.push({ rule, hit });
     }
     if (retired.length) {
@@ -459,6 +492,18 @@ if (postGenSrc === null) {
       }
     } else {
       ok(`the printed checklist (${seenHeaders} branch(es)) names no retired instruction`);
+    }
+    const missing = REQUIRED_INSTRUCTIONS.filter((rule) => !sentences.some((t) => rule.patterns.every((re) => re.test(t))));
+    for (const rule of missing) {
+      problems.push(
+        `${POST_GEN_PATH} prints no line delivering the Worker's crash-sink secret — ${rule.what}. A needs_backend `
+          + "Worker deploys with the secret its register row names (`dsnSecret`), only its owner can create it (O-E1), "
+          + 'and tooling/ci/assert-worker-error-sink.mjs limb 5 fails the Worker when either line is missing. Print '
+          + 'the two lines tooling/scripts/provision-backend.mjs step [6] prints.',
+      );
+    }
+    if (missing.length === 0) {
+      ok(`the needs_backend checklist prints the ${REQUIRED_INSTRUCTIONS.length} line(s) that deliver the crash-sink secret`);
     }
   }
 }

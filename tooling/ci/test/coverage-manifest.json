@@ -140,6 +140,9 @@
   "bounded-spawn.test.mjs":
     9,
 
+  "brick-audience.test.mjs":
+    5,
+
   "brick-drivers.test.mjs":
     5,
 
@@ -237,7 +240,7 @@
     10,
 
   "clone-contract.test.mjs":
-    46,
+    47,
 
   "code-scanning-age.test.mjs":
     15,
@@ -507,7 +510,7 @@
     11,
 
   "input-contract.test.mjs":
-    29,
+    32,
 
   "install-hooks-worktree.test.mjs":
     8,
@@ -534,7 +537,7 @@
     30,
 
   "legal-tripwires.test.mjs":
-    26,
+    29,
 
   "licence-register.test.mjs":
     80,

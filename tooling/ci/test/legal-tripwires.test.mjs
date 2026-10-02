@@ -303,6 +303,46 @@ describe('a review date is a promise something has to keep', () => {
   });
 });
 
+// ⏱ 2026-10-01 — rv2-newproduct-007. A duty can stop being able to arise: ADR no.068 (LOCKED
+// 2026-09-05) rules that no app targets children, so the children's-surface row has nothing left
+// to wait for. `withdrawn` says so, and it is only as good as the decision it names — a row
+// withdrawn on nobody's say-so is a duty quietly dropped, which this matrix exists to prevent.
+describe('a withdrawn duty names the decision that withdrew it', () => {
+  const withdrawn = (m, row = {}) => {
+    m.statuses.withdrawn = 'a locked decision of ours removed what would trigger it';
+    m.verificationKinds.decision = 'settled by a decision record of ours';
+    m.duties.push({
+      id: 'withdrawn-thing',
+      requirement: 'K-1',
+      duty: 'a duty a decision made moot',
+      status: 'withdrawn',
+      trigger: 'the day that decision is superseded',
+      verification: 'decision',
+      decisionRecord: 'Private/decisions/068-x.md — LOCKED',
+      ...row,
+    });
+    return m;
+  };
+
+  test('a withdrawn row naming its decision passes', () => {
+    const r = run(fixture((m) => withdrawn(m)));
+    assert.equal(r.status, 0, out(r));
+    assert.match(out(r), /1 withdrawn/);
+  });
+
+  test('a withdrawn row naming no decision FAILS', () => {
+    const r = run(fixture((m) => withdrawn(m, { decisionRecord: undefined })));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /duty "withdrawn-thing" is `withdrawn` and names no `decisionRecord`/);
+  });
+
+  test('a withdrawn row naming a blank decision FAILS — whitespace is not a decision', () => {
+    const r = run(fixture((m) => withdrawn(m, { decisionRecord: '   ' })));
+    assert.equal(r.status, 1, out(r));
+    assert.match(out(r), /names no `decisionRecord`/);
+  });
+});
+
 describe('owner-gated rows still owe an owner', () => {
   test('an owner-gated row naming nobody FAILS', () => {
     const r = run(fixture((m) => {
