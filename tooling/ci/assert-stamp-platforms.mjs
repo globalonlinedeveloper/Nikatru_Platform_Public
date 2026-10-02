@@ -28,13 +28,32 @@ import { parseWorkflow, flutterBuilds, workflowSteps as jobSteps, shellSegments,
 const ROOT = process.cwd();
 const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const POST_GEN = 'tooling/bricks/app/hooks/post_gen.dart';
-const CI = '.github/workflows/ci.yml';
+const LANE_MAP = 'tooling/ci/lane-map.json';
 const PROBE_VARS = 'tooling/bricks/app/_probe_vars.json';
 const problems = [];
 const coverageLost = (m) => problems.push(`COVERAGE LOST — ${m}`); // exit 2 only if EVERY problem is one (summary below)
 const ok = (m) => console.log(`ok   ${m}`);
 
 const read = (p) => (existsSync(join(ROOT, p)) ? readFileSync(join(ROOT, p), 'utf8') : null);
+
+// ⏱ CHANGED 2026-10-02 (ci-path-scope): the stamp jobs left ci.yml for the brick
+// lane's callee (ADR 095), and this guard kept reading ci.yml, where no stamp is
+// built any more, so it went red on a tree that builds the stamp. The workflow
+// read is now the one lane-map.json names as `lanes.brick.callee`, never typed
+// here: move the lane again and this follows it. No callee named is COVERAGE
+// LOST, not a fallback to ci.yml, which would grade a file that builds nothing.
+function brickCallee() {
+  try {
+    const callee = JSON.parse(read(LANE_MAP) ?? 'null')?.lanes?.brick?.callee;
+    return typeof callee === 'string' && callee.trim() ? callee.trim() : null;
+  } catch {
+    return null;
+  }
+}
+const CI = brickCallee();
+if (CI === null) {
+  coverageLost(`${LANE_MAP} names no \`lanes.brick.callee\`, so there is no workflow to ask whether CI builds the stamp.`);
+}
 
 /** Flutter's platform folder names. A folder outside this set is not a platform. */
 const PLATFORM_DIRS = ['android', 'ios', 'linux', 'macos', 'web', 'windows'];
@@ -57,7 +76,7 @@ const postGen = read(POST_GEN);
 // comments and quoted strings removed, and the phrase must sit in COMMAND
 // position — the same prose-vs-structure rule, applied to where the match is
 // allowed to happen, not only to what is stripped first.
-const ciRaw = read(CI);
+const ciRaw = CI === null ? null : read(CI);
 const ci = ciRaw === null ? null : ciRaw.replace(/^\s*#.*$/gm, '');
 
 /** A step's `working-directory:`, read at the step's own mapping indent so a
@@ -137,7 +156,7 @@ function anchoredTo(inv, dir) {
   return inv.segments.some((seg) => cd.test(seg));
 }
 if (postGen === null) problems.push(`${POST_GEN} is missing — nothing writes the platform claim.`);
-if (ciRaw === null) problems.push(`${CI} is missing — nothing builds a stamp.`);
+if (CI !== null && ciRaw === null) problems.push(`${CI} is missing — nothing builds a stamp.`);
 
 // The directory a stamped-app build has to run in, DERIVED from the vars file
 // the stamp lane actually feeds mason — never typed here. Rename the probe and

@@ -61,7 +61,12 @@ let seq = 0;
 
 const BRICK_APP = 'tooling/bricks/app/__brick__/apps/{{app_id}}';
 const POST_GEN = 'tooling/bricks/app/hooks/post_gen.dart';
-const CI = '.github/workflows/ci.yml';
+// ⏱ 2026-10-02 (ci-path-scope): the stamp is built in the brick lane's callee, and the
+// guard reads the workflow lane-map.json names as `lanes.brick.callee`, so a fixture
+// supplies both, and the callee is deliberately NOT ci.yml.
+const CI = '.github/workflows/lane-brick.yml';
+const LANE_MAP = 'tooling/ci/lane-map.json';
+const goodLaneMap = JSON.stringify({ lanes: { brick: { callee: CI } } });
 const PROBE_VARS = 'tooling/bricks/app/_probe_vars.json';
 
 const goodPostGen = `
@@ -143,10 +148,12 @@ function tree({
   brickPubspec = goodBrickPubspec,
   rootPubspec = goodRootPubspec,
   members = { 'packages/core': memberPubspec('nikatru_core'), 'apps/probe': memberPubspec('probe') },
+  laneMap = goodLaneMap,
 } = {}) {
   const root = join(TMP, `r${seq++}`);
   const files = { [POST_GEN]: postGen, [CI]: ci, [PROBE_VARS]: vars };
   if (rootPubspec !== null) files['pubspec.yaml'] = rootPubspec;
+  if (laneMap !== null) files[LANE_MAP] = laneMap;
   if (brickPubspec !== null) files[`${BRICK_APP}/pubspec.yaml`] = brickPubspec;
   for (const [dir, body] of Object.entries(members)) files[`${dir}/pubspec.yaml`] = body;
   for (const [f, body] of Object.entries(files)) {
@@ -199,6 +206,17 @@ describe('assert-stamp-platforms', () => {
     assert.equal(code, 1, out);
     assert.match(out, /COVERAGE LOST/);
     assert.match(out, /ZERO recognisable steps/);
+  });
+
+  // The guard follows the brick lane to its callee. A map that names none must
+  // not fall back to some other workflow and pass: the build would be asked of a
+  // file that builds no stamp. Both shapes are COVERAGE LOST, exit 2.
+  test('FAILS COVERAGE LOST when lane-map.json names no brick callee', () => {
+    for (const laneMap of [null, JSON.stringify({ lanes: { brick: { globs: [] } } })]) {
+      const { code, out } = run(tree({ laneMap }));
+      assert.equal(code, 2, out);
+      assert.match(out, /names no `lanes\.brick\.callee`/);
+    }
   });
 
   test('FAILS when the platform claim is emptied', () => {
