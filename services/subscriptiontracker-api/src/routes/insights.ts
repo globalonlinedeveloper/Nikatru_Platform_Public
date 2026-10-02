@@ -6,12 +6,16 @@
 // GET /v1/subscriptions/:id already serves one plan's payment_history and
 // price_history; a trend over every plan would be one request per plan. This
 // route is the same two tables, by user and by window, with the same NAMED
-// columns and the same currency rule, so the two readers cannot disagree about
+// columns, the same currency rule and the same "removed means removed" rule
+// (GET /:id 404s a soft-deleted row), so the two readers cannot disagree about
 // what a charge was:
 //   · payments      — payment_history rows with paid_at in the window, a NULL
 //                     currency served in its subscription's (GET /:id's rule:
 //                     the fan-out copies the row's price and writes no currency);
 //   · price_changes — price_change rows with changed_at in the window.
+// Both are of LIVE plans only (`deleted_at IS NULL`): a removed plan's charges
+// would otherwise stay in the trend until purgeExpired hard-deleted them, and
+// the same past month would show a different total weeks later.
 //
 // The window is the calendar month 11 months before today (UTC) to now, so a
 // client drawing "the last 12 months" has every point it needs and no more.
@@ -47,8 +51,9 @@ app.get('/', async (c) => {
       `SELECT p.id, p.subscription_id, p.user_id, p.amount, p.paid_at, p.updated_at,
               COALESCE(p.currency, s.currency) AS currency, p.source
          FROM payment_history p
-         LEFT JOIN subscriptions s
+         JOIN subscriptions s
            ON s.id = p.subscription_id AND s.user_id = p.user_id
+          AND s.deleted_at IS NULL
          WHERE p.user_id = ? AND p.paid_at >= ?
          ORDER BY p.paid_at DESC`,
     ).bind(userId, since),
@@ -58,8 +63,11 @@ app.get('/', async (c) => {
     c.env.APP_DB.prepare(
       `SELECT id, subscription_id, old_price, new_price, old_price_minor,
               new_price_minor, old_currency, new_currency, changed_at
-         FROM price_change
-         WHERE user_id = ? AND changed_at >= ?
+         FROM price_change pc
+         WHERE pc.user_id = ? AND pc.changed_at >= ?
+           AND EXISTS (SELECT 1 FROM subscriptions s
+                        WHERE s.id = pc.subscription_id AND s.user_id = pc.user_id
+                          AND s.deleted_at IS NULL)
          ORDER BY changed_at DESC`,
     ).bind(userId, since),
   );

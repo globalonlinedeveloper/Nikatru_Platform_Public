@@ -162,6 +162,23 @@ class ConsentNotRecordedFailure extends Failure {
             cause: cause);
 }
 
+/// The server kept answering [ConsentNotRecordedFailure] after
+/// [kMaxConsentRepairs] consent repairs that LANDED. Not retried under the
+/// artifact [consentId] names: [AnalyticsRecorder] keeps its queue, sends
+/// nothing more until a new decision replaces that artifact, and reports this
+/// through [AnalyticsRecorder.consentRepairFailure].
+class ConsentRepairExhaustedFailure extends Failure {
+  ConsentRepairExhaustedFailure({
+    required this.consentId,
+    required this.attempts,
+  }) : super('the server still holds no consent artifact for this install '
+            'after $attempts repairs that landed; delivery is stopped and the '
+            'queued events are kept');
+
+  final String consentId;
+  final int attempts;
+}
+
 /// The server's latest artifact for this install is a WITHDRAWAL. Not
 /// retryable: nothing collected under the grant this client still holds may
 /// land, so [AnalyticsRecorder] drops its queue rather than re-sending it.

@@ -318,6 +318,70 @@ void main() {
     );
 
     test(
+      'a 409 FOREVER after repairs that land: bounded, backed off, and said',
+      () async {
+        final InMemoryKeyValueStore store = InMemoryKeyValueStore();
+        final _Events events = _Events(
+          const Result<void>.err(ConsentNotRecordedFailure()),
+        );
+        final _Consent consent = _Consent(_ok);
+        final ConsentController controller = await _granted(store);
+        // The timer ON, short: the unbounded loop was the timer's re-arm.
+        final AnalyticsRecorder r = AnalyticsRecorder(
+          appId: 'subscriptiontracker',
+          anonId: 'install-1',
+          transport: events,
+          consent: controller,
+          consentTransport: consent,
+          queueStore: store,
+          batchSize: 2,
+          flushInterval: const Duration(milliseconds: 5),
+        );
+        addTearDown(r.dispose);
+
+        await r.log('first_launch');
+        await r.log('app_open');
+        // 5 + 10 + 20 ms of backoff, then far longer than an unbounded loop
+        // would need to post dozens of times.
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+
+        // One send, then one per landed repair; the repair after the last
+        // send is the one the bound refuses.
+        expect(events.sent, hasLength(1 + kMaxConsentRepairs));
+        expect(consent.sent, hasLength(1 + kMaxConsentRepairs));
+        expect(r.hasPendingFlush, isFalse, reason: 'nothing is re-armed');
+        expect(r.queuedCount, 2, reason: 'a 409 never costs consented events');
+        final ConsentRepairExhaustedFailure? f = r.consentRepairFailure;
+        expect(f, isNotNull, reason: 'the stop is reported, not silent');
+        expect(f!.attempts, kMaxConsentRepairs);
+        expect(
+          f.consentId,
+          controller.artifactOf(ConsentPurpose.analytics)!.consentId,
+        );
+
+        // A later log() under the same artifact sends nothing more.
+        await r.log('settings_open');
+        await r.flush();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(events.sent, hasLength(1 + kMaxConsentRepairs));
+
+        // A NEW decision is a new artifact: the bound starts over.
+        await controller.record(
+          ConsentPurpose.analytics,
+          granted: true,
+          policyVersion: '2026-10-02',
+          anonId: 'install-1',
+          now: DateTime.utc(2026, 10, 2),
+        );
+        expect(r.consentRepairFailure, isNull);
+        events.answer = _ok;
+        await r.flush();
+        expect(events.sent, hasLength(2 + kMaxConsentRepairs));
+        expect(r.queuedCount, 1, reason: 'one batch of two went');
+      },
+    );
+
+    test(
       'CONTROL: any other Err keeps the batch and does not touch the ack',
       () async {
         final InMemoryKeyValueStore store = InMemoryKeyValueStore();

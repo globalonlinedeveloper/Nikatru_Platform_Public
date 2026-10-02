@@ -53,6 +53,16 @@ const Duration kFlushInterval = Duration(seconds: 10);
 /// and recent behaviour is worth more than stale behaviour.
 const int kMaxQueuedEvents = 500;
 
+/// How many consent repairs in a row a 409 may trigger before the recorder
+/// stops. A repair that LANDS and still meets 409 (the server keys the artifact
+/// by something this client does not send, e.g. an `anonId` that differs from
+/// the artifact's) would otherwise re-post the artifact and the batch on every
+/// timer, forever. Each repair re-arms after [kFlushInterval] doubled per
+/// attempt (10 s, 20 s, 40 s); past the bound the queue is KEPT, nothing more is
+/// sent under that artifact, and [AnalyticsRecorder.consentRepairFailure] says
+/// why. A new decision (a new `consentId`) or a delivery starts the count over.
+const int kMaxConsentRepairs = 3;
+
 /// The real [Analytics]: consent-gated, offline-queued, batched.
 ///
 /// ## Consent
@@ -157,11 +167,30 @@ class AnalyticsRecorder implements Analytics {
   /// deleted — see [flush].
   int _epoch = 0;
 
+  /// Consecutive 409s answered by a repair that landed; reset by a delivery.
+  int _repairStreak = 0;
+
+  /// Set when [_repairStreak] reached [kMaxConsentRepairs] under the artifact
+  /// it names; [flush] sends nothing more under that `consentId`.
+  ConsentRepairExhaustedFailure? _repairFailure;
+
   /// Events waiting to be delivered (test/diagnostic view).
   int get queuedCount => _queue.length;
 
   /// Whether the server refused this build (test/diagnostic view).
   bool get refused => _refused;
+
+  /// Why delivery has STOPPED under the analytics artifact in force: the server
+  /// kept answering 409 after [kMaxConsentRepairs] repairs that landed. Null
+  /// while delivery is live. The queue is kept; this is the truthful error a
+  /// diagnostic surface shows instead of a silent retry loop.
+  ConsentRepairExhaustedFailure? get consentRepairFailure {
+    final ConsentRepairExhaustedFailure? f = _repairFailure;
+    if (f == null) return null;
+    final String? inForce =
+        _consent.artifactOf(ConsentPurpose.analytics)?.consentId;
+    return f.consentId == inForce ? f : null;
+  }
 
   /// Whether a time-based flush is currently armed (test/diagnostic view).
   ///
@@ -268,10 +297,10 @@ class AnalyticsRecorder implements Analytics {
   /// event and must not be pushed back), the queue is empty (nothing to ship),
   /// the recorder is disposed, or [flushInterval] is not positive (the timer is
   /// switched off by construction).
-  void _armFlushTimer() {
+  void _armFlushTimer({Duration? after}) {
     if (_disposed || _flushTimer != null || _queue.isEmpty) return;
     if (flushInterval <= Duration.zero) return;
-    _flushTimer = Timer(flushInterval, () {
+    _flushTimer = Timer(after ?? flushInterval, () {
       // Cleared BEFORE the flush so `hasPendingFlush` never reports an armed
       // deadline for a timer that has already fired, and so the flush's own
       // re-arm in `finally` is not swallowed by a stale non-null handle.
@@ -316,6 +345,9 @@ class AnalyticsRecorder implements Analytics {
     if (_consent.statusOf(ConsentPurpose.analytics) != ConsentStatus.granted) {
       return;
     }
+    // The repair bound was spent under THIS artifact: nothing more goes until a
+    // new decision replaces it (see [kMaxConsentRepairs]).
+    if (consentRepairFailure != null) return;
     _flushing = true;
     final int epoch = _epoch;
 
@@ -358,6 +390,8 @@ class AnalyticsRecorder implements Analytics {
         if (epoch != _epoch) return;
         _removeSent(batch);
         delivered = true;
+        _repairStreak = 0;
+        _repairFailure = null;
         await _persist();
       } else if (r case Err<void>(failure: UnreleasedBuildFailure())) {
         // ⏱ 2026-09-26 — an Err that is NOT retried (403 below is the other,
@@ -380,8 +414,22 @@ class AnalyticsRecorder implements Analytics {
         // 409 — the server has no artifact for this install, whatever this
         // process believed. Keep the queue, forget the acknowledgement, and
         // post the artifact again now; the batch follows once it lands.
-        await _consent.forgetAcknowledgement(ConsentPurpose.analytics);
-        repaired = await _ensureConsentAcknowledged();
+        // BOUNDED: a 409 that outlives [kMaxConsentRepairs] landed repairs is
+        // not one a further re-post will fix, so it stops and says so.
+        if (_repairStreak >= kMaxConsentRepairs) {
+          final String? consentId =
+              _consent.artifactOf(ConsentPurpose.analytics)?.consentId;
+          if (consentId != null) {
+            _repairFailure = ConsentRepairExhaustedFailure(
+              consentId: consentId,
+              attempts: _repairStreak,
+            );
+          }
+        } else {
+          await _consent.forgetAcknowledgement(ConsentPurpose.analytics);
+          repaired = await _ensureConsentAcknowledged();
+          if (repaired) _repairStreak++;
+        }
       }
       // On any other Err: keep everything. The next log() or flush()
       // retries, and the server dedups on event_id, so a retry after a lost
@@ -400,8 +448,15 @@ class AnalyticsRecorder implements Analytics {
       // batch ready to go now, so it is armed to drain rather than left waiting
       // on a log that may never come. A repaired 409 is the same case: the
       // batch it kept can go now, and only a SUCCESSFUL repair re-arms, so a
-      // consent POST that keeps failing is not a fixed-interval retry loop.
-      if (delivered || repaired) _armFlushTimer();
+      // consent POST that keeps failing is not a fixed-interval retry loop. A
+      // consent POST that keeps SUCCEEDING while the batch keeps meeting 409
+      // is not one either: each repair backs off (doubling) and the streak is
+      // bounded by [kMaxConsentRepairs].
+      if (delivered) {
+        _armFlushTimer();
+      } else if (repaired) {
+        _armFlushTimer(after: flushInterval * (1 << (_repairStreak - 1)));
+      }
     }
   }
 

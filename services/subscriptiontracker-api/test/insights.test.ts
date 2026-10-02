@@ -114,6 +114,32 @@ describe('X09 — the price edits a rise alert is computed from', () => {
   });
 });
 
+describe('removed means removed — a soft-deleted plan is not in the trend', () => {
+  it("serves neither the charges nor the price edits of a REMOVED plan", async () => {
+    const kept = await create();
+    const gone = await create(U, { name: 'Netflix', price: 199, price_minor: 19900 });
+    const today = todayYmd();
+    expect((await pay(kept, today)).status).toBe(201);
+    expect((await pay(gone, today)).status).toBe(201);
+    for (const id of [kept, gone]) {
+      const res = await subs(U, `/v1/subscriptions/${id}`, {
+        method: 'PATCH',
+        body: { price: 999, price_minor: 99900, currency: 'INR' },
+      });
+      expect(res.status).toBe(200);
+    }
+    // Green control: before the removal, both plans are served.
+    const before = await read();
+    expect(before.payments.map((p) => p.subscription_id).sort()).toEqual([kept, gone].sort());
+    expect(before.price_changes.map((c) => c.subscription_id).sort()).toEqual([kept, gone].sort());
+
+    expect((await subs(U, `/v1/subscriptions/${gone}`, { method: 'DELETE' })).status).toBe(200);
+    const after = await read();
+    expect(after.payments.map((p) => p.subscription_id)).toEqual([kept]);
+    expect(after.price_changes.map((c) => c.subscription_id)).toEqual([kept]);
+  });
+});
+
 describe('the route is mounted', () => {
   it('index.ts mounts GET /v1/insights (behind the /v1 auth group)', () => {
     const mounted = app.routes.map((r) => `${r.method} ${r.path}`);
