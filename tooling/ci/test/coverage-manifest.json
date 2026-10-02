@@ -128,6 +128,15 @@
   "auth-cutover-preflight.test.mjs":
     100,
 
+  "autopilot-issue-queue.test.mjs":
+    13,
+
+  "autopilot-queue-doc.test.mjs":
+    2,
+
+  "autopilot-queue-migrate.test.mjs":
+    9,
+
   "availability.test.mjs":
     33,
 
