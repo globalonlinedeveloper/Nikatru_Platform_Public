@@ -188,7 +188,9 @@ export function profileValues(profile) {
 
 /** `text` with every PS region (markers and body) removed. */
 export function withoutRegions(text) {
-  return text.replace(/<!-- PS:([a-z-]+) -->[\s\S]*?<!-- \/PS:\1 -->/g, '');
+  // Split on the markers rather than replace a `<!--…-->` span (CodeQL
+  // js/incomplete-multi-character-sanitization): the even pieces lie outside every region.
+  return text.split(/<!-- \/?PS:[a-z-]+ -->/).filter((_, i) => i % 2 === 0).join('');
 }
 
 /**

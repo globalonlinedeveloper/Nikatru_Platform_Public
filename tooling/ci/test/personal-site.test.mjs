@@ -244,10 +244,13 @@ describe('every personal fact renders from the profile (site-rs-wave2)', () => {
   test('the CV: one page from the same source, no template slot, served at /cv again', () => {
     const cv = cvPage(OWNER, CTX, MSME);
     assert.equal(read(CV_PAGE), cv, 'the committed cv.html is the generator output');
-    assert.doesNotMatch(cv.replace(/<!--[\s\S]*?-->/g, ''), /\[[A-Z][A-Za-z]*(?:[ /&—-]+[A-Za-z]+)*\]/, 'a template slot survived');
+    // Text outside comments, by SPLITTING on the delimiters (a regex replace of `<!--…-->` is an
+    // incomplete sanitiser to CodeQL, js/incomplete-multi-character-sanitization).
+    const outsideComments = cv.split('<!--').map((part, i) => (i === 0 ? part : part.slice(part.indexOf('-->') + 3))).join('');
+    assert.doesNotMatch(outsideComments, /\[[A-Z][A-Za-z]*(?:[ /&—-]+[A-Za-z]+)*\]/, 'a template slot survived');
     assert.match(cv, /<link rel="canonical" href="https:\/\/rajasekarselvam\.com\/cv">/);
     assert.match(cv, /@media print\{/);
-    assert.doesNotMatch(cv.replace(/<!-- FACT:([a-z-]+) -->[\s\S]*?<!-- \/FACT:\1 -->/g, ''), /\b(19|20)\d{2}\b/, 'a year outside the company FACT region');
+    assert.doesNotMatch(cv.split(/<!-- \/?FACT:[a-z-]+ -->/).filter((_, i) => i % 2 === 0).join(''), /\b(19|20)\d{2}\b/, 'a year outside the company FACT region');
     assert.doesNotMatch(read('sites/rajasekarselvam/_redirects'), /^\/cv/m, '/cv still redirects home');
     assert.match(read(SITEMAP), /<loc>https:\/\/rajasekarselvam\.com\/cv<\/loc>/);
   });
