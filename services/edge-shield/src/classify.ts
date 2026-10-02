@@ -112,6 +112,33 @@ export function normalisePath(pathname: string): string {
 
 export type Route = { kind: 'jwks' } | { kind: 'limit'; cls: ShieldClass } | { kind: 'pass' };
 
+/**
+ * ⏱ 2026-10-02 — the GoTrue POSTs that are SAFE TO SEND TWICE, so an origin fault
+ * on one is retried (src/index.ts). Measured: a request lost between Cloudflare
+ * and the tunnel comes back as a 520 after ~13-15 s, with no line in Box C's
+ * GoTrue or envoy log (2026-09-30 15:30:59Z `POST /logout`, 2026-10-01 15:00:51Z
+ * `POST /admin/generate_link`, which reddened main's E2E). A 520 cannot say
+ * whether the origin acted, so only a request whose repeat changes nothing the
+ * caller relies on is resent:
+ *   · `/logout` — ending a session twice ends it once;
+ *   · `/admin/generate_link` — service-role only; a second call mints a link
+ *     that replaces the first, and the caller receives the second.
+ * NEVER the refresh grant (a replayed refresh token can trip reuse detection
+ * and end the session), `/verify` (single use), or anything that sends mail or
+ * creates an account (`/otp`, `/signup`, `/recover`, `/resend`, `/magiclink`).
+ */
+const RETRY_SAFE_AUTH_POSTS = new Set(['/logout', '/admin/generate_link']);
+
+/** Whether an origin fault (520/522/524) on this request may be retried once:
+ *  any GET or HEAD the shield handles, and the GoTrue POSTs above. Pure. */
+export function retryableOnOriginFault(url: URL, method: string): boolean {
+  const m = method.toUpperCase();
+  if (m === 'GET' || m === 'HEAD') return true;
+  if (m !== 'POST' || url.hostname.toLowerCase() !== AUTH_HOST) return false;
+  const path = normalisePath(url.pathname);
+  return path.startsWith('/auth/v1/') && RETRY_SAFE_AUTH_POSTS.has(path.slice('/auth/v1'.length));
+}
+
 /** What the shield does with a request. Pure: host, path, query and method only. */
 export function classify(url: URL, method: string): Route {
   const m = method.toUpperCase();

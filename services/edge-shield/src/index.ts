@@ -13,7 +13,9 @@
 //   1. passes every request to the origin UNCHANGED — method, headers, body,
 //      streaming — with `fetch(request)`, and adds exactly one response header,
 //      `x-nikatru-shield: 1`, which ops-watch reads to prove the shield is still
-//      in path (tooling/ops/check-edge-shield.mjs);
+//      in path (tooling/ops/check-edge-shield.mjs). It resends a request ONCE
+//      when the origin faults (520/522/524) and repeating it is safe
+//      (passThrough() below, 2026-10-02);
 //   2. counts the requests of four classes (src/classify.ts) against one
 //      GLOBAL cap each, and refuses one over its cap with Retry-After
 //      (src/limit.ts): 429, or 503 for the refresh grant, which the auth SDK
@@ -36,7 +38,7 @@
 // GoTrue's own per-IP limiter counts per user, not per Worker.
 // test/shield.test.ts holds that the forwarded request is the incoming one.
 // ─────────────────────────────────────────────────────────────────────────────
-import { AUTH_HOST, JWKS_PATH, classify } from './classify';
+import { AUTH_HOST, JWKS_PATH, classify, retryableOnOriginFault } from './classify';
 import { SHIELD_HEADER, admit } from './limit';
 import type { Env } from './types';
 
@@ -258,6 +260,70 @@ async function jwks(ctx: ExecutionContext): Promise<Response> {
   return served(fresh, 'MISS', 0);
 }
 
+/**
+ * ⏱ 2026-10-02 — ONE RETRY ON AN ORIGIN FAULT. Cloudflare answers 520 (the
+ * origin closed or reset the connection), 522 (it never accepted one) or 524 (it
+ * accepted and never answered) when a request is lost between the edge and the
+ * tunnel. Measured: two 520s on auth-api in 24 h (2026-09-30 15:30:59Z
+ * `POST /logout` after 14.8 s, 2026-10-01 15:00:51Z `POST /admin/generate_link`
+ * after 12.9 s), neither with any line in Box C's GoTrue or envoy log, and the
+ * second reddened main's E2E. A request that never arrived is worth asking
+ * again; so a fault is retried ONCE, only for a request whose repeat is safe
+ * (classify.ts `retryableOnOriginFault`), and only inside [ORIGIN_RETRY_BUDGET_MS]
+ * from the first attempt's start. A retry that fails, throws or runs out of
+ * budget returns the FIRST answer, so the client sees exactly what it saw before.
+ * Each retry logs `shield_origin_retry`: a 52x on auth-api with no Box C line is
+ * the lost-request signature (tooling/ops/register.json, the shield's row).
+ */
+export const ORIGIN_FAULT_STATUSES: ReadonlySet<number> = new Set([520, 522, 524]);
+// @ceiling none — a latency budget for one request and its one retry, not a platform resource
+export const ORIGIN_RETRY_BUDGET_MS = 30_000;
+/** Below this much budget left, a retry could not plausibly answer; the first answer stands. */
+// @ceiling none — a latency floor for one subrequest, not a platform resource
+export const ORIGIN_RETRY_MIN_MS = 2_000;
+
+/** The path as logged: ids out, so a log line names a route and never an account. */
+function loggedPath(url: URL): string {
+  return url.pathname.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<id>');
+}
+
+async function passThrough(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  if (!retryableOnOriginFault(url, request.method)) return withShield(await fetch(request));
+  // The spare is taken BEFORE the first send: a sent body cannot be read again.
+  const spare = request.clone();
+  const started = Date.now();
+  const first = await fetch(request);
+  if (!ORIGIN_FAULT_STATUSES.has(first.status)) {
+    spare.body?.cancel().catch(() => {});
+    return withShield(first);
+  }
+  const left = ORIGIN_RETRY_BUDGET_MS - (Date.now() - started);
+  const log = (second: number | string) =>
+    console.log(
+      JSON.stringify({ event: 'shield_origin_retry', host: url.hostname, method: request.method, path: loggedPath(url), first: first.status, second, firstMs: Date.now() - started }),
+    );
+  if (left < ORIGIN_RETRY_MIN_MS) {
+    log('no budget');
+    spare.body?.cancel().catch(() => {});
+    return withShield(first);
+  }
+  let second: Response;
+  try {
+    second = await fetch(spare, { signal: AbortSignal.timeout(left) });
+  } catch (err) {
+    log(err instanceof Error ? err.name : 'threw');
+    return withShield(first);
+  }
+  log(second.status);
+  if (ORIGIN_FAULT_STATUSES.has(second.status)) {
+    second.body?.cancel().catch(() => {});
+    return withShield(first);
+  }
+  first.body?.cancel().catch(() => {});
+  return withShield(second);
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     ctx.passThroughOnException();
@@ -267,6 +333,6 @@ export default {
       const refused = await admit(route.cls, env);
       if (refused) return refused;
     }
-    return withShield(await fetch(request));
+    return passThrough(request);
   },
 } satisfies ExportedHandler<Env>;

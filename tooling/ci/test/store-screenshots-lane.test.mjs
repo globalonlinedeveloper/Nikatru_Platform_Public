@@ -1527,6 +1527,54 @@ describe('tooling/e2e/magic_link.mjs — the one minter', () => {
     );
   });
 
+  // ⏱ 2026-10-02 — main's E2E (#36880654202) died on a 520 from generate_link
+  // that never reached Box C: one retry on a 52x, and the log says so.
+  /** A fetch that answers each call from [statuses] in turn. */
+  const sequence = (statuses) => {
+    const calls = [];
+    const f = async (url, init) => {
+      const status = statuses[calls.length];
+      calls.push({ url, init });
+      return { ok: status >= 200 && status < 300, status, json: async () => ({ hashed_token: HEX56 }), text: async () => 'fault' };
+    };
+    return { f, calls };
+  };
+  const quiet = { sleep: async () => {} };
+
+  test('a 520 from generate_link is retried ONCE, the retry is named in the log, and the second token is returned', async () => {
+    for (const fault of [520, 522, 524]) {
+      const { f, calls } = sequence([fault, 200]);
+      const lines = [];
+      const got = await mintMagicLinkTokenHash({ url: 'https://auth-api.nikatru.com', serviceKey: 'k', email: 'e', fetchImpl: f, log: (l) => lines.push(l), ...quiet });
+      assert.equal(got, HEX56);
+      assert.equal(calls.length, 2);
+      assert.deepEqual(calls[1].init.body, calls[0].init.body, 'the same mint, for the same address');
+      assert.equal(lines.length, 1);
+      assert.match(lines[0], new RegExp(`HTTP ${fault}, an origin fault .*retrying once`));
+      assert.doesNotMatch(lines[0], /Bearer|k\b.*k\b/);
+    }
+  });
+
+  test('🔴 two 52x in a row are refused with the second status, after exactly two requests', async () => {
+    const { f, calls } = sequence([520, 524]);
+    await assert.rejects(
+      mintMagicLinkTokenHash({ url: 'https://auth-api.nikatru.com', serviceKey: 'k', email: 'e', fetchImpl: f, log: () => {}, ...quiet }),
+      (e) => e instanceof MagicLinkRefused && /generate_link failed: HTTP 524/.test(e.message),
+    );
+    assert.equal(calls.length, 2);
+  });
+
+  test('🔴 a definite refusal is never retried: a 500, 502 or 403 is ONE request', async () => {
+    for (const status of [500, 502, 403]) {
+      const { f, calls } = sequence([status, 200]);
+      await assert.rejects(
+        mintMagicLinkTokenHash({ url: 'https://auth-api.nikatru.com', serviceKey: 'k', email: 'e', fetchImpl: f, log: () => {}, ...quiet }),
+        (e) => e instanceof MagicLinkRefused && new RegExp(`HTTP ${status}`).test(e.message),
+      );
+      assert.equal(calls.length, 1);
+    }
+  });
+
   test('🔴 an answer with no hashed_token is refused, naming the keys it had', async () => {
     const { f } = fakeFetch(200, { action_link: 'x', email_otp: '1' });
     await assert.rejects(
