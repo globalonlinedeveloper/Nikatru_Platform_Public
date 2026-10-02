@@ -859,9 +859,13 @@ const REQUIRED_COVERAGE = [
     // ⏱ 2026-10-01 · club apply-st on ST-N6 (#1080): RefreshOnResume on top —
     // read off the merged tree: `33 of 33 … from 5 a11y test file(s) across 73
     // case(s)`.
-    surfaces: 33,
+    // ⏱ 2026-10-01 · ST-SETTINGS (SE-03) on club apply-st: 33 -> 34 surfaces,
+    // 73 -> 75 cases — the chassis DevicesSection, swept (`a11y: devices`,
+    // light + dark kPhone). Read off the merged tree: `34 of 34 … from 5 a11y
+    // test file(s) across 75 case(s)`.
+    surfaces: 34,
     a11yFiles: 5,
-    cases: 73,
+    cases: 75,
     label:
       'the chassis SCREEN BODIES [ADR 067 decision 2 / ADR 071] — the seven auth screens plus the ' +
       'money/settings bodies and the app shell, mounted by every stamped app, all seventeen swept',

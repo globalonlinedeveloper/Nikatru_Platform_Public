@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nikatru_chassis_screens/firstrun/onboarding_screen.dart';
 import 'package:nikatru_chassis_screens/firstrun/setup_steps_view.dart';
 import 'package:nikatru_chassis_screens/monetization/manage_plan_screen.dart';
+import 'package:nikatru_chassis_screens/settings/devices_section.dart';
 import 'package:nikatru_chassis_screens/monetization/paywall_screen.dart';
 import 'package:nikatru_chassis_screens/settings/help_section.dart';
 import 'package:nikatru_chassis_screens/settings/report_content_dialog.dart';
@@ -1049,6 +1050,80 @@ void main() {
         handle.dispose();
       }
     });
+  });
+
+  // ── DevicesSection (SE-03, 2026-10-01) ───────────────────────────────────
+  // This device first and marked, one other device with its "Sign out this
+  // device" control — the one activatable node, which must be labelled.
+  group('a11y: devices', () {
+    final List<DeviceSession> two = <DeviceSession>[
+      const DeviceSession(id: 'here', current: true, device: 'Chrome on Linux'),
+      DeviceSession(
+        id: 'phone',
+        current: false,
+        device: 'Safari on iPhone',
+        lastActiveAt: DateTime.utc(2026, 9, 30),
+      ),
+    ];
+    testWidgets('light, kPhone', (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      try {
+        await pumpForA11y(
+          tester,
+          kPhone,
+          Scaffold(
+            body: ListView(
+              children: <Widget>[
+                DevicesSection(
+                  load: () async => Result<List<DeviceSession>>.ok(two),
+                  revoke: (String id) async => const Result<void>.ok(null),
+                ),
+              ],
+            ),
+          ),
+          brightness: Brightness.light,
+        );
+        // The list is read on demand (review of #1129, finding 4).
+        await tester.tap(find.byKey(DevicesSection.show));
+        await tester.pumpAndSettle();
+        expectSweepHadSubjects(tester, 'devices', tappable: 1, labelled: 4);
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      } finally {
+        handle.dispose();
+      }
+    }, variant: kTapTargetPlatforms);
+
+    testWidgets('dark, kPhone', (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      try {
+        await pumpForA11y(
+          tester,
+          kPhone,
+          Scaffold(
+            body: ListView(
+              children: <Widget>[
+                DevicesSection(
+                  load: () async => Result<List<DeviceSession>>.ok(two),
+                  revoke: (String id) async => const Result<void>.ok(null),
+                ),
+              ],
+            ),
+          ),
+          brightness: Brightness.dark,
+        );
+        // The list is read on demand (review of #1129, finding 4).
+        await tester.tap(find.byKey(DevicesSection.show));
+        await tester.pumpAndSettle();
+        expectSweepHadSubjects(tester, 'devices', tappable: 1, labelled: 4);
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
+      } finally {
+        handle.dispose();
+      }
+    }, variant: kTapTargetPlatforms);
   });
 }
 

@@ -74,6 +74,11 @@ class InMemoryAuthRepository implements core.AuthRepository {
   /// assertion from a button proven not to crash.
   int verificationResends = 0;
 
+  /// Every address [updateEmail] has been asked to move to, newest last. The
+  /// account's own address does not change: the real provider moves it only
+  /// once the mailed confirmation is followed, and nothing here follows it.
+  final List<String> emailChangesRequested = <String>[];
+
   /// Every password [updatePassword] has been asked to set, newest last.
   ///
   /// The VALUES, not a count, and the difference is a real defect class: a
@@ -81,6 +86,10 @@ class InMemoryAuthRepository implements core.AuthRepository {
   /// reaches the seam exactly once either way, so a counter cannot tell the two
   /// apart. This can.
   final List<String> passwordsSet = <String>[];
+
+  /// The [updatePassword] calls' current passwords, in order (null = none
+  /// sent) — the settings change must send one; the reset screen must not.
+  final List<String?> currentPasswordsSent = <String?>[];
 
   /// The scope of every [signOut] that has reached this seam, newest last.
   ///
@@ -276,6 +285,19 @@ class InMemoryAuthRepository implements core.AuthRepository {
     );
   }
 
+  /// SE-02: records the request and changes nothing — see
+  /// [emailChangesRequested].
+  @override
+  Future<core.AuthUser> updateEmail({required String newEmail}) async {
+    final core.AuthUser? current = _user;
+    if (current == null) {
+      throw core.AuthFailure('You are signed out. Sign in and try again.');
+    }
+    emailChangesRequested.add(newEmail.trim());
+    _events.add(core.AuthEvent(core.AuthEventKind.userUpdated, current));
+    return current;
+  }
+
   /// Sets the password, for real — within the limits of a class that never
   /// validates one.
   ///
@@ -291,8 +313,14 @@ class InMemoryAuthRepository implements core.AuthRepository {
   /// `signedIn` would still be holding the user here; one that cleared on
   /// `userUpdated` would throw them off the success screen the instant the save
   /// landed. Naming the event correctly is what lets the gate do neither.
+  ///
+  /// [currentPassword] is recorded in [currentPasswordsSent] and not judged:
+  /// this demo door keeps no password to compare it with.
   @override
-  Future<core.AuthUser> updatePassword({required String newPassword}) async {
+  Future<core.AuthUser> updatePassword({
+    required String newPassword,
+    String? currentPassword,
+  }) async {
     final core.AuthUser? current = _user;
     if (current == null) {
       throw core.AuthFailure('Your reset link is no longer valid.');
@@ -307,6 +335,7 @@ class InMemoryAuthRepository implements core.AuthRepository {
       );
     }
     passwordsSet.add(newPassword);
+    currentPasswordsSent.add(currentPassword);
     _changes.add(current);
     _events.add(core.AuthEvent(core.AuthEventKind.userUpdated, current));
     return current;

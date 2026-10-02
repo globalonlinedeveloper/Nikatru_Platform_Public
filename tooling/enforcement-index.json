@@ -860,6 +860,7 @@
       ".github/workflows/deploy-workers.yml#edge-shield",
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/extensions.yml#store-publish",
+      ".github/workflows/migrate-platform-db.yml#migrate",
       ".github/workflows/rollback.yml#rollback",
       ".github/workflows/submit-play.yml#submit",
       ".github/workflows/submit-snap.yml#submit",
@@ -3173,7 +3174,8 @@
       ".github/workflows/deploy-web.yml#site",
       ".github/workflows/deploy-workers.yml#app-worker",
       ".github/workflows/deploy-workers.yml#edge-shield",
-      ".github/workflows/deploy-workers.yml#platform"
+      ".github/workflows/deploy-workers.yml#platform",
+      ".github/workflows/migrate-platform-db.yml#migrate"
     ],
     "kind": "guard",
     "ref": "tooling/ci/plan-deploy.mjs",
@@ -3740,6 +3742,7 @@
     "invokedBy": [
       ".github/workflows/deploy-workers.yml#app-worker",
       ".github/workflows/deploy-workers.yml#platform",
+      ".github/workflows/migrate-platform-db.yml#migrate",
       ".github/workflows/ops-watch.yml#heartbeats"
     ],
     "kind": "script",
@@ -3980,7 +3983,6 @@
       ".github/workflows/deploy-workers.yml#platform",
       ".github/workflows/extensions.yml#release",
       ".github/workflows/extensions.yml#store-publish",
-      ".github/workflows/rollback.yml#rollback",
       ".github/workflows/submit-play.yml#submit"
     ],
     "kind": "script",
@@ -4317,6 +4319,7 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-dryrun",
       ".github/workflows/ci.yml#content-gate",
       ".github/workflows/ci.yml#guard-tests",
       ".github/workflows/extensions-ci.yml#core",

@@ -274,6 +274,11 @@ const LIMB5_FILES = [
   'services/platform/src/routes/calendar.ts',
   'packages/core/lib/src/reminder_channels_transport.dart',
   'packages/api_client/lib/src/dio_reminder_channels_transport.dart',
+  // ⏱ 2026-10-01 · ST-SETTINGS (SE-03): the sessions-list body pin and the
+  // sessions-revoke status pin — the route, core's status mapping, the client.
+  'services/platform/src/routes/sessions.ts',
+  'packages/core/lib/src/sessions_transport.dart',
+  'packages/api_client/lib/src/dio_sessions_transport.dart',
   // ⏱ 2026-10-01 · club apply-st (T12, IN-06): the `vector` pin of GET
   // /v1/fx/latest — the shared vector, both tests that read it, the transport
   // and the released reader.
@@ -722,7 +727,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
   // The numbers are PINNED rather than derived on purpose — a derived count
   // agrees with any register, including one that quietly stopped enumerating —
   // so they move in the same change as the routes that moved them.
-  test('PASSES on the real tree: 39 routes, 21 pinned, 18 printed gaps', () => {
+  test('PASSES on the real tree: 39 routes, 23 pinned, 16 printed gaps', () => {
     const r = run(makeRepo());
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /wire health — deploy-smoke fields/);
@@ -755,7 +760,10 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-09-25: 14 -> 17 routes, 4 -> 7 gaps with the three extension routes.
     // ⏱ 2026-09-25 (AUTH-REVOKE-AT-WORKERS): 17 -> 21 routes, 7 -> 11 gaps with the four /v1/sessions routes, gaps until the web PR ships their client.
     // ⏱ 2026-09-28 (ST-T4a): 21 -> 28 routes, 11 -> 18 gaps with the seven reminder and calendar routes, gaps until ST-T4b ships their client (and three have no app client by construction).
-    assert.match(r.out, /GAP {2}wire sessions-list/);
+    // ⏱ 2026-10-01 (ST-SETTINGS, SE-03): the list and the one-session revoke got their client and are PINNED; the two POSTs stay gaps.
+    assert.match(r.out, /wire sessions-list — body pinned/);
+    assert.match(r.out, /wire sessions-revoke — status set pinned/);
+    assert.match(r.out, /GAP {2}wire sessions-revoke-all/);
     // ⏱ 2026-09-28 (ST-I3): 28 -> 29 routes, 18 -> 19 gaps with GET /v1/fx/latest, a gap until its transport ships with the first consumer.
     // ⏱ 2026-10-01 (club apply-st, T12): the transport shipped, so 19 -> 20 pinned and 18 -> 17 gaps — a `vector` pin.
     assert.match(r.out, /wire fx-latest — pinned by the shared vector contracts\/fx\/latest\.v1\.example\.json: .*client reads \{asOf, base, rates, source\}/);
@@ -763,7 +771,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-09-30 (ADR no.NNN): 35 -> 37 routes, 17 -> 19 pinned — the two attestation endpoints arrive as `sdk` pins with their client.
     // ⏱ 2026-10-01: 37 -> 39 routes, 19 -> 20 pinned, 18 -> 19 gaps — the desktop hand-off: the exchange an sdk pin, the mint (plain JS caller) a gap.
     // ⏱ 2026-10-01 · club apply-st on main: + fx-latest's vector pin — 20 -> 21 pinned, 19 -> 18 gaps.
-    assert.match(r.out, /39 shared route\(s\) from tooling\/platform-register\.json: 21 pinned, 18 printed gap/); // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
+    assert.match(r.out, /39 shared route\(s\) from tooling\/platform-register\.json: 23 pinned, 16 printed gap/); // ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +2 pinned (/v1/sessions list + revoke), -2 gaps. // ⏱ 2026-09-18: POST /v1/report joined as a gap, then became a body pin the same day when the chassis transport landed (O-PLAY-AI-CONTENT-REPORTING). ⏱ 2026-09-24: PUT /v1/account/provider-token joined as a request pin (O-GOOGLE-SIGN-IN-NOT-BUILT).
     // ⏱ 2026-09-28 (ST-N1): 29 -> 33 routes, 19 -> 23 gaps with the four /v1/auth/native routes, gaps until ST-T7b ships their client.
     // ⏱ 2026-09-28 (ST-T7b): 10 -> 14 pinned, 23 -> 19 gaps — the client shipped,
     // so the four gaps became `sdk` pins (gotrue-dart's own wire, pinned at its base).
@@ -1233,7 +1241,7 @@ describe('assert-analytics-contract — limb 5, every shared route has a wire pi
     // ⏱ 2026-09-30 (ADR no.NNN): 16 -> 18 pinned, the two attestation endpoints.
     // ⏱ 2026-10-01: 18 -> 19 pinned, 18 -> 19 gaps — the hand-off exchange (sdk pin) and its mint (gap).
     // ⏱ 2026-10-01 · club apply-st on main: + fx-latest's vector pin — 19 -> 20 pinned, 19 -> 18 gaps.
-    assert.match(r.out, /20 pinned, 18 printed gap/); // ⏱ 2026-09-28 (ST-T7b): 9 -> 13 pinned, 23 -> 19 gaps, the four native credential routes became sdk pins. ⏱ 2026-09-28: 11 -> 18 gaps, the seven ST-T4a reminder routes. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
+    assert.match(r.out, /22 pinned, 16 printed gap/); // ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +2 pinned, -2 gaps (/v1/sessions). // ⏱ 2026-09-28 (ST-T7b): 9 -> 13 pinned, 23 -> 19 gaps, the four native credential routes became sdk pins. ⏱ 2026-09-28: 11 -> 18 gaps, the seven ST-T4a reminder routes. ⏱ 2026-09-18: POST /v1/report is now a body pin, not a gap (O-PLAY-AI-CONTENT-REPORTING chassis half). ⏱ 2026-09-24: +1 for the provider-token request pin.
   });
 
   test('FAILS when the brick drops a key the server still requires', () => {
