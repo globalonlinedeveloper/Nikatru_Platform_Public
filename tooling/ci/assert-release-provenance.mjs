@@ -898,6 +898,10 @@ if (gateVerdictJobs.length === 1) {
     seen.add(n);
     const d = wf.jobs.get(n);
     if (d) stack.push(...d.needs);
+    // ⏱ 2026-10-01 [ADR 095] A need that is a CALL job (lane-apps, lane-brick) concludes
+    // on its callee's jobs, so each child (`<call>/<job>`, parseResolvedWorkflows) is a
+    // constituent too: its red is the call's red, and the call's red is the gate's.
+    for (const c of wf.jobs.values()) if (c.calledBy === n) stack.push(c.name);
   }
   gateConstituents.set(wf.rel, seen);
 } else if (gateVerdictJobs.length > 1) {

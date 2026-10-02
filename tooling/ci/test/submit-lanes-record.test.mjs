@@ -131,11 +131,12 @@ describe('submit lanes — every run is recorded, with its mode (the REAL tree)'
     assert.equal(recorded, invocations);
   });
 
-  test('ci.yml runs the submit scripts\' dry runs and is NOT a lane — it is not counted', () => {
-    const ci = readFileSync(join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
-    assert.match(ci, /node tooling\/release\/submit-[a-z-]+\.mjs --dry-run/, 'ci.yml no longer runs a submit script — this case would hold nothing');
+  // ⏱ 2026-10-01: the dry runs (app-dryrun) run in lane-apps.yml, ci.yml's apps lane callee (ADR 095).
+  test('lane-apps.yml runs the submit scripts\' dry runs and is NOT a lane — it is not counted', () => {
+    const ci = readFileSync(join(ROOT, '.github', 'workflows', 'lane-apps.yml'), 'utf8');
+    assert.match(ci, /node tooling\/release\/submit-[a-z-]+\.mjs --dry-run/, 'lane-apps.yml no longer runs a submit script — this case would hold nothing');
     const lanes = releaseLanes().map((l) => l.workflow);
-    assert.ok(!lanes.includes('ci.yml'), `ci.yml is listed as a release lane: ${lanes.join(', ')}`);
+    assert.ok(!lanes.includes('ci.yml') && !lanes.includes('lane-apps.yml'), `ci.yml or lane-apps.yml is listed as a release lane: ${lanes.join(', ')}`);
   });
 
   test('a ZERO-lane result is a finding, not a pass', () => {

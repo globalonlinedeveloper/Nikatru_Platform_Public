@@ -447,7 +447,7 @@
     20,
 
   "green-means-ran.test.mjs":
-    48,
+    50,
 
   "guard-coverage.test.mjs":
     84,
@@ -519,6 +519,9 @@
     22,
 
   "lane-detect.test.mjs":
+    25,
+
+  "lane-inputs.test.mjs":
     19,
 
   "lane-verdict.test.mjs":

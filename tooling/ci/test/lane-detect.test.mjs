@@ -17,7 +17,8 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'nod
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { globToRegExp } from '../lane-detect.mjs';
+import { globToRegExp, readMap, decide } from '../lane-detect.mjs';
+import { parseWorkflow, workflowSteps } from '../workflow-scan.mjs';
 
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
@@ -246,5 +247,107 @@ describe('globToRegExp — the only syntax the map may use', () => {
   test('brace sets and absolute paths are refused, not half-matched', () => {
     assert.throws(() => globToRegExp('contracts/entitlement/*.{js,json}'), /not in the supported syntax/);
     assert.throws(() => globToRegExp('/services/**'), /not in the supported syntax/);
+  });
+});
+
+// ⏱ 2026-10-01 (ADR 095) — THE TWO DIRECTIONS ci-gate RESTS ON, over the REAL map and
+// the REAL workflows. The app jobs run in lane-apps.yml and app-brick in lane-brick.yml,
+// each behind a detect job; ci-gate needs the two call jobs, whose result is each
+// callee's lane-verdict. A Worker-only pull request must read the app lanes as "not
+// needed" (skipped under affected=false, verdict green, ci-gate green), never as
+// cancelled or missing; an app pull request must run them. Each case walks the chain
+// detect → lane-verdict (the script, as the callee runs it) → ci-gate (its predicate,
+// read off ci.yml), with the needs each verdict judges read off the callee itself.
+describe('the real map and the gate — a Worker-only PR skips the app lanes green, an app PR runs them', () => {
+  const VERDICT = join(CI_DIR, 'lane-verdict.mjs');
+  const MAP_REAL = readMap(REPO);
+  const CALLEES = { apps: '.github/workflows/lane-apps.yml', brick: '.github/workflows/lane-brick.yml' };
+
+  /** The needs of a callee's lane-verdict job, as written in the callee. */
+  const verdictNeeds = (lane) => {
+    const wf = parseWorkflow(REPO, CALLEES[lane]);
+    assert.ok(wf?.jobs.has('lane-verdict'), `${CALLEES[lane]} has no lane-verdict job`);
+    const needs = wf.jobs.get('lane-verdict').needs;
+    assert.ok(needs.includes('detect') && needs.length > 1, `${CALLEES[lane]} lane-verdict needs ${needs.join(', ')}`);
+    return needs;
+  };
+
+  /** The call job's result: the callee's conclusion, which is its lane-verdict's here. */
+  function laneResult(lane, changed, work) {
+    const { affected, reason } = decide({ map: MAP_REAL, lane, event: 'pull_request', changed });
+    const needs = {};
+    for (const j of verdictNeeds(lane)) {
+      needs[j] = j === 'detect'
+        ? { result: 'success', outputs: { affected: String(affected), reason } }
+        : { result: work(affected), outputs: {} };
+    }
+    const env = { ...process.env, LANE_NEEDS: JSON.stringify(needs) };
+    const r = spawnSync(process.execPath, [VERDICT], { encoding: 'utf8', env });
+    return { affected, verdict: r.status, out: `${r.stdout}${r.stderr}`, result: r.status === 0 ? 'success' : 'failure' };
+  }
+
+  /** ci-gate's own predicate, read off ci.yml: red on any failure, cancelled or skipped need. */
+  function gate(results) {
+    const job = parseWorkflow(REPO, '.github/workflows/ci.yml').jobs.get('ci-gate');
+    const run = workflowSteps(job).map((st) => st.run?.text ?? '').join('\n');
+    for (const v of ['failure', 'cancelled', 'skipped']) assert.match(run, new RegExp(`contains\\(needs\\.\\*\\.result, '${v}'\\)`), `ci-gate no longer reads ${v}`);
+    for (const lane of ['lane-apps', 'lane-brick']) assert.ok(job.needs.includes(lane), `ci-gate does not need ${lane}`);
+    return Object.values(results).some((x) => ['failure', 'cancelled', 'skipped'].includes(x)) ? 'red' : 'green';
+  }
+
+  // GitHub's behaviour for a job whose `if:` is false: skipped. For a true one: it runs (green here).
+  const asGitHubRuns = (affected) => (affected ? 'success' : 'skipped');
+
+  test('a Worker-only PR: the apps and brick lanes are not needed — every app job skipped, both verdicts green, ci-gate green', () => {
+    const changed = ['services/platform/src/routes/receipts.ts'];
+    assert.equal(decide({ map: MAP_REAL, lane: 'workers', event: 'pull_request', changed }).affected, true, 'the Worker lane must run');
+    const apps = laneResult('apps', changed, asGitHubRuns);
+    const brick = laneResult('brick', changed, asGitHubRuns);
+    assert.equal(apps.affected, false, apps.out);
+    assert.equal(brick.affected, false, brick.out);
+    assert.equal(apps.verdict, 0, apps.out);
+    assert.equal(brick.verdict, 0, brick.out);
+    assert.match(apps.out, /^android-artifacts=skipped$/m);
+    assert.match(brick.out, /^app-brick=skipped$/m);
+    assert.equal(gate({ 'lane-workers': 'success', 'lane-apps': apps.result, 'lane-brick': brick.result }), 'green');
+  });
+
+  test('an app PR: both lanes are affected and every app job runs; ci-gate green only when they ran green', () => {
+    const changed = ['apps/subscriptiontracker/lib/main.dart'];
+    const apps = laneResult('apps', changed, asGitHubRuns);
+    const brick = laneResult('brick', changed, asGitHubRuns);
+    assert.equal(apps.affected, true, apps.out);
+    assert.equal(brick.affected, true, brick.out);
+    for (const j of verdictNeeds('apps')) assert.match(apps.out, new RegExp(`^${j}=success$`, 'm'));
+    assert.match(brick.out, /^app-brick=success$/m);
+    assert.equal(gate({ 'lane-workers': 'success', 'lane-apps': apps.result, 'lane-brick': brick.result }), 'green');
+  });
+
+  test('RED CONTROL — an app PR whose app jobs were skipped anyway is red at the verdict, and so at ci-gate', () => {
+    const changed = ['apps/subscriptiontracker/lib/main.dart'];
+    const apps = laneResult('apps', changed, () => 'skipped');
+    assert.equal(apps.affected, true);
+    assert.equal(apps.verdict, 1, apps.out);
+    assert.match(apps.out, /"android-artifacts" was SKIPPED although "detect" said affected=true/);
+    assert.equal(gate({ 'lane-workers': 'success', 'lane-apps': apps.result, 'lane-brick': 'success' }), 'red');
+  });
+
+  test('RED CONTROL — a lane call that never ran (skipped) or was cancelled is red at ci-gate, never "not needed"', () => {
+    assert.equal(gate({ 'lane-workers': 'success', 'lane-apps': 'skipped', 'lane-brick': 'success' }), 'red');
+    assert.equal(gate({ 'lane-workers': 'success', 'lane-apps': 'success', 'lane-brick': 'cancelled' }), 'red');
+  });
+
+  test('a push to main narrows nothing: both lanes are affected whatever changed', () => {
+    for (const lane of ['apps', 'brick']) {
+      const d = decide({ map: MAP_REAL, lane, event: 'push', changed: null, diffWhy: null });
+      assert.equal(d.affected, true, `${lane}: ${d.reason}`);
+    }
+  });
+
+  test('a tooling-only PR outside what the app jobs read skips lane-apps; a docs-only PR skips both', () => {
+    assert.equal(decide({ map: MAP_REAL, lane: 'apps', event: 'pull_request', changed: ['tooling/ci/assert-pr-rows.mjs'] }).affected, false);
+    for (const lane of ['apps', 'brick']) {
+      assert.equal(decide({ map: MAP_REAL, lane, event: 'pull_request', changed: ['docs/ci/README.md'] }).affected, false, lane);
+    }
   });
 });

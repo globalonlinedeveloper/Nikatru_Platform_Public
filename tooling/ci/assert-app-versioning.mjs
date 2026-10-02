@@ -60,6 +60,7 @@ import { join } from 'node:path';
 import { listDir } from './tree-walk.mjs';
 import {
   parseWorkflow, parseAllWorkflows, bindEveryApp, flutterReleaseBuilds, flutterBuilds, gradeDomain, buildAt, shellSegments, workflowEvents, sha256HandOffs,
+  resolveLocalCalls,
 } from './workflow-scan.mjs';
 import { UNTAGGED_REF, releaseTagOf } from './tag-owner.mjs';
 
@@ -522,7 +523,24 @@ const flag = (cmd, name) => {
 // and a guard that fails for no user-visible reason is a guard that gets
 // switched off. Same reasoning the DEPLOY_MARKERS comment gives for
 // upload-artifact.
+//
+// ⏱ 2026-10-01 — AND EVERY LANE CALLEE ci.yml RUNS BEFORE THE GATE. app-brick moved
+// into lane-brick.yml (ADR 095), and its probe build and the stamped Worker's
+// `wrangler deploy --dry-run` went with it, under the same reasoning word for word.
+// The block below reads them off ci.yml's call jobs: a callee ci.yml calls from a
+// job with no `if:` is a gate constituent (lane-workers, lane-apps, lane-brick,
+// extensions-ci), while the post-gate deploy calls carry `if:` and stay graded. A
+// literal callee name here would bind this guard to one lane
+// (assert-release-lane-generic limb B).
 const SHIPS_NOTHING = new Set(['ci.yml']);
+{
+  const gate = parseWorkflow(repoRoot, '.github/workflows/ci.yml');
+  if (gate !== null) {
+    for (const c of resolveLocalCalls(gate, parseAllWorkflows(repoRoot)).calls) {
+      if ((gate.jobs.get(c.job)?.jobIf ?? null) === null) SHIPS_NOTHING.add(c.callee.rel.split('/').pop());
+    }
+  }
+}
 const lostCoverage = [];
 
 // Every app on disk must at least declare a version pub can read. Independent of

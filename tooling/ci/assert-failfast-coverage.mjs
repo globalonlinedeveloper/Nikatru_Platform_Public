@@ -130,6 +130,8 @@ export const DEPLOY_TYPE = /deploy|publish|release|submit|migrat|upload/i;
 export const SCOPE = [
   { rel: '.github/workflows/ci.yml', runs: 'every', why: 'the merge gate: ci-gate needs every job and reads cancelled as red, and the deploys need ci-gate' },
   { rel: '.github/workflows/lane-workers.yml', runs: 'every', why: "called by ci.yml `lane-workers`; its jobs report inside ci.yml's run" },
+  { rel: '.github/workflows/lane-apps.yml', runs: 'every', why: "called by ci.yml `lane-apps`; its jobs report inside ci.yml's run" },
+  { rel: '.github/workflows/lane-brick.yml', runs: 'every', why: "called by ci.yml `lane-brick`; its jobs report inside ci.yml's run" },
   {
     rel: '.github/workflows/extensions-ci.yml',
     runs: 'every',
@@ -144,6 +146,8 @@ export const SCOPE = [
 export const EXCEPTIONS = [
   { rel: '.github/workflows/ci.yml', job: 'ci-gate', kind: 'aggregator', why: 'the verdict: it starts after every constituent has finished, so nothing is left to cancel, and after a cancel it is the job that must still run and go red' },
   { rel: '.github/workflows/lane-workers.yml', job: 'lane-verdict', kind: 'aggregator', why: "the lane's verdict, read by ci-gate through the call job" },
+  { rel: '.github/workflows/lane-apps.yml', job: 'lane-verdict', kind: 'aggregator', why: "the lane's verdict, read by ci-gate through the call job" },
+  { rel: '.github/workflows/lane-brick.yml', job: 'lane-verdict', kind: 'aggregator', why: "the lane's verdict, read by ci-gate through the call job" },
   { rel: '.github/workflows/extensions-ci.yml', job: 'ci-required', kind: 'aggregator', why: "the lane's verdict, read by ci-gate through the call job" },
   { rel: '.github/workflows/extensions.yml', job: 'extensions-lane-accounting', kind: 'aggregator', why: "the workflow's verdict over every lane" },
   {

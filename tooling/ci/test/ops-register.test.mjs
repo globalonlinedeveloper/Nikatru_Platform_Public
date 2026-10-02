@@ -5528,11 +5528,15 @@ describe('assert-ops-register — [14]O-3b · RED SINCE: a failed run is graded,
     // on a CI completion on main and declares no `workflow_dispatch` on purpose: a
     // dispatched run has no workflow_run to read, would post nothing and go green,
     // and would clear a red by not running. Excluded by the same derived reason.
-    assert.equal(census.excluded.length, 4, 'the committed register has exactly four trigger rows with no non-merge exit');
+    // ⏱ 2026-10-01: six. duty.workflow.lane-apps.yml and duty.workflow.lane-brick.yml, the
+    // apps and brick lanes moved into callees (ADR 095), are excluded for the same reason.
+    assert.equal(census.excluded.length, 6, 'the committed register has exactly six trigger rows with no non-merge exit');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.main-healthy\.yml/.test(l)), 'main-healthy.yml is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.ci\.yml/.test(l)), 'ci.yml is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.extensions-ci\.yml/.test(l)), 'the extensions CI callee is excluded by derivation');
     assert.ok(census.excluded.some((l) => /duty\.workflow\.lane-workers\.yml/.test(l)), 'the workers lane callee is excluded by derivation');
+    assert.ok(census.excluded.some((l) => /duty\.workflow\.lane-apps\.yml/.test(l)), 'the apps lane callee is excluded by derivation');
+    assert.ok(census.excluded.some((l) => /duty\.workflow\.lane-brick\.yml/.test(l)), 'the brick lane callee is excluded by derivation');
     assert.ok(census.excluded.every((l) => /declares NO `workflow_dispatch`/.test(l)), 'every exclusion must carry the derived reason');
   });
 

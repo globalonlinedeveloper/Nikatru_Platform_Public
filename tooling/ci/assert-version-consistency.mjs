@@ -364,7 +364,7 @@ export const stripComments = (rel, line) =>
   /\.gradle(\.kts)?$|\.kts?$/.test(rel) ? line.replace(/\/\/.*$/, '') : line.replace(/#.*$/, '');
 /** 📏 THIS TABLE IS THE MELOS INVENTORY, and the root pubspec's comment points here
  *  rather than listing the places itself (O-PUBSPEC-FLOORS-UNTIED-TO-THE-PIN). The
- *  places the melos pin is written are: the root pubspec's dev_dependency, ci.yml's
+ *  places the melos pin is written are: the root pubspec's dev_dependency, lane-apps.yml's
  *  activate and README.md's activate, each an entry below; tooling/versions.json,
  *  which every one is compared to; and pubspec.lock, which the resolver writes and
  *  `flutter pub get --enforce-lockfile` holds to the dev_dependency. `when` narrows an
@@ -378,7 +378,8 @@ const REQUIRED_YIELD = [
     what: 'the `melos:` dev_dependency — the runner `melos run gate` actually resolves',
   },
   {
-    where: /(^|[\\/])\.github[\\/]workflows[\\/]ci\.yml$/,
+    // ⏱ 2026-10-01 — lane-apps.yml, not ci.yml: workspace-gate moved into that callee (ADR 095).
+    where: /(^|[\\/])\.github[\\/]workflows[\\/]lane-apps\.yml$/,
     key: 'melos',
     min: 1,
     what: 'the `dart pub global activate melos <version>` CI runs before `melos run gate`',

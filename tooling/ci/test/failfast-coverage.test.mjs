@@ -124,14 +124,25 @@ describe('assert-failfast-coverage: the real tree', () => {
 
   test('THE RED RUN, SIMULATED ON THE REAL TREE — the red job reads failure, the rest cancelled, ci-gate red', () => {
     const wf = parseWorkflow(REPO, `${WF}/ci.yml`);
-    for (const lane of ['web-artifacts', 'guards-chassis', 'sites', 'guards-legal', 'guard-meta', 'app-brick']) {
-      // The six red jobs of the six runs measured 2026-09-28, every one reported cancelled under FF-1.
+    // The six red jobs of the six runs measured 2026-09-28, every one reported cancelled under FF-1.
+    // ⏱ 2026-10-01 (ADR 095): two of them now run in a lane callee, simulated in theirs below.
+    for (const lane of ['guards-chassis', 'sites', 'guards-legal', 'guard-meta']) {
       const sim = simulateRedRun(wf, lane);
       assert.equal(sim.conclusion, 'failure', lane);
       assert.equal(sim.canceller, `ff-${lane}`, lane);
       assert.equal(sim.others.get('ci-gate'), 'failure', 'the aggregator still runs and reads the red');
       assert.equal(sim.others.get('guards-platform'), 'cancelled');
       assert.equal(sim.others.get(`ff-${lane === 'sites' ? 'guards-store' : 'sites'}`), 'skipped', "another lane's follow-up is skipped");
+    }
+    // In a callee the run is the caller's, and the lane's own aggregate is lane-verdict,
+    // which still runs (always()) and reads the red; ci-gate reads it through the call job.
+    for (const [file, lane, sibling] of [['lane-apps.yml', 'web-artifacts', 'linux-artifacts'], ['lane-brick.yml', 'app-brick', 'detect']]) {
+      const sim = simulateRedRun(parseWorkflow(REPO, `${WF}/${file}`), lane);
+      assert.equal(sim.conclusion, 'failure', `${file} ${lane}`);
+      assert.equal(sim.canceller, `ff-${lane}`, `${file} ${lane}`);
+      assert.equal(sim.others.get('lane-verdict'), 'failure', `${file}: the lane's verdict still runs and reads the red`);
+      assert.equal(sim.others.get(sibling), 'cancelled', `${file}: ${sibling}`);
+      assert.equal(sim.others.get('ff-detect'), 'skipped', `${file}: another job's follow-up is skipped`);
     }
   });
 
@@ -176,10 +187,10 @@ describe('assert-failfast-coverage: the real tree', () => {
 
   test('the follow-up\'s `if:` is exact: a bare failure() would fire again under every red ancestor', () => {
     withTree(
-      (root) => editJob(root, 'ci.yml', 'ff-web-artifacts', swapLine("    if: failure() && needs.web-artifacts.result == 'failure'", "    if: failure() && needs.web-artifacts.result == 'failure' || always()")),
-      (r) => red(r, /job `ff-web-artifacts`: its `if:` is .*; in \.github\/workflows\/ci\.yml it must be exactly/),
+      (root) => editJob(root, 'lane-apps.yml', 'ff-web-artifacts', swapLine("    if: failure() && needs.web-artifacts.result == 'failure'", "    if: failure() && needs.web-artifacts.result == 'failure' || always()")),
+      (r) => red(r, /job `ff-web-artifacts`: its `if:` is .*; in \.github\/workflows\/lane-apps\.yml it must be exactly/),
     );
-    withTree((root) => editJob(root, 'ci.yml', 'ff-web-artifacts', swapLine("    if: failure() && needs.web-artifacts.result == 'failure'", '    if: failure()')), (r) => {
+    withTree((root) => editJob(root, 'lane-apps.yml', 'ff-web-artifacts', swapLine("    if: failure() && needs.web-artifacts.result == 'failure'", '    if: failure()')), (r) => {
       red(r, /job `ff-web-artifacts` is named as an FF-2 follow-up and is not one/);
       assert.match(r.stderr, /job `web-artifacts` has no FF-2 follow-up/);
     });
@@ -204,8 +215,8 @@ describe('assert-failfast-coverage: the real tree', () => {
   });
 
   test('a follow-up whose cancel can fail the job is not one', () => {
-    withTree((root) => editJob(root, 'ci.yml', 'ff-prepare', swapLine(`          ${CANCEL}`, '          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY"')), (r) => {
-      red(r, /job `ff-prepare` is named as an FF-2 follow-up and is not one/);
+    withTree((root) => editJob(root, 'lane-apps.yml', 'ff-app-dryrun', swapLine(`          ${CANCEL}`, '          gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY"')), (r) => {
+      red(r, /job `ff-app-dryrun` is named as an FF-2 follow-up and is not one/);
     });
   });
 
@@ -256,7 +267,7 @@ describe('assert-failfast-coverage: the real tree', () => {
   });
 
   test('C8 — a matrix lane with fail-fast off is a finding (its follow-up would wait for every leg)', () => {
-    withTree((root) => editJob(root, 'ci.yml', 'android-artifacts', swapLine('      fail-fast: true', '      fail-fast: false')), (r) => {
+    withTree((root) => editJob(root, 'lane-apps.yml', 'android-artifacts', swapLine('      fail-fast: true', '      fail-fast: false')), (r) => {
       red(r, /job `android-artifacts` is a matrix with `fail-fast: false`; in .* it must be `true`/);
     });
     withTree(

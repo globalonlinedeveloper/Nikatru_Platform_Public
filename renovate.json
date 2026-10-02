@@ -394,7 +394,8 @@
     {
       "customType": "regex",
       "description": [
-        "Second and third copies of the melos pin: the ci.yml workspace-gate install line and the README install",
+        "Second and third copies of the melos pin: the lane-apps.yml workspace-gate install line (ci.yml's until",
+        "2026-10-01, ADR 095) and the README install",
         "line (O-RENOVATE-BUMP-CANNOT-REACH-A-PINNED-COPY). SAME depNameTemplate as the versions.json manager above",
         "on purpose, so all copies share one branch; the pubspec.yaml copy joins it through the melos group rule."
       ],
@@ -404,7 +405,7 @@
       "depNameTemplate": "melos",
       "datasourceTemplate": "dart",
       "managerFilePatterns": [
-        "/^\\.github\\/workflows\\/ci\\.yml$/",
+        "/^\\.github\\/workflows\\/lane-apps\\.yml$/",
         "/^README\\.md$/"
       ]
     },
@@ -469,7 +470,8 @@
     {
       "customType": "regex",
       "description": [
-        "Second copy of the mason_cli pin: the ci.yml app-brick install line (O-RENOVATE-BUMP-CANNOT-REACH-A-PINNED-COPY).",
+        "Second copy of the mason_cli pin: the lane-brick.yml app-brick install line, ci.yml's until 2026-10-01 (ADR 095)",
+        "(O-RENOVATE-BUMP-CANNOT-REACH-A-PINNED-COPY).",
         "SAME depNameTemplate as the tooling/versions.json manager above ON PURPOSE: Renovate puts upgrades with one",
         "branch name on one branch, so both copies move in one PR. tooling/ci/assert-renovate-reach.mjs proves it."
       ],
@@ -479,7 +481,7 @@
       "depNameTemplate": "mason_cli",
       "datasourceTemplate": "dart",
       "managerFilePatterns": [
-        "/^\\.github\\/workflows\\/ci\\.yml$/"
+        "/^\\.github\\/workflows\\/lane-brick\\.yml$/"
       ]
     },
     {

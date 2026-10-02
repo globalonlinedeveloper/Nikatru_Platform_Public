@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// built-artifact-pr-lane.test.mjs — the PR lane's artifact jobs in ci.yml against
-// the main jobs that build the same artifacts to ship them.
+// built-artifact-pr-lane.test.mjs — the PR lane's artifact jobs in lane-apps.yml (ci.yml's
+// until 2026-10-01, ADR 095) against the main jobs that build the same artifacts to ship them.
 //
 // ⏱ ADDED 2026-09-23 (O-BUILT-ARTIFACT-GUARDS-RUN-ONLY-AFTER-MERGE). The guards
 // that read a BUILT Android artifact (the VAPT manifest items, the apps.gov.in
@@ -24,7 +24,8 @@
 // one, flag for flag and define for define, and holds the PR lane to its own
 // contract: it references only the secret the register maps for a store-rail
 // stamp, uploads nothing, never signs, runs every built-artifact guard main runs
-// (or names the one it cannot, with the reason), and carries no job-level `if:`.
+// (or names the one it cannot, with the reason), and carries no job-level `if:` but
+// detect's affected=true, the one skip lane-verdict licenses.
 //
 // The workflows are read through workflow-scan.mjs, the one parse of a workflow
 // in this tree. Every case reads the REAL tree; the red control of each case is
@@ -46,13 +47,17 @@ import { storeKeySecretName } from '../store-key-secret.mjs';
 const CI_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = resolve(CI_DIR, '..', '..');
 
-const PR_WORKFLOW = '.github/workflows/ci.yml';
+const PR_WORKFLOW = '.github/workflows/lane-apps.yml';
+const GATE_WORKFLOW = '.github/workflows/ci.yml';
 const MAIN_WORKFLOW = '.github/workflows/build-platforms.yml';
 const WEB_MAIN_WORKFLOW = '.github/workflows/deploy-web.yml';
 const PR_JOB = 'android-artifacts';
 const WEB_PR_JOB = 'web-artifacts';
 const LINUX_PR_JOB = 'linux-artifacts';
-const APPS_JOB = 'prepare';
+const APPS_JOB = 'detect';
+const CALL_JOB = 'lane-apps';
+const VERDICT_JOB = 'lane-verdict';
+const AFFECTED_IF = "needs.detect.outputs.affected == 'true'";
 const MAIN_JOB = 'linux_web_android';
 const WEB_MAIN_JOB = 'deploy-web';
 const GATE_JOB = 'ci-gate';
@@ -100,6 +105,7 @@ const MAIN_ONLY = {
 };
 
 const ciWorkflow = parseWorkflow(REPO, PR_WORKFLOW);
+const gateWorkflow = parseWorkflow(REPO, GATE_WORKFLOW);
 const mainWorkflow = parseWorkflow(REPO, MAIN_WORKFLOW);
 const webWorkflow = parseWorkflow(REPO, WEB_MAIN_WORKFLOW);
 const PARSED = new Map([
@@ -475,23 +481,32 @@ test('the apps.gov.in check runs in debug posture', () => {
 });
 
 // ── T11 ──────────────────────────────────────────────────────────────────────
-// assert-green-means-ran.mjs rule A2 holds ci-gate's needs complete for every job;
-// this names the jobs of this lane so a rename here is read here.
-test('ci-gate needs every PR-lane job', () => {
-  const needs = jobOf(ciWorkflow, PR_WORKFLOW, GATE_JOB).needs;
+// assert-green-means-ran.mjs rules A2 and A8 hold ci-gate's needs and the callee's
+// verdict complete for every job; this names the jobs of this lane so a rename here
+// is read here. ⏱ 2026-10-01 (ADR 095): ci-gate needs the call job, and the call
+// job's result is lane-verdict's, which needs detect and every PR-lane job.
+test('ci-gate needs every PR-lane job, through the lane-apps call and its verdict', () => {
+  const gate = jobOf(gateWorkflow, GATE_WORKFLOW, GATE_JOB).needs;
+  assert.ok(gate.includes(CALL_JOB), `${GATE_WORKFLOW} "${GATE_JOB}" does not need ${CALL_JOB}`);
+  const call = jobOf(gateWorkflow, GATE_WORKFLOW, CALL_JOB);
+  assert.ok(call.lines.some((l) => /^ {4}uses:\s*\.\/\.github\/workflows\/lane-apps\.yml\s*$/.test(l.text)), `${GATE_WORKFLOW} "${CALL_JOB}" does not call ${PR_WORKFLOW}`);
+  const needs = jobOf(ciWorkflow, PR_WORKFLOW, VERDICT_JOB).needs;
   const absent = [APPS_JOB, ...PR_LANE_JOBS].filter((j) => !needs.includes(j));
-  assert.deepEqual(absent, [], `${PR_WORKFLOW} "${GATE_JOB}" does not need ${absent.join(', ')}`);
+  assert.deepEqual(absent, [], `${PR_WORKFLOW} "${VERDICT_JOB}" does not need ${absent.join(', ')}`);
 });
 
 // ── T12 ──────────────────────────────────────────────────────────────────────
-// assert-green-means-ran.mjs rule A6 (no conditional constituents) forbids the
-// same thing for every ci-gate constituent; named here for this lane's jobs.
-test('the PR lane carries no job-level if', () => {
-  const conditional = [APPS_JOB, ...PR_LANE_JOBS]
+// assert-green-means-ran.mjs rule A8: inside a lane callee the one licensed skip is
+// detect's affected=false, which lane-verdict alone reads. So each PR-lane job's
+// `if:` is exactly that, and detect (the app-set emitter) carries none.
+test('the PR lane carries no job-level if but detect\'s affected=true', () => {
+  const detect = jobOf(ciWorkflow, PR_WORKFLOW, APPS_JOB).jobIf;
+  assert.equal(detect, null, `${PR_WORKFLOW} "${APPS_JOB}" carries if: ${detect?.cond}; a skipped detect licenses nothing`);
+  const other = PR_LANE_JOBS
     .map((name) => ({ name, jobIf: jobOf(ciWorkflow, PR_WORKFLOW, name).jobIf }))
-    .filter((j) => j.jobIf !== null)
-    .map((j) => `${PR_WORKFLOW}:${j.jobIf.n} "${j.name}" if: ${j.jobIf.cond}`);
-  assert.deepEqual(conditional, [], 'a job-level if: resolves to skipped whenever it is false, and a skipped lane proves nothing');
+    .filter((j) => j.jobIf === null || j.jobIf.cond.trim() !== AFFECTED_IF)
+    .map((j) => `${PR_WORKFLOW} "${j.name}" if: ${j.jobIf?.cond ?? '(none)'}`);
+  assert.deepEqual(other, [], `each PR-lane job runs under \`if: ${AFFECTED_IF}\` and nothing else: any other if: is a skip lane-verdict does not license`);
 });
 
 // ── T13 ──────────────────────────────────────────────────────────────────────
@@ -532,12 +547,12 @@ test('T14w: web-artifacts places the fallback fonts with deploy-web\'s own step,
 });
 
 // O-PR-LANE-GRADLE-CACHE's safety argument (design-pr-lane-artifacts.md Q4, and
-// #1111 review 1, finding 3): the Gradle cache lives in ci.yml `android-artifacts`
+// #1111 review 1, finding 3): the Gradle cache lives in lane-apps.yml `android-artifacts`
 // and NOWHERE else — never in a composite the release builds share
 // (setup-flutter), never in build-platforms.yml — so no release build restores a
 // cache a pull request could have written. Read through workflow-scan, which
 // blanks comments, so a `# why:` naming the cache does not count as touching it.
-test('T15: only ci.yml android-artifacts touches the Gradle cache (~/.gradle/caches, a gradle-android-artifacts- key, org.gradle.caching)', () => {
+test('T15: only lane-apps.yml android-artifacts touches the Gradle cache (~/.gradle/caches, a gradle-android-artifacts- key, org.gradle.caching)', () => {
   const touches = (text) => /\.gradle\/caches|gradle-android-artifacts-|org\.gradle\.caching/.test(text);
   const found = [];
   const wfDir = join(REPO, '.github', 'workflows');
@@ -554,5 +569,5 @@ test('T15: only ci.yml android-artifacts touches the Gradle cache (~/.gradle/cac
     const code = readFileSync(join(actionsDir, d, 'action.yml'), 'utf8').split('\n').map((l) => (/^\s*#/.test(l) ? '' : l.replace(/\s#.*$/, ''))).join('\n');
     if (touches(code)) found.push(`.github/actions/${d}/action.yml`);
   }
-  assert.deepEqual(found, [`${PR_WORKFLOW}#${PR_JOB}`], 'the Gradle cache must be touched by ci.yml android-artifacts and nothing else');
+  assert.deepEqual(found, [`${PR_WORKFLOW}#${PR_JOB}`], 'the Gradle cache must be touched by lane-apps.yml android-artifacts and nothing else');
 });
