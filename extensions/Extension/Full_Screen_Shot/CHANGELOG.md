@@ -40,6 +40,12 @@ next version number when one is stamped.
 
 - **Editor colour swatches and the zoom button have spoken names**: the swatches were named by
   their hex code and the zoom button by a bare "100%" (found by the new keyboard walk, EXB-05).
+- **Fifteen messages are translated in the 51 non-English catalogues that served them in English**
+  — the Upgrade button, the single-key shortcut setting, the zoom and colour-swatch names, the
+  Enter hint and the Edge and Firefox add-on-store refusals (O-FULLSHOT-LOCALES-MISS-15-KEYS).
+  `node _locales/make-locales.mjs --check` now fails a shipped catalogue that lacks a key English
+  has, carries a placeholders block unlike English, or serves English for a key not declared
+  `AWAITING-TRANSLATION`.
 
 ## [1.10.3] — 2026-09-29
 
