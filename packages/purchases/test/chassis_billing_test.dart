@@ -21,6 +21,30 @@ class _FakeCancellations implements core.CancellationTransport {
   }
 }
 
+/// The platform host's `POST /v1/checkout`, answered from the test: it opens a
+/// checkout for whatever it is asked and records the offering.
+class _FakeSessions implements core.CheckoutSessionTransport {
+  final List<String> asked = <String>[];
+
+  @override
+  bool get isAvailable => true;
+
+  @override
+  Future<core.Result<core.CheckoutSession>> createSession({
+    required String appId,
+    required String offeringId,
+    required String? accessToken,
+  }) async {
+    asked.add(offeringId);
+    return core.Result<core.CheckoutSession>.ok(
+      core.CheckoutSession(
+        checkoutUrl: Uri.parse('https://pay.example.test/?_ptxn=txn_1'),
+        transactionId: 'txn_1',
+      ),
+    );
+  }
+}
+
 const Offering _monthly = Offering(
   productId: 'pro_monthly',
   amountMinor: 499,
@@ -38,13 +62,16 @@ ChassisBillingConfig _config({
   IapBridgeConfig? bridgeConfig,
   CheckoutLauncher? launcher,
   core.CancellationTransport? cancellations,
+  core.CheckoutSessionTransport? sessions,
+  RailConfig railConfig = const RailConfig(
+    offerings: <Offering>[_monthly],
+    checkoutUrlTemplate: _template,
+    manageUrlTemplate: null,
+  ),
 }) =>
     ChassisBillingConfig(
-      railConfig: const RailConfig(
-        offerings: <Offering>[_monthly],
-        checkoutUrlTemplate: _template,
-        manageUrlTemplate: null,
-      ),
+      railConfig: railConfig,
+      checkoutSessions: sessions ?? _FakeSessions(),
       appId: 'probe',
       returnUrl: 'https://nikatru.test/checkout-return',
       accountId: () async => 'user-123',
@@ -180,6 +207,100 @@ void main() {
         );
       });
     }
+
+    // ⏱ 2026-10-01 · O-ST-HOSTED-CHECKOUT-CANNOT-START (MO-01) — THE RED
+    // CONTROL. The served `paywall` block carries offerings and NO
+    // `checkout_url_template` (no config serves one), and the hosted rail used
+    // to require that template, so on every hosted channel a served
+    // `enabled: true` still sold nothing. Built from the served SHAPE, through
+    // the real facade, per hosted channel.
+    group('a served paywall config sells on every hosted channel', () {
+      final RailConfig served = RailConfig.fromPaywallExtra(<String, Object?>{
+        'offerings': <Object?>[
+          <String, Object?>{
+            'product_id': 'pro_monthly',
+            'amount_minor': 599,
+            'currency_code': 'USD',
+            'term': 'month',
+            'trial_days': 30,
+          },
+          <String, Object?>{
+            'product_id': 'pro_yearly',
+            'amount_minor': 3499,
+            'currency_code': 'USD',
+            'term': 'year',
+            'trial_days': 30,
+          },
+          <String, Object?>{
+            'product_id': 'pro_lifetime',
+            'amount_minor': 8900,
+            'currency_code': 'USD',
+            'term': 'one_time',
+            'trial_days': 0,
+          },
+        ],
+        'pro_features': <Object?>['forecast', 'caps'],
+      });
+
+      test('the served config has no template — the precondition', () {
+        expect(served.checkoutUrlTemplate, isNull);
+      });
+
+      // MO-02 (ADR 093 §11.2): the lifetime plan is served for the web apex
+      // page and never reaches an in-app rail.
+      test('a served one-time plan never reaches the rail', () {
+        expect(
+          served.offerings.map((Offering o) => o.productId),
+          <String>['pro_monthly', 'pro_yearly'],
+        );
+        expect(
+          served.offerings.where((Offering o) => o.term == OfferingTerm.oneTime),
+          isEmpty,
+        );
+      });
+
+      for (final String channel in <String>[
+        'web',
+        'windows-store',
+        'windows-direct',
+        'linux-snap',
+        'linux-appimage',
+      ]) {
+        test('$channel: canStartCheckout, and the checkout OPENS', () async {
+          final _FakeSessions sessions = _FakeSessions();
+          final FakeCheckoutLauncher launcher = FakeCheckoutLauncher();
+          final ChassisBillingConfig config = _config(
+            railConfig: served,
+            sessions: sessions,
+            launcher: launcher,
+          );
+          final PurchaseRail rail = ChassisBilling.railForDeclared(
+            channel,
+            config,
+          ).orUnavailableRail(config);
+          expect(rail.canStartCheckout, isTrue, reason: channel);
+          expect(
+            await rail.startCheckout(served.offerings.first),
+            isA<CheckoutOpened>(),
+          );
+          expect(sessions.asked, <String>['pro_monthly']);
+          expect(launcher.opened.single.queryParameters['_ptxn'], 'txn_1');
+        });
+      }
+
+      test('a build with no platform host sells nothing, and says so', () {
+        final ChassisBillingConfig config = _config(
+          railConfig: served,
+          sessions: const core.UnavailableCheckoutSessionTransport(),
+        );
+        expect(
+          ChassisBilling.railForDeclared('web', config)
+              .orUnavailableRail(config)
+              .canStartCheckout,
+          isFalse,
+        );
+      });
+    });
 
     test('a declared paddle channel gets the hosted rail, unchanged', () {
       final PurchaseRail rail = ChassisBilling.railForDeclared(

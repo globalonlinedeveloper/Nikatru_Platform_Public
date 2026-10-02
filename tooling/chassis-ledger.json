@@ -184,7 +184,7 @@
     },
     {
       "path": "lib/features/monetization/manage_plan_screen.dart",
-      "lines": 269,
+      "lines": 265,
       "verdict": "MOVES",
       "why": "[ADR 067] decision 2 — MEASURED 2026-09-06: 245 -> 183 brick lines, 155 package lines, callSiteDelta -62. The smallest shrink of the four, and the reason is stated rather than hidden: five of this screen's labels (`managePlanTitle`, `plan{Active,Inactive}`, `cancelPlan`, `restorePurchasesHint`) and two of its four outcome sentences live in the APP's `.arb`, not in ChassisLocalizations, so they cross the seam as parameters. `.requestCancellation()` stays (assert-screen-set:289 and the register's own reachability pattern), as do `_restore` and the hoisted ProviderContainer. ⏱ RE-MEASURED 2026-09-25 (O-STORE-RESTORE-ASKS-ONLY-THE-SERVER): 183 -> 269, by assert-chassis-ledger. `_restore` now calls `restorePurchasesOf(rail)`, then re-reads the entitlement through a hoisted container; when the store was asked it waits through `_converge` (the paywall's `EntitlementConvergence.awaitUnlock`, bounded), and `_restoreMessage` picks one of three restore sentences from the app's `.arb`. All of that is `nikatru_purchases` and Riverpod, which the package declares neither of, so it stays in the adapter. totals.lines 18598 -> 18699 with the two `.arb` rows below.",
       "target": "packages/chassis_screens/lib/monetization/manage_plan_screen.dart",
