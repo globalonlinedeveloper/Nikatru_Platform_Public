@@ -4303,6 +4303,7 @@
       ".github/workflows/ci.yml#content-gate",
       ".github/workflows/ci.yml#guard-tests",
       ".github/workflows/extensions-ci.yml#core",
+      ".github/workflows/extensions-ci.yml#ops-tooling",
       ".github/workflows/extensions-ci.yml#selftest"
     ],
     "kind": "script",

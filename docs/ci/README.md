@@ -829,7 +829,7 @@ naming the job it belonged to and the line it sat above.
 | [`deploy-web.md`](deploy-web.md) | `.github/workflows/deploy-web.yml` | Deploy web | `workflow_call` | 3 |
 | [`deploy-workers.md`](deploy-workers.md) | `.github/workflows/deploy-workers.yml` | Deploy workers | `workflow_call` | 4 |
 | [`e2e.md`](e2e.md) | `.github/workflows/e2e.yml` | E2E live | `workflow_dispatch`, `schedule` | 5 |
-| [`extensions-ci.md`](extensions-ci.md) | `.github/workflows/extensions-ci.yml` | Extensions CI | `workflow_call` | 27 |
+| [`extensions-ci.md`](extensions-ci.md) | `.github/workflows/extensions-ci.yml` | Extensions CI | `workflow_call` | 29 |
 | [`extensions.md`](extensions.md) | `.github/workflows/extensions.yml` | Extensions | `push`, `pull_request`, `schedule`, `workflow_dispatch` | 12 |
 | none | `.github/workflows/lane-workers.yml` | Lane — workers | `workflow_call` | 5 |
 | [`main-healthy.md`](main-healthy.md) | `.github/workflows/main-healthy.yml` | Main healthy | `workflow_run` | 1 |
