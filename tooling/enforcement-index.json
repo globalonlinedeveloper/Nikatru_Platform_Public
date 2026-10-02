@@ -227,6 +227,7 @@
       "E-3"
     ],
     "invokedBy": [
+      ".github/workflows/ci.yml#app-brick",
       ".github/workflows/ci.yml#guards-legal"
     ],
     "kind": "guard",

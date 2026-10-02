@@ -461,6 +461,51 @@
       }
     ]
   },
+  "envBindingParity": {
+    "_why": [
+      "Read by tooling/ci/assert-platform-register.mjs limb 8 (2026-10-01, rv2-services-022, row O-SANDBOX-ENV-DROPS-PRODUCTION-BINDINGS).",
+      "Wrangler does not inherit a binding into an environment, and every binding fails open when absent, so an env block that omits",
+      "one the top level declares deploys WITHOUT it, silently. Limb 8 requires every top-level binding name (d1_databases, kv_namespaces,",
+      "r2_buckets, ratelimits, services, vars) in every env block of every config in bindingSources.configs, on a resource of that",
+      "environment. A row below is the ONLY way to leave one out: it names the config, the environment, the section and the name, with",
+      "the reason, and it is printed on every run. A row that stops being true (the block declares it, or the top level no longer does)",
+      "is itself a finding.",
+      "pendingTwins (2026-10-02): a sandbox twin whose resource needs the Cloudflare token to create carries the all-zeros id and one row here;",
+      "limb 8 PRINTS that placeholder instead of refusing it, and refuses the row once the id is recorded, so the row leaves with the placeholder."
+    ],
+    "pendingTwins": [
+      {
+        "config": "services/platform/wrangler.jsonc",
+        "env": "sandbox",
+        "section": "kv_namespaces",
+        "binding": "SESSION_REVOKED",
+        "why": "WAITS ON THE VAULT (2026-10-02, rv2-services-022): the sandbox namespace `session-revoked-sandbox` does not exist in the Cloudflare account yet, and creating it needs the Cloudflare token, which no CI job and no cloud lane holds. Lead step: `node tooling/scripts/provision-sandbox-twins.mjs --apply` (create only, idempotent) creates it and writes its id here; delete this row in the same commit. Until then a sandbox deploy of this Worker fails on the binding, loudly, rather than running without it."
+      },
+      {
+        "config": "services/platform/wrangler.jsonc",
+        "env": "sandbox",
+        "section": "kv_namespaces",
+        "binding": "SIGNUPS",
+        "why": "WAITS ON THE VAULT (2026-10-02, rv2-services-022): the sandbox namespace `signups-sandbox` does not exist in the Cloudflare account yet, and creating it needs the Cloudflare token, which no CI job and no cloud lane holds. Lead step: `node tooling/scripts/provision-sandbox-twins.mjs --apply` (create only, idempotent) creates it and writes its id here; delete this row in the same commit. Until then a sandbox deploy of this Worker fails on the binding, loudly, rather than running without it."
+      },
+      {
+        "config": "services/subscriptiontracker-api/wrangler.jsonc",
+        "env": "sandbox",
+        "section": "kv_namespaces",
+        "binding": "SESSION_REVOKED",
+        "why": "WAITS ON THE VAULT (2026-10-02, rv2-services-022): the sandbox namespace `session-revoked-sandbox` does not exist in the Cloudflare account yet, and creating it needs the Cloudflare token, which no CI job and no cloud lane holds. Lead step: `node tooling/scripts/provision-sandbox-twins.mjs --apply` (create only, idempotent) creates it and writes its id here; delete this row in the same commit. Until then a sandbox deploy of this Worker fails on the binding, loudly, rather than running without it."
+      }
+    ],
+    "exempt": [
+      {
+        "config": "services/platform/wrangler.jsonc",
+        "env": "sandbox",
+        "section": "vars",
+        "name": "PROVIDER_TOKEN_PLAINTEXT_READS_UNTIL",
+        "why": "The plain-text read window exists only to migrate provider tokens written before encryption (services/platform/src/lib/provider-revoke.ts plaintextReadsOpen), and the decision to leave it out of the sandbox is recorded beside the top-level line (services/platform/wrangler.jsonc, #1104): the sandbox database never held plain text. Absent, the window is CLOSED, which is the state production reaches when its date passes."
+      }
+    ]
+  },
   "routes": [
     {
       "id": "health",

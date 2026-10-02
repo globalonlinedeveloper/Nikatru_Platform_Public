@@ -81,6 +81,7 @@
 //   CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… \
 //     node tooling/scripts/provision-backend.mjs <app_id> [--location apac] [--dry]
 //   node tooling/scripts/provision-backend.mjs <app_id> --self-check
+//   node tooling/scripts/provision-backend.mjs <app_id> --register-only   (step [6] alone, offline)
 //   node tooling/scripts/provision-backend.mjs --check
 //
 // Credentials are read from the ENVIRONMENT only; this script never opens
@@ -125,12 +126,16 @@ import { parseJsonc as parseConfig } from '../ci/d1-sql-inventory.mjs';
 // Step [7] and `--check`: the one D1 walk, and the one writer of a monitor-register host row.
 import { ownedD1 } from '../ci/d1-stores.mjs';
 import { REGISTER_REL as MONITOR_REGISTER, appendHostRow } from '../ops/monitor-register.mjs';
+// Step [5s] and `--self-check`: the structure-scoped writer of an env block's ids.
+import { bindingField, isPlaceholderId, setEnvBindingField, SurgeryRefused, topLevelEnvOffset } from './wrangler-surgery.mjs';
 
 /** Step [6]'s source for every route's auth, purpose and client (see the header). */
 const ROUTE_CLIENTS = 'tooling/bricks/app/route-clients.json';
 /** Step [7]'s inventory, and the template row it copies. */
 const INVENTORY = 'tooling/legal/data-inventory.json';
 const TEMPLATE_STORE = 'd1:{{app_id}}_db';
+/** Step [5s]'s source for the SHARED sandbox namespace ids. */
+const PLATFORM_CONFIG = 'services/platform/wrangler.jsonc';
 
 const PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -148,6 +153,20 @@ const VALID_HINTS = ['wnam', 'enam', 'weur', 'eeur', 'apac', 'oc'];
  *  proves that the copy works, which is worth nothing: the two would rot apart
  *  and the check would go on passing. [pipeline S-12r] (absent from origins.lock.json by construction — S-12r is a residual of S-12, raised by Private/pre-minimal-2026-09-08:plans/03-stamper-plan.md after the pipeline harvest was frozen) */
 const APP_DB_BLOCK = /("binding"\s*:\s*"APP_DB"[\s\S]{0,400}?"database_id"\s*:\s*")([^"]+)(")/;
+
+/** ⏱ 2026-10-01 (rv2-services-011) — THE TOP LEVEL ONLY. The brick now stamps an
+ *  `env.sandbox` block, and every binding name repeats inside it, so `"binding":
+ *  "APP_DB"` occurs twice. Mutation-measured that day by this file's own test ("the
+ *  APP_DB block outgrows the scoping window"): with the top-level block padded past
+ *  400 characters, the unconfined pattern MATCHED THE SANDBOX ENTRY instead of
+ *  failing, so a live run would have written production's uuid into the sandbox
+ *  binding. Both the self-check and the live run therefore apply APP_DB_BLOCK to the
+ *  text before the top-level `"env"` key only (tooling/scripts/wrangler-surgery.mjs). */
+const topLevelOf = (text) => text.slice(0, topLevelEnvOffset(text));
+const patchAppDb = (text, id) => {
+  const cut = topLevelEnvOffset(text);
+  return text.slice(0, cut).replace(APP_DB_BLOCK, `$1${id}$3`) + text.slice(cut);
+};
 
 const args = process.argv.slice(2);
 const appId = args.find((a) => !a.startsWith('--'));
@@ -266,6 +285,7 @@ const ROOT = resolve(process.cwd());
 const svcDir = join(ROOT, 'services', `${appId}-api`);
 const cfgPath = join(svcDir, 'wrangler.jsonc');
 const dbName = `${appId}_db`;
+const cfgRel = `${SERVICES_DIR}/${appId}-api/${WORKER_CONFIG}`;
 
 // READ ONCE (CodeQL #86): the config's bytes are taken here, instead of an existence check that
 // the rewrite at the end of this script acted on. ENOENT/ENOTDIR are "no stamped backend";
@@ -362,7 +382,7 @@ if (selfCheck) {
     const platformIdBefore = idOf(before, 'PLATFORM_DB');
     // Matched up here so the diagnostics below can say what the live patch WOULD
     // have captured, rather than only that something is missing.
-    const m = raw.match(APP_DB_BLOCK);
+    const m = topLevelOf(raw).match(APP_DB_BLOCK);
 
     if (entryOf(before, 'APP_DB') === undefined) {
       problems.push(
@@ -411,7 +431,7 @@ if (selfCheck) {
       const SYNTHETIC = '11111111-2222-4333-8444-555555555555';
       let after;
       try {
-        after = parseJsonc(raw.replace(APP_DB_BLOCK, `$1${SYNTHETIC}$3`));
+        after = parseJsonc(patchAppDb(raw, SYNTHETIC));
       } catch (e) {
         problems.push(`the patch produced a config that no longer parses: ${e.message}`);
       }
@@ -434,6 +454,54 @@ if (selfCheck) {
     }
   }
 
+  // ⏱ 2026-10-01 (rv2-services-011) — STEP [5s]'S SURGERY, THE SAME WAY. The sandbox
+  // block repeats every binding name further down the file, so the write is scoped by
+  // structure (tooling/scripts/wrangler-surgery.mjs), and this proves it in memory:
+  // the sandbox APP_DB moves, and neither the top level nor the shared sandbox
+  // PLATFORM_DB does. Every shared namespace it binds must be one the platform's
+  // env.sandbox declares, since that is where step [5s] copies the id from.
+  if (before) {
+    const sbx = before.env?.sandbox;
+    const sbxId = bindingField(before, { env: 'sandbox', section: 'd1_databases', binding: 'APP_DB', field: 'database_id' });
+    if (!sbx || typeof sbx !== 'object') {
+      problems.push('the stamped config declares no `env.sandbox` block, so the Worker is born with no sandbox and deploy-sandbox refuses it.');
+    } else if (typeof sbxId !== 'string') {
+      problems.push('env.sandbox declares no APP_DB with a `database_id`, so step [5s] has nothing to write the sandbox database into.');
+    } else {
+      const SYNTHETIC_SBX = '66666666-7777-4888-8999-aaaaaaaaaaaa';
+      try {
+        const after = parseJsonc(
+          setEnvBindingField(raw, { env: 'sandbox', section: 'd1_databases', binding: 'APP_DB', field: 'database_id', value: SYNTHETIC_SBX }),
+        );
+        const moved = bindingField(after, { env: 'sandbox', section: 'd1_databases', binding: 'APP_DB', field: 'database_id' });
+        const top = idOf(after, 'APP_DB');
+        const sbxPlatform = bindingField(after, { env: 'sandbox', section: 'd1_databases', binding: 'PLATFORM_DB', field: 'database_id' });
+        if (moved !== SYNTHETIC_SBX) problems.push(`after the sandbox patch env.sandbox APP_DB.database_id is "${moved}", not the value written.`);
+        else if (top !== idOf(before, 'APP_DB') || sbxPlatform !== bindingField(before, { env: 'sandbox', section: 'd1_databases', binding: 'PLATFORM_DB', field: 'database_id' })) {
+          problems.push('the sandbox patch also moved the top-level APP_DB or the shared sandbox PLATFORM_DB.');
+        } else {
+          console.log('  ok  the sandbox patch rewrites env.sandbox APP_DB.database_id only (re-parsed)');
+        }
+      } catch (e) {
+        if (!(e instanceof SurgeryRefused)) throw e;
+        problems.push(`the sandbox patch was refused: ${e.message}`);
+      }
+      let platformSbx = null;
+      try {
+        platformSbx = parseJsonc(readFileSync(join(ROOT, PLATFORM_CONFIG), 'utf8')).env?.sandbox ?? null;
+      } catch (e) {
+        problems.push(`${PLATFORM_CONFIG} could not be read (${e.message}); step [5s] copies the shared sandbox namespace ids from it.`);
+      }
+      const shared = new Set((platformSbx?.kv_namespaces ?? []).map((k) => k.binding));
+      const orphan = (sbx.kv_namespaces ?? []).map((k) => k.binding).filter((b) => !shared.has(b));
+      if (platformSbx && orphan.length) {
+        problems.push(`env.sandbox binds ${orphan.join(', ')}, which ${PLATFORM_CONFIG} env.sandbox does not, so step [5s] has no shared id to copy.`);
+      } else if (platformSbx) {
+        console.log(`  ok  every shared sandbox namespace the stamp binds (${(sbx.kv_namespaces ?? []).map((k) => k.binding).join(', ')}) is one the platform's env.sandbox records`);
+      }
+    }
+  }
+
   if (problems.length) {
     console.error('\n✗ provision-backend --self-check FAILED:');
     for (const p of problems) console.error(`    ${p}`);
@@ -441,6 +509,21 @@ if (selfCheck) {
     process.exit(1);
   }
   console.log('\n✅ self-check passed. No token, no install, no network, no writes.');
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `--register-only` — step [6] ALONE: the register row, offline (no token, no
+// install, no network), then stop. ⏱ 2026-10-01 (rv2-services-010, the class fix):
+// ci.yml's app-brick job runs it on the throwaway backend probe so the guards that
+// read the Worker set (assert-analytics-contract.mjs through worker-set.mjs) see the
+// stamped Worker AS PROVISIONING WOULD REGISTER IT. Without a row, worker-set.mjs
+// refuses the unregistered directory and every reader of the deploy matrix is
+// COVERAGE LOST, so the stamped /v1/health could only ever be graded after app #2's
+// first provisioning, in app #2's own CI. The SAME function the full run calls.
+if (args.includes('--register-only')) {
+  writeRegisterRow();
+  console.log('\n✅ --register-only: step [6] only. No token, no install, no network; nothing created, patched or migrated.');
   process.exit(0);
 }
 
@@ -519,8 +602,7 @@ console.log(`    wrangler: ${WRANGLER}`);
 let cfgText = readFileSync(cfgPath, 'utf8');
 // The SAME constant `--self-check` exercises above — see its header for why it
 // is not a second copy of the pattern.
-const appDbBlock = APP_DB_BLOCK;
-const m = cfgText.match(appDbBlock);
+const m = topLevelOf(cfgText).match(APP_DB_BLOCK);
 if (!m) {
   die([
     '✗ could not find the APP_DB binding\'s `database_id` in the config.',
@@ -535,31 +617,41 @@ if (current !== PLACEHOLDER && UUID.test(current)) {
 
 // ── 2. create the database (idempotent) ──────────────────────────────────────
 step(2, `Ensuring D1 database "${dbName}" exists (--location ${location})`);
-let uuid = null;
-const info = wrangler(['d1', 'info', dbName, '--json']);
-if (info.code === 0) {
-  try {
-    uuid = JSON.parse(info.out.slice(info.out.indexOf('{'))).uuid ?? null;
-  } catch { /* fall through to create */ }
-}
-if (uuid) {
-  console.log(`    exists already → ${uuid}`);
-} else if (dry) {
-  console.log(`    [--dry] would run: wrangler d1 create ${dbName} --location ${location}`);
-} else {
-  const created = wrangler(['d1', 'create', dbName, '--location', location]);
+
+/** The uuid of D1 `name`, created with `--location` when it does not exist (or,
+ *  under --dry, null with the create printed). Hoisted: step [5s] ensures the
+ *  sandbox database with the same code. */
+function ensureDatabase(name) {
+  let id = null;
+  const info = wrangler(['d1', 'info', name, '--json']);
+  if (info.code === 0) {
+    try {
+      id = JSON.parse(info.out.slice(info.out.indexOf('{'))).uuid ?? null;
+    } catch { /* fall through to create */ }
+  }
+  if (id) {
+    console.log(`    exists already → ${id}`);
+    return id;
+  }
+  if (dry) {
+    console.log(`    [--dry] would run: wrangler d1 create ${name} --location ${location}`);
+    return null;
+  }
+  const created = wrangler(['d1', 'create', name, '--location', location]);
   if (created.code !== 0) die([`✗ d1 create failed:`, created.out]);
   const found = created.out.match(UUID.source.replace(/^\^|\$$/g, ''));
-  uuid = found ? found[0] : null;
-  if (!uuid) {
-    const again = wrangler(['d1', 'info', dbName, '--json']);
+  id = found ? found[0] : null;
+  if (!id) {
+    const again = wrangler(['d1', 'info', name, '--json']);
     try {
-      uuid = JSON.parse(again.out.slice(again.out.indexOf('{'))).uuid ?? null;
+      id = JSON.parse(again.out.slice(again.out.indexOf('{'))).uuid ?? null;
     } catch { /* handled below */ }
   }
-  if (!uuid) die(['✗ created the database but could not read its uuid back.', created.out]);
-  console.log(`    created → ${uuid}`);
+  if (!id) die(['✗ created the database but could not read its uuid back.', created.out]);
+  console.log(`    created → ${id}`);
+  return id;
 }
+const uuid = ensureDatabase(dbName);
 
 if (dry) {
   console.log('\n[--dry] stopping before any write. Nothing was created, patched or migrated.');
@@ -571,7 +663,7 @@ step(3, `Patching APP_DB.database_id in wrangler.jsonc`);
 if (current === uuid) {
   console.log('    already correct; left unchanged (idempotent).');
 } else {
-  cfgText = cfgText.replace(appDbBlock, `$1${uuid}$3`);
+  cfgText = patchAppDb(cfgText, uuid);
   writeFileSync(cfgPath, cfgText);
   console.log(`    ${current} → ${uuid}`);
 }
@@ -605,8 +697,10 @@ if (tables.code !== 0) {
   die(['', '✗ could not verify: the table query itself failed to run.', tables.out]);
 }
 if (liveUuid !== uuid) problems.push(`d1 info returned ${liveUuid}, config holds ${uuid}`);
-if (readFileSync(cfgPath, 'utf8').includes(PLACEHOLDER)) {
-  problems.push('the config still contains the all-zeros placeholder somewhere');
+// The TOP LEVEL here; the env.sandbox block's ids are step [5s]'s, which proves the
+// whole file placeholder-free once it has written them.
+if (isPlaceholderId(bindingField(parseConfig(readFileSync(cfgPath, 'utf8')), { section: 'd1_databases', binding: 'APP_DB', field: 'database_id' }))) {
+  problems.push('the top-level APP_DB still carries the all-zeros placeholder');
 }
 if (!/d1_migrations/.test(tables.out)) {
   problems.push('no `d1_migrations` table — the migration did not land');
@@ -619,8 +713,76 @@ if (problems.length) {
 console.log(`    d1 info      → ${liveUuid}  (matches the config)`);
 console.log(`    tables       → ${(tables.out.match(/"name":\s*"([a-z_]+)"/g) ?? []).length} present, including d1_migrations`);
 
+// ── 5s. the sandbox twin — the database, the shared namespaces, the migrations ──
+// ⏱ 2026-10-01 (rv2-services-011): the brick stamps an `env.sandbox` block whose ids
+// are placeholders. Its own database is created here exactly as the production one
+// was (--location, idempotent); the SHARED sandbox namespaces are never created per
+// app (the clone contract) — their ids are copied from services/platform's
+// env.sandbox, where tooling/scripts/provision-sandbox-twins.mjs recorded them. A
+// recorded id is never overwritten: a non-placeholder that differs is a refusal.
+step('5s', `Ensuring the sandbox twin: D1 "${dbName}_sandbox" and the shared sandbox namespaces`);
+{
+  const sbxDbName = `${dbName}_sandbox`;
+  const sbxUuid = ensureDatabase(sbxDbName);
+  let text = readFileSync(cfgPath, 'utf8');
+  const cfg = parseConfig(text);
+  const setOnce = (where, current, want, edit) => {
+    if (current === want) return;
+    if (current === undefined) die([`✗ ${cfgRel} ${where} is not declared; the brick stamps it. Re-stamp, or restore the block.`]);
+    if (!isPlaceholderId(current)) {
+      die([`✗ ${cfgRel} ${where} already names ${current}, and the one to bind is ${want}.`, '  A recorded id is never overwritten here; find out which is right.']);
+    }
+    try {
+      text = edit(text);
+    } catch (e) {
+      if (e instanceof SurgeryRefused) die([`✗ ${cfgRel}: ${e.message}`]);
+      throw e;
+    }
+    console.log(`    ${where}: ${current} → ${want}`);
+  };
+  setOnce(
+    'env.sandbox APP_DB.database_id',
+    bindingField(cfg, { env: 'sandbox', section: 'd1_databases', binding: 'APP_DB', field: 'database_id' }),
+    sbxUuid,
+    (t) => setEnvBindingField(t, { env: 'sandbox', section: 'd1_databases', binding: 'APP_DB', field: 'database_id', value: sbxUuid }),
+  );
+  let platformCfg;
+  try {
+    platformCfg = parseConfig(readFileSync(join(ROOT, PLATFORM_CONFIG), 'utf8'));
+  } catch (e) {
+    die([`✗ ${PLATFORM_CONFIG} could not be read (${e.message}); it is where the shared sandbox namespace ids are recorded.`]);
+  }
+  for (const k of cfg.env?.sandbox?.kv_namespaces ?? []) {
+    const want = bindingField(platformCfg, { env: 'sandbox', section: 'kv_namespaces', binding: k.binding, field: 'id' });
+    if (typeof want !== 'string' || want === '' || isPlaceholderId(want)) {
+      die([
+        `✗ ${PLATFORM_CONFIG} env.sandbox records no id for the shared namespace ${k.binding}.`,
+        '  Run `node tooling/scripts/provision-sandbox-twins.mjs --apply` first: it creates the sandbox namespaces and records them there.',
+      ]);
+    }
+    setOnce(`env.sandbox ${k.binding}.id`, k.id, want, (t) =>
+      setEnvBindingField(t, { env: 'sandbox', section: 'kv_namespaces', binding: k.binding, field: 'id', value: want }),
+    );
+  }
+  writeFileSync(cfgPath, text);
+  const sbxMig = wrangler(['d1', 'migrations', 'apply', 'APP_DB', '--env', 'sandbox', '--remote'], svcDir);
+  if (sbxMig.code !== 0) die(['✗ sandbox migrations apply failed:', sbxMig.out]);
+  const sbxInfo = wrangler(['d1', 'info', sbxDbName, '--json']);
+  let live = null;
+  try {
+    live = JSON.parse(sbxInfo.out.slice(sbxInfo.out.indexOf('{'))).uuid ?? null;
+  } catch { /* reported below */ }
+  if (live !== sbxUuid) die([`✗ PROVISIONED BUT NOT PROVEN: d1 info ${sbxDbName} returned ${live}, the config holds ${sbxUuid}.`]);
+  const after = parseConfig(readFileSync(cfgPath, 'utf8'));
+  const leftover = [after, after.env?.sandbox ?? {}].flatMap((b) => [
+    ...(b.d1_databases ?? []).map((d) => [d.binding, d.database_id]),
+    ...(b.kv_namespaces ?? []).map((k) => [k.binding, k.id]),
+  ]).filter(([, id]) => isPlaceholderId(id));
+  if (leftover.length) die([`✗ PROVISIONED BUT NOT PROVEN: ${cfgRel} still carries a placeholder id for ${leftover.map(([b]) => b).join(', ')}.`]);
+  console.log(`    ${sbxDbName} → ${live} (matches env.sandbox), migrations applied --env sandbox`);
+}
+
 // ── 6. the register row — files only, it deploys nothing (see the header) ────
-const cfgRel = `${SERVICES_DIR}/${appId}-api/${WORKER_CONFIG}`;
 
 /** The `appWorkers` row for this Worker, or exit 1 naming why none can be written.
  *  Its routes are the stamped entrypoint's mounts; each one's auth, purpose, client
@@ -717,41 +879,48 @@ function appWorkerRow() {
   };
 }
 
-step(6, `Writing ${appId}-api's appWorkers row into ${REGISTER}`);
-const regPath = join(ROOT, REGISTER);
-let register;
-try {
-  register = JSON.parse(readFileSync(regPath, 'utf8'));
-} catch (e) {
-  die([`✗ ${REGISTER} is missing or not JSON (${e.message}). The Worker is provisioned and has no register row.`]);
-}
-if (!Array.isArray(register.appWorkers)) die([`✗ ${REGISTER} has no \`appWorkers\` array to add the row to.`]);
-const existing = register.appWorkers.find((w) => String(w?.config ?? '').replace(/\\/g, '/') === cfgRel);
-if (existing) {
-  console.log(`    ${cfgRel} already has a row (${existing.name}); left unchanged. assert-platform-register.mjs holds it to the tree.`);
-} else {
-  const row = appWorkerRow();
-  register.appWorkers.push(row);
-  const configs = register.bindingSources?.configs;
-  if (Array.isArray(configs) && !configs.includes(cfgRel)) {
-    configs.push(cfgRel);
-    configs.sort();
+/** Step [6]: the register row, files only. Hoisted so `--register-only` (above the
+ *  credential gate) runs the SAME code the full run does, never a copy of it. */
+function writeRegisterRow() {
+  step(6, `Writing ${appId}-api's appWorkers row into ${REGISTER}`);
+  const regPath = join(ROOT, REGISTER);
+  let register;
+  try {
+    register = JSON.parse(readFileSync(regPath, 'utf8'));
+  } catch (e) {
+    die([`✗ ${REGISTER} is missing or not JSON (${e.message}). The Worker is provisioned and has no register row.`]);
   }
-  writeFileSync(regPath, `${JSON.stringify(register, null, 2)}\n`);
-  console.log(`    appWorkers[${register.appWorkers.length - 1}] ${row.name} → ${row.hosts.join(', ')}, dsnSecret ${row.dsnSecret}`);
-  console.log(`    routes: ${row.routes.map((r) => `${r.method} ${r.path}`).join(' · ')}`);
-  console.log(`    ${cfgRel} is named in bindingSources.configs.`);
+  if (!Array.isArray(register.appWorkers)) die([`✗ ${REGISTER} has no \`appWorkers\` array to add the row to.`]);
+  const existing = register.appWorkers.find((w) => String(w?.config ?? '').replace(/\\/g, '/') === cfgRel);
+  if (existing) {
+    console.log(`    ${cfgRel} already has a row (${existing.name}); left unchanged. assert-platform-register.mjs holds it to the tree.`);
+  } else {
+    const row = appWorkerRow();
+    register.appWorkers.push(row);
+    const configs = register.bindingSources?.configs;
+    if (Array.isArray(configs) && !configs.includes(cfgRel)) {
+      configs.push(cfgRel);
+      configs.sort();
+    }
+    writeFileSync(regPath, `${JSON.stringify(register, null, 2)}\n`);
+    console.log(`    appWorkers[${register.appWorkers.length - 1}] ${row.name} → ${row.hosts.join(', ')}, dsnSecret ${row.dsnSecret}`);
+    console.log(`    routes: ${row.routes.map((r) => `${r.method} ${r.path}`).join(' · ')}`);
+    console.log(`    ${cfgRel} is named in bindingSources.configs.`);
+  }
+  // The crash-sink secret reaches deploy-workers.yml BY NAME, never `secrets: inherit`
+  // (lead ruling Q1, 2026-09-26; assert-worker-error-sink.mjs limb 5 fails either
+  // omission before merge). Printed, not written: the secret is the owner's to create
+  // (O-E1), and both lines land in the same change that creates it.
+  {
+    const dsn = (existing ?? register.appWorkers[register.appWorkers.length - 1]).dsnSecret;
+    console.log(`    O-E1 (owner): create the GitHub secret ${dsn}, then deliver it BY NAME, never \`secrets: inherit\`:`);
+    console.log(`      .github/workflows/deploy-workers.yml, under on.workflow_call.secrets:   ${dsn}:  (with required: true)`);
+    console.log(`      .github/workflows/ci.yml, in the deploy-workers: call's secrets:        ${dsn}: \${{ secrets.${dsn} }}`);
+  }
+  return { register, existing };
 }
-// The crash-sink secret reaches deploy-workers.yml BY NAME, never `secrets: inherit`
-// (lead ruling Q1, 2026-09-26; assert-worker-error-sink.mjs limb 5 fails either
-// omission before merge). Printed, not written: the secret is the owner's to create
-// (O-E1), and both lines land in the same change that creates it.
-{
-  const dsn = (existing ?? register.appWorkers[register.appWorkers.length - 1]).dsnSecret;
-  console.log(`    O-E1 (owner): create the GitHub secret ${dsn}, then deliver it BY NAME, never \`secrets: inherit\`:`);
-  console.log(`      .github/workflows/deploy-workers.yml, under on.workflow_call.secrets:   ${dsn}:  (with required: true)`);
-  console.log(`      .github/workflows/ci.yml, in the deploy-workers: call's secrets:        ${dsn}: \${{ secrets.${dsn} }}`);
-}
+
+const { register, existing } = writeRegisterRow();
 
 // ── 7. the inventory row and the monitor host row — files only (see the header) ──
 step(7, `Writing ${dbName}'s ${INVENTORY} row and ${appId}-api's ${MONITOR_REGISTER} host row(s)`);

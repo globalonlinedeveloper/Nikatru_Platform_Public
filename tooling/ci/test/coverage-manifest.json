@@ -189,7 +189,7 @@
     28,
 
   "capture-backend.test.mjs":
-    12,
+    15,
 
   "capture-fallback-fonts.test.mjs":
     12,
@@ -596,6 +596,9 @@
   "migration-numbers.test.mjs":
     8,
 
+  "migration-prefix-index.test.mjs":
+    12,
+
   "modal-detection.test.mjs":
     44,
 
@@ -804,7 +807,7 @@
     12,
 
   "provision-backend.test.mjs":
-    28,
+    34,
 
   "pseudonymity-firewall.test.mjs":
     17,
@@ -913,6 +916,9 @@
 
   "sandbox-service-role.test.mjs":
     5,
+
+  "sandbox-twins.test.mjs":
+    18,
 
   "scan-dependencies.test.mjs":
     25,

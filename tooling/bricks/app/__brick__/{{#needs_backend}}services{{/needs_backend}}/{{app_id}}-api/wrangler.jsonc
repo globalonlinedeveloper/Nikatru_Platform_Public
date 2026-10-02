@@ -155,10 +155,77 @@
   // ───────────────────────────────────────────────────────────────────────────
   "routes": [
     { "pattern": "{{app_id}}-api.nikatru.com", "custom_domain": true }
-  ]
+  ],
   // NO "r2_buckets" HERE ON PURPOSE. Object storage is ONE portfolio-wide
   // bucket bound in `services/platform`, addressed with an `<app_id>/` key
   // prefix. Stamping `{{app_id}}-exports` per app multiplied buckets, lifecycle
   // rules and CORS policies by the number of apps in order to store the same
   // kind of blob under a different name.
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 🧪 env.sandbox — A STAMPED WORKER IS BORN WITH ITS SANDBOX (rv2-services-011,
+  // row O-BRICK-WORKER-HAS-NO-SANDBOX-ENV).
+  //
+  // 🔴 THIS BLOCK WAS MISSING UNTIL 2026-10-01, and nothing said so: deploy-sandbox
+  // reads `worker-set.mjs --json --app-workers --env sandbox`, which DROPPED an app
+  // Worker with no `env.sandbox` without a word, so app #2 would have had no
+  // sandbox Worker, no sandbox database and no store capture, with every lane
+  // green. worker-set.mjs now refuses that Worker by name instead.
+  //
+  // It mirrors services/subscriptiontracker-api/wrangler.jsonc's own block, key
+  // for key. `wrangler deploy --env sandbox` deploys the script
+  // `{{app_id}}-api-sandbox`, which answers on its workers.dev host and nowhere
+  // else. EVERY KEY IS DECLARED; NONE IS LEFT TO INHERITANCE: wrangler inherits
+  // `routes`, `workers_dev` and `triggers` and does NOT inherit `vars`,
+  // `d1_databases` or `kv_namespaces`, so every top-level binding is twinned
+  // below (tooling/ci/assert-platform-register.mjs limb 8 holds that, both ways
+  // from the top level) and every id is a SANDBOX resource, never production's.
+  //
+  // THE IDS ARE WRITTEN BY THE SAME ONE COMMAND as the top level's:
+  //   node tooling/scripts/provision-backend.mjs {{app_id}}
+  // creates `{{app_id}}_db_sandbox` (`--location apac`, as above), writes its id
+  // into APP_DB here and applies the migrations to it, and copies the SHARED
+  // sandbox namespaces' ids from services/platform/wrangler.jsonc's env.sandbox
+  // (the clone contract: JWKS_CACHE and SESSION_REVOKED are portfolio-wide, in
+  // the sandbox as in production, so no per-app copy is ever created). The
+  // all-zeros placeholders are correct until it runs.
+  // ───────────────────────────────────────────────────────────────────────────
+  "env": {
+    "sandbox": {
+      "routes": [],
+      "workers_dev": true,
+      "triggers": { "crons": [] },
+      "vars": {
+        "APP_ID": "{{app_id}}",
+        // The SAME identity project as production: a sandbox caller signs in
+        // there, and src/middleware/auth.ts verifies against its JWKS.
+        "SUPABASE_URL": "https://auth-api.nikatru.com",
+        "API_VERSION": "v1",
+        "ALLOWED_ORIGINS": "https://nikatru.com"
+      },
+      "d1_databases": [
+        {
+          // PER-APP, and the sandbox's own: a capture's rows land here.
+          "binding": "APP_DB",
+          "database_name": "{{app_id}}_db_sandbox",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "migrations"
+        },
+        {
+          // SHARED: the sandbox entitlements database, migrated by
+          // services/platform's own env.sandbox (the sole applier), so NO
+          // migrations_dir here, exactly as at the top level.
+          "binding": "PLATFORM_DB",
+          "database_name": "platform_db_sandbox",
+          "database_id": "ead92001-03e1-4f71-9b92-c64963a24925"
+        }
+      ],
+      "kv_namespaces": [
+        { "binding": "JWKS_CACHE", "id": "00000000000000000000000000000000" },
+        // The sandbox revocation list, written by the platform's sandbox Worker.
+        // Without it a sandbox E2E cannot see a revoked session refused.
+        { "binding": "SESSION_REVOKED", "id": "00000000000000000000000000000000" }
+      ]
+    }
+  }
 }

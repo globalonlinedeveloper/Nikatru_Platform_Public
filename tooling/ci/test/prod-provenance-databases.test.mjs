@@ -160,7 +160,9 @@ describe('the real tree: every database the register\'s Workers own, and only th
       const text = readFileSync(join(REPO, rel), 'utf8');
       for (const m of text.matchAll(/"database_name"\s*:\s*"([a-z_]+_sandbox)"/g)) sandboxNames.push(m[1]);
     }
-    assert.deepEqual(sandboxNames.sort(), ['platform_db_sandbox', 'platform_db_sandbox', 'subscriptiontracker_db_sandbox']);
+    // ⏱ 2026-10-01 (rv2-services-022): the platform's sandbox twins SUBSCRIPTIONTRACKER_DB too
+    // (rendered from the app Worker's own env.sandbox), so the app's sandbox database is named twice.
+    assert.deepEqual(sandboxNames.sort(), ['platform_db_sandbox', 'platform_db_sandbox', 'subscriptiontracker_db_sandbox', 'subscriptiontracker_db_sandbox']);
     const walked = registeredD1Databases(REPO).databases.map((d) => d.name);
     assert.equal(walked.includes('platform_db_sandbox'), false, 'env.sandbox of services/platform is walked');
     assert.equal(walked.includes('subscriptiontracker_db_sandbox'), false, 'env.sandbox of services/subscriptiontracker-api is walked');

@@ -228,7 +228,14 @@
         // 2026-10-01, _shared/src/auth-middleware.ts:119). Its own namespace: production's holds
         // the same public keys and would work, but a production id in a
         // sandbox block is the shape this block exists to keep out.
-        { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" }
+        { "binding": "JWKS_CACHE", "id": "b2acb786d12f4e36b339dd19f8812bbe" },
+        // why: src/middleware/auth.ts reads the revocation list (`rev:<sub>`) the
+        // platform's sandbox Worker writes on sign-out-everywhere. ⏱ 2026-10-01
+        // (rv2-services-022): absent until today, so a sandbox E2E could not see a
+        // revoked session refused here — the read fails OPEN without it. The
+        // SAME sandbox namespace services/platform's env.sandbox binds
+        // (`session-revoked-sandbox`, tooling/scripts/provision-sandbox-twins.mjs).
+        { "binding": "SESSION_REVOKED", "id": "00000000000000000000000000000000" }
       ]
     }
   }

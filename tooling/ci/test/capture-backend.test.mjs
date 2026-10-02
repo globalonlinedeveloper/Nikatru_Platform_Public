@@ -16,9 +16,12 @@ import assert from 'node:assert/strict';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 import {
   CAPTURE_WORKERS,
+  REGISTER_REL,
+  captureWorkersOf,
   CaptureBackendRefused,
   assertCaptureDefines,
   backendDefinesForRun,
@@ -76,9 +79,15 @@ const fixture = () => ({
   },
 });
 
+/** The fixture's two Workers, as the register names them today. */
+const CAPTURE_WORKERS_FIXTURE = {
+  platform: 'services/platform/wrangler.jsonc',
+  'subscriptiontracker-api': 'services/subscriptiontracker-api/wrangler.jsonc',
+};
+
 /** `read(repoRelativePath)` over a fixture, as JSONC with a comment in it. */
 const reader = (f) => (rel) => {
-  const worker = Object.entries(CAPTURE_WORKERS).find(([, p]) => p === rel)?.[0];
+  const worker = Object.entries(CAPTURE_WORKERS_FIXTURE).find(([, p]) => p === rel)?.[0];
   if (!worker) throw new Error(`unexpected read of ${rel}`);
   return `// fixture for ${worker}\n${JSON.stringify(f[worker], null, 2)}\n`;
 };
@@ -92,15 +101,78 @@ const refusedOn = (limb, re) => (e) => {
 };
 
 describe('capture-backend: the sandbox is computed from the wrangler configs', () => {
+  test('B0: the Worker set is the REGISTER\'s serving Worker and app Workers, never a literal and never an edge Worker', () => {
+    const reg = JSON.parse(readFileSync(join(REPO, REGISTER_REL), 'utf8'));
+    assert.deepEqual(CAPTURE_WORKERS, captureWorkersOf(reg));
+    assert.deepEqual(Object.keys(CAPTURE_WORKERS), [reg.servingWorker.name, ...reg.appWorkers.map((w) => w.name)]);
+    for (const e of reg.edgeWorkers ?? []) assert.equal(Object.hasOwn(CAPTURE_WORKERS, e.name), false, `${e.name} is an edge Worker`);
+    const two = captureWorkersOf({
+      servingWorker: { name: 'platform', config: 'services/platform/wrangler.jsonc' },
+      appWorkers: [
+        { name: 'subscriptiontracker-api', config: 'services/subscriptiontracker-api/wrangler.jsonc' },
+        { name: 'zzz-api', config: 'services\\zzz-api\\wrangler.jsonc' },
+      ],
+      edgeWorkers: [{ name: 'edge-shield', config: 'services/edge-shield/wrangler.jsonc' }],
+    });
+    assert.deepEqual(two, {
+      platform: 'services/platform/wrangler.jsonc',
+      'subscriptiontracker-api': 'services/subscriptiontracker-api/wrangler.jsonc',
+      'zzz-api': 'services/zzz-api/wrangler.jsonc',
+    });
+    assert.deepEqual(captureWorkersOf(null), {});
+  });
+
+  test('🔴 B0b: a two-app register whose app #2 has no env.sandbox is REFUSED by name — it is in the set now', () => {
+    const f = fixture();
+    const workers = { ...CAPTURE_WORKERS_FIXTURE, 'zzz-api': 'services/zzz-api/wrangler.jsonc' };
+    const read = (rel) => {
+      if (rel === 'services/zzz-api/wrangler.jsonc') {
+        return JSON.stringify({ name: 'zzz-api', routes: [{ pattern: 'zzz-api.example.com', custom_domain: true }] });
+      }
+      return reader(f)(rel);
+    };
+    assert.throws(() => sandboxBackend({ read, workers }), refusedOn('env-missing', /services\/zzz-api\/wrangler\.jsonc has no `env\.sandbox` block, so zzz-api/));
+    assert.throws(() => sandboxBackend({ read, workers: {} }), refusedOn('unreadable', /names no serving Worker `platform`/));
+  });
+
+  test('🔴 B0c: a sandbox bound to the PRODUCTION bucket or the production Worker by service binding is refused as id-reuse', () => {
+    const bucket = fixture();
+    bucket.platform.r2_buckets = [{ binding: 'BACKUPS_R2', bucket_name: 'nikatru-backups' }];
+    bucket.platform.env.sandbox.r2_buckets = [{ binding: 'BACKUPS_R2', bucket_name: 'nikatru-backups' }];
+    assert.throws(() => sandboxBackend({ read: reader(bucket) }), refusedOn('id-reuse', /r2:BACKUPS_R2 = nikatru-backups is also the platform top-level r2:BACKUPS_R2/));
+    const svc = fixture();
+    svc.platform.services = [{ binding: 'ERASURE_SUBSCRIPTIONTRACKER', service: 'subscriptiontracker-api', entrypoint: 'ErasureEntrypoint' }];
+    svc.platform.env.sandbox.services = [{ binding: 'ERASURE_SUBSCRIPTIONTRACKER', service: 'subscriptiontracker-api', entrypoint: 'ErasureEntrypoint' }];
+    assert.throws(() => sandboxBackend({ read: reader(svc) }), refusedOn('id-reuse', /service:ERASURE_SUBSCRIPTIONTRACKER = subscriptiontracker-api is also the platform top-level/));
+    // Green control: the same bindings on SANDBOX resources are accepted.
+    svc.platform.env.sandbox.services[0].service = 'subscriptiontracker-api-sandbox';
+    bucket.platform.env.sandbox.r2_buckets[0].bucket_name = 'nikatru-backups-sandbox';
+    assert.equal(sandboxBackend({ read: reader(svc) }).platform.sandboxIds['service:ERASURE_SUBSCRIPTIONTRACKER'], 'subscriptiontracker-api-sandbox');
+    assert.equal(sandboxBackend({ read: reader(bucket) }).platform.sandboxIds['r2:BACKUPS_R2'], 'nikatru-backups-sandbox');
+  });
+
   test('B1: the REAL configs give the two -sandbox workers.dev hosts, the sandbox ids and the pin', () => {
     const b = sandboxBackend();
     assert.equal(b.platform.scriptName, 'platform-sandbox');
     assert.equal(b.platform.sandboxHost, 'https://platform-sandbox.nikatru.workers.dev');
     assert.equal(b['subscriptiontracker-api'].scriptName, 'subscriptiontracker-api-sandbox');
     assert.equal(b['subscriptiontracker-api'].sandboxHost, 'https://subscriptiontracker-api-sandbox.nikatru.workers.dev');
-    assert.deepEqual(b.platform.sandboxIds, {
+    // ⏱ 2026-10-01 (rv2-services-022): the two namespaces tooling/scripts/provision-sandbox-twins.mjs
+    // creates are not pinned by value here — their ids exist only once it has run, and limb 8 of
+    // assert-platform-register.mjs refuses the placeholder they carry until then. What IS pinned:
+    // each is a KV id, and the revocation list is ONE namespace across the two sandbox Workers.
+    const { 'kv:SESSION_REVOKED': revoked, 'kv:SIGNUPS': signups, ...platformPinned } = b.platform.sandboxIds;
+    const { 'kv:SESSION_REVOKED': apiRevoked, ...apiPinned } = b['subscriptiontracker-api'].sandboxIds;
+    assert.match(revoked, /^[0-9a-f]{32}$/);
+    assert.match(signups, /^[0-9a-f]{32}$/);
+    assert.equal(apiRevoked, revoked, 'the sandbox revocation list must be the one namespace the platform sandbox writes');
+    assert.deepEqual(platformPinned, {
       'd1:PLATFORM_DB': 'ead92001-03e1-4f71-9b92-c64963a24925',
+      'd1:SUBSCRIPTIONTRACKER_DB': '4e7c7730-3dc7-4004-9895-403b17702b91',
       'kv:CONFIG_KV': '7ba3a916f8a5429091dec4a39284bffb',
+      'kv:JWKS_CACHE': 'b2acb786d12f4e36b339dd19f8812bbe',
+      'r2:BACKUPS_R2': 'nikatru-backups-sandbox',
+      'service:ERASURE_SUBSCRIPTIONTRACKER': 'subscriptiontracker-api-sandbox',
       'ratelimit:MONEY_CEILING_LIMITER': '1006',
       'ratelimit:EVENTS_LIMITER': '1007',
       'ratelimit:EVENTS_CEILING_LIMITER': '1008',
@@ -117,7 +189,7 @@ describe('capture-backend: the sandbox is computed from the wrangler configs', (
       'ratelimit:CHECKOUT_CEILING_LIMITER': '1028', // ⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED, POST /v1/checkout's edge ceiling.
       'ratelimit:CHECKOUT_USER_LIMITER': '1030', // ⏱ 2026-10-01 · O-ST-CHECKOUT-UNBOUNDED, its per-user bucket.
     });
-    assert.deepEqual(b['subscriptiontracker-api'].sandboxIds, {
+    assert.deepEqual(apiPinned, {
       'd1:APP_DB': '4e7c7730-3dc7-4004-9895-403b17702b91',
       'd1:PLATFORM_DB': 'ead92001-03e1-4f71-9b92-c64963a24925',
       'kv:JWKS_CACHE': 'b2acb786d12f4e36b339dd19f8812bbe',

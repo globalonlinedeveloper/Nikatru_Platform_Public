@@ -51,7 +51,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { posix } from 'node:path';
 import { boundedGlob, listDir } from './tree-walk.mjs';
-import { duplicateMigrationNumbers } from './migration-tables.mjs';
+import { createdIndexKeys, duplicateMigrationNumbers, redundantPrefixIndexes } from './migration-tables.mjs';
 
 /** Migration sets under guard. The brick's is included: it is the schema every
  *  future stamped app starts from, so a violation there scales to 50 apps.
@@ -401,7 +401,74 @@ for (const dup of duplicateMigrationNumbers(files)) {
   violations++;
 }
 
+// ⏱ 2026-10-01 · NO INDEX THAT IS A STRICT COLUMN-PREFIX OF ANOTHER ON THE SAME TABLE
+// (rv2-services-034, row O-BRICK-REDUNDANT-USER-INDEX). Every query the short index
+// answers, the longer one answers too, and the short one is still written on every
+// row change. tooling/ci/migration-tables.mjs (redundantPrefixIndexes) says exactly
+// what is compared. The brick's `idx_records_user` was the finding, and it is gone
+// from the starter schema before app #2 is stamped from it.
+//
+// 🔴 THE THREE ROWS BELOW ARE KEPT, NOT FIXED, and the reason is the rule this file
+// enforces. Each index is in a migration already applied --remote to a live
+// database; removing it is a NEW migration that runs `DROP INDEX`, which this guard
+// allows, and that is a decision about live query plans (an owner's, with the
+// measurement), not a side effect of adding this limb. Each row must stay TRUE: a
+// row whose index is no longer a redundant prefix (dropped, or its covering index
+// gone) is itself a finding, so an exemption cannot outlive the state it names.
 const approved = [];
+const keptIndexes = [];
+const KEPT_PREFIX_INDEXES = [
+  {
+    dir: 'services/platform/migrations',
+    index: 'idx_entitlements_user',
+    why: 'platform_db, applied --remote since 0001; covered by idx_entitlements_user_app. Dropping it is a new DROP INDEX migration under the additive-only rule, decided separately.',
+  },
+  {
+    dir: 'services/platform/migrations',
+    index: 'idx_bundle_grants_user',
+    why: 'platform_db, applied --remote since 0009; covered by idx_bundle_grants_user_live. Dropping it is a new DROP INDEX migration under the additive-only rule, decided separately.',
+  },
+  {
+    dir: 'services/subscriptiontracker-api/migrations',
+    index: 'idx_subscriptions_user',
+    why: 'subscriptiontracker_db, applied --remote since 0001; covered by idx_subscriptions_user_renewal and idx_subscriptions_user_category. Dropping it is a new DROP INDEX migration under the additive-only rule, decided separately.',
+  },
+];
+{
+  const read = files.map((f) => ({ path: f, text: readFileSync(f, 'utf8') }));
+  const found = redundantPrefixIndexes(read);
+  const created = createdIndexKeys(read);
+  const key = (dir, index) => `${dir}\u0000${index}`;
+  const kept = new Map(KEPT_PREFIX_INDEXES.map((k) => [key(k.dir, k.index), k]));
+  const usedKept = new Set();
+  for (const r of found) {
+    const cover = r.coveredBy.map((c) => `${c.index} (${c.columns.join(', ')})`).join(', ');
+    const k = kept.get(key(r.dir, r.index));
+    if (k) {
+      usedKept.add(key(r.dir, r.index));
+      keptIndexes.push(`${r.file}:${r.line}  ${r.index} — ${k.why}`);
+      continue;
+    }
+    console.error(
+      `${r.file}:${r.line}  REDUNDANT INDEX ${r.index} ON ${r.table} (${r.columns.join(', ')}) — a strict column-prefix of ${cover}.\n` +
+        '    Every lookup it serves, the longer index serves, and it is written on every row change. Delete it before it is applied;\n' +
+        '    an applied one is removed by a new `DROP INDEX` migration, which is a decision of its own.',
+    );
+    violations++;
+  }
+  for (const k of KEPT_PREFIX_INDEXES) {
+    // Stale = created there and no longer a redundant prefix (dropped by a later
+    // migration, or its covering index gone). A row naming an index this tree never
+    // created exempts nothing, so it is not this check's business.
+    if (usedKept.has(key(k.dir, k.index)) || !created.has(key(k.dir, k.index))) continue;
+    console.error(
+      `check-migrations.mjs KEPT_PREFIX_INDEXES names ${k.dir} ${k.index}, which is no longer a redundant prefix index there. ` +
+        'Delete the row: an exemption that outlived what it described hides the next finding behind its name.',
+    );
+    violations++;
+  }
+}
+
 for (const file of files) {
   const raw = readFileSync(file, 'utf8');
   const rawLines = raw.split('\n');
@@ -439,6 +506,10 @@ for (const file of files) {
 if (approved.length) {
   console.log('⚠  destructive statements running under an explicit approval marker:');
   for (const a of approved) console.log(`    ${a}`);
+}
+if (keptIndexes.length) {
+  console.log('⚠  redundant prefix indexes KEPT on an applied schema (KEPT_PREFIX_INDEXES):');
+  for (const k of keptIndexes) console.log(`    ${k}`);
 }
 
 // ── ONE NUMBER, ONE MIGRATION, PER DIRECTORY ─────────────────────────────────
