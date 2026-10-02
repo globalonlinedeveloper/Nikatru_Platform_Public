@@ -11,8 +11,10 @@ This file is normative and stands alone: later trains read the standard from her
 
 The first subjects, at their honest levels: `tooling/ports/payments.json` (both halves — `RailInbound`, which is
 [ADR 004]'s `MoRWebhookVerifier`, and `RailOutbound` — at L3 since port-pay-core), `tooling/ports/auth.json` (Dart
-`AuthRepository`) and `tooling/ports/telemetry.json` (Dart `TelemetryClient`), each claiming L2 with target L3; every
-other vendor is placed in `tooling/ports/_non-port.json`. Payments also carries its CLIENT half (`client`: the Dart
+`AuthRepository`) and `tooling/ports/telemetry.json`, each claiming L2 with target L3; every other vendor is placed in
+`tooling/ports/_non-port.json`. Since port-telemetry, `telemetry.json` grades two interfaces apart: the Dart
+`TelemetryClient` at L3 (conformance suite `packages/telemetry/lib/testing.dart`) and the Worker half (`ErrorSink`,
+`Notifier` in `services/_shared/src/ports/telemetry.ts`) at L2. Payments also carries its CLIENT half (`client`: the Dart
 `PurchaseRail` and `IapBridge` seams, at L3 since port-pay-client). `tooling/ports/mail.json` (TS `MailTransport`, port-mail) is at
 L3 as well: Resend and a fake conformant, an Amazon SES draft passing the same suite to prove the port is not
 Resend-shaped.
@@ -42,6 +44,11 @@ equivalent of §4's phase 3. Backup destinations and their restore drills are `t
 A claim above the earned level fails the build. The guard prints `port · claimed · earned · target` on every run, so
 the distance to target is never hidden.
 
+**A port with a `ts` and a `dart` interface may grade each apart** (`level.byInterface`). Each half is graded over the
+adapters whose `impl.file` is in its language, its own selection (`selection.byInterface[lang]`, else the port's) and a
+conformance suite in its language; each prints its own row (`telemetry.dart`, `telemetry.ts`), and the port claims and
+earns the LOWEST half. `byInterface` must grade exactly the port's interfaces.
+
 ## 2. The registry, field by field
 
 One file per capability: `tooling/ports/<capability>.json`, validated strictly (`additionalProperties: false`
@@ -52,6 +59,7 @@ wherever the shape can hold it).
 | `$schema` | `./port.schema.json`. |
 | `port` | The capability; equals the file name. |
 | `level.claimed` / `level.target` | 0–3. Claimed is checked against earned; target is where the trains are taking it. |
+| `level.byInterface` | Optional `{ts?, dart?}`, each `{claimed, target}`: each interface graded over its own adapters (by impl.file language); the port claims and earns the lowest. |
 | `interface.ts` / `interface.dart` / `interface.js` | `{file, symbols}` — at least one. Each symbol must be **declared** in the file (comment-stripped). `js` is a node module under `tooling/` for a port that is operated rather than imported (the boxes). |
 | `adapters[].id` | The wire id: the value the selection names and the code keys on. |
 | `adapters[].vendor` | A `tooling/capability-register.json` `vendors` key or a `tooling/legal/provider-register.json` `providers` id; `null` only for a fake. Two adapters of ONE port may share a vendor (two boxes at one provider); two ports may not. |
@@ -75,6 +83,7 @@ wherever the shape can hold it).
 | `selection.source` | `<file>#<pointer>` when another register (or one code site) holds the answer — e.g. `tooling/channel-register.json#purchaseRails`; null when `default` is the whole answer. |
 | `selection.default` | `{live, sandbox, test}` adapter ids or null. Null in every slot is honest for a port selected per channel. |
 | `selection.canary` | Reserved; null. |
+| `selection.byInterface` | Optional `{ts?, dart?}`, each a whole selection (`by`, `source`, `default`, `canary`) for that interface's adapters. |
 | `generated` | `true` once code reads a **rendered** table instead of a hand array. The render tool is `tooling/ports/render.mjs [--check]` (port-pay-core); assert-ports limb 3 runs its check on every build, so a hand edit of a rendered table fails whether or not `generated` is claimed yet. |
 | `handTables[]` | `{file, anchor, until, why}` — a declared, printed waiver for a hand-written table (or a pre-port import) that the port will replace. The anchor must still exist. |
 | `conformance.suite` | `{file, runner}` or null. |
@@ -96,6 +105,9 @@ wherever the shape can hold it).
   private-key blocks, long high-entropy tokens and e-mail addresses).
 - **A `fake` is never in `live`** — neither in its `environments` nor as `selection.default.live`.
 - **A `pending` case names its row**, prints on every run, and blocks L3 for that adapter.
+- **A vendor is placed once**: in ONE port (as the vendor of any number of its adapters — a port's ts and dart halves
+  may share one) or in one `_non-port.json` row. A `draft` adapter places nothing: its vendor must be placed elsewhere
+  (typically the `_non-port` row of the train that ports it first), and the pairing prints on every run.
 
 ## 3. Conventions
 
@@ -194,9 +206,12 @@ Where one of these appears as a vendor in a register, `_non-port.json` carries i
 `node tooling/ci/assert-ports.mjs` — exit 0 green, 1 a finding, 2 coverage lost; the first line names the deciding limb.
 Limbs: 1 schema · 2 symbols · 3 waivers · 4 imports · 5 secrets · 6 level · 7 fakes · 8 cross-register · 9 literals ·
 10 client (a port's Dart half: each adapter's conformance test CALLS its seam's runner; every class in `packages/*/lib`
-implementing a seam is a registered adapter; no lib imports the shared fakes; the half's level, printed `<port>/client`).
+implementing a seam is a registered adapter; no lib imports the shared fakes; the half's level, printed `<port>/client`) ·
+11 monitor-api (no `tooling/ops` script outside `tooling/ops/monitor-api/` calls GlitchTip's uptime-monitor API itself;
+declared exceptions print).
 Every limb has a recorded mutation in `tooling/ci/test/ports.test.mjs`. Limb 8 places a vendor once per port: mail's
-Resend HTTP adapter and its SMTP relay (auth mail) are one vendor in one port.
+Resend HTTP adapter and its SMTP relay (auth mail) are one vendor in one port, and a `draft` adapter whose vendor another port
+already places (telemetry's `mail` notifier, resend) is not a second placement: the pairing prints.
 
 `node tooling/ops/port-switch.mjs <port> --to <adapter> --dry-run [--env live|sandbox|test] [--from <adapter>]` —
 one line per check, `PASS | FAIL | LOST C<n> <name>: <detail>`; exit 1 on any FAIL, 2 on any LOST, 0 only when all
@@ -205,7 +220,10 @@ verification, C11 streams and their secret names, **C12 the suppression-list exp
 names the method**, C13 warming, and C14 the per-stream cost from `tooling/ceilings.json` (LOST while it records none). Without `--dry-run` it refuses. Tests: `tooling/ci/test/port-switch.test.mjs`.
 For `payments` it adds C9 the
 webhook URL to register and the secrets by name, C10 the price ids still to create per offering, C11 the channels whose
-`purchaseRails` would change (a channel moves only to an adapter of its billing kind — a store-billed channel never to a web rail, a web-billed one never to a store biller — and C8 nets only what moves), and C12 the run-off note; each pending conformance case prints as its own `FAIL` line.
+`purchaseRails` would change (a channel moves only to an adapter of its billing kind — a store-billed channel never to a web rail, a web-billed one never to a store biller — and C8 nets only what moves), and C12 the run-off note; each pending conformance case prints as its own `FAIL` line. For `telemetry` it adds C9 `plan`: the
+DSN of every app build per channel (compile time, so an app release each) and of every Worker (a redeploy), the symbol and
+source-map uploaders to re-run, the monitors to recreate from `tooling/monitor-register.json`, the owner-alert routes and
+the cost delta.
 
 `node tooling/ports/render.mjs [--check]` renders the tables code reads (today
 `services/platform/src/generated/ports.ts` from `payments.json`, and `packages/purchases/lib/src/generated/rails.dart`

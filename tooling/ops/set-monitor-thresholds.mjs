@@ -47,7 +47,7 @@
 // The request code — the call, the retry, the body and the threshold POLICY
 // ([ADR 043] decision 2) — is tooling/ops/glitchtip-monitor-api.mjs. This file
 // keeps the verdict: which monitors to write, the read-back and the diff.
-import { api as glitchtip, ORG, POLICY, requestBodyFrom, vaultToken } from './glitchtip-monitor-api.mjs';
+import { api as glitchtip, ORG, POLICY, requestBodyFrom, vaultToken } from './monitor-api/index.mjs';
 
 const APPLY = process.argv.includes('--apply');
 const TOKEN = vaultToken();

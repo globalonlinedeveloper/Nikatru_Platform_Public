@@ -35,6 +35,7 @@ import {
 import { deleteIdentity, erasePlatformRows, purgeVerifiedSignups } from './lib/platform-erasure';
 import { runReminderMail } from './lib/reminders';
 import { refreshFxRates } from './fx';
+import { notifierFor } from './ports';
 import { backfillProviderTokens, dropProviderTokens, providerOfRevokeStep, revokeProviderToken } from './lib/provider-revoke';
 import {
   runOpsWatchdogChecks,
@@ -202,7 +203,29 @@ export function boxbTargets(env: Env): string[] {
 }
 
 export async function boxbReachability(env: Env): Promise<void> {
-  await recordHeartbeat(env, await probeReachability(boxbTargets(env)), BOXB_REACH_JOB);
+  const rows = await probeReachability(boxbTargets(env));
+  await recordHeartbeat(env, rows, BOXB_REACH_JOB);
+  await alertBoxbDown(env, rows);
+}
+
+/**
+ * [port-telemetry] THE ROW IS THE RECORD; THIS IS THE PAGE. A Box B outage used to
+ * write ok=0 rows that someone had to go and read. Now any down target also goes
+ * to the owner through `notifierFor('critical')` (src/ports.ts): ntfy first —
+ * which is ON Box B, so in exactly this case it is expected to fail — and then,
+ * once, the off-box fallback (ports/telemetry.ts NOTIFIER_ROUTES). The outcome is
+ * logged and never thrown: an alert channel being down must not stop the cron.
+ */
+export async function alertBoxbDown(env: Env, rows: { target: string; ok: boolean; detail: string }[]): Promise<void> {
+  const down = rows.filter((r) => !r.ok);
+  if (down.length === 0) return;
+  const outcome = await notifierFor('critical', env).notify({
+    severity: 'critical',
+    title: `Box B unreachable: ${down.length} of ${rows.length} host(s)`,
+    body: down.map((r) => `${r.target} — ${r.detail}`).join('\n'),
+    dedupeKey: BOXB_REACH_JOB,
+  });
+  console.log(`[cron] box B alert: ${outcome.ok ? `sent via ${outcome.via}` : `NOT SENT (${outcome.kind}): ${outcome.detail}`}`);
 }
 
 /**

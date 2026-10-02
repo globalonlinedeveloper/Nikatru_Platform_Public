@@ -419,3 +419,41 @@ describe('port-switch — a MAIL switch moves more than code (C9–C14)', () => 
     assert.match(live.first, /FAIL — C1 target: `fake` is a fake/);
   });
 });
+
+describe('port-switch — the telemetry plan (C9) over the REAL registers', () => {
+  // Run against the repository itself: the plan reads four registers and the two
+  // uploaders, and every one of them is read-only here.
+  it('green control: --to sentry --env sandbox --from noop passes, and C9 lists every channel, Worker, uploader and monitor', () => {
+    const r = run(['telemetry', '--to', 'sentry', '--env', 'sandbox', '--from', 'noop', '--dry-run']);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /^PASS  C9 plan: \d+ app build\(s\) need a release if the app sink moves; 2 Worker\(s\) a redeploy; 2 uploader\(s\); \d+ monitor\(s\) to recreate/m);
+    assert.match(r.out, /GLITCHTIP_DSN is COMPILE-TIME .* APP RELEASE on every channel below/);
+    const channels = JSON.parse(readFileSync(join(REPO, 'tooling/channel-register.json'), 'utf8')).channels;
+    for (const c of channels.filter((x) => (x.crashSink?.layers ?? []).includes('dart'))) {
+      assert.match(r.out, new RegExp(`^ +${c.id} +GLITCHTIP_DSN \\(--dart-define\\) → release this channel$`, 'm'), `channel ${c.id} is not named`);
+    }
+    assert.match(r.out, /^ +platform +GLITCHTIP_DSN \(deploy var\) → set it and REDEPLOY/m);
+    assert.match(r.out, /^ +subscriptiontracker-api +GLITCHTIP_DSN \(deploy var\)/m);
+    assert.match(r.out, /node tooling\/ops\/upload-native-symbols\.mjs/);
+    assert.match(r.out, /node tooling\/ops\/upload-web-sourcemaps\.mjs/);
+    assert.match(r.out, /^ +#1 +GET +glitchtip\.nikatru\.com$/m);
+    assert.match(r.out, /export it optionally; never block the switch on it/);
+    assert.match(r.out, /cost delta: noop: no unit cost recorded → sentry: no unit cost recorded/);
+  });
+  it('red: a missing uploader is LOST (exit 2), never a pass', () => {
+    const root = mkdtempSync(join(tmpdir(), 'port-switch-tel-'));
+    for (const rel of ['tooling/ports', 'tooling/channel-register.json', 'tooling/platform-register.json', 'tooling/monitor-register.json',
+      'tooling/ops/upload-native-symbols.mjs', 'packages/telemetry/test']) {
+      cpSync(join(REPO, rel), join(root, rel), { recursive: true });
+    }
+    const r = run(['telemetry', '--to', 'sentry', '--env', 'sandbox', '--from', 'noop', '--dry-run', '--root', root]);
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.first, /^port-switch: LOST — C9 plan: tooling\/ops\/upload-web-sourcemaps\.mjs does not exist/);
+  });
+  it('red: a Worker target fails C5 — the ts half has no registered suite (it claims L2)', () => {
+    const r = run(['telemetry', '--to', 'webhook', '--from', 'ntfy', '--dry-run']);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /^FAIL  C5 conformance: services\/_shared\/test\/notifier\.test\.ts does not CALL runTelemetryClientConformance/m);
+    assert.match(r.out, /Workers \(TOUCHED by this switch\)/);
+  });
+});

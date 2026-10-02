@@ -92,6 +92,23 @@
 //               as `<port>/client`; a claim above it is a limb 6 finding.
 //               A Dart interface may be a LIBRARY file: limb 2 follows its
 //               relative `export` directives one level for the declaration.
+//  11 monitor   ⏱ 2026-10-02 · port-telemetry. No tooling/ops script outside
+//     -api      tooling/ops/monitor-api/ CALLS GlitchTip's uptime-monitor API
+//               itself (a `fetch(` naming a monitor route, or composing one in a
+//               file that names it). The adapter tooling/ops/monitor-api/glitchtip.mjs
+//               is the positive control: absent, or not matched, is COVERAGE LOST.
+//               Declared exceptions (MONITOR_API_EXCEPTIONS) print on every run,
+//               and one that no longer calls the API is a stale row.
+//
+// ⏱ 2026-10-02 · port-telemetry, beside limbs 6, 7 and 8: a port with a ts AND a
+// dart interface may grade each apart (`level.byInterface`): each half over the
+// adapters whose impl.file is in its language, its own selection
+// (`selection.byInterface`, else the port's) and a suite in its language; the
+// port claims and earns the LOWEST half, and each half prints its own row
+// (`telemetry.dart`, `telemetry.ts`). Limb 7 reads each half's selection too. In
+// limb 8 a `draft` adapter whose vendor another port already places is not a
+// second placement (telemetry's `mail` notifier names resend, which mail.json
+// carries): the pairing prints. A draft nothing else places still places it.
 //
 // Exit 0 green, 1 a finding, 2 COVERAGE LOST (every problem is one). The FIRST
 // line names the deciding limb.
@@ -129,7 +146,24 @@ export const LIMB_NAMES = Object.freeze({
   8: 'cross-register',
   9: 'literals',
   10: 'client',
+  11: 'monitor-api',
 });
+
+/** The ops monitor API (limb 11): the directory every ops script reaches GlitchTip's
+ *  uptime-monitor API through, and its adapter — the positive control. */
+export const MONITOR_API_DIR = 'tooling/ops/monitor-api';
+export const MONITOR_API_ADAPTER = 'tooling/ops/monitor-api/glitchtip.mjs';
+/** A monitor route, as a script would name it. */
+const MONITOR_ROUTE = /monitors\/|monitorsPath|heartbeat_check/;
+/** Ops scripts that still reach the monitor API with their own request code —
+ *  DECLARED, printed on every run, and each must still match (a stale row fails). */
+export const MONITOR_API_EXCEPTIONS = Object.freeze([
+  {
+    file: 'tooling/ops/verify-alarm-chains.mjs',
+    why: 'the alarm-chain canary: its own api() also drives alert rules, the project list and the canary event, and the drill breaks and restores a heartbeat monitor on purpose',
+    until: 'port-telemetry-callers',
+  },
+]);
 
 // ── values a registry may never carry (rule: no secret value, no business-fact literal) ──
 // Each shape is one a real credential or a PII literal takes; a registry names
@@ -143,6 +177,12 @@ export const FORBIDDEN_VALUES = Object.freeze([
 ]);
 
 const isObj = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
+/** The interface an adapter implements, by its impl.file: `ts`, `dart`, or null (external). */
+export const langOf = (a) => {
+  const f = a?.impl?.file;
+  if (typeof f !== 'string') return null;
+  return /\.dart$/.test(f) ? 'dart' : /\.(?:ts|mts)$/.test(f) ? 'ts' : null;
+};
 const typeOf = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : Number.isInteger(v) ? 'integer' : typeof v);
 
 // ── the validator: the subset of JSON Schema port.schema.json uses, and nothing silently ──
@@ -416,6 +456,20 @@ export function evaluate(root) {
       if (sel !== null && sel !== undefined && !ids.has(sel)) find(1, `${rel} selection.default.${env} names \`${sel}\`, which is no adapter of this port.`);
     }
     for (const p of doc?.conformance?.pending ?? []) if (!ids.has(p.adapter)) find(1, `${rel} conformance.pending names adapter \`${p.adapter}\`, which is not one of this port's.`);
+    // per-interface grading: its keys are the interface's, and its slots name this port's adapters
+    const ifaceKeys = Object.keys(doc?.interface ?? {}).sort();
+    const byLevel = doc?.level?.byInterface;
+    if (isObj(byLevel) && JSON.stringify(Object.keys(byLevel).sort()) !== JSON.stringify(ifaceKeys)) {
+      find(1, `${rel} level.byInterface grades ${JSON.stringify(Object.keys(byLevel).sort())}, and the port's interfaces are ${JSON.stringify(ifaceKeys)}; grade every interface or none.`);
+    }
+    for (const [lang, sel] of Object.entries(isObj(doc?.selection?.byInterface) ? doc.selection.byInterface : {})) {
+      if (!ifaceKeys.includes(lang)) find(1, `${rel} selection.byInterface.${lang} selects for an interface the port does not declare.`);
+      for (const env of ['live', 'sandbox', 'test']) {
+        const id = sel?.default?.[env];
+        if (id !== null && id !== undefined && !ids.has(id)) find(1, `${rel} selection.byInterface.${lang}.default.${env} names \`${id}\`, which is no adapter of this port.`);
+        else if (id && langOf(doc.adapters.find((a) => a?.id === id)) !== lang) find(1, `${rel} selection.byInterface.${lang}.default.${env} names \`${id}\`, which is not a ${lang} adapter.`);
+      }
+    }
     ports.push({ rel, doc, schemaOk: errs.length === 0 });
   }
   let nonPortDoc = null;
@@ -559,36 +613,47 @@ export function evaluate(root) {
     }
     const live = doc?.selection?.default?.live;
     if (live && fakes.has(live)) { find(7, `${rel} selection.default.live is the fake \`${live}\`.`); fakeLive.set(doc.port, true); }
+    for (const [lang, sel] of Object.entries(isObj(doc?.selection?.byInterface) ? doc.selection.byInterface : {})) {
+      const l = sel?.default?.live;
+      if (l && fakes.has(l)) { find(7, `${rel} selection.byInterface.${lang}.default.live is the fake \`${l}\`.`); fakeLive.set(doc.port, true); }
+    }
   }
 
   // ── limb 6 · the earned level ──
-  for (const { rel, doc, schemaOk } of ports) {
-    const claimed = doc?.level?.claimed ?? 0;
-    const target = doc?.level?.target ?? 0;
-    let earned = 0;
+  // One grading, applied to the whole port — or, when `level.byInterface` is
+  // present, to each interface over ITS adapters (by impl.file extension), its
+  // selection (`selection.byInterface[lang]`, else the port's) and a suite in
+  // ITS language. The port then earns the lowest of them.
+  const grade = (doc, schemaOk, lang) => {
     const why = [];
-    if (schemaOk && symOk.get(doc.port)) earned = 1;
+    const its = (doc.adapters ?? []).filter((a) => lang === null || langOf(a) === lang);
+    let earned = 0;
+    const ifaceOk = lang === null ? symOk.get(doc.port) : symOk.get(doc.port) && Boolean(doc?.interface?.[lang]);
+    if (schemaOk && ifaceOk) earned = 1;
     else why.push('the interface is not declared where the registry says');
-    const real = (doc.adapters ?? []).filter((a) => a?.status !== 'fake' && a?.status !== 'retired' && a?.status !== 'draft');
-    const selected = doc?.selection && (doc.selection.source !== null || doc.selection.default?.live || doc.selection.default?.sandbox);
+    const real = its.filter((a) => a?.status !== 'fake' && a?.status !== 'retired' && a?.status !== 'draft');
+    const sel = (lang !== null && doc?.selection?.byInterface?.[lang]) || doc?.selection;
+    const selected = sel && (sel.source !== null || sel.default?.live || sel.default?.sandbox);
+    const fakeInLive = its.some((a) => a?.status === 'fake' && (a.environments ?? []).includes('live')) ||
+      its.some((a) => a?.status === 'fake' && a.id === sel?.default?.live);
     if (earned === 1) {
       if (!selected) why.push('no selection: neither a source nor a default names how an adapter is chosen');
       else if (!limb4Clean.get(doc.port)) why.push('a caller imports an adapter (limb 4)');
       else if (!real.length) why.push('no built, non-fake adapter');
-      else if (fakeLive.get(doc.port)) why.push('a fake is selectable in live (limb 7)');
+      else if (lang === null ? fakeLive.get(doc.port) : fakeInLive) why.push('a fake is selectable in live (limb 7)');
       else earned = 2;
     }
     if (earned === 2) {
       const suite = doc?.conformance?.suite;
       const pending = new Set((doc?.conformance?.pending ?? []).map((p) => p.adapter));
-      for (const p of doc?.conformance?.pending ?? []) notes.push(`PENDING ${doc.port}/${p.adapter}: ${p.case} (${p.row}) — blocks L3 for that adapter`);
       let conformant = 0;
       if (!suite) why.push('no conformance suite');
+      else if (lang !== null && langOf({ impl: { file: suite.file } }) !== lang) why.push(`no conformance suite for the ${lang} interface (the suite ${suite.file} is ${langOf({ impl: { file: suite.file } }) ?? 'neither'})`);
       else {
         const suiteSrc = readStripped(root, suite.file);
         if (suiteSrc === null || !declares(suiteSrc, suite.runner, extname(suite.file))) why.push(`the suite ${suite.file} does not declare ${suite.runner}`);
         else {
-          for (const a of doc.adapters ?? []) {
+          for (const a of its) {
             // A draft or retired adapter may pass the suite (mail's SES draft
             // does), but no environment can select it, so it earns nothing.
             if (!a?.conformance?.file || pending.has(a.id) || a.status === 'draft' || a.status === 'retired') continue;
@@ -601,7 +666,37 @@ export function evaluate(root) {
       const sw = doc?.switch;
       if (!sw?.runbook) why.push('no switch runbook');
       if (!existsSync(join(root, 'tooling/ops/port-switch.mjs'))) why.push('no dry-run tool');
-      if (suite && conformant >= 2 && sw?.runbook && existsSync(join(root, 'tooling/ops/port-switch.mjs'))) earned = 3;
+      if (conformant >= 2 && sw?.runbook && existsSync(join(root, 'tooling/ops/port-switch.mjs'))) earned = 3;
+    }
+    return { earned, why };
+  };
+  for (const { rel, doc, schemaOk } of ports) {
+    for (const p of doc?.conformance?.pending ?? []) notes.push(`PENDING ${doc.port}/${p.adapter}: ${p.case} (${p.row}) — blocks L3 for that adapter`);
+    const claimed = doc?.level?.claimed ?? 0;
+    const target = doc?.level?.target ?? 0;
+    const byLevel = isObj(doc?.level?.byInterface) ? doc.level.byInterface : null;
+    let earned;
+    let why;
+    if (byLevel) {
+      const rows = [];
+      for (const lang of Object.keys(byLevel).sort()) {
+        const g = grade(doc, schemaOk, lang);
+        const c = byLevel[lang]?.claimed ?? 0;
+        const t = byLevel[lang]?.target ?? 0;
+        rows.push({ lang, ...g, claimed: c, target: t });
+        result.table.push({ port: `${doc.port}.${lang}`, claimed: c, earned: g.earned, target: t, why: g.earned < t ? g.why[0] ?? '' : '' });
+        if (c > g.earned) find(6, `${rel} claims L${c} for its ${lang} interface and earns L${g.earned}: ${g.why[0] ?? 'see above'}.`);
+        if (c > t) find(6, `${rel} claims L${c} for its ${lang} interface, above its target L${t}.`);
+      }
+      const low = rows.reduce((m, r) => (r.earned < m.earned ? r : m), rows[0]);
+      earned = low.earned;
+      why = low.why.map((w) => `${low.lang}: ${w}`);
+      const minClaim = Math.min(...rows.map((r) => r.claimed));
+      const minTarget = Math.min(...rows.map((r) => r.target));
+      if (claimed !== minClaim) find(6, `${rel} level.claimed is L${claimed}, and its weakest interface claims L${minClaim}; a port claims what its weakest interface claims.`);
+      if (target !== minTarget) find(6, `${rel} level.target is L${target}, and its interfaces' lowest target is L${minTarget}.`);
+    } else {
+      ({ earned, why } = grade(doc, schemaOk, null));
     }
     result.table.push({ port: doc.port, claimed, earned, target, why: earned < target ? why[0] ?? '' : '' });
     if (claimed > earned) find(6, `${rel} claims L${claimed} and earns L${earned}: ${why[0] ?? 'see above'}.`);
@@ -622,13 +717,19 @@ export function evaluate(root) {
     for (const id of provIds) all.set(id, new Set([...(all.get(id) ?? []), 'provider-register']));
     const placed = new Map(); // vendor -> [where]
     const place = (v, where) => placed.set(v, [...(placed.get(v) ?? []), where]);
+    // ⏱ 2026-10-02 · port-telemetry: a `draft` adapter whose vendor ANOTHER port (or a
+    // _non-port row) already places is not a second placement — telemetry's `mail`
+    // notifier names resend, which mail.json carries. It prints the pairing. A draft
+    // whose vendor nothing else places still places it, in its own port (mail's ses).
+    const drafts = [];
     for (const { doc } of ports) {
       const inPort = new Set();
       for (const a of doc?.adapters ?? []) {
         if (typeof a?.vendor !== 'string') continue;
+        if (a.status === 'draft') { drafts.push({ doc, a }); continue; }
         // One placement per port: a vendor behind two adapters of the same port
-        // (an HTTP API and an SMTP relay; two boxes at one provider) is still one
-        // vendor in one port.
+        // (an HTTP API and an SMTP relay; two boxes at one provider; a port's ts and
+        // dart halves) is still one vendor in one port.
         if (inPort.has(a.vendor)) { result.vendorPort.get(a.vendor).adapter += `, ${a.id}`; continue; }
         inPort.add(a.vendor);
         place(a.vendor, `${doc.port}/${a.id}`);
@@ -638,6 +739,16 @@ export function evaluate(root) {
     for (const r of nonPortDoc.rows ?? []) {
       place(r.vendor, `_non-port`);
       result.nonPort.set(r.vendor, r);
+    }
+    for (const { doc, a } of drafts) {
+      const elsewhere = (placed.get(a.vendor) ?? []).filter((w) => !w.startsWith(`${doc.port}/`));
+      const here = (placed.get(a.vendor) ?? []).some((w) => w.startsWith(`${doc.port}/`));
+      if (elsewhere.length) waivers.push(`${doc.port}/${a.id}: draft adapter of vendor ${a.vendor}, placed at ${elsewhere.join(', ')} until it is built`);
+      else if (here) result.vendorPort.get(a.vendor).adapter += `, ${a.id}`;
+      else {
+        place(a.vendor, `${doc.port}/${a.id}`);
+        result.vendorPort.set(a.vendor, { port: doc.port, adapter: a.id, earned: earnedOf.get(doc.port) ?? 0 });
+      }
     }
     for (const [id, regs] of all) {
       const at = placed.get(id) ?? [];
@@ -655,6 +766,8 @@ export function evaluate(root) {
     for (const { rel, doc } of ports) {
       const ifaceFiles = new Set(Object.values(doc?.interface ?? {}).map((i) => i.file));
       for (const a of doc?.adapters ?? []) {
+        // A draft whose vendor another port places claims no seam here (above).
+        if (a?.status === 'draft' && result.vendorPort.get(a.vendor)?.port !== doc.port) continue;
         const seam = typeof a?.vendor === 'string' ? cap.vendors?.[a.vendor]?.seam?.file : undefined;
         if (!seam) continue;
         if (ifaceFiles.has(seam)) {
@@ -835,7 +948,57 @@ export function evaluate(root) {
       }
     }
   }
+  // ── limb 11 · the monitor API: no ops script calls GlitchTip's monitor routes itself ──
+  {
+    const adapterSrc = readStripped(root, MONITOR_API_ADAPTER);
+    if (adapterSrc === null) lost(11, `${MONITOR_API_ADAPTER} does not exist, so "every ops script reaches the monitor API through ${MONITOR_API_DIR}/" holds of nothing.`);
+    else if (!directMonitorCalls(adapterSrc)) lost(11, `the matcher finds no monitor call in ${MONITOR_API_ADAPTER}, the one module that makes them; the matcher has broken.`);
+    else {
+      const files = [];
+      walkMjs(root, 'tooling/ops', files);
+      const declared = new Map(MONITOR_API_EXCEPTIONS.map((e) => [e.file, e]));
+      let scanned = 0;
+      for (const f of files) {
+        if (f.startsWith(`${MONITOR_API_DIR}/`)) continue;
+        const code = readStripped(root, f);
+        if (code === null) continue;
+        scanned++;
+        const n = directMonitorCalls(code);
+        const ex = declared.get(f);
+        if (ex) {
+          if (n) waivers.push(`monitor-api: ${f} reaches the monitor API with its own request code — ${ex.why} — until ${ex.until}`);
+          else find(11, `${f} is a declared monitor-API exception and makes no monitor call any more. Remove its MONITOR_API_EXCEPTIONS row.`);
+          continue;
+        }
+        if (n) find(11, `${f} calls GlitchTip's monitor API directly (${n} fetch call(s)). Reach it through ${MONITOR_API_DIR}/index.mjs (listMonitors, api), so the monitor vendor stays one adapter.`);
+      }
+      notes.push(`limb 11 scanned ${scanned} ops script(s) outside ${MONITOR_API_DIR}/`);
+    }
+  }
   return result;
+}
+
+/**
+ * The `fetch(` calls in comment-stripped `code` that reach the monitor API on
+ * their own: a call whose URL names a monitor route, or — in a file that names
+ * one anywhere — a call to GlitchTip's `/api/0/` that composes the route
+ * elsewhere. Matches CALLS (vacuous-10/11), never a mention in prose.
+ */
+export function directMonitorCalls(code) {
+  const calls = [...code.matchAll(/(?<![\w.])fetch\s*\(/g)].map((m) => code.slice(m.index, m.index + 240));
+  const named = calls.filter((c) => MONITOR_ROUTE.test(c.split(/,\s*\{/)[0]));
+  if (named.length) return named.length;
+  return MONITOR_ROUTE.test(code) ? calls.filter((c) => /\/api\/0\//.test(c.split(/,\s*\{/)[0])).length : 0;
+}
+
+function walkMjs(root, relDir, out) {
+  let entries;
+  try { entries = listDir(join(root, relDir), { withFileTypes: true }); } catch { return; }
+  for (const e of entries) {
+    const rel = posix.join(relDir, e.name);
+    if (e.isDirectory()) { if (e.name !== 'node_modules' && e.name !== 'test') walkMjs(root, rel, out); }
+    else if (/\.m?js$/.test(e.name)) out.push(rel);
+  }
 }
 
 /** One printable line per vendor for C-8: its port and earned level, or why it has none. */

@@ -75,6 +75,14 @@
 //   C13 warming   sending reputation does not move; the target's warm-up is written
 //   C14 cost      the per-stream monthly cost from tooling/ceilings.json's rows for
 //                 the vendors; LOST when it records none (never a guess)
+// A TELEMETRY switch adds one (port-telemetry, PORT_PLANS):
+//   C9  plan      what else the switch moves: the DSN of every app build per
+//                 channel — COMPILE-TIME by owner decision, so a crash-sink switch
+//                 is an APP RELEASE on each of them — and of every Worker (a deploy
+//                 var, so a redeploy); the release artefacts to re-upload (native
+//                 symbols, web source maps); the monitors to recreate from
+//                 tooling/monitor-register.json; and the owner-alert routes.
+//                 LOST when a source cannot be read or yields nothing.
 //
 // It reads registries and nothing else: no network, no vault, no credential.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -341,8 +349,91 @@ export function run(opts) {
     for (const a of current) extra.push(`    run-off ${a.id}: ${a.exportDuty}`);
   }
   if (isObj(doc.streams)) mailChecks(root, doc, target, current, add);
+  // C9 — a port's own switch plan, when it has one (PORT_PLANS)
+  const planFor = Object.hasOwn(PORT_PLANS, opts.port) ? PORT_PLANS[opts.port] : undefined;
+  if (planFor) {
+    const p = planFor(root, doc, target, current);
+    add(9, 'plan', p.verdict, p.detail);
+    extra.push(...p.lines);
+  }
   return finish(checks, extra);
 }
+
+export const PLATFORM_REGISTER = 'tooling/platform-register.json';
+export const MONITOR_REGISTER = 'tooling/monitor-register.json';
+/** The release artefacts a crash sink needs re-uploaded to make old releases readable. */
+export const TELEMETRY_UPLOADERS = ['tooling/ops/upload-native-symbols.mjs', 'tooling/ops/upload-web-sourcemaps.mjs'];
+
+/**
+ * C9 for `telemetry`: everything a crash-sink or alert switch moves besides the
+ * registry row. Reads tooling/channel-register.json (crashSink per channel),
+ * tooling/platform-register.json (dsnSecret per Worker), tooling/monitor-register.json
+ * (the monitors) and the port's own Notifier rows. Never a DSN value — names only.
+ */
+export function telemetryPlan(root, doc, target, current) {
+  const lines = [];
+  const lost = [];
+  const read = (rel) => { try { return JSON.parse(readFileSync(join(root, rel), 'utf8')); } catch (e) { lost.push(`${rel} could not be read (${e.message})`); return null; } };
+  const ch = read(CHANNEL_REGISTER);
+  const plat = read(PLATFORM_REGISTER);
+  const mon = read(MONITOR_REGISTER);
+  const lang = (a) => (/\.dart$/.test(a?.impl?.file ?? '') ? 'dart' : /\.ts$/.test(a?.impl?.file ?? '') ? 'ts' : null);
+  const touches = new Set([target, ...current].map(lang).filter(Boolean));
+
+  // the app half: one DSN per build, compile-time
+  const appRows = (ch?.channels ?? []).filter((c) => (c?.crashSink?.layers ?? []).includes('dart'));
+  lines.push(`    ── app builds (${touches.has('dart') ? 'TOUCHED by this switch' : 'not touched: the target is a Worker adapter'}) ──`);
+  lines.push('    GLITCHTIP_DSN is COMPILE-TIME (owner decision 2026-07-27, capability-register glitchtip.configKeyed): a new crash sink for the apps is an APP RELEASE on every channel below, and builds already in the field keep reporting to the old sink until users update.');
+  for (const c of appRows) lines.push(`      ${c.id.padEnd(16)} GLITCHTIP_DSN (--dart-define) → release this channel`);
+  for (const c of (ch?.channels ?? []).filter((x) => !(x?.crashSink?.layers ?? []).includes('dart'))) lines.push(`      ${String(c.id).padEnd(16)} no Dart crash sink declared (${c.crashSink ? 'crashSink.layers is empty' : 'no crashSink row'}) — nothing to repoint`);
+  if (ch && !appRows.length) lost.push(`${CHANNEL_REGISTER} names no channel whose crashSink carries the dart layer`);
+
+  // the Worker half: one DSN per Worker, a deploy var
+  const workers = [plat?.servingWorker, ...(plat?.appWorkers ?? [])].filter((w) => w && typeof w.dsnSecret === 'string');
+  lines.push(`    ── Workers (${touches.has('ts') ? 'TOUCHED by this switch' : 'not touched: the target is an app adapter'}) ──`);
+  for (const w of workers) lines.push(`      ${String(w.worker ?? w.id ?? w.name ?? '?').padEnd(24)} ${w.dsnSecret} (deploy var) → set it and REDEPLOY; no app release`);
+  if (plat && !workers.length) lost.push(`${PLATFORM_REGISTER} names no Worker with a dsnSecret`);
+
+  // releases and symbols
+  lines.push('    ── release artefacts to re-upload to the new sink, per release still in the field ──');
+  for (const u of TELEMETRY_UPLOADERS) {
+    if (existsSync(join(root, u))) lines.push(`      node ${u}`);
+    else lost.push(`${u} does not exist; the symbol re-upload path is unknown`);
+  }
+
+  // monitors
+  const hosts = Array.isArray(mon?.hosts) ? mon.hosts : [];
+  const withMonitor = hosts.filter((h) => h?.monitor && h.monitor.id !== undefined && h.monitor.id !== null);
+  lines.push(`    ── monitors to recreate from ${MONITOR_REGISTER} (node tooling/ops/ensure-monitors.mjs --apply, through tooling/ops/monitor-api/) ──`);
+  const byId = new Map();
+  for (const h of withMonitor) byId.set(h.monitor.id, { type: h.monitor.type, hosts: [...(byId.get(h.monitor.id)?.hosts ?? []), h.hostname] });
+  for (const [id, m] of byId) lines.push(`      #${String(id).padEnd(4)} ${String(m.type ?? '?').padEnd(9)} ${m.hosts.join(', ')}`);
+  const pending = hosts.length - withMonitor.length;
+  if (pending) lines.push(`      (${pending} host row(s) with no monitor yet — ensure-monitors creates those too)`);
+  lines.push('      the heartbeat URLs (PLATFORM_CRON_HEARTBEAT_URL, OPS_WATCHDOG_HEARTBEAT_URL, OPS_STUCK_RUNS_HEARTBEAT_URL) are Worker secrets: re-set each to the new monitor\'s URL.');
+  if (mon && !withMonitor.length) lost.push(`${MONITOR_REGISTER} holds no monitor id`);
+
+  // owner alerts
+  const notifiers = (doc.adapters ?? []).filter((a) => (a.capabilities ?? []).includes('notify'));
+  lines.push('    ── owner alerts (services/_shared/src/ports/telemetry.ts NOTIFIER_ROUTES; a route change, never a caller change) ──');
+  for (const n of notifiers) lines.push(`      ${n.id.padEnd(14)} ${n.status.padEnd(6)} ${(n.secrets ?? []).join(', ') || 'no secret'}`);
+
+  // cost and history
+  const unit = (a) => (a?.cost?.unit ? `${a.cost.unit.usd} USD per ${a.cost.unit.per} (asOf ${a.cost.unit.asOf})` : 'no unit cost recorded');
+  lines.push(`    ── cost delta: ${current.map((c) => `${c.id}: ${unit(c)}`).join('; ') || 'no current adapter'} → ${target.id}: ${unit(target)} ──`);
+  lines.push('    ── export: the issue history is a diagnostic stream — export it optionally; never block the switch on it ──');
+
+  if (lost.length) return { verdict: 'LOST', detail: lost[0], lines };
+  return {
+    verdict: 'PASS',
+    detail: `${appRows.length} app build(s) need a release if the app sink moves; ${workers.length} Worker(s) a redeploy; ${TELEMETRY_UPLOADERS.length} uploader(s); ${byId.size} monitor(s) to recreate`,
+    lines,
+  };
+}
+
+/** Port-specific C9 plans, by port. */
+export const PORT_PLANS = Object.freeze({ telemetry: telemetryPlan });
+
 
 /** C9 · the webhook URL to register: the platform Worker's own custom domain for `env`. */
 export function webhook(root, env, target) {

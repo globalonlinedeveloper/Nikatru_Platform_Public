@@ -396,6 +396,19 @@ export interface Env {
    *  declared anywhere in this repository, so absent ⇒ one ok=0 row saying
    *  "not configured", never a silent pass. A var or a secret both work. */
   BOXA_REACH_URLS?: string;
+  /** [port-telemetry] The ntfy TOPIC URL the owner-alert `ntfy` notifier POSTs
+   *  to (services/_shared/src/adapters/telemetry/notify-ntfy.ts). Absent ⇒ that
+   *  notifier answers `invalid` and sends nothing, and the route's fallback is
+   *  tried. A secret: `wrangler secret put NTFY_ALERT_URL`. */
+  NTFY_ALERT_URL?: string;
+  /** [port-telemetry] Optional ntfy access token for NTFY_ALERT_URL, sent as a
+   *  Bearer token. `wrangler secret put NTFY_ALERT_TOKEN`. */
+  NTFY_ALERT_TOKEN?: string;
+  /** [port-telemetry] The OFF-BOX-B owner-alert endpoint the `webhook` notifier
+   *  POSTs JSON to — the fallback that still reaches the owner when Box B (ntfy,
+   *  GlitchTip, the vault) is down. The URL is the credential:
+   *  `wrangler secret put ALERT_WEBHOOK_URL`. Absent ⇒ `invalid`, nothing sent. */
+  ALERT_WEBHOOK_URL?: string;
   /** [O-LAPTOP-ROUTINES-DIE-OVERNIGHT] Read-only GlitchTip API token for the ops
    *  watchdog's monitor reads — the SAME name tooling/ci/assert-ops-register.mjs
    *  and the workflows already use. Absent ⇒ the monitor limb records

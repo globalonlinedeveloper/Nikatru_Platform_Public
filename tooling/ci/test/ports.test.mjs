@@ -73,6 +73,7 @@ function fixture({ ports = { widgets: port() }, nonPortRows = [{ vendor: 'other'
   w('services/w/src/lib/fake.ts', "import type { WidgetPort } from './contract';\nexport const fakeWidget: WidgetPort = { verify: () => false };\n");
   w('services/w/src/registry.ts', "import { acmeVerifier } from './lib/acme';\nexport const ADAPTERS = [acmeVerifier];\n");
   w('services/w/src/index.ts', "import { ADAPTERS } from './registry';\nexport default ADAPTERS;\n");
+  w('tooling/ops/monitor-api/glitchtip.mjs', "export const listMonitors = (o) => fetch(`${o.base}/api/0/organizations/${o.org}/monitors/`);\n");
   for (const [rel, text] of Object.entries(files)) {
     if (text === null) rmSync(join(root, rel), { force: true });
     else w(rel, text);
@@ -371,13 +372,144 @@ describe('assert-ports — every limb reddens', () => {
   });
 });
 
+describe('assert-ports — a port with two interfaces, graded apart (level.byInterface)', () => {
+  // A ts half (acme + fake) and a dart half (dacme + dfake), sharing vendor acme.
+  const dartAdapter = (over = {}) => adapter({ id: 'dacme', impl: { file: 'packages/w/lib/dacme.dart', symbol: 'DacmeClient' }, secrets: [], ...over });
+  const twoHalves = (over = {}) => port({
+    level: { claimed: 2, target: 3, byInterface: { ts: { claimed: 2, target: 3 }, dart: { claimed: 2, target: 3 } } },
+    interface: { ts: { file: 'services/w/src/lib/contract.ts', symbols: ['WidgetPort'] }, dart: { file: 'packages/w/lib/widget.dart', symbols: ['WidgetClient'] } },
+    adapters: [...port().adapters, dartAdapter(), dartAdapter({ id: 'dfake', vendor: null, status: 'fake', impl: { file: 'packages/w/lib/dfake.dart', symbol: 'DfakeClient' }, environments: ['test'] })],
+    ...over,
+  });
+  const dartFiles = {
+    'packages/w/lib/widget.dart': 'abstract class WidgetClient {\n  void send();\n}\n',
+    'packages/w/lib/dacme.dart': 'class DacmeClient implements WidgetClient {\n  void send() {}\n}\n',
+    'packages/w/lib/dfake.dart': 'class DfakeClient implements WidgetClient {\n  void send() {}\n}\n',
+    'packages/w/lib/testing.dart': 'void runWidgetConformance(String name) {}\n',
+    'packages/w/test/dacme_test.dart': "void main() {\n  runWidgetConformance('dacme');\n}\n",
+    'packages/w/test/dfake_test.dart': "void main() {\n  runWidgetConformance('dfake');\n}\n",
+    'tooling/ops/port-switch.mjs': '// present\n',
+  };
+  const conformant = (claimDart = 3) => twoHalves({
+    level: { claimed: 2, target: 3, byInterface: { ts: { claimed: 2, target: 3 }, dart: { claimed: claimDart, target: 3 } } },
+    adapters: twoHalves().adapters.map((a) => (a.id === 'dacme' ? { ...a, conformance: { file: 'packages/w/test/dacme_test.dart' } } : a.id === 'dfake' ? { ...a, conformance: { file: 'packages/w/test/dfake_test.dart' } } : a)),
+    conformance: { suite: { file: 'packages/w/lib/testing.dart', runner: 'runWidgetConformance' }, pending: [] },
+  });
+
+  it('green control: each half is graded over its own adapters, and one vendor backs both halves of ONE port', () => {
+    const r = run(fixture({ ports: { widgets: conformant() }, files: dartFiles }));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /^widgets\.dart\s+L3\s+L3\s+L3/m);
+    assert.match(r.out, /^widgets\.ts\s+L2\s+L2\s+L3\s+\(below target: no conformance suite for the ts interface/m);
+    assert.match(r.out, /^widgets\s+L2\s+L2\s+L3/m);
+  });
+  it('red: the dart half claims L3 while only ONE dart adapter calls the runner', () => {
+    const one = conformant();
+    one.adapters = one.adapters.map((a) => (a.id === 'dfake' ? { ...a, conformance: null } : a));
+    const r = run(fixture({ ports: { widgets: one }, files: dartFiles }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 6 \(level\): tooling\/ports\/widgets\.json claims L3 for its dart interface and earns L2: 1 conformant adapter/);
+  });
+  it('red: a ts adapter calling the DART runner does not count toward the ts half', () => {
+    const doc = conformant();
+    doc.level.byInterface.ts.claimed = 3;
+    doc.adapters = doc.adapters.map((a) => (a.id === 'acme' || a.id === 'fake' ? { ...a, conformance: { file: 'packages/w/test/dacme_test.dart' } } : a));
+    const r = run(fixture({ ports: { widgets: doc }, files: dartFiles }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /claims L3 for its ts interface and earns L2: no conformance suite for the ts interface/);
+  });
+  it('red: the port-level claim must be the weakest interface\'s', () => {
+    const doc = conformant();
+    doc.level.claimed = 3;
+    const r = run(fixture({ ports: { widgets: doc }, files: dartFiles }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /level\.claimed is L3, and its weakest interface claims L2/);
+  });
+  it('red: byInterface must grade exactly the declared interfaces', () => {
+    const doc = conformant();
+    delete doc.level.byInterface.ts;
+    const r = run(fixture({ ports: { widgets: doc }, files: dartFiles }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 1 \(schema\): tooling\/ports\/widgets\.json level\.byInterface grades \["dart"\]/);
+  });
+  it('red: a per-interface selection naming the other half\'s adapter is refused', () => {
+    const doc = conformant();
+    doc.selection.byInterface = { ts: { by: 'single', source: null, default: { live: 'dacme', sandbox: null, test: null }, canary: null } };
+    const r = run(fixture({ ports: { widgets: doc }, files: dartFiles }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /selection\.byInterface\.ts\.default\.live names `dacme`, which is not a ts adapter/);
+  });
+  it('red: a per-interface selection of a FAKE in live reddens limb 7', () => {
+    const doc = conformant();
+    doc.selection.byInterface = { ts: { by: 'single', source: null, default: { live: 'fake', sandbox: null, test: null }, canary: null } };
+    const r = run(fixture({ ports: { widgets: doc }, files: dartFiles }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /limb 7 \(fakes\) tooling\/ports\/widgets\.json selection\.byInterface\.ts\.default\.live is the fake `fake`/);
+  });
+  it('red: one vendor in TWO ports is still placed twice (limb 8)', () => {
+    const second = port({ port: 'gadgets', switch: { runbook: 'Private/runbooks/switch-vendor.md#gadgets', dryRun: 'node tooling/ops/port-switch.mjs gadgets --to <adapter> --dry-run' }, handTables: [] });
+    const r = run(fixture({ ports: { widgets: port(), gadgets: second } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /vendor `acme` is placed 2 times \((gadgets\/acme, widgets\/acme|widgets\/acme, gadgets\/acme)\)/);
+  });
+  it('a DRAFT adapter whose vendor is placed elsewhere is not a second placement, and is printed; alone it places its vendor in its own port', () => {
+    const doc = port({ adapters: [...port().adapters, adapter({ id: 'later', vendor: 'other', status: 'draft', impl: { file: 'services/w/src/lib/fake.ts', symbol: 'fakeWidget' }, secrets: [] })] });
+    const ok = run(fixture({ ports: { widgets: doc } }));
+    assert.equal(ok.code, 0, ok.out);
+    assert.match(ok.out, /widgets\/later: draft adapter of vendor other, placed at _non-port until it is built/);
+    // A draft of a vendor its OWN port already places is that one placement (mail's ses on the real tree
+    // is the case nothing else places: it places amazon-ses in mail, and the real-tree green control holds it).
+    const own = port({ adapters: [...port().adapters, adapter({ id: 'later', status: 'draft', impl: { file: 'services/w/src/lib/fake.ts', symbol: 'fakeWidget' }, secrets: [] })] });
+    const alone = run(fixture({ ports: { widgets: own } }));
+    assert.equal(alone.code, 0, alone.out);
+    assert.doesNotMatch(alone.out, /draft adapter of vendor acme/);
+    // …and a BUILT adapter beside the _non-port row is still two placements: the rule is for drafts only.
+    const built = port({ adapters: [...port().adapters, adapter({ id: 'later', vendor: 'other', status: 'built', impl: { file: 'services/w/src/lib/fake.ts', symbol: 'fakeWidget' }, secrets: [] })] });
+    const twice = run(fixture({ ports: { widgets: built } }));
+    assert.equal(twice.code, 1, twice.out);
+    assert.match(twice.out, /vendor `other` is placed 2 times/);
+  });
+
+});
+
+describe('assert-ports — limb 11, the monitor API', () => {
+  it('green control: the adapter calls the monitor API and nothing else does', () => {
+    const r = run(fixture());
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /limb 11 scanned 0 ops script\(s\)/);
+  });
+  it('red: an ops script with its own fetch of a monitor route reddens limb 11', () => {
+    const r = run(fixture({ files: { 'tooling/ops/rogue.mjs': "await fetch(`${BASE}/api/0/organizations/${ORG}/monitors/`, { headers: {} });\n" } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.first, /limb 11 \(monitor-api\): tooling\/ops\/rogue\.mjs calls GlitchTip's monitor API directly/);
+  });
+  it('red: composing the route away from the call is still a direct call', () => {
+    const src = "const path = `organizations/${ORG}/monitors/`;\nasync function api(p) { return fetch(`${BASE}/api/0/${p}`); }\nawait api(path);\n";
+    const r = run(fixture({ files: { 'tooling/ops/rogue.mjs': src } }));
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /rogue\.mjs calls GlitchTip's monitor API directly/);
+  });
+  it('a mention in a comment, or a route string with no fetch, is not a call', () => {
+    const r = run(fixture({ files: { 'tooling/ops/doc.mjs': "// fetch(`${BASE}/api/0/organizations/o/monitors/`)\nexport const route = 'monitors/';\n" } }));
+    assert.equal(r.code, 0, r.out);
+  });
+  it('COVERAGE LOST: the adapter gone, or no longer matched, is exit 2', () => {
+    const gone = run(fixture({ files: { 'tooling/ops/monitor-api/glitchtip.mjs': null } }));
+    assert.equal(gone.code, 2, gone.out);
+    assert.match(gone.first, /COVERAGE LOST — limb 11 \(monitor-api\)/);
+    const blind = run(fixture({ files: { 'tooling/ops/monitor-api/glitchtip.mjs': 'export const x = 1;\n' } }));
+    assert.equal(blind.code, 2, blind.out);
+    assert.match(blind.out, /the matcher has broken/);
+  });
+});
+
 describe('assert-ports — on a copy of the REAL registries', () => {
   let root;
   before(() => {
     root = mkdtempSync(join(tmpdir(), 'ports-real-'));
     const copy = (rel) => { if (existsSync(join(REPO, rel))) cpSync(join(REPO, rel), join(root, rel), { recursive: true }); };
     for (const rel of ['tooling/ports', 'tooling/capability-register.json', 'tooling/legal/provider-register.json', 'tooling/channel-register.json', 'tooling/house-identity.json', 'tooling/ops/port-switch.mjs',
-      'tooling/catalog/fee-register.json', 'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'apps/subscriptiontracker/lib/state/providers/auth.dart',
+      'tooling/catalog/fee-register.json', 'services', 'packages/core/lib', 'packages/auth_supabase/lib', 'packages/telemetry/lib', 'packages/telemetry/test', 'tooling/ops', 'apps/subscriptiontracker/lib/state/providers/auth.dart',
       // port-pay-client: the client half's seams, adapters and conformance tests (limb 10).
       'packages/purchases/lib', 'packages/purchases/test/conformance', 'packages/billing_revenuecat/lib', 'packages/billing_revenuecat/test/revenuecat_bridge_conformance_test.dart',
       // the channels port: the contract, its submitters and the conformance file that calls the runner
@@ -391,7 +523,8 @@ describe('assert-ports — on a copy of the REAL registries', () => {
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /payments\s+L3\s+L3\s+L3/);
     assert.match(r.out, /mail\s+L3\s+L3\s+L3/);
-    for (const p of ['auth', 'boxes', 'telemetry']) assert.match(r.out, new RegExp(`${p}\\s+L2\\s+L2\\s+L3`));
+    for (const p of ['auth', 'boxes', 'telemetry', 'telemetry\\.ts']) assert.match(r.out, new RegExp(`^${p}\\s+L2\\s+L2\\s+L3`, 'm'));
+    assert.match(r.out, /^telemetry\.dart\s+L3\s+L3\s+L3/m); // port-telemetry: the Dart half graded apart
     assert.match(r.out, /limb 3: services\/platform\/src\/generated\/ports\.ts matches tooling\/ports\/payments\.json/);
     assert.match(r.out, /PENDING payments\/revenuecat: refund reversed or dispute won restores \(O-REVENUECAT-VERIFIER\)/);
     assert.match(r.out, /payments\/client\s+L3\s+L3\s+L3/);
@@ -523,6 +656,48 @@ describe('assert-ports — on a copy of the REAL registries', () => {
       assert.equal(r.code, 1, r.out);
       assert.match(r.first, /limb 2 \(symbols\).*`readBoxNowhere` is not declared in `tooling\/ops\/box-declaration\.mjs`/);
       assert.match(r.out, /boxes\s+L2\s+L0/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: a conformance test that no longer CALLS runTelemetryClientConformance un-earns the dart L3', () => {
+    const rel = join(root, 'packages/telemetry/test/noop_telemetry_client_conformance_test.dart');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, before.replace('runTelemetryClientConformance(', '// runTelemetryClientConformance(\nnoCall('));
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 6 \(level\): tooling\/ports\/telemetry\.json claims L3 for its dart interface and earns L2: 1 conformant adapter/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: a Worker handler importing the sentry-envelope adapter reddens limb 4 and the ts half earns L1', () => {
+    const rel = join(root, 'services/platform/src/index.ts');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, `import { sentryEnvelopeSink } from '../../_shared/src/adapters/telemetry/sentry-envelope';\nvoid sentryEnvelopeSink;\n${before}`);
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /limb 4 \(imports\) tooling\/ports\/telemetry\.json: `services\/platform\/src\/index\.ts` imports the adapter `services\/_shared\/src\/adapters\/telemetry\/sentry-envelope\.ts`/);
+      assert.match(r.out, /^telemetry\.ts\s+L2\s+L1\s+L3/m);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: verify-monitors calling the GlitchTip monitor URL itself reddens limb 11', () => {
+    const rel = join(root, 'tooling/ops/verify-monitors.mjs');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, `${before}\nawait fetch(\`\${BASE}/api/0/organizations/\${ORG}/monitors/\`, { headers: {} });\n`);
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.first, /limb 11 \(monitor-api\): tooling\/ops\/verify-monitors\.mjs calls GlitchTip's monitor API directly/);
+    } finally { writeFileSync(rel, before); }
+  });
+  it('red: the composition root may import it; scheduled.ts may not import the ntfy adapter', () => {
+    const rel = join(root, 'services/platform/src/scheduled.ts');
+    const before = readFileSync(rel, 'utf8');
+    try {
+      writeFileSync(rel, `import { ntfyNotifier } from '../../_shared/src/adapters/telemetry/notify-ntfy';\nvoid ntfyNotifier;\n${before}`);
+      const r = run(root);
+      assert.equal(r.code, 1, r.out);
+      assert.match(r.out, /`services\/platform\/src\/scheduled\.ts` imports the adapter `services\/_shared\/src\/adapters\/telemetry\/notify-ntfy\.ts`/);
+      assert.doesNotMatch(r.out, /`services\/platform\/src\/ports\.ts` imports the adapter/);
     } finally { writeFileSync(rel, before); }
   });
   it('red: deleting one vendor from _non-port.json reddens limb 8', () => {

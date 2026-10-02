@@ -268,6 +268,58 @@
         "swapCost": "Low — one config value, because the protocol is open."
       }
     },
+    "ntfy": {
+      "surface": "Owner-alert push channel (self-hosted ntfy on Box B, topic-per-audience). The platform Worker posts an owner alert through the telemetry port's `ntfy` notifier (services/_shared/src/adapters/telemetry/notify-ntfy.ts); the GlitchTip alert rules page the same topic (tooling/ops/alarm-chains.json).",
+      "stickiness": "★ — an HTTP POST of plain text to a topic URL; every push service takes the same three facts (title, priority, body).",
+      "surfaces": [
+        "NTFY_ALERT_URL",
+        "NTFY_ALERT_TOKEN"
+      ],
+      "openProtocol": "YES — ntfy's publish API is a documented plain HTTP POST (https://docs.ntfy.sh/publish/), and the server is open source and self-hosted.",
+      "seam": {
+        "file": "services/_shared/src/ports/telemetry.ts",
+        "symbol": "Notifier"
+      },
+      "configKeyed": {
+        "kind": "runtime",
+        "reason": "Worker secrets read per alert; repointing the topic is `wrangler secret put NTFY_ALERT_URL`, no release."
+      },
+      "ownTheRecord": "N/A — an alert is a notification, not a record; the record of the condition is the cron_heartbeat row the alert is raised from.",
+      "exportPath": {
+        "path": "Private/runbooks/switch-vendor.md#telemetry",
+        "detail": "Nothing to export: ntfy keeps a short message cache only. The switch is a new topic URL, or a notifier route change in services/_shared/src/ports/telemetry.ts NOTIFIER_ROUTES."
+      },
+      "exitPlan": {
+        "alternative": "Any push or chat webhook behind the same Notifier port (the `webhook` adapter), or mail once the mail port lands (`mailFor('alerts')`).",
+        "swapCost": "Low — one route in NOTIFIER_ROUTES and one Worker secret; callers name a severity, never a channel."
+      },
+      "note": "🔴 ntfy shares Box B with GlitchTip and the vault, so it cannot carry news of Box B being down; NOTIFIER_ROUTES gives every critical and warning route an off-box fallback (`alert-webhook`)."
+    },
+    "alert-webhook": {
+      "surface": "The OFF-BOX-B owner-alert endpoint: one JSON POST of {severity, title, body, dedupeKey, source} to whatever HTTPS URL the owner configures (a chat incoming-webhook, a hosted ntfy topic, a relay). The telemetry port's `webhook` notifier (services/_shared/src/adapters/telemetry/notify-webhook.ts).",
+      "stickiness": "★ — a generic JSON webhook; the receiving service is whatever the URL names.",
+      "surfaces": [
+        "ALERT_WEBHOOK_URL"
+      ],
+      "openProtocol": "YES — a plain HTTPS POST of JSON; no vendor SDK and no vendor-specific field.",
+      "seam": {
+        "file": "services/_shared/src/ports/telemetry.ts",
+        "symbol": "Notifier"
+      },
+      "configKeyed": {
+        "kind": "runtime",
+        "reason": "A Worker secret read per alert (the URL is the credential); repointing is `wrangler secret put ALERT_WEBHOOK_URL`, no release."
+      },
+      "ownTheRecord": "N/A — an alert is a notification, not a record.",
+      "exportPath": {
+        "path": "Private/runbooks/switch-vendor.md#telemetry",
+        "detail": "Nothing to export; the switch is a new URL."
+      },
+      "exitPlan": {
+        "alternative": "Any other webhook receiver, or mail through the mail port.",
+        "swapCost": "Low — one Worker secret."
+      }
+    },
     "github": {
       "surface": "GitHub Actions workflow dispatch — the alarm clock's outbound leg. The `platform` Worker POSTs `workflow_dispatch` so that a Cloudflare cron, not GitHub's own scheduler, decides WHEN a workflow runs. [research/76 §C] Phase 1.",
       "stickiness": "★★★★★ — the stickiest entry in this register, and it is written down rather than implied. GitHub holds the repositories, CI, the release lanes, the issue-based alert chain and the RECORD every duty row reads. ⚠️ WHAT THIS SURFACE ADDS IS NOT NEW LOCK-IN — it is one more call into a dependency the whole pipeline already rests on. Declaring it here makes that dependency countable instead of assumed, which is the only thing this register can honestly buy on a vendor nobody is leaving.",

@@ -381,7 +381,7 @@
     33,
 
   "ensure-monitors.test.mjs":
-    24,
+    26,
 
   "entitlement-contract.test.mjs":
     104,
@@ -1158,7 +1158,7 @@
     37,
 
   "worker-shared-modules.test.mjs":
-    13,
+    17,
 
   "workflow-hardening.test.mjs":
     11,

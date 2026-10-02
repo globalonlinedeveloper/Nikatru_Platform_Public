@@ -15,7 +15,17 @@
       "required": ["claimed", "target"],
       "properties": {
         "claimed": { "type": "integer", "minimum": 0, "maximum": 3 },
-        "target": { "type": "integer", "minimum": 0, "maximum": 3 }
+        "target": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "byInterface": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "description": "A port with BOTH a ts and a dart interface may grade each on its own: the adapters whose impl.file is .ts against the ts interface, the .dart ones against the dart interface. Its keys must be exactly the port's `interface` keys, and the port-level claimed and target are then the LOWEST of them (assert-ports limb 6).",
+          "properties": {
+            "ts": { "$ref": "#/$defs/levelPair" },
+            "dart": { "$ref": "#/$defs/levelPair" }
+          }
+        }
       }
     },
     "interface": {
@@ -46,7 +56,17 @@
             "test": { "type": ["string", "null"] }
           }
         },
-        "canary": { "type": "null", "description": "Reserved for a percentage cutover; null until a port carries one." }
+        "canary": { "type": "null", "description": "Reserved for a percentage cutover; null until a port carries one." },
+        "byInterface": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "description": "How the adapters of ONE interface are chosen, when that differs from the port-level selection (which then answers for the interfaces not named here). Each key must be a key of `interface`.",
+          "properties": {
+            "ts": { "$ref": "#/$defs/selectionCore" },
+            "dart": { "$ref": "#/$defs/selectionCore" }
+          }
+        }
       }
     },
     "streams": {
@@ -116,6 +136,35 @@
     "_why": { "$ref": "#/$defs/prose" }
   },
   "$defs": {
+    "levelPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claimed", "target"],
+      "properties": {
+        "claimed": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "target": { "type": "integer", "minimum": 0, "maximum": 3 }
+      }
+    },
+    "selectionCore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["by", "source", "default", "canary"],
+      "properties": {
+        "by": { "enum": ["single", "environment", "stream", "channel-market", "per-call"] },
+        "source": { "type": ["string", "null"], "pattern": "^[^#\\s]+#[^\\s]+$" },
+        "default": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["live", "sandbox", "test"],
+          "properties": {
+            "live": { "type": ["string", "null"] },
+            "sandbox": { "type": ["string", "null"] },
+            "test": { "type": ["string", "null"] }
+          }
+        },
+        "canary": { "type": "null" }
+      }
+    },
     "path": { "type": "string", "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9_.{}@/-]+$" },
     "train": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
     "prose": { "type": "array", "minItems": 1, "items": { "type": "string" } },
