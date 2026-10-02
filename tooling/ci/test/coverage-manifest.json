@@ -66,7 +66,7 @@
     104,
 
   "app-yaml.test.mjs":
-    180,
+    184,
 
   "appimage-signing.test.mjs":
     77,
@@ -900,7 +900,7 @@
     25,
 
   "session-revocation.test.mjs":
-    15,
+    22,
 
   "setup-flutter-env.test.mjs":
     4,
@@ -1017,7 +1017,7 @@
     19,
 
   "store-screenshots-lane.test.mjs":
-    93,
+    96,
 
   "store-vocabulary.test.mjs":
     28,
