@@ -3651,6 +3651,11 @@
       "firstSeen": "2026-09-25",
       "evidence": []
     },
+    "tooling/ops/check-cloudflare-usage.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
+      "evidence": []
+    },
     "tooling/ops/check-code-scanning-age.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-29",
@@ -3724,6 +3729,11 @@
     "tooling/ops/check-wildcard-dns.mjs": {
       "catches": 0,
       "firstSeen": "2026-09-12",
+      "evidence": []
+    },
+    "tooling/ops/check-worker-versions.mjs": {
+      "catches": 0,
+      "firstSeen": "2026-10-01",
       "evidence": []
     },
     "tooling/ops/create-glitchtip-release.mjs": {

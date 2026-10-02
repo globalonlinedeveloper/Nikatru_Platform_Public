@@ -332,6 +332,10 @@ jobs:
     name: The Cloudflare Pages builds nobody else can see actually landed
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # why: deployments: read is for check-worker-versions.mjs, which reads each
+    # Worker's newest ledger record (GET .../deployments?environment=<unit>).
+    permissions:
+      deployments: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -372,6 +376,54 @@ jobs:
             echo "::error title=Cloudflare Pages deployments are UNKNOWN — nothing was graded::No credential, a non-200, unparseable JSON, a preview row returned for a production query, or a project set that derived to EMPTY. NOTHING was judged. An empty sweep prints the same ok as a complete one, and this is the one rail with no second witness anywhere — no commit status, no GitHub Deployment, no Actions run."
           elif [ "$code" -eq 1 ]; then
             echo "::error title=A Cloudflare Pages project is RED or STALE::Its newest production deployment failed, or it succeeded at a commit older than the newest one on main touching its source directory. Production is serving the PREVIOUS build, which answers 200 with older bytes. For the nikatru project this is the ROUTER for nikatru.com/<id>/, so the app can be perfectly deployed and still unreachable. The step log names the project, the deployment id and both commits."
+          fi
+          exit "$code"
+
+      # why: PB-06, row O-LIVE-DUTY-RED-BLOCKS-THE-FIX-DEPLOY. deploy-workers.yml
+      # records one GitHub Deployment per Worker, and rollback.mjs, plan-deploy.mjs
+      # and check-prod-provenance.mjs all read that ledger as "what is live";
+      # nothing re-read the Worker. Each /v1/health `build` must be the newest
+      # record's sha; the shield (no health route) is read by its active Cloudflare
+      # version against the record's worker_version_id. A READ: no secret beyond
+      # the read token and this job's deployments: read.
+      - name: Every live Worker serves the ledger's newest record
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          node tooling/ops/check-worker-versions.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=Live Worker versions are UNKNOWN - nothing was compared::A ledger read, a /v1/health read or the shield's Cloudflare read did not answer, a record carried nothing to compare, or deploy-workers.yml records a Worker this check cannot read. An unread Worker is not a matching one. The step log names the unit."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=A live Worker is NOT the ledger's newest record::Production serves a build the deployment ledger does not name as newest: a rollback or a deploy outside deploy-workers.yml, or a record that never landed. Every reader of the ledger is now reasoning from the wrong build. The step log names the Worker and both commits."
+          fi
+          exit "$code"
+
+      # why: PB-17, row O-LIVE-DUTY-RED-BLOCKS-THE-FIX-DEPLOY. tooling/ceilings.json's
+      # actualsReadFrom block records that nobody reads the account's daily usage.
+      # This reads the previous UTC day from the GraphQL Analytics API and grades it
+      # against the declared ceilings; under 50% headroom is red. CLOUDFLARE_READ_TOKEN
+      # ONLY (never the deploy token, rv2-security-001): until the owner mints it the
+      # read is deferred to the same date as #1095's, and is COVERAGE LOST after it.
+      - name: Cloudflare usage keeps half its declared ceilings free
+        if: ${{ !cancelled() }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          node tooling/ops/check-cloudflare-usage.mjs --cloudflare-read-pending-until 2026-10-21
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=Cloudflare usage is UNKNOWN - nothing was graded::No read token past the deferral, a non-200, GraphQL errors, or a ceiling row this check grades against is missing. Unread usage is not usage inside its ceilings."
+          elif [ "$code" -eq 1 ]; then
+            echo "::error title=Cloudflare usage is past half a declared ceiling::A Workers, D1 or KV daily total used more than 50 percent of its ceiling in tooling/ceilings.json. The step log names the metric, the number and the ceiling."
           fi
           exit "$code"
 

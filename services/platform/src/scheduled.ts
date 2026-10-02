@@ -2223,6 +2223,10 @@ export async function retentionSweep(
 /** The job name recorded in `cron_heartbeat` for the workflow dispatcher. */
 export const GITHUB_DISPATCH_JOB = 'github_dispatch';
 
+/** The cron the e2e.yml target is pinned to (PB-18): the minute e2e.yml's own
+ *  `schedule:` names. Asserted against wrangler.jsonc by scheduled-crons.test.ts. */
+export const E2E_DISPATCH_CRON = '17 3 * * *';
+
 /**
  * The workflows this cron fires, declared IN THE TREE rather than in an env var.
  *
@@ -2246,6 +2250,9 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
    *  under the workflow's own `on.workflow_dispatch.inputs` - github-dispatch.test.ts
    *  reads the real file, because GitHub answers 422 to an undeclared input. */
   inputs?: Readonly<Record<string, string>>;
+  /** PB-18: the cron this target is PINNED to - it always fires on that firing, and
+   *  unpinned targets skip it (PINNED_CRONS, targetDue below). */
+  atCron?: string;
 }> = [
   // ⏱️ ONCE A DAY IS PLENTY. renovate.json confines PR creation to Mondays in
   // Asia/Kolkata, so extra firings evaluate the tree and exit in about a minute
@@ -2316,7 +2323,18 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // moment that cron stops being daily. What defers moving it is BLAST RADIUS on
   // the repository's most safety-critical guard, NOT permission — and calling it
   // "locked" would have stopped a later reader from even asking.
-  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'e2e.yml', ref: 'main', everyHours: 20 },
+  //
+  // ⏱ 2026-10-01 · PB-18, row O-LIVE-DUTY-RED-BLOCKS-THE-FIX-DEPLOY (folding
+  // O-NIGHTLY-E2E-STARTS-SIX-HOURS-LATE). `everyHours: 20` on the 6h grid fired
+  // this at whichever grid slot came 20h after the last firing, so the nightly
+  // drifted round the clock, and GitHub's own `17 3 * * *` slot started it
+  // 5-6.6 h late. It is now PINNED to E2E_DISPATCH_CRON, its own Cloudflare
+  // firing at 03:17Z, the minute e2e.yml's `schedule:` names (that slot stays,
+  // for assert-e2e-proof-fresh.mjs's freshness claim and as the rollback).
+  // `everyHours: 26` is the safety net, not the cadence: on a grid firing it
+  // fires only when the 03:17 dispatch has not succeeded for 26h, so one
+  // refused dispatch is retried within 6h rather than a day later.
+  { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'e2e.yml', ref: 'main', everyHours: 26, atCron: E2E_DISPATCH_CRON },
   // ── PHASE 2, THIRD WORKFLOW, ADDED 2026-09-04 ────────────────────────────
   // ⚠️ AND THIS ONE IS DEFENCE IN DEPTH, NOT A FIX FOR A LIVE PROBLEM. Say so
   // plainly, because the two above were urgent and this reads like the third of
@@ -2338,6 +2356,11 @@ export const GITHUB_DISPATCH_TARGETS: ReadonlyArray<{
   // and it buys reliability, not evidence. Drop to 120 if that trade sours.
   { owner: 'globalonlinedeveloper', repo: 'Nikatru_Platform_Public', workflow: 'build-platforms.yml', ref: 'main', everyHours: 84 },
 ];
+
+/** Every cron a target is pinned to, derived from the targets, never listed. */
+export const PINNED_CRONS: ReadonlySet<string> = new Set(
+  GITHUB_DISPATCH_TARGETS.flatMap((t) => (t.atCron === undefined ? [] : [t.atCron])),
+);
 
 /** The row target under which the DISPATCHER records its own liveness, as
  *  opposed to a workflow it fired.
@@ -2367,7 +2390,7 @@ export const DISPATCHER_TARGET = '(dispatcher)';
  * retention sweep on the nightly firing. A hung fetch must not delay a limb that
  * deletes data on a schedule, so every request carries a 10s abort.
  */
-export async function dispatchGithubWorkflows(env: Env): Promise<void> {
+export async function dispatchGithubWorkflows(env: Env, cron?: string): Promise<void> {
   const rows: { target: string; ok: boolean; detail: string }[] = [];
 
   if (GITHUB_DISPATCH_TARGETS.length === 0) {
@@ -2394,7 +2417,16 @@ export async function dispatchGithubWorkflows(env: Env): Promise<void> {
   let skipped = 0;
   for (const t of GITHUB_DISPATCH_TARGETS) {
     const target = `${t.repo}/${t.workflow}`;
-    const due = await targetIsDue(env, target, t.everyHours);
+    // A target PINNED to a cron (`atCron`) always fires on that cron's firing,
+    // and on any other firing only as the `everyHours` safety net. An unpinned
+    // target never fires on a pinned cron's firing: that firing is the pinned
+    // targets' own.
+    const due =
+      t.atCron !== undefined && cron === t.atCron
+        ? { fire: true, why: `pinned to ${t.atCron}` }
+        : t.atCron === undefined && cron !== undefined && PINNED_CRONS.has(cron)
+          ? { fire: false, why: `the ${cron} firing is reserved for its pinned target(s)` }
+          : await targetIsDue(env, target, t.everyHours);
     if (!due.fire) {
       skipped++;
       console.log(`[cron] github dispatch ${target}: not due (${due.why})`);
@@ -2852,9 +2884,15 @@ async function runFiring(event: ScheduledController | undefined, env: Env): Prom
     // "ok=0 on two consecutive firings" - the owner page's condition - is 12 h,
     // not the 24-48 h a nightly-only probe gave. Read-only, bounded by 10 s per
     // target, and ahead of the dispatcher as on the nightly firing.
-    await boxbReachability(env);
-    await boxaReachability(env);
-    await dispatchGithubWorkflows(env);
+    // ⏱ 2026-10-02 · NOT on a PINNED firing (E2E_DISPATCH_CRON, 03:17): that one
+    // exists to start e2e.yml on time, and a probe row there would make "the
+    // previous firing" 3 h back, not 6 h - the register watches the probes on
+    // the six-hourly grid only (tooling/ops/register.json duty.platform-cron).
+    if (!PINNED_CRONS.has(event.cron)) {
+      await boxbReachability(env);
+      await boxaReachability(env);
+    }
+    await dispatchGithubWorkflows(env, event.cron);
     // Read-only, bounded by 10s per call. It cancels nothing since the stuck-run
     // check moved to OPS_HOURLY_CRON (2026-09-24).
     await opsWatchdogJob(env);

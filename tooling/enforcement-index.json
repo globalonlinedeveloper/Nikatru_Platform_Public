@@ -3730,6 +3730,16 @@
   {
     "claims": [],
     "invokedBy": [
+      ".github/workflows/ops-watch.yml#pages-deployments"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-cloudflare-usage.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
       ".github/workflows/ops-watch.yml#code-scanning-age"
     ],
     "kind": "script",
@@ -3901,6 +3911,16 @@
     ],
     "kind": "script",
     "ref": "tooling/ops/check-wildcard-dns.mjs",
+    "references": [],
+    "state": "WIRED"
+  },
+  {
+    "claims": [],
+    "invokedBy": [
+      ".github/workflows/ops-watch.yml#pages-deployments"
+    ],
+    "kind": "script",
+    "ref": "tooling/ops/check-worker-versions.mjs",
     "references": [],
     "state": "WIRED"
   },

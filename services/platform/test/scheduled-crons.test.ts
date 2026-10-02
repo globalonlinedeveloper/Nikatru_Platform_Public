@@ -13,6 +13,7 @@ import {
   OPS_HOURLY_CRON,
   OPS_STUCK_RUNS_JOB,
   REMINDER_MAIL_JOB,
+  E2E_DISPATCH_CRON,
 } from '../src/scheduled';
 import { realPlatformDb } from './harness';
 import type { Env } from '../src/types';
@@ -83,6 +84,15 @@ describe('the nightly cron is a real one, and the others are margin firings', ()
     expect(CRONS.filter((c) => c === NIGHTLY_CRON)).toHaveLength(1);
   });
 
+  it('🔴 E2E_DISPATCH_CRON is a cron the deployed config actually declares, and the dispatcher and the watchdog keep it (PB-18)', () => {
+    // A pinned target whose cron is not declared never fires on its own minute:
+    // it would ride only the 26h safety net, a day late, every run green.
+    expect(CRONS).toContain(E2E_DISPATCH_CRON);
+    expect(CRONS.filter((c) => c === E2E_DISPATCH_CRON)).toHaveLength(1);
+    expect(WATCHED[GITHUB_DISPATCH_JOB]).toContain(E2E_DISPATCH_CRON);
+    expect(WATCHED[OPS_WATCHDOG_JOB]).toContain(E2E_DISPATCH_CRON);
+  });
+
   it('🔴 BACKUP_CRON is a cron the deployed config actually declares', () => {
     // The same typo case as NIGHTLY_CRON's, and it fails in the direction that
     // matters more: a mistyped BACKUP_CRON does not make the export run twice,
@@ -116,8 +126,10 @@ describe('the nightly cron is a real one, and the others are margin firings', ()
     expect(WATCHED[OPS_WATCHDOG_JOB]).toEqual(grid);
     // ⏱ 2026-10-01 · PB-02: so do the two reachability probes, whose two consecutive
     // ok=0 firings page the owner - 12 h on the grid, 24-48 h on the nightly cron alone.
-    expect(WATCHED[BOXB_REACH_JOB]).toEqual(grid);
-    expect(WATCHED[BOXA_REACH_JOB]).toEqual(grid);
+    // ⏱ 2026-10-02 · …on the six-hourly grid only: not on the pinned e2e firing (PB-18).
+    const sixHourly = grid.filter((c) => c !== E2E_DISPATCH_CRON);
+    expect(WATCHED[BOXB_REACH_JOB]).toEqual(sixHourly);
+    expect(WATCHED[BOXA_REACH_JOB]).toEqual(sixHourly);
     expect(WATCHED[BACKUP_JOB]).toEqual([BACKUP_CRON]);
     expect(WATCHED[OPS_STUCK_RUNS_JOB]).toEqual([OPS_HOURLY_CRON]);
     const onGrid = new Set([GITHUB_DISPATCH_JOB, OPS_WATCHDOG_JOB, BOXB_REACH_JOB, BOXA_REACH_JOB]);
@@ -173,9 +185,12 @@ async function runScheduled(cron: string | undefined) {
 describe('which limbs run is decided by which cron fired', () => {
   it('🔴 EVERY margin firing writes ONLY the dispatcher, the ops watchdog and the two probes — the sweep does not run four times a day', async () => {
     // ⏱ 2026-10-01 · PB-02: the two reachability probes joined the grid (their two-in-a-row page).
-    for (const c of CRONS.filter((x) => x !== NIGHTLY_CRON && x !== BACKUP_CRON && x !== OPS_HOURLY_CRON)) {
+    for (const c of CRONS.filter((x) => x !== NIGHTLY_CRON && x !== BACKUP_CRON && x !== OPS_HOURLY_CRON && x !== E2E_DISPATCH_CRON)) {
       expect(await runScheduled(c), `margin cron ${c}`).toEqual([GITHUB_DISPATCH_JOB, OPS_WATCHDOG_JOB, BOXB_REACH_JOB, BOXA_REACH_JOB].sort());
     }
+    // ⏱ 2026-10-02 · the PINNED e2e firing dispatches and watches, and probes nothing: a
+    // probe row at 03:17 would make the owner page's "two consecutive firings" 3 h apart.
+    expect(await runScheduled(E2E_DISPATCH_CRON)).toEqual([GITHUB_DISPATCH_JOB, OPS_WATCHDOG_JOB].sort());
   });
 
   it('🔴 the backup firing writes ONLY the backup — it does not dispatch, and it does not sweep', async () => {

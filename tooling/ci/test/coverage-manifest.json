@@ -236,6 +236,9 @@
   "clone-contract.test.mjs":
     46,
 
+  "cloudflare-usage.test.mjs":
+    23,
+
   "code-scanning-age.test.mjs":
     15,
 
@@ -1126,6 +1129,9 @@
 
   "worker-shared-modules.test.mjs":
     13,
+
+  "worker-versions.test.mjs":
+    18,
 
   "workflow-hardening.test.mjs":
     11,

@@ -481,7 +481,7 @@
       // exactly `<minute> * * * *`, hourly. A step or a list (`0 */6 * * *`,
       // `0 0,6,12,18 * * *`) is still REFUSED, so a six-hourly grid is four
       // literal expressions. With the backup and the hourly stuck-run firing
-      // below, this file holds 6 of the 250 cron triggers Workers Paid allows
+      // below and the 03:17 e2e firing, this file holds 7 of the 250 cron triggers Workers Paid allows
       // (it was 5 on Free, which is why this file used to say "ONE cron").
       //
       // The margin this buys, measured: the schedule it replaces (ops-watch's
@@ -497,6 +497,11 @@
       // next sync — and it lands BEFORE `retentionSweep` deletes at 06:00, so the
       // archive holds the night the sweep is about to prune.
       "30 2 * * *",
+      // ⏱ 2026-10-01 · PB-18 — THE NIGHTLY E2E'S OWN FIRING (src/scheduled.ts
+      // E2E_DISPATCH_CRON). The dispatcher fires ONLY the targets pinned to it
+      // (e2e.yml), at the minute e2e.yml's own `schedule:` names, which GitHub
+      // was starting 5-6.6 h late. The ops watchdog rides it like any grid firing.
+      "17 3 * * *",
       "0 6 * * *",
       "0 12 * * *",
       "0 18 * * *",
