@@ -19,7 +19,13 @@ import 'dart:async';
 // second one — `features/auth/turnstile_gate.dart` reports its own handled
 // misconfiguration the same way.
 import 'package:flutter/foundation.dart'
-    show ChangeNotifier, FlutterError, FlutterErrorDetails, TargetPlatform;
+    show
+        ChangeNotifier,
+        FlutterError,
+        FlutterErrorDetails,
+        TargetPlatform,
+        defaultTargetPlatform,
+        kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 // StateProvider (and its StateController) moved to legacy.dart in Riverpod 3.0.
 import 'package:flutter_riverpod/legacy.dart';
@@ -31,6 +37,7 @@ import 'package:nikatru_auth_supabase/nikatru_auth_supabase.dart'
         AuthProviders,
         AuthRedirects,
         InMemoryAuthRepository,
+        NativeSignInSheets,
         RetryAfterLatch,
         SupabaseAuthRepository,
         failedEventFlowOf,
@@ -146,6 +153,14 @@ final Provider<AuthRepository> authRepositoryProvider =
               // target in [kAuthCallbackTargets] registers and
               // `tooling/ci/assert-auth-callbacks.mjs` proves.
               redirects: AuthRedirects.current(appId: AppConfig.appId),
+              // ⏱ 2026-10-01 · EN-19 — the native Apple sheet on iOS and
+              // macOS (no browser). Google keeps the browser door on every
+              // target until its sheet lands (NativeSignInSheets.forPlatform
+              // says what it waits for).
+              nativeSheets: NativeSignInSheets.forPlatform(
+                defaultTargetPlatform,
+                isWeb: kIsWeb,
+              ),
               // ⏱ 2026-09-28 · ST-N1 — off web, sign-in, sign-up, reset and
               // resend go through the platform Worker's native route, which
               // GoTrue does not captcha; null on web, which keeps Turnstile.

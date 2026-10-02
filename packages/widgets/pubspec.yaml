@@ -1,0 +1,34 @@
+name: nikatru_widgets
+description: >-
+  The surfaces an app shows OUTSIDE its own window (XP-04, XP-05, IM-11): the
+  home-screen widget and its desktop and web equivalents (a "glance" of two
+  facts, Pro under ADR 101), the launcher shortcuts, and the share-in route.
+  Data is written by the app on each sync; nothing here touches the network.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+repository: https://github.com/globalonlinedeveloper/Nikatru_Platform_Public
+
+environment:
+  sdk: ^3.9.0
+  flutter: ">=3.47.5"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # [pipeline C-4] THE EARN-REASON: native-binary. home_widget ships the
+  # AppWidget and WidgetKit bridges (a shared app-group store the widget
+  # process reads); quick_actions ships the Android ShortcutManager and iOS
+  # UIApplicationShortcutItem bridges. Declared HERE and nowhere else; the
+  # matrix in glance_capabilities.dart is tied to these majors.
+  home_widget: ^0.10.0
+  quick_actions: ^1.1.1
+
+dev_dependencies:
+  # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
+  nikatru_lints:
+    path: ../analysis
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

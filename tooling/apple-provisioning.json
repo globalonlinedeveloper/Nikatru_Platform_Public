@@ -86,7 +86,12 @@
       "apiWritable": false,
       "readBack": "RELATED_APP_CONSENT",
       "profileKey": "com.apple.developer.applesignin",
-      "entitlementKey": null,
+      "entitlementKey": {
+        "ios": "com.apple.developer.applesignin",
+        "macos": "com.apple.developer.applesignin"
+      },
+      "entitlementValue": ["Default"],
+      "_entitlement_why": "⏱ 2026-10-01 · EN-19. The NATIVE Sign in with Apple sheet (AuthenticationServices, through packages/auth_supabase AppleSignInSheet) refuses to present without this entitlement in the signed app; the browser door never needed it, which is why it was null. The App ID already carries the capability (profileKey), so the profile already grants it.",
       "portalStep": "developer.apple.com → Certificates, Identifiers & Profiles → Identifiers → {identifier} → tick Sign In with Apple → Edit → choose 'Group with an existing primary App ID' → com.nikatru.platform → Save → Confirm. The API refuses RELATED_APP_CONSENT on write (ADR 088 §6); writing PRIMARY_APP_CONSENT instead would split every shared user's identity."
     },
     "DECLARED_AGE_RANGE": {

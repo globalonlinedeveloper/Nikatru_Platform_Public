@@ -1,0 +1,36 @@
+name: nikatru_app_lock
+description: >-
+  App lock (XP-03, Free under ADR 101): a PIN on every target and the device
+  biometric where local_auth has an implementation (Android, iOS, macOS,
+  Windows Hello). Locks on resume after the chosen delay; five wrong PINs sign
+  the person out, and signing back in is the recovery.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+repository: https://github.com/globalonlinedeveloper/Nikatru_Platform_Public
+
+environment:
+  sdk: ^3.9.0
+  flutter: ">=3.47.5"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  nikatru_core:
+    path: ../core
+  nikatru_design_system:
+    path: ../design_system
+
+  # [pipeline C-4] THE EARN-REASON: native-binary. local_auth ships the
+  # biometric bridges (BiometricPrompt, LocalAuthentication.framework, Windows
+  # Hello). It is declared HERE and nowhere else; the matrix in
+  # app_lock_capabilities.dart is tied to 3.x and re-reviewed on a bump.
+  local_auth: ^3.0.2
+
+dev_dependencies:
+  # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.
+  nikatru_lints:
+    path: ../analysis
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

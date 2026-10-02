@@ -162,7 +162,11 @@ const DS = 'packages/design_system';
 // fixture in this file derives it — which is why the app fixtures read 2 roots
 // and `NEW_ROOT_SUBJECT` now adds only two more, for 4. The paragraph above is
 // left exactly as written; this supersedes its last sentence.
-const NEW_ROOT_SUBJECT = [BRICK, BRICK_MANIFEST, DS];
+// ⏱ 2026-10-01 · T16 XP-03: `packages/app_lock` is a FIFTH declared root with
+// a floor of its own, so a checkout-shaped fixture carries it — without it the
+// FULL-CHECKOUT clause fires for a reason no case here is about.
+const APP_LOCK = 'packages/app_lock';
+const NEW_ROOT_SUBJECT = [BRICK, BRICK_MANIFEST, DS, APP_LOCK];
 
 // MEASURED by running the guard against the working tree of 2026-08-13. Named
 // individually rather than counted: a count with no names is the "unmet clause
@@ -390,7 +394,7 @@ function sweepTheNewSheet(root) {
 // POSITIVE CONTROLS
 // ─────────────────────────────────────────────────────────────────────────────
 describe('the guard says YES on the tree as it is', () => {
-  test('the REAL repository — 4 derived roots, 69 surfaces, 39 swept, exit 0', () => {
+  test('the REAL repository — 5 derived roots, 102 surfaces, 73 swept, exit 0', () => {
     const { code, out } = run(REPO);
     assert.equal(code, 0, out);
     // 🔴 THE ROOT LINE IS PINNED BECAUSE THE ROOT LINE IS THE FIX. Until
@@ -399,14 +403,20 @@ describe('the guard says YES on the tree as it is', () => {
     // and nothing else in the output would say so — 19 of 19 swept would still
     // print, in a tree with two unchecked roots in it.
     // FOUR since [ADR 071] added packages/chassis_screens as a root of its own.
-    assert.match(out, /4 root\(s\) DERIVED, never listed/);
+    // FIVE since 2026-10-01 (T16): packages/app_lock declares flutter_test and a
+    // public widget (the lock screen), so it is DERIVED as a root on its own.
+    assert.match(out, /5 root\(s\) DERIVED, never listed/);
     assert.match(out, /apps\/subscriptiontracker \(workspace app member\)/);
+    assert.match(
+      out,
+      /packages\/app_lock \(workspace package member: declares flutter_test AND a public widget\)/,
+    );
     assert.match(
       out,
       /packages\/design_system \(workspace package member: declares flutter_test AND a public widget\)/,
     );
     assert.match(out, /\{\{app_id\}\} \(brick template, declared by tooling\/bricks\/app\/brick\.yaml\)/);
-    assert.match(out, /FULL CHECKOUT: all 4 declared root\(s\) are required to be among them/);
+    assert.match(out, /FULL CHECKOUT: all 5 declared root\(s\) are required to be among them/);
 
     assert.match(out, /apps\/subscriptiontracker: 21 of 21 reachable surface\(s\) carry an a11y sweep/); // ⏱ 2026-10-01 ST-T9: +1 app surface (SetupScreen) and +1 chassis surface (SetupStepsView) swept, +2 cases each
     // 50 → 57 on 2026-09-06: [ADR 071] added the seven chassis auth views as a
@@ -445,7 +455,7 @@ describe('the guard says YES on the tree as it is', () => {
     // Unswept stays 18. Read off the guard's own closing line.
     // ⏱ 2026-09-29 · train ST-D DW2 (D2 + D4 + D8) on top of DW1: +3 design_system surfaces (MonthGrid, DateBadge, PermissionPrimingView) and +1 chassis (SettingsSection), all swept: +2 files, +5 cases.
     // ⏱ 2026-09-29 · train ST-D10 (on top of DW2 + D3 + D9): +5 design_system surfaces (AuthFrame, AuthBrandPanel, AuthMessage, AuthOrDivider, AuthPasswordChecklist), each arriving swept, and AuthField swept for the first time, by a11y_auth_frame_test.dart (+1 file, +1 case).
-    assert.match(out, /111 reachable surface\(s\); 81 swept by 20 a11y test file\(s\) across 220 case\(s\)/ /* ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +1 chassis surface (DevicesSection), +2 cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface swept, RefreshOnResume */ /* ⏱ 2026-10-01 train st-entry: +1 design_system surface (SwallowSystemBack), unswept — it paints nothing */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-10-01 audit D8: +1 chassis surface swept (SettingsHeading), +1 case */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D5: +4 design_system surfaces (AppIconAction, AppMonogram, AppFigureTile, AppDetailHeader), each arriving swept, +1 file, +4 cases */ /* ⏱ 2026-09-29 ST-D1: +3 design_system surfaces (AppSectionHeader, AppListGroup, AppSummaryCard), each arriving swept by its own file, +3 cases */ /* ⏱ 2026-09-29 ST-D6: +3 design_system surfaces (AppFormSheet, AppFormField, AppFormActions) and +1 app surface (showEditSubscriptionSheet), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */
+    assert.match(out, /113 reachable surface\(s\); 83 swept by 21 a11y test file\(s\) across 222 case\(s\)/ /* ⏱ 2026-10-02 club-st-singles T16 XP-03: +2 app_lock surfaces (AppLockGate, AppLockScreen), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-10-01 ST-SETTINGS on club apply-st: +1 chassis surface (DevicesSection), +2 cases */ /* ⏱ 2026-10-01 club apply-st merged onto main: main's delta and the club's delta both counted */); /* ⏱ 2026-10-01 ST-N6 (#1080), merged over train st-entry: +1 chassis surface swept, RefreshOnResume */ /* ⏱ 2026-10-01 train st-entry: +1 design_system surface (SwallowSystemBack), unswept — it paints nothing */ /* ⏱ 2026-10-01 O-APPS-GOV-IN-VAPT-CHECKLIST: +4 chassis surfaces swept in a11y_integrity_test.dart (+1 file, +8 cases), on top of SettingsHeading */ /* ⏱ 2026-10-01 audit D8: +1 chassis surface swept (SettingsHeading), +1 case */ /* ⏱ 2026-09-29 ST-D DW1 on ST-T3b: the edit form is showAddSubscriptionSheet(initial:), so ST-D6's showEditSubscriptionSheet surface is gone (-1 app surface) */ /* ⏱ 2026-09-29 ST-D5: +4 design_system surfaces (AppIconAction, AppMonogram, AppFigureTile, AppDetailHeader), each arriving swept, +1 file, +4 cases */ /* ⏱ 2026-09-29 ST-D1: +3 design_system surfaces (AppSectionHeader, AppListGroup, AppSummaryCard), each arriving swept by its own file, +3 cases */ /* ⏱ 2026-09-29 ST-D6: +3 design_system surfaces (AppFormSheet, AppFormField, AppFormActions) and +1 app surface (showEditSubscriptionSheet), each arriving swept, +1 file, +2 cases */ /* ⏱ 2026-09-28 ST-T2: +4 chassis surfaces swept, +2 cases */ /* ⏱ 2026-09-27 ST-A1: +1 chassis surface (TurnstileGate) swept, +1 case */
     assert.match(out, /12 swept where they delegate to/);
     // ⏱ 2026-09-29 · train ST-D10: 18 → 17 — AuthField, on the printed list since 2026-09-05, is swept.
     // ⏱ 2026-10-01 · train st-entry: 17 → 18 — SwallowSystemBack, which paints nothing, is printed unswept.
@@ -585,11 +595,12 @@ describe('the guard says YES on the tree as it is', () => {
 // domain was one hardcoded string and none of these touched it.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('the domain is DERIVED, and a root that stops being derived FAILS', () => {
-  test('the four roots are all scanned, and each one is NAMED in the report', () => {
+  test('the five roots are all scanned, and each one is NAMED in the report', () => {
     const { code, out } = run(treeWithNewRoots());
     assert.equal(code, 0, out);
-    assert.match(out, /4 root\(s\) DERIVED/);
-    assert.match(out, /FULL CHECKOUT: all 4 declared root\(s\) are required to be among them/);
+    assert.match(out, /5 root\(s\) DERIVED/);
+    assert.match(out, /FULL CHECKOUT: all 5 declared root\(s\) are required to be among them/);
+    assert.match(out, /packages\/app_lock: 2 of 2 reachable surface\(s\) carry an a11y sweep/);
     // 17 since 2026-09-07 ([ADR 067] phase 2, unit app-shell): NikatruApp,
     // ConsentScrim, ConsentPromptCard, OfflineBannerHost and AppLifecycleFlush
     // joined this root when the app shell left the brick. The ZERO is the half
@@ -646,7 +657,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     edit(root, WORKSPACE_MANIFEST, '\n  - packages/design_system', '');
     const { code, out } = run(root);
     assert.equal(code, 2, out);
-    assert.match(out, /DECLARED root\(s\) were not among the 3 this run derived/);
+    assert.match(out, /DECLARED root\(s\) were not among the 4 this run derived/);
     assert.match(out, /`packages\/design_system`/);
     // 🔴 THE REASON THIS LIMB EXISTS, ASSERTED. Nothing else can see it: the
     // scan still read the other roots in full, so every count printed healthy.
@@ -658,7 +669,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     edit(root, `${DS}/pubspec.yaml`, '\n  flutter_test:', '');
     const { code, out } = run(root);
     assert.equal(code, 2, out);
-    assert.match(out, /DECLARED root\(s\) were not among the 3 this run derived/);
+    assert.match(out, /DECLARED root\(s\) were not among the 4 this run derived/);
     assert.match(out, /`packages\/design_system`/);
   });
 
@@ -667,7 +678,7 @@ describe('the domain is DERIVED, and a root that stops being derived FAILS', () 
     edit(root, WORKSPACE_MANIFEST, '\n  - apps/subscriptiontracker', '');
     const { code, out } = run(root);
     assert.equal(code, 2, out);
-    assert.match(out, /DECLARED root\(s\) were not among the 3 this run derived/);
+    assert.match(out, /DECLARED root\(s\) were not among the 4 this run derived/);
     assert.match(out, /`apps\/subscriptiontracker`/);
   });
 
@@ -1363,7 +1374,7 @@ describe('a screen that DELEGATES into the chassis is judged where it now lives'
   test('the brick surface counts as SWEPT when the chassis file it delegates to is swept', () => {
     const { code, out } = run(treeWithChassis());
     assert.equal(code, 0, out);
-    assert.match(out, /4 root\(s\) DERIVED/);
+    assert.match(out, /5 root\(s\) DERIVED/);
     // TEN, not one: the six auth adapters [ADR 071] landed delegate, and the
     // four money/first-run/settings adapters [ADR 067] phase 2 landed do too.
     // This fixture re-points the settings one at its own target, which changes

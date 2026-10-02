@@ -47,6 +47,7 @@ export 'src/config/default_configs.dart';
 export 'src/config/flag_resolver.dart';
 export 'src/config/observed_feature_flags.dart';
 export 'src/config/version_gate.dart';
+export 'src/digest/sha256_hex.dart';
 export 'src/models/entitlement.dart';
 export 'src/money/fx_rates.dart';
 export 'src/money/fx_source.dart';

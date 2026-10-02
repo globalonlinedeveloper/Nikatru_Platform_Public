@@ -4030,5 +4030,103 @@
   "emailChangedOthersStillSignedIn": "Your e-mail address changed and this device was signed out, but your other devices could not be — they may still be signed in. Sign in, then use “Log out of all devices” in Settings.",
   "@emailChangedOthersStillSignedIn": {
     "description": "ADR 059 decision 2 · Sign-in screen notice when this device was signed out but the global revoke of the others did not go through (review 3 of #1129, finding 1)."
+  },
+  "appLockSetting": "App lock",
+  "@appLockSetting": {
+    "description": "XP-03: the Settings row that turns the app lock on or off."
+  },
+  "appLockSettingOn": "Locks with your PIN when you come back",
+  "@appLockSettingOn": {
+    "description": "XP-03: the App lock row's subtitle while the lock is on."
+  },
+  "appLockSettingOff": "Ask for a PIN when you come back to the app",
+  "@appLockSettingOff": {
+    "description": "XP-03: the App lock row's subtitle while the lock is off."
+  },
+  "appLockChoosePin": "Choose a PIN",
+  "@appLockChoosePin": {
+    "description": "XP-03: the title of the dialog that turns the app lock on."
+  },
+  "appLockPinHint": "4 to 8 digits",
+  "@appLockPinHint": {
+    "description": "XP-03: the hint under the PIN field when choosing a PIN."
+  },
+  "appLockDelayLabel": "Lock after",
+  "@appLockDelayLabel": {
+    "description": "XP-03: the label of the delay choice in the app lock dialog."
+  },
+  "appLockDelayImmediately": "Immediately",
+  "@appLockDelayImmediately": {
+    "description": "XP-03: the delay choice that locks on every return to the app."
+  },
+  "appLockTurnOn": "Turn on",
+  "@appLockTurnOn": {
+    "description": "XP-03: the confirm button of the app lock dialog."
+  },
+  "appLockCancel": "Cancel",
+  "@appLockCancel": {
+    "description": "XP-03: the cancel button of the app lock dialog."
+  },
+  "appLockTitle": "Nikatru Subscription Tracker is locked",
+  "@appLockTitle": {
+    "description": "XP-03: the title of the lock screen."
+  },
+  "appLockPinLabel": "PIN",
+  "@appLockPinLabel": {
+    "description": "XP-03: the label of the PIN field on the lock screen."
+  },
+  "appLockUnlock": "Unlock",
+  "@appLockUnlock": {
+    "description": "XP-03: the unlock button on the lock screen."
+  },
+  "appLockUseBiometric": "Use fingerprint, face or Windows Hello",
+  "@appLockUseBiometric": {
+    "description": "XP-03: the button that asks the device's biometric to unlock."
+  },
+  "appLockBiometricReason": "Unlock Nikatru Subscription Tracker",
+  "@appLockBiometricReason": {
+    "description": "XP-03: the reason the OS biometric sheet shows."
+  },
+  "appLockForgotPin": "Forgot your PIN? Sign out",
+  "@appLockForgotPin": {
+    "description": "XP-03: the recovery button on the lock screen; signing back in is the recovery."
+  },
+  "glanceNextRenewal": "Next renewal",
+  "@glanceNextRenewal": {
+    "description": "XP-04: the first line's label on the home-screen widget."
+  },
+  "glanceThisMonth": "This month",
+  "@glanceThisMonth": {
+    "description": "XP-04: the second line's label on the home-screen widget: what leaves the account this month."
+  },
+  "glanceProPrompt": "Widgets are part of Pro",
+  "@glanceProPrompt": {
+    "description": "XP-04: what a Free user's widget shows instead of the figures (ADR 101)."
+  },
+  "shortcutAddSubscription": "Add a subscription",
+  "@shortcutAddSubscription": {
+    "description": "XP-05: the launcher shortcut that opens the add sheet."
+  },
+  "shortcutWhatRenewsNext": "What renews next?",
+  "@shortcutWhatRenewsNext": {
+    "description": "XP-05: the launcher shortcut that opens the calendar."
+  },
+  "appLockWrongPin": "Wrong PIN. {count, plural, =1{1 attempt left} other{{count} attempts left}}",
+  "@appLockWrongPin": {
+    "description": "XP-03: shown under a wrong PIN; at zero the person is signed out.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "appLockDelayMinutes": "{count, plural, =1{After 1 minute} other{After {count} minutes}}",
+  "@appLockDelayMinutes": {
+    "description": "XP-03: a delay choice in the app lock dialog.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   }
 }

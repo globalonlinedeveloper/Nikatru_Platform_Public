@@ -40,6 +40,13 @@ dependencies:
   # constraint is that lock's version, declared because this package now
   # imports it.
   app_links: ^7.2.1
+  # ⏱ 2026-10-01 · EN-19 native sign-in sheets. Apple's sheet hands back the
+  # provider's ID token, which goes to GoTrue's `signInWithIdToken`; no browser
+  # opens. It ships native code, which is this package's existing earn-reason,
+  # so no new package. Google's sheet waits (see NativeSignInSheets.forPlatform):
+  # declaring google_sign_in links four unaudited Apple frameworks into every
+  # iOS build.
+  sign_in_with_apple: ^8.2.0
 
 dev_dependencies:
   # [pipeline C-12] resolves the shared ruleset in analysis_options.yaml.

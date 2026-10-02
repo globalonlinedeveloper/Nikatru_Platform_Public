@@ -973,6 +973,16 @@ const REQUIRED_COVERAGE = [
       'the shared chassis [ADR 065 step 2] — nav_shell, app_scaffold, auth_field, ' +
       'destructive_confirm_dialog, two_pane and fourteen more, mounted by every stamped app',
   },
+  // ⏱ 2026-10-01 · T16 XP-03: the app lock, derived as a root the day it
+  // landed. Measured, not guessed: 2 surfaces (the gate and its screen), one
+  // a11y file, 2 cases (each loops both schemes), both surfaces swept.
+  {
+    dir: 'packages/app_lock',
+    surfaces: 2,
+    a11yFiles: 1,
+    cases: 2,
+    label: 'the app lock (XP-03) — the screen a locked person cannot get past, both surfaces swept',
+  },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1231,6 +1241,14 @@ const SWEPT_FLOOR_BY_ROOT = new Map([
       'packages/design_system/lib/src/widgets/auth_frame.dart#AuthOrDivider',
       'packages/design_system/lib/src/widgets/auth_frame.dart#AuthPasswordChecklist',
     ]),
+  ],
+  [
+    'packages/app_lock',
+    new Set(
+      ['src/app_lock_gate.dart#AppLockGate', 'src/app_lock_gate.dart#AppLockScreen'].map(
+        (k) => `packages/app_lock/lib/${k}`,
+      ),
+    ),
   ],
 ]);
 

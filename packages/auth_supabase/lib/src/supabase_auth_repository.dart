@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import 'auth_redirect.dart';
 import 'browser_handoff_client.dart' show HandoffTokens;
 import 'native_attestation_client.dart' show RetryAfterLatch;
+import 'native_sign_in_sheets.dart';
 
 /// Supabase (GoTrue) implementation of core's [core.AuthRepository].
 ///
@@ -32,6 +33,7 @@ class SupabaseAuthRepository implements core.AuthRepository {
     Future<Uri?> Function()? deepLink,
     this.deepLinkTimeout = const Duration(seconds: 2),
     RetryAfterLatch? retryAfter,
+    this.nativeSheets = NativeSignInSheets.none,
   })  : _injected = client,
         _retryAfter = retryAfter,
         _launchUri = launchUri ?? (() => Uri.base),
@@ -71,6 +73,14 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// which is the same observable behaviour as passing null. A misconfigured
   /// allow-list therefore looks exactly like a working one.
   final AuthRedirects redirects;
+
+  /// ⏱ 2026-10-01 · EN-19 — the native Apple/Google sheets this build may use.
+  /// A provider with a sheet signs in IN-PROCESS: the sheet hands back an ID
+  /// token and GoTrue's `signInWithIdToken` mints the session, so no browser
+  /// opens and no PKCE verifier is involved. A provider with no sheet (web,
+  /// Windows, Linux, and Google with no server client id) keeps the browser
+  /// door. [NativeSignInSheets.none], the default, is the browser everywhere.
+  final NativeSignInSheets nativeSheets;
 
   /// How far AHEAD of the real expiry a token counts as expired.
   ///
@@ -507,6 +517,11 @@ class SupabaseAuthRepository implements core.AuthRepository {
     // Completion surfaces on authStateChanges(), never as a return value —
     // the app is torn down and rebuilt by the redirect on some platforms, so
     // there is no continuation to return to.
+    final NativeSignInSheet? sheet = nativeSheets.apple;
+    if (sheet != null) {
+      await _signInWithSheet(sheet, sb.OAuthProvider.apple, 'apple');
+      return;
+    }
     await _signInWithOAuth(sb.OAuthProvider.apple, 'apple');
   }
 
@@ -515,9 +530,53 @@ class SupabaseAuthRepository implements core.AuthRepository {
   /// scope is added: Supabase's default Google scopes (email, profile) are the
   /// whole of what this app reads.
   @override
-  Future<void> signInWithGoogle() =>
-      _signInWithOAuth(sb.OAuthProvider.google, 'google',
-          queryParams: googleQueryParams);
+  Future<void> signInWithGoogle() async {
+    final NativeSignInSheet? sheet = nativeSheets.google;
+    if (sheet != null) {
+      await _signInWithSheet(sheet, sb.OAuthProvider.google, 'google');
+      return;
+    }
+    await _signInWithOAuth(sb.OAuthProvider.google, 'google',
+        queryParams: googleQueryParams);
+  }
+
+  /// ⏱ 2026-10-01 · EN-19. The native door: the provider's own sheet, then
+  /// the ID token to GoTrue. Completion still surfaces on
+  /// authStateChanges() (`signInWithIdToken` saves the session and emits
+  /// `signedIn`), the same contract as the browser door.
+  ///
+  /// 🔴 A CANCELLED SHEET RETURNS QUIETLY — no throw, no session, no browser.
+  /// The person is left on the screen they started from.
+  ///
+  /// The provider is recorded first, as [_signInWithOAuth] does, so the
+  /// provider-token keeper still files whatever this session carries under
+  /// the right provider ([oauthProviderOf]).
+  Future<void> _signInWithSheet(
+    NativeSignInSheet sheet,
+    sb.OAuthProvider provider,
+    String name,
+  ) async {
+    final NativeIdToken? token;
+    try {
+      token = await sheet.obtain();
+    } on Object catch (e) {
+      // The vendor's text can carry an account hint; it stays out of the
+      // failure, which only says which door failed.
+      debugPrint('auth: the $name sheet failed (${e.runtimeType})');
+      throw core.AuthFailure('Sign-in failed', code: 'native_sheet_failed');
+    }
+    if (token == null) return;
+    _launchedProvider = name;
+    try {
+      await _auth.signInWithIdToken(
+        provider: provider,
+        idToken: token.idToken,
+        nonce: token.rawNonce,
+      );
+    } on sb.AuthException catch (e) {
+      throw _failureOf(e);
+    }
+  }
 
   /// 🔴 WHY GOOGLE IS ASKED FOR `offline` ACCESS WITH `consent`: without both,
   /// Google issues no refresh token on a returning sign-in, so there is nothing

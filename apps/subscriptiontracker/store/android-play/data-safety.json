@@ -252,7 +252,7 @@
       "  isApiConfigured      := API_BASE_URL   != placeholder",
       "  isBackendLive        := isSupabaseConfigured && isApiConfigured",
       "and the app branches on them at four places that decide everything this form asks about:",
-      "  providers/auth.dart:167          isBackendLive ? SupabaseAuthRepository : InMemoryAuthRepository",
+      "  providers/auth.dart:182          isBackendLive ? SupabaseAuthRepository : InMemoryAuthRepository",
       "  providers/subscriptions.dart:89  !isApiConfigured -> SeedApiClient (wrapped by PersistedApiClient: device-local storage, never leaves the device)",
       "  analytics_providers.dart:546  !isBackendLive (via analyticsEnabledProvider) -> NoOpAnalytics",
       "  app.dart:471                  the consent prompt shows only when analyticsEnabledProvider is true",
@@ -1931,6 +1931,14 @@
       "nikatru_external_links": {
         "introduces": [],
         "why": "⏱ ADDED 2026-09-24 (O-LINK-LAUNCHER-SEAM-UNOWNED). First-party adapter package (packages/external_links) that now owns the app's ONE url_launcher call: it hands the nikatru.com legal pages, the site, the contact page, the support mailto and the force-update destination to the system browser or mail client, after core's LinkPolicy has allowed the link, and receives nothing back. It is url_launcher's former role in this app behind a policy, so it introduces no data type url_launcher did not."
+      },
+      "nikatru_app_lock": {
+        "introduces": [],
+        "why": "First-party. ⏱ 2026-10-01 · T16 XP-03. The app lock: a salted SHA-256 of the user's PIN in the device's secure store, and local_auth 3.x for the device biometric (android: BiometricPrompt; its manifest adds USE_BIOMETRIC, read in the pub cache 2026-10-01). The OS answers pass or fail and nothing else — no biometric data reaches the app, let alone leaves the device — and nothing here transmits, so it introduces no collected or shared data type."
+      },
+      "nikatru_widgets": {
+        "introduces": [],
+        "why": "First-party. ⏱ 2026-10-01 · T16 XP-04/XP-05/IM-11. home_widget 0.10.0 writes the glance (two formatted facts, or the Pro prompt) to the app's own SharedPreferences for the home-screen widget, and quick_actions 1.1.1 publishes launcher shortcuts; neither declares a permission (their AndroidManifest.xml files, read in the pub cache 2026-10-01) and neither transmits. The share-in channel receives what the user shares INTO the app and hands it to the import screen on the device. No collected or shared data type."
       },
       "flutter_localizations": {
         "introduces": [],

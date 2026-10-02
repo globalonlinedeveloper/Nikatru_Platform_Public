@@ -196,7 +196,7 @@ const fails = (out) => out.split('\n').filter((l) => l.startsWith('FAIL '));
 // guard that can only ever say "uncovered".
 // ─────────────────────────────────────────────────────────────────────────────
 describe('the guard says YES on the tree as it is', () => {
-  test('the REAL repository — 4 derived roots, subscriptiontracker EQUAL, exit 0', () => {
+  test('the REAL repository — 5 derived roots, subscriptiontracker EQUAL, exit 0', () => {
     const { code, out } = run(REPO);
     assert.equal(code, 0, out);
     // 🔴 THE ROOT LINE IS PINNED BECAUSE THE ROOT LINE IS THE FIX. The domain
@@ -206,8 +206,14 @@ describe('the guard says YES on the tree as it is', () => {
     // roots in it.
     // FOUR since [ADR 071] added packages/chassis_screens — the one root here
     // that ENFORCES rather than reports.
-    assert.match(out, /4 root\(s\) DERIVED, never listed/);
+    // FIVE since 2026-10-01 (T16): packages/app_lock declares flutter_test and a
+    // public widget (the lock screen), and measures both of its surfaces.
+    assert.match(out, /5 root\(s\) DERIVED, never listed/);
     assert.match(out, /apps\/subscriptiontracker \(workspace app member\)/);
+    assert.match(
+      out,
+      /packages\/app_lock \(workspace package member: declares flutter_test AND a public widget\)/,
+    );
     assert.match(
       out,
       /packages\/design_system \(workspace package member: declares flutter_test AND a public widget\)/,
