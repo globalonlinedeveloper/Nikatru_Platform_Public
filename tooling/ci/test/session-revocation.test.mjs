@@ -77,6 +77,7 @@ function withRoot(root, fn) {
   }
 }
 
+const KIT_AUTH = `${SHARED}/auth-middleware.ts`;
 const IMPORT_LINE = '  revocationRefusal,\n';
 const CALL = 'return revocationRefusal(payload, record) !== null;';
 const STA_BINDING = '{ "binding": "SESSION_REVOKED", "id": "aa46ad5002874231931cc5dc5b6e2904" }';
@@ -90,22 +91,24 @@ describe('assert-session-revocation over a copy of the real tree', () => {
     });
   });
 
-  test('🔴 sta-api stops importing revocationRefusal ⇒ exit 1', () => {
-    withRoot(mutated([[`${STA}/src/middleware/auth.ts`, IMPORT_LINE, '']]), ({ code, out }) => {
+  // ⏱ 2026-10-01: the one verifier is the kit's auth-middleware.ts, which every
+  // Worker and the brick delegate to, so the import and call mutations land there.
+  test('🔴 the kit verifier stops importing revocationRefusal ⇒ exit 1', () => {
+    withRoot(mutated([[KIT_AUTH, IMPORT_LINE, '']]), ({ code, out }) => {
       assert.equal(code, 1, out);
-      assert.match(out, /subscriptiontracker-api\/src\/middleware\/auth\.ts: calls jwtVerify\( but does not import revocationRefusal/);
+      assert.match(out, /_shared\/src\/auth-middleware\.ts: calls jwtVerify\( but does not import revocationRefusal/);
     });
   });
 
-  test('🔴 platform keeps the import but never CALLS it ⇒ exit 1', () => {
-    withRoot(mutated([[`${PLATFORM}/src/middleware/auth.ts`, CALL, 'return record === undefined;']]), ({ code, out }) => {
+  test('🔴 the kit verifier keeps the import but never CALLS it ⇒ exit 1', () => {
+    withRoot(mutated([[KIT_AUTH, CALL, 'return record === undefined;']]), ({ code, out }) => {
       assert.equal(code, 1, out);
-      assert.match(out, /platform\/src\/middleware\/auth\.ts: calls jwtVerify\( but never calls revocationRefusal\(/);
+      assert.match(out, /_shared\/src\/auth-middleware\.ts: calls jwtVerify\( but never calls revocationRefusal\(/);
     });
   });
 
   test('🔴 a call left only in a COMMENT is not a call ⇒ exit 1', () => {
-    withRoot(mutated([[`${PLATFORM}/src/middleware/auth.ts`, CALL, `// ${CALL}\n  return false;`]]), ({ code, out }) => {
+    withRoot(mutated([[KIT_AUTH, CALL, `// ${CALL}\n  return false;`]]), ({ code, out }) => {
       assert.equal(code, 1, out);
       assert.match(out, /never calls revocationRefusal/);
     });

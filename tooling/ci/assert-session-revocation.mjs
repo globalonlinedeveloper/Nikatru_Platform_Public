@@ -25,6 +25,15 @@
 //           `revocationRefusal` from services/_shared/src/auth, call it, read
 //           `env.SESSION_REVOKED`, and sit under a `wrangler.jsonc` whose
 //           `kv_namespaces` binds SESSION_REVOKED.
+//           ⏱ 2026-10-01 (rv2 SYN-S2): the auth
+//           plumbing moved whole into the kit, so the one file that calls
+//           `jwtVerify(` is services/_shared/src/auth-middleware.ts. A verifier
+//           INSIDE services/_shared/src is held to the first three (its import may
+//           be the sibling `./auth`) and to no wrangler.jsonc — it is not a Worker.
+//           The binding is then owed by every DELEGATE: a Worker or template file
+//           that imports a kit module which calls `jwtVerify(` (derived the same
+//           way). A delegate under no config binding SESSION_REVOKED is a finding,
+//           exactly as a verifier there was.
 //   limb 2  THE TTL. `REVOCATION_TTL_SECONDS` must equal `jwt_exp`
 //           (tooling/mail-transport.json → supabaseAuth.jwt_exp, the value read
 //           back from the live project) + `CLOCK_SKEW_SECONDS`. Shorter, and a
@@ -88,13 +97,27 @@ for (const pattern of ['services/*/src/**/*.ts', 'tooling/bricks/**/src/**/*.ts'
   }
 }
 
-const carriers = [...candidates].filter((rel) => /\bjwtVerify\s*\(/.test(readCode(rel))).sort();
+const KIT = 'services/_shared/src/';
+const verifiers = [...candidates].filter((rel) => /\bjwtVerify\s*\(/.test(readCode(rel))).sort();
+/** The kit's own verifiers, by module name (`auth-middleware` for services/_shared/src/auth-middleware.ts). */
+const kitVerifierModules = verifiers
+  .filter((r) => r.startsWith(KIT))
+  .map((r) => r.slice(KIT.length).replace(/\.ts$/, ''));
+/** A Worker or template file that imports a kit module that verifies. */
+const delegatesTo = (rel) => {
+  if (rel.startsWith(KIT) || kitVerifierModules.length === 0) return false;
+  // A type-only import carries no code, so it delegates nothing.
+  const specs = [...readCode(rel).matchAll(/\b(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s*['"]([^'"]+)['"]/g)].map((m) => m[1]);
+  return specs.some((spec) => kitVerifierModules.some((m) => spec.endsWith(`_shared/src/${m}`)));
+};
+const delegates = [...candidates].filter((rel) => !verifiers.includes(rel) && delegatesTo(rel)).sort();
+const carriers = [...verifiers.filter((r) => !r.startsWith(KIT)), ...delegates].sort();
 const liveCarriers = carriers.filter((r) => r.startsWith(LIVE));
 const templateCarriers = carriers.filter((r) => r.startsWith(TEMPLATE));
 
 if (liveCarriers.length === 0) {
   coverageLost([
-    `no file under services/*/src calls jwtVerify( — read ${candidates.size} candidate file(s).`,
+    `no file under services/*/src calls jwtVerify( or delegates to a kit module that does — read ${candidates.size} candidate file(s).`,
     'Every Worker behind a sign-in verifies a token; finding none means the walk missed them (a moved',
     'directory, a renamed call), and "every carrier consults the revocation list" would be true of nothing.',
   ]);
@@ -107,7 +130,7 @@ for await (const match of boundedGlob('tooling/bricks/**/wrangler.jsonc', { cwd:
 }
 if (templateHasWorker && templateCarriers.length === 0) {
   coverageLost([
-    'the brick carries a Worker (a wrangler.jsonc under tooling/bricks/) but no template file calls jwtVerify(.',
+    'the brick carries a Worker (a wrangler.jsonc under tooling/bricks/) but no template file calls jwtVerify( or delegates to a kit module that does.',
     'Every app stamped from it would inherit an auth middleware this guard never read.',
   ]);
 }
@@ -124,20 +147,28 @@ function configFor(rel) {
 }
 
 const problems = [];
-for (const rel of carriers) {
+for (const rel of [...verifiers, ...delegates]) {
   const code = readCode(rel);
+  const inKit = rel.startsWith(KIT);
+  const delegate = delegates.includes(rel);
   const bare = stripStringLiterals(code);
   const imports = [...code.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g)];
   const imported = imports.some(
-    ([, names, from]) => /_shared\/src\/auth$/.test(from) && /(?:^|[\s,])revocationRefusal(?:\s*[,}]|\s*$)/.test(names),
+    ([, names, from]) =>
+      (/_shared\/src\/auth$/.test(from) || (inKit && from === './auth')) &&
+      /(?:^|[\s,])revocationRefusal(?:\s*[,}]|\s*$)/.test(names),
   );
   // A CALL outside the import line: strip the imports, then look for `name(`.
   const body = bare.replace(/import\s*(?:type\s*)?\{[^}]*\}\s*from\s*[^;\n]+;?/g, '');
   const called = /\brevocationRefusal\s*\(/.test(body);
   const reads = new RegExp(String.raw`\benv\s*\.\s*${BINDING}\b`).test(bare);
-  if (!imported) problems.push(`${rel}: calls jwtVerify( but does not import revocationRefusal from services/_shared/src/auth.`);
-  if (!called) problems.push(`${rel}: calls jwtVerify( but never calls revocationRefusal( — a signed-out session's token is admitted here.`);
-  if (!reads) problems.push(`${rel}: calls jwtVerify( but never reads env.${BINDING}, so the list it would consult is never fetched.`);
+  if (!delegate) {
+    if (!imported) problems.push(`${rel}: calls jwtVerify( but does not import revocationRefusal from services/_shared/src/auth.`);
+    if (!called) problems.push(`${rel}: calls jwtVerify( but never calls revocationRefusal( — a signed-out session's token is admitted here.`);
+    if (!reads) problems.push(`${rel}: calls jwtVerify( but never reads env.${BINDING}, so the list it would consult is never fetched.`);
+  }
+  // The kit is not a Worker: what it reads is bound by each delegate's config.
+  if (inKit) continue;
 
   const cfg = configFor(rel);
   if (cfg === null) {
@@ -289,6 +320,7 @@ if (problems.length) {
 }
 console.log(
   `✓ assert-session-revocation: ${carriers.length} carrier(s) (${liveCarriers.length} live, ${templateCarriers.length} template) ` +
-    `import and call revocationRefusal and bind ${BINDING}; REVOCATION_TTL_SECONDS ${ttl} = jwt_exp ${jwtExp} + skew ${skew}; ` +
+    `bind ${BINDING}; ${verifiers.length} verifier(s) import and call revocationRefusal ` +
+    `(${verifiers.join(', ')}); REVOCATION_TTL_SECONDS ${ttl} = jwt_exp ${jwtExp} + skew ${skew}; ` +
     `${revokeAllPath} is sent by ${senders.join(', ')} and wired into ${constructions.length} SupabaseAuthRepository construction(s).`,
 );
