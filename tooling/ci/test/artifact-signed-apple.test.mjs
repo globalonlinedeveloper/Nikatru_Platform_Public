@@ -80,7 +80,7 @@ Identifier=com.nikatru.subscriptiontracker
 Format=app bundle with Mach-O universal (x86_64 arm64)
 CodeDirectory v=20500 size=48213 flags=0x10000(runtime) hashes=1497+7 location=embedded
 Signature size=8967
-Authority=Apple Distribution: Rajasekar Selvam (${TEAM})
+Authority=Apple Distribution: Fixture Person (${TEAM})
 Authority=Apple Worldwide Developer Relations Certification Authority
 Authority=Apple Root CA
 Timestamp=8 Aug 2026 at 11:04:19
@@ -95,8 +95,8 @@ Internal requirements count=1 size=180
  *  created before Apple unified the two into `Apple Distribution`. */
 // HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
 const LEGACY_MAS = DISTRIBUTION.replace(
-  `Authority=Apple Distribution: Rajasekar Selvam (${TEAM})`,
-  `Authority=3rd Party Mac Developer Application: Rajasekar Selvam (${TEAM})`,
+  `Authority=Apple Distribution: Fixture Person (${TEAM})`,
+  `Authority=3rd Party Mac Developer Application: Fixture Person (${TEAM})`,
 );
 
 /** 🔴 THE DEFECT THIS GUARD EXISTS FOR. `codesign -s -` — a real signature,
@@ -117,8 +117,8 @@ Internal requirements count=0 size=0
 /** A development certificate: valid, verifies, refused by the store. */
 // HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
 const DEVELOPMENT = DISTRIBUTION.replace(
-  `Authority=Apple Distribution: Rajasekar Selvam (${TEAM})`,
-  `Authority=Apple Development: Rajasekar Selvam (${TEAM})`,
+  `Authority=Apple Distribution: Fixture Person (${TEAM})`,
+  `Authority=Apple Development: Fixture Person (${TEAM})`,
 );
 
 /** Developer ID: the certificate for shipping OUTSIDE the store. Also valid,
@@ -126,8 +126,8 @@ const DEVELOPMENT = DISTRIBUTION.replace(
  *  reached for by someone who has read about notarization. */
 // HAND-WRITTEN SHAPE — not captured output; the captured fixtures are fixtures/apple-run-35741818599/.
 const DEVELOPER_ID = DISTRIBUTION.replace(
-  `Authority=Apple Distribution: Rajasekar Selvam (${TEAM})`,
-  `Authority=Developer ID Application: Rajasekar Selvam (${TEAM})`,
+  `Authority=Apple Distribution: Fixture Person (${TEAM})`,
+  `Authority=Developer ID Application: Fixture Person (${TEAM})`,
 );
 
 /** A distribution build from a DIFFERENT team. */
@@ -160,7 +160,7 @@ describe('assert-artifact-signed-apple — the parser', () => {
     assert.equal(p.adhoc, false);
     assert.equal(p.teamId, TEAM);
     assert.equal(p.identifier, 'com.nikatru.subscriptiontracker');
-    assert.equal(leafAuthority(p), `Apple Distribution: Rajasekar Selvam (${TEAM})`);
+    assert.equal(leafAuthority(p), `Apple Distribution: Fixture Person (${TEAM})`);
   });
 
   test('the authority chain is leaf-FIRST — asserting on a CA would be a different question', () => {

@@ -793,7 +793,7 @@ const mirrored = ({
   ogW = '1200',
   ogH = '630',
   robots = null,
-  body = '<h1>Rajasekar Selvam</h1>',
+  body = '<h1>Fixture Person</h1>',
 } = {}) =>
   `<!DOCTYPE html>\n<html${lang ? ' lang="en"' : ''}>\n<head>\n` +
   (robots === null ? '' : `<meta name="robots" content="${robots}">\n`) +
@@ -801,7 +801,7 @@ const mirrored = ({
     ? '<meta property="og:image" content="https://rajasekarselvam.com/og-image.png">\n' +
       `<meta property="og:image:width" content="${ogW}">\n` +
       `<meta property="og:image:height" content="${ogH}">\n` +
-      '<meta property="og:image:alt" content="Rajasekar Selvam">\n'
+      '<meta property="og:image:alt" content="Fixture Person">\n'
     : '') +
   `<style>\n${focusVisible ? '  :focus-visible{outline:2px solid #2E6FF2}\n' : ''}</style>\n` +
   '</head>\n<body>\n' +

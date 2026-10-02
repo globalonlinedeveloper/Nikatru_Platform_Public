@@ -213,6 +213,10 @@ function brokenToolingTree(mutate) {
   for (const rel of [REL.catalogue, REL.rail, REL.lede]) {
     writeFileSync(join(root, ...rel.split('/')), real(rel));
   }
+  // The site footer is rendered from the entity source (tooling/sites/chrome.mjs →
+  // tooling/entity/facts.mjs), which READS this file rather than importing it, so the
+  // import closure above cannot find it.
+  writeFileSync(join(root, 'tooling', 'house-identity.json'), real('tooling/house-identity.json'));
   for (const rel of TOOLING_CLOSURE) {
     writeFileSync(join(root, ...rel.split('/')), mutate(rel, real(rel)));
   }

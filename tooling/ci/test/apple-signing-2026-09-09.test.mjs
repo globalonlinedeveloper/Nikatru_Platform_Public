@@ -213,16 +213,16 @@ describe('pickIdentities reads what is really in the keychain', () => {
   // Real `security find-identity -v` output shape, including the trailing
   // summary line that is NOT an identity.
   const REAL = [
-    '  1) A1B2C3D4E5F60718293A4B5C6D7E8F9012345678 "Apple Distribution: Rajasekar Selvam (Q2B2BY33B6)"',
-    '  2) 0F1E2D3C4B5A69788796A5B4C3D2E1F001234567 "3rd Party Mac Developer Installer: Rajasekar Selvam (Q2B2BY33B6)"',
+    '  1) A1B2C3D4E5F60718293A4B5C6D7E8F9012345678 "Apple Distribution: Fixture Person (Q2B2BY33B6)"',
+    '  2) 0F1E2D3C4B5A69788796A5B4C3D2E1F001234567 "3rd Party Mac Developer Installer: Fixture Person (Q2B2BY33B6)"',
     '     2 valid identities found',
   ].join('\n');
 
   test('separates the application identity from the installer identity', () => {
     const { names, application, installer } = pickIdentities(REAL);
     assert.equal(names.length, 2, 'the summary line is not an identity');
-    assert.equal(application, 'Apple Distribution: Rajasekar Selvam (Q2B2BY33B6)');
-    assert.equal(installer, '3rd Party Mac Developer Installer: Rajasekar Selvam (Q2B2BY33B6)');
+    assert.equal(application, 'Apple Distribution: Fixture Person (Q2B2BY33B6)');
+    assert.equal(installer, '3rd Party Mac Developer Installer: Fixture Person (Q2B2BY33B6)');
   });
 
   // 🔴 THE PREFIX COLLISION THIS EXISTS FOR. "3rd Party Mac Developer Installer"

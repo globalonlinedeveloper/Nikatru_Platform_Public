@@ -577,6 +577,12 @@ export const codeMask = (text) => {
  *  as page text. Both were real inputs. */
 export function stripInert(html) {
   return html
+    // A FACT marker (tooling/entity/facts.mjs) wraps a value INSIDE a sentence —
+    // `of <!-- FACT:legal-name -->…<!-- /FACT:legal-name -->,` — so it is
+    // zero-width, as a browser renders it. Read as a space it would put one
+    // before the comma, and every visible-text comparison would see a page edit
+    // that no reader can see.
+    .replace(/<!-- \/?FACT:[a-z0-9-]+ -->/g, '')
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ');
 }
